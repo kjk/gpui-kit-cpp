@@ -379,9 +379,9 @@ bool HostModule::IsAsync(Str function) const {
 }
 
 static const char* const kReserved[] = {
-    "gpui",    "gpui-base", "gpui-shell",  "gpui-fps",  "buffer",
-    "console", "crypto",    "fs/promises", "net",       "os",
-    "path",    "process",   "url",         "websocket", "zlib",
+    "gpui-kit", "gpui",   "gpui-base",   "gpui-shell", "gpui-fps", "buffer",
+    "console",  "crypto", "fs/promises", "net",        "os",       "path",
+    "process",  "url",    "websocket",   "zlib",
 };
 
 bool HostIsReservedSpecifier(Str value) {

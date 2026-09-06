@@ -26,9 +26,10 @@ static TempStr JoinPathTemp(Str directory, Str name) {
 }
 
 static bool SourceImportsBuiltins(Str source) {
-    static const char* specifiers[] = {"gpui", "gpui-base", "gpui-shell",
-                                       "gpui-fps"};
-    for (int i = 0; i < 4; i++) {
+    static const char* specifiers[] = {"gpui-kit", "gpui", "gpui-base",
+                                       "gpui-shell", "gpui-fps"};
+    for (int i = 0; i < (int)(sizeof(specifiers) / sizeof(specifiers[0]));
+         i++) {
         TempStr quoted = fmt("\"%s\"", Str(specifiers[i]));
         if (StrContains(source, quoted)) return true;
         quoted = fmt("'%s'", Str(specifiers[i]));
@@ -109,6 +110,10 @@ static void AppendReindented(StrBuilder* out, Str declarations) {
 void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules) {
     if (!out) return;
     AppendBuiltinTypeDeclarations(out);
+    // The embedded declarations predate the Kit package rename. Both names
+    // expose the same types, just as the runtime exposes the same values.
+    out->Append(StrL(
+        "\ndeclare module \"gpui-kit\" {\n  export * from \"gpui\";\n}\n"));
     for (int i = 0; i < HostModulesCount(modules); i++) {
         HostModule* module = HostModulesAt(modules, i);
         if (!module) continue;
@@ -136,7 +141,7 @@ void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules) {
     }
 }
 
-// What an editor has to be told before `gpui.d.ts` and the linked packages
+// What an editor has to be told before `gpui-kit.d.ts` and the linked packages
 // mean anything. `EDITOR_CONFIG` in crates/shell/src/typings.rs, byte for
 // byte, and the same settings examples/js_todolist/jsconfig.json was written
 // against.
@@ -153,7 +158,7 @@ static const char* const kEditorConfig =
     "",
     "`lib` decides which globals exist. The default hands a script the",
     "browser's — a `console`, a `localStorage`, a `Window` this runtime does",
-    "not have — and their declarations collide with the ones gpui.d.ts makes,",
+    "not have — and their declarations collide with the ones gpui-kit.d.ts makes,",
     "so the file describing the API is itself reported as the error.",
     "",
     "`strictNullChecks` is off, and this one is the runtime's shape rather than",

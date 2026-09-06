@@ -6,7 +6,7 @@
 
 namespace gpui::shell {
 
-constexpr const char* kShellVersion = "0.1.0";
+constexpr const char* kShellVersion = "0.6.0";
 constexpr const char* kShellManifestFile = "gpui-shell.json";
 constexpr int kShellMaxManifestBytes = 1024 * 1024;
 // `default_dependency_entry` in crates/shell/src/plugin.rs.

@@ -741,15 +741,12 @@ bool PluginManifestParse(Str source, PluginManifest* out, ShellError* error) {
     }
     ParseSemver(Str(kShellVersion), &runtimeMajor, &runtimeMinor,
                 &runtimePatch);
-    bool line = requiredMajor == 0
-                    ? runtimeMajor == 0 && runtimeMinor == requiredMinor
-                    : runtimeMajor == requiredMajor;
     bool oldEnough =
         runtimeMajor > requiredMajor ||
         (runtimeMajor == requiredMajor &&
          (runtimeMinor > requiredMinor ||
           (runtimeMinor == requiredMinor && runtimePatch >= requiredPatch)));
-    if (!line || !oldEnough) {
+    if (!oldEnough) {
         SetError(error, fmt("this application requires gpui-shell %s, but this "
                             "runtime is %s and is not compatible",
                             required, Str(kShellVersion)));

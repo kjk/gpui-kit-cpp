@@ -353,22 +353,23 @@ static void RenderContextExposesFrozenGenerationBoundTheme() {
     ShellError error = {};
     ShellRuntime* runtime = ShellRuntime::New(&app, &error);
     ViewType* type =
-        runtime ? runtime->LoadSource(
-                      StrL("context-theme.js"),
-                      StrL("import { div, View } from 'gpui'; export default "
-                           "class Themed extends View { render(cx) { const "
-                           "theme = cx.theme(); if (!Object.isFrozen(theme) || "
-                           "!Object.isFrozen(theme.colors) || "
-                           "!Object.isFrozen(theme.spacing) || "
-                           "!Object.isFrozen(theme.radius)) throw new "
-                           "Error('theme snapshot must be deeply frozen'); if "
-                           "(this.savedTheme) this.savedTheme(); else "
-                           "this.savedTheme = cx.theme; return "
-                           "div().text_color(theme.foreground).bg(theme.colors."
-                           "surface).p(theme.spacing.md).rounded(theme.radius."
-                           "md).child('semantic'); } }"),
-                      &error)
-                : nullptr;
+        runtime
+            ? runtime->LoadSource(
+                  StrL("context-theme.js"),
+                  StrL("import { div, View } from 'gpui-kit'; export default "
+                       "class Themed extends View { render(cx) { const "
+                       "theme = cx.theme(); if (!Object.isFrozen(theme) || "
+                       "!Object.isFrozen(theme.colors) || "
+                       "!Object.isFrozen(theme.spacing) || "
+                       "!Object.isFrozen(theme.radius)) throw new "
+                       "Error('theme snapshot must be deeply frozen'); if "
+                       "(this.savedTheme) this.savedTheme(); else "
+                       "this.savedTheme = cx.theme; return "
+                       "div().text_color(theme.foreground).bg(theme.colors."
+                       "surface).p(theme.spacing.md).rounded(theme.radius."
+                       "md).child('semantic'); } }"),
+                  &error)
+            : nullptr;
     ViewObject* object =
         type && runtime
             ? runtime->Instantiate(type, &window, &app, nullptr, &error)
@@ -845,7 +846,8 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
     ShellTypeDeclarations(&declarations, modules);
     Str text = declarations.TakeStr();
     utassert(text.len > 600000);
-    utassert(StrContains(text, StrL("declare module \"gpui\"")) &&
+    utassert(StrContains(text, StrL("declare module \"gpui-kit\"")) &&
+             StrContains(text, StrL("declare module \"gpui\"")) &&
              StrContains(text, StrL("export const Link: ComponentType;")) &&
              StrContains(text, StrL("declare module \"gpui-base\"")) &&
              StrContains(text, StrL("declare module \"gpui-shell\"")) &&
@@ -867,9 +869,9 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
 #endif
 
     const char* rootName = "shell_types_test_root";
-    remove("shell_types_test_root/gpui.d.ts");
+    remove("shell_types_test_root/gpui-kit.d.ts");
     remove("shell_types_test_root/jsconfig.json");
-    remove("shell_types_test_root/nested/gpui.d.ts");
+    remove("shell_types_test_root/nested/gpui-kit.d.ts");
     remove("shell_types_test_root/nested/main.js");
 #if GPUI_OS_WINDOWS
     RemoveDirectoryA("shell_types_test_root/nested");
@@ -880,9 +882,10 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
 #endif
     utassert(ShellFixtureFs(FsOperation::MakeDirectory, Str(rootName),
                             StrL("nested"), {}, true));
-    utassert(ShellFixtureFs(
-        FsOperation::Write, Str(rootName), StrL("nested/main.js"),
-        StrL("import { div } from 'gpui'; export default div();")));
+    utassert(ShellFixtureFs(FsOperation::Write, Str(rootName),
+                            StrL("nested/main.js"),
+                            StrL("import { fps_monitor } from 'gpui-fps'; "
+                                 "export default fps_monitor();")));
 
     ShellError error = {};
     int written = 0;
@@ -891,16 +894,16 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
     // ad216356: the root also gets a jsconfig.json, scaffolded once, so an
     // inferred moduleResolution cannot land on the one that never looks in
     // node_modules and the browser's default `lib` cannot collide with
-    // gpui.d.ts.
+    // gpui-kit.d.ts.
     utassert(!error.IsSet() && written == 3);
     FsResult result;
     Str fsError;
-    utassert(FsRun(FsOperation::Read, Str(rootName), StrL("gpui.d.ts"), {},
+    utassert(FsRun(FsOperation::Read, Str(rootName), StrL("gpui-kit.d.ts"), {},
                    false, &result, &fsError));
     utassert(StrEq(result.bytes, text));
     result.Free();
-    utassert(FsRun(FsOperation::Read, Str(rootName), StrL("nested/gpui.d.ts"),
-                   {}, false, &result, &fsError));
+    utassert(FsRun(FsOperation::Read, Str(rootName),
+                   StrL("nested/gpui-kit.d.ts"), {}, false, &result, &fsError));
     utassert(StrEq(result.bytes, text));
     result.Free();
     written = -1;
@@ -911,11 +914,11 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
     ShellErrorClear(&error);
 
     utassert(ShellFixtureFs(FsOperation::RemoveFile, Str(rootName),
-                            StrL("nested/gpui.d.ts")));
+                            StrL("nested/gpui-kit.d.ts")));
     utassert(ShellFixtureFs(FsOperation::RemoveFile, Str(rootName),
                             StrL("nested/main.js")));
     utassert(ShellFixtureFs(FsOperation::RemoveFile, Str(rootName),
-                            StrL("gpui.d.ts")));
+                            StrL("gpui-kit.d.ts")));
     // `an_existing_editor_configuration_is_never_replaced`: the scaffold is
     // written once and then belongs to whoever opens it.
     utassert(FsRun(FsOperation::Read, Str(rootName), StrL("jsconfig.json"), {},
@@ -935,7 +938,7 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
     utassert(StrEq(result.bytes, StrL("{}")));
     result.Free();
     utassert(ShellFixtureFs(FsOperation::RemoveFile, Str(rootName),
-                            StrL("gpui.d.ts")));
+                            StrL("gpui-kit.d.ts")));
     utassert(ShellFixtureFs(FsOperation::RemoveFile, Str(rootName),
                             StrL("jsconfig.json")));
     utassert(ShellFixtureFs(FsOperation::RemoveDirectory, Str(rootName),
@@ -2812,7 +2815,7 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     utassert(!error.IsSet() && StrEq(manifest.id, StrL("com.example.inbox")) &&
              StrEq(manifest.name, StrL("Inbox")) &&
              StrEq(manifest.version, StrL("1.2.0")) &&
-             StrEq(manifest.shellVersion, kShellVersion) &&
+             StrEq(manifest.shellVersion, StrL("0.1.0")) &&
              StrEq(manifest.entry, StrL("main.js")));
     Capabilities granted = manifest
                                .Grant(StrL("plugin-root"), StrL("data-root"));
@@ -2861,10 +2864,18 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     PluginManifest future;
     utassert(!PluginManifestParse(
         StrL("{\"id\":\"com.example.future\",\"name\":\"Future\",\"shell-"
-             "version\":\"0.2.0\",\"entry\":\"main.js\"}"),
+             "version\":\"0.7.0\",\"entry\":\"main.js\"}"),
         &future, &error));
     utassert(StrContains(error.message, StrL("not compatible")));
     ShellErrorClear(&error);
+
+    PluginManifest older;
+    utassert(PluginManifestParse(
+        StrL("{\"id\":\"com.example.older\",\"name\":\"Older\",\"shell-"
+             "version\":\"0.0.0\",\"entry\":\"main.js\"}"),
+        &older, &error));
+    utassert(HostIsReservedSpecifier(StrL("gpui-kit")) &&
+             HostIsReservedSpecifier(StrL("gpui")));
 
 #if GPUI_OS_WASM
     // Manifest parsing and grants are platform-independent and checked above.

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8ef66984169536fceb65592d73791905df0b3c8d",
+  sha: "a5993463feff60f8aa3baec215730395eafe5567",
   date: "2026-09-04",
-  subject: "button: Select a ghost button with `secondary_active` again (#2938)",
+  subject: "shell: Improve application compatibility (#2939)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

@@ -1183,13 +1183,13 @@ static TempStr ReadModuleFileTemp(Str path, ShellError* error) {
 }
 
 static bool IsBuiltin(Str name) {
-    return StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-base")) ||
-           StrEq(name, StrL("gpui-shell")) || StrEq(name, StrL("gpui-fps")) ||
-           StrEq(name, StrL("buffer")) || StrEq(name, StrL("console")) ||
-           StrEq(name, StrL("crypto")) || StrEq(name, StrL("fs/promises")) ||
-           StrEq(name, StrL("os")) || StrEq(name, StrL("path")) ||
-           StrEq(name, StrL("process")) || StrEq(name, StrL("url")) ||
-           StrEq(name, StrL("zlib"));
+    return (StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-kit"))) ||
+           StrEq(name, StrL("gpui-base")) || StrEq(name, StrL("gpui-shell")) ||
+           StrEq(name, StrL("gpui-fps")) || StrEq(name, StrL("buffer")) ||
+           StrEq(name, StrL("console")) || StrEq(name, StrL("crypto")) ||
+           StrEq(name, StrL("fs/promises")) || StrEq(name, StrL("os")) ||
+           StrEq(name, StrL("path")) || StrEq(name, StrL("process")) ||
+           StrEq(name, StrL("url")) || StrEq(name, StrL("zlib"));
 }
 
 static const char* const kGpuiExports[] = {
@@ -1236,7 +1236,7 @@ static const char* const kZlibExports[] = {
 static void ModuleExports(Str name, const char* const** values, int* count) {
     *values = nullptr;
     *count = 0;
-    if (StrEq(name, StrL("gpui"))) {
+    if ((StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-kit")))) {
         *values = kGpuiExports;
         *count = (int)(sizeof(kGpuiExports) / sizeof(kGpuiExports[0]));
     } else if (StrEq(name, StrL("gpui-base"))) {
@@ -1276,8 +1276,9 @@ static void ModuleExports(Str name, const char* const** values, int* count) {
 }
 
 static const char* BuiltinObject(Str name) {
-    if (StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-base")) ||
-        StrEq(name, StrL("gpui-shell")) || StrEq(name, StrL("gpui-fps")))
+    if ((StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-kit"))) ||
+        StrEq(name, StrL("gpui-base")) || StrEq(name, StrL("gpui-shell")) ||
+        StrEq(name, StrL("gpui-fps")))
         return "__gpui";
     if (StrEq(name, StrL("buffer"))) return "__shell_buffer";
     if (StrEq(name, StrL("console"))) return "console";

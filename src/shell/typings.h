@@ -6,7 +6,7 @@
 
 namespace gpui::shell {
 
-constexpr const char* kShellTypesFile = "gpui.d.ts";
+constexpr const char* kShellTypesFile = "gpui-kit.d.ts";
 // The editor configuration, in the spelling a JavaScript project uses, and
 // the TypeScript one it is written beside and defers to.
 constexpr const char* kShellConfigFile = "jsconfig.json";
@@ -21,7 +21,7 @@ void AppendBuiltinTypeDeclarations(StrBuilder* out);
 void ShellTypeDeclarations(StrBuilder* out,
                            const HostModules* modules = nullptr);
 
-// Writes gpui.d.ts at the application root and beside scripts in nested
+// Writes gpui-kit.d.ts at the application root and beside scripts in nested
 // directories that import a built-in module. Identical files are untouched.
 bool ShellWriteTypeDeclarations(Str directory,
                                 const HostModules* modules = nullptr,

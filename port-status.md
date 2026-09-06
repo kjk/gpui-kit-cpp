@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `8ef66984169536fceb65592d73791905df0b3c8d`
-(2026-09-04, button: Select a ghost button with `secondary_active` again (#2938)). Selected ghost buttons use secondary_active again, matching the restored upstream token.
+Processed through `a5993463feff60f8aa3baec215730395eafe5567`
+(2026-09-04, shell: Improve application compatibility (#2939)). Shell imports accept gpui-kit and its gpui compatibility alias; shell-version specifies a minimum runtime version, including older minor versions.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
