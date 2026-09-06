@@ -351,8 +351,100 @@ static void ComboboxOwnsStateEventsAndTriggerContext() {
     EntityDropAll(&app);
 }
 
+static El* FindRole(El* e, AccessibilityRole role) {
+    if (!e) return nullptr;
+    if (e->accessibility.role == role) return e;
+    for (El* child = e->first; child; child = child->next) {
+        if (El* found = FindRole(child, role)) return found;
+    }
+    return nullptr;
+}
+
+// select.rs: projects_application_owned_accessible_state. The controlled
+// root carries the application's label and committed value, says whether it
+// is expanded, and exposes activation itself — platform adapters may flatten
+// the trigger child — unless it is disabled.
+static void TheRootProjectsApplicationOwnedAccessibleState() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    // The open-state handler the default action binds to; any live listener
+    // will do for the projection.
+    Entity<component::SelectState> owner = component::SelectState::New(&app);
+    Listener live = ListenTo(owner, &component::SelectState::OnMouseDownOut);
+    El* enabled =
+        gpui::Select::New(&cx, StrL("enabled"), true, false,
+                          StrL("Programming language"), live, StrL("Rust"));
+    El* disabled = gpui::Select::New(&cx, StrL("disabled"), false, true, Str{},
+                                     live, Str{});
+    utassert(StrEq(enabled->accessibility.label, StrL("Programming language")));
+    utassert(StrEq(enabled->accessibility.value, StrL("Rust")));
+    utassert(enabled->accessibility.hasExpanded && enabled->accessibility
+                                                       .expanded);
+    utassert(disabled->accessibility.hasExpanded && !disabled->accessibility
+                                                         .expanded);
+    utassert(enabled->accessibilityDefault.IsValid());
+    utassert(!disabled->accessibilityDefault.IsValid());
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
+// component select.rs:
+// test_select_accessibility_value_tracks_placeholder_and_selection. The value
+// is the committed selection with its prefix, or the placeholder; filtering
+// the list does not move it.
+static void SelectAccessibilityValueTracksPlaceholderAndSelection() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+
+    Entity<SelectState> state = SelectState::New(&app);
+    SelectState* s = state.Get(&app);
+    s->Searchable(true);
+    SearchableItem items[] = {{StrL("Rust"), StrL("rust")},
+                              {StrL("Go"), StrL("go")}};
+    auto render = [&](Str prefix, bool placeholder) {
+        component::Select* select =
+            component::Select::New(&cx, StrL("language"), state)
+                ->Items(items, 2)
+                ->AccessibilityLabel(StrL("Programming language"));
+        if (placeholder) select->Placeholder(StrL("Choose a language"));
+        if (prefix.s) select->TitlePrefix(prefix);
+        El* root = FindRole(select->IntoEl(), AccessibilityRole::ComboBox);
+        utassert(root != nullptr);
+        return root ? root->accessibility.value : Str{};
+    };
+    utassert(StrEq(render(Str{}, true), StrL("Choose a language")));
+
+    s->SetSelectedValue(StrL("rust"), &cx);
+    utassert(StrEq(render(Str{}, true), StrL("Rust")));
+
+    // Filtering changes the available rows, not the committed value.
+    SearchableListSearch(&s->state, items, 2, StrL("Go"));
+    utassert(s->state.matches.len == 1);
+    utassert(StrEq(render(Str{}, true), StrL("Rust")));
+
+    utassert(StrEq(render(StrL("Language: "), true), StrL("Language: Rust")));
+
+    s->SetSelectedIndex(nullptr, &cx);
+    utassert(StrEq(render(Str{}, true), StrL("Choose a language")));
+    utassert(StrEq(render(Str{}, false), Tr("Select.placeholder")));
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestSelect() {
     TestSuite("select");
+    TheRootProjectsApplicationOwnedAccessibleState();
+    SelectAccessibilityValueTracksPlaceholderAndSelection();
     ArrowsOpenAClosedSelect();
     EnterOpensThenConfirms();
     EscapeOnlyCountsWhileOpen();

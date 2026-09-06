@@ -52,7 +52,8 @@ SelectAction SelectActionOf(uint32_t id, bool open, bool disabled) {
 }
 
 El* Select::New(Ctx* cx, Str id, bool open, bool disabled,
-                Str accessibilityLabel, Listener onOpenChange) {
+                Str accessibilityLabel, Listener onOpenChange,
+                Str accessibilityValue) {
     Arena* a = cx->a;
     El* e = Div(a)
                 ->Id(id)
@@ -61,6 +62,9 @@ El* Select::New(Ctx* cx, Str id, bool open, bool disabled,
                 ->AriaDisabled(disabled);
     if (accessibilityLabel.s) {
         e->AriaLabel(accessibilityLabel);
+    }
+    if (accessibilityValue.s) {
+        e->AriaValue(accessibilityValue);
     }
     if (!disabled && onOpenChange.IsValid()) {
         e->OnAccessibilityDefault(ListenerFill(onOpenChange, !open));

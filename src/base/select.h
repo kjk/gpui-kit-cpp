@@ -38,8 +38,14 @@ Str SelectContext();
 SelectAction SelectActionOf(uint32_t id, bool open, bool disabled);
 
 struct Select {
+    // `accessibilityValue` is the committed value the controlled root
+    // exposes — a readable selection title, not the current search query or
+    // cursor — so a platform adapter that flattens the trigger child still
+    // reads what is selected. Activation sits on the root for the same
+    // reason, and a disabled select exposes none.
     static El* New(Ctx* cx, Str id, bool open = false, bool disabled = false,
-                   Str accessibilityLabel = {}, Listener onOpenChange = {});
+                   Str accessibilityLabel = {}, Listener onOpenChange = {},
+                   Str accessibilityValue = {});
 };
 } // namespace gpui
 #endif // GPUI_BASE_SELECT_H_

@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `7329fa81d25498a94812fcd80d152f22612aee46`
-(2026-09-06, native_menu: Constrain uxtheme loading to System32 (#2974)). The Windows native menu's dark-mode entry points come from a `uxtheme.dll` loaded with `LOAD_LIBRARY_SEARCH_SYSTEM32`, so a DLL planted beside the executable is never considered; ordinal resolution, the cached module and the plain-menu fallback are unchanged.
+Processed through `68a4acd30a51b42632b07187f39af842e06f0451`
+(2026-09-06, select: expose committed values and accessible activation (#2973)). The select's controlled root now carries the committed selection as its accessible value — the item's title with the prefix, or the placeholder when unselected, unmoved by filtering — through base `Select::New`'s `accessibilityValue`; activation on the enabled root and none on a disabled one were already so. The story names its searchable select "Programming language".
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

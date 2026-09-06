@@ -479,6 +479,9 @@ El* SelectStory::Render(SelectStory* self, Ctx* cx) {
     StorySectionBody(search)->W(280)->ItemsCenter();
     StorySectionAdd(search,
                     Sel(self, cx, SelCountry, "country", toggle, clear)
+                        // The searchable select carries the accessible name
+                        // upstream's story gives its `simple_select2`.
+                        ->AccessibilityLabel(StrL("Programming language"))
                         ->Cleanable()
                         ->Searchable(&self->search[SelCountry],
                                      ListenerArg(focusQuery, SelCountry))

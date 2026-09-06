@@ -586,10 +586,14 @@ El* Select::IntoEl() {
         SearchableListSearch(s, items, nItems,
                              query ? InputValue(query) : Str{});
     }
-    El* root =
-        gpui::Select::New(cx, id, open, disabled, accessibilityLabel, onToggle)
-            ->W(width)
-            ->Child(box);
+    // accessibility_value: the committed selection with its prefix, or the
+    // placeholder when nothing is selected — the same words the trigger
+    // shows, and not the search query, so filtering the list leaves it be.
+    Str accessibilityValue = SelectTriggerTitle(s, placeholder, titlePrefix, a);
+    El* root = gpui::Select::New(cx, id, open, disabled, accessibilityLabel,
+                                 onToggle, accessibilityValue)
+                   ->W(width)
+                   ->Child(box);
     // `("select-popup", cx.entity_id())`: the open list is deferred out of
     // the tree, so Rust qualifies its name with an identity rather than
     // leaning on the stack. The picker's id is what stands for the entity
