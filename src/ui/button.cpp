@@ -537,12 +537,12 @@ El* Button::IntoEl() {
         }
     }
     if (selected) {
-        // ButtonVariant::selected: the variant's *own* active fill. Ghost
-        // used to take `secondary_active` straight, which sat too close to
-        // its hover to read as pressed, so it now selects with its active
-        // surface like everything else. Link and Text stay transparent the
-        // way they are in every other state.
+        // ButtonVariant::selected: Ghost uses secondary_active, while Link
+        // and Text remain transparent.
         switch (variant) {
+            case ButtonVariant::Ghost:
+                bg = th.tokens.secondaryActive;
+                break;
             case ButtonVariant::Link:
             case ButtonVariant::Text:
                 bg = clear;

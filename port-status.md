@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `b6f098db819c40b5cb13b513f7bacc14b0afd9dc`
-(2026-09-03, website: Add a release notes page and keep page titles off the toolbar (#2935)). The new release-notes page and toolbar CSS belong solely to the upstream documentation website. There is no corresponding website or release-data service in this native/browser C++ toolkit.
+Processed through `8ef66984169536fceb65592d73791905df0b3c8d`
+(2026-09-04, button: Select a ghost button with `secondary_active` again (#2938)). Selected ghost buttons use secondary_active again, matching the restored upstream token.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
