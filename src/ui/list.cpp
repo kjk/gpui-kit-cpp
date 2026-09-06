@@ -368,11 +368,17 @@ El* List::IntoEl() {
     // that answers null for the row it was asked to measure should not
     // collapse the list to zero-height rows.
     float itemH = s->rowH;
-    if (delegate.renderItem) {
-        int measureEntry = ListEntryOf(s, s->itemToMeasure);
-        if (measureEntry < 0) {
-            measureEntry = 0;
-        }
+    // The row measured is chosen in this order: the configured index if both
+    // its section and row exist; otherwise the first row in the first
+    // non-empty section, which is what the flattened entry 0 is; and with
+    // every section empty no item is measured at all. The fallback is only
+    // for this measurement — `itemToMeasure` is the caller's setting and
+    // stays put, so once the configured row exists again it is measured.
+    int measureEntry = ListEntryOf(s, s->itemToMeasure);
+    if (measureEntry < 0 && s->count > 0) {
+        measureEntry = 0;
+    }
+    if (delegate.renderItem && measureEntry >= 0) {
         ListRow m = ListRowAt(s, ListRowOfEntry(s, measureEntry));
         ListItem* probe =
             delegate.renderItem(cx, delegate.data, m.section, m.row, m.entry);

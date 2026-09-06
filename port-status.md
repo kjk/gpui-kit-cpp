@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `68a4acd30a51b42632b07187f39af842e06f0451`
-(2026-09-06, select: expose committed values and accessible activation (#2973)). The select's controlled root now carries the committed selection as its accessible value — the item's title with the prefix, or the placeholder when unselected, unmoved by filtering — through base `Select::New`'s `accessibilityValue`; activation on the enabled root and none on a disabled one were already so. The story names its searchable select "Programming language".
+Processed through `3f495d333578f898bd1ee0422c604139afc2f005`
+(2026-09-06, list: measure an existing row when the configured item is absent (#2975)). The list measures the configured row when its section and row exist, else the first row of the first non-empty section, else nothing, and leaves `itemToMeasure` as the caller set it so the configured row is measured again once it exists. The rule was already the port's; the checkin makes it explicit and pins it with upstream's regression test.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

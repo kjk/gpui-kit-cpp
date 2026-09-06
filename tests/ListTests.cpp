@@ -255,6 +255,112 @@ static component::ListItem* DelegateItem(Ctx* cx, void* data, int section,
     return component::ListItem::New(cx, Div(cx->a)->H(24));
 }
 
+// list.rs measurement_tests: a delegate whose section counts a test can
+// change between frames, with a 36px first row and 48px rows after it, so the
+// measured height says which row was measured.
+struct MeasureProbe {
+    int counts[2] = {0, 2};
+};
+
+static int MeasureSections(Ctx*, void*) {
+    return 2;
+}
+
+static int MeasureItems(Ctx*, void* data, int section) {
+    return ((MeasureProbe*)data)->counts[section];
+}
+
+static component::ListItem* MeasureItem(Ctx* cx, void* data, int section,
+                                        int row, int) {
+    MeasureProbe* probe = (MeasureProbe*)data;
+    if (section < 0 || section > 1 || row >= probe->counts[section]) {
+        return nullptr;
+    }
+    return component::ListItem::New(cx, Div(cx->a)->H(row == 0 ? 36.f : 48.f));
+}
+
+// measures_an_existing_row_when_the_requested_item_is_absent. The row
+// measured is the configured one when it exists, else the first row of the
+// first non-empty section, else nothing — and the configured index is left
+// as the caller set it, so it is measured again once it exists.
+static void MeasuresAnExistingRowWhenTheRequestedItemIsAbsent() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    win->frameArena = arena;
+    ThemeInstall(&app, ThemeMode::Light, ThemeLight());
+    Entity<ListState> state = EntityNewState<ListState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    MeasureProbe probe;
+    component::ListDelegate delegate;
+    delegate.data = &probe;
+    delegate.sectionsCount = &MeasureSections;
+    delegate.itemsCount = &MeasureItems;
+    delegate.renderItem = &MeasureItem;
+    ListState* list = state.Get(&app);
+
+    // Upstream sets the height on the ListItem itself; ours wraps the caller's
+    // element in the item's padded row, so every measurement carries the
+    // row's 4px above and below.
+    const float kItemPad = 8;
+    auto measure = [&]() {
+        arena->Reset();
+        component::List::New(&cx, StrL("measure-list"), state)
+            ->WithDelegate(delegate)
+            ->ScrollbarVisible(false)
+            ->H(300)
+            ->IntoEl();
+        return list->rowH;
+    };
+
+    struct Case {
+        IndexPath requested;
+        float height;
+    } cases[] = {
+        {IndexPathNew(0), 36 + kItemPad},
+        {IndexPathNew(1).Section(1), 48 + kItemPad},
+        {IndexPathNew(99).Section(1), 36 + kItemPad},
+        {IndexPathNew(0).Section(99), 36 + kItemPad},
+    };
+    for (const Case& c : cases) {
+        ListSetItemToMeasureIndex(list, &cx, c.requested);
+        utassertnear(measure(), c.height);
+        utassert(list->itemToMeasure == c.requested);
+    }
+
+    // Filtering removes the requested row, then all rows, before restoring
+    // it. With nothing to measure the height keeps what it had, and the list
+    // has no rows to give it to.
+    IndexPath requested = IndexPathNew(1).Section(1);
+    ListSetItemToMeasureIndex(list, &cx, requested);
+    struct Filtered {
+        int counts[2];
+        float height;
+    } filtered[] = {
+        {{0, 2}, 48 + kItemPad},
+        {{0, 1}, 36 + kItemPad},
+        {{0, 0}, 36 + kItemPad},
+        {{0, 2}, 48 + kItemPad},
+    };
+    for (const Filtered& f : filtered) {
+        probe.counts[0] = f.counts[0];
+        probe.counts[1] = f.counts[1];
+        utassertnear(measure(), f.height);
+        if (f.counts[1] == 0) {
+            utassert(list->count == 0 && ListRowCount(list) == 0);
+        }
+        utassert(list->itemToMeasure == requested);
+    }
+
+    WindowMotionFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
+
 static void TheDelegateTableOwnsTheWholeContract() {
     component::ListDelegate defaults;
     utassert(defaults.sectionsCount == nullptr);
@@ -281,10 +387,9 @@ static void TheDelegateTableOwnsTheWholeContract() {
     delegate.itemsCount = &DelegateItems;
     delegate.renderItem = &DelegateItem;
     delegate.performSearch = ListenTo(sink, &ListDelegateSink::OnSearch);
-    delegate.setSelectedIndex =
-        ListenTo(sink, &ListDelegateSink::OnSelection);
-    delegate.setRightClickedIndex =
-        ListenTo(sink, &ListDelegateSink::OnRightClick);
+    delegate.setSelectedIndex = ListenTo(sink, &ListDelegateSink::OnSelection);
+    delegate
+        .setRightClickedIndex = ListenTo(sink, &ListDelegateSink::OnRightClick);
     delegate.confirm = ListenTo(sink, &ListDelegateSink::OnConfirm);
     delegate.cancel = ListenTo(sink, &ListDelegateSink::OnCancel);
     delegate.loadMore = ListenTo(sink, &ListDelegateSink::OnLoadMore);
@@ -378,4 +483,5 @@ void TestList() {
     TheHeightsAreRebuiltOnlyWhenSomethingMoved();
     AListThatHasNotMeasuredHasNoHeights();
     TheDelegateTableOwnsTheWholeContract();
+    MeasuresAnExistingRowWhenTheRequestedItemIsAbsent();
 }
