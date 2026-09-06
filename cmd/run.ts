@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bc0ac769c0738b5cd4bfbdbdad555f0c9de7962f",
+  sha: "4bb44c7b3d7fdf357397b1f464459a1278f0581f",
   date: "2026-09-05",
-  subject: "fps: Cap the headline by asking the platform what the panel runs at (#2956)",
+  subject: "sidebar: make SidebarMenuItem implement Styled and add label_style (#2957)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

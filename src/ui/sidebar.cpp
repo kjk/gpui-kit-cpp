@@ -100,6 +100,16 @@ SidebarMenuItem* SidebarMenuItem::Icon(IconName v) {
     icon = v;
     return this;
 }
+SidebarMenuItem* SidebarMenuItem::Refine(const Style& v, uint32_t fields) {
+    StyleApplyFields(&style, v, fields);
+    styleSet |= fields;
+    return this;
+}
+SidebarMenuItem* SidebarMenuItem::LabelStyle(const Style& v, uint32_t fields) {
+    StyleApplyFields(&labelStyle, v, fields);
+    labelStyleSet |= fields;
+    return this;
+}
 SidebarMenuItem* SidebarMenuItem::Active(bool v) {
     active = v;
     return this;
@@ -169,6 +179,9 @@ El* SidebarMenuItem::IntoEl(Str id) {
                   ->Radius(th.radius)
                   ->Font(14)
                   ->PathId(StrL("item"));
+    // refine_style(&self.style): after the row's own styling, before its
+    // hover and active states, which is where Rust applies it.
+    StyleApplyFields(&row->style, style, styleSet);
     bool hoverable = !active && !disabled;
     if (hoverable) {
         row->HoverBg(BackgroundOpacity(th.tokens.sidebarAccent, 0.8f))
@@ -194,8 +207,13 @@ El* SidebarMenuItem::IntoEl(Str id) {
     } else {
         row->H(28);
         El* mid = Div(a)->FlexRow()->Flex1()->Gap(8)->JustifyBetween();
-        mid->Child(Div(a)->FlexRow()->Flex1()->Child(
-            TextEl(a, label)->Font(14)->Fg(fg)));
+        // refine_style(&self.label_style) on the label's own box. The text
+        // takes the row's colour unless the refinement names one.
+        El* labelBox = Div(a)->FlexRow()->Flex1();
+        StyleApplyFields(&labelBox->style, labelStyle, labelStyleSet);
+        Rgba labelFg =
+            (labelStyleSet & StyleFieldColor) ? labelStyle.color : fg;
+        mid->Child(labelBox->Child(TextEl(a, label)->Font(14)->Fg(labelFg)));
         if (suffix) {
             mid->Child(suffix);
         }

@@ -156,21 +156,35 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
                          ->Shrink0());
     }
 
+    // The story's two Styled demonstrations: the active item outlines itself
+    // (`.when(is_active, |this| this.border_1().border_color(Hsla::white()))`)
+    // and every sub item's label is `red_500()` through `label_style`.
+    Style outlined = {};
+    outlined.border = 1;
+    outlined.borderColor = Rgb(0xff, 0xff, 0xff);
+    Style redLabel = {};
+    redLabel.color = Rgb(0xef, 0x44, 0x44);
+
     component::SidebarMenu* platform = component::SidebarMenu::New(cx);
     for (int i = 0; i < 4; i++) {
+        bool isActive = self->active == i && self->activeSub < 0;
         component::SidebarMenuItem* item =
             component::SidebarMenuItem::New(cx, Str(kPlatform[i].label))
                 ->Icon(kPlatform[i].icon)
-                ->Active(self->active == i && self->activeSub < 0)
+                ->Active(isActive)
                 ->DefaultOpen(i == 0)
                 ->ClickToOpen(self->clickToOpen)
                 ->OnClick(ListenerArg(pick, i));
+        if (isActive) {
+            item->Refine(outlined, StyleFieldBorder | StyleFieldBorderColor);
+        }
         for (int j = 0; j < 4 && kSubs[i][j]; j++) {
             component::SidebarMenuItem* sub =
                 component::SidebarMenuItem::New(cx, Str(kSubs[i][j]))
                     ->Active(self->active == i && self->activeSub == j)
                     // SubItem::Quantum is the disabled one.
                     ->Disabled(i == 1 && j == 2)
+                    ->LabelStyle(redLabel, StyleFieldColor)
                     ->OnClick(ListenerArg(pickSub, (i << 8) | j));
             if (i == 0 && j == 0) {
                 // The first child carries a switch, as the Rust story shows.

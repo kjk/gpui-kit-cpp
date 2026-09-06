@@ -224,6 +224,30 @@ static void CollapsedTooltipRequiresAnIconAndContentScrolls() {
                         ->first;
     utassert(activeRow && activeRow->style.fontMedium);
 
+    // menu.rs after 4bb44c7b: the item implements Styled, and label_style
+    // refines the label's box on its own — the row keeps its border while
+    // the label alone changes colour.
+    Style outlined = {};
+    outlined.border = 1;
+    outlined.borderColor = Rgb(0xff, 0xff, 0xff);
+    Style redLabel = {};
+    redLabel.color = Rgb(0xef, 0x44, 0x44);
+    El* styledRow =
+        SidebarMenuItem::New(&cx, StrL("Styled"))
+            ->Refine(outlined, StyleFieldBorder | StyleFieldBorderColor)
+            ->LabelStyle(redLabel, StyleFieldColor)
+            ->IntoEl(StrL("styled"))
+            ->first;
+    utassert(styledRow && styledRow->style.border == 1);
+    utassert(styledRow && styledRow->style.borderColor.r == 0xff);
+    // row > mid > label box > text.
+    El* labelBox =
+        styledRow && styledRow->first ? styledRow->first->first : nullptr;
+    El* labelText = labelBox ? labelBox->first : nullptr;
+    utassert(labelBox && labelBox->style.color.r == 0xef);
+    utassert(labelText && labelText->style.color.r == 0xef &&
+             labelText->style.color.g == 0x44);
+
     Sidebar* sidebar = Sidebar::New(&cx, StrL("scrolling-sidebar"))
                            ->Collapsible(SidebarCollapsible::None)
                            ->Child(SidebarMenuItem::New(&cx, StrL("Direct")));

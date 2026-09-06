@@ -103,11 +103,20 @@ struct SidebarMenuItem {
     El* suffix = nullptr;
     ArenaVec<SidebarMenuItem*> children;
     PopupMenu* contextMenu = nullptr;
+    // `impl Styled`: the caller's refinement of the row, applied after the
+    // item's own styling and before its hover and active states.
+    Style style = {};
+    uint32_t styleSet = 0;
+    // label_style: the refinement of the label's box, independent of the row.
+    Style labelStyle = {};
+    uint32_t labelStyleSet = 0;
     // Filled in by whatever holds it.
     bool collapsed = false;
 
     static SidebarMenuItem* New(Ctx* cx, Str label);
     SidebarMenuItem* Icon(IconName v);
+    SidebarMenuItem* Refine(const Style& v, uint32_t fields);
+    SidebarMenuItem* LabelStyle(const Style& v, uint32_t fields);
     SidebarMenuItem* Active(bool v);
     SidebarMenuItem* Disabled(bool v);
     SidebarMenuItem* DefaultOpen(bool v);

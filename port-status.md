@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `bc0ac769c0738b5cd4bfbdbdad555f0c9de7962f`
-(2026-09-05, fps: Cap the headline by asking the platform what the panel runs at (#2956)). The FPS HUD no longer infers the display's refresh rate from gaps between presents; it asks the platform through the new `PlatWindowDisplay` / `PlatDisplayRefreshPeriod` seam, re-asked only when the window moves to another display. Windows answers from `EnumDisplaySettingsW` on the window's monitor and macOS from `CGDisplayCopyDisplayMode`; upstream's third query is Wayland's, so the X11 window and the browser answer nothing and `MAX FPS` stays uncapped there. The warm-up stays.
+Processed through `4bb44c7b3d7fdf357397b1f464459a1278f0581f`
+(2026-09-05, sidebar: make SidebarMenuItem implement Styled and add label_style (#2957)). `SidebarMenuItem` takes a `Refine` for its row, applied after the item's own styling and before its hover and active states, and a `LabelStyle` for the label's box; the sidebar story outlines the active item and colours every sub item's label `red_500`.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
