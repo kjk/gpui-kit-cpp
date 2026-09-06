@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "12e21c9fc1fd6cd968a3a9dae9470b4d73a184fd",
+  sha: "884062aeb37b540d283be187e1f8f6b785e945e1",
   date: "2026-09-04",
-  subject: "base: Stop auto scroll once the text selection gesture has ended (#2941)",
+  subject: "skills: Quote gpui-kit skill description (#2943)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

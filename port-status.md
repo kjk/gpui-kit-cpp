@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `12e21c9fc1fd6cd968a3a9dae9470b4d73a184fd`
-(2026-09-04, base: Stop auto scroll once the text selection gesture has ended (#2941)). WindowSelectionDrag already rejects moves after release while retaining the anchor for shift-click extension. A regression test now verifies that such moves cannot restart participant auto-scroll.
+Processed through `884062aeb37b540d283be187e1f8f6b785e945e1`
+(2026-09-04, skills: Quote gpui-kit skill description (#2943)). This checkin quotes a YAML description in the upstream Rust development skill. It changes no runtime, public API, assets, or C++ development instructions.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
