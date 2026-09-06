@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `39c9b7b0fb0bdf3c4d07e26d7fdf74381474646e`
-(2026-09-04, chroe: Drop the unused reqwest_client dependency (#2940)). The Kit facade drops an unused reqwest_client dependency. C++ already uses native HTTP backends and has no reqwest dependency; the five ported crates remain at their existing versions.
+Processed through `12e21c9fc1fd6cd968a3a9dae9470b4d73a184fd`
+(2026-09-04, base: Stop auto scroll once the text selection gesture has ended (#2941)). WindowSelectionDrag already rejects moves after release while retaining the anchor for shift-click extension. A regression test now verifies that such moves cannot restart participant auto-scroll.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

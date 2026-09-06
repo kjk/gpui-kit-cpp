@@ -549,6 +549,14 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapses() {
     WindowSelectionDrag(&win, 1, 60);
     utassert(observed->running > 0);
 
+    // pointer_moves_after_a_click_do_not_auto_scroll: release keeps the
+    // anchor for shift-click extension, but later movement must not scroll.
+    WindowSelectionRelease(&win);
+    int running = observed->running;
+    WindowSelectionDrag(&win, 1, 60);
+    utassert(observed->running == running);
+    WindowSelectionPress(&win, 1, 1, 1, false);
+
     // The ancestor collapsed: the refreshed registration carries an empty
     // content mask, and the next drag stops the auto scroll.
     int before = observed->stopped;
