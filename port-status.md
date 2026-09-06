@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `18922d661e136bffbe154dbd34317d03692bde0b`
-(2026-09-03, Rebrand to GPUI Kit and move the site to gpui-kit.com (#2927)). The native examples already use gpui-kit.com; the gallery Introduction now carries the upstream GPUI Kit architecture and branding. Website deployment files have no C++ counterpart.
+Processed through `384fc6a80ac5fdb4841bf44509524040a3e003a9`
+(2026-09-03, website: Fix docs build when the GitHub contributors API is rate-limited). This checkin only changes the upstream documentation website contributor fetch and CI credentials; neither has a counterpart in this C++ repository. Runtime and dependency pins are unchanged.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
