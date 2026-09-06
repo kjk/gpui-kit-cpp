@@ -1673,6 +1673,77 @@ static void CodeEditorSurroundingUsesTheOverride() {
     utassertnear(s.scrollY, 40.f);
 }
 
+// state.rs: test_next_search_match_reveals_with_padding_after_manual_scroll
+// and its previous_search_match twin. Match order does not describe the
+// viewport's direction once the reader has scrolled by hand, so Next has to be
+// allowed to scroll up and Previous down, and both keep the configured
+// surrounding-line padding.
+static void SearchRevealsWithPaddingAfterManualScroll(bool previous) {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.mode.kind = LayoutModeKind::CodeEditor;
+    s.searchable = true;
+    s.cursorSurroundingLines = 3;
+    const float lineH = 20;
+    s.lastLineH = lineH;
+    s.viewH = 200;
+    s.viewW = 400;
+    s.contentW = 400;
+    StrBuilder text;
+    for (int row = 0; row < 160; row++) {
+        if (row > 0) text.Append(StrL("\n"));
+        if (row == 20 || row == 60 || row == 100) {
+            text.Append(fmt("match on row %d", row));
+        } else {
+            text.Append(fmt("line %d", row));
+        }
+    }
+    Str value = text.TakeStr();
+    InputSetValue(&s, value);
+    s.contentH = 160 * lineH;
+    InputSetSearchQuery(&s, &app, win, StrL("match"), true);
+    if (previous) {
+        Selection skip = {};
+        SearchMatcherNext(&s.search.matcher, &skip);
+        SearchMatcherNext(&s.search.matcher, &skip);
+    }
+    // The reader scrolled by hand: the second match is above the viewport
+    // for Next, below it for Previous.
+    s.scrollY = previous ? 0 : lineH * 80;
+
+    Selection range = {};
+    bool moved = previous ? InputSearchPrev(&s, &app, win, &range)
+                          : InputSearchNext(&s, &app, win, &range);
+    utassert(moved);
+    int start = StrFind(value, StrL("match on row 60"));
+    fprintf(stderr,
+            "dbg search: range %d..%d start %d idx %d scrollY %.1f rows %d "
+            "viewH %.1f kind %d len %d\n",
+            range.start, range.end, start,
+            SearchMatcherIndex(&s.search.matcher), s.scrollY,
+            RopeOffsetToPoint(InputValue(&s), InputValue(&s).len).row, s.viewH,
+            (int)s.mode.kind, InputValue(&s).len);
+    utassert(range.start == start && range.end == start + 5);
+    utassert(SearchMatcherIndex(&s.search.matcher) == 1);
+
+    // Row 60 is inside the box with three lines of clearance, the matched
+    // line included.
+    float targetY = lineH * 60 - s.scrollY;
+    utassert(targetY >= lineH * 2 - 0.1f);
+    utassert(targetY + lineH * 3 <= s.viewH + 0.1f);
+    StrFree(value);
+    delete win;
+    EntityDropAll(&app);
+}
+
+static void SearchNavigationRevealsTheMatchAfterAManualScroll() {
+    SearchRevealsWithPaddingAfterManualScroll(false);
+    SearchRevealsWithPaddingAfterManualScroll(true);
+}
+
 static void ASidewaysCaretPullsTheRunAcross() {
     InputState s;
     SeedScroll(&s);
@@ -2918,6 +2989,7 @@ void TestInputState() {
     EmptyBottomHeightMatchesRust();
     CursorSurroundingPaddingMatchesRust();
     CodeEditorSurroundingUsesTheOverride();
+    SearchNavigationRevealsTheMatchAfterAManualScroll();
     ASidewaysCaretPullsTheRunAcross();
     TheNumberKeysStepTheField();
     TypingAWordOpensTheMenu();

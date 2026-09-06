@@ -4205,6 +4205,20 @@ enum class InputMoveDir : uint8_t {
 // same way, so a vertical walk does not fight itself.
 void InputScrollToCaret(InputState* s, float caretX, float caretY,
                         InputMoveDir dir);
+// ScrollPadding: the vertical clearance to retain when revealing a text
+// position. `scroll_to` picks SurroundingLines for a directed move and Minimal
+// otherwise; search picks the two on its own.
+enum class InputScrollPadding : uint8_t {
+    Minimal,
+    SurroundingLines
+};
+// scroll_to_with_padding: the same reveal with the direction restriction and
+// the padding chosen independently. Search uses surrounding lines without
+// restricting movement to match order: after a manual scroll the order of
+// the matches says nothing about which way the viewport has to go.
+void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
+                                   InputMoveDir dir,
+                                   InputScrollPadding padding);
 // empty_bottom_height / cursor_surrounding_padding. `overrideRows` and
 // `overrideLines` are -1 for None. The editor example's status bar is
 // what turns the overrides.
@@ -4217,6 +4231,8 @@ float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
 // row to bring into view, and how far across it sits is not measurable
 // outside a paint.
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir);
+void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
+                                    InputScrollPadding padding);
 // The same, for wherever the caret is now: the row it is on and the x the
 // last paint measured.
 void InputScrollToCursor(InputState* s, InputMoveDir dir);

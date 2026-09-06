@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `0b14b6bae13c4e4b6371fc38d38a7242cdba4f9b`
-(2026-09-05, website: Remove two Vue components orphaned by the Astro migration (#2965)). The six checkins from a31c01b0 to here publish and refine the website's App Stories catalog and its docs workflows; none touches a crate, an example or a dependency, so nothing here changed.
+Processed through `e9a313dfea01ee01cb8721fad3abdf920785ce85`
+(2026-09-05, editor: Reveal search match after manual scroll (#2955)). Next and Previous in the editor's search now reveal the active match in either direction after a manual scroll, keeping the configured surrounding-line padding; `InputScrollToCaretWithPadding` / `InputScrollToOffsetWithPadding` choose the direction restriction and the padding independently, and cursor navigation keeps its direction restrictions.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

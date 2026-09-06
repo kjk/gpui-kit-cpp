@@ -2018,6 +2018,17 @@ float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
 
 void InputScrollToCaret(InputState* s, float caretX, float caretY,
                         InputMoveDir dir) {
+    // scroll_to: a directed move keeps the surrounding lines, a plain reveal
+    // keeps one line's clearance.
+    InputScrollToCaretWithPadding(s, caretX, caretY, dir,
+                                  dir != InputMoveDir::None
+                                      ? InputScrollPadding::SurroundingLines
+                                      : InputScrollPadding::Minimal);
+}
+
+void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
+                                   InputMoveDir dir,
+                                   InputScrollPadding padding) {
     if (!s) {
         return;
     }
@@ -2049,7 +2060,7 @@ void InputScrollToCaret(InputState* s, float caretX, float caretY,
     // walking with Up/Down uses cursor_surrounding_lines instead, the way
     // scroll_to and layout_cursor share one helper in Rust.
     if (s->viewH > 0) {
-        bool surrounding = dir != InputMoveDir::None &&
+        bool surrounding = padding == InputScrollPadding::SurroundingLines &&
                            s->mode.kind == LayoutModeKind::CodeEditor;
         if (surrounding) {
             int visible = lineH > 0 ? (int)(s->viewH / lineH) : 0;
@@ -2099,6 +2110,14 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
 }
 
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir) {
+    InputScrollToOffsetWithPadding(s, offset, dir,
+                                   dir != InputMoveDir::None
+                                       ? InputScrollPadding::SurroundingLines
+                                       : InputScrollPadding::Minimal);
+}
+
+void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
+                                    InputScrollPadding padding) {
     if (!s) {
         return;
     }
@@ -2106,7 +2125,7 @@ void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir) {
     int row = RopeOffsetToPoint(InputValue(s), offset).row;
     row = FoldMapNearestVisibleLine(&s->folds, row);
     float y = DisplayRowDocY(s, row, lineH);
-    InputScrollToCaret(s, -1, y, dir);
+    InputScrollToCaretWithPadding(s, -1, y, dir, padding);
 }
 
 void InputMoveToWithAffinity(InputState* s, App* app, Window* win, int offset,
@@ -4608,17 +4627,15 @@ bool InputSearchNext(InputState* s, App* app, Window* win, Selection* out) {
     if (!s) {
         return false;
     }
-    int was = SearchMatcherIndex(&s->search.matcher);
     Selection r = {};
     if (!SearchMatcherNext(&s->search.matcher, &r)) {
         return false;
     }
-    // A step that wrapped back to the top is not a downward move, so the
-    // clamp that stops a scroll going the wrong way is not applied to it.
-    InputMoveDir dir = SearchMatcherIndex(&s->search.matcher) > was
-                           ? InputMoveDir::Down
-                           : InputMoveDir::None;
-    InputScrollToOffset(s, r.end, dir);
+    // Match order does not describe viewport direction after a manual
+    // scroll. Always allow search navigation to reveal the active match, with
+    // the surrounding lines a directed move would keep.
+    InputScrollToOffsetWithPadding(s, r.end, InputMoveDir::None,
+                                   InputScrollPadding::SurroundingLines);
     Notify(app, win);
     if (out) {
         *out = r;
@@ -4630,15 +4647,14 @@ bool InputSearchPrev(InputState* s, App* app, Window* win, Selection* out) {
     if (!s) {
         return false;
     }
-    int was = SearchMatcherIndex(&s->search.matcher);
     Selection r = {};
     if (!SearchMatcherPrev(&s->search.matcher, &r)) {
         return false;
     }
-    InputMoveDir dir = SearchMatcherIndex(&s->search.matcher) < was
-                           ? InputMoveDir::Up
-                           : InputMoveDir::None;
-    InputScrollToOffset(s, r.start, dir);
+    // Match order does not describe viewport direction after a manual
+    // scroll. Always allow search navigation to reveal the active match.
+    InputScrollToOffsetWithPadding(s, r.start, InputMoveDir::None,
+                                   InputScrollPadding::SurroundingLines);
     Notify(app, win);
     if (out) {
         *out = r;

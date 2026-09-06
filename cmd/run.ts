@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0b14b6bae13c4e4b6371fc38d38a7242cdba4f9b",
+  sha: "e9a313dfea01ee01cb8721fad3abdf920785ce85",
   date: "2026-09-05",
-  subject: "website: Remove two Vue components orphaned by the Astro migration (#2965)",
+  subject: "editor: Reveal search match after manual scroll (#2955)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
