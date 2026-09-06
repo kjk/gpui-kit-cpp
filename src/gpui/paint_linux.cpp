@@ -878,6 +878,11 @@ static float BoxPad(TextLayout* tl) {
     return (tl->box - tl->natural) * 0.5f;
 }
 
+bool PaintTextLayoutSpans(PaintCtx*, TextLayout*, Str, float, float, Rgba,
+                          const TextSpan*, int) {
+    return false;
+}
+
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                     bool clip, float clipW) {
     cairo_t* cr = Cr(ctx);

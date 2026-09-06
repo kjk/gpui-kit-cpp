@@ -1396,6 +1396,11 @@ uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
 }
 
+bool PaintTextLayoutSpans(PaintCtx*, TextLayout*, Str, float, float, Rgba,
+                          const TextSpan*, int) {
+    return false;
+}
+
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                     bool clip, float clipW) {
     // No ellipsis here yet: Canvas2D has no trimming, so it would have to be

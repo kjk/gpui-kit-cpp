@@ -122,6 +122,8 @@ void Reset(PaintCtx* ctx);
 // intercepting: the target lifecycle, the offscreen target, shaping,
 // measurement and image decoding all go straight through.
 
+bool RecTextDrawSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x, float y,
+                      Rgba base, const TextSpan* spans, int n);
 void RecClear(PaintCtx* ctx, Rgba c);
 void RecFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c);
 void RecFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,

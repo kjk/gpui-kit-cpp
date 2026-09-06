@@ -1799,6 +1799,44 @@ void* PaintTextLayoutNative(TextLayout* tl) {
     return Dw(tl);
 }
 
+bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
+                          float y, Rgba base, const TextSpan* spans, int n) {
+    if (PaintGpuOn() || !tl || n <= 0) return false;
+    if (scene::Recording()) {
+        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
+    }
+    if (!ctx || !ctx->rt || !ctx->rt->rt) return false;
+    // Drawing the whole line through one clip per token made Direct2D
+    // submit the same glyphs repeatedly. Drawing effects partition that
+    // same shaped layout into colored runs in one DrawTextLayout call.
+    // Effects own their brushes; clear them before returning because this
+    // cached layout may next be drawn in another color or render target.
+    IDWriteTextLayout* layout = Dw(tl);
+    bool ok = true;
+    for (int i = 0; i < n; i++) {
+        int lo = Utf8OffToWide(text, spans[i].lo);
+        int hi = Utf8OffToWide(text, spans[i].hi);
+        if (hi <= lo) continue;
+        ID2D1SolidColorBrush* brush = nullptr;
+        HRESULT hr = ctx->rt->rt->CreateSolidColorBrush(
+            ToD2D(PaintFade(ctx, spans[i].color)), &brush);
+        if (SUCCEEDED(hr)) {
+            hr = layout
+                     ->SetDrawingEffect(brush, {(UINT32)lo, (UINT32)(hi - lo)});
+        }
+        Rel(&brush);
+        if (FAILED(hr)) {
+            ok = false;
+            break;
+        }
+    }
+    if (ok) {
+        TextLayoutDraw(ctx, tl, x, y, base, false);
+    }
+    layout->SetDrawingEffect(nullptr, {0, UINT32_MAX});
+    return ok;
+}
+
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                     bool clip, float clipW) {
     if (scene::Recording()) {

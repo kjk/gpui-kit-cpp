@@ -502,7 +502,86 @@ static void GpuImagesEvictAtFinalRelease() {
 #endif
 }
 
+static void ColoredTextSurvivesRecordingAndRestyling() {
+#if GPUI_OS_WINDOWS
+    TestSuite("scene colored text ownership and restyling");
+    PaintCtx paint = {};
+    paint.pa = PaintAppNew();
+    paint.opacity = 1;
+    paint.viewW = 160;
+    paint.viewH = 40;
+    Str text = StrL("abc \xE4\xB8\xAD def");
+    Size size = {};
+    TextLayout* layout = TextLayoutNew(&paint, text, 16, 0, false, 0, 0, &size);
+    utassert(layout);
+    if (!layout) {
+        PaintAppFree(paint.pa);
+        return;
+    }
+    Rgba black = Rgba8(0, 0, 0, 255);
+    TextSpan spans[2] = {};
+    spans[0].lo = 0;
+    spans[0].hi = 3;
+    spans[0].color = Rgba8(255, 0, 0, 255);
+    spans[1].lo = 4;
+    spans[1].hi = 7;
+    spans[1].color = Rgba8(0, 0, 255, 255);
+    uint8_t reference[160 * 40 * 4] = {};
+    uint8_t replay[160 * 40 * 4] = {};
+    utassert(PaintTargetBeginOffscreen(&paint, 160, 40));
+    CanvasClear(&paint, Rgba8(255, 255, 255, 255));
+    TextLayoutDrawSpans(&paint, layout, text, 0, 0, black, spans, 2);
+    utassert(PaintTargetEndOffscreen(&paint, reference));
+
+    utassert(PaintTargetBeginOffscreen(&paint, 160, 40));
+    scene::FrameBegin(&paint);
+    scene::RecClear(&paint, Rgba8(255, 255, 255, 255));
+    utassert(
+        scene::RecTextDrawSpans(&paint, layout, text, 0, 0, black, spans, 2));
+    // The frame must own both text and colors, even if its caller reuses
+    // the scratch buffer before hashing or replaying.
+    spans[0].color = black;
+    Bounds damage = {};
+    utassert(scene::FrameEnd(&paint, &damage));
+    scene::Replay(&paint, nullptr);
+    utassert(PaintTargetEndOffscreen(&paint, replay));
+    utassert(memcmp(reference, replay, sizeof(reference)) == 0);
+
+    // Effects must not leak into a later plain draw of the same cached
+    // layout, even after its original render target was destroyed.
+    utassert(PaintTargetBeginOffscreen(&paint, 160, 40));
+    CanvasClear(&paint, Rgba8(255, 255, 255, 255));
+    TextLayoutDraw(&paint, layout, 0, 0, black, false);
+    utassert(PaintTargetEndOffscreen(&paint, reference));
+    TextLayout* plain = TextLayoutNew(&paint, text, 16, 0, false, 0, 0, &size);
+    utassert(plain);
+    utassert(PaintTargetBeginOffscreen(&paint, 160, 40));
+    CanvasClear(&paint, Rgba8(255, 255, 255, 255));
+    TextLayoutDraw(&paint, plain, 0, 0, black, false);
+    utassert(PaintTargetEndOffscreen(&paint, replay));
+    utassert(memcmp(reference, replay, sizeof(reference)) == 0);
+    TextLayoutRelease(plain);
+
+    auto record = [&]() {
+        scene::FrameBegin(&paint);
+        scene::RecTextDrawSpans(&paint, layout, text, 0, 0, black, spans, 2);
+        return scene::FrameEnd(&paint, &damage);
+    };
+    utassert(record());
+    utassert(!record());
+    spans[1].color = black;
+    utassert(record());
+    utassert(!record());
+    spans[1].hi = text.len;
+    utassert(record());
+    TextLayoutRelease(layout);
+    scene::Free(&paint);
+    PaintAppFree(paint.pa);
+#endif
+}
+
 void TestScene() {
+    ColoredTextSurvivesRecordingAndRestyling();
     ObjectFitMatchesGpuiGeometry();
     FailedImagesLayOutTheirFallback();
     ImageSourceVariantsResolveWithoutCopyingOwners();

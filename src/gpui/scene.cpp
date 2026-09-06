@@ -43,7 +43,8 @@ enum PrimKind : uint8_t {
     kPPathGradient,
     kPPathStroke,
     kPImage,
-    kPText
+    kPText,
+    kPTextSpans
 };
 
 enum PrimFlag : uint8_t {
@@ -139,12 +140,23 @@ struct HashBag {
     int mask = 0;
 };
 
+// The current frame owns text and foreground ranges in textArena; previous
+// primitives keep only the resulting hash and bounds.
+struct TextRec {
+    Str text;
+    TextSpan* spans = nullptr;
+    int count = 0;
+    uint64_t hash = 0;
+};
+
 struct State {
     Vec<Prim> cur;
     Vec<Prim> prev;
     Vec<PathRec> paths;
     Vec<uint8_t> verbs;
     Vec<float> pts;
+    Arena* textArena = nullptr;
+    Vec<TextRec> texts;
     // Four floats per level, mirroring the GPU backend's clip stack.
     Vec<float> clipStack;
     Bounds clip = {};
@@ -279,7 +291,9 @@ static uint64_t HashPrim(const Prim& p) {
     memcpy(&c1, &p.color2, 4);
     w[9] = ((uint64_t)c1 << 32) | c0;
     w[10] = p.resourceGeneration;
-    w[11] = (p.path >= 0 && p.path < gPaths.len) ? gPaths[p.path].hash : 0;
+    w[11] = p.kind == kPTextSpans                  ? gActive->texts[p.path].hash
+            : (p.path >= 0 && p.path < gPaths.len) ? gPaths[p.path].hash
+                                                   : 0;
     uint64_t h = kHashSeed;
     for (int i = 0; i < 12; i++) {
         h ^= w[i];
@@ -377,7 +391,7 @@ static void ReleaseResources(State* s) {
         if (p.kind == kPImage && p.ref) {
             RenderImageRelease((RenderImage*)p.ref);
             p.ref = nullptr;
-        } else if (p.kind == kPText && p.ref) {
+        } else if ((p.kind == kPText || p.kind == kPTextSpans) && p.ref) {
             TextLayoutRelease((TextLayout*)p.ref);
             p.ref = nullptr;
         }
@@ -392,6 +406,8 @@ void FrameBegin(PaintCtx* ctx) {
     gRecording = true;
     gSkipPresent = false;
     ReleaseResources(gActive);
+    if (gActive->textArena) gActive->textArena->Reset();
+    VecClear(gActive->texts);
     VecClear(gCur);
     VecClear(gPaths);
     VecClear(gVerbs);
@@ -729,6 +745,34 @@ void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
     }
 }
 
+bool RecTextDrawSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x, float y,
+                      Rgba base, const TextSpan* spans, int n) {
+    if (!gActive->textArena) {
+        gActive->textArena = ArenaNew();
+    }
+    Arena* a = gActive->textArena;
+    if (!a) return false;
+    Str copy = StrDup(a, text);
+    auto* runs = (TextSpan*)Alloc(a, n * (int)sizeof(TextSpan));
+    if (!copy.s || !runs) return false;
+    uint64_t hash = kHashSeed;
+    for (int i = 0; i < n; i++) {
+        runs[i] = spans[i];
+        runs[i].color = PaintFade(ctx, spans[i].color);
+        uint32_t color = 0;
+        memcpy(&color, &runs[i].color, 4);
+        hash = (hash ^ (uint32_t)runs[i].lo) * 0x100000001b3ull;
+        hash = (hash ^ (uint32_t)runs[i].hi) * 0x100000001b3ull;
+        hash = (hash ^ color) * 0x100000001b3ull;
+    }
+    RecTextDraw(ctx, tl, x, y, base, false, 0);
+    Prim& p = gCur[gCur.len - 1];
+    p.kind = kPTextSpans;
+    p.path = gActive->texts.len;
+    VecAppend(gActive->texts, TextRec{copy, runs, n, hash});
+    return true;
+}
+
 // ─── ordering ────────────────────────────────────────────────────────────
 //
 // GPUI sorts its primitives by their order, which is the stacking context
@@ -888,6 +932,7 @@ void Free(PaintCtx* ctx) {
     s->recording = false;
     CacheClear();
     ReleaseResources(s);
+    ArenaDelete(s->textArena);
     VecReset(s->cur);
     VecReset(s->prev);
     VecReset(s->paths);
@@ -1267,6 +1312,12 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
             case kPText:
                 TextLayoutDraw(ctx, (TextLayout*)p.ref, p.g0, p.g1, p.color,
                                (p.flags & kFClip) != 0, p.e0);
+                break;
+            case kPTextSpans:
+                TextLayoutDrawSpans(ctx, (TextLayout*)p.ref,
+                                    gActive->texts[p.path].text, p.g0, p.g1,
+                                    p.color, gActive->texts[p.path].spans,
+                                    gActive->texts[p.path].count);
                 break;
             case kPPathFill:
             case kPPathGradient:

@@ -902,7 +902,7 @@ static int SemanticSpans(Ctx* cx, InputState* state, Str text, TextSpan* out,
     if (!state || state->semanticTokens.len == 0 || !text.s) {
         return 0;
     }
-    const int kWindow = 1024;
+    const int kWindow = std::min(1024, state->semanticTokens.len);
     auto* window =
         (SemanticRange*)Alloc(cx->a, (int)sizeof(SemanticRange) * kWindow);
     if (!window) {
@@ -1084,13 +1084,17 @@ El* Highlighter::IntoEl() {
     // (Textarea::New) — so the cap bounds only the decorations, which are
     // tens of runs, never a document's worth.
     const int kMaxSpans = 4096;
-    auto* spans = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * kMaxSpans);
-    int n = spans ? SemanticSpans(cx, state, text, spans, kMaxSpans) : 0;
+    int semanticCap = state ? std::min(1024, state->semanticTokens.len) : 0;
+    int cap = std::min(kMaxSpans,
+                       semanticCap + 2 * std::min(kMaxSpans, nDecorations));
+    auto* spans =
+        cap > 0 ? (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap) : nullptr;
+    int n = spans ? SemanticSpans(cx, state, text, spans, semanticCap) : 0;
     if (nDecorations > 0 && spans) {
-        auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * kMaxSpans);
+        auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
         if (tmp) {
-            n = InputComposeSpans(spans, n, decorations, nDecorations,
-                                  kMaxSpans, tmp);
+            n = InputComposeSpans(spans, n, decorations, nDecorations, cap,
+                                  tmp);
         }
     }
     style.spans = n > 0 ? spans : nullptr;

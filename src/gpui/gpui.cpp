@@ -4833,11 +4833,40 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
     }
 }
 
-// One shaped layout, painted a run at a time: every span's range is clipped
-// to the rects it covers and the whole run is drawn inside that clip in the
-// span's colour, so each glyph is drawn exactly once and no two colours
-// overlap on the same pixels. What the spans leave over is drawn the same way
-// in the element's own colour.
+void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* layout, Str text, float x,
+                         float y, Rgba base, const TextSpan* spans, int n) {
+    if (PaintTextLayoutSpans(ctx, layout, text, x, y, base, spans, n)) return;
+    Bounds rects[32] = {};
+    int at = 0;
+    for (int i = 0; i <= n; i++) {
+        int lo = i < n ? spans[i].lo : text.len;
+        int hi = i < n ? spans[i].hi : text.len;
+        if (lo > at) {
+            int count = TextLayoutRangeRects(layout, text, at, lo, rects, 32);
+            for (int r = 0; r < count; r++) {
+                CanvasPushClip(ctx, x + rects[r].x, y + rects[r].y, rects[r].w,
+                               rects[r].h);
+                TextLayoutDraw(ctx, layout, x, y, base, false);
+                CanvasPopClip(ctx);
+            }
+        }
+        if (i >= n || hi <= lo) {
+            at = lo > at ? lo : at;
+            continue;
+        }
+        int count = TextLayoutRangeRects(layout, text, lo, hi, rects, 32);
+        for (int r = 0; r < count; r++) {
+            CanvasPushClip(ctx, x + rects[r].x, y + rects[r].y, rects[r].w,
+                           rects[r].h);
+            TextLayoutDraw(ctx, layout, x, y, spans[i].color, false);
+            CanvasPopClip(ctx);
+        }
+        at = hi;
+    }
+}
+
+// One shaped layout: backgrounds first, foreground colors through the
+// backend's single pass or range-clip fallback, then decorations.
 static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
     float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
     TextLayout* layout =
@@ -4870,34 +4899,8 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
                            rects[r].w, rects[r].h, sp.bg);
         }
     }
-    // The glyphs, one partition at a time.
-    int at = 0;
-    for (int i = 0; i <= e->nSpans; i++) {
-        int lo = i < e->nSpans ? e->spans[i].lo : e->text.len;
-        int hi = i < e->nSpans ? e->spans[i].hi : e->text.len;
-        if (lo > at) {
-            // What the spans left over, in the element's own colour.
-            int n = TextLayoutRangeRects(layout, e->text, at, lo, rects, 32);
-            for (int r = 0; r < n; r++) {
-                CanvasPushClip(ctx, e->x + rects[r].x, e->y + rects[r].y,
-                               rects[r].w, rects[r].h);
-                TextLayoutDraw(ctx, layout, e->x, e->y, base, false);
-                CanvasPopClip(ctx);
-            }
-        }
-        if (i >= e->nSpans || hi <= lo) {
-            at = lo > at ? lo : at;
-            continue;
-        }
-        int n = TextLayoutRangeRects(layout, e->text, lo, hi, rects, 32);
-        for (int r = 0; r < n; r++) {
-            CanvasPushClip(ctx, e->x + rects[r].x, e->y + rects[r].y,
-                           rects[r].w, rects[r].h);
-            TextLayoutDraw(ctx, layout, e->x, e->y, e->spans[i].color, false);
-            CanvasPopClip(ctx);
-        }
-        at = hi;
-    }
+    TextLayoutDrawSpans(ctx, layout, e->text, e->x, e->y, base, e->spans,
+                        e->nSpans);
     // The rules last, so nothing paints over them.
     for (int i = 0; i < e->nSpans; i++) {
         const TextSpan& sp = e->spans[i];

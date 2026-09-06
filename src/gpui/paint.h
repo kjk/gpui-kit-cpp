@@ -346,6 +346,15 @@ uint64_t TextLayoutGeneration(const TextLayout* tl);
 // to the caller's own clip.
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                     bool clip, float clipW = 0);
+// Draw foreground colors in one pass where the backend supports it. Ranges
+// are sorted, non-overlapping UTF-8 byte offsets into the shaped text.
+// Backgrounds and decorations are painted by the caller. False means the
+// caller must use its range-clip fallback; nothing has been drawn.
+bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
+                          float y, Rgba base, const TextSpan* spans, int n);
+// Uses the backend's single pass or the portable range-clip fallback.
+void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
+                         float y, Rgba base, const TextSpan* spans, int n);
 void DrawTextAt(PaintCtx* ctx, Str s, float x, float y, float w, float h,
                 float fontSize, Rgba c, bool truncate, bool wrap = false,
                 float measMaxW = -1.f, int weight = 0, float lineH = 0);

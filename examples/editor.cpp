@@ -566,13 +566,14 @@ static Str InlineCompletionAt(void*, Arena* a, Str text, int offset) {
 // answer delta-encoded exactly as a language server sends it — which is the
 // point of the exercise, since the decoding is the editor's.
 struct Marker {
-    const char* word;
+    Str word;
     const char* type;
 };
 
 static const Marker kSemanticMarkers[] = {
-    {"TODO", "keyword"},  {"FIXME", "string"}, {"XXX", "number"},
-    {"HACK", "function"}, {"NOTE", "type"},
+    {StrL("TODO"), "keyword"}, {StrL("FIXME"), "string"},
+    {StrL("XXX"), "number"},   {StrL("HACK"), "function"},
+    {StrL("NOTE"), "type"},
 };
 static const int kNMarkers =
     (int)(sizeof(kSemanticMarkers) / sizeof(kSemanticMarkers[0]));
@@ -601,7 +602,12 @@ static int SemanticTokensFor(void*, Str text, Selection range,
     // and Rust's Vec has no counterpart to the port's former 512-hit array.
     for (int i = range.start; i < range.end; i++) {
         for (int t = 0; t < kNMarkers; t++) {
-            Str word = Str(kSemanticMarkers[t].word);
+            Str word = kSemanticMarkers[t].word;
+            // Most bytes cannot begin a marker. Avoid five strlen/StrEq
+            // calls per byte on every edit (the typing profile's hotspot).
+            if (text.s[i] != word.s[0]) {
+                continue;
+            }
             if (i + word.len > range.end) {
                 continue;
             }
