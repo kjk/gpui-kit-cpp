@@ -78,63 +78,6 @@ enum : uint16_t {
     // has done nothing wrong and there is nothing to fix, so the default
     // reading has to be a healthy one.
     kFpsWarmupFrames = 8,
-    // REFRESH_BUCKET, in microseconds: gaps are grouped this finely before
-    // being counted. Coarse enough that vsync jitter lands in one bucket, fine
-    // enough to tell the common rates apart: 6.5-7.0ms is 143-154Hz, and
-    // nothing else ships in there.
-    kRefreshBucketMicros = 500,
-    // The band a gap between presents has to fall in to be taken for the
-    // display's frame period. Below the floor it is a catch-up burst rather
-    // than a refresh — the fastest panels ship at 240Hz, a period of 4.2ms.
-    // Above the ceiling it is the application not having had anything to
-    // draw: an idle window presents twice a second, and believing that gap
-    // would put the refresh rate at 2Hz.
-    kShortestPlausibleRefreshMicros = 3000,
-    kLongestPlausibleRefreshMicros = 50000,
-    // Rust keys the candidates in a BTreeMap by bucket; the plausible band is
-    // a hundred buckets wide, so a flat array indexed by bucket is the map.
-    kRefreshBuckets = kLongestPlausibleRefreshMicros / kRefreshBucketMicros + 1,
-    // REFRESH_SPREAD: how many buckets either side of the busiest one are
-    // averaged with it. Bucketing truncates the very group it is measuring:
-    // the jitter around the period spills into the neighbours, so the busiest
-    // bucket holds a distribution cut off on both sides and its mean sits
-    // below the period. On a 144Hz panel that read 149. Averaging across the
-    // neighbourhood puts the centre back, and the clusters worth telling apart
-    // — one refresh against two — are far further than this reaches.
-    kRefreshSpread = 2,
-    // REFRESH_SUPPORT: how many times a gap has to recur before it is believed
-    // to be the display's period rather than a one-off. A real refresh recurs
-    // every frame of every scroll, so the threshold costs nothing to clear and
-    // a glitch never clears it.
-    kRefreshSupport = 8,
-    // REFRESH_MINORITY: what share of the busiest group a faster one needs
-    // before it is taken for a cadence of its own, as a divisor. The wanted
-    // figure is the display's *ceiling*, and a variable refresh panel spends
-    // most of its time below it: a ProMotion window that scrolls at 120Hz and
-    // settles at 60 has its 60Hz group win on count, and capping at 60 would
-    // be capping at the rate it happened to rest at. A real second cadence
-    // arrives in bulk; the jitter skirt around one does not.
-    kRefreshMinority = 4,
-    // REFRESH_SEPARATION: and it has to be at least twice as fast, which the
-    // skirt never is. A window presenting slower than the panel misses whole
-    // refreshes, so the cadences below the ceiling are its halves and thirds
-    // — far outside the millisecond of jitter that spills into the buckets
-    // next door.
-    kRefreshSeparation = 2,
-};
-
-// REFRESH_SNAP_TOLERANCE: how far the estimate may sit from a standard rate
-// and still be taken for it. Deliberately tight. A wide tolerance would snap
-// an 85Hz panel up to 90 and print a ceiling above the one it is enforcing,
-// which is the failure this whole cap exists to avoid; the jitter it has to
-// absorb is a percent or two, so it never needs to reach that far.
-const float kRefreshSnapTolerance = 0.025f;
-
-// RefreshCandidate: one group of near-equal gaps between presents — how often
-// it has come up, and their sum, so the group can report its mean.
-struct RefreshCandidate {
-    uint32_t hits = 0;
-    double totalSecs = 0;
 };
 
 // FrameSample: one drawn frame.
@@ -162,32 +105,6 @@ struct FrameSampler {
     double presents[kFpsPresents] = {};
     int nPresents = 0;
     uint64_t cursor = 0; // FrameTimingCollector position
-    // refresh_candidates: how often each plausible gap between two
-    // consecutive presents has been seen, grouped to kRefreshBucketMicros.
-    //
-    // Stands in for the display's frame period, which the runtime does not
-    // expose. Frames are handed to the compositor on vsync, so a window
-    // drawing back to back presents one refresh apart over and over: the
-    // period is the gap that keeps happening, and the estimate is the busiest
-    // group's mean.
-    //
-    // The mean of the busiest group rather than the shortest gap anywhere,
-    // twice over. A present is stamped when the frame was handed over rather
-    // than when the display scanned it out, so the gaps jitter by a
-    // millisecond either way and the shortest of them is the low tail, not
-    // the period — that read 164 on a 144Hz panel. And one gap on its own is
-    // no evidence at all: two presents 5.9ms apart there is the compositor
-    // catching up, not a 169Hz display.
-    //
-    // Empty until the window has drawn back to back at all, which one that
-    // has only ever drawn on demand never does — so an application nobody has
-    // touched yet is left uncapped rather than held to the rate at which it
-    // happened to be idling.
-    //
-    // The failure mode is a window so slow that no two frames ever land
-    // adjacent: its cap comes out as its own worst cadence. It reads low
-    // either way, and the rows below say why.
-    RefreshCandidate refresh[kRefreshBuckets] = {};
     // How many more frames are dropped before the statistics begin.
     uint32_t warmup = kFpsWarmupFrames;
     // Whether the backlog has been discarded yet.
@@ -228,23 +145,13 @@ float FrameSamplerFps(const FrameSampler* s);
 // window, as the platform's overlay reports its frame interval. The
 // reciprocal of the rate; zero when there is no rate.
 float FrameSamplerPresentInterval(const FrameSampler* s);
-// peak_present_rate: the fastest cadence this window has repeatedly presented
-// at, taken as the display's refresh rate. Zero — Rust's `None` — until some
-// gap has recurred often enough to mean something; see
-// FrameSampler::refresh.
-float FrameSamplerPeakPresentRate(const FrameSampler* s);
-// snap_to_standard_refresh: the standard refresh rate within
-// kRefreshSnapTolerance of `rate`, or `rate` itself when no panel ships at
-// anything near it. The estimate comes from timestamps that jitter, so it
-// lands *near* the panel's rate rather than on it, and "near 144" printed as
-// 146 is a headline above a ceiling it is supposed to be held to.
-float FpsSnapToStandardRefresh(float rate);
 // sustainable_rate: the rate a full redraw could sustain — what a frame's
-// cost implies, held to what the display can present. `displayRate` is 0 —
-// Rust's `None` — until the window has presented two frames a plausible
-// refresh apart, and an uncapped reading is better than one capped by a
-// guess.
-float FpsSustainableRate(float meanDrawSecs, float displayRate);
+// cost implies, held to what the panel can scan out. `displayPeriod` is the
+// seconds between refreshes, or 0 — Rust's `None` — where the platform would
+// not say what the panel runs at, and an uncapped reading is better than one
+// held to a guess: see PlatDisplayRefreshPeriod for why guessing was tried
+// and abandoned.
+float FpsSustainableRate(float meanDrawSecs, double displayPeriod);
 float FrameSamplerMeanDraw(const FrameSampler* s);
 // percentile_draw: the draw time `percentile` of the retained frames came in
 // at or under, as in 0.95 for the 95th. The mean beside it says what a
@@ -342,9 +249,9 @@ struct FpsReadout {
     // row right underneath. The frame cost answers the same question without
     // being paid for.
     //
-    // Held to the display's refresh rate once that is known. A frame drawn in
-    // 3ms is not 333 frames the reader could ever see, and printing it that
-    // way turns the headline back into a benchmark score rather than a rate.
+    // A ceiling the frame cost can prove, not one the display can show: a
+    // window whose frames cost 3ms could redraw 333 times a second, on a
+    // panel that would scan out sixty of them.
     float maxFps = 0;
     // Frames presented per second: the rate the window is actually drawing
     // at, which an idle application drives to zero. The reciprocal of
@@ -398,6 +305,12 @@ struct FpsMonitor {
     // on a high refresh rate display.
     float frameBudget = 1.f / 60.f;
     FpsHeadline headline = FpsHeadline::Max;
+    // The panel's refresh period, and which display it was asked about, so
+    // that moving the window to another monitor re-asks and staying on one
+    // does not ask again every frame. `displayAsked` is Rust's `Some`.
+    bool displayAsked = false;
+    uint64_t display = 0;
+    double displayPeriod = 0;
     bool showResources = true;
     float resourceInterval = 0.5f;
     ResourceProbe probe;

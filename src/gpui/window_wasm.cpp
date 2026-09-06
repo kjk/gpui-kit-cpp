@@ -609,6 +609,15 @@ int PlatDoubleClickMs() {
     return 500;
 }
 
+// A tab is not told what its panel runs at, so the headline stays uncapped.
+uint64_t PlatWindowDisplay(Window*) {
+    return 0;
+}
+
+double PlatDisplayRefreshPeriod(uint64_t) {
+    return 0;
+}
+
 void* PlatWindowHandle(Window*) {
     // A tab has no window handle; whatever would want one draws into the
     // same canvas everything else does.

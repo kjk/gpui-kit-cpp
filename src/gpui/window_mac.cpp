@@ -1309,6 +1309,38 @@ int PlatDoubleClickMs() {
     return (int)([NSEvent doubleClickInterval] * 1000);
 }
 
+uint64_t PlatWindowDisplay(Window* win) {
+    NSScreen* screen = win && win->plat && win->plat->window
+                           ? [win->plat->window screen]
+                           : nil;
+    if (!screen) {
+        return 0;
+    }
+    // NSScreenNumber is the CGDirectDisplayID, which is what GPUI's DisplayId
+    // is on this platform.
+    NSNumber* number =
+        [[screen deviceDescription] objectForKey:@"NSScreenNumber"];
+    return number ? (uint64_t)[number unsignedIntValue] : 0;
+}
+
+double PlatDisplayRefreshPeriod(uint64_t display) {
+    if (!display) {
+        return 0;
+    }
+    CGDisplayModeRef mode =
+        CGDisplayCopyDisplayMode((CGDirectDisplayID)display);
+    if (!mode) {
+        return 0;
+    }
+    double hertz = CGDisplayModeGetRefreshRate(mode);
+    CGDisplayModeRelease(mode);
+    // Zero rather than an error is how CoreGraphics says this display has no
+    // fixed rate, which is what a built-in panel reports: on ProMotion there
+    // genuinely is not one, and the nominal period would have to come from
+    // CoreVideo instead.
+    return hertz > 1. ? 1. / hertz : 0;
+}
+
 // macos_accessibility.rs hit_test_forwarder: the window hands the point to
 // its content view, which is the one thing in the tree that knows what was
 // drawn where. class_addMethod leaves an existing implementation alone, so a

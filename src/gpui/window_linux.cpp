@@ -842,6 +842,17 @@ int PlatDoubleClickMs() {
     return 400;
 }
 
+// Upstream asks Wayland's outputs; this window is X11, whose core protocol
+// has no refresh rate to give (RandR would, and is a library this tree does
+// not take on). No query, so no cap.
+uint64_t PlatWindowDisplay(Window*) {
+    return 0;
+}
+
+double PlatDisplayRefreshPeriod(uint64_t) {
+    return 0;
+}
+
 // Only macOS has an NSWindow to teach; VoiceOver reaches the tree here through
 // the platform's own means.
 void* PlatWindowHandle(Window* win) {

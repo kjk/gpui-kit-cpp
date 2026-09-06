@@ -869,6 +869,38 @@ void* PlatWindowHandle(Window* win) {
     return (void*)Hwnd(win);
 }
 
+uint64_t PlatWindowDisplay(Window* win) {
+    HWND hwnd = Hwnd(win);
+    if (!hwnd) {
+        return 0;
+    }
+    return (uint64_t)(uintptr_t)MonitorFromWindow(hwnd,
+                                                  MONITOR_DEFAULTTONEAREST);
+}
+
+double PlatDisplayRefreshPeriod(uint64_t display) {
+    HMONITOR monitor = (HMONITOR)(uintptr_t)display;
+    if (!monitor) {
+        return 0;
+    }
+    MONITORINFOEXW info = {};
+    info.cbSize = sizeof(info);
+    if (!GetMonitorInfoW(monitor, &info)) {
+        return 0;
+    }
+    DEVMODEW mode = {};
+    mode.dmSize = sizeof(mode);
+    if (!EnumDisplaySettingsW(info.szDevice, ENUM_CURRENT_SETTINGS, &mode)) {
+        return 0;
+    }
+    // Zero and one both mean "whatever the hardware defaults to" rather than
+    // a rate, which is what a driver reports when it has none to give.
+    if (mode.dmDisplayFrequency <= 1) {
+        return 0;
+    }
+    return 1.0 / (double)mode.dmDisplayFrequency;
+}
+
 void PlatInstallAccessibilityHitTest(Window* win) {
     // Root::Render calls the cross-platform seam. Windows exposes the tree
     // through WM_GETOBJECT, so installing it means making the retained root

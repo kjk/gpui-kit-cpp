@@ -1,6 +1,7 @@
 #include "fps/fps.h"
 
 #include "gpui/paint.h"
+#include "gpui/platform.h"
 #include "sys/executor.h"
 #include "sys/gpu.h"
 #include "sys/sysinfo.h"
@@ -85,19 +86,6 @@ void FrameSamplerIngestPresents(FrameSampler* s, const double* presentAt, int n,
         return;
     }
     for (int i = 0; i < n; i++) {
-        if (s->nPresents > 0) {
-            double interval = presentAt[i] - s->presents[s->nPresents - 1];
-            // Rust's `as_micros` truncates; rounding keeps a gap written as
-            // whole microseconds in the bucket it was written for.
-            long long micros = llround(interval * 1e6);
-            if (micros >= kShortestPlausibleRefreshMicros &&
-                micros <= kLongestPlausibleRefreshMicros) {
-                int bucket = (int)(micros / kRefreshBucketMicros);
-                RefreshCandidate* candidate = &s->refresh[bucket];
-                if (candidate->hits < UINT32_MAX) candidate->hits++;
-                candidate->totalSecs += interval;
-            }
-        }
         if (s->nPresents == kFpsPresents) {
             memmove(s->presents, s->presents + 1,
                     sizeof(double) * (size_t)(s->nPresents - 1));
@@ -173,77 +161,18 @@ float FrameSamplerPresentInterval(const FrameSampler* s) {
     return 1.f / fps;
 }
 
-// STANDARD_REFRESH_RATES: the refresh rates panels actually ship at. A panel
-// that is on none of these keeps the raw estimate rather than being rounded
-// to a rate it does not have.
-static const float kStandardRefreshRates[] = {
-    24.f, 25.f,  30.f,  48.f,  50.f,  60.f,  72.f,  75.f,
-    90.f, 100.f, 120.f, 144.f, 165.f, 180.f, 240.f, 360.f,
-};
-
-float FpsSnapToStandardRefresh(float rate) {
-    for (float standard : kStandardRefreshRates) {
-        if (fabsf(rate - standard) <= standard * kRefreshSnapTolerance) {
-            return standard;
-        }
-    }
-    return rate;
-}
-
-float FrameSamplerPeakPresentRate(const FrameSampler* s) {
-    if (!s) {
-        return 0;
-    }
-    // The busiest group that has recurred enough to count, and the lowest
-    // bucket holding that count — the map iterates ascending.
-    uint32_t busiest = 0;
-    for (int b = 0; b < kRefreshBuckets; b++) {
-        if (s->refresh[b].hits >= kRefreshSupport && s->refresh[b]
-                                                             .hits > busiest) {
-            busiest = s->refresh[b].hits;
-        }
-    }
-    if (busiest == 0) {
-        return 0;
-    }
-    int mode = 0;
-    while (mode < kRefreshBuckets && s->refresh[mode].hits != busiest) {
-        mode++;
-    }
-    // A group at least twice as fast that arrived in bulk is the ceiling a
-    // variable refresh panel rests below.
-    int peak = mode;
-    for (int b = 0; b < kRefreshBuckets; b++) {
-        const RefreshCandidate& candidate = s->refresh[b];
-        if (b * kRefreshSeparation <= mode &&
-            candidate.hits >= kRefreshSupport &&
-            candidate.hits * (uint64_t)kRefreshMinority >= busiest) {
-            peak = b;
-            break;
-        }
-    }
-    uint64_t hits = 0;
-    double total = 0;
-    int lo = peak - kRefreshSpread < 0 ? 0 : peak - kRefreshSpread;
-    int hi = peak + kRefreshSpread >= kRefreshBuckets ? kRefreshBuckets - 1
-                                                      : peak + kRefreshSpread;
-    for (int b = lo; b <= hi; b++) {
-        hits += s->refresh[b].hits;
-        total += s->refresh[b].totalSecs;
-    }
-    // The peak is inside its own neighbourhood, and it cleared the support
-    // threshold to be the peak, so the count is never zero here.
-    double mean = hits > 0 ? total / (double)hits : 0;
-    return mean > 0 ? FpsSnapToStandardRefresh((float)(1.0 / mean)) : 0;
-}
-
-float FpsSustainableRate(float meanDrawSecs, float displayRate) {
+// The cap is the half the derivation loses. Counting presents could never
+// exceed the refresh rate — frames go to the compositor on vsync, so the
+// bound came for free — while a frame drawn in 3ms reads as 333, a rate
+// nobody could ever see.
+float FpsSustainableRate(float meanDrawSecs, double displayPeriod) {
     if (meanDrawSecs <= 0) {
         return 0;
     }
     float rate = 1.f / meanDrawSecs;
-    if (displayRate > 0 && rate > displayRate) {
-        return displayRate;
+    if (displayPeriod > 0) {
+        float display = (float)(1.0 / displayPeriod);
+        return rate < display ? rate : display;
     }
     return rate;
 }
@@ -506,6 +435,21 @@ void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs) {
     self->axisMax = budgetSecs * 2.f;
 }
 
+// update_display: re-asks the platform for the refresh rate when the window
+// has moved to another display, and not otherwise: the answer is a property
+// of the panel, and on some platforms asking is a round trip.
+static void UpdateDisplay(FpsMonitor* self, Ctx* cx) {
+    uint64_t display = cx->win ? PlatWindowDisplay(cx->win) : 0;
+    if (!display) {
+        return;
+    }
+    if (!self->displayAsked || self->display != display) {
+        self->displayAsked = true;
+        self->display = display;
+        self->displayPeriod = PlatDisplayRefreshPeriod(display);
+    }
+}
+
 // Republishes the readings if kReadoutInterval has passed.
 static void UpdateReadout(FpsMonitor* self) {
     double now = TimeNow();
@@ -513,8 +457,8 @@ static void UpdateReadout(FpsMonitor* self) {
         return;
     }
     const FrameSampler* s = &self->sampler;
-    self->readout.maxFps = FpsSustainableRate(FrameSamplerMeanDraw(s),
-                                              FrameSamplerPeakPresentRate(s));
+    self->readout.maxFps =
+        FpsSustainableRate(FrameSamplerMeanDraw(s), self->displayPeriod);
     self->readout.fps = FrameSamplerFps(s);
     self->readout.intervalMillis = FrameSamplerPresentInterval(s) * 1000.f;
     // The mean over the interval rather than the latest frame, which at this
@@ -815,6 +759,7 @@ void FpsMonitor::OnToggleHeadline(FpsMonitor* self, Ctx* cx,
 
 El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
     FrameSamplerTick(&self->sampler, cx->win);
+    UpdateDisplay(self, cx);
     UpdateReadout(self);
     UpdateAxis(self);
     StartClock(self, cx);

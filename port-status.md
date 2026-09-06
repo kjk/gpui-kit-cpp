@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `b586fad393daf683301c634fa4e5d98b4393bbb3`
-(2026-09-05, fps: Derive the headline rate from frame cost instead of driving the frame loop (#2954)). The FPS HUD no longer requests a frame per render; its headline is `MAX FPS`, the reciprocal of the mean frame cost held to the display's refresh rate, which the sampler infers from recurring gaps between presents and snaps to a standard rate. A right press switches the headline to presents per second. The first eight frames and the backlog drained on mount are not measured, a readout clock republishes the figures with resources off, and `continuous` is gone from the fps API, the shell's `show_fps_monitor` options and `fps_monitor()`. With the HUD no longer driving frames, the story's 500 ms inactive frame interval went too: an inactive window animates at the same 16 ms as an active one.
+Processed through `bc0ac769c0738b5cd4bfbdbdad555f0c9de7962f`
+(2026-09-05, fps: Cap the headline by asking the platform what the panel runs at (#2956)). The FPS HUD no longer infers the display's refresh rate from gaps between presents; it asks the platform through the new `PlatWindowDisplay` / `PlatDisplayRefreshPeriod` seam, re-asked only when the window moves to another display. Windows answers from `EnumDisplaySettingsW` on the window's monitor and macOS from `CGDisplayCopyDisplayMode`; upstream's third query is Wayland's, so the X11 window and the browser answer nothing and `MAX FPS` stays uncapped there. The warm-up stays.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

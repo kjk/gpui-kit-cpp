@@ -195,81 +195,17 @@ static void TheBacklogIsDroppedWithTheWarmUp() {
     utassertnear(FrameSamplerMeanDraw(&s), 0.005f);
 }
 
-static void ThePeakPresentRateStandsInForTheRefreshRate() {
-    FrameSampler s;
-    Warm(&s);
-    FrameSamplerSetCapacity(&s, kFpsCapacity);
-    double start = 100.0;
-
-    // Idle: one present every half second says nothing about the display,
-    // and must not be mistaken for a 2Hz one.
-    double idle = 0.5;
-    for (int frame = 0; frame < 8; frame++) {
-        IngestPresent(&s, start + idle * frame, start + idle * 7);
-    }
-    utassertnear(FrameSamplerPeakPresentRate(&s), 0.f);
-
-    // A single short gap is the compositor catching up, not a display.
-    double afterIdle = start + idle * 7;
-    IngestPresent(&s, afterIdle + 0.0059, afterIdle);
-    utassertnear(FrameSamplerPeakPresentRate(&s), 0.f);
-
-    // Then the window is scrolled: frames land on a 144Hz vsync, stamped when
-    // the frame was handed over rather than when it was scanned out, so the
-    // gaps jitter by up to a millisecond around 6.944ms.
-    const int jitter[8] = {-900, -300, 0, 200, 700, -100, 400, -600};
-    double at = start + 10.0;
-    IngestPresent(&s, at, at);
-    for (int frame = 0; frame < 60; frame++) {
-        at += (6944 + jitter[frame % 8]) / 1e6;
-        IngestPresent(&s, at, at);
-    }
-    // The estimate must land on the panel's rate, not near it.
-    utassertnear(FrameSamplerPeakPresentRate(&s), 144.f);
-}
-
-static void AVariableRefreshPanelIsCappedByItsCeilingNotItsRestingRate() {
-    FrameSampler s;
-    Warm(&s);
-    FrameSamplerSetCapacity(&s, kFpsCapacity);
-
-    // A ProMotion window: a short scroll at 120Hz, then a long stretch
-    // settled at 60. The 60Hz group wins on count and is not the ceiling.
-    double at = 100.0;
-    IngestPresent(&s, at, at);
-    for (int i = 0; i < 30; i++) {
-        at += 0.008333;
-        IngestPresent(&s, at, at);
-    }
-    for (int i = 0; i < 120; i++) {
-        at += 0.016667;
-        IngestPresent(&s, at, at);
-    }
-    utassertnear(FrameSamplerPeakPresentRate(&s), 120.f);
-}
-
-static void AnEstimateNearAStandardRateBecomesIt() {
-    utassertnear(FpsSnapToStandardRefresh(143.1f), 144.f);
-    utassertnear(FpsSnapToStandardRefresh(146.f), 144.f);
-    utassertnear(FpsSnapToStandardRefresh(120.5f), 120.f);
-    utassertnear(FpsSnapToStandardRefresh(59.4f), 60.f);
-    // Between two rates, and closer to neither than the tolerance allows.
-    utassertnear(FpsSnapToStandardRefresh(155.f), 155.f);
-    // A panel that ships at nothing standard keeps its own rate rather than
-    // being rounded up to a ceiling it does not have.
-    utassertnear(FpsSnapToStandardRefresh(85.f), 85.f);
-}
-
-// monitor.rs: the_headline_rate_never_exceeds_what_the_display_can_present.
-static void TheHeadlineRateNeverExceedsWhatTheDisplayCanPresent() {
+// monitor.rs: the_headline_rate_is_what_a_frame_costs_and_the_panel_allows.
+static void TheHeadlineRateIsWhatAFrameCostsAndThePanelAllows() {
+    double sixty = 0.016667;
     // A cheap frame on a 60Hz panel is not 333 frames anyone could see.
-    utassertnear(FpsSustainableRate(0.003f, 60.f), 60.f);
-    // Until the display has shown its cadence, capping would be a guess.
-    utassert(fabsf(FpsSustainableRate(0.003f, 0.f) - 333.33f) < 0.1f);
+    utassert(fabsf(FpsSustainableRate(0.003f, sixty) - 60.f) < 0.01f);
     // A frame that costs more than a refresh sets the rate itself.
-    utassertnear(FpsSustainableRate(0.020f, 60.f), 50.f);
+    utassertnear(FpsSustainableRate(0.020f, sixty), 50.f);
+    // Where the platform will not say, an uncapped reading beats a guess.
+    utassert(fabsf(FpsSustainableRate(0.003f, 0) - 333.33f) < 0.1f);
     // No frames drawn yet is no rate, not an infinite one.
-    utassertnear(FpsSustainableRate(0.f, 60.f), 0.f);
+    utassertnear(FpsSustainableRate(0.f, sixty), 0.f);
 }
 
 static void AnEarlyTimerWakeDoesNotProduceAnAnimationFrame() {
@@ -586,10 +522,7 @@ void TestFrameSampler() {
     SimultaneousFramesDoNotDivideByZero();
     TheColdStartNeverReachesTheReadings();
     TheBacklogIsDroppedWithTheWarmUp();
-    ThePeakPresentRateStandsInForTheRefreshRate();
-    AVariableRefreshPanelIsCappedByItsCeilingNotItsRestingRate();
-    AnEstimateNearAStandardRateBecomesIt();
-    TheHeadlineRateNeverExceedsWhatTheDisplayCanPresent();
+    TheHeadlineRateIsWhatAFrameCostsAndThePanelAllows();
     AnEarlyTimerWakeDoesNotProduceAnAnimationFrame();
     ThePercentileIsTheFrameAtTheNearestRank();
     ThePercentileSeparatesAStutterTheMeanAbsorbs();

@@ -138,6 +138,23 @@ void PlatSetMouseCapture(Window* win, bool capture);
 // has no such setting, so Linux answers with the 400 ms every toolkit picks.
 int PlatDoubleClickMs();
 
+// `Window::display()`: the display the window is on, as the platform names
+// it — GPUI's `DisplayId`, which is the HMONITOR on Windows and the
+// CGDirectDisplayID on macOS. The number changes when the window moves to
+// another monitor and means nothing else; 0 is a platform with no answer.
+uint64_t PlatWindowDisplay(Window* win);
+// crates/fps/src/refresh.rs: the period between refreshes of that display, in
+// seconds, when the platform reports one. Asked of the platform rather than
+// inferred from the frames a window presented: those gaps are whole multiples
+// of the panel's period, so they bound it from below and never from above —
+// 41.7ms is six refreshes at 144Hz and one at 24Hz, and nothing in the timing
+// says which. 0 means nobody could say — a platform without a query here, a
+// virtual display, or a panel with no fixed rate — and the caller shows an
+// uncapped reading rather than one held to a guess. EnumDisplaySettingsW on
+// Windows, CGDisplayCopyDisplayMode on macOS; upstream's third query is
+// Wayland's and X11 has none, so Linux and the browser answer 0.
+double PlatDisplayRefreshPeriod(uint64_t display);
+
 // GPUI's `Window::window_handle()`, which Rust answers as a
 // `raw_window_handle::RawWindowHandle`. One thing needs it: a webview is an
 // OS control parented into the window it sits in, so `src/webview` has to

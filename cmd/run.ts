@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b586fad393daf683301c634fa4e5d98b4393bbb3",
+  sha: "bc0ac769c0738b5cd4bfbdbdad555f0c9de7962f",
   date: "2026-09-05",
-  subject: "fps: Derive the headline rate from frame cost instead of driving the frame loop (#2954)",
+  subject: "fps: Cap the headline by asking the platform what the panel runs at (#2956)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
