@@ -1139,6 +1139,7 @@ struct SearchPanelState {
     // Whether the session was open on the last build, so opening it puts the
     // caret in the query field exactly once.
     bool wasOpen = false;
+    uint64_t activationRevision = 0;
 
     static void OnQueryEvent(SearchPanelState* self, Ctx* cx,
                              const InputEvent* ev);
@@ -1315,8 +1316,10 @@ El* SearchPanel::IntoEl() {
     }
     // Opening it puts the query in the field and picks it out, which is what
     // makes typing over it the next search rather than an edit of the last.
-    if (!st->wasOpen) {
+    if (!st->wasOpen ||
+        st->activationRevision != target->searchActivationRevision) {
         st->wasOpen = true;
+        st->activationRevision = target->searchActivationRevision;
         InputSetValue(&st->query, ss->query);
         InputFocus(&st->query, cx->app, cx->win);
         InputSelectAll(&st->query, cx->app, cx->win);

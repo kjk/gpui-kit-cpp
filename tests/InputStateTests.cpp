@@ -2096,6 +2096,40 @@ static El* FindNamedEl(El* root, const char* name) {
 // have to be unique among siblings because the bar above them is a stateful
 // element, and two editors on one page are two bars. The port spelled the
 // bar's id into every child instead.
+static void ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState editor;
+    editor.searchable = true;
+    InputSetValue(&editor, StrL("foo bar foo"));
+    InputSetSearchQuery(&editor, &app, win, StrL("foo"), false);
+    InputOpenSearch(&editor, &app, win, false);
+    component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+    InputState* query = win->input;
+    utassert(query && query != &editor);
+    utassert(StrEq(InputSelectedValue(query), StrL("foo")));
+    InputSetSelectedRange(query, &app, win, 1, 1);
+    component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+    utassert(InputSelectedValue(query).len == 0);
+    uint64_t revision = InputSearchActivationRevision(&editor);
+    InputFocus(&editor, &app, win);
+    InputOpenSearch(&editor, &app, win, false);
+    component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+    utassert(InputSearchActivationRevision(&editor) == revision + 1);
+    utassert(win->input == query);
+    utassert(StrEq(InputSelectedValue(query), StrL("foo")));
+    InputBlur(query, &app, win);
+    win->input = nullptr;
+    win->prevInput = nullptr;
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void TwoFindBarsHaveTwoPrevButtons() {
     App app;
     Window* win = new Window();
@@ -2893,6 +2927,7 @@ void TestInputState() {
     DocumentColorsAreAskedForAgainAfterAnEdit();
     DocumentColorResponsesUseTheRustLimit();
     TwoFindBarsHaveTwoPrevButtons();
+    ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames();
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
     DecorationsAreIndependentClippedAndTrackEdits();

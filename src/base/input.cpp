@@ -4556,6 +4556,7 @@ void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode) {
     if (!s || !s->searchable) {
         return;
     }
+    s->searchActivationRevision++;
     s->search.open = true;
     s->search.replaceMode = replaceMode && InputIsReplaceable(s);
     // Whatever is selected becomes the query, which is what makes ctrl-f on
@@ -4571,6 +4572,10 @@ void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode) {
     SearchMatcherUpdate(&s->search.matcher, InputValue(s));
     SearchMatcherCursorByOffset(&s->search.matcher, s->search.anchorOffset);
     Notify(app, win);
+}
+
+uint64_t InputSearchActivationRevision(const InputState* s) {
+    return s ? s->searchActivationRevision : 0;
 }
 
 void InputCloseSearch(InputState* s, App* app, Window* win) {

@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `c3937a36dbe97347fd84f453761fc19784374ae2`
-(2026-09-04, markdown: render hard line breaks instead of concatenating lines (#2945)). CommonMark hard breaks already render as newline runs in the C++ adapter. The stale divergence comment is removed and both trailing-space and backslash forms have regression coverage.
+Processed through `68e6840c8fb5956030a708656449d4e5a2e68447`
+(2026-09-04, editor: Refocus the search bar when search is invoked again (#2932)). Every explicit search invocation advances an activation revision. SearchPanel refocuses and reselects the query on reinvocation, while unchanged frames preserve the caret.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

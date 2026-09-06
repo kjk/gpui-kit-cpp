@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c3937a36dbe97347fd84f453761fc19784374ae2",
+  sha: "68e6840c8fb5956030a708656449d4e5a2e68447",
   date: "2026-09-04",
-  subject: "markdown: render hard line breaks instead of concatenating lines (#2945)",
+  subject: "editor: Refocus the search bar when search is invoked again (#2932)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

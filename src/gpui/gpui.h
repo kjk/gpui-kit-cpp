@@ -3996,6 +3996,7 @@ struct InputState {
     bool searchable = false;
     bool replaceable = true;
     SearchSession search;
+    uint64_t searchActivationRevision = 0;
     // Code folding. The projection survives an edit; the icon boxes are the
     // last frame's and are rebuilt with it.
     FoldMap folds;
@@ -4539,6 +4540,7 @@ void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch);
 // its first query and the match nearest the top of the view as its first
 // match. A field that is not searchable ignores it.
 void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode);
+uint64_t InputSearchActivationRevision(const InputState* s);
 void InputCloseSearch(InputState* s, App* app, Window* win);
 // is_replaceable(): the field allows it and is editable right now.
 bool InputIsReplaceable(const InputState* s);
