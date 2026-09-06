@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `9c0051cc1e0818bbc7f50c78367007fe15028c51`
-(2026-09-03, gpui-pre: Audit licenses before publishing and state GPUI's origin (#2936)). The gallery README now includes the upstream GPUI origin attribution. The remaining changes audit Cargo publication licenses and adjust the upstream website; this repository does not publish Rust packages.
+Processed through `b52c563a2344158e4d2faf1e729e14a62fdd352a`
+(2026-09-03, chore: Let the doctests written for gpui-kit users compile (#2937)). Only Rust documentation examples change: hidden crate aliases and a dereference let doctests compile. No C++ API or runtime behavior changes.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
