@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3f495d333578f898bd1ee0422c604139afc2f005",
+  sha: "665d8605e55abb36387d5eee60915c861761e07b",
   date: "2026-09-06",
-  subject: "list: measure an existing row when the configured item is absent (#2975)",
+  subject: "story: replace List search results without duplicating rows (#2976)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
