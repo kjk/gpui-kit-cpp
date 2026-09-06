@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `a1c1be1d0ed4dc9cc6f241e42f907b6810fc585f`
-(2026-09-03, website: Bundle IBM Plex Sans so `.SystemUIFont` resolves on the web (#2933)). The upstream WASM font-database panic does not apply to our Canvas2D backend: paint_wasm.cpp supplies system-ui and sans-serif fallbacks from startup. IBM Plex Sans is only required by gpui-pre-web, which this port does not use.
+Processed through `9c0051cc1e0818bbc7f50c78367007fe15028c51`
+(2026-09-03, gpui-pre: Audit licenses before publishing and state GPUI's origin (#2936)). The gallery README now includes the upstream GPUI origin attribution. The remaining changes audit Cargo publication licenses and adjust the upstream website; this repository does not publish Rust packages.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
