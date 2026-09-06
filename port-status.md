@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `2ffa97dc579516e9373442f7f2ed61320f7e93a7`
-(2026-09-04, website: Add five apps to the app stories page (#2951)). Reviewed the five added website app entries and corrected Cadence screenshot. This changes only the upstream website catalog, which has no C++ runtime counterpart; no crate, example or dependency changes.
+Processed through `4a654f45011da1edacb0a2ffa094d901dc97333d`
+(2026-09-04, resizable: Fix panel resizing flickering (#2907)). Resizable groups now adopt measured panel sizes and post a settling notification after container changes, for both keyed and caller-owned state. Mixed fixed/automatic panels retain their measured proportions after resizing and remain stable on subsequent frames.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

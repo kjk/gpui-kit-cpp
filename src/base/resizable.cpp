@@ -514,6 +514,33 @@ ResizablePanelGroup* ResizablePanelGroup::Children(ResizablePanel** values,
     return this;
 }
 
+void ResizableState::OnSettled(ResizableState*, Ctx* cx, const void*) {
+    Notify(cx);
+}
+
+static void MeasureResizableGroup(PaintCtx* paint, El* root, void* data) {
+    Entity<ResizableState> entity = *(Entity<ResizableState>*)data;
+    ResizableState* state = entity.Get(paint->app);
+    if (!state) return;
+    bool horizontal = AxisIsHorizontal(state->axis);
+    float container = horizontal ? root->w : root->h;
+    state->bounds = {root->x, root->y, root->w, root->h};
+    if (container <= 0 || container == state->lastContainer) return;
+    if (state->lastContainer <= 0) {
+        El* panel = root->first;
+        for (int i = 0; i < state->sizes.len && panel; i++) {
+            if (!state->shown[i]) continue;
+            state->sizes[i] = horizontal ? panel->w : panel->h;
+            panel = panel->next;
+        }
+    } else {
+        ResizableAdjustToContainer(state->sizes.els, state->sizes.len,
+                                   container);
+    }
+    state->lastContainer = container;
+    WindowPost(paint->window, ListenTo(entity, &ResizableState::OnSettled));
+}
+
 El* ResizablePanelGroup::IntoEl() {
     ResizableState* s = state.Get(cx);
     if (s) {
@@ -545,10 +572,9 @@ El* ResizablePanelGroup::IntoEl() {
         VecClear(s->mins);
         VecClear(s->maxs);
         for (int i = 0; i < panels.len; i++) {
-            // A panel that flexes has no size of its own until the container
-            // is known: what it declared is its flex basis, and the share it
-            // takes is worked out below.
-            VecAppend(s->sizes, grows[i] ? 0 : sizes[i]);
+            // A declared initial size holds until the first measurement;
+            // only an unsized panel starts with a flex-resolved size.
+            VecAppend(s->sizes, sizes[i]);
             VecAppend(s->mins, mins[i]);
             // A declared 0 is Rust's `Pixels::MAX` — no ceiling — and the
             // arithmetic takes a number, not a flag.
@@ -571,50 +597,12 @@ El* ResizablePanelGroup::IntoEl() {
         VecAppend(s->laid, Bounds{});
     }
 
-    // The first frame is the layout's answer rather than this code's: a
-    // panel whose size the state does not know yet is declared the way Rust
-    // declares it — `size_full`, `flex_grow: 1`, the `size_range` as the min
-    // and the max, and the declared size as the flex basis — and taffy
-    // resolves the line. What it measured is written back here on the next
-    // frame and is the panel's size from then on, which is what
-    // `update_panel_size` does from Rust's own prepaint. Two things fall out
-    // of it that arithmetic here would have had to invent: a sized panel that
-    // flexes shrinks with its neighbours instead of holding its number, and a
-    // growing panel's `width: 100%` is what makes it the one that gives way.
-    float container = horiz ? s->bounds.w : s->bounds.h;
-    bool resolved = true;
-    bool anyGrow = false;
-    for (int i = 0; i < panels.len; i++) {
-        if (shown[i] && grows[i]) {
-            anyGrow = true;
-        }
-        // A growing panel stays a flex item: writing the laid size back would
-        // pin it, then adjust_to_container_size would scale a 240px sidebar
-        // with the window — the jump Rust's `size.is_none()` guard exists to
-        // stop.
-        if (grows[i]) {
-            continue;
-        }
-        if (s->sizes[i] <= 0 && shown[i] && i < s->laid.len) {
-            float was = horiz ? s->laid[i].w : s->laid[i].h;
-            if (was > 0) {
-                s->sizes[i] = was;
-            }
-        }
-        resolved = resolved && (s->sizes[i] > 0 || !shown[i]);
-    }
-    // adjust_to_container_size: every *sized* panel keeps the share it had
-    // when the container changes size. A group that still has a flex panel
-    // leaves the line to taffy — rescaling from a placeholder (or from a
-    // grow panel's last laid width) drags the sized neighbours with it.
-    if (!anyGrow && resolved && container > 0 && s->lastContainer > 0 &&
-        container != s->lastContainer) {
-        ResizableAdjustToContainer(s->sizes.els, s->sizes.len, container);
-    }
-    if (resolved && container > 0) {
-        s->lastContainer = container;
-    }
-    root->BoundsOut(&s->bounds);
+    // Layout is measured after the tree is built. Adopt its answer there and
+    // post the settling notification after this draw, including caller state.
+    auto* measuredState = ArenaNew<Entity<ResizableState>>(a);
+    *measuredState = state;
+    root->customUser = measuredState;
+    root->customPaint = &MeasureResizableGroup;
 
     Listener down = ListenTo(state, &ResizableState::OnHandleDown, 0);
     Listener drag = ListenTo(state, &ResizableState::OnHandleDrag);

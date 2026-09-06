@@ -121,8 +121,7 @@ struct ResizeAppearanceProbe {
 };
 
 static El* RenderResizeAppearance(void* user,
-                                  const ResizeHandleContext* context,
-                                  Ctx* cx) {
+                                  const ResizeHandleContext* context, Ctx* cx) {
     ResizeAppearanceProbe* probe = (ResizeAppearanceProbe*)user;
     probe->calls++;
     probe->axis = context->AxisValue();
@@ -141,9 +140,11 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     cx.a = arena;
     cx.win = win;
 
-    ResizablePanel* first =
-        resizable_panel(&cx)->Size(150)->SizeRange(120, 300)->FlexNone()
-            ->Child(Div(arena));
+    ResizablePanel* first = resizable_panel(&cx)
+                                ->Size(150)
+                                ->SizeRange(120, 300)
+                                ->FlexNone()
+                                ->Child(Div(arena));
     ResizablePanel* second = resizable_panel(&cx)->Child(Div(arena));
     ResizablePanelGroup* horizontal =
         h_resizable(&cx, StrL("source-horizontal"))
@@ -163,8 +164,8 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     El* root = horizontal->IntoEl();
     utassert(root && root->style.dir == FlexDir::Row);
 
-    ResizablePanelGroup* vertical =
-        v_resizable(&cx, StrL("source-vertical"))->Size(240);
+    ResizablePanelGroup* vertical = v_resizable(&cx, StrL("source-vertical"))
+                                        ->Size(240);
     utassert(vertical->state.Get(&cx)->axis == Axis::Vertical);
     utassertnear(vertical->width, 240.f);
 
@@ -210,6 +211,45 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     ArenaDelete(arena);
 }
 
+static void MixedSizingSettlesAfterContainerResize() {
+    ExecInit();
+    for (int callerOwned = 0; callerOwned < 2; callerOwned++) {
+        App app;
+        Window* win = new Window();
+        win->app = &app;
+        win->paint.app = &app;
+        win->paint.window = win;
+        Arena* a = ArenaNew();
+        Ctx cx = {&app, win, a, {}};
+        Entity<ResizableState> state;
+        if (callerOwned) state = EntityNewState<ResizableState>(&app);
+        float widths[5] = {};
+        for (int frame = 0; frame < 5; frame++) {
+            auto* group = h_resizable(&cx, StrL("mixed-sizing"));
+            if (callerOwned) group->WithState(state);
+            group->Child(resizable_panel(&cx)->Size(240)->Child(Div(a)))
+                ->Child(resizable_panel(&cx)->Child(Div(a)));
+            El* root = group->IntoEl();
+            LayoutEl(&win->paint, root, 0, 0, frame < 2 ? 800.f : 1200.f, 100,
+                     16, Rgba{});
+            widths[frame] = root->first->w;
+            root->customPaint(&win->paint, root, root->customUser);
+            int posted = ExecDrain();
+            utassert((frame == 0 || frame == 2) ? posted > 0 : posted == 0);
+        }
+        utassertnear(widths[0], 240.f);
+        utassertnear(widths[1], widths[0]);
+        utassertnear(widths[3], 360.f);
+        utassertnear(widths[4], widths[3]);
+        WindowKeyedFree(win);
+        EntityDropAll(&app);
+        AppGlobalClear(&app);
+        delete win;
+        ArenaDelete(a);
+    }
+    ExecShutdown();
+}
+
 void TestResizable() {
     TestSuite("resizable");
     ResizingOnePanelTakesFromTheNext();
@@ -220,4 +260,5 @@ void TestResizable() {
     EveryPanelKeepsItsShareWhenTheContainerChanges();
     ProgrammaticResizeAndDynamicPanelsUseTheSameState();
     SourceConstructorsAndHandleAppearanceRemainConcrete();
+    MixedSizingSettlesAfterContainerResize();
 }

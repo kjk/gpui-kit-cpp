@@ -152,6 +152,7 @@ struct ResizableState {
                              const DragMoveEvent* ev);
     static void OnHandleUp(ResizableState* self, Ctx* cx,
                            const MouseUpEvent* ev);
+    static void OnSettled(ResizableState* self, Ctx* cx, const void*);
 
     const Vec<float>& Sizes() const { return sizes; }
     float ContainerSize() const {
