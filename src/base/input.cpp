@@ -4581,15 +4581,16 @@ void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode) {
     // Whatever is selected becomes the query, which is what makes ctrl-f on
     // a word search for that word. An empty selection leaves the last one.
     Str selected = InputSelectedValue(s);
-    if (selected.len > 0) {
-        StrFree(s->search.query);
-        s->search.query = StrDup(selected);
-    }
-    s->search.anchorOffset = FirstVisibleOffset(s);
-    SearchMatcherUpdateQuery(&s->search.matcher, s->search.query,
-                             s->search.caseInsensitive);
+    Str query = selected.len > 0 ? selected : s->search.query;
+    bool queryChanged = !StrEq(query, s->search.query);
+    // A retained query resumes its previous occurrence. Only a new query is
+    // anchored to the current viewport.
+    s->search.anchorOffset = queryChanged ? FirstVisibleOffset(s) : -1;
+    SearchSessionSetQuery(&s->search, query, s->search.caseInsensitive);
     SearchMatcherUpdate(&s->search.matcher, InputValue(s));
-    SearchMatcherCursorByOffset(&s->search.matcher, s->search.anchorOffset);
+    if (queryChanged && s->search.anchorOffset >= 0) {
+        SearchMatcherCursorByOffset(&s->search.matcher, s->search.anchorOffset);
+    }
     Notify(app, win);
 }
 
@@ -5041,6 +5042,13 @@ bool SearchMatcherPrev(SearchMatcher* m, Selection* out) {
 }
 
 void SearchSessionSetQuery(SearchSession* s, Str query, bool insensitive) {
+    // update_query: the same query with the same case rule is the query the
+    // matcher already has, and rebuilding it would throw away the occurrence
+    // the reader is on. Reopening Find and the styled panel echoing its
+    // retained query both come through here.
+    if (StrEq(s->query, query) && s->caseInsensitive == insensitive) {
+        return;
+    }
     StrFree(s->query);
     s->query = query.len > 0 ? StrDup(query) : Str{};
     s->caseInsensitive = insensitive;

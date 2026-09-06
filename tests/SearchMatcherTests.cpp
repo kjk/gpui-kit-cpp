@@ -184,8 +184,26 @@ static void TheSameTextIsNotRescanned() {
     utassert(SearchMatcherIndex(&m) == 0);
 }
 
+// identical_query_keeps_the_current_match
+static void IdenticalQueryKeepsTheCurrentMatch() {
+    SearchSession session;
+    SearchSessionSetQuery(&session, StrL("foo"), true);
+    SearchMatcherUpdate(&session.matcher, StrL("foo bar foo baz foo"));
+    SearchMatcherCursorByOffset(&session.matcher, 12);
+    utassert(SearchMatcherIndex(&session.matcher) == 2);
+
+    // Reopening Find and the styled search panel's initial query echo both
+    // update the session with the same query. Neither should reset the
+    // previously active occurrence.
+    SearchSessionSetQuery(&session, StrL("foo"), true);
+
+    utassert(SearchMatcherIndex(&session.matcher) == 2);
+    utassert(LabelIs(&session.matcher, "3/3"));
+}
+
 void TestSearchMatcher() {
     FindsNavigatesAndKeepsItsPlaceThroughAReplacement();
+    IdenticalQueryKeepsTheCurrentMatch();
     NextWrapsToTheStart();
     AReplacementLeavesTheCursorOnWhatIsNowUnderIt();
     AReplacementClampsTheCursorIntoWhatIsLeft();

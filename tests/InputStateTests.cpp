@@ -2201,6 +2201,54 @@ static void ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames() {
     EntityDropAll(&app);
 }
 
+// overlay.rs: reopening_search_panel_preserves_the_previous_match. Closing
+// and reopening Find keeps the previous occurrence in browsers. Neither Base
+// reopening the session nor the styled panel echoing its retained query may
+// reset the current match to zero.
+static void ReopeningSearchPanelPreservesThePreviousMatch() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    editor.searchable = true;
+    InputSetValue(&editor, StrL("foo bar foo baz foo"));
+    InputOpenSearch(&editor, &app, win, false);
+    InputSetSearchQuery(&editor, &app, win, StrL("foo"), true);
+    Selection range = {};
+    utassert(InputSearchNext(&editor, &app, win, &range));
+    utassert(range.start == 8 && range.end == 11);
+    utassert(SearchMatcherIndex(&editor.search.matcher) == 1);
+    InputCloseSearch(&editor, &app, win);
+    InputOpenSearch(&editor, &app, win, false);
+    utassert(SearchMatcherIndex(&editor.search.matcher) == 1);
+
+    // The styled panel, built over the reopened session, echoes the query it
+    // was given back to the editor.
+    component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
+    InputState* query = win->input;
+    utassert(query && query != &editor);
+    InputSetSearchQuery(&editor, &app, win, InputValue(query),
+                        editor.search.caseInsensitive);
+    utassert(SearchMatcherIndex(&editor.search.matcher) == 1);
+    {
+        Str label = SearchMatcherLabel(arena, &editor.search.matcher);
+        utassert(StrEq(label, StrL("2/3")));
+    }
+    utassert(InputSearchNext(&editor, &app, win, &range));
+    utassert(range.start == 16 && range.end == 19);
+
+    if (query) InputBlur(query, &app, win);
+    win->input = nullptr;
+    win->prevInput = nullptr;
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void TwoFindBarsHaveTwoPrevButtons() {
     App app;
     Window* win = new Window();
@@ -3000,6 +3048,7 @@ void TestInputState() {
     DocumentColorResponsesUseTheRustLimit();
     TwoFindBarsHaveTwoPrevButtons();
     ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames();
+    ReopeningSearchPanelPreservesThePreviousMatch();
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
     DecorationsAreIndependentClippedAndTrackEdits();
