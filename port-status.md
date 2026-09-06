@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `94a313a72a2513aee2780240cd322d552b2395f0`
-(2026-09-03, chore: Use gpui-kit (#2929)). Upstream now names its styled crate crates/component and publishes the 0.6.0 GPUI Kit facade. C++ keeps src/ui and its existing gpui.h facade; the audit maps the new source path explicitly.
+Processed through `a1c1be1d0ed4dc9cc6f241e42f907b6810fc585f`
+(2026-09-03, website: Bundle IBM Plex Sans so `.SystemUIFont` resolves on the web (#2933)). The upstream WASM font-database panic does not apply to our Canvas2D backend: paint_wasm.cpp supplies system-ui and sans-serif fallbacks from startup. IBM Plex Sans is only required by gpui-pre-web, which this port does not use.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

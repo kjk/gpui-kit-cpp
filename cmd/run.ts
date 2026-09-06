@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "94a313a72a2513aee2780240cd322d552b2395f0",
+  sha: "a1c1be1d0ed4dc9cc6f241e42f907b6810fc585f",
   date: "2026-09-03",
-  subject: "chore: Use gpui-kit (#2929)",
+  subject: "website: Bundle IBM Plex Sans so `.SystemUIFont` resolves on the web (#2933)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
