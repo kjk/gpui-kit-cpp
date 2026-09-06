@@ -1719,13 +1719,6 @@ static void SearchRevealsWithPaddingAfterManualScroll(bool previous) {
                           : InputSearchNext(&s, &app, win, &range);
     utassert(moved);
     int start = StrFind(value, StrL("match on row 60"));
-    fprintf(stderr,
-            "dbg search: range %d..%d start %d idx %d scrollY %.1f rows %d "
-            "viewH %.1f kind %d len %d\n",
-            range.start, range.end, start,
-            SearchMatcherIndex(&s.search.matcher), s.scrollY,
-            RopeOffsetToPoint(InputValue(&s), InputValue(&s).len).row, s.viewH,
-            (int)s.mode.kind, InputValue(&s).len);
     utassert(range.start == start && range.end == start + 5);
     utassert(SearchMatcherIndex(&s.search.matcher) == 1);
 
