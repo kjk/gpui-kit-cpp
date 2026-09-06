@@ -12,11 +12,17 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `384fc6a80ac5fdb4841bf44509524040a3e003a9`
-(2026-09-03, website: Fix docs build when the GitHub contributors API is rate-limited). This checkin only changes the upstream documentation website contributor fetch and CI credentials; neither has a counterpart in this C++ repository. Runtime and dependency pins are unchanged.
+Processed through `f517e74849c1e676bb03af90266e8449d01344f5`
+(2026-09-03, base: Write a tiles center as a bare `Tiles` so older readers can load it (#2928)). PaneTree serialization omits the internal Split wrapper around a single Tiles center, retaining tile metadata and panel state for older readers.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
+
+- **Dock tree persistence integration.** `PaneTree::ToState` implements the
+  persisted tree format, including a bare Tiles center. The older live
+  `DockState` still uses its separate `DockDump`/`DockLoad` path;
+  `PaneTree::FromState` and live Tiles-center reconciliation remain missing
+  (`src/base/dock_state.cpp`, `src/base/dock_layout.cpp`).
 
 - **Image loading uses bounded process caches.** `src/gpui/image.cpp` keeps
   32 resources and 16 encoded `Image` values rather than Rust's configurable

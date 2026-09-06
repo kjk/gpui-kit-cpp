@@ -98,6 +98,8 @@ struct EditResult {
 };
 
 struct DockLayout;
+struct PanelSource;
+struct DockAreaState;
 
 struct PaneTree {
     PaneNode* root = nullptr;
@@ -140,6 +142,8 @@ struct PaneTree {
     EditResult BringToFront(PanelId panel);
     void Normalize();
     bool IsNormalized() const;
+    // Appends a persisted subtree and returns its node index.
+    int ToState(const PanelSource& source, DockAreaState* out) const;
 
     static PaneTree* FromLayout(DockLayout* layout, RootKind kind,
                                 Vec<DockPanelDef>* panels = nullptr);

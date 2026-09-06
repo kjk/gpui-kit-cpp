@@ -120,8 +120,7 @@ static void TheFixtureLayoutReadsBack() {
     const PanelStateNode& second = s.nodes[center.children[1]];
     utassert(StrEqI(second.panelName, "TabPanel"));
     utassert(second.children.len == 1);
-    utassert(
-        StrEqI(s.nodes[second.children[0]].panelName, "StoryContainer"));
+    utassert(StrEqI(s.nodes[second.children[0]].panelName, "StoryContainer"));
 
     utassert(s.left.present);
     utassert(s.left.open);
@@ -130,8 +129,7 @@ static void TheFixtureLayoutReadsBack() {
     const PanelStateNode& left = s.nodes[s.left.node];
     utassert(StrEqI(left.panelName, "TabPanel"));
     utassert(left.children.len == 1);
-    utassert(
-        StrEqI(s.nodes[left.children[0]].panelName, "StoryContainer"));
+    utassert(StrEqI(s.nodes[left.children[0]].panelName, "StoryContainer"));
 
     utassert(s.bottom.present);
     utassert(s.bottom.open);
@@ -260,9 +258,46 @@ static void SomethingThatIsNotALayoutIsRefused() {
     ArenaDelete(a);
 }
 
+static void ATilesCenterPersistsWithoutItsInternalSplit() {
+    PaneTree tree(RootKind::Split);
+    TilePanel tiles[] = {
+        TilePanel::New(PanelId::FromU64(1), {20, 30, 400, 200})};
+    tiles[0].zIndex = 7;
+    tree.SetRootTiles(tiles, 1);
+    tree.Normalize();
+    utassert(tree.Root()->paneKind == PaneKind::Split);
+    PanelSource source;
+    source.panelName = [](void*, PanelId) { return StrL("Alpha"); };
+    DockAreaState state;
+    state.center = tree.ToState(source, &state);
+    const PanelState& saved = state.nodes[state.center];
+    utassert(StrEq(saved.panelName, StrL("Tiles")));
+    utassert(saved.kind == PanelInfoKind::Tiles && saved.children.len == 1);
+    utassert(StrEq(state.nodes[saved.children[0]].panelName, StrL("Alpha")));
+    utassert(saved.metas.len == 1 && saved.metas[0].zIndex == 7);
+    utassertnear(saved.metas[0].bounds.x, 20);
+    utassertnear(saved.metas[0].bounds.w, 400);
+    StrBuilder json;
+    DockAreaStateWrite(&state, &json);
+    Arena* arena = ArenaNew();
+    DockAreaState loaded;
+    utassert(DockAreaStateParse(arena, Str(json.els, json.len), &loaded));
+    utassert(loaded.nodes[loaded.center].kind == PanelInfoKind::Tiles);
+    ArenaDelete(arena);
+
+    PaneTree tabs(RootKind::Split);
+    PanelId panel = PanelId::FromU64(1);
+    tabs.SetRootTabs(&panel, 1);
+    tabs.Normalize();
+    state.Clear();
+    state.center = tabs.ToState(source, &state);
+    utassert(state.nodes[state.center].kind == PanelInfoKind::Stack);
+}
+
 void TestDockState() {
     TestSuite("dock/state");
     TheFixtureLayoutReadsBack();
+    ATilesCenterPersistsWithoutItsInternalSplit();
     ALayoutSurvivesTheRoundTrip();
     ATileWithNothingSavedGetsTheDefaultBox();
     TheTilesGoBackWhereTheyWere();

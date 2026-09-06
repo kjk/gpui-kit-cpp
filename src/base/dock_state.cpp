@@ -1,7 +1,67 @@
 #include "base/dock_state.h"
 #include "base/dock_registry.h"
+#include "base/dock_layout.h"
 
 namespace gpui {
+
+static int PaneNodeToState(const PaneNode* node, const PanelSource& source,
+                           DockAreaState* out) {
+    Str name = node->paneKind == PaneKind::Split  ? StrL("StackPanel")
+               : node->paneKind == PaneKind::Tabs ? StrL("TabPanel")
+                                                  : StrL("Tiles");
+    int ix = out->NewNode(name);
+    out->nodes[ix]
+        .kind = node->paneKind == PaneKind::Split  ? PanelInfoKind::Stack
+                : node->paneKind == PaneKind::Tabs ? PanelInfoKind::Tabs
+                                                   : PanelInfoKind::Tiles;
+    out->nodes[ix].axis = node->axis;
+    out->nodes[ix].activeIndex = node->activeIx;
+    if (node->paneKind == PaneKind::Split) {
+        for (int i = 0; i < node->children.len; i++) {
+            int child = PaneNodeToState(node->children[i], source, out);
+            VecAppend(out->nodes[ix].children, child);
+            // The persisted schema has no optional size; upstream writes
+            // zero for an unresolved slot. Resolve sizes before saving when
+            // compatibility with readers predating the tree is required.
+            float size = i < node->sizeKnown.len && node->sizeKnown[i]
+                             ? node->sizes[i]
+                             : 0;
+            VecAppend(out->nodes[ix].sizes, size);
+        }
+    } else {
+        bool tiles = node->paneKind == PaneKind::Tiles;
+        int count = tiles ? node->tiles.len : node->panels.len;
+        for (int i = 0; i < count; i++) {
+            PanelId panel = tiles ? node->tiles[i].panel : node->panels[i];
+            int child = out->NewNode(source.panelName
+                                         ? source.panelName(source.data, panel)
+                                         : StrL(""));
+            if (source.dump)
+                source.dump(source.data, panel, &out->nodes[child]);
+            VecAppend(out->nodes[ix].children, child);
+            if (tiles) {
+                TileMeta meta;
+                meta.bounds = node->tiles[i].bounds;
+                meta.zIndex = node->tiles[i].zIndex;
+                VecAppend(out->nodes[ix].metas, meta);
+            }
+        }
+    }
+    return ix;
+}
+
+int PaneTree::ToState(const PanelSource& source, DockAreaState* out) const {
+    if (!root || !out) return -1;
+    const PaneNode* persisted = root;
+    // state_convert.rs::persisted_root: the Split wrapper is an in-memory
+    // invariant. Older readers require a bare Tiles center on disk.
+    if (rootKind == RootKind::Split && root->paneKind == PaneKind::Split &&
+        root->children.len == 1 &&
+        root->children[0]->paneKind == PaneKind::Tiles) {
+        persisted = root->children[0];
+    }
+    return PaneNodeToState(persisted, source, out);
+}
 
 void DockAreaState::Clear() {
     for (int i = 0; i < nodes.len; i++) {
