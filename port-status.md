@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `699936e4af37829e22b7a0d854515623aa3e9734`
-(2026-09-06, button: expose preferred tooltip placement (#2971)). `Button::TooltipPlacement(Placement)` prefers a side for the button's tooltip; the side rides with `El::Tip` through the hit rect into the tooltip request (`El::TipPlacement`, `TooltipRequestShow`'s placement), and the positioner still flips and clamps when it does not fit. Omitting it keeps automatic positioning. The tooltip story prefers left, bottom and right for its three buttons.
+Processed through `bd4a9c0aa3bd6ff3901272459b3c53e9e5427d03`
+(2026-09-06, ci: enable weekly gpui-pre releases (#2982)). This and 783ff2ae before it are the repository's own paperwork — CONTRIBUTING.md welcomes AI-assisted contributions, and the gpui-pre release workflow runs weekly — and touch no crate, so only the pin moves.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
