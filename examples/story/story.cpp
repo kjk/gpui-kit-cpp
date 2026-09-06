@@ -198,7 +198,7 @@ static const StoryInfo kMeta[StoryCount] = {
      "Panels that float over an area, each moved by its bar and resized by "
      "its edges."},
     {"toggle", "Toggle", "Turn an option on or off, alone or in a group."},
-    {"tooltip", "Tooltip", "Describe a control on hover or keyboard focus."},
+    {"tooltip", "Tooltip", "Describe a control on hover."},
     // TreeStory has no description() in Rust, so its page has no line under
     // the title.
     {"tree", "Tree", nullptr},

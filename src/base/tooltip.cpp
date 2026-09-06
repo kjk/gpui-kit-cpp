@@ -278,7 +278,8 @@ static Ctx TooltipContext(Window* win) {
     return cx;
 }
 
-void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds) {
+void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
+                        int placement) {
     TooltipOverlay* overlay = TooltipGet(win);
     if (!overlay) {
         return;
@@ -295,6 +296,12 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds) {
     }
     Ctx cx = TooltipContext(win);
     TooltipRequest request = TooltipRequest::Text(triggerBounds, text);
+    // managed_tooltip_with_placement: `Some(placement)` is the trigger's
+    // preferred side, `None` leaves the overlay's own placement.
+    if (placement >= (int)gpui::Placement::Top &&
+        placement <= (int)gpui::Placement::Right) {
+        request.Placement((gpui::Placement)placement);
+    }
     overlay->RequestShow(request, win, &cx);
 }
 

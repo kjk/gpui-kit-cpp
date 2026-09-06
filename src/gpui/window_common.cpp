@@ -1612,6 +1612,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         const HitRect* now = HitRectById(win, id);
         Str tip = now ? now->tooltip : Str{};
         Bounds tipAt = now ? now->bounds : Bounds{};
+        int tipPlacement = now ? now->tooltipPlacement : -1;
         WindowHoverChanged(win, win->hoverId, id);
         win->hoverId = id;
         // El::Tip is a tooltip trigger. Rust's triggers call request_show and
@@ -1619,7 +1620,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         // that happens here, since the trigger is a style flag rather than an
         // element that could carry handlers of its own.
         if (tip.s) {
-            TooltipRequestShow(win, tip, tipAt);
+            TooltipRequestShow(win, tip, tipAt, tipPlacement);
         } else {
             TooltipRequestHide(win);
         }

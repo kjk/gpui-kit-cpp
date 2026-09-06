@@ -1548,9 +1548,17 @@ struct Style {
     // which is El::FocusRing(true) here. Turning it off drops the tinted
     // border along with the outside ring.
     bool focusRing = false;
+    // El::TipPlacement: the side the tooltip prefers, as Placement's ordinal
+    // like positionerPlacement above, or -1 to leave the overlay to place it.
+    // The side is a preference: the positioner still flips and clamps when
+    // space is short.
+    int8_t tooltipPlacement = -1;
 };
 
-static_assert(sizeof(Style) <= 408, "keep Style members packed by alignment");
+// 408 was full to the byte; tooltipPlacement opened the next 8-byte unit, so
+// the next seven byte-sized members are free. Grow this only for a member
+// that has nowhere else to go, never to absorb padding.
+static_assert(sizeof(Style) <= 416, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
 // chained off an element costs a pointer each and dies with the frame.
@@ -2516,6 +2524,9 @@ struct El {
     El* FocusRing(bool v = true);
     El* TrapId(int v);
     El* Tip(Str s);
+    // managed_tooltip_with_placement's preferred side, as the value of base's
+    // `Placement`; see Style::tooltipPlacement. Does nothing without a Tip.
+    El* TipPlacement(int placement);
     El* Id(Str s);
 };
 
@@ -2584,6 +2595,7 @@ struct HitRect {
     // El::Tip. The overlay reads it when the pointer arrives, so it has to
     // survive the hit test rather than only the paint that drew it.
     Str tooltip = {};
+    int8_t tooltipPlacement = -1;
     SliderState* slider = nullptr;
     Axis sliderAxis = Axis::Horizontal;
     InputState* input = nullptr;

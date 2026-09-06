@@ -2151,6 +2151,11 @@ El* El::Tip(Str s) {
     style.tooltip = s;
     return this;
 }
+El* El::TipPlacement(int placement) {
+    style.tooltipPlacement =
+        placement >= 0 && placement <= 3 ? (int8_t)placement : (int8_t)-1;
+    return this;
+}
 El* El::Id(Str s) {
     id = s;
     return this;
@@ -5714,6 +5719,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onHover = e->onHover;
         hr.onMouseMove = e->onMouseMove;
         hr.tooltip = e->style.tooltip;
+        hr.tooltipPlacement = e->style.tooltipPlacement;
         hr.onMouseDown = e->onMouseDown;
         hr.onMouseUp = e->onMouseUp;
         hr.mouseDownPhase = e->mouseDownPhase;

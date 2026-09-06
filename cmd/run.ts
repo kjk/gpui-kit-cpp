@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "21e802b88fda778fafee02df8945ad1d7e10cc4e",
+  sha: "699936e4af37829e22b7a0d854515623aa3e9734",
   date: "2026-09-06",
-  subject: "dialog: make the close button accessible (#2969)",
+  subject: "button: expose preferred tooltip placement (#2971)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

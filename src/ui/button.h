@@ -155,6 +155,8 @@ struct Button {
     bool hasCustom = false;
     Rgba custom = {};
     Str tooltip = {};
+    // tooltip_placement: Rust's `Option<Placement>`, -1 for None.
+    int8_t tooltipPlacement = -1;
     Str accessibilityLabel = {};
     Str accessibilityId = {};
     AccessibilityRole accessibilityRole = AccessibilityRole::None;
@@ -231,6 +233,10 @@ struct Button {
     Button* TabStop(bool v);
     Button* FocusRing(bool v);
     Button* Tooltip(Str s);
+    // tooltip_placement: prefer a side for the tooltip, falling back when it
+    // does not fit. Applies to `Tooltip`; omitting it keeps automatic
+    // positioning, and setting it without tooltip content does nothing.
+    Button* TooltipPlacement(gpui::Placement placement);
     Button* AccessibilityLabel(Str s);
     Button* AccessibilityId(Str s);
     Button* Role(AccessibilityRole role);

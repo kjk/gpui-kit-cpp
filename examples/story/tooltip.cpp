@@ -15,21 +15,25 @@ El* TooltipStory::Render(TooltipStory* self, Ctx* cx) {
     El* page = Div(a)->FlexCol()->Gap(12)->W(kFill);
 
     El* btn = StorySection(cx, "Button",
-                           "Add plain text or a keyboard shortcut hint.");
+                           "Prefer the left, bottom, or right side, with an "
+                           "optional keyboard shortcut hint.");
     El* btnRow = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Wrap();
     btnRow->Child(component::Button::New(cx, StrL("btn0"))
                       ->Label(StrL("Search"))
                       ->Primary()
                       ->Tooltip(StrL("This is a search Button."))
+                      ->TooltipPlacement(Placement::Left)
                       ->IntoEl());
     btnRow->Child(component::Button::New(cx, StrL("btn1"))
                       ->Label(StrL("Info"))
                       ->Tooltip(StrL("This is a tooltip with Action for "
                                      "display keybinding."))
+                      ->TooltipPlacement(Placement::Bottom)
                       ->IntoEl());
-    btnRow->Child(component::Button::New(cx, StrL("btn3"))
+    btnRow->Child(component::Button::New(cx, StrL("btn2"))
                       ->Label(StrL("Hover me"))
-                      ->Tooltip(StrL("This is tooltip 3"))
+                      ->Tooltip(StrL("This tooltip prefers the right side."))
+                      ->TooltipPlacement(Placement::Right)
                       ->IntoEl());
     StorySectionAdd(btn, btnRow);
     page->Child(btn);

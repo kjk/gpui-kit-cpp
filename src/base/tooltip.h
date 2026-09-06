@@ -101,7 +101,11 @@ struct TooltipPositioner {
 
 // Runtime convenience driven by El::Tip hover state. It uses the same source
 // overlay and merely supplies a themed text builder for the common case.
-void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds);
+// `placement` is the trigger's preferred side as the value of `Placement`,
+// or -1 for none — El::TipPlacement's spelling, since the trigger is a style
+// flag below this header. managed_tooltip_with_placement's `Option`.
+void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
+                        int placement = -1);
 void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
 const TooltipOverlay* TooltipShowing(Window* win);

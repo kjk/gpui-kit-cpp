@@ -344,6 +344,10 @@ Button* Button::Tooltip(Str s) {
     tooltip = s;
     return this;
 }
+Button* Button::TooltipPlacement(gpui::Placement placement) {
+    tooltipPlacement = (int8_t)placement;
+    return this;
+}
 Button* Button::AccessibilityLabel(Str s) {
     accessibilityLabel = s;
     return this;
@@ -799,6 +803,9 @@ El* Button::IntoEl() {
     }
     if (tooltip.s) {
         e->Tip(tooltip);
+        if (tooltipPlacement >= 0) {
+            e->TipPlacement(tooltipPlacement);
+        }
     }
     // button.rs fades the whole button while it loads rather than dimming its
     // colours one by one, and says why: Ghost, Link and Text have no

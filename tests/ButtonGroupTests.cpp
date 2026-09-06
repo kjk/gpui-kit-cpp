@@ -245,6 +245,25 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
     utassert(spinner->Loading(true)->WithSize(UiSize::Small)->IntoEl());
     utassert(progress->Loading(true)->Size(18)->IntoEl());
 
+    // tooltip_placement (699936e4): a preferred side rides with the tip so
+    // the overlay can honour it; omitting it keeps automatic positioning, and
+    // setting it without tooltip content does nothing.
+    El* placed = component::Button::New(&cx, StrL("placed"))
+                     ->Label(StrL("Search"))
+                     ->Tooltip(StrL("Find a document"))
+                     ->TooltipPlacement(Placement::Left)
+                     ->IntoEl();
+    utassert(StrEq(placed->style.tooltip, StrL("Find a document")));
+    utassert(placed->style.tooltipPlacement == (int8_t)Placement::Left);
+    El* automatic = component::Button::New(&cx, StrL("auto"))
+                        ->Tooltip(StrL("Anywhere"))
+                        ->IntoEl();
+    utassert(automatic->style.tooltipPlacement == -1);
+    El* noTip = component::Button::New(&cx, StrL("no-tip"))
+                    ->TooltipPlacement(Placement::Right)
+                    ->IntoEl();
+    utassert(!noTip->style.tooltip.s && noTip->style.tooltipPlacement == -1);
+
     WindowKeyedFree(win);
     delete win;
     ArenaDelete(arena);
