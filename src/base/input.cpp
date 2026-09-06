@@ -2468,6 +2468,145 @@ void InputAddCursorAt(InputState* s, App* app, Window* win, int offset) {
     Notify(app, win);
 }
 
+// The soft-wrapped rows of one line as byte offsets into it — the
+// `wrapped_lines` of text_wrapper.rs, where row k is [starts[k], starts[k+1])
+// and the last row runs to the end of the line. Read back off the shaped run:
+// the left edge of each visual row hit-tests to the row's first byte. Returns
+// the row count, 0 when there was nothing to measure against.
+static int WrappedRowStarts(const InputState* s, PaintCtx* ctx, Str line,
+                            Arena* a, int** outStarts) {
+    float maxW = s->lastBounds.w;
+    float font = s->lastFont;
+    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    float lineMult = lineH / font;
+    float endX = 0, endY = 0, endH = 0;
+    if (!TextPointAt(ctx, line, font, maxW, true, line.len, &endX, &endY, &endH,
+                     s->lastMono, lineMult, true)) {
+        return 0;
+    }
+    float rowH = endH > 0 ? endH : lineH;
+    int rows = (int)(endY / rowH + 0.5f) + 1;
+    if (rows < 1) {
+        rows = 1;
+    }
+    int* starts = (int*)Alloc(a, rows * (int)sizeof(int));
+    starts[0] = 0;
+    for (int k = 1; k < rows; k++) {
+        int at = TextIndexAt(ctx, line, font, maxW, true, 0,
+                             ((float)k + 0.5f) * rowH, s->lastMono, lineMult);
+        starts[k] = at > starts[k - 1] ? at : starts[k - 1];
+    }
+    *outStarts = starts;
+    return rows;
+}
+
+// offset_to_wrap_display_point, without affinity: the row of the line the
+// offset falls in and its byte column within that row. An offset on a soft
+// wrap boundary opens the next row.
+struct WrapPoint {
+    int line = 0;
+    int row = 0;
+    int column = 0;
+};
+
+static bool WrapPointAt(const InputState* s, PaintCtx* ctx, Str t, int offset,
+                        Arena* a, WrapPoint* out) {
+    RopePoint p = RopeOffsetToPoint(t, offset);
+    Str line = RopeSliceLine(t, p.row);
+    int* starts = nullptr;
+    int rows = WrappedRowStarts(s, ctx, line, a, &starts);
+    if (rows == 0) {
+        return false;
+    }
+    int local = offset - RopeLineStartOffset(t, p.row);
+    int k = rows - 1;
+    while (k > 0 && starts[k] > local) {
+        k--;
+    }
+    out->line = p.row;
+    out->row = k;
+    out->column = local - starts[k];
+    return true;
+}
+
+// The paint context a display-row walk measures against, or null when the
+// field is not soft-wrapping or has not been laid out yet.
+static PaintCtx* DisplayCtx(const InputState* s, Window* win) {
+    if (!win || !s->softWrap) {
+        return nullptr;
+    }
+    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    if (s->lastBounds.w <= 0 || s->lastFont <= 0 || lineH <= 0) {
+        return nullptr;
+    }
+    return &win->paint;
+}
+
+// build_columnar_selection over wrap display rows: one selection per visual
+// row between the two offsets, at the same byte columns within each row,
+// clipped to a short row (display_row_column_to_offset). Rows a closed fold
+// hides are skipped. False when the run could not be measured.
+static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
+                                int lo, int hi, Arena* a,
+                                CursorSelection** outSels, int* outN) {
+    WrapPoint ps, pe;
+    if (!WrapPointAt(s, ctx, t, lo, a, &ps) ||
+        !WrapPointAt(s, ctx, t, hi, a, &pe)) {
+        return false;
+    }
+    int col0 = ps.column <= pe.column ? ps.column : pe.column;
+    int col1 = ps.column <= pe.column ? pe.column : ps.column;
+    bool folding = LayoutModeIsFolding(s->mode);
+    // The rows of every line spanned, measured once.
+    int nLines = pe.line - ps.line + 1;
+    auto* lineStarts = (int**)Alloc(a, nLines * (int)sizeof(int*));
+    int* lineRows = (int*)Alloc(a, nLines * (int)sizeof(int));
+    int cap = 0;
+    for (int i = 0; i < nLines; i++) {
+        lineStarts[i] = nullptr;
+        lineRows[i] = 0;
+        if (folding && FoldMapLineHidden(&s->folds, ps.line + i)) {
+            continue;
+        }
+        Str text = RopeSliceLine(t, ps.line + i);
+        lineRows[i] = WrappedRowStarts(s, ctx, text, a, &lineStarts[i]);
+        if (lineRows[i] == 0) {
+            return false;
+        }
+        cap += lineRows[i];
+    }
+    auto* sels = (CursorSelection*)Alloc(a, cap * (int)sizeof(CursorSelection));
+    int m = 0;
+    for (int i = 0; i < nLines; i++) {
+        int rows = lineRows[i];
+        if (rows == 0) {
+            continue;
+        }
+        int line = ps.line + i;
+        Str text = RopeSliceLine(t, line);
+        int lineStart = RopeLineStartOffset(t, line);
+        int* starts = lineStarts[i];
+        int kFrom = line == ps.line ? ps.row : 0;
+        int kTo = line == pe.line ? pe.row : rows - 1;
+        if (kTo > rows - 1) {
+            kTo = rows - 1;
+        }
+        for (int k = kFrom; k <= kTo; k++) {
+            int rs = starts[k];
+            int re = k + 1 < rows ? starts[k + 1] : text.len;
+            int a0 = lineStart + (rs + col0 < re ? rs + col0 : re);
+            int a1 = lineStart + (rs + col1 < re ? rs + col1 : re);
+            CursorSelection c;
+            c.range = Selection{RopeClipOffset(t, a0, Bias::Left),
+                                RopeClipOffset(t, a1, Bias::Left)};
+            sels[m++] = c;
+        }
+    }
+    *outSels = sels;
+    *outN = m;
+    return true;
+}
+
 void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
                                  int startOffset, int endOffset) {
     if (!InputIsMultiLine(s)) {
@@ -2483,32 +2622,37 @@ void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
     if (hi > t.len) {
         hi = t.len;
     }
-    RopePoint ps = RopeOffsetToPoint(t, lo);
-    RopePoint pe = RopeOffsetToPoint(t, hi);
-    int col0 = ps.column <= pe.column ? ps.column : pe.column;
-    int col1 = ps.column <= pe.column ? pe.column : ps.column;
-    // Rows are document rows here: Rust walks wrap display rows, and a line
-    // this port soft-wraps is still one row to the block.
-    bool folding = LayoutModeIsFolding(s->mode);
     Arena* a = GetTempArena();
-    int rows = pe.row - ps.row + 1;
-    auto* sels =
-        (CursorSelection*)Alloc(a, rows * (int)sizeof(CursorSelection));
+    CursorSelection* sels = nullptr;
     int m = 0;
-    for (int row = ps.row; row <= pe.row; row++) {
-        if (folding && FoldMapLineHidden(&s->folds, row)) {
-            continue;
+    PaintCtx* ctx = DisplayCtx(s, win);
+    if (!ctx || !ColumnarRowsDisplay(s, ctx, t, lo, hi, a, &sels, &m)) {
+        // Nothing laid out to measure against: document rows, which are the
+        // wrap rows of a field that does not wrap.
+        RopePoint ps = RopeOffsetToPoint(t, lo);
+        RopePoint pe = RopeOffsetToPoint(t, hi);
+        int col0 = ps.column <= pe.column ? ps.column : pe.column;
+        int col1 = ps.column <= pe.column ? pe.column : ps.column;
+        bool folding = LayoutModeIsFolding(s->mode);
+        int rows = pe.row - ps.row + 1;
+        sels = (CursorSelection*)Alloc(a, rows * (int)sizeof(CursorSelection));
+        m = 0;
+        for (int row = ps.row; row <= pe.row; row++) {
+            if (folding && FoldMapLineHidden(&s->folds, row)) {
+                continue;
+            }
+            int lineStart = RopeLineStartOffset(t, row);
+            int lineLen = RopeLineLen(t, row);
+            int a0 = lineStart + (col0 < lineLen ? col0 : lineLen);
+            int a1 = lineStart + (col1 < lineLen ? col1 : lineLen);
+            CursorSelection c;
+            c.range = Selection{RopeClipOffset(t, a0, Bias::Left),
+                                RopeClipOffset(t, a1, Bias::Left)};
+            sels[m++] = c;
         }
-        int lineStart = RopeLineStartOffset(t, row);
-        int lineLen = RopeLineLen(t, row);
-        int a0 = lineStart + (col0 < lineLen ? col0 : lineLen);
-        int a1 = lineStart + (col1 < lineLen ? col1 : lineLen);
-        CursorSelection c;
-        c.range = Selection{RopeClipOffset(t, a0, Bias::Left),
-                            RopeClipOffset(t, a1, Bias::Left)};
-        sels[m++] = c;
     }
     if (m == 0) {
+        sels = (CursorSelection*)Alloc(a, (int)sizeof(CursorSelection));
         CursorSelection c;
         c.range = SelectionAt(hi);
         sels[m++] = c;
@@ -4570,6 +4714,7 @@ static void AddCursorVertical(InputState* s, App* app, Window* win, int lines) {
     Arena* a = GetTempArena();
     int n = 0;
     CursorSelection* all = AllCursors(a, s, &n);
+    int newest = -1;
     for (int i = 0; i < n; i++) {
         const CursorSelection& c = all[i];
         int off = c.Cursor();
@@ -4584,6 +4729,11 @@ static void AddCursorVertical(InputState* s, App* app, Window* win, int lines) {
         added.preferredColumn = to.preferredColumn;
         added.preferredX = to.preferredX;
         VecAppend(s->extraCursors, added);
+        newest = to.offset;
+    }
+    // scroll_to the caret added last, so the row it went to comes into view.
+    if (newest >= 0) {
+        InputScrollToOffset(s, newest, InputMoveDir::None);
     }
     Notify(app, win);
 }
@@ -4786,180 +4936,212 @@ static Str TabIndent(const InputState* s) {
     return tab;
 }
 
-// start_of_line_of_selection: where the line the selection begins on starts.
-static int StartOfLineOfSelection(const InputState* s) {
-    if (InputIsSingleLine(s)) {
-        return 0;
-    }
-    Str t = InputValue(s);
-    Selection r = s->selectedRange;
-    int off = r.start < r.end ? r.start : r.end;
-    return RopeLineStartOffset(t, RopeOffsetToPoint(t, off).row);
-}
-
-// The bytes of the line starting at `at` in `text`, up to the next newline
-// or the end. The \r of a CRLF pair counts as part of the line, the way
-// Rust's split('\n') leaves it there.
-static int LineLenAt(Str text, int at) {
-    int i = at;
-    while (i < text.len && text.s[i] != '\n') {
-        i++;
-    }
-    return i - at;
-}
-
 // A field that has nothing to indent returns false, which is cx.propagate().
 static bool IndentReady(const InputState* s) {
     return InputIsMultiLine(s) && ModeIsIndentable(s);
 }
 
-// indent(). With a selection every line it touches is pushed over by one tab.
-// With none, the inline variant puts one tab in at the caret and the block
-// variant puts it at the start of the caret's line. Rust walks the lines one
-// replace_text_in_range each and Rust's history brackets them; ours records a
-// change per call and merges an open bracket first-old-to-last-new, which is
-// right for an IME composition and wrong for edits at growing offsets — so
-// the whole span is rewritten in one edit instead, which is also one undo
-// step and one Change event.
-static bool DoIndent(InputState* s, App* app, Window* win, bool block) {
-    if (!IndentReady(s)) {
+enum class IndentDirection {
+    Indent,
+    Outdent
+};
+
+// Whether the line starting at `lineStart` begins with the tab.
+static bool LineHasTab(Str t, int lineStart, Str tab) {
+    return t.len - lineStart >= tab.len &&
+           StrEq(Str(t.s + lineStart, tab.len), tab);
+}
+
+static int CountEditsWithStartAtOrBefore(const Selection* edits, int n,
+                                         int offset) {
+    int c = 0;
+    for (int i = 0; i < n; i++) {
+        if (edits[i].start <= offset) {
+            c++;
+        }
+    }
+    return c;
+}
+
+// compute_block_indent: one edit at the start of every line any selection
+// touches, and each selection's ends mapped through the edits before them —
+// all of them, other cursors' included. A point inside indentation an outdent
+// removes stays on its line.
+static void ComputeBlockIndent(Arena* a, const InputState* s,
+                               IndentDirection dir, Str tab,
+                               const CursorSelection* sels, int n,
+                               Selection** outEdits, int* nEdits,
+                               CursorSelection** outSels) {
+    Str t = InputValue(s);
+    int cap = 0;
+    for (int i = 0; i < n; i++) {
+        cap += RopeOffsetToPoint(t, sels[i].range.end).row -
+               RopeOffsetToPoint(t, sels[i].range.start).row + 1;
+    }
+    int* rows = (int*)Alloc(a, cap * (int)sizeof(int));
+    int nRows = 0;
+    for (int i = 0; i < n; i++) {
+        int r0 = RopeOffsetToPoint(t, sels[i].range.start).row;
+        int r1 = RopeOffsetToPoint(t, sels[i].range.end).row;
+        for (int r = r0; r <= r1; r++) {
+            // Sorted and unique as it fills, the set Rust sorts afterwards.
+            int j = nRows;
+            while (j > 0 && rows[j - 1] > r) {
+                j--;
+            }
+            if (j > 0 && rows[j - 1] == r) {
+                continue;
+            }
+            memmove(rows + j + 1, rows + j, (size_t)(nRows - j) * sizeof(int));
+            rows[j] = r;
+            nRows++;
+        }
+    }
+    auto* edits = (Selection*)Alloc(a, nRows * (int)sizeof(Selection));
+    int m = 0;
+    for (int k = 0; k < nRows; k++) {
+        int lineStart = RopeLineStartOffset(t, rows[k]);
+        if (dir == IndentDirection::Indent) {
+            edits[m++] = Selection{lineStart, lineStart};
+        } else if (LineHasTab(t, lineStart, tab)) {
+            edits[m++] = Selection{lineStart, lineStart + tab.len};
+        }
+    }
+    auto mapOffset = [&](int offset) {
+        if (dir == IndentDirection::Indent) {
+            return offset +
+                   CountEditsWithStartAtOrBefore(edits, m, offset) * tab.len;
+        }
+        int preceding = 0;
+        while (preceding < m && edits[preceding].end <= offset) {
+            preceding++;
+        }
+        int partial = 0;
+        if (preceding < m && offset > edits[preceding].start) {
+            partial = offset - edits[preceding].start;
+        }
+        return offset - preceding * tab.len - partial;
+    };
+    auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    for (int i = 0; i < n; i++) {
+        out[i] = sels[i];
+        out[i].range.start = mapOffset(sels[i].range.start);
+        out[i].range.end = mapOffset(sels[i].range.end);
+        out[i].preferredColumn = -1;
+        out[i].preferredX = -1;
+    }
+    *outEdits = edits;
+    *nEdits = m;
+    *outSels = out;
+}
+
+// compute_inline_indent: a tab at each collapsed caret, or the tab off the
+// front of each caret's line if it has one. An edit that would overlap an
+// earlier one is dropped; every caret then moves by the surviving edits at
+// or before it, so one whose own edit was dropped stays where it is.
+static void ComputeInlineIndent(Arena* a, const InputState* s,
+                                IndentDirection dir, Str tab,
+                                const CursorSelection* sels, int n,
+                                Selection** outEdits, int* nEdits,
+                                CursorSelection** outSels) {
+    Str t = InputValue(s);
+    auto* ranges = (Selection*)Alloc(a, n * (int)sizeof(Selection));
+    int nRanges = 0;
+    for (int i = 0; i < n; i++) {
+        int cursor = sels[i].Cursor();
+        Selection r;
+        if (dir == IndentDirection::Indent) {
+            r = Selection{cursor, cursor};
+        } else {
+            int start =
+                RopeLineStartOffset(t, RopeOffsetToPoint(t, cursor).row);
+            if (!LineHasTab(t, start, tab)) {
+                continue;
+            }
+            r = Selection{start, start + tab.len};
+        }
+        int j = nRanges;
+        while (j > 0 && ranges[j - 1].start > r.start) {
+            ranges[j] = ranges[j - 1];
+            j--;
+        }
+        ranges[j] = r;
+        nRanges++;
+    }
+    auto* edits = (Selection*)Alloc(a, n * (int)sizeof(Selection));
+    int m = 0;
+    int lastEnd = -1;
+    for (int i = 0; i < nRanges; i++) {
+        if (lastEnd >= 0 && ranges[i].start < lastEnd) {
+            continue;
+        }
+        lastEnd = ranges[i].end;
+        edits[m++] = ranges[i];
+    }
+    auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    for (int i = 0; i < n; i++) {
+        int cursor = sels[i].Cursor();
+        int at = cursor;
+        if (dir == IndentDirection::Indent) {
+            at += CountEditsWithStartAtOrBefore(edits, m, cursor) * tab.len;
+        } else {
+            int removed = 0;
+            for (int k = 0; k < m; k++) {
+                int e = edits[k].end < cursor ? edits[k].end : cursor;
+                int b = edits[k].start < cursor ? edits[k].start : cursor;
+                removed += e - b;
+            }
+            at -= removed;
+        }
+        out[i] = CursorSelection{};
+        out[i].range = SelectionAt(at);
+    }
+    *outEdits = edits;
+    *nEdits = m;
+    *outSels = out;
+}
+
+// apply_indent: an indent or outdent across every cursor as one batch edit,
+// which keeps it a single undo step that puts every cursor back. A selection
+// anywhere, or the block pair, moves whole lines; collapsed carets with the
+// inline pair get the tab where they stand. A field with nothing to indent
+// returns false, which is cx.propagate().
+static bool ApplyIndent(InputState* s, App* app, Window* win,
+                        IndentDirection dir, bool block) {
+    if (!InputIsEditable(s) || !IndentReady(s)) {
         return false;
     }
     Str tab = TabIndent(s);
-    Selection sel = s->selectedRange;
-    bool isSelected = !sel.IsEmpty();
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* before = AllCursors(a, s, &n);
+    bool useBlock = block;
+    for (int i = 0; i < n; i++) {
+        useBlock = useBlock || !before[i].IsEmpty();
+    }
+    Selection* edits = nullptr;
+    int nEdits = 0;
+    CursorSelection* after = nullptr;
+    if (useBlock) {
+        ComputeBlockIndent(a, s, dir, tab, before, n, &edits, &nEdits, &after);
+    } else {
+        ComputeInlineIndent(a, s, dir, tab, before, n, &edits, &nEdits, &after);
+    }
+    if (nEdits == 0) {
+        return true;
+    }
+    auto* texts = (Str*)Alloc(a, nEdits * (int)sizeof(Str));
+    for (int i = 0; i < nEdits; i++) {
+        texts[i] = dir == IndentDirection::Indent ? tab : Str{};
+    }
+    UndoBeginTransaction(&s->undo);
     s->undo.hasPendingIntent = true;
     s->undo.pendingIntent = EditIntent::Atomic;
-    if (!isSelected && !block && s->extraCursors.len > 0) {
-        // compute_inline_indent with several carets: a tab at each of them,
-        // which is the multi-cursor insert. A block indent, or one with a
-        // selection, keeps only the active cursor here where Rust indents
-        // every cursor's lines.
-        bool allCollapsed = true;
-        for (int i = 0; i < s->extraCursors.len; i++) {
-            allCollapsed = allCollapsed && s->extraCursors[i].IsEmpty();
-        }
-        if (allCollapsed) {
-            InputReplaceTextInRange(s, app, win, nullptr, tab);
-            PauseBlink(s, app, win);
-            return true;
-        }
-    }
-    if (!isSelected && !block) {
-        Selection at = SelectionAt(sel.start);
-        InputReplaceTextInRange(s, app, win, &at, tab);
-        s->selectedRange = SelectionAt(sel.start + tab.len);
-        s->selectionReversed = false;
-        PauseBlink(s, app, win);
-        return true;
-    }
-    // The lines the selection touches, from the start of the first one, each
-    // with a tab in front of it. With no selection that span is the caret's
-    // own line back to its start, which is where the block variant puts the
-    // tab whatever column the caret is in.
-    int startOffset = StartOfLineOfSelection(s);
-    Str before = InputValue(s);
-    Str src = Str(before.s + startOffset, sel.end - startOffset);
-    int nLines = 1;
-    for (int i = 0; i < src.len; i++) {
-        if (src.s[i] == '\n') {
-            nLines++;
-        }
-    }
-    int added = tab.len * nLines;
-    Str out = AllocStrTemp(src.len + added);
-    int w = 0;
-    int i = 0;
-    for (;;) {
-        int lineLen = LineLenAt(src, i);
-        memcpy(out.s + w, tab.s, (size_t)tab.len);
-        w += tab.len;
-        memcpy(out.s + w, src.s + i, (size_t)lineLen);
-        w += lineLen;
-        i += lineLen;
-        if (i >= src.len) {
-            break;
-        }
-        out.s[w++] = '\n';
-        i++;
-    }
-    Selection r = {startOffset, sel.end};
-    InputReplaceTextInRange(s, app, win, &r, out);
-    // A selection keeps the lines it grew to cover; a bare caret rides along
-    // with the text it sits in.
-    s->selectedRange = isSelected
-                           ? Selection{startOffset, sel.end + added}
-                           : Selection{sel.start + added, sel.end + added};
-    s->selectionReversed = false;
-    PauseBlink(s, app, win);
-    Notify(app, win);
-    return true;
-}
-
-static int SatSub(int a, int b) {
-    return a > b ? a - b : 0;
-}
-
-// outdent(). One tab comes off the front of every line that has one; a line
-// that does not is left alone. Same one-edit shape as DoIndent. There is no
-// block variant of it to write: Rust's two differ only in where an unselected
-// indent starts, and outdent starts at the line either way.
-static bool DoOutdent(InputState* s, App* app, Window* win) {
-    if (!IndentReady(s)) {
-        return false;
-    }
-    Str tab = TabIndent(s);
-    Selection sel = s->selectedRange;
-    Str before = InputValue(s);
-    s->undo.hasPendingIntent = true;
-    s->undo.pendingIntent = EditIntent::Atomic;
-    if (sel.IsEmpty()) {
-        // The caret's own line, whichever column the caret sits in.
-        int offset = StartOfLineOfSelection(s);
-        if (before.len - offset < tab.len ||
-            !StrEq(Str(before.s + offset, tab.len), tab)) {
-            s->undo.hasPendingIntent = false;
-            return true;
-        }
-        Selection r = {offset, offset + tab.len};
-        InputReplaceTextInRange(s, app, win, &r, Str{});
-        s->selectedRange = SelectionAt(SatSub(sel.start, tab.len));
-        s->selectionReversed = false;
-        PauseBlink(s, app, win);
-        return true;
-    }
-    int startOffset = StartOfLineOfSelection(s);
-    Str src = Str(before.s + startOffset, sel.end - startOffset);
-    Str out = AllocStrTemp(src.len);
-    int removed = 0;
-    int w = 0;
-    int i = 0;
-    for (;;) {
-        int lineLen = LineLenAt(src, i);
-        int skip = 0;
-        if (lineLen >= tab.len && StrEq(Str(src.s + i, tab.len), tab)) {
-            skip = tab.len;
-            removed += tab.len;
-        }
-        memcpy(out.s + w, src.s + i + skip, (size_t)(lineLen - skip));
-        w += lineLen - skip;
-        i += lineLen;
-        if (i >= src.len) {
-            break;
-        }
-        out.s[w++] = '\n';
-        i++;
-    }
-    if (removed == 0) {
-        s->undo.hasPendingIntent = false;
-        return true;
-    }
-    out.len = w;
-    out.s[w] = 0;
-    Selection r = {startOffset, sel.end};
-    InputReplaceTextInRange(s, app, win, &r, out);
-    s->selectedRange = Selection{startOffset, SatSub(sel.end, removed)};
-    s->selectionReversed = false;
+    InputReplaceTextInRanges(s, app, win, edits, texts, nEdits);
+    SetAllCursors(s, after, n);
+    UndoRecordSelections(&s->undo, before, n, after, n);
+    UndoCommitTransaction(&s->undo);
+    InputScrollToCursor(s, InputMoveDir::None);
     PauseBlink(s, app, win);
     Notify(app, win);
     return true;
@@ -5239,12 +5421,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             if (InputAcceptInlineCompletion(s, app, win)) {
                 return true;
             }
-            return DoIndent(s, app, win, false);
+            return ApplyIndent(s, app, win, IndentDirection::Indent, false);
         case InputAction::Indent:
-            return DoIndent(s, app, win, true);
+            return ApplyIndent(s, app, win, IndentDirection::Indent, true);
         case InputAction::OutdentInline:
+            return ApplyIndent(s, app, win, IndentDirection::Outdent, false);
         case InputAction::Outdent:
-            return DoOutdent(s, app, win);
+            return ApplyIndent(s, app, win, IndentDirection::Outdent, true);
 
         case InputAction::Escape:
             // Collapse extra cursors back to the active one first.

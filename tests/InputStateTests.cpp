@@ -1357,8 +1357,9 @@ static void TabIndentsOnlyWhereThereIsSomethingToIndent() {
     utassert(ValueIs(s, "one\ntwo"));
 }
 
-// A selection pushes every line it touches over, from the start of its first
-// one, and keeps them selected.
+// A selection pushes every line it touches over, and its ends ride along
+// with the text they sit in (compute_block_indent maps both through the
+// edits before them).
 static void TabIndentsEveryLineOfASelection() {
     InputState s;
     s.kind = InputKind::Textarea;
@@ -1368,12 +1369,13 @@ static void TabIndentsEveryLineOfASelection() {
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
     utassert(ValueIs(s, "    one\n    two\nthree"));
-    utassert(RangeIs(s, 0, 14));
+    utassert(RangeIs(s, 5, 14));
 
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::OutdentInline, false));
     utassert(ValueIs(s, "one\ntwo\nthree"));
-    utassert(RangeIs(s, 0, 6));
+    // And back: the outdent maps the ends the other way, to where they were.
+    utassert(RangeIs(s, 1, 6));
 
     // One undo step per indent, whatever it touched.
     Act(&s, InputAction::Undo);
@@ -1403,7 +1405,7 @@ static void TheBlockPairMovesTheWholeLine() {
     InputSetSelectedRange(&s, nullptr, nullptr, 1, 6);
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Indent, false));
     utassert(ValueIs(s, "    one\n    two"));
-    utassert(RangeIs(s, 0, 14));
+    utassert(RangeIs(s, 5, 14));
 
     // And a single-line field has nothing to indent, whichever pair asks.
     InputState one;
@@ -3198,6 +3200,116 @@ static void AColumnarSelectionIsOneSelectionPerRow() {
     utassert(RangeIs(back, 1, 3));
 }
 
+// test_block_indent_tracks_all_preceding_edits /
+// test_multi_cursor_indent_then_outdent_roundtrips: the block pair indents
+// every cursor's line and the inline pair puts a tab at every caret, each as
+// one undo step that puts every caret back.
+static void IndentMovesEveryCursorsLine() {
+    InputState s;
+    MakeEditor(&s, "ab\ncd\nef");
+    InputMoveTo(&s, nullptr, nullptr, 0);
+    InputAddCursorAt(&s, nullptr, nullptr, 3);
+    InputAddCursorAt(&s, nullptr, nullptr, 6);
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Indent, false));
+    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
+    utassert(RangeIs(s, 4, 4));
+    utassert(ExtraIs(s, 0, 11, 11));
+    utassert(ExtraIs(s, 1, 18, 18));
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Outdent, false));
+    utassert(ValueIs(s, "ab\ncd\nef"));
+    utassert(RangeIs(s, 0, 0));
+    utassert(ExtraIs(s, 0, 3, 3));
+    utassert(ExtraIs(s, 1, 6, 6));
+
+    // The inline pair, the same round trip, one undo step each way.
+    utassert(
+        InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
+    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
+    utassert(ExtraIs(s, 1, 18, 18));
+    utassert(
+        InputPerform(&s, nullptr, nullptr, InputAction::OutdentInline, false));
+    utassert(ValueIs(s, "ab\ncd\nef"));
+    utassert(ExtraIs(s, 1, 6, 6));
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
+    utassert(InputCursorCount(&s) == 3);
+    utassert(ExtraIs(s, 1, 18, 18));
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "ab\ncd\nef"));
+    utassert(InputCursorCount(&s) == 3);
+    utassert(ExtraIs(s, 1, 6, 6));
+
+    // test_inline_outdent_only_removes_line_indentation: a mid-line tab lands
+    // at the caret and the inline outdent does not take it back.
+    InputState mid;
+    MakeEditor(&mid, "12\n12");
+    InputMoveTo(&mid, nullptr, nullptr, 1);
+    InputAddCursorAt(&mid, nullptr, nullptr, 4);
+    Act(&mid, InputAction::IndentInline);
+    utassert(ValueIs(mid, "1    2\n1    2"));
+    utassert(RangeIs(mid, 5, 5));
+    utassert(ExtraIs(mid, 0, 12, 12));
+    Act(&mid, InputAction::OutdentInline);
+    utassert(ValueIs(mid, "1    2\n1    2"));
+
+    // test_block_outdent_clamps_cursor_inside_indent.
+    InputState inside;
+    MakeEditor(&inside, "ab\n    cd");
+    InputMoveTo(&inside, nullptr, nullptr, 5);
+    Act(&inside, InputAction::Outdent);
+    utassert(ValueIs(inside, "ab\ncd"));
+    utassert(RangeIs(inside, 3, 3));
+}
+
+// build_columnar_selection walks wrap display rows: a soft-wrapped line is
+// one row per visual row to the block, at the byte column within each.
+static void AColumnarSelectionFollowsTheWrappedRows() {
+    PaintApp* paint = PaintAppNew();
+    utassert(paint);
+    if (!paint) {
+        return;
+    }
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.pa = paint;
+    InputState s;
+    MakeEditor(&s, "alpha beta gamma delta epsilon\nzeta");
+    s.softWrap = true;
+    const float font = 16.f;
+    const float width = 72.f;
+    s.lastFont = font;
+    s.lastLineH = font * 1.5f;
+    s.lastBounds = {0, 0, width, 400};
+    s.inputBounds = s.lastBounds;
+    // Where the first line breaks, read the way the block reads it.
+    Str line = StrL("alpha beta gamma delta epsilon");
+    int boundary = -1;
+    for (int i = 1; i < line.len; i++) {
+        float ex = 0, ey = 0, eh = 0, nx = 0, ny = 0, nh = 0;
+        if (TextPointAt(&win->paint, line, font, width, true, i, &ex, &ey, &eh,
+                        false, 1.5f, true) &&
+            TextPointAt(&win->paint, line, font, width, true, i, &nx, &ny, &nh,
+                        false, 1.5f, false) &&
+            ey + 0.5f < ny) {
+            boundary = i;
+            break;
+        }
+    }
+    utassert(boundary > 0);
+    if (boundary > 0) {
+        // From column 1 of the first visual row to column 3 of the second:
+        // two selections on the one document line, one per visual row.
+        InputBuildColumnarSelection(&s, &app, win, 1, boundary + 3);
+        utassert(InputCursorCount(&s) == 2);
+        utassert(RangeIs(s, 1, 3));
+        utassert(ExtraIs(s, 0, boundary + 1, boundary + 3));
+    }
+    TextMeasClear(&win->paint);
+    delete win;
+    PaintAppFree(paint);
+}
+
 // replace_text_in_ranges: the paste that hands one line to each cursor, in
 // document order, whichever is active.
 static void RangesAreReplacedHighestFirst() {
@@ -3229,6 +3341,8 @@ void TestInputState() {
     AddCursorBelowKeepsTheColumn();
     MovementFansOutOverEveryCursor();
     AColumnarSelectionIsOneSelectionPerRow();
+    AColumnarSelectionFollowsTheWrappedRows();
+    IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();
