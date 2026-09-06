@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `4a654f45011da1edacb0a2ffa094d901dc97333d`
-(2026-09-04, resizable: Fix panel resizing flickering (#2907)). Resizable groups now adopt measured panel sizes and post a settling notification after container changes, for both keyed and caller-owned state. Mixed fixed/automatic panels retain their measured proportions after resizing and remain stable on subsequent frames.
+Processed through `a1275a956ed0f06316aab4f06aa82bc155a07ab3`
+(2026-09-04, shell: Expose GPUI's list and uniform_list to scripts (#2952)). Scripts import `list` and `uniform_list` from `gpui-kit`; both reach the script through the virtual list's confined item-renderer path and take `on_item_click` / `on_item_secondary_click` unchanged. `uniform_list` measures one row and places every row by it; `list` measures each row it draws plus a 160px overdraw band and keeps the measurements under the list's id. The item budget and the nesting refusal are shared by all four lazy lists, the typings are regenerated, and an item batch's strings now live in the frame arena rather than an arena freed before layout read them.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
@@ -62,14 +62,23 @@ The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
   it.
 - **A repaint rebuilds the whole element tree.** `Notify` picks the right
   windows (see AGENTS.md), but an `El` is arena-allocated per frame, so hover,
-  focus and animation are resolved while the tree is built. Layout *is* kept
+  focus and animation are resolved while the tree is built. Layout _is_ kept
   across frames.
 - **Dialogs, sheets and notifications draw inside their window** — which is
   where Rust draws them too; they are `Root` layers, not windows. Real second
   windows do exist (`StoryOpenWindow`).
 - **Text selection and virtual lists are approximations.** Selection is
   character-accurate through the platform hit-test; the virtual list
-  virtualizes with a spacer rather than GPUI's `v_virtual_list`.
+  virtualizes with a spacer rather than GPUI's `v_virtual_list`. The shell's
+  `list` and `uniform_list` are built the same way rather than on GPUI's
+  `ListState` / `UniformListScrollHandle`: the scroll position is a pixel
+  offset in window keyed state, not a logical (item, offset) pair; the box
+  the rows are chosen for is the one the frame before painted
+  (`WindowLastScrollRect`), so the first frame builds against the window
+  height and settles on the second; and an unmeasured `list` item is taken
+  at the mean of the measured ones. A `Scrollbar` pairs by the same name, but
+  the shared-slot `SharedScroll` enum and its scroll-area-versus-list
+  collision warning have no counterpart, since a scroll id is the pairing.
 - **Icons fall back.** `assets/icons/*.svg` are Lucide's own files; where the
   folder is missing, `DrawIcon`'s stroke sketches cover every `IconName`.
 - **wasm is not a desktop** — one window, `AppRun` never returns, no threads,

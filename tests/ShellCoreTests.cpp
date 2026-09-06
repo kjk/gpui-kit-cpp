@@ -1546,6 +1546,240 @@ static void VirtualListsRenderOneVisibleBatch() {
     AppGlobalClear(&app);
 }
 
+// `list` and `uniform_list`: GPUI's own lazy lists, driven from script — the
+// a_uniform_list_* and a_list_* tests of crates/shell/src/tests/render.rs.
+// Upstream mounts the view in a 200px box and wheels it; here the tree is
+// built, the list's own scroll listener is handed the offset a wheel would
+// have produced, and the tree is built again.
+struct LazyListFixture {
+    App app;
+    Window window;
+    ShellError error = {};
+    ShellRuntime* runtime = nullptr;
+    Entity<ScriptView> view = {};
+    Arena* frame = nullptr;
+    El* root = nullptr;
+
+    explicit LazyListFixture(Str source) {
+        window.app = &app;
+        window.paint.app = &app;
+        window.paint.window = &window;
+        component::Init(&app);
+        runtime = ShellRuntime::New(&app, &error);
+        ViewType* type =
+            runtime ? runtime->LoadSource(StrL("rows.js"), source, &error)
+                    : nullptr;
+        if (type) view = ScriptView::New(&app, runtime, type);
+        ViewTypeRelease(type);
+    }
+
+    ~LazyListFixture() {
+        if (view.IsValid()) EntityDrop(&app, view.id);
+        if (frame) ArenaDelete(frame);
+        if (runtime) runtime->Release();
+        ShellErrorClear(&error);
+        AppGlobalClear(&app);
+    }
+
+    // One frame: the tree, laid out in the 300×400 box the script asks for.
+    El* Draw() {
+        if (frame) ArenaDelete(frame);
+        frame = ArenaNew();
+        root = view.IsValid() ? EntityRender(&app, &window, frame, view.id)
+                              : nullptr;
+        if (root) LayoutEl(&window.paint, root, 0, 0, 300, 400, 14, Rgba{});
+        return root;
+    }
+
+    // v_flex > v_flex(h 200) > the list's scroll box.
+    El* Box() { return root && root->first ? root->first->first : nullptr; }
+    // The rows the box holds, from the first one built.
+    El* Row(int ix) {
+        El* row = Box() && Box()->first ? Box()->first->first : nullptr;
+        for (int i = 0; row && i < ix; i++) row = row->next;
+        return row;
+    }
+
+    // What a wheel notch does: the box's own scroll listener is handed the
+    // offset the window would have clamped to.
+    void ScrollTo(float offset) {
+        El* box = Box();
+        utassert(box && box->onScroll.IsValid());
+        if (!box || !box->onScroll.IsValid()) return;
+        ScrollEvent event = {};
+        event.id = box->scrollId;
+        event.offsetY = offset;
+        ListenerCall(&app, &window, box->onScroll, &event);
+    }
+
+    bool Check(Str script) {
+        return runtime &&
+               runtime->Eval(script, StrL("lazy-list-check.js"), &error);
+    }
+};
+
+static const char kUniformListSource[] =
+    "import { div, View, uniform_list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.uniformRange = [0, 0]; globalThis.uniformClicked = '';\n"
+    "export default class Rows extends View {\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(v_flex().h(200).child(\n"
+    "      uniform_list('rows', 500, (index) => String(index), (range) => {\n"
+    "        globalThis.uniformRange = [range.start, range.end];\n"
+    "        const items = [];\n"
+    "        for (let index = range.start; index < range.end; index++)\n"
+    "          items.push(div().h(20).child('row ' + index));\n"
+    "        return items;\n"
+    "      }).on_item_click((key) => { globalThis.uniformClicked = key; })));\n"
+    "  }\n"
+    "}\n";
+
+// Rows of two heights, so the list has to measure each one: a uniform guess
+// from the first row would place every later row wrong.
+static const char kMeasuredListSource[] =
+    "import { div, View, list } from 'gpui-kit';\n"
+    "import { v_flex } from 'gpui-base';\n"
+    "globalThis.listLo = -1; globalThis.listHi = -1;\n"
+    "globalThis.listClicked = '';\n"
+    "export default class Rows extends View {\n"
+    "  render(cx) {\n"
+    "    return v_flex().w(300).h(400).child(v_flex().h(200).child(\n"
+    "      list('rows', 500, (index) => String(index), (index) => {\n"
+    "        if (globalThis.listLo < 0 || index < globalThis.listLo)\n"
+    "          globalThis.listLo = index;\n"
+    "        if (index > globalThis.listHi) globalThis.listHi = index;\n"
+    "        return div().h(index % 2 === 0 ? 20 : 40).child('row ' + index);\n"
+    "      }).on_item_click((key) => { globalThis.listClicked = key; })));\n"
+    "  }\n"
+    "}\n";
+
+// A 200px box of 20px rows shows about ten of them, and scrolling moves which
+// ten the script is asked for.
+static void AUniformListDescribesOnlyTheVisibleWindowAndFollowsTheScroll() {
+    LazyListFixture f{Str(kUniformListSource)};
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    // An unscrolled list starts at its first item, and a 200px box of 20px
+    // rows shows about ten of five hundred.
+    utassert(f.Check(StrL(
+        "if (globalThis.uniformRange[0] !== 0) throw new Error('start');\n"
+        "if (globalThis.uniformRange[1] < 10 || globalThis.uniformRange[1] > "
+        "13) throw new Error('end ' + globalThis.uniformRange[1]);\n"
+        "globalThis.uniformEnd = globalThis.uniformRange[1];")));
+    // Rows are twenty pixels tall, so the third one covers 40..60.
+    El* third = f.Row(2);
+    utassert(third && third->listener.IsValid());
+    utassertnear(third ? third->y : -1.f, 40.f);
+    utassertnear(third ? third->h : -1.f, 20.f);
+    // Ten rows down. The script has to be asked again, with a different
+    // range: that it is asked at all is the whole of what separates these
+    // components from every other one, and that the range moves is what
+    // makes them lists rather than a window onto the first screenful.
+    f.ScrollTo(200);
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    utassert(f.Check(StrL(
+        "if (globalThis.uniformRange[0] !== 10) throw new Error('scrolled "
+        "start ' + globalThis.uniformRange[0]);\n"
+        "if (globalThis.uniformRange[1] <= globalThis.uniformEnd) throw new "
+        "Error('scrolled end');")));
+    utassert(f.Box() && f.Box()->scrollY == 200.f);
+}
+
+// Rows are twenty pixels tall and the list starts at the top of the window,
+// so the third one covers 40..60 and its stable key is `2`.
+static void AUniformListReportsWhichRowWasClicked() {
+    LazyListFixture f{Str(kUniformListSource)};
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    El* third = f.Row(2);
+    utassert(third && third->listener.IsValid());
+    if (third && third->listener.IsValid()) {
+        ClickEvent click = {};
+        ListenerCall(&f.app, &f.window, third->listener, &click);
+    }
+    utassert(f
+                 .Check(StrL("if (globalThis.uniformClicked !== '2') throw new "
+                             "Error('the click must arrive with the item\\'s "
+                             "stable key: ' + globalThis.uniformClicked)")));
+}
+
+static void AListMeasuresEachItemAndFollowsTheScroll() {
+    LazyListFixture f{Str(kMeasuredListSource)};
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    // 20 + 40 + 20 + 40 + 20 + 40 + 20 fills the 200px box with seven rows,
+    // and the list draws a short band past the fold so it has measured
+    // ground to scroll into. A list that placed every row by the first one's
+    // 20px would put eighteen in the same space.
+    utassert(f.Check(
+        StrL("if (globalThis.listLo !== 0) throw new Error('start');\n"
+             "globalThis.listEnd = globalThis.listHi + 1;\n"
+             "if (globalThis.listEnd < 7 || globalThis.listEnd > 13) throw new "
+             "Error('a 200px box of alternating 20px and 40px rows shows about "
+             "seven plus the overdraw band, not ' + globalThis.listEnd);\n"
+             "globalThis.listLo = -1; globalThis.listHi = -1;")));
+    // Alternating heights: row 0 covers 0..20, row 1 covers 20..60, row 2
+    // covers 60..80.
+    El* third = f.Row(2);
+    utassertnear(third ? third->y : -1.f, 60.f);
+    utassertnear(third ? third->h : -1.f, 20.f);
+    f.ScrollTo(200);
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    utassert(f.Check(
+        StrL("if (globalThis.listHi + 1 <= globalThis.listEnd) throw new "
+             "Error('the window must have moved down the collection: ends at "
+             "' + (globalThis.listHi + 1) + ', was ' + globalThis.listEnd);")));
+    // 200px of alternating rows is seven items; the window starts there, and
+    // the rows before it stand in as one spacer of their height.
+    utassert(f
+                 .Check(StrL("if (globalThis.listLo !== 7) throw new Error('"
+                             "scrolled start ' + globalThis.listLo)")));
+    El* spacer = f.Row(0);
+    utassertnear(spacer ? spacer->h : -1.f, 200.f);
+}
+
+static void AListReportsWhichItemWasClicked() {
+    LazyListFixture f{Str(kMeasuredListSource)};
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    El* third = f.Row(2);
+    utassert(third && third->listener.IsValid());
+    if (third && third->listener.IsValid()) {
+        ClickEvent click = {};
+        ListenerCall(&f.app, &f.window, third->listener, &click);
+    }
+    utassert(f
+                 .Check(StrL("if (globalThis.listClicked !== '2') throw new "
+                             "Error('the click must arrive with the item\\'s "
+                             "stable key: ' + globalThis.listClicked)")));
+}
+
+// One budget covers every lazy list in a render, `list` and `uniform_list`
+// included, and a list cannot be described from inside another's renderer.
+static void LazyListsShareTheItemBudgetAndRefuseNesting() {
+    LazyListFixture f(StrL(
+        "import { div, View, list, uniform_list } from 'gpui-kit';\n"
+        "globalThis.budgetError = ''; globalThis.nestError = '';\n"
+        "export default class Rows extends View {\n"
+        "  render(cx) {\n"
+        "    try {\n"
+        "      div().child(list('a', 600000, i => String(i), () => div()))\n"
+        "        .child(uniform_list('b', 600000, i => String(i), () => []));\n"
+        "    } catch (e) { globalThis.budgetError = String(e.message); }\n"
+        "    return div().h(200).child(uniform_list('c', 3, i => String(i),\n"
+        "      (range, cx) => { const out = [];\n"
+        "        for (let i = range.start; i < range.end; i++) {\n"
+        "          try { list('inner', 1, j => 'j', () => div()); }\n"
+        "          catch (e) { globalThis.nestError = String(e.message); }\n"
+        "          out.push(div().h(20).child('row ' + i)); }\n"
+        "        return out; }));\n"
+        "  }\n"
+        "}\n"));
+    utassert(f.Draw() != nullptr && !f.error.IsSet());
+    utassert(f.Check(StrL(
+        "if (!globalThis.budgetError.includes('lists in one render')) throw "
+        "new Error('budget: ' + globalThis.budgetError);\n"
+        "if (!globalThis.nestError.includes('item renderer')) throw new "
+        "Error('nesting: ' + globalThis.nestError);")));
+}
+
 static void ShellSandboxWithholdsCompilersAndSharedPrototypeWrites() {
     ShellError error = {};
     ShellSetDevelopmentMode(false);
@@ -3749,6 +3983,11 @@ void TestShellCore() {
     NestedScriptViewsRetainUpdateRollbackAndRelease();
     VirtualListsRenderOneVisibleBatch();
     VirtualListRowsReportASecondaryPress();
+    AUniformListDescribesOnlyTheVisibleWindowAndFollowsTheScroll();
+    AUniformListReportsWhichRowWasClicked();
+    AListMeasuresEachItemAndFollowsTheScroll();
+    AListReportsWhichItemWasClicked();
+    LazyListsShareTheItemBudgetAndRefuseNesting();
     ScriptThemesCarryATypeScale();
     ScriptViewsRebuildOnlyWhenThePaletteMoves();
     ScriptOverlaysRebuildFromTheStateTheyCloseOver();

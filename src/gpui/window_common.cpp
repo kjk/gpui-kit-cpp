@@ -422,6 +422,22 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // element_opacity starts at 1 each frame, the way GPUI's window does.
     win->paint.opacity = 1.f;
     VecClear(win->paint.hits);
+    // Last frame's scroll boxes are kept one frame more, for a lazy list to
+    // read the viewport it was given before it decides how many rows to
+    // build; see Window::prevScrolls. The two storages trade places rather
+    // than copy: Vec's copy constructor is a deep one.
+    {
+        Vec<ScrollRect>& now = win->paint.scrolls;
+        Vec<ScrollRect>& was = win->prevScrolls;
+        int len = now.len, cap = now.cap;
+        ScrollRect* els = now.els;
+        now.len = was.len;
+        now.cap = was.cap;
+        now.els = was.els;
+        was.len = len;
+        was.cap = cap;
+        was.els = els;
+    }
     VecClear(win->paint.scrolls);
     VecClear(win->paint.texts);
     VecClear(win->paint.inputs);
@@ -1387,6 +1403,18 @@ static ScrollRect* ScrollRectById(Window* win, int id) {
     for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
         if (win->paint.scrolls[i].id == id) {
             return &win->paint.scrolls[i];
+        }
+    }
+    return nullptr;
+}
+
+const ScrollRect* WindowLastScrollRect(const Window* win, int id) {
+    if (!win || id == 0) {
+        return nullptr;
+    }
+    for (int i = win->prevScrolls.len - 1; i >= 0; i--) {
+        if (win->prevScrolls[i].id == id) {
+            return &win->prevScrolls[i];
         }
     }
     return nullptr;

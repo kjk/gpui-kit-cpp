@@ -1193,7 +1193,10 @@ static bool IsBuiltin(Str name) {
 }
 
 static const char* const kGpuiExports[] = {
-    "View", "div", "svg", "image", "PathBuilder", "Background", "with_cx"};
+    "View", "div", "svg", "image",
+    // GPUI's own lazy lists. Base's virtual lists live in `gpui-base`; these
+    // are GPUI's, and are exported where `div` is.
+    "list", "uniform_list", "PathBuilder", "Background", "with_cx"};
 static const char* const kBaseExports[] = {
     "h_flex", "v_flex", "Button", "Link", "Checkbox", "Switch", "Tabs", "Tab",
     "Progress", "ProgressTrack", "ProgressIndicator", "Radio", "Toggle",
@@ -4160,21 +4163,81 @@ static JSValue NativeVirtualScrollOp(JSContext* ctx, JSValueConst, int argc,
     return JS_UNDEFINED;
 }
 
+// The item budget every lazy list in one render shares: `gpui::list` keeps one
+// entry per item whether or not the item is ever drawn, so a count the script
+// fat-fingered is an allocation measured in gigabytes.
+static const uint64_t kMaxVirtualItemsPerRender = 1000000;
+
+// The guard both lazy-list constructors run before they allocate anything.
+//
+// The phase check is why an item renderer cannot build a list: callbacks
+// belong to the snapshot that registered them, and by the time a renderer
+// runs that generation is closed, so a callback pushed there is one no lookup
+// could ever match. The budget claim has to come before the size table.
+// Answers whether the caller may go on; an exception is pending when not.
+static bool GuardLazyList(JSContext* ctx, ShellRuntimeImpl* impl, int argc,
+                          int wanted, JSValueConst count, int64_t* countOut) {
+    if (!impl || argc < wanted ||
+        shell::ScopeCurrentPhase() == ScopePhase::Layout) {
+        JS_ThrowTypeError(ctx,
+                          "a list cannot be built from inside another list's "
+                          "item renderer: its own renderer would belong to no "
+                          "render pass and would never be called. Describe the "
+                          "nested list from the view's render() instead");
+        return false;
+    }
+    int64_t count64 = 0;
+    if (JS_ToInt64(ctx, &count64, count) != 0 || count64 < 0 ||
+        count64 > (int64_t)kMaxVirtualItemsPerRender) {
+        JS_ThrowTypeError(ctx, "a list needs a whole item count up to 1000000");
+        return false;
+    }
+    if (!impl->scratch->ClaimVirtualItems((uint64_t)count64,
+                                          kMaxVirtualItemsPerRender)) {
+        JS_ThrowRangeError(ctx,
+                           "the lists in one render may describe at most "
+                           "1000000 items in total");
+        return false;
+    }
+    *countOut = count64;
+    return true;
+}
+
+// Files a lazy list's two script functions against the open generation.
+// Answers false, with an exception pending, when there is no snapshot build
+// to file them in.
+static bool RegisterItemCallbacks(JSContext* ctx, ShellRuntimeImpl* impl,
+                                  JSValueConst getKeyFn, JSValueConst renderFn,
+                                  shell::CallbackId* getKey,
+                                  shell::CallbackId* render) {
+    *getKey = impl->callbacks.Push(
+        ctx, getKeyFn, shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
+        shell::ScopeCurrentGeneration(),
+        (AppModule*)shell::ScopeCurrentApplication());
+    *render = impl->callbacks.Push(
+        ctx, renderFn, shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
+        shell::ScopeCurrentGeneration(),
+        (AppModule*)shell::ScopeCurrentApplication());
+    if (*getKey == UINT64_MAX || *render == UINT64_MAX) {
+        JS_ThrowInternalError(
+            ctx, "list callbacks were registered outside a snapshot build");
+        return false;
+    }
+    return true;
+}
+
 static JSValue NativeVirtualList(JSContext* ctx, JSValueConst, int argc,
                                  JSValueConst* argv, int magic) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    if (!impl || argc < 5 || shell::ScopeCurrentPhase() == ScopePhase::Layout) {
-        return JS_ThrowTypeError(ctx,
-                                 "a virtual list cannot be built from inside "
-                                 "another list's item renderer");
+    int64_t count64 = 0;
+    if (!GuardLazyList(ctx, impl, argc, 5, argc > 1 ? argv[1] : JS_UNDEFINED,
+                       &count64)) {
+        return JS_EXCEPTION;
     }
     Arena* arena = ArenaNew();
     Str id;
-    int64_t count64 = 0;
     bool ok = JsString(ctx, argv[0], arena, &id) &&
-              JS_ToInt64(ctx, &count64, argv[1]) == 0 && count64 >= 0 &&
-              count64 <= 1000000 && JS_IsFunction(ctx, argv[3]) &&
-              JS_IsFunction(ctx, argv[4]);
+              JS_IsFunction(ctx, argv[3]) && JS_IsFunction(ctx, argv[4]);
     if (!ok) {
         ArenaDelete(arena);
         return JS_ThrowTypeError(
@@ -4183,12 +4246,6 @@ static JSValue NativeVirtualList(JSContext* ctx, JSValueConst, int argc,
             "get_key and render functions");
     }
     int count = (int)count64;
-    if (!impl->scratch->ClaimVirtualItems((uint64_t)count, 1000000)) {
-        ArenaDelete(arena);
-        return JS_ThrowRangeError(ctx,
-                                  "the virtual lists in one render may "
-                                  "describe at most 1000000 items in total");
-    }
     Size* sizes = count > 0
                       ? (Size*)Alloc(arena, (int)(sizeof(Size) * (size_t)count))
                       : nullptr;
@@ -4226,19 +4283,11 @@ static JSValue NativeVirtualList(JSContext* ctx, JSValueConst, int argc,
                                  "virtual-list item sizes must be one finite "
                                  "non-negative number or one per item");
     }
-    shell::CallbackId getKey = impl->callbacks.Push(
-        ctx, argv[3], shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
-        shell::ScopeCurrentGeneration(),
-        (AppModule*)shell::ScopeCurrentApplication());
-    shell::CallbackId render = impl->callbacks.Push(
-        ctx, argv[4], shell::ScopeCurrentView(), shell::ScopeCurrentPolicy(),
-        shell::ScopeCurrentGeneration(),
-        (AppModule*)shell::ScopeCurrentApplication());
-    if (getKey == UINT64_MAX || render == UINT64_MAX) {
+    shell::CallbackId getKey = 0;
+    shell::CallbackId render = 0;
+    if (!RegisterItemCallbacks(ctx, impl, argv[3], argv[4], &getKey, &render)) {
         ArenaDelete(arena);
-        return JS_ThrowInternalError(
-            ctx,
-            "virtual-list callbacks were registered outside a snapshot build");
+        return JS_EXCEPTION;
     }
     shell::VirtualListSpec list = {};
     list.id = id;
@@ -4251,6 +4300,51 @@ static JSValue NativeVirtualList(JSContext* ctx, JSValueConst, int argc,
     component.kind = horizontal ? shell::ComponentKind::HVirtualList
                                 : shell::ComponentKind::VVirtualList;
     component.virtualList = &list;
+    shell::SpecId result = impl->scratch->Push(component);
+    ArenaDelete(arena);
+    return JS_NewUint32(ctx, result);
+}
+
+// `list` (magic 0) and `uniform_list` (magic 1).
+//
+// The same registration as a virtual list's, and confined for the same
+// reasons: the renderer belongs to the snapshot being built, and cannot be
+// registered from inside another list's item renderer. The item budget is
+// claimed too, because `gpui::list` keeps one entry per item whether or not
+// the item is ever drawn.
+static JSValue NativeLazyList(JSContext* ctx, JSValueConst, int argc,
+                              JSValueConst* argv, int magic) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    int64_t count64 = 0;
+    if (!GuardLazyList(ctx, impl, argc, 4, argc > 1 ? argv[1] : JS_UNDEFINED,
+                       &count64)) {
+        return JS_EXCEPTION;
+    }
+    Arena* arena = ArenaNew();
+    Str id;
+    bool ok = JsString(ctx, argv[0], arena, &id) &&
+              JS_IsFunction(ctx, argv[2]) && JS_IsFunction(ctx, argv[3]);
+    if (!ok) {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx,
+                                 "list needs an id, a count up to 1000000, "
+                                 "get_key and render functions");
+    }
+    shell::CallbackId getKey = 0;
+    shell::CallbackId render = 0;
+    if (!RegisterItemCallbacks(ctx, impl, argv[2], argv[3], &getKey, &render)) {
+        ArenaDelete(arena);
+        return JS_EXCEPTION;
+    }
+    shell::ListSpec list = {};
+    list.id = id;
+    list.itemCount = (int)count64;
+    list.getKey = getKey;
+    list.renderItems = render;
+    shell::Component component = {};
+    component.kind = magic != 0 ? shell::ComponentKind::UniformList
+                                : shell::ComponentKind::List;
+    component.list = &list;
     shell::SpecId result = impl->scratch->Push(component);
     ArenaDelete(arena);
     return JS_NewUint32(ctx, result);
@@ -7482,11 +7576,38 @@ globalThis.__gpui = (() => {
     scroll_to_bottom: () => __virtual_scroll_to_bottom(handle),
     release: () => __virtual_scroll_release(handle),
   });
+  // The three checks every lazy list makes. Only the render hint differs:
+  // `list` is called per item, the other two per visible range.
+  const checkListArgs = (shape, count, getKey, render, renderHint) => {
+    if (!Number.isInteger(count) || count < 0) throw new TypeError(shape + " needs a whole, non-negative item_count");
+    if (typeof getKey !== "function") throw new TypeError(shape + " needs get_key(index) to return each item's stable string key");
+    if (typeof render !== "function") throw new TypeError(shape + " needs a render function; it is called " + renderHint);
+  };
+  const RANGE_HINT = "once per visible range, not once per item";
   const virtualList = (build, name) => (id, count, sizes, getKey, render) => {
-    if (!Number.isInteger(count) || count < 0) throw new TypeError(name + " item_count must be a non-negative whole number");
-    if (typeof getKey !== "function" || typeof render !== "function") throw new TypeError(name + " needs get_key and render functions");
-    if (Array.isArray(sizes) && sizes.length !== count) throw new TypeError(name + " needs one size per item");
+    const shape = name + "(id, item_count, item_sizes, get_key, render)";
+    checkListArgs(shape, count, getKey, render, RANGE_HINT);
+    if (Array.isArray(sizes) && sizes.length !== count) {
+      throw new TypeError(shape + " was given " + sizes.length + " item sizes for " + count + " items; pass one number, or exactly one per item");
+    }
     return element(build(String(id), count, sizes, getKey, render));
+  };
+  // `list` and `uniform_list`: GPUI's own lazy lists. Both cross the boundary
+  // the way a virtual list does -- one renderer per visible range -- so a
+  // `list` renderer written per item is folded into a range here, once, rather
+  // than teaching the host a second calling convention.
+  const lazyList = (build, name, perItem) => (id, count, getKey, render) => {
+    const shape = name + "(id, item_count, get_key, render)";
+    checkListArgs(shape, count, getKey, render,
+      perItem ? "once per item on screen, with the item's index" : RANGE_HINT);
+    const describe = perItem
+      ? (range, cx) => {
+          const items = [];
+          for (let index = range.start; index < range.end; index++) items.push(render(index, cx));
+          return items;
+        }
+      : render;
+    return element(build(String(id), count, getKey, describe));
   };
   // A description recorded once and filled per call.
   //
@@ -7594,6 +7715,8 @@ globalThis.__gpui = (() => {
     Scrollbar: named("Scrollbar"),
     v_virtual_list: virtualList(__v_virtual_list, "v_virtual_list"),
     h_virtual_list: virtualList(__h_virtual_list, "h_virtual_list"),
+    list: lazyList(__list, "list", true),
+    uniform_list: lazyList(__uniform_list, "uniform_list", false),
     VirtualListScrollHandle: { new: () => virtualScrollHandle(__virtual_scroll_new()) },
     InputState: { new: (options = {}) => inputState(__input_state_new(options.placeholder ?? null, options.value ?? null)) }, Input: retained("Input"),
     NumberInput: retained("NumberInput"),
@@ -9459,6 +9582,10 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                            NativeVirtualList, 5, 0);
     SetGlobalMagicFunction(impl->context, global, "__h_virtual_list",
                            NativeVirtualList, 5, 1);
+    SetGlobalMagicFunction(impl->context, global, "__list", NativeLazyList, 4,
+                           0);
+    SetGlobalMagicFunction(impl->context, global, "__uniform_list",
+                           NativeLazyList, 4, 1);
     JS_FreeValue(impl->context, global);
     BeginExecution(impl);
     JSValue result = JS_Eval(impl->context, kPrelude, sizeof(kPrelude) - 1,
@@ -10666,7 +10793,11 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
 
     double started = TimeNow();
     shell::SpecArena* outer = impl->scratch;
-    shell::SpecArena* batch = new shell::SpecArena();
+    // The batch's strings go into the frame arena, not one of its own: the
+    // elements materialized from it reference them — `TextEl` keeps the
+    // pointer — and are laid out and painted after this call returns, so the
+    // description has to live exactly as long as the frame does.
+    shell::SpecArena* batch = new shell::SpecArena(cx->a);
     impl->scratch = batch;
     Vec<shell::SpecId> roots;
     Vec<Str> itemKeys;

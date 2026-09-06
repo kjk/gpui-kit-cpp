@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4a654f45011da1edacb0a2ffa094d901dc97333d",
+  sha: "a1275a956ed0f06316aab4f06aa82bc155a07ab3",
   date: "2026-09-04",
-  subject: "resizable: Fix panel resizing flickering (#2907)",
+  subject: "shell: Expose GPUI's list and uniform_list to scripts (#2952)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

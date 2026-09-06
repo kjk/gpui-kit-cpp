@@ -196,6 +196,10 @@ const char* ComponentName(const Component& component) {
             return "v_virtual_list";
         case ComponentKind::HVirtualList:
             return "h_virtual_list";
+        case ComponentKind::List:
+            return "list";
+        case ComponentKind::UniformList:
+            return "uniform_list";
     }
     return "element";
 }
@@ -239,10 +243,16 @@ Str SpecErrorMessage(Arena* arena, const SpecError& error) {
 
 SpecArena::SpecArena() {
     arena = ArenaNew();
+    ownsArena = true;
+}
+
+SpecArena::SpecArena(Arena* borrowed) {
+    arena = borrowed;
+    ownsArena = false;
 }
 
 SpecArena::~SpecArena() {
-    ArenaDelete(arena);
+    if (ownsArena) ArenaDelete(arena);
 }
 
 void SpecArena::Reset() {
@@ -252,7 +262,7 @@ void SpecArena::Reset() {
     VecClear(mountedViews);
     virtualItems = 0;
     structure = 0;
-    arena->Reset();
+    if (ownsArena) arena->Reset();
 }
 
 Component SpecArena::CopyComponent(const Component& source) {
@@ -273,6 +283,11 @@ Component SpecArena::CopyComponent(const Component& source) {
             memcpy(out.virtualList->sizes, source.virtualList->sizes,
                    sizeof(Size) * (size_t)source.virtualList->sizeCount);
         }
+    }
+    if (source.list) {
+        out.list = ArenaNew<ListSpec>(arena);
+        *out.list = *source.list;
+        out.list->id = StrDup(arena, source.list->id);
     }
     return out;
 }
@@ -588,6 +603,13 @@ void SpecArena::WriteTree(StrBuilder* out, SpecId id, int depth) const {
             if (component.virtualList) {
                 out->Append(fmt(" \"%s\" ×%d", component.virtualList->id,
                                 component.virtualList->sizeCount));
+            }
+            break;
+        case ComponentKind::List:
+        case ComponentKind::UniformList:
+            if (component.list) {
+                out->Append(fmt(" \"%s\" ×%d", component.list->id,
+                                component.list->itemCount));
             }
             break;
         default:

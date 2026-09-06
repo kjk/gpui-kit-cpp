@@ -1241,6 +1241,10 @@ static Str MotionIdentity(Ctx* cx, const shell::SpecNode* node,
             if (component.virtualList && component.virtualList->id)
                 return component.virtualList->id;
             break;
+        case shell::ComponentKind::List:
+        case shell::ComponentKind::UniformList:
+            if (component.list && component.list->id) return component.list->id;
+            break;
         case shell::ComponentKind::Slider:
             return StrDup(cx->a,
                           fmt("gpui-shell-slider:%llu", component.handle));
@@ -1408,6 +1412,246 @@ static void MaterialVirtualRange(void* user, Ctx* cx, int first, int end,
             values->render, values->getKey, values->onItemClick,
             values->onItemSecondaryClick, first, end, cx, out);
     }
+}
+
+// ─── `list` and `uniform_list`: GPUI's own lazy lists, driven from script ──
+//
+// A VirtualList is base's: the script states every item's extent and base
+// places the items by the table. These two are GPUI's, and the difference is
+// who measures. `uniform_list` measures one item and places every row by it;
+// `list` measures each item it draws and keeps the sizes, so rows of unequal,
+// unstated height still scroll as one collection. Both draw only what is on
+// screen, and both reach the script the way the virtual list does — through
+// RenderVirtualItems, from inside the build — so the confinement recorded on
+// that path holds for them unchanged.
+//
+// Neither takes a VirtualListScrollHandle: the position is the list's own
+// state, kept under the id the list was built with. That id is also the name
+// a `Scrollbar` pairs with.
+
+// How far past the viewport a `list` draws and measures, in pixels.
+//
+// GPUI's list can only scroll into what it has measured, and it measures by
+// drawing: with nothing drawn past the viewport, a list whose last drawn row
+// ends exactly at the bottom edge has nowhere to scroll to and never asks for
+// more. A band below the fold keeps a wheel notch or a bar drag inside
+// measured ground, and each frame it moves measures the next band. Kept to a
+// few rows rather than the screenful GPUI's own callers use: every item in the
+// band is a script render per frame, and the whole point of the list is to
+// leave an item a screen away undrawn.
+static const float kListOverdraw = 160;
+
+// What a lazy list keeps between frames under its name — Rust's
+// `UniformListScrollHandle` for one list and `ListState` for the other, which
+// upstream files under `use_keyed_state` so they outlive the description.
+// Window keyed state under the list's id does the same here.
+struct LazyListState {
+    // The scroll position, positive-down as El::ScrollY takes it. Rust's
+    // ListState keeps a logical top (an item and an offset into it); a pixel
+    // offset is what this tree's scroll boxes speak, and is what the wheel
+    // reports back through OnLazyListScroll.
+    float offset = 0;
+    // The count the measurements were taken for.
+    int itemCount = 0;
+    // `list` only: the height each item measured at, 0 until it is drawn.
+    Vec<float> measured;
+    // `uniform_list` only: the height the measured item came out at.
+    float rowH = 0;
+
+    ~LazyListState() { VecReset(measured); }
+};
+
+static uint32_t LazyListKey(Str id) {
+    return KeyedKey((uint32_t)HashClickId(id),
+                    (uint32_t)HashClickId(StrL("gpui-shell-lazy-list")));
+}
+
+// The wheel, or a bar the list shares its name with, moved the list. The
+// window has already asked for a repaint; the description is untouched, so
+// the next frame re-materializes the same snapshot at the new offset.
+static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
+                             intptr_t key) {
+    LazyListState* state = KeyedState<LazyListState>(cx, (uint32_t)key);
+    if (!state || !event) return;
+    state->offset = event->offsetY;
+}
+
+// The box the list was given, for the rows to be chosen by. GPUI decides this
+// inside layout, which here has not run yet, so it is the box of the frame
+// before — Rust's `viewport_bounds()`, which is a frame old too. The first
+// frame has no box and takes the window's height: it over-builds once and
+// settles.
+static float LazyListViewport(Ctx* cx, int scrollId) {
+    const ScrollRect* last =
+        cx->win ? WindowLastScrollRect(cx->win, scrollId) : nullptr;
+    if (last && last->bounds.h > 0) return last->bounds.h;
+    if (cx->win && cx->win->paint.viewH > 0) return cx->win->paint.viewH;
+    return VirtualListOpts{}.viewH;
+}
+
+// An item's height as the list currently knows it: what it measured at, or
+// the mean of the measured ones while it has not been drawn. GPUI's list
+// scrolls in logical items and never needs the guess; a pixel offset does.
+static float LazyListExtent(const LazyListState* state, int ix,
+                            float estimate) {
+    float measured = ix < state->measured.len ? state->measured[ix] : 0;
+    return measured > 0 ? measured : estimate;
+}
+
+static float LazyListEstimate(const LazyListState* state) {
+    float sum = 0;
+    int n = 0;
+    for (int i = 0; i < state->measured.len; i++) {
+        if (state->measured[i] > 0) {
+            sum += state->measured[i];
+            n++;
+        }
+    }
+    return n > 0 ? sum / (float)n : 0;
+}
+
+static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
+                           const shell::Component& component,
+                           const MaterialBehavior& behavior) {
+    const shell::ListSpec* spec = component.list;
+    bool uniform = component.kind == shell::ComponentKind::UniformList;
+    Str name = uniform ? StrL("uniform_list") : StrL("list");
+    if (!spec || !runtime) return Div(cx->a);
+    if (behavior.virtualScroll) {
+        logf(
+            "shell: track_scroll is ignored on a %s: its scroll position is "
+            "GPUI's own, filed under the id it was built with, which is where "
+            "a Scrollbar of that name finds it\n",
+            name);
+    }
+    if (!uniform && behavior.hasItemToMeasure) {
+        logf(
+            "shell: with_item_to_measure_index is ignored on a list: it "
+            "measures every item it draws, so there is no one item the rest "
+            "are sized from. It is uniform_list that takes one\n");
+    }
+
+    uint32_t key = LazyListKey(spec->id);
+    LazyListState* state = KeyedState<LazyListState>(cx, key);
+    if (!state) return Div(cx->a);
+    int count = spec->itemCount;
+    int scrollId = HashClickId(spec->id);
+    float viewport = LazyListViewport(cx, scrollId);
+    PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
+    Listener onScroll = Listen(cx, &OnLazyListScroll, (intptr_t)key);
+
+    MaterialVirtualUser* user = ArenaNew<MaterialVirtualUser>(cx->a);
+    user->runtime = runtime;
+    user->render = spec->renderItems;
+    user->getKey = spec->getKey;
+    user->onItemClick = behavior.onItemClick;
+    user->onItemSecondaryClick = behavior.onItemSecondaryClick;
+
+    if (uniform) {
+        // One row is measured and every row is placed by it: the first, or
+        // the one `with_item_to_measure_index` names. Rust measures at
+        // MinContent on both axes and so does `MeasureEl`; the probe is
+        // thrown away, since what is wanted is the number. A row that
+        // measures nothing keeps whatever the state had.
+        if (count > 0) {
+            int measureIx =
+                behavior.hasItemToMeasure ? behavior.itemToMeasure : 0;
+            if (measureIx < 0) measureIx = 0;
+            if (measureIx >= count) measureIx = count - 1;
+            El* probe = nullptr;
+            runtime->RenderVirtualItems(spec->renderItems, spec->getKey, 0, 0,
+                                        measureIx, measureIx + 1, cx, &probe);
+            if (probe) {
+                float got = MeasureEl(paint, probe).h;
+                if (got > 0) state->rowH = got;
+            }
+        }
+        float content = state->rowH * (float)count;
+        float most = content > viewport ? content - viewport : 0;
+        if (state->offset > most) state->offset = most;
+        if (state->offset < 0) state->offset = 0;
+        VirtualListOpts opts;
+        opts.count = count;
+        opts.rowH = state->rowH;
+        opts.viewH = viewport;
+        opts.scrollY = state->offset;
+        opts.range = MaterialVirtualRange;
+        opts.user = user;
+        opts.scrollId = scrollId;
+        opts.onScroll = onScroll;
+        // Base's virtual list fills its box unless told otherwise; the same
+        // default here, so a list dropped into a sized column shows rows
+        // rather than a zero-height strip. The refinement may say otherwise.
+        return VirtualList::New(cx, spec->id, opts)->SizeFull();
+    }
+
+    if (state->itemCount != count) {
+        // Every item is a new one as far as the measurements go; what
+        // survives is the scroll position, which a reset would throw away.
+        VecClear(state->measured);
+        for (int i = 0; i < count; i++) VecAppend(state->measured, 0.f);
+        state->itemCount = count;
+    }
+    float estimate = LazyListEstimate(state);
+    float content = 0;
+    for (int i = 0; i < count; i++) {
+        content += LazyListExtent(state, i, estimate);
+    }
+    float most = content > viewport ? content - viewport : 0;
+    if (state->offset > most) state->offset = most;
+    if (state->offset < 0) state->offset = 0;
+    float offset = state->offset;
+
+    // The first item the offset reaches, and where it starts. An item nothing
+    // has been measured for yet has no extent to skip by, so drawing starts
+    // at it — which on the first frame is item 0.
+    float origin = 0;
+    int first = 0;
+    while (first < count) {
+        float extent = LazyListExtent(state, first, estimate);
+        if (extent <= 0 || origin + extent > offset) break;
+        origin += extent;
+        first++;
+    }
+    El* column = Div(cx->a)->FlexCol();
+    if (first > 0) column->Child(Div(cx->a)->H(origin));
+
+    // Draw and measure from there until the box and the band past it are
+    // filled. One host crossing per item: `gpui::list`'s renderer takes a
+    // single index, and so does this loop.
+    float filled = 0;
+    int end = first;
+    while (end < count && filled < viewport + kListOverdraw) {
+        El* item = nullptr;
+        runtime->RenderVirtualItems(
+            spec->renderItems, spec->getKey, behavior.onItemClick,
+            behavior.onItemSecondaryClick, end, end + 1, cx, &item);
+        // An item the renderer failed still takes its slot, or every row
+        // after it would slide up by one.
+        if (!item) item = Div(cx->a);
+        float got = MeasureEl(paint, item).h;
+        if (got > 0) state->measured[end] = got;
+        filled += LazyListExtent(state, end, estimate);
+        column->Child(item);
+        end++;
+    }
+    // What was not drawn stands in as a spacer, so the box has the whole list
+    // to scroll through and the bar shows how much of it this is.
+    estimate = LazyListEstimate(state);
+    float after = 0;
+    for (int ix = end; ix < count; ix++) {
+        after += LazyListExtent(state, ix, estimate);
+    }
+    if (after > 0) column->Child(Div(cx->a)->H(after));
+
+    return VirtualList::New(cx, spec->id)
+        ->ClipX()
+        ->ClipY()
+        ->ScrollY(offset)
+        ->ScrollId(scrollId)
+        ->OnScroll(onScroll)
+        ->SizeFull()
+        ->Child(column);
 }
 
 // `dock_area` — the one element whose contents the description does not
@@ -1878,6 +2122,9 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             }
             return VirtualList::New(cx, list->id, opts);
         }
+        case shell::ComponentKind::List:
+        case shell::ComponentKind::UniformList:
+            return LazyListElement(cx, runtime, component, behavior);
         case shell::ComponentKind::ChildView: {
             EntityId child =
                 runtime ? runtime->NestedView(component.handle, cx->app)
@@ -2403,9 +2650,18 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
                                                 (intptr_t)bound));
     }
     element = WireDockCommands(cx, element, behavior);
-    if (!childrenConsumed &&
-        node->component.kind != shell::ComponentKind::VVirtualList &&
-        node->component.kind != shell::ComponentKind::HVirtualList) {
+    bool lazyList =
+        node->component.kind == shell::ComponentKind::VVirtualList ||
+        node->component.kind == shell::ComponentKind::HVirtualList ||
+        node->component.kind == shell::ComponentKind::List ||
+        node->component.kind == shell::ComponentKind::UniformList;
+    if (lazyList && node->children.len > 0) {
+        logf(
+            "shell: children are dropped on a %s: its contents are whatever "
+            "the item renderer returns\n",
+            Str(shell::ComponentName(node->component)));
+    }
+    if (!childrenConsumed && !lazyList) {
         for (shell::SpecId child : node->children) {
             element->Child(MaterializeNode(cx, runtime, specs, child, error));
         }

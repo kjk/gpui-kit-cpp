@@ -4841,6 +4841,10 @@ Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont = 0,
 void PaintEl(PaintCtx* ctx, El* e);
 int HitTest(PaintCtx* ctx, float x, float y);
 const HitRect* HitTestRect(PaintCtx* ctx, float x, float y);
+// The scroll box of an id as the frame before this one painted it — the
+// `bounds()` a Rust `ScrollHandle` remembers from its last layout. Null for an
+// id nothing painted, and for 0, which several boxes share.
+const ScrollRect* WindowLastScrollRect(const Window* win, int id);
 // The topmost element under the pointer that takes a drag of this kind, of
 // those that asked for one at all. A drop target that does not want what is
 // being dragged is not in the way of one that does.
@@ -5084,6 +5088,13 @@ struct Window {
     // built — GPUI's `Window::dirty_views`, and what makes `Notify` name a
     // window rather than every window. Rebuilt each frame.
     Vec<EntityId> rendered;
+    // The scroll boxes the frame before this one painted, swapped out of
+    // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
+    // and `ListState::viewport_bounds()` answer with the box the last layout
+    // gave them; a view here has no handle to keep it on, so this is where a
+    // lazy list finds how tall it was before it decides how many rows to
+    // build. `WindowLastScrollRect` is the lookup.
+    Vec<ScrollRect> prevScrolls;
     // Rebuilt after layout from the frame's element tree. Platform adapters
     // read this; it owns no strings or callbacks beyond the frame arena.
     Vec<AccessibilityNode> accessibility;

@@ -149,6 +149,14 @@ enum class ComponentKind : uint8_t {
     DockContent,
     VVirtualList,
     HVirtualList,
+    // GPUI's own lazy lists, driven the same way as the virtual lists: the
+    // items come from a callback run during layout. `list` measures every
+    // item it draws, so rows need not state a height; `uniform_list`
+    // measures one and places the rest by it. Rust's `Component::List` holds
+    // a `ListKind`; here the kind is the component kind, the way the two
+    // virtual list axes are.
+    List,
+    UniformList,
 };
 
 struct VirtualListSpec {
@@ -160,6 +168,20 @@ struct VirtualListSpec {
     CallbackId renderItems = 0;
 };
 
+// The parameters of a `list` or `uniform_list` call, held for the frame: the
+// same shape as a VirtualListSpec without the size table, since GPUI measures
+// the items itself and the script says only how many there are.
+struct ListSpec {
+    // The identity the script gave, also the name a `Scrollbar` pairs with.
+    Str id;
+    // How many items the collection has, visible or not.
+    int itemCount = 0;
+    // Resolves the stable domain key for one current item index.
+    CallbackId getKey = 0;
+    // The handler that describes one window of items.
+    CallbackId renderItems = 0;
+};
+
 struct Component {
     ComponentKind kind = ComponentKind::Div;
     Str text;
@@ -168,6 +190,7 @@ struct Component {
     BackgroundSpec background;
     float strokeWidth = 0;
     VirtualListSpec* virtualList = nullptr;
+    ListSpec* list = nullptr;
 };
 
 const char* ComponentName(const Component& component);
@@ -299,6 +322,10 @@ struct Template {
 class SpecArena {
   public:
     SpecArena();
+    // A description whose strings live in an arena someone else owns — the
+    // frame arena, for an item batch whose elements outlive the batch. Reset
+    // leaves that arena alone.
+    explicit SpecArena(Arena* borrowed);
     SpecArena(const SpecArena&) = delete;
     SpecArena& operator=(const SpecArena&) = delete;
     ~SpecArena();
@@ -352,6 +379,7 @@ class SpecArena {
 
   private:
     Arena* arena = nullptr;
+    bool ownsArena = true;
     Vec<SpecNode*> nodes;
     Vec<uint8_t> parented;
     Vec<uint8_t> claimed;
