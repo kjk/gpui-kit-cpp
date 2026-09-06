@@ -926,6 +926,56 @@ static void ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome() {
 // dock_size_change_emits_one_layout_event: only an effective size change is
 // persisted, so setting a dock to the width it already has neither redraws
 // nor announces.
+static El* FindDockBoundsElement(El* el, Bounds* bounds) {
+    if (el->boundsOut == bounds) return el;
+    for (El* child = el->first; child; child = child->next) {
+        if (El* found = FindDockBoundsElement(child, bounds)) return found;
+    }
+    return nullptr;
+}
+
+static void RestoredSplitSharesSurviveResizeAndTabChanges() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    s->nodes[s->center].size[0] = 300;
+    s->nodes[s->center].size[1] = 100;
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    for (int frame = 0; frame < 4; frame++) {
+        s->nodes[a].activeIx = frame % 2;
+        float width = frame < 2 ? 800.f : 1200.f;
+        El* area = DockArea::New(&cx, StrL("shares"), state, nullptr);
+        LayoutEl(&win->paint, area, 0, 0, width, 600, th.fontSize,
+                 th.foreground);
+        float left = FindDockBoundsElement(area, &s->nodes[a].bounds)->w;
+        float right = FindDockBoundsElement(area, &s->nodes[b].bounds)->w;
+        utassert(left > 0 && right > 0);
+        utassertnear(left / (left + right), .75f);
+        utassertnear(s->nodes[s->center].size[0], 300);
+    }
+    // An unresolved slot takes the leftover without scaling its sibling.
+    s->nodes[s->center].size[0] = 0;
+    s->nodes[s->center].size[1] = 200;
+    for (int frame = 0; frame < 2; frame++) {
+        s->nodes[a].activeIx = frame;
+        El* area = DockArea::New(&cx, StrL("shares"), state, nullptr);
+        LayoutEl(&win->paint, area, 0, 0, 800, 600, th.fontSize, th.foreground);
+        utassertnear(FindDockBoundsElement(area, &s->nodes[b].bounds)->w, 200);
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void ADockSizeChangeEmitsOneLayoutEvent() {
     App app;
     Window* win = new Window();
@@ -966,6 +1016,7 @@ static void ADockSizeChangeEmitsOneLayoutEvent() {
 
 void TestDock() {
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
+    RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();
     TheFiveDropZones();
     ThePlaceholderCoversEachZone();

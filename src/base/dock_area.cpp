@@ -471,18 +471,30 @@ El* RenderSplit(const AreaCtx& ac, int node) {
     // so leaving the growth on the last child would end the split short of
     // its box and show a band of the frame under the last visible panel.
     int grows = -1;
+    bool allSized = true;
+    float totalSize = 0;
     for (int i = 0; i < n.child.len; i++) {
         if (DockNodeVisible(s, n.child[i])) {
             grows = i;
+            allSized = allSized && n.size[i] > 0;
+            totalSize += n.size[i];
         }
     }
     for (int i = 0; i < n.child.len; i++) {
         if (!DockNodeVisible(s, n.child[i])) {
             continue;
         }
-        El* wrap = Div(a)->FlexCol();
-        if (i == grows) {
+        El* wrap = Div(a)->FlexCol()->MinW(0)->MinH(0);
+        // dock_area.rs::scale_sizes_to: persisted pixels represent shares.
+        // Flex expresses those shares against this frame's actual container,
+        // including the first frame after restoring into a different window.
+        // This live tree owns sizes directly, so unrelated tab changes never
+        // re-adopt them from a second cache. Unconstrained slots take only
+        // the leftover; their sized siblings must not be proportionally scaled.
+        bool flexible = allSized && totalSize > 0;
+        if (flexible || n.size[i] <= 0) {
             wrap->Flex1();
+            if (flexible) wrap->Grow(n.size[i]);
             if (horizontal) {
                 wrap->H(kFill);
             } else {

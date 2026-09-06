@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `f517e74849c1e676bb03af90266e8449d01344f5`
-(2026-09-03, base: Write a tiles center as a bare `Tiles` so older readers can load it (#2928)). PaneTree serialization omits the internal Split wrapper around a single Tiles center, retaining tile metadata and panel state for older readers.
+Processed through `c0946e6acdc9e2f984f317ef7f998ee2c79f1a87`
+(2026-09-03, base: Keep a reconcile from moving splits the edit did not touch (#2931)). Dock splits retain proportional sizes across window resizing and unrelated tab changes. The live dock retains its own state instead of re-adopting unchanged PaneTree sizes.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
