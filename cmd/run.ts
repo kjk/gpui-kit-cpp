@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "65db56268651b8f62bdd78192bab6c33bce3a6f7",
+  sha: "2ffa97dc579516e9373442f7f2ed61320f7e93a7",
   date: "2026-09-04",
-  subject: "text: Remeasure list items when a document is replaced with an equal block count (#2946)",
+  subject: "website: Add five apps to the app stories page (#2951)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `65db56268651b8f62bdd78192bab6c33bce3a6f7`
-(2026-09-04, text: Remeasure list items when a document is replaced with an equal block count (#2946)). Reviewed equal-block-count document replacement: the C++ view rebuilds every block from the source-keyed parse cache and its layout cache remeasures changed text, so no Rust ListState height latch exists here. Added the replacement-height regression against reused layout state.
+Processed through `2ffa97dc579516e9373442f7f2ed61320f7e93a7`
+(2026-09-04, website: Add five apps to the app stories page (#2951)). Reviewed the five added website app entries and corrected Cadence screenshot. This changes only the upstream website catalog, which has no C++ runtime counterpart; no crate, example or dependency changes.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
