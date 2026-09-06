@@ -12,10 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `a4df491e5f3ab1acfb007d916243c04a8e4cb26c`
-(2026-09-03, navigation/undo history split). Navigation and grouped undo use
-separate APIs; Tiles uses the upstream 100 ms transaction grouping and
-1,000-transaction default. Input retains its dedicated text UndoManager.
+Processed through `18922d661e136bffbe154dbd34317d03692bde0b`
+(2026-09-03, Rebrand to GPUI Kit and move the site to gpui-kit.com (#2927)). The native examples already use gpui-kit.com; the gallery Introduction now carries the upstream GPUI Kit architecture and branding. Website deployment files have no C++ counterpart.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
