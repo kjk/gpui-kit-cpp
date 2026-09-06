@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1f7f8c6549b8a3f605702f3dd07b549244f6b43f",
+  sha: "74009df55d0cdcaf1ac411a33424c048e9c9b01e",
   date: "2026-09-04",
-  subject: "fps: Sustain frames by default, and stop grading the rate (#2944)",
+  subject: "website: migrate from VitePress to Astro (#2926)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

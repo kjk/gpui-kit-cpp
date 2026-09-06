@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `1f7f8c6549b8a3f605702f3dd07b549244f6b43f`
-(2026-09-04, fps: Sustain frames by default, and stop grading the rate (#2944)). FPS HUDs sustain frames by default, with explicit continuous(false) observing application frames. The headline rate uses the foreground color; frame-cost rows retain budget grading.
+Processed through `74009df55d0cdcaf1ac411a33424c048e9c9b01e`
+(2026-09-04, website: migrate from VitePress to Astro (#2926)). The upstream documentation site migrates from VitePress to Astro. This changes no crates, examples, or dependency pins; our browser target continues to use web/shell.html and Canvas2D.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
