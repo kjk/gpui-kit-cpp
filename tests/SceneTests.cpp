@@ -96,6 +96,40 @@ static bool RecordTriangle(PaintCtx* paint, float x, float y) {
     return scene::FrameEnd(paint, &damage);
 }
 
+static void RecordedTextOwnsItsLayout() {
+    TestSuite("scene text ownership");
+    PaintApp* app = PaintAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    PaintCtx first = {}, second = {};
+    first.pa = second.pa = app;
+    Size size = {};
+    TextLayout* layout = TextLayoutNew(&first, StrL("retained label"), 14, 0,
+                                       false, 0, 0, &size);
+    utassert(layout);
+    if (layout) {
+        uint64_t generation = TextLayoutGeneration(layout);
+        Bounds damage = {};
+        scene::FrameBegin(&first);
+        scene::RecTextDraw(&first, layout, 0, 0, Rgba{}, false, 0);
+        scene::FrameEnd(&first, &damage);
+        scene::FrameBegin(&second);
+        scene::RecTextDraw(&second, layout, 0, 0, Rgba{}, false, 0);
+        scene::FrameEnd(&second, &damage);
+        TextLayoutRelease(layout); // Both scenes now outlive the caller.
+        scene::FrameBegin(&first); // Drops only the first scene's reference.
+        scene::FrameEnd(&first, &damage);
+        utassert(TextLayoutGeneration(layout) == generation);
+        utassertnear(TextLayoutSize(layout).w, size.w);
+        utassertnear(TextLayoutSize(layout).h, size.h);
+    }
+    scene::Free(&first);
+    scene::Free(&second);
+    PaintAppFree(app);
+}
+
 static void PathPlacementRemainsPartOfTheFrameHash() {
     TestSuite("scene translated path placement");
     PaintCtx paint = {};
@@ -480,5 +514,6 @@ void TestScene() {
     GpuImagesEvictAtFinalRelease();
     FrameComparisonBelongsToOnePaintContext();
     TextLayoutsHaveStableGenerations();
+    RecordedTextOwnsItsLayout();
     PathPlacementRemainsPartOfTheFrameHash();
 }

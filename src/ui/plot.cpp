@@ -363,13 +363,9 @@ float MeasureTextWidth(PaintCtx* ctx, Str text, float fontSize) {
     if (!ctx || !ctx->pa || !text.s || text.len <= 0) {
         return 0;
     }
-    Size measured = {};
-    TextLayout* layout = TextLayoutNew(ctx, text, fontSize, 0, false,
-                                       kFontWeightExplicitNormal, 0, &measured);
-    if (layout) {
-        TextLayoutRelease(layout);
-    }
-    return measured.w;
+    return MeasureText(ctx, text, fontSize, 0, false, kFontWeightExplicitNormal,
+                       0)
+        .w;
 }
 
 static Str PrefixEllipsis(Arena* arena, Str text, int prefix) {
@@ -447,22 +443,21 @@ void PlotLabel::Paint(PaintCtx* ctx, Bounds bounds) const {
         if (!item.text.s || item.text.len <= 0) {
             continue;
         }
-        Size measured = {};
-        TextLayout* layout =
-            TextLayoutNew(ctx, item.text, item.fontSize, 0, false,
-                          PlotFontWeight(item.fontWeight), 0, &measured);
-        if (!layout) {
-            continue;
-        }
+        // Use the window's shaped-text cache, as GPUI's text_system does.
+        // Fresh layouts here reshaped every tick and gave an unchanged label
+        // a new scene resource generation, forcing a full repaint.
+        int weight = PlotFontWeight(item.fontWeight);
+        Size measured =
+            MeasureText(ctx, item.text, item.fontSize, 0, false, weight, 0);
         float x = bounds.x + item.origin.x;
         if (item.align == PlotTextAlign::Right) {
             x -= measured.w;
         } else if (item.align == PlotTextAlign::Center) {
             x -= measured.w * 0.5f;
         }
-        TextLayoutDraw(ctx, layout, x, bounds.y + item.origin.y, item.color,
-                       false);
-        TextLayoutRelease(layout);
+        DrawTextAt(ctx, item.text, x, bounds.y + item.origin.y, measured.w,
+                   measured.h, item.fontSize, item.color, false, false, 0,
+                   weight, 0);
     }
 }
 

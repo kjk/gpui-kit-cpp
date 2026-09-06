@@ -82,8 +82,9 @@ struct Prim {
     Rgba color = {};
     Rgba color2 = {};
     int32_t path = -1;
-    // RenderImage* is retained by cur; prev holds comparison data only.
-    // TextLayout* is borrowed from the text cache.
+    // RenderImage* and TextLayout* are retained by cur; prev holds
+    // comparison data only. Custom painters may release a layout as soon
+    // as TextLayoutDraw returns, before the scene replays it.
     void* ref = nullptr;
     // Monotonic identity from the resource, unlike an address that an
     // allocator may hand to a different resource after this frame.
@@ -371,10 +372,13 @@ static Prim* Emit(PaintCtx* ctx, uint8_t kind, Bounds bbox) {
     return &gCur[gCur.len - 1];
 }
 
-static void ReleaseImages(State* s) {
+static void ReleaseResources(State* s) {
     for (Prim& p : s->cur) {
         if (p.kind == kPImage && p.ref) {
             RenderImageRelease((RenderImage*)p.ref);
+            p.ref = nullptr;
+        } else if (p.kind == kPText && p.ref) {
+            TextLayoutRelease((TextLayout*)p.ref);
             p.ref = nullptr;
         }
     }
@@ -387,7 +391,7 @@ void FrameBegin(PaintCtx* ctx) {
     }
     gRecording = true;
     gSkipPresent = false;
-    ReleaseImages(gActive);
+    ReleaseResources(gActive);
     VecClear(gCur);
     VecClear(gPaths);
     VecClear(gVerbs);
@@ -715,6 +719,7 @@ void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
     p->g1 = y;
     p->g2 = sz.w;
     p->g3 = sz.h;
+    TextLayoutAddRef(tl);
     p->ref = tl;
     p->resourceGeneration = TextLayoutGeneration(tl);
     p->color = PaintFade(ctx, c);
@@ -882,7 +887,7 @@ void Free(PaintCtx* ctx) {
     gActive = s;
     s->recording = false;
     CacheClear();
-    ReleaseImages(s);
+    ReleaseResources(s);
     VecReset(s->cur);
     VecReset(s->prev);
     VecReset(s->paths);

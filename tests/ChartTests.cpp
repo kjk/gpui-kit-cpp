@@ -106,9 +106,99 @@ static void SankeyLabelsCarryIndependentStylesAndDoNotCap() {
     ArenaDelete(a);
 }
 
+static void UnchangedPlotLabelsKeepTheScene() {
+#if GPUI_OS_WINDOWS
+    TestSuite("plot label scene stability");
+    PaintApp* app = PaintAppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app;
+    paint.viewW = 320;
+    paint.viewH = 200;
+    paint.opacity = 1;
+    plot::PlotLabel labels = plot::PlotLabel::New(arena);
+    plot::Text label = plot::Text::New(StrL("axis label"), Point{100, 20},
+                                       Rgba8(0, 0, 0, 255));
+    label.Align(plot::PlotTextAlign::Center);
+    labels.Add(label);
+    for (int frame = 0; frame < 4; frame++) {
+        TextMeasBeginFrame(&paint);
+        scene::FrameBegin(&paint);
+        // Colour and alignment are draw inputs, independent of the cached
+        // shape. Both must still invalidate the scene when they change.
+        if (frame == 2) {
+            labels.items[0].color = Rgba8(255, 0, 0, 255);
+        } else if (frame == 3) {
+            labels.items[0].align = plot::PlotTextAlign::Right;
+        }
+        labels.Paint(&paint, Bounds{0, 0, 320, 200});
+        Bounds damage = {};
+        bool changed = scene::FrameEnd(&paint, &damage);
+        utassert(changed == (frame != 1));
+        TextMeasEndFrame(&paint);
+    }
+    TextMeasClear(&paint);
+    scene::Free(&paint);
+    ArenaDelete(arena);
+    PaintAppFree(app);
+#endif
+}
+
+static void UnchangedSankeyLabelsKeepTheScene() {
+#if GPUI_OS_WINDOWS
+    TestSuite("sankey label scene stability");
+    App* app = AppNew();
+    utassert(app);
+    if (!app) {
+        return;
+    }
+    component::Init(app);
+    Arena* arena = ArenaNew();
+    Ctx cx = {};
+    cx.app = app;
+    cx.a = arena;
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    bool ready = PaintTargetBeginOffscreen(&paint, 200, 200);
+    utassert(ready);
+    if (ready) {
+        SankeyChart* chart = SankeyChart::New(&cx)
+                                 ->Node(StrL("Source"))
+                                 ->Node(StrL("Destination"))
+                                 ->Link(0, 1, 10);
+        El* el = chart->IntoEl();
+        el->w = el->h = 200;
+        for (int frame = 0; frame < 2; frame++) {
+            TextMeasBeginFrame(&paint);
+            scene::FrameBegin(&paint);
+            el->customPaint(&paint, el, el->customUser);
+            Bounds damage = {};
+            bool changed = scene::FrameEnd(&paint, &damage);
+            utassert(scene::Stats(&paint).prims > 0);
+            utassert(changed == (frame == 0));
+            TextMeasEndFrame(&paint);
+        }
+        uint8_t* pixels = (uint8_t*)Alloc(arena, 200 * 200 * 4);
+        utassert(PaintTargetEndOffscreen(&paint, pixels));
+    }
+    TextMeasClear(&paint);
+    scene::Free(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
     PlainRadarLabelsProjectToTheTaggedValue();
     SankeyLabelsCarryIndependentStylesAndDoNotCap();
+    UnchangedPlotLabelsKeepTheScene();
+    UnchangedSankeyLabelsKeepTheScene();
 }

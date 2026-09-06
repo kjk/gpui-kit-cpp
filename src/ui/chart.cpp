@@ -785,20 +785,17 @@ static void SankeyLabelLine(PaintCtx* ctx, Str text, float x, float y,
     if (!text.s || text.len <= 0 || maxW <= 0) {
         return;
     }
-    Size size = {};
-    TextLayout* tl =
-        TextLayoutNew(ctx, text, fontSize, maxW, false, 0, 0, &size);
-    if (!tl) {
-        return;
-    }
+    // sankey_chart.rs sends these through truncate_text_to_width and
+    // PlotLabel, sharing the text-system cache with every other chart label.
+    text = plot::TruncateTextToWidth(ctx, GetTempArena(), text, fontSize, maxW);
+    Size size = MeasureText(ctx, text, fontSize, 0);
     float left = x;
     if (align < 0) {
         left = x - size.w;
     } else if (align == 0) {
         left = x - size.w / 2.f;
     }
-    TextLayoutDraw(ctx, tl, left, y, color, true);
-    TextLayoutRelease(tl);
+    DrawTextAt(ctx, text, left, y, size.w, size.h, fontSize, color, false);
 }
 
 static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
@@ -991,7 +988,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         bool isFirst = node.layer == 0;
         bool isLast = node.layer + 1 == layers;
         // Beside the first and last columns, above the middle ones — and
-        // bounded, so a long label is clipped rather than drawn off the plot.
+        // bounded, so a long label ends in an ellipsis inside the plot.
         float x = 0;
         float maxW = 0;
         int align = 0;
