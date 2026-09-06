@@ -80,6 +80,8 @@ struct MaterialBehavior {
     bool hasItemToMeasure = false;
     PopupAnchor anchor = PopupAnchor::TopLeft;
     bool hasAnchor = false;
+    int8_t fpsContinuous = -1;
+    float fpsFrameBudget = 0;
     MouseButton mouseButton = MouseButton::Left;
     int openDelayMs = 600;
     int closeDelayMs = 300;
@@ -374,6 +376,10 @@ static void ResolveBehavior(const shell::SpecNode* node,
             out->hasPosition = true;
         } else if (StrEq(op.name, StrL("anchor"))) {
             out->anchor = AnchorOf(AsString(op, 0), &out->hasAnchor);
+        } else if (StrEq(op.name, StrL("continuous"))) {
+            out->fpsContinuous = AsBool(op, 0, true) ? 1 : 0;
+        } else if (StrEq(op.name, StrL("frame_budget"))) {
+            out->fpsFrameBudget = AsNumber(op, 0) / 1000.f;
         } else if (StrEq(op.name, StrL("mouse_button"))) {
             Str button = AsString(op, 0);
             out->mouseButton =
@@ -1653,8 +1659,12 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             return ProgressTrack::New(cx);
         case shell::ComponentKind::ProgressIndicator:
             return ProgressIndicator::New(cx);
-        case shell::ComponentKind::FpsMonitor:
-            return FpsMonitorEl(cx);
+        case shell::ComponentKind::FpsMonitor: {
+            FpsOverlayOpts opts;
+            opts.continuous = behavior.fpsContinuous;
+            opts.frameBudget = behavior.fpsFrameBudget;
+            return FpsMonitorEl(cx, opts);
+        }
         case shell::ComponentKind::Radio: {
             El* e =
                 Radio::New(cx, id, behavior.checked, behavior.disabled,

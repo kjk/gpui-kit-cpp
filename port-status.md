@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `884062aeb37b540d283be187e1f8f6b785e945e1`
-(2026-09-04, skills: Quote gpui-kit skill description (#2943)). This checkin quotes a YAML description in the upstream Rust development skill. It changes no runtime, public API, assets, or C++ development instructions.
+Processed through `1f7f8c6549b8a3f605702f3dd07b549244f6b43f`
+(2026-09-04, fps: Sustain frames by default, and stop grading the rate (#2944)). FPS HUDs sustain frames by default, with explicit continuous(false) observing application frames. The headline rate uses the foreground color; frame-cost rows retain budget grading.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

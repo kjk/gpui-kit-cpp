@@ -378,27 +378,8 @@ static const float kUnitWidth = 22.f;
 // too fast to read.
 static const double kReadoutInterval = 0.5;
 
-// Fraction of the target frame rate that still counts as meeting it. Vsync and
-// the sampling window each cost a frame or so a second, so a 60Hz display that
-// is keeping up perfectly reports 58 to 60, never a flat 60.
-static const float kFpsTolerance = 0.95f;
-
 // Distance from the edges the overlay is pinned to.
 static const float kOverlayMargin = 12.f;
-
-Rgba FpsRateColor(float fps, float budgetSecs, const FpsStyle& style) {
-    if (fps <= 0) {
-        return style.muted;
-    }
-    float target = 1.f / budgetSecs;
-    if (fps >= target * kFpsTolerance) {
-        return style.good;
-    }
-    if (fps >= target * 0.5f) {
-        return style.warn;
-    }
-    return style.bad;
-}
 
 // A tenth is worth showing while the reading is small, where it is the
 // difference between idle and a busy timer; past ten the extra digit only
@@ -716,12 +697,9 @@ El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
     const FpsStyle& style = FpsStyleDark();
     FpsReadout r = self->readout;
     float budget = self->frameBudget;
-    // Continuous, the rate is the rate the window can sustain, and falling
-    // short of the target is the finding. Drawing on demand, the rate is how
-    // often something changed, and the platform's own overlay prints it plain
-    // — so does this one.
-    Rgba fpsColor = self->continuous ? FpsRateColor(r.fps, budget, style)
-                                     : style.foreground;
+    // A low demand-driven rate does not mean expensive frames. Only the
+    // frame-cost rows are graded against the budget.
+    Rgba fpsColor = style.foreground;
 
     El* hud = Div(cx->a)
                   ->Click(HashClickId(StrL("gpui-fps-hud")))

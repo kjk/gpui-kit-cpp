@@ -10,15 +10,13 @@ namespace gpui {
 
 // Where the performance HUD sits over the window and how it behaves.
 //
-// What a script's `show_fps_monitor(options)` names, with the same defaults the
-// HUD gets when a native host places one by hand — except `continuous`, which
-// is off: a HUD a script switches on is there to watch the application's own
-// frames, not to drive a redraw loop of its own.
+// Matches the native HUD defaults, including sustained frames. Scripts can
+// request continuous: false to observe only the application's own redraws.
 struct FpsHudRequest {
     // Corner or edge of the window.
     FpsAnchor anchor = FpsAnchor::TopRight;
     // Whether the HUD requests another animation frame after every render.
-    bool continuous = false;
+    bool continuous = true;
     // The per-frame budget the HUD grades frame cost against, in seconds.
     // Unset keeps the HUD's own default.
     bool hasFrameBudget = false;
@@ -86,9 +84,9 @@ bool ShellRootCloseDialog(Ctx* cx);
 int ShellRootCloseAllDialogs(Ctx* cx);
 bool ShellRootHasDialog(Ctx* cx);
 
-bool ShellRootOpenSheet(Ctx* cx, Entity<ScriptView> content,
-                        component::SheetPlacement placement =
-                            component::SheetPlacement::Right);
+bool ShellRootOpenSheet(
+    Ctx* cx, Entity<ScriptView> content,
+    component::SheetPlacement placement = component::SheetPlacement::Right);
 bool ShellRootCloseSheet(Ctx* cx);
 bool ShellRootHasSheet(Ctx* cx);
 

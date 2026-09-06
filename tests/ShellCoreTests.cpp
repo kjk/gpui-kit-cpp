@@ -3597,11 +3597,20 @@ static void ScriptsSwitchOnARootOwnedPerformanceHud() {
              state->fpsHud.hasFrameBudget && !state->fpsHud.continuous);
     // Up means drawn: the root's own layer carries the HUD, not the script's.
     frame->Reset();
+    window.animFrame = false;
     utassert(EntityRender(&app, &window, frame, root.id) != nullptr);
+    utassert(!window.animFrame);
     utassert(ShellRootHideFpsMonitor(&cx));
     utassert(!ShellRootFpsMonitorVisible(&cx));
     // Nothing was up to take down.
     utassert(!ShellRootHideFpsMonitor(&cx));
+
+    utassert(ShellRootShowFpsMonitor(&cx, FpsHudRequest{}));
+    frame->Reset();
+    window.animFrame = false;
+    utassert(EntityRender(&app, &window, frame, root.id) != nullptr);
+    utassert(window.animFrame);
+    utassert(ShellRootHideFpsMonitor(&cx));
 
     // Every anchor a script can name resolves, and one it cannot is refused
     // rather than falling back to a corner — which is what lets the binding

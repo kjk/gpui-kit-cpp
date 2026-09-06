@@ -269,12 +269,6 @@ struct FpsMonitor {
 void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs);
 void FpsMonitorSetContinuous(FpsMonitor* self, bool continuous);
 
-// fps_color: grades the frame rate against the rate the budget implies.
-// Deliberately not 1/fps against the budget the way the per-frame trace is
-// graded: under vsync the measured rate lands just under the refresh rate
-// essentially always, so anything within FPS_TOLERANCE of the target counts
-// as meeting it.
-Rgba FpsRateColor(float fps, float budgetSecs, const FpsStyle& style);
 // format_cpu: a tenth below ten, whole percent above.
 TempStr FpsFormatCpuTemp(float percent);
 // format_bytes: whole MB, or GB to two places from a gigabyte up.

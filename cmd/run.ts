@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "884062aeb37b540d283be187e1f8f6b785e945e1",
+  sha: "1f7f8c6549b8a3f605702f3dd07b549244f6b43f",
   date: "2026-09-04",
-  subject: "skills: Quote gpui-kit skill description (#2943)",
+  subject: "fps: Sustain frames by default, and stop grading the rate (#2944)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

@@ -12,10 +12,6 @@
 #include <math.h>
 #include <stdlib.h>
 
-static bool FpsSameRgba(Rgba a, Rgba b) {
-    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-}
-
 // timing(): a frame that answered one request to redraw. Named
 // FpsTiming because gpui::Timing is the motion core's timing block.
 static FrameSample FpsTiming(float drawSecs) {
@@ -355,22 +351,6 @@ static void APlatformWithNoGpuCounterStaysWithoutOne() {
 
 // ─── monitor ──────────────────────────────────────────────────────────────
 
-static void ADisplayKeepingUpIsNeverGradedAsFallingBehind() {
-    const FpsStyle& style = FpsStyleDark();
-    const float budget = 1.f / 60.f;
-
-    // What a healthy 60Hz display actually reports.
-    const float rates[] = {58.f, 59.f, 59.7f, 60.f, 61.f};
-    for (int i = 0; i < 5; i++) {
-        utassert(
-            FpsSameRgba(FpsRateColor(rates[i], budget, style), style.good));
-    }
-
-    utassert(FpsSameRgba(FpsRateColor(45.f, budget, style), style.warn));
-    utassert(FpsSameRgba(FpsRateColor(20.f, budget, style), style.bad));
-    utassert(FpsSameRgba(FpsRateColor(0.f, budget, style), style.muted));
-}
-
 static void FormatsMemoryByMagnitude() {
     utassert(StrEq(FpsFormatBytesTemp(184ull * 1024 * 1024), StrL("184 MB")));
     utassert(
@@ -477,7 +457,6 @@ void TestFrameSampler() {
     APlatformWithNoGpuCounterStaysWithoutOne();
 
     TestSuite("fps/monitor");
-    ADisplayKeepingUpIsNeverGradedAsFallingBehind();
     FormatsMemoryByMagnitude();
     FormatsCpuOnTheSingleCoreScale();
 
