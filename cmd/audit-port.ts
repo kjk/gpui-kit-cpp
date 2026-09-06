@@ -1,4 +1,4 @@
-// Structural fidelity gate for crates/base -> src/base and crates/ui -> src/ui.
+// Structural fidelity gate for crates/base -> src/base and crates/component -> src/ui.
 // The Rust checkout is optional in CI; when present, its module declarations
 // are checked against the pinned ledger as well as the C++ destinations.
 
@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "c0946e6acdc9e2f984f317ef7f998ee2c79f1a87";
+const pinnedGpuiComponent = "94a313a72a2513aee2780240cd322d552b2395f0";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -588,14 +588,14 @@ function sameMembers(label: string, actual: string[], expected: string[]) {
 const rustRoot = join(root, ".work", "gpui-component", "crates");
 if (existsSync(rustRoot)) {
   sameMembers("base", modulesIn(join(rustRoot, "base", "src", "lib.rs")), baseModules);
-  sameMembers("ui", modulesIn(join(rustRoot, "ui", "src", "lib.rs")), uiModules);
+  sameMembers("ui", modulesIn(join(rustRoot, "component", "src", "lib.rs")), uiModules);
 
   const byModule = new Map(entries.map((entry) => [`${entry.crate}/${entry.module}`, entry]));
   const verboseSurface = Bun.argv.includes("-surface");
   const missingDeclarations = Bun.argv.includes("-missing-declarations");
   const seenDeclarations = new Set<string>();
   for (const crate of ["base", "ui"] as const) {
-    const items = surfaceItems(crate, join(rustRoot, crate, "src"));
+    const items = surfaceItems(crate, join(rustRoot, crate === "ui" ? "component" : crate, "src"));
     for (const kind of ["declaration", "pub-use", "test"] as const) {
       const selected = items.filter((item) => item.kind === kind);
       const expected = surfacePins[crate][kind];

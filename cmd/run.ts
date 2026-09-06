@@ -535,38 +535,39 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 // gpui-kit-cpp-dist carries: a snapshot has to be able to fetch and cargo-build
 // the Rust twin without the rest of cmd/ coming along for the ride.
 
-/** Spec we port: crates/base, crates/ui, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
+/** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c0946e6acdc9e2f984f317ef7f998ee2c79f1a87",
+  sha: "94a313a72a2513aee2780240cd322d552b2395f0",
   date: "2026-09-03",
-  subject: "base: Keep a reconcile from moving splits the edit did not touch (#2931)",
+  subject: "chore: Use gpui-kit (#2929)",
   crates: {
-    "gpui-base": "0.5.2",
-    "gpui-component": "0.5.2",
-    "gpui-component-story": "0.5.1",
-    "gpui-wry": "0.5.0",
-    "gpui-shell": "0.1.0",
-    "gpui-component-shell": "0.1.0",
+    "gpui-kit": "0.6.0",
+    "gpui-base": "0.6.0",
+    "gpui-component": "0.6.0",
+    "gpui-component-story": "0.6.0",
+    "gpui-wry": "0.6.0",
+    "gpui-shell": "0.6.0",
+    "gpui-component-shell": "0.6.0",
   },
   dir: ".work/gpui-component",
 } as const;
 
 /**
- * Zed GPUI snapshot from that gpui-kit Cargo.lock.
- * Reference for runtime behavior only — not a crate we port.
+ * Zed reference snapshot recorded in gpui-pre 0.3.2's package metadata.
+ * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "f66ed399cdde86092af8af3dc7b418abf45f37f8",
-  date: "2026-08-26",
-  subject: "gpui: Fix stale pending input when a window is blurred (#63271)",
+  sha: "801c087af22dd189dc1aa49e2f370b4f04190b19",
+  date: "2026-09-03",
+  subject: "git: Separate revisions from paths in git commands (#63666)",
   crates: {
-    gpui: "0.2.2",
-    gpui_platform: "0.2.2",
-    gpui_macros: "0.2.2",
+    "gpui-pre": "0.3.2",
+    "gpui-pre-platform": "0.3.2",
+    "gpui-pre-macros": "0.3.2",
   },
-  lock: "git+https://github.com/zed-industries/zed#f66ed399cdde86092af8af3dc7b418abf45f37f8",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.2",
 } as const;
 
 /**
@@ -583,7 +584,7 @@ export const taffy = {
 } as const;
 
 /**
- * The CommonMark + GFM parser gpui-kit's `crates/ui/Cargo.toml` asks
+ * The CommonMark + GFM parser gpui-kit's `crates/component/Cargo.toml` asks
  * for (`markdown = { version = "1.0.0", features = ["serde"] }`). We port it:
  * `src/markdown/` is a C++ port of exactly this version, and
  * `component::TextView` parses through it. See `src/markdown/readme.md`.

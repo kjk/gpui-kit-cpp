@@ -5,18 +5,24 @@ it terse: one bullet per gap, the reason, and the file that owns it. When you
 decide not to port something, add the bullet here instead of leaving the next
 session to rediscover it. This is not a changelog — do not log what was done.
 
-Everything in `crates/base`, `crates/ui`, `crates/story`,
+Everything in `crates/base`, `crates/component`, `crates/story`,
 `crates/base/examples/showcase`, `crates/fps`, `crates/webview`,
 `crates/shell` and `examples/` is ported and builds on Windows, Linux, macOS
 and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `c0946e6acdc9e2f984f317ef7f998ee2c79f1a87`
-(2026-09-03, base: Keep a reconcile from moving splits the edit did not touch (#2931)). Dock splits retain proportional sizes across window resizing and unrelated tab changes. The live dock retains its own state instead of re-adopting unchanged PaneTree sizes.
+Processed through `94a313a72a2513aee2780240cd322d552b2395f0`
+(2026-09-03, chore: Use gpui-kit (#2929)). Upstream now names its styled crate crates/component and publishes the 0.6.0 GPUI Kit facade. C++ keeps src/ui and its existing gpui.h facade; the audit maps the new source path explicitly.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
+
+- **Upstream package names.** `crates/component` remains `src/ui/` here;
+  `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
+  Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
+  The GPUI reference is `gpui-pre` 0.3.2 (Zed `801c087a`); the five ported
+  dependency versions are unchanged.
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including a bare Tiles center. The older live

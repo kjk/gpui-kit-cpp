@@ -18,7 +18,7 @@ have that the crate has no module for takes the nearest name
 | Rust | C++ |
 | --- | --- |
 | `crates/base` | `src/base/` |
-| `crates/ui` | `src/ui/` |
+| `crates/component` | `src/ui/` |
 | `crates/story` | `examples/story/` |
 | `crates/base/examples/showcase` | `examples/showcase/` |
 | `crates/fps` | `src/fps/` |
@@ -81,7 +81,8 @@ The same applies to `src/html5ever-mini/`.
 
 ## Zed GPUI — reference only
 
-`Cargo.lock` pins GPUI from Zed (`zedGpui` in `cmd/run.ts`). Read that snapshot
+`Cargo.lock` pins the published `gpui-pre` packages. Their Cargo package
+metadata records the Zed revision (`zedGpui` in `cmd/run.ts`). Read that snapshot
 when matching runtime behaviour (text measure cache, platform shaping, window);
 do **not** treat later Zed `main` as the spec. After a rust build the checkout
 is at `%USERPROFILE%\.cargo\git\checkouts\zed-*\<sha prefix>\`. We reimplement a

@@ -1,7 +1,7 @@
 # Base/UI structural fidelity map
 
 `cmd/audit-port.ts` is the machine-readable source of truth for the mapping
-from the pinned `crates/base` and `crates/ui` module trees into `src/base` and
+from the pinned `crates/base` and `crates/component` module trees into `src/base` and
 `src/ui`. This file only explains it.
 
 ```
