@@ -939,7 +939,11 @@ static void ApplyMenuTheme(HWND hwnd, bool dark) {
     static bool tried = false;
     if (!tried) {
         tried = true;
-        uxtheme = LoadLibraryW(L"uxtheme.dll");
+        // Restrict this system DLL to System32 to prevent application-directory
+        // DLL planting: the default search order would consider a file beside
+        // the executable before the operating system's copy.
+        uxtheme = LoadLibraryExW(L"uxtheme.dll", nullptr,
+                                 LOAD_LIBRARY_SEARCH_SYSTEM32);
     }
     if (!uxtheme) {
         return;

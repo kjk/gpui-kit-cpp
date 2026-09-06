@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bd4a9c0aa3bd6ff3901272459b3c53e9e5427d03",
+  sha: "7329fa81d25498a94812fcd80d152f22612aee46",
   date: "2026-09-06",
-  subject: "ci: enable weekly gpui-pre releases (#2982)",
+  subject: "native_menu: Constrain uxtheme loading to System32 (#2974)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

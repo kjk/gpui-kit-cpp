@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `bd4a9c0aa3bd6ff3901272459b3c53e9e5427d03`
-(2026-09-06, ci: enable weekly gpui-pre releases (#2982)). This and 783ff2ae before it are the repository's own paperwork — CONTRIBUTING.md welcomes AI-assisted contributions, and the gpui-pre release workflow runs weekly — and touch no crate, so only the pin moves.
+Processed through `7329fa81d25498a94812fcd80d152f22612aee46`
+(2026-09-06, native_menu: Constrain uxtheme loading to System32 (#2974)). The Windows native menu's dark-mode entry points come from a `uxtheme.dll` loaded with `LOAD_LIBRARY_SEARCH_SYSTEM32`, so a DLL planted beside the executable is never considered; ordinal resolution, the cached module and the plain-menu fallback are unchanged.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
