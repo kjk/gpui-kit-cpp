@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/ui, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0c746dff2a70f19e3c348961326b502a0008417a",
-  date: "2026-09-02",
-  subject: "base: Add NavStack, a navigation stack built on History (#2922)",
+  sha: "a4df491e5f3ab1acfb007d916243c04a8e4cb26c",
+  date: "2026-09-03",
+  subject: "base: split navigation and undo history (#2923)",
   crates: {
     "gpui-base": "0.5.2",
     "gpui-component": "0.5.2",

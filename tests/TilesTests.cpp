@@ -236,11 +236,11 @@ static void AnUndoRecordsNothing() {
     TilesAdd(&s, 0, B(200, 200, 100, 100));
     TilesBeginMove(&s, 0, 250, 250);
     TilesUpdatePosition(&s, 253, 257);
-    int recorded = s.nChange;
+    int recorded = (s.history.undos.len + s.history.redos.len);
     TilesUndo(&s);
-    utassert(s.nChange == recorded);
+    utassert((s.history.undos.len + s.history.redos.len) == recorded);
     TilesRedo(&s);
-    utassert(s.nChange == recorded);
+    utassert((s.history.undos.len + s.history.redos.len) == recorded);
 }
 
 // The room the tiles take between them, which is what the area scrolls over.

@@ -10,6 +10,14 @@ Everything in `crates/base`, `crates/ui`, `crates/story`,
 `crates/shell` and `examples/` is ported and builds on Windows, Linux, macOS
 and wasm. The work left is depth, not breadth.
 
+## Upstream revision
+
+Processed through `a4df491e5f3ab1acfb007d916243c04a8e4cb26c`
+(2026-09-03, navigation/undo history split). Navigation and grouped undo use
+separate APIs; Tiles uses the upstream 100 ms transaction grouping and
+1,000-transaction default. Input retains its dedicated text UndoManager.
+The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
+
 ## Known gaps vs Rust
 
 - **Image loading uses bounded process caches.** `src/gpui/image.cpp` keeps

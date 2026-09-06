@@ -28,6 +28,7 @@
 #include "base/geometry.h"
 #include "base/global_state.h"
 #include "base/history.h"
+#include "base/undo_history.h"
 #include "base/hover_card.h"
 #include "base/index_path.h"
 #include "base/input.h"

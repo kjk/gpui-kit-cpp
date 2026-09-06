@@ -24,15 +24,10 @@ static bool NavTop(const NavStackState* s, EntityId* view, int* index) {
     return true;
 }
 
-// Takes the top view back onto the forward side. Every push has its own
-// version, so an undo step is one view.
-static bool NavUndoOne(NavStackState* s, EntityId* view) {
-    Vec<NavEntry> undone = s->history.Undo();
-    if (undone.len <= 0) {
-        return false;
-    }
-    *view = undone[0].view;
-    return true;
+// Keep the popped page while navigation moves to its predecessor.
+static bool NavBackOne(NavStackState* s, EntityId* view) {
+    *view = s->Current();
+    return s->history.Back();
 }
 
 // cx.emit(event) + cx.notify() inside `stack.update(..)`: what notifies is the
@@ -85,7 +80,7 @@ EntityId NavStackPop(NavStackState* s, Ctx* cx, NavMotion motion) {
     int index = 0;
     bool hasPopped = NavTop(s, &popped, &index);
     EntityId undone = {};
-    if (!NavUndoOne(s, &undone)) {
+    if (!NavBackOne(s, &undone)) {
         return {};
     }
     NavFinish(s, cx, hasPopped, popped, index, NavOperation::Pop, motion,
@@ -100,7 +95,7 @@ Vec<EntityId> NavStackPopToRoot(NavStackState* s, Ctx* cx, NavMotion motion) {
     Vec<EntityId> popped;
     while (s->Depth() > 1) {
         EntityId view = {};
-        if (!NavUndoOne(s, &view)) {
+        if (!NavBackOne(s, &view)) {
             break;
         }
         VecAppend(popped, view);
@@ -123,11 +118,11 @@ EntityId NavStackForward(NavStackState* s, Ctx* cx, NavMotion motion) {
     EntityId outgoing = {};
     int index = 0;
     bool hasOutgoing = NavTop(s, &outgoing, &index);
-    Vec<NavEntry> redone = s->history.Redo();
-    if (redone.len <= 0) {
+    NavEntry redone;
+    if (!s->history.Forward(&redone)) {
         return {};
     }
-    EntityId view = redone[0].view;
+    EntityId view = redone.view;
     NavFinish(s, cx, hasOutgoing, outgoing, index, NavOperation::Push, motion,
               NavStackEvent::Forwarded);
     return view;

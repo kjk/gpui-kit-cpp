@@ -1,215 +1,92 @@
 #ifndef GPUI_BASE_HISTORY_H_
 #define GPUI_BASE_HISTORY_H_
-/* Generic undo/redo history — crates/base/src/history.rs.
-   (`crates/ui/src/history.rs` is a re-export of this one, not a second copy.)
-
-   A linear history of items with a cursor: what came before can be taken back
-   with Undo, and taken back again with Redo. Pushing after an undo starts a
-   new branch — the undone items are dropped, as a browser drops its forward
-   pages when a new page is opened.
-
-   I is the C++ HistoryItem convention: a POD-friendly value with
-
-       uint64_t Version() const;
-       void SetVersion(uint64_t);
-       bool operator==(const I&) const;
-
-   Rust expresses those three operations as Clone + PartialEq and the
-   HistoryItem trait. Vec copies the value bytes here, so the repository's
-   usual explicit-ownership rule applies to any pointers an item carries. */
-
+/* Browser-style navigation trail -- crates/base/src/history.rs.
+   Values are POD-friendly copies; pointer ownership stays with callers. */
 #include "gpui/gpui.h"
-
 namespace gpui {
-
-template <typename I>
+template <typename T>
+struct HistoryForwardEntries {
+    const T* items = nullptr;
+    int len = 0;
+    const T& operator[](int i) const { return items[len - 1 - i]; }
+};
+template <typename T>
 struct History {
-    Vec<I> undos;
-    Vec<I> redos;
-    double lastChangedAt = TimeNow();
-    uint64_t version = 0;
-    bool ignore = false;
-    int maxUndos = 1000;
-    double groupInterval = 0;
-    bool hasGroupInterval = false;
-    bool grouping = false;
-    bool unique = false;
-
-    History& MaxUndos(int n) {
-        maxUndos = n;
+    Vec<T> entries;
+    Vec<T> forwardEntries;
+    int maxEntries = 1000;
+    History& MaxEntries(int n) {
+        maxEntries = std::max(0, n);
+        EnforceMaxEntries();
         return *this;
     }
-
-    History& Unique(bool on = true) {
-        unique = on;
-        return *this;
+    void Push(T entry) {
+        VecClear(forwardEntries);
+        if (maxEntries == 0) return;
+        VecAppend(entries, entry);
+        EnforceMaxEntries();
     }
-
-    // Rust takes an instant::Duration. Seconds are the runtime clock's unit;
-    // the millisecond spelling keeps ordinary callers out of conversions.
-    History& GroupInterval(double seconds) {
-        groupInterval = seconds >= 0 ? seconds : 0;
-        hasGroupInterval = true;
-        return *this;
+    const T* Current() const {
+        return entries.len ? &entries[entries.len - 1] : nullptr;
     }
-
-    History& GroupIntervalMs(int64_t ms) {
-        return GroupInterval(ms > 0 ? (double)ms / 1000.0 : 0);
+    void ReplaceCurrent(T entry) {
+        if (entries.len)
+            entries[entries.len - 1] = entry;
+        else
+            Push(entry);
     }
-
-    void StartGrouping() { grouping = true; }
-    void EndGrouping() { grouping = false; }
-
-    uint64_t Version() const { return version; }
-    bool IsIgnoring() const { return ignore; }
-    void SetIgnoring(bool on) { ignore = on; }
-
-    const Vec<I>& Undos() const { return undos; }
-    const Vec<I>& Redos() const { return redos; }
-    bool CanUndo() const { return undos.len > 0; }
-    bool CanRedo() const { return redos.len > 0; }
-
+    bool RemoveCurrent(T* out = nullptr) {
+        if (!entries.len) return false;
+        if (out) *out = entries[entries.len - 1];
+        entries.len--;
+        return true;
+    }
+    bool CanBack() const { return entries.len > 1; }
+    bool CanForward() const { return forwardEntries.len > 0; }
+    bool Back(T* out = nullptr) {
+        if (!CanBack()) return false;
+        VecAppend(forwardEntries, entries[entries.len - 1]);
+        entries.len--;
+        if (out) *out = *Current();
+        return true;
+    }
+    bool Forward(T* out = nullptr) {
+        if (maxEntries == 0 || !CanForward()) return false;
+        VecAppend(entries, forwardEntries[forwardEntries.len - 1]);
+        forwardEntries.len--;
+        EnforceMaxEntries();
+        if (out) *out = *Current();
+        return true;
+    }
+    const Vec<T>& Entries() const { return entries; }
+    HistoryForwardEntries<T> ForwardEntries() const {
+        return {forwardEntries.els, forwardEntries.len};
+    }
+    void Retain(bool (*keep)(const T&, void*), void* user = nullptr) {
+        RetainIf(entries, keep, user);
+        RetainIf(forwardEntries, keep, user);
+    }
     void Clear() {
-        VecClear(undos);
-        VecClear(redos);
+        VecClear(entries);
+        VecClear(forwardEntries);
     }
-
-    // Pushes an item, dropping anything that had been undone.
-    void Push(I item) {
-        uint64_t nextVersion = IncVersion();
-        VecClear(redos);
-        if (maxUndos <= 0) {
-            return;
-        }
-        if (undos.len >= maxUndos) {
-            RemoveAt(&undos, 0);
-        }
-        if (unique) {
-            RetainDifferent(&undos, item);
-        }
-        item.SetVersion(nextVersion);
-        VecAppend(undos, item);
-    }
-
-    // The most recent item, the one Undo would take back. Null when empty —
-    // Rust's Option<&I>.
-    const I* Current() const {
-        return undos.len > 0 ? &undos[undos.len - 1] : nullptr;
-    }
-    I* Current() { return undos.len > 0 ? &undos[undos.len - 1] : nullptr; }
-
-    // Replaces the most recent item in place, keeping its version, so the
-    // history does not grow: a location that was recorded before it had
-    // finished loading is corrected rather than followed by a duplicate.
-    // Pushes when there is nothing to replace.
-    void ReplaceCurrent(I item) {
-        if (undos.len <= 0) {
-            Push(item);
-            return;
-        }
-        I& current = undos[undos.len - 1];
-        item.SetVersion(current.Version());
-        current = item;
-    }
-
-    // Keeps only the items `keep` accepts, on both sides of the cursor. Use it
-    // when items can stop being valid — a location whose tab was closed. Rust
-    // takes `impl FnMut(&I) -> bool`; the C++ callback convention in this tree
-    // is a function pointer plus the user pointer it would have captured.
-    void Retain(bool (*keep)(const I&, void*), void* user = nullptr) {
-        RetainIf(&undos, keep, user);
-        RetainIf(&redos, keep, user);
-    }
-
-    // Empty means there was nothing to undo/redo. Otherwise every returned
-    // item shares the version of the first one, in pop order.
-    Vec<I> Undo() { return MoveVersion(&undos, &redos); }
-    Vec<I> Redo() { return MoveVersion(&redos, &undos); }
 
   private:
-    uint64_t IncVersion() {
-        double now = TimeNow();
-        if (!grouping &&
-            (!hasGroupInterval || now - lastChangedAt > groupInterval)) {
-            version++;
-        }
-        lastChangedAt = now;
-        return version;
+    void EnforceMaxEntries() {
+        int excess = entries.len - maxEntries;
+        if (excess <= 0) return;
+        for (int i = excess; i < entries.len; i++)
+            entries[i - excess] = entries[i];
+        entries.len -= excess;
     }
-
-    static void RemoveAt(Vec<I>* values, int at) {
-        if (!values || at < 0 || at >= values->len) {
-            return;
-        }
-        for (int i = at + 1; i < values->len; i++) {
-            (*values)[i - 1] = (*values)[i];
-        }
-        values->len--;
-    }
-
-    static void RetainDifferent(Vec<I>* values, const I& item) {
-        int out = 0;
-        for (int i = 0; i < values->len; i++) {
-            if ((*values)[i] == item) {
-                continue;
-            }
-            if (out != i) {
-                (*values)[out] = (*values)[i];
-            }
-            out++;
-        }
-        values->len = out;
-    }
-
-    static void RetainIf(Vec<I>* values, bool (*keep)(const I&, void*),
+    static void RetainIf(Vec<T>& values, bool (*keep)(const T&, void*),
                          void* user) {
-        if (!values || !keep) {
-            return;
-        }
-        int out = 0;
-        for (int i = 0; i < values->len; i++) {
-            if (!keep((*values)[i], user)) {
-                continue;
-            }
-            if (out != i) {
-                (*values)[out] = (*values)[i];
-            }
-            out++;
-        }
-        values->len = out;
-    }
-
-    static bool ContainsVersion(const Vec<I>& values, uint64_t version) {
-        for (int i = 0; i < values.len; i++) {
-            if (values[i].Version() == version) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    static Vec<I> MoveVersion(Vec<I>* from, Vec<I>* to) {
-        Vec<I> changes;
-        if (!from || from->len <= 0) {
-            return changes;
-        }
-        I first = (*from)[from->len - 1];
-        from->len--;
-        VecAppend(changes, first);
-        uint64_t pickedVersion = first.Version();
-        // This is deliberately the Rust implementation's whole-stack test,
-        // followed by a pop, rather than merely looking at the last item.
-        while (ContainsVersion(*from, pickedVersion)) {
-            I change = (*from)[from->len - 1];
-            from->len--;
-            VecAppend(changes, change);
-        }
-        for (int i = 0; i < changes.len; i++) {
-            VecAppend(*to, changes[i]);
-        }
-        return changes;
+        if (!keep) return;
+        int n = 0;
+        for (const T& value : values)
+            if (keep(value, user)) values[n++] = value;
+        values.len = n;
     }
 };
-
 } // namespace gpui
 #endif // GPUI_BASE_HISTORY_H_

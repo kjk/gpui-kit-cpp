@@ -10,6 +10,7 @@
    resized, and the history that undoes it. */
 
 #include "base/dock.h"
+#include "base/undo_history.h"
 
 namespace gpui {
 
@@ -85,11 +86,6 @@ enum class TilesEvent : uint8_t {
     ZoomOut
 };
 
-// How many changes the undo history holds. Rust's is unbounded; a window this
-// deep is already more undo than a free canvas of panels needs, and the
-// oldest change goes to make room for a new one.
-const int kMaxTileChanges = 64;
-
 // TileItem: a panel of the caller's, where it sits, and how high it stacks.
 struct TileItem {
     // The caller's panel, by index — Rust's Arc<dyn PanelView>.
@@ -145,11 +141,8 @@ struct TilesState {
     // hover. Rust leaves it None and falls back to the theme's.
     ScrollbarMode scrollbarMode = ScrollbarMode::Always;
 
-    // The history, and the flag that keeps an undo from recording itself.
-    TileChange changes[kMaxTileChanges] = {};
-    int nChange = 0;
-    int cursor = 0;
-    bool ignoring = false;
+    UndoHistory<TileChange> history;
+    TilesState() { history.GroupIntervalMs(100); }
     // The panel filling the whole canvas, or -1.
     int zoomedPanel = -1;
 

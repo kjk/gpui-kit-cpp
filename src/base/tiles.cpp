@@ -268,22 +268,8 @@ Point TilesConstrainOrigin(const TilesState* s, Point origin) {
     return origin;
 }
 
-// The history: everything past the cursor is dropped, the way a new edit
-// drops the redo branch.
 static void PushChange(TilesState* s, const TileChange& c) {
-    if (s->ignoring) {
-        return;
-    }
-    if (s->cursor >= kMaxTileChanges) {
-        // The oldest change goes to make room for this one.
-        for (int i = 1; i < kMaxTileChanges; i++) {
-            s->changes[i - 1] = s->changes[i];
-        }
-        s->cursor = kMaxTileChanges - 1;
-    }
-    s->changes[s->cursor] = c;
-    s->cursor++;
-    s->nChange = s->cursor;
+    s->history.Push(c);
 }
 
 void TilesBeginMove(TilesState* s, int ix, float x, float y) {
@@ -477,10 +463,10 @@ int TilesBringToFront(TilesState* s, int ix) {
 }
 
 bool TilesCanUndo(const TilesState* s) {
-    return s->cursor > 0;
+    return s->history.CanUndo();
 }
 bool TilesCanRedo(const TilesState* s) {
-    return s->cursor < s->nChange;
+    return s->history.CanRedo();
 }
 
 // Move the tile at `from` to `to`, which is what putting an order change back
@@ -507,30 +493,34 @@ void TilesUndo(TilesState* s) {
     if (!TilesCanUndo(s)) {
         return;
     }
-    s->ignoring = true;
-    const TileChange& c = s->changes[--s->cursor];
-    if (c.hasBounds && c.tile >= 0 && c.tile < s->items.len) {
-        s->items[c.tile].bounds = c.oldBounds;
+    s->history.SetIgnoring(true);
+    Vec<TileChange> changes = s->history.Undo();
+    for (const TileChange& c : changes) {
+        if (c.hasBounds && c.tile >= 0 && c.tile < s->items.len) {
+            s->items[c.tile].bounds = c.oldBounds;
+        }
+        if (c.hasOrder) {
+            MoveItem(s, c.newOrder, c.oldOrder);
+        }
     }
-    if (c.hasOrder) {
-        MoveItem(s, c.newOrder, c.oldOrder);
-    }
-    s->ignoring = false;
+    s->history.SetIgnoring(false);
 }
 
 void TilesRedo(TilesState* s) {
     if (!TilesCanRedo(s)) {
         return;
     }
-    s->ignoring = true;
-    const TileChange& c = s->changes[s->cursor++];
-    if (c.hasBounds && c.tile >= 0 && c.tile < s->items.len) {
-        s->items[c.tile].bounds = c.newBounds;
+    s->history.SetIgnoring(true);
+    Vec<TileChange> changes = s->history.Redo();
+    for (const TileChange& c : changes) {
+        if (c.hasBounds && c.tile >= 0 && c.tile < s->items.len) {
+            s->items[c.tile].bounds = c.newBounds;
+        }
+        if (c.hasOrder) {
+            MoveItem(s, c.oldOrder, c.newOrder);
+        }
     }
-    if (c.hasOrder) {
-        MoveItem(s, c.oldOrder, c.newOrder);
-    }
-    s->ignoring = false;
+    s->history.SetIgnoring(false);
 }
 
 void TilesState::OnMoveDown(TilesState* self, Ctx* cx, const MouseDownEvent* ev,

@@ -1,196 +1,187 @@
-/* Port of crates/base/src/history.rs tests. */
-
+/* Ports of crates/base/src/{history,undo_history}.rs tests. */
 #include "Test.h"
 
-struct TabIndex {
-    int tabIndex = 0;
-    uint64_t version = 0;
-
-    uint64_t Version() const { return version; }
-    void SetVersion(uint64_t value) { version = value; }
-    bool operator==(const TabIndex& other) const {
-        return tabIndex == other.tabIndex;
-    }
-};
-
-static TabIndex TabAt(int index) {
-    TabIndex item;
-    item.tabIndex = index;
-    return item;
+static void ExpectHistory(const Vec<int>& values, int a, int b = -1,
+                          int c = -1) {
+    int n = c >= 0 ? 3 : b >= 0 ? 2 : 1;
+    utassert(values.len == n);
+    if (values.len != n) return;
+    utassert(values[0] == a);
+    if (n > 1) utassert(values[1] == b);
+    if (n > 2) utassert(values[2] == c);
 }
-
-static void HistoryDropsTheUndoneBranchOnPush() {
-    History<TabIndex> history;
-    history.MaxUndos(100);
-    history.Push(TabAt(0));
-    history.Push(TabAt(3));
-    history.Push(TabAt(2));
-    history.Push(TabAt(1));
-
-    utassert(history.Version() == 4);
-    Vec<TabIndex> changes = history.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 1);
-
-    changes = history.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 2);
-
-    history.Push(TabAt(5));
-    // A push after undo starts a new branch; 2 and 1 are gone.
-    utassert(history.Redo().len == 0);
-
-    const int expected[] = {5, 3, 0};
-    for (int want : expected) {
-        changes = history.Undo();
-        utassert(changes.len == 1 && changes[0].tabIndex == want);
-    }
-    utassert(history.Undo().len == 0);
+static bool HistoryEven(const int& n, void*) {
+    return n % 2 == 0;
 }
-
-static void UniqueHistoryRetainsOnlyTheNewestEqualItem() {
-    History<TabIndex> history;
-    history.MaxUndos(100).Unique();
-    history.Push(TabAt(0));
-    history.Push(TabAt(1));
-    history.Push(TabAt(1));
-    history.Push(TabAt(2));
-    history.Push(TabAt(1));
-
-    utassert(history.Version() == 5);
-    utassert(history.Undos().len == 3);
-    utassert(history.Undos()[2].tabIndex == 1);
-
-    Vec<TabIndex> changes = history.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 1);
-    utassert(history.Redos().len == 1);
-
-    // A revisit moves the item to the front and drops the undone branch.
-    history.Push(TabAt(2));
-    utassert(history.Undos().len == 2);
-    utassert(history.Undos()[1].tabIndex == 2);
-    utassert(history.Redos().len == 0);
-    utassert(history.Redo().len == 0);
-
-    history.Push(TabAt(3));
-    utassert(history.Version() == 7);
-    utassert(history.Undos().len == 3);
-    for (int i = 0; i < 3; i++) {
-        history.Undo();
-    }
-    utassert(history.Undos().len == 0);
-    utassert(history.Redos().len == 3);
+static void NavigationHistory() {
+    TestSuite("navigation history");
+    History<int> h;
+    int n = 0;
+    h.MaxEntries(3);
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    utassert(*h.Current() == 3);
+    utassert(h.Back(&n) && n == 2);
+    utassert(h.Back(&n) && n == 1);
+    utassert(!h.Back());
+    utassert(h.Forward(&n) && n == 2);
+    ExpectHistory(h.Entries(), 1, 2);
+    utassert(h.ForwardEntries().len == 1 && h.ForwardEntries()[0] == 3);
+    utassert(h.CanBack() && h.CanForward());
+    h.Push(4);
+    ExpectHistory(h.Entries(), 1, 2, 4);
+    utassert(!h.CanForward() && !h.Forward());
+    h.Clear();
+    h.Push(1);
+    h.Push(2);
+    h.Push(1);
+    utassert(h.Back(&n) && n == 2);
+    utassert(h.Back(&n) && n == 1);
+    h.Clear();
+    h.MaxEntries(2);
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    ExpectHistory(h.Entries(), 2, 3);
+    utassert(h.Back(&n) && n == 2);
+    utassert(!h.Back());
+    h.MaxEntries(1);
+    utassert(h.Forward(&n) && n == 3);
+    ExpectHistory(h.Entries(), 3);
+    utassert(!h.Back());
+    h.MaxEntries(0);
+    h.Push(1);
+    utassert(!h.Current() && !h.CanBack() && !h.CanForward());
+    h.MaxEntries(3);
+    h.ReplaceCurrent(1);
+    h.Push(2);
+    h.ReplaceCurrent(3);
+    ExpectHistory(h.Entries(), 1, 3);
+    h.Push(4);
+    h.Back();
+    utassert(h.RemoveCurrent(&n) && n == 3);
+    utassert(*h.Current() == 1 && h.ForwardEntries()[0] == 4);
+    utassert(h.Forward(&n) && n == 4);
+    h.Clear();
+    h.MaxEntries(1000);
+    for (int i = 1; i <= 8; i++) h.Push(i);
+    for (int i = 0; i < 4; i++) h.Back();
+    h.Retain(HistoryEven);
+    ExpectHistory(h.Entries(), 2, 4);
+    utassert(h.ForwardEntries().len == 2);
+    utassert(h.ForwardEntries()[0] == 6 && h.ForwardEntries()[1] == 8);
+    utassert(h.Forward(&n) && n == 6);
+    utassert(h.Forward(&n) && n == 8);
+    h.Back();
+    h.Clear();
+    utassert(!h.Current() && !h.CanBack() && !h.CanForward());
+    utassert(h.Entries().len == 0 && h.ForwardEntries().len == 0);
 }
-
-static void RevisitsKeepEveryStepWithoutUnique() {
-    History<TabIndex> history;
-    history.Push(TabAt(0));
-    history.Push(TabAt(1));
-    history.Push(TabAt(0));
-
-    utassert(history.Undos().len == 3);
-    Vec<TabIndex> changes = history.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 0);
-    changes = history.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 1);
-    utassert(history.Current() && history.Current()->tabIndex == 0);
-    utassert(history.Undo().len == 1);
-    utassert(history.Undo().len == 0);
+static void TransactionHistory() {
+    TestSuite("undo history");
+    UndoHistory<int> h;
+    h.StartGrouping();
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    h.EndGrouping();
+    ExpectHistory(h.Undo(), 3, 2, 1);
+    ExpectHistory(h.Redo(), 1, 2, 3);
+    h.Clear();
+    h.Push(1);
+    h.Push(2);
+    ExpectHistory(h.Undo(), 2);
+    ExpectHistory(h.Undo(), 1);
+    h.GroupInterval(60);
+    h.Push(1);
+    h.Push(2);
+    ExpectHistory(h.Undo(), 2, 1);
+    h.Clear();
+    h.hasGroupInterval = false;
+    h.Push(1);
+    h.Push(2);
+    h.GroupInterval(60);
+    ExpectHistory(h.Undo(), 2);
+    h.Push(3);
+    ExpectHistory(h.Undo(), 3);
+    ExpectHistory(h.Undo(), 1);
+    h.Clear();
+    h.hasGroupInterval = false;
+    h.Push(1);
+    h.Push(2);
+    ExpectHistory(h.Undo(), 2);
+    ExpectHistory(h.Redo(), 2);
+    h.GroupInterval(60);
+    h.Push(3);
+    ExpectHistory(h.Undo(), 3);
+    ExpectHistory(h.Undo(), 2);
+    ExpectHistory(h.Undo(), 1);
+    h.Clear();
+    h.hasGroupInterval = false;
+    h.Push(1);
+    h.Push(2);
+    h.Undo();
+    h.StartGrouping();
+    h.Push(3);
+    h.EndGrouping();
+    ExpectHistory(h.Undo(), 3, 1);
+    h.Clear();
+    h.Push(1);
+    h.Push(2);
+    h.Undo();
+    h.Push(3);
+    utassert(!h.CanRedo() && h.Redo().len == 0);
+    h.Clear();
+    h.SetIgnoring(true);
+    h.Push(1);
+    utassert(h.IsIgnoring() && !h.CanUndo() && h.Undo().len == 0);
+    h.SetIgnoring(false);
+    h.Push(1);
+    h.Undo();
+    h.Clear();
+    utassert(!h.CanUndo() && !h.CanRedo());
+    h.MaxUndos(2);
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    ExpectHistory(h.Undo(), 3);
+    ExpectHistory(h.Undo(), 2);
+    utassert(h.Undo().len == 0);
+    h.Clear();
+    h.MaxUndos(1000);
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    h.MaxUndos(2);
+    ExpectHistory(h.Undo(), 3);
+    ExpectHistory(h.Undo(), 2);
+    utassert(h.Undo().len == 0);
+    h.Clear();
+    h.MaxUndos(1000);
+    h.Push(1);
+    h.Push(2);
+    h.Push(3);
+    h.Undo();
+    h.MaxUndos(1);
+    ExpectHistory(h.Redo(), 3);
+    ExpectHistory(h.Undo(), 3);
+    utassert(h.Undo().len == 0);
+    h.Clear();
+    h.Push(1);
+    h.Undo();
+    h.MaxUndos(0);
+    utassert(h.Redo().len == 0 && h.CanRedo());
+    h.Push(2);
+    utassert(!h.CanUndo() && h.CanRedo());
+    h.MaxUndos(1);
+    ExpectHistory(h.Redo(), 1);
+    h.Clear();
+    h.MaxUndos(0);
+    h.Push(1);
+    utassert(!h.CanUndo() && h.Undo().len == 0);
 }
-
-static void ReplaceCurrentKeepsTheVersionAndTheLength() {
-    History<TabIndex> history;
-    history.ReplaceCurrent(TabAt(7));
-    utassert(history.Undos().len == 1);
-
-    history.Push(TabAt(1));
-    uint64_t version = history.Current()->version;
-    history.ReplaceCurrent(TabAt(2));
-
-    utassert(history.Undos().len == 2);
-    const TabIndex* current = history.Current();
-    utassert(current->tabIndex == 2);
-    utassert(current->version == version);
-}
-
-static bool KeepEvenTab(const TabIndex& item, void*) {
-    return item.tabIndex % 2 == 0;
-}
-
-static void RetainPrunesBothSidesOfTheCursor() {
-    History<TabIndex> history;
-    for (int tab = 0; tab < 4; tab++) {
-        history.Push(TabAt(tab));
-    }
-    history.Undo();
-    history.Undo();
-
-    history.Retain(&KeepEvenTab);
-
-    utassert(history.Current() && history.Current()->tabIndex == 0);
-    utassert(history.Redos().len == 1);
-    Vec<TabIndex> changes = history.Redo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 2);
-}
-
-static void GroupingAndIntervalsShareVersions() {
-    History<TabIndex> grouped;
-    grouped.StartGrouping();
-    grouped.Push(TabAt(1));
-    grouped.Push(TabAt(2));
-    grouped.EndGrouping();
-    utassert(grouped.Version() == 0);
-    Vec<TabIndex> changes = grouped.Undo();
-    utassert(changes.len == 2);
-    utassert(changes[0].tabIndex == 2 && changes[1].tabIndex == 1);
-
-    History<TabIndex> timed;
-    timed.GroupInterval(10);
-    timed.Push(TabAt(1));
-    timed.Push(TabAt(2));
-    utassert(timed.Version() == 0);
-    timed.lastChangedAt = TimeNow() - 11;
-    timed.Push(TabAt(3));
-    utassert(timed.Version() == 1);
-    changes = timed.Undo();
-    utassert(changes.len == 1 && changes[0].tabIndex == 3);
-    changes = timed.Undo();
-    utassert(changes.len == 2);
-}
-
-static void MaximumIgnoreAndClearMatchTheRustState() {
-    History<TabIndex> history;
-    history.MaxUndos(3);
-    for (int i = 0; i < 5; i++) {
-        history.Push(TabAt(i));
-    }
-    utassert(history.Undos().len == 3);
-    utassert(history.Undos()[0].tabIndex == 2);
-
-    history.SetIgnoring(true);
-    utassert(history.IsIgnoring());
-    // Rust exposes the flag for the caller; push itself does not consult it.
-    history.Push(TabAt(5));
-    utassert(history.Undos()[2].tabIndex == 5);
-
-    history.Undo();
-    utassert(history.Redos().len == 1);
-    history.Clear();
-    utassert(!history.CanUndo() && !history.CanRedo());
-
-    History<TabIndex> defaults;
-    for (int i = 0; i < 1100; i++) {
-        defaults.Push(TabAt(i));
-    }
-    utassert(defaults.Undos().len == 1000);
-    utassert(defaults.Undos()[0].tabIndex == 100);
-}
-
 void TestHistory() {
-    TestSuite("history");
-    HistoryDropsTheUndoneBranchOnPush();
-    UniqueHistoryRetainsOnlyTheNewestEqualItem();
-    RevisitsKeepEveryStepWithoutUnique();
-    ReplaceCurrentKeepsTheVersionAndTheLength();
-    RetainPrunesBothSidesOfTheCursor();
-    GroupingAndIntervalsShareVersions();
-    MaximumIgnoreAndClearMatchTheRustState();
+    NavigationHistory();
+    TransactionHistory();
 }

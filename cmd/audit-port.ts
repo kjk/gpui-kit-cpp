@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "0c746dff2a70f19e3c348961326b502a0008417a";
+const pinnedGpuiComponent = "a4df491e5f3ab1acfb007d916243c04a8e4cb26c";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -28,7 +28,7 @@ measure motion nav_stack number_input otp_input pagination popover popup positio
 progress radio radio_group resizable scrollbar scrollable_mask select selectable_text
 sheet slider state_style styled switch table tabs text text_boundary text_selection
 theme theme_tokens toast
-toggle toggle_group tooltip tree virtual_list
+toggle toggle_group tooltip tree undo_history virtual_list
 `
   .trim()
   .split(/\s+/);
@@ -61,7 +61,7 @@ const adapterReasons: Record<string, string> = {
   "base/element_ext": "extension traits are methods on El plus forwarding helpers",
   "base/event": "typed GPUI closures are generational Listener records",
   "base/measure": "measurement is routed through the synchronous runtime layout seam",
-  "ui/component_traits": "the UI façade re-exports Base's C++ trait conventions",
+  "ui/component_traits": "the UI faÃƒÂ§ade re-exports Base's C++ trait conventions",
   "ui/element_ext": "extension traits are methods on El plus forwarding helpers",
   "ui/highlighter": "tree-sitter/syntect are excluded; a dependency-free scanner is used",
   "ui/styled": "fluent traits are C++ builders and the shared sizing vocabulary",
@@ -111,7 +111,7 @@ const uiOverrides: Record<string, string[]> = {
   component_traits: ["src/ui/component_traits.h", "src/base/component_traits.h"],
   element_ext: ["src/ui/element_ext.h", "src/base/element_ext.h"],
   global_state: ["src/ui/global_state.h", "src/ui/global_state.cpp"],
-  history: ["src/ui/history.h", "src/base/history.h", "src/base/history.cpp"],
+  history: ["src/ui/history.h", "src/base/history.h", "src/base/history.cpp", "src/base/undo_history.h"],
   index_path: ["src/ui/index_path.h", "src/base/index_path.h", "src/base/index_path.cpp"],
   styled: ["src/ui/styled.h", "src/base/styled.h", "src/ui/sizing.h"],
   dock: ["src/ui/dock.h", "src/ui/dock.cpp", "src/ui/tiles.h", "src/ui/tiles.cpp"],
@@ -121,7 +121,7 @@ const uiOverrides: Record<string, string[]> = {
   plot: ["src/ui/plot.h", "src/ui/plot.cpp", "src/ui/sankey.h", "src/base/sankey.h", "src/base/sankey.cpp"],
   resizable: ["src/ui/resizable.h", "src/ui/resizable.cpp", "src/base/resizable.h", "src/base/resizable.cpp"],
   sheet: ["src/ui/sheet_settings.h", "src/ui/sheet.h", "src/ui/sheet.cpp"],
-  // The UI side of text is the façade over Base's: text/mod.rs, compat.rs,
+  // The UI side of text is the faÃƒÂ§ade over Base's: text/mod.rs, compat.rs,
   // style.rs and window_selection.rs.
   text: ["src/ui/text.h", "src/ui/text.cpp"],
   scroll: ["src/ui/scroll.h", "src/ui/scroll.cpp", "src/base/scrollable_mask.h"],
@@ -191,6 +191,7 @@ const testTargets: Record<string, string[]> = {
   "base/dock": ["tests/DockTests.cpp", "tests/DockStateTests.cpp", "tests/TilesTests.cpp"],
   "base/global_state": ["tests/AppGlobalTests.cpp"],
   "base/history": ["tests/HistoryTests.cpp"],
+  "base/undo_history": ["tests/HistoryTests.cpp"],
   "base/hover_card": ["tests/HoverCardTests.cpp"],
   "base/index_path": ["tests/IndexPathTests.cpp"],
   "base/input": [
@@ -311,7 +312,7 @@ type DeclarationMapping = {
   collapse?: string;
 };
 
-// Rust's crate façade uses free snake_case functions. The C++ façade keeps
+// Rust's crate faÃƒÂ§ade uses free snake_case functions. The C++ faÃƒÂ§ade keeps
 // the same operation but follows this tree's subsystem-prefix convention.
 // This table grows as -missing-declarations is reviewed; putting a spelling
 // here is an explicit structural decision, not a fuzzy match.
@@ -323,7 +324,7 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "base/lib.rs::fn init": { spellings: ["BaseInit"] },
   "base/dialog.rs::fn init": { spellings: ["DialogInitKeys"] },
   "base/number_input.rs::fn step_value": {
-    spellings: ["NumberStepValue"],
+    spellings: ["NumberStepValueTemp"],
   },
   "base/macos_accessibility.rs::fn install_window_hit_test_forwarder": {
     spellings: ["PlatInstallAccessibilityHitTest"],
@@ -349,9 +350,6 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "base/focus_trap.rs::trait FocusTrapElement": {
     collapse:
       "C++ El::TrapId plus FocusTrapContainer::New is the extension surface; the POD tree has no inheritance trait wrapper",
-  },
-  "base/history.rs::trait HistoryItem": {
-    collapse: "C++ History<I> requires Version, SetVersion and operator== directly on its POD-friendly item type",
   },
   "base/popup.rs::const POPUP_PRIORITY": {
     spellings: ["kPopupPriority"],
@@ -410,11 +408,11 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   },
   "ui/text/compat.rs::struct TextViewPrepaintState": {
     collapse:
-      "the C++ façade re-exports Base's TextView rather than wrapping it in a second element, so the compatibility element's prepaint state has no separate representation",
+      "the C++ faÃƒÂ§ade re-exports Base's TextView rather than wrapping it in a second element, so the compatibility element's prepaint state has no separate representation",
   },
   "ui/text/compat.rs::struct TextViewLayoutState": {
     collapse:
-      "same façade: TextViewLayoutState is Base's, re-exported, because there is no wrapper element holding an AnyElement of its own",
+      "same faÃƒÂ§ade: TextViewLayoutState is Base's, re-exported, because there is no wrapper element holding an AnyElement of its own",
   },
   "ui/theme/color.rs::fn black": { spellings: ["ThemeBlack"] },
   "ui/theme/color.rs::fn hsl": { spellings: ["ThemeHsl"] },
@@ -541,13 +539,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 424, sha256: "4bfb054e59bf63dae352de1845a46f1f0a44add79f38ac2124c9212767126303" },
-    "pub-use": { count: 129, sha256: "7c2d33421862385b6f7c3a9c1b28e55d4e675d7d3954d08701ef2710260a269d" },
-    test: { count: 739, sha256: "148a5a9c99aa03c7b106ca3030b5e5e8cc4dc659a1b9cdef47a2ab91248cf33b" },
+    declaration: { count: 424, sha256: "08da4d596474aa84b0ff4c6e6a410615ee4925f83849ffbaf38f850e33c6c3b3" },
+    "pub-use": { count: 130, sha256: "54481e7c3ffecdb5609b14191efcb779f20bfb627e32fd0e73557670ca7bf346" },
+    test: { count: 758, sha256: "957b2bf2e55dc0168f00402d99eec2961adcf9ad025adc3a0020654ee1432c2a" },
   },
   ui: {
     declaration: { count: 426, sha256: "e5138aa5e62871e1daf3759d46e05a45f47cd2e2038deeed50a857a066f00634" },
-    "pub-use": { count: 156, sha256: "87576c90e9384243efa76690bede17a558f8da6288d0ca98a9cdc28024edcfd5" },
+    "pub-use": { count: 156, sha256: "3621ab05b7cbddc92fb38bb3b9ab28f48a28194e5a1bfb34dd6ff640d2941e69" },
     test: { count: 438, sha256: "1a2bf85a678dee39d900cad783c6a65e772d4398c3c3f07b936fb318e7d305e2" },
   },
 };

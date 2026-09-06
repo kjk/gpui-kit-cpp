@@ -4,9 +4,9 @@
 
    A stack of views, one visible at a time, with the pages popped off it kept
    for Forward. This is SwiftUI's NavigationStack, Qt's StackView and WinUI's
-   Frame. Underneath it is a History of views — the stack is the undo side, and
-   a popped page waits on the redo side until a push discards it, which is what
-   WinUI's BackStack and ForwardStack do.
+   Frame. Underneath it is a History of views — entries run from root to
+   current, and a popped page waits on the forward side until a push discards
+   it, which is what WinUI's BackStack and ForwardStack do.
 
    Rust's AnyView is an EntityId here: the runtime renders an entity into the
    frame arena with EntityRender, which is the whole of what NavStack needs a
@@ -45,16 +45,9 @@ enum class NavStackEvent : uint8_t {
     Cleared
 };
 
-// A view on the stack. Equality is the view's identity, so a page pushed twice
-// is two entries of the same view. This is the History item convention:
-// Version / SetVersion / operator==.
+// A page pushed twice is two separate entries.
 struct NavEntry {
     EntityId view = {};
-    uint64_t version = 0;
-
-    uint64_t Version() const { return version; }
-    void SetVersion(uint64_t value) { version = value; }
-    bool operator==(const NavEntry& other) const { return view == other.view; }
 };
 
 // The view leaving the stack, kept mounted until its exit transition finishes.
@@ -86,8 +79,8 @@ struct NavStackState {
     Entity<NavStackState> self = {};
 
     // The number of views on the stack.
-    int Depth() const { return history.Undos().len; }
-    bool IsEmpty() const { return history.Undos().len == 0; }
+    int Depth() const { return history.Entries().len; }
+    bool IsEmpty() const { return history.Entries().len == 0; }
 
     // The view on top of the stack, which is the one shown once any transition
     // has finished. An invalid EntityId is Rust's None.
@@ -98,17 +91,17 @@ struct NavStackState {
 
     // Every view on the stack, root first.
     EntityId ViewAt(int index) const {
-        const Vec<NavEntry>& undos = history.Undos();
+        const Vec<NavEntry>& undos = history.Entries();
         return index >= 0 && index < undos.len ? undos[index].view : EntityId{};
     }
 
     // The views popped since the last push, nearest first: the one Forward
     // would bring back is the first.
-    int ForwardCount() const { return history.Redos().len; }
+    int ForwardCount() const { return history.ForwardEntries().len; }
     EntityId ForwardViewAt(int index) const {
-        const Vec<NavEntry>& redos = history.Redos();
-        int at = redos.len - 1 - index;
-        return at >= 0 && at < redos.len ? redos[at].view : EntityId{};
+        auto entries = history.ForwardEntries();
+        return index >= 0 && index < entries.len ? entries[index].view
+                                                 : EntityId{};
     }
 };
 
