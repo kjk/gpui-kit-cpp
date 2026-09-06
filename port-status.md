@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `b0a1836b1e2e3053b8998517f1816ab47e4474ae`
-(2026-09-04, markdown: reflow soft line breaks instead of rendering them as hard breaks (#2947)). Markdown prose now reflows LF, CRLF and CR soft breaks to spaces while preserving explicit hard breaks; the upstream regressions cover all three line endings and mixed breaks.
+Processed through `65db56268651b8f62bdd78192bab6c33bce3a6f7`
+(2026-09-04, text: Remeasure list items when a document is replaced with an equal block count (#2946)). Reviewed equal-block-count document replacement: the C++ view rebuilds every block from the source-keyed parse cache and its layout cache remeasures changed text, so no Rust ListState height latch exists here. Added the replacement-height regression against reused layout state.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

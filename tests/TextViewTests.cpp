@@ -1127,6 +1127,44 @@ static void TestTextViewMaxLines() {
     AppGlobalClear(&app);
 }
 
+static void TestEqualBlockCountReplacementRemeasures() {
+    App app;
+    app.paint = PaintAppNew();
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    win->paint.pa = app.paint;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TextViewState> state = TextViewState::Markdown(&app, StrL(""));
+    LayoutCache* layout = LayoutCacheNew();
+    float heights[2] = {};
+    for (int pass = 0; pass < 2; pass++) {
+        StrBuilder source(a);
+        for (int block = 0; block < 24; block++) {
+            if (block) source.Append(StrL("\n\n"));
+            source.Append(fmt("Block %d: ", block + 1));
+            for (int word = 0; word < (pass ? 60 : 1); word++) {
+                source.Append(StrL("lorem ipsum dolor "));
+            }
+        }
+        state.Get(&app)->SetText(source.TakeStr(), &app, win);
+        El* view = TextView::New(&cx, state)->IntoEl();
+        LayoutEl(&win->paint, view, 0, 0, 400, 200, 16, Rgba{}, layout);
+        heights[pass] = TextViewSubtreeBottom(view);
+    }
+    utassert(heights[0] > 0);
+    utassert(heights[1] > heights[0] * 5);
+    LayoutCacheFree(layout);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    PaintAppFree(app.paint);
+}
+
 static void TestTextViewKeys() {
     KeymapClear();
     TextViewInitKeys();
@@ -1465,6 +1503,7 @@ void TestTextView() {
     TestSourceShapedTextValues(a);
     TestHtmlMinifier(a);
     TestTextViewKeys();
+    TestEqualBlockCountReplacementRemeasures();
     TestTextViewStyleIsReadableWithoutATheme();
     TestTextViewDefaultsAndOptInHighlighting();
     TestMarkdownExtensionsParserConfiguration(a);
