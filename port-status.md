@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `74009df55d0cdcaf1ac411a33424c048e9c9b01e`
-(2026-09-04, website: migrate from VitePress to Astro (#2926)). The upstream documentation site migrates from VitePress to Astro. This changes no crates, examples, or dependency pins; our browser target continues to use web/shell.html and Canvas2D.
+Processed through `6bde4add915b3949dcaeb669ef6b6799df615924`
+(2026-09-04, story: Draw the chart gallery through a virtual list (#2950)). The chart gallery builds only visible responsive card rows plus 400px overscan. Cards keep upstream 400px height, 280px minimum width, 16px spacing and inset, with shared fixture data and its own scroll viewport.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

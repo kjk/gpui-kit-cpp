@@ -1110,9 +1110,9 @@ struct AboutDialog {
                      14, th.mutedFg)
                 ->W(kFill)
                 ->Wrap());
-        body->Child(StoryTxt(cx, StrL("github.com/longbridge/gpui-kit"),
-                             14, th.mutedFg)
-                        ->W(kFill));
+        body->Child(
+            StoryTxt(cx, StrL("github.com/longbridge/gpui-kit"), 14, th.mutedFg)
+                ->W(kFill));
         Listener close = Listen(cx, &AboutDialog::OnClose);
         return component::Dialog::New(cx)
             ->Open(true)
@@ -1683,28 +1683,27 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                                  12, th.mutedFg))
                 ->Child(Div(a)->W(1)->H(12)->Bg(th.border))
                 ->Child(StoryTxt(cx, Str(m->title), 12, th.mutedFg)))
-        ->Child(
-            Div(a)
-                ->FlexRow()
-                ->Gap(12)
-                ->ItemsCenter()
-                // The theme in force, which is whatever the registry
-                // last installed for this mode rather than always one of
-                // the two defaults.
-                ->Child(StoryTxt(
-                    cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
-                    th.mutedFg))
-                ->Child(StoryTxt(cx, StrL("v0.5.1"), 12, th.mutedFg))
-                // gallery.rs puts the repository link last in the bar's
-                // right group, as a ghost icon button.
-                ->Child(component::Button::New(cx, StrL("assistant"))
-                            ->Ghost()
-                            ->WithSize(UiSize::XSmall)
-                            ->Icon(IconName::Github)
-                            ->Tooltip(StrL("GPUI Kit GitHub repository"))
-                            ->OnClick(Listen(cx, &OnGithub))
-                            ->IntoEl()
-                            ->Cursor(CursorKind::Pointer)));
+        ->Child(Div(a)
+                    ->FlexRow()
+                    ->Gap(12)
+                    ->ItemsCenter()
+                    // The theme in force, which is whatever the registry
+                    // last installed for this mode rather than always one of
+                    // the two defaults.
+                    ->Child(StoryTxt(
+                        cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
+                        th.mutedFg))
+                    ->Child(StoryTxt(cx, StrL("v0.5.1"), 12, th.mutedFg))
+                    // gallery.rs puts the repository link last in the bar's
+                    // right group, as a ghost icon button.
+                    ->Child(component::Button::New(cx, StrL("assistant"))
+                                ->Ghost()
+                                ->WithSize(UiSize::XSmall)
+                                ->Icon(IconName::Github)
+                                ->Tooltip(StrL("GPUI Kit GitHub repository"))
+                                ->OnClick(Listen(cx, &OnGithub))
+                                ->IntoEl()
+                                ->Cursor(CursorKind::Pointer)));
 }
 
 El* StoryApp::Render(StoryApp* app, Ctx* cx) {
@@ -1739,18 +1738,23 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
     El* main = Div(frame)->FlexCol()->Flex1()->H(kFill)->MinW(0)->BorderL(
         1, th.border);
     main->Child(Header(app, cx));
-    El* scroller = Div(frame)
-                       ->FlexCol()
-                       ->Flex1()
-                       ->MinH(0)
-                       ->ClipY()
-                       ->ScrollY(app->scrollY)
-                       ->ScrollId(PageScrollId())
-                       ->OnScroll(Listen(cx, &OnPaneScroll))
-                       ->W(kFill);
-    scroller->Child(
-        Div(frame)->Pad(16)->W(kFill)->Child(StoryRenderRegistered(app, cx)));
-    main->Child(scroller);
+    if (app->story == StoryChart) {
+        // The chart gallery owns its virtual scrolling and 16px inset.
+        main->Child(StoryRenderRegistered(app, cx));
+    } else {
+        El* scroller = Div(frame)
+                           ->FlexCol()
+                           ->Flex1()
+                           ->MinH(0)
+                           ->ClipY()
+                           ->ScrollY(app->scrollY)
+                           ->ScrollId(PageScrollId())
+                           ->OnScroll(Listen(cx, &OnPaneScroll))
+                           ->W(kFill);
+        scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
+            StoryRenderRegistered(app, cx)));
+        main->Child(scroller);
+    }
     body->Child(main);
     // The inspector docks on the right, as it does off Root in Rust.
     // Ctrl+Shift+I toggles it.
