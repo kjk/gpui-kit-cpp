@@ -2958,8 +2958,278 @@ static void UnfoldingAtAPositionOpensExactlyWhatHidesIt() {
     utassert(!InputUnfoldAt(&plain, nullptr, nullptr, {1, 0}));
 }
 
+// ─── multiple cursors ─────────────────────────────────────────────────────
+//
+// state.rs mod tests, the multi-cursor cases that are pure state: the alt
+// click and alt+shift block come in through the offsets the window would
+// have resolved from the pointer.
+
+static bool ExtraIs(const InputState& s, int i, int start, int end) {
+    return i < s.extraCursors.len && s.extraCursors[i].range.start == start &&
+           s.extraCursors[i].range.end == end;
+}
+
+static InputState* MakeEditor(InputState* s, const char* text) {
+    s->kind = InputKind::Editor;
+    InputSetValue(s, Str(text));
+    return s;
+}
+
+// add_cursor_at: a second caret, and a keystroke writes at both.
+static void AnAltClickAddsACursorAndTypingWritesAtEach() {
+    InputState s;
+    MakeEditor(&s, "aa\nbb\ncc");
+    InputMoveTo(&s, nullptr, nullptr, 0);
+    InputAddCursorAt(&s, nullptr, nullptr, 3);
+    utassert(InputCursorCount(&s) == 2);
+    utassert(ExtraIs(s, 0, 3, 3));
+
+    Type(&s, "x");
+    utassert(ValueIs(s, "xaa\nxbb\ncc"));
+    utassert(RangeIs(s, 1, 1));
+    utassert(ExtraIs(s, 0, 5, 5));
+
+    // Enter goes to every cursor too.
+    Act(&s, InputAction::Enter);
+    utassert(ValueIs(s, "x\naa\nx\nbb\ncc"));
+    utassert(InputCursorCount(&s) == 2);
+
+    // Rejected inside an existing selection, on top of an existing caret,
+    // and in a single-line field.
+    InputState one;
+    InputSetValue(&one, StrL("hello"));
+    InputAddCursorAt(&one, nullptr, nullptr, 3);
+    utassert(InputCursorCount(&one) == 1);
+
+    InputState sel;
+    MakeEditor(&sel, "hello\nworld");
+    InputSetSelectedRange(&sel, nullptr, nullptr, 0, 3);
+    InputAddCursorAt(&sel, nullptr, nullptr, 1);
+    utassert(InputCursorCount(&sel) == 1);
+    InputAddCursorAt(&sel, nullptr, nullptr, 8);
+    utassert(InputCursorCount(&sel) == 2);
+    InputAddCursorAt(&sel, nullptr, nullptr, 8);
+    utassert(InputCursorCount(&sel) == 2);
+    // A click drops them all again.
+    InputMoveTo(&sel, nullptr, nullptr, 2);
+    utassert(InputCursorCount(&sel) == 1);
+}
+
+// Backspace and delete take one character at every caret as one step, and
+// an undo puts every caret back where it was.
+static void DeletesAtEveryCursorAreOneUndoStep() {
+    InputState s;
+    MakeEditor(&s, "aa\nbb");
+    InputMoveTo(&s, nullptr, nullptr, 2);
+    InputAddCursorAt(&s, nullptr, nullptr, 5);
+
+    Act(&s, InputAction::Backspace);
+    utassert(ValueIs(s, "a\nb"));
+    utassert(RangeIs(s, 1, 1));
+    utassert(ExtraIs(s, 0, 3, 3));
+
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "aa\nbb"));
+    utassert(InputCursorCount(&s) == 2);
+    utassert(RangeIs(s, 2, 2));
+    utassert(ExtraIs(s, 0, 5, 5));
+
+    Act(&s, InputAction::Redo);
+    utassert(ValueIs(s, "a\nb"));
+    utassert(RangeIs(s, 1, 1));
+    utassert(ExtraIs(s, 0, 3, 3));
+
+    // Two backspaces coalesce the way one cursor's do.
+    InputState run;
+    MakeEditor(&run, "abc\ndef");
+    InputMoveTo(&run, nullptr, nullptr, 3);
+    InputAddCursorAt(&run, nullptr, nullptr, 7);
+    Act(&run, InputAction::Backspace);
+    Act(&run, InputAction::Backspace);
+    utassert(ValueIs(run, "a\nd"));
+    Act(&run, InputAction::Undo);
+    utassert(ValueIs(run, "abc\ndef"));
+    utassert(RangeIs(run, 3, 3));
+    utassert(ExtraIs(run, 0, 7, 7));
+
+    // Forward delete at the front of both lines.
+    InputState fwd;
+    MakeEditor(&fwd, "abc\ndef");
+    InputMoveTo(&fwd, nullptr, nullptr, 0);
+    InputAddCursorAt(&fwd, nullptr, nullptr, 4);
+    Act(&fwd, InputAction::Delete);
+    utassert(ValueIs(fwd, "bc\nef"));
+    utassert(RangeIs(fwd, 0, 0));
+    utassert(ExtraIs(fwd, 0, 3, 3));
+}
+
+// A run of typing at two carets is one undo, back to both carets.
+static void TypingAtEveryCursorUndoesToEveryCursor() {
+    InputState s;
+    MakeEditor(&s, "ab\ncd");
+    InputMoveTo(&s, nullptr, nullptr, 0);
+    InputAddCursorAt(&s, nullptr, nullptr, 3);
+    Type(&s, "x");
+    Type(&s, "y");
+    utassert(ValueIs(s, "xyab\nxycd"));
+    utassert(RangeIs(s, 2, 2));
+    utassert(ExtraIs(s, 0, 7, 7));
+
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "ab\ncd"));
+    utassert(InputCursorCount(&s) == 2);
+    utassert(RangeIs(s, 0, 0));
+    utassert(ExtraIs(s, 0, 3, 3));
+}
+
+// escape: the extras go first, and only then does the key mean anything else.
+static void EscapeCollapsesTheExtraCursorsFirst() {
+    InputState s;
+    MakeEditor(&s, "ab\ncd");
+    InputAddCursorAt(&s, nullptr, nullptr, 3);
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Escape, false));
+    utassert(InputCursorCount(&s) == 1);
+    utassert(ValueIs(s, "ab\ncd"));
+    utassert(!InputPerform(&s, nullptr, nullptr, InputAction::Escape, false));
+}
+
+// add_cursor_below / add_cursor_above keep the column, skip a cursor that
+// has nowhere to go, and never double up.
+static void AddCursorBelowKeepsTheColumn() {
+    InputState s;
+    MakeEditor(&s, "abc\nde\nfgh");
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::AddCursorBelow);
+    utassert(InputCursorCount(&s) == 2);
+    utassert(RangeIs(s, 1, 1));
+    utassert(ExtraIs(s, 0, 5, 5));
+
+    // Both cursors step down: the first lands on the second's row, where a
+    // caret already is, so only the second adds one.
+    Act(&s, InputAction::AddCursorBelow);
+    utassert(InputCursorCount(&s) == 3);
+    utassert(ExtraIs(s, 1, 8, 8));
+
+    // Nothing below the last row.
+    Act(&s, InputAction::AddCursorBelow);
+    utassert(InputCursorCount(&s) == 3);
+
+    InputState up;
+    MakeEditor(&up, "abc\nde");
+    InputMoveTo(&up, nullptr, nullptr, 6);
+    Act(&up, InputAction::AddCursorAbove);
+    utassert(InputCursorCount(&up) == 2);
+    utassert(ExtraIs(up, 0, 2, 2));
+
+    // A single-line field has no rows to add on.
+    InputState one;
+    InputSetValue(&one, StrL("abc"));
+    utassert(!InputPerform(&one, nullptr, nullptr, InputAction::AddCursorBelow,
+                           false));
+}
+
+// Every move and select goes to every cursor, and cursors that meet merge.
+static void MovementFansOutOverEveryCursor() {
+    InputState s;
+    MakeEditor(&s, "abc\ndef");
+    InputMoveTo(&s, nullptr, nullptr, 0);
+    InputAddCursorAt(&s, nullptr, nullptr, 4);
+    Act(&s, InputAction::MoveRight);
+    utassert(RangeIs(s, 1, 1));
+    utassert(ExtraIs(s, 0, 5, 5));
+
+    Act(&s, InputAction::SelectRight);
+    utassert(RangeIs(s, 1, 2));
+    utassert(ExtraIs(s, 0, 5, 6));
+
+    Act(&s, InputAction::MoveEnd);
+    utassert(RangeIs(s, 3, 3));
+    utassert(ExtraIs(s, 0, 7, 7));
+
+    Act(&s, InputAction::MoveHome);
+    utassert(RangeIs(s, 0, 0));
+    utassert(ExtraIs(s, 0, 4, 4));
+
+    Act(&s, InputAction::MoveDown);
+    // The first caret walks onto the second's row and the two merge.
+    utassert(InputCursorCount(&s) == 1);
+    utassert(RangeIs(s, 4, 4));
+
+    // Going to the document's end is a plain move_to: one cursor.
+    InputAddCursorAt(&s, nullptr, nullptr, 0);
+    Act(&s, InputAction::MoveToEnd);
+    utassert(InputCursorCount(&s) == 1);
+    utassert(RangeIs(s, 7, 7));
+
+    // Selections that grow into one another merge into one, and the active
+    // one stays active.
+    InputState merge;
+    MakeEditor(&merge, "abcdef\n");
+    InputMoveTo(&merge, nullptr, nullptr, 2);
+    InputAddCursorAt(&merge, nullptr, nullptr, 3);
+    Act(&merge, InputAction::SelectRight);
+    Act(&merge, InputAction::SelectRight);
+    utassert(InputCursorCount(&merge) == 1);
+    utassert(RangeIs(merge, 2, 5));
+}
+
+// build_columnar_selection: one selection per row over the same columns,
+// clipped to a short row, and a keystroke replaces each.
+static void AColumnarSelectionIsOneSelectionPerRow() {
+    InputState s;
+    MakeEditor(&s, "abcd\nef\nghij");
+    InputBuildColumnarSelection(&s, nullptr, nullptr, 1, 11);
+    utassert(InputCursorCount(&s) == 3);
+    utassert(RangeIs(s, 1, 3));
+    utassert(ExtraIs(s, 0, 6, 7));
+    utassert(ExtraIs(s, 1, 9, 11));
+
+    Type(&s, "X");
+    utassert(ValueIs(s, "aXd\neX\ngXj"));
+    utassert(RangeIs(s, 2, 2));
+    utassert(ExtraIs(s, 0, 6, 6));
+    utassert(ExtraIs(s, 1, 9, 9));
+
+    // Dragging back up past the anchor is the same block.
+    InputState back;
+    MakeEditor(&back, "abcd\nef\nghij");
+    InputBuildColumnarSelection(&back, nullptr, nullptr, 11, 1);
+    utassert(InputCursorCount(&back) == 3);
+    utassert(RangeIs(back, 1, 3));
+}
+
+// replace_text_in_ranges: the paste that hands one line to each cursor, in
+// document order, whichever is active.
+static void RangesAreReplacedHighestFirst() {
+    InputState s;
+    MakeEditor(&s, "ab\ncd");
+    InputMoveTo(&s, nullptr, nullptr, 4);
+    InputAddCursorAt(&s, nullptr, nullptr, 0);
+    Selection ranges[2] = {SelectionAt(4), SelectionAt(0)};
+    Str texts[2] = {StrL("22"), StrL("1")};
+    utassert(InputReplaceTextInRanges(&s, nullptr, nullptr, ranges, texts, 2));
+    utassert(ValueIs(s, "1ab\nc22d"));
+    // The active cursor is still the one that was: after its own edit.
+    utassert(RangeIs(s, 7, 7));
+    utassert(ExtraIs(s, 0, 1, 1));
+
+    // One step back, to both cursors.
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "ab\ncd"));
+    utassert(RangeIs(s, 4, 4));
+    utassert(ExtraIs(s, 0, 0, 0));
+}
+
 void TestInputState() {
     TestSuite("input_state");
+    AnAltClickAddsACursorAndTypingWritesAtEach();
+    DeletesAtEveryCursorAreOneUndoStep();
+    TypingAtEveryCursorUndoesToEveryCursor();
+    EscapeCollapsesTheExtraCursorsFirst();
+    AddCursorBelowKeepsTheColumn();
+    MovementFansOutOverEveryCursor();
+    AColumnarSelectionIsOneSelectionPerRow();
+    RangesAreReplacedHighestFirst();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();
     SetValueCaretAtEnd();

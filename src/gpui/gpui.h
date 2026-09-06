@@ -1923,6 +1923,8 @@ struct ElStyleStates {
     ArenaStr dragOverKind = kArenaStrNone;
 };
 
+struct Selection;
+
 struct El {
     // Members are ordered by decreasing alignment. El is allocated many
     // times in the frame arena, so even small holes here multiply quickly.
@@ -2069,6 +2071,13 @@ struct El {
     gpui::Bounds* rangeOut = nullptr;
     float* caretOutX = nullptr;
     float* caretOutY = nullptr;
+    // The other cursors' selections and carets over this run, as offsets
+    // into it. Rust's layout_cursors walks every selection; the row builder
+    // does the walk and hands each run its share. Arena-owned by the frame.
+    const Selection* extraSels = nullptr;
+    int nExtraSels = 0;
+    const int* extraCarets = nullptr;
+    int nExtraCarets = 0;
     // What a copy of this run says, and whether it continues the run before
     // it on the same line. The record is owned by whoever built the element —
     // the frame arena, in practice — and is null on every run that is not
@@ -2422,6 +2431,9 @@ struct El {
     El* BindInput(InputState* s);
     // The selection quad and the caret an input's text run paints over itself.
     El* SelRange(int lo, int hi, Rgba color);
+    // The selections and carets of the cursors other than the active one.
+    El* ExtraSelRanges(const Selection* ranges, int n);
+    El* ExtraCarets(const int* offsets, int n, Rgba color);
     // Where the caret this element draws ended up, in window coordinates —
     // the seam a popover anchored to the caret needs, since only the painter
     // knows where inside a shaped run an offset falls. Reported the way
@@ -3107,6 +3119,23 @@ inline Selection SelectionAt(int offset) {
     return Selection{offset, offset};
 }
 
+// cursor.rs CursorSelection: one of a multi-line field's cursors. The active
+// one is spread over InputState::selectedRange / selectionReversed /
+// preferredColumn / preferredX; the others are kept in this shape in
+// InputState::extraCursors, and an undo step records all of them. Rust's
+// CursorId is what keeps the active one at the front through a merge; the
+// active one has its own slot here, so an index does the same.
+struct CursorSelection {
+    Selection range = {};
+    bool reversed = false;
+    // column_anchor: the column and x a vertical walk aims at, -1 for none.
+    int preferredColumn = -1;
+    float preferredX = -1;
+
+    int Cursor() const { return reversed ? range.start : range.end; }
+    bool IsEmpty() const { return range.IsEmpty(); }
+};
+
 // undo_manager.rs EditIntent. What kind of edit produced a change, which is
 // what decides whether two of them coalesce into one undo step.
 enum class EditIntent : uint8_t {
@@ -3135,6 +3164,17 @@ struct UndoTransaction {
     Change* changes = nullptr;
     int len = 0;
     int cap = 0;
+    // last_batch_len: how many of `changes` the latest batch added, which is
+    // the set a following batch has to line up with to coalesce.
+    int lastBatchLen = 0;
+    // selections_before / selections_after: every cursor around the step,
+    // recorded by a multi-cursor edit so an undo puts all of them back. Owned
+    // arrays; null when the step was made with one cursor and the Change's
+    // own selBefore / selAfter say everything.
+    CursorSelection* selsBefore = nullptr;
+    int nSelsBefore = 0;
+    CursorSelection* selsAfter = nullptr;
+    int nSelsAfter = 0;
 };
 
 // undo_manager.rs UndoManager. Every edit makes a transaction; adjacent
@@ -3144,9 +3184,14 @@ struct UndoManager {
     Vec<UndoTransaction> undos;
     Vec<UndoTransaction> redos;
     bool ignoring = false;
-    bool transactionOpen = false;
-    bool hasPending = false;
-    Change pending = {};
+    // transaction_depth: how many begin_transaction brackets are open. Only
+    // the outermost commit pushes, so a multi-cursor edit that brackets its
+    // own batch inside a delete's bracket stays one step.
+    int transactionDepth = 0;
+    // PendingTransaction: what an open bracket has collected so far. Rust
+    // keeps a Vec<Change> in it; this is the same transaction shape the
+    // stacks hold, pushed whole on commit.
+    UndoTransaction pending = {};
     // pending_intent: what the next replace should record itself as. Taken by
     // the edit that follows.
     bool hasPendingIntent = false;
@@ -3158,6 +3203,16 @@ struct UndoManager {
 
 void UndoRecordTransaction(UndoManager* m, Change change, EditIntent intent);
 void UndoBeginTransaction(UndoManager* m);
+// begin_transaction_with: a bracket that commits with this intent, so one
+// keystroke across several cursors coalesces with the next the way a single
+// cursor's typing does.
+void UndoBeginTransactionWith(UndoManager* m, EditIntent intent);
+// record_selections: every cursor around the bracket being built, or around
+// the latest step when none is open. The before side keeps the first one
+// recorded, so a coalescing run still undoes to where it began.
+void UndoRecordSelections(UndoManager* m, const CursorSelection* before,
+                          int nBefore, const CursorSelection* after,
+                          int nAfter);
 void UndoCommitTransaction(UndoManager* m);
 void UndoBreakCoalescing(UndoManager* m);
 void UndoSetIgnoring(UndoManager* m, bool ignoring);
@@ -3981,6 +4036,13 @@ struct InputState {
     // it cannot shrink back inside the word.
     bool hasSelectedWordRange = false;
     Selection selectedWordRange = {};
+    // selections.rs: the cursors other than the active one, in the order
+    // they were added. Multi-line fields only; every single-cursor path
+    // clears it, and the active one stays in `selectedRange`.
+    Vec<CursorSelection> extraCursors;
+    // column_select_start: where an alt(+shift) press landed, which a drag
+    // from it turns into a block of one selection per row. -1 for none.
+    int columnSelectStart = -1;
     UndoManager undo;
     MaskPattern maskPattern = {};
     bool maskPatternSet = false;
@@ -4324,6 +4386,34 @@ void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b);
 void InputSelectWord(InputState* s, App* app, Window* win, int offset);
 void InputSelectLine(InputState* s, App* app, Window* win, int offset);
 
+// ─── multiple cursors (selections.rs, cursor.rs Selections) ───────────────
+//
+// A multi-line field can carry more than one cursor. The active one is
+// `selectedRange`; the rest are `extraCursors`. Every keyboard move, select
+// and edit fans out over all of them, and anything that places the caret
+// outright — a click, set_selected_range, select_all — drops the extras.
+
+// selections.len().
+int InputCursorCount(const InputState* s);
+// remove_all_but_active.
+void InputRemoveExtraCursors(InputState* s);
+// merge_overlapping: cursors that overlap or touch become one, keeping the
+// active one active.
+void InputMergeOverlappingCursors(InputState* s);
+// add_cursor_at: an alt-click. Refused inside an existing selection or on
+// top of an existing caret, and in a single-line field.
+void InputAddCursorAt(InputState* s, App* app, Window* win, int offset);
+// build_columnar_selection: an alt+shift drag. One selection per row between
+// the two offsets, each over the same column span.
+void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
+                                 int startOffset, int endOffset);
+// replace_text_in_ranges: disjoint edits applied highest-first in one undo
+// step, leaving one collapsed cursor after each. `ranges[0]` is the active
+// cursor's edit and stays active. Returns false when the field is not
+// editable.
+bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
+                              const Selection* ranges, const Str* texts, int n);
+
 // The actions state.rs binds, one per `impl` method there. The window turns a
 // key chord into one of these with InputActionForKey and hands it over — which
 // is what GPUI's action dispatch does for the focused element.
@@ -4352,6 +4442,10 @@ enum class InputAction : uint8_t {
     SelectToEndOfLine,
     SelectToPreviousWordStart,
     SelectToNextWordEnd,
+    // add_cursor_above / add_cursor_below: one more caret a row away from
+    // each existing one, at the same column.
+    AddCursorAbove,
+    AddCursorBelow,
     Backspace,
     Delete,
     DeleteToBeginningOfLine,

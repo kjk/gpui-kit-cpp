@@ -46,6 +46,8 @@ uint32_t SelectRight();
 uint32_t SelectToEnd();
 uint32_t SelectToEndOfLine();
 uint32_t SelectToNextWordEnd();
+uint32_t AddCursorAbove();
+uint32_t AddCursorBelow();
 uint32_t SelectToPreviousWordStart();
 uint32_t SelectToStart();
 uint32_t SelectToStartOfLine();

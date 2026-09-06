@@ -151,6 +151,50 @@ static const float kInputLineH = 20.f;
 static float DisplayLineH(const InputState* s, int row, float lineH);
 static float DisplayRowDocY(const InputState* s, int row, float lineH);
 
+// layout_cursors, for the cursors other than the active one: the part of each
+// selection that falls inside this row and each caret that lands on it, as
+// offsets into the row. The lists live in the frame arena with the element.
+static void RowExtraCursors(Arena* a, El* el, const InputState* state,
+                            const InputEditorStyle& style, int start, int len,
+                            bool caret) {
+    int n = state->extraCursors.len;
+    auto* sels = (Selection*)Alloc(a, n * (int)sizeof(Selection));
+    auto* carets = (int*)Alloc(a, n * (int)sizeof(int));
+    if (!sels || !carets) {
+        return;
+    }
+    int nSels = 0;
+    int nCarets = 0;
+    for (int i = 0; i < n; i++) {
+        const CursorSelection& c = state->extraCursors[i];
+        int lo = c.range.start - start;
+        int hi = c.range.end - start;
+        if (lo < 0) {
+            lo = 0;
+        }
+        if (hi > len) {
+            hi = len;
+        }
+        if (!c.IsEmpty() && lo < hi) {
+            sels[nSels++] = Selection{lo, hi};
+        }
+        int cur = c.Cursor();
+        if (caret && cur >= start && cur <= start + len) {
+            carets[nCarets++] = cur - start;
+        }
+    }
+    if (nSels > 0) {
+        if (el->selLo < 0) {
+            // No active selection on this row set the wash colour.
+            el->SelRange(-1, -1, style.selection);
+        }
+        el->ExtraSelRanges(sels, nSels);
+    }
+    if (nCarets > 0) {
+        el->ExtraCarets(carets, nCarets, style.caret);
+    }
+}
+
 // One bullet per character, not per byte, for a masked field.
 static Str MaskedRun(Arena* a, Str text) {
     int chars = 0;
@@ -659,8 +703,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // asking what a symbol is defined as; without it, it is asking what
         // the symbol *is*, which is the hover popover below. The two are
         // exclusive, and a pointer outside the field clears both.
-        bool secondary =
-            inside && !state->selecting && cx->win->mouseModifiers.Secondary();
+        // Alt is the multi-cursor modifier, so alt+secondary asks nothing.
+        bool secondary = inside && !state->selecting &&
+                         cx->win->mouseModifiers.Secondary() &&
+                         !cx->win->mouseModifiers.alt;
         if (secondary && state->definitionProvider) {
             InputHoverDefinition(state, at);
         } else {
@@ -989,6 +1035,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                       state->cursorLineEndAffinity);
             // Where it lands is the anchor a completion menu hangs off.
             el->CaretOut(&state->caretWinX, &state->caretWinY);
+        }
+        if (state->extraCursors.len > 0) {
+            RowExtraCursors(a, el, state, style, start, line.len, caret);
         }
         // indent_guides: a hairline every tab stop of the row's own leading
         // whitespace, drawn behind the text. show_whitespaces shares the
@@ -2139,6 +2188,7 @@ void InputMoveToWithAffinity(InputState* s, App* app, Window* win, int offset,
         offset = t.len;
     }
     s->cursorLineEndAffinity = lineEndAffinity;
+    InputRemoveExtraCursors(s);
     s->selectedRange = SelectionAt(offset);
     s->hasSelectedWordRange = false;
     PauseBlink(s, app, win);
@@ -2194,6 +2244,7 @@ void InputSelectTo(InputState* s, App* app, Window* win, int offset) {
 
 void InputSelectAll(InputState* s, App* app, Window* win) {
     UndoBreakCoalescing(&s->undo);
+    InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
     s->selectedRange = Selection{0, InputValue(s).len};
     s->selectionReversed = false;
@@ -2232,6 +2283,7 @@ void InputSelectWord(InputState* s, App* app, Window* win, int offset) {
         return;
     }
     UndoBreakCoalescing(&s->undo);
+    InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
     s->selectedRange = Selection{a, b};
     s->selectionReversed = false;
@@ -2245,6 +2297,7 @@ void InputSelectLine(InputState* s, App* app, Window* win, int offset) {
     int b = 0;
     TextLineRangeAt(InputValue(s), offset, &a, &b);
     UndoBreakCoalescing(&s->undo);
+    InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
     s->selectedRange = Selection{a, b};
     s->selectionReversed = false;
@@ -2252,7 +2305,273 @@ void InputSelectLine(InputState* s, App* app, Window* win, int offset) {
     Notify(app, win);
 }
 
+// ─── multiple cursors ─────────────────────────────────────────────────────
+//
+// selections.rs and cursor.rs Selections. The active cursor is the field's
+// `selectedRange` and its neighbours; the rest are `extraCursors`. Anything
+// that reads "the" cursor reads the active one, so a per-cursor evaluation
+// stands each of the others in for it in turn (WithCursor) — Rust's `*_at`
+// variants of the boundary helpers are the same code with the offset passed.
+
+int InputCursorCount(const InputState* s) {
+    return 1 + s->extraCursors.len;
+}
+
+void InputRemoveExtraCursors(InputState* s) {
+    s->extraCursors.len = 0;
+}
+
+static CursorSelection ActiveCursor(const InputState* s) {
+    CursorSelection c;
+    c.range = s->selectedRange;
+    c.reversed = s->selectionReversed;
+    c.preferredColumn = s->preferredColumn;
+    c.preferredX = s->preferredX;
+    return c;
+}
+
+static void SetActiveCursor(InputState* s, const CursorSelection& c) {
+    s->selectedRange = c.range;
+    s->selectionReversed = c.reversed;
+    s->preferredColumn = c.preferredColumn;
+    s->preferredX = c.preferredX;
+}
+
+// Every cursor, the active one first, in the temp arena.
+static CursorSelection* AllCursors(Arena* a, const InputState* s, int* n) {
+    *n = InputCursorCount(s);
+    auto* out = (CursorSelection*)Alloc(a, *n * (int)sizeof(CursorSelection));
+    out[0] = ActiveCursor(s);
+    for (int i = 0; i < s->extraCursors.len; i++) {
+        out[i + 1] = s->extraCursors[i];
+    }
+    return out;
+}
+
+// replace_all: `sels[0]` becomes the active cursor.
+static void SetAllCursors(InputState* s, const CursorSelection* sels, int n) {
+    if (n <= 0) {
+        return;
+    }
+    SetActiveCursor(s, sels[0]);
+    s->extraCursors.len = 0;
+    for (int i = 1; i < n; i++) {
+        VecAppend(s->extraCursors, sels[i]);
+    }
+}
+
+// Evaluate `f` with `c` standing in as the active cursor. Only the active
+// cursor carries a line-end affinity (line_end_affinity_for).
+template <class F>
+static auto WithCursor(InputState* s, const CursorSelection& c, bool active,
+                       F f) {
+    CursorSelection saved = ActiveCursor(s);
+    bool affinity = s->cursorLineEndAffinity;
+    SetActiveCursor(s, c);
+    if (!active) {
+        s->cursorLineEndAffinity = false;
+    }
+    auto r = f();
+    SetActiveCursor(s, saved);
+    s->cursorLineEndAffinity = affinity;
+    return r;
+}
+
+static bool HasCursorAt(const InputState* s, int offset) {
+    if (InputCursor(s) == offset) {
+        return true;
+    }
+    for (int i = 0; i < s->extraCursors.len; i++) {
+        if (s->extraCursors[i].Cursor() == offset) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void InputMergeOverlappingCursors(InputState* s) {
+    if (s->extraCursors.len == 0) {
+        return;
+    }
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    // In start order; a stable sort keeps the active one ahead of a cursor
+    // that starts where it does, the way Rust's sort_by_key does.
+    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+    }
+    auto* merged = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    int m = 0;
+    int activeAt = -1;
+    for (int k = 0; k < n; k++) {
+        const CursorSelection& c = all[order[k]];
+        bool isActive = order[k] == 0;
+        if (m > 0 && c.range.start <= merged[m - 1].range.end) {
+            // Overlapping or adjacent: extend the last one.
+            CursorSelection& last = merged[m - 1];
+            bool didMerge = c.range.start != last.range.start ||
+                            c.range.end != last.range.end;
+            if (c.range.end > last.range.end) {
+                last.range.end = c.range.end;
+            }
+            if (isActive) {
+                activeAt = m - 1;
+                last.reversed = c.reversed;
+            }
+            // Reset the column anchor on a real merge.
+            if (didMerge) {
+                last.preferredColumn = -1;
+                last.preferredX = -1;
+            }
+            continue;
+        }
+        if (isActive) {
+            activeAt = m;
+        }
+        merged[m++] = c;
+    }
+    // Re-front the active selection so it stays at index 0.
+    if (activeAt > 0) {
+        CursorSelection t = merged[0];
+        merged[0] = merged[activeAt];
+        merged[activeAt] = t;
+    }
+    SetAllCursors(s, merged, m);
+}
+
+void InputAddCursorAt(InputState* s, App* app, Window* win, int offset) {
+    if (!InputIsMultiLine(s)) {
+        return;
+    }
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    for (int i = 0; i < n; i++) {
+        if (all[i].range.Contains(offset)) {
+            return;
+        }
+        if (all[i].IsEmpty() && all[i].Cursor() == offset) {
+            return;
+        }
+    }
+    UndoBreakCoalescing(&s->undo);
+    CursorSelection c;
+    c.range = SelectionAt(offset);
+    VecAppend(s->extraCursors, c);
+    Notify(app, win);
+}
+
+void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
+                                 int startOffset, int endOffset) {
+    if (!InputIsMultiLine(s)) {
+        return;
+    }
+    UndoBreakCoalescing(&s->undo);
+    Str t = InputValue(s);
+    int lo = startOffset <= endOffset ? startOffset : endOffset;
+    int hi = startOffset <= endOffset ? endOffset : startOffset;
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi > t.len) {
+        hi = t.len;
+    }
+    RopePoint ps = RopeOffsetToPoint(t, lo);
+    RopePoint pe = RopeOffsetToPoint(t, hi);
+    int col0 = ps.column <= pe.column ? ps.column : pe.column;
+    int col1 = ps.column <= pe.column ? pe.column : ps.column;
+    // Rows are document rows here: Rust walks wrap display rows, and a line
+    // this port soft-wraps is still one row to the block.
+    bool folding = LayoutModeIsFolding(s->mode);
+    Arena* a = GetTempArena();
+    int rows = pe.row - ps.row + 1;
+    auto* sels =
+        (CursorSelection*)Alloc(a, rows * (int)sizeof(CursorSelection));
+    int m = 0;
+    for (int row = ps.row; row <= pe.row; row++) {
+        if (folding && FoldMapLineHidden(&s->folds, row)) {
+            continue;
+        }
+        int lineStart = RopeLineStartOffset(t, row);
+        int lineLen = RopeLineLen(t, row);
+        int a0 = lineStart + (col0 < lineLen ? col0 : lineLen);
+        int a1 = lineStart + (col1 < lineLen ? col1 : lineLen);
+        CursorSelection c;
+        c.range = Selection{RopeClipOffset(t, a0, Bias::Left),
+                            RopeClipOffset(t, a1, Bias::Left)};
+        sels[m++] = c;
+    }
+    if (m == 0) {
+        CursorSelection c;
+        c.range = SelectionAt(hi);
+        sels[m++] = c;
+    }
+    SetAllCursors(s, sels, m);
+    s->cursorLineEndAffinity = false;
+    s->hasSelectedWordRange = false;
+    Notify(app, win);
+}
+
+// selected_texts: what every non-empty selection holds, in document order,
+// joined with newlines — one clipboard line per cursor.
+static Str SelectedTexts(Arena* a, const InputState* s) {
+    if (s->extraCursors.len == 0) {
+        return InputSelectedValue(s);
+    }
+    Str t = InputValue(s);
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    auto* order = (int*)Alloc(a, n * (int)sizeof(int));
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && all[order[j - 1]].range.start > all[i].range.start) {
+            order[j] = order[j - 1];
+            j--;
+        }
+        order[j] = i;
+    }
+    int total = 0;
+    int parts = 0;
+    for (int k = 0; k < n; k++) {
+        const CursorSelection& c = all[order[k]];
+        if (!c.IsEmpty()) {
+            total += c.range.Len();
+            parts++;
+        }
+    }
+    if (parts == 0) {
+        return {};
+    }
+    total += parts - 1;
+    char* buf = (char*)Alloc(a, total + 1);
+    int w = 0;
+    for (int k = 0; k < n; k++) {
+        const CursorSelection& c = all[order[k]];
+        if (c.IsEmpty()) {
+            continue;
+        }
+        if (w > 0) {
+            buf[w++] = '\n';
+        }
+        memcpy(buf + w, t.s + c.range.start, (size_t)c.range.Len());
+        w += c.range.Len();
+    }
+    buf[w] = 0;
+    return Str(buf, w);
+}
+
 // ─── the edit path ────────────────────────────────────────────────────────
+
+static bool ReplaceAtEveryCursor(InputState* s, App* app, Window* win,
+                                 Str newText, bool hasIntent,
+                                 EditIntent requested);
 
 // is_valid_input: the validator, the mask, and (in Rust) a regex we have no
 // engine for.
@@ -2343,6 +2662,19 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     s->undo.hasPendingIntent = false;
     if (!InputIsEditable(s)) {
         return false;
+    }
+    if (InputIsMultiLine(s)) {
+        // A keystroke with several cursors goes to all of them. An edit that
+        // names its range — the input method, an undo, a server's edit list
+        // — is about the active one and drops the others.
+        bool multiCursor = !range && !s->imeMarking && s->extraCursors.len > 0;
+        if (multiCursor) {
+            return ReplaceAtEveryCursor(s, app, win, newText, hasIntent,
+                                        requested);
+        }
+        if (range) {
+            InputRemoveExtraCursors(s);
+        }
     }
     Selection selBefore = s->selectedRange;
     if (win && BlinkVisible(app, s->blink)) {
@@ -2469,6 +2801,136 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     Emit(s, app, win, InputEvent{InputEventKind::Change});
     Notify(app, win);
     return true;
+}
+
+// typing_intent: the intent of a batch the caller did not label. Inserting
+// text at collapsed cursors is typing; anything else stands on its own.
+static EditIntent TypingIntent(const Selection* ranges, int n, Str newText) {
+    if (newText.len == 0) {
+        return EditIntent::Atomic;
+    }
+    for (int i = 0; i < newText.len; i++) {
+        if (newText.s[i] == '\n' || newText.s[i] == '\r') {
+            return EditIntent::Atomic;
+        }
+    }
+    for (int i = 0; i < n; i++) {
+        if (!ranges[i].IsEmpty()) {
+            return EditIntent::Atomic;
+        }
+    }
+    return EditIntent::Typing;
+}
+
+bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
+                              const Selection* ranges, const Str* texts,
+                              int n) {
+    bool hasIntent = s->undo.hasPendingIntent;
+    EditIntent requested = s->undo.pendingIntent;
+    s->undo.hasPendingIntent = false;
+    if (!InputIsEditable(s) || n <= 0) {
+        return false;
+    }
+    Arena* a = GetTempArena();
+    // Highest offset first, so each edit leaves the ones below it where they
+    // were.
+    auto* desc = (int*)Alloc(a, n * (int)sizeof(int));
+    for (int i = 0; i < n; i++) {
+        int j = i;
+        while (j > 0 && ranges[desc[j - 1]].start < ranges[i].start) {
+            desc[j] = desc[j - 1];
+            j--;
+        }
+        desc[j] = i;
+    }
+    // The cursors as the user left them, for an undo to put back. A delete
+    // has already expanded them over the text it removes, so they collapse
+    // back to the side they came from (collapse_for_intent).
+    int nBefore = 0;
+    CursorSelection* before = AllCursors(a, s, &nBefore);
+    EditIntent collapse = hasIntent ? requested : EditIntent::Atomic;
+    for (int i = 0; i < nBefore; i++) {
+        if (collapse == EditIntent::Backspace) {
+            before[i].range = SelectionAt(before[i].range.end);
+            before[i].reversed = false;
+        } else if (collapse == EditIntent::DeleteForward) {
+            before[i].range = SelectionAt(before[i].range.start);
+            before[i].reversed = false;
+        }
+    }
+    // Several edits are one undo step; a single one records directly, which
+    // keeps it eligible for the manager's typing coalescing.
+    bool group = n > 1;
+    if (group) {
+        UndoBeginTransaction(&s->undo);
+    }
+    bool ok = true;
+    for (int k = 0; k < n; k++) {
+        int i = desc[k];
+        s->undo.hasPendingIntent = hasIntent;
+        s->undo.pendingIntent = requested;
+        Selection r = ranges[i];
+        if (!InputReplaceTextInRange(s, app, win, &r, texts[i])) {
+            ok = false;
+        }
+    }
+    // The resulting cursors: one collapsed after each edit's inserted text,
+    // read in ascending order with the growth of the edits before it.
+    Str t = InputValue(s);
+    auto* result = (int*)Alloc(a, n * (int)sizeof(int));
+    int delta = 0;
+    for (int k = n - 1; k >= 0; k--) {
+        int i = desc[k];
+        int off = ranges[i].start + delta + texts[i].len;
+        result[i] = off > t.len ? t.len : off;
+        delta += texts[i].len - (ranges[i].end - ranges[i].start);
+    }
+    auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    for (int i = 0; i < n; i++) {
+        out[i] = CursorSelection{};
+        out[i].range = SelectionAt(result[i]);
+    }
+    SetAllCursors(s, out, n);
+    InputMergeOverlappingCursors(s);
+    s->cursorLineEndAffinity = false;
+    s->hasSelectedWordRange = false;
+    UpdatePreferredColumn(s);
+    if (group) {
+        // Recorded before the bracket closes, so the cursors travel with the
+        // step and not with whatever step happened to be on top.
+        int nAfter = 0;
+        CursorSelection* after = AllCursors(a, s, &nAfter);
+        UndoRecordSelections(&s->undo, before, nBefore, after, nAfter);
+        UndoCommitTransaction(&s->undo);
+    }
+    Notify(app, win);
+    return ok;
+}
+
+// replace_text_in_range with several cursors: the same text at each of them,
+// as one batch with the keystroke's intent, so a run of them coalesces into
+// one undo just like single-cursor typing.
+static bool ReplaceAtEveryCursor(InputState* s, App* app, Window* win,
+                                 Str newText, bool hasIntent,
+                                 EditIntent requested) {
+    InputMergeOverlappingCursors(s);
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    auto* ranges = (Selection*)Alloc(a, n * (int)sizeof(Selection));
+    auto* texts = (Str*)Alloc(a, n * (int)sizeof(Str));
+    for (int i = 0; i < n; i++) {
+        ranges[i] = all[i].range;
+        texts[i] = newText;
+    }
+    EditIntent intent =
+        hasIntent ? requested : TypingIntent(ranges, n, newText);
+    UndoBeginTransactionWith(&s->undo, intent);
+    s->undo.hasPendingIntent = true;
+    s->undo.pendingIntent = intent;
+    bool ok = InputReplaceTextInRanges(s, app, win, ranges, texts, n);
+    UndoCommitTransaction(&s->undo);
+    return ok;
 }
 
 bool InputMarkedRange(const InputState* s, Selection* out) {
@@ -2607,6 +3069,7 @@ static void ReplaceText(InputState* s, App* app, Window* win, Str value) {
 // reset_selection: a single-line field puts the caret at the end, matching an
 // HTML <input>; a multi-line one goes back to 0..0.
 static void ResetSelection(InputState* s) {
+    InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
     if (InputIsSingleLine(s)) {
         s->selectedRange = SelectionAt(InputValue(s).len);
@@ -2651,6 +3114,7 @@ void InputInsert(InputState* s, App* app, Window* win, Str value) {
 
 void InputClean(InputState* s, App* app, Window* win) {
     ReplaceText(s, app, win, Str{});
+    InputRemoveExtraCursors(s);
     s->selectedRange = {};
     s->selectionReversed = false;
     Notify(app, win);
@@ -3931,16 +4395,145 @@ static VerticalTarget VerticalTargetFor(const InputState* s, Window* win,
     return out;
 }
 
-static void MoveVertical(InputState* s, App* app, Window* win, int lines) {
+// Where one cursor goes. `anchors` says the column and x are the walk's own
+// and are kept as given, -1 included; otherwise the column is the offset's.
+struct MoveTarget {
+    int offset = 0;
+    bool lineEndAffinity = false;
+    bool anchors = false;
+    int preferredColumn = -1;
+    float preferredX = -1;
+};
+
+static MoveTarget TargetAt(int offset, bool lineEndAffinity = false) {
+    MoveTarget t;
+    t.offset = offset;
+    t.lineEndAffinity = lineEndAffinity;
+    return t;
+}
+
+static MoveTarget TargetOf(const VerticalTarget& v) {
+    MoveTarget t;
+    t.offset = v.offset;
+    t.lineEndAffinity = v.lineEndAffinity;
+    t.anchors = true;
+    t.preferredColumn = v.preferredColumn;
+    t.preferredX = v.preferredX;
+    return t;
+}
+
+// The anchors a moved cursor ends up with.
+static void ApplyAnchors(InputState* s, CursorSelection* c,
+                         const MoveTarget& t) {
+    if (t.anchors) {
+        c->preferredColumn = t.preferredColumn;
+        c->preferredX = t.preferredX;
+    } else {
+        c->preferredColumn = RopeOffsetToPoint(InputValue(s), c->Cursor())
+                                 .column;
+        c->preferredX = -1;
+    }
+}
+
+// move_all_cursors: `f(cursor, isActive)` says where each caret goes; each
+// collapses there and overlapping ones merge. The active one's move is the
+// single-cursor move_to — scroll, blink, the coalescing break — with the
+// others put back after it.
+template <class F>
+static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
+    for (int i = 0; i < n; i++) {
+        targets[i] = f(all[i], i == 0);
+    }
+    InputMoveToWithAffinity(s, app, win, targets[0].offset,
+                            targets[0].lineEndAffinity);
+    CursorSelection active = ActiveCursor(s);
+    ApplyAnchors(s, &active, targets[0]);
+    SetActiveCursor(s, active);
+    int len = InputValue(s).len;
+    for (int i = 1; i < n; i++) {
+        int off = targets[i].offset;
+        CursorSelection c;
+        c.range = SelectionAt(off < 0 ? 0 : (off > len ? len : off));
+        ApplyAnchors(s, &c, targets[i]);
+        VecAppend(s->extraCursors, c);
+    }
+    InputMergeOverlappingCursors(s);
+}
+
+// extend_selection: the moving end follows the offset, and a selection
+// dragged back through its anchor turns around.
+static void ExtendSelection(CursorSelection* c, int offset) {
+    if (c->reversed) {
+        c->range.start = offset;
+    } else {
+        c->range.end = offset;
+    }
+    if (c->range.end < c->range.start) {
+        c->reversed = !c->reversed;
+        int t = c->range.start;
+        c->range.start = c->range.end;
+        c->range.end = t;
+    }
+}
+
+// select_all_cursors_to: every selection extends to where `f` says, then the
+// ones that now overlap merge. The active one goes through select_to, which
+// is what keeps a double click's word whole.
+template <class F>
+static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
+    UndoBreakCoalescing(&s->undo);
+    PauseBlink(s, app, win);
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    auto* targets = (MoveTarget*)Alloc(a, n * (int)sizeof(MoveTarget));
+    for (int i = 0; i < n; i++) {
+        targets[i] = f(all[i], i == 0);
+    }
+    InputSelectToWithAffinity(s, app, win, targets[0].offset,
+                              targets[0].lineEndAffinity);
+    if (targets[0].anchors) {
+        s->preferredX = targets[0].preferredX;
+        s->preferredColumn = targets[0].preferredColumn;
+    }
+    int len = InputValue(s).len;
+    for (int i = 1; i < n; i++) {
+        int off = targets[i].offset;
+        CursorSelection c = s->extraCursors[i - 1];
+        ExtendSelection(&c, off < 0 ? 0 : (off > len ? len : off));
+        if (c.IsEmpty() || targets[i].anchors) {
+            ApplyAnchors(s, &c, targets[i]);
+        }
+        s->extraCursors[i - 1] = c;
+    }
+    InputMergeOverlappingCursors(s);
+}
+
+// move_vertical. With `collapse`, a selection first collapses to its start
+// (up) or end (down) and walks from there at that column.
+static void MoveVertical(InputState* s, App* app, Window* win, int lines,
+                         bool collapse) {
     if (InputIsSingleLine(s)) {
         return;
     }
     Str t = InputValue(s);
-    VerticalTarget to = VerticalTargetFor(s, win, lines, t, InputCursor(s));
     PauseBlink(s, app, win);
-    InputMoveToWithAffinity(s, app, win, to.offset, to.lineEndAffinity);
-    s->preferredX = to.preferredX;
-    s->preferredColumn = to.preferredColumn;
+    MoveAllCursors(s, app, win, [&](const CursorSelection& c, bool active) {
+        CursorSelection from = c;
+        if (collapse && !c.IsEmpty()) {
+            from.range = SelectionAt(lines < 0 ? c.range.start : c.range.end);
+            from.reversed = false;
+            from.preferredColumn = -1;
+            from.preferredX = -1;
+        }
+        return WithCursor(s, from, active, [&] {
+            return TargetOf(VerticalTargetFor(s, win, lines, t, from.Cursor()));
+        });
+    });
 }
 
 // select_up / select_down: the caret goes where the arrow alone would have
@@ -3952,16 +4545,161 @@ static void SelectVertical(InputState* s, App* app, Window* win, int lines) {
     if (InputIsSingleLine(s)) {
         return;
     }
-    UndoBreakCoalescing(&s->undo);
     Str t = InputValue(s);
-    VerticalTarget to = VerticalTargetFor(s, win, lines, t, InputCursor(s));
-    PauseBlink(s, app, win);
-    InputSelectToWithAffinity(s, app, win, to.offset, to.lineEndAffinity);
-    s->preferredX = to.preferredX;
-    s->preferredColumn = to.preferredColumn;
+    SelectAllCursorsTo(s, app, win, [&](const CursorSelection& c, bool active) {
+        return WithCursor(s, c, active, [&] {
+            return TargetOf(VerticalTargetFor(s, win, lines, t, c.Cursor()));
+        });
+    });
     // scroll_to: the moving end of the selection takes the view with it, the
     // way move_to does for the caret.
     InputScrollToCursor(s, lines < 0 ? InputMoveDir::Up : InputMoveDir::Down);
+}
+
+// add_cursor_above / add_cursor_below: one more caret a row away from each
+// existing one, at its column. A cursor that would not move — on the first
+// or last row — or that would land on an existing caret adds nothing.
+static void AddCursorVertical(InputState* s, App* app, Window* win, int lines) {
+    if (!InputIsMultiLine(s)) {
+        return;
+    }
+    PauseBlink(s, app, win);
+    // Changing the cursor set ends the editing gesture that came before it.
+    UndoBreakCoalescing(&s->undo);
+    Str t = InputValue(s);
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    for (int i = 0; i < n; i++) {
+        const CursorSelection& c = all[i];
+        int off = c.Cursor();
+        VerticalTarget to = WithCursor(s, c, i == 0, [&] {
+            return VerticalTargetFor(s, win, lines, t, off);
+        });
+        if (to.offset == off || HasCursorAt(s, to.offset)) {
+            continue;
+        }
+        CursorSelection added;
+        added.range = SelectionAt(to.offset);
+        added.preferredColumn = to.preferredColumn;
+        added.preferredX = to.preferredX;
+        VecAppend(s->extraCursors, added);
+    }
+    Notify(app, win);
+}
+
+// delete_selections: what backspace and forward delete do with several
+// cursors. A collapsed cursor takes the character beside it; a selection
+// takes itself. The cursors the user had go into the step first, since the
+// expanded ranges cannot say where the carets stood.
+static void DeleteSelections(InputState* s, App* app, Window* win,
+                             EditIntent collapsedIntent, bool forward) {
+    if (!InputIsEditable(s)) {
+        return;
+    }
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* cursors = AllCursors(a, s, &n);
+    bool allEmpty = true;
+    for (int i = 0; i < n; i++) {
+        allEmpty = allEmpty && cursors[i].IsEmpty();
+    }
+    EditIntent intent = allEmpty ? collapsedIntent : EditIntent::Atomic;
+    auto* targets =
+        (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    for (int i = 0; i < n; i++) {
+        CursorSelection c = cursors[i];
+        if (c.IsEmpty()) {
+            int off = c.Cursor();
+            int other = WithCursor(s, c, i == 0, [&] {
+                return forward ? InputNextBoundary(s, off)
+                               : InputPreviousBoundary(s, off);
+            });
+            c.range =
+                Selection{off < other ? off : other, off < other ? other : off};
+            c.reversed = false;
+        }
+        targets[i] = c;
+    }
+    UndoBeginTransactionWith(&s->undo, intent);
+    UndoRecordSelections(&s->undo, cursors, n, cursors, n);
+    SetAllCursors(s, targets, n);
+    s->undo.hasPendingIntent = true;
+    s->undo.pendingIntent = intent;
+    InputReplaceTextInRange(s, app, win, nullptr, Str{});
+    int nAfter = 0;
+    CursorSelection* after = AllCursors(a, s, &nAfter);
+    UndoRecordSelections(&s->undo, cursors, n, after, nAfter);
+    UndoCommitTransaction(&s->undo);
+    PauseBlink(s, app, win);
+}
+
+// paste with several cursors: one clipboard line per selection when the
+// counts match, in document order. False when they do not, and the whole
+// text goes in at every cursor instead.
+static bool PasteLinesToCursors(InputState* s, App* app, Window* win,
+                                Str text) {
+    InputMergeOverlappingCursors(s);
+    int count = InputCursorCount(s);
+    int lines = 1;
+    for (int i = 0; i < text.len; i++) {
+        if (text.s[i] == '\n') {
+            lines++;
+        }
+    }
+    if (count < 2 || lines != count) {
+        return false;
+    }
+    Arena* a = GetTempArena();
+    int n = 0;
+    CursorSelection* all = AllCursors(a, s, &n);
+    auto* ranges = (Selection*)Alloc(a, n * (int)sizeof(Selection));
+    auto* texts = (Str*)Alloc(a, n * (int)sizeof(Str));
+    auto* parts = (Str*)Alloc(a, n * (int)sizeof(Str));
+    int at = 0;
+    for (int k = 0; k < n; k++) {
+        int end = at;
+        while (end < text.len && text.s[end] != '\n') {
+            end++;
+        }
+        parts[k] = Str(text.s + at, end - at);
+        at = end + 1;
+    }
+    for (int i = 0; i < n; i++) {
+        // The cursor's rank in document order picks its line.
+        int rank = 0;
+        for (int j = 0; j < n; j++) {
+            if (all[j].range.start < all[i].range.start ||
+                (all[j].range.start == all[i].range.start && j < i)) {
+                rank++;
+            }
+        }
+        ranges[i] = all[i].range;
+        texts[i] = parts[rank];
+    }
+    InputReplaceTextInRanges(s, app, win, ranges, texts, n);
+    InputScrollToCursor(s, InputMoveDir::None);
+    return true;
+}
+
+// restore_selections: the cursors a step recorded, clamped to the text as it
+// is now.
+static void RestoreCursors(InputState* s, const CursorSelection* sels, int n) {
+    Arena* a = GetTempArena();
+    int len = InputValue(s).len;
+    auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
+    for (int i = 0; i < n; i++) {
+        out[i] = sels[i];
+        if (out[i].range.start > len) {
+            out[i].range.start = len;
+        }
+        if (out[i].range.end > len) {
+            out[i].range.end = len;
+        }
+    }
+    SetAllCursors(s, out, n);
+    InputMergeOverlappingCursors(s);
+    s->cursorLineEndAffinity = false;
 }
 
 // ─── actions ──────────────────────────────────────────────────────────────
@@ -3981,7 +4719,7 @@ static void DoCopy(InputState* s, Window* win) {
     if (!InputIsCopyable(s) || !win) {
         return;
     }
-    ClipboardSetText(win, InputSelectedValue(s));
+    ClipboardSetText(win, SelectedTexts(GetTempArena(), s));
 }
 
 static void DoUndo(InputState* s, App* app, Window* win) {
@@ -3995,9 +4733,13 @@ static void DoUndo(InputState* s, App* app, Window* win) {
             Selection r = t->changes[i].newRange;
             InputReplaceTextInRange(s, app, win, &r, t->changes[i].oldText);
         }
-        s->cursorLineEndAffinity = false;
-        s->selectedRange = sel;
-        s->selectionReversed = false;
+        if (t->nSelsBefore > 0) {
+            RestoreCursors(s, t->selsBefore, t->nSelsBefore);
+        } else {
+            s->cursorLineEndAffinity = false;
+            s->selectedRange = sel;
+            s->selectionReversed = false;
+        }
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -4011,9 +4753,13 @@ static void DoRedo(InputState* s, App* app, Window* win) {
             Selection r = t->changes[i].oldRange;
             InputReplaceTextInRange(s, app, win, &r, t->changes[i].newText);
         }
-        s->cursorLineEndAffinity = false;
-        s->selectedRange = sel;
-        s->selectionReversed = false;
+        if (t->nSelsAfter > 0) {
+            RestoreCursors(s, t->selsAfter, t->nSelsAfter);
+        } else {
+            s->cursorLineEndAffinity = false;
+            s->selectedRange = sel;
+            s->selectionReversed = false;
+        }
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -4084,6 +4830,21 @@ static bool DoIndent(InputState* s, App* app, Window* win, bool block) {
     bool isSelected = !sel.IsEmpty();
     s->undo.hasPendingIntent = true;
     s->undo.pendingIntent = EditIntent::Atomic;
+    if (!isSelected && !block && s->extraCursors.len > 0) {
+        // compute_inline_indent with several carets: a tab at each of them,
+        // which is the multi-cursor insert. A block indent, or one with a
+        // selection, keeps only the active cursor here where Rust indents
+        // every cursor's lines.
+        bool allCollapsed = true;
+        for (int i = 0; i < s->extraCursors.len; i++) {
+            allCollapsed = allCollapsed && s->extraCursors[i].IsEmpty();
+        }
+        if (allCollapsed) {
+            InputReplaceTextInRange(s, app, win, nullptr, tab);
+            PauseBlink(s, app, win);
+            return true;
+        }
+    }
     if (!isSelected && !block) {
         Selection at = SelectionAt(sel.start);
         InputReplaceTextInRange(s, app, win, &at, tab);
@@ -4220,51 +4981,60 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
         case InputAction::None:
             return false;
 
+        // Every move and select below runs over all the cursors
+        // (move_all_cursors / select_all_cursors_to); the ones that place the
+        // caret outright — the document ends, select all — keep only the
+        // active one, the way move_to does.
         case InputAction::MoveLeft:
             PauseBlink(s, app, win);
-            InputMoveTo(s, app, win,
-                        s->selectedRange.IsEmpty()
-                            ? InputPreviousBoundary(s, InputCursor(s))
-                            : s->selectedRange.start);
+            MoveAllCursors(s, app, win, [&](const CursorSelection& c, bool) {
+                return TargetAt(c.IsEmpty()
+                                    ? InputPreviousBoundary(s, c.Cursor())
+                                    : c.range.start);
+            });
             return true;
         case InputAction::MoveRight:
             PauseBlink(s, app, win);
-            InputMoveTo(s, app, win,
-                        s->selectedRange.IsEmpty()
-                            ? InputNextBoundary(s, s->selectedRange.end)
-                            : s->selectedRange.end);
+            MoveAllCursors(s, app, win, [&](const CursorSelection& c, bool) {
+                return TargetAt(c.IsEmpty() ? InputNextBoundary(s, c.range.end)
+                                            : c.range.end);
+            });
             return true;
         case InputAction::MoveUp:
             if (InputIsSingleLine(s)) {
                 return false;
             }
-            if (!s->selectedRange.IsEmpty()) {
-                InputMoveTo(s, app, win, s->selectedRange.start);
-            }
-            MoveVertical(s, app, win, -1);
+            MoveVertical(s, app, win, -1, true);
             return true;
         case InputAction::MoveDown:
             if (InputIsSingleLine(s)) {
                 return false;
             }
-            if (!s->selectedRange.IsEmpty()) {
-                InputMoveTo(s, app, win, s->selectedRange.end);
-            }
-            MoveVertical(s, app, win, 1);
+            MoveVertical(s, app, win, 1, true);
             return true;
         case InputAction::MovePageUp:
-            MoveVertical(s, app, win, -LayoutModeRows(s->mode));
+            MoveVertical(s, app, win, -LayoutModeRows(s->mode), false);
             return InputIsMultiLine(s);
         case InputAction::MovePageDown:
-            MoveVertical(s, app, win, LayoutModeRows(s->mode));
+            MoveVertical(s, app, win, LayoutModeRows(s->mode), false);
             return InputIsMultiLine(s);
         case InputAction::MoveHome:
             PauseBlink(s, app, win);
-            InputMoveTo(s, app, win, InputStartOfLine(s, win));
+            MoveAllCursors(s, app, win,
+                           [&](const CursorSelection& c, bool active) {
+                               return WithCursor(s, c, active, [&] {
+                                   return TargetAt(InputStartOfLine(s, win));
+                               });
+                           });
             return true;
         case InputAction::MoveEnd:
             PauseBlink(s, app, win);
-            InputMoveToWithAffinity(s, app, win, InputEndOfLine(s, win), true);
+            MoveAllCursors(
+                s, app, win, [&](const CursorSelection& c, bool active) {
+                    return WithCursor(s, c, active, [&] {
+                        return TargetAt(InputEndOfLine(s, win), true);
+                    });
+                });
             return true;
         case InputAction::MoveToStart:
             InputMoveTo(s, app, win, 0);
@@ -4273,20 +5043,33 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputMoveTo(s, app, win, t.len);
             return true;
         case InputAction::MoveToPreviousWord:
-            InputMoveTo(s, app, win, InputPreviousStartOfWord(s));
+            MoveAllCursors(s, app, win,
+                           [&](const CursorSelection& c, bool active) {
+                               return WithCursor(s, c, active, [&] {
+                                   return TargetAt(InputPreviousStartOfWord(s));
+                               });
+                           });
             return true;
         case InputAction::MoveToNextWord:
-            InputMoveTo(s, app, win, InputNextEndOfWord(s));
+            MoveAllCursors(s, app, win,
+                           [&](const CursorSelection& c, bool active) {
+                               return WithCursor(s, c, active, [&] {
+                                   return TargetAt(InputNextEndOfWord(s));
+                               });
+                           });
             return true;
 
         case InputAction::SelectLeft:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win,
-                          InputPreviousBoundary(s, InputCursor(s)));
+            SelectAllCursorsTo(
+                s, app, win, [&](const CursorSelection& c, bool) {
+                    return TargetAt(InputPreviousBoundary(s, c.Cursor()));
+                });
             return true;
         case InputAction::SelectRight:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, InputNextBoundary(s, InputCursor(s)));
+            SelectAllCursorsTo(
+                s, app, win, [&](const CursorSelection& c, bool) {
+                    return TargetAt(InputNextBoundary(s, c.Cursor()));
+                });
             return true;
         case InputAction::SelectUp:
             SelectVertical(s, app, win, -1);
@@ -4298,32 +5081,59 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputSelectAll(s, app, win);
             return true;
         case InputAction::SelectToStart:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, 0);
+            SelectAllCursorsTo(s, app, win, [&](const CursorSelection&, bool) {
+                return TargetAt(0);
+            });
             return true;
         case InputAction::SelectToEnd:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, t.len);
+            SelectAllCursorsTo(s, app, win, [&](const CursorSelection&, bool) {
+                return TargetAt(t.len);
+            });
             return true;
         case InputAction::SelectToStartOfLine:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, InputStartOfLine(s, win));
+            SelectAllCursorsTo(
+                s, app, win, [&](const CursorSelection& c, bool active) {
+                    return WithCursor(s, c, active, [&] {
+                        return TargetAt(InputStartOfLine(s, win));
+                    });
+                });
             return true;
         case InputAction::SelectToEndOfLine:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectToWithAffinity(s, app, win, InputEndOfLine(s, win),
-                                      true);
+            SelectAllCursorsTo(
+                s, app, win, [&](const CursorSelection& c, bool active) {
+                    return WithCursor(s, c, active, [&] {
+                        return TargetAt(InputEndOfLine(s, win), true);
+                    });
+                });
             return true;
         case InputAction::SelectToPreviousWordStart:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, InputPreviousStartOfWord(s));
+            SelectAllCursorsTo(
+                s, app, win, [&](const CursorSelection& c, bool active) {
+                    return WithCursor(s, c, active, [&] {
+                        return TargetAt(InputPreviousStartOfWord(s));
+                    });
+                });
             return true;
         case InputAction::SelectToNextWordEnd:
-            UndoBreakCoalescing(&s->undo);
-            InputSelectTo(s, app, win, InputNextEndOfWord(s));
+            SelectAllCursorsTo(s, app, win,
+                               [&](const CursorSelection& c, bool active) {
+                                   return WithCursor(s, c, active, [&] {
+                                       return TargetAt(InputNextEndOfWord(s));
+                                   });
+                               });
             return true;
+        case InputAction::AddCursorAbove:
+            AddCursorVertical(s, app, win, -1);
+            return InputIsMultiLine(s);
+        case InputAction::AddCursorBelow:
+            AddCursorVertical(s, app, win, 1);
+            return InputIsMultiLine(s);
 
         case InputAction::Backspace: {
+            if (s->extraCursors.len > 0) {
+                DeleteSelections(s, app, win, EditIntent::Backspace, false);
+                return true;
+            }
             EditIntent intent = EditIntent::Atomic;
             if (s->selectedRange.IsEmpty()) {
                 InputSelectTo(s, app, win,
@@ -4342,6 +5152,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return true;
         }
         case InputAction::Delete: {
+            if (s->extraCursors.len > 0) {
+                DeleteSelections(s, app, win, EditIntent::DeleteForward, true);
+                return true;
+            }
             EditIntent intent = EditIntent::Atomic;
             if (s->selectedRange.IsEmpty()) {
                 InputSelectTo(s, app, win,
@@ -4433,6 +5247,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return DoOutdent(s, app, win);
 
         case InputAction::Escape:
+            // Collapse extra cursors back to the active one first.
+            if (s->extraCursors.len > 0) {
+                UndoBreakCoalescing(&s->undo);
+                InputRemoveExtraCursors(s);
+                Notify(app, win);
+                return true;
+            }
             // "Clear inline completion on escape", and consume the key: the
             // escape said no to the suggestion and nothing else.
             if (InputHasInlineCompletion(s)) {
@@ -4468,8 +5289,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             if (text.len == 0) {
                 return true;
             }
+            // A paste is one atomic edit, never part of a typing run.
             s->undo.hasPendingIntent = true;
             s->undo.pendingIntent = EditIntent::Atomic;
+            if (InputIsMultiLine(s) && s->extraCursors.len > 0 &&
+                PasteLinesToCursors(s, app, win, text)) {
+                return true;
+            }
             InputReplaceTextInRange(s, app, win, nullptr, text);
             return true;
         }
@@ -5696,9 +6522,9 @@ static void TransactionFree(UndoTransaction* t) {
         ChangeFree(&t->changes[i]);
     }
     free(t->changes);
-    t->changes = nullptr;
-    t->len = 0;
-    t->cap = 0;
+    free(t->selsBefore);
+    free(t->selsAfter);
+    *t = {};
 }
 
 static void TransactionPush(UndoTransaction* t, Change c) {
@@ -5715,6 +6541,18 @@ static void TransactionPush(UndoTransaction* t, Change c) {
     t->changes[t->len++] = c;
 }
 
+// A heap copy of a cursor list, which is what a transaction owns.
+static CursorSelection* SelsDup(const CursorSelection* sels, int n) {
+    if (!sels || n <= 0) {
+        return nullptr;
+    }
+    auto* p = (CursorSelection*)malloc((size_t)n * sizeof(CursorSelection));
+    if (p) {
+        memcpy(p, sels, (size_t)n * sizeof(CursorSelection));
+    }
+    return p;
+}
+
 static void StackClear(Vec<UndoTransaction>& v) {
     for (int i = 0; i < v.len; i++) {
         TransactionFree(&v[i]);
@@ -5725,9 +6563,7 @@ static void StackClear(Vec<UndoTransaction>& v) {
 UndoManager::~UndoManager() {
     StackClear(undos);
     StackClear(redos);
-    if (hasPending) {
-        ChangeFree(&pending);
-    }
+    TransactionFree(&pending);
 }
 
 // is_adjacent: whether the change coming in continues the one before it, which
@@ -5759,22 +6595,100 @@ static bool IsAdjacent(EditIntent intent, const Change& prev,
     return false;
 }
 
+// Change::shifted: the same edit as it reads once the text below it has
+// moved by `by`. Shallow — the strings are only compared, never freed.
+static Change Shifted(Change c, int by) {
+    auto shift = [by](int off) {
+        int v = off + by;
+        return v < 0 ? 0 : v;
+    };
+    c.oldRange = Selection{shift(c.oldRange.start), shift(c.oldRange.end)};
+    c.newRange = Selection{shift(c.newRange.start), shift(c.newRange.end)};
+    return c;
+}
+
+// is_adjacent_batch: a batch continues the one before it when each of its
+// changes continues the matching change of that batch, read where the change
+// stands now. A batch is applied highest offset first, so the changes after
+// one in the list sit below it and have moved it by their own growth.
+static bool IsAdjacentBatch(EditIntent intent, const Change* prev,
+                            const Change* cur, int n) {
+    int shift = 0;
+    for (int i = n - 1; i >= 0; i--) {
+        if (!IsAdjacent(intent, Shifted(prev[i], shift), cur[i])) {
+            return false;
+        }
+        shift += prev[i].newText.len - prev[i].oldText.len;
+    }
+    return true;
+}
+
 static bool RangeSame(Selection a, Selection b) {
     return a.start == b.start && a.end == b.end;
 }
 
-static void PushTransaction(UndoManager* m, Change change, EditIntent intent) {
+// is_noop_batch: a bracket whose changes chain into one another and end where
+// they began — a composition typed and then abandoned — puts nothing in the
+// history. Rust compares the ranges; the text is compared too, so a bracket
+// that swapped one word for another of the same length still records.
+static bool IsNoopBatch(const UndoTransaction* t) {
+    if (t->len == 0) {
+        return true;
+    }
+    const Change* last = &t->changes[0];
+    for (int i = 1; i < t->len; i++) {
+        const Change* c = &t->changes[i];
+        if (!RangeSame(last->newRange, c->oldRange)) {
+            return false;
+        }
+        last = c;
+    }
+    return RangeSame(t->changes[0].oldRange, last->newRange) &&
+           base::StrEq(t->changes[0].oldText, last->newText);
+}
+
+// push_batch. `batch` is owned: its changes and cursor records move onto the
+// stack, or into the step before it when the batch continues that step.
+static void PushBatch(UndoManager* m, UndoTransaction batch,
+                      EditIntent intent) {
+    if (batch.len == 0) {
+        TransactionFree(&batch);
+        return;
+    }
     StackClear(m->redos);
     bool canCoalesce = false;
     if (!m->coalescingBoundary && intent != EditIntent::Atomic &&
         m->undos.len > 0) {
         UndoTransaction& prev = m->undos[m->undos.len - 1];
-        canCoalesce = prev.intent == intent &&
-                      prev.len < kMaxChangesPerTransaction && prev.len > 0 &&
-                      IsAdjacent(intent, prev.changes[prev.len - 1], change);
+        canCoalesce =
+            prev.intent == intent && prev.lastBatchLen == batch.len &&
+            prev.len + batch.len <= kMaxChangesPerTransaction &&
+            IsAdjacentBatch(intent, prev.changes + prev.len - prev.lastBatchLen,
+                            batch.changes, batch.len);
     }
     if (canCoalesce) {
-        TransactionPush(&m->undos[m->undos.len - 1], change);
+        UndoTransaction& prev = m->undos[m->undos.len - 1];
+        for (int i = 0; i < batch.len; i++) {
+            TransactionPush(&prev, batch.changes[i]);
+        }
+        prev.lastBatchLen = batch.len;
+        // The run keeps the cursors it began with and takes the latest after.
+        if (batch.selsBefore && !prev.selsBefore) {
+            prev.selsBefore = batch.selsBefore;
+            prev.nSelsBefore = batch.nSelsBefore;
+            batch.selsBefore = nullptr;
+            batch.nSelsBefore = 0;
+        }
+        if (batch.selsAfter) {
+            free(prev.selsAfter);
+            prev.selsAfter = batch.selsAfter;
+            prev.nSelsAfter = batch.nSelsAfter;
+            batch.selsAfter = nullptr;
+            batch.nSelsAfter = 0;
+        }
+        // The changes moved; only the array and what was not taken remain.
+        batch.len = 0;
+        TransactionFree(&batch);
         return;
     }
     if (m->undos.len >= kMaxUndoTransactions) {
@@ -5783,10 +6697,9 @@ static void PushTransaction(UndoManager* m, Change change, EditIntent intent) {
                 (size_t)(m->undos.len - 1) * sizeof(UndoTransaction));
         m->undos.len--;
     }
-    UndoTransaction t = {};
-    t.intent = intent;
-    TransactionPush(&t, change);
-    VecAppend(m->undos, t);
+    batch.intent = intent;
+    batch.lastBatchLen = batch.len;
+    VecAppend(m->undos, batch);
     m->coalescingBoundary = intent == EditIntent::Atomic;
 }
 
@@ -5803,56 +6716,83 @@ void UndoRecordTransaction(UndoManager* m, Change change, EditIntent intent) {
         UndoBreakCoalescing(m);
         return;
     }
-    if (m->transactionOpen) {
-        if (m->hasPending) {
-            // The bracket keeps the first change's old side and takes the
-            // latest new side, so the whole composition undoes at once.
-            StrFree(m->pending.newText);
-            m->pending.newRange = change.newRange;
-            m->pending.newText = change.newText;
-            m->pending.selAfter = change.selAfter;
-            StrFree(change.oldText);
-        } else {
-            m->pending = change;
-            m->hasPending = true;
-        }
+    if (m->transactionDepth > 0) {
+        TransactionPush(&m->pending, change);
         return;
     }
-    PushTransaction(m, change, intent);
+    UndoTransaction t = {};
+    TransactionPush(&t, change);
+    PushBatch(m, t, intent);
+}
+
+void UndoBeginTransactionWith(UndoManager* m, EditIntent intent) {
+    m->transactionDepth++;
+    if (m->transactionDepth == 1) {
+        TransactionFree(&m->pending);
+        m->pending.intent = intent;
+    }
 }
 
 void UndoBeginTransaction(UndoManager* m) {
-    if (m->transactionOpen) {
-        return;
-    }
-    m->transactionOpen = true;
-    if (m->hasPending) {
-        ChangeFree(&m->pending);
-        m->hasPending = false;
-    }
+    UndoBeginTransactionWith(m, EditIntent::Atomic);
 }
 
 void UndoCommitTransaction(UndoManager* m) {
-    if (!m->transactionOpen) {
+    if (m->transactionDepth == 0) {
         return;
     }
-    m->transactionOpen = false;
-    if (!m->hasPending) {
+    m->transactionDepth--;
+    if (m->transactionDepth > 0) {
         return;
     }
-    Change c = m->pending;
-    m->hasPending = false;
+    UndoTransaction t = m->pending;
     m->pending = {};
-    if (!RangeSame(c.oldRange, c.newRange) ||
-        !base::StrEq(c.oldText, c.newText)) {
-        PushTransaction(m, c, EditIntent::Atomic);
-    } else {
-        ChangeFree(&c);
+    if (t.len == 0 || IsNoopBatch(&t)) {
+        TransactionFree(&t);
+        return;
+    }
+    PushBatch(m, t, t.intent);
+}
+
+// commit_all_transactions: close every open bracket, committing what they
+// collected.
+static void CommitAllTransactions(UndoManager* m) {
+    if (m->transactionDepth == 0) {
+        return;
+    }
+    m->transactionDepth = 1;
+    UndoCommitTransaction(m);
+}
+
+void UndoRecordSelections(UndoManager* m, const CursorSelection* before,
+                          int nBefore, const CursorSelection* after,
+                          int nAfter) {
+    if (m->ignoring) {
+        return;
+    }
+    UndoTransaction* t = nullptr;
+    if (m->transactionDepth > 0) {
+        t = &m->pending;
+    } else if (m->undos.len > 0) {
+        t = &m->undos[m->undos.len - 1];
+    }
+    if (!t) {
+        return;
+    }
+    if (before && nBefore > 0 && !t->selsBefore) {
+        t->selsBefore = SelsDup(before, nBefore);
+        t->nSelsBefore = nBefore;
+    }
+    if (after && nAfter > 0) {
+        free(t->selsAfter);
+        t->selsAfter = SelsDup(after, nAfter);
+        t->nSelsAfter = nAfter;
     }
 }
 
 void UndoBreakCoalescing(UndoManager* m) {
-    UndoCommitTransaction(m);
+    // While a batch is open the boundary applies to that batch, so never
+    // close a bracket the caller still owns.
     m->coalescingBoundary = true;
 }
 
@@ -5863,24 +6803,21 @@ bool UndoIsIgnoring(const UndoManager* m) {
 void UndoSetIgnoring(UndoManager* m, bool ignoring) {
     m->ignoring = ignoring;
     if (ignoring) {
-        UndoCommitTransaction(m);
+        CommitAllTransactions(m);
     }
 }
 
 void UndoClear(UndoManager* m) {
     StackClear(m->undos);
     StackClear(m->redos);
-    m->transactionOpen = false;
-    if (m->hasPending) {
-        ChangeFree(&m->pending);
-        m->hasPending = false;
-    }
+    m->transactionDepth = 0;
+    TransactionFree(&m->pending);
     m->hasPendingIntent = false;
     m->coalescingBoundary = false;
 }
 
 const UndoTransaction* UndoPopUndo(UndoManager* m) {
-    UndoCommitTransaction(m);
+    CommitAllTransactions(m);
     if (m->undos.len == 0) {
         return nullptr;
     }
@@ -5894,7 +6831,7 @@ const UndoTransaction* UndoPopUndo(UndoManager* m) {
 }
 
 const UndoTransaction* UndoPopRedo(UndoManager* m) {
-    UndoCommitTransaction(m);
+    CommitAllTransactions(m);
     if (m->redos.len == 0) {
         return nullptr;
     }

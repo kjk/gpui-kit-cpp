@@ -25,6 +25,8 @@ namespace input {
         return id;                                    \
     }
 
+GPUI_INPUT_ACTION(AddCursorAbove, "input::AddCursorAbove")
+GPUI_INPUT_ACTION(AddCursorBelow, "input::AddCursorBelow")
 GPUI_INPUT_ACTION(Backspace, "input::Backspace")
 GPUI_INPUT_ACTION(Copy, "input::Copy")
 GPUI_INPUT_ACTION(Cut, "input::Cut")
@@ -137,6 +139,17 @@ void InputInitKeys() {
         {"shift-right", input::SelectRight(), ctx},
         {"shift-up", input::SelectUp(), ctx},
         {"shift-down", input::SelectDown(), ctx},
+    // Avoid Ctrl+Alt+arrows on Linux, where desktops may reserve them.
+#if GPUI_OS_MAC
+        {"cmd-alt-up", input::AddCursorAbove(), ctx},
+        {"cmd-alt-down", input::AddCursorBelow(), ctx},
+#elif GPUI_OS_WINDOWS
+        {"ctrl-alt-up", input::AddCursorAbove(), ctx},
+        {"ctrl-alt-down", input::AddCursorBelow(), ctx},
+#else
+        {"shift-alt-up", input::AddCursorAbove(), ctx},
+        {"shift-alt-down", input::AddCursorBelow(), ctx},
+#endif
         {"home", input::MoveHome(), ctx},
         {"end", input::MoveEnd(), ctx},
         {"shift-home", input::SelectToStartOfLine(), ctx},
@@ -376,6 +389,12 @@ InputAction InputActionOf(uint32_t id, intptr_t arg) {
     }
     if (id == input::SelectUp()) {
         return InputAction::SelectUp;
+    }
+    if (id == input::AddCursorAbove()) {
+        return InputAction::AddCursorAbove;
+    }
+    if (id == input::AddCursorBelow()) {
+        return InputAction::AddCursorBelow;
     }
     if (id == input::Undo()) {
         return InputAction::Undo;

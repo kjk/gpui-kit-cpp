@@ -1792,6 +1792,19 @@ El* El::SelRange(int lo, int hi, Rgba color) {
     return this;
 }
 
+El* El::ExtraSelRanges(const Selection* ranges, int n) {
+    extraSels = ranges;
+    nExtraSels = n;
+    return this;
+}
+
+El* El::ExtraCarets(const int* offsets, int n, Rgba color) {
+    extraCarets = offsets;
+    nExtraCarets = n;
+    caretColor = color;
+    return this;
+}
+
 El* El::CaretOut(float* outX, float* outY) {
     caretOutX = outX;
     caretOutY = outY;
@@ -5542,10 +5555,10 @@ static void PaintOverlays(PaintCtx* ctx, El* e) {
 // paints a quad there; the shaped line is already in hand here, so the two
 // steps fold together. A run with no text puts the caret at its left edge,
 // which is where an empty field with a placeholder shows it.
-static void PaintCaret(PaintCtx* ctx, El* e, float font) {
-    if (e->caretOff < 0 || e->caretColor.a == 0) {
-        return;
-    }
+// One caret. `primary` is the active cursor's, the one last_layout and a
+// completion menu's anchor are measured from; the others only paint.
+static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
+                         bool lineEndAffinity, bool primary) {
     float x = e->x;
     float y = e->y;
     float h = e->h;
@@ -5560,12 +5573,11 @@ static void PaintCaret(PaintCtx* ctx, El* e, float font) {
                            ElTextWeight(e), e->style.lineHeight, nullptr);
         if (tl) {
             Bounds r[32] = {};
-            int off = e->caretOff;
             if (off > e->text.len) {
                 off = e->text.len;
             }
             int n = 0;
-            if (off > 0 && (e->caretLineEndAffinity || off == e->text.len)) {
+            if (off > 0 && (lineEndAffinity || off == e->text.len)) {
                 // The trailing edge of everything before it.
                 n = TextLayoutRangeRects(tl, e->text, 0, off, r, 32);
                 if (n > 0) {
@@ -5588,16 +5600,29 @@ static void PaintCaret(PaintCtx* ctx, El* e, float font) {
     }
     // last_layout: where the caret ended up inside the run, which is what
     // scroll_to measures against on the next move.
-    if (e->input) {
+    if (primary && e->input) {
         e->input->caretX = x - e->x;
     }
-    if (e->caretOutX) {
+    if (primary && e->caretOutX) {
         *e->caretOutX = x;
     }
-    if (e->caretOutY) {
+    if (primary && e->caretOutY) {
         *e->caretOutY = y + h;
     }
     CanvasFillRect(ctx, x, y, e->caretW, h, e->caretColor);
+}
+
+// layout_cursors paints every cursor's caret; the active one first.
+static void PaintCaret(PaintCtx* ctx, El* e, float font) {
+    if (e->caretColor.a == 0) {
+        return;
+    }
+    if (e->caretOff >= 0) {
+        PaintCaretAt(ctx, e, font, e->caretOff, e->caretLineEndAffinity, true);
+    }
+    for (int i = 0; i < e->nExtraCarets; i++) {
+        PaintCaretAt(ctx, e, font, e->extraCarets[i], false, false);
+    }
 }
 
 void PaintEl(PaintCtx* ctx, El* e) {
@@ -6019,6 +6044,16 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                            e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
                            ElTextWeight(e), e->style.lineHeight, e->x, e->y, lo,
                            hi, e->selColor);
+        }
+        // The other cursors' selections, in the same wash.
+        for (int i = 0; i < e->nExtraSels; i++) {
+            const Selection& r = e->extraSels[i];
+            if (r.end > r.start) {
+                PaintTextRange(
+                    ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                    e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                    e->y, r.start, r.end, e->selColor);
+            }
         }
         if (e->markLo >= 0 && e->markHi > e->markLo) {
             PaintTextUnderline(

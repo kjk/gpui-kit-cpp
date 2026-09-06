@@ -34,12 +34,16 @@ static void ExplicitTransactionCollectsMultipleChanges() {
     UndoManager m;
     UndoBeginTransaction(&m);
     UndoRecordTransaction(&m, TypingChange(0, "a"), EditIntent::Typing);
-    UndoRecordTransaction(&m, TypingChange(0, "ab"), EditIntent::Typing);
+    UndoRecordTransaction(&m, TypingChange(1, "b"), EditIntent::Typing);
     UndoCommitTransaction(&m);
 
+    // One undo entry that holds both changes; the caller replays them in
+    // reverse application order.
     const UndoTransaction* t = UndoPopUndo(&m);
-    utassert(t && t->len == 1);
-    utassert(t && StrEq(t->changes[0].newText, StrL("ab")));
+    utassert(t && t->len == 2);
+    utassert(t && StrEq(t->changes[0].newText, StrL("a")));
+    utassert(t && StrEq(t->changes[1].newText, StrL("b")));
+    utassert(UndoPopUndo(&m) == nullptr);
 }
 
 static void LimitsTheNumberOfRetainedTransactions() {

@@ -516,7 +516,12 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
             int offset =
                 InputIndexForPosition(s, &win->paint, s->autoScroll.lastDrag.x,
                                       s->autoScroll.lastDrag.y, &affinity);
-            InputSelectToWithAffinity(s, win->app, win, offset, affinity);
+            if (s->columnSelectStart >= 0) {
+                InputBuildColumnarSelection(s, win->app, win,
+                                            s->columnSelectStart, offset);
+            } else {
+                InputSelectToWithAffinity(s, win->app, win, offset, affinity);
+            }
         }
         WindowRequestAnimationFrame(win);
     }
@@ -1223,14 +1228,30 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputIndexForPosition(s, &win->paint, in.x, in.y, &lineEndAffinity);
     // `M::on_click(..)`, which is go-to-definition and returns true when it
     // took the press — so the same click does not also move the caret.
+    // Alt is the multi-cursor modifier, so alt+secondary is not a jump.
     if (InputClickDefinition(s, win->app, win, offset,
-                             in.modifiers.Secondary())) {
+                             in.modifiers.Secondary() && !in.modifiers.alt)) {
         return;
     }
     if (in.clickCount >= 3) {
         InputSelectLine(s, win->app, win, offset);
     } else if (in.clickCount == 2) {
         InputSelectWord(s, win->app, win, offset);
+    } else if (InputIsMultiLine(s) && in.button == MouseButton::Left &&
+               in.modifiers.alt) {
+        // Multi-cursor placement, multi-line only. Alt+Shift starts a block;
+        // Linux also accepts Ghostty's Ctrl+Alt. A plain alt-click adds a
+        // caret, and is the block's anchor if the drag goes on from here.
+        bool block = in.modifiers.shift;
+#if GPUI_OS_LINUX
+        block = block || in.modifiers.control;
+#endif
+        if (block) {
+            InputMoveToWithAffinity(s, win->app, win, offset, lineEndAffinity);
+        } else {
+            InputAddCursorAt(s, win->app, win, offset);
+        }
+        s->columnSelectStart = offset;
     } else if (in.modifiers.shift) {
         InputSelectToWithAffinity(s, win->app, win, offset, lineEndAffinity);
     } else {
@@ -1683,7 +1704,13 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         s->autoScroll.hasLastDrag = true;
         bool affinity = false;
         int offset = InputIndexForPosition(s, &win->paint, x, y, &affinity);
-        InputSelectToWithAffinity(s, win->app, win, offset, affinity);
+        // An alt(+shift) press drags out a block instead of a range.
+        if (s->columnSelectStart >= 0) {
+            InputBuildColumnarSelection(s, win->app, win, s->columnSelectStart,
+                                        offset);
+        } else {
+            InputSelectToWithAffinity(s, win->app, win, offset, affinity);
+        }
         // A drag that has reached the edge of a field with somewhere to go
         // keeps scrolling it until the pointer comes back in. A single-line
         // field has nowhere to go, which is why Rust asks the same question.
@@ -2057,8 +2084,12 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     // InputState::on_mouse_up: the drag is over, and the word a double click
     // pinned stops holding the selection open.
     if (win->input && win->input->selecting) {
+        if (win->input->selectedRange.IsEmpty()) {
+            win->input->selectionReversed = false;
+        }
         win->input->selecting = false;
         win->input->hasSelectedWordRange = false;
+        win->input->columnSelectStart = -1;
         win->input->autoScroll.Stop();
     }
     // The click, last: GPUI's on_click fires from the release, and only when
