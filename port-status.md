@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `b52c563a2344158e4d2faf1e729e14a62fdd352a`
-(2026-09-03, chore: Let the doctests written for gpui-kit users compile (#2937)). Only Rust documentation examples change: hidden crate aliases and a dereference let doctests compile. No C++ API or runtime behavior changes.
+Processed through `b6f098db819c40b5cb13b513f7bacc14b0afd9dc`
+(2026-09-03, website: Add a release notes page and keep page titles off the toolbar (#2935)). The new release-notes page and toolbar CSS belong solely to the upstream documentation website. There is no corresponding website or release-data service in this native/browser C++ toolkit.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
