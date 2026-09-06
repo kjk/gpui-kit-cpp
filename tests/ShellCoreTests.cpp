@@ -1780,6 +1780,80 @@ static void LazyListsShareTheItemBudgetAndRefuseNesting() {
         "Error('nesting: ' + globalThis.nestError);")));
 }
 
+// select.rs (5f5ba08d): every_close_dismisses_before_it_closes, through the
+// route the shell adds — the root's accessible activation. Closing runs
+// on_dismiss, and runs it before the open state is asked to close, so a script
+// that commits a pending value on dismissal can still read that value; the
+// accessible activation used to open only, and a screen reader pressing the
+// open control closed nothing.
+static El* FindComboBox(El* e) {
+    if (!e) return nullptr;
+    if (e->accessibility.role == AccessibilityRole::ComboBox) return e;
+    for (El* child = e->first; child; child = child->next) {
+        if (El* found = FindComboBox(child)) return found;
+    }
+    return nullptr;
+}
+
+static void EveryCloseDismissesBeforeItCloses() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui';\n"
+        "import { Select } from 'gpui-base';\n"
+        "globalThis.closing = [];\n"
+        "export default class Main extends View {\n"
+        "  init() { this.open = false; }\n"
+        "  render(cx) { return Select.new('lang')\n"
+        "    .open(this.open)\n"
+        "    .on_open_change((open, cx) => { globalThis.closing.push(open ? "
+        "'open' : 'close'); this.open = open; cx.notify(); })\n"
+        "    .on_dismiss(() => globalThis.closing.push('dismiss'))\n"
+        "    .child(div().child('Language')); }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("select.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = ArenaNew();
+    El* root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    utassert(root != nullptr && !error.IsSet());
+    El* select = FindComboBox(root);
+    utassert(select && select->accessibilityDefault.IsValid());
+    ClickEvent press = {};
+    if (select)
+        ListenerCall(&app, &window, select->accessibilityDefault, &press);
+    // Opened: the script now describes an open select, whose activation
+    // closes it — on_dismiss first.
+    ArenaDelete(frame);
+    frame = ArenaNew();
+    root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    select = FindComboBox(root);
+    utassert(select && select->accessibility.expanded);
+    utassert(select && select->accessibilityDefault.IsValid());
+    if (select)
+        ListenerCall(&app, &window, select->accessibilityDefault, &press);
+    utassert(runtime && runtime
+                            ->Eval(StrL("if (globalThis.closing.join(',') !== "
+                                        "'open,dismiss,close') throw new "
+                                        "Error(globalThis.closing.join(','))"),
+                                   StrL("select-check.js"), &error));
+    utassert(!error.IsSet());
+    if (view.IsValid()) EntityDrop(&app, view.id);
+    ArenaDelete(frame);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 static void ShellSandboxWithholdsCompilersAndSharedPrototypeWrites() {
     ShellError error = {};
     ShellSetDevelopmentMode(false);
@@ -3991,6 +4065,7 @@ void TestShellCore() {
     AListMeasuresEachItemAndFollowsTheScroll();
     AListReportsWhichItemWasClicked();
     LazyListsShareTheItemBudgetAndRefuseNesting();
+    EveryCloseDismissesBeforeItCloses();
     ScriptThemesCarryATypeScale();
     ScriptViewsRebuildOnlyWhenThePaletteMoves();
     ScriptOverlaysRebuildFromTheStateTheyCloseOver();

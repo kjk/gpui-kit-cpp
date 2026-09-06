@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `4475eeb56ae78a5bf40ef23c2fb18396bdfff52b`
-(2026-09-06, icon: Support SVG bytes in component icon slots (#2980)). `Icon::Data(svg)` embeds an icon's SVG source without registering an asset; the last `Path` or `Data` selects the source. The bytes ride on the element as `El::iconSvg`, convert through the same SVG reader as an asset (`SvgDrawOpsForXml`, kept by content hash), and reach the button slot, the loading spinner, popup-menu rows and native menus on Windows and macOS (`PlatMenuItem::iconSvg`). The Icon and NativeMenu stories show embedded icons.
+Processed through `5f5ba08d35c9fb6f42d81a7aff7edba61ba3bc6b`
+(2026-09-06, select: run on_dismiss however the popup closes (#2984)). The shell select's accessible activation now closes an open select as well as opening a closed one, through the same steps Cancel takes — `on_dismiss` first, then the open state asked to close, then focus back on the trigger — so a script forwarding `onDismiss` sees a screen reader's close too. Base `Select` carries no `on_dismiss` of its own here; the shell binding is where that handler lives.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

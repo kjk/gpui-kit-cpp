@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4475eeb56ae78a5bf40ef23c2fb18396bdfff52b",
+  sha: "5f5ba08d35c9fb6f42d81a7aff7edba61ba3bc6b",
   date: "2026-09-06",
-  subject: "icon: Support SVG bytes in component icon slots (#2980)",
+  subject: "select: run on_dismiss however the popup closes (#2984)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

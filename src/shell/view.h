@@ -109,8 +109,13 @@ struct ScriptView {
                                      intptr_t binding);
     static void OnSelectAction(ScriptView* self, Ctx* cx,
                                const ActionEvent* event, intptr_t binding);
-    static void OnSelectOpen(ScriptView* self, Ctx* cx, const ClickEvent* event,
-                             intptr_t binding);
+    // The select root's accessible activation — `on_a11y_action(Click)`:
+    // platform adapters may flatten the trigger child, so the root itself
+    // opens a closed select and closes an open one. Closing runs the same
+    // steps Cancel does, on_dismiss first, so a script that tracks dismissal
+    // sees one however the popup was closed.
+    static void OnSelectActivate(ScriptView* self, Ctx* cx,
+                                 const ClickEvent* event, intptr_t binding);
     static void OnNumberStep(ScriptView* self, Ctx* cx,
                              const NumberInputEvent* event, intptr_t callback);
     static void OnNumberKey(ScriptView* self, Ctx* cx, const KeyEvent* event,

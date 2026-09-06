@@ -199,17 +199,37 @@ void ScriptView::OnItemSecondaryPress(ScriptView* self, Ctx* cx,
                                               *event, cx->win, cx->app);
 }
 
+// Every way of closing a select runs the same steps: on_dismiss, then the
+// open state asked to close, then focus back on the trigger. A script that
+// tracks dismissal has to see one however the popup was closed, and the
+// accessible activation closes exactly what Escape closes.
+static void ShellSelectClose(ScriptView* self, Ctx* cx,
+                             ShellSelectBinding* value) {
+    if (value->onDismiss)
+        self->runtime->DispatchSignal(value->onDismiss, cx->win, cx->app);
+    if (value->onOpenChange)
+        self->runtime
+            ->DispatchChange(value->onOpenChange, false, cx->win, cx->app);
+    if (value->triggerFocus.IsValid())
+        FocusHandleFocus(cx->win, value->triggerFocus);
+}
+
+static void ShellSelectOpen(ScriptView* self, Ctx* cx,
+                            ShellSelectBinding* value) {
+    if (value->onOpenChange)
+        self->runtime
+            ->DispatchChange(value->onOpenChange, true, cx->win, cx->app);
+    if (value->contentFocus.IsValid())
+        FocusHandleFocus(cx->win, value->contentFocus);
+}
+
 void ScriptView::OnSelectAction(ScriptView* self, Ctx* cx,
                                 const ActionEvent* event, intptr_t binding) {
     ShellSelectBinding* value = (ShellSelectBinding*)binding;
     if (!self || !self->runtime || !event || !value) return;
     switch (SelectActionOf(event->action, value->open, value->disabled)) {
         case SelectAction::Open:
-            if (value->contentFocus.IsValid())
-                FocusHandleFocus(cx->win, value->contentFocus);
-            if (value->onOpenChange)
-                self->runtime->DispatchChange(value->onOpenChange, true,
-                                              cx->win, cx->app);
+            ShellSelectOpen(self, cx, value);
             break;
         case SelectAction::Confirm:
             if (value->onConfirm)
@@ -217,14 +237,7 @@ void ScriptView::OnSelectAction(ScriptView* self, Ctx* cx,
                     ->DispatchSignal(value->onConfirm, cx->win, cx->app);
             break;
         case SelectAction::Dismiss:
-            if (value->onDismiss)
-                self->runtime
-                    ->DispatchSignal(value->onDismiss, cx->win, cx->app);
-            if (value->triggerFocus.IsValid())
-                FocusHandleFocus(cx->win, value->triggerFocus);
-            if (value->onOpenChange)
-                self->runtime->DispatchChange(value->onOpenChange, false,
-                                              cx->win, cx->app);
+            ShellSelectClose(self, cx, value);
             break;
         case SelectAction::None:
             const_cast<ActionEvent*>(event)->propagate = true;
@@ -232,16 +245,15 @@ void ScriptView::OnSelectAction(ScriptView* self, Ctx* cx,
     }
 }
 
-void ScriptView::OnSelectOpen(ScriptView* self, Ctx* cx, const ClickEvent*,
-                              intptr_t binding) {
+void ScriptView::OnSelectActivate(ScriptView* self, Ctx* cx, const ClickEvent*,
+                                  intptr_t binding) {
     ShellSelectBinding* value = (ShellSelectBinding*)binding;
-    if (!self || !self->runtime || !value || value->disabled || value->open)
+    if (!self || !self->runtime || !value || value->disabled) return;
+    if (value->open) {
+        ShellSelectClose(self, cx, value);
         return;
-    if (value->contentFocus.IsValid())
-        FocusHandleFocus(cx->win, value->contentFocus);
-    if (value->onOpenChange)
-        self->runtime
-            ->DispatchChange(value->onOpenChange, true, cx->win, cx->app);
+    }
+    ShellSelectOpen(self, cx, value);
 }
 
 void ScriptView::OnNumberStep(ScriptView* self, Ctx* cx,

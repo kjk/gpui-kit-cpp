@@ -1967,9 +1967,12 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 ->OnAction(action::SelectDown(), action)
                 ->OnAction(action::Confirm(), action)
                 ->OnAction(action::Cancel(), action);
-            if (!open && !behavior.disabled && behavior.onOpenChange)
-                root->OnAccessibilityDefault(
-                    Listen(cx, &ScriptView::OnSelectOpen, (intptr_t)binding));
+            // The enabled root exposes activation whether open or closed:
+            // it opens a closed select and closes an open one through the
+            // same steps Cancel takes.
+            if (!behavior.disabled && behavior.onOpenChange)
+                root->OnAccessibilityDefault(Listen(
+                    cx, &ScriptView::OnSelectActivate, (intptr_t)binding));
             return root;
         }
         case shell::ComponentKind::DatePicker: {

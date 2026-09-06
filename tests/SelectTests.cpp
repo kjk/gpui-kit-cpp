@@ -377,14 +377,17 @@ static void TheRootProjectsApplicationOwnedAccessibleState() {
     El* enabled =
         gpui::Select::New(&cx, StrL("enabled"), true, false,
                           StrL("Programming language"), live, StrL("Rust"));
-    El* disabled = gpui::Select::New(&cx, StrL("disabled"), false, true, Str{},
+    // Open, so the expanded assertion below says something about `disabled`
+    // rather than about the default open state: a disabled control still
+    // reports the state it is in.
+    El* disabled = gpui::Select::New(&cx, StrL("disabled"), true, true, Str{},
                                      live, Str{});
     utassert(StrEq(enabled->accessibility.label, StrL("Programming language")));
     utassert(StrEq(enabled->accessibility.value, StrL("Rust")));
     utassert(enabled->accessibility.hasExpanded && enabled->accessibility
                                                        .expanded);
-    utassert(disabled->accessibility.hasExpanded && !disabled->accessibility
-                                                         .expanded);
+    utassert(disabled->accessibility.hasExpanded && disabled->accessibility
+                                                        .expanded);
     utassert(enabled->accessibilityDefault.IsValid());
     utassert(!disabled->accessibilityDefault.IsValid());
     ArenaDelete(a);
