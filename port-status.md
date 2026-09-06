@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `5f5ba08d35c9fb6f42d81a7aff7edba61ba3bc6b`
-(2026-09-06, select: run on_dismiss however the popup closes (#2984)). The shell select's accessible activation now closes an open select as well as opening a closed one, through the same steps Cancel takes — `on_dismiss` first, then the open state asked to close, then focus back on the trigger — so a script forwarding `onDismiss` sees a screen reader's close too. Base `Select` carries no `on_dismiss` of its own here; the shell binding is where that handler lives.
+Processed through `50e2f9a15403613bceaf76fef3123ff3fc46b83f`
+(2026-09-06, chore: isolate story examples from test-support (#2985)). Upstream moves the eight story examples into standalone `example-*` Cargo packages so running one no longer enables the gallery's `test-support` dependency. Cargo packaging only: `examples/*.cpp` already build as their own targets here, so only the pin moves.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
