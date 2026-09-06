@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `e9a313dfea01ee01cb8721fad3abdf920785ce85`
-(2026-09-05, editor: Reveal search match after manual scroll (#2955)). Next and Previous in the editor's search now reveal the active match in either direction after a manual scroll, keeping the configured surrounding-line padding; `InputScrollToCaretWithPadding` / `InputScrollToOffsetWithPadding` choose the direction restriction and the padding independently, and cursor navigation keeps its direction restrictions.
+Processed through `ecb10948c55ed977b774eef6f2b7bb084d7710a6`
+(2026-09-05, chore: Forward platform test support and profiling (#2966)). This and 9d9bd9bf before it are Cargo packaging: the native showcase and motion examples move into a `gpui-base-examples` package so `gpui-base` no longer names `gpui_platform`, and `gpui-kit` forwards the `test-support` and `profiler` features. Neither has a counterpart here — `examples/showcase/` still ports `crates/base/examples/showcase`, and there is no feature flag or Cargo — so only the pin moves.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust
