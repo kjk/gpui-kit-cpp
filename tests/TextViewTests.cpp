@@ -319,6 +319,15 @@ static void TestHtmlBreak(Arena* a) {
     utassert(TextIs(a, Child(doc, 0), "one\ntwo"));
 }
 
+static void TestMarkdownHardBreak(Arena* a) {
+    const char* sources[] = {"Owner: Jane  \nPersona: assistant",
+                             "Owner: Jane\\\nPersona: assistant"};
+    for (const char* source : sources) {
+        MdNode* doc = MdParse(a, Str(source));
+        utassert(TextIs(a, Child(doc, 0), "Owner: Jane\nPersona: assistant"));
+    }
+}
+
 // The run covering `needle`, or the first image run when `needle` is null.
 static MdRun* ImageRunOf(MdNode* n) {
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
@@ -1423,6 +1432,7 @@ void TestTextView() {
     TestHtmlUnbalanced(a);
     TestHtmlComments(a);
     TestHtmlBreak(a);
+    TestMarkdownHardBreak(a);
     TestHtmlImage(a);
     TestImageSrc();
     TestSourceMarks();

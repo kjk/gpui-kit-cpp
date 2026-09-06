@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6bde4add915b3949dcaeb669ef6b6799df615924",
+  sha: "c3937a36dbe97347fd84f453761fc19784374ae2",
   date: "2026-09-04",
-  subject: "story: Draw the chart gallery through a virtual list (#2950)",
+  subject: "markdown: render hard line breaks instead of concatenating lines (#2945)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

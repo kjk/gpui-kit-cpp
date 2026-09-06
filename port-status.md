@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `6bde4add915b3949dcaeb669ef6b6799df615924`
-(2026-09-04, story: Draw the chart gallery through a virtual list (#2950)). The chart gallery builds only visible responsive card rows plus 400px overscan. Cards keep upstream 400px height, 280px minimum width, 16px spacing and inset, with shared fixture data and its own scroll viewport.
+Processed through `c3937a36dbe97347fd84f453761fc19784374ae2`
+(2026-09-04, markdown: render hard line breaks instead of concatenating lines (#2945)). CommonMark hard breaks already render as newline runs in the C++ adapter. The stale divergence comment is removed and both trailing-space and backslash forms have regression coverage.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

@@ -819,9 +819,7 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
             break;
         }
         case md::NodeKind::Break:
-            // Rust drops an inline break (parse_paragraph has no arm for it);
-            // a hard break is what starts a new row of the flow here, so it
-            // stays.
+            // CommonMark hard breaks start a new row of the inline flow.
             AddText(b, StrL("\n"));
             break;
         case md::NodeKind::Link:
