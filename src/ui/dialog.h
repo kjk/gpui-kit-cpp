@@ -85,11 +85,16 @@ struct DialogFooter {
 };
 
 struct DialogClose {
+    Ctx* cx = nullptr;
     El* root = nullptr;
     El* slot = nullptr;
     DialogFooterButton semantic = {true, false};
     static DialogClose* New(Ctx* cx);
     DialogClose* Child(El* child);
+    // trigger(build): the supplied button gets the accessible name "Close"
+    // and cancel activation, and the wrapper stops handling clicks itself.
+    // The caller supplies only presentation — `Small()->Ghost()->Icon(..)`.
+    DialogClose* Trigger(Button* button);
     El* IntoEl();
 };
 

@@ -179,12 +179,36 @@ El* DialogFooter::IntoEl() {
 
 DialogClose* DialogClose::New(Ctx* cx) {
     DialogClose* part = ArenaNew<DialogClose>(cx->a);
+    part->cx = cx;
     part->slot = gpui::DialogClose::New(cx);
     part->root = Div(cx->a)->W(kFill)->H(kFill)->Child(part->slot);
     return part;
 }
 DialogClose* DialogClose::Child(El* child) {
     slot->Child(child);
+    return this;
+}
+DialogClose* DialogClose::Trigger(Button* button) {
+    if (!button) {
+        return this;
+    }
+    // Rust hands the builder a base button that already carries the name
+    // and the Cancel dispatch and styles what comes back; here the styled
+    // button is what the caller made, and the activation goes on it before
+    // it renders, so a loading one still withholds the click.
+    button->AccessibilityLabel(StrL("Close"))->OnClickAction(action::Cancel());
+    El* trigger = button->IntoEl();
+    El* was = slot;
+    slot = gpui::DialogClose::WithTrigger(cx, trigger);
+    // Whatever children were added before the trigger stay, after it, the
+    // way `.children(self.trigger).children(self.children)` orders them.
+    for (El* child = was ? was->first : nullptr; child;) {
+        El* next = child->next;
+        child->next = nullptr;
+        slot->Child(child);
+        child = next;
+    }
+    root = Div(cx->a)->W(kFill)->H(kFill)->Child(slot);
     return this;
 }
 El* DialogClose::IntoEl() {
@@ -478,19 +502,16 @@ El* Dialog::IntoEl(WinSize size) {
         panel->Child(Actions());
     }
     if (closeButton) {
-        El* x = Div(a)
-                    ->Absolute()
-                    ->Top(8)
-                    ->Right(8)
-                    ->W(24)
-                    ->H(24)
-                    ->ItemsCenter()
-                    ->JustifyCenter()
-                    ->Radius(th.radius)
-                    ->HoverBg(th.secondaryHover)
-                    ->Child(IconEl(a, IconName::X, 14)->Fg(th.mutedFg));
-        x->PathClick(LayerId(StrL("dialog-close-x")))
-            ->OnClickAction(action::Cancel());
+        // `DialogClose::new().absolute().top(top).right(right).trigger(..)`:
+        // a small ghost icon button with the accessible name "Close" and
+        // cancel activation, which is what gives it a title and an AXPress.
+        El* x = DialogClose::New(cx)
+                    ->Trigger(Button::New(cx, LayerId(StrL("dialog-close-x")))
+                                  ->WithSize(UiSize::Small)
+                                  ->Ghost()
+                                  ->Icon(IconName::Close))
+                    ->IntoEl();
+        x->Absolute()->Top(8)->Right(8)->W(kAuto)->H(kAuto);
         panel->Child(x);
     }
     // Fixed, not absolute: Rust hangs the dialog off the window Root, so it

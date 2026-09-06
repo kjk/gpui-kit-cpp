@@ -755,6 +755,12 @@ El* Button::IntoEl() {
     if (interactive && clickAction) {
         e->OnClickAction(clickAction, clickActionArg);
     }
+    // `when(loading, on_click(stop_propagation))`: a loading button neither
+    // activates nor lets the click reach whatever wraps it — a DialogClose
+    // wrapper must not close the dialog for a button that is busy.
+    if (loading) {
+        e->StopClick();
+    }
     // The ink the label and the icons inherit, so the pointer can move it:
     // `text_color(normal_style.fg)` on the root, with `hover` and `active`
     // refining it. Only the caret names a colour of its own, since Rust

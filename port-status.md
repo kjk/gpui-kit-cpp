@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `d59d1a16bfb1de85b0a52dbd472e90509478d064`
-(2026-09-05, editor: Preserve active search match on panel open (#2953)). Closing and reopening Find with the same query keeps the matcher's current occurrence: an unchanged query is neither rebuilt nor re-anchored to the viewport, so the styled panel's initial query echo no longer resets it. New queries and case changes still rebuild and anchor.
+Processed through `21e802b88fda778fafee02df8945ad1d7e10cc4e`
+(2026-09-06, dialog: make the close button accessible (#2969)). The dialog's top-right close is now a small ghost `Button` inside a `DialogClose` trigger: it carries the accessible name "Close" and the Cancel activation itself, and the wrapper no longer handles the click, so a press closes once and still goes through `on_cancel`. A loading button withholds its click and stops it reaching whatever wraps it.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

@@ -106,7 +106,17 @@ struct DialogDescription {
 };
 struct DialogClose {
     static El* New(Ctx* cx, int clickId = 0);
+    // trigger(build): the wrapper around a button that already supports
+    // pointer, keyboard and accessibility activation. Rust builds
+    // `Button::new("close").accessibility_label("Close").on_click(activate)`
+    // and hands it to the builder for presentation; here the builder makes
+    // the button and `DialogCloseActivation` puts the name and the Cancel
+    // dispatch on it. The wrapper does not also handle clicks when a trigger
+    // is supplied, so the close activates once.
+    static El* WithTrigger(Ctx* cx, El* trigger, int clickId = 0);
 };
+// The accessible name "Close" and cancel activation a close trigger carries.
+El* DialogCloseActivation(El* button);
 
 // The trigger takes the press, not the click, and stops it there — Rust's
 // DialogTrigger is an on_mouse_down with cx.stop_propagation().

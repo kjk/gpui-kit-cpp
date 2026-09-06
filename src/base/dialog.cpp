@@ -199,6 +199,22 @@ El* DialogClose::New(Ctx* cx, int clickId) {
     return UiRoot(a, StrL("dialog-close"), clickId)
         ->OnClickAction(action::Cancel());
 }
+El* DialogCloseActivation(El* button) {
+    if (!button) {
+        return nullptr;
+    }
+    return button->AriaLabel(StrL("Close"))->OnClickAction(action::Cancel());
+}
+El* DialogClose::WithTrigger(Ctx* cx, El* trigger, int clickId) {
+    Arena* a = cx->a;
+    // `when(self.trigger.is_none(), on_click)`: the button handles the click,
+    // so the wrapper does not.
+    El* root = UiRoot(a, StrL("dialog-close"), clickId);
+    if (trigger) {
+        root->Child(trigger);
+    }
+    return root;
+}
 
 Dialog* Dialog::New(Ctx* cx) {
     Arena* a = cx->a;

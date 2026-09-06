@@ -281,8 +281,55 @@ static void TheBackdropFillsTheHost() {
     delete win;
 }
 
+// close_trigger_supplies_accessible_button and
+// close_trigger_activates_once_and_respects_cancel_veto. The trigger is a
+// button with the accessible name "Close" and cancel activation; the wrapper
+// around it no longer handles the click itself, so a press closes once and
+// goes through Cancel, veto included. A loading button withholds the click
+// and stops it reaching the wrapper (button.rs:
+// base_activation_is_preserved_and_blocked_while_loading).
+static void CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    component::DialogClose* close =
+        component::DialogClose::New(&cx)
+            ->Trigger(component::Button::New(&cx, StrL("close"))
+                          ->WithSize(UiSize::Small)
+                          ->Ghost()
+                          ->Icon(IconName::Close));
+    El* wrapper = close->slot;
+    El* button = wrapper ? wrapper->first : nullptr;
+    utassert(wrapper && wrapper->clickAction == 0);
+    utassert(button && button->accessibility.role == AccessibilityRole::Button);
+    utassert(button && StrEq(button->accessibility.label, StrL("Close")));
+    utassert(button && button->clickAction == action::Cancel());
+    utassert(close->IntoEl() && close->IntoEl()->first == wrapper);
+
+    // Without a trigger the wrapper keeps the click, as before.
+    component::DialogClose* plain = component::DialogClose::New(&cx);
+    utassert(plain->slot->clickAction == action::Cancel());
+
+    // Loading: no activation, and the click stops at the button.
+    El* busy = component::Button::New(&cx, StrL("busy"))
+                   ->OnClickAction(action::Cancel())
+                   ->Loading(true)
+                   ->IntoEl();
+    utassert(busy->clickAction == 0 && busy->stopClick);
+
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
     TestSuite("dialog");
+    CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce();
     TheBackdropFillsTheHost();
     EscapeCancelsAndEnterConfirms();
     TheActionsRunTheSameHandlersTheButtonsDo();
