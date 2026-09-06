@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `4bb44c7b3d7fdf357397b1f464459a1278f0581f`
-(2026-09-05, sidebar: make SidebarMenuItem implement Styled and add label_style (#2957)). `SidebarMenuItem` takes a `Refine` for its row, applied after the item's own styling and before its hover and active states, and a `LabelStyle` for the label's box; the sidebar story outlines the active item and colours every sub item's label `red_500`.
+Processed through `0b14b6bae13c4e4b6371fc38d38a7242cdba4f9b`
+(2026-09-05, website: Remove two Vue components orphaned by the Astro migration (#2965)). The six checkins from a31c01b0 to here publish and refine the website's App Stories catalog and its docs workflows; none touches a crate, an example or a dependency, so nothing here changed.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

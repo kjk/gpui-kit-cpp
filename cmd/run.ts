@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "4bb44c7b3d7fdf357397b1f464459a1278f0581f",
+  sha: "0b14b6bae13c4e4b6371fc38d38a7242cdba4f9b",
   date: "2026-09-05",
-  subject: "sidebar: make SidebarMenuItem implement Styled and add label_style (#2957)",
+  subject: "website: Remove two Vue components orphaned by the Astro migration (#2965)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
