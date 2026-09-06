@@ -66,6 +66,10 @@ void FrameSamplerIngestDraws(FrameSampler* s, const FrameSample* samples,
         s->capacity = kFpsCapacity;
     }
     for (int i = 0; i < n; i++) {
+        if (s->warmup > 0) {
+            s->warmup--;
+            continue;
+        }
         if (s->n == s->capacity) {
             memmove(s->samples, s->samples + 1,
                     sizeof(FrameSample) * (size_t)(s->n - 1));
@@ -81,6 +85,19 @@ void FrameSamplerIngestPresents(FrameSampler* s, const double* presentAt, int n,
         return;
     }
     for (int i = 0; i < n; i++) {
+        if (s->nPresents > 0) {
+            double interval = presentAt[i] - s->presents[s->nPresents - 1];
+            // Rust's `as_micros` truncates; rounding keeps a gap written as
+            // whole microseconds in the bucket it was written for.
+            long long micros = llround(interval * 1e6);
+            if (micros >= kShortestPlausibleRefreshMicros &&
+                micros <= kLongestPlausibleRefreshMicros) {
+                int bucket = (int)(micros / kRefreshBucketMicros);
+                RefreshCandidate* candidate = &s->refresh[bucket];
+                if (candidate->hits < UINT32_MAX) candidate->hits++;
+                candidate->totalSecs += interval;
+            }
+        }
         if (s->nPresents == kFpsPresents) {
             memmove(s->presents, s->presents + 1,
                     sizeof(double) * (size_t)(s->nPresents - 1));
@@ -120,6 +137,10 @@ void FrameSamplerIngest(FrameSampler* s, const FrameTiming* frames, int n,
             presents[nPresents++] = frames[i].presentAt;
         }
     }
+    if (!s->drainedBacklog) {
+        s->drainedBacklog = true;
+        s->warmup += (uint32_t)n;
+    }
     FrameSamplerIngestDraws(s, draws, n);
     FrameSamplerIngestPresents(s, presents, nPresents, now);
 }
@@ -150,6 +171,81 @@ float FrameSamplerPresentInterval(const FrameSampler* s) {
         return 0;
     }
     return 1.f / fps;
+}
+
+// STANDARD_REFRESH_RATES: the refresh rates panels actually ship at. A panel
+// that is on none of these keeps the raw estimate rather than being rounded
+// to a rate it does not have.
+static const float kStandardRefreshRates[] = {
+    24.f, 25.f,  30.f,  48.f,  50.f,  60.f,  72.f,  75.f,
+    90.f, 100.f, 120.f, 144.f, 165.f, 180.f, 240.f, 360.f,
+};
+
+float FpsSnapToStandardRefresh(float rate) {
+    for (float standard : kStandardRefreshRates) {
+        if (fabsf(rate - standard) <= standard * kRefreshSnapTolerance) {
+            return standard;
+        }
+    }
+    return rate;
+}
+
+float FrameSamplerPeakPresentRate(const FrameSampler* s) {
+    if (!s) {
+        return 0;
+    }
+    // The busiest group that has recurred enough to count, and the lowest
+    // bucket holding that count — the map iterates ascending.
+    uint32_t busiest = 0;
+    for (int b = 0; b < kRefreshBuckets; b++) {
+        if (s->refresh[b].hits >= kRefreshSupport && s->refresh[b]
+                                                             .hits > busiest) {
+            busiest = s->refresh[b].hits;
+        }
+    }
+    if (busiest == 0) {
+        return 0;
+    }
+    int mode = 0;
+    while (mode < kRefreshBuckets && s->refresh[mode].hits != busiest) {
+        mode++;
+    }
+    // A group at least twice as fast that arrived in bulk is the ceiling a
+    // variable refresh panel rests below.
+    int peak = mode;
+    for (int b = 0; b < kRefreshBuckets; b++) {
+        const RefreshCandidate& candidate = s->refresh[b];
+        if (b * kRefreshSeparation <= mode &&
+            candidate.hits >= kRefreshSupport &&
+            candidate.hits * (uint64_t)kRefreshMinority >= busiest) {
+            peak = b;
+            break;
+        }
+    }
+    uint64_t hits = 0;
+    double total = 0;
+    int lo = peak - kRefreshSpread < 0 ? 0 : peak - kRefreshSpread;
+    int hi = peak + kRefreshSpread >= kRefreshBuckets ? kRefreshBuckets - 1
+                                                      : peak + kRefreshSpread;
+    for (int b = lo; b <= hi; b++) {
+        hits += s->refresh[b].hits;
+        total += s->refresh[b].totalSecs;
+    }
+    // The peak is inside its own neighbourhood, and it cleared the support
+    // threshold to be the peak, so the count is never zero here.
+    double mean = hits > 0 ? total / (double)hits : 0;
+    return mean > 0 ? FpsSnapToStandardRefresh((float)(1.0 / mean)) : 0;
+}
+
+float FpsSustainableRate(float meanDrawSecs, float displayRate) {
+    if (meanDrawSecs <= 0) {
+        return 0;
+    }
+    float rate = 1.f / meanDrawSecs;
+    if (displayRate > 0 && rate > displayRate) {
+        return displayRate;
+    }
+    return rate;
 }
 
 float FrameSamplerMeanDraw(const FrameSampler* s) {
@@ -371,7 +467,7 @@ static const float kFigureWidth = 70.f;
 
 // Width of the `FPS` unit, and of the empty box mirroring it on the other side
 // of the figure so the figure lands on the HUD's true center.
-static const float kUnitWidth = 22.f;
+static const float kUnitWidth = 28.f;
 
 // How often the numbers are recomputed. The trace keeps up with every frame,
 // but the readings do not: recomputed per frame they flicker through digits
@@ -410,12 +506,6 @@ void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs) {
     self->axisMax = budgetSecs * 2.f;
 }
 
-void FpsMonitorSetContinuous(FpsMonitor* self, bool continuous) {
-    if (self) {
-        self->continuous = continuous;
-    }
-}
-
 // Republishes the readings if kReadoutInterval has passed.
 static void UpdateReadout(FpsMonitor* self) {
     double now = TimeNow();
@@ -423,6 +513,8 @@ static void UpdateReadout(FpsMonitor* self) {
         return;
     }
     const FrameSampler* s = &self->sampler;
+    self->readout.maxFps = FpsSustainableRate(FrameSamplerMeanDraw(s),
+                                              FrameSamplerPeakPresentRate(s));
     self->readout.fps = FrameSamplerFps(s);
     self->readout.intervalMillis = FrameSamplerPresentInterval(s) * 1000.f;
     // The mean over the interval rather than the latest frame, which at this
@@ -483,8 +575,14 @@ static void FpsResourceDone(FpsResourceJob* job) {
     delete job;
 }
 
-void FpsMonitor::OnResourceTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
-    if (!self || !cx || self->resourceTask || self->resourceJob) {
+void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
+    if (!self || !cx) {
+        return;
+    }
+    // The tick republishes the readings whether or not resources are on: the
+    // figures would otherwise freeze the moment the window stopped drawing.
+    Notify(cx);
+    if (!self->showResources || self->resourceTask || self->resourceJob) {
         return;
     }
     FpsResourceJob* job = new FpsResourceJob();
@@ -501,31 +599,40 @@ void FpsMonitor::OnResourceTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
     self->resourceTask = task;
 }
 
-static void StartResourceSampling(FpsMonitor* self, Ctx* cx) {
-    if (!self->showResources || self->resourceTimer || !cx->win) {
+// start_clock: the clock that republishes the readings, started on the first
+// render so that the builder fields have already been applied by the time its
+// interval is read. With resources on it runs at their interval and probes
+// them; without, at the readout interval, so the HUD still refreshes.
+static void StartClock(FpsMonitor* self, Ctx* cx) {
+    if (self->clockTimer || !cx->win) {
         return;
     }
-    int ms = (int)lroundf(self->resourceInterval * 1000.f);
-    // sysinfo refuses a faster refresh too; even the native one-process
-    // counters become noise below this point.
-    if (ms < 200) {
-        ms = 200;
+    int ms = (int)lround(kReadoutInterval * 1000.0);
+    if (self->showResources) {
+        ms = (int)lroundf(self->resourceInterval * 1000.f);
+        // sysinfo refuses a faster refresh too; even the native one-process
+        // counters become noise below this point.
+        if (ms < 200) {
+            ms = 200;
+        }
     }
-    self->resourceWindow = cx->win;
-    self->resourceTimer =
-        WindowSetInterval(cx->win, ms, Listen(cx, &FpsMonitor::OnResourceTick));
-    if (!self->resourceTimer) {
-        self->resourceWindow = nullptr;
+    self->clockWindow = cx->win;
+    self->clockTimer =
+        WindowSetInterval(cx->win, ms, Listen(cx, &FpsMonitor::OnClockTick));
+    if (!self->clockTimer) {
+        self->clockWindow = nullptr;
         return;
     }
     // Rust constructs and primes ResourceProbe immediately on its background
     // executor, then waits one interval before publishing the first delta.
-    FpsMonitor::OnResourceTick(self, cx, nullptr);
+    if (self->showResources) {
+        FpsMonitor::OnClockTick(self, cx, nullptr);
+    }
 }
 
 FpsMonitor::~FpsMonitor() {
-    if (resourceWindow && resourceTimer) {
-        WindowCancelTimer(resourceWindow, resourceTimer);
+    if (clockWindow && clockTimer) {
+        WindowCancelTimer(clockWindow, clockTimer);
     }
     if (resourceTask && ExecCancel(resourceTask)) {
         delete resourceJob;
@@ -537,8 +644,8 @@ FpsMonitor::~FpsMonitor() {
         // can never be followed once the App is gone.
         resourceJob->app = nullptr;
     }
-    resourceWindow = nullptr;
-    resourceTimer = 0;
+    clockWindow = nullptr;
+    clockTimer = 0;
     resourceTask = 0;
     resourceJob = nullptr;
 }
@@ -635,7 +742,7 @@ static El* FpsReading(Ctx* cx, Str label, Str value, Rgba valueColor,
 // is its emptiest part — the figure is centered and short, leaving both flanks
 // open — so the trace stays readable instead of being cut up by the denser
 // rows below.
-static El* FpsHeadline(Ctx* cx, FpsMonitor* self, float fps, Rgba color,
+static El* FpsHeadline(Ctx* cx, FpsMonitor* self, float rate, Rgba color,
                        const FpsStyle& style) {
     El* trace = Div(cx->a)->Absolute()->Top(0)->Left(0)->SizeFull();
     trace->customPaint = PaintFpsTrace;
@@ -651,7 +758,7 @@ static El* FpsHeadline(Ctx* cx, FpsMonitor* self, float fps, Rgba color,
                      ->FlexRow()
                      ->ItemsCenter()
                      ->JustifyCenter()
-                     ->Child(TextEl(cx->a, fmt("%.0f", fps))
+                     ->Child(TextEl(cx->a, fmt("%.0f", rate))
                                  ->Font(kFigureSize)
                                  ->LineHeight(1.f)
                                  ->Fg(color));
@@ -667,10 +774,22 @@ static El* FpsHeadline(Ctx* cx, FpsMonitor* self, float fps, Rgba color,
                     ->ItemsEnd()
                     ->JustifyCenter()
                     ->Gap(4)
-                    // An empty box matching the unit on the right. Without it
+                    // The box that balances the unit on the right. Without it
                     // the unit's own width pushes the figure off center by
-                    // half of it, which reads as misalignment.
-                    ->Child(Div(cx->a)->W(kUnitWidth)->H(kTextSize))
+                    // half of it, which reads as misalignment — so the mode
+                    // marker goes here, where it costs no layout and lands
+                    // where it is read: immediately before the figure it
+                    // qualifies.
+                    ->Child(Div(cx->a)
+                                ->W(kUnitWidth)
+                                ->H(kTextSize)
+                                ->FlexRow()
+                                ->JustifyEnd()
+                                ->Child(TextEl(cx->a, self->headline ==
+                                                              FpsHeadline::Max
+                                                          ? StrL("MAX")
+                                                          : Str{})
+                                            ->Fg(style.muted)))
                     ->Child(figure)
                     ->Child(Div(cx->a)
                                 ->W(kUnitWidth)
@@ -683,23 +802,32 @@ void FpsMonitor::OnToggleCompact(FpsMonitor* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
+void FpsMonitor::OnToggleHeadline(FpsMonitor* self, Ctx* cx,
+                                  const MouseDownEvent* event) {
+    if (!self || !event || event->button != MouseButton::Right) {
+        return;
+    }
+    self->headline = self->headline == FpsHeadline::Max ? FpsHeadline::Observed
+                                                        : FpsHeadline::Max;
+    WindowStopPropagation(cx);
+    Notify(cx);
+}
+
 El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
     FrameSamplerTick(&self->sampler, cx->win);
     UpdateReadout(self);
     UpdateAxis(self);
-    StartResourceSampling(self, cx);
-    // The HUD keeps the window drawing back to back. GPUI spells this
-    // window.request_animation_frame() once per render.
-    if (self->continuous && cx->win) {
-        WindowRequestAnimationFrame(cx->win);
-    }
+    StartClock(self, cx);
 
     const FpsStyle& style = FpsStyleDark();
     FpsReadout r = self->readout;
     float budget = self->frameBudget;
-    // A low demand-driven rate does not mean expensive frames. Only the
-    // frame-cost rows are graded against the budget.
+    // Printed plain, never graded. It is the reciprocal of `FRAME`, which is
+    // graded already, and grading the same measurement twice in two units
+    // would just say the same thing louder.
     Rgba fpsColor = style.foreground;
+    bool max = self->headline == FpsHeadline::Max;
+    float rate = max ? r.maxFps : r.fps;
 
     El* hud = Div(cx->a)
                   ->Click(HashClickId(StrL("gpui-fps-hud")))
@@ -708,23 +836,25 @@ El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
                   ->Mono()
                   ->Font(kTextSize)
                   ->SuppressTextSelection()
-                  ->OnClick(Listen(cx, &FpsMonitor::OnToggleCompact));
+                  ->OnClick(Listen(cx, &FpsMonitor::OnToggleCompact))
+                  // The `MAX` marker is what says which of the two the
+                  // figure is.
+                  ->OnMouseDown(Listen(cx, &FpsMonitor::OnToggleHeadline));
 
     if (self->compact) {
         // Collapsed, the HUD is one small tag: the figure drops to the same
         // size as its unit, the box shrinks to the text, and everything else
         // is dropped, so it sits over the interface without competing with it.
-        return hud->ItemsCenter()
-            ->Gap(4)
-            ->PadX(6)
-            ->PadY(2)
-            ->Radius(3)
-            ->Child(
-                Div(cx->a)
-                    ->W(kCompactFigureWidth)
-                    ->FlexRow()
-                    ->JustifyEnd()
-                    ->Child(TextEl(cx->a, fmt("%.0f", r.fps))->Fg(fpsColor)))
+        hud->ItemsCenter()->Gap(4)->PadX(6)->PadY(2)->Radius(3);
+        if (max) {
+            hud->Child(TextEl(cx->a, StrL("MAX"))->Fg(style.muted));
+        }
+        return hud
+            ->Child(Div(cx->a)
+                        ->W(kCompactFigureWidth)
+                        ->FlexRow()
+                        ->JustifyEnd()
+                        ->Child(TextEl(cx->a, fmt("%.0f", rate))->Fg(fpsColor)))
             ->Child(TextEl(cx->a, StrL("FPS"))->Fg(style.muted));
     }
 
@@ -733,10 +863,11 @@ El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
         ->PadX(8)
         ->PadY(6)
         ->Radius(4)
-        ->Child(FpsHeadline(cx, self, r.fps, fpsColor, style))
+        ->Child(FpsHeadline(cx, self, rate, fpsColor, style))
         // The same figure the platform overlay calls its frame interval: time
-        // between presents, which is the headline's reciprocal. Ungraded,
-        // like there.
+        // between presents. Where the headline says how fast this UI could
+        // go, this says how often it actually went — a wide gap between them
+        // is an idle window, not a slow one.
         ->Child(FpsReading(cx, StrL("INTERVAL"),
                            fmt("%.1f ms", r.intervalMillis), style.foreground,
                            style))
@@ -763,14 +894,10 @@ El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
                                 style, r.droppedPercent > 0 ? 1.f : 0.f, 0.5f),
                             style))
                 // Ungraded, unlike every other reading in the HUD. One per
-                // frame is the ideal, but it is not the floor here: in
-                // continuous mode the monitor requests an animation frame of
-                // its own on every render, so an application invalidating
-                // once a frame measures two and a healthy HUD would sit
-                // permanently in the red. The baseline depends on that switch
-                // and on how the application drives its own redraws, which is
-                // not something the HUD can grade — so the number is reported
-                // and the reading is left to whoever knows what to expect.
+                // frame is the ideal, but the baseline depends on how the
+                // application drives its own redraws, which is not something
+                // the HUD can grade — so the number is reported and the
+                // reading is left to whoever knows what to expect.
                 ->Child(FpsPair(cx, StrL("INV"), fmt("%.1f", r.invalidations),
                                 style.foreground, style)));
     if (self->showResources && self->hasResources) {
@@ -800,15 +927,10 @@ El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
 El* FpsOverlayEl(Ctx* cx, Entity<FpsMonitor> monitor, FpsOverlayOpts opts) {
     // The overlay's settings land on the monitor before it renders, the way
     // FpsOverlay::render updates the entity before handing it to the tree.
-    if (opts.frameBudget > 0 || opts.continuous >= 0) {
+    if (opts.frameBudget > 0) {
         FpsMonitor* self = monitor.Get(cx->app);
         if (self) {
-            if (opts.frameBudget > 0) {
-                FpsMonitorSetFrameBudget(self, opts.frameBudget);
-            }
-            if (opts.continuous >= 0) {
-                FpsMonitorSetContinuous(self, opts.continuous != 0);
-            }
+            FpsMonitorSetFrameBudget(self, opts.frameBudget);
         }
     }
     El* hud = EntityRender(cx->app, cx->win, cx->a, monitor.id);

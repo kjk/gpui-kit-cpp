@@ -126,12 +126,11 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
         if (slot) {
             if (!slot->IsValid()) *slot = EntityNew<FpsMonitor>(cx);
             // FpsOverlayOpts is what the HUD element takes since the fps
-            // crate's own checkins landed: it puts the anchor, the budget
-            // and the continuous flag on the monitor before it renders,
-            // which is the assignment this did by hand.
+            // crate's own checkins landed: it puts the anchor and the budget
+            // on the monitor before it renders, which is the assignment this
+            // did by hand.
             FpsOverlayOpts opts;
             opts.anchor = self->fpsHud.anchor;
-            opts.continuous = self->fpsHud.continuous ? 1 : 0;
             if (self->fpsHud.hasFrameBudget) {
                 opts.frameBudget = self->fpsHud.frameBudget;
             }

@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `a1275a956ed0f06316aab4f06aa82bc155a07ab3`
-(2026-09-04, shell: Expose GPUI's list and uniform_list to scripts (#2952)). Scripts import `list` and `uniform_list` from `gpui-kit`; both reach the script through the virtual list's confined item-renderer path and take `on_item_click` / `on_item_secondary_click` unchanged. `uniform_list` measures one row and places every row by it; `list` measures each row it draws plus a 160px overdraw band and keeps the measurements under the list's id. The item budget and the nesting refusal are shared by all four lazy lists, the typings are regenerated, and an item batch's strings now live in the frame arena rather than an arena freed before layout read them.
+Processed through `b586fad393daf683301c634fa4e5d98b4393bbb3`
+(2026-09-05, fps: Derive the headline rate from frame cost instead of driving the frame loop (#2954)). The FPS HUD no longer requests a frame per render; its headline is `MAX FPS`, the reciprocal of the mean frame cost held to the display's refresh rate, which the sampler infers from recurring gaps between presents and snaps to a standard rate. A right press switches the headline to presents per second. The first eight frames and the backlog drained on mount are not measured, a readout clock republishes the figures with resources off, and `continuous` is gone from the fps API, the shell's `show_fps_monitor` options and `fps_monitor()`. With the HUD no longer driving frames, the story's 500 ms inactive frame interval went too: an inactive window animates at the same 16 ms as an active one.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

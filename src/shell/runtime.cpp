@@ -3279,9 +3279,8 @@ static JSValue NativeShowFpsMonitor(JSContext* ctx, JSValueConst, int argc,
                 "%s expects an object, such as { anchor: \"bottom_left\" }",
                 kApi);
         }
-        static const char* const kKeys[] = {"anchor", "continuous",
-                                            "frame_budget"};
-        if (!KnownOptions(ctx, argv[0], kKeys, 3, kApi)) return JS_EXCEPTION;
+        static const char* const kKeys[] = {"anchor", "frame_budget"};
+        if (!KnownOptions(ctx, argv[0], kKeys, 2, kApi)) return JS_EXCEPTION;
         Arena* arena = ArenaNew();
         Str anchor;
         bool present = false;
@@ -3307,10 +3306,6 @@ static JSValue NativeShowFpsMonitor(JSContext* ctx, JSValueConst, int argc,
         }
         ArenaDelete(arena);
         if (!ok) return JS_EXCEPTION;
-        if (!OptionalBoolProperty(ctx, argv[0], "continuous",
-                                  &request.continuous)) {
-            return JS_EXCEPTION;
-        }
         JSValue budget = JS_GetPropertyStr(ctx, argv[0], "frame_budget");
         if (JS_IsException(budget)) return JS_EXCEPTION;
         if (!JS_IsUndefined(budget) && !JS_IsNull(budget)) {

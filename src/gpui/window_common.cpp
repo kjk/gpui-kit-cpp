@@ -2545,6 +2545,10 @@ bool BlinkVisible(App* app, EntityId handle) {
     return b->paused || b->visible;
 }
 
+// How long an animating window waits between frames: one 60Hz frame, whether
+// or not it is the active one, since `inactive_frame_interval` is unset.
+static const double kAnimationFrameInterval = 0.016;
+
 static bool WindowAnimationDue(Window* win, double now) {
     if (!win || !(win->anim || win->opts.anim || win->animFrame)) {
         return false;
@@ -2552,8 +2556,7 @@ static bool WindowAnimationDue(Window* win, double now) {
     if (win->lastDrawTime <= 0) {
         return true;
     }
-    double interval = win->active ? 0.016 : kInactiveFrameInterval;
-    return now >= win->lastDrawTime + interval;
+    return now >= win->lastDrawTime + kAnimationFrameInterval;
 }
 
 void WindowTimerTick(Window* win) {
@@ -2626,15 +2629,18 @@ int WindowTimerMs(Window* win) {
     double now = TimeNow();
     double soonest = -1;
     if (win->anim || win->opts.anim || win->animFrame) {
-        // WindowOptions::inactive_frame_interval. A window nobody is looking
-        // at animates at 2 FPS rather than at the display's rate, which is
-        // what the story app asks GPUI for; an active window keeps the 16 ms.
-        // This only paces continuing animation frames. A demand-driven frame
-        // from input or Notify is invalidated immediately, as upstream does;
-        // Windows can send wheel input to an inactive hovered window.
-        double interval = win->active ? 0.016 : kInactiveFrameInterval;
-        double target =
-            (win->lastDrawTime > 0) ? (win->lastDrawTime + interval) : now;
+        // WindowOptions::inactive_frame_interval is unset: GPUI then paces
+        // an inactive window's animation at the same 16 ms as an active
+        // one's. The story app used to ask for 500 ms between inactive
+        // frames, only to hold the FPS HUD's self-driven redraws to 2 FPS in
+        // the background; the HUD no longer drives frames, and the setting
+        // went with it (upstream b586fad3). This only paces continuing
+        // animation frames. A demand-driven frame from input or Notify is
+        // invalidated immediately, as upstream does; Windows can send wheel
+        // input to an inactive hovered window.
+        double target = (win->lastDrawTime > 0)
+                            ? (win->lastDrawTime + kAnimationFrameInterval)
+                            : now;
         if (target < now) {
             target = now;
         }

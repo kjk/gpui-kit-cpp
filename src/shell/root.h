@@ -10,13 +10,11 @@ namespace gpui {
 
 // Where the performance HUD sits over the window and how it behaves.
 //
-// Matches the native HUD defaults, including sustained frames. Scripts can
-// request continuous: false to observe only the application's own redraws.
+// What a script's `show_fps_monitor(options)` names, with the same defaults
+// `gpui_fps` gives an overlay a native host places by hand.
 struct FpsHudRequest {
     // Corner or edge of the window.
     FpsAnchor anchor = FpsAnchor::TopRight;
-    // Whether the HUD requests another animation frame after every render.
-    bool continuous = true;
     // The per-frame budget the HUD grades frame cost against, in seconds.
     // Unset keeps the HUD's own default.
     bool hasFrameBudget = false;

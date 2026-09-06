@@ -3821,14 +3821,14 @@ static void ScriptsSwitchOnARootOwnedPerformanceHud() {
     utassert(!ShellRootFpsMonitorVisible(&cx));
     FpsHudRequest request = {};
     request.anchor = FpsAnchor::BottomLeft;
-    request.continuous = false;
+
     request.hasFrameBudget = true;
     request.frameBudget = 1.f / 120.f;
     utassert(ShellRootShowFpsMonitor(&cx, request));
     utassert(ShellRootFpsMonitorVisible(&cx));
     ShellRoot* state = root.Get(&app);
     utassert(state && state->fpsHud.anchor == FpsAnchor::BottomLeft &&
-             state->fpsHud.hasFrameBudget && !state->fpsHud.continuous);
+             state->fpsHud.hasFrameBudget);
     // Up means drawn: the root's own layer carries the HUD, not the script's.
     frame->Reset();
     window.animFrame = false;
@@ -3839,11 +3839,14 @@ static void ScriptsSwitchOnARootOwnedPerformanceHud() {
     // Nothing was up to take down.
     utassert(!ShellRootHideFpsMonitor(&cx));
 
+    // shell_fps_monitor_never_requests_a_frame: a HUD that asked for frames
+    // would be reporting a cost it was causing — one dirty view redraws the
+    // whole window.
     utassert(ShellRootShowFpsMonitor(&cx, FpsHudRequest{}));
     frame->Reset();
     window.animFrame = false;
     utassert(EntityRender(&app, &window, frame, root.id) != nullptr);
-    utassert(window.animFrame);
+    utassert(!window.animFrame);
     utassert(ShellRootHideFpsMonitor(&cx));
 
     // Every anchor a script can name resolves, and one it cannot is refused

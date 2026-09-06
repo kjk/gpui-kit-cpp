@@ -28,6 +28,13 @@ static FrameSample Coalesced(float drawSecs, uint64_t invalidations) {
     return s;
 }
 
+// warmed_sampler: a sampler past its warm-up, which is where every statistic
+// below is measured from. The warm-up itself is covered by its own test.
+static void Warm(FrameSampler* s) {
+    s->warmup = 0;
+    s->drainedBacklog = true;
+}
+
 static void IngestDraw(FrameSampler* s, FrameSample sample) {
     FrameSamplerIngestDraws(s, &sample, 1);
 }
@@ -38,6 +45,7 @@ static void IngestPresent(FrameSampler* s, double presentAt, double now) {
 
 // sampler_of: a sampler holding one frame per entry in `millis`.
 static void SamplerOf(FrameSampler* s, const float* millis, int n) {
+    Warm(s);
     FrameSamplerSetCapacity(s, kFpsCapacity);
     for (int i = 0; i < n; i++) {
         IngestDraw(s, FpsTiming(millis[i] / 1000.f));
@@ -46,6 +54,7 @@ static void SamplerOf(FrameSampler* s, const float* millis, int n) {
 
 static void DropsOldestSamplesBeyondCapacity() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 2);
 
     for (int i = 0; i < 3; i++) {
@@ -60,6 +69,7 @@ static void DropsOldestSamplesBeyondCapacity() {
 // Feeds `count` presents spaced `interval` apart and returns the rate.
 static float MeasureFps(int count, double interval) {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 120);
     for (int i = 0; i < count; i++) {
         double presented = interval * (double)i;
@@ -70,6 +80,7 @@ static float MeasureFps(int count, double interval) {
 
 static void FpsIsTakenFromWhenFramesWerePresentedNotWhenTheyWereRead() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 120);
     const double interval = 0.010;
 
@@ -125,6 +136,7 @@ static void FpsNeedsTwoFramesToHaveARateAtAll() {
 
 static void SimultaneousFramesDoNotDivideByZero() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 64);
 
     // Three presents on one instant — what a trace with no clock behind it
@@ -134,6 +146,130 @@ static void SimultaneousFramesDoNotDivideByZero() {
     FrameSamplerIngestPresents(&s, presents, 3, now);
 
     utassertnear(FrameSamplerFps(&s), 0.f);
+}
+
+static void TheColdStartNeverReachesTheReadings() {
+    FrameSampler s;
+    FrameSamplerSetCapacity(&s, kFpsCapacity);
+    float budget = 0.016667f;
+
+    // What a window costs before any cache is warm, followed by what it costs
+    // to run. Ingested straight, without the drain `tick` does, so only the
+    // warm-up itself is under test.
+    IngestDraw(&s, FpsTiming(0.100f));
+    for (uint32_t i = 1; i < kFpsWarmupFrames; i++) {
+        IngestDraw(&s, FpsTiming(0.040f));
+    }
+    for (int i = 0; i < 20; i++) {
+        IngestDraw(&s, FpsTiming(0.005f));
+    }
+
+    utassertnear(FrameSamplerMeanDraw(&s), 0.005f);
+    utassertnear(FrameSamplerPercentileDraw(&s, 0.95f), 0.005f);
+    // A window that opened is not a window that is dropping frames.
+    utassertnear(FrameSamplerOverBudget(&s, budget), 0.f);
+}
+
+// The first tick drains the backlog the window recorded before the HUD was
+// mounted, and none of it counts either.
+static void TheBacklogIsDroppedWithTheWarmUp() {
+    FrameSampler s;
+    FrameSamplerSetCapacity(&s, kFpsCapacity);
+    FrameTiming frames[4] = {};
+    for (int i = 0; i < 4; i++) {
+        frames[i].drawSecs = 0.100f;
+        frames[i].invalidations = 1;
+        frames[i].presentAt = -1;
+    }
+    FrameSamplerIngest(&s, frames, 4, 1.0);
+    utassert(s.drainedBacklog);
+    utassert(s.n == 0);
+    // The eight warm-up frames follow the backlog; the ninth is the first
+    // that counts.
+    for (int i = 0; i < 8; i++) {
+        IngestDraw(&s, FpsTiming(0.040f));
+    }
+    utassert(s.n == 0);
+    IngestDraw(&s, FpsTiming(0.005f));
+    utassert(s.n == 1);
+    utassertnear(FrameSamplerMeanDraw(&s), 0.005f);
+}
+
+static void ThePeakPresentRateStandsInForTheRefreshRate() {
+    FrameSampler s;
+    Warm(&s);
+    FrameSamplerSetCapacity(&s, kFpsCapacity);
+    double start = 100.0;
+
+    // Idle: one present every half second says nothing about the display,
+    // and must not be mistaken for a 2Hz one.
+    double idle = 0.5;
+    for (int frame = 0; frame < 8; frame++) {
+        IngestPresent(&s, start + idle * frame, start + idle * 7);
+    }
+    utassertnear(FrameSamplerPeakPresentRate(&s), 0.f);
+
+    // A single short gap is the compositor catching up, not a display.
+    double afterIdle = start + idle * 7;
+    IngestPresent(&s, afterIdle + 0.0059, afterIdle);
+    utassertnear(FrameSamplerPeakPresentRate(&s), 0.f);
+
+    // Then the window is scrolled: frames land on a 144Hz vsync, stamped when
+    // the frame was handed over rather than when it was scanned out, so the
+    // gaps jitter by up to a millisecond around 6.944ms.
+    const int jitter[8] = {-900, -300, 0, 200, 700, -100, 400, -600};
+    double at = start + 10.0;
+    IngestPresent(&s, at, at);
+    for (int frame = 0; frame < 60; frame++) {
+        at += (6944 + jitter[frame % 8]) / 1e6;
+        IngestPresent(&s, at, at);
+    }
+    // The estimate must land on the panel's rate, not near it.
+    utassertnear(FrameSamplerPeakPresentRate(&s), 144.f);
+}
+
+static void AVariableRefreshPanelIsCappedByItsCeilingNotItsRestingRate() {
+    FrameSampler s;
+    Warm(&s);
+    FrameSamplerSetCapacity(&s, kFpsCapacity);
+
+    // A ProMotion window: a short scroll at 120Hz, then a long stretch
+    // settled at 60. The 60Hz group wins on count and is not the ceiling.
+    double at = 100.0;
+    IngestPresent(&s, at, at);
+    for (int i = 0; i < 30; i++) {
+        at += 0.008333;
+        IngestPresent(&s, at, at);
+    }
+    for (int i = 0; i < 120; i++) {
+        at += 0.016667;
+        IngestPresent(&s, at, at);
+    }
+    utassertnear(FrameSamplerPeakPresentRate(&s), 120.f);
+}
+
+static void AnEstimateNearAStandardRateBecomesIt() {
+    utassertnear(FpsSnapToStandardRefresh(143.1f), 144.f);
+    utassertnear(FpsSnapToStandardRefresh(146.f), 144.f);
+    utassertnear(FpsSnapToStandardRefresh(120.5f), 120.f);
+    utassertnear(FpsSnapToStandardRefresh(59.4f), 60.f);
+    // Between two rates, and closer to neither than the tolerance allows.
+    utassertnear(FpsSnapToStandardRefresh(155.f), 155.f);
+    // A panel that ships at nothing standard keeps its own rate rather than
+    // being rounded up to a ceiling it does not have.
+    utassertnear(FpsSnapToStandardRefresh(85.f), 85.f);
+}
+
+// monitor.rs: the_headline_rate_never_exceeds_what_the_display_can_present.
+static void TheHeadlineRateNeverExceedsWhatTheDisplayCanPresent() {
+    // A cheap frame on a 60Hz panel is not 333 frames anyone could see.
+    utassertnear(FpsSustainableRate(0.003f, 60.f), 60.f);
+    // Until the display has shown its cadence, capping would be a guess.
+    utassert(fabsf(FpsSustainableRate(0.003f, 0.f) - 333.33f) < 0.1f);
+    // A frame that costs more than a refresh sets the rate itself.
+    utassertnear(FpsSustainableRate(0.020f, 60.f), 50.f);
+    // No frames drawn yet is no rate, not an infinite one.
+    utassertnear(FpsSustainableRate(0.f, 60.f), 0.f);
 }
 
 static void AnEarlyTimerWakeDoesNotProduceAnAnimationFrame() {
@@ -161,6 +297,7 @@ static void ThePercentileIsTheFrameAtTheNearestRank() {
         draws[i] = (float)(20 - i);
     }
     FrameSampler s;
+    Warm(&s);
     SamplerOf(&s, draws, 20);
 
     utassertnear(FrameSamplerPercentileDraw(&s, 0.95f), 0.019f);
@@ -179,6 +316,7 @@ static void ThePercentileSeparatesAStutterTheMeanAbsorbs() {
     draws[18] = 80.f;
     draws[19] = 80.f;
     FrameSampler s;
+    Warm(&s);
     SamplerOf(&s, draws, 20);
 
     utassert(FrameSamplerMeanDraw(&s) < 0.012f);
@@ -197,6 +335,7 @@ static void OneSlowFrameInTwentyDoesNotMoveThePercentile() {
     }
     draws[19] = 80.f;
     FrameSampler s;
+    Warm(&s);
     SamplerOf(&s, draws, 20);
 
     utassertnear(FrameSamplerPercentileDraw(&s, 0.95f), 0.004f);
@@ -205,6 +344,7 @@ static void OneSlowFrameInTwentyDoesNotMoveThePercentile() {
 
 static void AnEmptySamplerHasNoPercentileRatherThanAGuess() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 8);
     utassertnear(FrameSamplerPercentileDraw(&s, 0.95f), 0.f);
     utassertnear(FrameSamplerMeanInvalidations(&s), 0.f);
@@ -212,6 +352,7 @@ static void AnEmptySamplerHasNoPercentileRatherThanAGuess() {
 
 static void InvalidationsAverageOverTheRetainedFrames() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 8);
 
     // A window asked to redraw five times for every three frames it drew.
@@ -225,6 +366,7 @@ static void InvalidationsAverageOverTheRetainedFrames() {
 
 static void FramesOutsideTheRollingWindowStopCounting() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 64);
 
     for (int i = 0; i < 10; i++) {
@@ -247,6 +389,7 @@ static void FramesOutsideTheRollingWindowStopCounting() {
 // drawn but not presented counts as a draw and not as a present.
 static void MeanAndPeakAndOverBudget() {
     FrameSampler s;
+    Warm(&s);
     FrameSamplerSetCapacity(&s, 64);
     utassertnear(FrameSamplerMeanDraw(&s), 0.f);
     utassertnear(FrameSamplerPeakDraw(&s), 0.f);
@@ -441,6 +584,12 @@ void TestFrameSampler() {
     FpsMatchesTheCommonRefreshRates();
     FpsNeedsTwoFramesToHaveARateAtAll();
     SimultaneousFramesDoNotDivideByZero();
+    TheColdStartNeverReachesTheReadings();
+    TheBacklogIsDroppedWithTheWarmUp();
+    ThePeakPresentRateStandsInForTheRefreshRate();
+    AVariableRefreshPanelIsCappedByItsCeilingNotItsRestingRate();
+    AnEstimateNearAStandardRateBecomesIt();
+    TheHeadlineRateNeverExceedsWhatTheDisplayCanPresent();
     AnEarlyTimerWakeDoesNotProduceAnAnimationFrame();
     ThePercentileIsTheFrameAtTheNearestRank();
     ThePercentileSeparatesAStutterTheMeanAbsorbs();

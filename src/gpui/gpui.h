@@ -944,11 +944,6 @@ void RuntimeStyleInstall(App* app, const RuntimeStyle& style);
 // FADE_OUT_DELAY / FADE_OUT_DURATION, in seconds. The curve between them is
 // Rust's `1 - (elapsed - delay)^10`: flat for most of the second, then a
 // drop off the end.
-// `WindowOptions::inactive_frame_interval`: how long a window that is not
-// the active one waits between animation frames. 500 ms caps background
-// animation at 2 FPS, which is what the story app asks for upstream.
-const double kInactiveFrameInterval = 0.5;
-
 // RADIUS_FULL: past half the shorter side, so the paint clamps it to exactly
 // as round as the box goes.
 const float kRadiusFull = 9999.f;

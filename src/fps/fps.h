@@ -4,14 +4,16 @@
  *
  * Frames per second, a rolling frame time chart, and this process' GPU, CPU
  * and memory usage. Frame data comes from the window's own trace
- * (Window::frameSeq / frameTrace). The rate and the interval count frames
- * *presented*, stamped with their own present time, so they agree with the
- * platform's overlay; the frame cost is what the runtime actually spent
- * drawing rather than an approximation measured from the outside.
+ * (Window::frameSeq / frameTrace). The interval counts frames *presented*,
+ * stamped with their own present time, so it agrees with the platform's
+ * overlay; the frame cost is what the runtime actually spent drawing rather
+ * than an approximation measured from the outside. The headline rate is
+ * derived from that cost — the HUD never drives the frame loop, so nothing
+ * it reports is something it caused.
  *
  *     ┌──────────────────────────┐
- *     │  ﹋﹏  118 FPS  ﹋︿﹏﹋   │  ← the trace runs behind the headline
- *     │ INTERVAL          8.5 ms │  ← time between presents, 1000 / fps
+ *     │ ﹋﹏ MAX 118 FPS ﹋︿﹏﹋  │  ← the trace runs behind the headline
+ *     │ INTERVAL          8.5 ms │  ← time between presents
  *     │ FRAME             8.4 ms │  ← what a typical frame cost
  *     │ P95              14.1 ms │  ← what its slow tail cost
  *     │ DROP 0.0%       INV  1.0 │
@@ -24,8 +26,8 @@
  *     Div(cx->a)->SizeFull()->Child(content)->Child(FpsMonitorEl(cx));
  *
  * The parent is the whole window here; the overlay places itself absolutely.
- * The returned overlay can change its corner, frame budget, and whether it
- * continuously drives the window's animation loop (FpsOverlayOpts).
+ * The returned overlay can change its corner and its frame budget
+ * (FpsOverlayOpts).
  */
 
 #include "gpui/gpui.h"
@@ -66,6 +68,73 @@ enum : uint16_t {
     // to 200 ms and the window is three seconds, so sixteen is the most that
     // can ever be inside it; the rest is headroom.
     kResourceHistoryCap = 32,
+    // WARMUP_FRAMES: frames dropped on the floor before any of them count.
+    //
+    // A window's first frames are its most expensive — shaders, the glyph
+    // atlas, the icons, every cache still cold — and they are not what the
+    // application costs to run. Measured, one of them is a hundred
+    // milliseconds against a budget of sixteen, and a HUD that has seen eight
+    // frames reports it as a twelfth of the window's work in amber. The reader
+    // has done nothing wrong and there is nothing to fix, so the default
+    // reading has to be a healthy one.
+    kFpsWarmupFrames = 8,
+    // REFRESH_BUCKET, in microseconds: gaps are grouped this finely before
+    // being counted. Coarse enough that vsync jitter lands in one bucket, fine
+    // enough to tell the common rates apart: 6.5-7.0ms is 143-154Hz, and
+    // nothing else ships in there.
+    kRefreshBucketMicros = 500,
+    // The band a gap between presents has to fall in to be taken for the
+    // display's frame period. Below the floor it is a catch-up burst rather
+    // than a refresh — the fastest panels ship at 240Hz, a period of 4.2ms.
+    // Above the ceiling it is the application not having had anything to
+    // draw: an idle window presents twice a second, and believing that gap
+    // would put the refresh rate at 2Hz.
+    kShortestPlausibleRefreshMicros = 3000,
+    kLongestPlausibleRefreshMicros = 50000,
+    // Rust keys the candidates in a BTreeMap by bucket; the plausible band is
+    // a hundred buckets wide, so a flat array indexed by bucket is the map.
+    kRefreshBuckets = kLongestPlausibleRefreshMicros / kRefreshBucketMicros + 1,
+    // REFRESH_SPREAD: how many buckets either side of the busiest one are
+    // averaged with it. Bucketing truncates the very group it is measuring:
+    // the jitter around the period spills into the neighbours, so the busiest
+    // bucket holds a distribution cut off on both sides and its mean sits
+    // below the period. On a 144Hz panel that read 149. Averaging across the
+    // neighbourhood puts the centre back, and the clusters worth telling apart
+    // — one refresh against two — are far further than this reaches.
+    kRefreshSpread = 2,
+    // REFRESH_SUPPORT: how many times a gap has to recur before it is believed
+    // to be the display's period rather than a one-off. A real refresh recurs
+    // every frame of every scroll, so the threshold costs nothing to clear and
+    // a glitch never clears it.
+    kRefreshSupport = 8,
+    // REFRESH_MINORITY: what share of the busiest group a faster one needs
+    // before it is taken for a cadence of its own, as a divisor. The wanted
+    // figure is the display's *ceiling*, and a variable refresh panel spends
+    // most of its time below it: a ProMotion window that scrolls at 120Hz and
+    // settles at 60 has its 60Hz group win on count, and capping at 60 would
+    // be capping at the rate it happened to rest at. A real second cadence
+    // arrives in bulk; the jitter skirt around one does not.
+    kRefreshMinority = 4,
+    // REFRESH_SEPARATION: and it has to be at least twice as fast, which the
+    // skirt never is. A window presenting slower than the panel misses whole
+    // refreshes, so the cadences below the ceiling are its halves and thirds
+    // — far outside the millisecond of jitter that spills into the buckets
+    // next door.
+    kRefreshSeparation = 2,
+};
+
+// REFRESH_SNAP_TOLERANCE: how far the estimate may sit from a standard rate
+// and still be taken for it. Deliberately tight. A wide tolerance would snap
+// an 85Hz panel up to 90 and print a ceiling above the one it is enforcing,
+// which is the failure this whole cap exists to avoid; the jitter it has to
+// absorb is a percent or two, so it never needs to reach that far.
+const float kRefreshSnapTolerance = 0.025f;
+
+// RefreshCandidate: one group of near-equal gaps between presents — how often
+// it has come up, and their sum, so the group can report its mean.
+struct RefreshCandidate {
+    uint32_t hits = 0;
+    double totalSecs = 0;
 };
 
 // FrameSample: one drawn frame.
@@ -93,6 +162,41 @@ struct FrameSampler {
     double presents[kFpsPresents] = {};
     int nPresents = 0;
     uint64_t cursor = 0; // FrameTimingCollector position
+    // refresh_candidates: how often each plausible gap between two
+    // consecutive presents has been seen, grouped to kRefreshBucketMicros.
+    //
+    // Stands in for the display's frame period, which the runtime does not
+    // expose. Frames are handed to the compositor on vsync, so a window
+    // drawing back to back presents one refresh apart over and over: the
+    // period is the gap that keeps happening, and the estimate is the busiest
+    // group's mean.
+    //
+    // The mean of the busiest group rather than the shortest gap anywhere,
+    // twice over. A present is stamped when the frame was handed over rather
+    // than when the display scanned it out, so the gaps jitter by a
+    // millisecond either way and the shortest of them is the low tail, not
+    // the period — that read 164 on a 144Hz panel. And one gap on its own is
+    // no evidence at all: two presents 5.9ms apart there is the compositor
+    // catching up, not a 169Hz display.
+    //
+    // Empty until the window has drawn back to back at all, which one that
+    // has only ever drawn on demand never does — so an application nobody has
+    // touched yet is left uncapped rather than held to the rate at which it
+    // happened to be idling.
+    //
+    // The failure mode is a window so slow that no two frames ever land
+    // adjacent: its cap comes out as its own worst cadence. It reads low
+    // either way, and the rows below say why.
+    RefreshCandidate refresh[kRefreshBuckets] = {};
+    // How many more frames are dropped before the statistics begin.
+    uint32_t warmup = kFpsWarmupFrames;
+    // Whether the backlog has been discarded yet.
+    //
+    // The first read drains everything the window has recorded since it
+    // opened. For a HUD switched on later that is history it was not there
+    // for; for one up from the start it is the cold start. Neither is the
+    // steady state the rows below the headline are describing.
+    bool drainedBacklog = false;
 };
 
 // Drains the frames drawn since the previous call. Call once per rendered
@@ -124,6 +228,23 @@ float FrameSamplerFps(const FrameSampler* s);
 // window, as the platform's overlay reports its frame interval. The
 // reciprocal of the rate; zero when there is no rate.
 float FrameSamplerPresentInterval(const FrameSampler* s);
+// peak_present_rate: the fastest cadence this window has repeatedly presented
+// at, taken as the display's refresh rate. Zero — Rust's `None` — until some
+// gap has recurred often enough to mean something; see
+// FrameSampler::refresh.
+float FrameSamplerPeakPresentRate(const FrameSampler* s);
+// snap_to_standard_refresh: the standard refresh rate within
+// kRefreshSnapTolerance of `rate`, or `rate` itself when no panel ships at
+// anything near it. The estimate comes from timestamps that jitter, so it
+// lands *near* the panel's rate rather than on it, and "near 144" printed as
+// 146 is a headline above a ceiling it is supposed to be held to.
+float FpsSnapToStandardRefresh(float rate);
+// sustainable_rate: the rate a full redraw could sustain — what a frame's
+// cost implies, held to what the display can present. `displayRate` is 0 —
+// Rust's `None` — until the window has presented two frames a plausible
+// refresh apart, and an uncapped reading is better than one capped by a
+// guess.
+float FpsSustainableRate(float meanDrawSecs, float displayRate);
 float FrameSamplerMeanDraw(const FrameSampler* s);
 // percentile_draw: the draw time `percentile` of the retained frames came in
 // at or under, as in 0.95 for the 95th. The mean beside it says what a
@@ -210,10 +331,27 @@ bool ResourceProbeSample(ResourceProbe* probe, ResourceSample* out);
 
 // The numbers as last published to the screen.
 struct FpsReadout {
-    // Frames presented per second.
+    // The rate a full redraw of this window could sustain: the reciprocal of
+    // frameMillis.
+    //
+    // Derived rather than counted, because counting it would mean causing it.
+    // A frame rate measured from presents is only the rate the application
+    // happens to be drawing at, and the only way to make that number mean "as
+    // fast as this UI can go" is to keep the window drawing back to back —
+    // which costs a full layout and paint per frame and lands in the resource
+    // row right underneath. The frame cost answers the same question without
+    // being paid for.
+    //
+    // Held to the display's refresh rate once that is known. A frame drawn in
+    // 3ms is not 333 frames the reader could ever see, and printing it that
+    // way turns the headline back into a benchmark score rather than a rate.
+    float maxFps = 0;
+    // Frames presented per second: the rate the window is actually drawing
+    // at, which an idle application drives to zero. The reciprocal of
+    // intervalMillis.
     float fps = 0;
     // Mean time between presents, in milliseconds: the platform overlay's
-    // "frame interval", and 1000 / fps.
+    // "frame interval".
     float intervalMillis = 0;
     // Mean draw cost of the retained frames, in milliseconds.
     float frameMillis = 0;
@@ -229,8 +367,29 @@ struct FpsReadout {
 // The definition stays private to fps.cpp.
 struct FpsResourceJob;
 
+// Which question the headline answers.
+//
+// Both readings come out of the same samples, so switching is free — which is
+// the whole point. The rate a UI can hold and the rate it is holding are
+// different questions, and the only expensive way to answer the first is to
+// stop the second from being answerable.
+enum class FpsHeadline : uint8_t {
+    // The rate a full redraw could sustain, from what one costs.
+    Max,
+    // The rate the window is drawing at.
+    Observed,
+};
+
 // crates/fps/src/monitor.rs. A view rather than a stateless component, so the
 // click that collapses it has an entity to run against.
+//
+// The HUD never asks for a frame of its own. A dirty view schedules a
+// *window* draw and the runtime rebuilds the whole tree, so a HUD that drove
+// the frame loop to keep its counter moving would be paying a full layout
+// and paint per frame — and reporting that cost in the resource row as if it
+// were the application's. The headline is derived from what a frame costs
+// instead, which answers the same question for free and leaves the readings
+// measuring the application alone.
 struct FpsMonitor {
     FrameSampler sampler;
     FpsReadout readout;
@@ -238,19 +397,20 @@ struct FpsMonitor {
     // One 60Hz frame, the budget a frame is judged against. Set it to 1/144
     // on a high refresh rate display.
     float frameBudget = 1.f / 60.f;
-    // Keep asking for frames, so the readout behaves like an in-game counter:
-    // the rate the application *can* sustain, not the rate it happens to draw
-    // at. Turn it off to measure the real workload — the HUD then only
-    // updates when the window redraws for its own reasons, and reads zero
-    // while the window is idle.
-    bool continuous = true;
+    FpsHeadline headline = FpsHeadline::Max;
     bool showResources = true;
     float resourceInterval = 0.5f;
     ResourceProbe probe;
     ResourceSample resources;
     bool hasResources = false;
-    Window* resourceWindow = nullptr;
-    int resourceTimer = 0;
+    // The clock that republishes the readings — Rust's `clock` task. Nothing
+    // else wakes the HUD: it does not drive the frame loop, and a window that
+    // has stopped drawing produces no renders to refresh it from, so without
+    // this the figures would freeze at whatever the application last drew —
+    // exactly when a frozen `137` is most likely to be read as the truth.
+    // With resources on it is also when they are probed.
+    Window* clockWindow = nullptr;
+    int clockTimer = 0;
     int resourceTask = 0;
     FpsResourceJob* resourceJob = nullptr;
     bool compact = false;
@@ -260,14 +420,17 @@ struct FpsMonitor {
     ~FpsMonitor();
     static El* Render(FpsMonitor* self, Ctx* cx);
     static void OnToggleCompact(FpsMonitor* self, Ctx* cx, const ClickEvent*);
-    static void OnResourceTick(FpsMonitor* self, Ctx* cx, const TickEvent*);
+    // The right button switches the headline between the two rates; the
+    // `MAX` marker is what says which of the two the figure is.
+    static void OnToggleHeadline(FpsMonitor* self, Ctx* cx,
+                                 const MouseDownEvent* event);
+    static void OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*);
 };
 
-// set_frame_budget / set_continuous: what the overlay applies on the
-// monitor's behalf. The budget also resets the chart's axis floor, so a
-// 144Hz budget doesn't leave the chart scaled for 60Hz frames.
+// set_frame_budget: what the overlay applies on the monitor's behalf. The
+// budget also resets the chart's axis floor, so a 144Hz budget doesn't leave
+// the chart scaled for 60Hz frames.
 void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs);
-void FpsMonitorSetContinuous(FpsMonitor* self, bool continuous);
 
 // format_cpu: a tenth below ten, whole percent above.
 TempStr FpsFormatCpuTemp(float percent);
@@ -286,17 +449,14 @@ enum class FpsAnchor : uint8_t {
     RightCenter,
 };
 
-// crates/fps/src/overlay.rs: FpsOverlay's builder fields. The two settings
-// are Rust's `Option`s — left unset they leave the monitor as it is.
+// crates/fps/src/overlay.rs: FpsOverlay's builder fields. The budget is
+// Rust's `Option` — left unset it leaves the monitor as it is.
 struct FpsOverlayOpts {
     // Where in the parent the HUD sits. Defaults to the top right.
     FpsAnchor anchor = FpsAnchor::TopRight;
     // The per-frame budget used for chart grading and its vertical scale, in
     // seconds; 0 leaves the monitor's budget alone.
     float frameBudget = 0;
-    // Whether the HUD requests another animation frame after every render;
-    // -1 leaves the monitor's current setting (true on first use).
-    int8_t continuous = -1;
 };
 
 // Pins a monitor to an edge or corner of its parent, the way a game overlays
