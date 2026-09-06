@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `a5993463feff60f8aa3baec215730395eafe5567`
-(2026-09-04, shell: Improve application compatibility (#2939)). Shell imports accept gpui-kit and its gpui compatibility alias; shell-version specifies a minimum runtime version, including older minor versions.
+Processed through `39c9b7b0fb0bdf3c4d07e26d7fdf74381474646e`
+(2026-09-04, chroe: Drop the unused reqwest_client dependency (#2940)). The Kit facade drops an unused reqwest_client dependency. C++ already uses native HTTP backends and has no reqwest dependency; the five ported crates remain at their existing versions.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

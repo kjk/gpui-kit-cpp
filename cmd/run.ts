@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a5993463feff60f8aa3baec215730395eafe5567",
+  sha: "39c9b7b0fb0bdf3c4d07e26d7fdf74381474646e",
   date: "2026-09-04",
-  subject: "shell: Improve application compatibility (#2939)",
+  subject: "chroe: Drop the unused reqwest_client dependency (#2940)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",
