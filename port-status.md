@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `68e6840c8fb5956030a708656449d4e5a2e68447`
-(2026-09-04, editor: Refocus the search bar when search is invoked again (#2932)). Every explicit search invocation advances an activation revision. SearchPanel refocuses and reselects the query on reinvocation, while unchanged frames preserve the caret.
+Processed through `b0a1836b1e2e3053b8998517f1816ab47e4474ae`
+(2026-09-04, markdown: reflow soft line breaks instead of rendering them as hard breaks (#2947)). Markdown prose now reflows LF, CRLF and CR soft breaks to spaces while preserving explicit hard breaks; the upstream regressions cover all three line endings and mixed breaks.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

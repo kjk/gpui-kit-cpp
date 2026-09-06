@@ -319,6 +319,19 @@ static void TestHtmlBreak(Arena* a) {
     utassert(TextIs(a, Child(doc, 0), "one\ntwo"));
 }
 
+static void TestMarkdownSoftBreak(Arena* a) {
+    const char* sources[] = {"this sentence\ncontinues as a soft wrap",
+                             "this sentence\r\ncontinues as a soft wrap",
+                             "this sentence\rcontinues as a soft wrap"};
+    for (const char* source : sources) {
+        MdNode* doc = MdParse(a, Str(source));
+        utassert(
+            TextIs(a, Child(doc, 0), "this sentence continues as a soft wrap"));
+    }
+    MdNode* doc = MdParse(a, StrL("a\nb  \nc"));
+    utassert(TextIs(a, Child(doc, 0), "a b\nc"));
+}
+
 static void TestMarkdownHardBreak(Arena* a) {
     const char* sources[] = {"Owner: Jane  \nPersona: assistant",
                              "Owner: Jane\\\nPersona: assistant"};
@@ -1433,6 +1446,7 @@ void TestTextView() {
     TestHtmlComments(a);
     TestHtmlBreak(a);
     TestMarkdownHardBreak(a);
+    TestMarkdownSoftBreak(a);
     TestHtmlImage(a);
     TestImageSrc();
     TestSourceMarks();

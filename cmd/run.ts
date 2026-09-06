@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "68e6840c8fb5956030a708656449d4e5a2e68447",
+  sha: "b0a1836b1e2e3053b8998517f1816ab47e4474ae",
   date: "2026-09-04",
-  subject: "editor: Refocus the search bar when search is invoked again (#2932)",
+  subject: "markdown: reflow soft line breaks instead of rendering them as hard breaks (#2947)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

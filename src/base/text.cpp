@@ -798,9 +798,35 @@ static Str MdDefUrl(MdBuild* b, Str identifier) {
 
 static void MdInlineNode(MdBuild* b, const md::Node* n) {
     switch (n->kind) {
-        case md::NodeKind::Text:
-            AddText(b, V(b, n, md::NodeStrKind::Value));
+        case md::NodeKind::Text: {
+            // Only text-node line endings are soft breaks. Explicit Break
+            // nodes and code keep their own line-ending semantics.
+            Str value = V(b, n, md::NodeStrKind::Value);
+            int firstBreak = 0;
+            while (firstBreak < value.len && value.s[firstBreak] != '\r' &&
+                   value.s[firstBreak] != '\n') {
+                firstBreak++;
+            }
+            if (firstBreak == value.len) {
+                AddText(b, value);
+                break;
+            }
+            StrBuilder text(b->a);
+            text.Reserve(value.len);
+            for (int i = 0; i < value.len; i++) {
+                char c = value.s[i];
+                if (c == '\r' || c == '\n') {
+                    if (c == '\r' && i + 1 < value.len &&
+                        value.s[i + 1] == '\n') {
+                        i++;
+                    }
+                    c = ' ';
+                }
+                text.AppendChar(c);
+            }
+            AddText(b, text.TakeStr());
             break;
+        }
         case md::NodeKind::Emphasis:
             MdMarked(b, n, MdItalic);
             break;
