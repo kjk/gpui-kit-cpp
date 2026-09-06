@@ -119,8 +119,11 @@ El* ButtonIcon::IntoEl() {
     if (loading && variant == ButtonIconVariant::Icon) {
         Spinner* wait = Spinner::New(cx)->Size(px);
         if (loadingIcon) {
-            if (loadingIcon->name != IconName::None)
+            if (loadingIcon->source == component::IconSource::Data) {
+                wait->IconData(loadingIcon->data);
+            } else if (loadingIcon->name != IconName::None) {
                 wait->Icon(loadingIcon->name);
+            }
             if (loadingIcon->hasColor) wait->Color(loadingIcon->color);
         } else if (loadingIconName != IconName::None) {
             wait->Icon(loadingIconName);

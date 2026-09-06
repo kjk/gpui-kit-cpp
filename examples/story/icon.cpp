@@ -1,7 +1,33 @@
 #include "Story.h"
 
+// `include_bytes!("../../../assets/assets/icons/search.svg")` and its two
+// companions: the same lucide files, embedded rather than looked up, which is
+// what `Icon::Data` is for.
+static const char kSearchSvg[] =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" "
+    "viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+    "stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+    "<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/></svg>";
+static const char kArrowUpSvg[] =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" "
+    "viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+    "stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+    "<path d=\"m5 12 7-7 7 7\"/><path d=\"M12 19V5\"/></svg>";
+static const char kLoaderSvg[] =
+    "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" "
+    "viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+    "stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+    "<path d=\"M21 12a9 9 0 1 1-6.219-8.56\"/></svg>";
+
 struct IconStory {
+    // What the last button or menu item did with the embedded icon.
+    const char* message = "Choose a button or menu item to try the icon slots.";
+
     static El* Render(IconStory* self, Ctx* cx);
+    static void OnSearch(IconStory* self, Ctx* cx, const ClickEvent*) {
+        self->message = "Search selected from the button.";
+        Notify(cx);
+    }
 };
 
 // Every section is .w(px(480.)).
@@ -11,10 +37,51 @@ static El* IconSection(Ctx* cx, const char* title, const char* desc) {
     return sec;
 }
 
-El* IconStory::Render(IconStory*, Ctx* cx) {
+El* IconStory::Render(IconStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* page = Div(a)->FlexCol()->ItemsCenter()->Gap(24)->W(kFill);
+
+    // section("SVG bytes"): embedded icons share the same sizing, colors and
+    // loading behavior as the named ones — small and large, the button slot,
+    // a custom loading icon, and a rotated large arrow.
+    El* bytes = IconSection(cx, "SVG bytes",
+                            "Embedded icons share the same sizing, colors, and "
+                            "loading behavior.");
+    El* bytesRow = Div(a)->FlexRow()->Gap(16)->ItemsCenter()->Wrap();
+    bytesRow->Child(component::Icon::Empty(cx)
+                        ->Data(Str(kSearchSvg))
+                        ->Size(UiSize::Small)
+                        ->IntoEl());
+    bytesRow->Child(component::Icon::Empty(cx)
+                        ->Data(Str(kSearchSvg))
+                        ->Size(UiSize::Large)
+                        ->Color(th.primary)
+                        ->IntoEl());
+    bytesRow
+        ->Child(component::Button::New(cx, StrL("embedded-search"))
+                    ->Icon(component::ButtonIcon::New(
+                        cx, component::Icon::Empty(cx)->Data(Str(kSearchSvg))))
+                    ->Label(StrL("Search"))
+                    ->OnClick(Listen(cx, &IconStory::OnSearch))
+                    ->IntoEl());
+    bytesRow->Child(
+        component::Button::New(cx, StrL("embedded-loading"))
+            ->Icon(component::ButtonIcon::New(cx, component::Icon::Empty(cx)
+                                                      ->Data(Str(kSearchSvg)))
+                       ->LoadingIcon(component::Icon::Empty(cx)
+                                         ->Data(Str(kLoaderSvg))))
+            ->Loading(true)
+            ->Label(StrL("Searching"))
+            ->IntoEl());
+    bytesRow->Child(component::Icon::Empty(cx)
+                        ->Data(Str(kArrowUpSvg))
+                        ->Rotate(0.25f)
+                        ->Size(UiSize::Large)
+                        ->IntoEl());
+    StorySectionAdd(bytes, bytesRow);
+    StorySectionAdd(bytes, StoryTxt(cx, Str(self->message), 14, th.mutedFg));
+    page->Child(bytes);
 
     // The icons are children of the section itself, which wraps them at
     // gap_4; .text_lg() is what sizes them, since an Icon is as big as the

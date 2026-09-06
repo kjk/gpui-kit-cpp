@@ -1412,6 +1412,9 @@ struct OpsCache {
 static OpsCache gCache[kMaxCache];
 static int gCacheN = 0;
 
+struct XmlOpsCache;
+static void XmlCacheClear();
+
 void SvgCacheClear() {
     for (int i = 0; i < kMaxCache; i++) {
         if (gCache[i].owned) {
@@ -1420,6 +1423,7 @@ void SvgCacheClear() {
         gCache[i] = {};
     }
     gCacheN = 0;
+    XmlCacheClear();
 }
 
 // The slot `assetPath` will live in, emptied and named. The caller has
@@ -1516,6 +1520,88 @@ bool SvgDraw(PaintCtx* ctx, Str assetPath, float x, float y, float size,
     int len = 0;
     const uint8_t* ops = SvgDrawOpsFor(assetPath, &len);
     return SvgDrawOps(ctx, ops, len, x, y, size, size, color, turns);
+}
+
+// The source-backed half of the cache: `Icon::data` icons, kept by a hash of
+// their bytes rather than by name. Smaller than the path cache — an
+// application embeds a handful of icons, not a set — and it wraps the same
+// way. A hash and the length together stand for the bytes; two different
+// icons colliding on both is not a case worth the copy that ruling it out
+// would take.
+static const int kMaxXmlCache = 32;
+
+struct XmlOpsCache {
+    uint64_t hash = 0;
+    int xmlLen = 0;
+    uint8_t* data = nullptr;
+    int len = 0;
+};
+
+static XmlOpsCache gXmlCache[kMaxXmlCache];
+static int gXmlCacheN = 0;
+
+static uint64_t XmlHash(Str xml) {
+    // FNV-1a over the source.
+    uint64_t h = 1469598103934665603ull;
+    for (int i = 0; i < xml.len; i++) {
+        h ^= (uint8_t)xml.s[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
+    *lenOut = 0;
+    if (!xml.s || xml.len <= 0) {
+        return nullptr;
+    }
+    uint64_t hash = XmlHash(xml);
+    for (int i = 0; i < kMaxXmlCache; i++) {
+        if (gXmlCache[i].data && gXmlCache[i].hash == hash &&
+            gXmlCache[i].xmlLen == xml.len) {
+            *lenOut = gXmlCache[i].len;
+            return gXmlCache[i].data;
+        }
+    }
+    DrawOpsBuilder b;
+    if (!SvgToDrawOps(xml, &b)) {
+        return nullptr;
+    }
+    uint8_t* buf = AllocArray<uint8_t>(b.data.len);
+    if (!buf) {
+        return nullptr;
+    }
+    memcpy(buf, b.data.els, (size_t)b.data.len);
+    if (gXmlCacheN >= kMaxXmlCache) {
+        gXmlCacheN = 0; // simple wrap
+    }
+    XmlOpsCache* e = &gXmlCache[gXmlCacheN++];
+    if (e->data) {
+        Free(nullptr, e->data);
+    }
+    e->hash = hash;
+    e->xmlLen = xml.len;
+    e->data = buf;
+    e->len = b.data.len;
+    *lenOut = e->len;
+    return e->data;
+}
+
+bool SvgDrawXml(PaintCtx* ctx, Str xml, float x, float y, float size,
+                Rgba color, float turns) {
+    int len = 0;
+    const uint8_t* ops = SvgDrawOpsForXml(xml, &len);
+    return SvgDrawOps(ctx, ops, len, x, y, size, size, color, turns);
+}
+
+static void XmlCacheClear() {
+    for (int i = 0; i < kMaxXmlCache; i++) {
+        if (gXmlCache[i].data) {
+            Free(nullptr, gXmlCache[i].data);
+        }
+        gXmlCache[i] = {};
+    }
+    gXmlCacheN = 0;
 }
 
 Str IconNamePath(IconName name) {
@@ -1743,6 +1829,24 @@ bool SvgRasterize(PaintApp* pa, Str assetPath, int px, Rgba color,
         return false;
     }
     bool drew = SvgDraw(&ctx, assetPath, 0, 0, (float)px, color);
+    bool ok = PaintTargetEndOffscreen(&ctx, outBgra);
+    return drew && ok;
+}
+
+bool SvgRasterizeXml(PaintApp* pa, Str xml, int px, Rgba color,
+                     uint8_t* outBgra) {
+    if (!pa || px <= 0 || !outBgra) {
+        return false;
+    }
+    PaintCtx ctx = {};
+    ctx.pa = pa;
+    ctx.dpi = 96;
+    ctx.viewW = (float)px;
+    ctx.viewH = (float)px;
+    if (!PaintTargetBeginOffscreen(&ctx, px, px)) {
+        return false;
+    }
+    bool drew = SvgDrawXml(&ctx, xml, 0, 0, (float)px, color);
     bool ok = PaintTargetEndOffscreen(&ctx, outBgra);
     return drew && ok;
 }

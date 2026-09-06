@@ -70,6 +70,21 @@ PopupMenu* PopupMenu::Menu(Str label, IconName icon) {
     }
     return this;
 }
+PopupMenu* PopupMenu::Menu(Str label, component::Icon* icon) {
+    MenuItem* it = MenuAdd(this, MenuItemKind::Item);
+    if (it) {
+        it->label = label;
+        if (icon) {
+            it->icon = icon->name;
+            if (icon->source == component::IconSource::Data) {
+                it->iconSvg = icon->data;
+            } else {
+                it->iconPath = icon->path;
+            }
+        }
+    }
+    return this;
+}
 PopupMenu* PopupMenu::MenuWithCheck(Str label, bool checked) {
     MenuItem* it = MenuAdd(this, MenuItemKind::Item);
     if (it) {
@@ -98,8 +113,8 @@ PopupMenu* PopupMenu::Link(Str label, Str href, IconName icon) {
 }
 PopupMenu* PopupMenu::Separator() {
     // Rust ignores a leading separator and coalesces consecutive ones.
-    if (items.len == 0 ||
-        items[items.len - 1].kind == MenuItemKind::Separator) {
+    if (items.len == 0 || items[items.len - 1]
+                                  .kind == MenuItemKind::Separator) {
         return this;
     }
     MenuAdd(this, MenuItemKind::Separator);
@@ -379,8 +394,14 @@ El* PopupMenu::IntoEl() {
         if (leftGutter) {
             // The gutter is the icon's, or the check's, or empty — but it is
             // always the same width, so the labels line up.
-            if (it.icon != IconName::None) {
-                left->Child(IconEl(a, it.icon, 14)->Fg(fg));
+            if (it.icon != IconName::None || it.iconSvg.s || it.iconPath.s) {
+                El* ic = IconEl(a, it.icon, 14)->Fg(fg);
+                if (it.iconSvg.s) {
+                    ic->iconSvg = it.iconSvg;
+                } else if (it.iconPath.s) {
+                    ic->iconPath = it.iconPath;
+                }
+                left->Child(ic);
             } else if (SideIsLeft(checkSide) && it.checked) {
                 left->Child(IconEl(a, IconName::Check, 14)->Fg(fg));
             } else {
@@ -512,9 +533,9 @@ El* DropdownMenu::IntoEl() {
             // The menu as this frame has it goes with the handler, the way
             // Rust's Popover captures `open` at render time and hands it to
             // the trigger's press.
-            trigger->OnClick(ListenTo(menu->state,
-                                      &PopupMenuState::OnTriggerClick,
-                                      (intptr_t)st->open));
+            trigger
+                ->OnClick(ListenTo(menu->state, &PopupMenuState::OnTriggerClick,
+                                   (intptr_t)st->open));
         }
         wrap->Child(trigger);
     }
@@ -607,8 +628,8 @@ El* ContextMenu::IntoEl() {
     context->open = st->open;
     context->position = {st->x, st->y};
     // The element needs identity for the press to reach it.
-    box->PathClick(id)->OnMouseDown(
-        ListenTo(state, &ContextMenuState::OnMouseDown));
+    box->PathClick(id)
+        ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown));
     if (st->open) {
         box->Child(
             menu->IntoEl()->Absolute()->Left(st->x)->Top(st->y)->Deferred());

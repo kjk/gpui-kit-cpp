@@ -21,9 +21,19 @@ static component::NativeMenu* DemoMenu(Ctx* cx, NativeMenuStory* self) {
             ->MenuWithIcon(StrL("Copy"), IconName::Copy, 10)
             ->Menu(StrL("Cut"), 11)
             ->MenuWithDisabled(StrL("Paste"), true, 12);
+    // `Icon::default().data(include_bytes!("../../../assets/.../search.svg"))`:
+    // the same lucide file, embedded rather than looked up.
+    static const char kSearchSvg[] =
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" "
+        "viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
+        "stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
+        "<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>"
+        "</svg>";
     return component::NativeMenu::New(cx)
         ->MenuWithIcon(StrL("New"), IconName::Plus, 1)
         ->MenuWithIcon(StrL("Open..."), IconName::FolderOpen, 2)
+        ->MenuWithIcon(StrL("Search (SVG bytes)"),
+                       component::Icon::Empty(cx)->Data(Str(kSearchSvg)), 6)
         ->MenuWithCheck(StrL("Word Wrap"), self->wordWrap, 3)
         ->Separator()
         ->Submenu(StrL("Edit"), sub)

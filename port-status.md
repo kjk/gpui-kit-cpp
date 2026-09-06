@@ -12,8 +12,8 @@ and wasm. The work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `665d8605e55abb36387d5eee60915c861761e07b`
-(2026-09-06, story: replace List search results without duplicating rows (#2976)). Upstream's List story filters its random companies by query and appended each search's matches to the last; it now clears each industry group before rebuilding it. The List story here shows a fixed grouped dataset and does not filter it by the search field, so there is no group to rebuild and nothing to duplicate; that the story's search does not filter is a story gap of its own.
+Processed through `4475eeb56ae78a5bf40ef23c2fb18396bdfff52b`
+(2026-09-06, icon: Support SVG bytes in component icon slots (#2980)). `Icon::Data(svg)` embeds an icon's SVG source without registering an asset; the last `Path` or `Data` selects the source. The bytes ride on the element as `El::iconSvg`, convert through the same SVG reader as an asset (`SvgDrawOpsForXml`, kept by content hash), and reach the button slot, the loading spinner, popup-menu rows and native menus on Windows and macOS (`PlatMenuItem::iconSvg`). The Icon and NativeMenu stories show embedded icons.
 The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
 
 ## Known gaps vs Rust

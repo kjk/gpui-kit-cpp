@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "665d8605e55abb36387d5eee60915c861761e07b",
+  sha: "4475eeb56ae78a5bf40ef23c2fb18396bdfff52b",
   date: "2026-09-06",
-  subject: "story: replace List search results without duplicating rows (#2976)",
+  subject: "icon: Support SVG bytes in component icon slots (#2980)",
   crates: {
     "gpui-kit": "0.6.0",
     "gpui-base": "0.6.0",

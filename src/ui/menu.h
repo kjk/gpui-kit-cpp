@@ -4,6 +4,7 @@
 
 #include "ui/sizing.h"
 #include "ui/popup_menu.h"
+#include "ui/icon.h"
 
 namespace gpui {
 
@@ -27,6 +28,10 @@ struct MenuItem {
     MenuItemKind kind = MenuItemKind::Item;
     Str label = {};
     IconName icon = IconName::None;
+    // A row's icon as `PopupMenuItem::icon(impl Into<Icon>)` gave it: an
+    // asset path, or SVG source (`Icon::data`), which wins over both.
+    Str iconPath = {};
+    Str iconSvg = {};
     // The keystroke shown on the right. Rust derives it from the item's
     // action rather than storing one — `Kbd::binding_for_action_in` — and so
     // does a row that names an action; this is what a row that names none
@@ -72,6 +77,8 @@ struct PopupMenu {
     static PopupMenu* New(Ctx* cx, Str id);
     static PopupMenu* New(Ctx* cx, Str id, Entity<PopupMenuState> state);
     PopupMenu* Menu(Str label, IconName icon = IconName::None);
+    // The same row with an Icon in its slot — a path or `Data` icon.
+    PopupMenu* Menu(Str label, component::Icon* icon);
     PopupMenu* MenuWithCheck(Str label, bool checked);
     PopupMenu* MenuWithKbd(Str label, Str kbd);
     // `menu(label, action)`: choosing the row dispatches the action, and the

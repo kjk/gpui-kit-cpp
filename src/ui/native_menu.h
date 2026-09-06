@@ -27,9 +27,12 @@ struct NativeMenuItem {
     Str label = {};
     bool disabled = false;
     bool checked = false;
-    // The icon beside the label. The drawn fallback shows it; a real OS menu
-    // would want a bitmap of it, which this port does not build.
+    // The icon beside the label, as the name, an asset path, or SVG source —
+    // `Icon::data`, which wins over the other two and needs no asset lookup.
+    // The drawn fallback shows it and each OS menu rasterizes it.
     IconName icon = IconName::None;
+    Str iconPath = {};
+    Str iconSvg = {};
     // What choosing this row reports — Rust dispatches the row's Action, and
     // this is the value handed to onSelect in its place.
     intptr_t id = 0;
@@ -50,6 +53,10 @@ struct NativeMenu {
     NativeMenu* MenuWithDisabled(Str label, bool disabled, intptr_t id);
     NativeMenu* MenuWithCheck(Str label, bool checked, intptr_t id);
     NativeMenu* MenuWithIcon(Str label, IconName icon, intptr_t id);
+    // menu_with_icon(label, impl Into<Icon>, action): a path or `Data` icon.
+    // Icons created with `Icon::Data` use their SVG bytes directly, without
+    // an asset lookup.
+    NativeMenu* MenuWithIcon(Str label, component::Icon* icon, intptr_t id);
     NativeMenu* Separator();
     NativeMenu* Submenu(Str label, NativeMenu* menu);
     NativeMenu* OnSelect(Listener l);

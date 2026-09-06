@@ -6134,8 +6134,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // (asset_icons.cpp), so this reads no file; an application's own
         // `.svg` is converted to the same bytecode the first time it is
         // asked for.
-        Str path = e->iconPath.s ? e->iconPath : IconNamePath(e->icon);
-        SvgDraw(ctx, path, e->x, e->y, s, c, e->style.rotate);
+        if (e->iconSvg.s) {
+            // `Icon::data`: the SVG source itself, converted once and kept.
+            SvgDrawXml(ctx, e->iconSvg, e->x, e->y, s, c, e->style.rotate);
+        } else {
+            Str path = e->iconPath.s ? e->iconPath : IconNamePath(e->icon);
+            SvgDraw(ctx, path, e->x, e->y, s, c, e->style.rotate);
+        }
     } else if (e->kind == ElKind::Progress) {
         const RuntimeStyle& th = RuntimeStyleNow(ctx->app);
         Background track = BackgroundOpacity(th.progress, 0.2f);

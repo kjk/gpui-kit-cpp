@@ -29,6 +29,13 @@ Icon* Icon::Empty(Ctx* cx) {
 
 Icon* Icon::Path(Str assetPath) {
     path = assetPath;
+    source = IconSource::Path;
+    return this;
+}
+
+Icon* Icon::Data(Str svg) {
+    data = svg.len > 0 ? StrDup(a, svg) : Str{};
+    source = IconSource::Data;
     return this;
 }
 
@@ -61,7 +68,9 @@ Icon* Icon::Rotate(float turns) {
 
 El* Icon::IntoEl() {
     El* e = hasSize ? IconEl(a, name, size) : IconEl(a, name);
-    if (path.s) {
+    if (source == IconSource::Data) {
+        e->iconSvg = data;
+    } else if (path.s) {
         e->iconPath = path;
     }
     if (hasColor) {

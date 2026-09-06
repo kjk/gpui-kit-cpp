@@ -977,9 +977,10 @@ static const int kMenuImageSize = 16;
 // One icon as a bitmap the menu can show: the SVG rasterized into a 32-bit
 // top-down DIB, premultiplied, so Windows blends it over whatever it draws
 // behind the row.
-static HBITMAP MenuIconBitmap(Window* win, const char* path, int px,
+static HBITMAP MenuIconBitmap(Window* win, const PlatMenuItem& it, int px,
                               Rgba color) {
-    if (!win || !path || !path[0] || px <= 0) {
+    bool fromSvg = it.iconSvg && it.iconSvgLen > 0;
+    if (!win || px <= 0 || (!fromSvg && (!it.iconPath || !it.iconPath[0]))) {
         return nullptr;
     }
     BITMAPINFO bi = {};
@@ -998,7 +999,13 @@ static HBITMAP MenuIconBitmap(Window* win, const char* path, int px,
         }
         return nullptr;
     }
-    if (!SvgRasterize(win->paint.pa, Str(path), px, color, (uint8_t*)bits)) {
+    // `Icon::data` rasterizes from its bytes; a path goes through the assets.
+    bool drew =
+        fromSvg ? SvgRasterizeXml(win->paint.pa, Str(it.iconSvg, it.iconSvgLen),
+                                  px, color, (uint8_t*)bits)
+                : SvgRasterize(win->paint.pa, Str(it.iconPath), px, color,
+                               (uint8_t*)bits);
+    if (!drew) {
         DeleteObject(bmp);
         return nullptr;
     }
@@ -1042,8 +1049,8 @@ static HMENU BuildMenu(Window* win, const PlatMenuItem* items, int n,
         UINT flags = MF_STRING | (it.disabled ? MF_GRAYED : 0u) |
                      (it.checked ? MF_CHECKED : 0u);
         AppendMenuW(menu, flags, (UINT_PTR)it.id, label);
-        if (it.iconPath) {
-            HBITMAP bmp = MenuIconBitmap(win, it.iconPath, iconPx, iconColor);
+        if (it.iconPath || it.iconSvg) {
+            HBITMAP bmp = MenuIconBitmap(win, it, iconPx, iconColor);
             if (bmp) {
                 // The item's content bitmap, not its check mark: it sits
                 // beside the label the way an icon does.

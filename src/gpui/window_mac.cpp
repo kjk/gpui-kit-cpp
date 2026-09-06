@@ -1448,8 +1448,9 @@ static const int kMenuImageSize = 16;
 // One icon as an image the menu can show. It is loaded as a template image,
 // which is what makes AppKit tint it with the row's text — so it reads right
 // in either appearance and while the row is highlighted.
-static NSImage* MenuIconImage(Window* win, const char* path) {
-    if (!win || !path || !path[0]) {
+static NSImage* MenuIconImage(Window* win, const PlatMenuItem& it) {
+    bool fromSvg = it.iconSvg && it.iconSvgLen > 0;
+    if (!win || (!fromSvg && (!it.iconPath || !it.iconPath[0]))) {
         return nil;
     }
     // Rasterized at twice the point size, so it stays sharp on a Retina
@@ -1458,7 +1459,13 @@ static NSImage* MenuIconImage(Window* win, const char* path) {
     Vec<uint8_t> buf;
     VecAppendBlanks(buf, px * px * 4);
     // The colour does not matter for a template image, only the coverage.
-    if (!SvgRasterize(win->paint.pa, Str(path), px, Rgb(0, 0, 0), buf.els)) {
+    // `Icon::data` rasterizes from its bytes; a path goes through the assets.
+    bool drew =
+        fromSvg ? SvgRasterizeXml(win->paint.pa, Str(it.iconSvg, it.iconSvgLen),
+                                  px, Rgb(0, 0, 0), buf.els)
+                : SvgRasterize(win->paint.pa, Str(it.iconPath), px,
+                               Rgb(0, 0, 0), buf.els);
+    if (!drew) {
         return nil;
     }
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
@@ -1585,8 +1592,8 @@ static NSMenu* BuildMenu(Window* win, const PlatMenuItem* items, int n,
                                                       action:nil
                                                keyEquivalent:@""];
         [item setEnabled:(it.disabled ? NO : YES)];
-        if (it.iconPath) {
-            NSImage* image = MenuIconImage(win, it.iconPath);
+        if (it.iconPath || it.iconSvg) {
+            NSImage* image = MenuIconImage(win, it);
             if (image) {
                 [item setImage:image];
             }

@@ -121,9 +121,46 @@ static void AnEmptyMenuShowsNothing() {
     ArenaDelete(ta);
 }
 
+// native_menu/mod.rs:
+// test_native_menu_icon_data_replaces_path_and_survives_clone. A row given an
+// `Icon::Data` carries the SVG source, which the platform rasterizes without an
+// asset lookup; a later `Path` on the icon replaces it.
+static void IconDataReplacesThePathAndTravelsWithTheRow() {
+    Arena* ta = ArenaNew();
+    Ctx cx = {};
+    cx.a = ta;
+    static const char kSvg[] =
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M4 12h16\"/></svg>";
+    component::NativeMenu m;
+    m.a = ta;
+    m.cx = &cx;
+    component::Icon* icon = component::Icon::Empty(&cx)
+                                ->Path(StrL("icons/previous.png"))
+                                ->Data(Str(kSvg));
+    m.MenuWithIcon(StrL("Search"), icon, 6);
+    utassert(m.items.len == 1);
+    utassert(m.items[0].kind == component::NativeMenuItemKind::Item);
+    utassert(StrEq(m.items[0].iconSvg, Str(kSvg)));
+    utassert(!m.items[0].iconPath.s && m.items[0].icon == IconName::None);
+    utassert(m.items[0].id == 6);
+
+    icon->Path(StrL("icons/replacement.svg"));
+    m.MenuWithIcon(StrL("Replaced"), icon, 7);
+    utassert(!m.items[1].iconSvg.s);
+    utassert(StrEq(m.items[1].iconPath, StrL("icons/replacement.svg")));
+
+    // The drawn fallback keeps the same source on its row.
+    component::PopupMenu* drawn = m.IntoPopupMenu(StrL("fallback"));
+    utassert(drawn && drawn->items.len == 2);
+    utassert(StrEq(drawn->items[0].iconSvg, Str(kSvg)));
+    utassert(StrEq(drawn->items[1].iconPath, StrL("icons/replacement.svg")));
+    ArenaDelete(ta);
+}
+
 void TestNativeMenu() {
     TestSuite("native_menu");
     ARowCarriesWhatItWasBuiltWith();
+    IconDataReplacesThePathAndTravelsWithTheRow();
     EveryRowAddedIsKept();
     OnlyTheRowsThatCanBeChosenAreNumbered();
     AGreyedSubmenuStillNumbersItsRows();

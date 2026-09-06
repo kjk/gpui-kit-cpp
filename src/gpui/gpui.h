@@ -1937,6 +1937,10 @@ struct El {
     Str id;
     Str text;
     Str iconPath;
+    // ElKind::Icon drawn from SVG source rather than an asset — `Icon::data`.
+    // Set, it is the icon; `iconPath` is then only what the name would have
+    // been. The bytes belong to whoever built the element.
+    Str iconSvg;
     AccessibilityInfo accessibility = {};
     // ElKind::Image: resource, decoded render image, encoded Image bytes, or
     // a custom loader, matching gpui::ImageSource.

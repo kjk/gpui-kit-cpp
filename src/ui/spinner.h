@@ -15,6 +15,9 @@ struct Spinner {
     UiSize size = UiSize::Medium;
     float px = 0;
     IconName icon = IconName::Loader;
+    // `loading_icon(Icon::default().data(..))`: SVG source in place of the
+    // named icon. Set, it is what turns.
+    Str iconSvg = {};
     Rgba color = {};
     bool hasColor = false;
     // `speed` and `ease`: how long one turn takes, and along which curve.
@@ -32,6 +35,7 @@ struct Spinner {
     Spinner* WithSize(UiSize s);
     Spinner* Size(float v);
     Spinner* Icon(IconName n);
+    Spinner* IconData(Str svg);
     Spinner* Color(Rgba c);
     El* IntoEl();
 };

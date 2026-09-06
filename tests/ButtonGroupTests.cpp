@@ -245,6 +245,40 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
     utassert(spinner->Loading(true)->WithSize(UiSize::Small)->IntoEl());
     utassert(progress->Loading(true)->Size(18)->IntoEl());
 
+    // button_icon.rs: test_custom_data_icon_converts_through_component_slots.
+    // An `Icon::Data` goes through the button's icon slot, its loading icon
+    // and a menu row's slot with its bytes intact, and renders them as SVG
+    // source.
+    static const char kSvg[] =
+        "<svg viewBox=\"0 0 24 24\"><circle cx=\"11\" cy=\"11\" "
+        "r=\"8\"/></svg>";
+    component::ButtonIcon* dataIcon =
+        component::ButtonIcon::New(&cx, component::Icon::Empty(&cx)
+                                            ->Data(Str(kSvg)))
+            ->Loading(true)
+            ->LoadingIcon(component::Icon::Empty(&cx)->Data(Str(kSvg)));
+    utassert(dataIcon->variant == component::ButtonIconVariant::Icon);
+    utassert(dataIcon->icon && dataIcon->icon
+                                       ->source == component::IconSource::Data);
+    utassert(dataIcon->loading);
+    utassert(dataIcon->loadingIcon &&
+             dataIcon->loadingIcon->source == component::IconSource::Data);
+    El* turning = dataIcon->IntoEl();
+    El* turningIcon = turning;
+    while (turningIcon && !turningIcon->iconSvg.s) {
+        turningIcon = turningIcon->first;
+    }
+    utassert(turningIcon && StrEq(turningIcon->iconSvg, Str(kSvg)));
+    El* still = component::ButtonIcon::New(&cx, component::Icon::Empty(&cx)
+                                                    ->Data(Str(kSvg)))
+                    ->IntoEl();
+    utassert(StrEq(still->iconSvg, Str(kSvg)));
+    component::PopupMenu* menu =
+        component::PopupMenu::New(&cx, StrL("data-icons"))
+            ->Menu(StrL("Search"), component::Icon::Empty(&cx)
+                                       ->Data(Str(kSvg)));
+    utassert(menu->items.len == 1 && StrEq(menu->items[0].iconSvg, Str(kSvg)));
+
     // tooltip_placement (699936e4): a preferred side rides with the tip so
     // the overlay can honour it; omitting it keeps automatic positioning, and
     // setting it without tooltip content does nothing.

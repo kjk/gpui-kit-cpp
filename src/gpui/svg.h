@@ -23,6 +23,11 @@ bool SvgViewBox(Str assetPath, Size* out);
 
 bool SvgDraw(PaintCtx* ctx, Str assetPath, float x, float y, float size,
              Rgba color, float turns = 0);
+// The same for SVG source in hand rather than an asset path — `Icon::data`,
+// an icon embedded in the binary without registering an asset. Converted
+// once and kept by content, the way a path's file is kept by name.
+bool SvgDrawXml(PaintCtx* ctx, Str xml, float x, float y, float size,
+                Rgba color, float turns = 0);
 
 // The same, for a byte stream already in hand rather than an asset path —
 // what a picture fetched over the network resolves to (gpui/image.h) — and
@@ -39,6 +44,8 @@ bool SvgDrawOps(PaintCtx* ctx, const uint8_t* ops, int len, float x, float y,
 // something that can draw one.
 bool SvgRasterize(PaintApp* pa, Str assetPath, int px, Rgba color,
                   uint8_t* outBgra);
+bool SvgRasterizeXml(PaintApp* pa, Str xml, int px, Rgba color,
+                     uint8_t* outBgra);
 
 // One SVG file, as the byte stream `drawops.h` describes. This is the reader
 // `cmd/svg-to-bytecode.ts` mirrors in TypeScript to build `asset_icons.cpp`,
@@ -49,6 +56,11 @@ bool SvgToDrawOps(Str xml, DrawOpsBuilder* out);
 // otherwise the file, read and converted once and then kept. Null if there is
 // no such asset. The bytes belong to the cache — copy them to keep them.
 const uint8_t* SvgDrawOpsFor(Str assetPath, int* lenOut);
+// The bytecode SVG source draws, converted once and kept under a hash of the
+// bytes — so an icon embedded with `Icon::data` costs a parse the first time
+// it is drawn and a lookup after. Null when the source is not an SVG this
+// reader understands. The bytes belong to the cache.
+const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut);
 // Drop draw operations built from application assets. Compiled-in icon data
 // is borrowed and is simply forgotten. AppFree calls this through the image
 // cache teardown.

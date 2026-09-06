@@ -29,6 +29,10 @@ Spinner* Spinner::Icon(IconName n) {
     icon = n;
     return this;
 }
+Spinner* Spinner::IconData(Str svg) {
+    iconSvg = svg;
+    return this;
+}
 
 Spinner* Spinner::Color(Rgba c) {
     color = c;
@@ -67,6 +71,9 @@ El* Spinner::IntoEl() {
                             speed > 0 ? speed : kSpinnerPeriodMs, ease);
     }
     El* ic = IconEl(a, icon, dim)->Rotate(turn);
+    if (iconSvg.s) {
+        ic->iconSvg = iconSvg;
+    }
     if (hasColor) {
         ic->Fg(color);
     } else {

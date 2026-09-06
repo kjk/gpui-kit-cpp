@@ -54,6 +54,24 @@ NativeMenu* NativeMenu::MenuWithIcon(Str label, IconName icon, intptr_t id) {
     }
     return this;
 }
+NativeMenu* NativeMenu::MenuWithIcon(Str label, component::Icon* icon,
+                                     intptr_t id) {
+    NativeMenuItem* it = PushItem(this);
+    if (it) {
+        it->kind = NativeMenuItemKind::Item;
+        it->label = label;
+        it->id = id;
+        if (icon) {
+            it->icon = icon->name;
+            if (icon->source == component::IconSource::Data) {
+                it->iconSvg = icon->data;
+            } else {
+                it->iconPath = icon->path;
+            }
+        }
+    }
+    return this;
+}
 NativeMenu* NativeMenu::Separator() {
     NativeMenuItem* it = PushItem(this);
     if (it) {
@@ -129,7 +147,14 @@ static PlatMenuItem* ToPlat(Arena* a, const NativeMenu* m, int* nextId) {
             p.submenuN = it.submenu ? it.submenu->items.len : 0;
             continue;
         }
-        if (it.icon != IconName::None) {
+        // resolve_icon_image: SVG source is handed over as it is; a path, or
+        // the name's path, is what the backend looks up.
+        if (it.iconSvg.s) {
+            p.iconSvg = StrDup(a, it.iconSvg).s;
+            p.iconSvgLen = it.iconSvg.len;
+        } else if (it.iconPath.s) {
+            p.iconPath = StrDup(a, it.iconPath).s;
+        } else if (it.icon != IconName::None) {
             p.iconPath = StrDup(a, IconNamePath(it.icon)).s;
         }
         if (!it.disabled) {
@@ -200,6 +225,14 @@ PopupMenu* NativeMenu::IntoPopupMenu(Str id) const {
         }
         if (it.checked) {
             menu->MenuWithCheck(it.label, it.checked);
+        } else if (it.iconSvg.s || it.iconPath.s) {
+            component::Icon* icon = component::Icon::New(cx, it.icon);
+            if (it.iconSvg.s) {
+                icon->Data(it.iconSvg);
+            } else {
+                icon->Path(it.iconPath);
+            }
+            menu->Menu(it.label, icon);
         } else {
             menu->Menu(it.label, it.icon);
         }

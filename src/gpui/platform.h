@@ -196,6 +196,11 @@ struct PlatMenuItem {
     // the icon's path too, and each backend turns it into whatever kind of
     // bitmap its menus take.
     const char* iconPath = nullptr;
+    // Or as SVG source (`Icon::data`), which wins over the path: an icon
+    // embedded in the binary is rasterized from its bytes with no asset
+    // lookup.
+    const char* iconSvg = nullptr;
+    int iconSvgLen = 0;
     const PlatMenuItem* submenu = nullptr;
     int submenuN = 0;
     // The chord the row fires on, for the menus the OS keeps open across

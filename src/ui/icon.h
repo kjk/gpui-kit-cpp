@@ -17,11 +17,25 @@ struct IconNamed {
     static IconNamed From(IconName name);
 };
 
+// IconSource: where the icon's picture comes from. The last `Path` or `Data`
+// call selects it.
+enum class IconSource : uint8_t {
+    // An asset path, or the one the IconName stands for.
+    Path,
+    // Raw SVG source, without registering an asset path.
+    Data,
+};
+
 struct Icon {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     IconName name = IconName::None;
     Str path = {};
+    // `Icon::data`: the SVG source, copied into the frame arena so the input
+    // need not outlive the call. Rust shares it behind an Arc when the icon
+    // is cloned; an Icon here lives one frame and is not cloned.
+    Str data = {};
+    IconSource source = IconSource::Path;
     float size = 0;
     float rotation = 0;
     Rgba color = {};
@@ -31,7 +45,12 @@ struct Icon {
     static Icon* New(Ctx* cx, IconName name);
     static Icon* New(Ctx* cx, IconNamed named);
     static Icon* Empty(Ctx* cx);
+    // Replaces any previously set path or SVG data.
     Icon* Path(Str assetPath);
+    // Set raw SVG bytes without registering an asset path. Replaces any
+    // previously set path or data. Parsing and rendering follow the SVG
+    // reader every asset goes through.
+    Icon* Data(Str svg);
     Icon* Size(float v);
     Icon* Size(UiSize v);
     Icon* Color(Rgba c);
