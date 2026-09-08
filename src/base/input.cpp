@@ -533,7 +533,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
     float numW = 0;
     if (lineNumbers) {
-        numW = 12.f + 7.f * (float)(rows >= 100 ? 3 : (rows >= 10 ? 2 : 1));
+        // layout_line_numbers: digit count of the last line, 7px per digit
+        // at font-1, 12px for the extra column Rust's ilog10()+2 leaves as
+        // a left gap.
+        int digits = 1;
+        for (int n = rows < 1 ? 1 : rows; n >= 10; n /= 10) {
+            digits++;
+        }
+        numW = 12.f + 7.f * (float)digits;
     }
     // The fold gutter. Rust widens the line-number column by the hitbox and
     // lays the icons into the space it made; the column here is a flex row,
