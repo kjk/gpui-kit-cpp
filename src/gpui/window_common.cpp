@@ -795,6 +795,7 @@ static void SetMouseDown(Window* win, bool down) {
 
 static bool SliderKeyStep(Window* win, int key, bool ctrl, bool alt);
 static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt);
+static bool PageScrollBy(Window* win, int dir);
 
 bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
                    bool platform, bool function) {
@@ -922,6 +923,17 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
         ev.function = function;
         ListenerCall(win->app, win, win->onKey, &ev);
         windowHandled = !ev.propagate;
+    }
+    // PageUp / PageDown with no modifiers: a focused editor already moved
+    // the caret by a page above. What is left is a text viewer (or any other
+    // scrolled box) that has no keymap of its own — scroll it by its height.
+    if (!eaten && !windowHandled && !shift && !ctrl && !alt && !platform &&
+        (key == KeyPageUp || key == KeyPageDown)) {
+        if (PageScrollBy(win, key == KeyPageUp ? -1 : 1)) {
+            win->eatChar = true;
+            AppInvalidate(win);
+            return true;
+        }
     }
     // Enter and Space both activate the focused element, and the press only
     // arms that: the click is made from the release, the same as the mouse's.
@@ -1336,6 +1348,49 @@ static void ScrollbarEmit(Window* win, ScrollRect* s, float offsetX,
     ScrollEvent ev = {s->id, offsetY, offsetX};
     ListenerCall(win->app, win, s->onScroll, &ev);
     AppInvalidate(win);
+}
+
+// Unhandled PageUp / PageDown: the innermost vertical scroller that still
+// has overflow. A focused editor is skipped — its `input` pointer is set,
+// and InputPerform already moved the caret. Prefer the box under the
+// pointer, then the one that intersects the focused element, so a click in
+// a text viewer pages that document even when focus is elsewhere.
+static bool PageScrollBy(Window* win, int dir) {
+    if (!win || dir == 0) {
+        return false;
+    }
+    const HitRect* focused = HitRectById(win, win->focusId);
+    Point pointer = {win->mouseX, win->mouseY};
+    ScrollRect* underPointer = nullptr;
+    ScrollRect* underFocus = nullptr;
+    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+        ScrollRect& s = win->paint.scrolls[i];
+        if (s.input || !s.onScroll.IsValid() || !ScrollsY(s)) {
+            continue;
+        }
+        if (!underPointer && s.bounds.Contains(pointer)) {
+            underPointer = &s;
+        }
+        if (!underFocus && focused) {
+            const Bounds& a = focused->bounds;
+            const Bounds& b = s.bounds;
+            bool overlap = a.x < b.Right() && b.x < a.Right() &&
+                           a.y < b.Bottom() && b.y < a.Bottom();
+            if (overlap) {
+                underFocus = &s;
+            }
+        }
+        if (underPointer && underFocus) {
+            break;
+        }
+    }
+    ScrollRect* found = underPointer ? underPointer : underFocus;
+    if (!found) {
+        return false;
+    }
+    float next = found->scrollY + (float)dir * found->bounds.h;
+    ScrollbarEmit(win, found, found->scrollX, next);
+    return true;
 }
 
 // The press. Inside the thumb it opens a drag and keeps where it landed;

@@ -1212,6 +1212,30 @@ static void LineBoundaries() {
     utassert(InputCursor(&many) == 12);
 }
 
+// page_up / page_down: the viewport height in display rows, not
+// LayoutModeRows. A code editor's rows stay 1, which used to make PageDown
+// a one-line move.
+static void PageMovesByTheViewport() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.mode.kind = LayoutModeKind::CodeEditor;
+    InputSetValue(&s, StrL("0\n1\n2\n3\n4\n5\n6\n7\n8\n9\n"
+                           "10\n11\n12\n13\n14\n15\n16\n17\n18\n19\n"
+                           "20\n21\n22\n23\n24\n25\n26\n27\n28\n29"));
+    s.lastLineH = 20;
+    s.viewH = 200;
+    s.inputBounds = {0, 0, 400, 200};
+    InputSetSelectedRange(&s, nullptr, nullptr, 0, 0);
+    Act(&s, InputAction::MovePageDown);
+    utassert(InputOffsetToPoint(&s, InputCursor(&s)).row == 10);
+    Act(&s, InputAction::MovePageUp);
+    utassert(InputOffsetToPoint(&s, InputCursor(&s)).row == 0);
+    // A single-line field leaves the key for whatever is around it.
+    InputState one;
+    utassert(!InputPerform(&one, nullptr, nullptr, InputAction::MovePageDown,
+                           false));
+}
+
 // Boundaries step whole characters, not bytes.
 static void BoundariesStepCharacters() {
     InputState s;
@@ -1459,6 +1483,10 @@ static InputAction Word(const InputState* s, int vk, bool shift) {
 
 static void ActionForKey() {
     InputState s;
+    utassert(InputActionForKey(&s, KeyPageUp, false, false, false) ==
+             InputAction::MovePageUp);
+    utassert(InputActionForKey(&s, KeyPageDown, false, false, false) ==
+             InputAction::MovePageDown);
     utassert(InputActionForKey(&s, KeyLeft, false, false, false) ==
              InputAction::MoveLeft);
     utassert(InputActionForKey(&s, KeyLeft, true, false, false) ==
@@ -3363,6 +3391,7 @@ void TestInputState() {
     WordMovement();
     DeleteToWordAndLineBoundaries();
     LineBoundaries();
+    PageMovesByTheViewport();
     EveryProviderIsAsked();
     CodeActionCollectionsGrowToTheirAnswers();
     ResetDropsWhatTheLayerHeld();

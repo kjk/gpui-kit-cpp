@@ -4664,6 +4664,20 @@ static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     InputMergeOverlappingCursors(s);
 }
 
+// page_up / page_down: how many display rows the box currently shows, which
+// is `input_bounds.height / line_height` in Rust. LayoutModeRows is the
+// textarea's configured height and is 1 on a code editor, so using it made
+// PageDown a one-line move.
+static int InputPageLines(const InputState* s) {
+    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
+    float h = s->inputBounds.h > 0 ? s->inputBounds.h : s->viewH;
+    if (lineH <= 0) {
+        return 1;
+    }
+    int lines = (int)(h / lineH);
+    return lines > 1 ? lines : 1;
+}
+
 // move_vertical. With `collapse`, a selection first collapses to its start
 // (up) or end (down) and walks from there at that column.
 static void MoveVertical(InputState* s, App* app, Window* win, int lines,
@@ -5202,11 +5216,17 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             MoveVertical(s, app, win, 1, true);
             return true;
         case InputAction::MovePageUp:
-            MoveVertical(s, app, win, -LayoutModeRows(s->mode), false);
-            return InputIsMultiLine(s);
+            if (InputIsSingleLine(s)) {
+                return false;
+            }
+            MoveVertical(s, app, win, -InputPageLines(s), false);
+            return true;
         case InputAction::MovePageDown:
-            MoveVertical(s, app, win, LayoutModeRows(s->mode), false);
-            return InputIsMultiLine(s);
+            if (InputIsSingleLine(s)) {
+                return false;
+            }
+            MoveVertical(s, app, win, InputPageLines(s), false);
+            return true;
         case InputAction::MoveHome:
             PauseBlink(s, app, win);
             MoveAllCursors(s, app, win,
