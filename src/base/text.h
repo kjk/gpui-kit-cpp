@@ -41,6 +41,7 @@
    (base/text_selection.h WindowSelection). */
 
 #include "gpui/gpui.h"
+#include "base/motion.h"
 #include "base/theme.h"
 #include "markdown/markdown.h"
 
@@ -508,6 +509,30 @@ enum class TextViewFormat : uint8_t {
     Html
 };
 
+// stream_fade.rs motion policy. Durations use this port's established
+// millisecond convention.
+struct TextViewMotion {
+    float streamFadeMs = 0;
+    float streamFadeStaggerMs = 0;
+    Easing streamFadeEasing = Easing::EaseOut();
+
+    TextViewMotion WithStreamFade(float ms) const {
+        TextViewMotion out = *this;
+        out.streamFadeMs = std::max(0.f, ms);
+        return out;
+    }
+    TextViewMotion WithStreamFadeStagger(float ms) const {
+        TextViewMotion out = *this;
+        out.streamFadeStaggerMs = std::max(0.f, ms);
+        return out;
+    }
+    TextViewMotion WithStreamFadeEasing(Easing easing) const {
+        TextViewMotion out = *this;
+        out.streamFadeEasing = easing;
+        return out;
+    }
+};
+
 // state.rs TextViewState. Parsing remains synchronous behind the existing
 // per-window LRU because this runtime has no cancellable Task<T>; ownership,
 // mutation revisions, selection and managed-view identity are retained.
@@ -526,6 +551,15 @@ struct TextViewState {
     // Whether the last painted frame overflowed that cap.
     bool clamped = false;
     gpui::SelectionFormat selectionFormat = gpui::SelectionFormat::Plain;
+    TextViewMotion motion = {};
+    // The last rendered text and an append waiting for the next parse. Rust
+    // tracks one entry per leaf; the port retains the same rendered-prefix
+    // decision and fades the affected top-level block.
+    Str streamRenderedText = {};
+    bool streamFadePending = false;
+    bool streamFadeReplace = false;
+    int streamFadeFrom = -1;
+    double streamFadeStartedAt = 0;
 
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
@@ -535,6 +569,11 @@ struct TextViewState {
     void PushStr(Str value, App* app, Window* window = nullptr);
     void SetSelectable(bool value, App* app, Window* window = nullptr);
     void SetScrollable(bool value, App* app, Window* window = nullptr);
+    TextViewState& Motion(TextViewMotion value) {
+        motion = value;
+        return *this;
+    }
+    void SetMotion(TextViewMotion value, App* app, Window* window = nullptr);
     bool IsClamped() const { return clamped; }
     void SetSelectionFormat(gpui::SelectionFormat value, App* app,
                             Window* window = nullptr);
@@ -641,6 +680,12 @@ struct TextView {
     MarkdownExtensions markdownExtensions = {};
     gpui::Style outerStyle = {};
     uint32_t outerStyleFields = 0;
+    TextViewMotion motion = {};
+    bool motionSet = false;
+    int streamBlockDepth = 0;
+    int streamRenderedOffset = 0;
+    int streamFadeFrom = -1;
+    float streamFadeOpacity = 1;
 
     // text_view.rs TextView::markdown / TextView::html.
     static TextView* New(Ctx* cx, Str source);
@@ -663,6 +708,9 @@ struct TextView {
     // snaps the mask to whole descendant Inline lines; ignored by Scrollable.
     TextView* MaxLines(int count);
     TextView* ParagraphGap(float px);
+    TextView* Motion(TextViewMotion value);
+    // Component compat's stream_fade(true): Claude-like 350 ms ease-out.
+    TextView* StreamFade(bool value = true);
     // text_view::LinkClickHandlerFn. The handler's intptr_t is the link's
     // href as a NUL-terminated `const char*`; it points into the parse the
     // frame was built from and is good for the length of the call, which is

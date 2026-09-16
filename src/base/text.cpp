@@ -507,6 +507,7 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
 
 TextViewState::~TextViewState() {
     StrFree(text);
+    StrFree(streamRenderedText);
 }
 
 static Entity<TextViewState> NewTextViewState(App* app, Str text,
@@ -542,6 +543,10 @@ void TextViewState::Changed(App* app, Window* window,
 
 void TextViewState::SetText(Str value, App* app, Window* window) {
     if (base::StrEq(text, value)) return;
+    if (motion.streamFadeMs > 0) {
+        streamFadePending = true;
+        streamFadeReplace = !StrStartsWith(value, text);
+    }
     Str replacement = StrDup(value);
     StrFree(text);
     text = replacement;
@@ -550,6 +555,10 @@ void TextViewState::SetText(Str value, App* app, Window* window) {
 
 void TextViewState::PushStr(Str value, App* app, Window* window) {
     if (value.len <= 0) return;
+    if (motion.streamFadeMs > 0) {
+        streamFadePending = true;
+        streamFadeReplace = false;
+    }
     int oldLen = text.len;
     char* joined = (char*)Alloc(nullptr, oldLen + value.len + 1);
     if (!joined) return;
@@ -571,6 +580,16 @@ void TextViewState::SetSelectable(bool value, App* app, Window* window) {
 void TextViewState::SetScrollable(bool value, App* app, Window* window) {
     if (scrollable == value) return;
     scrollable = value;
+    Changed(app, window, true);
+}
+
+void TextViewState::SetMotion(TextViewMotion value, App* app, Window* window) {
+    motion = value;
+    if (motion.streamFadeMs <= 0) {
+        streamFadePending = false;
+        streamFadeReplace = false;
+        streamFadeFrom = -1;
+    }
     Changed(app, window, true);
 }
 
@@ -2683,13 +2702,56 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     return row->Child(content);
 }
 
+static int MdRenderedLen(const MdNode* n) {
+    if (!n) return 0;
+    int len = 0;
+    for (const MdRun* run = n->runFirst; run; run = run->next) {
+        len += run->text.len;
+    }
+    for (const MdNode* child = n->first; child; child = child->next) {
+        len += MdRenderedLen(child);
+    }
+    return len;
+}
+
+static void MdAppendRendered(StrBuilder* out, const MdNode* n) {
+    if (!n) return;
+    for (const MdRun* run = n->runFirst; run; run = run->next) {
+        out->Append(run->text);
+    }
+    for (const MdNode* child = n->first; child; child = child->next) {
+        MdAppendRendered(out, child);
+    }
+}
+
+static int StreamCommonPrefix(Str a, Str b) {
+    int n = std::min(a.len, b.len);
+    int at = 0;
+    while (at < n && a.s[at] == b.s[at]) at++;
+    // UTF-8 continuation bytes cannot begin the newly fading range.
+    while (at > 0 && at < b.len && ((uint8_t)b.s[at] & 0xc0) == 0x80) at--;
+    return at;
+}
+
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
+    bool outer = streamBlockDepth++ == 0;
     for (MdNode* c = n->first; c; c = c->next) {
+        int start = streamRenderedOffset;
         El* e = Block(c, depth, inList, c->next == nullptr);
         if (e) {
+            int end = start + MdRenderedLen(c);
+            if (outer && streamFadeFrom >= 0 && end > streamFadeFrom) {
+                // The Rust renderer can fade highlight byte ranges inside a
+                // leaf. Elements here expose opacity at subtree granularity,
+                // so the top-level block containing the rendered divergence
+                // fades as one unit; new following blocks do the same.
+                e->Opacity(streamFadeOpacity);
+            }
             into->Child(e);
         }
+        streamRenderedOffset = start + MdRenderedLen(c);
     }
+    streamBlockDepth--;
     return into;
 }
 
@@ -2923,6 +2985,16 @@ El* TextView::IntoEl() {
         managed->selectionFormat = selFormat;
         managed->scrollable = scrollable;
         managed->maxLines = scrollable ? -1 : maxLines;
+        if (motionSet) {
+            managed->motion = motion;
+            if (motion.streamFadeMs <= 0) {
+                managed->streamFadePending = false;
+                managed->streamFadeReplace = false;
+                managed->streamFadeFrom = -1;
+            }
+        } else {
+            motion = managed->motion;
+        }
         // A style that moved — a theme change, most often — invalidates the
         // selection layout the last frame published.
         if (!managed->textViewStyle.Equals(textViewStyle)) {
@@ -2934,6 +3006,51 @@ El* TextView::IntoEl() {
     BaseTextViewStatePush(cx->app, state.id);
     MdNode* doc = MdParseCached(cx, a, source, html,
                                 html ? nullptr : &markdownExtensions);
+    streamBlockDepth = 0;
+    streamRenderedOffset = 0;
+    streamFadeFrom = -1;
+    streamFadeOpacity = 1;
+    if (managed) {
+        StrBuilder renderedBuilder(a);
+        MdAppendRendered(&renderedBuilder, doc);
+        Str rendered = renderedBuilder.TakeStr();
+        if (managed->streamFadePending) {
+            if (managed->streamFadeReplace || motion.streamFadeMs <= 0) {
+                managed->streamFadeFrom = -1;
+            } else {
+                int prefix =
+                    StreamCommonPrefix(managed->streamRenderedText, rendered);
+                managed->streamFadeFrom = prefix < rendered.len ? prefix : -1;
+                managed->streamFadeStartedAt = MotionNow(cx);
+            }
+            managed->streamFadePending = false;
+            managed->streamFadeReplace = false;
+        }
+        if (!base::StrEq(managed->streamRenderedText, rendered)) {
+            Str replacement = StrDup(rendered);
+            StrFree(managed->streamRenderedText);
+            managed->streamRenderedText = replacement;
+        }
+        if (managed->streamFadeFrom >= 0) {
+            if (MotionReduced() || motion.streamFadeMs <= 0) {
+                managed->streamFadeFrom = -1;
+            } else {
+                float elapsed =
+                    (float)((MotionNow(cx) - managed->streamFadeStartedAt) *
+                            1000.0);
+                float progress = elapsed / motion.streamFadeMs;
+                if (progress >= 1.f) {
+                    managed->streamFadeFrom = -1;
+                } else {
+                    progress = std::max(0.f, progress);
+                    streamFadeFrom = managed->streamFadeFrom;
+                    streamFadeOpacity = motion.streamFadeEasing
+                                            .Sample(progress);
+                    WindowRequestAnimationFrame(cx->win);
+                }
+            }
+        }
+    }
     // Rust keeps selection_format on the view's own state and reconstructs
     // the source when the copy asks for it. The copy is the window's here,
     // so the view says what format it wants and the runs it builds below
@@ -3210,6 +3327,17 @@ TextView* TextView::Plugin(const MarkdownPlugin& plugin) {
 
 TextView* TextView::Plugin(const TextViewPlugin& plugin) {
     return plugin.Setup(this);
+}
+
+TextView* TextView::Motion(TextViewMotion value) {
+    motion = value;
+    motionSet = true;
+    return this;
+}
+
+TextView* TextView::StreamFade(bool value) {
+    return Motion(value ? TextViewMotion{}.WithStreamFade(350.f)
+                        : TextViewMotion{});
 }
 
 } // namespace gpui

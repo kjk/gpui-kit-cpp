@@ -1587,6 +1587,42 @@ static void TestStatelessMarkdownSettles() {
     AppGlobalClear(&app);
 }
 
+static void TestStreamFadeTracksRenderedAppends() {
+    bool wasReduced = MotionReduced();
+    MotionSetReduced(false);
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TextViewState> entity = TextViewState::Markdown(&app, StrL("hello"));
+    TextViewState* state = entity.Get(&app);
+    state->SetMotion(TextViewMotion{}.WithStreamFade(10000.f), &app, win);
+
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(StrEq(state->streamRenderedText, StrL("hello")));
+    utassert(state->streamFadeFrom < 0);
+
+    state->PushStr(StrL(" world"), &app, win);
+    El* faded = TextView::New(&cx, entity)->IntoEl();
+    utassert(state->streamFadeFrom == 5);
+    utassert(faded && faded->first && faded->first->style.opacity < 1.f);
+
+    state->SetText(StrL("replacement"), &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(state->streamFadeFrom < 0);
+
+    TextView* compat = TextView::New(&cx, entity)->StreamFade();
+    utassert(compat->motionSet && compat->motion.streamFadeMs == 350.f);
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    MotionSetReduced(wasReduced);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -1638,6 +1674,7 @@ void TestTextView() {
     TestMarkdownFrontmatter();
     TestMarkdownInlinePlugin();
     TestStatelessMarkdownSettles();
+    TestStreamFadeTracksRenderedAppends();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
     TestTextViewMaxLines();

@@ -63,6 +63,7 @@ using HeadingFontSizeFn = gpui::HeadingFontSizeFn;
 using TextViewStyle = gpui::TextViewStyle;
 using TextViewDefaults = gpui::TextViewDefaults;
 using TextViewFormat = gpui::TextViewFormat;
+using TextViewMotion = gpui::TextViewMotion;
 using TextViewState = gpui::TextViewState;
 using TextViewLayoutState = gpui::TextViewLayoutState;
 using TextView = gpui::TextView;
