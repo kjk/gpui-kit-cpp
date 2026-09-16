@@ -54,6 +54,7 @@
 #include "base/resizable.h"
 #include "base/scrollable_mask.h"
 #include "base/scrollbar.h"
+#include "base/scroll_bounce.h"
 #include "base/select.h"
 #include "base/selectable_text.h"
 #include "base/sheet.h"

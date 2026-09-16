@@ -63,6 +63,7 @@ int GpuiMain(int argc, char** argv) {
     TestSheet();
     TestMotion();
     TestScrollbar();
+    TestScrollBounce();
     TestThemeSettings();
     TestResizable();
     TestTree();

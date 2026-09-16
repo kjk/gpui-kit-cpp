@@ -53,6 +53,7 @@ void TestDialog();
 void TestSheet();
 void TestMotion();
 void TestScrollbar();
+void TestScrollBounce();
 void TestThemeSettings();
 void TestResizable();
 void TestTree();
