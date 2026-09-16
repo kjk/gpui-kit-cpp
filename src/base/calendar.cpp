@@ -478,12 +478,14 @@ static bool CalAtOrBefore(LocalDate a, LocalDate b) {
 // One slot: built here, decorated by the caller, and what comes back is what
 // goes in the grid.
 static El* CalSlot(Ctx* cx, const CalendarOpts& o, Str id,
-                   const CalendarItemState& st, Listener onClick) {
+                   const CalendarItemState& st, Listener onClick,
+                   Str ariaLabel = {}) {
     El* item = CalendarItem::New(cx, id, onClick);
     if (o.label) {
         Str label = o.label(o.labelUser, cx, st.kind, st.value);
         if (label.s) {
-            item->Child(TextEl(cx->a, label));
+            item->AriaLabel(ariaLabel.s ? ariaLabel : label)
+                ->Child(TextEl(cx->a, label));
         }
     }
     if (!o.item) {
@@ -547,7 +549,9 @@ static El* CalMonthGrid(Ctx* cx, const CalendarOpts& o, int year, int month) {
         }
         Str id = StrDup(
             a, fmt("date-%d-%02d-%02d", date.year, date.month, date.day));
-        week->Child(CalSlot(cx, o, id, st, click)
+        Str ariaLabel =
+            StrDup(a, fmt("%04d-%02d-%02d", date.year, date.month, date.day));
+        week->Child(CalSlot(cx, o, id, st, click, ariaLabel)
                         ->W(o.cellSize)
                         ->H(o.cellSize)
                         ->ItemsCenter()
