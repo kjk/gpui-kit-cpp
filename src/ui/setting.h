@@ -322,11 +322,6 @@ struct SettingsState {
                              intptr_t ix);
     static void OnFieldReset(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                              intptr_t ix);
-    // NumberInput's two steppers, which clamp to the field's min and max.
-    static void OnFieldInc(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t ix);
-    static void OnFieldDec(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t ix);
     // reset_all: every field the page has built goes back to its default.
     static void OnResetPage(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                             intptr_t unused);

@@ -4109,6 +4109,13 @@ struct InputState {
     bool disabled = false;
     bool readonly = false;
     bool loading = false;
+    // NumberInput's current directional bounds. The themed facade refreshes
+    // these every frame; blur uses them to clamp a completed numeric value
+    // while leaving intermediate typing untouched.
+    bool numberHasMin = false;
+    bool numberHasMax = false;
+    double numberMin = 0;
+    double numberMax = 0;
     // A masked field draws one bullet per character. InputMode only.
     bool masked = false;
     bool cleanOnEscape = false;

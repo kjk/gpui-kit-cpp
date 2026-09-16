@@ -180,6 +180,75 @@ static void RenderOptionsNarrowCopiesAndReachCustomFields() {
     utassert(selected.pageIx == 3 && selected.groupIx == 2);
 }
 
+static El* FindSettingElement(El* root, const char* id) {
+    if (!root) {
+        return nullptr;
+    }
+    if (root->id.s && StrEqI(root->id, id)) {
+        return root;
+    }
+    for (El* child = root->first; child; child = child->next) {
+        if (El* found = FindSettingElement(child, id)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+static void NumberSettingsDelegateStepAndRangeToTheInputEngine() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+
+    NumberFieldOptions options;
+    options.min = 100;
+    options.max = 900;
+    options.step = 100;
+    El* root = Settings::New(&cx, StrL("number-settings"), state)
+                   ->Page(StrL("Editor"))
+                   ->Group(StrL("Font"))
+                   ->Item(StrL("Weight"), StrL("Font weight"))
+                   ->NumberField(StrL("400"), options)
+                   ->IntoEl();
+    SettingsState* settings = state.Get(&app);
+    InputState* input = settings && settings->fields.len == 1
+                            ? settings->fields[0].input
+                            : nullptr;
+    El* increment = FindSettingElement(root, "increment");
+    utassert(input && increment && increment->onClick.IsValid());
+    if (input && increment) {
+        increment->onClick.Call();
+        utassert(StrEqI(InputValue(input), "500"));
+        utassert(input->numberHasMin && input->numberMin == 100);
+        utassert(input->numberHasMax && input->numberMax == 900);
+
+        // A new range is refreshed by the facade. "1" is not clamped while
+        // typing the next digit; the completed "12" survives blur.
+        component::NumberInput::New(&cx, StrL("size"), input)
+            ->Min(6)
+            ->Max(48)
+            ->IntoEl();
+        InputSetValue(input, StrL("1"));
+        utassert(StrEqI(InputValue(input), "1"));
+        InputSetValue(input, StrL("12"));
+        InputBlur(input, &app, win);
+        utassert(StrEqI(InputValue(input), "12"));
+        InputSetValue(input, StrL("3"));
+        InputBlur(input, &app, win);
+        utassert(StrEqI(InputValue(input), "6"));
+    }
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestSetting() {
     TestSuite("setting");
     TheQueryMatchesTitleDescriptionAndKeywords();
@@ -187,4 +256,5 @@ void TestSetting() {
     APageIsShownWhenAnyGroupIs();
     TypedFieldsRetainSourceResetSemanticsWithoutRtti();
     RenderOptionsNarrowCopiesAndReachCustomFields();
+    NumberSettingsDelegateStepAndRangeToTheInputEngine();
 }

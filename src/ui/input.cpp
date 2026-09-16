@@ -916,6 +916,15 @@ El* NumberInput::IntoEl() {
     // border: the editor inside wears no appearance of its own, so the frame
     // is the only thing that can say the editor has the keyboard.
     bool focused = state && state->focused && !disabled;
+    if (state) {
+        // InputState owns the range semantics: stepping and accessibility use
+        // this frame's policy, while blur can clamp after the element tree is
+        // no longer being consulted.
+        state->numberHasMin = hasMin;
+        state->numberMin = min;
+        state->numberHasMax = hasMax;
+        state->numberMax = max;
+    }
     Str base = id.s ? id : StrL("number");
     const NumberStep* policy = hasNumberStep ? &numberStep : nullptr;
     Func0 decDirect =

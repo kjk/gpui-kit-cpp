@@ -7,6 +7,7 @@
 
 #include "base/input.h"
 #include "base/element_ext.h"
+#include "base/number_input.h"
 #include "base/text_boundary.h"
 #include "base/theme.h"
 
@@ -6133,6 +6134,24 @@ void InputBlur(InputState* s, App* app, Window* win) {
     // Blurring ends the typing session, so a later undo stops here rather than
     // swallowing everything typed before the field lost focus.
     UndoBreakCoalescing(&s->undo);
+    // NumberInput tolerates an out-of-range value while it is being typed —
+    // otherwise entering "12" with a minimum of 6 would rewrite the first
+    // keystroke to 6. A completed value is clamped only when editing ends.
+    if (s->numberHasMin || s->numberHasMax) {
+        double value = 0;
+        if (NumberParseValue(InputValue(s), &value)) {
+            double clamped = value;
+            if (s->numberHasMin && clamped < s->numberMin) {
+                clamped = s->numberMin;
+            }
+            if (s->numberHasMax && clamped > s->numberMax) {
+                clamped = s->numberMax;
+            }
+            if (clamped != value) {
+                InputSetValue(s, fmt("%g", clamped));
+            }
+        }
+    }
     s->focused = false;
     s->selecting = false;
     s->focusWin = nullptr;

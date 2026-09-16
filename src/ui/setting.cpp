@@ -6,8 +6,6 @@
 #include "ui/select.h"
 #include "ui/switch.h"
 
-#include <stdlib.h>
-
 namespace gpui {
 
 namespace component {
@@ -120,22 +118,6 @@ static int DropdownIndex(const SearchableListState* st) {
     return st && st->selected.len > 0 ? st->selected[0] : -1;
 }
 
-// f64 -> the text a NumberInput shows. Rust writes `value.to_string()`, which
-// prints an integral f64 without a fraction; %g does the same.
-static Str SettingNumStr(Arena* a, double v) {
-    return StrDup(a, fmt("%g", v));
-}
-
-static double SettingNumParse(Str s, double fallback) {
-    if (!s.s || s.len <= 0) {
-        return fallback;
-    }
-    TempStr buf = StrDupTemp(s);
-    char* end = nullptr;
-    double v = strtod(buf.s, &end);
-    return end == buf.s ? fallback : v;
-}
-
 static SettingBinding* FieldAt(SettingsState* self, intptr_t ix) {
     if (!self || ix < 0 || ix >= self->fields.len) {
         return nullptr;
@@ -190,26 +172,6 @@ void SettingsState::OnFieldReset(SettingsState* self, Ctx* cx,
     Notify(cx);
 }
 
-// NumberInputEvent::Step: the value plus or minus the field's step, clamped
-// to its min and max, which is what Rust's number field does on the way back
-// into the input.
-static void FieldStep(SettingsState* self, Ctx* cx, intptr_t ix, int dir) {
-    SettingBinding* f = FieldAt(self, ix);
-    if (!f || !f->input) {
-        return;
-    }
-    double v = SettingNumParse(InputValue(f->input), 0);
-    v += f->num.step * dir;
-    if (v < f->num.min) {
-        v = f->num.min;
-    }
-    if (v > f->num.max) {
-        v = f->num.max;
-    }
-    InputSetValue(f->input, SettingNumStr(cx->a, v));
-    Notify(cx);
-}
-
 void SettingsState::OnResetPage(SettingsState* self, Ctx* cx,
                                 const ClickEvent* ev, intptr_t) {
     if (!self) {
@@ -224,16 +186,6 @@ void SettingsState::OnSearchFocus(SettingsState* self, Ctx* cx,
                                   const ClickEvent*) {
     self->search.focused = true;
     Notify(cx);
-}
-
-void SettingsState::OnFieldInc(SettingsState* self, Ctx* cx, const ClickEvent*,
-                               intptr_t ix) {
-    FieldStep(self, cx, ix, 1);
-}
-
-void SettingsState::OnFieldDec(SettingsState* self, Ctx* cx, const ClickEvent*,
-                               intptr_t ix) {
-    FieldStep(self, cx, ix, -1);
 }
 
 Settings* Settings::New(Ctx* cx, Str id, Entity<SettingsState> state) {
@@ -568,14 +520,17 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             out.dirty = input && !base::StrEq(InputValue(input), it.defStr);
             break;
         case SettingFieldKind::NumberInput:
-            out.el =
-                NumberInput::New(cx, id, input)
-                    ->W(w)
-                    ->Disabled(options.disabled)
-                    ->WithSize(options.size)
-                    ->OnInc(ListenTo(s->state, &SettingsState::OnFieldInc, ix))
-                    ->OnDec(ListenTo(s->state, &SettingsState::OnFieldDec, ix))
-                    ->IntoEl();
+            // The number engine owns stepping and range policy. In
+            // particular, it keeps out-of-range intermediate text while the
+            // user types and clamps only on blur.
+            out.el = NumberInput::New(cx, id, input)
+                         ->W(w)
+                         ->Disabled(options.disabled)
+                         ->WithSize(options.size)
+                         ->Step(it.num.step)
+                         ->Min(it.num.min)
+                         ->Max(it.num.max)
+                         ->IntoEl();
             out.dirty = input && !base::StrEq(InputValue(input), it.defStr);
             break;
         case SettingFieldKind::Dropdown: {
