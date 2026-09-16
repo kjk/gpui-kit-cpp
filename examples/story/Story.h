@@ -15,6 +15,7 @@ enum {
     StoryBreadcrumb,
     StoryBubble,
     StoryButton,
+    StoryCarousel,
     StoryCalendar,
     StoryChart,
     StoryCheckbox,

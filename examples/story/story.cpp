@@ -78,6 +78,8 @@ static const StoryInfo kMeta[StoryCount] = {
      "A styleable chat surface for text, rich content, and reactions."},
     {"button", "Button",
      "Displays a button or a component that looks like a button."},
+    {"carousel", "Carousel",
+     "A composable carousel with keyboard navigation and pagination."},
     {"calendar", "Calendar", "A calendar to select a date or date range."},
     {"chart", "Chart", "Beautiful Charts & Graphs."},
     {"checkbox", "Checkbox", "Select one or more independent options."},

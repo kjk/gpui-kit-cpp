@@ -10,6 +10,7 @@
 #include "ui/bubble.h"
 #include "ui/breadcrumb.h"
 #include "ui/button.h"
+#include "ui/carousel.h"
 #include "ui/chart.h"
 #include "ui/checkbox.h"
 #include "ui/clipboard.h"

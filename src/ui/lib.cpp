@@ -13,6 +13,7 @@ void Init(App* app) {
     ThemeSyncBase(app);
 
     DatePickerInitKeys();
+    CarouselInitKeys();
     ListInitKeys();
     CommandInitKeys();
     NotificationInitSystem(app);
