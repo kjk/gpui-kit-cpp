@@ -328,6 +328,39 @@ static void SegmentedShadowFitsInsideExpandedClips() {
     AppGlobalClear(&app);
 }
 
+static void FlexTabsGrowForEveryVariant() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const TabVariant variants[] = {
+        TabVariant::Tab,  TabVariant::Outline,   TabVariant::Segmented,
+        TabVariant::Pill, TabVariant::Underline,
+    };
+    for (const TabVariant variant : variants) {
+        TabBar* bar = TabBar::New(&cx, StrL("flex-tabs"))->Variant(variant);
+        bar->Tab(StrL("A"))->Flex1();
+        bar->Tab(StrL("B"))->Flex1();
+        El* root = bar->IntoEl();
+        El* first = FindNamedTab(root, "0");
+        El* second = FindNamedTab(root, "1");
+        utassert(first && second);
+        utassert(first && first->style.flexGrow == 1.f &&
+                 first->style.flexShrink == 1.f &&
+                 first->style.flexBasis == 0.f);
+        utassert(second && second->style.flexGrow == 1.f &&
+                 second->style.flexShrink == 1.f &&
+                 second->style.flexBasis == 0.f);
+    }
+
+    WindowMotionFree(win);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -339,4 +372,5 @@ void TestTab() {
     SourceNamedTabAndTabBarKeepContentAndCallbackRules();
     TabBarRetainsStyleSpacingScrollAndUnboundedChildren();
     SegmentedShadowFitsInsideExpandedClips();
+    FlexTabsGrowForEveryVariant();
 }

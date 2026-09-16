@@ -800,18 +800,10 @@ El* TabBar::IntoEl() {
                 inner->Child(child);
             }
         }
-        // Tab::flex_1(). Upstream wraps every tab of a variant that has an
-        // indicator — Segmented, Pill, Underline — in a
-        // `div().flex_shrink_0().on_prepaint(..)` so it can measure it, and
-        // the wrapper is what the bar lays out. The tab's own flex_1 then
-        // only fills that wrapper, which is content-sized, so those three
-        // variants never stretch however many tabs ask to. Reproduced rather
-        // than fixed: the colour picker's Palette/HSLA pair and the tabs
-        // story's "Filling Space" both look the way they do because of it.
-        bool wrapped = variant == TabVariant::Segmented ||
-                       variant == TabVariant::Pill ||
-                       variant == TabVariant::Underline;
-        if (item.flex1 && !wrapped) {
+        // Upstream now copies a tab's flex grow/basis onto its measurement
+        // wrapper. C++ has no extra wrapper here, so applying Flex1 directly
+        // gives every variant the same corrected behavior.
+        if (item.flex1) {
             tab->Flex1();
             inner->W(kFill);
         }
