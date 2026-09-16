@@ -8,6 +8,8 @@ namespace gpui {
 
 namespace component {
 
+struct Icon;
+
 // Rust uses an IconNamed trait so application enums can supply paths. The
 // POD port represents the trait's one return value directly; any custom icon
 // set can return one of these without inheritance, RTTI or retained objects.
@@ -15,6 +17,13 @@ struct IconNamed {
     Str path = {};
 
     static IconNamed From(IconName name);
+};
+
+// Rust needs an extension trait only because its complete shared icon enum is
+// owned by gpui-kit-assets. C++ has one canonical IconName, so the extension
+// is the corresponding construction helper.
+struct IconNameExt {
+    static Icon* View(Ctx* cx, IconName name);
 };
 
 // IconSource: where the icon's picture comes from. The last `Path` or `Data`

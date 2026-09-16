@@ -4,6 +4,10 @@ namespace gpui {
 
 namespace component {
 
+Icon* IconNameExt::View(Ctx* cx, IconName name) {
+    return Icon::New(cx, name);
+}
+
 IconNamed IconNamed::From(IconName name) {
     return {IconNamePath(name)};
 }
