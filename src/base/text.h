@@ -128,11 +128,36 @@ struct MarkdownNode {
     Str ToMarkdown() const;
 };
 
+// inline_element.rs. An element is one atomic object in a wrapping text row;
+// an explicit baseline is measured down from its top edge.
+struct InlineElement {
+    El* element = nullptr;
+    float baseline = 0;
+    bool hasBaseline = false;
+
+    static InlineElement New(El* element) { return {element, 0, false}; }
+    InlineElement& WithBaseline(float px) {
+        baseline = px;
+        hasBaseline = true;
+        return *this;
+    }
+};
+
+struct InlineRenderContext {
+    gpui::Style textStyle = {};
+    float fontSize = 0;
+    float lineHeight = 0;
+    float remSize = 16;
+};
+
 using MarkdownBlockParserFn = bool (*)(const markdown::Node* node,
                                        const MarkdownParseContext* context,
                                        void* data, MarkdownNode* out);
 using MarkdownBlockRenderFn = El* (*)(Ctx * cx, const MarkdownNode* node,
                                       void* data);
+using MarkdownInlineRenderFn =
+    InlineElement (*)(Ctx* cx, const MarkdownNode* node,
+                      const InlineRenderContext* context, void* data);
 
 // MarkdownPlugin's object-safe C++ projection. Function pointers plus an
 // opaque payload are the repository-wide replacement for boxed closures.
@@ -140,8 +165,9 @@ struct MarkdownPlugin {
     Str name = {};
     MarkdownBlockParserFn parse = nullptr;
     MarkdownBlockRenderFn render = nullptr;
+    MarkdownInlineRenderFn renderInline = nullptr;
     void* data = nullptr;
-    bool isBlock = true;
+    bool isBlock = false;
 };
 
 struct MarkdownBlockParser {
@@ -155,6 +181,13 @@ struct MarkdownBlockRenderer {
     void* data = nullptr;
 };
 
+struct MarkdownInlineRenderer {
+    Str name = {};
+    MarkdownBlockRenderFn render = nullptr;
+    MarkdownInlineRenderFn renderInline = nullptr;
+    void* data = nullptr;
+};
+
 // markdown_ext.rs MarkdownExtensions. MDX remains unavailable because the
 // pinned markdown crate port excludes MDX itself; Mdx records the request so
 // callers can detect that it cannot be honored instead of silently parsing
@@ -162,6 +195,8 @@ struct MarkdownBlockRenderer {
 struct MarkdownExtensions {
     ArenaVec<MarkdownBlockParser> blockParsers{};
     ArenaVec<MarkdownBlockRenderer> blockRenderers{};
+    ArenaVec<MarkdownBlockParser> inlineParsers{};
+    ArenaVec<MarkdownInlineRenderer> inlineRenderers{};
     uint64_t revision = 0;
     bool enableMdx = false;
     bool enableFrontmatter = false;
@@ -175,6 +210,7 @@ struct MarkdownExtensions {
                                       void* data = nullptr);
     MarkdownExtensions& Plugin(Arena* a, const MarkdownPlugin& plugin);
     const MarkdownBlockRenderer* Renderer(Str name) const;
+    const MarkdownInlineRenderer* InlineRenderer(Str name) const;
     // `has_same_parser_configuration`: whether replacing these handles can
     // change the parsed tree. A render method commonly rebuilds equivalent
     // plugin closures every frame — their revisions all differ, but the
@@ -220,6 +256,8 @@ struct MdRun {
     // ImageNode::width / height, when the document gave them. 0 is "its own".
     float imgW = 0;
     float imgH = 0;
+    MarkdownNode custom = {};
+    bool hasCustom = false;
     MdRun* next = nullptr;
     uint8_t marks = 0;
 };

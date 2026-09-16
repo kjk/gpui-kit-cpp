@@ -368,22 +368,10 @@ static El* UserCardRender(Ctx* cx, const component::MdPluginNode* node, void*) {
 //
 // Upstream renders a formula by handing it to KaTeX in node and reading the
 // SVG back; there is no node here and no SVG text engine to lay one out, so
-// this is the example's own fallback path — `render_math_text`, italic, with
-// the Greek names spelled out and the scripts folded into the Unicode
-// super- and subscripts. Its `Node::Math` arm is not reachable either: the
-// math extension is not one of the ones `src/markdown` parses, so a formula
-// arrives as the paragraph it was written in.
-
-struct MathSegment {
-    Str source = {};
-    bool math = false;
-};
-
-struct MathNode {
-    bool block = false;
-    MathSegment* segs = nullptr;
-    int nSegs = 0;
-};
+// this is the example's own fallback path — italic text with Greek names
+// spelled out and scripts folded into Unicode super- and subscripts. The
+// parse-time plugins are otherwise the same shape: InlineMath is an atomic
+// object in a paragraph and Math is a block of its own.
 
 static bool MathIsSpace(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r';
@@ -616,152 +604,6 @@ static Str MathPrettify(Ctx* cx, Str src) {
     return owned;
 }
 
-static Str MathTrim(Str s) {
-    int lo = 0;
-    int hi = s.len;
-    while (lo < hi && MathIsSpace(s.s[lo])) {
-        lo++;
-    }
-    while (hi > lo && MathIsSpace(s.s[hi - 1])) {
-        hi--;
-    }
-    return Str(s.s + lo, hi - lo);
-}
-
-// is_escaped: an odd run of backslashes in front of the byte.
-static bool MathEscaped(Str s, int at) {
-    int n = 0;
-    while (at - n - 1 >= 0 && s.s[at - n - 1] == '\\') {
-        n++;
-    }
-    return (n % 2) == 1;
-}
-
-// block_math_source: `$$ .. $$` with something between them.
-static bool MathBlockSource(Str text, Str* out) {
-    Str t = MathTrim(text);
-    if (t.len < 5 || !StrEq(Str(t.s, 2), StrL("$$")) ||
-        !StrEq(Str(t.s + t.len - 2, 2), StrL("$$"))) {
-        return false;
-    }
-    Str body = MathTrim(Str(t.s + 2, t.len - 4));
-    if (body.len <= 0) {
-        return false;
-    }
-    *out = body;
-    return true;
-}
-
-// inline_math_segments: the `$..$` runs of a paragraph, with the text around
-// them, skipping what a code span holds. Answers false when none are math.
-static bool MathInlineSegments(Ctx* cx, Str src, MathSegment** out, int* nOut) {
-    Arena* a = cx->a;
-    const int kMaxSegs = 64;
-    auto* segs = (MathSegment*)Alloc(a, (int)sizeof(MathSegment) * kMaxSegs);
-    if (!segs) {
-        return false;
-    }
-    int n = 0;
-    int textStart = 0;
-    int ix = 0;
-    int codeTicks = 0;
-    bool anyMath = false;
-    while (ix < src.len && n + 2 < kMaxSegs) {
-        if (src.s[ix] == '`') {
-            int ticks = 0;
-            while (ix + ticks < src.len && src.s[ix + ticks] == '`') {
-                ticks++;
-            }
-            if (codeTicks == ticks) {
-                codeTicks = 0;
-            } else if (codeTicks == 0) {
-                codeTicks = ticks;
-            }
-            ix += ticks;
-            continue;
-        }
-        bool dollar = src.s[ix] == '$' && codeTicks == 0 &&
-                      !MathEscaped(src, ix) &&
-                      (ix + 1 >= src.len || src.s[ix + 1] != '$');
-        if (dollar) {
-            int end = ix + 1;
-            while (end < src.len) {
-                if (src.s[end] == '$' && !MathEscaped(src, end) &&
-                    (end + 1 >= src.len || src.s[end + 1] != '$')) {
-                    break;
-                }
-                end++;
-            }
-            if (end < src.len) {
-                Str math = MathTrim(Str(src.s + ix + 1, end - ix - 1));
-                if (math.len > 0) {
-                    if (textStart < ix) {
-                        segs[n].source = Str(src.s + textStart, ix - textStart);
-                        segs[n].math = false;
-                        n++;
-                    }
-                    segs[n].source = math;
-                    segs[n].math = true;
-                    n++;
-                    anyMath = true;
-                    ix = end + 1;
-                    textStart = ix;
-                    continue;
-                }
-            }
-        }
-        ix++;
-    }
-    if (!anyMath) {
-        return false;
-    }
-    if (textStart < src.len && n < kMaxSegs) {
-        segs[n].source = Str(src.s + textStart, src.len - textStart);
-        segs[n].math = false;
-        n++;
-    }
-    *out = segs;
-    *nOut = n;
-    return true;
-}
-
-static bool MathParse(Ctx* cx, component::MdNode* n, Str text, void*,
-                      component::MdPluginNode* out) {
-    if (n->kind != component::MdKind::Paragraph || text.len <= 0) {
-        return false;
-    }
-    Arena* a = cx->a;
-    auto* node = ArenaNew<MathNode>(a);
-    if (!node) {
-        return false;
-    }
-    Str body;
-    if (MathBlockSource(text, &body)) {
-        auto* seg = ArenaNew<MathSegment>(a);
-        seg->source = body;
-        seg->math = true;
-        node->block = true;
-        node->segs = seg;
-        node->nSegs = 1;
-        out->text = text;
-        out->markdown = text;
-        out->data = node;
-        return true;
-    }
-    MathSegment* segs = nullptr;
-    int nSegs = 0;
-    if (!MathInlineSegments(cx, text, &segs, &nSegs)) {
-        return false;
-    }
-    node->block = false;
-    node->segs = segs;
-    node->nSegs = nSegs;
-    out->text = text;
-    out->markdown = text;
-    out->data = node;
-    return true;
-}
-
 // render_math_text: the formula italic, a size up when it is a block of its
 // own, and the line height GPUI gives each case.
 static El* MathFormula(Ctx* cx, Str source, bool inlineMath, float fontSize) {
@@ -777,26 +619,46 @@ static El* MathFormula(Ctx* cx, Str source, bool inlineMath, float fontSize) {
         ->Shrink0();
 }
 
-static El* MathRender(Ctx* cx, const component::MdPluginNode* node, void*) {
-    Arena* a = cx->a;
-    const auto* math = (const MathNode*)node->data;
-    const float kFontSize = 16.f;
-    if (math->block) {
-        // A formula of its own is centred, with py_1 around it.
-        return Div(a)->FlexRow()->W(kFill)->JustifyCenter()->PadY(4)->Child(
-            MathFormula(cx, math->segs[0].source, false, kFontSize));
+static bool MathInlineParse(const markdown::Node* source,
+                            const MarkdownParseContext* context, void*,
+                            MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::InlineMath) {
+        return false;
     }
-    El* row = Div(a)->FlexRow()->FlexWrap()->W(kFill)->ItemsCenter();
-    for (int i = 0; i < math->nSegs; i++) {
-        const MathSegment& seg = math->segs[i];
-        if (seg.math) {
-            row->Child(MathFormula(cx, seg.source, true, kFontSize));
-        } else {
-            row->Child(
-                TextEl(a, seg.source)->Font(kFontSize)->LineHeight(1.5f));
-        }
+    Str value = context->Value(source, markdown::NodeStrKind::Value);
+    StrBuilder literal(context->arena);
+    literal.AppendChar('$');
+    literal.Append(value);
+    literal.AppendChar('$');
+    *out = MarkdownNode::New(context->Copy(StrL("math-inline")))
+               .Text(context->Copy(value))
+               .Markdown(literal.TakeStr());
+    return true;
+}
+
+static InlineElement MathInlineRender(Ctx* cx, const MarkdownNode* node,
+                                      const InlineRenderContext* context,
+                                      void*) {
+    return InlineElement::New(
+               MathFormula(cx, node->text, true, context->fontSize))
+        .WithBaseline(context->lineHeight * 0.75f);
+}
+
+static bool MathBlockParse(const markdown::Node* source,
+                           const MarkdownParseContext* context, void*,
+                           MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::Math) {
+        return false;
     }
-    return row;
+    Str value = context->Value(source, markdown::NodeStrKind::Value);
+    *out = MarkdownNode::New(context->Copy(StrL("math-block")))
+               .Text(context->Copy(value));
+    return true;
+}
+
+static El* MathBlockRender(Ctx* cx, const MarkdownNode* node, void*) {
+    return Div(cx->a)->FlexRow()->W(kFill)->JustifyCenter()->PadY(4)->Child(
+        MathFormula(cx, node->text, false, 16.f));
 }
 
 static void OnLink(MarkdownApp* self, Ctx* cx, const ClickEvent*,
@@ -965,7 +827,17 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
     // .plugin(TickerPlugin::new(..)).plugin(UserCardPlugin::new())
     tv->Plugin(StrL("ticker"), &TickerParse, &TickerRender);
     tv->Plugin(StrL("user-card"), &UserCardParse, &UserCardRender);
-    tv->Plugin(StrL("math"), &MathParse, &MathRender);
+    MarkdownPlugin inlineMath;
+    inlineMath.name = StrL("math-inline");
+    inlineMath.parse = &MathInlineParse;
+    inlineMath.renderInline = &MathInlineRender;
+    tv->Plugin(inlineMath);
+    MarkdownPlugin blockMath;
+    blockMath.name = StrL("math-block");
+    blockMath.parse = &MathBlockParse;
+    blockMath.render = &MathBlockRender;
+    blockMath.isBlock = true;
+    tv->Plugin(blockMath);
     El* preview = tv->TableScroll(!self->tableWrap)
                       ->Selectable()
                       ->SelFormat(self->selFormat)

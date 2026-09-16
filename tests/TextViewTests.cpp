@@ -1393,6 +1393,106 @@ static El* RenderNothing(Ctx*, const MarkdownNode*, void*) {
     return nullptr;
 }
 
+static int gInlineParses = 0;
+static int gInlineRenders = 0;
+static bool gInlineInheritedBold = false;
+static bool gInlineInheritedLink = false;
+
+static bool ParseInlineMath(const markdown::Node* source,
+                            const MarkdownParseContext* context, void*,
+                            MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::InlineMath) return false;
+    gInlineParses++;
+    utassert(
+        StrEq(context->Value(source, markdown::NodeStrKind::Value), StrL("x")));
+    *out = MarkdownNode::New(context->Copy(StrL("formula")))
+               .Text(context->Copy(StrL("formula")))
+               .Markdown(context->Copy(StrL("$x$")));
+    return true;
+}
+
+static InlineElement RenderInlineMath(Ctx* cx, const MarkdownNode* node,
+                                      const InlineRenderContext* context,
+                                      void*) {
+    gInlineRenders++;
+    gInlineInheritedBold = context->textStyle.fontSemibold || context->textStyle
+                                                                  .fontBold;
+    gInlineInheritedLink = context->textStyle.underline;
+    return InlineElement::New(TextEl(cx->a, node->text)->Id(StrL("formula")))
+        .WithBaseline(context->fontSize * 0.75f);
+}
+
+static MdRun* FirstRunOfKind(MdNode* node, MdKind kind) {
+    if (!node) return nullptr;
+    if (node->kind == kind) return node->runFirst;
+    for (MdNode* child = node->first; child; child = child->next) {
+        if (MdRun* run = FirstRunOfKind(child, kind)) return run;
+    }
+    return nullptr;
+}
+
+static El* FindTextViewElement(El* element, const char* id) {
+    if (!element) return nullptr;
+    if (element->id.s && StrEqI(element->id, id)) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindTextViewElement(child, id)) return found;
+    }
+    return nullptr;
+}
+
+static void TestMarkdownInlinePlugin() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+
+    MarkdownPlugin plugin;
+    plugin.name = StrL("formula");
+    plugin.parse = &ParseInlineMath;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(a, plugin);
+
+    gInlineParses = 0;
+    gInlineRenders = 0;
+    MdNode* doc = MdParseCachedForTest(
+        &cx, a, StrL("before **[$x$](https://example.com)** after"),
+        &extensions);
+    MdRun* custom = FirstRunOfKind(doc, MdKind::Paragraph);
+    while (custom && !custom->hasCustom) custom = custom->next;
+    utassert(custom && custom->hasCustom);
+    utassert(custom && StrEq(custom->text, StrL("formula")));
+    utassert(custom && StrEq(custom->custom.ToMarkdown(), StrL("$x$")));
+    utassert(custom && (custom->marks & MdBold) && (custom->marks & MdLink));
+    utassert(custom && StrEq(custom->href, StrL("https://example.com")));
+
+    El* root =
+        TextView::New(&cx, StrL("before **[$x$](https://example.com)** after"))
+            ->MarkdownExtensionsSet(extensions)
+            ->IntoEl();
+    utassert(FindTextViewElement(root, "formula") != nullptr);
+    utassert(gInlineParses >= 1 && gInlineRenders == 1);
+    utassert(gInlineInheritedBold && gInlineInheritedLink);
+
+    // Math syntax is enabled even without a plugin; an unclaimed expression
+    // remains the literal text the author typed and code spans stay code.
+    MdNode* plain = MdParse(a, StrL("spent $5 and $10, but `$code$` stayed"));
+    MdRun* run = FirstRunOfKind(plain, MdKind::Paragraph);
+    StrBuilder text;
+    for (; run; run = run->next) text.Append(run->text);
+    Str flattened = text.TakeStr();
+    utassert(StrEq(flattened, StrL("spent $5 and $10, but $code$ stayed")));
+    StrFree(flattened);
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -1536,6 +1636,7 @@ void TestTextView() {
     TestTextViewDefaultsAndOptInHighlighting();
     TestMarkdownExtensionsParserConfiguration(a);
     TestMarkdownFrontmatter();
+    TestMarkdownInlinePlugin();
     TestStatelessMarkdownSettles();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();

@@ -164,6 +164,12 @@ MarkdownExtensions& MarkdownExtensions::Plugin(Arena* a,
     if (plugin.isBlock && plugin.parse && plugin.render) {
         BlockParser(a, plugin.parse, plugin.data);
         BlockRenderer(a, plugin.name, plugin.render, plugin.data);
+    } else if (!plugin.isBlock && plugin.parse &&
+               (plugin.render || plugin.renderInline)) {
+        inlineParsers.Append(a, {plugin.parse, plugin.data});
+        inlineRenderers.Append(
+            a, {plugin.name, plugin.render, plugin.renderInline, plugin.data});
+        revision = NextMarkdownExtensionsRevision();
     }
     return *this;
 }
@@ -173,13 +179,20 @@ bool MarkdownExtensions::HasSameParserConfiguration(
     if (enableMdx != other.enableMdx ||
         enableFrontmatter != other.enableFrontmatter ||
         blockParsers.len != other.blockParsers.len ||
-        blockRenderers.len != other.blockRenderers.len) {
+        blockRenderers.len != other.blockRenderers.len ||
+        inlineParsers.len != other.inlineParsers.len ||
+        inlineRenderers.len != other.inlineRenderers.len) {
         return false;
     }
     // Rust compares the renderer map's keys; the order they were registered
     // in is not part of the parser's shape.
     for (int i = 0; i < blockRenderers.len; i++) {
         if (!other.Renderer(blockRenderers[i].name)) {
+            return false;
+        }
+    }
+    for (int i = 0; i < inlineRenderers.len; i++) {
+        if (!other.InlineRenderer(inlineRenderers[i].name)) {
             return false;
         }
     }
@@ -191,12 +204,22 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     h = h * 1099511628211ull + (enableFrontmatter ? 1ull : 0ull);
     h = h * 1099511628211ull + (uint64_t)blockParsers.len;
     h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
+    h = h * 1099511628211ull + (uint64_t)inlineParsers.len;
+    h = h * 1099511628211ull + (uint64_t)inlineRenderers.len;
     // Name by name, and order-independent, so a renderer table rebuilt in a
     // different order is still the same parser configuration.
     uint64_t names = 0;
     for (int i = 0; i < blockRenderers.len; i++) {
         uint64_t one = 1469598103934665603ull;
         Str name = blockRenderers[i].name;
+        for (int at = 0; at < name.len; at++) {
+            one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
+        }
+        names += one;
+    }
+    for (int i = 0; i < inlineRenderers.len; i++) {
+        uint64_t one = 1469598103934665603ull;
+        Str name = inlineRenderers[i].name;
         for (int at = 0; at < name.len; at++) {
             one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
         }
@@ -209,6 +232,16 @@ const MarkdownBlockRenderer* MarkdownExtensions::Renderer(Str name) const {
     for (int i = 0; i < blockRenderers.len; i++) {
         if (base::StrEq(blockRenderers[i].name, name)) {
             return &blockRenderers[i];
+        }
+    }
+    return nullptr;
+}
+
+const MarkdownInlineRenderer* MarkdownExtensions::InlineRenderer(
+    Str name) const {
+    for (int i = 0; i < inlineRenderers.len; i++) {
+        if (base::StrEq(inlineRenderers[i].name, name)) {
+            return &inlineRenderers[i];
         }
     }
     return nullptr;
@@ -713,6 +746,28 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h) {
     n->runLast = r;
 }
 
+static void AddCustomInline(MdBuild* b, const MarkdownNode& custom) {
+    MdNode* n = b->cur;
+    MdRun* r = ArenaNew<MdRun>(b->a);
+    r->custom = custom;
+    r->custom.name = StrDup(b->a, custom.name);
+    r->custom.text = StrDup(b->a, custom.text);
+    r->custom.markdown = StrDup(b->a, custom.markdown);
+    // Paragraph::text includes an inline object's atomic plain-text value.
+    // Keeping it on the run also makes table sizing, dumping and accessibility
+    // see the same content as the renderer.
+    r->text = r->custom.text;
+    r->hasCustom = true;
+    r->marks = b->marks;
+    r->href = b->href;
+    if (n->runLast) {
+        n->runLast->next = r;
+    } else {
+        n->runFirst = r;
+    }
+    n->runLast = r;
+}
+
 // "&amp;" -> "&". Returns the entity unchanged when it is not one the crate's
 // table knows. Kept as the public compatibility helper; both parsers decode
 // character references before their trees reach the GPUI projection.
@@ -805,6 +860,19 @@ static Str MdDefUrl(MdBuild* b, Str identifier) {
 }
 
 static void MdInlineNode(MdBuild* b, const md::Node* n) {
+    if (b->extensions) {
+        MarkdownParseContext context;
+        context.arena = b->a;
+        context.source = b->source;
+        for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
+            const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
+            MarkdownNode custom;
+            if (parser.fn && parser.fn(n, &context, parser.data, &custom)) {
+                AddCustomInline(b, custom);
+                return;
+            }
+        }
+    }
     switch (n->kind) {
         case md::NodeKind::Text: {
             // Only text-node line endings are soft breaks. Explicit Break
@@ -847,8 +915,20 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
         case md::NodeKind::InlineCode:
         case md::NodeKind::InlineMath: {
             uint8_t saved = b->marks;
-            b->marks = (uint8_t)(b->marks | MdCode);
-            AddText(b, V(b, n, md::NodeStrKind::Value));
+            if (n->kind == md::NodeKind::InlineCode) {
+                b->marks = (uint8_t)(b->marks | MdCode);
+                AddText(b, V(b, n, md::NodeStrKind::Value));
+            } else {
+                // Math parsing is on by default. An unclaimed node remains
+                // literal prose rather than silently losing its delimiters
+                // or changing to inline-code styling.
+                Str value = V(b, n, md::NodeStrKind::Value);
+                StrBuilder literal(b->a);
+                literal.AppendChar('$');
+                literal.Append(value);
+                literal.AppendChar('$');
+                AddText(b, literal.TakeStr());
+            }
             b->marks = saved;
             break;
         }
@@ -1139,6 +1219,11 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     // task lists, footnotes and bare-URL autolinks. `parse_options` in
     // crates/ui/src/text/markdown_ext.rs asks for the same.
     md::ParseOptions options = md::ParseOptions::Gfm();
+    // markdown_ext.rs enables both halves together. Inline plugins can claim
+    // InlineMath, block plugins can claim Math, and unclaimed nodes take the
+    // literal/code-block fallbacks above and below.
+    options.constructs.mathText = true;
+    options.constructs.mathFlow = true;
     options.constructs.frontmatter = extensions && extensions
                                                        ->enableFrontmatter;
     md::Node* root = md::ToMdast(a, source, options);
@@ -1718,7 +1803,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
 }
 
 static bool IsPlainRun(MdRun* r) {
-    if (!r || r->next || r->marks != 0 || r->imgSrc.len > 0) {
+    if (!r || r->next || r->marks != 0 || r->imgSrc.len > 0 || r->hasCustom) {
         return false;
     }
     for (int i = 0; i < r->text.len; i++) {
@@ -1776,7 +1861,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // nothing else is a block, and keeps the picture's own size.
     bool inFlow = false;
     for (MdRun* r = n->runFirst; r && !inFlow; r = r->next) {
-        inFlow = r->imgSrc.len <= 0 && r->text.len > 0;
+        inFlow = r->hasCustom || (r->imgSrc.len <= 0 && r->text.len > 0);
     }
     El* col = Div(a)->FlexCol()->W(kFill);
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
@@ -1805,6 +1890,50 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         flush();
         marks = r->marks;
         href = r->href;
+        if (r->hasCustom) {
+            const MarkdownInlineRenderer* renderer =
+                markdownExtensions.InlineRenderer(r->custom.name);
+            InlineRenderContext context;
+            context.fontSize = font;
+            context.lineHeight = font * kLineHeight;
+            context.remSize = 16;
+            context.textStyle.fontSize = font;
+            context.textStyle.lineHeight = kLineHeight;
+            context.textStyle.color = color;
+            int inheritedWeight =
+                (marks & MdBold) ? (weight > 2 ? weight : 2) : weight;
+            context.textStyle.fontBold = inheritedWeight >= 3;
+            context.textStyle.fontSemibold = inheritedWeight == 2;
+            context.textStyle.fontMedium = inheritedWeight == 1;
+            context.textStyle.italic = (marks & MdItalic) != 0;
+            context.textStyle.fontMono = (marks & MdCode) != 0;
+            context.textStyle.underline = (marks & (MdLink | MdUnderline)) != 0;
+            context.textStyle.strike = (marks & MdDel) != 0;
+            if (marks & MdLink) {
+                context.textStyle.color = textViewStyle.link;
+            }
+            InlineElement rendered;
+            if (renderer) {
+                if (renderer->renderInline) {
+                    rendered = renderer->renderInline(cx, &r->custom, &context,
+                                                      renderer->data);
+                } else if (renderer->render) {
+                    rendered = InlineElement::New(
+                        renderer->render(cx, &r->custom, renderer->data));
+                }
+            }
+            if (rendered.element) {
+                if (rendered.hasBaseline) {
+                    rendered.element->MarginT(std::max(
+                        0.f, context.lineHeight * 0.75f - rendered.baseline));
+                }
+                row->Child(rendered.element);
+            } else if (r->custom.text) {
+                row->Child(
+                    Word(r->custom.text, font, color, marks, weight, href));
+            }
+            continue;
+        }
         if (r->imgSrc.len > 0) {
             row->Child(SrcImage(ImageRun(r, font, color, inFlow), r));
             continue;
@@ -3050,6 +3179,13 @@ TextView* TextView::MarkdownExtensionsSet(
     for (int i = 0; i < extensions.blockRenderers.len; i++) {
         markdownExtensions.blockRenderers
             .Append(a, extensions.blockRenderers[i]);
+    }
+    for (int i = 0; i < extensions.inlineParsers.len; i++) {
+        markdownExtensions.inlineParsers.Append(a, extensions.inlineParsers[i]);
+    }
+    for (int i = 0; i < extensions.inlineRenderers.len; i++) {
+        markdownExtensions.inlineRenderers
+            .Append(a, extensions.inlineRenderers[i]);
     }
     return this;
 }
