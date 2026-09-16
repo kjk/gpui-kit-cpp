@@ -192,6 +192,12 @@ Editor* Editor::ContextMenu(EditorContextMenuFn fn, void* data) {
     return this;
 }
 
+Editor* Editor::OnPaste(InputPasteFn fn, void* data) {
+    onPaste = fn;
+    onPasteData = data;
+    return this;
+}
+
 Editor* Editor::Language(Str value) {
     language = value;
     return this;
@@ -241,6 +247,8 @@ El* Editor::IntoEl() {
     state->mode.kind = LayoutModeKind::CodeEditor;
     state->disabled = disabled;
     state->readonly = readonly;
+    state->pasteHandler = !disabled && !readonly ? onPaste : nullptr;
+    state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
 
     Highlighter* highlighter = Highlighter::New(cx, id, state);
     highlighter->Searchable(searchable)
@@ -310,6 +318,11 @@ Input* Input::OnChange(Listener fn) {
 
 Input* Input::OnFocus(Listener fn) {
     onFocus = fn;
+    return this;
+}
+Input* Input::OnPaste(InputPasteFn fn, void* data) {
+    onPaste = fn;
+    onPasteData = data;
     return this;
 }
 Input* Input::WithSize(UiSize s) {
@@ -532,6 +545,11 @@ El* Input::IntoEl() {
         col->Child(TextEl(a, label)->Font(12)->Fg(th.foreground));
     }
     bool focused = state && state->focused && !disabled;
+    if (state) {
+        bool editable = !disabled && !readonly && !state->readonly;
+        state->pasteHandler = editable ? onPaste : nullptr;
+        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
+    }
     if (focused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
             cx->win, InputNativeContentType(hasContentType, contentType));
@@ -709,6 +727,12 @@ Textarea* Textarea::OnFocus(Listener fn) {
     return this;
 }
 
+Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
+    onPaste = fn;
+    onPasteData = data;
+    return this;
+}
+
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool focused = state && state->focused;
@@ -719,6 +743,9 @@ El* Textarea::IntoEl() {
     editor.selection = RgbaOpacity(th.selection, 0.4f);
     editor.fontSize = kInputTextSize;
     if (state) {
+        bool editable = !state->disabled && !state->readonly;
+        state->pasteHandler = editable ? onPaste : nullptr;
+        state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
         state->softWrap = softWrap;
         if (rows > 0) {
             LayoutModeSetRows(&state->mode, rows);

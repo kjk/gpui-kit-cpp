@@ -136,6 +136,8 @@ struct Input {
     Listener onFocus;
     Listener onClear;
     Listener onToggleMask;
+    InputPasteFn onPaste = nullptr;
+    void* onPasteData = nullptr;
 
     static Input* New(Ctx* cx, Str id, InputState* state);
     Input* Label(Str s);
@@ -166,6 +168,7 @@ struct Input {
     Input* W(float v);
     Input* OnChange(Listener fn);
     Input* OnFocus(Listener fn);
+    Input* OnPaste(InputPasteFn fn, void* data = nullptr);
     El* IntoEl();
 };
 
@@ -207,6 +210,8 @@ struct Editor {
     Str ariaLabel = {};
     EditorContextMenuFn contextMenu = nullptr;
     void* contextMenuData = nullptr;
+    InputPasteFn onPaste = nullptr;
+    void* onPasteData = nullptr;
     // The port keeps EditorState's source-language/decorations settings on
     // the frame value which binds that state. These are forwarded to the
     // compatibility Highlighter implementation; callers can stay on the
@@ -235,6 +240,7 @@ struct Editor {
     Editor* Role(AccessibilityRole value);
     Editor* AriaLabel(Str value);
     Editor* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
+    Editor* OnPaste(InputPasteFn fn, void* data = nullptr);
     Editor* Language(Str value);
     Editor* Decorations(const TextSpan* runs, int n);
     Editor* ActiveLine(bool value = true);
@@ -311,6 +317,8 @@ struct Textarea {
     AccessibilityRole accessibilityRole = AccessibilityRole::MultilineTextInput;
     Str ariaLabel = {};
     Listener onFocus;
+    InputPasteFn onPaste = nullptr;
+    void* onPasteData = nullptr;
 
     static Textarea* New(Ctx* cx, Str id, InputState* state);
     // Rust sizes a textarea by rows (`auto_grow(min, max)`); without one it
@@ -322,6 +330,7 @@ struct Textarea {
     Textarea* Role(AccessibilityRole role);
     Textarea* AriaLabel(Str label);
     Textarea* OnFocus(Listener fn);
+    Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
     El* IntoEl();
 };
 

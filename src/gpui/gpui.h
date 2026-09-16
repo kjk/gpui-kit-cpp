@@ -24,6 +24,28 @@ int StrToIntUnchecked(Str s);
 namespace gpui {
 
 struct App;
+struct Window;
+
+// gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
+// borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
+// an encoded image stream accepted by ImageSource::FromImage, and external
+// paths are UTF-8 separated by newlines. A platform fills every representation
+// it can read from one clipboard snapshot.
+struct ClipboardItem {
+    Str text = {};
+    const uint8_t* imageBytes = nullptr;
+    int imageBytesLen = 0;
+    Str externalPaths = {};
+
+    bool HasImage() const { return imageBytes && imageBytesLen > 0; }
+    bool HasExternalPaths() const { return externalPaths.len > 0; }
+    bool IsEmpty() const {
+        return text.len <= 0 && !HasImage() && !HasExternalPaths();
+    }
+};
+
+using InputPasteFn = bool (*)(void* data, const ClipboardItem& item, App* app,
+                              Window* win);
 
 struct Rgba {
     uint8_t r = 0;
@@ -4083,6 +4105,11 @@ struct InputState {
     bool masked = false;
     bool cleanOnEscape = false;
     bool submitOnEnter = false;
+    // Input/Editor/Textarea::on_paste. The current frame's themed facade sets
+    // this before BindInput points the window at the state. Returning true
+    // consumes the action; false falls through to normal text insertion.
+    InputPasteFn pasteHandler = nullptr;
+    void* pasteHandlerData = nullptr;
     // Editor-only language editing preferences. They survive language
     // changes; the active LanguageConfig is resolved at each edit.
     bool autoClose = true;
@@ -5983,6 +6010,9 @@ void AppFree(App* app);
 
 // Put UTF-8 text on the system clipboard.
 void ClipboardSetText(Window* win, Str text);
+// Read every clipboard representation this port exposes in one snapshot.
+// The returned views belong to `a`.
+ClipboardItem ClipboardGetItem(Arena* a, Window* win);
 // Take it back off. The result is arena-allocated and empty when the
 // clipboard holds no text.
 Str ClipboardGetText(Arena* a, Window* win);

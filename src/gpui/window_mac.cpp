@@ -1864,6 +1864,24 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return Str(buf, n);
 }
 
+ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem out;
+    out.text = ClipboardGetText(a, win);
+    NSPasteboard* pb = [NSPasteboard generalPasteboard];
+    NSData* image = [pb dataForType:NSPasteboardTypePNG];
+    if (!image) image = [pb dataForType:NSPasteboardTypeTIFF];
+    if (image && [image length] > 0 && [image length] <= INT_MAX) {
+        int len = (int)[image length];
+        auto* bytes = (uint8_t*)Alloc(a, len);
+        if (bytes) {
+            memcpy(bytes, [image bytes], (size_t)len);
+            out.imageBytes = bytes;
+            out.imageBytesLen = len;
+        }
+    }
+    return out;
+}
+
 // ─── app lifecycle ────────────────────────────────────────────────────────
 
 // ─── waking the loop ──────────────────────────────────────────────────────

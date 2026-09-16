@@ -3424,6 +3424,57 @@ static void LanguagePairsAndSmartIndent() {
     utassert(ValueIs(s, "{\n"));
 }
 
+static bool ConsumeImagePaste(void* data, const ClipboardItem& item, App*,
+                              Window*) {
+    int* calls = (int*)data;
+    (*calls)++;
+    return item.HasImage();
+}
+
+static void TheThreeInputBuildersInstallPasteInterception() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    int calls = 0;
+
+    InputState input;
+    component::Input::New(&cx, StrL("input"), &input)
+        ->OnPaste(&ConsumeImagePaste, &calls)
+        ->IntoEl();
+    utassert(input.pasteHandler == &ConsumeImagePaste);
+    utassert(input.pasteHandlerData == &calls);
+
+    InputState textarea;
+    component::Textarea::New(&cx, StrL("textarea"), &textarea)
+        ->OnPaste(&ConsumeImagePaste, &calls)
+        ->IntoEl();
+    utassert(textarea.pasteHandler == &ConsumeImagePaste);
+
+    InputState editor;
+    component::Editor::New(&cx, StrL("editor"), &editor)
+        ->OnPaste(&ConsumeImagePaste, &calls)
+        ->IntoEl();
+    utassert(editor.pasteHandler == &ConsumeImagePaste);
+
+    ClipboardItem image;
+    uint8_t byte = 0;
+    image.imageBytes = &byte;
+    image.imageBytesLen = 1;
+    utassert(editor.pasteHandler(editor.pasteHandlerData, image, &app, win));
+    utassert(calls == 1);
+
+    component::Input::New(&cx, StrL("readonly"), &input)
+        ->Readonly()
+        ->OnPaste(&ConsumeImagePaste, &calls)
+        ->IntoEl();
+    utassert(!input.pasteHandler && !input.pasteHandlerData);
+
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestInputState() {
     TestSuite("input_state");
     AnAltClickAddsACursorAndTypingWritesAtEach();
@@ -3439,6 +3490,7 @@ void TestInputState() {
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
     LanguagePairsAndSmartIndent();
+    TheThreeInputBuildersInstallPasteInterception();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();
     SetValueCaretAtEnd();

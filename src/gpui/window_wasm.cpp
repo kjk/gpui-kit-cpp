@@ -710,6 +710,12 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return StrDup(a, tmp);
 }
 
+ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem out;
+    out.text = ClipboardGetText(a, win);
+    return out;
+}
+
 // ─── app lifecycle ────────────────────────────────────────────────────────
 
 bool PlatInit(App* app) {

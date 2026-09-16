@@ -1270,6 +1270,86 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return out;
 }
 
+static void ClipboardReadDib(Arena* a, HANDLE handle, ClipboardItem* out) {
+    const auto* dib = handle ? (const uint8_t*)GlobalLock(handle) : nullptr;
+    SIZE_T dibLen = handle ? GlobalSize(handle) : 0;
+    if (!dib || dibLen < sizeof(BITMAPINFOHEADER)) {
+        if (dib) GlobalUnlock(handle);
+        return;
+    }
+    const auto* info = (const BITMAPINFOHEADER*)dib;
+    if (info->biSize < sizeof(BITMAPINFOHEADER) || info->biSize > dibLen) {
+        GlobalUnlock(handle);
+        return;
+    }
+    DWORD colors = info->biClrUsed;
+    if (!colors && info->biBitCount <= 8) {
+        colors = 1u << info->biBitCount;
+    }
+    DWORD masks =
+        info->biCompression == BI_BITFIELDS && info->biSize == sizeof(*info)
+            ? 3u * sizeof(DWORD)
+            : 0u;
+    SIZE_T pixels = sizeof(BITMAPFILEHEADER) + info->biSize + masks +
+                    (SIZE_T)colors * sizeof(RGBQUAD);
+    SIZE_T total = sizeof(BITMAPFILEHEADER) + dibLen;
+    if (pixels > total || total > INT_MAX) {
+        GlobalUnlock(handle);
+        return;
+    }
+    auto* bytes = (uint8_t*)Alloc(a, (int)total);
+    if (bytes) {
+        BITMAPFILEHEADER file = {};
+        file.bfType = 0x4d42;
+        file.bfSize = (DWORD)total;
+        file.bfOffBits = (DWORD)pixels;
+        memcpy(bytes, &file, sizeof(file));
+        memcpy(bytes + sizeof(file), dib, dibLen);
+        out->imageBytes = bytes;
+        out->imageBytesLen = (int)total;
+    }
+    GlobalUnlock(handle);
+}
+
+static Str ClipboardReadPaths(Arena* a, HANDLE handle) {
+    HDROP drop = (HDROP)handle;
+    UINT count = drop ? DragQueryFileW(drop, 0xffffffffu, nullptr, 0) : 0;
+    StrBuilder paths(a);
+    for (UINT i = 0; i < count; i++) {
+        UINT chars = DragQueryFileW(drop, i, nullptr, 0);
+        WCHAR* wide = (WCHAR*)Alloc(a, (int)((chars + 1) * sizeof(WCHAR)));
+        if (!wide || DragQueryFileW(drop, i, wide, chars + 1) != chars) {
+            continue;
+        }
+        int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, (int)chars, nullptr,
+                                        0, nullptr, nullptr);
+        if (bytes <= 0) continue;
+        if (paths.len > 0) paths.AppendChar('\n');
+        int at = paths.len;
+        paths.Reserve(at + bytes + 1);
+        if (!paths.els) continue;
+        WideCharToMultiByte(CP_UTF8, 0, wide, (int)chars, paths.els + at, bytes,
+                            nullptr, nullptr);
+        paths.len += bytes;
+        paths.els[paths.len] = 0;
+    }
+    return paths.TakeStr();
+}
+
+ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem out;
+    out.text = ClipboardGetText(a, win);
+    if (!OpenClipboard(Hwnd(win))) {
+        return out;
+    }
+    HANDLE dib = GetClipboardData(CF_DIBV5);
+    if (!dib) dib = GetClipboardData(CF_DIB);
+    ClipboardReadDib(a, dib, &out);
+    out.externalPaths = ClipboardReadPaths(a, GetClipboardData(CF_HDROP));
+    CloseClipboard();
+    return out;
+}
+
 // ─── app lifecycle ────────────────────────────────────────────────────────
 
 // ─── waking the loop ──────────────────────────────────────────────────────

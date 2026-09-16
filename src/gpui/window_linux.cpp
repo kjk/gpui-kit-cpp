@@ -1093,6 +1093,12 @@ Str ClipboardGetText(Arena* a, Window* win) {
     return out;
 }
 
+ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem out;
+    out.text = ClipboardGetText(a, win);
+    return out;
+}
+
 static void OnSelectionRequest(XSelectionRequestEvent* req) {
     XEvent resp = {};
     resp.xselection.type = SelectionNotify;

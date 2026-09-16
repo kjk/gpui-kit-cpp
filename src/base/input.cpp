@@ -5835,7 +5835,15 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             if (!win) {
                 return true;
             }
-            Str text = ClipboardGetText(GetTempArena(), win);
+            ClipboardItem item = ClipboardGetItem(GetTempArena(), win);
+            if (s->pasteHandler &&
+                s->pasteHandler(s->pasteHandlerData, item, app, win)) {
+                return true;
+            }
+            Str text = item.text;
+            if (text.len == 0 && item.externalPaths.len > 0) {
+                text = item.externalPaths;
+            }
             if (text.len == 0) {
                 return true;
             }
