@@ -85,6 +85,9 @@ constexpr bool IsMobile() {
     return GPUI_OS_IOS || GPUI_OS_ANDROID;
 }
 
+// Re-read the operating system preference and make it the motion default.
+void ApplySystemReduceMotion();
+
 // crates/base/src/lib.rs::init. Safe to call more than once; every key module
 // binds once per keymap generation and every App global is ensured once.
 void BaseInit(App* app);

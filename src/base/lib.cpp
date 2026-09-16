@@ -1,6 +1,11 @@
 #include "base/lib.h"
+#include "gpui/platform.h"
 
 namespace gpui {
+
+void ApplySystemReduceMotion() {
+    MotionSetReduced(PlatReduceMotion());
+}
 
 void BaseInit(App* app) {
     if (!app) {
@@ -10,6 +15,7 @@ void BaseInit(App* app) {
     BaseGlobalStateInit(app);
     (void)PanelRegistryGlobal(app);
     FocusTrapInit(app);
+    ApplySystemReduceMotion();
 
     DialogInitKeys();
     DatePickerInitKeys();
