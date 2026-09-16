@@ -2967,12 +2967,17 @@ El* TextView::IntoEl() {
                         : EntityNewState<TextViewState>(cx->app);
         if (TextViewState* managed = state.Get(cx)) {
             if (!managed->self.IsValid()) managed->self = state.id;
-            if (!base::StrEq(managed->text, source)) {
+            bool sameAllocation = managed->elementTextPtr == source.s &&
+                                  managed->elementTextLen == source.len &&
+                                  managed->text.len == source.len;
+            if (!sameAllocation && !base::StrEq(managed->text, source)) {
                 StrFree(managed->text);
                 managed->text = StrDup(source);
                 managed->revision++;
                 managed->selectionRevision++;
             }
+            managed->elementTextPtr = source.s;
+            managed->elementTextLen = source.len;
             managed->format =
                 html ? TextViewFormat::Html : TextViewFormat::Markdown;
         }

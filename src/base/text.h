@@ -540,6 +540,11 @@ struct TextViewState {
     EntityId self = {};
     Str text = {};
     TextViewFormat format = TextViewFormat::Markdown;
+    // The source a stateless TextView element handed over last frame. When
+    // the same allocation and length arrive again and retained text still
+    // has that length, no byte comparison is needed.
+    const char* elementTextPtr = nullptr;
+    int elementTextLen = 0;
     TextViewStyle textViewStyle = {};
     uint64_t revision = 0;
     uint64_t selectionRevision = 0;

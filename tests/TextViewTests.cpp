@@ -1564,6 +1564,7 @@ static void TestStatelessMarkdownSettles() {
     // frame's document instead of reparsing and notifying forever.
     MdNode* first = nullptr;
     MdNode* second = nullptr;
+    uint64_t settledRevision = 0;
     for (int frame = 0; frame < 2; frame++) {
         TextView* view =
             TextView::New(&cx, source)
@@ -1574,8 +1575,13 @@ static void TestStatelessMarkdownSettles() {
             MdParseCachedForTest(&cx, a, source, &view->markdownExtensions);
         if (frame == 0) {
             first = doc;
+            TextViewState* state = view->state.Get(&app);
+            settledRevision = state ? state->revision : 0;
         } else {
             second = doc;
+            TextViewState* state = view->state.Get(&app);
+            utassert(state && state->revision == settledRevision);
+            utassert(state->elementTextPtr == source.s);
         }
     }
     utassert(first && first == second);
