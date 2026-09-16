@@ -117,8 +117,9 @@ El* Tag::IntoEl() {
         ->Radius(r)
         ->Bg(bg)
         ->Border(1, bd)
+        ->LineHeight(1.25f)
         ->ItemsCenter()
-        ->Child(TextEl(a, text)->Font(12)->Fg(fg)->LineHeight(1.f));
+        ->Child(TextEl(a, text)->Font(12)->Fg(fg));
 }
 
 } // namespace component

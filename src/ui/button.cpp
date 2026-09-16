@@ -693,6 +693,7 @@ El* Button::IntoEl() {
                 ->PadX(padX)
                 ->ItemsCenter()
                 ->JustifyCenter()
+                ->LineHeight(1.25f)
                 ->Gap(gap)
                 ->Corners(cornerTL ? rounding : 0.f, cornerTR ? rounding : 0.f,
                           cornerBR ? rounding : 0.f, cornerBL ? rounding : 0.f);
@@ -842,13 +843,7 @@ El* Button::IntoEl() {
         float fontPx = size == UiSize::XSmall  ? 12.f
                        : size == UiSize::Small ? 14.f
                                                : 16.f;
-        // `line_height(relative(1.))` on the base button: with the inherited
-        // line height the text box is taller than the glyphs, so the padding
-        // no longer decides the control's height and a button cannot be sized
-        // precisely. A label is one line and is cut rather than wrapped —
-        // `min_w_0`, `whitespace_nowrap`, `truncate` — since a button that
-        // grew a second line would push everything around it.
-        El* text = TextEl(a, label)->Font(fontPx)->LineHeight(1.f)->Truncate();
+        El* text = TextEl(a, label)->Font(fontPx)->Truncate();
         // ButtonVariant::underline: only the link looks like a link.
         if (variant == ButtonVariant::Link) {
             text->Underline();
@@ -957,6 +952,7 @@ El* Toggle::IntoEl() {
     El* root = gpui::Toggle::New(cx, id, checked, disabled, onClick, &styles,
                                  &instance)
                    ->FlexRow()
+                   ->LineHeight(1.25f)
                    ->ItemsCenter()
                    ->JustifyCenter();
 

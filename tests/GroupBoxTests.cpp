@@ -46,7 +46,7 @@ static void VariantBuildersAndChildrenMatchTheSourceTree() {
     utassert(title != nullptr);
     utassert(title && title->first &&
              base::StrEq(title->first->text, StrL("Title")));
-    utassertnear(title ? title->style.lineHeight : 0, 1.f);
+    utassertnear(title ? title->style.lineHeight : 0, 1.25f);
     utassert(title && title->style.hasColor);
     utassert(title && GroupBoxColorEq(title->style.color, th.mutedFg));
     utassert(content != nullptr);

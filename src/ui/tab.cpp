@@ -760,6 +760,7 @@ El* TabBar::IntoEl() {
         // Segmented — the background of the selected tab.
         El* inner = Div(a)
                         ->FlexRow()
+                        ->LineHeight(1.25f)
                         ->ItemsCenter()
                         ->JustifyCenter()
                         ->H(innerH)

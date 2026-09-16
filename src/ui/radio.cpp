@@ -101,8 +101,8 @@ El* Radio::IntoEl() {
     }
     row->Child(dot);
     if (label.s || hint.s) {
-        // line_height(relative(1.2)) on the column, 1. on the label.
-        El* col = Div(a)->FlexCol()->Gap(4);
+        dot->MarginT(box * 0.125f);
+        El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
         if (label.s) {
             // text_xs / text_sm / text_base / text_lg, a step above the
             // generic control font.
@@ -110,7 +110,7 @@ El* Radio::IntoEl() {
                            : size == UiSize::Small ? 14.f
                            : size == UiSize::Large ? 18.f
                                                    : 16.f;
-            col->Child(TextEl(a, label)->Font(fontPx)->LineHeight(1.f)->Fg(
+            col->Child(TextEl(a, label)->Font(fontPx)->Fg(
                 disabled ? th.mutedFg : th.foreground));
         }
         if (hint.s) {

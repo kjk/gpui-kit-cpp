@@ -142,7 +142,7 @@ El* GroupBox::IntoEl() {
         El* titleContent = titleEl ? titleEl : TextEl(a, title);
         El* titleBox = Div(a)
                            ->Fg(th.mutedFg)
-                           ->LineHeight(1.f)
+                           ->LineHeight(1.25f)
                            ->Refine(titleStyle, titleStyleSet)
                            ->Child(titleContent);
         if (titleSemibold) {

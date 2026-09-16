@@ -135,7 +135,7 @@ El* DialogHeader::IntoEl() {
 DialogTitle* DialogTitle::New(Ctx* cx) {
     DialogTitle* part = ArenaNew<DialogTitle>(cx->a);
     part->root =
-        gpui::DialogTitle::New(cx)->Font(16)->Semibold()->LineHeight(1.f);
+        gpui::DialogTitle::New(cx)->Font(16)->Semibold()->LineHeight(1.25f);
     return part;
 }
 DialogTitle* DialogTitle::Child(El* child) {
@@ -165,7 +165,7 @@ DialogFooter* DialogFooter::New(Ctx* cx) {
     DialogFooter* part = ArenaNew<DialogFooter>(cx->a);
     float radius = ThemeNow(cx->app).radiusLg;
     part->root =
-        Div(cx->a)->FlexRow()->Gap(8)->JustifyEnd()->LineHeight(1.f)->Corners(
+        Div(cx->a)->FlexRow()->Gap(8)->JustifyEnd()->LineHeight(1.25f)->Corners(
             0, 0, radius, radius);
     return part;
 }

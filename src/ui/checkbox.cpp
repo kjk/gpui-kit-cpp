@@ -81,7 +81,10 @@ Checkbox* Checkbox::OnChange(Listener fn) {
 
 El* Checkbox::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    float box = size == UiSize::Small ? 14.f : 16.f;
+    float box = size == UiSize::XSmall  ? 12.f
+                : size == UiSize::Small ? 14.f
+                : size == UiSize::Large ? 18.f
+                                        : 16.f;
     // An unchecked box carries the input border, a checked one the primary
     // color, and a disabled one either at half strength.
     Rgba mark = checked ? th.primary : th.inputBorder;
@@ -147,15 +150,13 @@ El* Checkbox::IntoEl() {
         row->W(w);
     }
     if (label.s || hint.s || child) {
-        // v_flex().line_height(relative(1.2)).gap_1(). Rust also puts
+        ind->MarginT(box * 0.125f);
+        // v_flex().line_height(relative(1.25)).gap_1(). Rust also puts
         // flex_1 on this column; here that would make every checkbox row
         // claim the whole width of whatever holds it, which lays a row of
         // them out as a column, so the label measures itself instead.
-        El* col = Div(a)->FlexCol()->Gap(4);
+        El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
         if (label.s) {
-            // line_height(relative(1.)): the label's line box is exactly the
-            // font size, so its first line is as tall as the 16px box beside
-            // it and the two share a top edge.
             // text_xs / text_sm / text_base / text_lg, a step above the
             // generic control font — the same table component::Radio
             // spells out. This was UiFontPx, which is a step smaller.
@@ -165,7 +166,6 @@ El* Checkbox::IntoEl() {
                                                    : 16.f;
             col->Child(TextEl(a, label)
                            ->Font(fontPx)
-                           ->LineHeight(1.f)
                            ->Fg(disabled ? th.mutedFg : th.foreground)
                            ->Wrap());
         }
