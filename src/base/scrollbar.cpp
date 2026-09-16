@@ -148,6 +148,36 @@ static float ClampF(float v, float lo, float hi) {
     return v > hi ? hi : v;
 }
 
+ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
+                                         float content, float marginEnd,
+                                         float inset, float minLength) {
+    ScrollbarThumbGeometry out;
+    out.origin = origin;
+    float track = container - marginEnd;
+    if (track < 0) track = 0;
+    float logical = content > 0 ? container / content * container : 0;
+    if (logical < minLength) logical = minLength;
+    if (logical > track) logical = track;
+    float maxInset = logical * .5f;
+    out.inset = ClampF(inset, 0, maxInset);
+    out.length = logical - out.inset * 2.f;
+    out.travel = track - logical;
+    out.extent = content - container;
+    return out;
+}
+
+float ScrollbarThumbGeometry::Start(float offset) const {
+    float pct = extent > 0 ? ClampF(offset / extent, 0, 1) : 0;
+    return origin + inset + pct * travel;
+}
+
+float ScrollbarThumbGeometry::DragOffset(float position, float grab,
+                                         float current) const {
+    if (travel <= 0 || extent <= 0) return current;
+    float pct = (position - origin - inset - grab) / travel;
+    return ClampF(pct, 0, 1) * extent;
+}
+
 float ScrollbarThumbSize(float track, float container, float content,
                          float minLength) {
     if (content <= 0 || track <= 0) {
@@ -207,34 +237,24 @@ AxisPrepaintState ScrollbarPrepaintAxis(Axis axis, Bounds track, float offset,
     }
 
     float minLength = style.hasMinLength ? style.minLength : kMinThumb;
-    float rawThumbSize = containerSize / contentSize * containerSize;
-    if (rawThumbSize < minLength) {
-        rawThumbSize = minLength;
-    }
-    if (rawThumbSize > trackLength) {
-        rawThumbSize = trackLength;
-    }
-    float thumbStart = ScrollbarThumbPos(trackLength, rawThumbSize, offset,
-                                         containerSize, contentSize);
     float inset = style.hasInset ? style.inset : 4.f;
-    float thumbLength = rawThumbSize - inset * 2.f;
-    if (thumbLength < 0) {
-        thumbLength = 0;
-    }
+    ScrollbarThumbGeometry geometry =
+        ScrollbarGeometry(axis == Axis::Vertical ? track.y : track.x,
+                          containerSize, contentSize, 0, inset, minLength);
+    float thumbStart = geometry.Start(offset);
+    float thumbLength = geometry.length;
     float thumbWidth = style.hasWidth ? style.width : 6.f;
 
     if (axis == Axis::Vertical) {
         out.thumbBounds = {track.x + track.w - inset - out.trackWidth,
-                           track.y + inset + thumbStart, out.trackWidth,
-                           thumbLength};
+                           thumbStart, out.trackWidth, thumbLength};
         out.thumbFillBounds = {track.x + track.w - inset - thumbWidth,
-                               track.y + inset + thumbStart, thumbWidth,
-                               thumbLength};
+                               thumbStart, thumbWidth, thumbLength};
     } else {
-        out.thumbBounds = {track.x + inset + thumbStart,
+        out.thumbBounds = {thumbStart,
                            track.y + track.h - inset - out.trackWidth,
                            thumbLength, out.trackWidth};
-        out.thumbFillBounds = {track.x + inset + thumbStart,
+        out.thumbFillBounds = {thumbStart,
                                track.y + track.h - inset - thumbWidth,
                                thumbLength, thumbWidth};
     }

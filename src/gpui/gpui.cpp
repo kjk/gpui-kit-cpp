@@ -6303,17 +6303,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (hasVertical) {
         bool onBar = overBox && ctx->mouseX >= e->x + e->w - trackW;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
-        float normalRaw = ScrollbarThumbSize(
-            e->h, e->h, e->contentH,
+        ScrollbarThumbGeometry normal = ScrollbarGeometry(
+            e->y, e->h, e->contentH, 0, normalInset,
             ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
-        float normalStart =
-            ScrollbarThumbPos(e->h, normalRaw, e->scrollY, e->h, e->contentH);
-        float normalLength = normalRaw - normalInset * 2.f;
-        if (normalLength < 0) normalLength = 0;
-        bool pointerOnThumb =
-            onBar && ctx->mouseX <= e->x + e->w - normalInset &&
-            ctx->mouseY >= e->y + normalStart + normalInset &&
-            ctx->mouseY < e->y + normalStart + normalInset + normalLength;
+        float normalStart = normal.Start(e->scrollY);
+        bool pointerOnThumb = onBar &&
+                              ctx->mouseX <= e->x + e->w - normalInset &&
+                              ctx->mouseY >= normalStart &&
+                              ctx->mouseY < normalStart + normal.length;
         bool axisDragging = dragging && !ctx->scrollDragHorizontal;
         ScrollbarPaintState state =
             axisDragging
@@ -6322,10 +6319,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                   : (onBar ? ScrollbarPaintState::HoverBar
                                            : ScrollbarPaintState::Normal));
         float inset = ScrollbarThumbInset(e, state);
-        float rawThumbH = ScrollbarThumbSize(e->h, e->h, e->contentH,
-                                             ScrollbarThumbMinLength(e, state));
-        float thumbH = rawThumbH - inset * 2.f;
-        if (thumbH < 0) thumbH = 0;
+        ScrollbarThumbGeometry geometry =
+            ScrollbarGeometry(e->y, e->h, e->contentH, 0, inset,
+                              ScrollbarThumbMinLength(e, state));
+        float thumbH = geometry.length;
         float wantW = ScrollbarThumbWidth(e, state);
         float thumbW = wantW;
         if (barState) {
@@ -6334,9 +6331,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                             barMotion.expand, TimeNow(), &ctx->wantsAnimFrame);
         }
         float thumbX = e->x + e->w - thumbW - inset;
-        float thumbY =
-            e->y + inset +
-            ScrollbarThumbPos(e->h, rawThumbH, e->scrollY, e->h, e->contentH);
+        float thumbY = geometry.Start(e->scrollY);
         // The track, which every default theme leaves transparent — the band
         // is Rust's WIDTH and reaches the whole length of the box. A vertical
         // bar slides in from the right, so the slide is along x.
@@ -6354,17 +6349,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         bool onBar = overBox && ctx->mouseY >= e->y + e->h - trackW;
         float marginEnd = hasVertical ? trackW : 0;
         float normalInset = ScrollbarThumbInset(e, ScrollbarPaintState::Normal);
-        float normalRaw = ScrollbarThumbSize(
-            e->w, e->w, e->contentW,
+        ScrollbarThumbGeometry normal = ScrollbarGeometry(
+            e->x, e->w, e->contentW, marginEnd, normalInset,
             ScrollbarThumbMinLength(e, ScrollbarPaintState::Normal));
-        float normalStart = ScrollbarThumbPos(e->w, normalRaw, e->scrollX, e->w,
-                                              e->contentW, marginEnd);
-        float normalLength = normalRaw - normalInset * 2.f;
-        if (normalLength < 0) normalLength = 0;
-        bool pointerOnThumb =
-            onBar && ctx->mouseY <= e->y + e->h - normalInset &&
-            ctx->mouseX >= e->x + normalStart + normalInset &&
-            ctx->mouseX < e->x + normalStart + normalInset + normalLength;
+        float normalStart = normal.Start(e->scrollX);
+        bool pointerOnThumb = onBar &&
+                              ctx->mouseY <= e->y + e->h - normalInset &&
+                              ctx->mouseX >= normalStart &&
+                              ctx->mouseX < normalStart + normal.length;
         bool axisDragging = dragging && ctx->scrollDragHorizontal;
         ScrollbarPaintState state =
             axisDragging
@@ -6373,10 +6365,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                                   : (onBar ? ScrollbarPaintState::HoverBar
                                            : ScrollbarPaintState::Normal));
         float inset = ScrollbarThumbInset(e, state);
-        float rawThumbW = ScrollbarThumbSize(e->w, e->w, e->contentW,
-                                             ScrollbarThumbMinLength(e, state));
-        float thumbW = rawThumbW - inset * 2.f;
-        if (thumbW < 0) thumbW = 0;
+        ScrollbarThumbGeometry geometry =
+            ScrollbarGeometry(e->x, e->w, e->contentW, marginEnd, inset,
+                              ScrollbarThumbMinLength(e, state));
+        float thumbW = geometry.length;
         float wantH = ScrollbarThumbWidth(e, state);
         float thumbH = wantH;
         if (barState) {
@@ -6385,9 +6377,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                             barMotion.expand, TimeNow(), &ctx->wantsAnimFrame);
         }
         float thumbY = e->y + e->h - thumbH - inset;
-        float thumbX = e->x + inset +
-                       ScrollbarThumbPos(e->w, rawThumbW, e->scrollX, e->w,
-                                         e->contentW, marginEnd);
+        float thumbX = geometry.Start(e->scrollX);
         // A horizontal bar slides up from the bottom, so its slide is along y.
         FillBackground(ctx, e->x, e->y + e->h - trackW + barSlide, e->w, trackW,
                        0, nullptr,

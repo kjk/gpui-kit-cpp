@@ -165,8 +165,26 @@ struct ScrollbarStyles {
     }
 };
 
-// The three pieces of arithmetic a scrollbar is. Each is written along one
-// axis: Rust branches on `is_vertical` and does the same thing to y or x, so
+// One longitudinal geometry drives painting, track clicks and dragging. The
+// visible `length` excludes both insets; `travel` excludes the full logical
+// thumb, and `extent` is the scrollable content distance.
+struct ScrollbarThumbGeometry {
+    float origin = 0;
+    float inset = 0;
+    float length = 0;
+    float travel = 0;
+    float extent = 0;
+
+    float Start(float offset) const;
+    float DragOffset(float position, float grab, float current) const;
+};
+
+ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
+                                         float content, float marginEnd,
+                                         float inset, float minLength);
+
+// The three legacy arithmetic seams below project the same geometry along one
+// axis. Rust branches on `is_vertical` and does the same thing to y or x, so
 // the caller passes whichever pair the axis names.
 //
 // `track` is the bar's length, `container` the visible size, and `content` the

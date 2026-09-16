@@ -1333,25 +1333,51 @@ static ScrollRect* ScrollbarAt(PaintCtx* ctx, float x, float y,
     return nullptr;
 }
 
-static void ScrollbarEmit(Window* win, ScrollRect* s, float offsetX,
-                          float offsetY) {
-    // A text field owns its own offset — Rust's editor scrollbar reaches the
-    // state's scroll handle the same way, rather than telling a view about it.
-    if (s->input) {
-        s->input->scrollX = ClampScroll(offsetX, s->contentW, s->bounds.w);
-        s->input->scrollY = ClampScroll(offsetY, s->contentH, s->bounds.h);
-        s->scrollX = s->input->scrollX;
-        s->scrollY = s->input->scrollY;
-        AppInvalidate(win);
-        return;
-    }
+static void ScrollbarStore(Window* win, ScrollRect* s, float offsetX,
+                           float offsetY) {
     offsetX = ClampScroll(offsetX, s->contentW, s->bounds.w);
     offsetY = ClampScroll(offsetY, s->contentH, s->bounds.h);
     s->scrollX = offsetX;
     s->scrollY = offsetY;
-    ScrollEvent ev = {s->id, offsetY, offsetX};
-    ListenerCall(win->app, win, s->onScroll, &ev);
+    // A text field owns its own offset — Rust's editor scrollbar reaches the
+    // state's scroll handle the same way, rather than telling a view about it.
+    if (s->input) {
+        s->input->scrollX = offsetX;
+        s->input->scrollY = offsetY;
+    }
+    win->scrollDragNotifyListener = s->onScroll;
+    win->scrollDragNotifyEvent = {s->id, offsetY, offsetX};
+    win->scrollDragNotifyPending = true;
+}
+
+static void ScrollbarFlush(Window* win, double now) {
+    if (!win->scrollDragNotifyPending) return;
+    Listener l = win->scrollDragNotifyListener;
+    ScrollEvent ev = win->scrollDragNotifyEvent;
+    win->scrollDragNotifyPending = false;
+    win->scrollDragNotifyDue = 0;
+    win->scrollDragLastNotify = now;
+    if (l.IsValid()) ListenerCall(win->app, win, l, &ev);
     AppInvalidate(win);
+}
+
+static void ScrollbarEmit(Window* win, ScrollRect* s, float offsetX,
+                          float offsetY) {
+    ScrollbarStore(win, s, offsetX, offsetY);
+    ScrollbarFlush(win, TimeNow());
+}
+
+static void ScrollbarQueueDrag(Window* win, ScrollRect* s, float offsetX,
+                               float offsetY, bool immediate) {
+    ScrollbarStore(win, s, offsetX, offsetY);
+    double now = TimeNow();
+    const double interval = 1.0 / 120.0;
+    if (immediate || now - win->scrollDragLastNotify >= interval) {
+        ScrollbarFlush(win, now);
+        return;
+    }
+    win->scrollDragNotifyDue = win->scrollDragLastNotify + interval;
+    PlatSetTimer(win, WindowTimerMs(win));
 }
 
 // Unhandled PageUp / PageDown: the innermost vertical scroller that still
@@ -1408,15 +1434,11 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
     float origin = horizontal ? s->bounds.x : s->bounds.y;
     float at = horizontal ? x : y;
     float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
-    float rawThumb =
-        ScrollbarThumbSize(track, track, content, s->thumbMinLength);
-    float rawStart =
-        origin + ScrollbarThumbPos(track, rawThumb,
-                                   horizontal ? s->scrollX : s->scrollY, track,
-                                   content, marginEnd);
-    float thumbStart = rawStart + s->thumbInset;
-    float thumbLength = rawThumb - s->thumbInset * 2.f;
-    if (thumbLength < 0) thumbLength = 0;
+    float current = horizontal ? s->scrollX : s->scrollY;
+    ScrollbarThumbGeometry geometry = ScrollbarGeometry(
+        origin, track, content, marginEnd, s->thumbInset, s->thumbMinLength);
+    float thumbStart = geometry.Start(current);
+    float thumbLength = geometry.length;
     bool crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbInset
                                   : x <= s->bounds.Right() - s->thumbInset;
     bool onThumb =
@@ -1424,15 +1446,11 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
     if (!onThumb) {
         // The painted hover thumb is wider than the resting one. A press on
         // the extra pixels is still a grab, not a jump down the track.
-        rawThumb =
-            ScrollbarThumbSize(track, track, content, s->thumbHoverMinLength);
-        rawStart =
-            origin + ScrollbarThumbPos(track, rawThumb,
-                                       horizontal ? s->scrollX : s->scrollY,
-                                       track, content, marginEnd);
-        float hoverStart = rawStart + s->thumbHoverInset;
-        float hoverLength = rawThumb - s->thumbHoverInset * 2.f;
-        if (hoverLength < 0) hoverLength = 0;
+        ScrollbarThumbGeometry hover =
+            ScrollbarGeometry(origin, track, content, marginEnd,
+                              s->thumbHoverInset, s->thumbHoverMinLength);
+        float hoverStart = hover.Start(current);
+        float hoverLength = hover.length;
         bool hoverCross = horizontal
                               ? y <= s->bounds.Bottom() - s->thumbHoverInset
                               : x <= s->bounds.Right() - s->thumbHoverInset;
@@ -1446,15 +1464,11 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         // The pointer has already selected thumb_hover in prepaint. Resolve
         // that state's potentially different inset and minimum before
         // retaining the grab point.
-        rawThumb =
-            ScrollbarThumbSize(track, track, content, s->thumbHoverMinLength);
-        rawStart =
-            origin + ScrollbarThumbPos(track, rawThumb,
-                                       horizontal ? s->scrollX : s->scrollY,
-                                       track, content, marginEnd);
-        thumbStart = rawStart + s->thumbHoverInset;
-        thumbLength = rawThumb - s->thumbHoverInset * 2.f;
-        if (thumbLength < 0) thumbLength = 0;
+        geometry =
+            ScrollbarGeometry(origin, track, content, marginEnd,
+                              s->thumbHoverInset, s->thumbHoverMinLength);
+        thumbStart = geometry.Start(current);
+        thumbLength = geometry.length;
         crossInside = horizontal ? y <= s->bounds.Bottom() - s->thumbHoverInset
                                  : x <= s->bounds.Right() - s->thumbHoverInset;
         onThumb =
@@ -1465,12 +1479,23 @@ static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         win->scrollDragHorizontal = horizontal;
         win->scrollDragGrab = at - thumbStart;
         win->scrollDragInput = s->input;
+        win->scrollDragNotifyPending = false;
+        win->scrollDragNotifyDue = 0;
+        win->scrollDragLastNotify = TimeNow();
+        // Active styling can change the inset or minimum length. Re-invert
+        // that geometry now so the painted grab point remains under the
+        // pointer on the first active frame.
+        ScrollbarThumbGeometry active =
+            ScrollbarGeometry(origin, track, content, marginEnd,
+                              s->thumbActiveInset, s->thumbActiveMinLength);
+        float off = active.DragOffset(at, win->scrollDragGrab, current);
+        ScrollbarQueueDrag(win, s, horizontal ? off : s->scrollX,
+                           horizontal ? s->scrollY : off, true);
         return true;
     }
     if (thumbOnly) return false;
     // A track press moves once; only pressing the thumb starts a drag.
-    float off = ScrollbarOffsetForTrackPress(at, origin, track, thumbLength,
-                                             track, content);
+    float off = geometry.DragOffset(at, geometry.length * .5f, current);
     ScrollbarEmit(win, s, horizontal ? off : s->scrollX,
                   horizontal ? s->scrollY : off);
     return false;
@@ -1518,25 +1543,27 @@ static ScrollRect* ScrollRectForDrag(Window* win) {
     return nullptr;
 }
 
-static void ScrollbarDrag(Window* win, float x, float y) {
+static bool ScrollbarDrag(Window* win, float x, float y,
+                          bool immediate = false) {
     ScrollRect* s = ScrollRectForDrag(win);
     if (!s || (!s->onScroll.IsValid() && !s->input)) {
-        return;
+        return false;
     }
     bool horizontal = win->scrollDragHorizontal;
     float track = horizontal ? s->bounds.w : s->bounds.h;
     float content = horizontal ? s->contentW : s->contentH;
     float origin = horizontal ? s->bounds.x : s->bounds.y;
     float at = horizontal ? x : y;
-    float rawThumb =
-        ScrollbarThumbSize(track, track, content, s->thumbActiveMinLength);
-    float thumb = rawThumb - s->thumbActiveInset * 2.f;
-    if (thumb < 0) thumb = 0;
     float marginEnd = horizontal && s->barY && ScrollsY(*s) ? s->trackWidth : 0;
-    float off = ScrollbarOffsetForDrag(at, win->scrollDragGrab, origin, track,
-                                       thumb, track, content, marginEnd);
-    ScrollbarEmit(win, s, horizontal ? off : s->scrollX,
-                  horizontal ? s->scrollY : off);
+    float current = horizontal ? s->scrollX : s->scrollY;
+    ScrollbarThumbGeometry geometry =
+        ScrollbarGeometry(origin, track, content, marginEnd,
+                          s->thumbActiveInset, s->thumbActiveMinLength);
+    float off = geometry.DragOffset(at, win->scrollDragGrab, current);
+    if (off == current && !immediate) return false;
+    ScrollbarQueueDrag(win, s, horizontal ? off : s->scrollX,
+                       horizontal ? s->scrollY : off, immediate);
+    return true;
 }
 
 static void SliderDrag(Window* win, const HitRect* hit, Point at) {
@@ -1752,8 +1779,9 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     // The bar keeps every move until the release, wherever the pointer has
     // got to — the same rule the slider and on_drag_move go by. A zero
     // scrollId still drags when the press named the InputState.
+    bool scrollbarMoved = false;
     if (win->mouseDown && (win->scrollDragId || win->scrollDragInput)) {
-        ScrollbarDrag(win, x, y);
+        scrollbarMoved = ScrollbarDrag(win, x, y);
     }
     // InputState::on_drag_move: the field that took the press keeps every move
     // until the release, wherever the pointer has got to. The button being
@@ -1786,7 +1814,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
             s->autoScroll.SetNone();
         }
     }
-    if (win->mouseDown) {
+    if (win->mouseDown && !scrollbarMoved) {
         AppInvalidate(win);
     }
 }
@@ -2090,7 +2118,11 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
 static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     SetMouseDown(win, false);
     // with_unset_drag_pos: the release ends the scrollbar drag wherever it
-    // landed.
+    // landed. The release itself may carry a final displacement without an
+    // intervening move, so invert it before dropping the capture.
+    if (win->scrollDragId || win->scrollDragInput) {
+        (void)ScrollbarDrag(win, in.x, in.y, true);
+    }
     win->scrollDragId = 0;
     win->scrollDragGrab = 0;
     win->scrollDragInput = nullptr;
@@ -2481,25 +2513,34 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                 win->scrollDragGrab = 0;
                 win->scrollDragInput = nullptr;
                 bool horizontal = false;
-                ScrollRect* bar = ScrollbarAt(&win->paint, touch.position.x,
-                                              touch.position.y, &horizontal);
+                ScrollRect* bar =
+                    ScrollbarAt(&win->paint, touch.startPosition.x,
+                                touch.startPosition.y, &horizontal);
                 win->touchScrollbarDrag =
-                    bar && ScrollbarPress(win, bar, touch.position.x,
-                                          touch.position.y, horizontal, true);
+                    bar &&
+                    ScrollbarPress(win, bar, touch.startPosition.x,
+                                   touch.startPosition.y, horizontal, true);
+                if (win->touchScrollbarDrag &&
+                    (touch.position.x != touch.startPosition.x ||
+                     touch.position.y != touch.startPosition.y)) {
+                    (void)ScrollbarDrag(win, touch.position.x, touch.position.y,
+                                        true);
+                }
             } else if (win->touchScrollbarDrag) {
                 if (touch.phase == TouchPhase::Moved ||
                     touch.phase == TouchPhase::Ended) {
-                    ScrollbarDrag(win, touch.position.x, touch.position.y);
+                    (void)ScrollbarDrag(win, touch.position.x, touch.position.y,
+                                        touch.phase == TouchPhase::Ended);
                 }
                 if (touch.phase == TouchPhase::Ended ||
                     touch.phase == TouchPhase::Cancelled) {
+                    ScrollbarFlush(win, TimeNow());
                     win->touchScrollbarDrag = false;
                     win->scrollDragId = 0;
                     win->scrollDragGrab = 0;
                     win->scrollDragInput = nullptr;
                 }
             }
-            AppInvalidate(win);
             break;
         }
         case PlatformInputKind::LongPress: {
@@ -2726,6 +2767,11 @@ void WindowTimerTick(Window* win) {
     }
     double now = TimeNow();
 
+    if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
+        win->scrollDragNotifyDue <= now) {
+        ScrollbarFlush(win, now);
+    }
+
     // A snapshot of the count, so a timer armed by a handler runs next pass
     // rather than inside this one.
     int n = win->timers.len;
@@ -2819,6 +2865,10 @@ int WindowTimerMs(Window* win) {
         if (due > 0 && (soonest < 0 || due < soonest)) {
             soonest = due;
         }
+    }
+    if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
+        (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
+        soonest = win->scrollDragNotifyDue;
     }
     if (soonest < 0) {
         return 0;

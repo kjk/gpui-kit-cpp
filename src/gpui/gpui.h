@@ -5371,6 +5371,14 @@ struct Window {
     // not.
     InputState* scrollDragInput = nullptr;
     bool touchScrollbarDrag = false;
+    // Drag offsets are stored immediately, while the view notification is
+    // coalesced to the scrollbar's 120 Hz default. A release flushes the
+    // newest point and clears any trailing deadline.
+    bool scrollDragNotifyPending = false;
+    double scrollDragLastNotify = 0;
+    double scrollDragNotifyDue = 0;
+    Listener scrollDragNotifyListener = {};
+    ScrollEvent scrollDragNotifyEvent = {};
     bool longPressSelection = false;
     InputState* input = nullptr;
     // This window's one TooltipOverlay. Created on first use, the way a

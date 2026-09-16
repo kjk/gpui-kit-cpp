@@ -69,6 +69,28 @@ static void NothingToScrollMeansNoOffset() {
     utassertnear(ScrollbarOffsetForTrackPress(200, 0, 400, 400, 800, 800), 0.f);
 }
 
+static void SharedGeometryKeepsThePaintedGrabPoint() {
+    ScrollbarThumbGeometry normal = ScrollbarGeometry(30, 240, 500, 16, 6, 64);
+    ScrollbarThumbGeometry active = ScrollbarGeometry(30, 240, 500, 16, 3, 72);
+    float offset = 100;
+    float pointer = normal.Start(offset) + normal.length * .5f;
+    float grab = pointer - normal.Start(offset);
+    offset = active.DragOffset(pointer, grab, offset);
+    utassertnear(active.Start(offset) + grab, pointer);
+
+    float deltas[] = {24.f, -8.f, 32.f, -10.f, 8.f, 0.f};
+    for (float delta : deltas) {
+        float moved = pointer + delta;
+        offset = active.DragOffset(moved, grab, offset);
+        utassertnear(active.Start(offset) + grab, moved);
+    }
+
+    // A minimum thumb which fills the track has nowhere to travel and must
+    // leave the existing offset alone.
+    ScrollbarThumbGeometry full = ScrollbarGeometry(20, 40, 500, 0, 4, 64);
+    utassertnear(full.DragOffset(50, 8, 100), 100.f);
+}
+
 static void PreciseGesturesKeepTheirAxisUntilAStrongTurn() {
     OngoingScroll scroll;
     Point first = {-40, -10};
@@ -340,15 +362,40 @@ static void ATouchThumbDragMovesDownAndCancelReleasesIt() {
     PlatformInput moved =
         InputTouchDrag(TouchPhase::Moved, start, Point{95, 55});
     WindowDispatchInput(win, &moved);
-    utassert(state->innerCalls == 1 && state->innerY > 0);
+    utassert(state->innerCalls == 1 && win->paint.scrolls[0].scrollY > 0);
     PlatformInput cancelled =
         InputTouchDrag(TouchPhase::Cancelled, start, Point{95, 55});
     WindowDispatchInput(win, &cancelled);
     utassert(!win->touchScrollbarDrag && win->scrollDragId == 0);
+    utassert(state->innerCalls == 2 && state->innerY > 0);
 
     VecReset(win->paint.scrolls);
     delete win;
     EntityDropAll(&app);
+}
+
+static void ATouchReleaseKeepsItsFinalDisplacement() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    InputState field;
+    ScrollRect scroll =
+        TestScrollRect(0, {0, 0, 100, 100}, 100, 500, 0, -1, Listener{});
+    scroll.trackWidth = 20;
+    scroll.input = &field;
+    VecAppend(win->paint.scrolls, scroll);
+
+    Point start = {95, 20};
+    PlatformInput began = InputTouchDrag(TouchPhase::Started, start, start);
+    WindowDispatchInput(win, &began);
+    PlatformInput ended =
+        InputTouchDrag(TouchPhase::Ended, start, Point{95, 55});
+    WindowDispatchInput(win, &ended);
+    utassert(field.scrollY > 0);
+    utassert(!win->touchScrollbarDrag);
+
+    VecReset(win->paint.scrolls);
+    delete win;
 }
 
 static void TheHighlighterScrollerHasAStableScrollId() {
@@ -466,12 +513,14 @@ void TestScrollbar() {
     ATrackPressCentresTheThumbOnIt();
     ADragKeepsTheGrabPoint();
     NothingToScrollMeansNoOffset();
+    SharedGeometryKeepsThePaintedGrabPoint();
     PreciseGesturesKeepTheirAxisUntilAStrongTurn();
     ScrollableElementPreservesTheSourceElementAndMask();
     ScrollableMasksChainAndTrapLikeTheSource();
     ATrackPressMovesOnceAndOnlyAThumbPressDrags();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
     ATouchThumbDragMovesDownAndCancelReleasesIt();
+    ATouchReleaseKeepsItsFinalDisplacement();
     TheHighlighterScrollerHasAStableScrollId();
 }
 
