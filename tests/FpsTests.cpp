@@ -349,6 +349,78 @@ static void MeanAndPeakAndOverBudget() {
     utassert(s.nPresents == 3);
 }
 
+static FrameTiming FrameAt(double at, float drawSecs, uint64_t invalidations) {
+    FrameTiming timing;
+    timing.drawAt = at;
+    timing.drawSecs = drawSecs;
+    timing.invalidations = invalidations;
+    timing.presentAt = at + drawSecs;
+    return timing;
+}
+
+static void TheHudsOwnFrameIsNotASample() {
+    FrameSampler s;
+    Warm(&s);
+    s.drainedBacklog = true;
+
+    FrameSamplerExpectOwnFrame(&s, 1.0);
+    FrameTiming own = FrameAt(1.001, 0.012f, 1);
+    FrameSamplerIngest(&s, &own, 1, 1.020);
+    utassert(s.n == 0);
+    utassert(s.nPresents == 0);
+
+    FrameTiming app = FrameAt(1.200, 0.005f, 1);
+    FrameSamplerIngest(&s, &app, 1, 1.210);
+    utassert(s.n == 1);
+    utassertnear(FrameSamplerMeanDraw(&s), 0.005f);
+}
+
+static void ACoalescedApplicationFrameStaysASample() {
+    FrameSampler s;
+    Warm(&s);
+    s.drainedBacklog = true;
+
+    FrameSamplerExpectOwnFrame(&s, 1.0);
+    FrameTiming shared = FrameAt(1.001, 0.012f, 2);
+    FrameSamplerIngest(&s, &shared, 1, 1.020);
+    utassert(s.n == 1);
+    utassertnear(FrameSamplerMeanDraw(&s), 0.012f);
+}
+
+static void UnansweredHudTicksStillDescribeOneFrame() {
+    FrameSampler s;
+    Warm(&s);
+    s.drainedBacklog = true;
+
+    FrameSamplerExpectOwnFrame(&s, 1.0);
+    FrameSamplerExpectOwnFrame(&s, 1.5);
+    FrameSamplerExpectOwnFrame(&s, 2.0);
+    FrameTiming own = FrameAt(2.1, 0.030f, 3);
+    FrameSamplerIngest(&s, &own, 1, 2.2);
+    utassert(s.n == 0);
+
+    FrameSamplerExpectOwnFrame(&s, 2.5);
+    FrameSamplerExpectOwnFrame(&s, 3.0);
+    FrameTiming shared = FrameAt(3.1, 0.009f, 3);
+    FrameSamplerIngest(&s, &shared, 1, 3.2);
+    utassert(s.n == 1);
+    utassertnear(FrameSamplerMeanDraw(&s), 0.009f);
+}
+
+static void AFrameBeforeTheHudTickStaysASample() {
+    FrameSampler s;
+    Warm(&s);
+    s.drainedBacklog = true;
+
+    FrameSamplerExpectOwnFrame(&s, 2.0);
+    FrameTiming before = FrameAt(1.9, 0.007f, 1);
+    FrameTiming own = FrameAt(2.1, 0.012f, 1);
+    FrameSamplerIngest(&s, &before, 1, 1.95);
+    FrameSamplerIngest(&s, &own, 1, 2.2);
+    utassert(s.n == 1);
+    utassertnear(FrameSamplerMeanDraw(&s), 0.007f);
+}
+
 // ─── resource history ─────────────────────────────────────────────────────
 
 static ResourceSample Resources(float cpuPercent, uint64_t memoryBytes,
@@ -531,6 +603,10 @@ void TestFrameSampler() {
     InvalidationsAverageOverTheRetainedFrames();
     FramesOutsideTheRollingWindowStopCounting();
     MeanAndPeakAndOverBudget();
+    TheHudsOwnFrameIsNotASample();
+    ACoalescedApplicationFrameStaysASample();
+    UnansweredHudTicksStillDescribeOneFrame();
+    AFrameBeforeTheHudTickStaysASample();
 
     TestSuite("fps/sampler/resource_history");
     ResourceReadingsAverageOverTheWindow();

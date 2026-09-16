@@ -80,6 +80,16 @@ void FrameSamplerIngestDraws(FrameSampler* s, const FrameSample* samples,
     }
 }
 
+void FrameSamplerExpectOwnFrame(FrameSampler* s, double at) {
+    if (!s) {
+        return;
+    }
+    if (s->ownFrameNotifies == 0) {
+        s->ownFrameAt = at;
+    }
+    s->ownFrameNotifies++;
+}
+
 void FrameSamplerIngestPresents(FrameSampler* s, const double* presentAt, int n,
                                 double now) {
     if (!s) {
@@ -115,10 +125,22 @@ void FrameSamplerIngest(FrameSampler* s, const FrameTiming* frames, int n,
     }
     FrameSample draws[kFrameTraceCap];
     double presents[kFrameTraceCap];
+    int nDraws = 0;
     int nPresents = 0;
     for (int i = 0; i < n; i++) {
-        draws[i].drawSecs = frames[i].drawSecs;
-        draws[i].invalidations = frames[i].invalidations;
+        bool answersOwnFrame =
+            s->ownFrameNotifies > 0 && frames[i].drawAt >= s->ownFrameAt;
+        if (answersOwnFrame) {
+            uint64_t ownNotifies = s->ownFrameNotifies;
+            s->ownFrameAt = -1;
+            s->ownFrameNotifies = 0;
+            if (frames[i].invalidations <= ownNotifies) {
+                continue;
+            }
+        }
+        draws[nDraws].drawSecs = frames[i].drawSecs;
+        draws[nDraws].invalidations = frames[i].invalidations;
+        nDraws++;
         // A frame the scene found identical to the last one was drawn but
         // never presented, so it costs a draw time and delimits no interval.
         if (frames[i].presentAt >= 0) {
@@ -129,7 +151,7 @@ void FrameSamplerIngest(FrameSampler* s, const FrameTiming* frames, int n,
         s->drainedBacklog = true;
         s->warmup += (uint32_t)n;
     }
-    FrameSamplerIngestDraws(s, draws, n);
+    FrameSamplerIngestDraws(s, draws, nDraws);
     FrameSamplerIngestPresents(s, presents, nPresents, now);
 }
 
@@ -514,6 +536,7 @@ static void FpsResourceDone(FpsResourceJob* job) {
     if (job->ok) {
         self->resources = job->sample;
         self->hasResources = true;
+        FrameSamplerExpectOwnFrame(&self->sampler, TimeNow());
         NotifyEntity(job->app, job->monitor, nullptr);
     }
     delete job;
@@ -525,6 +548,7 @@ void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
     }
     // The tick republishes the readings whether or not resources are on: the
     // figures would otherwise freeze the moment the window stopped drawing.
+    FrameSamplerExpectOwnFrame(&self->sampler, TimeNow());
     Notify(cx);
     if (!self->showResources || self->resourceTask || self->resourceJob) {
         return;

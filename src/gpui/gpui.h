@@ -5100,6 +5100,9 @@ struct WinOpts {
 // taken from the outside. GPUI gates recording behind
 // `set_frame_trace_enabled`; here it is two QPC reads per frame and always on.
 struct FrameTiming {
+    // When drawing began, on TimeNow()'s clock. The FPS sampler uses this to
+    // match a frame to the invalidation that requested it.
+    double drawAt = 0;
     float drawSecs = 0;
     // How many invalidations were coalesced into this frame: the AppInvalidate
     // calls since the previous frame was recorded, which is what GPUI's

@@ -114,11 +114,17 @@ struct FrameSampler {
     // for; for one up from the start it is the cold start. Neither is the
     // steady state the rows below the headline are describing.
     bool drainedBacklog = false;
+    // The FPS readout clock's invalidations that no draw has answered yet.
+    // A frame carrying only these invalidations belongs to the HUD and is
+    // excluded from the application's readings.
+    double ownFrameAt = -1;
+    uint64_t ownFrameNotifies = 0;
 };
 
 // Drains the frames drawn since the previous call. Call once per rendered
 // frame.
 void FrameSamplerTick(FrameSampler* s, Window* win);
+void FrameSamplerExpectOwnFrame(FrameSampler* s, double at);
 // The half of the tick that is not the window: the frames that arrived and
 // the moment they were read, which is what makes the rolling window testable
 // without a window to drive it. Rust filters the process-wide frame trace by

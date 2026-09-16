@@ -653,6 +653,7 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // whole function: build the element tree, lay it out, paint it.
     double drawEnd = TimeNow();
     FrameTiming timing;
+    timing.drawAt = drawStart;
     timing.drawSecs = (float)(drawEnd - drawStart);
     timing.invalidations = win->invalidations;
     win->invalidations = 0;
