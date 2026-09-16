@@ -1684,10 +1684,15 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
     if (marks & MdHighlight) {
         t->Bg(kMarkBg);
     } else if (marks & MdCode) {
-        // TextViewStyle::inline_code_highlight falls back to the style's own
-        // code background, and says nothing else: an inline code span is the
-        // paragraph's font at its size, with a background behind it.
-        t->Bg(textViewStyle.InlineCodeBackground());
+        // inline.rs shapes inline code in the theme's monospace face at
+        // 0.875 of the surrounding font size. Its background has two DIP of
+        // horizontal breathing room and the theme's small radius.
+        float radius = base_theme::Theme::Global(cx->app).tokens.radius.sm;
+        t->Font(font * 0.875f)
+            ->Mono()
+            ->PadX(2)
+            ->Radius(radius)
+            ->Bg(textViewStyle.InlineCodeBackground());
         if (textViewStyle.inlineCodeFields) {
             t->Refine(textViewStyle.inlineCode, textViewStyle.inlineCodeFields);
         }

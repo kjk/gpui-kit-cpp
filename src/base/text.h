@@ -545,7 +545,8 @@ struct TextView {
     // TextViewStyle::heading_base_font_size. Heading sizes are multiples of
     // it: node.rs 2258 has h1 2.0, h2 1.5, h3 1.25, h4 1.125, h5 and h6 1.0.
     float headingFont = 14;
-    // theme.mono_font_size — code blocks and inline code.
+    // theme.mono_font_size — fenced code blocks. Inline code follows Rust's
+    // relative 0.875 scale so it stays proportional inside headings too.
     float codeFont = 13;
     // TextViewStyle::paragraph_gap, rems(1.).
     float paragraphGap = 16;
