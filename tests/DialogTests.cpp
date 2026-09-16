@@ -281,6 +281,33 @@ static void TheBackdropFillsTheHost() {
     delete win;
 }
 
+static void OversizedDialogsAreClampedToTheViewport() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    El* host = component::Dialog::New(&cx)
+                   ->Open(true)
+                   ->W(800)
+                   ->H(1000)
+                   ->Layer(1)
+                   ->IntoEl(WinSize{400, 300});
+    El* popup = host ? host->last : nullptr;
+    El* panel = popup ? popup->first : nullptr;
+    utassert(panel);
+    // 16 DIP on both sides, and 30 + 16 DIP from the top for layer one.
+    utassertnear(panel->style.width, 368.f);
+    utassertnear(panel->style.maxH, 238.f);
+
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 // close_trigger_supplies_accessible_button and
 // close_trigger_activates_once_and_respects_cancel_veto. The trigger is a
 // button with the accessible name "Close" and cancel activation; the wrapper
@@ -330,6 +357,7 @@ static void CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce() {
 void TestDialog() {
     TestSuite("dialog");
     CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce();
+    OversizedDialogsAreClampedToTheViewport();
     TheBackdropFillsTheHost();
     EscapeCancelsAndEnterConfirms();
     TheActionsRunTheSameHandlersTheButtonsDo();

@@ -479,10 +479,15 @@ El* Dialog::IntoEl(WinSize size) {
     Edges windowPadding = WindowPaddings(cx->win);
     float viewW = size.dipW - windowPadding.left - windowPadding.right;
     float viewH = size.dipH - windowPadding.top - windowPadding.bottom;
+    const float viewportMargin = 16.f;
+    float y = viewH * 0.1f + (float)layerIx * 16.f;
+    float panelW = std::min(width, std::max(0.f, viewW - viewportMargin * 2));
+    float panelMaxH = std::max(0.f, viewH - y - viewportMargin);
     // The parts carry the padding, so a footer that tints or rules itself
     // reaches the panel's edges (AlertDialog::p_0 in the Rust story).
     El* panel = Div(a)
-                    ->W(width)
+                    ->W(panelW)
+                    ->MaxH(panelMaxH)
                     ->FlexCol()
                     ->MinH(96)
                     ->Bg(hasBackground ? background : th.background)
@@ -545,7 +550,7 @@ El* Dialog::IntoEl(WinSize size) {
                     ->H(viewH)
                     ->FlexCol()
                     ->ItemsCenter()
-                    ->PadT((viewH * 0.1f + (float)layerIx * 16.f) * delta)
+                    ->PadT(y * delta)
                     ->Child(panel);
     Str trap = StrDup(a, fmt("dialog-%d", layerIx));
     // The escape and enter bindings, on the popup that traps the focus. They
