@@ -103,6 +103,13 @@ void UiCodeBlockHighlighter(void* data, const CodeBlock* block, Arena* a,
 // so every TextView starts from the themed style and the themed highlighter.
 void TextViewInstallDefaults(App* app);
 
+// text/frontmatter.rs. The parser deliberately accepts only the same small,
+// unambiguous YAML mapping subset as upstream; unsupported YAML remains a
+// normal fenced-looking YAML code block instead of being misrepresented.
+struct FrontmatterPlugin {
+    static MarkdownPlugin New();
+};
+
 } // namespace component
 } // namespace gpui
 #endif // GPUI_SRC_UI_TEXT_H_

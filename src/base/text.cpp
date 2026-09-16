@@ -125,6 +125,12 @@ MarkdownExtensions& MarkdownExtensions::Mdx() {
     return *this;
 }
 
+MarkdownExtensions& MarkdownExtensions::Frontmatter() {
+    enableFrontmatter = true;
+    revision = NextMarkdownExtensionsRevision();
+    return *this;
+}
+
 MarkdownExtensions& MarkdownExtensions::BlockParser(Arena* a,
                                                     MarkdownBlockParserFn fn,
                                                     void* data) {
@@ -165,6 +171,7 @@ MarkdownExtensions& MarkdownExtensions::Plugin(Arena* a,
 bool MarkdownExtensions::HasSameParserConfiguration(
     const MarkdownExtensions& other) const {
     if (enableMdx != other.enableMdx ||
+        enableFrontmatter != other.enableFrontmatter ||
         blockParsers.len != other.blockParsers.len ||
         blockRenderers.len != other.blockRenderers.len) {
         return false;
@@ -181,6 +188,7 @@ bool MarkdownExtensions::HasSameParserConfiguration(
 
 uint64_t MarkdownExtensions::ParserFingerprint() const {
     uint64_t h = enableMdx ? 0x9e3779b97f4a7c15ull : 0xcbf29ce484222325ull;
+    h = h * 1099511628211ull + (enableFrontmatter ? 1ull : 0ull);
     h = h * 1099511628211ull + (uint64_t)blockParsers.len;
     h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
     // Name by name, and order-independent, so a renderer table rebuilt in a
@@ -1130,7 +1138,10 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     // The GFM dialect, which is what TextView renders: tables, strikethrough,
     // task lists, footnotes and bare-URL autolinks. `parse_options` in
     // crates/ui/src/text/markdown_ext.rs asks for the same.
-    md::Node* root = md::ToMdast(a, source, md::ParseOptions::Gfm());
+    md::ParseOptions options = md::ParseOptions::Gfm();
+    options.constructs.frontmatter = extensions && extensions
+                                                       ->enableFrontmatter;
+    md::Node* root = md::ToMdast(a, source, options);
 
     MdBuild b;
     b.a = a;

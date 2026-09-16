@@ -164,8 +164,10 @@ struct MarkdownExtensions {
     ArenaVec<MarkdownBlockRenderer> blockRenderers{};
     uint64_t revision = 0;
     bool enableMdx = false;
+    bool enableFrontmatter = false;
 
     MarkdownExtensions& Mdx();
+    MarkdownExtensions& Frontmatter();
     MarkdownExtensions& BlockParser(Arena* a, MarkdownBlockParserFn fn,
                                     void* data = nullptr);
     MarkdownExtensions& BlockRenderer(Arena* a, Str name,

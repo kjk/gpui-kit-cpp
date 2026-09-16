@@ -1,8 +1,259 @@
 #include "ui/text.h"
 
+#include "ui/description_list.h"
+
 namespace gpui {
 
 namespace component {
+
+struct FrontmatterEntry {
+    Str key = {};
+    Str value = {};
+};
+
+struct FrontmatterData {
+    ArenaVec<FrontmatterEntry> entries;
+};
+
+enum class FrontmatterScalar : uint8_t {
+    Plain,
+    Folded,
+    Literal,
+    Empty,
+};
+
+static bool FrontmatterPlainKey(Str key) {
+    if (!key) {
+        return false;
+    }
+    for (int i = 0; i < key.len; i++) {
+        char c = key.s[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-' || c == '_')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool FrontmatterStarts(Str value, char c) {
+    return value.len > 0 && value.s[0] == c;
+}
+
+static bool FrontmatterContains(Str value, Str needle) {
+    if (needle.len <= 0 || needle.len > value.len) {
+        return false;
+    }
+    for (int i = 0; i <= value.len - needle.len; i++) {
+        if (memcmp(value.s + i, needle.s, (size_t)needle.len) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool FrontmatterUnsupportedPlain(Str value) {
+    static const char leading[] = {'\'', '"', '[', ']', '{', '}', '&', '*',
+                                   '!',  '|', '>', '#', '%', '@', '`'};
+    for (char c : leading) {
+        if (FrontmatterStarts(value, c)) {
+            return true;
+        }
+    }
+    if (value.len > 0 && value.s[value.len - 1] == ':') {
+        return true;
+    }
+    return FrontmatterContains(value, StrL(" #")) ||
+           FrontmatterContains(value, StrL("\t#")) ||
+           FrontmatterContains(value, StrL(": ")) ||
+           FrontmatterContains(value, StrL(":\t")) ||
+           FrontmatterContains(value, StrL("- ")) ||
+           FrontmatterContains(value, StrL("? "));
+}
+
+static Str FrontmatterTrimNewlines(Str value) {
+    while (value.len > 0 && value.s[value.len - 1] == '\n') {
+        value.len--;
+    }
+    return value;
+}
+
+static bool FrontmatterParse(const markdown::Node* node,
+                             const MarkdownParseContext* context, void*,
+                             MarkdownNode* out) {
+    if (!node || !context || !out || node->kind != markdown::NodeKind::Yaml) {
+        return false;
+    }
+    Arena* a = context->arena;
+    Str source = context->Value(node, markdown::NodeStrKind::Value);
+    FrontmatterData* data = ArenaNew<FrontmatterData>(a);
+    Str key = {};
+    StrBuilder value(a);
+    FrontmatterScalar style = FrontmatterScalar::Empty;
+    int indent = -1;
+    int scalarLines = 0;
+    bool haveEntry = false;
+
+    auto finish = [&]() {
+        if (!haveEntry) {
+            return;
+        }
+        Str v = value.TakeStr();
+        if (style == FrontmatterScalar::Folded ||
+            style == FrontmatterScalar::Literal) {
+            v = FrontmatterTrimNewlines(v);
+        }
+        data->entries.Append(a, {context->Copy(key), context->Copy(v)});
+        value.Reset();
+        haveEntry = false;
+    };
+
+    for (int at = 0; at <= source.len;) {
+        int end = at;
+        while (end < source.len && source.s[end] != '\n' &&
+               source.s[end] != '\r') {
+            end++;
+        }
+        Str line(source.s + at, end - at);
+        while (end < source.len &&
+               (source.s[end] == '\n' || source.s[end] == '\r')) {
+            end++;
+        }
+        at = end;
+        Str trimmed = StrTrimAscii(line);
+        bool block = style == FrontmatterScalar::Folded ||
+                     style == FrontmatterScalar::Literal;
+        if (!trimmed) {
+            if (haveEntry && block) {
+                value.AppendChar('\n');
+                scalarLines++;
+            }
+            if (at >= source.len) {
+                break;
+            }
+            continue;
+        }
+        bool topLevel =
+            line.len == 0 || (line.s[0] != ' ' && line.s[0] != '\t');
+        if (trimmed.s[0] == '#' && (topLevel || !block)) {
+            if (at >= source.len) {
+                break;
+            }
+            continue;
+        }
+        if (topLevel) {
+            int colon = -1;
+            for (int i = 0; i < line.len; i++) {
+                if (line.s[i] == ':') {
+                    colon = i;
+                    break;
+                }
+            }
+            if (colon < 0 ||
+                (colon + 1 < line.len && line.s[colon + 1] != ' ' &&
+                 line.s[colon + 1] != '\t')) {
+                return false;
+            }
+            finish();
+            key = StrTrimAscii(Str(line.s, colon));
+            if (!FrontmatterPlainKey(key)) {
+                return false;
+            }
+            Str raw =
+                StrTrimAscii(Str(line.s + colon + 1, line.len - colon - 1));
+            style = FrontmatterScalar::Plain;
+            if (!raw) {
+                style = FrontmatterScalar::Empty;
+            } else if (StrEq(raw, StrL(">-"))) {
+                style = FrontmatterScalar::Folded;
+            } else if (StrEq(raw, StrL("|-"))) {
+                style = FrontmatterScalar::Literal;
+            } else {
+                if (FrontmatterUnsupportedPlain(raw)) {
+                    return false;
+                }
+                value.Append(raw);
+            }
+            haveEntry = true;
+            indent = -1;
+            scalarLines = 0;
+        } else {
+            if (!haveEntry || !block) {
+                return false;
+            }
+            int spaces = 0;
+            while (spaces < line.len && line.s[spaces] == ' ') {
+                spaces++;
+            }
+            if (spaces == 0) {
+                return false;
+            }
+            if (indent < 0) {
+                indent = spaces;
+            }
+            if (spaces < indent) {
+                return false;
+            }
+            Str continuation(line.s + indent, line.len - indent);
+            if (style == FrontmatterScalar::Folded) {
+                if (continuation.len > 0 &&
+                    (continuation.s[0] == ' ' || continuation.s[0] == '\t')) {
+                    return false;
+                }
+                if (value.len > 0 && value.LastChar() != '\n') {
+                    value.AppendChar(' ');
+                }
+            } else if (scalarLines > 0) {
+                value.AppendChar('\n');
+            }
+            value.Append(continuation);
+            scalarLines++;
+        }
+        if (at >= source.len) {
+            break;
+        }
+    }
+    finish();
+    if (data->entries.len == 0) {
+        return false;
+    }
+
+    StrBuilder text(a);
+    for (int i = 0; i < data->entries.len; i++) {
+        if (i > 0) {
+            text.AppendChar('\n');
+        }
+        text.Append(data->entries[i].key);
+        text.Append(StrL(": "));
+        text.Append(data->entries[i].value);
+    }
+    *out = MarkdownNode::New(StrL("frontmatter"), data)
+               .Text(text.TakeStr())
+               .Markdown(source);
+    return true;
+}
+
+static El* FrontmatterRender(Ctx* cx, const MarkdownNode* node, void*) {
+    if (!node || !node->data) {
+        return nullptr;
+    }
+    FrontmatterData* data = (FrontmatterData*)node->data;
+    DescriptionList* list =
+        DescriptionList::Horizontal(cx)->LabelWidth(192)->Columns(1);
+    for (int i = 0; i < data->entries.len; i++) {
+        list->Item(data->entries[i].key, data->entries[i].value);
+    }
+    return list->IntoEl();
+}
+
+MarkdownPlugin FrontmatterPlugin::New() {
+    MarkdownPlugin plugin;
+    plugin.name = StrL("frontmatter");
+    plugin.parse = &FrontmatterParse;
+    plugin.render = &FrontmatterRender;
+    plugin.isBlock = true;
+    return plugin;
+}
 
 TextViewStyle UiTextViewStyle(const Theme& theme) {
     // The colours first — `with_foreground`, `with_link` and the rest — from

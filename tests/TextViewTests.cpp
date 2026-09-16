@@ -1423,6 +1423,34 @@ static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     utassert(!first.HasSameParserConfiguration(mdx));
 }
 
+static void TestMarkdownFrontmatter() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    MarkdownExtensions extensions;
+    extensions.Frontmatter().Plugin(a, FrontmatterPlugin::New());
+    MdNode* doc =
+        MdParseCachedForTest(&cx, a,
+                             StrL("---\ntitle: GPUI\nsummary: >-\n  Small "
+                                  "native UI\n  toolkit\n---\n\n# Hello\n"),
+                             &extensions);
+    utassert(Children(doc) == 2);
+    MdNode* frontmatter = Child(doc, 0);
+    utassert(frontmatter && frontmatter->kind == MdKind::Custom);
+    utassert(StrEq(frontmatter->custom.name, StrL("frontmatter")));
+    utassert(StrEq(frontmatter->custom.text,
+                   StrL("title: GPUI\nsummary: Small native UI toolkit")));
+    utassert(TextIs(a, Child(doc, 1), "Hello"));
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestStatelessMarkdownSettles() {
     App app;
     Window* win = new Window();
@@ -1507,6 +1535,7 @@ void TestTextView() {
     TestTextViewStyleIsReadableWithoutATheme();
     TestTextViewDefaultsAndOptInHighlighting();
     TestMarkdownExtensionsParserConfiguration(a);
+    TestMarkdownFrontmatter();
     TestStatelessMarkdownSettles();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
