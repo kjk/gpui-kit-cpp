@@ -471,17 +471,13 @@ El* Button::IntoEl() {
             bd = th.buttonInfo;
             break;
         case ButtonVariant::Ghost:
-            // The one family with no token of its own: button.rs computes it
-            // from `secondary`, lightened in dark and darkened in light, and
-            // at 0.8 alpha in both. Twice as far for the pressed state.
             bg = clear;
             fg = th.secondaryFg;
-            hover = RgbaOpacity(dark ? RgbaLighten(th.secondary, 0.1f)
-                                     : RgbaDarken(th.secondary, 0.1f),
-                                0.8f);
-            press = RgbaOpacity(dark ? RgbaLighten(th.secondary, 0.2f)
-                                     : RgbaDarken(th.secondary, 0.2f),
-                                0.8f);
+            hover = dark ? BackgroundOpacity(th.tokens.accent, 0.5f)
+                         : th.tokens.accent;
+            press = th.tokens.buttonActive;
+            fgHover = th.accentFg;
+            hasFgHover = true;
             bd = clear;
             break;
         case ButtonVariant::Text:
@@ -544,8 +540,8 @@ El* Button::IntoEl() {
         }
     }
     if (selected) {
-        // ButtonVariant::selected: Ghost uses secondary_active, while Link
-        // and Text remain transparent.
+        // ButtonVariant::selected: Ghost keeps its distinct persistent
+        // secondary surface, while Link and Text remain transparent.
         switch (variant) {
             case ButtonVariant::Ghost:
                 bg = th.tokens.secondaryActive;

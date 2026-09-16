@@ -305,6 +305,49 @@ static void SourceButtonVariantsRoundingAndIconsRemainConcrete() {
     AppGlobalClear(&app);
 }
 
+static void GhostButtonsUseAccentHoverAndButtonActivePress() {
+    App app;
+    component::Init(&app);
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, win, arena, {}};
+
+    const Theme& light = ThemeNow(&app);
+    El* ghost = component::Button::New(&cx, StrL("light-ghost"))
+                    ->Ghost()
+                    ->Label(StrL("Ghost"))
+                    ->IntoEl();
+    utassert(
+        ghost->style.hasHoverBg && ghost->style.hasActiveBg &&
+        SameButtonColor(ghost->style.hoverBg.color, light.tokens.accent.color));
+    utassert(ghost->style.hasHoverFg &&
+             SameButtonColor(ghost->style.hoverFg, light.accentFg));
+    utassert(SameButtonColor(ghost->style.activeBg.color,
+                             light.tokens.buttonActive.color));
+
+    El* selected = component::Button::New(&cx, StrL("selected-ghost"))
+                       ->Ghost()
+                       ->Selected(true)
+                       ->IntoEl();
+    utassert(SameButtonColor(selected->style.bg.color,
+                             light.tokens.secondaryActive.color));
+
+    ThemeSet(&app, ThemeMode::Dark);
+    const Theme& dark = ThemeNow(&app);
+    El* darkGhost =
+        component::Button::New(&cx, StrL("dark-ghost"))->Ghost()->IntoEl();
+    Background darkHover = BackgroundOpacity(dark.tokens.accent, 0.5f);
+    utassert(SameButtonColor(darkGhost->style.hoverBg.color, darkHover.color));
+
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 struct ToggleGroupHarness {
     int calls = 0;
     int count = 0;
@@ -428,6 +471,7 @@ void TestButtonGroup() {
     BaseTabAndToggleCenterOrdinaryChildGeometry();
     SelectionEventsAreOrderedAndNotWordSized();
     SourceButtonVariantsRoundingAndIconsRemainConcrete();
+    GhostButtonsUseAccentHoverAndButtonActivePress();
     SourceToggleAndSegmentedGroupKeepStateAndGeometry();
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
     ClipboardButtonsAcceptTheSharedSizeContract();
