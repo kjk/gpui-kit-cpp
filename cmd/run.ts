@@ -542,32 +542,32 @@ export const gpuiComponent = {
   date: "2026-09-06",
   subject: "input: Multi cursors (#2837)",
   crates: {
-    "gpui-kit": "0.6.0",
-    "gpui-base": "0.6.0",
-    "gpui-component": "0.6.0",
-    "gpui-component-story": "0.6.0",
-    "gpui-wry": "0.6.0",
-    "gpui-shell": "0.6.0",
-    "gpui-component-shell": "0.6.0",
+    "gpui-kit": "0.6.1",
+    "gpui-base": "0.6.1",
+    "gpui-component": "0.6.1",
+    "gpui-component-story": "0.6.1",
+    "gpui-wry": "0.6.1",
+    "gpui-shell": "0.6.1",
+    "gpui-component-shell": "0.6.1",
   },
   dir: ".work/gpui-component",
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.2's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.5's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "801c087af22dd189dc1aa49e2f370b4f04190b19",
-  date: "2026-09-03",
-  subject: "git: Separate revisions from paths in git commands (#63666)",
+  sha: "d89e9c2124b2786a390c7a451c7488601b4da2e1",
+  date: "2026-09-14",
+  subject: "agent: Fix elicitation tool-call IDs (#64086)",
   crates: {
-    "gpui-pre": "0.3.2",
-    "gpui-pre-platform": "0.3.2",
-    "gpui-pre-macros": "0.3.2",
+    "gpui-pre": "0.3.5",
+    "gpui-pre-platform": "0.3.5",
+    "gpui-pre-macros": "0.3.5",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.2",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.5",
 } as const;
 
 /**
