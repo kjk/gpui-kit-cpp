@@ -25,7 +25,7 @@ The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
   dependency versions are unchanged.
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
-  persisted tree format, including a bare Tiles center. The older live
+  persisted tree format, including the retained Tiles center. The older live
   `DockState` still uses its separate `DockDump`/`DockLoad` path;
   `PaneTree::FromState` and live Tiles-center reconciliation remain missing
   (`src/base/dock_state.cpp`, `src/base/dock_layout.cpp`).

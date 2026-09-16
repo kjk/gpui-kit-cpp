@@ -198,9 +198,6 @@ static const StoryInfo kMeta[StoryCount] = {
     {"theme-colors", "Theme Colors",
      "A color theme viewer to explore colors organized by "
      "categories."},
-    {"tiles", "Tiles",
-     "Panels that float over an area, each moved by its bar and resized by "
-     "its edges."},
     {"toggle", "Toggle", "Turn an option on or off, alone or in a group."},
     {"tooltip", "Tooltip", "Describe a control on hover."},
     // TreeStory has no description() in Rust, so its page has no line under

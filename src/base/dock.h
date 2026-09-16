@@ -229,6 +229,9 @@ struct DockPanelDef {
     void (*onRemoved)(Ctx* cx, void* data) = nullptr;
     bool canZoom = true;
     DockPanelControl zoomable = DockPanelControl::Menu;
+    // ui::Panel::title_bar: a lone panel that carries its own chrome may use
+    // the whole group. A group with multiple panels still draws its tabs.
+    bool titleBar = true;
     // ui::Panel::inner_padding: only relevant when a full tab bar surrounds
     // the active panel. Rust's default is true.
     bool innerPadding = true;

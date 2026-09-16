@@ -187,4 +187,5 @@ El* TilesStory::Render(TilesStory* self, Ctx* cx) {
     return page;
 }
 
-STORY_PAGE(StoryTiles, TilesStory);
+// Kept as a compatibility example implementation, but upstream removed Tiles
+// from the gallery in 0.6.1 so it is no longer registered as a story page.

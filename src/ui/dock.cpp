@@ -363,6 +363,10 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
     // `visible_panels.len() == 1 && panel_style == PanelStyle::default()`.
     if (DockVisibleCount(s, g->node) == 1 &&
         s->panelStyle == DockPanelStyle::Auto) {
+        const DockPanelDef* def = DockGroupPanel(g, activeIx);
+        if (def && !def->titleBar) {
+            return nullptr;
+        }
         return RenderTitleRow(g);
     }
 

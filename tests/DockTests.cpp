@@ -577,23 +577,35 @@ static void TheUiPanelHandleCrossesTheBaseSeam() {
     panel.titleEl = DockProbeTitle;
     panel.data = &probe;
     panel.innerPadding = false;
+    panel.titleBar = false;
 
     component::PanelHandle handle = component::panel_handle(panel);
     utassert(component::PanelHandle::Of(handle.Get()) == handle.Get());
     utassert(handle.Get()->titleEl == DockProbeTitle);
     utassert(!handle.Get()->innerPadding);
+    utassert(!handle.Get()->titleBar);
 
     DockState* dock = state.Get(&app);
     DockAddPanelDef(dock, handle.IntoPanelView());
-    DockPanelDef second;
-    second.title = StrL("Second");
-    DockAddPanelDef(dock, second);
     int tabs = DockNewTabs(dock);
     DockTabsAdd(dock, tabs, 0);
-    DockTabsAdd(dock, tabs, 1);
     dock->center = tabs;
 
     component::DockSkin skin = component::DockSkin::New(state);
+    DockTabGroup group;
+    group.cx = &cx;
+    group.state = state;
+    group.node = tabs;
+    const DockRenderer* renderer = skin.Renderer();
+    utassert(renderer->tabBar(&cx, renderer->data, &group) == nullptr);
+
+    DockPanelDef second;
+    second.title = StrL("Second");
+    DockAddPanelDef(dock, second);
+    DockTabsAdd(dock, tabs, 1);
+    utassert(renderer->tabBar(&cx, renderer->data, &group) != nullptr);
+    utassert(probe.titles == 1);
+
     skin.SetPanelStyle(&app, nullptr, component::PanelStyle::TabBar);
     skin.SetToggleButtonVisible(&app, nullptr, false);
     utassert(skin.GetPanelStyle(&app) == component::PanelStyle::TabBar);
@@ -602,16 +614,11 @@ static void TheUiPanelHandleCrossesTheBaseSeam() {
     utassert(skin.HasTilesScrollbarMode(&app));
     utassert(skin.GetTilesScrollbarMode(&app) == ScrollbarMode::Scrolling);
 
-    DockTabGroup group;
-    group.cx = &cx;
-    group.state = state;
-    group.node = tabs;
-    const DockRenderer* renderer = skin.Renderer();
     El* content = renderer->tabContentFrame(&cx, renderer->data, &group);
     utassert(content && content->style.pad.top == 0);
     El* preview = renderer->dragPreview(&cx, renderer->data, handle.Get());
     utassert(preview && preview->style.width == kDockDragPreviewW);
-    utassert(probe.titles == 1);
+    utassert(probe.titles == 2);
 
     dock->panels[0].innerPadding = true;
     content = renderer->tabContentFrame(&cx, renderer->data, &group);
