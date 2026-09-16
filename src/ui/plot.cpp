@@ -8,6 +8,38 @@ namespace gpui {
 
 namespace component {
 
+PathCache* PathCaches::Slot(int index) {
+    if (index < 0) {
+        return nullptr;
+    }
+    while (slots.len <= index) {
+        VecAppend(slots, PathCache{});
+    }
+    return &slots[index];
+}
+
+void PathCaches::SlotPair(int index, PathCache** first, PathCache** second) {
+    if (first) *first = Slot(index * 2);
+    if (second) *second = Slot(index * 2 + 1);
+}
+
+ShapeKey& ShapeKey::U64(uint64_t v) {
+    for (int i = 0; i < 8; i++) {
+        value = (value ^ (uint8_t)(v >> (i * 8))) * 1099511628211ull;
+    }
+    return *this;
+}
+
+ShapeKey& ShapeKey::PointValue(Point point) {
+    return Float(point.x).Float(point.y);
+}
+
+ShapeKey& ShapeKey::Float(float v) {
+    uint32_t bits = 0;
+    memcpy(&bits, &v, sizeof(bits));
+    return U64(bits);
+}
+
 static void MinMax(const float* v, int n, float* outMin, float* outMax) {
     if (n <= 0) {
         *outMin = 0;

@@ -17,6 +17,44 @@ struct Path;
 
 namespace component {
 
+// path_cache.rs. Native path realization is cached by src/gpui/scene.h, so a
+// component cache retains the semantic key rather than a second copy of the
+// backend geometry. Touch answers whether this shape was already warm.
+struct PathCache {
+    uint64_t key = 0;
+    bool hasKey = false;
+
+    bool Touch(uint64_t value) {
+        bool warm = hasKey && key == value;
+        key = value;
+        hasKey = true;
+        return warm;
+    }
+    bool IsWarm() const { return hasKey; }
+};
+
+struct PathCaches {
+    Vec<PathCache> slots;
+
+    ~PathCaches() { VecReset(slots); }
+    PathCache* Slot(int index);
+    void SlotPair(int index, PathCache** first, PathCache** second);
+};
+
+struct ShapeKey {
+    uint64_t value = 1469598103934665603ull;
+
+    static ShapeKey New(uint64_t extra = 0) {
+        ShapeKey key;
+        key.U64(extra);
+        return key;
+    }
+    ShapeKey& U64(uint64_t v);
+    ShapeKey& PointValue(Point point);
+    ShapeKey& Float(float v);
+    uint64_t Finish() const { return value; }
+};
+
 // ScaleLinear — https://d3js.org/d3-scale/linear
 //
 // The domain collapses to its min and max, and so does the range, except that

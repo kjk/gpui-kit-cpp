@@ -106,6 +106,29 @@ static void SankeyLabelsCarryIndependentStylesAndDoNotCap() {
     ArenaDelete(a);
 }
 
+static void PlotPathCachesFollowShapeKeysAndSlots() {
+    ShapeKey a = ShapeKey::New(7);
+    a.PointValue({1, 2}).Float(3);
+    ShapeKey same = ShapeKey::New(7);
+    same.PointValue({1, 2}).Float(3);
+    ShapeKey moved = ShapeKey::New(7);
+    moved.PointValue({1, 4}).Float(3);
+    utassert(a.Finish() == same.Finish());
+    utassert(a.Finish() != moved.Finish());
+
+    PathCaches caches;
+    PathCache* first = caches.Slot(2);
+    utassert(first && !first->IsWarm());
+    utassert(!first->Touch(a.Finish()));
+    utassert(first->Touch(a.Finish()));
+    utassert(!first->Touch(moved.Finish()));
+    PathCache* pairA = nullptr;
+    PathCache* pairB = nullptr;
+    caches.SlotPair(3, &pairA, &pairB);
+    utassert(pairA == caches.Slot(6));
+    utassert(pairB == caches.Slot(7));
+}
+
 static void UnchangedPlotLabelsKeepTheScene() {
 #if GPUI_OS_WINDOWS
     TestSuite("plot label scene stability");
@@ -199,6 +222,7 @@ void TestChart() {
     RadarLabelsRetainTextAndElements();
     PlainRadarLabelsProjectToTheTaggedValue();
     SankeyLabelsCarryIndependentStylesAndDoNotCap();
+    PlotPathCachesFollowShapeKeysAndSlots();
     UnchangedPlotLabelsKeepTheScene();
     UnchangedSankeyLabelsKeepTheScene();
 }
