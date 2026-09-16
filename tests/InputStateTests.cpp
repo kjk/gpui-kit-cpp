@@ -3228,6 +3228,15 @@ static void AColumnarSelectionIsOneSelectionPerRow() {
     utassert(RangeIs(back, 1, 3));
 }
 
+static void AShortRowDoesNotNarrowAColumnarSelection() {
+    InputState s;
+    MakeEditor(&s, "abcdef\nab\nabcdef");
+    InputBuildColumnarSelection(&s, nullptr, nullptr, {1, 0}, {9, 3});
+    utassert(InputCursorCount(&s) == 2);
+    utassert(RangeIs(s, 1, 5));
+    utassert(ExtraIs(s, 0, 8, 9));
+}
+
 // test_block_indent_tracks_all_preceding_edits /
 // test_multi_cursor_indent_then_outdent_roundtrips: the block pair indents
 // every cursor's line and the inline pair puts a tab at every caret, each as
@@ -3369,6 +3378,7 @@ void TestInputState() {
     AddCursorBelowKeepsTheColumn();
     MovementFansOutOverEveryCursor();
     AColumnarSelectionIsOneSelectionPerRow();
+    AShortRowDoesNotNarrowAColumnarSelection();
     AColumnarSelectionFollowsTheWrappedRows();
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();

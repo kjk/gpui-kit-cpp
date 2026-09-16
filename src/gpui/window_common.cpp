@@ -513,12 +513,13 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         }
         if (s->scrollY != was && s->autoScroll.hasLastDrag) {
             bool affinity = false;
-            int offset =
-                InputIndexForPosition(s, &win->paint, s->autoScroll.lastDrag.x,
-                                      s->autoScroll.lastDrag.y, &affinity);
-            if (s->columnSelectStart >= 0) {
-                InputBuildColumnarSelection(s, win->app, win,
-                                            s->columnSelectStart, offset);
+            int columns = 0;
+            int offset = InputIndexForPosition(
+                s, &win->paint, s->autoScroll.lastDrag.x,
+                s->autoScroll.lastDrag.y, &affinity, &columns);
+            if (s->columnSelectStart.IsValid()) {
+                InputBuildColumnarSelection(
+                    s, win->app, win, s->columnSelectStart, {offset, columns});
             } else {
                 InputSelectToWithAffinity(s, win->app, win, offset, affinity);
             }
@@ -1236,8 +1237,9 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputFocus(s, win->app, win);
     }
     bool lineEndAffinity = false;
-    int offset =
-        InputIndexForPosition(s, &win->paint, in.x, in.y, &lineEndAffinity);
+    int columnsPastLineEnd = 0;
+    int offset = InputIndexForPosition(s, &win->paint, in.x, in.y,
+                                       &lineEndAffinity, &columnsPastLineEnd);
     // `M::on_click(..)`, which is go-to-definition and returns true when it
     // took the press — so the same click does not also move the caret.
     // Alt is the multi-cursor modifier, so alt+secondary is not a jump.
@@ -1263,7 +1265,7 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         } else {
             InputAddCursorAt(s, win->app, win, offset);
         }
-        s->columnSelectStart = offset;
+        s->columnSelectStart = {offset, columnsPastLineEnd};
     } else if (in.modifiers.shift) {
         InputSelectToWithAffinity(s, win->app, win, offset, lineEndAffinity);
     } else {
@@ -1758,11 +1760,13 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         s->autoScroll.lastDrag = Point{x, y};
         s->autoScroll.hasLastDrag = true;
         bool affinity = false;
-        int offset = InputIndexForPosition(s, &win->paint, x, y, &affinity);
+        int columnsPastLineEnd = 0;
+        int offset = InputIndexForPosition(s, &win->paint, x, y, &affinity,
+                                           &columnsPastLineEnd);
         // An alt(+shift) press drags out a block instead of a range.
-        if (s->columnSelectStart >= 0) {
+        if (s->columnSelectStart.IsValid()) {
             InputBuildColumnarSelection(s, win->app, win, s->columnSelectStart,
-                                        offset);
+                                        {offset, columnsPastLineEnd});
         } else {
             InputSelectToWithAffinity(s, win->app, win, offset, affinity);
         }
@@ -2144,7 +2148,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
         }
         win->input->selecting = false;
         win->input->hasSelectedWordRange = false;
-        win->input->columnSelectStart = -1;
+        win->input->columnSelectStart = {};
         win->input->autoScroll.Stop();
     }
     // The click, last: GPUI's on_click fires from the release, and only when

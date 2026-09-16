@@ -2554,13 +2554,21 @@ static PaintCtx* DisplayCtx(const InputState* s, Window* win) {
 // clipped to a short row (display_row_column_to_offset). Rows a closed fold
 // hides are skipped. False when the run could not be measured.
 static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
-                                int lo, int hi, Arena* a,
+                                InputState::ColumnarPoint start,
+                                InputState::ColumnarPoint end, Arena* a,
                                 CursorSelection** outSels, int* outN) {
+    if (start.offset > end.offset) {
+        InputState::ColumnarPoint swap = start;
+        start = end;
+        end = swap;
+    }
     WrapPoint ps, pe;
-    if (!WrapPointAt(s, ctx, t, lo, a, &ps) ||
-        !WrapPointAt(s, ctx, t, hi, a, &pe)) {
+    if (!WrapPointAt(s, ctx, t, start.offset, a, &ps) ||
+        !WrapPointAt(s, ctx, t, end.offset, a, &pe)) {
         return false;
     }
+    ps.column += start.columnsPastLineEnd;
+    pe.column += end.columnsPastLineEnd;
     int col0 = ps.column <= pe.column ? ps.column : pe.column;
     int col1 = ps.column <= pe.column ? pe.column : ps.column;
     bool folding = LayoutModeIsFolding(s->mode);
@@ -2615,29 +2623,35 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
 }
 
 void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
-                                 int startOffset, int endOffset) {
+                                 InputState::ColumnarPoint start,
+                                 InputState::ColumnarPoint end) {
     if (!InputIsMultiLine(s)) {
         return;
     }
     UndoBreakCoalescing(&s->undo);
     Str t = InputValue(s);
-    int lo = startOffset <= endOffset ? startOffset : endOffset;
-    int hi = startOffset <= endOffset ? endOffset : startOffset;
-    if (lo < 0) {
-        lo = 0;
+    if (start.offset > end.offset) {
+        InputState::ColumnarPoint swap = start;
+        start = end;
+        end = swap;
     }
-    if (hi > t.len) {
-        hi = t.len;
+    if (start.offset < 0) {
+        start.offset = 0;
+    }
+    if (end.offset > t.len) {
+        end.offset = t.len;
     }
     Arena* a = GetTempArena();
     CursorSelection* sels = nullptr;
     int m = 0;
     PaintCtx* ctx = DisplayCtx(s, win);
-    if (!ctx || !ColumnarRowsDisplay(s, ctx, t, lo, hi, a, &sels, &m)) {
+    if (!ctx || !ColumnarRowsDisplay(s, ctx, t, start, end, a, &sels, &m)) {
         // Nothing laid out to measure against: document rows, which are the
         // wrap rows of a field that does not wrap.
-        RopePoint ps = RopeOffsetToPoint(t, lo);
-        RopePoint pe = RopeOffsetToPoint(t, hi);
+        RopePoint ps = RopeOffsetToPoint(t, start.offset);
+        RopePoint pe = RopeOffsetToPoint(t, end.offset);
+        ps.column += start.columnsPastLineEnd;
+        pe.column += end.columnsPastLineEnd;
         int col0 = ps.column <= pe.column ? ps.column : pe.column;
         int col1 = ps.column <= pe.column ? pe.column : ps.column;
         bool folding = LayoutModeIsFolding(s->mode);
@@ -2661,7 +2675,7 @@ void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
     if (m == 0) {
         sels = (CursorSelection*)Alloc(a, (int)sizeof(CursorSelection));
         CursorSelection c;
-        c.range = SelectionAt(hi);
+        c.range = SelectionAt(end.offset);
         sels[m++] = c;
     }
     SetAllCursors(s, sels, m);
@@ -5810,9 +5824,12 @@ void InputBlur(InputState* s, App* app, Window* win) {
 // line for the x; the rows here are the logical lines, evenly spaced from the
 // first one, so the row is arithmetic and only the x needs shaping.
 int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
-                          bool* lineEndAffinity) {
+                          bool* lineEndAffinity, int* columnsPastLineEnd) {
     if (lineEndAffinity) {
         *lineEndAffinity = false;
+    }
+    if (columnsPastLineEnd) {
+        *columnsPastLineEnd = 0;
     }
     Str t = InputValue(s);
     if (t.len == 0 || !ctx) {
@@ -5899,6 +5916,23 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     if (lineEndAffinity && s->softWrap) {
         *lineEndAffinity = InputLineEndAffinityAt(ctx, line, font, maxW, local,
                                                   relY, s->lastMono, lineMult);
+    }
+    if (columnsPastLineEnd && local == line.len) {
+        float endX = 0, endY = 0, endH = 0;
+        float spaceX = 0, spaceY = 0, spaceH = 0;
+        bool finalVisualRow = !s->softWrap;
+        if (TextPointAt(ctx, line, font, maxW, s->softWrap, line.len, &endX,
+                        &endY, &endH, s->lastMono, lineMult, true)) {
+            float rowH = endH > 0 ? endH : lineH;
+            finalVisualRow = finalVisualRow || relY + rowH * 0.5f >= endY;
+            if (finalVisualRow && x - b.x > endX &&
+                TextPointAt(ctx, StrL(" "), font, 0, false, 1, &spaceX, &spaceY,
+                            &spaceH, s->lastMono, 0, true) &&
+                spaceX > 0) {
+                float columns = (x - b.x - endX) / spaceX;
+                *columnsPastLineEnd = (int)(columns + 0.5f);
+            }
+        }
     }
     return start + local;
 }

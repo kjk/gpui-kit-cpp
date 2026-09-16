@@ -4040,9 +4040,14 @@ struct InputState {
     // they were added. Multi-line fields only; every single-cursor path
     // clears it, and the active one stays in `selectedRange`.
     Vec<CursorSelection> extraCursors;
-    // column_select_start: where an alt(+shift) press landed, which a drag
-    // from it turns into a block of one selection per row. -1 for none.
-    int columnSelectStart = -1;
+    // column_select_start: where an alt(+shift) press landed, including how
+    // far it sat past a short row's end. A negative offset means none.
+    struct ColumnarPoint {
+        int offset = -1;
+        int columnsPastLineEnd = 0;
+
+        bool IsValid() const { return offset >= 0; }
+    } columnSelectStart;
     UndoManager undo;
     MaskPattern maskPattern = {};
     bool maskPatternSet = false;
@@ -4406,7 +4411,12 @@ void InputAddCursorAt(InputState* s, App* app, Window* win, int offset);
 // build_columnar_selection: an alt+shift drag. One selection per row between
 // the two offsets, each over the same column span.
 void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
-                                 int startOffset, int endOffset);
+                                 InputState::ColumnarPoint start,
+                                 InputState::ColumnarPoint end);
+inline void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
+                                        int startOffset, int endOffset) {
+    InputBuildColumnarSelection(s, app, win, {startOffset, 0}, {endOffset, 0});
+}
 // replace_text_in_ranges: disjoint edits applied highest-first in one undo
 // step, leaving one collapsed cursor after each. `ranges[0]` is the active
 // cursor's edit and stays active. Returns false when the field is not
@@ -4691,7 +4701,8 @@ void InputBlur(InputState* s, App* app, Window* win);
 // index_for_mouse_position: the offset a press at (x, y) lands on, against the
 // run the element last painted.
 int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
-                          bool* lineEndAffinity = nullptr);
+                          bool* lineEndAffinity = nullptr,
+                          int* columnsPastLineEnd = nullptr);
 // The fold chevron a press at (x, y) landed on, or -1. The boxes are the ones
 // the last frame's gutter left behind.
 int InputFoldIconAt(const InputState* s, float x, float y);
