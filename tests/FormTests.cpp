@@ -95,9 +95,36 @@ static void HorizontalLabelIndentExistsWithoutLabel() {
     AppGlobalClear(&app);
 }
 
+static void FormConventionsExposeLabelLayoutAndFooter() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+
+    El* actions = Div(arena)->H(20);
+    Form* form = Form::New(&cx)
+                     ->LabelLayout(Axis::Horizontal)
+                     ->Columns(2)
+                     ->Footer(actions);
+    form->Child(field(Div(arena)).Label(StrL("One")));
+    El* root = form->IntoEl();
+    El* footer = root ? root->last : nullptr;
+    utassert(form->horizontal && form->columns == 2);
+    utassert(form->footer == actions);
+    utassert(footer && footer->first == actions);
+    utassert(footer && footer->style.width == kFill && footer->style.minW == 0);
+
+    delete win;
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestForm() {
     TestSuite("form");
     FieldBuilderAndStandaloneFieldKeepSourceState();
     FormAxesUseSourceSpacingAndLabelWidths();
     HorizontalLabelIndentExistsWithoutLabel();
+    FormConventionsExposeLabelLayoutAndFooter();
 }

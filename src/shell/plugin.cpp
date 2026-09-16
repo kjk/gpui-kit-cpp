@@ -1224,10 +1224,24 @@ Str ShellCheckApplication(Arena* arena, ShellRuntime* runtime, Str directory,
     ScriptView* view = shellRoot && shellRoot->content.IsValid()
                            ? Entity<ScriptView>{shellRoot->content}.Get(app)
                            : nullptr;
-    Str result = view && view->object
-                     ? runtime->RenderToSpec(arena, view->object, window, app,
-                                             view->self, view->policy, error)
-                     : Str{};
+    Str result = {};
+    RenderSnapshot* snapshot =
+        view && view->object
+            ? runtime->BuildSnapshot(view->object, window, app, view->self,
+                                     view->policy, error)
+            : nullptr;
+    if (snapshot) {
+        // A source check builds the same eager native tree as a real frame so
+        // registered-component failures cannot hide behind a valid script
+        // description. The snapshot stays alive through materialization
+        // because its callbacks and strings own what the element tree reads.
+        Ctx cx = {app, window, arena, view->self};
+        (void)ShellMaterialize(&cx, runtime, snapshot, error);
+        if (!error->IsSet()) {
+            result = snapshot->DebugTree(arena);
+        }
+        delete snapshot;
+    }
     EntityDrop(app, root.id);
     return result;
 }

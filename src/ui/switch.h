@@ -33,6 +33,9 @@ struct Switch {
     Switch* WithSize(UiSize s);
     Switch* Color(Rgba c);
     Switch* OnClick(Listener fn);
+    // Semantic controlled-value spelling. OnClick is the compatibility
+    // alias; both replace the same callback.
+    Switch* OnChange(Listener fn);
     El* IntoEl();
 };
 

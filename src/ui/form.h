@@ -80,6 +80,7 @@ struct Form {
     UiSize size = UiSize::Medium;
     // label_text_size. 0 keeps text_sm.
     float labelTextSize = 0;
+    El* footer = nullptr;
 
     static Form* New(Ctx* cx);
     Form* Child(const component::Field& field);
@@ -95,8 +96,12 @@ struct Form {
     Form* Visible(bool v);
     Form* LabelIndent(bool v);
     Form* Align(FieldAlign v);
+    // Label/control orientation, independent of the field column count.
+    Form* LabelLayout(Axis axis);
     Form* Horizontal(bool v = true);
     Form* Columns(int n);
+    // Full-width trailing content after the fields. A later call replaces it.
+    Form* Footer(El* content);
     Form* LabelWidth(float w);
     Form* WithSize(UiSize v);
     Form* LabelTextSize(float px);

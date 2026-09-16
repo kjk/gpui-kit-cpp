@@ -151,8 +151,15 @@ Form* Form::Horizontal(bool v) {
     horizontal = v;
     return this;
 }
+Form* Form::LabelLayout(Axis axis) {
+    return Horizontal(axis == Axis::Horizontal);
+}
 Form* Form::Columns(int c) {
     columns = c < 1 ? 1 : c;
+    return this;
+}
+Form* Form::Footer(El* content) {
+    footer = content;
     return this;
 }
 Form* Form::LabelWidth(float w) {
@@ -280,6 +287,10 @@ El* Form::IntoEl() {
         for (int i = inRow; i < columns; i++) {
             row->Child(Div(a)->Flex1());
         }
+    }
+    if (footer) {
+        col->Child(
+            Div(a)->FlexRow()->W(kFill)->MinW(0)->JustifyEnd()->Child(footer));
     }
     return col;
 }

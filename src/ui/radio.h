@@ -39,6 +39,9 @@ struct Radio {
     Radio* TabIndex(int v);
     Radio* TabStop(bool v);
     Radio* OnClick(Listener fn);
+    // Semantic controlled-value spelling. OnClick is the compatibility
+    // alias; both replace the same callback.
+    Radio* OnChange(Listener fn);
     El* IntoEl();
 };
 
@@ -56,6 +59,9 @@ struct RadioGroup {
     UiSize size = UiSize::Medium;
     Listener onClick;
 
+    // The source's default constructor is a vertical group with no selected
+    // item.
+    static RadioGroup* New(Ctx* cx, Str id);
     static RadioGroup* Vertical(Ctx* cx, Str id);
     static RadioGroup* Horizontal(Ctx* cx, Str id);
     RadioGroup* Child(Radio* r);
@@ -65,6 +71,7 @@ struct RadioGroup {
     RadioGroup* Disabled(bool v);
     RadioGroup* WithSize(UiSize s);
     RadioGroup* OnClick(Listener fn);
+    RadioGroup* OnChange(Listener fn);
     El* IntoEl();
 };
 

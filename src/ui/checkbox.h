@@ -48,6 +48,9 @@ struct Checkbox {
     Checkbox* TabStop(bool v);
     Checkbox* Tooltip(Str s);
     Checkbox* OnClick(Listener fn);
+    // Semantic controlled-value spelling. OnClick is the compatibility
+    // alias; both replace the same callback.
+    Checkbox* OnChange(Listener fn);
     El* IntoEl();
 };
 

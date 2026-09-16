@@ -45,6 +45,9 @@ Switch* Switch::Color(Rgba c) {
     return this;
 }
 Switch* Switch::OnClick(Listener fn) {
+    return OnChange(fn);
+}
+Switch* Switch::OnChange(Listener fn) {
     onClick = fn;
     return this;
 }

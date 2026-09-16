@@ -72,6 +72,9 @@ Checkbox* Checkbox::Tooltip(Str s) {
     return this;
 }
 Checkbox* Checkbox::OnClick(Listener fn) {
+    return OnChange(fn);
+}
+Checkbox* Checkbox::OnChange(Listener fn) {
     onClick = fn;
     return this;
 }

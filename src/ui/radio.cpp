@@ -50,6 +50,9 @@ Radio* Radio::TabStop(bool v) {
     return this;
 }
 Radio* Radio::OnClick(Listener fn) {
+    return OnChange(fn);
+}
+Radio* Radio::OnChange(Listener fn) {
     onClick = fn;
     return this;
 }
@@ -130,8 +133,11 @@ static RadioGroup* RadioGroupNew(Ctx* cx, Str id, bool horizontal) {
     g->horizontal = horizontal;
     return g;
 }
-RadioGroup* RadioGroup::Vertical(Ctx* cx, Str id) {
+RadioGroup* RadioGroup::New(Ctx* cx, Str id) {
     return RadioGroupNew(cx, id, false);
+}
+RadioGroup* RadioGroup::Vertical(Ctx* cx, Str id) {
+    return New(cx, id);
 }
 RadioGroup* RadioGroup::Horizontal(Ctx* cx, Str id) {
     return RadioGroupNew(cx, id, true);
@@ -158,6 +164,9 @@ RadioGroup* RadioGroup::WithSize(UiSize s) {
     return this;
 }
 RadioGroup* RadioGroup::OnClick(Listener fn) {
+    return OnChange(fn);
+}
+RadioGroup* RadioGroup::OnChange(Listener fn) {
     onClick = fn;
     return this;
 }
