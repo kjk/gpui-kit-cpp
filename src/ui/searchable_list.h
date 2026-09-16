@@ -207,6 +207,10 @@ struct SearchableListState {
     // What the caller hears once a click has been applied, carrying the item
     // it was about. Rust's `on_confirm`.
     Listener onChange = {};
+    // A Select owns the query that filters this list. Let it restore the
+    // complete delegate and committed cursor on every close path, including
+    // Cancel handled directly by SearchableListState.
+    Listener onClose = {};
     // The select's focus handles, which are handles now rather than ids
     // standing in for them. Rust's Select focuses its `content` handle when
     // the list comes up — `tracked_focus_handle` — and puts focus back on the

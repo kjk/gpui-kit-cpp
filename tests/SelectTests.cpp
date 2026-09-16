@@ -193,6 +193,49 @@ static void SelectStateOwnsCommittedSelectionAndEvents() {
     EntityDropAll(&app);
 }
 
+static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
+    using namespace gpui::component;
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, nullptr, {}};
+    Entity<SelectState> state = SelectState::New(&app);
+    SelectState* s = state.Get(&app);
+    SearchableItem items[] = {
+        {StrL("Dutch"), StrL("nl")},
+        {StrL("English"), StrL("en")},
+        {StrL("French"), StrL("fr")},
+        {StrL("Hungarian"), StrL("hu")},
+    };
+    s->Searchable(true);
+    s->SetItems(items, 4);
+    s->SetSelectedValue(StrL("fr"), &cx);
+    s->SetOpen(true, &cx);
+
+    InputSetValue(&s->queryInput, StrL("hun"));
+    SearchableListSearch(s->List(), items, 4, InputValue(&s->queryInput));
+    s->state.list.selected = 0;
+    utassert(s->state.matches.len == 1 && s->state.matches[0] == 3);
+    s->SetOpen(false, &cx);
+    utassert(InputValue(&s->queryInput).len == 0);
+    utassert(s->state.matches.len == 4);
+    utassert(s->state.list.selected == 2);
+
+    // Confirming a filtered row commits the source item, then resolves its
+    // cursor again after restoring the full list.
+    s->SetOpen(true, &cx);
+    InputSetValue(&s->queryInput, StrL("hun"));
+    SearchableListSearch(s->List(), items, 4, InputValue(&s->queryInput));
+    SearchableListState::OnRowClick(s->List(), &cx, nullptr, 0);
+    utassert(base::StrEq(s->SelectedValue(), StrL("hu")));
+    utassert(InputValue(&s->queryInput).len == 0);
+    utassert(s->state.matches.len == 4);
+    utassert(s->state.list.selected == 3);
+
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void SourceSelectBuilderWritesItsOwnState() {
     using namespace gpui::component;
     App app;
@@ -456,6 +499,7 @@ void TestSelect() {
     TheListInsideASelectIsTheContentHandle();
     CaretKeepsTheSourceSizeScale();
     SelectStateOwnsCommittedSelectionAndEvents();
+    ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor();
     SourceSelectBuilderWritesItsOwnState();
     ComboboxOwnsStateEventsAndTriggerContext();
 }

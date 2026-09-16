@@ -81,6 +81,7 @@ Entity<SelectState> SelectState::New(App* app) {
         self->self = out;
         self->activeQuery = &self->queryInput;
         self->state.onChange = ListenTo(out, &SelectState::OnListChange);
+        self->state.onClose = ListenTo(out, &SelectState::OnListClose);
     }
     return out;
 }
@@ -171,6 +172,30 @@ void SelectState::ToggleMenu(Ctx* cx) {
     SelectToggleOpen(&state, cx);
 }
 
+void SelectState::ClearQueryAndRestore(Ctx* cx) {
+    if (activeQuery && InputValue(activeQuery).len > 0) {
+        InputSetValue(activeQuery, Str{});
+    }
+    SearchableListSearch(&state, state.items, state.nItems, Str{});
+    state.list.selected = -1;
+    if (state.selected.len > 0) {
+        int committed = state.selected[0];
+        for (int i = 0; i < state.matches.len; i++) {
+            if (state.matches[i] == committed) {
+                state.list.selected = i;
+                break;
+            }
+        }
+    }
+    if (cx) {
+        Notify(cx);
+    }
+}
+
+void SelectState::OnListClose(SelectState* self, Ctx* cx, const TickEvent*) {
+    self->ClearQueryAndRestore(cx);
+}
+
 void SelectState::Clean(Ctx* cx) {
     SetSelectedIndex(-1, cx);
     SelectEvent ev;
@@ -189,6 +214,7 @@ void SelectState::OnListChange(SelectState* self, Ctx* cx,
         ev.index = SelectPath(&self->state, ix);
         ev.value = self->state.items[ix].value;
     }
+    self->ClearQueryAndRestore(cx);
     self->Focus(cx->win);
     EntityEmit(cx->app, cx->win, self->self, &ev);
 }
@@ -218,6 +244,7 @@ Select* Select::New(Ctx* cx, Str id, Entity<SelectState> state) {
     if (self) {
         self->self = state;
         self->state.onChange = ListenTo(state, &SelectState::OnListChange);
+        self->state.onClose = ListenTo(state, &SelectState::OnListClose);
     }
     return out;
 }
@@ -380,6 +407,10 @@ void SelectToggleOpen(SearchableListState* s, Ctx* cx) {
                 break;
             }
         }
+    }
+    if (!s->open && s->onClose.IsValid()) {
+        TickEvent ev = {};
+        ListenerCall(cx->app, cx->win, s->onClose, &ev);
     }
     Notify(cx);
 }

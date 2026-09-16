@@ -69,8 +69,10 @@ struct SelectState {
     void Focus(Window* win) const;
     void SetOpen(bool open, Ctx* cx);
     void ToggleMenu(Ctx* cx);
+    void ClearQueryAndRestore(Ctx* cx);
     void Clean(Ctx* cx);
 
+    static void OnListClose(SelectState* self, Ctx* cx, const TickEvent* event);
     static void OnListChange(SelectState* self, Ctx* cx,
                              const ListEvent* event);
     static void OnMouseDownOut(SelectState* self, Ctx* cx,
