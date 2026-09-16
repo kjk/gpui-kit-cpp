@@ -421,6 +421,23 @@ static void AFrameBeforeTheHudTickStaysASample() {
     utassertnear(FrameSamplerMeanDraw(&s), 0.007f);
 }
 
+static void AResetSamplerKeepsOnlyItsCapacityAndWarmsUpAgain() {
+    FrameSampler s;
+    FrameSamplerSetCapacity(&s, 8);
+    Warm(&s);
+    s.drainedBacklog = true;
+    FrameSample sample = {0.005f, 1};
+    FrameSamplerIngestDraws(&s, &sample, 1);
+    utassert(s.n == 1);
+
+    FrameSamplerReset(&s);
+    utassert(s.n == 0);
+    utassert(FrameSamplerFps(&s) == 0);
+    utassert(s.capacity == 8);
+    FrameSamplerIngestDraws(&s, &sample, 1);
+    utassert(s.n == 0);
+}
+
 // ─── resource history ─────────────────────────────────────────────────────
 
 static ResourceSample Resources(float cpuPercent, uint64_t memoryBytes,
@@ -522,6 +539,45 @@ static void FormatsCpuOnTheSingleCoreScale() {
     utassert(StrEq(FpsFormatCpuTemp(12.4f), StrL("12%")));
 }
 
+static void BudgetFollowsTheDisplayUnlessPinned() {
+    FpsMonitor monitor;
+    FpsMonitorAdoptDisplayPeriod(&monitor, 1. / 120.);
+    utassertnear(monitor.frameBudget, 1.f / 120.f);
+    utassertnear(monitor.axisMax, 2.f / 120.f);
+
+    FpsMonitorAdoptDisplayPeriod(&monitor, 0);
+    utassertnear(monitor.frameBudget, 1.f / 60.f);
+
+    FpsMonitorSetFrameBudget(&monitor, 1.f / 144.f);
+    FpsMonitorAdoptDisplayPeriod(&monitor, 1. / 120.);
+    utassertnear(monitor.frameBudget, 1.f / 144.f);
+}
+
+static void RepeatingTheBudgetLeavesAGrownAxisAlone() {
+    FpsMonitor monitor;
+    FpsMonitorSetFrameBudget(&monitor, 1.f / 120.f);
+    monitor.axisMax = 0.05f;
+    FpsMonitorSetFrameBudget(&monitor, 1.f / 120.f);
+    utassertnear(monitor.axisMax, 0.05f);
+    FpsMonitorSetFrameBudget(&monitor, 1.f / 144.f);
+    utassertnear(monitor.axisMax, 2.f / 144.f);
+}
+
+static void TwoStillTicksCallTheHudHidden() {
+    uint64_t seen = 7;
+    uint32_t still = 0;
+    utassert(!FpsRenderWatchTick(8, &seen, &still));
+    utassert(!FpsRenderWatchTick(8, &seen, &still));
+    utassert(FpsRenderWatchTick(8, &seen, &still));
+
+    seen = 7;
+    still = 0;
+    utassert(!FpsRenderWatchTick(7, &seen, &still));
+    utassert(!FpsRenderWatchTick(9, &seen, &still));
+    utassert(!FpsRenderWatchTick(9, &seen, &still));
+    utassert(FpsRenderWatchTick(9, &seen, &still));
+}
+
 // ─── memory (crates/fps/src/memory.rs) ────────────────────────────────────
 
 // How much anonymous memory the reading has to move by to prove its unit.
@@ -607,6 +663,7 @@ void TestFrameSampler() {
     ACoalescedApplicationFrameStaysASample();
     UnansweredHudTicksStillDescribeOneFrame();
     AFrameBeforeTheHudTickStaysASample();
+    AResetSamplerKeepsOnlyItsCapacityAndWarmsUpAgain();
 
     TestSuite("fps/sampler/resource_history");
     ResourceReadingsAverageOverTheWindow();
@@ -617,6 +674,9 @@ void TestFrameSampler() {
     TestSuite("fps/monitor");
     FormatsMemoryByMagnitude();
     FormatsCpuOnTheSingleCoreScale();
+    BudgetFollowsTheDisplayUnlessPinned();
+    RepeatingTheBudgetLeavesAGrownAxisAlone();
+    TwoStillTicksCallTheHudHidden();
 
     TestSuite("fps/gpu");
     // crates/fps/src/gpu.rs: a_reading_is_a_percentage. Whether a probe

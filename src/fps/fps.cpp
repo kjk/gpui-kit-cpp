@@ -41,6 +41,17 @@ Rgba FpsLevelColor(const FpsStyle& style, float frameSecs, float budgetSecs) {
 // FPS_WINDOW: frames presented longer ago than this stop contributing to the
 // FPS readout.
 static const double kFpsWindow = 1.0;
+static const float kDefaultFrameBudget = 1.f / 60.f;
+static const uint32_t kHiddenTicks = 2;
+
+void FrameSamplerReset(FrameSampler* s) {
+    if (!s) {
+        return;
+    }
+    int capacity = s->capacity;
+    *s = {};
+    s->capacity = capacity;
+}
 
 void FrameSamplerSetCapacity(FrameSampler* s, int capacity) {
     if (capacity < 1) {
@@ -449,12 +460,45 @@ TempStr FpsFormatBytesTemp(uint64_t bytes) {
     return fmt("%.0f MB", v / kMib);
 }
 
-void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs) {
+static void ApplyBudget(FpsMonitor* self, float budgetSecs) {
     if (!self || budgetSecs <= 0) {
+        return;
+    }
+    if (self->frameBudget == budgetSecs) {
         return;
     }
     self->frameBudget = budgetSecs;
     self->axisMax = budgetSecs * 2.f;
+}
+
+void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs) {
+    if (!self || budgetSecs <= 0) {
+        return;
+    }
+    self->budgetExplicit = true;
+    ApplyBudget(self, budgetSecs);
+}
+
+void FpsMonitorAdoptDisplayPeriod(FpsMonitor* self, double periodSecs) {
+    if (!self || self->budgetExplicit) {
+        return;
+    }
+    float budget = periodSecs > 0 ? (float)periodSecs : kDefaultFrameBudget;
+    ApplyBudget(self, budget);
+}
+
+bool FpsRenderWatchTick(uint64_t framesRendered, uint64_t* seen,
+                        uint32_t* stillTicks) {
+    if (!seen || !stillTicks) {
+        return false;
+    }
+    if (*seen == framesRendered) {
+        (*stillTicks)++;
+    } else {
+        *seen = framesRendered;
+        *stillTicks = 0;
+    }
+    return *stillTicks >= kHiddenTicks;
 }
 
 // update_display: re-asks the platform for the refresh rate when the window
@@ -469,6 +513,7 @@ static void UpdateDisplay(FpsMonitor* self, Ctx* cx) {
         self->displayAsked = true;
         self->display = display;
         self->displayPeriod = PlatDisplayRefreshPeriod(display);
+        FpsMonitorAdoptDisplayPeriod(self, self->displayPeriod);
     }
 }
 
@@ -512,6 +557,7 @@ struct FpsResourceJob {
     EntityId monitor = {};
     ResourceProbe probe;
     ResourceSample sample;
+    uint64_t generation = 0;
     bool ok = false;
 };
 
@@ -532,6 +578,10 @@ static void FpsResourceDone(FpsResourceJob* job) {
     }
     self->resourceJob = nullptr;
     self->resourceTask = 0;
+    if (job->generation != self->resourceGeneration) {
+        delete job;
+        return;
+    }
     self->probe = job->probe;
     if (job->ok) {
         self->resources = job->sample;
@@ -546,6 +596,25 @@ void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
     if (!self || !cx) {
         return;
     }
+    if (FpsRenderWatchTick(self->framesRendered, &self->clockSeenFrames,
+                           &self->clockStillTicks)) {
+        if (self->clockWindow && self->clockTimer) {
+            WindowCancelTimer(self->clockWindow, self->clockTimer);
+        }
+        self->clockTimer = 0;
+        self->clockWindow = nullptr;
+        self->sleeping = true;
+        self->resourceGeneration++;
+        if (self->resourceTask && ExecCancel(self->resourceTask)) {
+            delete self->resourceJob;
+            self->resourceTask = 0;
+            self->resourceJob = nullptr;
+        }
+        self->probe = {};
+        self->resources = {};
+        self->hasResources = false;
+        return;
+    }
     // The tick republishes the readings whether or not resources are on: the
     // figures would otherwise freeze the moment the window stopped drawing.
     FrameSamplerExpectOwnFrame(&self->sampler, TimeNow());
@@ -557,6 +626,7 @@ void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
     job->app = cx->app;
     job->monitor = cx->self;
     job->probe = self->probe;
+    job->generation = self->resourceGeneration;
     int task =
         ExecSpawn(MkFunc0(FpsResourceWork, job), MkFunc0(FpsResourceDone, job));
     if (!task) {
@@ -585,6 +655,8 @@ static void StartClock(FpsMonitor* self, Ctx* cx) {
         }
     }
     self->clockWindow = cx->win;
+    self->clockSeenFrames = self->framesRendered;
+    self->clockStillTicks = 0;
     self->clockTimer =
         WindowSetInterval(cx->win, ms, Listen(cx, &FpsMonitor::OnClockTick));
     if (!self->clockTimer) {
@@ -782,6 +854,11 @@ void FpsMonitor::OnToggleHeadline(FpsMonitor* self, Ctx* cx,
 }
 
 El* FpsMonitor::Render(FpsMonitor* self, Ctx* cx) {
+    self->framesRendered++;
+    if (self->sleeping) {
+        self->sleeping = false;
+        FrameSamplerReset(&self->sampler);
+    }
     FrameSamplerTick(&self->sampler, cx->win);
     UpdateDisplay(self, cx);
     UpdateReadout(self);

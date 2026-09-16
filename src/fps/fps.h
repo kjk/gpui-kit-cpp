@@ -125,6 +125,10 @@ struct FrameSampler {
 // frame.
 void FrameSamplerTick(FrameSampler* s, Window* win);
 void FrameSamplerExpectOwnFrame(FrameSampler* s, double at);
+// Starts over after a hidden HUD is shown again. Capacity is configuration;
+// samples, cursor, warm-up and pending self-invalidations are observations and
+// are discarded.
+void FrameSamplerReset(FrameSampler* s);
 // The half of the tick that is not the window: the frames that arrived and
 // the moment they were read, which is what makes the rolling window testable
 // without a window to drive it. Rust filters the process-wide frame trace by
@@ -308,8 +312,9 @@ struct FpsMonitor {
     FpsReadout readout;
     double readoutAt = -1;
     // One 60Hz frame, the budget a frame is judged against. Set it to 1/144
-    // on a high refresh rate display.
+    // to pin that budget regardless of the display.
     float frameBudget = 1.f / 60.f;
+    bool budgetExplicit = false;
     FpsHeadline headline = FpsHeadline::Max;
     // The panel's refresh period, and which display it was asked about, so
     // that moving the window to another monitor re-asks and staying on one
@@ -330,7 +335,12 @@ struct FpsMonitor {
     // With resources on it is also when they are probed.
     Window* clockWindow = nullptr;
     int clockTimer = 0;
+    uint64_t framesRendered = 0;
+    uint64_t clockSeenFrames = 0;
+    uint32_t clockStillTicks = 0;
+    bool sleeping = false;
     int resourceTask = 0;
+    uint64_t resourceGeneration = 0;
     FpsResourceJob* resourceJob = nullptr;
     bool compact = false;
     // Upper bound of the chart's y axis, in seconds.
@@ -346,10 +356,15 @@ struct FpsMonitor {
     static void OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*);
 };
 
-// set_frame_budget: what the overlay applies on the monitor's behalf. The
-// budget also resets the chart's axis floor, so a 144Hz budget doesn't leave
-// the chart scaled for 60Hz frames.
+// Pins the budget regardless of the display. A changed budget resets the
+// chart's axis floor; repeating the same one leaves a grown axis alone.
 void FpsMonitorSetFrameBudget(FpsMonitor* self, float budgetSecs);
+// Applies the display period unless a caller pinned the budget. Zero is an
+// unknown period and falls back to one 60Hz frame.
+void FpsMonitorAdoptDisplayPeriod(FpsMonitor* self, double periodSecs);
+// RenderWatch::tick: true once the render counter stood still for two ticks.
+bool FpsRenderWatchTick(uint64_t framesRendered, uint64_t* seen,
+                        uint32_t* stillTicks);
 
 // format_cpu: a tenth below ten, whole percent above.
 TempStr FpsFormatCpuTemp(float percent);
@@ -374,7 +389,7 @@ struct FpsOverlayOpts {
     // Where in the parent the HUD sits. Defaults to the top right.
     FpsAnchor anchor = FpsAnchor::TopRight;
     // The per-frame budget used for chart grading and its vertical scale, in
-    // seconds; 0 leaves the monitor's budget alone.
+    // seconds; 0 follows one refresh of the display the window is on.
     float frameBudget = 0;
 };
 
