@@ -1827,24 +1827,22 @@ Str InputUnmaskValue(Arena* a, const InputState* s) {
     return MaskUnapply(a, s->maskPattern, InputValue(s));
 }
 
-int InputPreviousBoundary(const InputState* s, int offset) {
+static int InputCursorBoundary(const InputState* s, int offset, Bias bias) {
     Str t = InputValue(s);
-    int off = RopeClipOffset(t, offset > 0 ? offset - 1 : 0, Bias::Left);
-    uint32_t c = 0;
-    if (RopeCharAt(t, off, &c) && c == '\r' && off > 0) {
-        off--;
+    offset = RopeClipOffset(t, offset, bias);
+    if (offset > 0 && offset < t.len && t.s[offset - 1] == '\r' &&
+        t.s[offset] == '\n') {
+        return bias == Bias::Left ? offset - 1 : offset + 1;
     }
-    return off;
+    return offset;
+}
+
+int InputPreviousBoundary(const InputState* s, int offset) {
+    return InputCursorBoundary(s, offset > 0 ? offset - 1 : 0, Bias::Left);
 }
 
 int InputNextBoundary(const InputState* s, int offset) {
-    Str t = InputValue(s);
-    int off = RopeClipOffset(t, offset + 1, Bias::Right);
-    uint32_t c = 0;
-    if (RopeCharAt(t, off, &c) && c == '\r' && off < t.len) {
-        off++;
-    }
-    return off;
+    return InputCursorBoundary(s, offset + 1, Bias::Right);
 }
 
 // The visual row the caret is on, as a range of the logical line holding it.
@@ -2187,13 +2185,7 @@ void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
 void InputMoveToWithAffinity(InputState* s, App* app, Window* win, int offset,
                              bool lineEndAffinity) {
     UndoBreakCoalescing(&s->undo);
-    Str t = InputValue(s);
-    if (offset < 0) {
-        offset = 0;
-    }
-    if (offset > t.len) {
-        offset = t.len;
-    }
+    offset = InputCursorBoundary(s, offset, Bias::Left);
     s->cursorLineEndAffinity = lineEndAffinity;
     InputRemoveExtraCursors(s);
     s->selectedRange = SelectionAt(offset);
@@ -2211,13 +2203,7 @@ void InputMoveTo(InputState* s, App* app, Window* win, int offset) {
 
 void InputSelectToWithAffinity(InputState* s, App* app, Window* win, int offset,
                                bool lineEndAffinity) {
-    Str t = InputValue(s);
-    if (offset < 0) {
-        offset = 0;
-    }
-    if (offset > t.len) {
-        offset = t.len;
-    }
+    offset = InputCursorBoundary(s, offset, Bias::Left);
     s->cursorLineEndAffinity = lineEndAffinity;
     if (s->selectionReversed) {
         s->selectedRange.start = offset;
@@ -4620,7 +4606,7 @@ static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
     SetActiveCursor(s, active);
     int len = InputValue(s).len;
     for (int i = 1; i < n; i++) {
-        int off = targets[i].offset;
+        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c;
         c.range = SelectionAt(off < 0 ? 0 : (off > len ? len : off));
         ApplyAnchors(s, &c, targets[i]);
@@ -4667,7 +4653,7 @@ static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
     }
     int len = InputValue(s).len;
     for (int i = 1; i < n; i++) {
-        int off = targets[i].offset;
+        int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c = s->extraCursors[i - 1];
         ExtendSelection(&c, off < 0 ? 0 : (off > len ? len : off));
         if (c.IsEmpty() || targets[i].anchors) {

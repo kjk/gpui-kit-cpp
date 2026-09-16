@@ -3237,6 +3237,31 @@ static void AShortRowDoesNotNarrowAColumnarSelection() {
     utassert(ExtraIs(s, 0, 8, 9));
 }
 
+static void ACrLfIsOneCursorBoundary() {
+    InputState s;
+    MakeEditor(&s, "first\r\nlast");
+    InputMoveTo(&s, nullptr, nullptr, 0);
+    Act(&s, InputAction::MoveEnd);
+    utassert(RangeIs(s, 5, 5));
+    Act(&s, InputAction::MoveRight);
+    utassert(RangeIs(s, 7, 7));
+    Act(&s, InputAction::MoveLeft);
+    utassert(RangeIs(s, 5, 5));
+    Act(&s, InputAction::SelectToEndOfLine);
+    utassert(RangeIs(s, 5, 5));
+
+    InputMoveTo(&s, nullptr, nullptr, 6);
+    utassert(RangeIs(s, 5, 5));
+    utassert(ValueIs(s, "first\r\nlast"));
+
+    InputState lone;
+    MakeEditor(&lone, "a\rb");
+    Act(&lone, InputAction::MoveRight);
+    utassert(RangeIs(lone, 1, 1));
+    Act(&lone, InputAction::MoveRight);
+    utassert(RangeIs(lone, 2, 2));
+}
+
 // test_block_indent_tracks_all_preceding_edits /
 // test_multi_cursor_indent_then_outdent_roundtrips: the block pair indents
 // every cursor's line and the inline pair puts a tab at every caret, each as
@@ -3379,6 +3404,7 @@ void TestInputState() {
     MovementFansOutOverEveryCursor();
     AColumnarSelectionIsOneSelectionPerRow();
     AShortRowDoesNotNarrowAColumnarSelection();
+    ACrLfIsOneCursorBoundary();
     AColumnarSelectionFollowsTheWrappedRows();
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
