@@ -454,7 +454,8 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.focusId = win->focusId;
     win->paint.mouseX = win->mouseX;
     win->paint.mouseY = win->mouseY;
-    win->paint.scrollDragId = win->mouseDown ? win->scrollDragId : 0;
+    win->paint.scrollDragId =
+        (win->mouseDown || win->touchScrollbarDrag) ? win->scrollDragId : 0;
     win->paint.scrollDragHorizontal = win->scrollDragHorizontal;
     win->paint.picking = win->inspector.picking;
     win->paint.wantsAnimFrame = false;
@@ -1400,8 +1401,8 @@ static bool PageScrollBy(Window* win, int dir) {
 // anywhere else on the track the thumb jumps its centre to the press, which
 // is Rust's two branches on `thumb_bounds.contains`. Both bars go through
 // this once, along whichever axis they are.
-static void ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
-                           bool horizontal) {
+static bool ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
+                           bool horizontal, bool thumbOnly = false) {
     float track = horizontal ? s->bounds.w : s->bounds.h;
     float content = horizontal ? s->contentW : s->contentH;
     float origin = horizontal ? s->bounds.x : s->bounds.y;
@@ -1464,13 +1465,15 @@ static void ScrollbarPress(Window* win, ScrollRect* s, float x, float y,
         win->scrollDragHorizontal = horizontal;
         win->scrollDragGrab = at - thumbStart;
         win->scrollDragInput = s->input;
-        return;
+        return true;
     }
+    if (thumbOnly) return false;
     // A track press moves once; only pressing the thumb starts a drag.
     float off = ScrollbarOffsetForTrackPress(at, origin, track, thumbLength,
                                              track, content);
     ScrollbarEmit(win, s, horizontal ? off : s->scrollX,
                   horizontal ? s->scrollY : off);
+    return false;
 }
 
 // The scroll rect of an id, from the frame on screen. Zero is "not a
@@ -1955,7 +1958,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     ScrollRect* bar = ScrollbarAt(&win->paint, x, y, &barHorizontal);
     if (bar) {
         SetMouseDown(win, true);
-        ScrollbarPress(win, bar, x, y, barHorizontal);
+        (void)ScrollbarPress(win, bar, x, y, barHorizontal);
         DispatchMouseDownOut(win, in);
         // The bar took the press, so nothing is waiting to become a click.
         ClearPendingClick(win);
@@ -2470,6 +2473,54 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::ScrollWheel:
             DispatchScrollWheel(win, input->scrollWheel);
             break;
+        case PlatformInputKind::TouchDrag: {
+            const TouchDragEvent& touch = input->touchDrag;
+            if (touch.phase == TouchPhase::Started) {
+                win->touchScrollbarDrag = false;
+                win->scrollDragId = 0;
+                win->scrollDragGrab = 0;
+                win->scrollDragInput = nullptr;
+                bool horizontal = false;
+                ScrollRect* bar = ScrollbarAt(&win->paint, touch.position.x,
+                                              touch.position.y, &horizontal);
+                win->touchScrollbarDrag =
+                    bar && ScrollbarPress(win, bar, touch.position.x,
+                                          touch.position.y, horizontal, true);
+            } else if (win->touchScrollbarDrag) {
+                if (touch.phase == TouchPhase::Moved ||
+                    touch.phase == TouchPhase::Ended) {
+                    ScrollbarDrag(win, touch.position.x, touch.position.y);
+                }
+                if (touch.phase == TouchPhase::Ended ||
+                    touch.phase == TouchPhase::Cancelled) {
+                    win->touchScrollbarDrag = false;
+                    win->scrollDragId = 0;
+                    win->scrollDragGrab = 0;
+                    win->scrollDragInput = nullptr;
+                }
+            }
+            AppInvalidate(win);
+            break;
+        }
+        case PlatformInputKind::LongPress: {
+            const LongPressEvent& touch = input->longPress;
+            if (touch.phase == TouchPhase::Started) {
+                win->longPressSelection = WindowSelectionLongPressStart(
+                    win, touch.startPosition.x, touch.startPosition.y);
+            } else if (win->longPressSelection) {
+                if (touch.phase == TouchPhase::Moved) {
+                    WindowSelectionDrag(win, touch.position.x,
+                                        touch.position.y);
+                }
+                if (touch.phase == TouchPhase::Ended ||
+                    touch.phase == TouchPhase::Cancelled) {
+                    WindowSelectionRelease(win);
+                    win->longPressSelection = false;
+                }
+            }
+            AppInvalidate(win);
+            break;
+        }
     }
 }
 
@@ -2535,6 +2586,24 @@ PlatformInput InputScrollWheel(float x, float y, float deltaX, float deltaY,
     in.scrollWheel.precise = precise;
     in.scrollWheel.modifiers = modifiers;
     in.scrollWheel.phase = phase;
+    return in;
+}
+
+PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::TouchDrag;
+    in.touchDrag.phase = phase;
+    in.touchDrag.startPosition = start;
+    in.touchDrag.position = position;
+    return in;
+}
+
+PlatformInput InputLongPress(TouchPhase phase, Point start, Point position) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::LongPress;
+    in.longPress.phase = phase;
+    in.longPress.startPosition = start;
+    in.longPress.position = position;
     return in;
 }
 

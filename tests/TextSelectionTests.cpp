@@ -158,6 +158,30 @@ static void TwoClicksTakeTheWordAndThreeTheLine() {
     WindowSelectionFree(&win);
 }
 
+static void ALongPressTakesAWordAndKeepsDragging() {
+    Window win;
+    AddRun(&win, 0, "quick select value", 0);
+    AddRun(&win, 40, "later", 0);
+    Point start = {25, 5};
+    PlatformInput began = InputLongPress(TouchPhase::Started, start, start);
+    WindowDispatchInput(&win, &began);
+    TempStr buf = AllocStrTemp(63);
+    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("quick")));
+    utassert(win.longPressSelection);
+
+    PlatformInput moved =
+        InputLongPress(TouchPhase::Moved, start, Point{115, 45});
+    WindowDispatchInput(&win, &moved);
+    PlatformInput ended =
+        InputLongPress(TouchPhase::Ended, start, Point{115, 45});
+    WindowDispatchInput(&win, &ended);
+    n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    utassert(n > 5 && StrStartsWith(Str(buf.s, n), StrL("quick")));
+    utassert(!win.longPressSelection);
+    WindowSelectionFree(&win);
+}
+
 // A multi-click off any run leaves what was selected alone rather than
 // clearing it: `TextMultiClickRangeIn` answers false and the press falls
 // through to the single-click path, which is a press in the margin.
@@ -589,6 +613,7 @@ void TestTextSelection() {
     AMarginOnlyDragPublishesNothing();
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
+    ALongPressTakesAWordAndKeepsDragging();
     AMultiClickOffTextTakesNothing();
     AControlPressSuppressesWindowSelection();
     SourceParticipantContractsProjectAcrossAWindow();

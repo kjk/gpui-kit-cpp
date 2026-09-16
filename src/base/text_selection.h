@@ -288,6 +288,9 @@ void WindowSelectionFree(Window* win);
 // `extend` is a shift-click, which moves the cursor and keeps the anchor.
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend);
+// A long press takes the word like a double click but keeps the gesture live
+// so subsequent touch movement can extend it.
+bool WindowSelectionLongPressStart(Window* win, float x, float y);
 // A move with the button down.
 void WindowSelectionDrag(Window* win, float x, float y);
 // The release. What was selected stands until the next press.

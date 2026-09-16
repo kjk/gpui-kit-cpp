@@ -321,6 +321,36 @@ static void AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId() {
     delete win;
 }
 
+static void ATouchThumbDragMovesDownAndCancelReleasesIt() {
+    App app = {};
+    Window* win = new Window();
+    win->app = &app;
+    Entity<ScrollRecorder> entity = EntityNewState<ScrollRecorder>(&app);
+    ScrollRecorder* state = entity.Get(&app);
+    ScrollRect scroll =
+        TestScrollRect(52, {0, 0, 100, 100}, 100, 500, 0, -1,
+                       ListenTo(entity, &ScrollRecorder::Inner));
+    scroll.trackWidth = 20;
+    VecAppend(win->paint.scrolls, scroll);
+
+    Point start = {95, 20};
+    PlatformInput began = InputTouchDrag(TouchPhase::Started, start, start);
+    WindowDispatchInput(win, &began);
+    utassert(win->touchScrollbarDrag && win->scrollDragId == 52);
+    PlatformInput moved =
+        InputTouchDrag(TouchPhase::Moved, start, Point{95, 55});
+    WindowDispatchInput(win, &moved);
+    utassert(state->innerCalls == 1 && state->innerY > 0);
+    PlatformInput cancelled =
+        InputTouchDrag(TouchPhase::Cancelled, start, Point{95, 55});
+    WindowDispatchInput(win, &cancelled);
+    utassert(!win->touchScrollbarDrag && win->scrollDragId == 0);
+
+    VecReset(win->paint.scrolls);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void TheHighlighterScrollerHasAStableScrollId() {
     App app = {};
     component::Init(&app);
@@ -441,6 +471,7 @@ void TestScrollbar() {
     ScrollableMasksChainAndTrapLikeTheSource();
     ATrackPressMovesOnceAndOnlyAThumbPressDrags();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
+    ATouchThumbDragMovesDownAndCancelReleasesIt();
     TheHighlighterScrollerHasAStableScrollId();
 }
 

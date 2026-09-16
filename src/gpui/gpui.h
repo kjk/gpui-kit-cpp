@@ -549,17 +549,30 @@ struct ScrollWheelEvent {
     bool propagate = true;
 };
 
+struct TouchDragEvent {
+    TouchPhase phase = TouchPhase::Moved;
+    Point startPosition = {};
+    Point position = {};
+};
+
+struct LongPressEvent {
+    TouchPhase phase = TouchPhase::Moved;
+    Point startPosition = {};
+    Point position = {};
+};
+
 // GPUI's PlatformInput: what a platform window hands to the window layer.
 // Rust's enum carries its payload; here a kind and a union of the same structs
-// do. Only the mouse variants exist — keys still arrive through WindowKeyDown
-// and WindowChar, whose KeyEvent is a merged key-and-character event rather
-// than GPUI's Keystroke, and nothing here produces a file drop or a gesture.
+// do. Keys still arrive through WindowKeyDown and WindowChar, whose KeyEvent
+// is a merged key-and-character event rather than GPUI's Keystroke.
 enum class PlatformInputKind : uint8_t {
     MouseDown,
     MouseUp,
     MouseMove,
     MouseExited,
-    ScrollWheel
+    ScrollWheel,
+    TouchDrag,
+    LongPress
 };
 
 struct PlatformInput {
@@ -570,6 +583,8 @@ struct PlatformInput {
         MouseMoveEvent mouseMove;
         MouseExitEvent mouseExited;
         ScrollWheelEvent scrollWheel;
+        TouchDragEvent touchDrag;
+        LongPressEvent longPress;
     };
 };
 
@@ -5355,6 +5370,8 @@ struct Window {
     // next frame can still find the box. BindInput is enough; the id is
     // not.
     InputState* scrollDragInput = nullptr;
+    bool touchScrollbarDrag = false;
+    bool longPressSelection = false;
     InputState* input = nullptr;
     // This window's one TooltipOverlay. Created on first use, the way a
     // field's blink cursor is.

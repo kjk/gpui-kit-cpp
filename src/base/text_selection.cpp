@@ -844,6 +844,15 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     WindowSelectionClear(win);
 }
 
+bool WindowSelectionLongPressStart(Window* win, float x, float y) {
+    WindowSelectionPress(win, x, y, 2, false);
+    WindowSelection* selection = win ? win->sel : nullptr;
+    if (!selection || !WindowSelectionHas(win)) return false;
+    selection->gesture.selecting = true;
+    selection->gesture.didHitText = true;
+    return true;
+}
+
 void WindowSelectionDrag(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) {

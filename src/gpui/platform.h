@@ -62,6 +62,8 @@ PlatformInput InputMouseExited(float x, float y, bool pressed,
 PlatformInput InputScrollWheel(float x, float y, float deltaX, float deltaY,
                                bool precise, Modifiers modifiers,
                                TouchPhase phase);
+PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position);
+PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
 
 // Count this press against the run before it and answer 1, 2, 3… Called once
 // per press, before the platform decides what the press means — the title bar
