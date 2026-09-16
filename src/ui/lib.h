@@ -24,6 +24,7 @@
 #include "ui/description_list.h"
 #include "ui/dialog.h"
 #include "ui/dock.h"
+#include "ui/empty.h"
 #include "ui/tiles.h"
 #include "ui/inspector.h"
 #include "ui/form.h"

@@ -108,6 +108,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"editor", "Editor",
      "Code editor with theme-aware syntax highlighting and "
      "folding."},
+    {"empty", "Empty",
+     "Present an empty state with media, description, and actions."},
     {"form", "Form", "Form to collect multiple inputs."},
     {"group-box", "GroupBox",
      "A styled container element that with an optional title to groups "

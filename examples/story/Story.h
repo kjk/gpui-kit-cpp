@@ -31,6 +31,7 @@ enum {
     StoryDock,
     StoryDropdownButton,
     StoryEditor,
+    StoryEmpty,
     StoryForm,
     StoryGroupBox,
     StoryHoverCard,
