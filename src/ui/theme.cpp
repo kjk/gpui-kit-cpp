@@ -1222,6 +1222,10 @@ Rgba ThemeHsl(float hueDegrees, float saturationPercent,
                     lightnessPercent / 100.f, 1.f);
 }
 
+Rgba ThemeOklch(float lightness, float chroma, float hueDegrees) {
+    return RgbaOklch(lightness, chroma, hueDegrees);
+}
+
 Rgba ThemeBlack() {
     return RgbaHex(kShadcnBlack);
 }

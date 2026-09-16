@@ -590,6 +590,10 @@ bool ColorNameParse(Str value, ColorName* out);
 Rgba ColorNameScale(ColorName name, int scale = 500);
 Rgba ThemeHsl(float hueDegrees, float saturationPercent,
               float lightnessPercent);
+Rgba ThemeOklch(float lightness, float chroma, float hueDegrees);
+inline Rgba Oklch(float lightness, float chroma, float hueDegrees) {
+    return ThemeOklch(lightness, chroma, hueDegrees);
+}
 Rgba ThemeBlack();
 Rgba ThemeWhite();
 

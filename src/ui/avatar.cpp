@@ -111,20 +111,33 @@ Avatar* Avatar::Placeholder(IconName n) {
     return this;
 }
 
-// avatar.rs default_color: the theme's blue turned to one of 360/15 hues,
-// picked by hashing the initials. Rust hashes with gpui::hash, which is
-// FxHash and not something to reproduce, so the same name lands on a
-// different one of the same 24 hues.
-static const uint32_t kAvatarColorCount = 360 / 15;
+struct AvatarIdentityColors {
+    Rgba background = {};
+    Rgba foreground = {};
+    Rgba border = {};
+};
 
-static Rgba AvatarHue(const Theme& th, Str initials) {
+// Twelve evenly spaced OkLCH hues keep perceived brightness constant. Rust's
+// FxHash and this FNV hash may select different positions, but both select
+// from the same pinned ring.
+static AvatarIdentityColors AvatarIdentity(const Theme& th, Str initials) {
     uint32_t h = 2166136261u;
     for (int i = 0; i < initials.len; i++) {
         h ^= (uint8_t)initials.s[i];
         h *= 16777619u;
     }
-    float deg = (float)((h % kAvatarColorCount) * 15);
-    return RgbaWithHue(th.blue, deg / 360.f);
+    float deg = (float)((h % 12) * 30);
+    AvatarIdentityColors out;
+    if (th.mode == ThemeMode::Dark) {
+        out.background = ThemeOklch(0.30f, 0.05f, deg);
+        out.foreground = ThemeOklch(0.82f, 0.11f, deg);
+        out.border = ThemeOklch(0.36f, 0.06f, deg);
+    } else {
+        out.background = ThemeOklch(0.97f, 0.032f, deg);
+        out.foreground = ThemeOklch(0.50f, 0.145f, deg);
+        out.border = ThemeOklch(0.89f, 0.05f, deg);
+    }
+    return out;
 }
 
 Avatar* Avatar::Src(Str url) {
@@ -145,13 +158,15 @@ El* Avatar::IntoEl() {
     bool named = initials.s && initials.len > 0;
     Background fill = th.tokens.secondary;
     Rgba text = th.mutedFg;
+    Rgba identityBorder = th.border;
     if (hasBg) {
         fill = bg;
         text = th.foreground;
     } else if (named) {
-        Rgba hue = AvatarHue(th, initials);
-        fill = RgbaOpacity(hue, 0.2f);
-        text = hue;
+        AvatarIdentityColors identity = AvatarIdentity(th, initials);
+        fill = identity.background;
+        text = identity.foreground;
+        identityBorder = identity.border;
     }
     float txt = textPx > 0 ? textPx : size * 0.35f;
     El* inner = named ? TextEl(a, initials)->Font(txt)->Fg(text)->Semibold()
@@ -179,7 +194,9 @@ El* Avatar::IntoEl() {
                     r - inset)));
     }
     El* el = base->IntoEl()->Radius(r)->Bg(th.tokens.secondary);
-    Rgba bd = hasBorderC ? borderC : th.border;
+    Rgba bd = hasBorderC ? borderC
+                         : (named && !(src.s && src.len > 0) ? identityBorder
+                                                             : th.border);
     if (borderW > 0) {
         el->Pad(inset)->Border(borderW, bd);
     }

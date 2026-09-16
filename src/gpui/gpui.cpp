@@ -303,6 +303,12 @@ static Rgba OklabToRgb(float L, float A, float B, float alpha) {
     return Rgba8(b8(lr), b8(lg), b8(lb), ToByte(alpha));
 }
 
+Rgba RgbaOklch(float lightness, float chroma, float hueDegrees) {
+    float radians = hueDegrees * 3.14159265358979323846f / 180.f;
+    return OklabToRgb(lightness, chroma * cosf(radians), chroma * sinf(radians),
+                      1.f);
+}
+
 // Colorize::mix_oklab, which is CSS `color-mix(in oklab, a factor%, b)`: the
 // alpha is interpolated first and the Oklab channels are premultiplied by it,
 // so mixing toward transparent fades without dragging the hue to black.

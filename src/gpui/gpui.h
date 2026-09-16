@@ -201,6 +201,8 @@ Str RgbaToHex(Arena* a, Rgba c, bool upper = true);
 // alpha is interpolated first and the Oklab channels are premultiplied by it,
 // so mixing toward transparent fades without dragging the hue to black.
 Rgba RgbaMixOklab(Rgba a, Rgba b, float factor);
+// Cylindrical Oklab: lightness 0..1, chroma in Oklab units, hue in degrees.
+Rgba RgbaOklch(float lightness, float chroma, float hueDegrees);
 
 // The semantic token layer is `base/theme_tokens.h`, and the word and
 // line boundaries `base/text_boundary.h`: both are gpui-base modules that
