@@ -421,7 +421,23 @@ El* PopupMenu::IntoEl() {
         if (it.kbd.s) {
             kbdEl = Kbd::New(cx, it.kbd)->Appearance(false)->IntoEl();
         } else if (it.action) {
-            component::Kbd* k = Kbd::ForAction(cx, it.action, actionContext);
+            component::Kbd* k = nullptr;
+            if (actionContext) {
+                k = Kbd::ForAction(cx, it.action, actionContext);
+            }
+            if (!k && s && s->triggerFocus.IsValid()) {
+                k = Kbd::ForActionAtFocus(cx, it.action, s->triggerFocus);
+            }
+            if (!k && s && s->previousFocus.IsValid()) {
+                k = Kbd::ForActionAtFocus(cx, it.action, s->previousFocus);
+            }
+            if (!k && s && s->focus.IsValid()) {
+                k = Kbd::ForActionAtFocus(cx, it.action, s->focus);
+            }
+            if (!k) {
+                // A binding with no context applies on every dispatch path.
+                k = Kbd::ForAction(cx, it.action, nullptr);
+            }
             kbdEl = k ? k->Appearance(false)->IntoEl() : nullptr;
         }
         if (kbdEl) {
@@ -471,6 +487,7 @@ El* PopupMenu::IntoEl() {
             PopupMenuState* subState = it.submenu->state.Get(cx);
             if (subState && s) {
                 subState->parent = state;
+                subState->triggerFocus = s->triggerFocus;
                 subState->open = true;
                 subState->side = s->side;
             }
@@ -517,6 +534,14 @@ El* DropdownMenu::IntoEl() {
     IdScope scope(cx, id);
     El* wrap = Div(a)->Id(id)->FlexCol();
     PopupMenuState* st = menu ? menu->state.Get(cx) : nullptr;
+    if (st && !st->triggerFocus.IsValid()) {
+        st->triggerFocus = FocusHandleNew(cx);
+    }
+    if (st) {
+        // This handle only names the trigger's dispatch path. It never takes
+        // focus and must not enter tab traversal.
+        wrap->TrackFocus(st->triggerFocus)->TabStop(false);
+    }
     if (trigger) {
         // The trigger opens and closes the menu it holds; a caller that wants
         // to know can subscribe to the menu itself.
@@ -592,6 +617,12 @@ ContextMenu* ContextMenu::Menu(PopupMenu* m) {
     menu = m;
     if (ContextMenuState* st = state.Get(cx)) {
         st->menu = m ? m->state : Entity<PopupMenuState>{};
+        if (!st->triggerFocus.IsValid()) {
+            st->triggerFocus = FocusHandleNew(cx);
+        }
+        if (PopupMenuState* menuState = st->menu.Get(cx)) {
+            menuState->triggerFocus = st->triggerFocus;
+        }
     }
     return this;
 }
@@ -627,8 +658,14 @@ El* ContextMenu::IntoEl() {
     context->menu = menu->state;
     context->open = st->open;
     context->position = {st->x, st->y};
+    if (!context->triggerFocus.IsValid()) {
+        context->triggerFocus = FocusHandleNew(cx);
+    }
+    st->triggerFocus = context->triggerFocus;
     // The element needs identity for the press to reach it.
     box->PathClick(id)
+        ->TrackFocus(context->triggerFocus)
+        ->TabStop(false)
         ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown));
     if (st->open) {
         box->Child(

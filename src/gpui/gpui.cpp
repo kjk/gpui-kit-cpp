@@ -7041,6 +7041,32 @@ static int DispatchAnchor(Window* win) {
     return i;
 }
 
+bool WindowBindingForActionAtFocus(Window* win, uint32_t action,
+                                   FocusHandle focus, KeyChord* out) {
+    if (!win || !focus.IsValid() || !action || !out) {
+        return false;
+    }
+    int ix = -1;
+    for (int i = 0; i < win->focusEls.len; i++) {
+        if (win->focusEls[i].id == focus.id) {
+            ix = win->focusEls[i].dispatchIx;
+            break;
+        }
+    }
+    if (ix < 0) {
+        return false;
+    }
+    uint32_t contexts[kMaxContextDepth];
+    int nContexts = 0;
+    for (int i = ix - 1; i >= 0 && nContexts < kMaxContextDepth; i--) {
+        if (win->dispatch[i].subtreeEnd <= ix || !win->dispatch[i].context) {
+            continue;
+        }
+        contexts[nContexts++] = win->dispatch[i].context;
+    }
+    return KeymapBindingForAction(action, contexts, nContexts, out);
+}
+
 // The reserved action a raw key listener is recorded under. No chord resolves
 // to it, so the keymap never reaches these; only WindowDispatchKeyEvent does.
 static uint32_t KeyDownAction() {

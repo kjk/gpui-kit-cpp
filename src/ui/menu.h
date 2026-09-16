@@ -145,6 +145,7 @@ struct ContextMenuState {
     bool open = false;
     Point position = {};
     FocusHandle previousFocus = {};
+    FocusHandle triggerFocus = {};
 
     static void OnMouseDown(ContextMenuState* self, Ctx* cx,
                             const MouseDownEvent* ev);

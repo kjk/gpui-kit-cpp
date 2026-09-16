@@ -25,6 +25,7 @@ namespace gpui {
 
 struct App;
 struct Window;
+struct KeyChord;
 
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
 // borrowed from the Arena passed to ClipboardGetItem: text is UTF-8, image is
@@ -6110,6 +6111,12 @@ bool WindowFocusWithin(const Window* win, int id);
 // is no longer on screen is a handle whose view has gone, which Rust treats as
 // nothing to do; answers whether focus moved.
 bool WindowRestoreFocus(Window* win, int id);
+// Resolve the highest-precedence binding for `action` against the key
+// contexts over an arbitrary focus handle in the previously collected frame.
+// The handle need not be focused or a tab stop. Popup triggers use this to
+// paint context-scoped shortcut hints on the first frame their menu opens.
+bool WindowBindingForActionAtFocus(Window* win, uint32_t action,
+                                   FocusHandle focus, KeyChord* out);
 // The action a keystroke resolves to for whatever has focus, and the handlers
 // it is then offered to. Answers true when one of them kept it — Rust's
 // `dispatch_action` plus the `cx.propagate()` that decides how far it goes.

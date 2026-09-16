@@ -84,6 +84,10 @@ struct PopupMenuState {
     // so it is the right thing to own a handle.
     FocusHandle focus = {};
     FocusHandle previousFocus = {};
+    // Registered on the trigger's dispatch path without taking focus. The
+    // trigger existed in the previous frame, so context-scoped shortcut hints
+    // can resolve on the first frame this menu appears.
+    FocusHandle triggerFocus = {};
     // A submenu dismisses through its parents after an item is confirmed,
     // just as Rust's dismiss_all walks parent_menu.
     Entity<PopupMenuState> parent = {};

@@ -39,6 +39,10 @@ Str KbdFormatStr(Ctx* cx, Keystroke stroke);
 // `context` is a key context spelling — "Input", "PopupMenu" — or null to ask
 // only about the bindings that named no context.
 bool KeystrokeForAction(uint32_t action, const char* context, Keystroke* out);
+// The same lookup against the key-context path registered for an arbitrary
+// focus handle in the previous frame. The handle need not itself be focused.
+bool KeystrokeForActionAtFocus(Ctx* cx, uint32_t action, FocusHandle focus,
+                               Keystroke* out);
 
 struct Kbd {
     Arena* a = nullptr;
@@ -54,6 +58,7 @@ struct Kbd {
     // menu row with no shortcut shows.
     static Kbd* ForAction(Ctx* cx, uint32_t action,
                           const char* context = nullptr);
+    static Kbd* ForActionAtFocus(Ctx* cx, uint32_t action, FocusHandle focus);
     Kbd* Appearance(bool v);
     Kbd* Outline();
     El* IntoEl();

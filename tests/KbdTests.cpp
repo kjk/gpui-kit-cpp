@@ -144,9 +144,42 @@ static void AShortcutComesFromTheBinding() {
         !KeystrokeForAction(ActionOf(StrL("t::NoSuchThing")), "Input", &k));
 }
 
+static void AnUnfocusedTriggerResolvesItsContextBinding() {
+    KeymapClear();
+    uint32_t copy = ActionOf(StrL("kbd_test::Copy"));
+    KeyBinding binding = {"ctrl-c", copy, "KbdTrigger"};
+    KeymapBind(&binding, 1);
+
+    Arena* a = ArenaNew();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    FocusHandle trigger = FocusHandleNew(&app);
+    El* root =
+        Div(a)
+            ->Child(Div(a)
+                        ->KeyContext(StrL("KbdTrigger"))
+                        ->Child(Div(a)->TrackFocus(trigger)->TabStop(false)))
+            ->Child(Div(a));
+    FocusCollect(win, root);
+
+    Keystroke k;
+    utassert(WindowFocusedId(win) == 0);
+    utassert(KeystrokeForActionAtFocus(&cx, copy, trigger, &k));
+    utassert(base::StrEq(k.key, StrL("c")) && k.ctrl);
+
+    delete win;
+    ArenaDelete(a);
+    KeymapClear();
+}
+
 void TestKbd() {
     TestSuite("kbd");
     AShortcutComesFromTheBinding();
+    AnUnfocusedTriggerResolvesItsContextBinding();
     TheModifiersComeFirstInPlatformOrder();
     ANamedKeyKeepsItsName();
     AnythingElseIsCapitalised();

@@ -183,18 +183,9 @@ El* Kbd::IntoEl() {
     return e;
 }
 
-bool KeystrokeForAction(uint32_t action, const char* context, Keystroke* out) {
-    if (!out) {
-        return false;
-    }
-    KeyChord c = {};
-    uint32_t ctx = context ? KeyContextOf(Str(context)) : 0;
-    if (!KeymapBindingForAction(action, context ? &ctx : nullptr,
-                                context ? 1 : 0, &c)) {
-        return false;
-    }
+static bool KeystrokeFromChord(const KeyChord& c, Keystroke* out) {
     Str key = KeyName(c.vk);
-    if (!key.s) {
+    if (!out || !key.s) {
         return false;
     }
     Keystroke k;
@@ -207,9 +198,34 @@ bool KeystrokeForAction(uint32_t action, const char* context, Keystroke* out) {
     return true;
 }
 
+bool KeystrokeForAction(uint32_t action, const char* context, Keystroke* out) {
+    KeyChord c = {};
+    uint32_t ctx = context ? KeyContextOf(Str(context)) : 0;
+    if (!KeymapBindingForAction(action, context ? &ctx : nullptr,
+                                context ? 1 : 0, &c)) {
+        return false;
+    }
+    return KeystrokeFromChord(c, out);
+}
+
+bool KeystrokeForActionAtFocus(Ctx* cx, uint32_t action, FocusHandle focus,
+                               Keystroke* out) {
+    KeyChord c = {};
+    return cx && WindowBindingForActionAtFocus(cx->win, action, focus, &c) &&
+           KeystrokeFromChord(c, out);
+}
+
 Kbd* Kbd::ForAction(Ctx* cx, uint32_t action, const char* context) {
     Keystroke k;
     if (!KeystrokeForAction(action, context, &k)) {
+        return nullptr;
+    }
+    return Kbd::New(cx, k);
+}
+
+Kbd* Kbd::ForActionAtFocus(Ctx* cx, uint32_t action, FocusHandle focus) {
+    Keystroke k;
+    if (!KeystrokeForActionAtFocus(cx, action, focus, &k)) {
         return nullptr;
     }
     return Kbd::New(cx, k);
