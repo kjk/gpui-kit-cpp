@@ -14,17 +14,50 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`
-(2026-09-06, input: Multi cursors (#2837)). Upstream gives the multi-line input a list of cursors: alt-click adds a caret, alt+shift drag builds a columnar block, `AddCursorAbove`/`AddCursorBelow` (cmd-alt / ctrl-alt / shift-alt arrows by platform) add one a row away, every keyboard move and select fans out over all of them, a keystroke, backspace, delete, enter and cut edit at each in one undo step whose record restores every caret, copy joins the selections with newlines, paste hands one line per cursor when the counts match, escape collapses the extras first, and hover/definition ignore alt. The undo manager gains list-shaped transactions with nested brackets, batch coalescing and per-step cursor records. Ported: `InputState::extraCursors` / `columnSelectStart` with `CursorSelection`, `InputAddCursorAt`, `InputBuildColumnarSelection`, `InputReplaceTextInRanges`, `InputMergeOverlappingCursors`, the `MoveAllCursors` / `SelectAllCursorsTo` fan-out, `DeleteSelections`, `UndoBeginTransactionWith` / `UndoRecordSelections` with `UndoTransaction::lastBatchLen` and cursor arrays, `El::ExtraSelRanges` / `ExtraCarets` painted by the rows, and the mouse paths in `window_common.cpp`. The columnar block walks wrap display rows, read back off the shaped run (`WrappedRowStarts`), and falls back to document rows when nothing is laid out; indent and outdent are `ApplyIndent` with `compute_block_indent` / `compute_inline_indent` over every cursor as one batch; `add_cursor_above/below` scrolls to the newest caret. Deviation: a no-op bracket is judged on its text as well as its ranges.
-The current update target is `cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d`.
+Processed through `d604a2ace1c6d8629b94e0498a9158c4a713defa`
+(2026-09-16, setting: Fix delegate number step and clamp to InputState
+(#3099)). The current update target is
+`d604a2ace1c6d8629b94e0498a9158c4a713defa`.
 
 ## Known gaps vs Rust
 
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.2 (Zed `801c087a`); the five ported
+  The GPUI reference is `gpui-pre` 0.3.5 (Zed `d89e9c2124b2`); the five ported
   dependency versions are unchanged.
+
+- **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
+  to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
+  keeps the repository's sole vendored-source exception and identical host API
+  on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
+
+- **Carousel keeps the desktop interaction core.** Controls, pagination,
+  keyboard navigation, accessibility and selection events are ported. Touch
+  dragging, spring tracking and the looping runway wait on a touch-phase input
+  seam (`src/ui/carousel.cpp`).
+
+- **Mobile host integration is still incomplete.** The library compiles with
+  the iPhoneOS SDK and Android NDK, and mobile-specific component policy is
+  enabled by target. Handle bounds, selection edges and the `ScrollBounce`
+  API are present, but the native host seam
+  does not yet emit GPUI's long-press/drag/edit-menu or touch-phase overscroll
+  stream (`src/base/touch_selection.cpp`,
+  `src/base/scroll_bounce.cpp`).
+
+- **Language configuration is callback-based.** Configured bracket pairs,
+  closer skipping, pair deletion and smart Enter indentation are ported.
+  Rust regexes are dependency-free function pointers here, and generated-pair
+  history is not retained (`src/base/input_editor.cpp`).
+
+- **Reduced motion is sampled at startup.** The platform preference updates
+  all motion, but the Linux portal's live-change subscription and a separate
+  application override are not exposed (`src/base/lib.cpp`).
+
+- **Tiles is retained as a compatibility extension.** Upstream removed the
+  Tiles story and public component in this revision; existing C++ callers and
+  persisted dock layouts still use it, so its sources remain but the story is
+  no longer registered (`src/ui/tiles.cpp`, `examples/story/tiles.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including the retained Tiles center. The older live

@@ -17,17 +17,17 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d";
+const pinnedGpuiComponent = "d604a2ace1c6d8629b94e0498a9158c4a713defa";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
-measure motion nav_stack number_input otp_input pagination popover popup positioner
+measure motion nav_stack number_input observe otp_input pagination popover popup positioner
 progress radio radio_group resizable scrollbar scrollable_mask select selectable_text
-sheet slider state_style styled switch table tabs text text_boundary text_selection
-theme theme_tokens toast
+reduce_motion scroll_bounce sheet slider state_style styled switch table tabs test_support
+text text_boundary text_selection theme theme_tokens toast touch_selection
 toggle toggle_group tooltip tree undo_history virtual_list
 `
   .trim()
@@ -37,23 +37,36 @@ const uiModules = `
 component_traits element_ext global_state icon index_path inspector
 root sizing styled time title_bar virtual_list window_border window_ext
 accordion alert attachment avatar badge breadcrumb bubble button chart checkbox
-clipboard collapsible color_picker combobox command description_list dialog dock
-form group_box highlighter history hover_card input kbd label link list marker
+carousel clipboard collapsible color_picker combobox command description_list dialog dock
+empty form group_box highlighter history hover_card input kbd label link list marker
 menu message message_scroller native_menu notification pagination plot popover
 progress radio rating resizable scroll searchable_list select separator setting
 sheet shimmer sidebar skeleton slider spinner status_bar stepper switch tab
-table tag text theme tooltip tree
+table tag text theme touch_selection tooltip tree
 `
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set<string>();
-const adapterBase = new Set(["component_traits", "element_ext", "event", "measure"]);
-const partialUi = new Set<string>();
+const partialBase = new Set(["input", "reduce_motion", "scroll_bounce", "text", "touch_selection"]);
+const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support"]);
+const partialUi = new Set(["carousel", "touch_selection"]);
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
+  "base/input":
+    "language-aware pairs and smart indentation are ported without Rust regex objects or generated-pair history",
+  "base/reduce_motion":
+    "startup follows the platform preference; live Linux portal changes and an app-level override are not exposed",
+  "base/scroll_bounce":
+    "the source-shaped wrapper and motion settings are present, but desktop platform input has no touch-phase overscroll stream",
+  "base/text": "inline native elements use portable element callbacks rather than Rust AnyElement entities",
+  "base/touch_selection":
+    "selection-edge and handle geometry are ported; mobile long-press, drag, and edit-menu integration have no platform event seam",
+  "ui/carousel":
+    "navigation, controls, pagination, keyboard handling, and accessibility are ported; touch dragging, spring tracking, and the looping runway remain",
+  "ui/touch_selection":
+    "the themed layer uses Base's geometry, but the mobile overlay and native edit menu have no supported platform target",
 };
 
 const adapterReasons: Record<string, string> = {
@@ -61,6 +74,10 @@ const adapterReasons: Record<string, string> = {
   "base/element_ext": "extension traits are methods on El plus forwarding helpers",
   "base/event": "typed GPUI closures are generational Listener records",
   "base/measure": "measurement is routed through the synchronous runtime layout seam",
+  "base/observe":
+    "Rust's test-only observation extension maps to the runtime hit-test and accessibility inspection seams",
+  "base/test_support":
+    "the repository deliberately tests the native runtime directly instead of carrying gpui::TestAppContext",
   "ui/component_traits": "the UI faÃƒÂ§ade re-exports Base's C++ trait conventions",
   "ui/element_ext": "extension traits are methods on El plus forwarding helpers",
   "ui/highlighter": "tree-sitter/syntect are excluded; a dependency-free scanner is used",
@@ -100,6 +117,11 @@ const baseOverrides: Record<string, string[]> = {
     "src/base/input_keys.h",
     "src/base/input_keys.cpp",
   ],
+  observe: ["src/gpui/gpui.h", "src/gpui/gpui.cpp"],
+  reduce_motion: ["src/base/lib.h", "src/base/lib.cpp", "src/base/motion.h"],
+  scroll_bounce: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
+  test_support: ["src/gpui/gpui.h", "tests/AccessibilityTests.cpp"],
+  touch_selection: ["src/base/touch_selection.h", "src/base/touch_selection.cpp", "src/base/text_selection.h"],
   macos_accessibility: ["src/gpui/window_mac.cpp"],
   // crates/base/src/text/ is one C++ file per Rust module directory, and the
   // HTML half of `text/format/` is beside it under the name the tree gives a
@@ -108,6 +130,7 @@ const baseOverrides: Record<string, string[]> = {
 };
 
 const uiOverrides: Record<string, string[]> = {
+  carousel: ["src/ui/carousel.h", "src/ui/carousel.cpp"],
   component_traits: ["src/ui/component_traits.h", "src/base/component_traits.h"],
   element_ext: ["src/ui/element_ext.h", "src/base/element_ext.h"],
   global_state: ["src/ui/global_state.h", "src/ui/global_state.cpp"],
@@ -124,6 +147,7 @@ const uiOverrides: Record<string, string[]> = {
   // The UI side of text is the faÃƒÂ§ade over Base's: text/mod.rs, compat.rs,
   // style.rs and window_selection.rs.
   text: ["src/ui/text.h", "src/ui/text.cpp"],
+  touch_selection: ["src/base/touch_selection.h", "src/base/touch_selection.cpp", "src/base/text_selection.h"],
   scroll: ["src/ui/scroll.h", "src/ui/scroll.cpp", "src/base/scrollable_mask.h"],
   table: [
     "src/ui/table.h",
@@ -206,6 +230,7 @@ const testTargets: Record<string, string[]> = {
   ],
   "base/link": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/motion": ["tests/MotionTests.cpp"],
+  "base/observe": ["tests/AccessibilityTests.cpp"],
   "base/nav_stack": ["tests/NavStackTests.cpp"],
   "base/number_input": ["tests/NumberInputTests.cpp"],
   "base/otp_input": ["tests/OtpInputTests.cpp"],
@@ -217,6 +242,7 @@ const testTargets: Record<string, string[]> = {
   "base/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/resizable": ["tests/ResizableTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
+  "base/scroll_bounce": ["tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
   "base/select": ["tests/SelectTests.cpp"],
   "base/sheet": ["tests/SheetTests.cpp"],
   "base/slider": ["tests/SliderTests.cpp", "tests/AccessibilityTests.cpp"],
@@ -229,6 +255,8 @@ const testTargets: Record<string, string[]> = {
   "base/selectable_text": ["tests/TextSelectionTests.cpp"],
   "base/text": ["tests/TextViewTests.cpp", "tests/MarkdownTests.cpp"],
   "base/text_selection": ["tests/TextSelectionTests.cpp"],
+  "base/reduce_motion": ["tests/MotionTests.cpp"],
+  "base/touch_selection": ["tests/TextSelectionTests.cpp"],
   "base/theme_tokens": ["tests/ThemeColorTests.cpp"],
   "base/theme": ["tests/ThemeSettingsTests.cpp"],
   "base/toast": ["tests/ToastTests.cpp"],
@@ -241,6 +269,7 @@ const testTargets: Record<string, string[]> = {
   "ui/avatar": ["tests/AvatarTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/bubble": ["tests/BubbleTests.cpp"],
   "ui/button": ["tests/ButtonGroupTests.cpp", "tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
+  "ui/carousel": ["tests/TabTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/chart": [
     "tests/ChartTests.cpp",
     "tests/BuilderCapacityTests.cpp",
@@ -259,6 +288,9 @@ const testTargets: Record<string, string[]> = {
     "tests/AccessibilityTests.cpp",
   ],
   "ui/dock": ["tests/DockTests.cpp", "tests/DockStateTests.cpp", "tests/TilesTests.cpp"],
+  "ui/dialog": ["tests/DialogTests.cpp"],
+  "ui/empty": ["tests/BuilderCapacityTests.cpp", "tests/AccessibilityTests.cpp"],
+  "ui/form": ["tests/FormTests.cpp"],
   "ui/group_box": ["tests/GroupBoxTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/highlighter": ["tests/SyntaxTests.cpp"],
   "ui/index_path": ["tests/IndexPathTests.cpp"],
@@ -323,6 +355,12 @@ const declarationMappings: Record<string, DeclarationMapping> = {
     targets: ["src/gpui/gpui.h"],
   },
   "base/lib.rs::fn init": { spellings: ["BaseInit"] },
+  "base/input/editor/language.rs::fn set_language_config": {
+    spellings: ["InputSetLanguageConfig"],
+  },
+  "base/input/editor/language.rs::fn set_language_provider": {
+    spellings: ["InputSetLanguageProvider"],
+  },
   "base/dialog.rs::fn init": { spellings: ["DialogInitKeys"] },
   "base/number_input.rs::fn step_value": {
     spellings: ["NumberStepValueTemp"],
@@ -540,14 +578,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 424, sha256: "08da4d596474aa84b0ff4c6e6a410615ee4925f83849ffbaf38f850e33c6c3b3" },
-    "pub-use": { count: 130, sha256: "54481e7c3ffecdb5609b14191efcb779f20bfb627e32fd0e73557670ca7bf346" },
-    test: { count: 837, sha256: "d52cbe363f7f3656be11f449ae0c35aecb853b1652da9fa5959b2ea62182ecb2" },
+    declaration: { count: 443, sha256: "17a9c3753e1ca002d7c2818138ea7c5c9fda91901e8ff164fce1947f778b32be" },
+    "pub-use": { count: 137, sha256: "1af13d0e6328b21e81464d1858472207071aee393ed50600a032895ed12f5933" },
+    test: { count: 968, sha256: "234b4246583b4622dee43c8919082581329d16bb1ab58c8e4fc19c2b4e1f5639" },
   },
   ui: {
-    declaration: { count: 426, sha256: "e5138aa5e62871e1daf3759d46e05a45f47cd2e2038deeed50a857a066f00634" },
-    "pub-use": { count: 156, sha256: "3621ab05b7cbddc92fb38bb3b9ab28f48a28194e5a1bfb34dd6ff640d2941e69" },
-    test: { count: 447, sha256: "54ef9c50e89bcd36022578daab63c8450ab287acfc3b328ac03ab3173002fc4b" },
+    declaration: { count: 451, sha256: "df0b88cc1cc8d5a2aae1954393186bb4cfd825a04aa6a1d5ebaa4bd644239a1a" },
+    "pub-use": { count: 163, sha256: "74d20902ed9d8478236464dc0b54a6a9737c4552c71dad59d7889098dbbb4137" },
+    test: { count: 550, sha256: "6f43d54fe7fba0cabb94fb2054aa1983af8175ed6b5f7d977d4b609d0d742683" },
   },
 };
 

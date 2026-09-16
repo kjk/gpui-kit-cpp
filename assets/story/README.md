@@ -20,12 +20,14 @@ Documentation: <https://gpui-kit.com>
 ```text
 gpui-kit             The one crate applications depend on
 ├── gpui-base        Unstyled behavior, state, and infrastructure
-├── gpui-shell       JavaScript extensions for a Rust host
 └── gpui-component   GPUI Component: the complete styled UI system
 ```
 
-`gpui-kit` pins the matching GPUI release and re-exports every layer, so an
-application lists a single dependency and never GPUI itself.
+`gpui-kit` pins the matching GPUI release and re-exports GPUI, base, component,
+and assets, so a Rust application lists a single dependency. JavaScript extension
+hosts add `gpui-shell` separately; `gpui-component-shell` supplies the styled catalog.
+
+See the [executable application recipe and AI-assisted development acceptance checks](examples/ai_recipes/README.md) for a tested starting point and verification commands.
 
 ## Features
 
@@ -198,25 +200,25 @@ cargo run
 
 ### Examples
 
-Some important examples are built into the `story` crate and can be run directly:
+Some larger examples reuse the `story` gallery components and run as standalone packages:
 
 ```bash
-# Code editor with LSP support and syntax highlighting
-cargo run --example editor
-
 # Dock layout system (panels, split views, tabs)
-cargo run --example dock
+cargo run -p example-dock
 
 # Markdown rendering
-cargo run --example markdown
+cargo run -p example-markdown
 
 # HTML rendering
-cargo run --example html
+cargo run -p example-html
 ```
 
 The `examples` directory also contains standalone examples, each focused on a single feature. Each example is a separate crate, run them with `cargo run -p <name>`:
 
 ```bash
+# Code editor with LSP support and syntax highlighting
+cargo run -p example-editor
+
 # Basic hello world
 cargo run -p hello_world
 

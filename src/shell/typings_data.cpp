@@ -4,9 +4,10 @@
 
 namespace gpui::shell {
 
-static const char kShellTypes0[] = R"GPUI_DTS(// Auto-generated — add `gpui-kit.d.ts` to your .gitignore.
+static const char kShellTypes0[] =
+    R"GPUI_DTS(// Auto-generated — add `gpui-kit.d.ts` to your .gitignore.
 //
-// The built-in modules, as TypeScript declarations, for gpui-shell 0.6.0.
+// The built-in modules, as TypeScript declarations, for gpui-shell 0.6.1.
 // Do not edit: gpui-shell rewrites this on every run, in every directory that
 // imports one of them, from the runtime that is about to execute the script. A
 // committed copy could only ever be the stale one.
@@ -400,7 +401,8 @@ declare module "gpui-kit" {
    * A context that may be held across an `await`.
    *
 )GPUI_DTS";
-static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncApp`. An ordinary [`Context`] speaks for one
+static const char kShellTypes1[] =
+    R"GPUI_DTS(   * The mirror of GPUI's `AsyncApp`. An ordinary [`Context`] speaks for one
    * host call and reports clearly once that call has returned — which is what
    * catches a `cx` stashed in a closure. This one names no call at all: it
    * resolves whichever is running when a member is used, and refuses only when
@@ -589,14 +591,17 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
    * belongs to the render pass that built it; storing one and using it
    * again throws, which no type can prevent.
    */
-  export interface Element {
+  export type Element = NativeElement;
+
+  /** The fluent builder returned by native and Base element factories. */
+  export interface NativeElement {
     /**
      * Passes this element to `transform` and returns exactly what it returns.
      *
      * This mirrors GPUI's `FluentBuilder.map`: it is useful for keeping an
      * imperative or conditional transformation inside a fluent expression.
      */
-    map<T>(transform: (element: Element) => T): T;
+    map<Self extends Element, T>(this: Self, transform: (element: Self) => T): T;
     /**
      * Adds one child. The child is consumed; using it again throws.
      *
@@ -609,9 +614,9 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
      * entity may appear once per parent snapshot; a second mount in the same
      * description is refused before any of it is published.
      */
-    child(child: Element | Entity | string | number | boolean): Element;
+    child<Self extends Element>(this: Self, child: Element | Entity | string | number | boolean): Self;
     /** Adds several children, in order. */
-    children(children: Iterable<Element | Entity | string | number | boolean>): Element;
+    children<Self extends Element>(this: Self, children: Iterable<Element | Entity | string | number | boolean>): Self;
     /**
      * Fills the `content` slot of a `Collapsible`, a `Popover`, a `HoverCard`
      * or a `Popup`.
@@ -635,7 +640,7 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
      * on the inner element; the region the pointer has to reach is the wrapper
      * around it.
      */
-    content(element: Element): Element;
+    content<Self extends Element>(this: Self, element: Element): Self;
     /**
      * Fills an `Avatar`'s `image` slot, which takes an `AvatarImage`.
      *
@@ -643,15 +648,15 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
      * child. Base renders this one when it is there and the `fallback` when it
      * is not, so filling both is how a picture gets something to fall back to.
      */
-    image(element: Element): Element;
+    image<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `Avatar`'s `fallback` slot, which takes an `AvatarFallback`. */
-    fallback(element: Element): Element;
+    fallback<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `AccordionItem`'s `header` slot, which takes an `AccordionHeader`. */
-    header(element: Element): Element;
+    header<Self extends Element>(this: Self, element: Element): Self;
     /** Fills a component's named `footer` slot. */
-    footer(element: Element): Element;
+    footer<Self extends Element>(this: Self, element: Element): Self;
     /** Fills an `AccordionItem`'s `panel` slot, which takes an `AccordionPanel`. */
-    panel(element: Element): Element;
+    panel<Self extends Element>(this: Self, element: Element): Self;
     /**
      * Fills the `trigger` slot of a `Popover` or a `HoverCard`: the element
      * that is on screen while the surface is closed, and that opens it.
@@ -661,22 +666,23 @@ static const char kShellTypes1[] = R"GPUI_DTS(   * The mirror of GPUI's `AsyncAp
      * instead, because its trigger's bounds are what the content is anchored
      * to.
      */
-    trigger(element: Element): Element;
+    trigger<Self extends Element>(this: Self, element: Element): Self;
     /**
      * Fills the editor slot of a `NumberInput`.
      *
      * Left empty, the frame draws the bare editor for the state it was built
      * from, which is what a number input almost always wants. Fill it to put
-     * something else there — but not `Input.new(state)`: that is the *framed*
+)GPUI_DTS";
+static const char kShellTypes2[] =
+    R"GPUI_DTS(     * something else there — but not `Input.new(state)`: that is the *framed*
      * editor, and a frame inside this frame draws two borders. Adornments
      * beside the editor are ordinary `child(...)` calls on the number input.
      */
-    input(element: Element): Element;
+    input<Self extends Element>(this: Self, element: Element): Self;
     /**
      * Supplies the look of a `NumberInput`'s decrement button.
      *
-)GPUI_DTS";
-static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. The step button is built by the base layer and
+     * Not optional in practice. The step button is built by the base layer and
      * is completely unstyled — no size, no content — so a number input that
      * leaves this empty has a decrement control that cannot be seen and cannot
      * be pressed.
@@ -692,30 +698,30 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * `disabled(...)` and `on_click(...)` written here are overwritten: the
      * number input owns whether stepping is allowed and what a press does.
      */
-    decrement_button(element: Element): Element;
+    decrement_button<Self extends Element>(this: Self, element: Element): Self;
     /** The increment button, replayed exactly as `decrement_button` is. */
-    increment_button(element: Element): Element;
+    increment_button<Self extends Element>(this: Self, element: Element): Self;
     /**
      * Stacks both of a `NumberInput`'s step buttons to the right of the text,
      * rather than putting one on each side of it.
      */
-    controls_right(): Element;
+    controls_right<Self extends Element>(this: Self): Self;
     /**
      * Applies `branch` only when `condition` is truthy, keeping the chain in
      * one piece. `branch` must return the element.
      */
-    when(condition: unknown, branch: (el: Element) => Element): Element;
+    when<Self extends Element>(this: Self, condition: unknown, branch: (el: Self) => Self): Self;
 
     /**
      * `handler(event, cx)` on activation. Keyboard activation is available
      * only on components whose Base primitive supports it; `Tab` is currently
      * pointer-only pending the compound keyboard behavior tracked in #2838.
      */
-    on_click(handler: (event: ClickEvent, cx: Context) => void): Element;
+    on_click<Self extends Element>(this: Self, handler: (event: ClickEvent, cx: Context) => void): Self;
     /** GPUI `InteractiveElement::on_mouse_move`, delivered while this element is hovered. */
-    on_mouse_move(handler: (event: MouseMoveEvent, cx: Context) => void): Element;
+    on_mouse_move<Self extends Element>(this: Self, handler: (event: MouseMoveEvent, cx: Context) => void): Self;
     /** GPUI `InteractiveElement::on_hover`; reports both pointer entry and exit. */
-    on_hover(handler: (hovered: boolean, cx: Context) => void): Element;
+    on_hover<Self extends Element>(this: Self, handler: (hovered: boolean, cx: Context) => void): Self;
     /**
      * GPUI `InteractiveElement::on_key_down`, delivered while this element or
      * something inside it holds the keyboard.
@@ -736,13 +742,13 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * component that accepts no focus handle — `Tab` — hears presses and never
      * hears keys, however well both are wired.
      */
-    on_key_down(handler: (event: KeyEvent, cx: Context) => void): Element;
+    on_key_down<Self extends Element>(this: Self, handler: (event: KeyEvent, cx: Context) => void): Self;
     /** GPUI `InteractiveElement::on_key_up`, on the same focus path as `on_key_down`. */
-    on_key_up(handler: (event: KeyEvent, cx: Context) => void): Element;
+    on_key_up<Self extends Element>(this: Self, handler: (event: KeyEvent, cx: Context) => void): Self;
     /** GPUI `InteractiveElement::on_modifiers_changed`, on the keyboard focus path. */
-    on_modifiers_changed(
+    on_modifiers_changed<Self extends Element>(this: Self,
       handler: (event: ModifiersChangedEvent, cx: Context) => void,
-    ): Element;
+    ): Self;
     /**
      * GPUI `InteractiveElement::on_mouse_down`, for one button.
      *
@@ -752,15 +758,15 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * for two buttons on one element is fine — the two handlers are
      * independent.
      */
-    on_mouse_down(
+    on_mouse_down<Self extends Element>(this: Self,
       button: MouseButton,
       handler: (event: MouseButtonEvent, cx: Context) => void,
-    ): Element;
+    ): Self;
     /** GPUI `InteractiveElement::on_mouse_up`, for one button. */
-    on_mouse_up(
+    on_mouse_up<Self extends Element>(this: Self,
       button: MouseButton,
       handler: (event: MouseButtonEvent, cx: Context) => void,
-    ): Element;
+    ): Self;
     /**
      * GPUI `InteractiveElement::on_mouse_down_out`: a press anywhere *outside*
      * this element, delivered during the capture phase.
@@ -769,7 +775,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * elsewhere — the same listener base's own components close on. It fires
      * for any button.
      */
-    on_mouse_down_out(handler: (event: MouseButtonEvent, cx: Context) => void): Element;
+    on_mouse_down_out<Self extends Element>(this: Self, handler: (event: MouseButtonEvent, cx: Context) => void): Self;
     /**
      * GPUI `InteractiveElement::on_scroll_wheel`: wheel and trackpad scrolling
      * over this element.
@@ -778,7 +784,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * not: it hands GPUI's own retained scroll container the job. Use this when
      * the gesture drives something else — a zoom, a value, a custom viewport.
      */
-    on_scroll_wheel(handler: (event: ScrollWheelEvent, cx: Context) => void): Element;
+    on_scroll_wheel<Self extends Element>(this: Self, handler: (event: ScrollWheelEvent, cx: Context) => void): Self;
     /**
      * `handler(event, cx)` when the named action is dispatched to this element
      * or to something inside it.
@@ -792,7 +798,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * Registering several on one element is fine and they are independent. An
      * action none of them names carries on to an element further out.
      */
-    on_action(action: string, handler: (event: ActionEvent, cx: Context) => void): Element;
+    on_action<Self extends Element>(this: Self, action: string, handler: (event: ActionEvent, cx: Context) => void): Self;
     /**
      * `InteractiveElement::key_context`: the key-binding context this element
      * and its subtree sit in.
@@ -802,18 +808,18 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * a predicate expression, not free text; an unparsable one is reported and
      * the context is left unset.
      */
-    key_context(context: string): Element;
+    key_context<Self extends Element>(this: Self, context: string): Self;
     /**
      * An `AccordionHeader`'s announced heading level — "heading level 3" — as
      * `aria-level` means it. Defaults to 3. It announces; it sizes nothing.
      */
-    aria_level(level: number): Element;
+    aria_level<Self extends Element>(this: Self, level: number): Self;
     /**
      * Whether an `AccordionPanel` stays in the tree while shut. Off by default;
      * on, its content keeps a scroll position or a half-typed field across a
      * close and reopen.
      */
-    keep_mounted(value?: boolean): Element;
+    keep_mounted<Self extends Element>(this: Self, value?: boolean): Self;
     /**
      * `handler(key, cx)` when a row of a virtual list is clicked, where `key`
      * is what the list's `get_key(index)` returned for that row.
@@ -839,7 +845,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * an item renderer starts working, with no change to anything written
      * against `on_item_click`.
      */
-    on_item_click(handler: (key: string, cx: Context) => void): Element;
+    on_item_click<Self extends Element>(this: Self, handler: (key: string, cx: Context) => void): Self;
     /**
      * `handler(key, event, cx)` on a secondary press — the right button — over
      * a row of a virtual list. `key` is what the list's `get_key(index)`
@@ -858,9 +864,9 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * pane learns which row was pressed from this handler and where in the
      * pane to open from the pane's.
      */
-    on_item_secondary_click(
+    on_item_secondary_click<Self extends Element>(this: Self,
       handler: (key: string, event: MouseButtonEvent, cx: Context) => void,
-    ): Element;
+    ): Self;
     /**
      * `handler(value, cx)`, on a toggle. The script owns the new value.
      *
@@ -868,7 +874,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * already checked — or disabled — radio reports nothing at all, and
      * clearing a group is the script's own business.
      */
-    on_change(handler: (checked: boolean, cx: Context) => void): Element;
+    on_change<Self extends Element>(this: Self, handler: (checked: boolean, cx: Context) => void): Self;
 
     /**
      * `handler(action, cx)` on a `NumberInput`, where `action` is
@@ -883,11 +889,13 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      *
      * Both the step buttons and the Up and Down keys report through it.
      */
-    on_step(handler: (action: "increment" | "decrement", cx: Context) => void): Element;
+    on_step<Self extends Element>(this: Self, handler: (action: "increment" | "decrement", cx: Context) => void): Self;
     /**
      * `handler(open, cx)`, when something other than the script changed a
      * `Popover`'s open state: a press on the trigger, a press outside it, or
-     * Escape. Storage the value and call `cx.notify()`, the way `on_change`
+)GPUI_DTS";
+static const char kShellTypes3[] =
+    R"GPUI_DTS(     * Escape. Storage the value and call `cx.notify()`, the way `on_change`
      * stores a checkbox's.
      *
      * A `HoverCard` accepts this too, and today never calls it: the base layer
@@ -895,7 +903,7 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * its open state cannot produce. A hover card's open state is its own, so
      * nothing is lost except the notification.
      */
-    on_open_change(handler: (open: boolean, cx: Context) => void): Element;
+    on_open_change<Self extends Element>(this: Self, handler: (open: boolean, cx: Context) => void): Self;
     /**
      * `handler(_, cx)` on Enter in an open `Select` or `Combobox`.
      *
@@ -904,14 +912,13 @@ static const char kShellTypes2[] = R"GPUI_DTS(     * Not optional in practice. T
      * the script is the only side that knows. Confirming a *closed* root opens
      * it instead, so this never runs for that case.
      */
-    on_confirm(handler: (event: {}, cx: Context) => void): Element;
+    on_confirm<Self extends Element>(this: Self, handler: (event: {}, cx: Context) => void): Self;
     /**
      * `handler(_, cx)` on Escape in an open `Select` or `Combobox`, before
      * `on_open_change(false)` — which is what lets a script commit a pending
-)GPUI_DTS";
-static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
+     * value on the way out.
      */
-    on_dismiss(handler: (event: {}, cx: Context) => void): Element;
+    on_dismiss<Self extends Element>(this: Self, handler: (event: {}, cx: Context) => void): Self;
     /**
      * The label a hover shows over this element, once the pointer has rested
      * on it for half a second.
@@ -934,41 +941,41 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * A tooltip is not a substitute for `accessibility_label`. A screen reader
      * announces the label; the tooltip is for the pointer.
      */
-    tooltip(text: string): Element;
+    tooltip<Self extends Element>(this: Self, text: string): Self;
     /** Blocks activation and reports the disabled state. Draw it yourself. */
-    disabled(value: boolean): Element;
+    disabled<Self extends Element>(this: Self, value: boolean): Self;
     /** Reports the selected state of a `Button`. */
-    selected(value: boolean): Element;
+    selected<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * This item's one-based position and its collection's total size, so a
      * screen reader can announce "tab 2 of 5" or "option 2 of 5". Announced,
      * never drawn: a tab list or radio group that omits it looks identical and
      * says nothing about where the reader is in the set.
      */
-    set_position(position: number, size: number): Element;
+    set_position<Self extends Element>(this: Self, position: number, size: number): Self;
     /** The controlled value of a `Checkbox`, `Switch` or `Radio`. */
-    checked(value: boolean): Element;
+    checked<Self extends Element>(this: Self, value: boolean): Self;
     /** The controlled state of a `Toggle`: a button that stays down. */
-    pressed(value: boolean): Element;
+    pressed<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * The announced progress percentage of a `Progress`, clamped to `0..=100`.
      *
      * It moves nothing on screen: size the `ProgressIndicator` from the same
      * number to draw the bar.
      */
-    value(percent: number): Element;
+    value<Self extends Element>(this: Self, percent: number): Self;
     /**
      * Withdraws a `Progress` value from the accessibility tree — "still
      * working, no idea how far". It does not animate anything; a barber-pole
      * or a sliding indicator is yours to draw, and `transition` on the
      * indicator is how it moves.
      */
-    indeterminate(value: boolean): Element;
+    indeterminate<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * What a screen reader announces. An icon-only control has no text of its
      * own and announces nothing without it.
      */
-    accessibility_label(description: string): Element;
+    accessibility_label<Self extends Element>(this: Self, description: string): Self;
     /**
      * What this element announces itself as.
      *
@@ -979,14 +986,14 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * menu item). Every other component announces a role of its own, and a
      * `role` there is reported and dropped rather than silently overwritten.
      */
-    role(name: Role): Element;
+    role<Self extends Element>(this: Self, name: Role): Self;
     /**
      * The selected state of an option in a list the script built itself.
      *
      * Plain elements only. `Tab` and `Radio` announce their own selection from
      * `selected(...)` and `checked(...)`.
      */
-    aria_selected(value: boolean): Element;
+    aria_selected<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * Announces this element as the focused one while an ancestor actually
      * holds the keyboard — the highlighted option of a combobox whose input
@@ -996,7 +1003,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      *
      * Plain elements only.
      */
-    aria_active_descendant(): Element;
+    aria_active_descendant<Self extends Element>(this: Self): Self;
     /**
      * Tracks a `FocusHandle` the script owns, so `handle.is_focused()` answers
      * for this element and `handle.focus()` moves the keyboard onto it.
@@ -1012,7 +1019,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * you drew as the trigger, or nothing focusable is on screen and Escape and
      * Enter reach nothing.
      */
-    track_focus(handle: FocusHandle): Element;
+    track_focus<Self extends Element>(this: Self, handle: FocusHandle): Self;
     /**
      * Gives a virtual list the scroll position held by a
      * `VirtualListScrollHandle`, so the script can drive it with
@@ -1022,7 +1029,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * the id it was built with — which is the same place a `Scrollbar` named
      * after that id looks, so the bar works either way.
      */
-    track_scroll(handle: import("gpui-base").VirtualListScrollHandle): Element;
+    track_scroll<Self extends Element>(this: Self, handle: import("gpui-base").VirtualListScrollHandle): Self;
     /**
      * Which item a virtual list measures to infer its size across the axis it
      * scrolls: a vertical list takes its width from this item, a horizontal
@@ -1030,7 +1037,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      *
      * The name is base's own builder, kept verbatim.
      */
-    with_item_to_measure_index(index: number): Element;
+    with_item_to_measure_index<Self extends Element>(this: Self, index: number): Self;
     /**
      * The handle a `Select` or `Combobox` moves the keyboard to when it opens,
      * and away from when Escape closes it.
@@ -1039,7 +1046,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * then style itself from `handle.is_focused()`. It does **not** give you
      * arrow-key navigation — see `Select` for what is and is not there.
      */
-    content_focus_handle(handle: FocusHandle): Element;
+    content_focus_handle<Self extends Element>(this: Self, handle: FocusHandle): Self;
     /**
      * Where this element sits in the window's Tab order. A whole number;
      * setting it also makes the element a tab stop.
@@ -1048,15 +1055,15 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * `Tabs` and the table, group and progress parts, which base leaves out of
      * keyboard focus entirely.
      */
-    tab_index(index: number): Element;
+    tab_index<Self extends Element>(this: Self, index: number): Self;
     /**
      * Whether Tab can land on this element. `false` keeps its place in the
      * order without making it reachable, which is what a container that
      * forwards focus to its first child wants.
      */
-    tab_stop(value: boolean): Element;
+    tab_stop<Self extends Element>(this: Self, value: boolean): Self;
     /** Sets the absolute HTTP(S) target opened by a `Link`. */
-    href(url: string): Element;
+    href<Self extends Element>(this: Self, url: string): Self;
     /**
      * A stable name for this element, used as its identity.
      *
@@ -1068,36 +1075,36 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * Any component whose factory takes an id is already identified by that id
      * and ignores this.
      */
-    id(name: string): Element;
+    id<Self extends Element>(this: Self, name: string): Self;
     /** Owns wheel and touch scrolling on both axes for overflowing children. */
-    overflow_scroll(): Element;
+    overflow_scroll<Self extends Element>(this: Self): Self;
     /** Owns horizontal wheel and touch scrolling for overflowing children. */
-    overflow_x_scroll(): Element;
+    overflow_x_scroll<Self extends Element>(this: Self): Self;
     /** Owns vertical wheel and touch scrolling for overflowing children. */
-    overflow_y_scroll(): Element;
+    overflow_y_scroll<Self extends Element>(this: Self): Self;
     /** Scrolls both axes and paints base-layer scrollbars. */
-    overflow_scrollbar(): Element;
+    overflow_scrollbar<Self extends Element>(this: Self): Self;
     /** Scrolls horizontally and paints a base-layer scrollbar. */
-    overflow_x_scrollbar(): Element;
+    overflow_x_scrollbar<Self extends Element>(this: Self): Self;
     /** Scrolls vertically and paints a base-layer scrollbar. */
-    overflow_y_scrollbar(): Element;
+    overflow_y_scrollbar<Self extends Element>(this: Self): Self;
     /**
      * A `Scrollbar`'s visibility policy. Omitted, it follows the theme, which
      * is what every bar painted by `overflow_*_scrollbar` does.
      */
-    mode(value: import("gpui-base").ScrollbarMode): Element;
+    mode<Self extends Element>(this: Self, value: import("gpui-base").ScrollbarMode): Self;
     /**
      * The content size a `Scrollbar` measures its thumb against, in pixels,
      * for when the script knows it and the scroll area does not — a list that
      * paints a window of rows rather than all of them.
      */
-    scroll_size(width: number, height: number): Element;
+    scroll_size<Self extends Element>(this: Self, width: number, height: number): Self;
     /**
      * Makes a `Scrollbar` take its viewport from its own box rather than from
      * the scroll area it drives. The way to run a bar down the rows of a table
      * without it reaching up over the fixed header.
      */
-    viewport_from_layout(): Element;
+    viewport_from_layout<Self extends Element>(this: Self): Self;
     /**
      * How far a `resizable_panel()` may be dragged, in pixels.
      *
@@ -1106,7 +1113,7 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * while the maximum is optional and defaults to unbounded. Omit the call
      * entirely to keep both of base's defaults.
      */
-    size_range(min: number, max?: number): Element;
+    size_range<Self extends Element>(this: Self, min: number, max?: number): Self;
     /**
      * `handler(sizes, cx)` on an `h_resizable()` or `v_resizable()`, once a drag
      * of one of its handles has ended. `sizes` is the pixel size of every panel,
@@ -1117,7 +1124,9 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * wired: it is for persisting a layout or showing a width, not for making
      * the group resize.
      */
-    on_resize(handler: (sizes: number[], cx: Context) => void): Element;
+)GPUI_DTS";
+static const char kShellTypes4[] =
+    R"GPUI_DTS(    on_resize<Self extends Element>(this: Self, handler: (sizes: number[], cx: Context) => void): Self;
     /**
      * The orientation a `RadioGroup` or `ToggleGroup` announces.
      *
@@ -1127,15 +1136,15 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * drawn. Omitted, each container keeps its own default: `RadioGroup` is
      * vertical, `ToggleGroup` horizontal.
      */
-    axis(value: Axis): Element;
+    axis<Self extends Element>(this: Self, value: Axis): Self;
     /**
      * A `Table`'s total number of rows, including rows outside the range the
      * script rendered, so a screen reader can announce "row 5 of 200". A table
      * that draws every row it has does not need it.
      */
-    row_count(count: number): Element;
+    row_count<Self extends Element>(this: Self, count: number): Self;
     /** A `Table`'s total number of columns, including unrendered ones. */
-    column_count(count: number): Element;
+    column_count<Self extends Element>(this: Self, count: number): Self;
     /**
      * Whether a `Collapsible` renders the element in its `content` slot — its
      * ordinary children are rendered either way — or whether a `Popover`,
@@ -1151,17 +1160,16 @@ static const char kShellTypes3[] = R"GPUI_DTS(     * value on the way out.
      * A `Popup` has no open state to set. It shows whatever is in its `content`
      * slot, so `.when(open, el => el.content(...))` is how one is opened.
      */
-    open(value: boolean): Element;
+    open<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * Whether a `Popover` starts open. Read once, when the surface is first
      * described; a controlled popover ignores it from then on.
      */
-    default_open(value: boolean): Element;
+    default_open<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * Whether pressing outside an open `Popover` closes it. Default `true`.
      */
-)GPUI_DTS";
-static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolean): Element;
+    overlay_closable<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * Which corner of a `Popover` or `HoverCard` is pinned to its trigger, or
      * where an `fps_monitor()` is pinned inside its relative parent. Omitted,
@@ -1171,33 +1179,33 @@ static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolea
      * The surface is clamped into the window either way, so an anchor near an
      * edge is a preference rather than a promise.
      */
-    anchor(value: Anchor): Element;
+    anchor<Self extends Element>(this: Self, value: Anchor): Self;
     /** Frame budget, in milliseconds, used by an fps_monitor's FRAME grading. */
-    frame_budget(milliseconds: number): Element;
+    frame_budget<Self extends Element>(this: Self, milliseconds: number): Self;
     /** Which pointer button opens a `Popover`. Default `left`. */
-    mouse_button(value: MouseButton): Element;
+    mouse_button<Self extends Element>(this: Self, value: MouseButton): Self;
     /**
      * How long, in milliseconds, the pointer must rest on a `HoverCard`'s
      * trigger before the card appears. Default 600.
      */
-    open_delay(ms: number): Element;
+    open_delay<Self extends Element>(this: Self, ms: number): Self;
     /**
      * How long, in milliseconds, a `HoverCard` waits after the pointer leaves
      * both the trigger and the card before closing. Default 300; it is what
      * lets the pointer cross the gap between the two.
      */
-    close_delay(ms: number): Element;
+    close_delay<Self extends Element>(this: Self, ms: number): Self;
     /** Animates later target changes entirely in native GPUI code. */
-    transition(property: import("gpui-shell").MotionProperty, policy: number | import("gpui-shell").TransitionPolicy): Element;
+    transition<Self extends Element>(this: Self, property: import("gpui-shell").MotionProperty, policy: number | import("gpui-shell").TransitionPolicy): Self;
     /** Springs later target changes entirely in native GPUI code. */
-    spring(property: import("gpui-shell").MotionProperty, policy?: import("gpui-shell").SpringPolicy): Element;
+    spring<Self extends Element>(this: Self, property: import("gpui-shell").MotionProperty, policy?: import("gpui-shell").SpringPolicy): Self;
 
     /**
      * Which thumb of a range slider a `SliderThumb` is: the one at the start
      * of the range, or the one at its end. Default `false`, the end — which
      * is the only thumb a single-value slider has.
      */
-    start(value: boolean): Element;
+    start<Self extends Element>(this: Self, value: boolean): Self;
     /**
      * How the filled part of a `SliderIndicator` looks. `declare` receives a
      * detached element that collects the styles, exactly as `hover` does; its
@@ -1210,7 +1218,7 @@ static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolea
      * with no `range_style` has no fill at all, which is a slider drawn as a
      * groove and a knob.
      */
-    range_style(declare: (el: Element) => Element | void): Element;
+    range_style<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * How every cell of an `OtpInput` looks. `declare` receives a detached
      * element that collects the styles, exactly as `hover` does; its return
@@ -1220,13 +1228,13 @@ static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolea
      * by the script, so an `OtpInput` without this one is a row of boxes with
      * no size, no border and no background — nothing on screen at all.
      */
-    cell_style(declare: (el: Element) => Element | void): Element;
+    cell_style<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * Layered on top of `cell_style` for the one cell the next digit lands in,
      * while the code holds the keyboard and is not disabled. A refinement
      * rather than a replacement, the way `hover` is: declare only what differs.
      */
-    cell_active_style(declare: (el: Element) => Element | void): Element;
+    cell_active_style<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * The blinking mark drawn in that cell while it is still empty. Give it a
      * width, a height and a background; with no `caret_style` there is no
@@ -1234,17 +1242,17 @@ static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolea
      *
      * Not `cursor_style`: everywhere else in this API `cursor` is the pointer.
      */
-    caret_style(declare: (el: Element) => Element | void): Element;
+    caret_style<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * Styles applied while the pointer is over the element. `declare` receives
      * a detached element that collects the styles; its return value is
      * ignored, so a chain and a block body both work.
      */
-    hover(declare: (el: Element) => Element | void): Element;
+    hover<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /** Styles applied while the element is pressed. */
-    active(declare: (el: Element) => Element | void): Element;
+    active<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /** Styles applied while the element has focus. */
-    focus(declare: (el: Element) => Element | void): Element;
+    focus<Self extends Element>(this: Self, declare: (el: NativeElement) => NativeElement | void): Self;
     /**
      * Displays the tab at `index` in `group` when this element is clicked.
      *
@@ -1255,171 +1263,159 @@ static const char kShellTypes4[] = R"GPUI_DTS(    overlay_closable(value: boolea
      * stood. A command carries no script value: it names a container in the
      * area and what to ask it, and base does the work.
      *
-     * Every command takes the object its handler was given — the group, the
-     * dock, the tile — as its first argument. They belong on a `div`, an
+     * Every command takes the object its handler was given — the group or the
+     * dock — as its first argument. They belong on a `div`, an
      * `h_flex` or a `v_flex`; a `Button` builds its own interior and has
      * nowhere to put one.
      */
-    select_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    select_tab<Self extends Element>(this: Self, group: import("gpui-base").DockGroup, index: number): Self;
     /** Closes `panel` when this element is clicked, if its group allows it. */
-    close_panel(group: import("gpui-base").DockGroup, panel: number): Element;
+    close_panel<Self extends Element>(this: Self, group: import("gpui-base").DockGroup, panel: number): Self;
     /** Zooms the group in, or back out. */
-    toggle_zoom(group: import("gpui-base").DockGroup): Element;
+    toggle_zoom<Self extends Element>(this: Self, group: import("gpui-base").DockGroup): Self;
     /**
      * Makes this element the drag source for the tab at `index`, carrying
      * base's own panel payload — so dropping it on another group, or on the
      * area itself, moves the panel there.
      */
-    drag_tab(group: import("gpui-base").DockGroup, index: number): Element;
+    drag_tab<Self extends Element>(this: Self, group: import("gpui-base").DockGroup, index: number): Self;
     /**
      * Accepts a dragged panel here. `index` is the slot it lands in; leave it
      * out to append, which is what a drop past the last tab means.
      */
-    drop_tab(group: import("gpui-base").DockGroup, index?: number): Element;
+    drop_tab<Self extends Element>(this: Self, group: import("gpui-base").DockGroup, index?: number): Self;
     /** Opens or closes the dock when this element is clicked. */
-    toggle_dock(dock: import("gpui-base").DockRegion): Element;
+    toggle_dock<Self extends Element>(this: Self, dock: import("gpui-base").DockRegion): Self;
     /**
      * Drags the dock's edge. Base clamps every size it is given against the
      * area and the opposite dock, so nothing here has to.
      */
-    resize_dock(dock: import("gpui-base").DockRegion): Element;
-    /** Drags the tile around its canvas, raising it first. */
-    move_tile(tile: import("gpui-base").DockTile): Element;
-    /** Drags one edge or corner of the tile. */
-    resize_tile(
-      tile: import("gpui-base").DockTile,
-      side: import("gpui-base").TileResizeSide,
-    ): Element;
-    /** Brings the tile above the others when this element is pressed. */
-    raise_tile(tile: import("gpui-base").DockTile): Element;
-    /** Zooms the tile to fill its dock, or back out. */
-    toggle_tile_zoom(tile: import("gpui-base").DockTile): Element;
-    /** Closes the tile. */
-    close_tile(tile: import("gpui-base").DockTile): Element;
+    resize_dock<Self extends Element>(this: Self, dock: import("gpui-base").DockRegion): Self;
 
     // Style methods that take an argument. Which length type a method
     // accepts follows its Rust signature, so `.p("auto")` and
     // `.rounded("50%")` are type errors here for the same reason they
     // throw at run time.
     /** Sets the background colour. */
-    bg(value: Color): Element;
+    bg<Self extends Element>(this: Self, value: Color): Self;
     /** Sets the border width on all four sides. Draws nothing without a colour. */
-    border(value: AbsoluteLength): Element;
+    border<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border width on the bottom. */
-    border_b(value: AbsoluteLength): Element;
+    border_b<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border colour. Draws nothing without a width. */
-    border_color(value: Color): Element;
+    border_color<Self extends Element>(this: Self, value: Color): Self;
     /** Sets the border width on the left. */
-    border_l(value: AbsoluteLength): Element;
+    border_l<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border width on the right. */
-    border_r(value: AbsoluteLength): Element;
+    border_r<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border width on the top. */
-    border_t(value: AbsoluteLength): Element;
+    border_t<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border width on the left and right. */
-    border_x(value: AbsoluteLength): Element;
+    border_x<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the border width on the top and bottom. */
-    border_y(value: AbsoluteLength): Element;
+    border_y<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the bottom offset of a positioned element. */
-    bottom(value: Length): Element;
+    bottom<Self extends Element>(this: Self, value: Length): Self;
     /** Sets the size this child starts from before growing or shrinking. */
-    flex_basis(value: Length): Element;
+    flex_basis<Self extends Element>(this: Self, value: Length): Self;
     /** Sets how much of the free space this child takes. */
-    flex_grow(value: number): Element;
+    flex_grow<Self extends Element>(this: Self, value: number): Self;
     /** Sets how readily this child gives space back. */
-    flex_shrink(value: number): Element;
+    flex_shrink<Self extends Element>(this: Self, value: number): Self;
     /** Sets the font family. */
-    font_family(value: string): Element;
+    font_family<Self extends Element>(this: Self, value: string): Self;
     /** Sets the font weight to a number between 100 and 900. */
-    font_weight(value: number): Element;
+    font_weight<Self extends Element>(this: Self, value: number): Self;
     /** Sets the gap between children on both axes. */
-    gap(value: DefiniteLength): Element;
+    gap<Self extends Element>(this: Self, value: DefiniteLength): Self;
     /** Sets the gap between children along the main axis. */
-    gap_x(value: DefiniteLength): Element;
+    gap_x<Self extends Element>(this: Self, value: DefiniteLength): Self;
     /** Sets the gap between children along the cross axis. */
-    gap_y(value: DefiniteLength): Element;
+    gap_y<Self extends Element>(this: Self, value: DefiniteLength): Self;
     /** Sets the height. */
-    h(value: Length): Element;
-    /** Sets all four offsets of a positioned element. */
-    inset(value: Length): Element;
-    /** Sets the left offset of a positioned element. */
-    left(value: Length): Element;
-    /** Sets the line height. A bare number is a multiplier (`1.45`), not pixels; a string is a length. */
-    line_height(value: DefiniteLength): Element;
-    /** Sets the margin on all four sides. */
-    m(value: Length): Element;
-    /** Sets the maximum height. */
-    max_h(value: Length): Element;
-    /** Sets the maximum width and height together. */
-    max_size(value: Length): Element;
-    /** Sets the maximum width. */
-    max_w(value: Length): Element;
-    /** Sets the margin on the bottom. */
-    mb(value: Length): Element;
-    /** Sets the minimum height. */
-    min_h(value: Length): Element;
-    /** Sets the minimum width and height together. */
-    min_size(value: Length): Element;
-    /** Sets the minimum width. */
-    min_w(value: Length): Element;
-    /** Sets the margin on the left. */
-    ml(value: Length): Element;
-    /** Sets the margin on the right. */
-    mr(value: Length): Element;
-    /** Sets the margin on the top. */
-    mt(value: Length): Element;
-    /** Sets the margin on the left and right. */
-    mx(value: Length): Element;
-    /** Sets the margin on the top and bottom. */
-    my(value: Length): Element;
-    /** Sets the opacity of the element and everything in it, from 0 to 1. */
-    opacity(value: number): Element;
-    /** Sets the padding on all four sides. */
-    p(value: DefiniteLength): Element;
-    /** Sets the padding on the bottom. */
-    pb(value: DefiniteLength): Element;
-    /** Sets the padding on the left. */
-    pl(value: DefiniteLength): Element;
-    /** Sets the padding on the right. */
-    pr(value: DefiniteLength): Element;
-    /** Sets the padding on the top. */
-    pt(value: DefiniteLength): Element;
-    /** Sets the padding on the left and right. */
-    px(value: DefiniteLength): Element;
-    /** Sets the padding on the top and bottom. */
-    py(value: DefiniteLength): Element;
-    /** Sets the right offset of a positioned element. */
-    right(value: Length): Element;
-    /** Sets the corner radius on all four corners. */
-    rounded(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the two bottom corners. */
-    rounded_b(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the bottom-left corner. */
-    rounded_bl(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the bottom-right corner. */
-    rounded_br(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the two left corners. */
-    rounded_l(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the two right corners. */
-    rounded_r(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the two top corners. */
-    rounded_t(value: AbsoluteLength): Element;
-    /** Sets the corner radius on the top-left corner. */
 )GPUI_DTS";
-static const char kShellTypes5[] = R"GPUI_DTS(    rounded_tl(value: AbsoluteLength): Element;
+static const char kShellTypes5[] =
+    R"GPUI_DTS(    h<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets all four offsets of a positioned element. */
+    inset<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the left offset of a positioned element. */
+    left<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the line height. A bare number is a multiplier (`1.45`), not pixels; a string is a length. */
+    line_height<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the margin on all four sides. */
+    m<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the maximum height. */
+    max_h<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the maximum width and height together. */
+    max_size<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the maximum width. */
+    max_w<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the bottom. */
+    mb<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the minimum height. */
+    min_h<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the minimum width and height together. */
+    min_size<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the minimum width. */
+    min_w<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the left. */
+    ml<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the right. */
+    mr<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the top. */
+    mt<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the left and right. */
+    mx<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the margin on the top and bottom. */
+    my<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the opacity of the element and everything in it, from 0 to 1. */
+    opacity<Self extends Element>(this: Self, value: number): Self;
+    /** Sets the padding on all four sides. */
+    p<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the bottom. */
+    pb<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the left. */
+    pl<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the right. */
+    pr<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the top. */
+    pt<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the left and right. */
+    px<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the padding on the top and bottom. */
+    py<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the right offset of a positioned element. */
+    right<Self extends Element>(this: Self, value: Length): Self;
+    /** Sets the corner radius on all four corners. */
+    rounded<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the two bottom corners. */
+    rounded_b<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the bottom-left corner. */
+    rounded_bl<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the bottom-right corner. */
+    rounded_br<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the two left corners. */
+    rounded_l<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the two right corners. */
+    rounded_r<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the two top corners. */
+    rounded_t<Self extends Element>(this: Self, value: AbsoluteLength): Self;
+    /** Sets the corner radius on the top-left corner. */
+    rounded_tl<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the corner radius on the top-right corner. */
-    rounded_tr(value: AbsoluteLength): Element;
+    rounded_tr<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the width and the height together. */
-    size(value: Length): Element;
+    size<Self extends Element>(this: Self, value: Length): Self;
     /** Sets the background painted behind the text itself. */
-    text_bg(value: Color): Element;
+    text_bg<Self extends Element>(this: Self, value: Color): Self;
     /** Sets the text colour, which children inherit. */
-    text_color(value: Color): Element;
+    text_color<Self extends Element>(this: Self, value: Color): Self;
     /** Sets the font size. */
-    text_size(value: AbsoluteLength): Element;
+    text_size<Self extends Element>(this: Self, value: AbsoluteLength): Self;
     /** Sets the top offset of a positioned element. */
-    top(value: Length): Element;
+    top<Self extends Element>(this: Self, value: Length): Self;
     /** Sets the width. */
-    w(value: Length): Element;
+    w<Self extends Element>(this: Self, value: Length): Self;
 
     // The 3148 no-argument style methods, generated from GPUI's reflection
     // table. A name here is a name the runtime dispatches, and the
@@ -1429,1290 +1425,1295 @@ static const char kShellTypes5[] = R"GPUI_DTS(    rounded_tl(value: AbsoluteLeng
      *
      * [Docs](https://tailwindcss.com/docs/position)
      */
-    absolute(): Element;
+    absolute<Self extends Element>(this: Self): Self;
     /**
      * Sets the aspect ratio of the element to 1/1 – equal width and height.
      *
      * [Docs](https://tailwindcss.com/docs/aspect-ratio)
      */
-    aspect_square(): Element;
+    aspect_square<Self extends Element>(this: Self): Self;
     /**
      * Sets the display type of the element to `block`.
      *
      * [Docs](https://tailwindcss.com/docs/display)
      */
-    block(): Element;
+    block<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 0px
      */
-    border_0(): Element;
+    border_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 1px
      */
-    border_1(): Element;
+    border_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 10px
      */
-    border_10(): Element;
+    border_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 11px
      */
-    border_11(): Element;
+    border_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 12px
      */
-    border_12(): Element;
+    border_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 16px
      */
-    border_16(): Element;
+    border_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 2px
      */
-    border_2(): Element;
+    border_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 20px
      */
-    border_20(): Element;
+    border_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 24px
      */
-    border_24(): Element;
+    border_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 3px
      */
-    border_3(): Element;
+    border_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 32px
      */
-    border_32(): Element;
+    border_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 4px
      */
-    border_4(): Element;
+    border_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 5px
      */
-    border_5(): Element;
+    border_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 6px
      */
-    border_6(): Element;
+    border_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 7px
      */
-    border_7(): Element;
+    border_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 8px
      */
-    border_8(): Element;
+    border_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the element. [Docs](https://tailwindcss.com/docs/border-width)
      *
      * 9px
      */
-    border_9(): Element;
+    border_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 0px
      */
-    border_b_0(): Element;
+    border_b_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 1px
      */
-    border_b_1(): Element;
+    border_b_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 10px
      */
-    border_b_10(): Element;
+    border_b_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 11px
      */
-    border_b_11(): Element;
+    border_b_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 12px
      */
-    border_b_12(): Element;
+    border_b_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 16px
      */
-    border_b_16(): Element;
+    border_b_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 2px
      */
-    border_b_2(): Element;
+    border_b_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 20px
      */
-    border_b_20(): Element;
+    border_b_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 24px
      */
-    border_b_24(): Element;
+    border_b_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 3px
      */
-    border_b_3(): Element;
+    border_b_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 32px
      */
-    border_b_32(): Element;
+    border_b_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 4px
      */
-    border_b_4(): Element;
+    border_b_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 5px
      */
-    border_b_5(): Element;
+    border_b_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 6px
      */
-    border_b_6(): Element;
+    border_b_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+)GPUI_DTS";
+static const char kShellTypes6[] =
+    R"GPUI_DTS(     * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 7px
      */
-    border_b_7(): Element;
+    border_b_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 8px
      */
-    border_b_8(): Element;
+    border_b_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 9px
      */
-    border_b_9(): Element;
+    border_b_9<Self extends Element>(this: Self): Self;
     /** Sets the border style of the element. */
-    border_dashed(): Element;
+    border_dashed<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 0px
      */
-    border_l_0(): Element;
+    border_l_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 1px
      */
-    border_l_1(): Element;
+    border_l_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 10px
      */
-    border_l_10(): Element;
+    border_l_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 11px
      */
-    border_l_11(): Element;
+    border_l_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 12px
      */
-    border_l_12(): Element;
+    border_l_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 16px
      */
-    border_l_16(): Element;
+    border_l_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 2px
      */
-    border_l_2(): Element;
+    border_l_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 20px
      */
-    border_l_20(): Element;
+    border_l_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 24px
      */
-    border_l_24(): Element;
+    border_l_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 3px
      */
-    border_l_3(): Element;
+    border_l_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 32px
      */
-    border_l_32(): Element;
+    border_l_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 4px
      */
-    border_l_4(): Element;
+    border_l_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 5px
      */
-    border_l_5(): Element;
+    border_l_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 6px
      */
-    border_l_6(): Element;
+    border_l_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 7px
      */
-    border_l_7(): Element;
+    border_l_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 8px
      */
-    border_l_8(): Element;
+    border_l_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the left side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 9px
      */
-    border_l_9(): Element;
+    border_l_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 0px
      */
-    border_r_0(): Element;
+    border_r_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 1px
      */
-    border_r_1(): Element;
+    border_r_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 10px
      */
-    border_r_10(): Element;
+    border_r_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 11px
      */
-    border_r_11(): Element;
+    border_r_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 12px
      */
-    border_r_12(): Element;
+    border_r_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 16px
      */
-    border_r_16(): Element;
+    border_r_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 2px
      */
-    border_r_2(): Element;
+    border_r_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 20px
+     */
+    border_r_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 24px
+     */
+    border_r_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 3px
+     */
+    border_r_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 32px
+     */
+    border_r_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 4px
+     */
+    border_r_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 5px
+     */
+    border_r_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 6px
+     */
+    border_r_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 7px
+     */
+    border_r_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 8px
+     */
+    border_r_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 9px
+     */
+    border_r_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 0px
+     */
+    border_t_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 1px
+     */
+    border_t_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 10px
+     */
+    border_t_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 11px
+     */
+    border_t_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 12px
+     */
+    border_t_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 16px
+     */
+    border_t_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 2px
+     */
+    border_t_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 20px
+     */
+    border_t_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 24px
+     */
+    border_t_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 3px
+     */
+    border_t_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 32px
+     */
+    border_t_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 4px
+     */
+    border_t_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 5px
+     */
+    border_t_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 6px
+     */
+    border_t_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 7px
+     */
+    border_t_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 8px
+     */
+    border_t_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     *
+     * 9px
+     */
+    border_t_9<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 20px
-     */
-    border_r_20(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 24px
-     */
-    border_r_24(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 3px
-     */
-    border_r_3(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 32px
-     */
-    border_r_32(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 4px
-     */
-    border_r_4(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 5px
-     */
-    border_r_5(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 6px
-     */
-    border_r_6(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 7px
-     */
-    border_r_7(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 8px
-     */
-    border_r_8(): Element;
-    /**
-     * Sets the border width of the right side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 9px
-     */
-    border_r_9(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+static const char kShellTypes7[] =
+    R"GPUI_DTS(     * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 0px
      */
-    border_t_0(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 1px
-     */
-    border_t_1(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 10px
-     */
-    border_t_10(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 11px
-     */
-    border_t_11(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 12px
-     */
-    border_t_12(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 16px
-     */
-    border_t_16(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 2px
-     */
-    border_t_2(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 20px
-     */
-    border_t_20(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 24px
-     */
-    border_t_24(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 3px
-     */
-    border_t_3(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 32px
-     */
-    border_t_32(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 4px
-     */
-    border_t_4(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 5px
-     */
-    border_t_5(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 6px
-     */
-    border_t_6(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 7px
-     */
-    border_t_7(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 8px
-     */
-    border_t_8(): Element;
-    /**
-     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
-     *
-     * 9px
-     */
-    border_t_9(): Element;
-    /**
-     * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
-     *
-     * 0px
-     */
-    border_x_0(): Element;
+    border_x_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 1px
      */
-    border_x_1(): Element;
+    border_x_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 10px
      */
-    border_x_10(): Element;
+    border_x_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 11px
      */
-    border_x_11(): Element;
+    border_x_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 12px
      */
-    border_x_12(): Element;
+    border_x_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 16px
      */
-    border_x_16(): Element;
+    border_x_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 2px
      */
-    border_x_2(): Element;
+    border_x_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 20px
      */
-    border_x_20(): Element;
+    border_x_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 24px
      */
-    border_x_24(): Element;
+    border_x_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 3px
      */
-    border_x_3(): Element;
+    border_x_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 32px
      */
-    border_x_32(): Element;
+    border_x_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 4px
      */
-    border_x_4(): Element;
+    border_x_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 5px
      */
-    border_x_5(): Element;
+    border_x_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 6px
      */
-    border_x_6(): Element;
+    border_x_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 7px
      */
-    border_x_7(): Element;
+    border_x_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 8px
      */
-    border_x_8(): Element;
+    border_x_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the vertical sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 9px
      */
-    border_x_9(): Element;
+    border_x_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 0px
      */
-    border_y_0(): Element;
+    border_y_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 1px
      */
-    border_y_1(): Element;
+    border_y_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 10px
      */
-    border_y_10(): Element;
+    border_y_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 11px
      */
-    border_y_11(): Element;
+    border_y_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 12px
      */
-    border_y_12(): Element;
+    border_y_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 16px
      */
-    border_y_16(): Element;
+    border_y_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 2px
      */
-    border_y_2(): Element;
+    border_y_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 20px
      */
-    border_y_20(): Element;
+    border_y_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 24px
      */
-    border_y_24(): Element;
+    border_y_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 3px
      */
-    border_y_3(): Element;
+    border_y_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 32px
      */
-    border_y_32(): Element;
+    border_y_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 4px
      */
-    border_y_4(): Element;
+    border_y_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 5px
      */
-    border_y_5(): Element;
+    border_y_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 6px
      */
-    border_y_6(): Element;
+    border_y_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 7px
      */
-    border_y_7(): Element;
+    border_y_7<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
+     * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 8px
      */
-    border_y_8(): Element;
+    border_y_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the border width of the horizontal sides of the element. [Docs](https://tailwindcss.com/docs/border-width#horizontal-and-vertical-sides)
      *
      * 9px
      */
-    border_y_9(): Element;
+    border_y_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    bottom_0(): Element;
+    bottom_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    bottom_0p5(): Element;
+    bottom_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    bottom_1(): Element;
+    bottom_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    bottom_10(): Element;
+    bottom_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    bottom_11(): Element;
+    bottom_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    bottom_112(): Element;
+    bottom_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    bottom_12(): Element;
+    bottom_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    bottom_128(): Element;
+    bottom_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    bottom_16(): Element;
+    bottom_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    bottom_1_12(): Element;
+    bottom_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    bottom_1_2(): Element;
+    bottom_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    bottom_1_3(): Element;
+    bottom_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    bottom_1_4(): Element;
+    bottom_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    bottom_1_5(): Element;
+    bottom_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    bottom_1_6(): Element;
+    bottom_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    bottom_1p5(): Element;
+    bottom_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    bottom_2(): Element;
+    bottom_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    bottom_20(): Element;
+    bottom_20<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes8[] =
+    R"GPUI_DTS(     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    bottom_24(): Element;
+    bottom_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    bottom_2_3(): Element;
+    bottom_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    bottom_2_4(): Element;
+    bottom_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    bottom_2_5(): Element;
+    bottom_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    bottom_2p5(): Element;
+    bottom_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    bottom_3(): Element;
+    bottom_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    bottom_32(): Element;
+    bottom_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    bottom_3_4(): Element;
+    bottom_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    bottom_3_5(): Element;
+    bottom_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    bottom_3p5(): Element;
+    bottom_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    bottom_4(): Element;
+    bottom_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    bottom_40(): Element;
+    bottom_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    bottom_48(): Element;
+    bottom_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    bottom_4_5(): Element;
+    bottom_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    bottom_5(): Element;
+    bottom_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    bottom_56(): Element;
+    bottom_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    bottom_5_6(): Element;
+    bottom_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    bottom_6(): Element;
+    bottom_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    bottom_64(): Element;
+    bottom_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    bottom_7(): Element;
+    bottom_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    bottom_72(): Element;
+    bottom_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    bottom_8(): Element;
+    bottom_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    bottom_80(): Element;
+    bottom_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    bottom_9(): Element;
+    bottom_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    bottom_96(): Element;
+    bottom_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * Auto
      */
-    bottom_auto(): Element;
+    bottom_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    bottom_full(): Element;
+    bottom_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    bottom_neg_0(): Element;
+    bottom_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    bottom_neg_0p5(): Element;
+    bottom_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    bottom_neg_1(): Element;
+    bottom_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    bottom_neg_10(): Element;
+    bottom_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    bottom_neg_11(): Element;
+    bottom_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    bottom_neg_112(): Element;
+    bottom_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    bottom_neg_12(): Element;
+    bottom_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    bottom_neg_128(): Element;
+    bottom_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    bottom_neg_16(): Element;
+    bottom_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    bottom_neg_1_12(): Element;
+    bottom_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    bottom_neg_1_2(): Element;
+    bottom_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    bottom_neg_1_3(): Element;
+    bottom_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    bottom_neg_1_4(): Element;
+    bottom_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    bottom_neg_1_5(): Element;
+    bottom_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    bottom_neg_1_6(): Element;
+    bottom_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    bottom_neg_1p5(): Element;
+    bottom_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    bottom_neg_2(): Element;
+    bottom_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    bottom_neg_20(): Element;
+    bottom_neg_20<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    bottom_neg_24(): Element;
+    bottom_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    bottom_neg_2_3(): Element;
+    bottom_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    bottom_neg_2_4(): Element;
+    bottom_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    bottom_neg_2_5(): Element;
+    bottom_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    bottom_neg_2p5(): Element;
+    bottom_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    bottom_neg_3(): Element;
+    bottom_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    bottom_neg_32(): Element;
+    bottom_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    bottom_neg_3_4(): Element;
+    bottom_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    bottom_neg_3_5(): Element;
+    bottom_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    bottom_neg_3p5(): Element;
+    bottom_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    bottom_neg_4(): Element;
+    bottom_neg_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes9[] =
+    R"GPUI_DTS(     * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    bottom_neg_40(): Element;
+    bottom_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    bottom_neg_48(): Element;
+    bottom_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    bottom_neg_4_5(): Element;
+    bottom_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    bottom_neg_5(): Element;
+    bottom_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    bottom_neg_56(): Element;
+    bottom_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    bottom_neg_5_6(): Element;
+    bottom_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    bottom_neg_6(): Element;
+    bottom_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    bottom_neg_64(): Element;
+    bottom_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    bottom_neg_7(): Element;
+    bottom_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    bottom_neg_72(): Element;
+    bottom_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    bottom_neg_8(): Element;
+    bottom_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    bottom_neg_80(): Element;
+    bottom_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    bottom_neg_9(): Element;
+    bottom_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    bottom_neg_96(): Element;
+    bottom_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    bottom_neg_full(): Element;
+    bottom_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    bottom_neg_px(): Element;
+    bottom_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    bottom_px(): Element;
+    bottom_px<Self extends Element>(this: Self): Self;
     /** Sets the column end of this element to auto. */
-    col_end_auto(): Element;
+    col_end_auto<Self extends Element>(this: Self): Self;
     /** Sets the row span of this element. */
-    col_span_full(): Element;
+    col_span_full<Self extends Element>(this: Self): Self;
     /** Sets the column start of this element to auto. */
-    col_start_auto(): Element;
+    col_start_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items along the container's cross axis
      *
@@ -2720,7 +2721,7 @@ static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the bottom value of a 
      *
      * [Docs](https://tailwindcss.com/docs/align-content#space-around)
      */
-    content_around(): Element;
+    content_around<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items along the container's cross axis
      *
@@ -2728,19 +2729,19 @@ static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the bottom value of a 
      *
      * [Docs](https://tailwindcss.com/docs/align-content#space-between)
      */
-    content_between(): Element;
+    content_between<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items in the center of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-content#center)
      */
-    content_center(): Element;
+    content_center<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items against the end of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-content#end)
      */
-    content_end(): Element;
+    content_end<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items along the container's cross axis
      *
@@ -2748,2182 +2749,2190 @@ static const char kShellTypes8[] = R"GPUI_DTS(     * Sets the bottom value of a 
      *
      * [Docs](https://tailwindcss.com/docs/align-content#space-evenly)
      */
-    content_evenly(): Element;
+    content_evenly<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items in their default position as if no align-content value was set.
      *
      * [Docs](https://tailwindcss.com/docs/align-content#normal)
      */
-    content_normal(): Element;
+    content_normal<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to pack content items against the start of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-content#start)
      */
-    content_start(): Element;
+    content_start<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to allow content items to fill the available space along the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-content#stretch)
      */
-    content_stretch(): Element;
+    content_stretch<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `alias`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_alias(): Element;
+    cursor_alias<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `col-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_col_resize(): Element;
+    cursor_col_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `context-menu`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_context_menu(): Element;
+    cursor_context_menu<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `copy`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_copy(): Element;
+    cursor_copy<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `crosshair`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_crosshair(): Element;
+    cursor_crosshair<Self extends Element>(this: Self): Self;
     /**
      * Sets the cursor style when hovering an element to `default`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_default(): Element;
+    cursor_default<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `e-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_e_resize(): Element;
+    cursor_e_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `ew-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_ew_resize(): Element;
+    cursor_ew_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `grab`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_grab(): Element;
+    cursor_grab<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `grabbing`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_grabbing(): Element;
+    cursor_grabbing<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `move`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_move(): Element;
+    cursor_move<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `n-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_n_resize(): Element;
+    cursor_n_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `nesw-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_nesw_resize(): Element;
+    cursor_nesw_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `no-drop`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_no_drop(): Element;
+    cursor_no_drop<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `not-allowed`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_not_allowed(): Element;
+    cursor_not_allowed<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `ns-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_ns_resize(): Element;
+    cursor_ns_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `nwse-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_nwse_resize(): Element;
+    cursor_nwse_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets the cursor style when hovering an element to `pointer`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_pointer(): Element;
+    cursor_pointer<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `row-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_row_resize(): Element;
+    cursor_row_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `s-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_s_resize(): Element;
+    cursor_s_resize<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `text`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_text(): Element;
+    cursor_text<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `vertical-text`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_vertical_text(): Element;
+    cursor_vertical_text<Self extends Element>(this: Self): Self;
     /**
      * Sets cursor style when hovering over an element to `w-resize`.
      *
      * [Docs](https://tailwindcss.com/docs/cursor)
      */
-    cursor_w_resize(): Element;
+    cursor_w_resize<Self extends Element>(this: Self): Self;
     /** Draws a debug border around this element. */
-    debug(): Element;
+    debug<Self extends Element>(this: Self): Self;
     /** Draws a debug border on all conforming elements below this element. */
-    debug_below(): Element;
-    debug_blue(): Element;
-    debug_green(): Element;
-    debug_pink(): Element;
-    debug_red(): Element;
-    debug_yellow(): Element;
+    debug_below<Self extends Element>(this: Self): Self;
+    debug_blue<Self extends Element>(this: Self): Self;
+    debug_green<Self extends Element>(this: Self): Self;
+    debug_pink<Self extends Element>(this: Self): Self;
+    debug_red<Self extends Element>(this: Self): Self;
+    debug_yellow<Self extends Element>(this: Self): Self;
     /**
      * Sets the display type of the element to `flex`.
      *
      * [Docs](https://tailwindcss.com/docs/display)
      */
-    flex(): Element;
+    flex<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to allow a flex item to grow and shrink as needed, ignoring its initial size.
-)GPUI_DTS";
-static const char kShellTypes9[] = R"GPUI_DTS(     *
+     *
      * [Docs](https://tailwindcss.com/docs/flex#flex-1)
      */
-    flex_1(): Element;
+    flex_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to allow a flex item to grow and shrink, taking into account its initial size.
      *
      * [Docs](https://tailwindcss.com/docs/flex#auto)
      */
-    flex_auto(): Element;
+)GPUI_DTS";
+static const char kShellTypes10[] =
+    R"GPUI_DTS(    flex_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the flex direction of the element to `column`.
      *
      * [Docs](https://tailwindcss.com/docs/flex-direction#column)
      */
-    flex_col(): Element;
+    flex_col<Self extends Element>(this: Self): Self;
     /**
      * Sets the flex direction of the element to `column-reverse`.
      *
      * [Docs](https://tailwindcss.com/docs/flex-direction#column-reverse)
      */
-    flex_col_reverse(): Element;
+    flex_col_reverse<Self extends Element>(this: Self): Self;
     /**
      * Disables flex item growth (flex-grow: 0).
      *
      * [Docs](https://tailwindcss.com/docs/flex-grow#dont-grow)
      */
-    flex_grow_0(): Element;
+    flex_grow_0<Self extends Element>(this: Self): Self;
     /**
      * Enables flex item growth (flex-grow: 1).
      *
      * [Docs](https://tailwindcss.com/docs/flex-grow#grow-1)
      */
-    flex_grow_1(): Element;
+    flex_grow_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to allow a flex item to shrink but not grow, taking into account its initial size.
      *
      * [Docs](https://tailwindcss.com/docs/flex#initial)
      */
-    flex_initial(): Element;
+    flex_initial<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to prevent a flex item from growing or shrinking.
      *
      * [Docs](https://tailwindcss.com/docs/flex#none)
      */
-    flex_none(): Element;
+    flex_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to prevent flex items from wrapping, causing inflexible items to overflow the container if necessary.
      *
      * [Docs](https://tailwindcss.com/docs/flex-wrap#dont-wrap)
      */
-    flex_nowrap(): Element;
+    flex_nowrap<Self extends Element>(this: Self): Self;
     /**
      * Sets the flex direction of the element to `row`.
      *
      * [Docs](https://tailwindcss.com/docs/flex-direction#row)
      */
-    flex_row(): Element;
+    flex_row<Self extends Element>(this: Self): Self;
     /**
      * Sets the flex direction of the element to `row-reverse`.
      *
      * [Docs](https://tailwindcss.com/docs/flex-direction#row-reverse)
      */
-    flex_row_reverse(): Element;
+    flex_row_reverse<Self extends Element>(this: Self): Self;
     /**
      * Disables flex item shrinking (flex-shrink: 0).
      *
      * [Docs](https://tailwindcss.com/docs/flex-shrink#dont-shrink)
      */
-    flex_shrink_0(): Element;
+    flex_shrink_0<Self extends Element>(this: Self): Self;
     /**
      * Enables flex item shrinking (flex-shrink: 1).
      *
      * [Docs](https://tailwindcss.com/docs/flex-shrink#shrink-1)
      */
-    flex_shrink_1(): Element;
+    flex_shrink_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to allow flex items to wrap.
      *
      * [Docs](https://tailwindcss.com/docs/flex-wrap#wrap-normally)
      */
-    flex_wrap(): Element;
+    flex_wrap<Self extends Element>(this: Self): Self;
     /**
      * Sets the element wrap flex items in the reverse direction.
      *
      * [Docs](https://tailwindcss.com/docs/flex-wrap#wrap-reversed)
      */
-    flex_wrap_reverse(): Element;
+    flex_wrap_reverse<Self extends Element>(this: Self): Self;
     /** Sets the font weight to black (900). */
-    font_black(): Element;
+    font_black<Self extends Element>(this: Self): Self;
     /** Sets the font weight to bold (700). */
-    font_bold(): Element;
+    font_bold<Self extends Element>(this: Self): Self;
     /** Sets the font weight to extra bold (800). */
-    font_extrabold(): Element;
+    font_extrabold<Self extends Element>(this: Self): Self;
     /** Sets the font weight to extra light (200). */
-    font_extralight(): Element;
+    font_extralight<Self extends Element>(this: Self): Self;
     /** Sets the font weight to light (300). */
-    font_light(): Element;
+    font_light<Self extends Element>(this: Self): Self;
     /** Sets the font weight to medium (500). */
-    font_medium(): Element;
+    font_medium<Self extends Element>(this: Self): Self;
     /** Sets the font weight to normal (400). */
-    font_normal(): Element;
+    font_normal<Self extends Element>(this: Self): Self;
     /** Sets the font weight to semibold (600). */
-    font_semibold(): Element;
+    font_semibold<Self extends Element>(this: Self): Self;
     /** Sets the font weight to thin (100). */
-    font_thin(): Element;
+    font_thin<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 0px
      */
-    gap_0(): Element;
+    gap_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 2px (0.125rem)
      */
-    gap_0p5(): Element;
+    gap_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 4px (0.25rem)
      */
-    gap_1(): Element;
+    gap_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 40px (2.5rem)
      */
-    gap_10(): Element;
+    gap_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 44px (2.75rem)
      */
-    gap_11(): Element;
+    gap_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 448px (28rem)
      */
-    gap_112(): Element;
+    gap_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 48px (3rem)
      */
-    gap_12(): Element;
+    gap_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 512px (32rem)
      */
-    gap_128(): Element;
+    gap_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 64px (4rem)
      */
-    gap_16(): Element;
+    gap_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 8% (1/12)
      */
-    gap_1_12(): Element;
+    gap_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 50% (1/2)
      */
-    gap_1_2(): Element;
+    gap_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 33% (1/3)
      */
-    gap_1_3(): Element;
+    gap_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 25% (1/4)
      */
-    gap_1_4(): Element;
+    gap_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 20% (1/5)
      */
-    gap_1_5(): Element;
+    gap_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 16% (1/6)
      */
-    gap_1_6(): Element;
+    gap_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 6px (0.375rem)
      */
-    gap_1p5(): Element;
+    gap_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 8px (0.5rem)
      */
-    gap_2(): Element;
+    gap_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80px (5rem)
      */
-    gap_20(): Element;
+    gap_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 96px (6rem)
      */
-    gap_24(): Element;
+    gap_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 66% (2/3)
      */
-    gap_2_3(): Element;
+    gap_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 50% (2/4)
      */
-    gap_2_4(): Element;
+    gap_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 40% (2/5)
      */
-    gap_2_5(): Element;
+    gap_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 10px (0.625rem)
      */
-    gap_2p5(): Element;
+    gap_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 12px (0.75rem)
      */
-    gap_3(): Element;
+    gap_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 128px (8rem)
      */
-    gap_32(): Element;
+    gap_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 75% (3/4)
      */
-    gap_3_4(): Element;
+    gap_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 60% (3/5)
      */
-    gap_3_5(): Element;
+    gap_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 14px (0.875rem)
      */
-    gap_3p5(): Element;
+    gap_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 16px (1rem)
      */
-    gap_4(): Element;
+    gap_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 160px (10rem)
      */
-    gap_40(): Element;
+    gap_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 192px (12rem)
      */
-    gap_48(): Element;
+    gap_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80% (4/5)
      */
-    gap_4_5(): Element;
+    gap_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 20px (1.25rem)
      */
-    gap_5(): Element;
+    gap_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 224px (14rem)
      */
-    gap_56(): Element;
+    gap_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80% (5/6)
      */
-    gap_5_6(): Element;
+    gap_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 24px (1.5rem)
      */
-    gap_6(): Element;
+    gap_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 256px (16rem)
      */
-    gap_64(): Element;
+    gap_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 28px (1.75rem)
      */
-    gap_7(): Element;
+    gap_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 288px (18rem)
      */
-    gap_72(): Element;
+    gap_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 32px (2rem)
      */
-    gap_8(): Element;
+    gap_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 320px (20rem)
      */
-    gap_80(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 36px (2.25rem)
-     */
-    gap_9(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 384px (24rem)
-     */
-    gap_96(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 100%
-     */
-    gap_full(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 0px
-     */
-    gap_neg_0(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 2px (0.125rem)
-     */
-    gap_neg_0p5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 4px (0.25rem)
-     */
-    gap_neg_1(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 40px (2.5rem)
-     */
-    gap_neg_10(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 44px (2.75rem)
-     */
-    gap_neg_11(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 448px (28rem)
-     */
-    gap_neg_112(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 48px (3rem)
-     */
-)GPUI_DTS";
-static const char kShellTypes10[] = R"GPUI_DTS(    gap_neg_12(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 512px (32rem)
-     */
-    gap_neg_128(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 64px (4rem)
-     */
-    gap_neg_16(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 8% (1/12)
-     */
-    gap_neg_1_12(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 50% (1/2)
-     */
-    gap_neg_1_2(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 33% (1/3)
-     */
-    gap_neg_1_3(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 25% (1/4)
-     */
-    gap_neg_1_4(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 20% (1/5)
-     */
-    gap_neg_1_5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 16% (1/6)
-     */
-    gap_neg_1_6(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 6px (0.375rem)
-     */
-    gap_neg_1p5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 8px (0.5rem)
-     */
-    gap_neg_2(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 80px (5rem)
-     */
-    gap_neg_20(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 96px (6rem)
-     */
-    gap_neg_24(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 66% (2/3)
-     */
-    gap_neg_2_3(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 50% (2/4)
-     */
-    gap_neg_2_4(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 40% (2/5)
-     */
-    gap_neg_2_5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 10px (0.625rem)
-     */
-    gap_neg_2p5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 12px (0.75rem)
-     */
-    gap_neg_3(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 128px (8rem)
-     */
-    gap_neg_32(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 75% (3/4)
-     */
-    gap_neg_3_4(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 60% (3/5)
-     */
-    gap_neg_3_5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 14px (0.875rem)
-     */
-    gap_neg_3p5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 16px (1rem)
-     */
-    gap_neg_4(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 160px (10rem)
-     */
-    gap_neg_40(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 192px (12rem)
-     */
-    gap_neg_48(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 80% (4/5)
-     */
-    gap_neg_4_5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 20px (1.25rem)
-     */
-    gap_neg_5(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 224px (14rem)
-     */
-    gap_neg_56(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 80% (5/6)
-     */
-    gap_neg_5_6(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 24px (1.5rem)
-     */
-    gap_neg_6(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 256px (16rem)
-     */
-    gap_neg_64(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 28px (1.75rem)
-     */
-    gap_neg_7(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 288px (18rem)
-     */
-    gap_neg_72(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 32px (2rem)
-     */
-    gap_neg_8(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 320px (20rem)
-     */
-    gap_neg_80(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 36px (2.25rem)
-     */
-    gap_neg_9(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 384px (24rem)
-     */
-    gap_neg_96(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 100%
-     */
-    gap_neg_full(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 1px
-     */
-    gap_neg_px(): Element;
-    /**
-     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
-     *
-     * 1px
-     */
-    gap_px(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 0px
-     */
-    gap_x_0(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 2px (0.125rem)
-     */
-    gap_x_0p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 4px (0.25rem)
-     */
-    gap_x_1(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 40px (2.5rem)
-     */
-    gap_x_10(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 44px (2.75rem)
-     */
-    gap_x_11(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 448px (28rem)
-     */
-    gap_x_112(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 48px (3rem)
-     */
-    gap_x_12(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 512px (32rem)
-     */
-    gap_x_128(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 64px (4rem)
-     */
-    gap_x_16(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 8% (1/12)
-     */
-    gap_x_1_12(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 50% (1/2)
-     */
-    gap_x_1_2(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 33% (1/3)
-     */
-    gap_x_1_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 25% (1/4)
-     */
-    gap_x_1_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 20% (1/5)
-     */
-    gap_x_1_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 16% (1/6)
-     */
-    gap_x_1_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 6px (0.375rem)
-     */
-    gap_x_1p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 8px (0.5rem)
-     */
-    gap_x_2(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80px (5rem)
-     */
-    gap_x_20(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 96px (6rem)
-     */
-    gap_x_24(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 66% (2/3)
-     */
-    gap_x_2_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 50% (2/4)
-     */
-    gap_x_2_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 40% (2/5)
-     */
-    gap_x_2_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 10px (0.625rem)
-     */
-    gap_x_2p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 12px (0.75rem)
-     */
-    gap_x_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 128px (8rem)
-     */
-    gap_x_32(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-)GPUI_DTS";
-static const char kShellTypes11[] = R"GPUI_DTS(     * 75% (3/4)
-     */
-    gap_x_3_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 60% (3/5)
-     */
-    gap_x_3_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 14px (0.875rem)
-     */
-    gap_x_3p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 16px (1rem)
-     */
-    gap_x_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 160px (10rem)
-     */
-    gap_x_40(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 192px (12rem)
-     */
-    gap_x_48(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80% (4/5)
-     */
-    gap_x_4_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 20px (1.25rem)
-     */
-    gap_x_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 224px (14rem)
-     */
-    gap_x_56(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80% (5/6)
-     */
-    gap_x_5_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 24px (1.5rem)
-     */
-    gap_x_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 256px (16rem)
-     */
-    gap_x_64(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 28px (1.75rem)
-     */
-    gap_x_7(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 288px (18rem)
-     */
-    gap_x_72(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 32px (2rem)
-     */
-    gap_x_8(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 320px (20rem)
-     */
-    gap_x_80(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 36px (2.25rem)
-     */
-    gap_x_9(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 384px (24rem)
-     */
-    gap_x_96(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 100%
-     */
-    gap_x_full(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 0px
-     */
-    gap_x_neg_0(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 2px (0.125rem)
-     */
-    gap_x_neg_0p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 4px (0.25rem)
-     */
-    gap_x_neg_1(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 40px (2.5rem)
-     */
-    gap_x_neg_10(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 44px (2.75rem)
-     */
-    gap_x_neg_11(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 448px (28rem)
-     */
-    gap_x_neg_112(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 48px (3rem)
-     */
-    gap_x_neg_12(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 512px (32rem)
-     */
-    gap_x_neg_128(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 64px (4rem)
-     */
-    gap_x_neg_16(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 8% (1/12)
-     */
-    gap_x_neg_1_12(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 50% (1/2)
-     */
-    gap_x_neg_1_2(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 33% (1/3)
-     */
-    gap_x_neg_1_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 25% (1/4)
-     */
-    gap_x_neg_1_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 20% (1/5)
-     */
-    gap_x_neg_1_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 16% (1/6)
-     */
-    gap_x_neg_1_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 6px (0.375rem)
-     */
-    gap_x_neg_1p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 8px (0.5rem)
-     */
-    gap_x_neg_2(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80px (5rem)
-     */
-    gap_x_neg_20(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 96px (6rem)
-     */
-    gap_x_neg_24(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 66% (2/3)
-     */
-    gap_x_neg_2_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 50% (2/4)
-     */
-    gap_x_neg_2_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 40% (2/5)
-     */
-    gap_x_neg_2_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 10px (0.625rem)
-     */
-    gap_x_neg_2p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 12px (0.75rem)
-     */
-    gap_x_neg_3(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 128px (8rem)
-     */
-    gap_x_neg_32(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 75% (3/4)
-     */
-    gap_x_neg_3_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 60% (3/5)
-     */
-    gap_x_neg_3_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 14px (0.875rem)
-     */
-    gap_x_neg_3p5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 16px (1rem)
-     */
-    gap_x_neg_4(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 160px (10rem)
-     */
-    gap_x_neg_40(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 192px (12rem)
-     */
-    gap_x_neg_48(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80% (4/5)
-     */
-    gap_x_neg_4_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 20px (1.25rem)
-     */
-    gap_x_neg_5(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 224px (14rem)
-     */
-    gap_x_neg_56(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 80% (5/6)
-     */
-    gap_x_neg_5_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 24px (1.5rem)
-     */
-    gap_x_neg_6(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 256px (16rem)
-     */
-    gap_x_neg_64(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 28px (1.75rem)
-     */
-    gap_x_neg_7(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 288px (18rem)
-     */
-    gap_x_neg_72(): Element;
+    gap_80<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes12[] = R"GPUI_DTS(     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 32px (2rem)
-     */
-    gap_x_neg_8(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 320px (20rem)
-     */
-    gap_x_neg_80(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+static const char kShellTypes11[] =
+    R"GPUI_DTS(     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 36px (2.25rem)
      */
-    gap_x_neg_9(): Element;
+    gap_9<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 384px (24rem)
      */
-    gap_x_neg_96(): Element;
+    gap_96<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 100%
      */
-    gap_x_neg_full(): Element;
+    gap_full<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 1px
-     */
-    gap_x_neg_px(): Element;
-    /**
-     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
-     *
-     * 1px
-     */
-    gap_x_px(): Element;
-    /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 0px
      */
-    gap_y_0(): Element;
+    gap_neg_0<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 2px (0.125rem)
      */
-    gap_y_0p5(): Element;
+    gap_neg_0p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 4px (0.25rem)
      */
-    gap_y_1(): Element;
+    gap_neg_1<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 40px (2.5rem)
      */
-    gap_y_10(): Element;
+    gap_neg_10<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 44px (2.75rem)
      */
-    gap_y_11(): Element;
+    gap_neg_11<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 448px (28rem)
      */
-    gap_y_112(): Element;
+    gap_neg_112<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 48px (3rem)
      */
-    gap_y_12(): Element;
+    gap_neg_12<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 512px (32rem)
      */
-    gap_y_128(): Element;
+    gap_neg_128<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 64px (4rem)
      */
-    gap_y_16(): Element;
+    gap_neg_16<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 8% (1/12)
      */
-    gap_y_1_12(): Element;
+    gap_neg_1_12<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 50% (1/2)
      */
-    gap_y_1_2(): Element;
+    gap_neg_1_2<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 33% (1/3)
      */
-    gap_y_1_3(): Element;
+    gap_neg_1_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 25% (1/4)
      */
-    gap_y_1_4(): Element;
+    gap_neg_1_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 20% (1/5)
      */
-    gap_y_1_5(): Element;
+    gap_neg_1_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 16% (1/6)
      */
-    gap_y_1_6(): Element;
+    gap_neg_1_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 6px (0.375rem)
      */
-    gap_y_1p5(): Element;
+    gap_neg_1p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 8px (0.5rem)
      */
-    gap_y_2(): Element;
+    gap_neg_2<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80px (5rem)
      */
-    gap_y_20(): Element;
+    gap_neg_20<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 96px (6rem)
      */
-    gap_y_24(): Element;
+    gap_neg_24<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 66% (2/3)
      */
-    gap_y_2_3(): Element;
+    gap_neg_2_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 50% (2/4)
      */
-    gap_y_2_4(): Element;
+    gap_neg_2_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 40% (2/5)
      */
-    gap_y_2_5(): Element;
+    gap_neg_2_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 10px (0.625rem)
      */
-    gap_y_2p5(): Element;
+    gap_neg_2p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 12px (0.75rem)
      */
-    gap_y_3(): Element;
+    gap_neg_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 128px (8rem)
      */
-    gap_y_32(): Element;
+    gap_neg_32<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 75% (3/4)
      */
-    gap_y_3_4(): Element;
+    gap_neg_3_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 60% (3/5)
      */
-    gap_y_3_5(): Element;
+    gap_neg_3_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 14px (0.875rem)
      */
-    gap_y_3p5(): Element;
+    gap_neg_3p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 16px (1rem)
      */
-    gap_y_4(): Element;
+    gap_neg_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 160px (10rem)
      */
-    gap_y_40(): Element;
+    gap_neg_40<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 192px (12rem)
      */
-    gap_y_48(): Element;
+    gap_neg_48<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80% (4/5)
      */
-    gap_y_4_5(): Element;
+    gap_neg_4_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 20px (1.25rem)
      */
-    gap_y_5(): Element;
+    gap_neg_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 224px (14rem)
      */
-    gap_y_56(): Element;
+    gap_neg_56<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 80% (5/6)
      */
-    gap_y_5_6(): Element;
+    gap_neg_5_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 24px (1.5rem)
      */
-    gap_y_6(): Element;
+    gap_neg_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 256px (16rem)
      */
-    gap_y_64(): Element;
+    gap_neg_64<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 28px (1.75rem)
      */
-    gap_y_7(): Element;
+    gap_neg_7<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 288px (18rem)
      */
-    gap_y_72(): Element;
+    gap_neg_72<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 32px (2rem)
      */
-    gap_y_8(): Element;
+    gap_neg_8<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 320px (20rem)
      */
-    gap_y_80(): Element;
+    gap_neg_80<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 36px (2.25rem)
      */
-    gap_y_9(): Element;
+    gap_neg_9<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 384px (24rem)
      */
-    gap_y_96(): Element;
+    gap_neg_96<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
      *
      * 100%
      */
-    gap_y_full(): Element;
+    gap_neg_full<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+     *
+     * 1px
+     */
+    gap_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows and columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap)
+     *
+     * 1px
+     */
+    gap_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 0px
      */
-    gap_y_neg_0(): Element;
+    gap_x_0<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 2px (0.125rem)
      */
-    gap_y_neg_0p5(): Element;
+    gap_x_0p5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 4px (0.25rem)
      */
-    gap_y_neg_1(): Element;
+    gap_x_1<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 40px (2.5rem)
      */
-    gap_y_neg_10(): Element;
+    gap_x_10<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 44px (2.75rem)
      */
-    gap_y_neg_11(): Element;
+    gap_x_11<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 448px (28rem)
      */
-    gap_y_neg_112(): Element;
+    gap_x_112<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 48px (3rem)
      */
-    gap_y_neg_12(): Element;
+    gap_x_12<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 512px (32rem)
      */
-    gap_y_neg_128(): Element;
+    gap_x_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 64px (4rem)
+     */
+    gap_x_16<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes13[] = R"GPUI_DTS(     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+static const char kShellTypes12[] =
+    R"GPUI_DTS(     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8% (1/12)
+     */
+    gap_x_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (1/2)
+     */
+    gap_x_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 33% (1/3)
+     */
+    gap_x_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 25% (1/4)
+     */
+    gap_x_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20% (1/5)
+     */
+    gap_x_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16% (1/6)
+     */
+    gap_x_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 6px (0.375rem)
+     */
+    gap_x_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8px (0.5rem)
+     */
+    gap_x_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80px (5rem)
+     */
+    gap_x_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 96px (6rem)
+     */
+    gap_x_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 66% (2/3)
+     */
+    gap_x_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (2/4)
+     */
+    gap_x_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40% (2/5)
+     */
+    gap_x_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 10px (0.625rem)
+     */
+    gap_x_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 12px (0.75rem)
+     */
+    gap_x_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 128px (8rem)
+     */
+    gap_x_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 75% (3/4)
+     */
+    gap_x_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 60% (3/5)
+     */
+    gap_x_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 14px (0.875rem)
+     */
+    gap_x_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16px (1rem)
+     */
+    gap_x_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 160px (10rem)
+     */
+    gap_x_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 192px (12rem)
+     */
+    gap_x_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (4/5)
+     */
+    gap_x_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20px (1.25rem)
+     */
+    gap_x_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 224px (14rem)
+     */
+    gap_x_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (5/6)
+     */
+    gap_x_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 24px (1.5rem)
+     */
+    gap_x_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 256px (16rem)
+     */
+    gap_x_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 28px (1.75rem)
+     */
+    gap_x_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 288px (18rem)
+     */
+    gap_x_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 32px (2rem)
+     */
+    gap_x_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 320px (20rem)
+     */
+    gap_x_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 36px (2.25rem)
+     */
+    gap_x_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 384px (24rem)
+     */
+    gap_x_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 100%
+     */
+    gap_x_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 0px
+     */
+    gap_x_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 2px (0.125rem)
+     */
+    gap_x_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 4px (0.25rem)
+     */
+    gap_x_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40px (2.5rem)
+     */
+    gap_x_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 44px (2.75rem)
+     */
+    gap_x_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 448px (28rem)
+     */
+    gap_x_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 48px (3rem)
+     */
+    gap_x_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 512px (32rem)
+     */
+    gap_x_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 64px (4rem)
      */
-    gap_y_neg_16(): Element;
+    gap_x_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8% (1/12)
+     */
+    gap_x_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (1/2)
+     */
+    gap_x_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 33% (1/3)
+     */
+    gap_x_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 25% (1/4)
+     */
+    gap_x_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20% (1/5)
+     */
+    gap_x_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16% (1/6)
+     */
+    gap_x_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 6px (0.375rem)
+     */
+    gap_x_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+)GPUI_DTS";
+static const char kShellTypes13[] =
+    R"GPUI_DTS(     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8px (0.5rem)
+     */
+    gap_x_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80px (5rem)
+     */
+    gap_x_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 96px (6rem)
+     */
+    gap_x_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 66% (2/3)
+     */
+    gap_x_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (2/4)
+     */
+    gap_x_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40% (2/5)
+     */
+    gap_x_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 10px (0.625rem)
+     */
+    gap_x_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 12px (0.75rem)
+     */
+    gap_x_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 128px (8rem)
+     */
+    gap_x_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 75% (3/4)
+     */
+    gap_x_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 60% (3/5)
+     */
+    gap_x_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 14px (0.875rem)
+     */
+    gap_x_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16px (1rem)
+     */
+    gap_x_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 160px (10rem)
+     */
+    gap_x_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 192px (12rem)
+     */
+    gap_x_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (4/5)
+     */
+    gap_x_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20px (1.25rem)
+     */
+    gap_x_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 224px (14rem)
+     */
+    gap_x_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (5/6)
+     */
+    gap_x_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 24px (1.5rem)
+     */
+    gap_x_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 256px (16rem)
+     */
+    gap_x_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 28px (1.75rem)
+     */
+    gap_x_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 288px (18rem)
+     */
+    gap_x_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 32px (2rem)
+     */
+    gap_x_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 320px (20rem)
+     */
+    gap_x_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 36px (2.25rem)
+     */
+    gap_x_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 384px (24rem)
+     */
+    gap_x_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 100%
+     */
+    gap_x_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 1px
+     */
+    gap_x_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between columns in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 1px
+     */
+    gap_x_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 0px
+     */
+    gap_y_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 2px (0.125rem)
+     */
+    gap_y_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 4px (0.25rem)
+     */
+    gap_y_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40px (2.5rem)
+     */
+    gap_y_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 44px (2.75rem)
+     */
+    gap_y_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 448px (28rem)
+     */
+    gap_y_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 48px (3rem)
+     */
+    gap_y_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 512px (32rem)
+     */
+    gap_y_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 64px (4rem)
+     */
+    gap_y_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 8% (1/12)
      */
-    gap_y_neg_1_12(): Element;
+    gap_y_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 50% (1/2)
      */
-    gap_y_neg_1_2(): Element;
+    gap_y_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 33% (1/3)
      */
-    gap_y_neg_1_3(): Element;
+    gap_y_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 25% (1/4)
      */
-    gap_y_neg_1_4(): Element;
+    gap_y_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 20% (1/5)
      */
-    gap_y_neg_1_5(): Element;
+    gap_y_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 16% (1/6)
      */
-    gap_y_neg_1_6(): Element;
+    gap_y_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 6px (0.375rem)
      */
-    gap_y_neg_1p5(): Element;
+    gap_y_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 8px (0.5rem)
      */
-    gap_y_neg_2(): Element;
+    gap_y_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 80px (5rem)
      */
-    gap_y_neg_20(): Element;
+    gap_y_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 96px (6rem)
      */
-    gap_y_neg_24(): Element;
+    gap_y_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 66% (2/3)
      */
-    gap_y_neg_2_3(): Element;
+    gap_y_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 50% (2/4)
      */
-    gap_y_neg_2_4(): Element;
+    gap_y_2_4<Self extends Element>(this: Self): Self;
     /**
-     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+)GPUI_DTS";
+static const char kShellTypes14[] =
+    R"GPUI_DTS(     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 40% (2/5)
      */
-    gap_y_neg_2_5(): Element;
+    gap_y_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 10px (0.625rem)
      */
-    gap_y_neg_2p5(): Element;
+    gap_y_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 12px (0.75rem)
      */
-    gap_y_neg_3(): Element;
+    gap_y_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 128px (8rem)
      */
-    gap_y_neg_32(): Element;
+    gap_y_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 75% (3/4)
      */
-    gap_y_neg_3_4(): Element;
+    gap_y_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 60% (3/5)
      */
-    gap_y_neg_3_5(): Element;
+    gap_y_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 14px (0.875rem)
      */
-    gap_y_neg_3p5(): Element;
+    gap_y_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 16px (1rem)
      */
-    gap_y_neg_4(): Element;
+    gap_y_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 160px (10rem)
      */
-    gap_y_neg_40(): Element;
+    gap_y_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 192px (12rem)
      */
-    gap_y_neg_48(): Element;
+    gap_y_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 80% (4/5)
      */
-    gap_y_neg_4_5(): Element;
+    gap_y_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 20px (1.25rem)
      */
-    gap_y_neg_5(): Element;
+    gap_y_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 224px (14rem)
      */
-    gap_y_neg_56(): Element;
+    gap_y_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 80% (5/6)
      */
-    gap_y_neg_5_6(): Element;
+    gap_y_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 24px (1.5rem)
      */
-    gap_y_neg_6(): Element;
+    gap_y_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 256px (16rem)
      */
-    gap_y_neg_64(): Element;
+    gap_y_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 28px (1.75rem)
      */
-    gap_y_neg_7(): Element;
+    gap_y_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 288px (18rem)
      */
-    gap_y_neg_72(): Element;
+    gap_y_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 32px (2rem)
      */
-    gap_y_neg_8(): Element;
+    gap_y_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 320px (20rem)
      */
-    gap_y_neg_80(): Element;
+    gap_y_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 36px (2.25rem)
      */
-    gap_y_neg_9(): Element;
+    gap_y_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 384px (24rem)
      */
-    gap_y_neg_96(): Element;
+    gap_y_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 100%
      */
-    gap_y_neg_full(): Element;
+    gap_y_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 0px
+     */
+    gap_y_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 2px (0.125rem)
+     */
+    gap_y_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 4px (0.25rem)
+     */
+    gap_y_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40px (2.5rem)
+     */
+    gap_y_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 44px (2.75rem)
+     */
+    gap_y_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 448px (28rem)
+     */
+    gap_y_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 48px (3rem)
+     */
+    gap_y_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 512px (32rem)
+     */
+    gap_y_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 64px (4rem)
+     */
+    gap_y_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8% (1/12)
+     */
+    gap_y_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (1/2)
+     */
+    gap_y_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 33% (1/3)
+     */
+    gap_y_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 25% (1/4)
+     */
+    gap_y_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20% (1/5)
+     */
+    gap_y_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16% (1/6)
+     */
+    gap_y_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 6px (0.375rem)
+     */
+    gap_y_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 8px (0.5rem)
+     */
+    gap_y_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80px (5rem)
+     */
+    gap_y_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 96px (6rem)
+     */
+    gap_y_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 66% (2/3)
+     */
+    gap_y_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 50% (2/4)
+     */
+    gap_y_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 40% (2/5)
+     */
+    gap_y_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 10px (0.625rem)
+     */
+    gap_y_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 12px (0.75rem)
+     */
+    gap_y_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 128px (8rem)
+     */
+    gap_y_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 75% (3/4)
+     */
+    gap_y_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 60% (3/5)
+     */
+    gap_y_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 14px (0.875rem)
+     */
+    gap_y_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+)GPUI_DTS";
+static const char kShellTypes15[] =
+    R"GPUI_DTS(     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 16px (1rem)
+     */
+    gap_y_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 160px (10rem)
+     */
+    gap_y_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 192px (12rem)
+     */
+    gap_y_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (4/5)
+     */
+    gap_y_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 20px (1.25rem)
+     */
+    gap_y_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 224px (14rem)
+     */
+    gap_y_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 80% (5/6)
+     */
+    gap_y_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 24px (1.5rem)
+     */
+    gap_y_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 256px (16rem)
+     */
+    gap_y_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 28px (1.75rem)
+     */
+    gap_y_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 288px (18rem)
+     */
+    gap_y_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 32px (2rem)
+     */
+    gap_y_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 320px (20rem)
+     */
+    gap_y_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 36px (2.25rem)
+     */
+    gap_y_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 384px (24rem)
+     */
+    gap_y_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
+     *
+     * 100%
+     */
+    gap_y_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 1px
      */
-    gap_y_neg_px(): Element;
+    gap_y_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the gap between rows in flex layouts. [Docs](https://tailwindcss.com/docs/gap#changing-row-and-column-gaps-independently)
      *
      * 1px
      */
-    gap_y_px(): Element;
+    gap_y_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the display type of the element to `grid`.
      *
      * [Docs](https://tailwindcss.com/docs/display)
      */
-    grid(): Element;
+    grid<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 0px
      */
-    h_0(): Element;
+    h_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 2px (0.125rem)
      */
-    h_0p5(): Element;
+    h_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 4px (0.25rem)
      */
-    h_1(): Element;
+    h_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 40px (2.5rem)
      */
-    h_10(): Element;
+    h_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 44px (2.75rem)
      */
-    h_11(): Element;
+    h_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 448px (28rem)
      */
-    h_112(): Element;
+    h_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 48px (3rem)
      */
-    h_12(): Element;
+    h_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 512px (32rem)
      */
-    h_128(): Element;
+    h_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 64px (4rem)
      */
-    h_16(): Element;
+    h_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 8% (1/12)
      */
-    h_1_12(): Element;
+    h_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 50% (1/2)
      */
-    h_1_2(): Element;
+    h_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 33% (1/3)
      */
-    h_1_3(): Element;
+    h_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 25% (1/4)
      */
-    h_1_4(): Element;
+    h_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 20% (1/5)
      */
-    h_1_5(): Element;
+    h_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 16% (1/6)
      */
-    h_1_6(): Element;
+    h_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 6px (0.375rem)
      */
-    h_1p5(): Element;
+    h_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 8px (0.5rem)
      */
-    h_2(): Element;
+    h_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80px (5rem)
      */
-    h_20(): Element;
+    h_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 96px (6rem)
      */
-    h_24(): Element;
+    h_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 66% (2/3)
      */
-    h_2_3(): Element;
+    h_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 50% (2/4)
      */
-    h_2_4(): Element;
+    h_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 40% (2/5)
      */
-    h_2_5(): Element;
+    h_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 10px (0.625rem)
      */
-    h_2p5(): Element;
+    h_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 12px (0.75rem)
      */
-    h_3(): Element;
+    h_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 128px (8rem)
      */
-    h_32(): Element;
+    h_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 75% (3/4)
      */
-    h_3_4(): Element;
+    h_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 60% (3/5)
      */
-    h_3_5(): Element;
+    h_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
-)GPUI_DTS";
-static const char kShellTypes14[] = R"GPUI_DTS(     * 14px (0.875rem)
+     * 14px (0.875rem)
      */
-    h_3p5(): Element;
+    h_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 16px (1rem)
      */
-    h_4(): Element;
+    h_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 160px (10rem)
      */
-    h_40(): Element;
+    h_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 192px (12rem)
      */
-    h_48(): Element;
+    h_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80% (4/5)
      */
-    h_4_5(): Element;
+    h_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 20px (1.25rem)
      */
-    h_5(): Element;
+    h_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 224px (14rem)
      */
-    h_56(): Element;
+    h_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80% (5/6)
      */
-    h_5_6(): Element;
+    h_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 24px (1.5rem)
      */
-    h_6(): Element;
+    h_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 256px (16rem)
      */
-    h_64(): Element;
+    h_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 28px (1.75rem)
      */
-    h_7(): Element;
+    h_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 288px (18rem)
      */
-    h_72(): Element;
+    h_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 32px (2rem)
      */
-    h_8(): Element;
+    h_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 320px (20rem)
      */
-    h_80(): Element;
+    h_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 36px (2.25rem)
      */
-    h_9(): Element;
+    h_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 384px (24rem)
      */
-    h_96(): Element;
+    h_96<Self extends Element>(this: Self): Self;
     /**
-     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
+)GPUI_DTS";
+static const char kShellTypes16[] =
+    R"GPUI_DTS(     * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * Auto
      */
-    h_auto(): Element;
+    h_auto<Self extends Element>(this: Self): Self;
     /**
      * Lays children out in a row, centered on the cross axis.
      *
@@ -4959,885 +4968,887 @@ static const char kShellTypes14[] = R"GPUI_DTS(     * 14px (0.875rem)
      *
      * ```
      */
-    h_flex(): Element;
+    h_flex<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 100%
      */
-    h_full(): Element;
+    h_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 0px
      */
-    h_neg_0(): Element;
+    h_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 2px (0.125rem)
      */
-    h_neg_0p5(): Element;
+    h_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 4px (0.25rem)
      */
-    h_neg_1(): Element;
+    h_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 40px (2.5rem)
      */
-    h_neg_10(): Element;
+    h_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 44px (2.75rem)
      */
-    h_neg_11(): Element;
+    h_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 448px (28rem)
      */
-    h_neg_112(): Element;
+    h_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 48px (3rem)
      */
-    h_neg_12(): Element;
+    h_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 512px (32rem)
      */
-    h_neg_128(): Element;
+    h_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 64px (4rem)
      */
-    h_neg_16(): Element;
+    h_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 8% (1/12)
      */
-    h_neg_1_12(): Element;
+    h_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 50% (1/2)
      */
-    h_neg_1_2(): Element;
+    h_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 33% (1/3)
      */
-    h_neg_1_3(): Element;
+    h_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 25% (1/4)
      */
-    h_neg_1_4(): Element;
+    h_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 20% (1/5)
      */
-    h_neg_1_5(): Element;
+    h_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 16% (1/6)
      */
-    h_neg_1_6(): Element;
+    h_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 6px (0.375rem)
      */
-    h_neg_1p5(): Element;
+    h_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 8px (0.5rem)
      */
-    h_neg_2(): Element;
+    h_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80px (5rem)
      */
-    h_neg_20(): Element;
+    h_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 96px (6rem)
      */
-    h_neg_24(): Element;
+    h_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 66% (2/3)
      */
-    h_neg_2_3(): Element;
+    h_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 50% (2/4)
      */
-    h_neg_2_4(): Element;
+    h_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 40% (2/5)
      */
-    h_neg_2_5(): Element;
+    h_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 10px (0.625rem)
      */
-    h_neg_2p5(): Element;
+    h_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 12px (0.75rem)
      */
-    h_neg_3(): Element;
+    h_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 128px (8rem)
      */
-    h_neg_32(): Element;
+    h_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 75% (3/4)
      */
-    h_neg_3_4(): Element;
+    h_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 60% (3/5)
      */
-    h_neg_3_5(): Element;
+    h_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 14px (0.875rem)
      */
-    h_neg_3p5(): Element;
+    h_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 16px (1rem)
      */
-    h_neg_4(): Element;
+    h_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 160px (10rem)
      */
-    h_neg_40(): Element;
+    h_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 192px (12rem)
      */
-    h_neg_48(): Element;
+    h_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80% (4/5)
      */
-    h_neg_4_5(): Element;
+    h_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 20px (1.25rem)
      */
-    h_neg_5(): Element;
+    h_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 224px (14rem)
      */
-    h_neg_56(): Element;
+    h_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 80% (5/6)
      */
-    h_neg_5_6(): Element;
+    h_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 24px (1.5rem)
      */
-    h_neg_6(): Element;
+    h_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 256px (16rem)
      */
-    h_neg_64(): Element;
+    h_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 28px (1.75rem)
      */
-    h_neg_7(): Element;
+    h_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 288px (18rem)
      */
-    h_neg_72(): Element;
+    h_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 32px (2rem)
      */
-    h_neg_8(): Element;
+    h_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 320px (20rem)
      */
-    h_neg_80(): Element;
+    h_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 36px (2.25rem)
      */
-    h_neg_9(): Element;
+    h_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 384px (24rem)
      */
-    h_neg_96(): Element;
+    h_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 100%
      */
-    h_neg_full(): Element;
+    h_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 1px
      */
-    h_neg_px(): Element;
+    h_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the height of the element. [Docs](https://tailwindcss.com/docs/height)
      *
      * 1px
      */
-    h_px(): Element;
+    h_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the display type of the element to `none`.
      *
      * [Docs](https://tailwindcss.com/docs/display)
      */
-    hidden(): Element;
+    hidden<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    inset_0(): Element;
+    inset_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    inset_0p5(): Element;
+    inset_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    inset_1(): Element;
+    inset_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    inset_10(): Element;
+    inset_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    inset_11(): Element;
+    inset_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
-)GPUI_DTS";
-static const char kShellTypes15[] = R"GPUI_DTS(     *
+     *
      * 448px (28rem)
      */
-    inset_112(): Element;
+    inset_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    inset_12(): Element;
+    inset_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    inset_128(): Element;
+    inset_128<Self extends Element>(this: Self): Self;
     /**
-     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes17[] =
+    R"GPUI_DTS(     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    inset_16(): Element;
+    inset_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    inset_1_12(): Element;
+    inset_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    inset_1_2(): Element;
+    inset_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    inset_1_3(): Element;
+    inset_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    inset_1_4(): Element;
+    inset_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    inset_1_5(): Element;
+    inset_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    inset_1_6(): Element;
+    inset_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    inset_1p5(): Element;
+    inset_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    inset_2(): Element;
+    inset_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    inset_20(): Element;
+    inset_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    inset_24(): Element;
+    inset_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    inset_2_3(): Element;
+    inset_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    inset_2_4(): Element;
+    inset_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    inset_2_5(): Element;
+    inset_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    inset_2p5(): Element;
+    inset_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    inset_3(): Element;
+    inset_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    inset_32(): Element;
+    inset_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    inset_3_4(): Element;
+    inset_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    inset_3_5(): Element;
+    inset_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    inset_3p5(): Element;
+    inset_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    inset_4(): Element;
+    inset_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    inset_40(): Element;
+    inset_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    inset_48(): Element;
+    inset_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    inset_4_5(): Element;
+    inset_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    inset_5(): Element;
+    inset_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    inset_56(): Element;
+    inset_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    inset_5_6(): Element;
+    inset_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    inset_6(): Element;
+    inset_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    inset_64(): Element;
+    inset_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    inset_7(): Element;
+    inset_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    inset_72(): Element;
+    inset_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    inset_8(): Element;
+    inset_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    inset_80(): Element;
+    inset_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    inset_9(): Element;
+    inset_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    inset_96(): Element;
+    inset_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * Auto
      */
-    inset_auto(): Element;
+    inset_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    inset_full(): Element;
+    inset_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    inset_neg_0(): Element;
+    inset_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    inset_neg_0p5(): Element;
+    inset_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    inset_neg_1(): Element;
+    inset_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    inset_neg_10(): Element;
+    inset_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    inset_neg_11(): Element;
+    inset_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    inset_neg_112(): Element;
+    inset_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    inset_neg_12(): Element;
+    inset_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    inset_neg_128(): Element;
+    inset_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    inset_neg_16(): Element;
+    inset_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    inset_neg_1_12(): Element;
+    inset_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    inset_neg_1_2(): Element;
+    inset_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    inset_neg_1_3(): Element;
+    inset_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    inset_neg_1_4(): Element;
+    inset_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    inset_neg_1_5(): Element;
+    inset_neg_1_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes18[] =
+    R"GPUI_DTS(     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    inset_neg_1_6(): Element;
+    inset_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    inset_neg_1p5(): Element;
+    inset_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    inset_neg_2(): Element;
+    inset_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    inset_neg_20(): Element;
+    inset_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    inset_neg_24(): Element;
+    inset_neg_24<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes16[] = R"GPUI_DTS(     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    inset_neg_2_3(): Element;
+    inset_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    inset_neg_2_4(): Element;
+    inset_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    inset_neg_2_5(): Element;
+    inset_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    inset_neg_2p5(): Element;
+    inset_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    inset_neg_3(): Element;
+    inset_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    inset_neg_32(): Element;
+    inset_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    inset_neg_3_4(): Element;
+    inset_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    inset_neg_3_5(): Element;
+    inset_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    inset_neg_3p5(): Element;
+    inset_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    inset_neg_4(): Element;
+    inset_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    inset_neg_40(): Element;
+    inset_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    inset_neg_48(): Element;
+    inset_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    inset_neg_4_5(): Element;
+    inset_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    inset_neg_5(): Element;
+    inset_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    inset_neg_56(): Element;
+    inset_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    inset_neg_5_6(): Element;
+    inset_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    inset_neg_6(): Element;
+    inset_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    inset_neg_64(): Element;
+    inset_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    inset_neg_7(): Element;
+    inset_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    inset_neg_72(): Element;
+    inset_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    inset_neg_8(): Element;
+    inset_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    inset_neg_80(): Element;
+    inset_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    inset_neg_9(): Element;
+    inset_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    inset_neg_96(): Element;
+    inset_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    inset_neg_full(): Element;
+    inset_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    inset_neg_px(): Element;
+    inset_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the top, right, bottom, and left values of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    inset_px(): Element;
+    inset_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the visibility of the element to `hidden`.
      *
      * [Docs](https://tailwindcss.com/docs/visibility)
      */
-    invisible(): Element;
+    invisible<Self extends Element>(this: Self): Self;
     /**
      * Sets the font style of the element to italic.
      *
      * [Docs](https://tailwindcss.com/docs/font-style#italicizing-text)
      */
-    italic(): Element;
+    italic<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to align flex items along the baseline of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-items#baseline)
      */
-    items_baseline(): Element;
+    items_baseline<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to align flex items along the center of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-items#center)
      */
-    items_center(): Element;
+    items_center<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to align flex items to the end of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-items#end)
      */
-    items_end(): Element;
+    items_end<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to align flex items to the start of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-items#start)
      */
-    items_start(): Element;
+    items_start<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to stretch flex items to fill the available space along the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-items#stretch)
      */
-    items_stretch(): Element;
+    items_stretch<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify items along the container's main axis such
      *
@@ -5845,7 +5856,7 @@ static const char kShellTypes16[] = R"GPUI_DTS(     * Sets the top, right, botto
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#space-around)
      */
-    justify_around(): Element;
+    justify_around<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify flex items along the container's main axis
      *
@@ -5853,19 +5864,19 @@ static const char kShellTypes16[] = R"GPUI_DTS(     * Sets the top, right, botto
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#space-between)
      */
-    justify_between(): Element;
+    justify_between<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify flex items along the center of the container's main axis.
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#center)
      */
-    justify_center(): Element;
+    justify_center<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify flex items against the end of the container's main axis.
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#end)
      */
-    justify_end(): Element;
+    justify_end<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify items along the container's main axis such
      *
@@ -5877,13253 +5888,13286 @@ static const char kShellTypes16[] = R"GPUI_DTS(     * Sets the top, right, botto
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#space-evenly)
      */
-    justify_evenly(): Element;
+    justify_evenly<Self extends Element>(this: Self): Self;
     /**
      * Sets the element to justify flex items against the start of the container's main axis.
      *
      * [Docs](https://tailwindcss.com/docs/justify-content#start)
      */
-    justify_start(): Element;
+    justify_start<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    left_0(): Element;
+    left_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    left_0p5(): Element;
+    left_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    left_1(): Element;
+    left_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    left_10(): Element;
+    left_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    left_11(): Element;
+    left_11<Self extends Element>(this: Self): Self;
     /**
-     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes19[] =
+    R"GPUI_DTS(     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    left_112(): Element;
+    left_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    left_12(): Element;
+    left_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    left_128(): Element;
+    left_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    left_16(): Element;
+    left_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    left_1_12(): Element;
+    left_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    left_1_2(): Element;
+    left_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    left_1_3(): Element;
+    left_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    left_1_4(): Element;
+    left_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    left_1_5(): Element;
+    left_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    left_1_6(): Element;
+    left_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    left_1p5(): Element;
+    left_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    left_2(): Element;
+    left_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    left_20(): Element;
+    left_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    left_24(): Element;
+    left_24<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes17[] = R"GPUI_DTS(     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    left_2_3(): Element;
+    left_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    left_2_4(): Element;
+    left_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    left_2_5(): Element;
+    left_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    left_2p5(): Element;
+    left_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    left_3(): Element;
+    left_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    left_32(): Element;
+    left_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    left_3_4(): Element;
+    left_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    left_3_5(): Element;
+    left_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    left_3p5(): Element;
+    left_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    left_4(): Element;
+    left_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    left_40(): Element;
+    left_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    left_48(): Element;
+    left_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    left_4_5(): Element;
+    left_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    left_5(): Element;
+    left_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    left_56(): Element;
+    left_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    left_5_6(): Element;
+    left_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    left_6(): Element;
+    left_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    left_64(): Element;
+    left_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    left_7(): Element;
+    left_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    left_72(): Element;
+    left_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    left_8(): Element;
+    left_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    left_80(): Element;
+    left_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    left_9(): Element;
+    left_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    left_96(): Element;
+    left_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * Auto
      */
-    left_auto(): Element;
+    left_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    left_full(): Element;
+    left_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    left_neg_0(): Element;
+    left_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    left_neg_0p5(): Element;
+    left_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    left_neg_1(): Element;
+    left_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    left_neg_10(): Element;
+    left_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    left_neg_11(): Element;
+    left_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    left_neg_112(): Element;
+    left_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    left_neg_12(): Element;
+    left_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    left_neg_128(): Element;
+    left_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    left_neg_16(): Element;
+    left_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    left_neg_1_12(): Element;
+    left_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    left_neg_1_2(): Element;
+    left_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    left_neg_1_3(): Element;
+    left_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    left_neg_1_4(): Element;
+    left_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    left_neg_1_5(): Element;
+    left_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    left_neg_1_6(): Element;
+    left_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    left_neg_1p5(): Element;
+    left_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    left_neg_2(): Element;
+    left_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    left_neg_20(): Element;
+)GPUI_DTS";
+static const char kShellTypes20[] =
+    R"GPUI_DTS(    left_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    left_neg_24(): Element;
+    left_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    left_neg_2_3(): Element;
+    left_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    left_neg_2_4(): Element;
+    left_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    left_neg_2_5(): Element;
+    left_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    left_neg_2p5(): Element;
+    left_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    left_neg_3(): Element;
+    left_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    left_neg_32(): Element;
+    left_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    left_neg_3_4(): Element;
+    left_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    left_neg_3_5(): Element;
+    left_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    left_neg_3p5(): Element;
+    left_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    left_neg_4(): Element;
+    left_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    left_neg_40(): Element;
+    left_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    left_neg_48(): Element;
+    left_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    left_neg_4_5(): Element;
+    left_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    left_neg_5(): Element;
+    left_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    left_neg_56(): Element;
+    left_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    left_neg_5_6(): Element;
+    left_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    left_neg_6(): Element;
+    left_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    left_neg_64(): Element;
+    left_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    left_neg_7(): Element;
+    left_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    left_neg_72(): Element;
+    left_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    left_neg_8(): Element;
+    left_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
-)GPUI_DTS";
-static const char kShellTypes18[] = R"GPUI_DTS(     * 320px (20rem)
+     * 320px (20rem)
      */
-    left_neg_80(): Element;
+    left_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    left_neg_9(): Element;
+    left_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    left_neg_96(): Element;
+    left_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    left_neg_full(): Element;
+    left_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    left_neg_px(): Element;
+    left_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the left value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    left_px(): Element;
+    left_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the decoration of the text to have a line through it.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-line#adding-a-line-through-text)
      */
-    line_through(): Element;
+    line_through<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 0px
      */
-    m_0(): Element;
+    m_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 2px (0.125rem)
      */
-    m_0p5(): Element;
+    m_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 4px (0.25rem)
      */
-    m_1(): Element;
+    m_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 40px (2.5rem)
      */
-    m_10(): Element;
+    m_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 44px (2.75rem)
      */
-    m_11(): Element;
+    m_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 448px (28rem)
      */
-    m_112(): Element;
+    m_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 48px (3rem)
      */
-    m_12(): Element;
+    m_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 512px (32rem)
      */
-    m_128(): Element;
+    m_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 64px (4rem)
      */
-    m_16(): Element;
+    m_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 8% (1/12)
      */
-    m_1_12(): Element;
+    m_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 50% (1/2)
      */
-    m_1_2(): Element;
+    m_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 33% (1/3)
      */
-    m_1_3(): Element;
+    m_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 25% (1/4)
      */
-    m_1_4(): Element;
+    m_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 20% (1/5)
      */
-    m_1_5(): Element;
+    m_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 16% (1/6)
      */
-    m_1_6(): Element;
+    m_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 6px (0.375rem)
      */
-    m_1p5(): Element;
+    m_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 8px (0.5rem)
      */
-    m_2(): Element;
+    m_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 80px (5rem)
      */
-    m_20(): Element;
+    m_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 96px (6rem)
      */
-    m_24(): Element;
+    m_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 66% (2/3)
      */
-    m_2_3(): Element;
+    m_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 50% (2/4)
      */
-    m_2_4(): Element;
+    m_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 40% (2/5)
      */
-    m_2_5(): Element;
+    m_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 10px (0.625rem)
      */
-    m_2p5(): Element;
+    m_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 12px (0.75rem)
      */
-    m_3(): Element;
+    m_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 128px (8rem)
      */
-    m_32(): Element;
+    m_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 75% (3/4)
      */
-    m_3_4(): Element;
+    m_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 60% (3/5)
      */
-    m_3_5(): Element;
+    m_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 14px (0.875rem)
      */
-    m_3p5(): Element;
+    m_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 16px (1rem)
      */
-    m_4(): Element;
+    m_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 160px (10rem)
      */
-    m_40(): Element;
+    m_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 192px (12rem)
      */
-    m_48(): Element;
+    m_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 80% (4/5)
      */
-    m_4_5(): Element;
+    m_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 20px (1.25rem)
      */
-    m_5(): Element;
+    m_5<Self extends Element>(this: Self): Self;
     /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+)GPUI_DTS";
+static const char kShellTypes21[] =
+    R"GPUI_DTS(     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 224px (14rem)
      */
-    m_56(): Element;
+    m_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 80% (5/6)
      */
-    m_5_6(): Element;
+    m_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 24px (1.5rem)
      */
-    m_6(): Element;
+    m_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 256px (16rem)
      */
-    m_64(): Element;
+    m_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 28px (1.75rem)
      */
-    m_7(): Element;
+    m_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 288px (18rem)
      */
-    m_72(): Element;
+    m_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 32px (2rem)
      */
-    m_8(): Element;
+    m_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 320px (20rem)
      */
-    m_80(): Element;
+    m_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 36px (2.25rem)
      */
-    m_9(): Element;
+    m_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 384px (24rem)
      */
-    m_96(): Element;
+    m_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * Auto
      */
-    m_auto(): Element;
+    m_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 100%
      */
-    m_full(): Element;
+    m_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 0px
      */
-    m_neg_0(): Element;
+    m_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 2px (0.125rem)
      */
-    m_neg_0p5(): Element;
+    m_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 4px (0.25rem)
      */
-    m_neg_1(): Element;
+    m_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 40px (2.5rem)
      */
-    m_neg_10(): Element;
+    m_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 44px (2.75rem)
      */
-    m_neg_11(): Element;
+    m_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 448px (28rem)
      */
-    m_neg_112(): Element;
+    m_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 48px (3rem)
      */
-    m_neg_12(): Element;
+    m_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 512px (32rem)
      */
-    m_neg_128(): Element;
+    m_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 64px (4rem)
      */
-    m_neg_16(): Element;
+    m_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 8% (1/12)
      */
-    m_neg_1_12(): Element;
+    m_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 50% (1/2)
      */
-    m_neg_1_2(): Element;
+    m_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 33% (1/3)
      */
-    m_neg_1_3(): Element;
+    m_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 25% (1/4)
      */
-    m_neg_1_4(): Element;
+    m_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 20% (1/5)
      */
-    m_neg_1_5(): Element;
+    m_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 16% (1/6)
      */
-    m_neg_1_6(): Element;
+    m_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 6px (0.375rem)
      */
-    m_neg_1p5(): Element;
+    m_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 8px (0.5rem)
      */
-    m_neg_2(): Element;
+    m_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 80px (5rem)
      */
-    m_neg_20(): Element;
+    m_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 96px (6rem)
      */
-    m_neg_24(): Element;
+    m_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 66% (2/3)
      */
-    m_neg_2_3(): Element;
+    m_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 50% (2/4)
      */
-    m_neg_2_4(): Element;
+    m_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 40% (2/5)
      */
-    m_neg_2_5(): Element;
+    m_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 10px (0.625rem)
      */
-    m_neg_2p5(): Element;
+    m_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 12px (0.75rem)
      */
-    m_neg_3(): Element;
+    m_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 128px (8rem)
      */
-    m_neg_32(): Element;
+    m_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 75% (3/4)
      */
-    m_neg_3_4(): Element;
+    m_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 60% (3/5)
      */
-    m_neg_3_5(): Element;
+    m_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
      *
      * 14px (0.875rem)
      */
-    m_neg_3p5(): Element;
+    m_neg_3p5<Self extends Element>(this: Self): Self;
     /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 16px (1rem)
+     */
+    m_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 160px (10rem)
+     */
+    m_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 192px (12rem)
+     */
+    m_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 80% (4/5)
+     */
+    m_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 20px (1.25rem)
+     */
+    m_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 224px (14rem)
+     */
+    m_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 80% (5/6)
+     */
+    m_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 24px (1.5rem)
+     */
+    m_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 256px (16rem)
+     */
+    m_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 28px (1.75rem)
+     */
+    m_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 288px (18rem)
+     */
+    m_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 32px (2rem)
+     */
+    m_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 320px (20rem)
+     */
+    m_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 36px (2.25rem)
+     */
+    m_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 384px (24rem)
+     */
+    m_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 100%
+     */
+    m_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 1px
+     */
+    m_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
+     *
+     * 1px
+     */
+    m_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 0px
+     */
+    max_h_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 2px (0.125rem)
+     */
+    max_h_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 4px (0.25rem)
+     */
+    max_h_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 40px (2.5rem)
+     */
+    max_h_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 44px (2.75rem)
+     */
+    max_h_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 448px (28rem)
+     */
+    max_h_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 48px (3rem)
+     */
+    max_h_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 512px (32rem)
+     */
+    max_h_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 64px (4rem)
 )GPUI_DTS";
-static const char kShellTypes19[] = R"GPUI_DTS(     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 16px (1rem)
-     */
-    m_neg_4(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 160px (10rem)
-     */
-    m_neg_40(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 192px (12rem)
-     */
-    m_neg_48(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 80% (4/5)
-     */
-    m_neg_4_5(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 20px (1.25rem)
-     */
-    m_neg_5(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 224px (14rem)
-     */
-    m_neg_56(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 80% (5/6)
-     */
-    m_neg_5_6(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 24px (1.5rem)
-     */
-    m_neg_6(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 256px (16rem)
-     */
-    m_neg_64(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 28px (1.75rem)
-     */
-    m_neg_7(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 288px (18rem)
-     */
-    m_neg_72(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 32px (2rem)
-     */
-    m_neg_8(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 320px (20rem)
-     */
-    m_neg_80(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 36px (2.25rem)
-     */
-    m_neg_9(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 384px (24rem)
-     */
-    m_neg_96(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 100%
-     */
-    m_neg_full(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 1px
-     */
-    m_neg_px(): Element;
-    /**
-     * Sets the margin of the element. [Docs](https://tailwindcss.com/docs/margin)
-     *
-     * 1px
-     */
-    m_px(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 0px
-     */
-    max_h_0(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 2px (0.125rem)
-     */
-    max_h_0p5(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 4px (0.25rem)
-     */
-    max_h_1(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 40px (2.5rem)
-     */
-    max_h_10(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 44px (2.75rem)
-     */
-    max_h_11(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 448px (28rem)
-     */
-    max_h_112(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 48px (3rem)
-     */
-    max_h_12(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 512px (32rem)
-     */
-    max_h_128(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 64px (4rem)
-     */
-    max_h_16(): Element;
+static const char kShellTypes22[] = R"GPUI_DTS(     */
+    max_h_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 8% (1/12)
      */
-    max_h_1_12(): Element;
+    max_h_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 50% (1/2)
      */
-    max_h_1_2(): Element;
+    max_h_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 33% (1/3)
      */
-    max_h_1_3(): Element;
+    max_h_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 25% (1/4)
      */
-    max_h_1_4(): Element;
+    max_h_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 20% (1/5)
      */
-    max_h_1_5(): Element;
+    max_h_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 16% (1/6)
      */
-    max_h_1_6(): Element;
+    max_h_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 6px (0.375rem)
      */
-    max_h_1p5(): Element;
+    max_h_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 8px (0.5rem)
      */
-    max_h_2(): Element;
+    max_h_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 80px (5rem)
      */
-    max_h_20(): Element;
+    max_h_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 96px (6rem)
      */
-    max_h_24(): Element;
+    max_h_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 66% (2/3)
      */
-    max_h_2_3(): Element;
+    max_h_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 50% (2/4)
      */
-    max_h_2_4(): Element;
+    max_h_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 40% (2/5)
      */
-    max_h_2_5(): Element;
+    max_h_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 10px (0.625rem)
      */
-    max_h_2p5(): Element;
+    max_h_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 12px (0.75rem)
      */
-    max_h_3(): Element;
+    max_h_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 128px (8rem)
      */
-    max_h_32(): Element;
+    max_h_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 75% (3/4)
      */
-    max_h_3_4(): Element;
+    max_h_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 60% (3/5)
      */
-    max_h_3_5(): Element;
+    max_h_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 14px (0.875rem)
      */
-    max_h_3p5(): Element;
+    max_h_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 16px (1rem)
      */
-    max_h_4(): Element;
+    max_h_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 160px (10rem)
      */
-    max_h_40(): Element;
+    max_h_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 192px (12rem)
      */
-    max_h_48(): Element;
+    max_h_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 80% (4/5)
      */
-    max_h_4_5(): Element;
+    max_h_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 20px (1.25rem)
      */
-    max_h_5(): Element;
+    max_h_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 224px (14rem)
      */
-    max_h_56(): Element;
+    max_h_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 80% (5/6)
      */
-    max_h_5_6(): Element;
+    max_h_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 24px (1.5rem)
      */
-    max_h_6(): Element;
+    max_h_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 256px (16rem)
      */
-    max_h_64(): Element;
+    max_h_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 28px (1.75rem)
      */
-    max_h_7(): Element;
+    max_h_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 288px (18rem)
      */
-    max_h_72(): Element;
+    max_h_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 32px (2rem)
      */
-    max_h_8(): Element;
+    max_h_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 320px (20rem)
      */
-    max_h_80(): Element;
+    max_h_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 36px (2.25rem)
      */
-    max_h_9(): Element;
+    max_h_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 384px (24rem)
      */
-    max_h_96(): Element;
+    max_h_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * Auto
      */
-    max_h_auto(): Element;
+    max_h_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 100%
      */
-    max_h_full(): Element;
+    max_h_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 0px
      */
-    max_h_neg_0(): Element;
+    max_h_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 2px (0.125rem)
      */
-    max_h_neg_0p5(): Element;
+    max_h_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 4px (0.25rem)
      */
-    max_h_neg_1(): Element;
+    max_h_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 40px (2.5rem)
      */
-    max_h_neg_10(): Element;
+    max_h_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 44px (2.75rem)
      */
-    max_h_neg_11(): Element;
+    max_h_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 448px (28rem)
      */
-    max_h_neg_112(): Element;
+    max_h_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 48px (3rem)
      */
-    max_h_neg_12(): Element;
+    max_h_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 512px (32rem)
      */
-    max_h_neg_128(): Element;
+    max_h_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 64px (4rem)
      */
-    max_h_neg_16(): Element;
+    max_h_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 8% (1/12)
      */
-    max_h_neg_1_12(): Element;
+    max_h_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 50% (1/2)
      */
-    max_h_neg_1_2(): Element;
+    max_h_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 33% (1/3)
      */
-    max_h_neg_1_3(): Element;
+    max_h_neg_1_3<Self extends Element>(this: Self): Self;
     /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 25% (1/4)
+     */
+    max_h_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 20% (1/5)
+     */
+    max_h_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 16% (1/6)
+     */
+    max_h_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 6px (0.375rem)
+     */
+    max_h_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 8px (0.5rem)
+     */
+    max_h_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 80px (5rem)
+     */
+    max_h_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 96px (6rem)
+     */
+    max_h_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 66% (2/3)
+     */
+    max_h_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 50% (2/4)
+     */
+    max_h_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 40% (2/5)
+     */
+    max_h_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 10px (0.625rem)
+     */
+    max_h_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 12px (0.75rem)
+     */
+    max_h_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 128px (8rem)
+     */
+    max_h_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
+     *
+     * 75% (3/4)
+     */
 )GPUI_DTS";
-static const char kShellTypes20[] = R"GPUI_DTS(     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 25% (1/4)
-     */
-    max_h_neg_1_4(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 20% (1/5)
-     */
-    max_h_neg_1_5(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 16% (1/6)
-     */
-    max_h_neg_1_6(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 6px (0.375rem)
-     */
-    max_h_neg_1p5(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 8px (0.5rem)
-     */
-    max_h_neg_2(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 80px (5rem)
-     */
-    max_h_neg_20(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 96px (6rem)
-     */
-    max_h_neg_24(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 66% (2/3)
-     */
-    max_h_neg_2_3(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 50% (2/4)
-     */
-    max_h_neg_2_4(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 40% (2/5)
-     */
-    max_h_neg_2_5(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 10px (0.625rem)
-     */
-    max_h_neg_2p5(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 12px (0.75rem)
-     */
-    max_h_neg_3(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 128px (8rem)
-     */
-    max_h_neg_32(): Element;
-    /**
-     * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
-     *
-     * 75% (3/4)
-     */
-    max_h_neg_3_4(): Element;
+static const char kShellTypes23[] =
+    R"GPUI_DTS(    max_h_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 60% (3/5)
      */
-    max_h_neg_3_5(): Element;
+    max_h_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 14px (0.875rem)
      */
-    max_h_neg_3p5(): Element;
+    max_h_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 16px (1rem)
      */
-    max_h_neg_4(): Element;
+    max_h_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 160px (10rem)
      */
-    max_h_neg_40(): Element;
+    max_h_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 192px (12rem)
      */
-    max_h_neg_48(): Element;
+    max_h_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 80% (4/5)
      */
-    max_h_neg_4_5(): Element;
+    max_h_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 20px (1.25rem)
      */
-    max_h_neg_5(): Element;
+    max_h_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 224px (14rem)
      */
-    max_h_neg_56(): Element;
+    max_h_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 80% (5/6)
      */
-    max_h_neg_5_6(): Element;
+    max_h_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 24px (1.5rem)
      */
-    max_h_neg_6(): Element;
+    max_h_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 256px (16rem)
      */
-    max_h_neg_64(): Element;
+    max_h_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 28px (1.75rem)
      */
-    max_h_neg_7(): Element;
+    max_h_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 288px (18rem)
      */
-    max_h_neg_72(): Element;
+    max_h_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 32px (2rem)
      */
-    max_h_neg_8(): Element;
+    max_h_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 320px (20rem)
      */
-    max_h_neg_80(): Element;
+    max_h_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 36px (2.25rem)
      */
-    max_h_neg_9(): Element;
+    max_h_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 384px (24rem)
      */
-    max_h_neg_96(): Element;
+    max_h_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 100%
      */
-    max_h_neg_full(): Element;
+    max_h_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 1px
      */
-    max_h_neg_px(): Element;
+    max_h_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum height of the element. [Docs](https://tailwindcss.com/docs/max-height)
      *
      * 1px
      */
-    max_h_px(): Element;
+    max_h_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 0px
      */
-    max_size_0(): Element;
+    max_size_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 2px (0.125rem)
      */
-    max_size_0p5(): Element;
+    max_size_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 4px (0.25rem)
      */
-    max_size_1(): Element;
+    max_size_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 40px (2.5rem)
      */
-    max_size_10(): Element;
+    max_size_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 44px (2.75rem)
      */
-    max_size_11(): Element;
+    max_size_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 448px (28rem)
      */
-    max_size_112(): Element;
+    max_size_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 48px (3rem)
      */
-    max_size_12(): Element;
+    max_size_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 512px (32rem)
      */
-    max_size_128(): Element;
+    max_size_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 64px (4rem)
      */
-    max_size_16(): Element;
+    max_size_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 8% (1/12)
      */
-    max_size_1_12(): Element;
+    max_size_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 50% (1/2)
      */
-    max_size_1_2(): Element;
+    max_size_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 33% (1/3)
      */
-    max_size_1_3(): Element;
+    max_size_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 25% (1/4)
      */
-    max_size_1_4(): Element;
+    max_size_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 20% (1/5)
      */
-    max_size_1_5(): Element;
+    max_size_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 16% (1/6)
      */
-    max_size_1_6(): Element;
+    max_size_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 6px (0.375rem)
      */
-    max_size_1p5(): Element;
+    max_size_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 8px (0.5rem)
      */
-    max_size_2(): Element;
+    max_size_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80px (5rem)
      */
-    max_size_20(): Element;
+    max_size_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 96px (6rem)
      */
-    max_size_24(): Element;
+    max_size_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 66% (2/3)
      */
-    max_size_2_3(): Element;
+    max_size_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 50% (2/4)
      */
-    max_size_2_4(): Element;
+    max_size_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 40% (2/5)
      */
-    max_size_2_5(): Element;
+    max_size_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 10px (0.625rem)
      */
-    max_size_2p5(): Element;
+    max_size_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 12px (0.75rem)
      */
-    max_size_3(): Element;
+    max_size_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 128px (8rem)
      */
-    max_size_32(): Element;
+    max_size_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 75% (3/4)
      */
-    max_size_3_4(): Element;
+    max_size_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 60% (3/5)
      */
-    max_size_3_5(): Element;
+    max_size_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 14px (0.875rem)
      */
-    max_size_3p5(): Element;
+    max_size_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 16px (1rem)
      */
-    max_size_4(): Element;
+    max_size_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 160px (10rem)
      */
-    max_size_40(): Element;
+    max_size_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 192px (12rem)
      */
-    max_size_48(): Element;
+    max_size_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80% (4/5)
      */
-    max_size_4_5(): Element;
+    max_size_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 20px (1.25rem)
      */
-    max_size_5(): Element;
+    max_size_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 224px (14rem)
      */
-    max_size_56(): Element;
+    max_size_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80% (5/6)
      */
-    max_size_5_6(): Element;
+    max_size_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 24px (1.5rem)
      */
-    max_size_6(): Element;
+    max_size_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 256px (16rem)
      */
-    max_size_64(): Element;
+    max_size_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 28px (1.75rem)
      */
-    max_size_7(): Element;
+    max_size_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 288px (18rem)
      */
-    max_size_72(): Element;
+    max_size_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 32px (2rem)
      */
-    max_size_8(): Element;
+    max_size_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 320px (20rem)
      */
-    max_size_80(): Element;
+    max_size_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 36px (2.25rem)
      */
-    max_size_9(): Element;
+    max_size_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 384px (24rem)
      */
-    max_size_96(): Element;
+    max_size_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * Auto
      */
-    max_size_auto(): Element;
+    max_size_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 100%
      */
-    max_size_full(): Element;
+    max_size_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 0px
      */
-    max_size_neg_0(): Element;
+    max_size_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 2px (0.125rem)
      */
-    max_size_neg_0p5(): Element;
+    max_size_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 4px (0.25rem)
      */
-    max_size_neg_1(): Element;
+    max_size_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 40px (2.5rem)
      */
-    max_size_neg_10(): Element;
+    max_size_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 44px (2.75rem)
      */
-)GPUI_DTS";
-static const char kShellTypes21[] = R"GPUI_DTS(    max_size_neg_11(): Element;
+    max_size_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 448px (28rem)
      */
-    max_size_neg_112(): Element;
+    max_size_neg_112<Self extends Element>(this: Self): Self;
     /**
-     * Sets the maximum width and height of the element.
+)GPUI_DTS";
+static const char kShellTypes24[] =
+    R"GPUI_DTS(     * Sets the maximum width and height of the element.
      *
      * 48px (3rem)
      */
-    max_size_neg_12(): Element;
+    max_size_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 512px (32rem)
      */
-    max_size_neg_128(): Element;
+    max_size_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 64px (4rem)
      */
-    max_size_neg_16(): Element;
+    max_size_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 8% (1/12)
      */
-    max_size_neg_1_12(): Element;
+    max_size_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 50% (1/2)
      */
-    max_size_neg_1_2(): Element;
+    max_size_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 33% (1/3)
      */
-    max_size_neg_1_3(): Element;
+    max_size_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 25% (1/4)
      */
-    max_size_neg_1_4(): Element;
+    max_size_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 20% (1/5)
      */
-    max_size_neg_1_5(): Element;
+    max_size_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 16% (1/6)
      */
-    max_size_neg_1_6(): Element;
+    max_size_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 6px (0.375rem)
      */
-    max_size_neg_1p5(): Element;
+    max_size_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 8px (0.5rem)
      */
-    max_size_neg_2(): Element;
+    max_size_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80px (5rem)
      */
-    max_size_neg_20(): Element;
+    max_size_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 96px (6rem)
      */
-    max_size_neg_24(): Element;
+    max_size_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 66% (2/3)
      */
-    max_size_neg_2_3(): Element;
+    max_size_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 50% (2/4)
      */
-    max_size_neg_2_4(): Element;
+    max_size_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 40% (2/5)
      */
-    max_size_neg_2_5(): Element;
+    max_size_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 10px (0.625rem)
      */
-    max_size_neg_2p5(): Element;
+    max_size_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 12px (0.75rem)
      */
-    max_size_neg_3(): Element;
+    max_size_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 128px (8rem)
      */
-    max_size_neg_32(): Element;
+    max_size_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 75% (3/4)
      */
-    max_size_neg_3_4(): Element;
+    max_size_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 60% (3/5)
      */
-    max_size_neg_3_5(): Element;
+    max_size_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 14px (0.875rem)
      */
-    max_size_neg_3p5(): Element;
+    max_size_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 16px (1rem)
      */
-    max_size_neg_4(): Element;
+    max_size_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 160px (10rem)
      */
-    max_size_neg_40(): Element;
+    max_size_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 192px (12rem)
      */
-    max_size_neg_48(): Element;
+    max_size_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80% (4/5)
      */
-    max_size_neg_4_5(): Element;
+    max_size_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 20px (1.25rem)
      */
-    max_size_neg_5(): Element;
+    max_size_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 224px (14rem)
      */
-    max_size_neg_56(): Element;
+    max_size_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 80% (5/6)
      */
-    max_size_neg_5_6(): Element;
+    max_size_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 24px (1.5rem)
      */
-    max_size_neg_6(): Element;
+    max_size_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 256px (16rem)
      */
-    max_size_neg_64(): Element;
+    max_size_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 28px (1.75rem)
      */
-    max_size_neg_7(): Element;
+    max_size_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 288px (18rem)
      */
-    max_size_neg_72(): Element;
+    max_size_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 32px (2rem)
      */
-    max_size_neg_8(): Element;
+    max_size_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 320px (20rem)
      */
-    max_size_neg_80(): Element;
+    max_size_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 36px (2.25rem)
      */
-    max_size_neg_9(): Element;
+    max_size_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 384px (24rem)
      */
-    max_size_neg_96(): Element;
+    max_size_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 100%
      */
-    max_size_neg_full(): Element;
+    max_size_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 1px
      */
-    max_size_neg_px(): Element;
+    max_size_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width and height of the element.
      *
      * 1px
      */
-    max_size_px(): Element;
+    max_size_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 0px
      */
-    max_w_0(): Element;
+    max_w_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 2px (0.125rem)
      */
-    max_w_0p5(): Element;
+    max_w_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 4px (0.25rem)
      */
-    max_w_1(): Element;
+    max_w_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 40px (2.5rem)
      */
-    max_w_10(): Element;
+    max_w_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 44px (2.75rem)
      */
-    max_w_11(): Element;
+    max_w_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 448px (28rem)
      */
-    max_w_112(): Element;
+    max_w_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 48px (3rem)
      */
-    max_w_12(): Element;
+    max_w_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 512px (32rem)
      */
-    max_w_128(): Element;
+    max_w_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 64px (4rem)
      */
-    max_w_16(): Element;
+    max_w_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 8% (1/12)
      */
-    max_w_1_12(): Element;
+    max_w_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 50% (1/2)
      */
-    max_w_1_2(): Element;
+    max_w_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 33% (1/3)
      */
-    max_w_1_3(): Element;
+    max_w_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 25% (1/4)
      */
-    max_w_1_4(): Element;
+    max_w_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 20% (1/5)
      */
-    max_w_1_5(): Element;
+    max_w_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 16% (1/6)
      */
-    max_w_1_6(): Element;
+    max_w_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 6px (0.375rem)
      */
-    max_w_1p5(): Element;
+    max_w_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 8px (0.5rem)
      */
-    max_w_2(): Element;
+    max_w_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80px (5rem)
      */
-    max_w_20(): Element;
+    max_w_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 96px (6rem)
      */
-    max_w_24(): Element;
+    max_w_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 66% (2/3)
      */
-    max_w_2_3(): Element;
+    max_w_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 50% (2/4)
      */
-    max_w_2_4(): Element;
+    max_w_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 40% (2/5)
      */
-    max_w_2_5(): Element;
+    max_w_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 10px (0.625rem)
      */
-    max_w_2p5(): Element;
+    max_w_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 12px (0.75rem)
      */
-    max_w_3(): Element;
+    max_w_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 128px (8rem)
      */
-    max_w_32(): Element;
+    max_w_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 75% (3/4)
      */
-    max_w_3_4(): Element;
+    max_w_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 60% (3/5)
      */
-    max_w_3_5(): Element;
+    max_w_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 14px (0.875rem)
      */
-    max_w_3p5(): Element;
+    max_w_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 16px (1rem)
      */
-    max_w_4(): Element;
+    max_w_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
-     * 160px (10rem)
+)GPUI_DTS";
+static const char kShellTypes25[] = R"GPUI_DTS(     * 160px (10rem)
      */
-    max_w_40(): Element;
+    max_w_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 192px (12rem)
      */
-    max_w_48(): Element;
+    max_w_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80% (4/5)
      */
-    max_w_4_5(): Element;
+    max_w_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 20px (1.25rem)
      */
-    max_w_5(): Element;
+    max_w_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 224px (14rem)
      */
-    max_w_56(): Element;
+    max_w_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80% (5/6)
      */
-    max_w_5_6(): Element;
+    max_w_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 24px (1.5rem)
      */
-    max_w_6(): Element;
+    max_w_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 256px (16rem)
      */
-    max_w_64(): Element;
+    max_w_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 28px (1.75rem)
      */
-    max_w_7(): Element;
+    max_w_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 288px (18rem)
      */
-    max_w_72(): Element;
+    max_w_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 32px (2rem)
      */
-    max_w_8(): Element;
+    max_w_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 320px (20rem)
      */
-    max_w_80(): Element;
-)GPUI_DTS";
-static const char kShellTypes22[] = R"GPUI_DTS(    /**
+    max_w_80<Self extends Element>(this: Self): Self;
+    /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 36px (2.25rem)
      */
-    max_w_9(): Element;
+    max_w_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 384px (24rem)
      */
-    max_w_96(): Element;
+    max_w_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * Auto
      */
-    max_w_auto(): Element;
+    max_w_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 100%
      */
-    max_w_full(): Element;
+    max_w_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 0px
      */
-    max_w_neg_0(): Element;
+    max_w_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 2px (0.125rem)
      */
-    max_w_neg_0p5(): Element;
+    max_w_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 4px (0.25rem)
      */
-    max_w_neg_1(): Element;
+    max_w_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 40px (2.5rem)
      */
-    max_w_neg_10(): Element;
+    max_w_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 44px (2.75rem)
      */
-    max_w_neg_11(): Element;
+    max_w_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 448px (28rem)
      */
-    max_w_neg_112(): Element;
+    max_w_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 48px (3rem)
      */
-    max_w_neg_12(): Element;
+    max_w_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 512px (32rem)
      */
-    max_w_neg_128(): Element;
+    max_w_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 64px (4rem)
      */
-    max_w_neg_16(): Element;
+    max_w_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 8% (1/12)
      */
-    max_w_neg_1_12(): Element;
+    max_w_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 50% (1/2)
      */
-    max_w_neg_1_2(): Element;
+    max_w_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 33% (1/3)
      */
-    max_w_neg_1_3(): Element;
+    max_w_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 25% (1/4)
      */
-    max_w_neg_1_4(): Element;
+    max_w_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 20% (1/5)
      */
-    max_w_neg_1_5(): Element;
+    max_w_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 16% (1/6)
      */
-    max_w_neg_1_6(): Element;
+    max_w_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 6px (0.375rem)
      */
-    max_w_neg_1p5(): Element;
+    max_w_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 8px (0.5rem)
      */
-    max_w_neg_2(): Element;
+    max_w_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80px (5rem)
      */
-    max_w_neg_20(): Element;
+    max_w_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 96px (6rem)
      */
-    max_w_neg_24(): Element;
+    max_w_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 66% (2/3)
      */
-    max_w_neg_2_3(): Element;
+    max_w_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 50% (2/4)
      */
-    max_w_neg_2_4(): Element;
+    max_w_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 40% (2/5)
      */
-    max_w_neg_2_5(): Element;
+    max_w_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 10px (0.625rem)
      */
-    max_w_neg_2p5(): Element;
+    max_w_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 12px (0.75rem)
      */
-    max_w_neg_3(): Element;
+    max_w_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 128px (8rem)
      */
-    max_w_neg_32(): Element;
+    max_w_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 75% (3/4)
      */
-    max_w_neg_3_4(): Element;
+    max_w_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 60% (3/5)
      */
-    max_w_neg_3_5(): Element;
+    max_w_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 14px (0.875rem)
      */
-    max_w_neg_3p5(): Element;
+    max_w_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 16px (1rem)
      */
-    max_w_neg_4(): Element;
+    max_w_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 160px (10rem)
      */
-    max_w_neg_40(): Element;
+    max_w_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 192px (12rem)
      */
-    max_w_neg_48(): Element;
+    max_w_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80% (4/5)
      */
-    max_w_neg_4_5(): Element;
+    max_w_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 20px (1.25rem)
      */
-    max_w_neg_5(): Element;
+    max_w_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 224px (14rem)
      */
-    max_w_neg_56(): Element;
+    max_w_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 80% (5/6)
      */
-    max_w_neg_5_6(): Element;
+    max_w_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 24px (1.5rem)
      */
-    max_w_neg_6(): Element;
+    max_w_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 256px (16rem)
      */
-    max_w_neg_64(): Element;
+    max_w_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 28px (1.75rem)
      */
-    max_w_neg_7(): Element;
+    max_w_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 288px (18rem)
      */
-    max_w_neg_72(): Element;
+    max_w_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 32px (2rem)
      */
-    max_w_neg_8(): Element;
+    max_w_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 320px (20rem)
      */
-    max_w_neg_80(): Element;
+    max_w_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 36px (2.25rem)
      */
-    max_w_neg_9(): Element;
+    max_w_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 384px (24rem)
      */
-    max_w_neg_96(): Element;
+    max_w_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 100%
      */
-    max_w_neg_full(): Element;
+    max_w_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 1px
      */
-    max_w_neg_px(): Element;
+    max_w_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the maximum width of the element. [Docs](https://tailwindcss.com/docs/max-width)
      *
      * 1px
      */
-    max_w_px(): Element;
+    max_w_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
-     */
-    mb_0(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    mb_0p5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    mb_1(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    mb_10(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    mb_11(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    mb_112(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    mb_12(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    mb_128(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    mb_16(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    mb_1_12(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    mb_1_2(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    mb_1_3(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    mb_1_4(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    mb_1_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    mb_1_6(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    mb_1p5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    mb_2(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    mb_20(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    mb_24(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    mb_2_3(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (2/4)
      */
 )GPUI_DTS";
-static const char kShellTypes23[] = R"GPUI_DTS(    mb_2_4(): Element;
+static const char kShellTypes26[] =
+    R"GPUI_DTS(    mb_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    mb_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    mb_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    mb_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    mb_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    mb_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    mb_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    mb_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    mb_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    mb_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    mb_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    mb_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    mb_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    mb_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    mb_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    mb_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    mb_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    mb_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    mb_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    mb_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    mb_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40% (2/5)
      */
-    mb_2_5(): Element;
+    mb_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    mb_2p5(): Element;
+    mb_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    mb_3(): Element;
+    mb_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 128px (8rem)
      */
-    mb_32(): Element;
+    mb_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 75% (3/4)
      */
-    mb_3_4(): Element;
+    mb_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 60% (3/5)
      */
-    mb_3_5(): Element;
+    mb_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 14px (0.875rem)
      */
-    mb_3p5(): Element;
+    mb_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16px (1rem)
      */
-    mb_4(): Element;
+    mb_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 160px (10rem)
      */
-    mb_40(): Element;
+    mb_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 192px (12rem)
      */
-    mb_48(): Element;
+    mb_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (4/5)
      */
-    mb_4_5(): Element;
+    mb_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20px (1.25rem)
      */
-    mb_5(): Element;
+    mb_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 224px (14rem)
      */
-    mb_56(): Element;
+    mb_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (5/6)
      */
-    mb_5_6(): Element;
+    mb_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 24px (1.5rem)
      */
-    mb_6(): Element;
+    mb_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 256px (16rem)
      */
-    mb_64(): Element;
+    mb_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    mb_7(): Element;
+    mb_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 288px (18rem)
      */
-    mb_72(): Element;
+    mb_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 32px (2rem)
      */
-    mb_8(): Element;
+    mb_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 320px (20rem)
      */
-    mb_80(): Element;
+    mb_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    mb_9(): Element;
+    mb_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    mb_96(): Element;
+    mb_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * Auto
      */
-    mb_auto(): Element;
+    mb_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    mb_full(): Element;
+    mb_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
      */
-    mb_neg_0(): Element;
+    mb_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    mb_neg_0p5(): Element;
+    mb_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    mb_neg_1(): Element;
+    mb_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    mb_neg_10(): Element;
+    mb_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    mb_neg_11(): Element;
+    mb_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 448px (28rem)
      */
-    mb_neg_112(): Element;
+    mb_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 48px (3rem)
      */
-    mb_neg_12(): Element;
+    mb_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 512px (32rem)
      */
-    mb_neg_128(): Element;
+    mb_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 64px (4rem)
      */
-    mb_neg_16(): Element;
+    mb_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8% (1/12)
      */
-    mb_neg_1_12(): Element;
+    mb_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (1/2)
      */
-    mb_neg_1_2(): Element;
+    mb_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 33% (1/3)
      */
-    mb_neg_1_3(): Element;
+    mb_neg_1_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    mb_neg_1_4(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    mb_neg_1_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    mb_neg_1_6(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    mb_neg_1p5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    mb_neg_2(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    mb_neg_20(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    mb_neg_24(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    mb_neg_2_3(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    mb_neg_2_4(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    mb_neg_2_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    mb_neg_2p5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    mb_neg_3(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    mb_neg_32(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    mb_neg_3_4(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    mb_neg_3_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    mb_neg_3p5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    mb_neg_4(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    mb_neg_40(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    mb_neg_48(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    mb_neg_4_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    mb_neg_5(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    mb_neg_56(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    mb_neg_5_6(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    mb_neg_6(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    mb_neg_64(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    mb_neg_7(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    mb_neg_72(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    mb_neg_8(): Element;
-    /**
-     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
 )GPUI_DTS";
-static const char kShellTypes24[] = R"GPUI_DTS(     *
+static const char kShellTypes27[] =
+    R"GPUI_DTS(     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    mb_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    mb_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    mb_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    mb_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    mb_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    mb_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    mb_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    mb_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    mb_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    mb_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    mb_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    mb_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    mb_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    mb_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    mb_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    mb_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    mb_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    mb_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    mb_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    mb_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    mb_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    mb_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    mb_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    mb_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    mb_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    mb_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    mb_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    mb_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
      * 320px (20rem)
      */
-    mb_neg_80(): Element;
+    mb_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    mb_neg_9(): Element;
+    mb_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    mb_neg_96(): Element;
+    mb_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    mb_neg_full(): Element;
+    mb_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    mb_neg_px(): Element;
+    mb_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    mb_px(): Element;
+    mb_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 0px
      */
-    min_h_0(): Element;
+    min_h_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 2px (0.125rem)
      */
-    min_h_0p5(): Element;
+    min_h_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 4px (0.25rem)
      */
-    min_h_1(): Element;
+    min_h_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 40px (2.5rem)
      */
-    min_h_10(): Element;
+    min_h_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 44px (2.75rem)
      */
-    min_h_11(): Element;
+    min_h_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 448px (28rem)
      */
-    min_h_112(): Element;
+    min_h_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 48px (3rem)
      */
-    min_h_12(): Element;
+    min_h_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 512px (32rem)
      */
-    min_h_128(): Element;
+    min_h_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 64px (4rem)
      */
-    min_h_16(): Element;
+    min_h_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 8% (1/12)
      */
-    min_h_1_12(): Element;
+    min_h_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 50% (1/2)
      */
-    min_h_1_2(): Element;
+    min_h_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 33% (1/3)
      */
-    min_h_1_3(): Element;
+    min_h_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 25% (1/4)
      */
-    min_h_1_4(): Element;
+    min_h_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 20% (1/5)
      */
-    min_h_1_5(): Element;
+    min_h_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 16% (1/6)
      */
-    min_h_1_6(): Element;
+    min_h_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 6px (0.375rem)
      */
-    min_h_1p5(): Element;
+    min_h_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 8px (0.5rem)
      */
-    min_h_2(): Element;
+    min_h_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 80px (5rem)
      */
-    min_h_20(): Element;
+    min_h_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 96px (6rem)
      */
-    min_h_24(): Element;
+    min_h_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 66% (2/3)
      */
-    min_h_2_3(): Element;
+    min_h_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 50% (2/4)
      */
-    min_h_2_4(): Element;
+    min_h_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 40% (2/5)
      */
-    min_h_2_5(): Element;
+    min_h_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 10px (0.625rem)
      */
-    min_h_2p5(): Element;
+    min_h_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 12px (0.75rem)
      */
-    min_h_3(): Element;
+    min_h_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
+)GPUI_DTS";
+static const char kShellTypes28[] = R"GPUI_DTS(     *
      * 128px (8rem)
      */
-    min_h_32(): Element;
+    min_h_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 75% (3/4)
      */
-    min_h_3_4(): Element;
+    min_h_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 60% (3/5)
      */
-    min_h_3_5(): Element;
+    min_h_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 14px (0.875rem)
      */
-    min_h_3p5(): Element;
+    min_h_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 16px (1rem)
      */
-    min_h_4(): Element;
+    min_h_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 160px (10rem)
      */
-    min_h_40(): Element;
+    min_h_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 192px (12rem)
      */
-    min_h_48(): Element;
+    min_h_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 80% (4/5)
      */
-    min_h_4_5(): Element;
+    min_h_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 20px (1.25rem)
      */
-    min_h_5(): Element;
+    min_h_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 224px (14rem)
      */
-    min_h_56(): Element;
+    min_h_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 80% (5/6)
      */
-    min_h_5_6(): Element;
+    min_h_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 24px (1.5rem)
      */
-    min_h_6(): Element;
+    min_h_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 256px (16rem)
      */
-    min_h_64(): Element;
+    min_h_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 28px (1.75rem)
      */
-    min_h_7(): Element;
+    min_h_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 288px (18rem)
      */
-    min_h_72(): Element;
+    min_h_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 32px (2rem)
      */
-    min_h_8(): Element;
+    min_h_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 320px (20rem)
      */
-    min_h_80(): Element;
+    min_h_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 36px (2.25rem)
      */
-    min_h_9(): Element;
+    min_h_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 384px (24rem)
      */
-    min_h_96(): Element;
+    min_h_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * Auto
      */
-    min_h_auto(): Element;
+    min_h_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 100%
      */
-    min_h_full(): Element;
+    min_h_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 0px
      */
-    min_h_neg_0(): Element;
+    min_h_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 2px (0.125rem)
      */
-    min_h_neg_0p5(): Element;
+    min_h_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 4px (0.25rem)
      */
-    min_h_neg_1(): Element;
+    min_h_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 40px (2.5rem)
      */
-    min_h_neg_10(): Element;
+    min_h_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 44px (2.75rem)
      */
-    min_h_neg_11(): Element;
+    min_h_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 448px (28rem)
      */
-    min_h_neg_112(): Element;
+    min_h_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 48px (3rem)
      */
-    min_h_neg_12(): Element;
+    min_h_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 512px (32rem)
      */
-    min_h_neg_128(): Element;
+    min_h_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 64px (4rem)
      */
-    min_h_neg_16(): Element;
+    min_h_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 8% (1/12)
      */
-    min_h_neg_1_12(): Element;
+    min_h_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 50% (1/2)
      */
-    min_h_neg_1_2(): Element;
+    min_h_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 33% (1/3)
      */
-    min_h_neg_1_3(): Element;
+    min_h_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 25% (1/4)
      */
-    min_h_neg_1_4(): Element;
+    min_h_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 20% (1/5)
      */
-    min_h_neg_1_5(): Element;
+    min_h_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 16% (1/6)
      */
-    min_h_neg_1_6(): Element;
+    min_h_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 6px (0.375rem)
      */
-    min_h_neg_1p5(): Element;
+    min_h_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 8px (0.5rem)
      */
-    min_h_neg_2(): Element;
+    min_h_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 80px (5rem)
      */
-    min_h_neg_20(): Element;
+    min_h_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 96px (6rem)
      */
-    min_h_neg_24(): Element;
+    min_h_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 66% (2/3)
      */
-    min_h_neg_2_3(): Element;
+    min_h_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 50% (2/4)
      */
-    min_h_neg_2_4(): Element;
+    min_h_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 40% (2/5)
      */
-    min_h_neg_2_5(): Element;
+    min_h_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 10px (0.625rem)
+     */
+    min_h_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 12px (0.75rem)
+     */
+    min_h_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 128px (8rem)
+     */
+    min_h_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 75% (3/4)
+     */
+    min_h_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 60% (3/5)
+     */
+    min_h_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 14px (0.875rem)
+     */
+    min_h_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 16px (1rem)
+     */
+    min_h_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 160px (10rem)
+     */
+    min_h_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 192px (12rem)
+     */
+    min_h_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 80% (4/5)
+     */
+    min_h_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 20px (1.25rem)
+     */
+    min_h_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 224px (14rem)
+     */
+    min_h_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 80% (5/6)
+     */
+    min_h_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 24px (1.5rem)
+     */
+    min_h_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 256px (16rem)
+     */
+    min_h_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 28px (1.75rem)
+     */
+    min_h_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 288px (18rem)
+     */
+    min_h_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 32px (2rem)
+     */
+    min_h_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+     *
+     * 320px (20rem)
+     */
+    min_h_neg_80<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes25[] = R"GPUI_DTS(     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 10px (0.625rem)
-     */
-    min_h_neg_2p5(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 12px (0.75rem)
-     */
-    min_h_neg_3(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 128px (8rem)
-     */
-    min_h_neg_32(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 75% (3/4)
-     */
-    min_h_neg_3_4(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 60% (3/5)
-     */
-    min_h_neg_3_5(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 14px (0.875rem)
-     */
-    min_h_neg_3p5(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 16px (1rem)
-     */
-    min_h_neg_4(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 160px (10rem)
-     */
-    min_h_neg_40(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 192px (12rem)
-     */
-    min_h_neg_48(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 80% (4/5)
-     */
-    min_h_neg_4_5(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 20px (1.25rem)
-     */
-    min_h_neg_5(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 224px (14rem)
-     */
-    min_h_neg_56(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 80% (5/6)
-     */
-    min_h_neg_5_6(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 24px (1.5rem)
-     */
-    min_h_neg_6(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 256px (16rem)
-     */
-    min_h_neg_64(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 28px (1.75rem)
-     */
-    min_h_neg_7(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 288px (18rem)
-     */
-    min_h_neg_72(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 32px (2rem)
-     */
-    min_h_neg_8(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
-     *
-     * 320px (20rem)
-     */
-    min_h_neg_80(): Element;
-    /**
-     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
+static const char kShellTypes29[] =
+    R"GPUI_DTS(     * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 36px (2.25rem)
      */
-    min_h_neg_9(): Element;
+    min_h_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 384px (24rem)
      */
-    min_h_neg_96(): Element;
+    min_h_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 100%
      */
-    min_h_neg_full(): Element;
+    min_h_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 1px
      */
-    min_h_neg_px(): Element;
+    min_h_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum height of the element. [Docs](https://tailwindcss.com/docs/min-height)
      *
      * 1px
      */
-    min_h_px(): Element;
+    min_h_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 0px
      */
-    min_size_0(): Element;
+    min_size_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 2px (0.125rem)
      */
-    min_size_0p5(): Element;
+    min_size_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 4px (0.25rem)
      */
-    min_size_1(): Element;
+    min_size_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 40px (2.5rem)
      */
-    min_size_10(): Element;
+    min_size_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 44px (2.75rem)
      */
-    min_size_11(): Element;
+    min_size_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 448px (28rem)
      */
-    min_size_112(): Element;
+    min_size_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 48px (3rem)
      */
-    min_size_12(): Element;
+    min_size_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 512px (32rem)
      */
-    min_size_128(): Element;
+    min_size_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 64px (4rem)
      */
-    min_size_16(): Element;
+    min_size_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 8% (1/12)
      */
-    min_size_1_12(): Element;
+    min_size_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 50% (1/2)
      */
-    min_size_1_2(): Element;
+    min_size_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 33% (1/3)
      */
-    min_size_1_3(): Element;
+    min_size_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 25% (1/4)
      */
-    min_size_1_4(): Element;
+    min_size_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 20% (1/5)
      */
-    min_size_1_5(): Element;
+    min_size_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 16% (1/6)
      */
-    min_size_1_6(): Element;
+    min_size_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 6px (0.375rem)
      */
-    min_size_1p5(): Element;
+    min_size_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 8px (0.5rem)
      */
-    min_size_2(): Element;
+    min_size_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 80px (5rem)
      */
-    min_size_20(): Element;
+    min_size_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 96px (6rem)
      */
-    min_size_24(): Element;
+    min_size_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 66% (2/3)
      */
-    min_size_2_3(): Element;
+    min_size_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 50% (2/4)
      */
-    min_size_2_4(): Element;
+    min_size_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 40% (2/5)
      */
-    min_size_2_5(): Element;
+    min_size_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 10px (0.625rem)
      */
-    min_size_2p5(): Element;
+    min_size_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 12px (0.75rem)
      */
-    min_size_3(): Element;
+    min_size_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 128px (8rem)
      */
-    min_size_32(): Element;
+    min_size_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 75% (3/4)
      */
-    min_size_3_4(): Element;
+    min_size_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 60% (3/5)
      */
-    min_size_3_5(): Element;
+    min_size_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 14px (0.875rem)
      */
-    min_size_3p5(): Element;
+    min_size_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 16px (1rem)
      */
-    min_size_4(): Element;
+    min_size_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 160px (10rem)
      */
-    min_size_40(): Element;
+    min_size_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 192px (12rem)
      */
-    min_size_48(): Element;
+    min_size_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 80% (4/5)
      */
-    min_size_4_5(): Element;
+    min_size_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 20px (1.25rem)
      */
-    min_size_5(): Element;
+    min_size_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 224px (14rem)
      */
-    min_size_56(): Element;
+    min_size_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 80% (5/6)
      */
-    min_size_5_6(): Element;
+    min_size_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 24px (1.5rem)
      */
-    min_size_6(): Element;
+    min_size_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 256px (16rem)
      */
-    min_size_64(): Element;
+    min_size_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 28px (1.75rem)
      */
-    min_size_7(): Element;
+    min_size_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 288px (18rem)
      */
-    min_size_72(): Element;
+    min_size_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 32px (2rem)
      */
-    min_size_8(): Element;
+    min_size_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 320px (20rem)
      */
-    min_size_80(): Element;
+    min_size_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 36px (2.25rem)
      */
-    min_size_9(): Element;
+    min_size_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 384px (24rem)
      */
-    min_size_96(): Element;
+    min_size_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * Auto
      */
-    min_size_auto(): Element;
+    min_size_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 100%
      */
-    min_size_full(): Element;
+    min_size_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 0px
      */
-    min_size_neg_0(): Element;
+    min_size_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 2px (0.125rem)
      */
-    min_size_neg_0p5(): Element;
+    min_size_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 4px (0.25rem)
      */
-    min_size_neg_1(): Element;
+    min_size_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 40px (2.5rem)
      */
-    min_size_neg_10(): Element;
+    min_size_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 44px (2.75rem)
      */
-    min_size_neg_11(): Element;
+    min_size_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 448px (28rem)
      */
-    min_size_neg_112(): Element;
+    min_size_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 48px (3rem)
      */
-    min_size_neg_12(): Element;
+    min_size_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 512px (32rem)
      */
-    min_size_neg_128(): Element;
+    min_size_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 64px (4rem)
      */
-    min_size_neg_16(): Element;
+    min_size_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 8% (1/12)
      */
-    min_size_neg_1_12(): Element;
+    min_size_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 50% (1/2)
      */
-    min_size_neg_1_2(): Element;
+    min_size_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 33% (1/3)
      */
-    min_size_neg_1_3(): Element;
+    min_size_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 25% (1/4)
      */
-    min_size_neg_1_4(): Element;
+    min_size_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 20% (1/5)
      */
-    min_size_neg_1_5(): Element;
+    min_size_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 16% (1/6)
      */
-    min_size_neg_1_6(): Element;
+    min_size_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 6px (0.375rem)
      */
-    min_size_neg_1p5(): Element;
+    min_size_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 8px (0.5rem)
      */
-    min_size_neg_2(): Element;
+    min_size_neg_2<Self extends Element>(this: Self): Self;
     /**
+     * Sets the minimum width and height of the element.
+     *
+     * 80px (5rem)
+     */
+    min_size_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 96px (6rem)
+     */
+    min_size_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 66% (2/3)
+     */
+    min_size_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 50% (2/4)
+     */
+    min_size_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 40% (2/5)
+     */
+    min_size_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 10px (0.625rem)
+     */
+    min_size_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 12px (0.75rem)
+     */
+    min_size_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the minimum width and height of the element.
+     *
+     * 128px (8rem)
+     */
+    min_size_neg_32<Self extends Element>(this: Self): Self;
 )GPUI_DTS";
-static const char kShellTypes26[] = R"GPUI_DTS(     * Sets the minimum width and height of the element.
-     *
-     * 80px (5rem)
-     */
-    min_size_neg_20(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 96px (6rem)
-     */
-    min_size_neg_24(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 66% (2/3)
-     */
-    min_size_neg_2_3(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 50% (2/4)
-     */
-    min_size_neg_2_4(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 40% (2/5)
-     */
-    min_size_neg_2_5(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 10px (0.625rem)
-     */
-    min_size_neg_2p5(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 12px (0.75rem)
-     */
-    min_size_neg_3(): Element;
-    /**
-     * Sets the minimum width and height of the element.
-     *
-     * 128px (8rem)
-     */
-    min_size_neg_32(): Element;
-    /**
+static const char kShellTypes30[] = R"GPUI_DTS(    /**
      * Sets the minimum width and height of the element.
      *
      * 75% (3/4)
      */
-    min_size_neg_3_4(): Element;
+    min_size_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 60% (3/5)
      */
-    min_size_neg_3_5(): Element;
+    min_size_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 14px (0.875rem)
      */
-    min_size_neg_3p5(): Element;
+    min_size_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 16px (1rem)
      */
-    min_size_neg_4(): Element;
+    min_size_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 160px (10rem)
      */
-    min_size_neg_40(): Element;
+    min_size_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 192px (12rem)
      */
-    min_size_neg_48(): Element;
+    min_size_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 80% (4/5)
      */
-    min_size_neg_4_5(): Element;
+    min_size_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 20px (1.25rem)
      */
-    min_size_neg_5(): Element;
+    min_size_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 224px (14rem)
      */
-    min_size_neg_56(): Element;
+    min_size_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 80% (5/6)
      */
-    min_size_neg_5_6(): Element;
+    min_size_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 24px (1.5rem)
      */
-    min_size_neg_6(): Element;
+    min_size_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 256px (16rem)
      */
-    min_size_neg_64(): Element;
+    min_size_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 28px (1.75rem)
      */
-    min_size_neg_7(): Element;
+    min_size_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 288px (18rem)
      */
-    min_size_neg_72(): Element;
+    min_size_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 32px (2rem)
      */
-    min_size_neg_8(): Element;
+    min_size_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 320px (20rem)
      */
-    min_size_neg_80(): Element;
+    min_size_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 36px (2.25rem)
      */
-    min_size_neg_9(): Element;
+    min_size_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 384px (24rem)
      */
-    min_size_neg_96(): Element;
+    min_size_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 100%
      */
-    min_size_neg_full(): Element;
+    min_size_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 1px
      */
-    min_size_neg_px(): Element;
+    min_size_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width and height of the element.
      *
      * 1px
      */
-    min_size_px(): Element;
+    min_size_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 0px
      */
-    min_w_0(): Element;
+    min_w_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 2px (0.125rem)
      */
-    min_w_0p5(): Element;
+    min_w_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 4px (0.25rem)
      */
-    min_w_1(): Element;
+    min_w_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 40px (2.5rem)
      */
-    min_w_10(): Element;
+    min_w_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 44px (2.75rem)
      */
-    min_w_11(): Element;
+    min_w_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 448px (28rem)
      */
-    min_w_112(): Element;
+    min_w_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 48px (3rem)
      */
-    min_w_12(): Element;
+    min_w_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 512px (32rem)
      */
-    min_w_128(): Element;
+    min_w_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 64px (4rem)
      */
-    min_w_16(): Element;
+    min_w_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 8% (1/12)
      */
-    min_w_1_12(): Element;
+    min_w_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 50% (1/2)
      */
-    min_w_1_2(): Element;
+    min_w_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 33% (1/3)
      */
-    min_w_1_3(): Element;
+    min_w_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 25% (1/4)
      */
-    min_w_1_4(): Element;
+    min_w_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 20% (1/5)
      */
-    min_w_1_5(): Element;
+    min_w_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 16% (1/6)
      */
-    min_w_1_6(): Element;
+    min_w_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 6px (0.375rem)
      */
-    min_w_1p5(): Element;
+    min_w_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 8px (0.5rem)
      */
-    min_w_2(): Element;
+    min_w_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80px (5rem)
      */
-    min_w_20(): Element;
+    min_w_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 96px (6rem)
      */
-    min_w_24(): Element;
+    min_w_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 66% (2/3)
      */
-    min_w_2_3(): Element;
+    min_w_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 50% (2/4)
      */
-    min_w_2_4(): Element;
+    min_w_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 40% (2/5)
      */
-    min_w_2_5(): Element;
+    min_w_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 10px (0.625rem)
      */
-    min_w_2p5(): Element;
+    min_w_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 12px (0.75rem)
      */
-    min_w_3(): Element;
+    min_w_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 128px (8rem)
      */
-    min_w_32(): Element;
+    min_w_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 75% (3/4)
      */
-    min_w_3_4(): Element;
+    min_w_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 60% (3/5)
      */
-    min_w_3_5(): Element;
+    min_w_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 14px (0.875rem)
      */
-    min_w_3p5(): Element;
+    min_w_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 16px (1rem)
      */
-    min_w_4(): Element;
+    min_w_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 160px (10rem)
      */
-    min_w_40(): Element;
+    min_w_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 192px (12rem)
      */
-    min_w_48(): Element;
+    min_w_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80% (4/5)
      */
-    min_w_4_5(): Element;
+    min_w_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 20px (1.25rem)
      */
-    min_w_5(): Element;
+    min_w_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 224px (14rem)
      */
-    min_w_56(): Element;
+    min_w_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80% (5/6)
      */
-    min_w_5_6(): Element;
+    min_w_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 24px (1.5rem)
      */
-    min_w_6(): Element;
+    min_w_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 256px (16rem)
      */
-    min_w_64(): Element;
+    min_w_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 28px (1.75rem)
      */
-    min_w_7(): Element;
+    min_w_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 288px (18rem)
      */
-    min_w_72(): Element;
+    min_w_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 32px (2rem)
      */
-    min_w_8(): Element;
+    min_w_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 320px (20rem)
      */
-    min_w_80(): Element;
+    min_w_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 36px (2.25rem)
      */
-    min_w_9(): Element;
+    min_w_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 384px (24rem)
      */
-    min_w_96(): Element;
+    min_w_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * Auto
      */
-    min_w_auto(): Element;
+    min_w_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 100%
      */
-    min_w_full(): Element;
+    min_w_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 0px
-     */
-    min_w_neg_0(): Element;
+)GPUI_DTS";
+static const char kShellTypes31[] = R"GPUI_DTS(     */
+    min_w_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 2px (0.125rem)
      */
-    min_w_neg_0p5(): Element;
+    min_w_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 4px (0.25rem)
      */
-    min_w_neg_1(): Element;
+    min_w_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 40px (2.5rem)
      */
-    min_w_neg_10(): Element;
+    min_w_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 44px (2.75rem)
      */
-    min_w_neg_11(): Element;
+    min_w_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 448px (28rem)
      */
-    min_w_neg_112(): Element;
-)GPUI_DTS";
-static const char kShellTypes27[] = R"GPUI_DTS(    /**
+    min_w_neg_112<Self extends Element>(this: Self): Self;
+    /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 48px (3rem)
      */
-    min_w_neg_12(): Element;
+    min_w_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 512px (32rem)
      */
-    min_w_neg_128(): Element;
+    min_w_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 64px (4rem)
      */
-    min_w_neg_16(): Element;
+    min_w_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 8% (1/12)
      */
-    min_w_neg_1_12(): Element;
+    min_w_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 50% (1/2)
      */
-    min_w_neg_1_2(): Element;
+    min_w_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 33% (1/3)
      */
-    min_w_neg_1_3(): Element;
+    min_w_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 25% (1/4)
      */
-    min_w_neg_1_4(): Element;
+    min_w_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 20% (1/5)
      */
-    min_w_neg_1_5(): Element;
+    min_w_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 16% (1/6)
      */
-    min_w_neg_1_6(): Element;
+    min_w_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 6px (0.375rem)
      */
-    min_w_neg_1p5(): Element;
+    min_w_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 8px (0.5rem)
      */
-    min_w_neg_2(): Element;
+    min_w_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80px (5rem)
      */
-    min_w_neg_20(): Element;
+    min_w_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 96px (6rem)
      */
-    min_w_neg_24(): Element;
+    min_w_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 66% (2/3)
      */
-    min_w_neg_2_3(): Element;
+    min_w_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 50% (2/4)
      */
-    min_w_neg_2_4(): Element;
+    min_w_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 40% (2/5)
      */
-    min_w_neg_2_5(): Element;
+    min_w_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 10px (0.625rem)
      */
-    min_w_neg_2p5(): Element;
+    min_w_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 12px (0.75rem)
      */
-    min_w_neg_3(): Element;
+    min_w_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 128px (8rem)
      */
-    min_w_neg_32(): Element;
+    min_w_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 75% (3/4)
      */
-    min_w_neg_3_4(): Element;
+    min_w_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 60% (3/5)
      */
-    min_w_neg_3_5(): Element;
+    min_w_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 14px (0.875rem)
      */
-    min_w_neg_3p5(): Element;
+    min_w_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 16px (1rem)
      */
-    min_w_neg_4(): Element;
+    min_w_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 160px (10rem)
      */
-    min_w_neg_40(): Element;
+    min_w_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 192px (12rem)
      */
-    min_w_neg_48(): Element;
+    min_w_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80% (4/5)
      */
-    min_w_neg_4_5(): Element;
+    min_w_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 20px (1.25rem)
      */
-    min_w_neg_5(): Element;
+    min_w_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 224px (14rem)
      */
-    min_w_neg_56(): Element;
+    min_w_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 80% (5/6)
      */
-    min_w_neg_5_6(): Element;
+    min_w_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 24px (1.5rem)
      */
-    min_w_neg_6(): Element;
+    min_w_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 256px (16rem)
      */
-    min_w_neg_64(): Element;
+    min_w_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 28px (1.75rem)
      */
-    min_w_neg_7(): Element;
+    min_w_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 288px (18rem)
      */
-    min_w_neg_72(): Element;
+    min_w_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 32px (2rem)
      */
-    min_w_neg_8(): Element;
+    min_w_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 320px (20rem)
      */
-    min_w_neg_80(): Element;
+    min_w_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 36px (2.25rem)
      */
-    min_w_neg_9(): Element;
+    min_w_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 384px (24rem)
      */
-    min_w_neg_96(): Element;
+    min_w_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 100%
      */
-    min_w_neg_full(): Element;
+    min_w_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 1px
      */
-    min_w_neg_px(): Element;
+    min_w_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the minimum width of the element. [Docs](https://tailwindcss.com/docs/min-width)
      *
      * 1px
      */
-    min_w_px(): Element;
+    min_w_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
      */
-    ml_0(): Element;
+    ml_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    ml_0p5(): Element;
+    ml_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    ml_1(): Element;
+    ml_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    ml_10(): Element;
+    ml_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    ml_11(): Element;
+    ml_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 448px (28rem)
      */
-    ml_112(): Element;
+    ml_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 48px (3rem)
      */
-    ml_12(): Element;
+    ml_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 512px (32rem)
      */
-    ml_128(): Element;
+    ml_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 64px (4rem)
      */
-    ml_16(): Element;
+    ml_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8% (1/12)
      */
-    ml_1_12(): Element;
+    ml_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (1/2)
      */
-    ml_1_2(): Element;
+    ml_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 33% (1/3)
      */
-    ml_1_3(): Element;
+    ml_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 25% (1/4)
      */
-    ml_1_4(): Element;
+    ml_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20% (1/5)
      */
-    ml_1_5(): Element;
+    ml_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16% (1/6)
      */
-    ml_1_6(): Element;
+    ml_1_6<Self extends Element>(this: Self): Self;
     /**
-     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+)GPUI_DTS";
+static const char kShellTypes32[] =
+    R"GPUI_DTS(     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 6px (0.375rem)
      */
-    ml_1p5(): Element;
+    ml_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8px (0.5rem)
      */
-    ml_2(): Element;
+    ml_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80px (5rem)
      */
-    ml_20(): Element;
+    ml_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 96px (6rem)
      */
-    ml_24(): Element;
+    ml_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 66% (2/3)
      */
-    ml_2_3(): Element;
+    ml_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (2/4)
      */
-    ml_2_4(): Element;
+    ml_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40% (2/5)
      */
-    ml_2_5(): Element;
+    ml_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    ml_2p5(): Element;
+    ml_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    ml_3(): Element;
+    ml_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 128px (8rem)
      */
-    ml_32(): Element;
+    ml_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 75% (3/4)
      */
-    ml_3_4(): Element;
+    ml_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 60% (3/5)
      */
-    ml_3_5(): Element;
+    ml_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 14px (0.875rem)
      */
-    ml_3p5(): Element;
+    ml_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16px (1rem)
      */
-    ml_4(): Element;
+    ml_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 160px (10rem)
      */
-    ml_40(): Element;
+    ml_40<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes28[] = R"GPUI_DTS(     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 192px (12rem)
      */
-    ml_48(): Element;
+    ml_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (4/5)
      */
-    ml_4_5(): Element;
+    ml_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20px (1.25rem)
      */
-    ml_5(): Element;
+    ml_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 224px (14rem)
      */
-    ml_56(): Element;
+    ml_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (5/6)
      */
-    ml_5_6(): Element;
+    ml_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 24px (1.5rem)
      */
-    ml_6(): Element;
+    ml_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 256px (16rem)
      */
-    ml_64(): Element;
+    ml_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    ml_7(): Element;
+    ml_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 288px (18rem)
      */
-    ml_72(): Element;
+    ml_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 32px (2rem)
      */
-    ml_8(): Element;
+    ml_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 320px (20rem)
      */
-    ml_80(): Element;
+    ml_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    ml_9(): Element;
+    ml_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    ml_96(): Element;
+    ml_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * Auto
      */
-    ml_auto(): Element;
+    ml_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    ml_full(): Element;
+    ml_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
      */
-    ml_neg_0(): Element;
+    ml_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    ml_neg_0p5(): Element;
+    ml_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    ml_neg_1(): Element;
+    ml_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    ml_neg_10(): Element;
+    ml_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    ml_neg_11(): Element;
+    ml_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 448px (28rem)
      */
-    ml_neg_112(): Element;
+    ml_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 48px (3rem)
      */
-    ml_neg_12(): Element;
+    ml_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 512px (32rem)
      */
-    ml_neg_128(): Element;
+    ml_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 64px (4rem)
      */
-    ml_neg_16(): Element;
+    ml_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8% (1/12)
      */
-    ml_neg_1_12(): Element;
+    ml_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (1/2)
      */
-    ml_neg_1_2(): Element;
+    ml_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 33% (1/3)
      */
-    ml_neg_1_3(): Element;
+    ml_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 25% (1/4)
      */
-    ml_neg_1_4(): Element;
+    ml_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20% (1/5)
      */
-    ml_neg_1_5(): Element;
+    ml_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16% (1/6)
      */
-    ml_neg_1_6(): Element;
+    ml_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 6px (0.375rem)
      */
-    ml_neg_1p5(): Element;
+    ml_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8px (0.5rem)
      */
-    ml_neg_2(): Element;
+    ml_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80px (5rem)
      */
-    ml_neg_20(): Element;
+    ml_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 96px (6rem)
      */
-    ml_neg_24(): Element;
+    ml_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 66% (2/3)
      */
-    ml_neg_2_3(): Element;
+    ml_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (2/4)
      */
-    ml_neg_2_4(): Element;
+    ml_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40% (2/5)
      */
-    ml_neg_2_5(): Element;
+    ml_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    ml_neg_2p5(): Element;
+    ml_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    ml_neg_3(): Element;
+    ml_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 128px (8rem)
      */
-    ml_neg_32(): Element;
+    ml_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 75% (3/4)
      */
-    ml_neg_3_4(): Element;
+    ml_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 60% (3/5)
      */
-    ml_neg_3_5(): Element;
+)GPUI_DTS";
+static const char kShellTypes33[] =
+    R"GPUI_DTS(    ml_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 14px (0.875rem)
      */
-    ml_neg_3p5(): Element;
+    ml_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16px (1rem)
      */
-    ml_neg_4(): Element;
+    ml_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 160px (10rem)
      */
-    ml_neg_40(): Element;
+    ml_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 192px (12rem)
      */
-    ml_neg_48(): Element;
+    ml_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (4/5)
      */
-    ml_neg_4_5(): Element;
+    ml_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20px (1.25rem)
      */
-    ml_neg_5(): Element;
+    ml_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 224px (14rem)
      */
-    ml_neg_56(): Element;
+    ml_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (5/6)
      */
-    ml_neg_5_6(): Element;
+    ml_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 24px (1.5rem)
      */
-    ml_neg_6(): Element;
+    ml_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 256px (16rem)
      */
-    ml_neg_64(): Element;
+    ml_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    ml_neg_7(): Element;
+    ml_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 288px (18rem)
      */
-    ml_neg_72(): Element;
+    ml_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 32px (2rem)
      */
-    ml_neg_8(): Element;
+    ml_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 320px (20rem)
      */
-    ml_neg_80(): Element;
+    ml_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    ml_neg_9(): Element;
+    ml_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    ml_neg_96(): Element;
+    ml_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    ml_neg_full(): Element;
+    ml_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    ml_neg_px(): Element;
+    ml_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the left margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    ml_px(): Element;
+    ml_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
      */
-    mr_0(): Element;
+    mr_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    mr_0p5(): Element;
+    mr_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    mr_1(): Element;
+    mr_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    mr_10(): Element;
+    mr_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    mr_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    mr_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    mr_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    mr_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    mr_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    mr_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    mr_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    mr_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    mr_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    mr_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    mr_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    mr_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    mr_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    mr_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    mr_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    mr_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    mr_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    mr_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    mr_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    mr_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    mr_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    mr_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    mr_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    mr_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    mr_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    mr_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    mr_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    mr_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    mr_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    mr_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    mr_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    mr_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    mr_64<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes29[] = R"GPUI_DTS(     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    mr_11(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    mr_112(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    mr_12(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    mr_128(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    mr_16(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    mr_1_12(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    mr_1_2(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    mr_1_3(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    mr_1_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    mr_1_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    mr_1_6(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    mr_1p5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    mr_2(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    mr_20(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    mr_24(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    mr_2_3(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    mr_2_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    mr_2_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    mr_2p5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    mr_3(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    mr_32(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    mr_3_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    mr_3_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    mr_3p5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    mr_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    mr_40(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    mr_48(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    mr_4_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    mr_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    mr_56(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    mr_5_6(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    mr_6(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    mr_64(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+static const char kShellTypes34[] =
+    R"GPUI_DTS(     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    mr_7(): Element;
+    mr_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 288px (18rem)
      */
-    mr_72(): Element;
+    mr_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 32px (2rem)
      */
-    mr_8(): Element;
+    mr_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 320px (20rem)
      */
-    mr_80(): Element;
+    mr_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    mr_9(): Element;
+    mr_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    mr_96(): Element;
+    mr_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * Auto
      */
-    mr_auto(): Element;
+    mr_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    mr_full(): Element;
+    mr_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 0px
      */
-    mr_neg_0(): Element;
+    mr_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    mr_neg_0p5(): Element;
+    mr_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    mr_neg_1(): Element;
+    mr_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    mr_neg_10(): Element;
+    mr_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    mr_neg_11(): Element;
+    mr_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 448px (28rem)
      */
-    mr_neg_112(): Element;
+    mr_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 48px (3rem)
      */
-    mr_neg_12(): Element;
+    mr_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 512px (32rem)
      */
-    mr_neg_128(): Element;
+    mr_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 64px (4rem)
      */
-    mr_neg_16(): Element;
+    mr_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8% (1/12)
      */
-    mr_neg_1_12(): Element;
+    mr_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (1/2)
      */
-    mr_neg_1_2(): Element;
+    mr_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 33% (1/3)
      */
-    mr_neg_1_3(): Element;
+    mr_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 25% (1/4)
      */
-    mr_neg_1_4(): Element;
+    mr_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20% (1/5)
      */
-    mr_neg_1_5(): Element;
+    mr_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16% (1/6)
      */
-    mr_neg_1_6(): Element;
+    mr_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 6px (0.375rem)
      */
-    mr_neg_1p5(): Element;
+    mr_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8px (0.5rem)
      */
-    mr_neg_2(): Element;
+    mr_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80px (5rem)
      */
-    mr_neg_20(): Element;
+    mr_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 96px (6rem)
      */
-    mr_neg_24(): Element;
+    mr_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 66% (2/3)
      */
-    mr_neg_2_3(): Element;
+    mr_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (2/4)
      */
-    mr_neg_2_4(): Element;
+    mr_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40% (2/5)
      */
-    mr_neg_2_5(): Element;
+    mr_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    mr_neg_2p5(): Element;
+    mr_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    mr_neg_3(): Element;
+    mr_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    mr_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    mr_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    mr_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    mr_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    mr_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    mr_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    mr_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    mr_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    mr_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    mr_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    mr_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    mr_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    mr_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    mr_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    mr_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    mr_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    mr_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    mr_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    mr_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 100%
+     */
+    mr_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 1px
+     */
+    mr_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 1px
+     */
+    mr_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 0px
+     */
+    mt_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    mt_0p5<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes30[] = R"GPUI_DTS(     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    mr_neg_32(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    mr_neg_3_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    mr_neg_3_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    mr_neg_3p5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    mr_neg_4(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    mr_neg_40(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    mr_neg_48(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    mr_neg_4_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    mr_neg_5(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    mr_neg_56(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    mr_neg_5_6(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    mr_neg_6(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    mr_neg_64(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    mr_neg_7(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    mr_neg_72(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    mr_neg_8(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    mr_neg_80(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    mr_neg_9(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    mr_neg_96(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 100%
-     */
-    mr_neg_full(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 1px
-     */
-    mr_neg_px(): Element;
-    /**
-     * Sets the right margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 1px
-     */
-    mr_px(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 0px
-     */
-    mt_0(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    mt_0p5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+static const char kShellTypes35[] =
+    R"GPUI_DTS(     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    mt_1(): Element;
+    mt_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    mt_10(): Element;
+    mt_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    mt_11(): Element;
+    mt_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 448px (28rem)
      */
-    mt_112(): Element;
+    mt_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 48px (3rem)
      */
-    mt_12(): Element;
+    mt_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 512px (32rem)
      */
-    mt_128(): Element;
+    mt_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 64px (4rem)
      */
-    mt_16(): Element;
+    mt_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8% (1/12)
      */
-    mt_1_12(): Element;
+    mt_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (1/2)
      */
-    mt_1_2(): Element;
+    mt_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 33% (1/3)
      */
-    mt_1_3(): Element;
+    mt_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 25% (1/4)
      */
-    mt_1_4(): Element;
+    mt_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20% (1/5)
      */
-    mt_1_5(): Element;
+    mt_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16% (1/6)
      */
-    mt_1_6(): Element;
+    mt_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 6px (0.375rem)
      */
-    mt_1p5(): Element;
+    mt_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 8px (0.5rem)
      */
-    mt_2(): Element;
+    mt_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80px (5rem)
      */
-    mt_20(): Element;
+    mt_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 96px (6rem)
      */
-    mt_24(): Element;
+    mt_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 66% (2/3)
      */
-    mt_2_3(): Element;
+    mt_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 50% (2/4)
      */
-    mt_2_4(): Element;
+    mt_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 40% (2/5)
      */
-    mt_2_5(): Element;
+    mt_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    mt_2p5(): Element;
+    mt_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    mt_3(): Element;
+    mt_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 128px (8rem)
      */
-    mt_32(): Element;
+    mt_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 75% (3/4)
      */
-    mt_3_4(): Element;
+    mt_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 60% (3/5)
      */
-    mt_3_5(): Element;
+    mt_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 14px (0.875rem)
      */
-    mt_3p5(): Element;
+    mt_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 16px (1rem)
      */
-    mt_4(): Element;
+    mt_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 160px (10rem)
      */
-    mt_40(): Element;
+    mt_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 192px (12rem)
      */
-    mt_48(): Element;
+    mt_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (4/5)
      */
-    mt_4_5(): Element;
+    mt_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 20px (1.25rem)
      */
-    mt_5(): Element;
+    mt_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 224px (14rem)
      */
-    mt_56(): Element;
+    mt_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 80% (5/6)
      */
-    mt_5_6(): Element;
+    mt_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 24px (1.5rem)
      */
-    mt_6(): Element;
+    mt_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 256px (16rem)
      */
-    mt_64(): Element;
+    mt_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    mt_7(): Element;
+    mt_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 288px (18rem)
      */
-    mt_72(): Element;
+    mt_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 32px (2rem)
      */
-    mt_8(): Element;
+    mt_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 320px (20rem)
      */
-    mt_80(): Element;
+    mt_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    mt_9(): Element;
+    mt_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 384px (24rem)
      */
-    mt_96(): Element;
+    mt_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * Auto
      */
-    mt_auto(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes31[] = R"GPUI_DTS(     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 100%
-     */
-    mt_full(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 0px
-     */
-    mt_neg_0(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    mt_neg_0p5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    mt_neg_1(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    mt_neg_10(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    mt_neg_11(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    mt_neg_112(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    mt_neg_12(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    mt_neg_128(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    mt_neg_16(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    mt_neg_1_12(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    mt_neg_1_2(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    mt_neg_1_3(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    mt_neg_1_4(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    mt_neg_1_5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    mt_neg_1_6(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    mt_neg_1p5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    mt_neg_2(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    mt_neg_20(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    mt_neg_24(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    mt_neg_2_3(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    mt_neg_2_4(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    mt_neg_2_5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    mt_neg_2p5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    mt_neg_3(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    mt_neg_32(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    mt_neg_3_4(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    mt_neg_3_5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    mt_neg_3p5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    mt_neg_4(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    mt_neg_40(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    mt_neg_48(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    mt_neg_4_5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    mt_neg_5(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    mt_neg_56(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    mt_neg_5_6(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    mt_neg_6(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    mt_neg_64(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    mt_neg_7(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    mt_neg_72(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    mt_neg_8(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    mt_neg_80(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    mt_neg_9(): Element;
-    /**
-     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    mt_neg_96(): Element;
+    mt_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 100%
      */
-    mt_neg_full(): Element;
+    mt_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 0px
+     */
+    mt_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    mt_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    mt_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    mt_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    mt_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    mt_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    mt_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    mt_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    mt_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    mt_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    mt_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    mt_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    mt_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    mt_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+)GPUI_DTS";
+static const char kShellTypes36[] =
+    R"GPUI_DTS(     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    mt_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    mt_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    mt_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    mt_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    mt_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    mt_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    mt_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    mt_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    mt_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    mt_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    mt_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    mt_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    mt_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    mt_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    mt_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    mt_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    mt_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    mt_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    mt_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    mt_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    mt_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    mt_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    mt_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    mt_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    mt_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    mt_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    mt_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    mt_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    mt_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
+     *
+     * 100%
+     */
+    mt_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    mt_neg_px(): Element;
+    mt_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the top margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-margin-to-a-single-side)
      *
      * 1px
      */
-    mt_px(): Element;
+    mt_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 0px
      */
-    mx_0(): Element;
+    mx_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 2px (0.125rem)
      */
-    mx_0p5(): Element;
+    mx_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 4px (0.25rem)
      */
-    mx_1(): Element;
+    mx_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 40px (2.5rem)
      */
-    mx_10(): Element;
+    mx_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 44px (2.75rem)
      */
-    mx_11(): Element;
+    mx_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 448px (28rem)
      */
-    mx_112(): Element;
+    mx_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 48px (3rem)
      */
-    mx_12(): Element;
+    mx_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 512px (32rem)
      */
-    mx_128(): Element;
+    mx_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 64px (4rem)
      */
-    mx_16(): Element;
+    mx_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 8% (1/12)
      */
-    mx_1_12(): Element;
+    mx_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 50% (1/2)
      */
-    mx_1_2(): Element;
+    mx_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 33% (1/3)
      */
-    mx_1_3(): Element;
+    mx_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 25% (1/4)
      */
-    mx_1_4(): Element;
+    mx_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 20% (1/5)
      */
-    mx_1_5(): Element;
+    mx_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 16% (1/6)
      */
-    mx_1_6(): Element;
+    mx_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 6px (0.375rem)
      */
-    mx_1p5(): Element;
+    mx_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 8px (0.5rem)
      */
-    mx_2(): Element;
+    mx_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80px (5rem)
      */
-    mx_20(): Element;
+    mx_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 96px (6rem)
      */
-)GPUI_DTS";
-static const char kShellTypes32[] = R"GPUI_DTS(    mx_24(): Element;
+    mx_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 66% (2/3)
      */
-    mx_2_3(): Element;
+    mx_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 50% (2/4)
      */
-    mx_2_4(): Element;
+    mx_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 40% (2/5)
      */
-    mx_2_5(): Element;
+    mx_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 10px (0.625rem)
      */
-    mx_2p5(): Element;
+    mx_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 12px (0.75rem)
      */
-    mx_3(): Element;
+    mx_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 128px (8rem)
      */
-    mx_32(): Element;
+)GPUI_DTS";
+static const char kShellTypes37[] =
+    R"GPUI_DTS(    mx_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 75% (3/4)
      */
-    mx_3_4(): Element;
+    mx_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 60% (3/5)
      */
-    mx_3_5(): Element;
+    mx_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 14px (0.875rem)
      */
-    mx_3p5(): Element;
+    mx_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 16px (1rem)
      */
-    mx_4(): Element;
+    mx_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 160px (10rem)
      */
-    mx_40(): Element;
+    mx_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 192px (12rem)
      */
-    mx_48(): Element;
+    mx_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80% (4/5)
      */
-    mx_4_5(): Element;
+    mx_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 20px (1.25rem)
      */
-    mx_5(): Element;
+    mx_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 224px (14rem)
      */
-    mx_56(): Element;
+    mx_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80% (5/6)
      */
-    mx_5_6(): Element;
+    mx_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 24px (1.5rem)
      */
-    mx_6(): Element;
+    mx_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 256px (16rem)
      */
-    mx_64(): Element;
+    mx_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 28px (1.75rem)
      */
-    mx_7(): Element;
+    mx_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 288px (18rem)
      */
-    mx_72(): Element;
+    mx_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 32px (2rem)
      */
-    mx_8(): Element;
+    mx_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 320px (20rem)
      */
-    mx_80(): Element;
+    mx_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 36px (2.25rem)
      */
-    mx_9(): Element;
+    mx_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 384px (24rem)
      */
-    mx_96(): Element;
+    mx_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * Auto
      */
-    mx_auto(): Element;
+    mx_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 100%
      */
-    mx_full(): Element;
+    mx_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 0px
      */
-    mx_neg_0(): Element;
+    mx_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 2px (0.125rem)
      */
-    mx_neg_0p5(): Element;
+    mx_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 4px (0.25rem)
      */
-    mx_neg_1(): Element;
+    mx_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 40px (2.5rem)
      */
-    mx_neg_10(): Element;
+    mx_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 44px (2.75rem)
      */
-    mx_neg_11(): Element;
+    mx_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 448px (28rem)
      */
-    mx_neg_112(): Element;
+    mx_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 48px (3rem)
      */
-    mx_neg_12(): Element;
+    mx_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 512px (32rem)
      */
-    mx_neg_128(): Element;
+    mx_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 64px (4rem)
      */
-    mx_neg_16(): Element;
+    mx_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 8% (1/12)
      */
-    mx_neg_1_12(): Element;
+    mx_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 50% (1/2)
      */
-    mx_neg_1_2(): Element;
+    mx_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 33% (1/3)
      */
-    mx_neg_1_3(): Element;
+    mx_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 25% (1/4)
      */
-    mx_neg_1_4(): Element;
+    mx_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 20% (1/5)
      */
-    mx_neg_1_5(): Element;
+    mx_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 16% (1/6)
      */
-    mx_neg_1_6(): Element;
+    mx_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 6px (0.375rem)
      */
-    mx_neg_1p5(): Element;
+    mx_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 8px (0.5rem)
      */
-    mx_neg_2(): Element;
+    mx_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80px (5rem)
      */
-    mx_neg_20(): Element;
+    mx_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 96px (6rem)
      */
-    mx_neg_24(): Element;
+    mx_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 66% (2/3)
      */
-    mx_neg_2_3(): Element;
+    mx_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 50% (2/4)
      */
-    mx_neg_2_4(): Element;
+    mx_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 40% (2/5)
      */
-    mx_neg_2_5(): Element;
+    mx_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 10px (0.625rem)
      */
-    mx_neg_2p5(): Element;
+    mx_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 12px (0.75rem)
      */
-    mx_neg_3(): Element;
+    mx_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 128px (8rem)
      */
-    mx_neg_32(): Element;
+    mx_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 75% (3/4)
      */
-    mx_neg_3_4(): Element;
+    mx_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 60% (3/5)
      */
-    mx_neg_3_5(): Element;
+    mx_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 14px (0.875rem)
      */
-    mx_neg_3p5(): Element;
+    mx_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 16px (1rem)
      */
-    mx_neg_4(): Element;
+    mx_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 160px (10rem)
      */
-    mx_neg_40(): Element;
+    mx_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 192px (12rem)
      */
-    mx_neg_48(): Element;
+    mx_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80% (4/5)
      */
-    mx_neg_4_5(): Element;
+    mx_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 20px (1.25rem)
      */
-    mx_neg_5(): Element;
+    mx_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 224px (14rem)
      */
-    mx_neg_56(): Element;
+    mx_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 80% (5/6)
      */
-    mx_neg_5_6(): Element;
+    mx_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 24px (1.5rem)
      */
-    mx_neg_6(): Element;
-    /**
-     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
-     *
-     * 256px (16rem)
-     */
-    mx_neg_64(): Element;
-    /**
-     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
-     *
-     * 28px (1.75rem)
-     */
-    mx_neg_7(): Element;
-    /**
-     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
-     *
-     * 288px (18rem)
-     */
-    mx_neg_72(): Element;
+    mx_neg_6<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes33[] = R"GPUI_DTS(     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
+static const char kShellTypes38[] =
+    R"GPUI_DTS(     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
+     *
+     * 256px (16rem)
+     */
+    mx_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
+     *
+     * 28px (1.75rem)
+     */
+    mx_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
+     *
+     * 288px (18rem)
+     */
+    mx_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 32px (2rem)
      */
-    mx_neg_8(): Element;
+    mx_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 320px (20rem)
      */
-    mx_neg_80(): Element;
+    mx_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 36px (2.25rem)
      */
-    mx_neg_9(): Element;
+    mx_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 384px (24rem)
      */
-    mx_neg_96(): Element;
+    mx_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 100%
      */
-    mx_neg_full(): Element;
+    mx_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 1px
      */
-    mx_neg_px(): Element;
+    mx_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the horizontal margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-horizontal-margin)
      *
      * 1px
      */
-    mx_px(): Element;
+    mx_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 0px
      */
-    my_0(): Element;
+    my_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 2px (0.125rem)
      */
-    my_0p5(): Element;
+    my_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 4px (0.25rem)
      */
-    my_1(): Element;
+    my_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 40px (2.5rem)
      */
-    my_10(): Element;
+    my_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 44px (2.75rem)
      */
-    my_11(): Element;
+    my_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 448px (28rem)
      */
-    my_112(): Element;
+    my_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 48px (3rem)
      */
-    my_12(): Element;
+    my_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 512px (32rem)
      */
-    my_128(): Element;
+    my_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 64px (4rem)
      */
-    my_16(): Element;
+    my_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 8% (1/12)
      */
-    my_1_12(): Element;
+    my_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 50% (1/2)
      */
-    my_1_2(): Element;
+    my_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 33% (1/3)
      */
-    my_1_3(): Element;
+    my_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 25% (1/4)
      */
-    my_1_4(): Element;
+    my_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 20% (1/5)
      */
-    my_1_5(): Element;
+    my_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 16% (1/6)
      */
-    my_1_6(): Element;
+    my_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 6px (0.375rem)
      */
-    my_1p5(): Element;
+    my_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 8px (0.5rem)
      */
-    my_2(): Element;
+    my_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80px (5rem)
      */
-    my_20(): Element;
+    my_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 96px (6rem)
      */
-    my_24(): Element;
+    my_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 66% (2/3)
      */
-    my_2_3(): Element;
+    my_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 50% (2/4)
      */
-    my_2_4(): Element;
+    my_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 40% (2/5)
      */
-    my_2_5(): Element;
+    my_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 10px (0.625rem)
      */
-    my_2p5(): Element;
+    my_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 12px (0.75rem)
      */
-    my_3(): Element;
+    my_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 128px (8rem)
      */
-    my_32(): Element;
+    my_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 75% (3/4)
      */
-    my_3_4(): Element;
+    my_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 60% (3/5)
      */
-    my_3_5(): Element;
+    my_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 14px (0.875rem)
      */
-    my_3p5(): Element;
+    my_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 16px (1rem)
      */
-    my_4(): Element;
+    my_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 160px (10rem)
      */
-    my_40(): Element;
+    my_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 192px (12rem)
      */
-    my_48(): Element;
+    my_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80% (4/5)
      */
-    my_4_5(): Element;
+    my_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 20px (1.25rem)
      */
-    my_5(): Element;
+    my_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 224px (14rem)
      */
-    my_56(): Element;
+    my_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80% (5/6)
      */
-    my_5_6(): Element;
+    my_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 24px (1.5rem)
      */
-    my_6(): Element;
+    my_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 256px (16rem)
      */
-    my_64(): Element;
+    my_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 28px (1.75rem)
      */
-    my_7(): Element;
+    my_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 288px (18rem)
      */
-    my_72(): Element;
+    my_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 32px (2rem)
      */
-    my_8(): Element;
+    my_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 320px (20rem)
      */
-    my_80(): Element;
+    my_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 36px (2.25rem)
      */
-    my_9(): Element;
+    my_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 384px (24rem)
      */
-    my_96(): Element;
+    my_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * Auto
      */
-    my_auto(): Element;
+    my_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 100%
      */
-    my_full(): Element;
+    my_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 0px
      */
-    my_neg_0(): Element;
+    my_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 2px (0.125rem)
      */
-    my_neg_0p5(): Element;
+    my_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 4px (0.25rem)
      */
-    my_neg_1(): Element;
+    my_neg_1<Self extends Element>(this: Self): Self;
     /**
-     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
+)GPUI_DTS";
+static const char kShellTypes39[] =
+    R"GPUI_DTS(     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 40px (2.5rem)
      */
-    my_neg_10(): Element;
+    my_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 44px (2.75rem)
      */
-    my_neg_11(): Element;
+    my_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 448px (28rem)
      */
-    my_neg_112(): Element;
+    my_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 48px (3rem)
      */
-    my_neg_12(): Element;
+    my_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 512px (32rem)
      */
-    my_neg_128(): Element;
+    my_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 64px (4rem)
      */
-    my_neg_16(): Element;
+    my_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 8% (1/12)
      */
-    my_neg_1_12(): Element;
+    my_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 50% (1/2)
      */
-    my_neg_1_2(): Element;
+    my_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 33% (1/3)
      */
-    my_neg_1_3(): Element;
+    my_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 25% (1/4)
      */
-    my_neg_1_4(): Element;
+    my_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 20% (1/5)
      */
-    my_neg_1_5(): Element;
+    my_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 16% (1/6)
      */
-    my_neg_1_6(): Element;
+    my_neg_1_6<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes34[] = R"GPUI_DTS(     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
+     * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 6px (0.375rem)
      */
-    my_neg_1p5(): Element;
+    my_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 8px (0.5rem)
      */
-    my_neg_2(): Element;
+    my_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80px (5rem)
      */
-    my_neg_20(): Element;
+    my_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 96px (6rem)
      */
-    my_neg_24(): Element;
+    my_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 66% (2/3)
      */
-    my_neg_2_3(): Element;
+    my_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 50% (2/4)
      */
-    my_neg_2_4(): Element;
+    my_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 40% (2/5)
      */
-    my_neg_2_5(): Element;
+    my_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 10px (0.625rem)
      */
-    my_neg_2p5(): Element;
+    my_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 12px (0.75rem)
      */
-    my_neg_3(): Element;
+    my_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 128px (8rem)
      */
-    my_neg_32(): Element;
+    my_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 75% (3/4)
      */
-    my_neg_3_4(): Element;
+    my_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 60% (3/5)
      */
-    my_neg_3_5(): Element;
+    my_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 14px (0.875rem)
      */
-    my_neg_3p5(): Element;
+    my_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 16px (1rem)
      */
-    my_neg_4(): Element;
+    my_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 160px (10rem)
      */
-    my_neg_40(): Element;
+    my_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 192px (12rem)
      */
-    my_neg_48(): Element;
+    my_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80% (4/5)
      */
-    my_neg_4_5(): Element;
+    my_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 20px (1.25rem)
      */
-    my_neg_5(): Element;
+    my_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 224px (14rem)
      */
-    my_neg_56(): Element;
+    my_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 80% (5/6)
      */
-    my_neg_5_6(): Element;
+    my_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 24px (1.5rem)
      */
-    my_neg_6(): Element;
+    my_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 256px (16rem)
      */
-    my_neg_64(): Element;
+    my_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 28px (1.75rem)
      */
-    my_neg_7(): Element;
+    my_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 288px (18rem)
      */
-    my_neg_72(): Element;
+    my_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 32px (2rem)
      */
-    my_neg_8(): Element;
+    my_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 320px (20rem)
      */
-    my_neg_80(): Element;
+    my_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 36px (2.25rem)
      */
-    my_neg_9(): Element;
+    my_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 384px (24rem)
      */
-    my_neg_96(): Element;
+    my_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 100%
      */
-    my_neg_full(): Element;
+    my_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 1px
      */
-    my_neg_px(): Element;
+    my_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical margin of the element. [Docs](https://tailwindcss.com/docs/margin#add-vertical-margin)
      *
      * 1px
      */
-    my_px(): Element;
+    my_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the font style of the element to normal (not italic).
      *
      * [Docs](https://tailwindcss.com/docs/font-style#displaying-text-normally)
      */
-    not_italic(): Element;
+    not_italic<Self extends Element>(this: Self): Self;
     /**
      * Sets the behavior of content that overflows the container to be hidden.
      *
      * [Docs](https://tailwindcss.com/docs/overflow#hiding-content-that-overflows)
      */
-    overflow_hidden(): Element;
+    overflow_hidden<Self extends Element>(this: Self): Self;
     /**
      * Sets the behavior of content that overflows the container on the X axis to be hidden.
      *
      * [Docs](https://tailwindcss.com/docs/overflow#hiding-content-that-overflows)
      */
-    overflow_x_hidden(): Element;
+    overflow_x_hidden<Self extends Element>(this: Self): Self;
     /**
      * Sets the behavior of content that overflows the container on the Y axis to be hidden.
      *
      * [Docs](https://tailwindcss.com/docs/overflow#hiding-content-that-overflows)
      */
-    overflow_y_hidden(): Element;
+    overflow_y_hidden<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 0px
      */
-    p_0(): Element;
+    p_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 2px (0.125rem)
      */
-    p_0p5(): Element;
+    p_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 4px (0.25rem)
      */
-    p_1(): Element;
+    p_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 40px (2.5rem)
      */
-    p_10(): Element;
+    p_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 44px (2.75rem)
      */
-    p_11(): Element;
+    p_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 448px (28rem)
      */
-    p_112(): Element;
+    p_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 48px (3rem)
      */
-    p_12(): Element;
+    p_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 512px (32rem)
      */
-    p_128(): Element;
+    p_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 64px (4rem)
      */
-    p_16(): Element;
+    p_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 8% (1/12)
      */
-    p_1_12(): Element;
+    p_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 50% (1/2)
      */
-    p_1_2(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 33% (1/3)
-     */
-    p_1_3(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 25% (1/4)
-     */
-    p_1_4(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 20% (1/5)
-     */
-    p_1_5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 16% (1/6)
-     */
-    p_1_6(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 6px (0.375rem)
-     */
-    p_1p5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 8px (0.5rem)
-     */
-    p_2(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 80px (5rem)
-     */
-    p_20(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 96px (6rem)
-     */
-    p_24(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 66% (2/3)
-     */
-    p_2_3(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 50% (2/4)
-     */
-    p_2_4(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 40% (2/5)
-     */
-    p_2_5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 10px (0.625rem)
-     */
-    p_2p5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 12px (0.75rem)
-     */
-    p_3(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 128px (8rem)
-     */
-    p_32(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 75% (3/4)
-     */
-    p_3_4(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 60% (3/5)
-     */
-    p_3_5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 14px (0.875rem)
-     */
-    p_3p5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 16px (1rem)
-     */
-    p_4(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 160px (10rem)
-     */
-    p_40(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 192px (12rem)
-     */
-    p_48(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 80% (4/5)
-     */
-    p_4_5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 20px (1.25rem)
-     */
-    p_5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 224px (14rem)
-     */
-    p_56(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 80% (5/6)
-     */
-    p_5_6(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 24px (1.5rem)
-     */
-    p_6(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 256px (16rem)
-     */
-    p_64(): Element;
+    p_1_2<Self extends Element>(this: Self): Self;
     /**
 )GPUI_DTS";
-static const char kShellTypes35[] = R"GPUI_DTS(     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 28px (1.75rem)
-     */
-    p_7(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 288px (18rem)
-     */
-    p_72(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 32px (2rem)
-     */
-    p_8(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 320px (20rem)
-     */
-    p_80(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 36px (2.25rem)
-     */
-    p_9(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 384px (24rem)
-     */
-    p_96(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 100%
-     */
-    p_full(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 0px
-     */
-    p_neg_0(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 2px (0.125rem)
-     */
-    p_neg_0p5(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 4px (0.25rem)
-     */
-    p_neg_1(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 40px (2.5rem)
-     */
-    p_neg_10(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 44px (2.75rem)
-     */
-    p_neg_11(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 448px (28rem)
-     */
-    p_neg_112(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 48px (3rem)
-     */
-    p_neg_12(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 512px (32rem)
-     */
-    p_neg_128(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 64px (4rem)
-     */
-    p_neg_16(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 8% (1/12)
-     */
-    p_neg_1_12(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
-     *
-     * 50% (1/2)
-     */
-    p_neg_1_2(): Element;
-    /**
-     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+static const char kShellTypes40[] =
+    R"GPUI_DTS(     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 33% (1/3)
      */
-    p_neg_1_3(): Element;
+    p_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 25% (1/4)
      */
-    p_neg_1_4(): Element;
+    p_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 20% (1/5)
      */
-    p_neg_1_5(): Element;
+    p_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 16% (1/6)
      */
-    p_neg_1_6(): Element;
+    p_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 6px (0.375rem)
      */
-    p_neg_1p5(): Element;
+    p_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 8px (0.5rem)
      */
-    p_neg_2(): Element;
+    p_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 80px (5rem)
      */
-    p_neg_20(): Element;
+    p_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 96px (6rem)
      */
-    p_neg_24(): Element;
+    p_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 66% (2/3)
      */
-    p_neg_2_3(): Element;
+    p_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 50% (2/4)
      */
-    p_neg_2_4(): Element;
+    p_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 40% (2/5)
      */
-    p_neg_2_5(): Element;
+    p_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 10px (0.625rem)
      */
-    p_neg_2p5(): Element;
+    p_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 12px (0.75rem)
      */
-    p_neg_3(): Element;
+    p_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 128px (8rem)
      */
-    p_neg_32(): Element;
+    p_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 75% (3/4)
      */
-    p_neg_3_4(): Element;
+    p_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 60% (3/5)
      */
-    p_neg_3_5(): Element;
+    p_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 14px (0.875rem)
      */
-    p_neg_3p5(): Element;
+    p_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 16px (1rem)
      */
-    p_neg_4(): Element;
+    p_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 160px (10rem)
      */
-    p_neg_40(): Element;
+    p_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 192px (12rem)
      */
-    p_neg_48(): Element;
+    p_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 80% (4/5)
      */
-    p_neg_4_5(): Element;
+    p_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 20px (1.25rem)
      */
-    p_neg_5(): Element;
+    p_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 224px (14rem)
      */
-    p_neg_56(): Element;
+    p_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 80% (5/6)
      */
-    p_neg_5_6(): Element;
+    p_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 24px (1.5rem)
      */
-    p_neg_6(): Element;
+    p_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 256px (16rem)
      */
-    p_neg_64(): Element;
+    p_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 28px (1.75rem)
      */
-    p_neg_7(): Element;
+    p_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 288px (18rem)
      */
-    p_neg_72(): Element;
+    p_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 32px (2rem)
      */
-    p_neg_8(): Element;
+    p_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 320px (20rem)
      */
-    p_neg_80(): Element;
+    p_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 36px (2.25rem)
      */
-    p_neg_9(): Element;
+    p_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 384px (24rem)
      */
-    p_neg_96(): Element;
+    p_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 100%
      */
-    p_neg_full(): Element;
+    p_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 0px
+     */
+    p_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 2px (0.125rem)
+     */
+    p_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 4px (0.25rem)
+     */
+    p_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 40px (2.5rem)
+     */
+    p_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 44px (2.75rem)
+     */
+    p_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 448px (28rem)
+     */
+    p_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 48px (3rem)
+     */
+    p_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 512px (32rem)
+     */
+    p_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 64px (4rem)
+     */
+    p_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 8% (1/12)
+     */
+    p_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 50% (1/2)
+     */
+    p_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 33% (1/3)
+     */
+    p_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 25% (1/4)
+     */
+    p_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 20% (1/5)
+     */
+    p_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 16% (1/6)
+     */
+    p_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 6px (0.375rem)
+     */
+    p_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 8px (0.5rem)
+     */
+    p_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 80px (5rem)
+     */
+    p_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 96px (6rem)
+     */
+    p_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 66% (2/3)
+     */
+    p_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 50% (2/4)
+     */
+    p_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 40% (2/5)
+     */
+    p_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 10px (0.625rem)
+     */
+    p_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 12px (0.75rem)
+     */
+    p_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 128px (8rem)
+     */
+    p_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 75% (3/4)
+     */
+    p_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 60% (3/5)
+     */
+    p_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 14px (0.875rem)
+     */
+    p_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 16px (1rem)
+     */
+    p_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 160px (10rem)
+     */
+    p_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 192px (12rem)
+     */
+    p_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 80% (4/5)
+     */
+    p_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 20px (1.25rem)
+     */
+    p_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 224px (14rem)
+     */
+)GPUI_DTS";
+static const char kShellTypes41[] =
+    R"GPUI_DTS(    p_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 80% (5/6)
+     */
+    p_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 24px (1.5rem)
+     */
+    p_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 256px (16rem)
+     */
+    p_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 28px (1.75rem)
+     */
+    p_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 288px (18rem)
+     */
+    p_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 32px (2rem)
+     */
+    p_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 320px (20rem)
+     */
+    p_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 36px (2.25rem)
+     */
+    p_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 384px (24rem)
+     */
+    p_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
+     *
+     * 100%
+     */
+    p_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 1px
      */
-    p_neg_px(): Element;
+    p_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the padding of the element. [Docs](https://tailwindcss.com/docs/padding)
      *
      * 1px
      */
-    p_px(): Element;
+    p_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 0px
      */
-    pb_0(): Element;
+    pb_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    pb_0p5(): Element;
+    pb_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    pb_1(): Element;
+    pb_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    pb_10(): Element;
+    pb_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    pb_11(): Element;
+    pb_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 448px (28rem)
      */
-    pb_112(): Element;
+    pb_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 48px (3rem)
      */
-    pb_12(): Element;
+    pb_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 512px (32rem)
      */
-    pb_128(): Element;
+    pb_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 64px (4rem)
      */
-    pb_16(): Element;
+    pb_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 8% (1/12)
      */
-    pb_1_12(): Element;
+    pb_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 50% (1/2)
      */
-    pb_1_2(): Element;
+    pb_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 33% (1/3)
      */
-    pb_1_3(): Element;
+    pb_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 25% (1/4)
      */
-    pb_1_4(): Element;
+    pb_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 20% (1/5)
      */
-    pb_1_5(): Element;
+    pb_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 16% (1/6)
      */
-    pb_1_6(): Element;
+    pb_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 6px (0.375rem)
      */
-    pb_1p5(): Element;
+    pb_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 8px (0.5rem)
      */
-    pb_2(): Element;
+    pb_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 80px (5rem)
      */
-    pb_20(): Element;
+    pb_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 96px (6rem)
      */
-    pb_24(): Element;
+    pb_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 66% (2/3)
      */
-    pb_2_3(): Element;
+    pb_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 50% (2/4)
      */
-    pb_2_4(): Element;
+    pb_2_4<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes36[] = R"GPUI_DTS(     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 40% (2/5)
      */
-    pb_2_5(): Element;
+    pb_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 10px (0.625rem)
      */
-    pb_2p5(): Element;
+    pb_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 12px (0.75rem)
      */
-    pb_3(): Element;
+    pb_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 128px (8rem)
      */
-    pb_32(): Element;
+    pb_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 75% (3/4)
      */
-    pb_3_4(): Element;
+    pb_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 60% (3/5)
      */
-    pb_3_5(): Element;
+    pb_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 14px (0.875rem)
      */
-    pb_3p5(): Element;
+    pb_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 16px (1rem)
      */
-    pb_4(): Element;
+    pb_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 160px (10rem)
      */
-    pb_40(): Element;
+    pb_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 192px (12rem)
      */
-    pb_48(): Element;
+    pb_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 80% (4/5)
      */
-    pb_4_5(): Element;
+    pb_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 20px (1.25rem)
      */
-    pb_5(): Element;
+    pb_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 224px (14rem)
      */
-    pb_56(): Element;
+    pb_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 80% (5/6)
      */
-    pb_5_6(): Element;
+    pb_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 24px (1.5rem)
      */
-    pb_6(): Element;
+    pb_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 256px (16rem)
      */
-    pb_64(): Element;
+    pb_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 28px (1.75rem)
      */
-    pb_7(): Element;
+    pb_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 288px (18rem)
      */
-    pb_72(): Element;
+    pb_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 32px (2rem)
      */
-    pb_8(): Element;
+    pb_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 320px (20rem)
      */
-    pb_80(): Element;
+    pb_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    pb_9(): Element;
+    pb_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 384px (24rem)
      */
-    pb_96(): Element;
+    pb_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 100%
      */
-    pb_full(): Element;
+    pb_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 0px
      */
-    pb_neg_0(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pb_neg_0p5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pb_neg_1(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pb_neg_10(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pb_neg_11(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pb_neg_112(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pb_neg_12(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pb_neg_128(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pb_neg_16(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pb_neg_1_12(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pb_neg_1_2(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pb_neg_1_3(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pb_neg_1_4(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pb_neg_1_5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pb_neg_1_6(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pb_neg_1p5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pb_neg_2(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pb_neg_20(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pb_neg_24(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pb_neg_2_3(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pb_neg_2_4(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pb_neg_2_5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pb_neg_2p5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pb_neg_3(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pb_neg_32(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pb_neg_3_4(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pb_neg_3_5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pb_neg_3p5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pb_neg_4(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pb_neg_40(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pb_neg_48(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pb_neg_4_5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pb_neg_5(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pb_neg_56(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pb_neg_5_6(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pb_neg_6(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pb_neg_64(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pb_neg_7(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pb_neg_72(): Element;
-    /**
-     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pb_neg_8(): Element;
+    pb_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
 )GPUI_DTS";
-static const char kShellTypes37[] = R"GPUI_DTS(     * 320px (20rem)
+static const char kShellTypes42[] = R"GPUI_DTS(     * 2px (0.125rem)
      */
-    pb_neg_80(): Element;
+    pb_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pb_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pb_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pb_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pb_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pb_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pb_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pb_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pb_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pb_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pb_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pb_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pb_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pb_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pb_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pb_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pb_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pb_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pb_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pb_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pb_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pb_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pb_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pb_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pb_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pb_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pb_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pb_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pb_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pb_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pb_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pb_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pb_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pb_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pb_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pb_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pb_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pb_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pb_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pb_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 36px (2.25rem)
      */
-    pb_neg_9(): Element;
+    pb_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 384px (24rem)
      */
-    pb_neg_96(): Element;
+    pb_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 100%
      */
-    pb_neg_full(): Element;
+    pb_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 1px
      */
-    pb_neg_px(): Element;
+    pb_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the bottom padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 1px
      */
-    pb_px(): Element;
+    pb_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 0px
      */
-    pl_0(): Element;
+    pl_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 2px (0.125rem)
      */
-    pl_0p5(): Element;
+    pl_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 4px (0.25rem)
      */
-    pl_1(): Element;
+    pl_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 40px (2.5rem)
      */
-    pl_10(): Element;
+    pl_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 44px (2.75rem)
      */
-    pl_11(): Element;
+    pl_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 448px (28rem)
      */
-    pl_112(): Element;
+    pl_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 48px (3rem)
      */
-    pl_12(): Element;
+    pl_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 512px (32rem)
      */
-    pl_128(): Element;
+    pl_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 64px (4rem)
      */
-    pl_16(): Element;
+    pl_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 8% (1/12)
      */
-    pl_1_12(): Element;
+    pl_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
      *
      * 50% (1/2)
-     */
-    pl_1_2(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pl_1_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pl_1_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pl_1_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pl_1_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pl_1p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pl_2(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pl_20(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pl_24(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pl_2_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pl_2_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pl_2_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pl_2p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pl_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pl_32(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pl_3_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pl_3_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pl_3p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pl_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pl_40(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pl_48(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pl_4_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pl_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pl_56(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pl_5_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pl_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pl_64(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pl_7(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pl_72(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pl_8(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pl_80(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pl_9(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pl_96(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pl_full(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 0px
-     */
-    pl_neg_0(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pl_neg_0p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pl_neg_1(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pl_neg_10(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pl_neg_11(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pl_neg_112(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pl_neg_12(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pl_neg_128(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pl_neg_16(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pl_neg_1_12(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pl_neg_1_2(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pl_neg_1_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pl_neg_1_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pl_neg_1_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pl_neg_1_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-)GPUI_DTS";
-static const char kShellTypes38[] = R"GPUI_DTS(     * 6px (0.375rem)
-     */
-    pl_neg_1p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pl_neg_2(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pl_neg_20(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pl_neg_24(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pl_neg_2_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pl_neg_2_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pl_neg_2_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pl_neg_2p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pl_neg_3(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pl_neg_32(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pl_neg_3_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pl_neg_3_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pl_neg_3p5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pl_neg_4(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pl_neg_40(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pl_neg_48(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pl_neg_4_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pl_neg_5(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pl_neg_56(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pl_neg_5_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pl_neg_6(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pl_neg_64(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pl_neg_7(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pl_neg_72(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pl_neg_8(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pl_neg_80(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pl_neg_9(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pl_neg_96(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pl_neg_full(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pl_neg_px(): Element;
-    /**
-     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pl_px(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 0px
-     */
-    pr_0(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pr_0p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pr_1(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pr_10(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pr_11(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pr_112(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pr_12(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pr_128(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pr_16(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pr_1_12(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pr_1_2(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pr_1_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pr_1_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pr_1_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pr_1_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pr_1p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pr_2(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pr_20(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pr_24(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pr_2_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pr_2_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pr_2_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pr_2p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pr_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pr_32(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pr_3_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pr_3_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pr_3p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pr_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pr_40(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pr_48(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pr_4_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pr_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pr_56(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes39[] = R"GPUI_DTS(     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pr_5_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pr_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pr_64(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pr_7(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pr_72(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pr_8(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pr_80(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pr_9(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pr_96(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pr_full(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 0px
-     */
-    pr_neg_0(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pr_neg_0p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pr_neg_1(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pr_neg_10(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pr_neg_11(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pr_neg_112(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pr_neg_12(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pr_neg_128(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pr_neg_16(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pr_neg_1_12(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pr_neg_1_2(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pr_neg_1_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pr_neg_1_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pr_neg_1_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pr_neg_1_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pr_neg_1p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pr_neg_2(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pr_neg_20(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pr_neg_24(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pr_neg_2_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pr_neg_2_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pr_neg_2_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pr_neg_2p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pr_neg_3(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pr_neg_32(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pr_neg_3_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pr_neg_3_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pr_neg_3p5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pr_neg_4(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pr_neg_40(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pr_neg_48(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pr_neg_4_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pr_neg_5(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pr_neg_56(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pr_neg_5_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pr_neg_6(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pr_neg_64(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pr_neg_7(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pr_neg_72(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pr_neg_8(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pr_neg_80(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pr_neg_9(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pr_neg_96(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pr_neg_full(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pr_neg_px(): Element;
-    /**
-     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pr_px(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 0px
-     */
-    pt_0(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pt_0p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pt_1(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pt_10(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pt_11(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pt_112(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pt_12(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pt_128(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes40[] = R"GPUI_DTS(     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pt_16(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pt_1_12(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pt_1_2(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pt_1_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pt_1_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pt_1_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pt_1_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pt_1p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pt_2(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pt_20(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pt_24(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pt_2_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pt_2_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pt_2_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pt_2p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pt_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pt_32(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pt_3_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pt_3_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pt_3p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pt_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pt_40(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pt_48(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pt_4_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pt_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pt_56(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pt_5_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pt_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pt_64(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pt_7(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pt_72(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pt_8(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pt_80(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pt_9(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pt_96(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pt_full(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 0px
-     */
-    pt_neg_0(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 2px (0.125rem)
-     */
-    pt_neg_0p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 4px (0.25rem)
-     */
-    pt_neg_1(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40px (2.5rem)
-     */
-    pt_neg_10(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 44px (2.75rem)
-     */
-    pt_neg_11(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 448px (28rem)
-     */
-    pt_neg_112(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 48px (3rem)
-     */
-    pt_neg_12(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 512px (32rem)
-     */
-    pt_neg_128(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 64px (4rem)
-     */
-    pt_neg_16(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8% (1/12)
-     */
-    pt_neg_1_12(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (1/2)
-     */
-    pt_neg_1_2(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 33% (1/3)
-     */
-    pt_neg_1_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 25% (1/4)
-     */
-    pt_neg_1_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20% (1/5)
-     */
-    pt_neg_1_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16% (1/6)
-     */
-    pt_neg_1_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 6px (0.375rem)
-     */
-    pt_neg_1p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 8px (0.5rem)
-     */
-    pt_neg_2(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80px (5rem)
-     */
-    pt_neg_20(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 96px (6rem)
-     */
-    pt_neg_24(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 66% (2/3)
-     */
-    pt_neg_2_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 50% (2/4)
-     */
-    pt_neg_2_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 40% (2/5)
-     */
-    pt_neg_2_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 10px (0.625rem)
-     */
-    pt_neg_2p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 12px (0.75rem)
-     */
-    pt_neg_3(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 128px (8rem)
-     */
-    pt_neg_32(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 75% (3/4)
-     */
-    pt_neg_3_4(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 60% (3/5)
-     */
-    pt_neg_3_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 14px (0.875rem)
-     */
-    pt_neg_3p5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 16px (1rem)
-     */
-    pt_neg_4(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes41[] = R"GPUI_DTS(     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 160px (10rem)
-     */
-    pt_neg_40(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 192px (12rem)
-     */
-    pt_neg_48(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (4/5)
-     */
-    pt_neg_4_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 20px (1.25rem)
-     */
-    pt_neg_5(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 224px (14rem)
-     */
-    pt_neg_56(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 80% (5/6)
-     */
-    pt_neg_5_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 24px (1.5rem)
-     */
-    pt_neg_6(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 256px (16rem)
-     */
-    pt_neg_64(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 28px (1.75rem)
-     */
-    pt_neg_7(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 288px (18rem)
-     */
-    pt_neg_72(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 32px (2rem)
-     */
-    pt_neg_8(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 320px (20rem)
-     */
-    pt_neg_80(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 36px (2.25rem)
-     */
-    pt_neg_9(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 384px (24rem)
-     */
-    pt_neg_96(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 100%
-     */
-    pt_neg_full(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pt_neg_px(): Element;
-    /**
-     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
-     *
-     * 1px
-     */
-    pt_px(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 0px
-     */
-    px_0(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 2px (0.125rem)
-     */
-    px_0p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 4px (0.25rem)
-     */
-    px_1(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 40px (2.5rem)
-     */
-    px_10(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 44px (2.75rem)
-     */
-    px_11(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 448px (28rem)
-     */
-    px_112(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 48px (3rem)
-     */
-    px_12(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 512px (32rem)
-     */
-    px_128(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 64px (4rem)
-     */
-    px_16(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 8% (1/12)
-     */
-    px_1_12(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 50% (1/2)
-     */
-    px_1_2(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 33% (1/3)
-     */
-    px_1_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 25% (1/4)
-     */
-    px_1_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 20% (1/5)
-     */
-    px_1_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 16% (1/6)
-     */
-    px_1_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 6px (0.375rem)
-     */
-    px_1p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 8px (0.5rem)
-     */
-    px_2(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80px (5rem)
-     */
-    px_20(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 96px (6rem)
-     */
-    px_24(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 66% (2/3)
-     */
-    px_2_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 50% (2/4)
-     */
-    px_2_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 40% (2/5)
-     */
-    px_2_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 10px (0.625rem)
-     */
-    px_2p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 12px (0.75rem)
-     */
-    px_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 128px (8rem)
-     */
-    px_32(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 75% (3/4)
-     */
-    px_3_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 60% (3/5)
-     */
-    px_3_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 14px (0.875rem)
-     */
-    px_3p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 16px (1rem)
-     */
-    px_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 160px (10rem)
-     */
-    px_40(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 192px (12rem)
-     */
-    px_48(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80% (4/5)
-     */
-    px_4_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 20px (1.25rem)
-     */
-    px_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 224px (14rem)
-     */
-    px_56(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80% (5/6)
-     */
-    px_5_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 24px (1.5rem)
-     */
-    px_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 256px (16rem)
-     */
-    px_64(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 28px (1.75rem)
-     */
-    px_7(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 288px (18rem)
-     */
-    px_72(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 32px (2rem)
-     */
-    px_8(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 320px (20rem)
-     */
-    px_80(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 36px (2.25rem)
-     */
-    px_9(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 384px (24rem)
-     */
-    px_96(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 100%
-     */
-    px_full(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 0px
-     */
-    px_neg_0(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 2px (0.125rem)
-     */
-    px_neg_0p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 4px (0.25rem)
-     */
-    px_neg_1(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 40px (2.5rem)
-     */
-    px_neg_10(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes42[] = R"GPUI_DTS(     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 44px (2.75rem)
-     */
-    px_neg_11(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 448px (28rem)
-     */
-    px_neg_112(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 48px (3rem)
-     */
-    px_neg_12(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 512px (32rem)
-     */
-    px_neg_128(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 64px (4rem)
-     */
-    px_neg_16(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 8% (1/12)
-     */
-    px_neg_1_12(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 50% (1/2)
-     */
-    px_neg_1_2(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 33% (1/3)
-     */
-    px_neg_1_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 25% (1/4)
-     */
-    px_neg_1_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 20% (1/5)
-     */
-    px_neg_1_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 16% (1/6)
-     */
-    px_neg_1_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 6px (0.375rem)
-     */
-    px_neg_1p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 8px (0.5rem)
-     */
-    px_neg_2(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80px (5rem)
-     */
-    px_neg_20(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 96px (6rem)
-     */
-    px_neg_24(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 66% (2/3)
-     */
-    px_neg_2_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 50% (2/4)
-     */
-    px_neg_2_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 40% (2/5)
-     */
-    px_neg_2_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 10px (0.625rem)
-     */
-    px_neg_2p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 12px (0.75rem)
-     */
-    px_neg_3(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 128px (8rem)
-     */
-    px_neg_32(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 75% (3/4)
-     */
-    px_neg_3_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 60% (3/5)
-     */
-    px_neg_3_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 14px (0.875rem)
-     */
-    px_neg_3p5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 16px (1rem)
-     */
-    px_neg_4(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 160px (10rem)
-     */
-    px_neg_40(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 192px (12rem)
-     */
-    px_neg_48(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80% (4/5)
-     */
-    px_neg_4_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 20px (1.25rem)
-     */
-    px_neg_5(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 224px (14rem)
-     */
-    px_neg_56(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 80% (5/6)
-     */
-    px_neg_5_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 24px (1.5rem)
-     */
-    px_neg_6(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 256px (16rem)
-     */
-    px_neg_64(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 28px (1.75rem)
-     */
-    px_neg_7(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 288px (18rem)
-     */
-    px_neg_72(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 32px (2rem)
-     */
-    px_neg_8(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 320px (20rem)
-     */
-    px_neg_80(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 36px (2.25rem)
-     */
-    px_neg_9(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 384px (24rem)
-     */
-    px_neg_96(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 100%
-     */
-    px_neg_full(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 1px
-     */
-    px_neg_px(): Element;
-    /**
-     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
-     *
-     * 1px
-     */
-    px_px(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 0px
-     */
-    py_0(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 2px (0.125rem)
-     */
-    py_0p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 4px (0.25rem)
-     */
-    py_1(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 40px (2.5rem)
-     */
-    py_10(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 44px (2.75rem)
-     */
-    py_11(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 448px (28rem)
-     */
-    py_112(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 48px (3rem)
-     */
-    py_12(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 512px (32rem)
-     */
-    py_128(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 64px (4rem)
-     */
-    py_16(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 8% (1/12)
-     */
-    py_1_12(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 50% (1/2)
-     */
-    py_1_2(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 33% (1/3)
-     */
-    py_1_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 25% (1/4)
-     */
-    py_1_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 20% (1/5)
-     */
-    py_1_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 16% (1/6)
-     */
-    py_1_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 6px (0.375rem)
-     */
-    py_1p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 8px (0.5rem)
-     */
-    py_2(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80px (5rem)
-     */
-    py_20(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 96px (6rem)
-     */
-    py_24(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 66% (2/3)
-     */
-    py_2_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 50% (2/4)
-     */
-    py_2_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 40% (2/5)
-     */
-    py_2_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 10px (0.625rem)
-     */
-    py_2p5(): Element;
-    /**
-)GPUI_DTS";
-static const char kShellTypes43[] = R"GPUI_DTS(     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 12px (0.75rem)
-     */
-    py_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 128px (8rem)
-     */
-    py_32(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 75% (3/4)
-     */
-    py_3_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 60% (3/5)
-     */
-    py_3_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 14px (0.875rem)
-     */
-    py_3p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 16px (1rem)
-     */
-    py_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 160px (10rem)
-     */
-    py_40(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 192px (12rem)
-     */
-    py_48(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80% (4/5)
-     */
-    py_4_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 20px (1.25rem)
-     */
-    py_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 224px (14rem)
-     */
-    py_56(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80% (5/6)
-     */
-    py_5_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 24px (1.5rem)
-     */
-    py_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 256px (16rem)
-     */
-    py_64(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 28px (1.75rem)
-     */
-    py_7(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 288px (18rem)
-     */
-    py_72(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 32px (2rem)
-     */
-    py_8(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 320px (20rem)
-     */
-    py_80(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 36px (2.25rem)
-     */
-    py_9(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 384px (24rem)
-     */
-    py_96(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 100%
-     */
-    py_full(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 0px
-     */
-    py_neg_0(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 2px (0.125rem)
-     */
-    py_neg_0p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 4px (0.25rem)
-     */
-    py_neg_1(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 40px (2.5rem)
-     */
-    py_neg_10(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 44px (2.75rem)
-     */
-    py_neg_11(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 448px (28rem)
-     */
-    py_neg_112(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 48px (3rem)
-     */
-    py_neg_12(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 512px (32rem)
-     */
-    py_neg_128(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 64px (4rem)
-     */
-    py_neg_16(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 8% (1/12)
-     */
-    py_neg_1_12(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 50% (1/2)
-     */
-    py_neg_1_2(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 33% (1/3)
-     */
-    py_neg_1_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 25% (1/4)
-     */
-    py_neg_1_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 20% (1/5)
-     */
-    py_neg_1_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 16% (1/6)
-     */
-    py_neg_1_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 6px (0.375rem)
-     */
-    py_neg_1p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 8px (0.5rem)
-     */
-    py_neg_2(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80px (5rem)
-     */
-    py_neg_20(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 96px (6rem)
-     */
-    py_neg_24(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 66% (2/3)
-     */
-    py_neg_2_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 50% (2/4)
-     */
-    py_neg_2_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 40% (2/5)
-     */
-    py_neg_2_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 10px (0.625rem)
-     */
-    py_neg_2p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 12px (0.75rem)
-     */
-    py_neg_3(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 128px (8rem)
-     */
-    py_neg_32(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 75% (3/4)
-     */
-    py_neg_3_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 60% (3/5)
-     */
-    py_neg_3_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 14px (0.875rem)
-     */
-    py_neg_3p5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 16px (1rem)
-     */
-    py_neg_4(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 160px (10rem)
-     */
-    py_neg_40(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 192px (12rem)
-     */
-    py_neg_48(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80% (4/5)
-     */
-    py_neg_4_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 20px (1.25rem)
-     */
-    py_neg_5(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 224px (14rem)
-     */
-    py_neg_56(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 80% (5/6)
-     */
-    py_neg_5_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 24px (1.5rem)
-     */
-    py_neg_6(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 256px (16rem)
-     */
-    py_neg_64(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 28px (1.75rem)
-     */
-    py_neg_7(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 288px (18rem)
-     */
-    py_neg_72(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 32px (2rem)
-     */
-    py_neg_8(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 320px (20rem)
-     */
-    py_neg_80(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 36px (2.25rem)
-     */
-    py_neg_9(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 384px (24rem)
-     */
-    py_neg_96(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 100%
-     */
-    py_neg_full(): Element;
-    /**
-     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
-     *
-     * 1px
      */
 )GPUI_DTS";
-static const char kShellTypes44[] = R"GPUI_DTS(    py_neg_px(): Element;
+static const char kShellTypes43[] =
+    R"GPUI_DTS(    pl_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pl_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pl_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pl_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pl_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pl_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pl_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pl_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pl_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pl_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pl_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pl_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pl_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pl_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pl_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pl_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pl_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pl_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pl_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pl_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pl_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pl_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pl_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pl_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pl_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pl_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pl_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pl_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pl_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pl_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pl_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pl_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pl_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+    pl_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 0px
+     */
+    pl_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    pl_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pl_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pl_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pl_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pl_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pl_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pl_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pl_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pl_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pl_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pl_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pl_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pl_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pl_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pl_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pl_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pl_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pl_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pl_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pl_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pl_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+)GPUI_DTS";
+static const char kShellTypes44[] =
+    R"GPUI_DTS(    pl_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pl_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pl_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pl_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pl_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pl_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pl_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pl_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pl_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pl_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pl_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pl_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pl_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pl_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pl_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pl_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pl_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pl_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pl_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pl_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pl_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+    pl_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pl_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the left padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pl_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 0px
+     */
+    pr_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    pr_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pr_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pr_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pr_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pr_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pr_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pr_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pr_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pr_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pr_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pr_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pr_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pr_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pr_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pr_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pr_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pr_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pr_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pr_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pr_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pr_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pr_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pr_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pr_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pr_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pr_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pr_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pr_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pr_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pr_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pr_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+)GPUI_DTS";
+static const char kShellTypes45[] = R"GPUI_DTS(     * 20px (1.25rem)
+     */
+    pr_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pr_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pr_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pr_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pr_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pr_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pr_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pr_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pr_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pr_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pr_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+    pr_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 0px
+     */
+    pr_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    pr_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pr_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pr_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pr_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pr_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pr_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pr_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pr_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pr_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pr_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pr_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pr_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pr_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pr_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pr_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pr_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pr_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pr_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pr_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pr_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pr_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pr_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pr_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pr_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pr_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pr_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pr_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pr_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pr_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pr_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pr_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pr_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pr_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pr_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pr_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pr_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pr_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pr_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pr_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pr_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pr_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pr_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+)GPUI_DTS";
+static const char kShellTypes46[] =
+    R"GPUI_DTS(    pr_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pr_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the right padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pr_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 0px
+     */
+    pt_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    pt_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pt_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pt_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pt_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pt_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pt_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pt_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pt_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pt_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pt_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pt_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pt_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pt_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pt_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pt_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pt_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pt_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pt_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pt_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pt_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pt_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pt_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pt_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pt_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pt_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pt_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pt_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pt_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pt_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pt_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pt_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pt_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pt_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pt_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pt_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pt_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pt_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pt_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pt_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pt_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pt_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pt_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+    pt_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 0px
+     */
+    pt_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 2px (0.125rem)
+     */
+    pt_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 4px (0.25rem)
+     */
+    pt_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40px (2.5rem)
+     */
+    pt_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 44px (2.75rem)
+     */
+    pt_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 448px (28rem)
+     */
+    pt_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 48px (3rem)
+     */
+    pt_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 512px (32rem)
+     */
+    pt_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 64px (4rem)
+     */
+    pt_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8% (1/12)
+     */
+    pt_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+)GPUI_DTS";
+static const char kShellTypes47[] =
+    R"GPUI_DTS(     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (1/2)
+     */
+    pt_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 33% (1/3)
+     */
+    pt_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 25% (1/4)
+     */
+    pt_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20% (1/5)
+     */
+    pt_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16% (1/6)
+     */
+    pt_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 6px (0.375rem)
+     */
+    pt_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 8px (0.5rem)
+     */
+    pt_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80px (5rem)
+     */
+    pt_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 96px (6rem)
+     */
+    pt_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 66% (2/3)
+     */
+    pt_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 50% (2/4)
+     */
+    pt_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 40% (2/5)
+     */
+    pt_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 10px (0.625rem)
+     */
+    pt_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 12px (0.75rem)
+     */
+    pt_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 128px (8rem)
+     */
+    pt_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 75% (3/4)
+     */
+    pt_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 60% (3/5)
+     */
+    pt_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 14px (0.875rem)
+     */
+    pt_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 16px (1rem)
+     */
+    pt_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 160px (10rem)
+     */
+    pt_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 192px (12rem)
+     */
+    pt_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (4/5)
+     */
+    pt_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 20px (1.25rem)
+     */
+    pt_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 224px (14rem)
+     */
+    pt_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 80% (5/6)
+     */
+    pt_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 24px (1.5rem)
+     */
+    pt_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 256px (16rem)
+     */
+    pt_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 28px (1.75rem)
+     */
+    pt_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 288px (18rem)
+     */
+    pt_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 32px (2rem)
+     */
+    pt_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 320px (20rem)
+     */
+    pt_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 36px (2.25rem)
+     */
+    pt_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 384px (24rem)
+     */
+    pt_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 100%
+     */
+    pt_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pt_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the top padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-padding-to-a-single-side)
+     *
+     * 1px
+     */
+    pt_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 0px
+     */
+    px_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 2px (0.125rem)
+     */
+    px_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 4px (0.25rem)
+     */
+    px_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 40px (2.5rem)
+     */
+    px_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 44px (2.75rem)
+     */
+    px_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 448px (28rem)
+     */
+    px_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 48px (3rem)
+     */
+    px_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 512px (32rem)
+     */
+    px_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 64px (4rem)
+     */
+    px_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 8% (1/12)
+     */
+    px_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 50% (1/2)
+     */
+    px_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 33% (1/3)
+     */
+    px_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 25% (1/4)
+     */
+    px_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 20% (1/5)
+     */
+    px_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 16% (1/6)
+     */
+    px_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 6px (0.375rem)
+     */
+    px_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 8px (0.5rem)
+     */
+    px_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80px (5rem)
+     */
+    px_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 96px (6rem)
+     */
+    px_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 66% (2/3)
+     */
+    px_2_3<Self extends Element>(this: Self): Self;
+    /**
+)GPUI_DTS";
+static const char kShellTypes48[] =
+    R"GPUI_DTS(     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 50% (2/4)
+     */
+    px_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 40% (2/5)
+     */
+    px_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 10px (0.625rem)
+     */
+    px_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 12px (0.75rem)
+     */
+    px_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 128px (8rem)
+     */
+    px_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 75% (3/4)
+     */
+    px_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 60% (3/5)
+     */
+    px_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 14px (0.875rem)
+     */
+    px_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 16px (1rem)
+     */
+    px_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 160px (10rem)
+     */
+    px_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 192px (12rem)
+     */
+    px_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80% (4/5)
+     */
+    px_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 20px (1.25rem)
+     */
+    px_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 224px (14rem)
+     */
+    px_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80% (5/6)
+     */
+    px_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 24px (1.5rem)
+     */
+    px_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 256px (16rem)
+     */
+    px_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 28px (1.75rem)
+     */
+    px_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 288px (18rem)
+     */
+    px_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 32px (2rem)
+     */
+    px_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 320px (20rem)
+     */
+    px_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 36px (2.25rem)
+     */
+    px_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 384px (24rem)
+     */
+    px_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 100%
+     */
+    px_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 0px
+     */
+    px_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 2px (0.125rem)
+     */
+    px_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 4px (0.25rem)
+     */
+    px_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 40px (2.5rem)
+     */
+    px_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 44px (2.75rem)
+     */
+    px_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 448px (28rem)
+     */
+    px_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 48px (3rem)
+     */
+    px_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 512px (32rem)
+     */
+    px_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 64px (4rem)
+     */
+    px_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 8% (1/12)
+     */
+    px_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 50% (1/2)
+     */
+    px_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 33% (1/3)
+     */
+    px_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 25% (1/4)
+     */
+    px_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 20% (1/5)
+     */
+    px_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 16% (1/6)
+     */
+    px_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 6px (0.375rem)
+     */
+    px_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 8px (0.5rem)
+     */
+    px_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80px (5rem)
+     */
+    px_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 96px (6rem)
+     */
+    px_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 66% (2/3)
+     */
+    px_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 50% (2/4)
+     */
+    px_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 40% (2/5)
+     */
+    px_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 10px (0.625rem)
+     */
+    px_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 12px (0.75rem)
+     */
+    px_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 128px (8rem)
+     */
+    px_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 75% (3/4)
+     */
+    px_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 60% (3/5)
+     */
+    px_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 14px (0.875rem)
+     */
+    px_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 16px (1rem)
+     */
+    px_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 160px (10rem)
+     */
+    px_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 192px (12rem)
+     */
+    px_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80% (4/5)
+     */
+)GPUI_DTS";
+static const char kShellTypes49[] =
+    R"GPUI_DTS(    px_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 20px (1.25rem)
+     */
+    px_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 224px (14rem)
+     */
+    px_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 80% (5/6)
+     */
+    px_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 24px (1.5rem)
+     */
+    px_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 256px (16rem)
+     */
+    px_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 28px (1.75rem)
+     */
+    px_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 288px (18rem)
+     */
+    px_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 32px (2rem)
+     */
+    px_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 320px (20rem)
+     */
+    px_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 36px (2.25rem)
+     */
+    px_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 384px (24rem)
+     */
+    px_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 100%
+     */
+    px_neg_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 1px
+     */
+    px_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the horizontal padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-horizontal-padding)
+     *
+     * 1px
+     */
+    px_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 0px
+     */
+    py_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 2px (0.125rem)
+     */
+    py_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 4px (0.25rem)
+     */
+    py_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 40px (2.5rem)
+     */
+    py_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 44px (2.75rem)
+     */
+    py_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 448px (28rem)
+     */
+    py_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 48px (3rem)
+     */
+    py_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 512px (32rem)
+     */
+    py_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 64px (4rem)
+     */
+    py_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 8% (1/12)
+     */
+    py_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 50% (1/2)
+     */
+    py_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 33% (1/3)
+     */
+    py_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 25% (1/4)
+     */
+    py_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 20% (1/5)
+     */
+    py_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 16% (1/6)
+     */
+    py_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 6px (0.375rem)
+     */
+    py_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 8px (0.5rem)
+     */
+    py_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80px (5rem)
+     */
+    py_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 96px (6rem)
+     */
+    py_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 66% (2/3)
+     */
+    py_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 50% (2/4)
+     */
+    py_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 40% (2/5)
+     */
+    py_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 10px (0.625rem)
+     */
+    py_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 12px (0.75rem)
+     */
+    py_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 128px (8rem)
+     */
+    py_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 75% (3/4)
+     */
+    py_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 60% (3/5)
+     */
+    py_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 14px (0.875rem)
+     */
+    py_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 16px (1rem)
+     */
+    py_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 160px (10rem)
+     */
+    py_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 192px (12rem)
+     */
+    py_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80% (4/5)
+     */
+    py_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 20px (1.25rem)
+     */
+    py_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 224px (14rem)
+     */
+    py_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80% (5/6)
+     */
+    py_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 24px (1.5rem)
+     */
+    py_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 256px (16rem)
+     */
+    py_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 28px (1.75rem)
+     */
+    py_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 288px (18rem)
+     */
+    py_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 32px (2rem)
+     */
+    py_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 320px (20rem)
+     */
+    py_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 36px (2.25rem)
+     */
+    py_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 384px (24rem)
+     */
+)GPUI_DTS";
+static const char kShellTypes50[] =
+    R"GPUI_DTS(    py_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 100%
+     */
+    py_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 0px
+     */
+    py_neg_0<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 2px (0.125rem)
+     */
+    py_neg_0p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 4px (0.25rem)
+     */
+    py_neg_1<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 40px (2.5rem)
+     */
+    py_neg_10<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 44px (2.75rem)
+     */
+    py_neg_11<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 448px (28rem)
+     */
+    py_neg_112<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 48px (3rem)
+     */
+    py_neg_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 512px (32rem)
+     */
+    py_neg_128<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 64px (4rem)
+     */
+    py_neg_16<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 8% (1/12)
+     */
+    py_neg_1_12<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 50% (1/2)
+     */
+    py_neg_1_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 33% (1/3)
+     */
+    py_neg_1_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 25% (1/4)
+     */
+    py_neg_1_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 20% (1/5)
+     */
+    py_neg_1_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 16% (1/6)
+     */
+    py_neg_1_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 6px (0.375rem)
+     */
+    py_neg_1p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 8px (0.5rem)
+     */
+    py_neg_2<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80px (5rem)
+     */
+    py_neg_20<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 96px (6rem)
+     */
+    py_neg_24<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 66% (2/3)
+     */
+    py_neg_2_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 50% (2/4)
+     */
+    py_neg_2_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 40% (2/5)
+     */
+    py_neg_2_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 10px (0.625rem)
+     */
+    py_neg_2p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 12px (0.75rem)
+     */
+    py_neg_3<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 128px (8rem)
+     */
+    py_neg_32<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 75% (3/4)
+     */
+    py_neg_3_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 60% (3/5)
+     */
+    py_neg_3_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 14px (0.875rem)
+     */
+    py_neg_3p5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 16px (1rem)
+     */
+    py_neg_4<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 160px (10rem)
+     */
+    py_neg_40<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 192px (12rem)
+     */
+    py_neg_48<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80% (4/5)
+     */
+    py_neg_4_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 20px (1.25rem)
+     */
+    py_neg_5<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 224px (14rem)
+     */
+    py_neg_56<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 80% (5/6)
+     */
+    py_neg_5_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 24px (1.5rem)
+     */
+    py_neg_6<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 256px (16rem)
+     */
+    py_neg_64<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 28px (1.75rem)
+     */
+    py_neg_7<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 288px (18rem)
+     */
+    py_neg_72<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 32px (2rem)
+     */
+    py_neg_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 320px (20rem)
+     */
+    py_neg_80<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 36px (2.25rem)
+     */
+    py_neg_9<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 384px (24rem)
+     */
+    py_neg_96<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 100%
+     */
+    py_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
      *
      * 1px
      */
-    py_px(): Element;
+    py_neg_px<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the vertical padding of the element. [Docs](https://tailwindcss.com/docs/padding#add-vertical-padding)
+     *
+     * 1px
+     */
+    py_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the position of the element to `relative`.
      *
      * [Docs](https://tailwindcss.com/docs/position)
      */
-    relative(): Element;
+    relative<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    right_0(): Element;
+    right_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    right_0p5(): Element;
+    right_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    right_1(): Element;
+    right_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    right_10(): Element;
+    right_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    right_11(): Element;
+    right_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    right_112(): Element;
+    right_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    right_12(): Element;
+    right_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    right_128(): Element;
+    right_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
-     * 64px (4rem)
+)GPUI_DTS";
+static const char kShellTypes51[] = R"GPUI_DTS(     * 64px (4rem)
      */
-    right_16(): Element;
+    right_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    right_1_12(): Element;
+    right_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    right_1_2(): Element;
+    right_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    right_1_3(): Element;
+    right_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    right_1_4(): Element;
+    right_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    right_1_5(): Element;
+    right_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    right_1_6(): Element;
+    right_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    right_1p5(): Element;
+    right_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    right_2(): Element;
+    right_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    right_20(): Element;
+    right_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    right_24(): Element;
+    right_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    right_2_3(): Element;
+    right_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    right_2_4(): Element;
+    right_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    right_2_5(): Element;
+    right_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    right_2p5(): Element;
+    right_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    right_3(): Element;
+    right_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    right_32(): Element;
+    right_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    right_3_4(): Element;
+    right_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    right_3_5(): Element;
+    right_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    right_3p5(): Element;
+    right_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    right_4(): Element;
+    right_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    right_40(): Element;
+    right_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    right_48(): Element;
+    right_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    right_4_5(): Element;
+    right_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    right_5(): Element;
+    right_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    right_56(): Element;
+    right_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    right_5_6(): Element;
+    right_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    right_6(): Element;
+    right_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    right_64(): Element;
+    right_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    right_7(): Element;
+    right_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    right_72(): Element;
+    right_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    right_8(): Element;
+    right_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    right_80(): Element;
+    right_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    right_9(): Element;
+    right_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    right_96(): Element;
+    right_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * Auto
      */
-    right_auto(): Element;
+    right_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    right_full(): Element;
+    right_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    right_neg_0(): Element;
+    right_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    right_neg_0p5(): Element;
+    right_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    right_neg_1(): Element;
+    right_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    right_neg_10(): Element;
+    right_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    right_neg_11(): Element;
+    right_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    right_neg_112(): Element;
+    right_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    right_neg_12(): Element;
+    right_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    right_neg_128(): Element;
+    right_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    right_neg_16(): Element;
+    right_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    right_neg_1_12(): Element;
+    right_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    right_neg_1_2(): Element;
+    right_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    right_neg_1_3(): Element;
+    right_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    right_neg_1_4(): Element;
+    right_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    right_neg_1_5(): Element;
+    right_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    right_neg_1_6(): Element;
+    right_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    right_neg_1p5(): Element;
+    right_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    right_neg_2(): Element;
+    right_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    right_neg_20(): Element;
+    right_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    right_neg_24(): Element;
+    right_neg_24<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes45[] = R"GPUI_DTS(     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    right_neg_2_3(): Element;
+    right_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    right_neg_2_4(): Element;
+)GPUI_DTS";
+static const char kShellTypes52[] =
+    R"GPUI_DTS(    right_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    right_neg_2_5(): Element;
+    right_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    right_neg_2p5(): Element;
+    right_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    right_neg_3(): Element;
+    right_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    right_neg_32(): Element;
+    right_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    right_neg_3_4(): Element;
+    right_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    right_neg_3_5(): Element;
+    right_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    right_neg_3p5(): Element;
+    right_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    right_neg_4(): Element;
+    right_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    right_neg_40(): Element;
+    right_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    right_neg_48(): Element;
+    right_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    right_neg_4_5(): Element;
+    right_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    right_neg_5(): Element;
+    right_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    right_neg_56(): Element;
+    right_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    right_neg_5_6(): Element;
+    right_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    right_neg_6(): Element;
+    right_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    right_neg_64(): Element;
+    right_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    right_neg_7(): Element;
+    right_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    right_neg_72(): Element;
+    right_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    right_neg_8(): Element;
+    right_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    right_neg_80(): Element;
+    right_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    right_neg_9(): Element;
+    right_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    right_neg_96(): Element;
+    right_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    right_neg_full(): Element;
+    right_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    right_neg_px(): Element;
+    right_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the right value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    right_px(): Element;
+    right_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 16px (1rem)
      */
-    rounded_2xl(): Element;
+    rounded_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 24px (1.5rem)
      */
-    rounded_3xl(): Element;
+    rounded_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 16px (1rem)
      */
-    rounded_b_2xl(): Element;
+    rounded_b_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_b_3xl(): Element;
+    rounded_b_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 9999px
      */
-    rounded_b_full(): Element;
+    rounded_b_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_b_lg(): Element;
+    rounded_b_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_b_md(): Element;
+    rounded_b_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 0px
      */
-    rounded_b_none(): Element;
+    rounded_b_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_b_sm(): Element;
+    rounded_b_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_b_xl(): Element;
+    rounded_b_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_b_xs(): Element;
+    rounded_b_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 16px (1rem)
      */
-    rounded_bl_2xl(): Element;
+    rounded_bl_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_bl_3xl(): Element;
+    rounded_bl_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 9999px
      */
-    rounded_bl_full(): Element;
+    rounded_bl_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_bl_lg(): Element;
+    rounded_bl_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_bl_md(): Element;
+    rounded_bl_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 0px
      */
-    rounded_bl_none(): Element;
+    rounded_bl_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_bl_sm(): Element;
+    rounded_bl_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_bl_xl(): Element;
+    rounded_bl_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_bl_xs(): Element;
+    rounded_bl_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 16px (1rem)
      */
-    rounded_br_2xl(): Element;
+    rounded_br_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_br_3xl(): Element;
+    rounded_br_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 9999px
      */
-    rounded_br_full(): Element;
+    rounded_br_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_br_lg(): Element;
+    rounded_br_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_br_md(): Element;
+    rounded_br_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 0px
      */
-    rounded_br_none(): Element;
+    rounded_br_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_br_sm(): Element;
+    rounded_br_sm<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
-     *
-     * 12px (0.75rem)
-     */
-    rounded_br_xl(): Element;
-    /**
-     * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
-     *
-     * 2px (0.125rem)
-     */
-    rounded_br_xs(): Element;
-    /**
-     * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
-     *
-     * 9999px
-     */
-    rounded_full(): Element;
-    /**
-     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
-     *
-     * 16px (1rem)
-     */
-    rounded_l_2xl(): Element;
-    /**
-     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
-     *
-     * 24px (1.5rem)
-     */
-    rounded_l_3xl(): Element;
-    /**
-     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
-     *
-     * 9999px
-     */
 )GPUI_DTS";
-static const char kShellTypes46[] = R"GPUI_DTS(    rounded_l_full(): Element;
+static const char kShellTypes53[] =
+    R"GPUI_DTS(     * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
+     *
+     * 12px (0.75rem)
+     */
+    rounded_br_xl<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border radius of the bottom right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
+     *
+     * 2px (0.125rem)
+     */
+    rounded_br_xs<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
+     *
+     * 9999px
+     */
+    rounded_full<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
+     *
+     * 16px (1rem)
+     */
+    rounded_l_2xl<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
+     *
+     * 24px (1.5rem)
+     */
+    rounded_l_3xl<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
+     *
+     * 9999px
+     */
+    rounded_l_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_l_lg(): Element;
+    rounded_l_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_l_md(): Element;
+    rounded_l_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 0px
      */
-    rounded_l_none(): Element;
+    rounded_l_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_l_sm(): Element;
+    rounded_l_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_l_xl(): Element;
+    rounded_l_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the left side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_l_xs(): Element;
+    rounded_l_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 8px (0.5rem)
      */
-    rounded_lg(): Element;
+    rounded_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 6px (0.375rem)
      */
-    rounded_md(): Element;
+    rounded_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 0px
      */
-    rounded_none(): Element;
+    rounded_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 16px (1rem)
      */
-    rounded_r_2xl(): Element;
+    rounded_r_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_r_3xl(): Element;
+    rounded_r_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 9999px
      */
-    rounded_r_full(): Element;
+    rounded_r_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_r_lg(): Element;
+    rounded_r_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_r_md(): Element;
+    rounded_r_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 0px
      */
-    rounded_r_none(): Element;
+    rounded_r_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_r_sm(): Element;
+    rounded_r_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_r_xl(): Element;
+    rounded_r_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the right side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_r_xs(): Element;
+    rounded_r_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 4px (0.25rem)
      */
-    rounded_sm(): Element;
+    rounded_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 16px (1rem)
      */
-    rounded_t_2xl(): Element;
+    rounded_t_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_t_3xl(): Element;
+    rounded_t_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 9999px
      */
-    rounded_t_full(): Element;
+    rounded_t_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_t_lg(): Element;
+    rounded_t_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_t_md(): Element;
+    rounded_t_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 0px
      */
-    rounded_t_none(): Element;
+    rounded_t_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_t_sm(): Element;
+    rounded_t_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_t_xl(): Element;
+    rounded_t_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top side of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-sides-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_t_xs(): Element;
+    rounded_t_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 16px (1rem)
      */
-    rounded_tl_2xl(): Element;
+    rounded_tl_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_tl_3xl(): Element;
+    rounded_tl_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 9999px
      */
-    rounded_tl_full(): Element;
+    rounded_tl_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_tl_lg(): Element;
+    rounded_tl_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_tl_md(): Element;
+    rounded_tl_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 0px
      */
-    rounded_tl_none(): Element;
+    rounded_tl_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_tl_sm(): Element;
+    rounded_tl_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_tl_xl(): Element;
+    rounded_tl_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top left corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_tl_xs(): Element;
+    rounded_tl_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 16px (1rem)
      */
-    rounded_tr_2xl(): Element;
+    rounded_tr_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 24px (1.5rem)
      */
-    rounded_tr_3xl(): Element;
+    rounded_tr_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 9999px
      */
-    rounded_tr_full(): Element;
+    rounded_tr_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 8px (0.5rem)
      */
-    rounded_tr_lg(): Element;
+    rounded_tr_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 6px (0.375rem)
      */
-    rounded_tr_md(): Element;
+    rounded_tr_md<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 0px
      */
-    rounded_tr_none(): Element;
+    rounded_tr_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 4px (0.25rem)
      */
-    rounded_tr_sm(): Element;
+    rounded_tr_sm<Self extends Element>(this: Self): Self;
     /**
-     * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
+)GPUI_DTS";
+static const char kShellTypes54[] =
+    R"GPUI_DTS(     * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 12px (0.75rem)
      */
-    rounded_tr_xl(): Element;
+    rounded_tr_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the top right corner of the element. [Docs](https://tailwindcss.com/docs/border-radius#rounding-corners-separately)
      *
      * 2px (0.125rem)
      */
-    rounded_tr_xs(): Element;
+    rounded_tr_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 12px (0.75rem)
      */
-    rounded_xl(): Element;
+    rounded_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the border radius of the element. [Docs](https://tailwindcss.com/docs/border-radius)
      *
      * 2px (0.125rem)
      */
-    rounded_xs(): Element;
+    rounded_xs<Self extends Element>(this: Self): Self;
     /** Sets the row end of this element to "auto" */
-    row_end_auto(): Element;
+    row_end_auto<Self extends Element>(this: Self): Self;
     /** Sets the row span of this element. */
-    row_span_full(): Element;
+    row_span_full<Self extends Element>(this: Self): Self;
     /** Sets the row start of this element to "auto" */
-    row_start_auto(): Element;
+    row_start_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to align along the baseline of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#baseline)
      */
-    self_baseline(): Element;
+    self_baseline<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to align along the center of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#center)
      */
-    self_center(): Element;
+    self_center<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to align against the end of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#end)
      */
-    self_end(): Element;
+    self_end<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to align against the end of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#end)
      */
-    self_flex_end(): Element;
+    self_flex_end<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to align against the start of the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#start)
      */
-    self_flex_start(): Element;
+    self_flex_start<Self extends Element>(this: Self): Self;
     /**
      * Sets how this specific element is aligned along the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#start)
      */
-    self_start(): Element;
+    self_start<Self extends Element>(this: Self): Self;
     /**
      * Sets this element to stretch to fill the available space along the container's cross axis.
      *
      * [Docs](https://tailwindcss.com/docs/align-self#stretch)
      */
-    self_stretch(): Element;
+    self_stretch<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_2xl(): Element;
+    shadow_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-)GPUI_DTS";
-static const char kShellTypes47[] = R"GPUI_DTS(    shadow_2xs(): Element;
+    shadow_2xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_lg(): Element;
+    shadow_lg<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_md(): Element;
+    shadow_md<Self extends Element>(this: Self): Self;
     /**
      * Clears the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_none(): Element;
+    shadow_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_sm(): Element;
+    shadow_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_xl(): Element;
+    shadow_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the box shadow of the element.
      *
      * [Docs](https://tailwindcss.com/docs/box-shadow)
      */
-    shadow_xs(): Element;
+    shadow_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 0px
      */
-    size_0(): Element;
+    size_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 2px (0.125rem)
      */
-    size_0p5(): Element;
+    size_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 4px (0.25rem)
      */
-    size_1(): Element;
+    size_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 40px (2.5rem)
      */
-    size_10(): Element;
+    size_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 44px (2.75rem)
      */
-    size_11(): Element;
+    size_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 448px (28rem)
      */
-    size_112(): Element;
+    size_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 48px (3rem)
      */
-    size_12(): Element;
+    size_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 512px (32rem)
      */
-    size_128(): Element;
+    size_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 64px (4rem)
      */
-    size_16(): Element;
+    size_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 8% (1/12)
      */
-    size_1_12(): Element;
+    size_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 50% (1/2)
      */
-    size_1_2(): Element;
+    size_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 33% (1/3)
      */
-    size_1_3(): Element;
+    size_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 25% (1/4)
      */
-    size_1_4(): Element;
+    size_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 20% (1/5)
      */
-    size_1_5(): Element;
+    size_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 16% (1/6)
      */
-    size_1_6(): Element;
+    size_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 6px (0.375rem)
      */
-    size_1p5(): Element;
+    size_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 8px (0.5rem)
      */
-    size_2(): Element;
+    size_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80px (5rem)
      */
-    size_20(): Element;
+    size_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 96px (6rem)
      */
-    size_24(): Element;
+    size_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 66% (2/3)
      */
-    size_2_3(): Element;
+    size_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 50% (2/4)
      */
-    size_2_4(): Element;
+    size_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 40% (2/5)
      */
-    size_2_5(): Element;
+    size_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 10px (0.625rem)
      */
-    size_2p5(): Element;
+    size_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 12px (0.75rem)
      */
-    size_3(): Element;
+    size_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 128px (8rem)
      */
-    size_32(): Element;
+    size_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 75% (3/4)
      */
-    size_3_4(): Element;
+    size_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 60% (3/5)
      */
-    size_3_5(): Element;
+    size_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 14px (0.875rem)
      */
-    size_3p5(): Element;
+    size_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 16px (1rem)
      */
-    size_4(): Element;
+    size_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 160px (10rem)
      */
-    size_40(): Element;
+    size_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 192px (12rem)
      */
-    size_48(): Element;
+    size_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80% (4/5)
      */
-    size_4_5(): Element;
+    size_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 20px (1.25rem)
      */
-    size_5(): Element;
+    size_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 224px (14rem)
      */
-    size_56(): Element;
+    size_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80% (5/6)
      */
-    size_5_6(): Element;
+    size_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 24px (1.5rem)
      */
-    size_6(): Element;
+    size_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 256px (16rem)
      */
-    size_64(): Element;
+    size_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 28px (1.75rem)
      */
-    size_7(): Element;
+    size_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 288px (18rem)
      */
-    size_72(): Element;
+    size_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 32px (2rem)
      */
-    size_8(): Element;
+    size_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 320px (20rem)
      */
-    size_80(): Element;
+    size_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 36px (2.25rem)
      */
-    size_9(): Element;
+    size_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 384px (24rem)
      */
-    size_96(): Element;
+    size_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * Auto
      */
-    size_auto(): Element;
+    size_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 100%
      */
-    size_full(): Element;
+    size_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 0px
      */
-    size_neg_0(): Element;
+    size_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 2px (0.125rem)
      */
-    size_neg_0p5(): Element;
+    size_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 4px (0.25rem)
      */
-    size_neg_1(): Element;
+    size_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 40px (2.5rem)
      */
-    size_neg_10(): Element;
+    size_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 44px (2.75rem)
      */
-    size_neg_11(): Element;
+    size_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 448px (28rem)
      */
-    size_neg_112(): Element;
+    size_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 48px (3rem)
      */
-    size_neg_12(): Element;
+    size_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 512px (32rem)
      */
-    size_neg_128(): Element;
+    size_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
-     * 64px (4rem)
+)GPUI_DTS";
+static const char kShellTypes55[] = R"GPUI_DTS(     * 64px (4rem)
      */
-    size_neg_16(): Element;
+    size_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 8% (1/12)
      */
-    size_neg_1_12(): Element;
+    size_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 50% (1/2)
      */
-    size_neg_1_2(): Element;
+    size_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 33% (1/3)
      */
-    size_neg_1_3(): Element;
+    size_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 25% (1/4)
      */
-    size_neg_1_4(): Element;
+    size_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 20% (1/5)
      */
-    size_neg_1_5(): Element;
+    size_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 16% (1/6)
      */
-    size_neg_1_6(): Element;
+    size_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 6px (0.375rem)
      */
-    size_neg_1p5(): Element;
+    size_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 8px (0.5rem)
      */
-    size_neg_2(): Element;
+    size_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80px (5rem)
      */
-    size_neg_20(): Element;
+    size_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 96px (6rem)
      */
-    size_neg_24(): Element;
+    size_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 66% (2/3)
      */
-    size_neg_2_3(): Element;
+    size_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 50% (2/4)
      */
-    size_neg_2_4(): Element;
+    size_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 40% (2/5)
      */
-    size_neg_2_5(): Element;
+    size_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 10px (0.625rem)
      */
-    size_neg_2p5(): Element;
+    size_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 12px (0.75rem)
      */
-    size_neg_3(): Element;
+    size_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 128px (8rem)
      */
-    size_neg_32(): Element;
+    size_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 75% (3/4)
      */
-    size_neg_3_4(): Element;
+    size_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 60% (3/5)
      */
-    size_neg_3_5(): Element;
+    size_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 14px (0.875rem)
      */
-    size_neg_3p5(): Element;
+    size_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 16px (1rem)
      */
-    size_neg_4(): Element;
+    size_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 160px (10rem)
      */
-    size_neg_40(): Element;
+    size_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 192px (12rem)
      */
-    size_neg_48(): Element;
+    size_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80% (4/5)
      */
-    size_neg_4_5(): Element;
+    size_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 20px (1.25rem)
      */
-    size_neg_5(): Element;
+    size_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 224px (14rem)
      */
-    size_neg_56(): Element;
+    size_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 80% (5/6)
      */
-    size_neg_5_6(): Element;
+    size_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 24px (1.5rem)
      */
-    size_neg_6(): Element;
+    size_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 256px (16rem)
      */
-    size_neg_64(): Element;
+    size_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 28px (1.75rem)
      */
-    size_neg_7(): Element;
+    size_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 288px (18rem)
      */
-    size_neg_72(): Element;
+    size_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 32px (2rem)
      */
-    size_neg_8(): Element;
+    size_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 320px (20rem)
      */
-    size_neg_80(): Element;
+    size_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 36px (2.25rem)
      */
-    size_neg_9(): Element;
+    size_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 384px (24rem)
      */
-    size_neg_96(): Element;
+    size_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 100%
      */
-    size_neg_full(): Element;
+    size_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 1px
      */
-    size_neg_px(): Element;
+    size_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the width and height of the element.
      *
      * 1px
      */
-    size_px(): Element;
+    size_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'extra extra large'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_2xl(): Element;
+    text_2xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'extra extra extra large'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_3xl(): Element;
+    text_3xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'base'.
      *
-)GPUI_DTS";
-static const char kShellTypes48[] = R"GPUI_DTS(     * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
+     * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_base(): Element;
+    text_base<Self extends Element>(this: Self): Self;
     /** Sets the text alignment to center */
-    text_center(): Element;
+    text_center<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to be 0px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
-    text_decoration_0(): Element;
+    text_decoration_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to be 1px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
-    text_decoration_1(): Element;
+    text_decoration_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to be 2px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
-    text_decoration_2(): Element;
+    text_decoration_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to be 4px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
-    text_decoration_4(): Element;
+    text_decoration_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to be 8px thick.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-thickness)
      */
-    text_decoration_8(): Element;
+    text_decoration_8<Self extends Element>(this: Self): Self;
     /**
      * Removes the text decoration on this element.
      *
      * This value cascades to its child elements.
      */
-    text_decoration_none(): Element;
+    text_decoration_none<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration style to a solid line.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-style)
      */
-    text_decoration_solid(): Element;
+    text_decoration_solid<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration style to a wavy line.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-style)
      */
-    text_decoration_wavy(): Element;
+    text_decoration_wavy<Self extends Element>(this: Self): Self;
     /**
      * Sets the truncate overflowing text with an ellipsis (…) at the end if needed.
      *
      * [Docs](https://tailwindcss.com/docs/text-overflow#ellipsis)
      */
-    text_ellipsis(): Element;
+    text_ellipsis<Self extends Element>(this: Self): Self;
     /**
      * Sets the truncate overflowing text with an ellipsis (…) in the middle if needed.
      *
@@ -19131,7 +19175,7 @@ static const char kShellTypes48[] = R"GPUI_DTS(     * [Docs](https://tailwindcss
      *
      * Note: This doesn't exist in Tailwind CSS.
      */
-    text_ellipsis_middle(): Element;
+    text_ellipsis_middle<Self extends Element>(this: Self): Self;
     /**
      * Sets the truncate overflowing text with an ellipsis (…) at the start if needed.
      *
@@ -19139,594 +19183,596 @@ static const char kShellTypes48[] = R"GPUI_DTS(     * [Docs](https://tailwindcss
      *
      * Note: This doesn't exist in Tailwind CSS.
      */
-    text_ellipsis_start(): Element;
+    text_ellipsis_start<Self extends Element>(this: Self): Self;
     /** Sets the text alignment to left */
-    text_left(): Element;
+    text_left<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'large'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_lg(): Element;
+    text_lg<Self extends Element>(this: Self): Self;
     /** Sets the text alignment to right */
-    text_right(): Element;
+    text_right<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'small'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_sm(): Element;
+    text_sm<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'extra large'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_xl(): Element;
+    text_xl<Self extends Element>(this: Self): Self;
     /**
      * Sets the text size to 'extra small'.
      *
      * [Docs](https://tailwindcss.com/docs/font-size#setting-the-font-size)
      */
-    text_xs(): Element;
+    text_xs<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    top_0(): Element;
+    top_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    top_0p5(): Element;
+    top_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    top_1(): Element;
+    top_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    top_10(): Element;
+    top_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    top_11(): Element;
+    top_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    top_112(): Element;
+    top_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    top_12(): Element;
+    top_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    top_128(): Element;
+    top_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    top_16(): Element;
+    top_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    top_1_12(): Element;
+    top_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    top_1_2(): Element;
-    /**
+    top_1_2<Self extends Element>(this: Self): Self;
+)GPUI_DTS";
+static const char kShellTypes56[] = R"GPUI_DTS(    /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    top_1_3(): Element;
+    top_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    top_1_4(): Element;
+    top_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    top_1_5(): Element;
+    top_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    top_1_6(): Element;
+    top_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    top_1p5(): Element;
+    top_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    top_2(): Element;
+    top_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    top_20(): Element;
+    top_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    top_24(): Element;
+    top_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    top_2_3(): Element;
+    top_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    top_2_4(): Element;
+    top_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    top_2_5(): Element;
+    top_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    top_2p5(): Element;
+    top_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    top_3(): Element;
+    top_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    top_32(): Element;
+    top_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    top_3_4(): Element;
+    top_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    top_3_5(): Element;
+    top_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    top_3p5(): Element;
+    top_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    top_4(): Element;
+    top_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    top_40(): Element;
+    top_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    top_48(): Element;
+    top_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    top_4_5(): Element;
+    top_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    top_5(): Element;
+    top_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    top_56(): Element;
+    top_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    top_5_6(): Element;
+    top_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    top_6(): Element;
+    top_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    top_64(): Element;
+    top_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    top_7(): Element;
+    top_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    top_72(): Element;
+    top_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    top_8(): Element;
+    top_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    top_80(): Element;
+    top_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    top_9(): Element;
+    top_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    top_96(): Element;
+    top_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * Auto
      */
-    top_auto(): Element;
+    top_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    top_full(): Element;
+    top_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 0px
      */
-    top_neg_0(): Element;
+    top_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 2px (0.125rem)
      */
-    top_neg_0p5(): Element;
+    top_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 4px (0.25rem)
      */
-    top_neg_1(): Element;
+    top_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40px (2.5rem)
      */
-    top_neg_10(): Element;
+    top_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 44px (2.75rem)
      */
-    top_neg_11(): Element;
+    top_neg_11<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes49[] = R"GPUI_DTS(     * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+     * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 448px (28rem)
      */
-    top_neg_112(): Element;
+    top_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 48px (3rem)
      */
-    top_neg_12(): Element;
+    top_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 512px (32rem)
      */
-    top_neg_128(): Element;
+    top_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 64px (4rem)
      */
-    top_neg_16(): Element;
+    top_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8% (1/12)
      */
-    top_neg_1_12(): Element;
+    top_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (1/2)
      */
-    top_neg_1_2(): Element;
+    top_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 33% (1/3)
      */
-    top_neg_1_3(): Element;
+    top_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 25% (1/4)
      */
-    top_neg_1_4(): Element;
+    top_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20% (1/5)
      */
-    top_neg_1_5(): Element;
+    top_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16% (1/6)
      */
-    top_neg_1_6(): Element;
+    top_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 6px (0.375rem)
      */
-    top_neg_1p5(): Element;
+    top_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 8px (0.5rem)
      */
-    top_neg_2(): Element;
+    top_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80px (5rem)
      */
-    top_neg_20(): Element;
+    top_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 96px (6rem)
      */
-    top_neg_24(): Element;
+    top_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 66% (2/3)
      */
-    top_neg_2_3(): Element;
+    top_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 50% (2/4)
      */
-    top_neg_2_4(): Element;
+    top_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 40% (2/5)
      */
-    top_neg_2_5(): Element;
+    top_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 10px (0.625rem)
      */
-    top_neg_2p5(): Element;
+    top_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 12px (0.75rem)
      */
-    top_neg_3(): Element;
+    top_neg_3<Self extends Element>(this: Self): Self;
     /**
-     * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
+)GPUI_DTS";
+static const char kShellTypes57[] =
+    R"GPUI_DTS(     * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 128px (8rem)
      */
-    top_neg_32(): Element;
+    top_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 75% (3/4)
      */
-    top_neg_3_4(): Element;
+    top_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 60% (3/5)
      */
-    top_neg_3_5(): Element;
+    top_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 14px (0.875rem)
      */
-    top_neg_3p5(): Element;
+    top_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 16px (1rem)
      */
-    top_neg_4(): Element;
+    top_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 160px (10rem)
      */
-    top_neg_40(): Element;
+    top_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 192px (12rem)
      */
-    top_neg_48(): Element;
+    top_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (4/5)
      */
-    top_neg_4_5(): Element;
+    top_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 20px (1.25rem)
      */
-    top_neg_5(): Element;
+    top_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 224px (14rem)
      */
-    top_neg_56(): Element;
+    top_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 80% (5/6)
      */
-    top_neg_5_6(): Element;
+    top_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 24px (1.5rem)
      */
-    top_neg_6(): Element;
+    top_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 256px (16rem)
      */
-    top_neg_64(): Element;
+    top_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 28px (1.75rem)
      */
-    top_neg_7(): Element;
+    top_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 288px (18rem)
      */
-    top_neg_72(): Element;
+    top_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 32px (2rem)
      */
-    top_neg_8(): Element;
+    top_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 320px (20rem)
      */
-    top_neg_80(): Element;
+    top_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 36px (2.25rem)
      */
-    top_neg_9(): Element;
+    top_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 384px (24rem)
      */
-    top_neg_96(): Element;
+    top_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 100%
      */
-    top_neg_full(): Element;
+    top_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    top_neg_px(): Element;
+    top_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the top value of a positioned element. [Docs](https://tailwindcss.com/docs/top-right-bottom-left)
      *
      * 1px
      */
-    top_px(): Element;
+    top_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the truncate to prevent text from wrapping and truncate overflowing text with an ellipsis (…) if needed.
      *
      * [Docs](https://tailwindcss.com/docs/text-overflow#truncate)
      */
-    truncate(): Element;
+    truncate<Self extends Element>(this: Self): Self;
     /**
      * Sets the text decoration to underline.
      *
      * [Docs](https://tailwindcss.com/docs/text-decoration-line#underling-text)
      */
-    underline(): Element;
+    underline<Self extends Element>(this: Self): Self;
     /**
      * Lays children out in a column, stretching them across the cross axis.
      *
@@ -19734,576 +19780,577 @@ static const char kShellTypes49[] = R"GPUI_DTS(     * Sets the top value of a po
      *
      * without a width fills the column. See `h_flex` for the asymmetry.
      */
-    v_flex(): Element;
+    v_flex<Self extends Element>(this: Self): Self;
     /**
      * Sets the visibility of the element to `visible`.
      *
      * [Docs](https://tailwindcss.com/docs/visibility)
      */
-    visible(): Element;
+    visible<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 0px
      */
-    w_0(): Element;
+    w_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 2px (0.125rem)
      */
-    w_0p5(): Element;
+    w_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 4px (0.25rem)
      */
-    w_1(): Element;
+    w_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 40px (2.5rem)
      */
-    w_10(): Element;
+    w_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 44px (2.75rem)
      */
-    w_11(): Element;
+    w_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 448px (28rem)
      */
-    w_112(): Element;
+    w_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 48px (3rem)
      */
-    w_12(): Element;
+    w_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 512px (32rem)
      */
-    w_128(): Element;
+    w_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 64px (4rem)
      */
-    w_16(): Element;
+    w_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 8% (1/12)
      */
-    w_1_12(): Element;
+    w_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 50% (1/2)
      */
-    w_1_2(): Element;
+    w_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 33% (1/3)
      */
-    w_1_3(): Element;
+    w_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 25% (1/4)
      */
-    w_1_4(): Element;
+    w_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 20% (1/5)
      */
-    w_1_5(): Element;
+    w_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 16% (1/6)
      */
-    w_1_6(): Element;
+    w_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 6px (0.375rem)
      */
-    w_1p5(): Element;
+    w_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 8px (0.5rem)
      */
-    w_2(): Element;
+    w_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80px (5rem)
      */
-    w_20(): Element;
+    w_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 96px (6rem)
      */
-    w_24(): Element;
+    w_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 66% (2/3)
      */
-    w_2_3(): Element;
+    w_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 50% (2/4)
      */
-    w_2_4(): Element;
+    w_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 40% (2/5)
      */
-    w_2_5(): Element;
+    w_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 10px (0.625rem)
      */
-    w_2p5(): Element;
+    w_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 12px (0.75rem)
      */
-    w_3(): Element;
+    w_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 128px (8rem)
      */
-    w_32(): Element;
+    w_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 75% (3/4)
      */
-    w_3_4(): Element;
+    w_3_4<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
+     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 60% (3/5)
      */
-    w_3_5(): Element;
+    w_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 14px (0.875rem)
      */
-    w_3p5(): Element;
+    w_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 16px (1rem)
      */
-    w_4(): Element;
+    w_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 160px (10rem)
      */
-    w_40(): Element;
+    w_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 192px (12rem)
      */
-    w_48(): Element;
+    w_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80% (4/5)
      */
-    w_4_5(): Element;
+    w_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 20px (1.25rem)
      */
-    w_5(): Element;
+    w_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 224px (14rem)
      */
-    w_56(): Element;
+    w_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80% (5/6)
      */
-    w_5_6(): Element;
+    w_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 24px (1.5rem)
      */
-    w_6(): Element;
+    w_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 256px (16rem)
      */
-    w_64(): Element;
+    w_64<Self extends Element>(this: Self): Self;
     /**
-     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
+)GPUI_DTS";
+static const char kShellTypes58[] =
+    R"GPUI_DTS(     * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 28px (1.75rem)
      */
-    w_7(): Element;
+    w_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 288px (18rem)
      */
-    w_72(): Element;
+    w_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 32px (2rem)
      */
-    w_8(): Element;
+    w_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 320px (20rem)
      */
-    w_80(): Element;
+    w_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 36px (2.25rem)
      */
-    w_9(): Element;
+    w_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 384px (24rem)
      */
-    w_96(): Element;
+    w_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * Auto
      */
-    w_auto(): Element;
+    w_auto<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 100%
      */
-    w_full(): Element;
+    w_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 0px
      */
-    w_neg_0(): Element;
+    w_neg_0<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 2px (0.125rem)
      */
-    w_neg_0p5(): Element;
+    w_neg_0p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 4px (0.25rem)
      */
-    w_neg_1(): Element;
+    w_neg_1<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 40px (2.5rem)
      */
-    w_neg_10(): Element;
+    w_neg_10<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 44px (2.75rem)
      */
-    w_neg_11(): Element;
+    w_neg_11<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 448px (28rem)
      */
-    w_neg_112(): Element;
+    w_neg_112<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 48px (3rem)
      */
-    w_neg_12(): Element;
+    w_neg_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 512px (32rem)
      */
-    w_neg_128(): Element;
+    w_neg_128<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 64px (4rem)
      */
-    w_neg_16(): Element;
+    w_neg_16<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 8% (1/12)
      */
-    w_neg_1_12(): Element;
+    w_neg_1_12<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 50% (1/2)
      */
-    w_neg_1_2(): Element;
+    w_neg_1_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 33% (1/3)
      */
-    w_neg_1_3(): Element;
+    w_neg_1_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 25% (1/4)
      */
-    w_neg_1_4(): Element;
+    w_neg_1_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 20% (1/5)
      */
-    w_neg_1_5(): Element;
+    w_neg_1_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 16% (1/6)
      */
-    w_neg_1_6(): Element;
+    w_neg_1_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 6px (0.375rem)
      */
-    w_neg_1p5(): Element;
+    w_neg_1p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 8px (0.5rem)
      */
-    w_neg_2(): Element;
+    w_neg_2<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80px (5rem)
      */
-    w_neg_20(): Element;
+    w_neg_20<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 96px (6rem)
      */
-    w_neg_24(): Element;
+    w_neg_24<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 66% (2/3)
      */
-    w_neg_2_3(): Element;
+    w_neg_2_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 50% (2/4)
      */
-    w_neg_2_4(): Element;
+    w_neg_2_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 40% (2/5)
      */
-    w_neg_2_5(): Element;
+    w_neg_2_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 10px (0.625rem)
      */
-    w_neg_2p5(): Element;
+    w_neg_2p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 12px (0.75rem)
      */
-    w_neg_3(): Element;
+    w_neg_3<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 128px (8rem)
      */
-    w_neg_32(): Element;
+    w_neg_32<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 75% (3/4)
      */
-    w_neg_3_4(): Element;
+    w_neg_3_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 60% (3/5)
      */
-    w_neg_3_5(): Element;
+    w_neg_3_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 14px (0.875rem)
      */
-    w_neg_3p5(): Element;
+    w_neg_3p5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 16px (1rem)
      */
-    w_neg_4(): Element;
+    w_neg_4<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 160px (10rem)
      */
-    w_neg_40(): Element;
+    w_neg_40<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 192px (12rem)
      */
-    w_neg_48(): Element;
+    w_neg_48<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80% (4/5)
      */
-    w_neg_4_5(): Element;
+    w_neg_4_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 20px (1.25rem)
      */
-    w_neg_5(): Element;
+    w_neg_5<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 224px (14rem)
      */
-    w_neg_56(): Element;
+    w_neg_56<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 80% (5/6)
      */
-    w_neg_5_6(): Element;
+    w_neg_5_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 24px (1.5rem)
      */
-    w_neg_6(): Element;
+    w_neg_6<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 256px (16rem)
      */
-    w_neg_64(): Element;
+    w_neg_64<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 28px (1.75rem)
      */
-    w_neg_7(): Element;
+    w_neg_7<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 288px (18rem)
      */
-    w_neg_72(): Element;
+    w_neg_72<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 32px (2rem)
      */
-    w_neg_8(): Element;
+    w_neg_8<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 320px (20rem)
      */
-    w_neg_80(): Element;
+    w_neg_80<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 36px (2.25rem)
      */
-    w_neg_9(): Element;
+    w_neg_9<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 384px (24rem)
      */
-    w_neg_96(): Element;
+    w_neg_96<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 100%
      */
-    w_neg_full(): Element;
+    w_neg_full<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 1px
      */
-    w_neg_px(): Element;
+    w_neg_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the width of the element. [Docs](https://tailwindcss.com/docs/width)
      *
      * 1px
      */
-    w_px(): Element;
+    w_px<Self extends Element>(this: Self): Self;
     /**
      * Sets the whitespace of the element to `normal`.
      *
      * [Docs](https://tailwindcss.com/docs/whitespace#normal)
      */
-    whitespace_normal(): Element;
+    whitespace_normal<Self extends Element>(this: Self): Self;
     /**
      * Sets the whitespace of the element to `nowrap`.
      *
      * [Docs](https://tailwindcss.com/docs/whitespace#nowrap)
      */
-    whitespace_nowrap(): Element;
+    whitespace_nowrap<Self extends Element>(this: Self): Self;
   }
 
   /** An element with no layout of its own. */
-  export function div(): Element;
+  export function div(): NativeElement;
 
   /**
    * A vector image from the application's own directory.
@@ -20313,7 +20360,7 @@ static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the width of the elem
    * application's public directory works. It inherits the surrounding text
    * color unless it sets its own.
    */
-  export function svg(path: string): Element;
+  export function svg(path: string): NativeElement;
 
   /**
    * A full-color image from the application's own directory.
@@ -20322,7 +20369,7 @@ static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the width of the elem
    * as a theme-tinted icon mask. SVG, PNG, JPEG and other GPUI image formats
    * are supported by the host image loader.
    */
-  export function image(path: string): Element;
+  export function image(path: string): NativeElement;
 
   /** The visible items, as a half-open `[start, end)` interval. */
   export interface ItemRange {
@@ -20354,7 +20401,8 @@ static const char kShellTypes50[] = R"GPUI_DTS(     * Sets the width of the elem
    * ```
    *
 )GPUI_DTS";
-static const char kShellTypes51[] = R"GPUI_DTS(   * The measuring is what it costs: the host is entered once per visible item
+static const char kShellTypes59[] =
+    R"GPUI_DTS(   * The measuring is what it costs: the host is entered once per visible item
    * per frame, where `v_virtual_list` and `uniform_list` are entered once per
    * frame however many rows are on screen. Reach for this when heights are
    * genuinely unequal and unknown — a column of panels, a feed of mixed
@@ -20377,7 +20425,7 @@ static const char kShellTypes51[] = R"GPUI_DTS(   * The measuring is what it cos
     item_count: number,
     get_key: (index: number) => string,
     render: (index: number, cx: Context) => Element,
-  ): Element;
+  ): NativeElement;
 
   /**
    * GPUI's own uniform list: one row is measured and every row takes its
@@ -20397,7 +20445,7 @@ static const char kShellTypes51[] = R"GPUI_DTS(   * The measuring is what it cos
     item_count: number,
     get_key: (index: number) => string,
     render: (range: ItemRange, cx: Context) => Element[],
-  ): Element;
+  ): NativeElement;
 
   /** Immutable native GPUI geometry produced by `PathBuilder.build()`. */
   export interface Path {}
@@ -20506,7 +20554,7 @@ static const char kShellTypes51[] = R"GPUI_DTS(   * The measuring is what it cos
      * the window rather than on the app. Legal from `render`, unlike the
      * overlays above — it builds a description like any other element.
      */
-    paint_path(path: Path, background: Background | Color): Element;
+    paint_path(path: Path, background: Background | Color): NativeElement;
 
     /**
      * `Window::dispatch_action`. Dispatches an action down this window's focus
@@ -20605,10 +20653,11 @@ static const char kShellTypes51[] = R"GPUI_DTS(   * The measuring is what it cos
    * **Values are strings.** `setItem` converts whatever it is handed, exactly
    * as the browser does, so an object is stored as `"[object Object]"` unless
    * you `JSON.stringify` it — and reading it back is `JSON.parse`. That is not
-   * an omission; it is the API this mirrors.
-   *
 )GPUI_DTS";
-static const char kShellTypes52[] = R"GPUI_DTS(   * Storage is per application. The host places the file, because an
+static const char kShellTypes60[] =
+    R"GPUI_DTS(   * an omission; it is the API this mirrors.
+   *
+   * Storage is per application. The host places the file, because an
    * application that could name its own storage location could name another
    * application's.
    */
@@ -20663,6 +20712,7 @@ declare module "gpui-base" {
     Color,
     Context,
     Element,
+    NativeElement,
     FocusHandle,
   } from "gpui-kit";
 
@@ -20694,18 +20744,18 @@ declare module "gpui-base" {
 
   /** A component identified across renders by `new(id)`. */
   export interface ComponentType {
-    new: (id: string | number) => Element;
+    new: (id: string | number) => NativeElement;
   }
 
   /** A sub-part with no identity of its own, constructed with `new()`. */
   export interface PartType {
-    new: () => Element;
+    new: () => NativeElement;
   }
 
   /** A row. */
-  export function h_flex(): Element;
+  export function h_flex(): NativeElement;
   /** A column. */
-  export function v_flex(): Element;
+  export function v_flex(): NativeElement;
 
   /** Activation, focus, disabled and selected state. No styling. */
   export const Button: ComponentType;
@@ -20716,11 +20766,11 @@ declare module "gpui-base" {
   /** A controlled switch. No styling. */
   export const Switch: ComponentType;
   /** Rich HTML or Markdown text. CSS in HTML is not supported. */
-  export interface TextViewElement extends Element {
+  export interface TextViewElement extends NativeElement {
     /** Overrides TextView's default URL opening and reports the resolved URL. */
-    on_link_click(handler: (url: string, cx: Context) => void): TextViewElement;
-    selectable(value?: boolean): TextViewElement;
-    scrollable(value?: boolean): TextViewElement;
+    on_link_click(handler: (url: string, cx: Context) => void): this;
+    selectable(value?: boolean): this;
+    scrollable(value?: boolean): this;
   }
   export const TextView: {
     html(id: string, html: string): TextViewElement;
@@ -20918,9 +20968,10 @@ declare module "gpui-base" {
     /** What is selected. */
     value(): CalendarDate;
     /** Selects a day, a range, or nothing. */
-    set_value(next: CalendarDate): void;
 )GPUI_DTS";
-static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward one month. Illegal from `render`. */
+static const char kShellTypes61[] =
+    R"GPUI_DTS(    set_value(next: CalendarDate): void;
+    /** Moves the grid forward one month. Illegal from `render`. */
     next_month(): void;
     /** And back one. Illegal from `render`. */
     prev_month(): void;
@@ -21002,11 +21053,11 @@ static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward on
   /** The body row group of a `Table`. */
   export const TableBody: ComponentType;
   /** One row. `TableRow.new(id, row_index)`, one-based. */
-  export const TableRow: { new: (id: string | number, row_index: number) => Element };
+  export const TableRow: { new: (id: string | number, row_index: number) => NativeElement };
   /** One column header. `TableHead.new(id, column_index)`, one-based. */
-  export const TableHead: { new: (id: string | number, column_index: number) => Element };
+  export const TableHead: { new: (id: string | number, column_index: number) => NativeElement };
   /** One data cell. `TableCell.new(id, column_index)`, one-based. */
-  export const TableCell: { new: (id: string | number, column_index: number) => Element };
+  export const TableCell: { new: (id: string | number, column_index: number) => NativeElement };
   /**
    * The visual slot a caption belongs in. It is an identified container and
    * nothing more: it carries no caption role, so assistive technology does not
@@ -21039,9 +21090,9 @@ static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward on
    *   .child(resizable_panel().child(editor));
    * ```
    */
-  export function h_resizable(id: string): Element;
+  export function h_resizable(id: string): NativeElement;
   /** A column of panes with draggable dividers. See `h_resizable`. */
-  export function v_resizable(id: string): Element;
+  export function v_resizable(id: string): NativeElement;
   /**
    * One pane of an `h_resizable()` or `v_resizable()`, and only there: a panel
    * anywhere else throws when it is added, because its size and its drag handle
@@ -21058,7 +21109,7 @@ static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward on
    *   `visibility` style. A hidden panel keeps its place in the group, so its
    *   siblings' sizes are undisturbed while it is away. Default `true`.
    */
-  export function resizable_panel(): Element;
+  export function resizable_panel(): NativeElement;
 
   /**
    * A region whose `content` is materialized and rendered only while `open` is
@@ -21123,7 +21174,7 @@ static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward on
    * and `track_focus` all land on it.
    */
   export const Popup: {
-    new: (id: string | number, trigger: Element) => Element;
+    new: (id: string | number, trigger: Element) => NativeElement;
   };
 
   /**
@@ -21178,9 +21229,10 @@ static const char kShellTypes53[] = R"GPUI_DTS(    /** Moves the grid forward on
   export const Combobox: ComponentType;
   /**
    * A date-picker root: the combobox role, the announced open state, and the
-   * trigger's place in the Tab order. **It holds no date** — the date lives
 )GPUI_DTS";
-static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and the calendar you draw inside it is your own.
+static const char kShellTypes62[] =
+    R"GPUI_DTS(   * trigger's place in the Tab order. **It holds no date** — the date lives
+   * wherever you keep it, and the calendar you draw inside it is your own.
    *
    * The focus handle is a constructor argument because base requires it: the
    * picker takes the keyboard through that handle, and there is no builder to
@@ -21195,7 +21247,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
    * trigger and calendar inside one.
    */
   export const DatePicker: {
-    new: (id: string | number, focus_handle: FocusHandle) => Element;
+    new: (id: string | number, focus_handle: FocusHandle) => NativeElement;
   };
 
   /** When a `Scrollbar` shows itself. */
@@ -21229,11 +21281,11 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
    */
   export const Scrollbar: {
     /** Both axes. */
-    new: (id: string | number) => Element;
+    new: (id: string | number) => NativeElement;
     /** The horizontal bar alone. */
-    horizontal: (id: string | number) => Element;
+    horizontal: (id: string | number) => NativeElement;
     /** The vertical bar alone. */
-    vertical: (id: string | number) => Element;
+    vertical: (id: string | number) => NativeElement;
   };
 
   /** The visible items, as a half-open `[start, end)` interval. */
@@ -21299,7 +21351,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: ItemRange, cx: Context) => Element[],
-  ): Element;
+  ): NativeElement;
 
   /** `v_virtual_list` along the other axis; `item_sizes` are widths. */
   export function h_virtual_list(
@@ -21308,7 +21360,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
     item_sizes: number | number[],
     get_key: (index: number) => string,
     render: (range: ItemRange, cx: Context) => Element[],
-  ): Element;
+  ): NativeElement;
 
   /**
    * A virtual list's scroll position, kept across frames so the script can move
@@ -21377,7 +21429,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
   };
 
   /** The frame around retained text state. */
-  export const Input: { new: (state: InputState) => Element };
+  export const Input: { new: (state: InputState) => NativeElement };
 
   /**
    * A spinbutton over the same `InputState` an `Input` holds.
@@ -21394,7 +21446,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
    * declares its own key context, which the two bindings are registered
    * against.
    */
-  export const NumberInput: { new: (state: InputState) => Element };
+  export const NumberInput: { new: (state: InputState) => NativeElement };
 
   /**
    * Retained multi-line text state, created once and kept on the view.
@@ -21426,7 +21478,7 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
   };
 
   /** The frame around retained multi-line text state. */
-  export const Textarea: { new: (state: TextareaState) => Element };
+  export const Textarea: { new: (state: TextareaState) => NativeElement };
 
   /** One thumb, or the two ends of a range. */
   export type SliderValue = number | [number, number];
@@ -21452,9 +21504,10 @@ static const char kShellTypes54[] = R"GPUI_DTS(   * wherever you keep it, and th
     step_value(): number;
     /**
      * `change` arrives on every pixel of a drag; `release` arrives once, when
-     * the pointer is let go. Take the first for a live readout and the second
 )GPUI_DTS";
-static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs something — a request, a write, an undo entry.
+static const char kShellTypes63[] =
+    R"GPUI_DTS(     * the pointer is let go. Take the first for a live readout and the second
+     * for anything that costs something — a request, a write, an undo entry.
      */
     on(event: "change" | "release", handler: (value: SliderValue, cx: Context) => void): boolean;
     release(): boolean;
@@ -21506,16 +21559,16 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
    * `axis("vertical")` is announced *and* used to place both, and each part is
    * told separately, as in Rust. A vertical slider grows from the bottom.
    */
-  export const Slider: { new: (state: SliderState) => Element };
+  export const Slider: { new: (state: SliderState) => NativeElement };
   /** The press and drag surface. Give it the height a pointer can hit. */
-  export const SliderTrack: { new: (state: SliderState) => Element };
+  export const SliderTrack: { new: (state: SliderState) => NativeElement };
   /**
    * The groove, and the part that records the geometry. It must span the whole
    * travel of the slider: the box it records is what every pointer position is
    * divided by, so an indicator sized to the value would make the value its own
    * scale.
    */
-  export const SliderIndicator: { new: (state: SliderState) => Element };
+  export const SliderIndicator: { new: (state: SliderState) => NativeElement };
   /**
    * The knob. `start(true)` is the lower thumb of a range slider; the default
    * is the upper one, which is the only thumb a single-value slider has.
@@ -21524,7 +21577,7 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
    * state and a `transition("left", ...)` needs to know which of them it is
    * following.
    */
-  export const SliderThumb: { new: (state: SliderState) => Element };
+  export const SliderThumb: { new: (state: SliderState) => NativeElement };
 
   /**
    * Retained one-time-code state, created once and kept on the view.
@@ -21594,7 +21647,7 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
    * Grouping ("123 456") is not offered: the groups would be boxes the shell
    * invents, with no template to say what they look like.
    */
-  export const OtpInput: { new: (state: OtpState) => Element };
+  export const OtpInput: { new: (state: OtpState) => NativeElement };
 
   /** Where a region sits relative to the center of a dock area. */
   export type DockPlacement = "center" | "left" | "right" | "bottom";
@@ -21655,23 +21708,6 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
     readonly collapsible: boolean;
   }
 
-  /** One tile of a tiles canvas, as the two tile handlers are given it. */
-  export interface DockTile {
-    readonly node: number;
-    readonly panel: { readonly name: string; readonly id: number; readonly visible: boolean };
-    /**
-     * Already resolved — base snaps, clamps and rounds before a skin sees
-     * them, so nothing here has to be positioned by hand.
-     */
-    readonly bounds: import("gpui-shell").ElementBounds;
-    readonly z_index: number;
-    readonly moving: boolean;
-    readonly resizing: boolean;
-    readonly closable: boolean;
-    readonly zoomed: boolean;
-    readonly zoomable: boolean;
-  }
-
   /** Where a dragged panel would land, as the `drop_indicator` handler is given it. */
   export interface DockDrop {
     /** `null` means the drop merges into the group's tabs rather than splitting beside it. */
@@ -21695,11 +21731,6 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
     placement?: DockPlacement;
     /** Seeds the dock's extent when the panel is the first thing in it. */
     size?: number;
-    /**
-     * Places the panel on the region's tiles canvas instead of in a tab group.
-     * A region with no canvas has nowhere to put a tile, so nothing happens.
-     */
-    bounds?: { x: number; y: number; width: number; height: number };
     /** Default `true`. */
     closable?: boolean;
     /** Default `true`. */
@@ -21709,7 +21740,7 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
   }
 
   /**
-   * A dockable layout: splits, tab groups, docks and tiles that the user can
+   * A dockable layout: splits, tab groups and docks that the user can
    * rearrange, and that survives a restart.
    *
    * Retained for a reason none of the other handles share. **The layout is what
@@ -21748,8 +21779,7 @@ static const char kShellTypes55[] = R"GPUI_DTS(     * for anything that costs so
     panels(): DockPanel[];
     /**
      * The whole layout as plain data: the tree, the docks, and each panel's own
-)GPUI_DTS";
-static const char kShellTypes56[] = R"GPUI_DTS(     * `serialize()` payload. Hand it back to `load` after a restart.
+     * `serialize()` payload. Hand it back to `load` after a restart.
      */
     dump(): any;
     /**
@@ -21766,17 +21796,18 @@ static const char kShellTypes56[] = R"GPUI_DTS(     * `serialize()` payload. Han
     toggle_dock(placement: DockPlacement): void;
     remove_dock(placement: DockPlacement): void;
     dock_size(placement: DockPlacement): number | null;
-    set_dock_size(placement: DockPlacement, size: number): void;
+)GPUI_DTS";
+static const char kShellTypes64[] =
+    R"GPUI_DTS(    set_dock_size(placement: DockPlacement, size: number): void;
     set_dock_collapsible(placement: DockPlacement, collapsible: boolean): void;
-    /** A locked area cannot be rearranged or dropped into; dock and tile resizing stays available. */
+    /** A locked area cannot be rearranged or dropped into; dock resizing stays available. */
     is_locked(): boolean;
     set_locked(locked: boolean): void;
     is_zoomed(): boolean;
     /** Clears the zoom, whichever container holds it. */
     zoom_out(): void;
     /**
-     * Fires on every edit — including each step of a tile drag — so save on a
-     * timer rather than on every one.
+     * Fires on every edit, so save on a timer rather than on every one.
      */
     on(event: "layout_changed", handler: (cx: Context) => void): boolean;
     release(): boolean;
@@ -21817,13 +21848,12 @@ static const char kShellTypes56[] = R"GPUI_DTS(     * `serialize()` payload. Han
    * so unchanged frames do not enter JavaScript. It may not register event
    * handlers — cached chrome has no script callback lifecycle of its own — so
    * the elements it returns say what they do with a **command** instead:
-   * `select_tab(group, i)`, `close_panel(group, id)`, `toggle_dock(dock)`,
-   * `move_tile(tile)` and the rest. A command carries no script value, and base
-   * does the work.
+   * `select_tab(group, i)`, `close_panel(group, id)`, `toggle_dock(dock)` and
+   * the rest. A command carries no script value, and base does the work.
    */
   export function dock_area(area: DockArea): DockAreaElement;
 
-  export interface DockAreaElement extends Element {
+  export interface DockAreaElement extends NativeElement {
     /** The tab bar above a group's displayed panel. */
     tab_bar(handler: (group: DockGroup, cx: Context) => Element): DockAreaElement;
     /** What a group with no displayed panel shows. */
@@ -21836,23 +21866,13 @@ static const char kShellTypes56[] = R"GPUI_DTS(     * `serialize()` payload. Han
      * `dock_content()` where the panels belong.
      */
     dock(handler: (dock: DockRegion, cx: Context) => Element | null): DockAreaElement;
-    /**
-     * The strip a tile is dragged by. Its height is fixed at base's drag-bar
-     * height, which the snapping arithmetic assumes.
-     */
-    tile_drag_bar(handler: (tile: DockTile, cx: Context) => Element): DockAreaElement;
-    /** A tile's resize affordances. */
-    tile_resize_handles(handler: (tile: DockTile, cx: Context) => Element | null): DockAreaElement;
   }
 
   /**
    * Where a dock's own panels go inside the chrome the `dock` handler drew
    * around them. Legal only inside that handler, and only once.
    */
-  export function dock_content(): Element;
-
-  /** Which edge or corner of a tile a resize handle pulls. */
-  export type TileResizeSide = "left" | "right" | "top" | "bottom" | "bottom_right";
+  export function dock_content(): NativeElement;
 
   /** Semantic color roles, aligned with `gpui_base::ColorTokens`. */
   export type ColorTokens = { readonly [Role in ColorToken]: Color };
@@ -21932,7 +21952,7 @@ static const char kShellTypes56[] = R"GPUI_DTS(     * `serialize()` payload. Han
 }
 
 declare module "gpui-component" {
-  import { ClickEvent, Context, Element } from "gpui-kit";
+  import { ClickEvent, Context, Element, NativeElement } from "gpui-kit";
 }
 
 declare module "gpui-shell" {
@@ -21999,7 +22019,7 @@ declare module "gpui-shell" {
 }
 
 declare module "gpui-fps" {
-  import { Anchor, Element } from "gpui-kit";
+  import { Anchor, Element, NativeElement } from "gpui-kit";
 
   /**
    * The native `gpui-fps` performance HUD, shared once per window and pinned
@@ -22008,7 +22028,7 @@ declare module "gpui-fps" {
    * Prefer `show_fps_monitor()`: a HUD placed inside the script's own tree is
    * rebuilt with it, and what the tree does then counts against the reading.
    */
-  export function fps_monitor(): Element;
+  export function fps_monitor(): NativeElement;
 
   /** Where the root-owned HUD sits and how it behaves. Every key is optional. */
   export interface FpsMonitorOptions {
@@ -22043,8 +22063,7 @@ declare module "buffer" {
 declare module "path" {
   export function join(...parts: string[]): string;
   export function resolve(...parts: string[]): string;
-)GPUI_DTS";
-static const char kShellTypes57[] = R"GPUI_DTS(  export function dirname(path: string): string;
+  export function dirname(path: string): string;
   export function basename(path: string, suffix?: string): string;
   const path: { join: typeof join; resolve: typeof resolve; dirname: typeof dirname; basename: typeof basename };
   export default path;
@@ -22074,7 +22093,9 @@ interface Console {
   error(...values: unknown[]): void;
 }
 /**
- * Diagnostics. A global, as it is in every other JavaScript runtime, and the
+)GPUI_DTS";
+static const char kShellTypes65[] =
+    R"GPUI_DTS( * Diagnostics. A global, as it is in every other JavaScript runtime, and the
  * only one: the shell used to export the same object a second time as
  * `gpui.log`, which bought a name and nothing else.
  *
@@ -22252,6 +22273,14 @@ void AppendBuiltinTypeDeclarations(StrBuilder* out) {
     out->Append(Str(kShellTypes55, (int)sizeof(kShellTypes55) - 1));
     out->Append(Str(kShellTypes56, (int)sizeof(kShellTypes56) - 1));
     out->Append(Str(kShellTypes57, (int)sizeof(kShellTypes57) - 1));
+    out->Append(Str(kShellTypes58, (int)sizeof(kShellTypes58) - 1));
+    out->Append(Str(kShellTypes59, (int)sizeof(kShellTypes59) - 1));
+    out->Append(Str(kShellTypes60, (int)sizeof(kShellTypes60) - 1));
+    out->Append(Str(kShellTypes61, (int)sizeof(kShellTypes61) - 1));
+    out->Append(Str(kShellTypes62, (int)sizeof(kShellTypes62) - 1));
+    out->Append(Str(kShellTypes63, (int)sizeof(kShellTypes63) - 1));
+    out->Append(Str(kShellTypes64, (int)sizeof(kShellTypes64) - 1));
+    out->Append(Str(kShellTypes65, (int)sizeof(kShellTypes65) - 1));
 }
 
 } // namespace gpui::shell

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cbdf5baa26a5c20ae5c1d7481bffdd1d0d2abd3d",
-  date: "2026-09-06",
-  subject: "input: Multi cursors (#2837)",
+  sha: "d604a2ace1c6d8629b94e0498a9158c4a713defa",
+  date: "2026-09-16",
+  subject: "setting: Fix delegate number step and clamp to InputState (#3099)",
   crates: {
     "gpui-kit": "0.6.1",
     "gpui-base": "0.6.1",
