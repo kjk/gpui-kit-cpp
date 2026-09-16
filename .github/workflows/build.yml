@@ -1,8 +1,9 @@
 name: build
 
-# Compiles every example on all three platforms plus wasm, and runs the test
-# suite on each. The desktop jobs also compile the source tree as separate
-# translation units. Dedicated Windows and Linux jobs repeat the build with
+# Compiles every example on all three desktop platforms plus wasm, and runs
+# the test suite on each. It also cross-compiles the portable library for
+# Android and iOS with their vendor SDKs. The desktop jobs compile the source
+# tree as separate translation units. Dedicated Windows and Linux jobs repeat the build with
 # clang and the mini markdown parser; Windows compiles all three paint
 # backends. The wasm job runs the same suite under node, which is the only
 # place this tree is checked on a 32-bit word.
@@ -56,6 +57,21 @@ jobs:
       - name: Install Linux dependencies
         if: matrix.name == 'linux'
         run: bash cmd/ubuntu-install-deps.sh --build-only
+
+      - name: Install Android NDK
+        if: matrix.name == 'windows'
+        shell: powershell
+        run: |
+          powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1
+          powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1 -Check
+
+      - name: Cross-compile Android library
+        if: matrix.name == 'windows'
+        run: bun cmd/mobile-build.ts -android -rel
+
+      - name: Cross-compile iOS library
+        if: matrix.name == 'macos'
+        run: bun cmd/mobile-build.ts -ios -rel
 
       # cl.exe is not on PATH on the runners, and vcvars64 only applies to the
       # shell that calls it, so the build has to run in the same step.

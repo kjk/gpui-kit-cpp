@@ -215,6 +215,34 @@ static void TooltipDelayOwnsAndCancelsPendingText() {
     ArenaDelete(a);
 }
 
+static void DisabledTooltipOverlayIgnoresEveryShowPath() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    Entity<TooltipOverlay> entity = EntityNew<TooltipOverlay>(&app);
+    TooltipOverlay* overlay = entity.Get(&app);
+    Ctx cx = {&app, win, a, entity.id};
+    TooltipRecorder recorder;
+    TooltipRequest request =
+        TooltipRequest::New({2, 4, 20, 10}, &TooltipRecorder::Build, &recorder);
+    overlay->enabled = false;
+
+    overlay->RequestShow(request, win, &cx);
+    utassert(!overlay->hasContent && !overlay->hasPending);
+    utassert(overlay->showTask == 0 && overlay->hideTask == 0);
+    overlay->hadRecentTooltip = true;
+    overlay->RequestShow(request, win, &cx);
+    utassert(!overlay->hasContent && !overlay->hasPending);
+    utassert(overlay->showTask == 0 && overlay->hideTask == 0);
+    utassert(recorder.builds == 0);
+
+    EntityDrop(&app, entity.id);
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+}
+
 namespace {
 
 struct PopoverRecorder {
@@ -422,4 +450,5 @@ void TestPopup() {
     PopoverOwnsOpenCallbacksAndOutsideDismissal();
     TooltipOverlayOwnsRequestsTransitionsAndPositioning();
     TooltipDelayOwnsAndCancelsPendingText();
+    DisabledTooltipOverlayIgnoresEveryShowPath();
 }

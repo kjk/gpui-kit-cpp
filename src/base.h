@@ -24,7 +24,7 @@
 // ─── os ──────────────────────────────────────────────────────────────────
 //
 // Exactly one of these is 1 on every build. Prefer a portable function
-// implemented in <name>_win.cpp / <name>_linux.cpp / <name>_mac.cpp over an
+// implemented in a platform-suffixed source over an
 // #if in shared code: these are for the handful of places where a single
 // expression differs.
 
@@ -34,24 +34,47 @@
 #define GPUI_OS_WINDOWS 0
 #define GPUI_OS_LINUX 0
 #define GPUI_OS_MAC 0
+#define GPUI_OS_IOS 0
+#define GPUI_OS_ANDROID 0
 #define GPUI_OS_WASM 1
 #elif defined(_WIN32)
 #define GPUI_OS_WINDOWS 1
 #define GPUI_OS_LINUX 0
 #define GPUI_OS_MAC 0
+#define GPUI_OS_IOS 0
+#define GPUI_OS_ANDROID 0
+#define GPUI_OS_WASM 0
+#elif defined(__ANDROID__)
+#define GPUI_OS_WINDOWS 0
+#define GPUI_OS_LINUX 0
+#define GPUI_OS_MAC 0
+#define GPUI_OS_IOS 0
+#define GPUI_OS_ANDROID 1
+#define GPUI_OS_WASM 0
+#elif defined(__APPLE__) && \
+    defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__)
+#define GPUI_OS_WINDOWS 0
+#define GPUI_OS_LINUX 0
+#define GPUI_OS_MAC 0
+#define GPUI_OS_IOS 1
+#define GPUI_OS_ANDROID 0
 #define GPUI_OS_WASM 0
 #elif defined(__APPLE__)
 #define GPUI_OS_WINDOWS 0
 #define GPUI_OS_LINUX 0
 #define GPUI_OS_MAC 1
+#define GPUI_OS_IOS 0
+#define GPUI_OS_ANDROID 0
 #define GPUI_OS_WASM 0
 #elif defined(__linux__)
 #define GPUI_OS_WINDOWS 0
 #define GPUI_OS_LINUX 1
 #define GPUI_OS_MAC 0
+#define GPUI_OS_IOS 0
+#define GPUI_OS_ANDROID 0
 #define GPUI_OS_WASM 0
 #else
-#error "unsupported platform: gpui builds on Windows, Linux, macOS and wasm"
+#error "unsupported platform"
 #endif
 
 // Everything that is not Windows is a POSIX host here, which is what the

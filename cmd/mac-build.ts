@@ -5,6 +5,7 @@
 //
 //   bun cmd/mac-build.ts -rel hello_world
 //   bun cmd/mac-build.ts -dbg -all
+//   bun cmd/mac-build.ts -ios -rel
 //   bun cmd/mac-build.ts -h kjk@other-mac -rel showcase
 //
 // It compiles and nothing else — no tests, no launching. A Cocoa window needs
@@ -28,8 +29,8 @@ const usage = `Usage: bun cmd/mac-build.ts [-h <user@host>] [-d <dir>] [-b <bran
   -d, --dir <path>        checkout on the Mac (default: ${defaultDir})
   -b, --branch <name>     scratch branch to push (default: ${defaultBranch})
 
-Everything else is forwarded to cmd/build.ts, so -rel / -dbg / -all /
--clean / -asan and an example name all work.`;
+Everything else is forwarded to cmd/build.ts. With -ios it is forwarded to
+cmd/mobile-build.ts instead, so no example name is needed.`;
 
 function die(msg: string): never {
   console.error(msg);
@@ -62,6 +63,7 @@ for (let i = 0; i < argv.length; i++) {
 if (forward.length === 0) {
   die("Pass an example name, or -all.");
 }
+const ios = forward.includes("-ios");
 
 function out(cmd: string[]): { ok: boolean; text: string } {
   const r = Bun.spawnSync(cmd, { cwd: root, stdout: "pipe", stderr: "pipe" });
@@ -127,10 +129,10 @@ const remote = [
   `&& cd ${dir}`,
   `&& git fetch --quiet --force origin ${branch}`,
   `&& git checkout --quiet --detach ${commit}`,
-  `&& bun cmd/build.ts ${forward.join(" ")}`,
+  `&& bun cmd/${ios ? "mobile-build" : "build"}.ts ${forward.join(" ")}`,
 ].join(" ");
 
-console.log(`ssh ${host}: build.ts ${forward.join(" ")}`);
+console.log(`ssh ${host}: ${ios ? "mobile-build" : "build"}.ts ${forward.join(" ")}`);
 const r = Bun.spawnSync(["ssh", host, remote], {
   cwd: root,
   stdout: "inherit",

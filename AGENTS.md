@@ -1,7 +1,8 @@
 # gpui — C++ port of gpui-kit
 
 A C++ port of [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit)
-targeting **Windows, Linux, macOS and the browser** (wasm/emscripten). The goal
+targeting **Windows, Linux, macOS, iOS, Android and the browser**
+(wasm/emscripten). The goal
 is to port as much of the Rust as this tree can hold: every module of
 `crates/base` and `crates/ui`, the story gallery, the showcase, the shell and
 the examples. Assume a thing is in scope until a rule below says otherwise; the
@@ -55,13 +56,17 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    name no gpui symbol.
    `cmd/update-dist.ts` fails the build if that stops being true. Anything one
    of them needs from the tree belongs in `base`, or it does not belong to them.
-3. **Three platforms, no third-party C++ libraries.** Windows: MSVC `cl.exe`,
+3. **Six targets, no third-party C++ libraries.** Windows: MSVC `cl.exe`,
    static CRT (`/MT`, `/MTd`) — no redistributable DLLs — plus WinHTTP. Linux:
    g++/clang++ with system X11, cairo and Pango via `pkg-config`, and libcurl
    the same way when installed (the one soft dependency; without it the tree
    builds and only loses remote images). macOS: clang++ with Cocoa, Core
-   Graphics, Core Text, IOKit, NSURLSession. No CMake, no vcpkg, no C++ package
-   manager, no `ext/`. What Rust gets from a crate, this tree writes itself or
+   Graphics, Core Text, IOKit, NSURLSession. iOS: the Xcode iPhoneOS SDK and a
+   UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
+   24 or newer, and an app-owned native host. Mobile builds are static
+   libraries: the application owns lifecycle and embeds the GPUI surface. No
+   CMake, Gradle, vcpkg, or C++ package manager, no `ext/`. What Rust gets
+   from a crate, this tree writes itself or
    ports. **QuickJS-NG is the sole vendored-source exception**: pinned in
    `cmd/run.ts`, checked out only under `.work/quickjs-ng`, reduced by
    `bun cmd/update-quickjs.ts` to the tracked `src/quickjs/quickjs.h` +
@@ -74,8 +79,9 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    not destructed as a graph of C++ objects.
 5. **No exceptions, no RTTI.** COM uses HRESULT checks.
 6. **When unsure about a widget's look or numbers, read the Rust file.**
-7. **Portable by default.** `GPUI_OS_WINDOWS` / `_LINUX` / `_MAC` / `_WASM`
-   are for the handful of places where a single expression differs. Anything
+7. **Portable by default.** `GPUI_OS_WINDOWS` / `_LINUX` / `_MAC` / `_IOS` /
+   `_ANDROID` / `_WASM` are for the handful of places where a single
+   expression differs. Anything
    larger gets a portable signature in a shared header and one implementation
    per platform. **Never call an OS API from a shared file.**
 
@@ -143,22 +149,38 @@ src/base.h            Str, Vec, Arena, Geom, Color
 
 ## Portability
 
-`src/base.h` defines the four `GPUI_OS_*` macros from compiler predefines;
+`src/base.h` defines the six `GPUI_OS_*` macros from compiler predefines;
 exactly one is 1. Seams:
 
-| Seam | Shared header | Windows | Linux | macOS | wasm |
-| --- | --- | --- | --- | --- | --- |
-| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp` | `base_linux.cpp` | `base_mac.cpp` | `base_wasm.cpp` |
-| 2D drawing and shaped text | `src/gpui/paint.h` | `paint_win.cpp` | `paint_linux.cpp` | `paint_mac.cpp` | `paint_wasm.cpp` |
-| the OS window and its event loop | `src/gpui/platform.h` | `window_win.cpp` | `window_linux.cpp` | `window_mac.cpp` | `window_wasm.cpp` |
-| system metrics | `src/sys/sysinfo.h` | `sysinfo_win.cpp` | `sysinfo_linux.cpp` | `sysinfo_mac.cpp` | `sysinfo_wasm.cpp` |
-| one HTTP request | `src/sys/http.h` | `http_win.cpp` | `http_linux.cpp` | `http_mac.cpp` | `http_wasm.cpp` |
-| a webview in the window | `src/wry/wry.h` | `wry_win.cpp` | `wry_linux.cpp` (stub) | `wry_mac.cpp` | `wry_wasm.cpp` (stub) |
+| Seam                               | Shared header          | Windows           | Linux                  | macOS             | iOS                  | Android              | wasm                  |
+| ---------------------------------- | ---------------------- | ----------------- | ---------------------- | ----------------- | -------------------- | -------------------- | --------------------- |
+| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`    | `base_linux.cpp`       | `base_mac.cpp`    | host adapter + POSIX | host adapter + POSIX | `base_wasm.cpp`       |
+| 2D drawing and shaped text         | `src/gpui/paint.h`     | `paint_win.cpp`   | `paint_linux.cpp`      | `paint_mac.cpp`   | host adapter         | host adapter         | `paint_wasm.cpp`      |
+| the OS window and its event loop   | `src/gpui/platform.h`  | `window_win.cpp`  | `window_linux.cpp`     | `window_mac.cpp`  | UIKit host           | Android host         | `window_wasm.cpp`     |
+| system metrics                     | `src/sys/sysinfo.h`    | `sysinfo_win.cpp` | `sysinfo_linux.cpp`    | `sysinfo_mac.cpp` | host adapter         | host adapter         | `sysinfo_wasm.cpp`    |
+| one HTTP request                   | `src/sys/http.h`       | `http_win.cpp`    | `http_linux.cpp`       | `http_mac.cpp`    | host adapter         | host adapter         | `http_wasm.cpp`       |
+| a webview in the window            | `src/wry/wry.h`        | `wry_win.cpp`     | `wry_linux.cpp` (stub) | `wry_mac.cpp`     | host adapter         | host adapter         | `wry_wasm.cpp` (stub) |
 
-`_posix.cpp` is the fourth suffix: Linux, macOS **and** wasm compile it, since
+`_posix.cpp` is the shared suffix for Linux, macOS, iOS, Android **and** wasm,
+since
 emscripten's libc answers for strings, directories, threads and the clock. What
 it cannot answer is mmap with a reserve/commit split, so that half is
-`_mem_posix.cpp` and only the two hosted targets take it.
+`_mem_posix.cpp`; every hosted POSIX target takes that half.
+
+### Mobile
+
+`bun cmd/mobile-build.ts -android` cross-compiles `libgpui.a` for arm64-v8a
+at Android API 24 using the pinned NDK. On Windows, install or verify it with
+`powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1`; the
+script checks the vendor archive checksum and installs beside Android Studio's
+side-by-side NDKs. `ANDROID_NDK_HOME`, `ANDROID_NDK_ROOT`, `ANDROID_HOME`, and
+`ANDROID_SDK_ROOT` are honored.
+
+`bun cmd/mobile-build.ts -ios` cross-compiles an arm64 iOS 15 `libgpui.a`
+using `xcrun --sdk iphoneos`; it therefore runs only on a Mac with Xcode. The
+mobile application supplies the native view, lifecycle and platform adapters.
+The compile target is deliberately independent of Gradle and Xcode project
+files so any host can consume the archive.
 
 `src/gpui/window_common.cpp` holds everything a window does that is not the OS
 window — frame drawing, input dispatch, the app lifecycle — and every platform
@@ -483,6 +505,9 @@ bun cmd/build.ts -rel showcase           # the example is the last argument
 bun cmd/build.ts -dbg -all
 bun cmd/build.ts -rel -asan system_monitor
 bun cmd/build.ts -wasm system_monitor
+bun cmd/mobile-build.ts -android -rel
+bun cmd/mobile-build.ts -ios -rel
+bun cmd/mac-build.ts -ios -rel          # run the iOS compile on the remote Mac
 bun cmd/build.ts -clang -rel showcase    # Windows: clang-cl, into out/rel_clang/
 bun cmd/build.ts -rel --win-backend=d3d12 story
 bun cmd/build-no-amalgam.ts -rel         # one object per source: header build check
@@ -531,7 +556,9 @@ window needs a login session.
 
 CI (`.github/workflows/build.yml`) runs `bun cmd/build.ts -rel -all` then
 `bun cmd/test.ts -rel` on windows/ubuntu/macos-latest, and compiles the source
-tree without amalgamation on all three. Separate Windows and Linux lanes use
+tree without amalgamation on all three. The Windows lane installs the pinned
+NDK and cross-compiles Android arm64; the macOS lane cross-compiles iOS arm64.
+Separate Windows and Linux lanes use
 clang-cl/clang++, compile the mini markdown configuration, and run the full
 parser's tests; the Windows lane also compiles all paint backends. A wasm lane
 builds every supported example and runs the tests under node. CI sets
@@ -627,9 +654,9 @@ in either order. All of it is the same on every platform.
   blank runs collapse, and `#include` lines are lifted to the top of `gpui.cpp`
   and de-duplicated — portable ones first, then one guarded block per platform,
   which must stay below the portable code because `<X11/Xlib.h>` defines `None`
-  and `Window`. Each `_win`/`_linux`/`_mac`/`_posix` file sits inside its own
-  `#if GPUI_OS_*`, so the three platform SDK headers never reach one
-  translation unit. macOS compiles the whole file as Objective-C++.
+  and `Window`. Each platform-suffixed file sits inside its own
+  `#if GPUI_OS_*`, so platform SDK headers never reach another target's
+  translation unit. Apple platform implementations compile as Objective-C++.
 - The snapshot is a checkout, not six files: beside the pairs go every example,
   `gpui_shell/`, `assets/`, `web/shell.html`, `build.ts`, `run.ts`, and
   `winapi.ts` + `mac-window-place.m` because `run.ts -compare` reaches for them

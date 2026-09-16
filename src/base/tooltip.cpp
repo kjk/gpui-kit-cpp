@@ -105,6 +105,9 @@ static void TooltipCancelHide(Window* window, TooltipOverlay* overlay) {
 
 void TooltipOverlay::RequestShow(const TooltipRequest& request, Window* window,
                                  Ctx* cx) {
+    if (!enabled) {
+        return;
+    }
     TooltipCancelHide(window, this);
     bool wasVisible = hasContent;
     if (wasVisible || hadRecentTooltip) {

@@ -1,13 +1,13 @@
 # gpui for C++
 
-A **C++** port of [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit), a Rust UI kit built on [Zed GPUI](https://github.com/zed-industries/zed). Runs on **Windows**, **Linux**, **macOS** and **in the browser** (wasm).
+A **C++** port of [longbridge/gpui-kit](https://github.com/longbridge/gpui-kit), a Rust UI kit built on [Zed GPUI](https://github.com/zed-industries/zed). Targets **Windows**, **Linux**, **macOS**, **iOS**, **Android**, and **the browser** (wasm).
 
 Original project:
 
 - Repository: https://github.com/longbridge/gpui-kit
 - Docs: https://gpui-kit.com
 
-This tree reimplements the component examples and a small runtime on top of the OS: Win32 + Direct2D + DirectWrite on Windows, X11 + cairo + Pango on Linux, Cocoa + Core Graphics + Core Text on macOS, and a `<canvas>` 2D context in the browser. Everything above the `Paint.h` / `Platform.h` seam is shared. It is not a binding to the Rust crates, and it does not use Blade or Zed’s renderer. Layout is the exception: `src/taffy/` is a C++ port of the taffy crate GPUI itself lays out with, at the version gpui-kit pins.
+This tree reimplements the component examples and a small runtime on top of the OS: Win32 + Direct2D + DirectWrite on Windows, X11 + cairo + Pango on Linux, Cocoa + Core Graphics + Core Text on macOS, an application-supplied native host on iOS and Android, and a `<canvas>` 2D context in the browser. Everything above the `paint.h` / `platform.h` seam is shared. It is not a binding to the Rust crates, and it does not use Blade or Zed’s renderer. Layout is the exception: `src/taffy/` is a C++ port of the taffy crate GPUI itself lays out with, at the version gpui-kit pins.
 
 The API follows GPUI's shape: an `App` owns the entity store and the windows, a `Window` renders a view, and a view is a struct with state plus `static El* Render(T* self, Ctx* cx)`:
 
@@ -45,6 +45,11 @@ bun cmd/run.ts -rel -compare story
 # compile every source file as a separate object and link a header-only example
 bun cmd/build-no-amalgam.ts -rel
 bun cmd/build-no-amalgam.ts -clang -rel   # Windows: clang-cl
+# arm64 static libraries for externally hosted mobile applications
+powershell -ExecutionPolicy Bypass -File cmd/android-install-deps.ps1
+bun cmd/mobile-build.ts -android -rel
+bun cmd/mobile-build.ts -ios -rel         # macOS + Xcode only
+bun cmd/mac-build.ts -ios -rel            # from a Windows/Linux checkout
 ```
 
 `bun cmd/build.ts` with no example name lists targets (`system_monitor`, `showcase`, `story`, …).
@@ -207,7 +212,8 @@ bun cmd/mac-build.ts -rel -all
 ```
 
 CI compiles every example and runs the tests on all three desktop platforms
-and wasm on each push. It also checks separate translation units on every
+and wasm on each push, and cross-compiles the library with the Android NDK and
+iPhoneOS SDK. It also checks separate translation units on every
 desktop, clang-cl/clang++ on Windows and Linux, the mini markdown parser, and
 all Windows paint backends
 ([`.github/workflows/build.yml`](.github/workflows/build.yml)).

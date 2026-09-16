@@ -12,8 +12,8 @@
 // generated files are the same on every platform.
 //
 // A source file belongs to a platform by suffix: _win.cpp, _linux.cpp,
-// _mac.cpp, _wasm.cpp, _mem_posix.cpp for the Linux and macOS halves both,
-// and _posix.cpp for those two and wasm. Each of those
+// _mac.cpp, _ios.cpp, _android.cpp, _wasm.cpp, _mem_posix.cpp for hosted
+// POSIX targets, and _posix.cpp for every POSIX target. Each of those
 // goes into gpui.cpp inside its own `#if GPUI_OS_*`, so <windows.h>, <X11/*>
 // and <Cocoa/*> still never reach the same translation unit — the preprocessor
 // drops the two halves that are not this platform's before anything parses
@@ -73,9 +73,9 @@ export const distBranch = "main";
 
 export type DistOutDir = ".work" | typeof distRepoDir;
 
-export type Platform = "win" | "linux" | "mac" | "wasm";
+export type Platform = "win" | "linux" | "mac" | "ios" | "android" | "wasm";
 
-export const allPlatforms: Platform[] = ["win", "linux", "mac", "wasm"];
+export const allPlatforms: Platform[] = ["win", "linux", "mac", "ios", "android", "wasm"];
 
 export type BuildDistOpts = {
   /**
@@ -108,7 +108,7 @@ export type BuildDistResult = {
   headerCount: number;
   /** Portable sources. */
   sourceCount: number;
-  /** The _win / _linux / _mac / _posix ones, all of them. */
+  /** All platform-suffixed sources, including the shared POSIX halves. */
   platformSourceCount: number;
   /** Parser implementation compiled into gpui.cpp. */
   markdown: MarkdownVariant;
@@ -120,7 +120,7 @@ export type MarkdownVariant = "full" | "mini";
 export type Html5everVariant = "full" | "mini";
 
 // Which platform halves a source file belongs to. Empty means it is portable
-// and goes in gpui.cpp; the two _posix suffixes belong to more than one.
+// and goes in gpui.cpp; the two _posix suffixes belong to several targets.
 function filePlatforms(rel: string): Platform[] {
   if (/_win\.cpp$/.test(rel)) {
     return ["win"];
@@ -131,6 +131,12 @@ function filePlatforms(rel: string): Platform[] {
   if (/_mac\.cpp$/.test(rel)) {
     return ["mac"];
   }
+  if (/_ios\.cpp$/.test(rel)) {
+    return ["ios"];
+  }
+  if (/_android\.cpp$/.test(rel)) {
+    return ["android"];
+  }
   if (/_wasm\.cpp$/.test(rel)) {
     return ["wasm"];
   }
@@ -138,10 +144,10 @@ function filePlatforms(rel: string): Platform[] {
   // mmap half of the platform layer, and wasm has no reserve/commit split to
   // put behind it. Everything else POSIX-shaped it does have.
   if (/_mem_posix\.cpp$/.test(rel)) {
-    return ["linux", "mac"];
+    return ["linux", "mac", "ios", "android"];
   }
   if (/_posix\.cpp$/.test(rel)) {
-    return ["linux", "mac", "wasm"];
+    return ["linux", "mac", "ios", "android", "wasm"];
   }
   return [];
 }
@@ -150,10 +156,12 @@ const osMacro: Record<Platform, string> = {
   win: "GPUI_OS_WINDOWS",
   linux: "GPUI_OS_LINUX",
   mac: "GPUI_OS_MAC",
+  ios: "GPUI_OS_IOS",
+  android: "GPUI_OS_ANDROID",
   wasm: "GPUI_OS_WASM",
 };
 
-// src/base.h defines all four, exactly one of them 1, so a plain #if is all a
+// src/base.h defines all six, exactly one of them 1, so a plain #if is all a
 // platform chunk needs to be there for its own platform and nowhere else.
 function guardFor(plats: Platform[]): string {
   return `#if ${plats.map((p) => osMacro[p]).join(" || ")}`;

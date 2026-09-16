@@ -38,6 +38,18 @@ void HoverCardState::OnClose(HoverCardState* self, Ctx* cx, const TickEvent*) {
     HoverCardSetOpen(self, cx, false);
 }
 
+void HoverCardState::OnTap(HoverCardState* self, Ctx* cx, const ClickEvent*,
+                           intptr_t open) {
+    HoverCardCancel(self, cx);
+    HoverCardSetOpen(self, cx, open != 0);
+}
+
+void HoverCardState::OnDismiss(HoverCardState* self, Ctx* cx,
+                               const MouseUpEvent*) {
+    HoverCardCancel(self, cx);
+    HoverCardSetOpen(self, cx, false);
+}
+
 static void HoverCardScheduleOpen(HoverCardState* self, Ctx* cx) {
     HoverCardCancel(self, cx);
     self->timer = WindowSetTimeout(cx->win, self->openDelayMs,
@@ -138,7 +150,12 @@ HoverCard* HoverCard::Trigger(El* trigger) {
     }
     if (state.IsValid()) {
         HoverPart(trigger, "trigger");
-        trigger->OnHover(ListenTo(state, &HoverCardTriggerHover));
+        if (tapToOpen) {
+            trigger->OnClick(
+                ListenTo(state, &HoverCardState::OnTap, IsOpen() ? 0 : 1));
+        } else {
+            trigger->OnHover(ListenTo(state, &HoverCardTriggerHover));
+        }
     }
     root->Child(trigger);
     return this;
@@ -154,7 +171,11 @@ HoverCard* HoverCard::Content(El* content) {
     }
     if (state.IsValid()) {
         HoverPart(content, "content");
-        content->OnHover(ListenTo(state, &HoverCardContentHover));
+        if (tapToOpen) {
+            content->OnMouseUpOut(ListenTo(state, &HoverCardState::OnDismiss));
+        } else {
+            content->OnHover(ListenTo(state, &HoverCardContentHover));
+        }
     }
     root->Child(content);
     return this;

@@ -78,6 +78,11 @@
 
 namespace gpui {
 
+// gpui-kit::is_mobile: a target property, never a screen-size heuristic.
+constexpr bool IsMobile() {
+    return GPUI_OS_IOS || GPUI_OS_ANDROID;
+}
+
 // crates/base/src/lib.rs::init. Safe to call more than once; every key module
 // binds once per keymap generation and every App global is ensured once.
 void BaseInit(App* app);

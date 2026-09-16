@@ -8,7 +8,9 @@ session to rediscover it. This is not a changelog — do not log what was done.
 Everything in `crates/base`, `crates/component`, `crates/story`,
 `crates/base/examples/showcase`, `crates/fps`, `crates/webview`,
 `crates/shell` and `examples/` is ported and builds on Windows, Linux, macOS
-and wasm. The work left is depth, not breadth.
+and wasm. The portable library also cross-compiles for iOS and Android; their
+application-owned native window/paint adapters remain integration work. The
+work left is depth, not breadth.
 
 ## Upstream revision
 

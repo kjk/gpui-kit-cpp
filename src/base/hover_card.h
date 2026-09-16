@@ -31,6 +31,10 @@ struct HoverCardState {
 
     static void OnOpen(HoverCardState* self, Ctx* cx, const TickEvent* ev);
     static void OnClose(HoverCardState* self, Ctx* cx, const TickEvent* ev);
+    static void OnTap(HoverCardState* self, Ctx* cx, const ClickEvent* ev,
+                      intptr_t open);
+    static void OnDismiss(HoverCardState* self, Ctx* cx,
+                          const MouseUpEvent* ev);
 };
 
 struct HoverCardOpenChangeEvent {
@@ -71,6 +75,9 @@ struct HoverCard {
     El* root = nullptr;
     Str id = {};
     Entity<HoverCardState> state = {};
+    // Mobile targets have no persistent hover. Tests may override this field
+    // to exercise the touch policy on a desktop host.
+    bool tapToOpen = GPUI_OS_IOS || GPUI_OS_ANDROID;
 
     static HoverCard* New(Ctx* cx, Str id, Entity<HoverCardState> state = {});
     // Rust's content builder runs only when the card is open, so nothing is

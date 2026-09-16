@@ -103,9 +103,40 @@ static void DelayedTransitionsAnnounceWhenTheyLand() {
     EntityDropAll(&app);
 }
 
+static void TapCardsToggleWithoutHoverAndDismissOutside() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<HoverCardState> state = EntityNewState<HoverCardState>(&app);
+    HoverCardState* s = state.Get(&app);
+
+    HoverCard* card = HoverCard::New(&cx, StrL("tap-card"), state);
+    card->tapToOpen = true;
+    El* trigger = Div(a);
+    card->Trigger(trigger);
+    utassert(trigger->listener.IsValid());
+    utassert(!trigger->onHover.IsValid());
+    ListenerCall(&app, win, trigger->listener, nullptr);
+    utassert(s->open);
+
+    El* content = Div(a);
+    card->Content(content);
+    utassert(content->onMouseUpOut.IsValid());
+    utassert(!content->onHover.IsValid());
+    ListenerCall(&app, win, content->onMouseUpOut, nullptr);
+    utassert(!s->open);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestHoverCard() {
     TestSuite("hover_card");
     EveryCardIdIsItsOwnStateAndKeepsIt();
     ACloseThatLandsOnAHoveredCardDoesNothing();
     DelayedTransitionsAnnounceWhenTheyLand();
+    TapCardsToggleWithoutHoverAndDismissOutside();
 }

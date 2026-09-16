@@ -63,6 +63,9 @@ struct TooltipRequest {
 // Per-window provider and overlay. `pending` is what Rust's show_task owns;
 // `content` is Some only after the delay or during an immediate switch.
 struct TooltipOverlay {
+    // Touch-only targets do not synthesize hover tooltips. Kept mutable so
+    // the policy can be regression-tested on desktop.
+    bool enabled = !(GPUI_OS_IOS || GPUI_OS_ANDROID);
     TooltipRequest content = {};
     TooltipRequest pending = {};
     Bounds previousBounds = {};
