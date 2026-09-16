@@ -547,6 +547,33 @@ void DockSetActive(DockState* s, Ctx* cx, int node, int ix) {
     Notify(cx);
 }
 
+void DockSelectPanel(DockState* s, Ctx* cx, PanelId panel) {
+    if (!s || panel.value == 0) {
+        return;
+    }
+    int panelIx = -1;
+    for (int i = 0; i < s->panels.len; i++) {
+        if (s->panels[i].id == panel) {
+            panelIx = i;
+            break;
+        }
+    }
+    if (panelIx < 0) {
+        return;
+    }
+    int node = DockNodeOfPanel(s, panelIx);
+    if (node < 0) {
+        return;
+    }
+    const DockNode& tabs = s->nodes[node];
+    for (int i = 0; i < tabs.panel.len; i++) {
+        if (tabs.panel[i] == panelIx) {
+            DockSetActive(s, cx, node, i);
+            return;
+        }
+    }
+}
+
 // Take the panel out of its group without touching the tree; the callers
 // decide what an empty group means.
 static void DockDetach(DockState* s, int node, int ix) {

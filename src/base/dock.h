@@ -461,6 +461,9 @@ void DockTabsInsert(DockState* s, int node, int panelIx, int at);
 void DockSplitAdd(DockState* s, int node, int childNode, float size);
 // The active tab of a group.
 void DockSetActive(DockState* s, Ctx* cx, int node, int ix);
+// DockArea::select_panel: show a panel in the group that already holds it,
+// without moving it. Unknown and already-active identities are no-ops.
+void DockSelectPanel(DockState* s, Ctx* cx, PanelId panel);
 // Panel::closable: take the panel out of its group. An empty group leaves the
 // split it was in, and a split with one child left is replaced by that child,
 // which is what Rust's remove_self_if_empty does.

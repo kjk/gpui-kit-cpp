@@ -1021,10 +1021,34 @@ static void ADockSizeChangeEmitsOneLayoutEvent() {
     EntityDropAll(&app);
 }
 
+static void SelectingAPanelByIdentityDoesNotMoveIt() {
+    App app;
+    Window win;
+    win.app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, &win, arena, {}};
+    DockState s;
+    int a = 0, b = 0;
+    Seed(&s, &a, &b);
+    PanelId second = s.panels[1].id;
+    PanelId unknown = PanelId::FromU64(0xffff);
+
+    utassert(s.nodes[a].activeIx == 0);
+    DockSelectPanel(&s, &cx, second);
+    utassert(s.nodes[a].activeIx == 1);
+    utassert(s.nodes[a].panel.len == 2);
+    utassert(s.nodes[a].panel[0] == 0 && s.nodes[a].panel[1] == 1);
+    DockSelectPanel(&s, &cx, unknown);
+    utassert(s.nodes[a].activeIx == 1);
+
+    ArenaDelete(arena);
+}
+
 void TestDock() {
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
     RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();
+    SelectingAPanelByIdentityDoesNotMoveIt();
     TheFiveDropZones();
     ThePlaceholderCoversEachZone();
     ADropInTheMiddleMerges();
