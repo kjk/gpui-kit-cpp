@@ -29,6 +29,14 @@ struct VirtualRange {
 VirtualRange VirtualListVisibleRange(const float* sizes, int count,
                                      float offset, float viewport);
 
+// The hot-path form used once request_layout has already retained every
+// item's origin. Both viewport edges are binary searches, matching the Rust
+// visible_range helper; unlike the sizes-only compatibility seam above this
+// does not scan all preceding rows every frame.
+VirtualRange VirtualListVisibleRangeFromLayout(const float* origins,
+                                               const float* sizes, int count,
+                                               float offset, float viewport);
+
 // The same range for a list whose items are all one size — uniform_list,
 // which is what a tree renders through. Worked out by division rather than by
 // scanning, so a hundred thousand rows cost nothing to skip.

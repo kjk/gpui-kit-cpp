@@ -54,6 +54,25 @@ static void AnEmptyListHasNothingToBuild() {
     utassert(r.end == 0);
 }
 
+static void RetainedOriginsUseTheSameVisibleEdges() {
+    const float sizes[] = {10, 30, 5, 50};
+    const float origins[] = {0, 10, 40, 45};
+    VirtualRange r =
+        VirtualListVisibleRangeFromLayout(origins, sizes, 4, 12, 32);
+    utassert(r.first == 1 && r.end == 4);
+
+    r = VirtualListVisibleRangeFromLayout(origins, sizes, 4, 45, 5);
+    utassert(r.first == 3 && r.end == 4);
+
+    // A viewport past all content is empty at the end, rather than wrapping
+    // around to the first item.
+    r = VirtualListVisibleRangeFromLayout(origins, sizes, 4, 300, 60);
+    utassert(r.first == 4 && r.end == 4);
+
+    r = VirtualListVisibleRangeFromLayout(nullptr, nullptr, 0, 0, 60);
+    utassert(r.first == 0 && r.end == 0);
+}
+
 static void RowsOfDifferentHeightsStillLineUp() {
     const float rows[5] = {10, 100, 30, 60, 20};
     utassertnear(VirtualListItemOrigin(rows, 5, 0), 0.f);
@@ -114,7 +133,6 @@ static void ScrollToItemMovesAsLittleAsItCan() {
     utassertnear(
         VirtualListScrollToRow(10, 50, 20, 75, 200, ScrollStrategy::Top), 75.f);
 }
-
 
 // VirtualListScrollHandle: a request to scroll to an item waits on the handle
 // until the list is laid out, which is the moment anything knows where the
@@ -214,8 +232,7 @@ static void ItemSizeLayoutCarriesOriginsGapsAndCrossSize() {
     utassertnear(vertical.contentSize.h, 98.f);
 
     ItemSizeLayout horizontal;
-    ItemSizeLayoutBuild(&horizontal, Axis::Horizontal, nullptr, 3, 20, 0,
-                        10);
+    ItemSizeLayoutBuild(&horizontal, Axis::Horizontal, nullptr, 3, 20, 0, 10);
     utassertnear(horizontal.contentSize.w, 60.f);
     utassertnear(horizontal.contentSize.h, 10.f);
 }
@@ -280,6 +297,7 @@ void TestVirtualList() {
     TheEndOfTheListStopsAtTheCount();
     AListShorterThanItsViewportIsAllVisible();
     AnEmptyListHasNothingToBuild();
+    RetainedOriginsUseTheSameVisibleEdges();
     RowsOfDifferentHeightsStillLineUp();
     UniformRowsAnswerTheSameRange();
     ScrollToItemMovesAsLittleAsItCan();

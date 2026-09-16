@@ -2,6 +2,41 @@
 
 namespace gpui {
 
+static int VirtualListEndsBefore(const float* origins, const float* sizes,
+                                 int count, float edge) {
+    int low = 0;
+    int high = count;
+    while (low < high) {
+        int mid = low + (high - low) / 2;
+        if (origins[mid] + sizes[mid] <= edge) {
+            low = mid + 1;
+        } else {
+            high = mid;
+        }
+    }
+    return low;
+}
+
+VirtualRange VirtualListVisibleRangeFromLayout(const float* origins,
+                                               const float* sizes, int count,
+                                               float offset, float viewport) {
+    VirtualRange r;
+    if (!origins || !sizes || count <= 0) {
+        return r;
+    }
+    r.first = VirtualListEndsBefore(origins, sizes, count, offset);
+    int pastEnd =
+        VirtualListEndsBefore(origins, sizes, count, offset + viewport);
+    r.end = pastEnd == count ? count : pastEnd + 2;
+    if (r.end > count) {
+        r.end = count;
+    }
+    if (r.end < r.first) {
+        r.end = r.first;
+    }
+    return r;
+}
+
 VirtualRange VirtualListVisibleRange(const float* sizes, int count,
                                      float offset, float viewport) {
     VirtualRange r;
@@ -240,8 +275,10 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     // would scroll only as far as the last row it made.
     const float* layoutSizes =
         frame.sizeLayout.sizes.len ? frame.sizeLayout.sizes.els : nullptr;
-    frame.visible =
-        VirtualListVisibleRange(layoutSizes, o.count, offset, viewport);
+    const float* layoutOrigins =
+        frame.sizeLayout.origins.len ? frame.sizeLayout.origins.els : nullptr;
+    frame.visible = VirtualListVisibleRangeFromLayout(
+        layoutOrigins, layoutSizes, o.count, offset, viewport);
     El* list = Div(a);
     if (o.layoutAxis == Axis::Horizontal) {
         list->FlexRow();
