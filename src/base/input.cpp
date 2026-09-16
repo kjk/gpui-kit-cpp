@@ -2806,6 +2806,192 @@ static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
     UndoRecordTransaction(&s->undo, c, intent);
 }
 
+static AutoClosingPair InputClosingPairAt(const LanguageConfig& config,
+                                          int index) {
+    if (config.hasAutoClosingPairs) {
+        return config.autoClosingPairs[index];
+    }
+    const BracketPair& pair = config.brackets[index];
+    return AutoClosingPair::New(pair.open, pair.close);
+}
+
+static int InputClosingPairCount(const LanguageConfig& config) {
+    return config.hasAutoClosingPairs ? config.nAutoClosingPairs
+                                      : config.nBrackets;
+}
+
+static bool InputSliceEq(Str text, int at, Str part) {
+    return at >= 0 && part.len >= 0 && at + part.len <= text.len &&
+           (part.len == 0 ||
+            memcmp(text.s + at, part.s, (size_t)part.len) == 0);
+}
+
+static bool InputEscapedAt(Str text, int at) {
+    int slashes = 0;
+    while (at > 0 && text.s[at - 1] == '\\') {
+        slashes++;
+        at--;
+    }
+    return (slashes & 1) != 0;
+}
+
+static bool InputPairBlocked(const AutoClosingPair& pair,
+                             SyntaxContext context) {
+    for (int i = 0; i < pair.nNotIn; i++) {
+        if (pair.notIn[i] == context) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool InputOneCodepoint(Str text) {
+    uint32_t c = 0;
+    return text.len > 0 && Utf8At(text, 0, &c) == text.len;
+}
+
+static bool InputAutoCloseBefore(const LanguageConfig& config, Str all,
+                                 int at) {
+    if (at >= all.len) {
+        return true;
+    }
+    uint32_t c = 0;
+    int n = Utf8At(all, at, &c);
+    if (n <= 0 || c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+        return true;
+    }
+    return InputSliceEq(config.autoCloseBefore, 0, Str(all.s + at, n)) ||
+           [&]() {
+               for (int i = 0; i + n <= config.autoCloseBefore.len; i++) {
+                   if (memcmp(config.autoCloseBefore.s + i, all.s + at,
+                              (size_t)n) == 0) {
+                       return true;
+                   }
+               }
+               return false;
+           }();
+}
+
+static SyntaxContext InputEditingContext(InputState* s, App* app, int at) {
+    SyntaxContextProvider provider =
+        InputSyntaxContextProvider(app, s->highlighter.Language());
+    return provider.ContextAt(InputValue(s), at);
+}
+
+static bool InputTrySkipCloser(InputState* s, App* app, Window* win, Str typed,
+                               const LanguageConfig& config) {
+    if (!InputOneCodepoint(typed) || !s->selectedRange.IsEmpty()) {
+        return false;
+    }
+    Str all = InputValue(s);
+    int cursor = InputCursor(s);
+    int count = InputClosingPairCount(config);
+    for (int p = 0; p < count; p++) {
+        AutoClosingPair pair = InputClosingPairAt(config, p);
+        if (!pair.open || !pair.close) {
+            continue;
+        }
+        for (int i = 0; i < pair.close.len; i++) {
+            if (!InputSliceEq(pair.close, i, typed) ||
+                !InputSliceEq(all, cursor - i, Str(pair.close.s, i)) ||
+                !InputSliceEq(all, cursor,
+                              Str(pair.close.s + i, pair.close.len - i)) ||
+                InputEscapedAt(all, cursor - i)) {
+                continue;
+            }
+            SyntaxContext context = InputEditingContext(s, app, cursor);
+            if (InputPairBlocked(pair, context) &&
+                !(context == SyntaxContext::String &&
+                  StrEq(pair.open, pair.close))) {
+                continue;
+            }
+            s->selectedRange = SelectionAt(cursor + typed.len);
+            s->selectionReversed = false;
+            UpdatePreferredColumn(s);
+            PauseBlink(s, app, win);
+            Notify(app, win);
+            return true;
+        }
+    }
+    return false;
+}
+
+static Str InputAutoCloseText(InputState* s, App* app, Arena* a, Str typed,
+                              const LanguageConfig& config, int at,
+                              int* caret) {
+    *caret = -1;
+    if (!InputOneCodepoint(typed) ||
+        !InputAutoCloseBefore(config, InputValue(s), at)) {
+        return typed;
+    }
+    Str all = InputValue(s);
+    int count = InputClosingPairCount(config);
+    for (int p = 0; p < count; p++) {
+        AutoClosingPair pair = InputClosingPairAt(config, p);
+        if (!pair.open || !pair.close || pair.open.len < typed.len ||
+            !InputSliceEq(pair.open, pair.open.len - typed.len, typed)) {
+            continue;
+        }
+        int prefix = pair.open.len - typed.len;
+        int start = at - prefix;
+        if (!InputSliceEq(all, start, Str(pair.open.s, prefix))) {
+            continue;
+        }
+        if (StrEq(pair.open, pair.close)) {
+            uint32_t previous = 0;
+            int previousAt = Utf8Prev(all, start);
+            if (previousAt < start) {
+                Utf8At(all, previousAt, &previous);
+            }
+            bool word =
+                previousAt < start &&
+                (previous >= 128 || (previous >= 'a' && previous <= 'z') ||
+                 (previous >= 'A' && previous <= 'Z') ||
+                 (previous >= '0' && previous <= '9') || previous == '_');
+            if (word || InputEscapedAt(all, start)) {
+                continue;
+            }
+        }
+        if (InputPairBlocked(pair, InputEditingContext(s, app, start))) {
+            continue;
+        }
+        char* joined = (char*)Alloc(a, typed.len + pair.close.len + 1);
+        if (!joined) {
+            return typed;
+        }
+        memcpy(joined, typed.s, (size_t)typed.len);
+        memcpy(joined + typed.len, pair.close.s, (size_t)pair.close.len);
+        joined[typed.len + pair.close.len] = 0;
+        *caret = at + typed.len;
+        return Str(joined, typed.len + pair.close.len);
+    }
+    return typed;
+}
+
+static bool InputAutoCloseDeletion(InputState* s, App* app, Selection* out) {
+    if (!s || s->kind != InputKind::Editor || !s->autoClose ||
+        !s->selectedRange.IsEmpty() || s->extraCursors.len > 0) {
+        return false;
+    }
+    Str all = InputValue(s);
+    int cursor = InputCursor(s);
+    LanguageConfig config = InputLanguageConfig(app, s->highlighter.Language());
+    int count = InputClosingPairCount(config);
+    for (int i = 0; i < count; i++) {
+        AutoClosingPair pair = InputClosingPairAt(config, i);
+        int start = cursor - pair.open.len;
+        if (!pair.open || !pair.close || !InputSliceEq(all, start, pair.open) ||
+            !InputSliceEq(all, cursor, pair.close) ||
+            InputEscapedAt(all, start) ||
+            InputPairBlocked(pair, InputEditingContext(s, app, start))) {
+            continue;
+        }
+        *out = {start, cursor + pair.close.len};
+        return true;
+    }
+    return false;
+}
+
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText) {
     bool hasIntent = s->undo.hasPendingIntent;
@@ -2849,6 +3035,19 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     }
     if (r.end < r.start) {
         r.end = r.start;
+    }
+    int pairedCaret = -1;
+    LanguageConfig language = LanguageConfig::Default();
+    bool languageEdit = s->kind == InputKind::Editor && s->autoClose &&
+                        !range && !s->imeMarking && r.IsEmpty() &&
+                        s->extraCursors.len == 0;
+    if (languageEdit) {
+        language = InputLanguageConfig(app, s->highlighter.Language());
+        if (InputTrySkipCloser(s, app, win, text, language)) {
+            return true;
+        }
+        text = InputAutoCloseText(s, app, tmp, text, language, r.start,
+                                  &pairedCaret);
     }
     // The document as it was, which push_history indexes and an invalid edit
     // is rolled back to.
@@ -2911,12 +3110,17 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         PushHistory(s, oldAll, Selection{0, oldAll.len}, InputValue(s), true,
                     EditIntent::Atomic, selBefore, &after);
     } else {
+        Selection after = pairedCaret >= 0 ? SelectionAt(pairedCaret)
+                                           : SelectionAt(r.start + text.len);
         PushHistory(s, oldAll, r, text, hasIntent, requested, selBefore,
-                    nullptr);
+                    pairedCaret >= 0 ? &after : nullptr);
     }
 
     s->cursorLineEndAffinity = false;
     s->selectedRange = SelectionAt(newOffset);
+    if (pairedCaret >= 0) {
+        s->selectedRange = SelectionAt(pairedCaret);
+    }
     s->selectionReversed = false;
     s->hasSelectedWordRange = false;
     // The text went in for real, so there is nothing provisional left.
@@ -2952,6 +3156,22 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     Emit(s, app, win, InputEvent{InputEventKind::Change});
     Notify(app, win);
     return true;
+}
+
+void InputSetAutoClose(InputState* s, bool enabled, App* app, Window* win) {
+    if (!s || s->autoClose == enabled) {
+        return;
+    }
+    s->autoClose = enabled;
+    Notify(app, win);
+}
+
+void InputSetSmartIndent(InputState* s, bool enabled, App* app, Window* win) {
+    if (!s || s->smartIndent == enabled) {
+        return;
+    }
+    s->smartIndent = enabled;
+    Notify(app, win);
 }
 
 // typing_intent: the intent of a batch the caller did not label. Inserting
@@ -5168,6 +5388,86 @@ static bool ApplyIndent(InputState* s, App* app, Window* win,
     return true;
 }
 
+static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
+                               int* caretInText) {
+    *caretInText = -1;
+    if (s->kind != InputKind::Editor) {
+        return StrL("\n");
+    }
+    Str all = InputValue(s);
+    int cursor = InputCursor(s);
+    int lineStart = cursor;
+    while (lineStart > 0 && all.s[lineStart - 1] != '\n' &&
+           all.s[lineStart - 1] != '\r') {
+        lineStart--;
+    }
+    int indentEnd = lineStart;
+    while (indentEnd < all.len &&
+           (all.s[indentEnd] == ' ' || all.s[indentEnd] == '\t')) {
+        indentEnd++;
+    }
+    Str indent(all.s + lineStart, indentEnd - lineStart);
+    LanguageConfig config = InputLanguageConfig(app, s->highlighter.Language());
+    bool code = InputEditingContext(s, app, cursor) == SyntaxContext::Code;
+    bool split = false;
+    if (s->smartIndent && code && s->selectedRange.IsEmpty()) {
+        for (int i = 0; i < config.nBrackets; i++) {
+            const BracketPair& pair = config.brackets[i];
+            if (pair.open && pair.close && !StrEq(pair.open, pair.close) &&
+                InputSliceEq(all, cursor - pair.open.len, pair.open) &&
+                InputSliceEq(all, cursor, pair.close)) {
+                split = true;
+                break;
+            }
+        }
+    }
+    bool increase = false;
+    if (s->smartIndent && code) {
+        Str before(all.s + lineStart, cursor - lineStart);
+        before = StrTrimAscii(before);
+        if (config.hasIndentationRules && config.indentation.increaseIndent) {
+            increase = config.indentation
+                           .increaseIndent(config.indentation.data, before);
+        } else {
+            for (int i = 0; i < config.nBrackets; i++) {
+                Str open = config.brackets[i].open;
+                if (open && before.len >= open.len &&
+                    InputSliceEq(before, before.len - open.len, open)) {
+                    increase = true;
+                    break;
+                }
+            }
+        }
+    }
+    Str tab = TabIndent(s);
+    int innerLen = indent.len + (increase || split ? tab.len : 0);
+    int total = 1 + innerLen + (split ? 1 + indent.len : 0);
+    char* out = (char*)Alloc(a, total + 1);
+    if (!out) {
+        return StrL("\n");
+    }
+    int at = 0;
+    out[at++] = '\n';
+    if (indent.len > 0) {
+        memcpy(out + at, indent.s, (size_t)indent.len);
+        at += indent.len;
+    }
+    if (increase || split) {
+        memcpy(out + at, tab.s, (size_t)tab.len);
+        at += tab.len;
+    }
+    if (split) {
+        *caretInText = at;
+        out[at++] = '\n';
+        if (indent.len > 0) {
+            memcpy(out + at, indent.s, (size_t)indent.len);
+            at += indent.len;
+        }
+    }
+    out[at] = 0;
+    return Str(out, at);
+}
+
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                   bool shift) {
     if (!s) {
@@ -5343,6 +5643,14 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 DeleteSelections(s, app, win, EditIntent::Backspace, false);
                 return true;
             }
+            Selection paired;
+            if (InputAutoCloseDeletion(s, app, &paired)) {
+                s->undo.hasPendingIntent = true;
+                s->undo.pendingIntent = EditIntent::Atomic;
+                InputReplaceTextInRange(s, app, win, &paired, Str{});
+                PauseBlink(s, app, win);
+                return true;
+            }
             EditIntent intent = EditIntent::Atomic;
             if (s->selectedRange.IsEmpty()) {
                 InputSelectTo(s, app, win,
@@ -5430,7 +5738,16 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 InputIsMultiLine(s) && (!s->submitOnEnter || shift);
             bool handled = false;
             if (insertNewline) {
-                InputReplaceTextInRange(s, app, win, nullptr, StrL("\n"));
+                int oldCursor = InputCursor(s);
+                int caretInText = -1;
+                Str newline =
+                    InputNextLineIndent(s, app, GetTempArena(), &caretInText);
+                InputReplaceTextInRange(s, app, win, nullptr, newline);
+                if (caretInText >= 0) {
+                    s->selectedRange = SelectionAt(oldCursor + caretInText);
+                    s->selectionReversed = false;
+                    UpdatePreferredColumn(s);
+                }
                 PauseBlink(s, app, win);
                 handled = true;
             } else {

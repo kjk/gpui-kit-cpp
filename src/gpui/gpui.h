@@ -4066,6 +4066,10 @@ struct InputState {
     bool masked = false;
     bool cleanOnEscape = false;
     bool submitOnEnter = false;
+    // Editor-only language editing preferences. They survive language
+    // changes; the active LanguageConfig is resolved at each edit.
+    bool autoClose = true;
+    bool smartIndent = true;
     // searchable / replaceable: whether ctrl-f opens a find bar over this
     // field at all, and whether that bar may write back. Rust defaults the
     // first to false and turns it on for the code editor, and the second to
@@ -4643,6 +4647,10 @@ bool InputCodeActionAction(InputState* s, App* app, Window* win,
 // or a mask or validator that said no.
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText);
+void InputSetAutoClose(InputState* s, bool enabled, App* app,
+                       Window* win = nullptr);
+void InputSetSmartIndent(InputState* s, bool enabled, App* app,
+                         Window* win = nullptr);
 // Input methods count in UTF-16 on both platforms that have one to talk to;
 // a field counts in bytes. These are the two directions across. An offset
 // past the end clamps to it, which is what a platform handing over a stale

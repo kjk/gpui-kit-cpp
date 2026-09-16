@@ -3394,6 +3394,36 @@ static void RangesAreReplacedHighestFirst() {
     utassert(ExtraIs(s, 0, 0, 0));
 }
 
+static void LanguagePairsAndSmartIndent() {
+    InputState s;
+    MakeEditor(&s, "");
+    Type(&s, "(");
+    utassert(ValueIs(s, "()"));
+    utassert(RangeIs(s, 1, 1));
+
+    // A closer already at the caret is traversed, not duplicated.
+    Type(&s, ")");
+    utassert(ValueIs(s, "()"));
+    utassert(RangeIs(s, 2, 2));
+
+    // Backspace between a configured pair takes the pair as one edit.
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::Backspace);
+    utassert(ValueIs(s, ""));
+
+    MakeEditor(&s, "{}");
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::Enter);
+    utassert(ValueIs(s, "{\n    \n}"));
+    utassert(RangeIs(s, 6, 6));
+
+    InputSetSmartIndent(&s, false, nullptr);
+    InputSetValue(&s, StrL("{"));
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::Enter);
+    utassert(ValueIs(s, "{\n"));
+}
+
 void TestInputState() {
     TestSuite("input_state");
     AnAltClickAddsACursorAndTypingWritesAtEach();
@@ -3408,6 +3438,7 @@ void TestInputState() {
     AColumnarSelectionFollowsTheWrappedRows();
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
+    LanguagePairsAndSmartIndent();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();
     SetValueCaretAtEnd();

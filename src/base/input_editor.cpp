@@ -4,6 +4,158 @@
 
 namespace gpui {
 
+static const SyntaxContext kDefaultNotIn[] = {SyntaxContext::String,
+                                              SyntaxContext::Comment};
+static const BracketPair kDefaultBrackets[] = {
+    {StrL("("), StrL(")")},
+    {StrL("["), StrL("]")},
+    {StrL("{"), StrL("}")},
+};
+static const AutoClosingPair kDefaultClosingPairs[] = {
+    {StrL("("), StrL(")"), kDefaultNotIn, 2},
+    {StrL("["), StrL("]"), kDefaultNotIn, 2},
+    {StrL("{"), StrL("}"), kDefaultNotIn, 2},
+    {StrL("\""), StrL("\""), kDefaultNotIn, 2},
+    {StrL("'"), StrL("'"), kDefaultNotIn, 2},
+};
+
+LanguageConfig LanguageConfig::Default() {
+    LanguageConfig out;
+    out.brackets = kDefaultBrackets;
+    out.nBrackets = dimof(kDefaultBrackets);
+    out.autoClosingPairs = kDefaultClosingPairs;
+    out.nAutoClosingPairs = dimof(kDefaultClosingPairs);
+    out.hasAutoClosingPairs = true;
+    out.autoCloseBefore = StrL(";:.,=}])>");
+    return out;
+}
+
+struct RegisteredLanguageConfig {
+    Str name = {};
+    LanguageConfig config = {};
+};
+
+struct LanguageSettings {
+    Arena* arena = nullptr;
+    LanguageProvider provider = {};
+    ArenaVec<RegisteredLanguageConfig> configs;
+
+    LanguageSettings() { arena = ArenaNew(); }
+    ~LanguageSettings() { ArenaDelete(arena); }
+};
+
+static Str LanguageCanonical(const LanguageSettings* settings, Arena* a,
+                             Str name) {
+    if (settings->provider.languageName) {
+        return settings->provider
+            .languageName(settings->provider.data, a, name);
+    }
+    char* copy = (char*)Alloc(a, name.len + 1);
+    if (!copy) {
+        return {};
+    }
+    for (int i = 0; i < name.len; i++) {
+        char c = name.s[i];
+        copy[i] = c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
+    }
+    copy[name.len] = 0;
+    return Str(copy, name.len);
+}
+
+static LanguageConfig LanguageConfigCopy(Arena* a,
+                                         const LanguageConfig& source) {
+    LanguageConfig out = source;
+    out.autoCloseBefore = StrDup(a, source.autoCloseBefore);
+    if (source.nBrackets > 0 && source.brackets) {
+        BracketPair* pairs =
+            (BracketPair*)Alloc(a, (int)sizeof(BracketPair) * source.nBrackets);
+        out.brackets = pairs;
+        for (int i = 0; i < source.nBrackets; i++) {
+            pairs[i] = {StrDup(a, source.brackets[i].open),
+                        StrDup(a, source.brackets[i].close)};
+        }
+    }
+    if (source.nAutoClosingPairs > 0 && source.autoClosingPairs) {
+        AutoClosingPair* pairs = (AutoClosingPair*)Alloc(
+            a, (int)sizeof(AutoClosingPair) * source.nAutoClosingPairs);
+        out.autoClosingPairs = pairs;
+        for (int i = 0; i < source.nAutoClosingPairs; i++) {
+            pairs[i] = source.autoClosingPairs[i];
+            pairs[i].open = StrDup(a, source.autoClosingPairs[i].open);
+            pairs[i].close = StrDup(a, source.autoClosingPairs[i].close);
+            if (pairs[i].nNotIn > 0 && pairs[i].notIn) {
+                auto* contexts = (SyntaxContext*)Alloc(
+                    a, (int)sizeof(SyntaxContext) * pairs[i].nNotIn);
+                memcpy(contexts, pairs[i].notIn,
+                       (size_t)sizeof(SyntaxContext) * pairs[i].nNotIn);
+                pairs[i].notIn = contexts;
+            }
+        }
+    }
+    return out;
+}
+
+void InputSetLanguageProvider(App* app, const LanguageProvider& provider) {
+    if (app) {
+        AppGlobalEnsure<LanguageSettings>(app)->provider = provider;
+    }
+}
+
+void InputSetLanguageConfig(App* app, Str language,
+                            const LanguageConfig& config) {
+    if (!app || !language) {
+        return;
+    }
+    LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
+    Str canonical = LanguageCanonical(settings, settings->arena, language);
+    for (int i = settings->configs.len - 1; i >= 0; i--) {
+        if (StrEq(settings->configs[i].name, canonical)) {
+            settings->configs[i]
+                .config = LanguageConfigCopy(settings->arena, config);
+            return;
+        }
+    }
+    settings->configs
+        .Append(settings->arena, {StrDup(settings->arena, canonical),
+                                  LanguageConfigCopy(settings->arena, config)});
+}
+
+LanguageConfig InputLanguageConfig(App* app, Str language) {
+    if (!app) {
+        return LanguageConfig::Default();
+    }
+    LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
+    Arena* temp = GetTempArena();
+    Str canonical = LanguageCanonical(settings, temp, language);
+    for (int i = settings->configs.len - 1; i >= 0; i--) {
+        Str registered =
+            LanguageCanonical(settings, temp, settings->configs[i].name);
+        if (StrEq(registered, canonical)) {
+            return settings->configs[i].config;
+        }
+    }
+    LanguageConfig out;
+    if (settings->provider.config &&
+        settings->provider.config(settings->provider.data, canonical, &out)) {
+        return out;
+    }
+    return LanguageConfig::Default();
+}
+
+SyntaxContextProvider InputSyntaxContextProvider(App* app, Str language) {
+    SyntaxContextProvider out;
+    if (!app) {
+        return out;
+    }
+    LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
+    Str canonical = LanguageCanonical(settings, GetTempArena(), language);
+    if (settings->provider.syntaxContextProvider) {
+        settings->provider
+            .syntaxContextProvider(settings->provider.data, canonical, &out);
+    }
+    return out;
+}
+
 Str TabSize::ToString(Arena* a) const {
     if (hardTabs) {
         return StrDup(a, StrL("\t"));

@@ -184,6 +184,76 @@ struct InputHighlighterFactory {
     bool Create(Str language, InputHighlighter* out) const;
 };
 
+// input/editor/highlighting.rs and language_config.rs. Base's parser seam is
+// function-pointer based; a provider may answer Code everywhere and install
+// no parser, which is the dependency-free default.
+enum class SyntaxContext : uint8_t {
+    Code,
+    String,
+    Comment,
+};
+
+struct SyntaxContextProvider {
+    void* data = nullptr;
+    SyntaxContext (*contextAt)(void* data, Str text, int offset) = nullptr;
+
+    SyntaxContext ContextAt(Str text, int offset) const {
+        return contextAt ? contextAt(data, text, offset) : SyntaxContext::Code;
+    }
+};
+
+struct BracketPair {
+    Str open = {};
+    Str close = {};
+
+    static BracketPair New(Str open, Str close) { return {open, close}; }
+};
+
+struct AutoClosingPair {
+    Str open = {};
+    Str close = {};
+    const SyntaxContext* notIn = nullptr;
+    int nNotIn = 0;
+
+    static AutoClosingPair New(Str open, Str close) { return {open, close}; }
+};
+
+struct IndentationRules {
+    void* data = nullptr;
+    bool (*increaseIndent)(void* data, Str text) = nullptr;
+    bool (*decreaseIndent)(void* data, Str text) = nullptr;
+};
+
+struct LanguageConfig {
+    const BracketPair* brackets = nullptr;
+    int nBrackets = 0;
+    const AutoClosingPair* autoClosingPairs = nullptr;
+    int nAutoClosingPairs = 0;
+    // False means fall back to brackets; true with a zero count disables
+    // automatic closing explicitly.
+    bool hasAutoClosingPairs = false;
+    Str autoCloseBefore = {};
+    IndentationRules indentation = {};
+    bool hasIndentationRules = false;
+
+    static LanguageConfig Default();
+};
+
+struct LanguageProvider {
+    void* data = nullptr;
+    Str (*languageName)(void* data, Arena* a, Str name) = nullptr;
+    bool (*config)(void* data, Str canonicalName,
+                   LanguageConfig* out) = nullptr;
+    bool (*syntaxContextProvider)(void* data, Str canonicalName,
+                                  SyntaxContextProvider* out) = nullptr;
+};
+
+void InputSetLanguageProvider(App* app, const LanguageProvider& provider);
+void InputSetLanguageConfig(App* app, Str language,
+                            const LanguageConfig& config);
+LanguageConfig InputLanguageConfig(App* app, Str language);
+SyntaxContextProvider InputSyntaxContextProvider(App* app, Str language);
+
 struct FoldIconRenderer {
     void* data = nullptr;
     El* (*render)(void* data, Ctx* cx, int line, bool folded) = nullptr;
