@@ -49,7 +49,7 @@ void FrameSamplerReset(FrameSampler* s) {
         return;
     }
     int capacity = s->capacity;
-    *s = {};
+    *s = FrameSampler{};
     s->capacity = capacity;
 }
 
@@ -610,7 +610,7 @@ void FpsMonitor::OnClockTick(FpsMonitor* self, Ctx* cx, const TickEvent*) {
             self->resourceTask = 0;
             self->resourceJob = nullptr;
         }
-        self->probe = {};
+        self->probe = ResourceProbe{};
         self->resources = {};
         self->hasResources = false;
         return;
