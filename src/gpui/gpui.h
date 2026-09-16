@@ -5371,6 +5371,10 @@ struct Window {
     // not.
     InputState* scrollDragInput = nullptr;
     bool touchScrollbarDrag = false;
+    // A platform offers a finger as TouchDrag before synthesizing its mouse
+    // press. The next down can therefore distinguish a tap from a mouse.
+    bool touchPressPending = false;
+    bool touchPress = false;
     // Drag offsets are stored immediately, while the view notification is
     // coalesced to the scrollbar's 120 Hz default. A release flushes the
     // newest point and clears any trailing deadline.
@@ -5833,6 +5837,8 @@ const InspectorState* WindowInspector(Ctx* cx);
 const DragPayload* WindowActiveDrag(Ctx* cx);
 // window.is_window_active().
 bool WindowIsActive(Ctx* cx);
+// Whether the current/last synthesized mouse press began as a touch.
+bool WindowIsTouchPress(Ctx* cx);
 // What the platform calls when the window takes or loses the focus.
 void WindowSetActive(Window* win, bool active);
 // Which element the drag is over, of those that take its kind — 0 for none.

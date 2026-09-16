@@ -322,6 +322,10 @@ bool WindowIsActive(Ctx* cx) {
     return (cx && cx->win) ? cx->win->active : true;
 }
 
+bool WindowIsTouchPress(Ctx* cx) {
+    return cx && cx->win && cx->win->touchPress;
+}
+
 void WindowSetActive(Window* win, bool active) {
     if (!win || win->active == active) {
         return;

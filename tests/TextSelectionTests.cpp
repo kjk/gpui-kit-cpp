@@ -182,6 +182,25 @@ static void ALongPressTakesAWordAndKeepsDragging() {
     WindowSelectionFree(&win);
 }
 
+static void ADoubleTapIsMarkedAsTouchForTheWindowLayer() {
+    App app;
+    Window win;
+    win.app = &app;
+    AddRun(&win, 0, "quick select value", 0);
+    Point at = {25, 5};
+    PlatformInput touch = InputTouchDrag(TouchPhase::Started, at, at);
+    WindowDispatchInput(&win, &touch);
+    PlatformInput down =
+        InputMouseDown(MouseButton::Left, at.x, at.y, {}, 2, false);
+    WindowDispatchInput(&win, &down);
+    Ctx cx = {&app, &win, nullptr, {}};
+    utassert(WindowIsTouchPress(&cx));
+    TempStr buf = AllocStrTemp(31);
+    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("quick")));
+    WindowSelectionFree(&win);
+}
+
 // A multi-click off any run leaves what was selected alone rather than
 // clearing it: `TextMultiClickRangeIn` answers false and the press falls
 // through to the single-click path, which is a press in the margin.
@@ -614,6 +633,7 @@ void TestTextSelection() {
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
     ALongPressTakesAWordAndKeepsDragging();
+    ADoubleTapIsMarkedAsTouchForTheWindowLayer();
     AMultiClickOffTextTakesNothing();
     AControlPressSuppressesWindowSelection();
     SourceParticipantContractsProjectAcrossAWindow();

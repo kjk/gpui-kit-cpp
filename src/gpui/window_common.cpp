@@ -1929,6 +1929,8 @@ static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
 }
 
 static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
+    win->touchPress = win->touchPressPending;
+    win->touchPressPending = false;
     float x = in.x;
     float y = in.y;
     // text_selection.rs resets this in capture phase. Controls that own the
@@ -2508,6 +2510,7 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::TouchDrag: {
             const TouchDragEvent& touch = input->touchDrag;
             if (touch.phase == TouchPhase::Started) {
+                win->touchPressPending = true;
                 win->touchScrollbarDrag = false;
                 win->scrollDragId = 0;
                 win->scrollDragGrab = 0;
