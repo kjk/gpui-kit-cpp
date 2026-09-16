@@ -182,7 +182,7 @@ static void ALongPressTakesAWordAndKeepsDragging() {
     WindowSelectionFree(&win);
 }
 
-static void ADoubleTapIsMarkedAsTouchForTheWindowLayer() {
+static void ADoubleTapOnReadOnlyTextSelectsNothing() {
     App app;
     Window win;
     win.app = &app;
@@ -197,7 +197,7 @@ static void ADoubleTapIsMarkedAsTouchForTheWindowLayer() {
     utassert(WindowIsTouchPress(&cx));
     TempStr buf = AllocStrTemp(31);
     int n = WindowSelectionText(&win, buf.s, buf.len + 1);
-    utassert(StrEq(Str(buf.s, n), StrL("quick")));
+    utassert(n == 0);
     WindowSelectionFree(&win);
 }
 
@@ -633,7 +633,7 @@ void TestTextSelection() {
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
     ALongPressTakesAWordAndKeepsDragging();
-    ADoubleTapIsMarkedAsTouchForTheWindowLayer();
+    ADoubleTapOnReadOnlyTextSelectsNothing();
     AMultiClickOffTextTakesNothing();
     AControlPressSuppressesWindowSelection();
     SourceParticipantContractsProjectAcrossAWindow();

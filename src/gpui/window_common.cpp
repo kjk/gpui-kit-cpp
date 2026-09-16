@@ -2085,6 +2085,13 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     if (inputAtPress && !inputAtPress->disabled) {
         BaseSuppressTextSelection(win->app);
     }
+    // A finger selects read-only text with a long press only. Inputs keep
+    // their native double-tap word selection; a touch-synthesized double
+    // press on selectable text suppresses the pointer path entirely.
+    if (win->touchPress && in.clickCount == 2 && !inputAtPress &&
+        TextHitOffsetAt(&win->paint, x, y, false) >= 0) {
+        BaseSuppressTextSelection(win->app);
+    }
     InputPress(win, in);
     // Bubble handlers and built-in controls have now had the same chance to
     // suppress that Rust gives them. A press anywhere else starts or clears
