@@ -82,6 +82,8 @@ const char* ComponentName(const Component& component) {
             return "child_view";
         case ComponentKind::Text:
             return "text";
+        case ComponentKind::TextView:
+            return "TextView";
         case ComponentKind::Button:
             return "Button";
         case ComponentKind::Link:
@@ -268,6 +270,7 @@ void SpecArena::Reset() {
 Component SpecArena::CopyComponent(const Component& source) {
     Component out = source;
     out.text = StrDup(arena, source.text);
+    out.value = StrDup(arena, source.value);
     out.background.color = StrDup(arena, source.background.color);
     out.background.fromColor = StrDup(arena, source.background.fromColor);
     out.background.toColor = StrDup(arena, source.background.toColor);
@@ -542,6 +545,15 @@ void SpecArena::WriteTree(StrBuilder* out, SpecId id, int depth) const {
     Indent(out, depth);
     out->Append(Str(ComponentName(component)));
     switch (component.kind) {
+        case ComponentKind::TextView:
+            out->Append(component.textViewFormat == TextViewFormat::Html
+                            ? StrL(" html \"")
+                            : StrL(" markdown \""));
+            out->Append(component.text);
+            out->Append(StrL("\" \""));
+            out->Append(component.value);
+            out->AppendChar('"');
+            break;
         case ComponentKind::Text:
         case ComponentKind::Button:
         case ComponentKind::Link:

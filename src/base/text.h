@@ -525,6 +525,13 @@ struct TextViewLayoutState {
 // pipe inside one does not end the row. What `TableData::markdown` holds.
 Str MdTableToMarkdown(Arena* a, MdNode* table);
 
+// The payload OnLinkWithContext supplies to its listener. It is owned by the
+// current frame arena and valid only for that call.
+struct TextViewLinkBinding {
+    intptr_t context = 0;
+    const char* href = nullptr;
+};
+
 struct TextView {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -549,6 +556,8 @@ struct TextView {
     bool html = false;
     // text_view.rs link_click_handler.
     Listener onLink;
+    intptr_t onLinkContext = 0;
+    bool onLinkHasContext = false;
     CodeBlockActionsFn codeActions = nullptr;
     // text_view.rs code_block_highlighter. Unset falls back to the one
     // TextViewDefaults installed, and then to no highlighting at all.
@@ -620,6 +629,10 @@ struct TextView {
     // a link opens in the desktop's browser, which is what Rust's
     // handle_link_click falls back to (cx.open_url).
     TextView* OnLink(Listener fn);
+    // Shell has to retain both its callback route and the href TextView
+    // supplies. WithContext wraps those two values in a frame-arena pair and
+    // hands its address to the listener.
+    TextView* OnLinkWithContext(Listener fn, intptr_t context);
     // code_block_actions(..): the row is absolutely placed at the block's
     // top right, over a muted plate, exactly where node.rs puts it.
     TextView* CodeBlockActions(CodeBlockActionsFn fn, void* data = nullptr);
@@ -706,6 +719,7 @@ struct TextView {
     // Hand an inline image element its `![alt](url)` — node.rs
     // image_markdown — as a run of its own with no text in it. Answers `e`.
     El* SrcImage(El* e, MdRun* r);
+    Listener LinkListener(Str href);
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
     El* PluginBlock(MdNode* n);

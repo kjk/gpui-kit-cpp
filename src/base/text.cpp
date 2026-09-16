@@ -1261,6 +1261,16 @@ static void MdOpenHref(char* href) {
     }
 }
 
+Listener TextView::LinkListener(Str href) {
+    if (!onLinkHasContext) {
+        return ListenerArg(onLink, (intptr_t)href.s);
+    }
+    TextViewLinkBinding* binding = ArenaNew<TextViewLinkBinding>(a);
+    binding->context = onLinkContext;
+    binding->href = href.s;
+    return ListenerArg(onLink, (intptr_t)binding);
+}
+
 // node.rs 2258: h1 2.0/BOLD, h2 1.5, h3 1.25, h4 1.125, h5 1.0/SEMIBOLD,
 // h6 1.0/MEDIUM.
 static float HeadingScale(int level) {
@@ -1610,7 +1620,7 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     if ((r->marks & MdLink) && r->href.len > 0) {
         e->Cursor(CursorKind::Pointer);
         if (onLink.IsValid()) {
-            e->OnClick(ListenerArg(onLink, (intptr_t)r->href.s));
+            e->OnClick(LinkListener(r->href));
         } else {
             e->OnClick(MkFunc0(MdOpenHref, r->href.s));
         }
@@ -1683,7 +1693,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         // follows.
         t->Cursor(CursorKind::Pointer);
         if (onLink.IsValid()) {
-            t->OnClick(ListenerArg(onLink, (intptr_t)href.s));
+            t->OnClick(LinkListener(href));
         } else {
             t->OnClick(MkFunc0(MdOpenHref, href.s));
         }
@@ -2934,6 +2944,15 @@ TextView* TextView::Plugin(Str name, MdPluginParseFn parse,
 
 TextView* TextView::OnLink(Listener fn) {
     onLink = fn;
+    onLinkContext = 0;
+    onLinkHasContext = false;
+    return this;
+}
+
+TextView* TextView::OnLinkWithContext(Listener fn, intptr_t context) {
+    onLink = fn;
+    onLinkContext = context;
+    onLinkHasContext = true;
     return this;
 }
 

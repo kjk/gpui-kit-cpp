@@ -1074,6 +1074,64 @@ static void PublishedSnapshotsMaterializeToNativeElements() {
     AppGlobalClear(&app);
 }
 
+static El* FindShellText(El* element, Str text) {
+    if (!element) return nullptr;
+    if (element->kind == ElKind::Text && StrEq(element->text, text)) {
+        return element;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindShellText(child, text)) return found;
+    }
+    return nullptr;
+}
+
+static void ShellHostsHtmlAndMarkdownTextViews() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui';\n"
+        "import { TextView } from 'gpui-base';\n"
+        "globalThis.link = '';\n"
+        "export default class Main extends View { render() { return div()\n"
+        "  .child(TextView.markdown('doc', '[site](https://example.com)')\n"
+        "    .selectable(false).scrollable(false)\n"
+        "    .on_link_click(url => { globalThis.link = url; }))\n"
+        "  .child(TextView.html('html', '<b>bold</b>')); } }\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("text-view.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    El* root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    utassert(root != nullptr && !error.IsSet());
+    El* site = FindShellText(root, StrL("site"));
+    El* bold = FindShellText(root, StrL("bold"));
+    utassert(site && site->listener.IsValid());
+    utassert(bold != nullptr);
+    ClickEvent click = {};
+    if (site && site->listener.IsValid()) {
+        ListenerCall(&app, &window, site->listener, &click);
+    }
+    utassert(runtime &&
+             runtime
+                 ->Eval(StrL("if (globalThis.link !== "
+                             "'https://example.com') throw new Error('link')"),
+                        StrL("text-link-check.js"), &error));
+    EntityDrop(&app, view.id);
+    ArenaDelete(frame);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 static void ShellMaterializesStateTemplatesInputsAndPaths() {
     App app;
     Window window;
@@ -4053,6 +4111,7 @@ void TestShellCore() {
     ShellHostModulesBridgePlainDataAndPromises();
     ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories();
     PublishedSnapshotsMaterializeToNativeElements();
+    ShellHostsHtmlAndMarkdownTextViews();
     ShellMaterializesStateTemplatesInputsAndPaths();
     ShellRootHostsDialogsSheetsAndToasts();
     ScriptViewsReuseSnapshotsUntilNotified();

@@ -28,6 +28,7 @@
 #include "base/switch.h"
 #include "base/table.h"
 #include "base/tabs.h"
+#include "base/text.h"
 #include "base/toggle.h"
 #include "base/toggle_group.h"
 #include "fps/fps.h"
@@ -106,6 +107,7 @@ struct MaterialBehavior {
     shell::CallbackId onStep = 0;
     shell::CallbackId onResize = 0;
     shell::CallbackId onItemClick = 0;
+    shell::CallbackId onLinkClick = 0;
     // Reports a secondary press on a virtual list row, with the row's key and
     // the press itself. Registered on the list for the same reason
     // on_item_click is: the rows are rebuilt every frame.
@@ -137,6 +139,10 @@ struct MaterialBehavior {
     // AccordionPanel stays in the tree.
     int ariaLevel = 0;
     bool keepMounted = false;
+    bool selectable = false;
+    bool hasSelectable = false;
+    bool textScrollable = false;
+    bool hasTextScrollable = false;
     // Which script handler draws each piece of a dock_area's chrome. Six
     // handlers in one field rather than six fields, because they are written
     // together: they leave here for the slots the skin reads, and a skin reads
@@ -236,6 +242,8 @@ static void ResolveBehavior(const shell::SpecNode* node,
                 out->onResize = op.callback;
             else if (StrEq(op.name, StrL("on_item_click")))
                 out->onItemClick = op.callback;
+            else if (StrEq(op.name, StrL("on_link_click")))
+                out->onLinkClick = op.callback;
             else if (StrEq(op.name, StrL("on_item_secondary_click")))
                 out->onItemSecondaryClick = op.callback;
             else if (StrEq(op.name, StrL("on_key_down")))
@@ -421,6 +429,12 @@ static void ResolveBehavior(const shell::SpecNode* node,
             out->ariaLevel = (int)(level < 1 ? 1 : level);
         } else if (StrEq(op.name, StrL("keep_mounted"))) {
             out->keepMounted = AsBool(op, 0, true);
+        } else if (StrEq(op.name, StrL("selectable"))) {
+            out->selectable = AsBool(op, 0, true);
+            out->hasSelectable = true;
+        } else if (StrEq(op.name, StrL("scrollable"))) {
+            out->textScrollable = AsBool(op, 0, true);
+            out->hasTextScrollable = true;
         }
     }
 }
@@ -1205,6 +1219,7 @@ static Str MotionIdentity(Ctx* cx, const shell::SpecNode* node,
     const shell::Component& component = node->component;
     switch (component.kind) {
         case shell::ComponentKind::Button:
+        case shell::ComponentKind::TextView:
         case shell::ComponentKind::Link:
         case shell::ComponentKind::Checkbox:
         case shell::ComponentKind::Switch:
@@ -1825,6 +1840,21 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             return Div(cx->a)->FlexCol();
         case shell::ComponentKind::Text:
             return TextEl(cx->a, component.text);
+        case shell::ComponentKind::TextView: {
+            IdScope scope(cx, id);
+            TextView* view =
+                component.textViewFormat == shell::TextViewFormat::Html
+                    ? TextView::NewHtml(cx, component.value)
+                    : TextView::New(cx, component.value);
+            if (behavior.hasSelectable) view->Selectable(behavior.selectable);
+            if (behavior.hasTextScrollable)
+                view->Scrollable(behavior.textScrollable);
+            if (behavior.onLinkClick) {
+                view->OnLinkWithContext(Listen(cx, &ScriptView::OnTextLink),
+                                        (intptr_t)behavior.onLinkClick);
+            }
+            return view->IntoEl();
+        }
         case shell::ComponentKind::Button:
             return Button::New(cx, id, behavior.disabled, click, true, nullptr,
                                behavior.selected);

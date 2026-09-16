@@ -89,6 +89,8 @@ struct ScriptView {
 
     static void OnClick(ScriptView* self, Ctx* cx, const ClickEvent* event,
                         intptr_t callback);
+    static void OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent* event,
+                           intptr_t binding);
     static void OnChange(ScriptView* self, Ctx* cx, const ClickEvent* event,
                          intptr_t value);
     static void OnHover(ScriptView* self, Ctx* cx, const HoverEvent* event,

@@ -69,6 +69,7 @@ enum class ComponentKind : uint8_t {
     VFlex,
     ChildView,
     Text,
+    TextView,
     Button,
     Link,
     Checkbox,
@@ -159,6 +160,11 @@ enum class ComponentKind : uint8_t {
     UniformList,
 };
 
+enum class TextViewFormat : uint8_t {
+    Html,
+    Markdown,
+};
+
 struct VirtualListSpec {
     Str id;
     Axis axis = Axis::Vertical;
@@ -185,6 +191,9 @@ struct ListSpec {
 struct Component {
     ComponentKind kind = ComponentKind::Div;
     Str text;
+    // TextView keeps its stable element id in `text` and its document here.
+    Str value;
+    TextViewFormat textViewFormat = TextViewFormat::Markdown;
     uint64_t handle = 0;
     uint32_t index = 0;
     BackgroundSpec background;

@@ -3,6 +3,7 @@
 #include "shell/theme_tokens.h"
 #include "base/resizable.h"
 #include "base/select.h"
+#include "base/text.h"
 
 namespace gpui {
 
@@ -133,6 +134,17 @@ void ScriptView::OnClick(ScriptView* self, Ctx* cx, const ClickEvent* event,
     if (!self || !self->runtime || !event) return;
     self->runtime
         ->DispatchClick((shell::CallbackId)callback, *event, cx->win, cx->app);
+}
+
+void ScriptView::OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent*,
+                            intptr_t value) {
+    TextViewLinkBinding* binding = (TextViewLinkBinding*)value;
+    if (!self || !self->runtime || !binding || !binding->context ||
+        !binding->href) {
+        return;
+    }
+    self->runtime->DispatchString((shell::CallbackId)binding->context,
+                                  Str(binding->href), cx->win, cx->app);
 }
 
 void ScriptView::OnChange(ScriptView* self, Ctx* cx, const ClickEvent* event,

@@ -1205,11 +1205,11 @@ static const char* const kBaseExports[] = {
     "v_resizable", "resizable_panel", "Collapsible", "Popover", "HoverCard",
     "Popup", "Select", "Combobox", "DatePicker", "Scrollbar", "v_virtual_list",
     "h_virtual_list", "VirtualListScrollHandle", "Input", "InputState",
-    "NumberInput", "Textarea", "TextareaState", "SliderState", "Slider",
-    "SliderTrack", "SliderIndicator", "SliderThumb", "OtpState", "OtpInput",
-    "Avatar", "AvatarImage", "AvatarFallback", "Pagination", "pagination_items",
-    "CalendarState", "Accordion", "AccordionItem", "AccordionHeader",
-    "AccordionPanel", "AccordionTrigger",
+    "NumberInput", "Textarea", "TextareaState", "TextView", "SliderState",
+    "Slider", "SliderTrack", "SliderIndicator", "SliderThumb", "OtpState",
+    "OtpInput", "Avatar", "AvatarImage", "AvatarFallback", "Pagination",
+    "pagination_items", "CalendarState", "Accordion", "AccordionItem",
+    "AccordionHeader", "AccordionPanel", "AccordionTrigger",
     // Dock. The area is the state and `dock_area` is one description of it,
     // which is the split `v_virtual_list` already has.
     "DockArea", "dock_area", "dock_content", "set_theme"};
@@ -1758,6 +1758,38 @@ static JSValue NativeComponent(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, id);
 }
 
+static JSValue NativeTextView(JSContext* ctx, JSValueConst, int argc,
+                              JSValueConst* argv) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    if (!impl || argc < 3) {
+        return JS_ThrowTypeError(
+            ctx, "TextView expects an id, document text and format");
+    }
+    Arena* arena = ArenaNew();
+    shell::Component component = {};
+    component.kind = shell::ComponentKind::TextView;
+    Str format;
+    bool ok = JsString(ctx, argv[0], arena, &component.text) &&
+              JsString(ctx, argv[1], arena, &component.value) &&
+              JsString(ctx, argv[2], arena, &format);
+    if (!ok) {
+        ArenaDelete(arena);
+        return JS_EXCEPTION;
+    }
+    if (StrEq(format, StrL("html"))) {
+        component.textViewFormat = shell::TextViewFormat::Html;
+    } else if (StrEq(format, StrL("markdown"))) {
+        component.textViewFormat = shell::TextViewFormat::Markdown;
+    } else {
+        ArenaDelete(arena);
+        return JS_ThrowTypeError(ctx,
+                                 "TextView format must be html or markdown");
+    }
+    shell::SpecId id = impl->scratch->Push(component);
+    ArenaDelete(arena);
+    return JS_NewUint32(ctx, id);
+}
+
 static bool JsArrayString(JSContext* ctx, JSValueConst array, uint32_t index,
                           Arena* arena, Str* out) {
     JSValue value = JS_GetPropertyUint32(ctx, array, index);
@@ -1947,6 +1979,7 @@ static bool IsCallbackMethod(Str name) {
         "on_item_secondary_click\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
+        "on_link_click\0"
         // A dock's chrome handlers. They are callbacks like any other; what
         // makes them different is that they are asked from inside the frame
         // rather than from render, which the Layout scope around the call and
@@ -2021,7 +2054,8 @@ static bool IsBehavior(Str name) {
         "panel_visible\0panel_size\0size_range\0set_position\0pressed\0"
         "start\0value\0indeterminate\0axis\0row_count\0column_count\0"
         "open\0default_open\0overlay_closable\0anchor\0mouse_button\0"
-        "open_delay\0close_delay\0transition\0spring\0"
+        "open_delay\0close_delay\0transition\0spring\0selectable\0"
+        "scrollable\0"
         "with_item_to_measure_index\0close\0"
         "key_context\0aria_level\0keep_mounted\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
@@ -7654,6 +7688,8 @@ globalThis.__gpui = (() => {
     };
   };
   globalThis.__template = template;
+)JS"
+                               R"JS(
   const api = {
     View,
     div: () => component("div"),
@@ -7716,6 +7752,10 @@ globalThis.__gpui = (() => {
     InputState: { new: (options = {}) => inputState(__input_state_new(options.placeholder ?? null, options.value ?? null)) }, Input: retained("Input"),
     NumberInput: retained("NumberInput"),
     TextareaState: { new: (options = {}) => textareaState(__textarea_state_new(options.placeholder ?? null, options.value ?? null, options.rows ?? null)) }, Textarea: retained("Textarea"),
+    TextView: {
+      html: (id, text) => element(__text_view(String(id), String(text), "html")),
+      markdown: (id, text) => element(__text_view(String(id), String(text), "markdown")),
+    },
     SliderState: { new: (options = {}) => sliderState(__slider_state_new(options.min ?? 0, options.max ?? 100, options.step ?? 1, String(options.scale ?? "linear"), sliderValues(options.value ?? options.min ?? 0))) }, Slider: retained("Slider"),
     SliderTrack: retained("SliderTrack"), SliderIndicator: retained("SliderIndicator"),
     SliderThumb: retained("SliderThumb"),
@@ -9356,6 +9396,7 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
     SetGlobalFunction(impl->context, global, "__dock_register_panel",
                       NativeDockRegisterPanel, 2);
     SetGlobalFunction(impl->context, global, "__component", NativeComponent, 4);
+    SetGlobalFunction(impl->context, global, "__text_view", NativeTextView, 3);
     SetGlobalFunction(impl->context, global, "__path", NativePath, 6);
     SetGlobalFunction(impl->context, global, "__attach", NativeAttach, 2);
     SetGlobalFunction(impl->context, global, "__state", NativeState, 2);
