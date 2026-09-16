@@ -535,6 +535,24 @@ static void ASecondClickOnACellTakesTheRowWhenThereIsNoRowHeader() {
     utassert(!TableEscalatesToRow(&s, 3, 1, false));
 }
 
+static void KeyboardLeavesRowsAloneWhenTheyAreNotSelectable() {
+    TableState s;
+    s.rowCount = 100;
+    s.colCount = 3;
+    s.pageRows = 12;
+    s.rowSelectable = false;
+    Ctx cx = {};
+    const TableAction actions[] = {
+        TableAction::SelectNext,     TableAction::SelectNext,
+        TableAction::SelectPageDown, TableAction::SelectPrev,
+        TableAction::SelectPageUp,
+    };
+    for (const TableAction action : actions) {
+        TablePerform(&s, &cx, action);
+        utassert(s.selectedRow == -1);
+    }
+}
+
 static const component::TableColumn kDumpColumns[] = {
     {StrL("ID")},
     {StrL("Name")},
@@ -686,6 +704,7 @@ void TestDataTable() {
     ScrollingToAColumnBringsItIn();
     ARefreshGivesTheColumnsBackToTheCaller();
     ASecondClickOnACellTakesTheRowWhenThereIsNoRowHeader();
+    KeyboardLeavesRowsAloneWhenTheyAreNotSelectable();
     ARightClickMarksARowOrACellButNeverBoth();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();
