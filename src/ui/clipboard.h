@@ -41,11 +41,13 @@ struct Clipboard {
     Str value = {};
     Str tooltipText = {};
     Listener onCopied;
+    UiSize size = UiSize::XSmall;
 
     static Clipboard* New(Ctx* cx, Str id);
     Clipboard* Value(Str v);
     Clipboard* Tooltip(Str t);
     Clipboard* OnCopied(Listener fn);
+    Clipboard* WithSize(UiSize sizeValue);
     El* IntoEl();
 };
 

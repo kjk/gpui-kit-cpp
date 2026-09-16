@@ -409,6 +409,19 @@ static void ButtonGroupsAssignSourceCornersWithoutAWrapperClip() {
     AppGlobalClear(&app);
 }
 
+static void ClipboardButtonsAcceptTheSharedSizeContract() {
+    App app;
+    component::Init(&app);
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, nullptr, arena, {}};
+    component::Clipboard* clipboard =
+        component::Clipboard::New(&cx, StrL("copy"));
+    utassert(clipboard->size == UiSize::XSmall);
+    utassert(clipboard->WithSize(UiSize::Medium)->size == UiSize::Medium);
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestButtonGroup() {
     TestSuite("button_group");
     BaseButtonCentersOrdinaryChildGeometry();
@@ -417,4 +430,5 @@ void TestButtonGroup() {
     SourceButtonVariantsRoundingAndIconsRemainConcrete();
     SourceToggleAndSegmentedGroupKeepStateAndGeometry();
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
+    ClipboardButtonsAcceptTheSharedSizeContract();
 }

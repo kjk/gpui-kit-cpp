@@ -52,6 +52,10 @@ Clipboard* Clipboard::OnCopied(Listener fn) {
     onCopied = fn;
     return this;
 }
+Clipboard* Clipboard::WithSize(UiSize sizeValue) {
+    size = sizeValue;
+    return this;
+}
 
 El* Clipboard::IntoEl() {
     Entity<ClipboardState> st =
@@ -74,7 +78,7 @@ El* Clipboard::IntoEl() {
     Button* btn = Button::New(cx, id)
                       ->Icon(copied ? IconName::Check : IconName::Copy)
                       ->Ghost()
-                      ->WithSize(UiSize::XSmall);
+                      ->WithSize(size);
     if (tooltipText.s) {
         btn->Tooltip(tooltipText);
     }
