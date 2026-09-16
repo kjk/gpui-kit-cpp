@@ -497,6 +497,157 @@ inline bool MotionEq(const MotionTransform& a, const MotionTransform& b) {
            a.rotationRadians == b.rotationRadians && a.opacity == b.opacity;
 }
 
+// Keyed-state seams used by the template policies below.
+double MotionNow(Ctx* cx);
+void* MotionSlot(Ctx* cx, uint32_t key, int size);
+void MotionWantsFrame(Ctx* cx);
+
+// ─── motion/sequence.rs ──────────────────────────────────────────────────
+
+template <typename T>
+struct SequenceStep {
+    T target = {};
+    motion::Transition transition = motion::Transition::New(0);
+
+    static SequenceStep New(T value, const motion::Transition& policy) {
+        SequenceStep step;
+        step.target = value;
+        step.transition = policy;
+        return step;
+    }
+    const T& Target() const { return target; }
+    const motion::Transition& Transition() const { return transition; }
+};
+
+template <typename T>
+struct SequenceSample {
+    T value = {};
+    int32_t step = 0;
+    MotionStatus status = MotionStatus::Idle;
+
+    const T& Value() const { return value; }
+    T IntoValue() const { return value; }
+    int32_t Step() const { return step; }
+    MotionStatus Status() const { return status; }
+    bool IsFinished() const { return status == MotionStatus::Finished; }
+    bool IsActive() const {
+        return status == MotionStatus::Delayed ||
+               status == MotionStatus::Running;
+    }
+};
+
+template <typename T>
+struct SequenceState {
+    int32_t step = 0;
+    T from = {};
+    T target = {};
+    motion::Transition transition = motion::Transition::New(0);
+    double startedAt = 0;
+    bool init = false;
+};
+
+// A chain of transitions. Each hand-off uses the preceding step's absolute
+// finish time, so a slow frame samples the next step where it should already
+// be instead of starting it late.
+template <typename T>
+struct Sequence {
+    Arena* arena = nullptr;
+    motion::TransitionId id = {};
+    T from = {};
+    ArenaVec<SequenceStep<T>> steps;
+
+    static Sequence New(Arena* a, motion::TransitionId valueId, T value) {
+        Sequence out;
+        out.arena = a;
+        out.id = valueId;
+        out.from = value;
+        return out;
+    }
+    static Sequence New(Ctx* cx, motion::TransitionId valueId, T value) {
+        return New(cx ? cx->a : nullptr, valueId, value);
+    }
+    Sequence& WithStep(T target, const motion::Transition& policy) {
+        steps.Append(arena, SequenceStep<T>::New(target, policy));
+        return *this;
+    }
+    Sequence& WithSteps(const SequenceStep<T>* values, int32_t count) {
+        for (int32_t i = 0; i < count; i++) steps.Append(arena, values[i]);
+        return *this;
+    }
+    const T& From() const { return from; }
+    const ArenaVec<SequenceStep<T>>& Steps() const { return steps; }
+
+    SequenceSample<T> Sample(Ctx* cx) const {
+        SequenceSample<T> out;
+        out.value = from;
+        if (!cx || steps.len == 0) return out;
+
+        const int32_t last = steps.len - 1;
+        uint32_t stateKey = id.key ^ 0x9e3779b9u;
+        auto* state = (SequenceState<T>*)MotionSlot(
+            cx, stateKey, (int)sizeof(SequenceState<T>));
+        if (!state) {
+            out.value = steps[last].target;
+            out.step = last;
+            out.status = MotionStatus::Finished;
+            return out;
+        }
+        const double now = MotionNow(cx);
+        auto start = [&](int32_t at, T startValue, double startedAt) {
+            state->step = at;
+            state->from = startValue;
+            state->target = steps[at].target;
+            state->transition = steps[at].transition;
+            state->startedAt = startedAt;
+            state->init = true;
+        };
+        if (!state->init) start(0, from, now);
+
+        if (MotionReduced()) {
+            start(last, steps[last].target, now);
+            out.value = steps[last].target;
+            out.step = last;
+            out.status = MotionStatus::Finished;
+            return out;
+        }
+
+        auto sample = [&](MotionStatus* status) {
+            float elapsed =
+                (float)(std::max(0.0, now - state->startedAt) * 1000.0);
+            float progress =
+                MotionProgress(state->transition, elapsed,
+                               state->transition.durationMs, status);
+            return motion::Interpolate<T>::Between(
+                state->from, state->target,
+                MotionSample(state->transition, progress));
+        };
+
+        MotionStatus status;
+        T value = sample(&status);
+        bool retargeted = state->step > last ||
+                          !MotionEq(state->target, steps[state->step].target);
+        if (retargeted) {
+            start(0, value, now);
+            value = sample(&status);
+        } else {
+            while (status == MotionStatus::Finished && state->step < last) {
+                float finishMs =
+                    state->transition.durationMs + state->transition.delayMs;
+                if (finishMs < 0) finishMs = 0;
+                double nextStart = state->startedAt + finishMs / 1000.0;
+                T previousTarget = state->target;
+                start(state->step + 1, previousTarget, nextStart);
+                value = sample(&status);
+            }
+        }
+        out.value = value;
+        out.step = state->step;
+        out.status = status;
+        if (out.IsActive()) MotionWantsFrame(cx);
+        return out;
+    }
+};
+
 // The whole rule, with the state and the clock passed in — which is what makes
 // it testable without a window. `transition_with_status()` in Rust, minus the
 // two lines that fetch the state and ask for a frame.
@@ -564,15 +715,6 @@ MotionStep<T> MotionAdvance(MotionState<T>* st, T target, const Motion& m,
                   out.status == MotionStatus::Running;
     return out;
 }
-
-// The clock a frame runs on: one instant for the whole frame, so every
-// transition in it samples the same `now`. Rust reads the executor's clock,
-// which does not move inside a frame either.
-double MotionNow(Ctx* cx);
-// The keyed slot behind one id, and the frame it asks for. Split out so the
-// template below is the only generic part.
-void* MotionSlot(Ctx* cx, uint32_t key, int size);
-void MotionWantsFrame(Ctx* cx);
 
 // Animation::repeat: a loop with no target and no end. The phase of a cycle
 // of `periodMs`, put through `ease` — the delta GPUI hands the closure of a

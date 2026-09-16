@@ -876,6 +876,94 @@ static void ATransitionReportsWhereItIs() {
                  .status == MotionStatus::Finished);
 }
 
+// motion/sequence.rs: steps hand over at their absolute boundary, including
+// when a frame lands after it, and the sequence alone reports Finished.
+static SequenceSample<float> SampleSequence(Ctx* cx, Str id, float from,
+                                            float first, float second,
+                                            float delayMs = 0) {
+    Sequence<float> sequence =
+        Sequence<float>::New(cx, motion::TransitionId(id), from)
+            .WithStep(first, motion::Transition::New(100).Ease(EaseLinear))
+            .WithStep(second, motion::Transition::New(100).Delay(delayMs).Ease(
+                                  EaseLinear));
+    return sequence.Sample(cx);
+}
+
+static void SequenceStepsAdvanceAtTheirBoundaries() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    MotionSetReduced(false);
+
+    win->frameNow = 1.0;
+    SequenceSample<float> sample =
+        SampleSequence(&cx, StrL("ordered"), 0, 10, 20, 50);
+    utassertnear(sample.Value(), 0.f);
+    utassert(sample.Step() == 0 && sample.Status() == MotionStatus::Running);
+    utassert(win->animFrame);
+
+    win->frameNow = 1.05;
+    sample = SampleSequence(&cx, StrL("ordered"), 0, 10, 20, 50);
+    utassertnear(sample.Value(), 5.f);
+    win->frameNow = 1.1;
+    sample = SampleSequence(&cx, StrL("ordered"), 0, 10, 20, 50);
+    utassertnear(sample.Value(), 10.f);
+    utassert(sample.Step() == 1 && sample.Status() == MotionStatus::Delayed);
+    win->frameNow = 1.2;
+    sample = SampleSequence(&cx, StrL("ordered"), 0, 10, 20, 50);
+    utassertnear(sample.Value(), 15.f);
+    utassert(sample.Step() == 1 && sample.Status() == MotionStatus::Running);
+    win->animFrame = false;
+    win->frameNow = 1.25;
+    sample = SampleSequence(&cx, StrL("ordered"), 0, 10, 20, 50);
+    utassertnear(sample.Value(), 20.f);
+    utassert(sample.IsFinished() && !win->animFrame);
+
+    // The 100 ms hand-off happened between frames. The second step is already
+    // 75 ms through rather than starting at this late frame.
+    win->frameNow = 2.0;
+    SampleSequence(&cx, StrL("coarse"), 0, 10, 20);
+    win->frameNow = 2.175;
+    sample = SampleSequence(&cx, StrL("coarse"), 0, 10, 20);
+    utassertnear(sample.Value(), 17.5f);
+    utassert(sample.Step() == 1 && sample.Status() == MotionStatus::Running);
+
+    delete win;
+    ArenaDelete(arena);
+    MotionSetReduced(false);
+}
+
+static void SequenceHandlesInstantStepsAndReducedMotion() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    win->frameNow = 3.0;
+
+    Sequence<float> instant =
+        Sequence<float>::New(
+            &cx, motion::TransitionId(StrL("instant-sequence")), 0.f)
+            .WithStep(5.f, motion::Transition::New(0).Ease(EaseLinear))
+            .WithStep(6.f, motion::Transition::New(0).Ease(EaseLinear))
+            .WithStep(10.f, motion::Transition::New(100).Ease(EaseLinear));
+    SequenceSample<float> sample = instant.Sample(&cx);
+    utassertnear(sample.Value(), 6.f);
+    utassert(sample.Step() == 2 && sample.Status() == MotionStatus::Running);
+
+    MotionSetReduced(true);
+    win->animFrame = false;
+    sample = SampleSequence(&cx, StrL("reduced-sequence"), 0, 10, 20);
+    utassertnear(sample.Value(), 20.f);
+    utassert(sample.Step() == 1 && sample.IsFinished() && !win->animFrame);
+
+    delete win;
+    ArenaDelete(arena);
+    MotionSetReduced(false);
+}
+
 // ─── motion/presence.rs ───────────────────────────────────────────────────
 
 // presence_enters_exits_and_only_unmounts_after_exit, and
@@ -1148,6 +1236,8 @@ void TestMotion() {
     StaggerOriginsProduceStableDelays();
     GeometryInterpolatesChannelByChannel();
     ATransitionReportsWhereItIs();
+    SequenceStepsAdvanceAtTheirBoundaries();
+    SequenceHandlesInstantStepsAndReducedMotion();
     PresenceEntersExitsAndUnmountsOnlyAfterItsExit();
     KeyedKeyframesFollowTheirTimingAndThenStop();
     AMeasuredRevealClipsToItsProgress();
