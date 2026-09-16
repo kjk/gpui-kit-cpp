@@ -54,6 +54,7 @@ void TestSheet();
 void TestMotion();
 void TestScrollbar();
 void TestScrollBounce();
+void TestTouchSelection();
 void TestThemeSettings();
 void TestResizable();
 void TestTree();

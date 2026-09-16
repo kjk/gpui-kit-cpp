@@ -64,6 +64,7 @@ int GpuiMain(int argc, char** argv) {
     TestMotion();
     TestScrollbar();
     TestScrollBounce();
+    TestTouchSelection();
     TestThemeSettings();
     TestResizable();
     TestTree();

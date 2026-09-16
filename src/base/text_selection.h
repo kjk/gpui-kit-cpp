@@ -3,8 +3,19 @@
 /* Unstyled selectable text host — crates/base/src/text_selection.rs */
 
 #include "gpui/gpui.h"
+#include "base/touch_selection.h"
 
 namespace gpui {
+
+struct TouchHandleHitbox {
+    SelectionEdge edge = SelectionEdge::Start;
+    Bounds bounds = {};
+};
+
+struct TouchHandleLayout {
+    Vec<TouchHandleHitbox> hitboxes;
+    ~TouchHandleLayout() { VecReset(hitboxes); }
+};
 
 struct TextSelectionScopeId {
     uint64_t raw = 0;

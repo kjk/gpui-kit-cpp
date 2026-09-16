@@ -67,6 +67,7 @@
 #include "base/text.h"
 #include "base/text_boundary.h"
 #include "base/text_format.h"
+#include "base/touch_selection.h"
 #include "base/text_selection.h"
 #include "base/theme.h"
 #include "base/theme_tokens.h"
