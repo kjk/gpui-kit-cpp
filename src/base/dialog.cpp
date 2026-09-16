@@ -253,12 +253,30 @@ Dialog* Dialog::Backdrop(El* backdrop) {
     return this;
 }
 
+static void DialogAnchorControlActions(El* el, FocusHandle anchor) {
+    if (!el) {
+        return;
+    }
+    if (el->clickAction == action::Cancel() ||
+        el->clickAction == action::Confirm()) {
+        el->clickActionFocusId = anchor.id;
+    }
+    for (El* child = el->first; child; child = child->next) {
+        DialogAnchorControlActions(child, anchor);
+    }
+}
+
 Dialog* Dialog::Popup(El* popup) {
     if (popup) {
         // The popup is the trap container, not the backdrop: a Tab inside a
         // dialog reaches its own controls and nothing behind it.
         int id = FocusTrapId(trap);
         popup->TrapId(id);
+        // Confirm/Cancel controls dispatch from this dialog's own node, not
+        // from whatever happens to hold focus when they are clicked. This is
+        // what keeps native surfaces that reclaim focus from making a dialog
+        // inert, and it selects the right handler in a stack of dialogs.
+        DialogAnchorControlActions(popup, FocusHandle{id});
         // The popup is also the host DialogBindKeys made focusable, under the
         // same name, so a dialog with no control in it still takes the focus.
         FocusTrapArm(cx->win, id, id);

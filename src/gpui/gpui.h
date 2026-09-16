@@ -2145,6 +2145,10 @@ struct El {
     uint32_t pathId = 0;
     // El::OnClickAction — dispatched from the release, beside onClick.
     uint32_t clickAction = 0;
+    // Optional dispatch origin for the action. A dialog control names its
+    // dialog's own focus node so it still reaches that dialog if another
+    // surface has taken focus.
+    int clickActionFocusId = 0;
     // Interactive refinements are held in the arena sidecar above.
     ArenaPtr<ElStyleStates> styleStates = {};
     float lineSpanHeight = 0;
@@ -2556,6 +2560,7 @@ struct El {
     // starts at the focused element, not at this one, which is what makes a
     // dialog's Cancel button and its escape key one handler.
     El* OnClickAction(uint32_t action, intptr_t arg = 0);
+    El* OnClickActionAt(uint32_t action, FocusHandle focus, intptr_t arg = 0);
     // div().on_key_down(..): the raw keystroke, offered to the focused element
     // and then out through the elements above it, before the keymap resolves
     // the chord to an action. It is what a field that is not a text editor
@@ -2658,6 +2663,7 @@ struct HitRect {
     // El::OnClickAction: the action a click dispatches, and what it carries.
     uint32_t clickAction = 0;
     intptr_t clickActionArg = 0;
+    int clickActionFocusId = 0;
     // El::StopClick: the click stops here rather than carrying on outwards.
     // `cx.stop_propagation()` in a handler, said on the element instead —
     // which is where a port whose listeners cannot wrap one another can say
@@ -2692,6 +2698,7 @@ struct AccessibilityNode {
     Func0 accessibilityDecrementDirect = {};
     uint32_t clickAction = 0;
     intptr_t clickActionArg = 0;
+    int clickActionFocusId = 0;
     SliderState* slider = nullptr;
     InputState* input = nullptr;
 };
@@ -6147,6 +6154,11 @@ constexpr bool KeySecondary(bool ctrl, bool platform) {
 // The same, for an action already in hand rather than one a keystroke
 // resolved to. `arg` is what the action carries.
 bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg = 0);
+// Dispatch from an arbitrary rendered focus node rather than whichever node
+// currently owns focus. Falls back to ordinary focused dispatch when the
+// handle is absent from the last frame.
+bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
+                                 uint32_t action, intptr_t arg = 0);
 // The `El::OnKeyDown` handlers over the focused element, innermost first.
 // Answers true when one of them stopped propagating.
 bool WindowDispatchKeyEvent(Window* win, KeyEvent* ev);

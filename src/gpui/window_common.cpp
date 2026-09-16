@@ -1152,7 +1152,8 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
         node.onClick.Call();
     }
     if (node.clickAction) {
-        WindowDispatchAction(win, node.clickAction, node.clickActionArg);
+        WindowDispatchActionAtFocus(win, FocusHandle{node.clickActionFocusId},
+                                    node.clickAction, node.clickActionArg);
     }
     AppInvalidate(win);
     return true;
@@ -2262,7 +2263,8 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
             if (!hr.clickAction) {
                 continue;
             }
-            WindowDispatchAction(win, hr.clickAction, hr.clickActionArg);
+            WindowDispatchActionAtFocus(win, FocusHandle{hr.clickActionFocusId},
+                                        hr.clickAction, hr.clickActionArg);
             break;
         }
     }

@@ -77,6 +77,39 @@ static void TheActionsRunTheSameHandlersTheButtonsDo() {
     delete win;
 }
 
+static void DialogControlsRouteFromTheirOwnDialogWhenFocusWasStolen() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<DialogRecorder> rec = EntityNew<DialogRecorder>(&app);
+    Ctx cx = {&app, win, arena, rec.id};
+
+    Str trap = StrL("stolen-focus-dialog");
+    El* cancel = Div(arena)->OnClickAction(action::Cancel());
+    El* popup = Div(arena)->Child(cancel);
+    DialogBindKeys(&cx, popup, trap, ListenTo(rec, &DialogRecorder::Cancel), {},
+                   {});
+    El* host = Dialog::New(&cx)->Trap(trap)->Popup(popup)->IntoEl();
+    El* outside = Div(arena)->FocusId(77);
+    El* root = Div(arena)->Child(outside)->Child(host);
+    FocusCollect(win, root);
+    WindowSetFocusId(win, 77);
+
+    int dialogFocus = FocusTrapId(trap);
+    utassert(WindowFocusedId(win) == 77);
+    utassert(cancel->clickActionFocusId == dialogFocus);
+    gRan = 0;
+    utassert(WindowDispatchActionAtFocus(
+        win, FocusHandle{cancel->clickActionFocusId}, action::Cancel()));
+    utassert(gRan == 1 && WindowFocusedId(win) == 77);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 static void ABackdropPressDismissesOnlyWhenAllFourHold() {
     // The ordinary case: left button, closable, topmost, below the band.
     utassert(DialogBackdropCloses(true, true, MouseButton::Left, 100, 34));
@@ -361,6 +394,7 @@ void TestDialog() {
     TheBackdropFillsTheHost();
     EscapeCancelsAndEnterConfirms();
     TheActionsRunTheSameHandlersTheButtonsDo();
+    DialogControlsRouteFromTheirOwnDialogWhenFocusWasStolen();
     KeyboardOffRemovesTheBindings();
     ABackdropPressDismissesOnlyWhenAllFourHold();
     ASharedHandleControlsTriggersAndHosts();

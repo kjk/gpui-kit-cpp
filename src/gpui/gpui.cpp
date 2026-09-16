@@ -2134,6 +2134,13 @@ El* El::OnScrollWheel(Listener fn) {
 El* El::OnClickAction(uint32_t action, intptr_t arg) {
     clickAction = action;
     clickActionArg = arg;
+    clickActionFocusId = 0;
+    return this;
+}
+El* El::OnClickActionAt(uint32_t action, FocusHandle focus, intptr_t arg) {
+    clickAction = action;
+    clickActionArg = arg;
+    clickActionFocusId = focus.id;
     return this;
 }
 
@@ -5746,6 +5753,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onClick = e->onClick;
         hr.clickAction = e->clickAction;
         hr.clickActionArg = e->clickActionArg;
+        hr.clickActionFocusId = e->clickActionFocusId;
         hr.listener = e->listener;
         hr.onHover = e->onHover;
         hr.onMouseMove = e->onMouseMove;
@@ -7041,18 +7049,24 @@ static int DispatchAnchor(Window* win) {
     return i;
 }
 
+static int DispatchAnchorForFocus(Window* win, FocusHandle focus) {
+    if (!win || !focus.IsValid()) {
+        return -1;
+    }
+    for (int i = 0; i < win->focusEls.len; i++) {
+        if (win->focusEls[i].id == focus.id) {
+            return win->focusEls[i].dispatchIx;
+        }
+    }
+    return -1;
+}
+
 bool WindowBindingForActionAtFocus(Window* win, uint32_t action,
                                    FocusHandle focus, KeyChord* out) {
     if (!win || !focus.IsValid() || !action || !out) {
         return false;
     }
-    int ix = -1;
-    for (int i = 0; i < win->focusEls.len; i++) {
-        if (win->focusEls[i].id == focus.id) {
-            ix = win->focusEls[i].dispatchIx;
-            break;
-        }
-    }
+    int ix = DispatchAnchorForFocus(win, focus);
     if (ix < 0) {
         return false;
     }
@@ -7178,11 +7192,8 @@ bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
 // application's. Rust's `window.dispatch_action(Box::new(Cancel), cx)` — a
 // button that runs the same thing the escape key does, without a keystroke to
 // resolve first.
-bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg) {
-    if (!win || !action) {
-        return false;
-    }
-    int ix = DispatchAnchor(win);
+static bool WindowDispatchActionFrom(Window* win, int ix, uint32_t action,
+                                     intptr_t arg) {
     // A handler that propagates lets the search carry on outwards.
     for (int i = ix - 1; i >= 0; i--) {
         if (win->dispatch[i].subtreeEnd <= ix ||
@@ -7215,6 +7226,25 @@ bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg) {
     // Bound but unhandled. Rust leaves the keystroke to whatever is under the
     // action dispatch, and so does this: the caller carries on.
     return false;
+}
+
+bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg) {
+    if (!win || !action) {
+        return false;
+    }
+    return WindowDispatchActionFrom(win, DispatchAnchor(win), action, arg);
+}
+
+bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
+                                 uint32_t action, intptr_t arg) {
+    if (!win || !action) {
+        return false;
+    }
+    int ix = DispatchAnchorForFocus(win, focus);
+    if (ix < 0) {
+        return WindowDispatchAction(win, action, arg);
+    }
+    return WindowDispatchActionFrom(win, ix, action, arg);
 }
 
 // GlobalElementId, folded. Rust pushes an ElementId per named element and
@@ -7544,6 +7574,7 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         node.accessibilityDecrementDirect = e->accessibilityDecrementDirect;
         node.clickAction = e->clickAction;
         node.clickActionArg = e->clickActionArg;
+        node.clickActionFocusId = e->clickActionFocusId;
         node.slider = e->slider;
         node.input = e->input;
         if (!node.slider && node.info.role == AccessibilityRole::Slider) {
