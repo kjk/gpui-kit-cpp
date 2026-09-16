@@ -1849,10 +1849,8 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             if (behavior.hasSelectable) view->Selectable(behavior.selectable);
             if (behavior.hasTextScrollable)
                 view->Scrollable(behavior.textScrollable);
-            if (behavior.onLinkClick) {
-                view->OnLinkWithContext(Listen(cx, &ScriptView::OnTextLink),
-                                        (intptr_t)behavior.onLinkClick);
-            }
+            view->OnLinkWithContext(Listen(cx, &ScriptView::OnTextLink),
+                                    (intptr_t)behavior.onLinkClick);
             return view->IntoEl();
         }
         case shell::ComponentKind::Button:

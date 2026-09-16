@@ -72,6 +72,10 @@ struct CapabilityError {
 void CapabilityErrorFree(CapabilityError* error);
 Str CapabilityErrorMessage(Arena* arena, const CapabilityError& error);
 
+// One rule for every route out to the system URL opener: Link.href,
+// cx.open_url and TextView's default link handling.
+bool IsOpenableUrl(Str url);
+
 struct CapabilityPath {
     Str root;
     Str relative;

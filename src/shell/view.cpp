@@ -1,5 +1,6 @@
 #include "shell/view.h"
 #include "shell/action.h"
+#include "shell/capability.h"
 #include "shell/theme_tokens.h"
 #include "base/resizable.h"
 #include "base/select.h"
@@ -139,12 +140,16 @@ void ScriptView::OnClick(ScriptView* self, Ctx* cx, const ClickEvent* event,
 void ScriptView::OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent*,
                             intptr_t value) {
     TextViewLinkBinding* binding = (TextViewLinkBinding*)value;
-    if (!self || !self->runtime || !binding || !binding->context ||
-        !binding->href) {
+    if (!self || !self->runtime || !binding || !binding->href) {
         return;
     }
-    self->runtime->DispatchString((shell::CallbackId)binding->context,
-                                  Str(binding->href), cx->win, cx->app);
+    Str href(binding->href);
+    if (binding->context) {
+        self->runtime->DispatchString((shell::CallbackId)binding->context, href,
+                                      cx->win, cx->app);
+    } else if (IsOpenableUrl(href)) {
+        OpenUrl(href);
+    }
 }
 
 void ScriptView::OnChange(ScriptView* self, Ctx* cx, const ClickEvent* event,

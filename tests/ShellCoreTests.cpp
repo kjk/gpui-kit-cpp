@@ -95,6 +95,16 @@ static void RuntimeMetricsSeparateScriptNativeAndFrames() {
 }
 
 static void CapabilitiesAreDenyFirstAndScoped() {
+    utassert(IsOpenableUrl(StrL("http://example.com/docs")));
+    utassert(IsOpenableUrl(StrL("HTTPS://example.com:8443/docs")));
+    utassert(IsOpenableUrl(StrL("https://[::1]/")));
+    utassert(!IsOpenableUrl(StrL("file:///tmp/document")));
+    utassert(!IsOpenableUrl(StrL("test:example")));
+    utassert(!IsOpenableUrl(StrL("/docs")));
+    utassert(!IsOpenableUrl(StrL("https://")));
+    utassert(!IsOpenableUrl(StrL("https://example.com:bad")));
+    utassert(!IsOpenableUrl(StrL("https://example.com\\docs")));
+
     Capabilities denied;
     utassert(!denied.HasReadAccess());
     utassert(!denied.HasWriteAccess());
@@ -483,6 +493,28 @@ static void ScriptThemesAndOpenUrlsFollowHostScopeRules() {
                      StrL("import { div, View } from 'gpui'; export default "
                           "class BadUrl extends View { render(cx) { "
                           "cx.open_url('file:///tmp/no'); return div(); } }"),
+                     &error)
+               : nullptr;
+    object = type && runtime
+                 ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+                 : nullptr;
+    output->Reset();
+    if (object && runtime) {
+        runtime
+            ->RenderToSpec(output, object, &window, &app, {}, nullptr, &error);
+    }
+    utassert(StrContains(error.message, StrL("absolute HTTP(S) URL")));
+    ViewObjectRelease(object);
+    ViewTypeRelease(type);
+    ShellErrorClear(&error);
+
+    type = runtime
+               ? runtime->LoadSource(
+                     StrL("bad-href.js"),
+                     StrL("import { View } from 'gpui'; import { Link } from "
+                          "'gpui-base'; export default class BadHref extends "
+                          "View { render() { return "
+                          "Link.new('bad').href('/relative'); } }"),
                      &error)
                : nullptr;
     object = type && runtime
@@ -1097,10 +1129,12 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
         "import { TextView } from 'gpui-base';\n"
         "globalThis.link = '';\n"
         "export default class Main extends View { render() { return div()\n"
-        "  .child(TextView.markdown('doc', '[site](https://example.com)')\n"
+        "  .child(TextView.markdown('doc', '[site](file:///tmp/document)')\n"
         "    .selectable(false).scrollable(false)\n"
         "    .on_link_click(url => { globalThis.link = url; }))\n"
-        "  .child(TextView.html('html', '<b>bold</b>')); } }\n");
+        "  .child(TextView.html('html', '<b>bold</b>'))\n"
+        "  .child(TextView.markdown('default', "
+        "'[blocked](file:///tmp/blocked)')); } }\n");
     ViewType* type =
         runtime ? runtime->LoadSource(StrL("text-view.js"), source, &error)
                 : nullptr;
@@ -1114,8 +1148,10 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
     utassert(root != nullptr && !error.IsSet());
     El* site = FindShellText(root, StrL("site"));
     El* bold = FindShellText(root, StrL("bold"));
+    El* blocked = FindShellText(root, StrL("blocked"));
     utassert(site && site->listener.IsValid());
     utassert(bold != nullptr);
+    utassert(blocked && blocked->listener.IsValid());
     ClickEvent click = {};
     if (site && site->listener.IsValid()) {
         ListenerCall(&app, &window, site->listener, &click);
@@ -1123,8 +1159,11 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
     utassert(runtime &&
              runtime
                  ->Eval(StrL("if (globalThis.link !== "
-                             "'https://example.com') throw new Error('link')"),
+                             "'file:///tmp/document') throw new Error('link')"),
                         StrL("text-link-check.js"), &error));
+    if (blocked && blocked->listener.IsValid()) {
+        ListenerCall(&app, &window, blocked->listener, &click);
+    }
     EntityDrop(&app, view.id);
     ArenaDelete(frame);
     if (runtime) runtime->Release();

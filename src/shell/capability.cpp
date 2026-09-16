@@ -2,6 +2,60 @@
 
 namespace gpui {
 
+bool IsOpenableUrl(Str url) {
+    if (!url || url.len > 32768) return false;
+    int schemeEnd = StrFind(url, StrL("://"));
+    if (schemeEnd <= 0) return false;
+    Str scheme(url.s, schemeEnd);
+    if (!StrEqI(scheme, StrL("http")) && !StrEqI(scheme, StrL("https"))) {
+        return false;
+    }
+    int authorityStart = schemeEnd + 3;
+    int authorityEnd = authorityStart;
+    while (authorityEnd < url.len && url.s[authorityEnd] != '/' &&
+           url.s[authorityEnd] != '?' && url.s[authorityEnd] != '#') {
+        unsigned char c = (unsigned char)url.s[authorityEnd];
+        if (c <= 0x20 || c >= 0x7f || c == '\\') return false;
+        authorityEnd++;
+    }
+    int hostStart = authorityStart;
+    for (int i = authorityStart; i < authorityEnd; i++) {
+        if (url.s[i] == '@') hostStart = i + 1;
+    }
+    if (hostStart >= authorityEnd) return false;
+    int portStart = -1;
+    if (url.s[hostStart] == '[') {
+        int close = hostStart + 1;
+        while (close < authorityEnd && url.s[close] != ']') close++;
+        if (close <= hostStart + 1 || close >= authorityEnd) return false;
+        int afterHost = close + 1;
+        if (afterHost == authorityEnd) return true;
+        if (url.s[afterHost] != ':' || afterHost + 1 == authorityEnd)
+            return false;
+        portStart = afterHost + 1;
+    } else {
+        int hostBegin = hostStart;
+        int hostEnd = authorityEnd;
+        for (int i = hostStart; i < authorityEnd; i++) {
+            if (url.s[i] == ':') {
+                hostEnd = i;
+                portStart = i + 1;
+                break;
+            }
+        }
+        if (hostEnd <= hostBegin) return false;
+        if (portStart < 0) return true;
+        if (portStart == authorityEnd) return false;
+    }
+    uint32_t port = 0;
+    for (int i = portStart; i < authorityEnd; i++) {
+        if (url.s[i] < '0' || url.s[i] > '9') return false;
+        port = port * 10 + (uint32_t)(url.s[i] - '0');
+        if (port > 65535) return false;
+    }
+    return true;
+}
+
 static void FreeStrings(Vec<Str>* values) {
     for (int i = 0; i < values->len; i++) {
         StrFree((*values)[i]);

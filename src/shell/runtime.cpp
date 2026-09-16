@@ -2691,6 +2691,19 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 JS_FreeValue(ctx, value);
             }
         }
+        if (StrEq(name, StrL("href"))) {
+            if (argCount != 1 || op.args[0]
+                                         .kind != shell::BridgedKind::String) {
+                ArenaDelete(arena);
+                return JS_ThrowTypeError(ctx, "href(url) expects a string");
+            }
+            if (!IsOpenableUrl(op.args[0].string)) {
+                ArenaDelete(arena);
+                return JS_ThrowTypeError(
+                    ctx,
+                    "href(url) expects an absolute HTTP(S) URL with a host");
+            }
+        }
         if (IsDockCommand(name)) {
             // Every command takes the dock handle first, because it is
             // resolved against *that* area: the script passes the container
@@ -4962,42 +4975,6 @@ static JSValue NativeThemeSnapshot(JSContext* ctx, JSValueConst, int argc,
     return result;
 }
 
-static bool ValidOpenUrl(Str url) {
-    if (!url || url.len > 32768) return false;
-    int schemeEnd = StrFind(url, StrL("://"));
-    if (schemeEnd <= 0) return false;
-    Str scheme(url.s, schemeEnd);
-    if (!StrEqI(scheme, StrL("http")) && !StrEqI(scheme, StrL("https"))) {
-        return false;
-    }
-    int authorityStart = schemeEnd + 3;
-    int authorityEnd = authorityStart;
-    while (authorityEnd < url.len && url.s[authorityEnd] != '/' &&
-           url.s[authorityEnd] != '?' && url.s[authorityEnd] != '#') {
-        unsigned char c = (unsigned char)url.s[authorityEnd];
-        if (c <= 0x20 || c >= 0x7f) return false;
-        authorityEnd++;
-    }
-    int hostStart = authorityStart;
-    for (int i = authorityStart; i < authorityEnd; i++) {
-        if (url.s[i] == '@') hostStart = i + 1;
-    }
-    if (hostStart >= authorityEnd) return false;
-    if (url.s[hostStart] == '[') {
-        int close = hostStart + 1;
-        while (close < authorityEnd && url.s[close] != ']') close++;
-        return close > hostStart + 1 && close < authorityEnd;
-    }
-    int hostEnd = authorityEnd;
-    for (int i = hostStart; i < authorityEnd; i++) {
-        if (url.s[i] == ':') {
-            hostEnd = i;
-            break;
-        }
-    }
-    return hostEnd > hostStart;
-}
-
 static JSValue NativeOpenUrl(JSContext* ctx, JSValueConst, int argc,
                              JSValueConst* argv) {
     if (argc < 2) {
@@ -5016,7 +4993,7 @@ static JSValue NativeOpenUrl(JSContext* ctx, JSValueConst, int argc,
         ArenaDelete(arena);
         return JS_EXCEPTION;
     }
-    if (!ValidOpenUrl(url)) {
+    if (!IsOpenableUrl(url)) {
         ArenaDelete(arena);
         return JS_ThrowTypeError(
             ctx,
