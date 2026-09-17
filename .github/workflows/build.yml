@@ -42,7 +42,7 @@ jobs:
             os: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -104,7 +104,7 @@ jobs:
         if: matrix.name == 'linux' || matrix.name == 'macos'
         run: bun cmd/build-no-amalgam.ts -rel
 
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: emscripten-core/setup-emsdk@v16
         if: matrix.name == 'wasm'
         with:
           version: latest
@@ -131,7 +131,7 @@ jobs:
             os: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: oven-sh/setup-bun@v2
         with:
