@@ -1,8 +1,9 @@
-/* Ported from crates/ui/src/setting/item.rs and settings.rs.
+/* Ported from crates/ui/src/setting/item.rs, settings.rs and tests.rs.
  *
  * `SettingItem::is_match` is what the search box filters on: the title, the
- * description and the keywords, all lowercased. `filtered_pages` then drops a
- * group whose items all fell out and a page whose groups all did. */
+ * description and the keywords, all lowercased. SettingsFilter keeps original
+ * page and group indexes and remaps selection onto the pages that still match.
+ */
 
 #include "Test.h"
 
@@ -249,6 +250,237 @@ static void NumberSettingsDelegateStepAndRangeToTheInputEngine() {
     delete win;
 }
 
+static SettingItem KeywordItem(Arena* a, const char* keyword) {
+    SettingItem it;
+    it.title = StrL("Setting");
+    it.keywords.Append(a, Str(keyword));
+    return it;
+}
+
+static void AppendKeywordGroup(Arena* a, SettingPage* page, const char* title,
+                               const char* k1, const char* k2 = nullptr) {
+    SettingGroup g;
+    if (title && title[0]) {
+        g.title = Str(title);
+    }
+    g.items.Append(a, KeywordItem(a, k1));
+    if (k2) {
+        g.items.Append(a, KeywordItem(a, k2));
+    }
+    page->groups.Append(a, g);
+}
+
+static void FillSearchFixture(Arena* a, ArenaVec<SettingPage>& pages) {
+    SettingPage general;
+    general.title = StrL("General");
+    AppendKeywordGroup(a, &general, "", "language");
+    pages.Append(a, general);
+
+    SettingPage appearance;
+    appearance.title = StrL("Appearance");
+    AppendKeywordGroup(a, &appearance, "", "unrelated");
+    AppendKeywordGroup(a, &appearance, "Colors", "theme colors");
+    AppendKeywordGroup(a, &appearance, "Fonts", "unrelated", "theme font");
+    pages.Append(a, appearance);
+
+    SettingPage editor;
+    editor.title = StrL("Editor");
+    AppendKeywordGroup(a, &editor, "", "theme editor");
+    pages.Append(a, editor);
+}
+
+static void SearchPreservesPageIdentityAndFallsBackToTheFirstMatch() {
+    Arena* a = ArenaNew();
+    ArenaVec<SettingPage> pages;
+    FillSearchFixture(a, pages);
+    SelectIndex selected;
+    selected.pageIx = 1;
+    selected.groupIx = -1;
+
+    // The old numeric index is still in range, but would point to Editor.
+    SelectIndex got =
+        SettingsResolveSelectedIndex(pages, StrL("theme"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+
+    got = SettingsResolveSelectedIndex(pages, StrL("font"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+
+    selected.pageIx = 2;
+    got = SettingsResolveSelectedIndex(pages, StrL(""), selected);
+    utassert(got.pageIx == 2 && got.groupIx == -1);
+
+    // The current page disappears: choose the first matching page.
+    got = SettingsResolveSelectedIndex(pages, StrL("font"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+
+    // No results keep the selection so clearing the query can restore it.
+    selected.pageIx = 1;
+    got = SettingsResolveSelectedIndex(pages, StrL("no matching setting"),
+                                       selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+    got = SettingsResolveSelectedIndex(pages, StrL(""), selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+    ArenaDelete(a);
+}
+
+static void SearchPreservesGroupIdentityUntilTheGroupDisappears() {
+    Arena* a = ArenaNew();
+    ArenaVec<SettingPage> pages;
+    FillSearchFixture(a, pages);
+    SelectIndex selected;
+    selected.pageIx = 1;
+    selected.groupIx = 2;
+
+    SelectIndex got =
+        SettingsResolveSelectedIndex(pages, StrL("theme"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == 2);
+    got = SettingsResolveSelectedIndex(pages, StrL("font"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == 2);
+    got = SettingsResolveSelectedIndex(pages, StrL(""), selected);
+    utassert(got.pageIx == 1 && got.groupIx == 2);
+    got = SettingsResolveSelectedIndex(pages, StrL("colors"), selected);
+    utassert(got.pageIx == 1 && got.groupIx == -1);
+    ArenaDelete(a);
+}
+
+static void ResettingSearchResultsLeavesHiddenSettingsUnchanged() {
+    Arena* a = ArenaNew();
+    SettingGroup group;
+    SettingItem visible = KeywordItem(a, "theme");
+    visible.dirty = false;
+    SettingItem hidden = KeywordItem(a, "hidden");
+    hidden.dirty = true;
+    hidden.onReset.fn = 1;
+    group.items.Append(a, visible);
+    group.items.Append(a, hidden);
+
+    utassert(!SettingGroupIsResettable(&group, StrL("theme")));
+    group.items[0].dirty = true;
+    group.items[0].onReset.fn = 1;
+    utassert(SettingGroupIsResettable(&group, StrL("theme")));
+    utassert(!SettingGroupIsResettable(&group, StrL("missing")));
+    ArenaDelete(a);
+}
+
+static Settings* SearchTestSettings(Ctx* cx, Entity<SettingsState> state) {
+    return Settings::New(cx, StrL("search-test"), state)
+        ->Page(StrL("General"))
+        ->Group({})
+        ->Item(StrL("Language"), {})
+        ->Keywords(StrL("language"))
+        ->Page(StrL("Appearance"))
+        ->Group({})
+        ->Item(StrL("Unrelated"), {})
+        ->Keywords(StrL("unrelated"))
+        ->Group(StrL("Colors"))
+        ->Item(StrL("Colors"), {})
+        ->Keywords(StrL("theme colors"))
+        ->Group(StrL("Fonts"))
+        ->Item(StrL("Unrelated"), {})
+        ->Keywords(StrL("unrelated"))
+        ->Item(StrL("Font"), {})
+        ->Keywords(StrL("theme font"))
+        ->Page(StrL("Editor"))
+        ->Group({})
+        ->Item(StrL("Editor"), {})
+        ->Keywords(StrL("theme editor"))
+        ->DefaultSelectedIndex({1, -1});
+}
+
+static void SearchRenderKeepsOriginalItemIndexes() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+
+    SearchTestSettings(&cx, state)->IntoEl();
+    SettingsState* settings = state.Get(&app);
+    utassert(settings && settings->page == 1 && settings->group == -1);
+    El* root = nullptr;
+
+    InputSetValue(&settings->search, StrL("theme"));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 1 && settings->group == -1);
+    utassert(FindSettingElement(root, "1-1-0"));
+    utassert(!FindSettingElement(root, "2-0-0"));
+
+    InputSetValue(&settings->search, StrL("font"));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 1);
+    utassert(FindSettingElement(root, "1-2-1"));
+
+    InputSetValue(&settings->search, StrL("theme"));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    SettingsState::OnPageClick(settings, &cx, nullptr, 2);
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 2);
+    utassert(FindSettingElement(root, "2-0-0"));
+
+    InputSetValue(&settings->search, StrL(""));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 2);
+    utassert(FindSettingElement(root, "2-0-0"));
+
+    InputSetValue(&settings->search, StrL("font"));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 1);
+    utassert(FindSettingElement(root, "1-2-1"));
+
+    InputSetValue(&settings->search, StrL("no matching setting"));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 1);
+    utassert(!FindSettingElement(root, "1-2-1"));
+
+    InputSetValue(&settings->search, StrL(""));
+    root = SearchTestSettings(&cx, state)->IntoEl();
+    utassert(settings->page == 1);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
+static void ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+
+    bool visible = true;
+    bool hidden = true;
+    SettingsState* settings = state.Get(&app);
+    utassert(settings);
+    InputSetValue(&settings->search, StrL("theme"));
+    Settings::New(&cx, StrL("reset-search"), state)
+        ->Page(StrL("Appearance"))
+        ->Group(StrL("Theme"))
+        ->Item(StrL("Visible"), {})
+        ->Keywords(StrL("theme"))
+        ->SwitchField(&visible, false, true)
+        ->Item(StrL("Hidden"), {})
+        ->Keywords(StrL("hidden"))
+        ->SwitchField(&hidden, false, true)
+        ->IntoEl();
+    utassert(settings->fields.len == 1);
+    SettingsState::OnResetPage(settings, &cx, nullptr, 0);
+    utassert(!visible);
+    utassert(hidden);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestSetting() {
     TestSuite("setting");
     TheQueryMatchesTitleDescriptionAndKeywords();
@@ -257,4 +489,9 @@ void TestSetting() {
     TypedFieldsRetainSourceResetSemanticsWithoutRtti();
     RenderOptionsNarrowCopiesAndReachCustomFields();
     NumberSettingsDelegateStepAndRangeToTheInputEngine();
+    SearchPreservesPageIdentityAndFallsBackToTheFirstMatch();
+    SearchPreservesGroupIdentityUntilTheGroupDisappears();
+    ResettingSearchResultsLeavesHiddenSettingsUnchanged();
+    SearchRenderKeepsOriginalItemIndexes();
+    ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
 }

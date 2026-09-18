@@ -98,6 +98,83 @@ bool SettingPageMatches(const SettingPage* p, Str query) {
     return false;
 }
 
+// Visible groups in each original page. Filtering never renumbers source data.
+static int MatchingGroupCount(const SettingPage& p, Str query) {
+    int n = 0;
+    for (const SettingGroup& g : p.groups) {
+        if (SettingGroupMatches(&g, query)) {
+            n++;
+        }
+    }
+    return n;
+}
+
+static bool PageHasMatchingGroup(const SettingPage& p, Str query) {
+    return MatchingGroupCount(p, query) > 0;
+}
+
+SelectIndex SettingsResolveSelectedIndex(const ArenaVec<SettingPage>& pages,
+                                         Str query, SelectIndex selected) {
+    int pageIx = -1;
+    if (selected.pageIx >= 0 && selected.pageIx < pages.len &&
+        PageHasMatchingGroup(pages[selected.pageIx], query)) {
+        pageIx = selected.pageIx;
+    } else {
+        for (int i = 0; i < pages.len; i++) {
+            if (PageHasMatchingGroup(pages[i], query)) {
+                pageIx = i;
+                break;
+            }
+        }
+    }
+    if (pageIx < 0) {
+        // Keep the selection while there are no results so clearing the query
+        // can restore it. The empty filter prevents rendering a stale page.
+        return selected;
+    }
+    SelectIndex out;
+    out.pageIx = pageIx;
+    out.groupIx = -1;
+    if (selected.groupIx >= 0 && pageIx == selected.pageIx) {
+        const SettingPage& p = pages[pageIx];
+        if (selected.groupIx < p.groups.len &&
+            SettingGroupMatches(&p.groups[selected.groupIx], query)) {
+            out.groupIx = selected.groupIx;
+        }
+    }
+    return out;
+}
+
+static bool SettingItemIsResettable(const SettingItem* it) {
+    if (!it) {
+        return false;
+    }
+    if (it->onReset.IsValid()) {
+        return it->dirty;
+    }
+    if (!it->hasDefault) {
+        return false;
+    }
+    if ((it->field == SettingFieldKind::Switch ||
+         it->field == SettingFieldKind::Checkbox) &&
+        it->boolValue) {
+        return *it->boolValue != it->defBool;
+    }
+    return it->dirty;
+}
+
+bool SettingGroupIsResettable(const SettingGroup* g, Str query) {
+    if (!g) {
+        return false;
+    }
+    for (const SettingItem& it : g->items) {
+        if (SettingItemMatches(&it, query) && SettingItemIsResettable(&it)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void SettingsState::OnPageClick(SettingsState* self, Ctx* cx, const ClickEvent*,
                                 intptr_t page) {
     self->page = (int)page;
@@ -639,6 +716,16 @@ El* Settings::IntoEl() {
             st->page = defaultSelectedIndex.pageIx;
             st->group = defaultSelectedIndex.groupIx;
         }
+        SelectIndex previous;
+        previous.pageIx = st->page;
+        previous.groupIx = st->group;
+        SelectIndex selectedIx =
+            SettingsResolveSelectedIndex(pages, query, previous);
+        if (selectedIx.pageIx != previous.pageIx ||
+            selectedIx.groupIx != previous.groupIx) {
+            st->page = selectedIx.pageIx;
+            st->group = selectedIx.groupIx;
+        }
         VecClear(st->fields);
     }
 
@@ -676,10 +763,15 @@ El* Settings::IntoEl() {
     int i = -1;
     for (const SettingPage& p : pages) {
         i++;
-        if (!SettingPageMatches(&p, query)) {
+        int visibleGroups = MatchingGroupCount(p, query);
+        if (visibleGroups == 0) {
             continue;
         }
-        bool active = i == selected;
+        bool pageSelected = i == selected;
+        // The page row is active when no group is selected, or when the page
+        // has only one visible group — the group cannot be a separate row.
+        bool pageActive = pageSelected && (st == nullptr || st->group < 0 ||
+                                           visibleGroups == 1);
         El* item = Div(a)
                        ->FlexRow()
                        ->W(kFill)
@@ -689,7 +781,7 @@ El* Settings::IntoEl() {
                        ->ItemsCenter()
                        ->Radius(th.radius)
                        ->HoverBg(th.tokens.muted);
-        if (active) {
+        if (pageActive) {
             item->Bg(th.tokens.accent);
         }
         if (p.icon != IconName::None) {
@@ -700,25 +792,26 @@ El* Settings::IntoEl() {
                                                         ->Fg(th.foreground)
                                                         ->MaxW(sideWidth - 80)
                                                         ->Truncate()));
-        if (p.groups.len > 0) {
-            item->Child(
-                IconEl(a,
-                       active ? IconName::ChevronDown : IconName::ChevronRight,
-                       16)
-                    ->Fg(th.mutedFg));
+        if (visibleGroups > 1) {
+            item->Child(IconEl(a,
+                               pageSelected ? IconName::ChevronDown
+                                            : IconName::ChevronRight,
+                               16)
+                            ->Fg(th.mutedFg));
         }
         BindClick(item, StrDup(a, fmt("page-%d", i)),
                   ListenTo(state, &SettingsState::OnPageClick, (intptr_t)i));
         side->Child(item);
         // click_to_open: the open page lists its groups under it, and each
-        // one jumps to that part of the page.
-        if (!active) {
+        // one jumps to that part of the page. Clicks bind the original group
+        // index, not the visible position.
+        if (!pageSelected || visibleGroups <= 1) {
             continue;
         }
         int g = -1;
         for (const SettingGroup& group : p.groups) {
             g++;
-            if (!SettingGroupMatches(&group, query)) {
+            if (!SettingGroupMatches(&group, query) || !group.title.s) {
                 continue;
             }
             El* sub = Div(a)
@@ -741,9 +834,11 @@ El* Settings::IntoEl() {
     }
     row->Child(side);
 
-    // The page: its title, then a card per group.
+    // The page: its title, then a card per group. An empty filter keeps the
+    // selection but does not render a stale page.
     El* pane = Div(a)->FlexCol()->Flex1()->H(kFill)->ClipY();
-    if (selected >= 0 && selected < pages.len) {
+    if (selected >= 0 && selected < pages.len &&
+        PageHasMatchingGroup(pages[selected], query)) {
         const SettingPage& p = pages[selected];
         // The body first: whether the page offers Reset All is whether
         // anything on it came out dirty, which only the fields know.

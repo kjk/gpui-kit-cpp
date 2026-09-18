@@ -270,6 +270,17 @@ bool SettingItemMatches(const SettingItem* it, Str query);
 bool SettingGroupMatches(const SettingGroup* g, Str query);
 bool SettingPageMatches(const SettingPage* p, Str query);
 
+// SettingsFilter::selected_index: keep the current page while it still has a
+// matching group, otherwise the first matching page. Keep the selected group
+// only if it remains visible on that page. An empty result retains selection
+// so clearing the query can restore it.
+SelectIndex SettingsResolveSelectedIndex(const ArenaVec<SettingPage>& pages,
+                                         Str query, SelectIndex selected);
+
+// SettingGroup::is_resettable(query): a matching item that has left its
+// default.
+bool SettingGroupIsResettable(const SettingGroup* g, Str query);
+
 // One typed field as the frame rendered it, kept so the listeners hung off it
 // can find what to change. The element tree and the Settings builder are on
 // the frame arena and go with the frame; this table is rebuilt with it, in the

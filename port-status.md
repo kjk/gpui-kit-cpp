@@ -14,11 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `967f8fb713caf7560ea73bf477d15d0ee9080e59`
-(2026-09-17, website: Skip the system font probe while no font is installed
-(#3106)). Theme::change still skips the system-font probe while no font is
-installed; this tree never ran that probe, and the paint path does not panic
-on an empty font database. The current update target is
+Processed through `4d08d993ba5349604e15a32d04c07f5a83499c3a`
+(2026-09-17, setting: Preserve selected page identity when searching
+(#3104)). Settings search keeps original page and group indexes; the selected
+page stays put while it still matches, and Reset All only touches visible
+items. The current update target is
 `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
