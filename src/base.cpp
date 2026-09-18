@@ -186,14 +186,7 @@ static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
 
     void* result = (char*)current + posPre;
     current->pos = posPost;
-
-    // update allocation stats on the head arena (stats live on the head, not on
-    // chained blocks). peak is the high-water mark of total bytes used.
-    arena->nAllocsLifetime++;
     arena->nAllocsSinceReset++;
-    uint64_t used = current->basePos + posPost;
-    arena->peakBytesLifetime = std::max(used, arena->peakBytesLifetime);
-    arena->peakBytesSinceReset = std::max(used, arena->peakBytesSinceReset);
 
     if (sizeToZero) {
         memset(result, 0, (size_t)sizeToZero);
@@ -278,10 +271,7 @@ static Arena* ArenaAlloc(const ArenaParams& srcParams) {
     arena->allocationSiteLine = params.allocationSiteLine;
     arena->name = params.name;
     arena->usesExternalBuffer = usesExternalBuffer;
-    arena->nAllocsLifetime = 0;
-    arena->peakBytesLifetime = 0;
     arena->nAllocsSinceReset = 0;
-    arena->peakBytesSinceReset = 0;
     return arena;
 }
 
@@ -392,9 +382,6 @@ ArenaStr ArenaStrDup(Arena* a, Str src) {
     uint32_t len = (uint32_t)src.len;
     int vlen = VarintSize(len);
     a->lock.Lock();
-    // The position before the push is where the bytes land, but only once the
-    // alignment the pusher applies is known — so the pointer is what says
-    // where they went, and the position is worked back out of it.
     char* dst = (char*)ArenaPushLocked(a, (uint64_t)vlen + len + 1, 1, false);
     uint64_t at = dst ? ArenaBlockOff(a->current, dst) : 0;
     a->lock.Unlock();
@@ -405,9 +392,6 @@ ArenaStr ArenaStrDup(Arena* a, Str src) {
     memcpy(dst + vlen, src.s, (size_t)len);
     dst[vlen + len] = 0;
     if (at > UINT32_MAX) {
-        // The handle is four bytes, and past four gigabytes of arena it
-        // would name a different place. Say there is no string rather than
-        // hand out one that reads back as someone else.
         return kArenaStrNone;
     }
     return (ArenaStr)at;
@@ -445,15 +429,7 @@ ArenaStr ArenaStrAppend(Arena* a, ArenaStr s, Str more) {
     bool newest = p && (uint64_t)s + vlen + len + 1 == used;
     uint32_t nlen = len + (uint32_t)more.len;
     int nvlen = VarintSize(nlen);
-    // In place, only the difference: the terminator's own byte is already
-    // ours, so the characters start there and the new terminator lands on the
-    // last byte pushed. A length that has outgrown its prefix asks for the
-    // byte or two that costs as well. The next append finds the same
-    // invariant either way.
     uint64_t want = (uint64_t)nvlen + nlen + 1;
-    // A push that chains onto a new block is not contiguous after all, so the
-    // in-place path has to rule that out before it sizes the request: sizing
-    // for the append and then copying both halves writes past what was pushed.
     if (newest && !ArenaPushWouldChainLocked(
                       a, (uint64_t)(nvlen - vlen) + (uint64_t)more.len, 1)) {
         want = (uint64_t)(nvlen - vlen) + (uint64_t)more.len;
@@ -543,7 +519,6 @@ void* Arena::Alloc(int size) {
 void Arena::Reset() {
     PopTo(0);
     nAllocsSinceReset = 0;
-    peakBytesSinceReset = 0;
 }
 
 void* Alloc(Arena* arena, int size) {
@@ -660,12 +635,6 @@ TempStr ReadBoundedFileTemp(Str path, int limit) {
     return result;
 }
 
-// Grow/shrink vec storage to newCap elements, plus one trailing zero-pad
-// element (so Vec<char>/Vec<WCHAR> stay C-string compatible).
-// Keeps the first min(len, newCap) elements; zeros the rest of the new block.
-// Updates *els and *cap. len is not modified (caller owns logical length).
-// Grow/shrink vec-like storage to newCap elements (+1 trailing zero pad).
-// Updates *els and *cap; keeps min(len, newCap) elements.
 GPUI_NOINLINE void* ArenaVecAlloc(Arena* a, int count, int elSize, int align,
                                   int hdrSize) {
     if (!a || count <= 0 || elSize <= 0 || hdrSize < 0) {
@@ -869,17 +838,6 @@ GPUI_NOINLINE void VecCopyFromNT(VecNonTemplated* v, int elSize, int srcLen,
 }
 
 #if defined(DEBUG)
-// ─── growth instrumentation ──────────────────────────────────────────────
-//
-// The line formats are documented above the declarations in base.h. The log
-// is opt-in: without `GPUI_VEC_LOG` in the environment every hook is a load
-// and a branch, so a debug build that is not being measured behaves as it
-// did. `cmd/vec-log.ts` sets the variable and reads the file back.
-//
-// The counter is a plain int. Two threads appending to two vecs at the same
-// moment could hand out the same id; the workloads this was written for —
-// the test suite and the markdown benchmark — parse on one thread, and a
-// lock here would change what is being measured.
 static FILE* gVecDbgFile = nullptr;
 static bool gVecDbgOpened = false;
 static int gVecDbgNextId = 1;
@@ -1438,54 +1396,8 @@ char StrBuilder::LastChar() const {
     return len == 0 ? 0 : els[len - 1];
 }
 
-// ─── StrFormatParse.cpp
-// ───────────────────────────────────────────────────────────────
-
-/*
-Fmt is a type-safe printf()-like system. `fmt(format, args...)` formats into
-the temp arena and answers a Str, `logf` formats and logs, and anything that
-has to outlive the frame is `StrDup(a, fmt(..))`. An argument is wrapped in a
-FmtArg by the variadic template, so the argument's own type is known at the
-point of the call and nothing is promoted through `...`.
-
-Every directive starts with '%': the usual %d / %i / %u / %o / %x / %X / %c /
-%p / %s / %S and the float set %f %F %e %E %g %G %a %A, plus three that take
-an argument of any type:
-
-  %v    the next argument, whatever its type
-  %{}   the same thing
-  %{n}  the n-th argument (0-based), whatever its type
-
-Flags, width and precision are captured verbatim and handed to snprintf, so
-"%-8.3f" and "%05d" mean what they mean in printf. A length modifier is
-normalized to an explicit 32- or 64-bit width, so %ld, %zu and %I64d come out
-the same on every platform. %s is the exception: its padding and truncation
-are done here, because a Str is not required to be NUL-terminated.
-
-%% is the only escape; '{' on its own is ordinary text, so registry paths,
-GUIDs, CSS and JS templates pass through untouched. Note that positionals are
-spelled %{0}, not %{$0} — a '$' there is a parse error.
-
-The types are checked rather than trusted, at format time and not by the
-compiler: an integer directive takes any integer-like argument (char, int or
-pointer, which is printf's own leniency — an HWND under %x, an int under %c),
-a float directive takes a float or a double, and %s takes a Str and nothing
-else. FmtArg(const char*) is deleted, so a literal has to be written StrL("..").
-
-A format that does not hold up answers an empty Str rather than a partial
-one. That covers a type that does not match its directive, a %{n} naming an
-argument that was not passed, and a positional format that skips a number —
-%{0} and %{2} with no %{1} is rejected, because the arguments it does not
-name could not be checked.
-
-Positional directives are useful in translations with more than one argument,
-because in some languages the translation is awkward if the arguments cannot
-be re-arranged. Mixing them with plain % directives works but is easy to
-mis-count: a plain directive takes the n-th argument for the n-th directive,
-and %{n} does not move that counter.
-*/
-
-// formatting instruction
+// fmt(): flags/width/prec go to snprintf; %s is padded here (Str may lack NUL).
+// %{n} is 0-based; a hole in the positional set is a hard error.
 struct Inst {
     FmtArg::Kind t = FmtArg::Kind::None;
     int argNo = 0;  // <0 for strings that come from formatting string
@@ -1984,11 +1896,6 @@ bool Fmt::Eval(const FmtArg** args, int nArgs) {
     return true;
 }
 
-// Format into an explicit arena; the returned Str lives in `a`. Use this
-// instead of fmt()/FormatTemp when the result must outlive the temp
-// allocator's scope, or on paths that must not touch the temp allocator / heap
-// at all (e.g. the crash handler, which pre-allocates its arena).
-// FormatTempArgs() is just this with GetTempArena().
 static Str FormatArgs(Arena* a, const char* fmt, const FmtArg** args,
                       int nArgs) {
     // trailing arguments could be empty (unused defaults from the variadic
