@@ -76,6 +76,7 @@ void TestRope();
 void TestMaskPattern();
 void TestUndoManager();
 void TestInputState();
+void TestInputGroup();
 void TestSearchMatcher();
 void TestFoldMap();
 void TestList();

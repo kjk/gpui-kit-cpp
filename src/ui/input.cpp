@@ -722,6 +722,26 @@ Textarea* Textarea::AriaLabel(Str value) {
     ariaLabel = value;
     return this;
 }
+Textarea* Textarea::AccessibilityId(Str value) {
+    accessibilityId = value;
+    return this;
+}
+Textarea* Textarea::Disabled(bool v) {
+    disabled = v;
+    return this;
+}
+Textarea* Textarea::Readonly(bool v) {
+    readonly = v;
+    return this;
+}
+Textarea* Textarea::Appearance(bool v) {
+    appearance = v;
+    return this;
+}
+Textarea* Textarea::FocusRing(bool v) {
+    focusRing = v;
+    return this;
+}
 Textarea* Textarea::OnFocus(Listener fn) {
     onFocus = fn;
     return this;
@@ -735,7 +755,7 @@ Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
 
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    bool focused = state && state->focused;
+    bool focused = state && state->focused && !disabled;
     InputEditorStyle editor;
     editor.foreground = th.foreground;
     editor.mutedForeground = th.mutedFg;
@@ -743,7 +763,8 @@ El* Textarea::IntoEl() {
     editor.selection = RgbaOpacity(th.selection, 0.4f);
     editor.fontSize = kInputTextSize;
     if (state) {
-        bool editable = !state->disabled && !state->readonly;
+        bool editable =
+            !disabled && !readonly && !state->disabled && !state->readonly;
         state->pasteHandler = editable ? onPaste : nullptr;
         state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
         state->softWrap = softWrap;
@@ -767,16 +788,13 @@ El* Textarea::IntoEl() {
     if (state && h > 0) {
         state->viewH = h - 2 * 8;
     }
-    bool interactive = state && !state->disabled;
+    bool interactive = state && !state->disabled && !disabled;
     El* box = InputBase::New(cx, id, interactive, accessibilityRole)
-                  ->BindInput(state)
+                  ->BindInput(interactive ? state : nullptr)
                   ->W(kFill)
                   ->H(h)
                   ->Pad(8)
                   ->ClipY()
-                  ->Radius(th.radius)
-                  ->Bg(th.inputBg)
-                  ->Border(1, focused ? th.ring : th.inputBorder)
                   // scroll_handle: the rows slide under the box as the caret
                   // moves, and the wheel moves them too.
                   ->ScrollY(state ? state->scrollY : 0)
@@ -785,6 +803,15 @@ El* Textarea::IntoEl() {
                   // its place in the tree is what it is found by.
                   ->ScrollFromPath()
                   ->Child(gpui::Textarea::New(cx, state, editor));
+    if (accessibilityId.s) {
+        box->AccessibilityId(accessibilityId);
+    }
+    if (appearance) {
+        box->Radius(th.radius)
+            ->Bg(th.inputBg)
+            ->Border(1, focused ? th.ring : th.inputBorder)
+            ->FocusRing(focusRing);
+    }
     if (state) {
         box->AriaValue(InputValue(state));
         if (state->placeholder.s) {
@@ -1466,6 +1493,383 @@ El* SearchPanel::IntoEl() {
         panel->Child(row2);
     }
     return panel;
+}
+
+// ─── InputGroup, crates/ui/src/input/group.rs ─────────────────────────────
+
+InputGroupAppearance InputGroupAppearance::New(const Theme& th, bool focused,
+                                               bool disabled, bool invalid) {
+    InputGroupAppearance out;
+    bool dark = th.mode == ThemeMode::Dark;
+    if (disabled) {
+        out.background = RgbaOpacity(th.inputBg, dark ? 0.8f : 0.5f);
+    } else if (dark) {
+        out.background = RgbaOpacity(th.inputBg, 0.3f);
+    } else {
+        out.background = th.transparent;
+    }
+    // Validation remains visible when editing is disabled. Focus alone never
+    // reactivates a disabled control, and never replaces its validation color.
+    if (invalid) {
+        out.border = th.danger;
+        out.ring = RgbaOpacity(th.danger, dark ? 0.4f : 0.2f);
+        out.hasRing = true;
+    } else if (focused && !disabled) {
+        out.border = th.ring;
+        out.ring = RgbaOpacity(th.ring, 0.5f);
+        out.hasRing = true;
+    } else {
+        out.border = th.inputBorder;
+    }
+    return out;
+}
+
+InputGroupButton* InputGroupButton::New(Ctx* cx, Str id) {
+    Arena* a = cx->a;
+    InputGroupButton* b = ArenaNew<InputGroupButton>(a);
+    b->a = a;
+    b->cx = cx;
+    b->button = Button::New(cx, id)->Ghost();
+    return b;
+}
+
+InputGroupButton* InputGroupButton::Label(Str s) {
+    if (button) {
+        button->Label(s);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::Icon(IconName n) {
+    if (button) {
+        button->Icon(n);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::Tooltip(Str s) {
+    if (button) {
+        button->Tooltip(s);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::WithSize(UiSize s) {
+    size = s;
+    return this;
+}
+
+InputGroupButton* InputGroupButton::WithVariant(ButtonVariant v) {
+    if (button) {
+        button->WithVariant(v);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::Disabled(bool v) {
+    if (button) {
+        button->Disabled(v);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::OnClick(Listener fn) {
+    if (button) {
+        button->OnClick(fn);
+    }
+    return this;
+}
+
+El* InputGroupButton::IntoEl() {
+    if (!button) {
+        return Div(a);
+    }
+    bool iconOnly = !button->label.s && button->icon != IconName::None;
+    if (size == UiSize::XSmall || size == UiSize::Small) {
+        button->WithSize(UiSize::Medium);
+        if (iconOnly) {
+            button->Size(size == UiSize::XSmall ? 24.f : 32.f);
+        }
+    } else {
+        button->WithSize(size);
+    }
+    return button->IntoEl();
+}
+
+InputGroupText* InputGroupText::New(Ctx* cx) {
+    Arena* a = cx->a;
+    InputGroupText* t = ArenaNew<InputGroupText>(a);
+    t->a = a;
+    t->cx = cx;
+    return t;
+}
+
+InputGroupText* InputGroupText::Child(El* el) {
+    if (el) {
+        children.Append(a, el);
+    }
+    return this;
+}
+
+El* InputGroupText::IntoEl() {
+    const Theme& th = ThemeNow(cx->app);
+    El* row = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+    for (El* c : children) {
+        if (c) {
+            c->Fg(th.mutedFg);
+            row->Child(c);
+        }
+    }
+    return row;
+}
+
+InputGroupAddon* InputGroupAddon::New(Ctx* cx, Str id) {
+    Arena* a = cx->a;
+    InputGroupAddon* g = ArenaNew<InputGroupAddon>(a);
+    g->a = a;
+    g->cx = cx;
+    g->id = id;
+    return g;
+}
+
+InputGroupAddon* InputGroupAddon::Align(InputGroupAddonAlignment v) {
+    alignment = v;
+    return this;
+}
+
+InputGroupAddon* InputGroupAddon::Child(El* el) {
+    if (el) {
+        children.Append(a, el);
+    }
+    return this;
+}
+
+El* InputGroupAddon::IntoEl() {
+    const Theme& th = ThemeNow(cx->app);
+    El* row = Div(a)->Id(id)->FlexRow()->Gap(8)->ItemsCenter()->Shrink0();
+    bool compact = size == UiSize::XSmall || size == UiSize::Small;
+    row->PadY(compact ? 0.f : 6.f);
+    switch (alignment) {
+        case InputGroupAddonAlignment::InlineStart:
+            row->PadL(6);
+            break;
+        case InputGroupAddonAlignment::InlineEnd:
+            row->PadR(6);
+            break;
+        case InputGroupAddonAlignment::BlockStart:
+            row->W(kFill)->JustifyStart()->PadX(10)->PadT(8);
+            break;
+        case InputGroupAddonAlignment::BlockEnd:
+            row->W(kFill)->JustifyStart()->PadX(10)->PadB(8);
+            break;
+    }
+    (void)th;
+    for (El* c : children) {
+        row->Child(c);
+    }
+    return row;
+}
+
+InputGroup* InputGroup::New(Ctx* cx, Str id) {
+    Arena* a = cx->a;
+    InputGroup* g = ArenaNew<InputGroup>(a);
+    g->a = a;
+    g->cx = cx;
+    g->id = id;
+    return g;
+}
+
+InputGroup* InputGroup::Input(component::Input* control) {
+    input = control;
+    textarea = nullptr;
+    return this;
+}
+
+InputGroup* InputGroup::Input(Textarea* control) {
+    textarea = control;
+    input = nullptr;
+    return this;
+}
+
+InputGroup* InputGroup::Addon(InputGroupAddon* addon) {
+    if (addon) {
+        addons.Append(a, addon);
+    }
+    return this;
+}
+
+InputGroup* InputGroup::Disabled(bool v) {
+    disabled = v;
+    return this;
+}
+
+InputGroup* InputGroup::Readonly(bool v) {
+    readonly = v;
+    return this;
+}
+
+InputGroup* InputGroup::Invalid(bool v) {
+    invalid = v;
+    return this;
+}
+
+InputGroup* InputGroup::FocusRing(bool v) {
+    focusRing = v;
+    return this;
+}
+
+InputGroup* InputGroup::AriaLabel(Str label) {
+    ariaLabel = label;
+    return this;
+}
+
+InputGroup* InputGroup::WithSize(UiSize s) {
+    size = s;
+    return this;
+}
+
+struct InputGroupHost {
+    InputState* target = nullptr;
+
+    static void OnDown(InputGroupHost* self, Ctx* cx, const MouseDownEvent*) {
+        if (self && self->target) {
+            InputFocus(self->target, cx->app, cx->win);
+        }
+    }
+};
+
+El* InputGroup::IntoEl() {
+    const Theme& th = ThemeNow(cx->app);
+    InputState* state = nullptr;
+    bool controlDisabled = false;
+    bool multiline = false;
+    if (input) {
+        state = input->state;
+        controlDisabled = input->disabled;
+        input->WithSize(size)
+            ->Appearance(false)
+            ->FocusRing(false)
+            ->Disabled(disabled || input->disabled)
+            ->Readonly(readonly || input->readonly);
+    } else if (textarea) {
+        state = textarea->state;
+        controlDisabled = textarea->disabled;
+        multiline = true;
+        textarea->Appearance(false)
+            ->FocusRing(false)
+            ->Disabled(disabled || textarea->disabled)
+            ->Readonly(readonly || textarea->readonly);
+        if (textarea->id.s == nullptr || len(textarea->id) == 0) {
+            textarea->id = id;
+        }
+    }
+    bool groupDisabled = disabled || controlDisabled;
+    bool focused = state && state->focused && !groupDisabled;
+    InputGroupAppearance appearance =
+        InputGroupAppearance::New(th, focused, groupDisabled, invalid);
+    bool inlineStart = false, inlineEnd = false, blockStart = false,
+         blockEnd = false;
+    for (InputGroupAddon* addon : addons) {
+        switch (addon->alignment) {
+            case InputGroupAddonAlignment::InlineStart:
+                inlineStart = true;
+                break;
+            case InputGroupAddonAlignment::InlineEnd:
+                inlineEnd = true;
+                break;
+            case InputGroupAddonAlignment::BlockStart:
+                blockStart = true;
+                break;
+            case InputGroupAddonAlignment::BlockEnd:
+                blockEnd = true;
+                break;
+        }
+    }
+    if (input) {
+        if (!multiline && inlineStart) {
+            // An inline addon takes over part of the control's horizontal
+            // inset.
+        }
+        input->W(kFill);
+    }
+
+    El* frame = Div(a)
+                    ->Id(id)
+                    ->Role(AccessibilityRole::Group)
+                    ->FlexCol()
+                    ->W(kFill)
+                    ->Radius(th.radius)
+                    ->Border(1, appearance.border)
+                    ->Bg(appearance.background)
+                    ->Fg(th.foreground);
+    if (ariaLabel.s) {
+        frame->AriaLabel(ariaLabel);
+    }
+    if (!multiline && !blockStart && !blockEnd) {
+        float h = size == UiSize::Large    ? 44.f
+                  : size == UiSize::Small  ? 24.f
+                  : size == UiSize::XSmall ? 20.f
+                                           : 32.f;
+        frame->H(h);
+    }
+    if (groupDisabled) {
+        frame->Opacity(0.5f);
+    }
+    if (appearance.hasRing && th.focusRing && focusRing) {
+        frame->Child(Div(a)
+                         ->Absolute()
+                         ->Top(-3)
+                         ->Left(-3)
+                         ->Right(-3)
+                         ->Bottom(-3)
+                         ->Radius(th.radius + 3)
+                         ->Border(3, appearance.ring));
+    }
+    if (state && !groupDisabled) {
+        Entity<InputGroupHost> host = ElementStateEntity<InputGroupHost>(
+            cx, id, StrL("gpui::InputGroupHost"));
+        if (InputGroupHost* h = host.Get(cx)) {
+            h->target = state;
+        }
+        frame->OnMouseDown(ListenTo(host, &InputGroupHost::OnDown));
+    }
+
+    El* row = Div(a)->FlexRow()->W(kFill)->ItemsCenter();
+    if (!multiline && !blockStart && !blockEnd) {
+        row->H(kFill);
+    }
+    for (InputGroupAddon* addon : addons) {
+        addon->size = size;
+        if (addon->alignment == InputGroupAddonAlignment::BlockStart) {
+            frame->Child(addon->IntoEl());
+        }
+    }
+    for (InputGroupAddon* addon : addons) {
+        if (addon->alignment == InputGroupAddonAlignment::InlineStart) {
+            row->Child(addon->IntoEl());
+        }
+    }
+    if (input) {
+        row->Child(input->IntoEl()->Flex1());
+    } else if (textarea) {
+        El* t = textarea->IntoEl();
+        t->Flex1()->MinH(64);
+        row->Child(t);
+    }
+    for (InputGroupAddon* addon : addons) {
+        if (addon->alignment == InputGroupAddonAlignment::InlineEnd) {
+            row->Child(addon->IntoEl());
+        }
+    }
+    frame->Child(row);
+    for (InputGroupAddon* addon : addons) {
+        if (addon->alignment == InputGroupAddonAlignment::BlockEnd) {
+            frame->Child(addon->IntoEl());
+        }
+    }
+    (void)inlineStart;
+    (void)inlineEnd;
+    return frame;
 }
 
 } // namespace component

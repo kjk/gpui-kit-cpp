@@ -38,6 +38,7 @@ enum {
     StoryIcon,
     StoryImage,
     StoryInput,
+    StoryInputGroup,
     StoryKbd,
     StoryLabel,
     StoryList,

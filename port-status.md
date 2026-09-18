@@ -14,10 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `c7af5ecca1cdfad0d954b07b688f1ea8792ebca3`
-(2026-09-17, docs: Certify AI-facing consumer recipes (#3109)). Website,
-skills and the Rust ai_recipes crate are not ported. The current update
-target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `142e4016b6b34e03978b532f3b2fc9f1a99bed30`
+(2026-09-17, input_group: Add InputGroup (#3042)). InputGroup frames one
+input or textarea with aligned addons; the shell JavaScript bindings are
+not registered yet. The current update target is
+`7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
@@ -58,6 +59,10 @@ target is `7f6d92327936fbab7994a35c86328d793acc060d`.
   Tiles story and public component in this revision; existing C++ callers and
   persisted dock layouts still use it, so its sources remain but the story is
   no longer registered (`src/ui/tiles.cpp`, `examples/story/tiles.cpp`).
+
+- **Shell InputGroup bindings are not registered.** The native widget and
+  story are ported; crates/component-shell's InputGroup host and TypeScript
+  surface are not yet in `src/shell/` (`src/ui/input.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including the retained Tiles center. The older live

@@ -3,6 +3,7 @@
 /* Themed input — crates/ui/src/input */
 
 #include "ui/sizing.h"
+#include "ui/button.h"
 
 namespace gpui {
 
@@ -316,6 +317,11 @@ struct Textarea {
     bool softWrap = true;
     AccessibilityRole accessibilityRole = AccessibilityRole::MultilineTextInput;
     Str ariaLabel = {};
+    Str accessibilityId = {};
+    bool appearance = true;
+    bool disabled = false;
+    bool readonly = false;
+    bool focusRing = true;
     Listener onFocus;
     InputPasteFn onPaste = nullptr;
     void* onPasteData = nullptr;
@@ -328,9 +334,115 @@ struct Textarea {
     Textarea* H(float px);
     Textarea* SoftWrap(bool v);
     Textarea* Role(AccessibilityRole role);
+    Textarea* AccessibilityId(Str id);
     Textarea* AriaLabel(Str label);
+    Textarea* Disabled(bool v);
+    Textarea* Readonly(bool v = true);
+    Textarea* Appearance(bool v);
+    Textarea* FocusRing(bool v);
     Textarea* OnFocus(Listener fn);
     Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
+    El* IntoEl();
+};
+
+// The logical side of an addon relative to the text control.
+enum class InputGroupAddonAlignment : uint8_t {
+    InlineStart,
+    InlineEnd,
+    BlockStart,
+    BlockEnd
+};
+
+// GroupAppearance: border, fill and optional ring for the shared frame.
+struct InputGroupAppearance {
+    Rgba background = {};
+    Rgba border = {};
+    Rgba ring = {};
+    bool hasRing = false;
+
+    static InputGroupAppearance New(const Theme& th, bool focused,
+                                    bool disabled, bool invalid);
+};
+
+// InputGroupButton: a Button with compact input-group presentation.
+struct InputGroupButton {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Button* button = nullptr;
+    UiSize size = UiSize::XSmall;
+
+    static InputGroupButton* New(Ctx* cx, Str id);
+    InputGroupButton* Label(Str s);
+    InputGroupButton* Icon(IconName n);
+    InputGroupButton* Tooltip(Str s);
+    InputGroupButton* WithSize(UiSize s);
+    InputGroupButton* WithVariant(ButtonVariant v);
+    InputGroupButton* Disabled(bool v);
+    InputGroupButton* OnClick(Listener fn);
+    El* IntoEl();
+};
+
+// InputGroupText: muted helper text inside an input group.
+struct InputGroupText {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    ArenaVec<El*> children;
+
+    static InputGroupText* New(Ctx* cx);
+    InputGroupText* Child(El* el);
+    El* IntoEl();
+};
+
+// InputGroupAddon: text, icons and buttons on one side of the frame.
+struct InputGroupAddon {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Str id = {};
+    InputGroupAddonAlignment alignment = InputGroupAddonAlignment::InlineStart;
+    UiSize size = UiSize::Medium;
+    ArenaVec<El*> children;
+
+    static InputGroupAddon* New(Ctx* cx, Str id);
+    InputGroupAddon* Align(InputGroupAddonAlignment v);
+    InputGroupAddon* Child(El* el);
+    El* IntoEl();
+};
+
+// InputGroup: a shared frame around one text control and its addons. The
+// caller keeps the InputState; the group owns only composition.
+using InputGroupInput = Input;
+using InputGroupTextarea = Textarea;
+
+// A single-line input or textarea accepted by InputGroup::Input.
+struct InputGroupControl {
+    Input* input = nullptr;
+    Textarea* textarea = nullptr;
+};
+
+struct InputGroup {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    Str id = {};
+    Input* input = nullptr;
+    Textarea* textarea = nullptr;
+    ArenaVec<InputGroupAddon*> addons;
+    UiSize size = UiSize::Medium;
+    bool disabled = false;
+    bool readonly = false;
+    bool invalid = false;
+    bool focusRing = true;
+    Str ariaLabel = {};
+
+    static InputGroup* New(Ctx* cx, Str id);
+    InputGroup* Input(Input* control);
+    InputGroup* Input(Textarea* control);
+    InputGroup* Addon(InputGroupAddon* addon);
+    InputGroup* Disabled(bool v);
+    InputGroup* Readonly(bool v = true);
+    InputGroup* Invalid(bool v);
+    InputGroup* FocusRing(bool v);
+    InputGroup* AriaLabel(Str label);
+    InputGroup* WithSize(UiSize s);
     El* IntoEl();
 };
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c7af5ecca1cdfad0d954b07b688f1ea8792ebca3",
+  sha: "142e4016b6b34e03978b532f3b2fc9f1a99bed30",
   date: "2026-09-17",
-  subject: "docs: Certify AI-facing consumer recipes (#3109)",
+  subject: "input_group: Add InputGroup (#3042)",
   crates: {
     "gpui-kit": "0.6.1",
     "gpui-base": "0.6.1",
