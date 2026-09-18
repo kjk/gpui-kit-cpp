@@ -44,6 +44,18 @@ Switch* Switch::Color(Rgba c) {
     hasColor = true;
     return this;
 }
+Switch* Switch::FocusRing(bool v) {
+    focusRing = v;
+    return this;
+}
+Switch* Switch::TabIndex(int v) {
+    tabIndex = v;
+    return this;
+}
+Switch* Switch::TabStop(bool v) {
+    tabStop = v;
+    return this;
+}
 Switch* Switch::OnClick(Listener fn) {
     return OnChange(fn);
 }
@@ -51,6 +63,10 @@ Switch* Switch::OnChange(Listener fn) {
     onClick = fn;
     return this;
 }
+
+struct SwitchFocusState {
+    FocusHandle handle = {};
+};
 
 El* Switch::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
@@ -80,15 +96,37 @@ El* Switch::IntoEl() {
     trackStyles.Checked(StateStyle().Bg(on));
     trackStyles.Disabled(StateStyle().Bg(BackgroundOpacity(trackBg, 0.5f)));
     SwitchThumbStyles thumbStyles;
+    // use_keyed_state(id) + track_focus: the UI layer and the base switch
+    // must share one handle, or the ring would not know when the track is
+    // focused. A keyed handle created here lives at a different path from
+    // one the base would create on its own.
+    SwitchFocusState* focusState =
+        ElementState<SwitchFocusState>(cx, id, StrL("Switch"));
+    if (!focusState->handle.IsValid()) {
+        focusState->handle = FocusHandleNew(cx);
+    }
+    FocusHandle focus = focusState->handle;
     // Rust builds the track's id from `(id, "track")`, so the part is named
     // apart from the switch it sits in.
     El* track = SwitchTrack::New(cx, StrDup(a, fmt("%s-track", id)), checked,
                                  disabled, &trackStyles)
                     ->W(trackW)
                     ->H(trackH)
-                    ->Pad(2)
+                    // The thumb inset is a 1px border plus 1px padding, not a
+                    // 2px border: the focus ring tints the border solid, and
+                    // that 1px line is what keeps the ring visible on an
+                    // unchecked track. Its 50% halo alone lands within a few
+                    // values of `switch.background` in both default modes.
+                    ->Border(1, th.transparent)
+                    ->Pad(1)
                     ->Radius(trackH * 0.5f)
                     ->ItemsCenter();
+    if (focusRing) {
+        // The ring hugs the track, not the row, so the label stays outside
+        // it. The track is not a tab stop: it shares the switch's handle so
+        // El::FocusRing paints here while keyboard focus stays on the root.
+        track->TrackFocus(focus)->TabStop(false)->FocusRing(true);
+    }
     if (!checked) {
         track->Bg(th.tokens.secondary);
     }
@@ -127,11 +165,12 @@ El* Switch::IntoEl() {
     // gpui_base::Switch owns identity, focus and activation, and hands the
     // handler the value the activation produces.
     Str name = accessibilityLabel.s ? accessibilityLabel : label;
-    El* root = gpui::Switch::New(cx, id, checked, disabled, onClick,
-                                 &rootStyles, nullptr, name)
-                   ->FlexRow()
-                   ->ItemsCenter()
-                   ->Gap(8);
+    El* root =
+        gpui::Switch::New(cx, id, checked, disabled, onClick, &rootStyles,
+                          nullptr, name, tabIndex, tabStop, focus)
+            ->FlexRow()
+            ->ItemsCenter()
+            ->Gap(8);
     root->Child(track);
     if (label.s) {
         // text_sm below Medium, text_base at and above it. A disabled switch

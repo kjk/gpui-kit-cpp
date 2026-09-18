@@ -14,13 +14,12 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `7f6d92327936fbab7994a35c86328d793acc060d`
-(2026-09-18, input: Add atomic inline tokens to Input and Textarea
-(#3113)). InlineToken, InputContent validation, InputToken appearance,
-atomic caret movement, token history, Input/Textarea token() slots, the
-composer story, shell JS token bindings and textarea overlay chips are
-ported. The current
-update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `492a97bac3f8cc45e65aadb61badcbb0a8ed0c46`
+(2026-09-18, switch: Draw the focus ring when the switch is focused
+(#3120)). The themed Switch draws the theme focus ring around the track
+when focused, with FocusableExt::focus_ring, tab_stop and tab_index, and
+the base Switch accepts a caller-owned focus handle. The current
+update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust
 

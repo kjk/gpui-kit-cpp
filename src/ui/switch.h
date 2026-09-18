@@ -20,6 +20,9 @@ struct Switch {
     UiSize size = UiSize::Medium;
     Rgba color = {};
     bool hasColor = false;
+    bool focusRing = true;
+    int tabIndex = 0;
+    bool tabStop = true;
     Listener onClick;
 
     static Switch* New(Ctx* cx, Str id);
@@ -32,6 +35,10 @@ struct Switch {
     Switch* Disabled(bool v);
     Switch* WithSize(UiSize s);
     Switch* Color(Rgba c);
+    // FocusableExt::focus_ring: no focus appearance on this control.
+    Switch* FocusRing(bool v);
+    Switch* TabIndex(int v);
+    Switch* TabStop(bool v);
     Switch* OnClick(Listener fn);
     // Semantic controlled-value spelling. OnClick is the compatibility
     // alias; both replace the same callback.
