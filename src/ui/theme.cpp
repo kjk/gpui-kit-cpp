@@ -6,7 +6,9 @@
 #include "ui/text.h"
 
 #include <math.h>
+#include <stddef.h>
 #include <stdio.h>
+#include <string.h>
 
 namespace gpui {
 
@@ -638,6 +640,9 @@ struct AppThemeState {
     bool initialized = false;
 };
 
+static ThemeRegistry* RegistryOf(const App* app);
+static AppThemeState* ThemeStateOf(const App* app);
+
 static void ThemeSyncRuntime(App* app, const AppThemeState* state) {
     if (!app || !state) {
         return;
@@ -777,6 +782,299 @@ static void ThemeDidChange(App* app, AppThemeState* state) {
     }
 }
 
+static bool BackgroundEq(const Background& a, const Background& b) {
+    if (a.gradient != b.gradient || !RgbaEq(a.color, b.color)) {
+        return false;
+    }
+    if (!a.gradient) {
+        return true;
+    }
+    return RgbaEq(a.from.color, b.from.color) &&
+           a.from.percentage == b.from.percentage &&
+           RgbaEq(a.to.color, b.to.color) &&
+           a.to.percentage == b.to.percentage && a.angle == b.angle;
+}
+
+bool ThemeTokensEq(const ThemeTokens& a, const ThemeTokens& b) {
+#define TOK_EQ(field)                      \
+    if (!BackgroundEq(a.field, b.field)) { \
+        return false;                      \
+    }
+    TOK_EQ(background)
+    TOK_EQ(titleBar)
+    TOK_EQ(statusBar)
+    TOK_EQ(tabBar)
+    TOK_EQ(tabActiveBg)
+    TOK_EQ(primary)
+    TOK_EQ(secondary)
+    TOK_EQ(accent)
+    TOK_EQ(muted)
+    TOK_EQ(popover)
+    TOK_EQ(danger)
+    TOK_EQ(info)
+    TOK_EQ(success)
+    TOK_EQ(warning)
+    TOK_EQ(progress)
+    TOK_EQ(scrollbarThumb)
+    TOK_EQ(scrollbarThumbHover)
+    TOK_EQ(skeleton)
+    TOK_EQ(selection)
+    TOK_EQ(listActive)
+    TOK_EQ(tableBg)
+    TOK_EQ(tableActive)
+    TOK_EQ(tableEven)
+    TOK_EQ(tableHead)
+    TOK_EQ(tableFoot)
+    TOK_EQ(sidebarAccent)
+    TOK_EQ(sidebarPrimary)
+    TOK_EQ(overlay)
+    TOK_EQ(switchThumb)
+    TOK_EQ(sliderThumb)
+    TOK_EQ(button)
+    TOK_EQ(buttonHover)
+    TOK_EQ(buttonActive)
+    TOK_EQ(primaryHover)
+    TOK_EQ(primaryActive)
+    TOK_EQ(buttonPrimary)
+    TOK_EQ(buttonPrimaryHover)
+    TOK_EQ(buttonPrimaryActive)
+    TOK_EQ(secondaryHover)
+    TOK_EQ(secondaryActive)
+    TOK_EQ(buttonSecondary)
+    TOK_EQ(buttonSecondaryHover)
+    TOK_EQ(buttonSecondaryActive)
+    TOK_EQ(successHover)
+    TOK_EQ(successActive)
+    TOK_EQ(buttonSuccess)
+    TOK_EQ(buttonSuccessHover)
+    TOK_EQ(buttonSuccessActive)
+    TOK_EQ(infoHover)
+    TOK_EQ(infoActive)
+    TOK_EQ(buttonInfo)
+    TOK_EQ(buttonInfoHover)
+    TOK_EQ(buttonInfoActive)
+    TOK_EQ(warningHover)
+    TOK_EQ(warningActive)
+    TOK_EQ(buttonWarning)
+    TOK_EQ(buttonWarningHover)
+    TOK_EQ(buttonWarningActive)
+    TOK_EQ(dangerHover)
+    TOK_EQ(dangerActive)
+    TOK_EQ(buttonDanger)
+    TOK_EQ(buttonDangerHover)
+    TOK_EQ(buttonDangerActive)
+    TOK_EQ(accordion)
+    TOK_EQ(dropTarget)
+    TOK_EQ(list)
+    TOK_EQ(listEven)
+    TOK_EQ(listHead)
+    TOK_EQ(listHover)
+    TOK_EQ(sliderBar)
+    TOK_EQ(switchBg)
+    TOK_EQ(tab)
+    TOK_EQ(tabBarSegmented)
+    TOK_EQ(tableHover)
+    TOK_EQ(tiles)
+    TOK_EQ(scrollbarBg)
+    TOK_EQ(sidebar)
+    TOK_EQ(groupBox)
+    TOK_EQ(descListLabel)
+#undef TOK_EQ
+    return true;
+}
+
+void ThemeSetColors(Theme* t, const Theme& colors) {
+    if (!t) {
+        return;
+    }
+    memcpy(t, &colors, offsetof(Theme, radius));
+}
+
+static void ThemeTokensReconcile(Theme* t, const Theme* colorsBefore,
+                                 const ThemeTokens* tokensBefore) {
+    if (!t || !colorsBefore || !tokensBefore) {
+        return;
+    }
+    // A field edited on colors wins: when its token no longer names that
+    // color, the token becomes that solid color. A field edited only on the
+    // tokens writes its solid color back. A field set on both sides, as
+    // applying a theme config does, keeps its token.
+#define RECONCILE(field)                                              \
+    if (!RgbaEq(t->field, colorsBefore->field)) {                     \
+        if (!RgbaEq(t->tokens.field.color, t->field)) {               \
+            t->tokens.field = Background(t->field);                   \
+        }                                                             \
+    } else if (!BackgroundEq(t->tokens.field, tokensBefore->field)) { \
+        t->field = t->tokens.field.color;                             \
+    }
+    RECONCILE(background)
+    RECONCILE(titleBar)
+    RECONCILE(statusBar)
+    RECONCILE(tabBar)
+    RECONCILE(tabActiveBg)
+    RECONCILE(primary)
+    RECONCILE(secondary)
+    RECONCILE(accent)
+    RECONCILE(muted)
+    RECONCILE(popover)
+    RECONCILE(danger)
+    RECONCILE(info)
+    RECONCILE(success)
+    RECONCILE(warning)
+    RECONCILE(progress)
+    RECONCILE(scrollbarThumb)
+    RECONCILE(scrollbarThumbHover)
+    RECONCILE(skeleton)
+    RECONCILE(selection)
+    RECONCILE(listActive)
+    RECONCILE(tableBg)
+    RECONCILE(tableActive)
+    RECONCILE(tableEven)
+    RECONCILE(tableHead)
+    RECONCILE(tableFoot)
+    RECONCILE(sidebarAccent)
+    RECONCILE(sidebarPrimary)
+    RECONCILE(overlay)
+    RECONCILE(switchThumb)
+    RECONCILE(sliderThumb)
+    RECONCILE(button)
+    RECONCILE(buttonHover)
+    RECONCILE(buttonActive)
+    RECONCILE(primaryHover)
+    RECONCILE(primaryActive)
+    RECONCILE(buttonPrimary)
+    RECONCILE(buttonPrimaryHover)
+    RECONCILE(buttonPrimaryActive)
+    RECONCILE(secondaryHover)
+    RECONCILE(secondaryActive)
+    RECONCILE(buttonSecondary)
+    RECONCILE(buttonSecondaryHover)
+    RECONCILE(buttonSecondaryActive)
+    RECONCILE(successHover)
+    RECONCILE(successActive)
+    RECONCILE(buttonSuccess)
+    RECONCILE(buttonSuccessHover)
+    RECONCILE(buttonSuccessActive)
+    RECONCILE(infoHover)
+    RECONCILE(infoActive)
+    RECONCILE(buttonInfo)
+    RECONCILE(buttonInfoHover)
+    RECONCILE(buttonInfoActive)
+    RECONCILE(warningHover)
+    RECONCILE(warningActive)
+    RECONCILE(buttonWarning)
+    RECONCILE(buttonWarningHover)
+    RECONCILE(buttonWarningActive)
+    RECONCILE(dangerHover)
+    RECONCILE(dangerActive)
+    RECONCILE(buttonDanger)
+    RECONCILE(buttonDangerHover)
+    RECONCILE(buttonDangerActive)
+    RECONCILE(accordion)
+    RECONCILE(dropTarget)
+    RECONCILE(list)
+    RECONCILE(listEven)
+    RECONCILE(listHead)
+    RECONCILE(listHover)
+    RECONCILE(sliderBar)
+    RECONCILE(switchBg)
+    RECONCILE(tab)
+    RECONCILE(tabBarSegmented)
+    RECONCILE(tableHover)
+    RECONCILE(tiles)
+    RECONCILE(scrollbarBg)
+    RECONCILE(sidebar)
+    RECONCILE(groupBox)
+    RECONCILE(descListLabel)
+#undef RECONCILE
+}
+
+Theme* ThemeBeginUpdate(App* app, bool reloadMode, ThemeUpdateScope* scope) {
+    static Theme dummy;
+    if (!scope) {
+        return &dummy;
+    }
+    *scope = ThemeUpdateScope{};
+    scope->app = app;
+    scope->reloadMode = reloadMode;
+    AppThemeState* state = ThemeStateOf(app);
+    if (!state) {
+        dummy = ThemeDefaultLight();
+        scope->colorsBefore = dummy;
+        scope->tokensBefore = dummy.tokens;
+        return &dummy;
+    }
+    Theme* t = &state->active[(int)state->mode];
+    scope->modeBefore = state->mode;
+    scope->colorsBefore = *t;
+    scope->tokensBefore = t->tokens;
+    scope->activeBefore[0] = ThemeRegistryActive(app, ThemeMode::Light);
+    scope->activeBefore[1] = ThemeRegistryActive(app, ThemeMode::Dark);
+    return t;
+}
+
+void ThemeEndUpdate(ThemeUpdateScope* scope) {
+    if (!scope || !scope->app) {
+        return;
+    }
+    App* app = scope->app;
+    AppThemeState* state = ThemeStateOf(app);
+    if (!state) {
+        return;
+    }
+    Theme* t = &state->active[(int)scope->modeBefore];
+    ThemeTokensReconcile(t, &scope->colorsBefore, &scope->tokensBefore);
+    ThemeMode modeAfter = t->mode;
+    bool modeChanged = modeAfter != scope->modeBefore;
+    Str activeAfter = ThemeRegistryActive(app, modeAfter);
+    bool installedByEdit =
+        modeChanged &&
+        !base::StrEq(activeAfter, scope->activeBefore[(int)modeAfter]);
+    if (modeChanged) {
+        if (installedByEdit) {
+            // apply_config wrote the other mode onto this slot; move it
+            // and put the snapshot back so the two palettes stay apart.
+            state->active[(int)modeAfter] = *t;
+            state->active[(int)scope->modeBefore] = scope->colorsBefore;
+        } else {
+            t->mode = scope->modeBefore;
+        }
+        state->mode = modeAfter;
+    }
+    // reloadMode is Theme::change: re-apply the registered file even when
+    // the mode did not change. A plain mode switch shows the other slot,
+    // which already holds that mode's installed palette.
+    if (scope->reloadMode && !installedByEdit) {
+        const ThemeConfig* cfg =
+            ThemeRegistryFind(app, ThemeRegistryActive(app, modeAfter));
+        if (cfg) {
+            Theme loaded;
+            bool dark = modeAfter == ThemeMode::Dark;
+            ThemeConfigResolve(&loaded, cfg,
+                               dark ? ThemeDefaultDark() : ThemeDefaultLight());
+            loaded.mode = modeAfter;
+            state->active[(int)modeAfter] = loaded;
+            state->mode = modeAfter;
+        }
+    }
+    ThemeDidChange(app, state);
+    AppRefreshWindows(app);
+}
+
+bool ThemeApplyConfig(App* app, Theme* t, const ThemeConfig* cfg) {
+    if (!t || !cfg) {
+        return false;
+    }
+    bool dark = cfg->mode == ThemeMode::Dark;
+    ThemeConfigResolve(t, cfg, dark ? ThemeDefaultDark() : ThemeDefaultLight());
+    t->mode = cfg->mode;
+    ThemeRegistry* registry = RegistryOf(app);
+    if (registry) {
+        registry->active[(int)cfg->mode] = cfg->name;
+    }
+    return true;
+}
+
 static AppThemeState* ThemeStateOf(const App* app) {
     AppThemeState* state = AppGlobalEnsure<AppThemeState>((App*)app);
     if (state && !state->initialized) {
@@ -856,20 +1154,24 @@ ScrollbarMode ScrollbarModeNow(const App* app) {
 }
 
 void ScrollbarModeSet(App* app, ScrollbarMode m) {
+    ThemeUpdate(app, [m](Theme* t) {
+        if (t) {
+            t->scrollbarMode = m;
+        }
+    });
     AppThemeState* state = ThemeStateOf(app);
     if (state) {
         state->active[0].scrollbarMode = m;
         state->active[1].scrollbarMode = m;
-        ThemeDidChange(app, state);
     }
 }
 
 void ThemeSet(App* app, ThemeMode mode) {
-    AppThemeState* state = ThemeStateOf(app);
-    if (state) {
-        state->mode = mode;
-        ThemeDidChange(app, state);
-    }
+    ThemeUpdate(app, [mode](Theme* t) {
+        if (t) {
+            t->mode = mode;
+        }
+    });
 }
 
 ThemeMode ThemeGet(const App* app) {
@@ -2620,19 +2922,10 @@ Str ThemeRegistryActive(const App* app, ThemeMode mode) {
 }
 
 bool ThemeRegistryApply(App* app, const ThemeConfig* cfg) {
-    ThemeRegistry* state = RegistryOf(app);
-    if (!state || !cfg) {
+    if (!cfg) {
         return false;
     }
-    bool dark = cfg->mode == ThemeMode::Dark;
-    Theme t;
-    ThemeConfigResolve(&t, cfg,
-                       dark ? ThemeDefaultDark() : ThemeDefaultLight());
-    ThemeInstall(app, cfg->mode, t);
-    state->active[(int)cfg->mode] = cfg->name;
-    if (app) {
-        AppRefreshWindows(app);
-    }
+    ThemeUpdate(app, [&](Theme* t) { ThemeApplyConfig(app, t, cfg); });
     return true;
 }
 

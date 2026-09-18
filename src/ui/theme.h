@@ -31,6 +31,7 @@ namespace gpui {
 // ─── theme (Default Dark) ─────────────────────────────────────────────────
 
 struct App;
+struct ThemeConfig;
 
 enum class ThemeMode : uint8_t {
     Light,
@@ -514,6 +515,33 @@ bool ThemeFocusRing(const App* app);
 void ThemeSetFocusRing(App* app, bool on);
 const Theme& ThemeNow(const App* app);
 void ThemeSet(App* app, ThemeMode mode);
+// Theme::update. Edit the live theme; colors, tokens and the Base projection
+// stay in step, then every window refreshes. The closure's return value is
+// not forwarded — read ThemeNow after the call.
+struct ThemeUpdateScope {
+    App* app = nullptr;
+    ThemeMode modeBefore = ThemeMode::Light;
+    bool reloadMode = false;
+    Theme colorsBefore = {};
+    ThemeTokens tokensBefore = {};
+    Str activeBefore[2] = {};
+};
+Theme* ThemeBeginUpdate(App* app, bool reloadMode, ThemeUpdateScope* scope);
+void ThemeEndUpdate(ThemeUpdateScope* scope);
+template <typename F>
+void ThemeUpdate(App* app, F edit) {
+    ThemeUpdateScope scope;
+    Theme* t = ThemeBeginUpdate(app, false, &scope);
+    edit(t);
+    ThemeEndUpdate(&scope);
+}
+// theme.colors = palette: the Rgba fields only, so tokens stay until
+// ThemeUpdate reconciles them.
+void ThemeSetColors(Theme* t, const Theme& colors);
+// Theme::apply_config onto an in-flight ThemeUpdate edit: resolve the file
+// onto `t`, set its mode, and remember it as that mode's registered theme.
+bool ThemeApplyConfig(App* app, Theme* t, const ThemeConfig* cfg);
+bool ThemeTokensEq(const ThemeTokens& a, const ThemeTokens& b);
 // system_font.rs substitute: the family to name instead of `requested` when
 // GPUI resolved it to a different installed family. Empty `resolved` is
 // None; empty return means keep `requested`.

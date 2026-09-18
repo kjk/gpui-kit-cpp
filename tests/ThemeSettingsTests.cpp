@@ -253,6 +253,116 @@ static void AFocusableElementMustRequestTheFocusAppearance() {
     ArenaDelete(a);
 }
 
+// Theme::update — crates/component/src/theme/mod.rs update_tests.
+static void EditingColorsUpdatesTheTokensAndTheBaseProjection() {
+    App app;
+    component::Init(&app);
+    Rgba sidebar = RgbaHex(0x123456);
+    Rgba primary = RgbaHex(0xabcdef);
+    ThemeUpdate(&app, [&](Theme* t) {
+        t->sidebar = sidebar;
+        t->primary = primary;
+        t->radius = 0;
+    });
+    const Theme& theme = ThemeNow(&app);
+    utassert(SameColor(theme.tokens.sidebar.color, sidebar));
+    utassert(!theme.tokens.sidebar.gradient);
+    utassert(SameColor(theme.tokens.primary.color, primary));
+    const BaseTheme* base = BaseThemeGlobal(&app);
+    utassert(base);
+    utassert(SameColor(base->tokens.colors.primary, primary));
+    utassertnear(base->tokens.radius.md, 0.f);
+    AppGlobalClear(&app);
+}
+
+static void ReplacingThePaletteRewritesEveryToken() {
+    App app;
+    ThemeUpdate(&app, [](Theme* t) { ThemeSetColors(t, ThemeDefaultDark()); });
+    Theme expected = ThemeDefaultDark();
+    ThemeTokensReset(&expected);
+    utassert(ThemeTokensEq(ThemeNow(&app).tokens, expected.tokens));
+    AppGlobalClear(&app);
+}
+
+static void AGradientSurvivesUntilItsOwnColorIsEdited() {
+    App app;
+    Rgba from = RgbaHex(0x4f46e5);
+    Rgba to = RgbaHex(0x06b6d4);
+    Background token =
+        BackgroundLinear(135.f, ColorStopAt(from, 0.f), ColorStopAt(to, 1.f));
+    ThemeUpdate(&app, [&](Theme* t) { t->tokens.primary = token; });
+    utassert(SameColor(ThemeNow(&app).primary, from));
+
+    ThemeUpdate(&app, [](Theme* t) { t->secondary = RgbaHex(0x222222); });
+    utassert(ThemeNow(&app).tokens.primary.gradient);
+    utassert(SameColor(ThemeNow(&app).tokens.primary.color, from));
+
+    Rgba solid = RgbaHex(0x999999);
+    ThemeUpdate(&app, [&](Theme* t) { t->primary = solid; });
+    utassert(!ThemeNow(&app).tokens.primary.gradient);
+    utassert(SameColor(ThemeNow(&app).tokens.primary.color, solid));
+    AppGlobalClear(&app);
+}
+
+static void SettingTheModeLoadsThatModesTheme() {
+    App app;
+    component::Init(&app);
+    Rgba lightBackground = ThemeNow(&app).background;
+    ThemeUpdate(&app, [](Theme* t) { t->mode = ThemeMode::Dark; });
+    const Theme& theme = ThemeNow(&app);
+    utassert(theme.mode == ThemeMode::Dark);
+    utassert(!SameColor(theme.background, lightBackground));
+    utassert(SameColor(theme.tokens.background.color, theme.background));
+    const BaseTheme* base = BaseThemeGlobal(&app);
+    utassert(base);
+    utassert(base->appearance == BaseThemeAppearance::Dark);
+    utassert(SameColor(base->tokens.colors.background, theme.background));
+    AppGlobalClear(&app);
+}
+
+static void ApplyingAConfigKeepsItsGradients() {
+    App app;
+    const char* doc =
+        "{ \"themes\": [ { \"name\": \"Gradient\", \"mode\": \"light\", "
+        "\"colors\": { \"primary\": \"#4F46E5\", \"primary.background\": "
+        "\"linear-gradient(135deg, #4F46E5, #06B6D4)\" } } ] }";
+    utassert(ThemeRegistryLoadStr(&app, Str(doc)) >= 1);
+    const ThemeConfig* cfg = ThemeRegistryFind(&app, StrL("Gradient"));
+    utassert(cfg);
+    ThemeUpdate(&app, [&](Theme* t) { ThemeApplyConfig(&app, t, cfg); });
+    const Theme& theme = ThemeNow(&app);
+    utassert(SameColor(theme.tokens.primary.color, theme.primary));
+    utassert(theme.tokens.primary.gradient);
+    AppGlobalClear(&app);
+}
+
+static void EditsAfterApplyingAConfigOfTheOtherModeSurvive() {
+    App app;
+    component::Init(&app);
+    const char* doc =
+        "{ \"themes\": [ { \"name\": \"Rounded Dark\", \"mode\": \"dark\", "
+        "\"radius\": 12, \"colors\": { \"primary\": \"#4F46E5\" } } ] }";
+    utassert(ThemeRegistryLoadStr(&app, Str(doc)) >= 1);
+    const ThemeConfig* cfg = ThemeRegistryFind(&app, StrL("Rounded Dark"));
+    utassert(cfg);
+    utassert(ThemeGet(&app) == ThemeMode::Light);
+    Rgba red = Rgb(255, 0, 0);
+    ThemeUpdate(&app, [&](Theme* t) {
+        ThemeApplyConfig(&app, t, cfg);
+        t->radius = 0;
+        t->primary = red;
+    });
+    const Theme& theme = ThemeNow(&app);
+    utassert(theme.mode == ThemeMode::Dark);
+    utassertnear(theme.radius, 0.f);
+    utassert(SameColor(theme.primary, red));
+    utassert(SameColor(theme.tokens.primary.color, red));
+    const BaseTheme* base = BaseThemeGlobal(&app);
+    utassert(base);
+    utassert(SameColor(base->tokens.colors.primary, red));
+    AppGlobalClear(&app);
+}
+
 void TestThemeSettings() {
     TestSuite("theme settings");
     TheFocusRingIsOnUntilAnApplicationTurnsItOff();
@@ -265,4 +375,10 @@ void TestThemeSettings() {
     UnprojectedBaseVisualsResolveFromSemanticTokens();
     BaseThemeSourceContractBuildsAndOwnsGlobals();
     StyledThemeChangesProjectIntoTheRuntimeSeam();
+    EditingColorsUpdatesTheTokensAndTheBaseProjection();
+    ReplacingThePaletteRewritesEveryToken();
+    AGradientSurvivesUntilItsOwnColorIsEdited();
+    SettingTheModeLoadsThatModesTheme();
+    ApplyingAConfigKeepsItsGradients();
+    EditsAfterApplyingAConfigOfTheOtherModeSurvive();
 }

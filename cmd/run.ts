@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "492a97bac3f8cc45e65aadb61badcbb0a8ed0c46",
+  sha: "35491fea89d69ed37b2429c830fe8f1e42b6f41e",
   date: "2026-09-18",
-  subject: "switch: Draw the focus ring when the switch is focused (#3120)",
+  subject: "theme: Add `Theme::update` to keep colors, tokens and the Base projection in step (#3122)",
   crates: {
     "gpui-kit": "0.6.2",
     "gpui-base": "0.6.2",

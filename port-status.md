@@ -14,11 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `492a97bac3f8cc45e65aadb61badcbb0a8ed0c46`
-(2026-09-18, switch: Draw the focus ring when the switch is focused
-(#3120)). The themed Switch draws the theme focus ring around the track
-when focused, with FocusableExt::focus_ring, tab_stop and tab_index, and
-the base Switch accepts a caller-owned focus handle. The current
+Processed through `35491fea89d69ed37b2429c830fe8f1e42b6f41e`
+(2026-09-18, theme: Add `Theme::update` to keep colors, tokens and the
+Base projection in step (#3122)). ThemeUpdate reconciles colors and
+tokens after an edit, syncs the Base projection and refreshes windows.
+The current
 update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust

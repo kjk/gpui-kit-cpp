@@ -42,13 +42,16 @@ static void NotifMenuOpen(NotificationStory* self, Ctx* cx, const ClickEvent*,
 // Both dropdowns write Theme::notification, where Rust keeps them.
 static void NotifMenuAct(NotificationStory* self, Ctx* cx, const ClickEvent*,
                          intptr_t act) {
-    Theme next = ThemeNow(cx->app);
-    if (act >= NotifActMaxItems) {
-        next.notification.maxItems = kMaxItems[act - NotifActMaxItems];
-    } else if (act >= NotifActPlacement) {
-        next.notification.placement = kAnchors[act - NotifActPlacement];
-    }
-    ThemeInstall(cx->app, ThemeGet(cx->app), next);
+    ThemeUpdate(cx->app, [&](Theme* theme) {
+        if (!theme) {
+            return;
+        }
+        if (act >= NotifActMaxItems) {
+            theme->notification.maxItems = kMaxItems[act - NotifActMaxItems];
+        } else if (act >= NotifActPlacement) {
+            theme->notification.placement = kAnchors[act - NotifActPlacement];
+        }
+    });
     self->openMenu = 0;
     Notify(cx);
 }
