@@ -140,8 +140,8 @@ static void RetainedStateOwnsAndForwardsCalendar() {
     if (calendar) {
         cx.self = state->calendar.id;
         utassert(!CalendarStateSelectDate(calendar, D(2025, 2, 10), &cx));
-        utassert(state->date.kind == DateKind::Range &&
-                 state->date.start.day == 0);
+        utassert(state->date.kind == DateKind::Range && state->date.start
+                                                                .day == 0);
         utassert(CalendarStateSelectDate(calendar, D(2025, 2, 12), &cx));
     }
     DatePickerSink* received = sink.Get(&app);
@@ -153,15 +153,13 @@ static void RetainedStateOwnsAndForwardsCalendar() {
     utassert(state && !state->open);
 
     cx.self = picker.id;
-    component::DatePickerStateSetDateFormat(state, StrL("%A, %B %e, %Y"),
-                                            &cx);
+    component::DatePickerStateSetDateFormat(state, StrL("%A, %B %e, %Y"), &cx);
     Str formatted = component::DatePickerFormatValue(
         a, state->dateFormat, Date::Single(D(2025, 2, 10)));
     utassert(StrEqI(formatted, "Monday, February 10, 2025"));
     formatted = component::DatePickerFormatDate(
         a, StrL("%G-W%V %U %W %-j %_m %q %v"), D(2021, 1, 1));
-    utassert(StrEqI(formatted,
-                    "2020-W53 00 00 1  1 1  1-Jan-2021"));
+    utassert(StrEqI(formatted, "2020-W53 00 00 1  1 1  1-Jan-2021"));
     component::DatePickerStateSetFirstDayOfWeek(state, 1, &cx);
     component::DatePickerStateSetDisabledMatcher(
         state, DateMatcherWeekdays(1u << 0), &cx);
@@ -195,11 +193,10 @@ static void RetainedFacadeUsesTheStateIdentity() {
     Entity<component::DatePickerState> picker =
         component::DatePickerStateNew(&cx);
     component::DatePickerState* state = picker.Get(&app);
-    component::DatePickerStateSetDate(state, Date::Single(D(2025, 8, 3)),
-                                      &cx);
+    component::DatePickerStateSetDate(state, Date::Single(D(2025, 8, 3)), &cx);
     state->open = true;
-    component::DateRangePreset preset = component::DateRangePreset::Single(
-        StrL("Tomorrow"), D(2025, 8, 4));
+    component::DateRangePreset preset =
+        component::DateRangePreset::Single(StrL("Tomorrow"), D(2025, 8, 4));
     El* root = component::DatePicker::New(&cx, picker)
                    ->Cleanable()
                    ->NumberOfMonths(2)

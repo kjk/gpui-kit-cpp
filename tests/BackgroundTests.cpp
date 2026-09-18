@@ -37,9 +37,9 @@ static void TheLineRunsThroughTheCenterAtTheAngle() {
     Rgba a = Rgb(0, 0, 0), b = Rgb(255, 255, 255);
 
     // 180deg / `to bottom`: down the middle, top edge to bottom edge.
-    BackgroundLine(BackgroundLinear(180.f, ColorStopAt(a, 0.f),
-                                    ColorStopAt(b, 1.f)),
-                   box, &p0, &p1);
+    BackgroundLine(
+        BackgroundLinear(180.f, ColorStopAt(a, 0.f), ColorStopAt(b, 1.f)), box,
+        &p0, &p1);
     utassertnear(p0.x, 50.f);
     utassertnear(p0.y, 0.f);
     utassertnear(p1.x, 50.f);
@@ -92,9 +92,9 @@ static void AStopPercentageMovesItsEnd() {
     Bounds box = {0, 0, 100, 200};
     Point p0 = {}, p1 = {};
     Rgba a = Rgb(0, 0, 0), b = Rgb(255, 255, 255);
-    BackgroundLine(BackgroundLinear(180.f, ColorStopAt(a, 0.25f),
-                                    ColorStopAt(b, 0.75f)),
-                   box, &p0, &p1);
+    BackgroundLine(
+        BackgroundLinear(180.f, ColorStopAt(a, 0.25f), ColorStopAt(b, 0.75f)),
+        box, &p0, &p1);
     utassertnear(p0.y, 50.f);
     utassertnear(p1.y, 150.f);
 }
@@ -104,9 +104,9 @@ static void TheLineFollowsTheBox() {
     Bounds box = {10, 20, 40, 60};
     Point p0 = {}, p1 = {};
     Rgba a = Rgb(0, 0, 0), b = Rgb(255, 255, 255);
-    BackgroundLine(BackgroundLinear(180.f, ColorStopAt(a, 0.f),
-                                    ColorStopAt(b, 1.f)),
-                   box, &p0, &p1);
+    BackgroundLine(
+        BackgroundLinear(180.f, ColorStopAt(a, 0.f), ColorStopAt(b, 1.f)), box,
+        &p0, &p1);
     utassertnear(p0.x, 30.f);
     utassertnear(p0.y, 20.f);
     utassertnear(p1.y, 80.f);

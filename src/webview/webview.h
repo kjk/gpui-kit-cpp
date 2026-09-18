@@ -46,8 +46,9 @@ struct WebView;
 struct WebViewHandleState;
 
 /** An owned, UI-thread-local handle to the raw wry webview. Copies prolong
-    the native control's lifetime, like Rust's `WebViewHandle(Rc<wry::WebView>)`.
-    Every copy must be dropped before the parent window is destroyed. */
+    the native control's lifetime, like Rust's
+   `WebViewHandle(Rc<wry::WebView>)`. Every copy must be dropped before the
+   parent window is destroyed. */
 struct WebViewHandle {
     WebViewHandle() = default;
     WebViewHandle(const WebViewHandle& other);

@@ -58,7 +58,8 @@ WebView::~WebView() {
     }
 }
 
-void WebView::OnWindowMouseDown(WebView* self, Ctx* cx, const MouseDownEvent* ev) {
+void WebView::OnWindowMouseDown(WebView* self, Ctx* cx,
+                                const MouseDownEvent* ev) {
     (void)cx;
     wry::WebView* raw = self->owned.Raw();
     if (!raw || !ev) {
@@ -80,7 +81,8 @@ Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
     }
     void* window = PlatWindowHandle(cx->win);
     if (!window) {
-        logf("webview: this window has no OS handle to parent a webview into\n");
+        logf(
+            "webview: this window has no OS handle to parent a webview into\n");
         return handle;
     }
     wry::WebViewAttributes copy = *attrs;
@@ -157,8 +159,9 @@ static void PaintWebView(PaintCtx* ctx, El* e, void* user) {
     if (!raw || !self->visible) {
         return;
     }
-    bool same = self->hasApplied && self->applied.x == b.x && self->applied.y == b.y &&
-                self->applied.w == b.w && self->applied.h == b.h;
+    bool same = self->hasApplied && self->applied.x == b.x &&
+                self->applied.y == b.y && self->applied.w == b.w &&
+                self->applied.h == b.h;
     if (same) {
         return;
     }
@@ -186,4 +189,4 @@ El* WebViewEl(Entity<WebView> view, Ctx* cx) {
     return e;
 }
 
-}  // namespace gpui
+} // namespace gpui

@@ -223,7 +223,8 @@ using DownloadStartedHandler = bool (*)(void* ctx, Str url, Str* path);
 /** `with_download_completed_handler`. `path` is null unless WebView2 reports
     a successfully completed download, matching Rust's `Option<PathBuf>`.
     All strings are borrowed for the duration of the call. */
-using DownloadCompletedHandler = void (*)(void* ctx, Str url, const Str* path, bool success);
+using DownloadCompletedHandler = void (*)(void* ctx, Str url, const Str* path,
+                                          bool success);
 
 /** `wry::DragDropEvent`. Paths are present for Enter and Drop and borrowed
     only for the callback. Position is relative to the WebView2 child window. */
@@ -318,16 +319,17 @@ struct WebViewAttributes {
     /** Return false to cancel the navigation. */
     bool (*navigationHandler)(void* ctx, Str url) = nullptr;
     void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event, Str url) = nullptr;
+    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
+                              Str url) = nullptr;
     /** Wry's default closure accepts every download at its suggested path. */
     DownloadStartedHandler downloadStartedHandler = AllowDownload;
     DownloadCompletedHandler downloadCompletedHandler = nullptr;
     DragDropHandler dragDropHandler = nullptr;
     /** `window.open`. Null denies every request, which is what wry's
         `NewWindowRequested` handler does when no closure is set. */
-    NewWindowResponse (*newWindowReqHandler)(void* ctx, Str url,
-                                             const NewWindowFeatures* features,
-                                             WebView** createdWebView) = nullptr;
+    NewWindowResponse (*newWindowReqHandler)(
+        void* ctx, Str url, const NewWindowFeatures* features,
+        WebView** createdWebView) = nullptr;
 
     bool clipboard = false;
 #if defined(DEBUG) || defined(_DEBUG)
@@ -396,7 +398,8 @@ struct WebViewAttributes {
     follows it, which it does by subclassing the parent window.
 
     Returns null if the webview could not be created, having logged why. */
-WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asChild);
+WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
+                    bool asChild);
 /** `Drop for WebView`. */
 void WebViewFree(WebView* webview);
 
@@ -492,6 +495,6 @@ Str WebViewVersionTemp();
 /** Whether a webview can be created at all on this platform and machine. */
 bool WebViewAvailable();
 
-}  // namespace wry
+} // namespace wry
 
-#endif  // GPUI_WRY_WRY_H_
+#endif // GPUI_WRY_WRY_H_

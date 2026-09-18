@@ -202,11 +202,9 @@ static void DisplayMapComposesWrappingAndFolding() {
     utassert(map.WrapRowCount() == 5);
     utassert(map.DisplayRowCount() == 5);
 
-    DisplayPoint display =
-        map.BufferPosToDisplayPos(BufferPoint::New(0, 4));
+    DisplayPoint display = map.BufferPosToDisplayPos(BufferPoint::New(0, 4));
     utassert(display.row == 1 && display.col == 0);
-    BufferPoint buffer =
-        map.DisplayPosToBufferPos(DisplayPoint::New(4, 1));
+    BufferPoint buffer = map.DisplayPosToBufferPos(DisplayPoint::New(4, 1));
     utassert(buffer.line == 2 && buffer.col == 5);
     Selection lineRows = map.BufferLineToDisplayRowRange(2);
     utassert(lineRows.start == 3 && lineRows.end == 5);
@@ -229,8 +227,7 @@ static void DisplayMapWrapsUtf8AndReservesContinuationIndent() {
     // Two glyph columns, despite four UTF-8 bytes.
     utassert(utf8.WrapRowCount() == 1);
     utassert(utf8.DisplayRowCount() == 1);
-    BufferPoint end =
-        utf8.DisplayPosToBufferPos(DisplayPoint::New(0, 4));
+    BufferPoint end = utf8.DisplayPosToBufferPos(DisplayPoint::New(0, 4));
     utassert(end.col == 4);
 
     DisplayMap indented(6);

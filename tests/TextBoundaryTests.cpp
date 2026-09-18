@@ -34,7 +34,8 @@ void TestTextBoundary() {
     // ui/src/text/selection.rs, test_word_range_at: one string, every kind of
     // boundary in it. The offsets are byte offsets, as they are in Rust.
     const char* t =
-        "test text\nabcde 中文🎉 test\nhello[()]\ntest_connector ____\nRope\nrök\n"
+        "test text\nabcde 中文🎉 test\nhello[()]\ntest_connector "
+        "____\nRope\nrök\n"
         "grande île";
     CheckWord(t, 0, "test");
     CheckWord(t, 4, " ");

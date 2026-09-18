@@ -178,23 +178,40 @@ struct ICoreWebView2ZoomFactorChangedEventHandler;
 
 // Declared up front, uuid and all: an interface names one that is
 // defined further down as often as not.
-struct DECLSPEC_UUID("b96d755e-0319-4e92-a296-23436f46a1fc") ICoreWebView2Environment;
-struct DECLSPEC_UUID("41f3632b-5ef4-404f-ad82-2d606c5a9a21") ICoreWebView2Environment2;
-struct DECLSPEC_UUID("80a22ae3-be7c-4ce2-afe1-5a50056cdeeb") ICoreWebView2Environment3;
-struct DECLSPEC_UUID("20944379-6dcf-41d6-a0a0-abc0fc50de0d") ICoreWebView2Environment4;
-struct DECLSPEC_UUID("319e423d-e0d7-4b8d-9254-ae9475de9b17") ICoreWebView2Environment5;
-struct DECLSPEC_UUID("e59ee362-acbd-4857-9a8e-d3644d9459a9") ICoreWebView2Environment6;
-struct DECLSPEC_UUID("43c22296-3bbd-43a4-9c00-5c0df6dd29a2") ICoreWebView2Environment7;
-struct DECLSPEC_UUID("d6eb91dd-c3d2-45e5-bd29-6dc2bc4de9cf") ICoreWebView2Environment8;
-struct DECLSPEC_UUID("f06f41bf-4b5a-49d8-b9f6-fa16cd29f274") ICoreWebView2Environment9;
-struct DECLSPEC_UUID("ee0eb9df-6f12-46ce-b53f-3f47b9c928e0") ICoreWebView2Environment10;
-struct DECLSPEC_UUID("12aae616-8ccb-44ec-bcb3-eb1831881635") ICoreWebView2ControllerOptions;
-struct DECLSPEC_UUID("06c991d8-9e7e-11ed-a8fc-0242ac120002") ICoreWebView2ControllerOptions2;
-struct DECLSPEC_UUID("b32b191a-8998-57ca-b7cb-e04617e4ce4a") ICoreWebView2ControllerOptions3;
-struct DECLSPEC_UUID("4d00c0d1-9434-4eb6-8078-8697a560334f") ICoreWebView2Controller;
-struct DECLSPEC_UUID("c979903e-d4ca-4228-92eb-47ee3fa96eab") ICoreWebView2Controller2;
-struct DECLSPEC_UUID("f9614724-5d2b-41dc-aef7-73d62b51543b") ICoreWebView2Controller3;
-struct DECLSPEC_UUID("97d418d5-a426-4e49-a151-e1a10f327d9e") ICoreWebView2Controller4;
+struct DECLSPEC_UUID("b96d755e-0319-4e92-a296-23436f46a1fc")
+    ICoreWebView2Environment;
+struct DECLSPEC_UUID("41f3632b-5ef4-404f-ad82-2d606c5a9a21")
+    ICoreWebView2Environment2;
+struct DECLSPEC_UUID("80a22ae3-be7c-4ce2-afe1-5a50056cdeeb")
+    ICoreWebView2Environment3;
+struct DECLSPEC_UUID("20944379-6dcf-41d6-a0a0-abc0fc50de0d")
+    ICoreWebView2Environment4;
+struct DECLSPEC_UUID("319e423d-e0d7-4b8d-9254-ae9475de9b17")
+    ICoreWebView2Environment5;
+struct DECLSPEC_UUID("e59ee362-acbd-4857-9a8e-d3644d9459a9")
+    ICoreWebView2Environment6;
+struct DECLSPEC_UUID("43c22296-3bbd-43a4-9c00-5c0df6dd29a2")
+    ICoreWebView2Environment7;
+struct DECLSPEC_UUID("d6eb91dd-c3d2-45e5-bd29-6dc2bc4de9cf")
+    ICoreWebView2Environment8;
+struct DECLSPEC_UUID("f06f41bf-4b5a-49d8-b9f6-fa16cd29f274")
+    ICoreWebView2Environment9;
+struct DECLSPEC_UUID("ee0eb9df-6f12-46ce-b53f-3f47b9c928e0")
+    ICoreWebView2Environment10;
+struct DECLSPEC_UUID("12aae616-8ccb-44ec-bcb3-eb1831881635")
+    ICoreWebView2ControllerOptions;
+struct DECLSPEC_UUID("06c991d8-9e7e-11ed-a8fc-0242ac120002")
+    ICoreWebView2ControllerOptions2;
+struct DECLSPEC_UUID("b32b191a-8998-57ca-b7cb-e04617e4ce4a")
+    ICoreWebView2ControllerOptions3;
+struct DECLSPEC_UUID("4d00c0d1-9434-4eb6-8078-8697a560334f")
+    ICoreWebView2Controller;
+struct DECLSPEC_UUID("c979903e-d4ca-4228-92eb-47ee3fa96eab")
+    ICoreWebView2Controller2;
+struct DECLSPEC_UUID("f9614724-5d2b-41dc-aef7-73d62b51543b")
+    ICoreWebView2Controller3;
+struct DECLSPEC_UUID("97d418d5-a426-4e49-a151-e1a10f327d9e")
+    ICoreWebView2Controller4;
 struct DECLSPEC_UUID("76eceacb-0462-4d94-ac83-423a6793775e") ICoreWebView2;
 struct DECLSPEC_UUID("9E8F0CF8-E670-4B5E-B2BC-73E061E3184C") ICoreWebView2_2;
 struct DECLSPEC_UUID("A0D6DF20-3B92-416D-AA0C-437A9C727857") ICoreWebView2_3;
@@ -217,753 +234,1193 @@ struct DECLSPEC_UUID("6921f954-79b0-437f-a997-c85811897c68") ICoreWebView2_19;
 struct DECLSPEC_UUID("b4bc1926-7305-11ee-b962-0242ac120002") ICoreWebView2_20;
 struct DECLSPEC_UUID("c4980dea-587b-43b9-8143-3ef3bf552d95") ICoreWebView2_21;
 struct DECLSPEC_UUID("db75dfc7-a857-4632-a398-6969dde26c0a") ICoreWebView2_22;
-struct DECLSPEC_UUID("e562e4f0-d7fa-43ac-8d71-c05150499f00") ICoreWebView2Settings;
-struct DECLSPEC_UUID("ee9a0f68-f46c-4e32-ac23-ef8cac224d2a") ICoreWebView2Settings2;
-struct DECLSPEC_UUID("fdb5ab74-af33-4854-84f0-0a631deb5eba") ICoreWebView2Settings3;
-struct DECLSPEC_UUID("cb56846c-4168-4d53-b04f-03b6d6796ff2") ICoreWebView2Settings4;
-struct DECLSPEC_UUID("183e7052-1d03-43a0-ab99-98e043b66b39") ICoreWebView2Settings5;
-struct DECLSPEC_UUID("11cb3acd-9bc8-43b8-83bf-f40753714f87") ICoreWebView2Settings6;
-struct DECLSPEC_UUID("488dc902-35ef-42d2-bc7d-94b65c4bc49c") ICoreWebView2Settings7;
-struct DECLSPEC_UUID("9e6b0e8f-86ad-4e81-8147-a9b5edb68650") ICoreWebView2Settings8;
-struct DECLSPEC_UUID("0528a73b-e92d-49f4-927a-e547dddaa37d") ICoreWebView2Settings9;
-struct DECLSPEC_UUID("79110ad3-cd5d-4373-8bc3-c60658f17a5f") ICoreWebView2Profile;
-struct DECLSPEC_UUID("fa740d4b-5eae-4344-a8ad-74be31925397") ICoreWebView2Profile2;
-struct DECLSPEC_UUID("b188e659-5685-4e05-bdba-fc640e0f1992") ICoreWebView2Profile3;
-struct DECLSPEC_UUID("8f4ae680-192e-4ec8-833a-21cfadaef628") ICoreWebView2Profile4;
-struct DECLSPEC_UUID("2ee5b76e-6e80-4df2-bcd3-d4ec3340a01b") ICoreWebView2Profile5;
-struct DECLSPEC_UUID("bd82fa6a-1d65-4c33-b2b4-0393020cc61b") ICoreWebView2Profile6;
-struct DECLSPEC_UUID("7b4c7906-a1aa-4cb4-b723-db09f813d541") ICoreWebView2Profile7;
+struct DECLSPEC_UUID("e562e4f0-d7fa-43ac-8d71-c05150499f00")
+    ICoreWebView2Settings;
+struct DECLSPEC_UUID("ee9a0f68-f46c-4e32-ac23-ef8cac224d2a")
+    ICoreWebView2Settings2;
+struct DECLSPEC_UUID("fdb5ab74-af33-4854-84f0-0a631deb5eba")
+    ICoreWebView2Settings3;
+struct DECLSPEC_UUID("cb56846c-4168-4d53-b04f-03b6d6796ff2")
+    ICoreWebView2Settings4;
+struct DECLSPEC_UUID("183e7052-1d03-43a0-ab99-98e043b66b39")
+    ICoreWebView2Settings5;
+struct DECLSPEC_UUID("11cb3acd-9bc8-43b8-83bf-f40753714f87")
+    ICoreWebView2Settings6;
+struct DECLSPEC_UUID("488dc902-35ef-42d2-bc7d-94b65c4bc49c")
+    ICoreWebView2Settings7;
+struct DECLSPEC_UUID("9e6b0e8f-86ad-4e81-8147-a9b5edb68650")
+    ICoreWebView2Settings8;
+struct DECLSPEC_UUID("0528a73b-e92d-49f4-927a-e547dddaa37d")
+    ICoreWebView2Settings9;
+struct DECLSPEC_UUID("79110ad3-cd5d-4373-8bc3-c60658f17a5f")
+    ICoreWebView2Profile;
+struct DECLSPEC_UUID("fa740d4b-5eae-4344-a8ad-74be31925397")
+    ICoreWebView2Profile2;
+struct DECLSPEC_UUID("b188e659-5685-4e05-bdba-fc640e0f1992")
+    ICoreWebView2Profile3;
+struct DECLSPEC_UUID("8f4ae680-192e-4ec8-833a-21cfadaef628")
+    ICoreWebView2Profile4;
+struct DECLSPEC_UUID("2ee5b76e-6e80-4df2-bcd3-d4ec3340a01b")
+    ICoreWebView2Profile5;
+struct DECLSPEC_UUID("bd82fa6a-1d65-4c33-b2b4-0393020cc61b")
+    ICoreWebView2Profile6;
+struct DECLSPEC_UUID("7b4c7906-a1aa-4cb4-b723-db09f813d541")
+    ICoreWebView2Profile7;
 struct DECLSPEC_UUID("df1aab27-82b9-4ab6-aae8-017a49398c14")
     ICoreWebView2ProfileAddBrowserExtensionCompletedHandler;
-struct DECLSPEC_UUID("0f99a40c-e962-4207-9e92-e3d542eff849") ICoreWebView2WebMessageReceivedEventArgs;
-struct DECLSPEC_UUID("453e667f-12c7-49d4-be6d-ddbe7956f57a") ICoreWebView2WebResourceRequestedEventArgs;
-struct DECLSPEC_UUID("97055cd4-512c-4264-8b5f-e3f446cea6a5") ICoreWebView2WebResourceRequest;
-struct DECLSPEC_UUID("aafcc94f-fa27-48fd-97df-830ef75aaec9") ICoreWebView2WebResourceResponse;
-struct DECLSPEC_UUID("e86cac0e-5523-465c-b536-8fb9fc8c8c60") ICoreWebView2HttpRequestHeaders;
-struct DECLSPEC_UUID("0702fc30-f43b-47bb-ab52-a42cb552ad9f") ICoreWebView2HttpHeadersCollectionIterator;
-struct DECLSPEC_UUID("c10e7f7b-b585-46f0-a623-8befbf3e4ee0") ICoreWebView2Deferral;
-struct DECLSPEC_UUID("5b495469-e119-438a-9b18-7604f25f2e49") ICoreWebView2NavigationStartingEventArgs;
-struct DECLSPEC_UUID("34acb11c-fc37-4418-9132-f9c21d1eafb9") ICoreWebView2NewWindowRequestedEventArgs;
-struct DECLSPEC_UUID("5eaf559f-b46e-4397-8860-e422f287ff1e") ICoreWebView2WindowFeatures;
-struct DECLSPEC_UUID("973ae2ef-ff18-4894-8fb2-3c758f046810") ICoreWebView2PermissionRequestedEventArgs;
-struct DECLSPEC_UUID("4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d") ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler;
-struct DECLSPEC_UUID("6c4819f3-c9b7-4260-8127-c9f5bde7f68c") ICoreWebView2CreateCoreWebView2ControllerCompletedHandler;
-struct DECLSPEC_UUID("57213f19-00e6-49fa-8e07-898ea01ecbd2") ICoreWebView2WebMessageReceivedEventHandler;
-struct DECLSPEC_UUID("ab00b74c-15f1-4646-80e8-e76341d25d71") ICoreWebView2WebResourceRequestedEventHandler;
-struct DECLSPEC_UUID("9adbe429-f36d-432b-9ddc-f8881fbd76e3") ICoreWebView2NavigationStartingEventHandler;
-struct DECLSPEC_UUID("d33a35bf-1c49-4f98-93ab-006e0533fe1c") ICoreWebView2NavigationCompletedEventHandler;
-struct DECLSPEC_UUID("364471e7-f2be-4910-bdba-d72077d51c4b") ICoreWebView2ContentLoadingEventHandler;
-struct DECLSPEC_UUID("f5f2b923-953e-4042-9f95-f3a118e1afd4") ICoreWebView2DocumentTitleChangedEventHandler;
-struct DECLSPEC_UUID("d4c185fe-c81c-4989-97af-2d3fa7ab5651") ICoreWebView2NewWindowRequestedEventHandler;
-struct DECLSPEC_UUID("5c19e9e0-092f-486b-affa-ca8231913039") ICoreWebView2WindowCloseRequestedEventHandler;
-struct DECLSPEC_UUID("15e1c6a3-c72a-4df3-91d7-d097fbec6bfd") ICoreWebView2PermissionRequestedEventHandler;
-struct DECLSPEC_UUID("b99369f3-9b11-47b5-bc6f-8e7895fcea17") ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler;
-struct DECLSPEC_UUID("49511172-cc67-4bca-9923-137112f4c4cc") ICoreWebView2ExecuteScriptCompletedHandler;
-struct DECLSPEC_UUID("e9710a06-1d1d-49b2-8234-226f35846ae5") ICoreWebView2ClearBrowsingDataCompletedHandler;
-struct DECLSPEC_UUID("3d6b6cf2-afe1-44c7-a995-c65117714336") ICoreWebView2DownloadOperation;
-struct DECLSPEC_UUID("e99bbe21-43e9-4544-a732-282764eafa60") ICoreWebView2DownloadStartingEventArgs;
-struct DECLSPEC_UUID("efedc989-c396-41ca-83f7-07f845a55724") ICoreWebView2DownloadStartingEventHandler;
-struct DECLSPEC_UUID("81336594-7ede-4ba9-bf71-acf0a95b58dd") ICoreWebView2StateChangedEventHandler;
-struct DECLSPEC_UUID("ad26d6be-1486-43e6-bf87-a2034006ca21") ICoreWebView2Cookie;
-struct DECLSPEC_UUID("f7f6f714-5d2a-43c6-9503-346ece02d186") ICoreWebView2CookieList;
-struct DECLSPEC_UUID("177cd9e7-b6f5-451a-94a0-5d7a3a4c4141") ICoreWebView2CookieManager;
-struct DECLSPEC_UUID("5a4f5069-5c15-47c3-8646-f4de1c116670") ICoreWebView2GetCookiesCompletedHandler;
-struct DECLSPEC_UUID("2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5") ICoreWebView2EnvironmentOptions;
-struct DECLSPEC_UUID("ff85c98a-1ba7-4a6b-90c8-2b752c89e9e2") ICoreWebView2EnvironmentOptions2;
-struct DECLSPEC_UUID("4a5c436e-a9e3-4a2e-89c3-910d3513f5cc") ICoreWebView2EnvironmentOptions3;
-struct DECLSPEC_UUID("ac52d13f-0d38-475a-9dca-876580d6793e") ICoreWebView2EnvironmentOptions4;
-struct DECLSPEC_UUID("0ae35d64-c47f-4464-814e-259c345d1501") ICoreWebView2EnvironmentOptions5;
-struct DECLSPEC_UUID("57d29cc3-c84f-42a0-b0e2-effbd5e179de") ICoreWebView2EnvironmentOptions6;
-struct DECLSPEC_UUID("c48d539f-e39f-441c-ae68-1f66e570bdc5") ICoreWebView2EnvironmentOptions7;
-struct DECLSPEC_UUID("7c7ecf51-e918-5caf-853c-e9a2bcc27775") ICoreWebView2EnvironmentOptions8;
+struct DECLSPEC_UUID("0f99a40c-e962-4207-9e92-e3d542eff849")
+    ICoreWebView2WebMessageReceivedEventArgs;
+struct DECLSPEC_UUID("453e667f-12c7-49d4-be6d-ddbe7956f57a")
+    ICoreWebView2WebResourceRequestedEventArgs;
+struct DECLSPEC_UUID("97055cd4-512c-4264-8b5f-e3f446cea6a5")
+    ICoreWebView2WebResourceRequest;
+struct DECLSPEC_UUID("aafcc94f-fa27-48fd-97df-830ef75aaec9")
+    ICoreWebView2WebResourceResponse;
+struct DECLSPEC_UUID("e86cac0e-5523-465c-b536-8fb9fc8c8c60")
+    ICoreWebView2HttpRequestHeaders;
+struct DECLSPEC_UUID("0702fc30-f43b-47bb-ab52-a42cb552ad9f")
+    ICoreWebView2HttpHeadersCollectionIterator;
+struct DECLSPEC_UUID("c10e7f7b-b585-46f0-a623-8befbf3e4ee0")
+    ICoreWebView2Deferral;
+struct DECLSPEC_UUID("5b495469-e119-438a-9b18-7604f25f2e49")
+    ICoreWebView2NavigationStartingEventArgs;
+struct DECLSPEC_UUID("34acb11c-fc37-4418-9132-f9c21d1eafb9")
+    ICoreWebView2NewWindowRequestedEventArgs;
+struct DECLSPEC_UUID("5eaf559f-b46e-4397-8860-e422f287ff1e")
+    ICoreWebView2WindowFeatures;
+struct DECLSPEC_UUID("973ae2ef-ff18-4894-8fb2-3c758f046810")
+    ICoreWebView2PermissionRequestedEventArgs;
+struct DECLSPEC_UUID("4e8a3389-c9d8-4bd2-b6b5-124fee6cc14d")
+    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler;
+struct DECLSPEC_UUID("6c4819f3-c9b7-4260-8127-c9f5bde7f68c")
+    ICoreWebView2CreateCoreWebView2ControllerCompletedHandler;
+struct DECLSPEC_UUID("57213f19-00e6-49fa-8e07-898ea01ecbd2")
+    ICoreWebView2WebMessageReceivedEventHandler;
+struct DECLSPEC_UUID("ab00b74c-15f1-4646-80e8-e76341d25d71")
+    ICoreWebView2WebResourceRequestedEventHandler;
+struct DECLSPEC_UUID("9adbe429-f36d-432b-9ddc-f8881fbd76e3")
+    ICoreWebView2NavigationStartingEventHandler;
+struct DECLSPEC_UUID("d33a35bf-1c49-4f98-93ab-006e0533fe1c")
+    ICoreWebView2NavigationCompletedEventHandler;
+struct DECLSPEC_UUID("364471e7-f2be-4910-bdba-d72077d51c4b")
+    ICoreWebView2ContentLoadingEventHandler;
+struct DECLSPEC_UUID("f5f2b923-953e-4042-9f95-f3a118e1afd4")
+    ICoreWebView2DocumentTitleChangedEventHandler;
+struct DECLSPEC_UUID("d4c185fe-c81c-4989-97af-2d3fa7ab5651")
+    ICoreWebView2NewWindowRequestedEventHandler;
+struct DECLSPEC_UUID("5c19e9e0-092f-486b-affa-ca8231913039")
+    ICoreWebView2WindowCloseRequestedEventHandler;
+struct DECLSPEC_UUID("15e1c6a3-c72a-4df3-91d7-d097fbec6bfd")
+    ICoreWebView2PermissionRequestedEventHandler;
+struct DECLSPEC_UUID("b99369f3-9b11-47b5-bc6f-8e7895fcea17")
+    ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler;
+struct DECLSPEC_UUID("49511172-cc67-4bca-9923-137112f4c4cc")
+    ICoreWebView2ExecuteScriptCompletedHandler;
+struct DECLSPEC_UUID("e9710a06-1d1d-49b2-8234-226f35846ae5")
+    ICoreWebView2ClearBrowsingDataCompletedHandler;
+struct DECLSPEC_UUID("3d6b6cf2-afe1-44c7-a995-c65117714336")
+    ICoreWebView2DownloadOperation;
+struct DECLSPEC_UUID("e99bbe21-43e9-4544-a732-282764eafa60")
+    ICoreWebView2DownloadStartingEventArgs;
+struct DECLSPEC_UUID("efedc989-c396-41ca-83f7-07f845a55724")
+    ICoreWebView2DownloadStartingEventHandler;
+struct DECLSPEC_UUID("81336594-7ede-4ba9-bf71-acf0a95b58dd")
+    ICoreWebView2StateChangedEventHandler;
+struct DECLSPEC_UUID("ad26d6be-1486-43e6-bf87-a2034006ca21")
+    ICoreWebView2Cookie;
+struct DECLSPEC_UUID("f7f6f714-5d2a-43c6-9503-346ece02d186")
+    ICoreWebView2CookieList;
+struct DECLSPEC_UUID("177cd9e7-b6f5-451a-94a0-5d7a3a4c4141")
+    ICoreWebView2CookieManager;
+struct DECLSPEC_UUID("5a4f5069-5c15-47c3-8646-f4de1c116670")
+    ICoreWebView2GetCookiesCompletedHandler;
+struct DECLSPEC_UUID("2fde08a8-1e9a-4766-8c05-95a9ceb9d1c5")
+    ICoreWebView2EnvironmentOptions;
+struct DECLSPEC_UUID("ff85c98a-1ba7-4a6b-90c8-2b752c89e9e2")
+    ICoreWebView2EnvironmentOptions2;
+struct DECLSPEC_UUID("4a5c436e-a9e3-4a2e-89c3-910d3513f5cc")
+    ICoreWebView2EnvironmentOptions3;
+struct DECLSPEC_UUID("ac52d13f-0d38-475a-9dca-876580d6793e")
+    ICoreWebView2EnvironmentOptions4;
+struct DECLSPEC_UUID("0ae35d64-c47f-4464-814e-259c345d1501")
+    ICoreWebView2EnvironmentOptions5;
+struct DECLSPEC_UUID("57d29cc3-c84f-42a0-b0e2-effbd5e179de")
+    ICoreWebView2EnvironmentOptions6;
+struct DECLSPEC_UUID("c48d539f-e39f-441c-ae68-1f66e570bdc5")
+    ICoreWebView2EnvironmentOptions7;
+struct DECLSPEC_UUID("7c7ecf51-e918-5caf-853c-e9a2bcc27775")
+    ICoreWebView2EnvironmentOptions8;
 
 struct ICoreWebView2Environment : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2Controller( HWND parentWindow, ICoreWebView2CreateCoreWebView2ControllerCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE CreateWebResourceResponse( IStream *content, int statusCode, LPCWSTR reasonPhrase, LPCWSTR headers, ICoreWebView2WebResourceResponse **response) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_BrowserVersionString( LPWSTR *versionInfo) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_NewBrowserVersionAvailable( ICoreWebView2NewBrowserVersionAvailableEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_NewBrowserVersionAvailable( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2Controller(
+        HWND parentWindow,
+        ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateWebResourceResponse(
+        IStream* content, int statusCode, LPCWSTR reasonPhrase, LPCWSTR headers,
+        ICoreWebView2WebResourceResponse** response) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_BrowserVersionString(LPWSTR* versionInfo) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_NewBrowserVersionAvailable(
+        ICoreWebView2NewBrowserVersionAvailableEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_NewBrowserVersionAvailable(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2Environment2 : ICoreWebView2Environment {
-virtual HRESULT STDMETHODCALLTYPE CreateWebResourceRequest( LPCWSTR uri, LPCWSTR Method, IStream *postData, LPCWSTR Headers, ICoreWebView2WebResourceRequest **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateWebResourceRequest(
+        LPCWSTR uri, LPCWSTR Method, IStream* postData, LPCWSTR Headers,
+        ICoreWebView2WebResourceRequest** value) = 0;
 };
 
 struct ICoreWebView2Environment3 : ICoreWebView2Environment2 {
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2CompositionController( HWND ParentWindow, ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2PointerInfo( ICoreWebView2PointerInfo **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2CompositionController(
+        HWND ParentWindow,
+        ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler*
+            handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CreateCoreWebView2PointerInfo(ICoreWebView2PointerInfo** value) = 0;
 };
 
 struct ICoreWebView2Environment4 : ICoreWebView2Environment3 {
-virtual HRESULT STDMETHODCALLTYPE GetAutomationProviderForWindow( HWND hwnd, IUnknown **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetAutomationProviderForWindow(HWND hwnd, IUnknown** value) = 0;
 };
 
 struct ICoreWebView2Environment5 : ICoreWebView2Environment4 {
-virtual HRESULT STDMETHODCALLTYPE add_BrowserProcessExited( ICoreWebView2BrowserProcessExitedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_BrowserProcessExited( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_BrowserProcessExited(
+        ICoreWebView2BrowserProcessExitedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_BrowserProcessExited(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2Environment6 : ICoreWebView2Environment5 {
-virtual HRESULT STDMETHODCALLTYPE CreatePrintSettings( ICoreWebView2PrintSettings **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CreatePrintSettings(ICoreWebView2PrintSettings** value) = 0;
 };
 
 struct ICoreWebView2Environment7 : ICoreWebView2Environment6 {
-virtual HRESULT STDMETHODCALLTYPE get_UserDataFolder( LPWSTR *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_UserDataFolder(LPWSTR* value) = 0;
 };
 
 struct ICoreWebView2Environment8 : ICoreWebView2Environment7 {
-virtual HRESULT STDMETHODCALLTYPE add_ProcessInfosChanged( ICoreWebView2ProcessInfosChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ProcessInfosChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetProcessInfos( ICoreWebView2ProcessInfoCollection **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ProcessInfosChanged(
+        ICoreWebView2ProcessInfosChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ProcessInfosChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetProcessInfos(ICoreWebView2ProcessInfoCollection** value) = 0;
 };
 
 struct ICoreWebView2Environment9 : ICoreWebView2Environment8 {
-virtual HRESULT STDMETHODCALLTYPE CreateContextMenuItem( LPCWSTR Label, IStream *iconStream, COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND Kind, ICoreWebView2ContextMenuItem **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CreateContextMenuItem(LPCWSTR Label, IStream* iconStream,
+                          COREWEBVIEW2_CONTEXT_MENU_ITEM_KIND Kind,
+                          ICoreWebView2ContextMenuItem** value) = 0;
 };
 
 struct ICoreWebView2Environment10 : ICoreWebView2Environment9 {
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2ControllerOptions( ICoreWebView2ControllerOptions **value) = 0;
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2ControllerWithOptions( HWND ParentWindow, ICoreWebView2ControllerOptions *options, ICoreWebView2CreateCoreWebView2ControllerCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2CompositionControllerWithOptions( HWND ParentWindow, ICoreWebView2ControllerOptions *options, ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2ControllerOptions(
+        ICoreWebView2ControllerOptions** value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CreateCoreWebView2ControllerWithOptions(
+        HWND ParentWindow, ICoreWebView2ControllerOptions* options,
+        ICoreWebView2CreateCoreWebView2ControllerCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CreateCoreWebView2CompositionControllerWithOptions(
+        HWND ParentWindow, ICoreWebView2ControllerOptions* options,
+        ICoreWebView2CreateCoreWebView2CompositionControllerCompletedHandler*
+            handler) = 0;
 };
 
 struct ICoreWebView2ControllerOptions : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_ProfileName( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ProfileName( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsInPrivateModeEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsInPrivateModeEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ProfileName(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_ProfileName(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsInPrivateModeEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsInPrivateModeEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2ControllerOptions2 : ICoreWebView2ControllerOptions {
-virtual HRESULT STDMETHODCALLTYPE get_ScriptLocale( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ScriptLocale( LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ScriptLocale(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_ScriptLocale(LPCWSTR value) = 0;
 };
 
 struct ICoreWebView2ControllerOptions3 : ICoreWebView2ControllerOptions2 {
-virtual HRESULT STDMETHODCALLTYPE get_DefaultBackgroundColor( COREWEBVIEW2_COLOR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_DefaultBackgroundColor( COREWEBVIEW2_COLOR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_DefaultBackgroundColor(COREWEBVIEW2_COLOR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_DefaultBackgroundColor(COREWEBVIEW2_COLOR value) = 0;
 };
 
 struct ICoreWebView2Controller : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_IsVisible( BOOL *isVisible) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsVisible( BOOL isVisible) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Bounds( RECT *bounds) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Bounds( RECT bounds) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ZoomFactor( double *zoomFactor) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ZoomFactor( double zoomFactor) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ZoomFactorChanged( ICoreWebView2ZoomFactorChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ZoomFactorChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE SetBoundsAndZoomFactor( RECT bounds, double zoomFactor) = 0;
-virtual HRESULT STDMETHODCALLTYPE MoveFocus( COREWEBVIEW2_MOVE_FOCUS_REASON reason) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_MoveFocusRequested( ICoreWebView2MoveFocusRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_MoveFocusRequested( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_GotFocus( ICoreWebView2FocusChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_GotFocus( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_LostFocus( ICoreWebView2FocusChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_LostFocus( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_AcceleratorKeyPressed( ICoreWebView2AcceleratorKeyPressedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_AcceleratorKeyPressed( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ParentWindow( HWND *parentWindow) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ParentWindow( HWND parentWindow) = 0;
-virtual HRESULT STDMETHODCALLTYPE NotifyParentWindowPositionChanged() = 0;
-virtual HRESULT STDMETHODCALLTYPE Close() = 0;
-virtual HRESULT STDMETHODCALLTYPE get_CoreWebView2( ICoreWebView2 **coreWebView2) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsVisible(BOOL* isVisible) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_IsVisible(BOOL isVisible) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Bounds(RECT* bounds) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Bounds(RECT bounds) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ZoomFactor(double* zoomFactor) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_ZoomFactor(double zoomFactor) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ZoomFactorChanged(
+        ICoreWebView2ZoomFactorChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ZoomFactorChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    SetBoundsAndZoomFactor(RECT bounds, double zoomFactor) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON reason) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_MoveFocusRequested(
+        ICoreWebView2MoveFocusRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_MoveFocusRequested(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_GotFocus(ICoreWebView2FocusChangedEventHandler* eventHandler,
+                 EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_GotFocus(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_LostFocus(ICoreWebView2FocusChangedEventHandler* eventHandler,
+                  EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_LostFocus(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_AcceleratorKeyPressed(
+        ICoreWebView2AcceleratorKeyPressedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_AcceleratorKeyPressed(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ParentWindow(HWND* parentWindow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_ParentWindow(HWND parentWindow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE NotifyParentWindowPositionChanged() = 0;
+    virtual HRESULT STDMETHODCALLTYPE Close() = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_CoreWebView2(ICoreWebView2** coreWebView2) = 0;
 };
 
 struct ICoreWebView2Controller2 : ICoreWebView2Controller {
-virtual HRESULT STDMETHODCALLTYPE get_DefaultBackgroundColor( COREWEBVIEW2_COLOR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_DefaultBackgroundColor( COREWEBVIEW2_COLOR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_DefaultBackgroundColor(COREWEBVIEW2_COLOR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_DefaultBackgroundColor(COREWEBVIEW2_COLOR value) = 0;
 };
 
 struct ICoreWebView2Controller3 : ICoreWebView2Controller2 {
-virtual HRESULT STDMETHODCALLTYPE get_RasterizationScale( double *scale) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_RasterizationScale( double scale) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ShouldDetectMonitorScaleChanges( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ShouldDetectMonitorScaleChanges( BOOL value) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_RasterizationScaleChanged( ICoreWebView2RasterizationScaleChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_RasterizationScaleChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_BoundsMode( COREWEBVIEW2_BOUNDS_MODE *boundsMode) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_BoundsMode( COREWEBVIEW2_BOUNDS_MODE boundsMode) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_RasterizationScale(double* scale) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_RasterizationScale(double scale) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ShouldDetectMonitorScaleChanges(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ShouldDetectMonitorScaleChanges(BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_RasterizationScaleChanged(
+        ICoreWebView2RasterizationScaleChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_RasterizationScaleChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_BoundsMode(COREWEBVIEW2_BOUNDS_MODE* boundsMode) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_BoundsMode(COREWEBVIEW2_BOUNDS_MODE boundsMode) = 0;
 };
 
 struct ICoreWebView2Controller4 : ICoreWebView2Controller3 {
-virtual HRESULT STDMETHODCALLTYPE get_AllowExternalDrop( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AllowExternalDrop( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_AllowExternalDrop(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_AllowExternalDrop(BOOL value) = 0;
 };
 
 struct ICoreWebView2 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Settings( ICoreWebView2Settings **settings) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Source( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE Navigate( LPCWSTR uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE NavigateToString( LPCWSTR htmlContent) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_NavigationStarting( ICoreWebView2NavigationStartingEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_NavigationStarting( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ContentLoading( ICoreWebView2ContentLoadingEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ContentLoading( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_SourceChanged( ICoreWebView2SourceChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_SourceChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_HistoryChanged( ICoreWebView2HistoryChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_HistoryChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_NavigationCompleted( ICoreWebView2NavigationCompletedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_NavigationCompleted( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_FrameNavigationStarting( ICoreWebView2NavigationStartingEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_FrameNavigationStarting( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_FrameNavigationCompleted( ICoreWebView2NavigationCompletedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_FrameNavigationCompleted( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ScriptDialogOpening( ICoreWebView2ScriptDialogOpeningEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ScriptDialogOpening( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_PermissionRequested( ICoreWebView2PermissionRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_PermissionRequested( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ProcessFailed( ICoreWebView2ProcessFailedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ProcessFailed( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE AddScriptToExecuteOnDocumentCreated( LPCWSTR javaScript, ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE RemoveScriptToExecuteOnDocumentCreated( LPCWSTR id) = 0;
-virtual HRESULT STDMETHODCALLTYPE ExecuteScript( LPCWSTR javaScript, ICoreWebView2ExecuteScriptCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE CapturePreview( COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT imageFormat, IStream *imageStream, ICoreWebView2CapturePreviewCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE Reload() = 0;
-virtual HRESULT STDMETHODCALLTYPE PostWebMessageAsJson( LPCWSTR webMessageAsJson) = 0;
-virtual HRESULT STDMETHODCALLTYPE PostWebMessageAsString( LPCWSTR webMessageAsString) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_WebMessageReceived( ICoreWebView2WebMessageReceivedEventHandler *handler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_WebMessageReceived( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE CallDevToolsProtocolMethod( LPCWSTR methodName, LPCWSTR parametersAsJson, ICoreWebView2CallDevToolsProtocolMethodCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_BrowserProcessId( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_CanGoBack( BOOL *canGoBack) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_CanGoForward( BOOL *canGoForward) = 0;
-virtual HRESULT STDMETHODCALLTYPE GoBack() = 0;
-virtual HRESULT STDMETHODCALLTYPE GoForward() = 0;
-virtual HRESULT STDMETHODCALLTYPE GetDevToolsProtocolEventReceiver( LPCWSTR eventName, ICoreWebView2DevToolsProtocolEventReceiver **receiver) = 0;
-virtual HRESULT STDMETHODCALLTYPE Stop() = 0;
-virtual HRESULT STDMETHODCALLTYPE add_NewWindowRequested( ICoreWebView2NewWindowRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_NewWindowRequested( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_DocumentTitleChanged( ICoreWebView2DocumentTitleChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_DocumentTitleChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_DocumentTitle( LPWSTR *title) = 0;
-virtual HRESULT STDMETHODCALLTYPE AddHostObjectToScript( LPCWSTR name, VARIANT *object) = 0;
-virtual HRESULT STDMETHODCALLTYPE RemoveHostObjectFromScript( LPCWSTR name) = 0;
-virtual HRESULT STDMETHODCALLTYPE OpenDevToolsWindow() = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ContainsFullScreenElementChanged( ICoreWebView2ContainsFullScreenElementChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ContainsFullScreenElementChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ContainsFullScreenElement( BOOL *containsFullScreenElement) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_WebResourceRequested( ICoreWebView2WebResourceRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_WebResourceRequested( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE AddWebResourceRequestedFilter( const LPCWSTR uri, const COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext) = 0;
-virtual HRESULT STDMETHODCALLTYPE RemoveWebResourceRequestedFilter( const LPCWSTR uri, const COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_WindowCloseRequested( ICoreWebView2WindowCloseRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_WindowCloseRequested( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Settings(ICoreWebView2Settings** settings) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Source(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Navigate(LPCWSTR uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE NavigateToString(LPCWSTR htmlContent) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_NavigationStarting(
+        ICoreWebView2NavigationStartingEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_NavigationStarting(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_ContentLoading(ICoreWebView2ContentLoadingEventHandler* eventHandler,
+                       EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ContentLoading(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_SourceChanged(ICoreWebView2SourceChangedEventHandler* eventHandler,
+                      EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_SourceChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_HistoryChanged(ICoreWebView2HistoryChangedEventHandler* eventHandler,
+                       EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_HistoryChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_NavigationCompleted(
+        ICoreWebView2NavigationCompletedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_NavigationCompleted(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_FrameNavigationStarting(
+        ICoreWebView2NavigationStartingEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_FrameNavigationStarting(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_FrameNavigationCompleted(
+        ICoreWebView2NavigationCompletedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_FrameNavigationCompleted(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ScriptDialogOpening(
+        ICoreWebView2ScriptDialogOpeningEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ScriptDialogOpening(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_PermissionRequested(
+        ICoreWebView2PermissionRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_PermissionRequested(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_ProcessFailed(ICoreWebView2ProcessFailedEventHandler* eventHandler,
+                      EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ProcessFailed(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE AddScriptToExecuteOnDocumentCreated(
+        LPCWSTR javaScript,
+        ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler*
+            handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    RemoveScriptToExecuteOnDocumentCreated(LPCWSTR id) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    ExecuteScript(LPCWSTR javaScript,
+                  ICoreWebView2ExecuteScriptCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT imageFormat,
+                   IStream* imageStream,
+                   ICoreWebView2CapturePreviewCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Reload() = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    PostWebMessageAsJson(LPCWSTR webMessageAsJson) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    PostWebMessageAsString(LPCWSTR webMessageAsString) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_WebMessageReceived(ICoreWebView2WebMessageReceivedEventHandler* handler,
+                           EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_WebMessageReceived(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CallDevToolsProtocolMethod(
+        LPCWSTR methodName, LPCWSTR parametersAsJson,
+        ICoreWebView2CallDevToolsProtocolMethodCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_BrowserProcessId(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_CanGoBack(BOOL* canGoBack) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_CanGoForward(BOOL* canGoForward) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GoBack() = 0;
+    virtual HRESULT STDMETHODCALLTYPE GoForward() = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetDevToolsProtocolEventReceiver(
+        LPCWSTR eventName,
+        ICoreWebView2DevToolsProtocolEventReceiver** receiver) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Stop() = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_NewWindowRequested(
+        ICoreWebView2NewWindowRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_NewWindowRequested(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_DocumentTitleChanged(
+        ICoreWebView2DocumentTitleChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_DocumentTitleChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_DocumentTitle(LPWSTR* title) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    AddHostObjectToScript(LPCWSTR name, VARIANT* object) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    RemoveHostObjectFromScript(LPCWSTR name) = 0;
+    virtual HRESULT STDMETHODCALLTYPE OpenDevToolsWindow() = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ContainsFullScreenElementChanged(
+        ICoreWebView2ContainsFullScreenElementChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ContainsFullScreenElementChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ContainsFullScreenElement(BOOL* containsFullScreenElement) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_WebResourceRequested(
+        ICoreWebView2WebResourceRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_WebResourceRequested(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE AddWebResourceRequestedFilter(
+        const LPCWSTR uri,
+        const COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext) = 0;
+    virtual HRESULT STDMETHODCALLTYPE RemoveWebResourceRequestedFilter(
+        const LPCWSTR uri,
+        const COREWEBVIEW2_WEB_RESOURCE_CONTEXT resourceContext) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_WindowCloseRequested(
+        ICoreWebView2WindowCloseRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_WindowCloseRequested(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_2 : ICoreWebView2 {
-virtual HRESULT STDMETHODCALLTYPE add_WebResourceResponseReceived( ICoreWebView2WebResourceResponseReceivedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_WebResourceResponseReceived( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE NavigateWithWebResourceRequest( ICoreWebView2WebResourceRequest *request) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_DOMContentLoaded( ICoreWebView2DOMContentLoadedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_DOMContentLoaded( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_CookieManager( ICoreWebView2CookieManager **cookieManager) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Environment( ICoreWebView2Environment **environment) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_WebResourceResponseReceived(
+        ICoreWebView2WebResourceResponseReceivedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_WebResourceResponseReceived(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE NavigateWithWebResourceRequest(
+        ICoreWebView2WebResourceRequest* request) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_DOMContentLoaded(
+        ICoreWebView2DOMContentLoadedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_DOMContentLoaded(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_CookieManager(ICoreWebView2CookieManager** cookieManager) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Environment(ICoreWebView2Environment** environment) = 0;
 };
 
 struct ICoreWebView2_3 : ICoreWebView2_2 {
-virtual HRESULT STDMETHODCALLTYPE TrySuspend( ICoreWebView2TrySuspendCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE Resume() = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsSuspended( BOOL *isSuspended) = 0;
-virtual HRESULT STDMETHODCALLTYPE SetVirtualHostNameToFolderMapping( LPCWSTR hostName, LPCWSTR folderPath, COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND accessKind) = 0;
-virtual HRESULT STDMETHODCALLTYPE ClearVirtualHostNameToFolderMapping( LPCWSTR hostName) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    TrySuspend(ICoreWebView2TrySuspendCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Resume() = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsSuspended(BOOL* isSuspended) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetVirtualHostNameToFolderMapping(
+        LPCWSTR hostName, LPCWSTR folderPath,
+        COREWEBVIEW2_HOST_RESOURCE_ACCESS_KIND accessKind) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    ClearVirtualHostNameToFolderMapping(LPCWSTR hostName) = 0;
 };
 
 struct ICoreWebView2_4 : ICoreWebView2_3 {
-virtual HRESULT STDMETHODCALLTYPE add_FrameCreated( ICoreWebView2FrameCreatedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_FrameCreated( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_DownloadStarting( ICoreWebView2DownloadStartingEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_DownloadStarting( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_FrameCreated(ICoreWebView2FrameCreatedEventHandler* eventHandler,
+                     EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_FrameCreated(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_DownloadStarting(
+        ICoreWebView2DownloadStartingEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_DownloadStarting(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_5 : ICoreWebView2_4 {
-virtual HRESULT STDMETHODCALLTYPE add_ClientCertificateRequested( ICoreWebView2ClientCertificateRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ClientCertificateRequested( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ClientCertificateRequested(
+        ICoreWebView2ClientCertificateRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ClientCertificateRequested(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_6 : ICoreWebView2_5 {
-virtual HRESULT STDMETHODCALLTYPE OpenTaskManagerWindow() = 0;
+    virtual HRESULT STDMETHODCALLTYPE OpenTaskManagerWindow() = 0;
 };
 
 struct ICoreWebView2_7 : ICoreWebView2_6 {
-virtual HRESULT STDMETHODCALLTYPE PrintToPdf( LPCWSTR ResultFilePath, ICoreWebView2PrintSettings *printSettings, ICoreWebView2PrintToPdfCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE PrintToPdf(
+        LPCWSTR ResultFilePath, ICoreWebView2PrintSettings* printSettings,
+        ICoreWebView2PrintToPdfCompletedHandler* handler) = 0;
 };
 
 struct ICoreWebView2_8 : ICoreWebView2_7 {
-virtual HRESULT STDMETHODCALLTYPE add_IsMutedChanged( ICoreWebView2IsMutedChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_IsMutedChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsMuted( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsMuted( BOOL value) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_IsDocumentPlayingAudioChanged( ICoreWebView2IsDocumentPlayingAudioChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_IsDocumentPlayingAudioChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsDocumentPlayingAudio( BOOL *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_IsMutedChanged(ICoreWebView2IsMutedChangedEventHandler* eventHandler,
+                       EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_IsMutedChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsMuted(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_IsMuted(BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_IsDocumentPlayingAudioChanged(
+        ICoreWebView2IsDocumentPlayingAudioChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_IsDocumentPlayingAudioChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsDocumentPlayingAudio(BOOL* value) = 0;
 };
 
 struct ICoreWebView2_9 : ICoreWebView2_8 {
-virtual HRESULT STDMETHODCALLTYPE add_IsDefaultDownloadDialogOpenChanged( ICoreWebView2IsDefaultDownloadDialogOpenChangedEventHandler *handler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_IsDefaultDownloadDialogOpenChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsDefaultDownloadDialogOpen( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE OpenDefaultDownloadDialog() = 0;
-virtual HRESULT STDMETHODCALLTYPE CloseDefaultDownloadDialog() = 0;
-virtual HRESULT STDMETHODCALLTYPE get_DefaultDownloadDialogCornerAlignment( COREWEBVIEW2_DEFAULT_DOWNLOAD_DIALOG_CORNER_ALIGNMENT *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_DefaultDownloadDialogCornerAlignment( COREWEBVIEW2_DEFAULT_DOWNLOAD_DIALOG_CORNER_ALIGNMENT value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_DefaultDownloadDialogMargin( POINT *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_DefaultDownloadDialogMargin( POINT value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_IsDefaultDownloadDialogOpenChanged(
+        ICoreWebView2IsDefaultDownloadDialogOpenChangedEventHandler* handler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_IsDefaultDownloadDialogOpenChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsDefaultDownloadDialogOpen(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE OpenDefaultDownloadDialog() = 0;
+    virtual HRESULT STDMETHODCALLTYPE CloseDefaultDownloadDialog() = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_DefaultDownloadDialogCornerAlignment(
+        COREWEBVIEW2_DEFAULT_DOWNLOAD_DIALOG_CORNER_ALIGNMENT* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_DefaultDownloadDialogCornerAlignment(
+        COREWEBVIEW2_DEFAULT_DOWNLOAD_DIALOG_CORNER_ALIGNMENT value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_DefaultDownloadDialogMargin(POINT* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_DefaultDownloadDialogMargin(POINT value) = 0;
 };
 
 struct ICoreWebView2_10 : ICoreWebView2_9 {
-virtual HRESULT STDMETHODCALLTYPE add_BasicAuthenticationRequested( ICoreWebView2BasicAuthenticationRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_BasicAuthenticationRequested( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_BasicAuthenticationRequested(
+        ICoreWebView2BasicAuthenticationRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_BasicAuthenticationRequested(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_11 : ICoreWebView2_10 {
-virtual HRESULT STDMETHODCALLTYPE CallDevToolsProtocolMethodForSession( LPCWSTR sessionId, LPCWSTR methodName, LPCWSTR parametersAsJson, ICoreWebView2CallDevToolsProtocolMethodCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_ContextMenuRequested( ICoreWebView2ContextMenuRequestedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ContextMenuRequested( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CallDevToolsProtocolMethodForSession(
+        LPCWSTR sessionId, LPCWSTR methodName, LPCWSTR parametersAsJson,
+        ICoreWebView2CallDevToolsProtocolMethodCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ContextMenuRequested(
+        ICoreWebView2ContextMenuRequestedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ContextMenuRequested(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_12 : ICoreWebView2_11 {
-virtual HRESULT STDMETHODCALLTYPE add_StatusBarTextChanged( ICoreWebView2StatusBarTextChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_StatusBarTextChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_StatusBarText( LPWSTR *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_StatusBarTextChanged(
+        ICoreWebView2StatusBarTextChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_StatusBarTextChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_StatusBarText(LPWSTR* value) = 0;
 };
 
 struct ICoreWebView2_13 : ICoreWebView2_12 {
-virtual HRESULT STDMETHODCALLTYPE get_Profile( ICoreWebView2Profile **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Profile(ICoreWebView2Profile** value) = 0;
 };
 
 struct ICoreWebView2_14 : ICoreWebView2_13 {
-virtual HRESULT STDMETHODCALLTYPE add_ServerCertificateErrorDetected( ICoreWebView2ServerCertificateErrorDetectedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_ServerCertificateErrorDetected( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE ClearServerCertificateErrorActions( ICoreWebView2ClearServerCertificateErrorActionsCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_ServerCertificateErrorDetected(
+        ICoreWebView2ServerCertificateErrorDetectedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_ServerCertificateErrorDetected(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ClearServerCertificateErrorActions(
+        ICoreWebView2ClearServerCertificateErrorActionsCompletedHandler*
+            handler) = 0;
 };
 
 struct ICoreWebView2_15 : ICoreWebView2_14 {
-virtual HRESULT STDMETHODCALLTYPE add_FaviconChanged( ICoreWebView2FaviconChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_FaviconChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_FaviconUri( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetFavicon( COREWEBVIEW2_FAVICON_IMAGE_FORMAT format, ICoreWebView2GetFaviconCompletedHandler *completedHandler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_FaviconChanged(ICoreWebView2FaviconChangedEventHandler* eventHandler,
+                       EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_FaviconChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_FaviconUri(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetFavicon(COREWEBVIEW2_FAVICON_IMAGE_FORMAT format,
+               ICoreWebView2GetFaviconCompletedHandler* completedHandler) = 0;
 };
 
 struct ICoreWebView2_16 : ICoreWebView2_15 {
-virtual HRESULT STDMETHODCALLTYPE Print( ICoreWebView2PrintSettings *printSettings, ICoreWebView2PrintCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE ShowPrintUI( COREWEBVIEW2_PRINT_DIALOG_KIND printDialogKind) = 0;
-virtual HRESULT STDMETHODCALLTYPE PrintToPdfStream( ICoreWebView2PrintSettings *printSettings, ICoreWebView2PrintToPdfStreamCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Print(ICoreWebView2PrintSettings* printSettings,
+          ICoreWebView2PrintCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    ShowPrintUI(COREWEBVIEW2_PRINT_DIALOG_KIND printDialogKind) = 0;
+    virtual HRESULT STDMETHODCALLTYPE PrintToPdfStream(
+        ICoreWebView2PrintSettings* printSettings,
+        ICoreWebView2PrintToPdfStreamCompletedHandler* handler) = 0;
 };
 
 struct ICoreWebView2_17 : ICoreWebView2_16 {
-virtual HRESULT STDMETHODCALLTYPE PostSharedBufferToScript( ICoreWebView2SharedBuffer *sharedBuffer, COREWEBVIEW2_SHARED_BUFFER_ACCESS access, LPCWSTR additionalDataAsJson) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    PostSharedBufferToScript(ICoreWebView2SharedBuffer* sharedBuffer,
+                             COREWEBVIEW2_SHARED_BUFFER_ACCESS access,
+                             LPCWSTR additionalDataAsJson) = 0;
 };
 
 struct ICoreWebView2_18 : ICoreWebView2_17 {
-virtual HRESULT STDMETHODCALLTYPE add_LaunchingExternalUriScheme( ICoreWebView2LaunchingExternalUriSchemeEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_LaunchingExternalUriScheme( EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_LaunchingExternalUriScheme(
+        ICoreWebView2LaunchingExternalUriSchemeEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_LaunchingExternalUriScheme(EventRegistrationToken token) = 0;
 };
 
 struct ICoreWebView2_19 : ICoreWebView2_18 {
-virtual HRESULT STDMETHODCALLTYPE get_MemoryUsageTargetLevel( COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_MemoryUsageTargetLevel( COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_MemoryUsageTargetLevel(
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_MemoryUsageTargetLevel(
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL value) = 0;
 };
 
 struct ICoreWebView2_20 : ICoreWebView2_19 {
-virtual HRESULT STDMETHODCALLTYPE get_FrameId( UINT32 *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_FrameId(UINT32* value) = 0;
 };
 
 struct ICoreWebView2_21 : ICoreWebView2_20 {
-virtual HRESULT STDMETHODCALLTYPE ExecuteScriptWithResult( LPCWSTR javaScript, ICoreWebView2ExecuteScriptWithResultCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ExecuteScriptWithResult(
+        LPCWSTR javaScript,
+        ICoreWebView2ExecuteScriptWithResultCompletedHandler* handler) = 0;
 };
 
 struct ICoreWebView2_22 : ICoreWebView2_21 {
-virtual HRESULT STDMETHODCALLTYPE AddWebResourceRequestedFilterWithRequestSourceKinds( LPCWSTR uri, COREWEBVIEW2_WEB_RESOURCE_CONTEXT ResourceContext, COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS requestSourceKinds) = 0;
-virtual HRESULT STDMETHODCALLTYPE RemoveWebResourceRequestedFilterWithRequestSourceKinds( LPCWSTR uri, COREWEBVIEW2_WEB_RESOURCE_CONTEXT ResourceContext, COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS requestSourceKinds) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    AddWebResourceRequestedFilterWithRequestSourceKinds(
+        LPCWSTR uri, COREWEBVIEW2_WEB_RESOURCE_CONTEXT ResourceContext,
+        COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS requestSourceKinds) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    RemoveWebResourceRequestedFilterWithRequestSourceKinds(
+        LPCWSTR uri, COREWEBVIEW2_WEB_RESOURCE_CONTEXT ResourceContext,
+        COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS requestSourceKinds) = 0;
 };
 
 struct ICoreWebView2Settings : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_IsScriptEnabled( BOOL *isScriptEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsScriptEnabled( BOOL isScriptEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsWebMessageEnabled( BOOL *isWebMessageEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsWebMessageEnabled( BOOL isWebMessageEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_AreDefaultScriptDialogsEnabled( BOOL *areDefaultScriptDialogsEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreDefaultScriptDialogsEnabled( BOOL areDefaultScriptDialogsEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsStatusBarEnabled( BOOL *isStatusBarEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsStatusBarEnabled( BOOL isStatusBarEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_AreDevToolsEnabled( BOOL *areDevToolsEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreDevToolsEnabled( BOOL areDevToolsEnabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_AreDefaultContextMenusEnabled( BOOL *enabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreDefaultContextMenusEnabled( BOOL enabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_AreHostObjectsAllowed( BOOL *allowed) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreHostObjectsAllowed( BOOL allowed) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsZoomControlEnabled( BOOL *enabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsZoomControlEnabled( BOOL enabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsBuiltInErrorPageEnabled( BOOL *enabled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsBuiltInErrorPageEnabled( BOOL enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsScriptEnabled(BOOL* isScriptEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsScriptEnabled(BOOL isScriptEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsWebMessageEnabled(BOOL* isWebMessageEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsWebMessageEnabled(BOOL isWebMessageEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_AreDefaultScriptDialogsEnabled(
+        BOOL* areDefaultScriptDialogsEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreDefaultScriptDialogsEnabled(BOOL areDefaultScriptDialogsEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsStatusBarEnabled(BOOL* isStatusBarEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsStatusBarEnabled(BOOL isStatusBarEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AreDevToolsEnabled(BOOL* areDevToolsEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreDevToolsEnabled(BOOL areDevToolsEnabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AreDefaultContextMenusEnabled(BOOL* enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreDefaultContextMenusEnabled(BOOL enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AreHostObjectsAllowed(BOOL* allowed) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreHostObjectsAllowed(BOOL allowed) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsZoomControlEnabled(BOOL* enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsZoomControlEnabled(BOOL enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsBuiltInErrorPageEnabled(BOOL* enabled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsBuiltInErrorPageEnabled(BOOL enabled) = 0;
 };
 
 struct ICoreWebView2Settings2 : ICoreWebView2Settings {
-virtual HRESULT STDMETHODCALLTYPE get_UserAgent( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_UserAgent( LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_UserAgent(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_UserAgent(LPCWSTR value) = 0;
 };
 
 struct ICoreWebView2Settings3 : ICoreWebView2Settings2 {
-virtual HRESULT STDMETHODCALLTYPE get_AreBrowserAcceleratorKeysEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreBrowserAcceleratorKeysEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AreBrowserAcceleratorKeysEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreBrowserAcceleratorKeysEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Settings4 : ICoreWebView2Settings3 {
-virtual HRESULT STDMETHODCALLTYPE get_IsPasswordAutosaveEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsPasswordAutosaveEnabled( BOOL value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsGeneralAutofillEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsGeneralAutofillEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsPasswordAutosaveEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsPasswordAutosaveEnabled(BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsGeneralAutofillEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsGeneralAutofillEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Settings5 : ICoreWebView2Settings4 {
-virtual HRESULT STDMETHODCALLTYPE get_IsPinchZoomEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsPinchZoomEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsPinchZoomEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_IsPinchZoomEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Settings6 : ICoreWebView2Settings5 {
-virtual HRESULT STDMETHODCALLTYPE get_IsSwipeNavigationEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsSwipeNavigationEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsSwipeNavigationEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsSwipeNavigationEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Settings7 : ICoreWebView2Settings6 {
-virtual HRESULT STDMETHODCALLTYPE get_HiddenPdfToolbarItems( COREWEBVIEW2_PDF_TOOLBAR_ITEMS *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_HiddenPdfToolbarItems( COREWEBVIEW2_PDF_TOOLBAR_ITEMS value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_HiddenPdfToolbarItems(COREWEBVIEW2_PDF_TOOLBAR_ITEMS* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_HiddenPdfToolbarItems(COREWEBVIEW2_PDF_TOOLBAR_ITEMS value) = 0;
 };
 
 struct ICoreWebView2Settings8 : ICoreWebView2Settings7 {
-virtual HRESULT STDMETHODCALLTYPE get_IsReputationCheckingRequired( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsReputationCheckingRequired( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsReputationCheckingRequired(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsReputationCheckingRequired(BOOL value) = 0;
 };
 
 struct ICoreWebView2Settings9 : ICoreWebView2Settings8 {
-virtual HRESULT STDMETHODCALLTYPE get_IsNonClientRegionSupportEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsNonClientRegionSupportEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsNonClientRegionSupportEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsNonClientRegionSupportEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Profile : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_ProfileName( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsInPrivateModeEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ProfilePath( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_DefaultDownloadFolderPath( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_DefaultDownloadFolderPath( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_PreferredColorScheme( COREWEBVIEW2_PREFERRED_COLOR_SCHEME *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_PreferredColorScheme( COREWEBVIEW2_PREFERRED_COLOR_SCHEME value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ProfileName(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsInPrivateModeEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ProfilePath(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_DefaultDownloadFolderPath(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_DefaultDownloadFolderPath(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_PreferredColorScheme(COREWEBVIEW2_PREFERRED_COLOR_SCHEME* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_PreferredColorScheme(COREWEBVIEW2_PREFERRED_COLOR_SCHEME value) = 0;
 };
 
 struct ICoreWebView2Profile2 : ICoreWebView2Profile {
-virtual HRESULT STDMETHODCALLTYPE ClearBrowsingData( COREWEBVIEW2_BROWSING_DATA_KINDS dataKinds, ICoreWebView2ClearBrowsingDataCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE ClearBrowsingDataInTimeRange( COREWEBVIEW2_BROWSING_DATA_KINDS dataKinds, double startTime, double endTime, ICoreWebView2ClearBrowsingDataCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE ClearBrowsingDataAll( ICoreWebView2ClearBrowsingDataCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ClearBrowsingData(
+        COREWEBVIEW2_BROWSING_DATA_KINDS dataKinds,
+        ICoreWebView2ClearBrowsingDataCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ClearBrowsingDataInTimeRange(
+        COREWEBVIEW2_BROWSING_DATA_KINDS dataKinds, double startTime,
+        double endTime,
+        ICoreWebView2ClearBrowsingDataCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE ClearBrowsingDataAll(
+        ICoreWebView2ClearBrowsingDataCompletedHandler* handler) = 0;
 };
 
 struct ICoreWebView2Profile3 : ICoreWebView2Profile2 {
-virtual HRESULT STDMETHODCALLTYPE get_PreferredTrackingPreventionLevel( COREWEBVIEW2_TRACKING_PREVENTION_LEVEL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_PreferredTrackingPreventionLevel( COREWEBVIEW2_TRACKING_PREVENTION_LEVEL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_PreferredTrackingPreventionLevel(
+        COREWEBVIEW2_TRACKING_PREVENTION_LEVEL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_PreferredTrackingPreventionLevel(
+        COREWEBVIEW2_TRACKING_PREVENTION_LEVEL value) = 0;
 };
 
 struct ICoreWebView2Profile4 : ICoreWebView2Profile3 {
-virtual HRESULT STDMETHODCALLTYPE SetPermissionState( COREWEBVIEW2_PERMISSION_KIND permissionKind, LPCWSTR origin, COREWEBVIEW2_PERMISSION_STATE state, ICoreWebView2SetPermissionStateCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetNonDefaultPermissionSettings( ICoreWebView2GetNonDefaultPermissionSettingsCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetPermissionState(
+        COREWEBVIEW2_PERMISSION_KIND permissionKind, LPCWSTR origin,
+        COREWEBVIEW2_PERMISSION_STATE state,
+        ICoreWebView2SetPermissionStateCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetNonDefaultPermissionSettings(
+        ICoreWebView2GetNonDefaultPermissionSettingsCompletedHandler*
+            handler) = 0;
 };
 
 struct ICoreWebView2Profile5 : ICoreWebView2Profile4 {
-virtual HRESULT STDMETHODCALLTYPE get_CookieManager( ICoreWebView2CookieManager **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_CookieManager(ICoreWebView2CookieManager** value) = 0;
 };
 
 struct ICoreWebView2Profile6 : ICoreWebView2Profile5 {
-virtual HRESULT STDMETHODCALLTYPE get_IsPasswordAutosaveEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsPasswordAutosaveEnabled( BOOL value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsGeneralAutofillEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsGeneralAutofillEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsPasswordAutosaveEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsPasswordAutosaveEnabled(BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsGeneralAutofillEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsGeneralAutofillEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2Profile7 : ICoreWebView2Profile6 {
-virtual HRESULT STDMETHODCALLTYPE AddBrowserExtension( LPCWSTR extensionFolderPath, ICoreWebView2ProfileAddBrowserExtensionCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetBrowserExtensions( ICoreWebView2ProfileGetBrowserExtensionsCompletedHandler *handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE AddBrowserExtension(
+        LPCWSTR extensionFolderPath,
+        ICoreWebView2ProfileAddBrowserExtensionCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetBrowserExtensions(
+        ICoreWebView2ProfileGetBrowserExtensionsCompletedHandler* handler) = 0;
 };
 
 struct ICoreWebView2ProfileAddBrowserExtensionCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, ICoreWebView2BrowserExtension *result) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(HRESULT errorCode, ICoreWebView2BrowserExtension* result) = 0;
 };
 
 struct ICoreWebView2DownloadOperation : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE add_BytesReceivedChanged( ICoreWebView2BytesReceivedChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_BytesReceivedChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_EstimatedEndTimeChanged( ICoreWebView2EstimatedEndTimeChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_EstimatedEndTimeChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE add_StateChanged( ICoreWebView2StateChangedEventHandler *eventHandler, EventRegistrationToken *token) = 0;
-virtual HRESULT STDMETHODCALLTYPE remove_StateChanged( EventRegistrationToken token) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Uri( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ContentDisposition( LPWSTR *contentDisposition) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_MimeType( LPWSTR *mimeType) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_TotalBytesToReceive( INT64 *totalBytesToReceive) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_BytesReceived( INT64 *bytesReceived) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_EstimatedEndTime( LPWSTR *estimatedEndTime) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ResultFilePath( LPWSTR *resultFilePath) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_State( COREWEBVIEW2_DOWNLOAD_STATE *downloadState) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_InterruptReason( COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON *interruptReason) = 0;
-virtual HRESULT STDMETHODCALLTYPE Cancel() = 0;
-virtual HRESULT STDMETHODCALLTYPE Pause() = 0;
-virtual HRESULT STDMETHODCALLTYPE Resume() = 0;
-virtual HRESULT STDMETHODCALLTYPE get_CanResume( BOOL *canResume) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_BytesReceivedChanged(
+        ICoreWebView2BytesReceivedChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_BytesReceivedChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE add_EstimatedEndTimeChanged(
+        ICoreWebView2EstimatedEndTimeChangedEventHandler* eventHandler,
+        EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_EstimatedEndTimeChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    add_StateChanged(ICoreWebView2StateChangedEventHandler* eventHandler,
+                     EventRegistrationToken* token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    remove_StateChanged(EventRegistrationToken token) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Uri(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ContentDisposition(LPWSTR* contentDisposition) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_MimeType(LPWSTR* mimeType) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_TotalBytesToReceive(INT64* totalBytesToReceive) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_BytesReceived(INT64* bytesReceived) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_EstimatedEndTime(LPWSTR* estimatedEndTime) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ResultFilePath(LPWSTR* resultFilePath) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_State(COREWEBVIEW2_DOWNLOAD_STATE* downloadState) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_InterruptReason(
+        COREWEBVIEW2_DOWNLOAD_INTERRUPT_REASON* interruptReason) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Cancel() = 0;
+    virtual HRESULT STDMETHODCALLTYPE Pause() = 0;
+    virtual HRESULT STDMETHODCALLTYPE Resume() = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_CanResume(BOOL* canResume) = 0;
 };
 
 struct ICoreWebView2DownloadStartingEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_DownloadOperation( ICoreWebView2DownloadOperation **downloadOperation) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Cancel( BOOL *cancel) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Cancel( BOOL cancel) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ResultFilePath( LPWSTR *resultFilePath) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ResultFilePath( LPCWSTR resultFilePath) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Handled( BOOL *handled) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Handled( BOOL handled) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetDeferral( ICoreWebView2Deferral **deferral) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_DownloadOperation(
+        ICoreWebView2DownloadOperation** downloadOperation) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Cancel(BOOL* cancel) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Cancel(BOOL cancel) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ResultFilePath(LPWSTR* resultFilePath) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ResultFilePath(LPCWSTR resultFilePath) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Handled(BOOL* handled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Handled(BOOL handled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetDeferral(ICoreWebView2Deferral** deferral) = 0;
 };
 
 struct ICoreWebView2DownloadStartingEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2DownloadStartingEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2DownloadStartingEventArgs* args) = 0;
 };
 
 struct ICoreWebView2StateChangedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2DownloadOperation *sender, IUnknown *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2DownloadOperation* sender, IUnknown* args) = 0;
 };
 
 struct ICoreWebView2Cookie : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Name( LPWSTR *name) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Value( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Value( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Domain( LPWSTR *domain) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Path( LPWSTR *path) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Expires( double *expires) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Expires( double expires) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsHttpOnly( BOOL *isHttpOnly) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsHttpOnly( BOOL isHttpOnly) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_SameSite( COREWEBVIEW2_COOKIE_SAME_SITE_KIND *sameSite) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_SameSite( COREWEBVIEW2_COOKIE_SAME_SITE_KIND sameSite) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsSecure( BOOL *isSecure) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsSecure( BOOL isSecure) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsSession( BOOL *isSession) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Name(LPWSTR* name) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Value(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Value(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Domain(LPWSTR* domain) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Path(LPWSTR* path) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Expires(double* expires) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Expires(double expires) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsHttpOnly(BOOL* isHttpOnly) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_IsHttpOnly(BOOL isHttpOnly) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_SameSite(COREWEBVIEW2_COOKIE_SAME_SITE_KIND* sameSite) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_SameSite(COREWEBVIEW2_COOKIE_SAME_SITE_KIND sameSite) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsSecure(BOOL* isSecure) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_IsSecure(BOOL isSecure) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsSession(BOOL* isSession) = 0;
 };
 
 struct ICoreWebView2CookieList : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Count( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetValueAtIndex( UINT32 index, ICoreWebView2Cookie **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Count(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetValueAtIndex(UINT32 index, ICoreWebView2Cookie** value) = 0;
 };
 
 struct ICoreWebView2CookieManager : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE CreateCookie( LPCWSTR name, LPCWSTR value, LPCWSTR domain, LPCWSTR path, ICoreWebView2Cookie **cookie) = 0;
-virtual HRESULT STDMETHODCALLTYPE CopyCookie( ICoreWebView2Cookie *cookieParam, ICoreWebView2Cookie **cookie) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetCookies( LPCWSTR uri, ICoreWebView2GetCookiesCompletedHandler *handler) = 0;
-virtual HRESULT STDMETHODCALLTYPE AddOrUpdateCookie( ICoreWebView2Cookie *cookie) = 0;
-virtual HRESULT STDMETHODCALLTYPE DeleteCookie( ICoreWebView2Cookie *cookie) = 0;
-virtual HRESULT STDMETHODCALLTYPE DeleteCookies( LPCWSTR name, LPCWSTR uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE DeleteCookiesWithDomainAndPath( LPCWSTR name, LPCWSTR domain, LPCWSTR path) = 0;
-virtual HRESULT STDMETHODCALLTYPE DeleteAllCookies() = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    CreateCookie(LPCWSTR name, LPCWSTR value, LPCWSTR domain, LPCWSTR path,
+                 ICoreWebView2Cookie** cookie) = 0;
+    virtual HRESULT STDMETHODCALLTYPE CopyCookie(
+        ICoreWebView2Cookie* cookieParam, ICoreWebView2Cookie** cookie) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCookies(
+        LPCWSTR uri, ICoreWebView2GetCookiesCompletedHandler* handler) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    AddOrUpdateCookie(ICoreWebView2Cookie* cookie) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    DeleteCookie(ICoreWebView2Cookie* cookie) = 0;
+    virtual HRESULT STDMETHODCALLTYPE DeleteCookies(LPCWSTR name,
+                                                    LPCWSTR uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE DeleteCookiesWithDomainAndPath(
+        LPCWSTR name, LPCWSTR domain, LPCWSTR path) = 0;
+    virtual HRESULT STDMETHODCALLTYPE DeleteAllCookies() = 0;
 };
 
 struct ICoreWebView2GetCookiesCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, ICoreWebView2CookieList *result) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(HRESULT errorCode, ICoreWebView2CookieList* result) = 0;
 };
 
 struct ICoreWebView2WebMessageReceivedEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Source( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_WebMessageAsJson( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE TryGetWebMessageAsString( LPWSTR *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Source(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_WebMessageAsJson(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    TryGetWebMessageAsString(LPWSTR* value) = 0;
 };
 
 struct ICoreWebView2WebResourceRequestedEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Request( ICoreWebView2WebResourceRequest **request) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Response( ICoreWebView2WebResourceResponse **response) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Response( ICoreWebView2WebResourceResponse *response) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetDeferral( ICoreWebView2Deferral **deferral) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ResourceContext( COREWEBVIEW2_WEB_RESOURCE_CONTEXT *context) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Request(ICoreWebView2WebResourceRequest** request) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Response(ICoreWebView2WebResourceResponse** response) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_Response(ICoreWebView2WebResourceResponse* response) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetDeferral(ICoreWebView2Deferral** deferral) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ResourceContext(COREWEBVIEW2_WEB_RESOURCE_CONTEXT* context) = 0;
 };
 
 struct ICoreWebView2WebResourceRequest : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Uri( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Uri( LPCWSTR uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Method( LPWSTR *method) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Method( LPCWSTR method) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Content( IStream **content) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Content( IStream *content) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Headers( ICoreWebView2HttpRequestHeaders **headers) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Uri(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Uri(LPCWSTR uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Method(LPWSTR* method) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Method(LPCWSTR method) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Content(IStream** content) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Content(IStream* content) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Headers(ICoreWebView2HttpRequestHeaders** headers) = 0;
 };
 
 struct ICoreWebView2WebResourceResponse : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Content( IStream **content) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Content( IStream *content) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Headers( ICoreWebView2HttpResponseHeaders **headers) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_StatusCode( int *statusCode) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_StatusCode( int statusCode) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ReasonPhrase( LPWSTR *reasonPhrase) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ReasonPhrase( LPCWSTR reasonPhrase) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Content(IStream** content) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Content(IStream* content) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_Headers(ICoreWebView2HttpResponseHeaders** headers) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_StatusCode(int* statusCode) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_StatusCode(int statusCode) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ReasonPhrase(LPWSTR* reasonPhrase) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ReasonPhrase(LPCWSTR reasonPhrase) = 0;
 };
 
 struct ICoreWebView2HttpRequestHeaders : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE GetHeader( LPCWSTR name, LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetHeaders( LPCWSTR name, ICoreWebView2HttpHeadersCollectionIterator **value) = 0;
-virtual HRESULT STDMETHODCALLTYPE Contains( LPCWSTR name, BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE SetHeader( LPCWSTR name, LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE RemoveHeader( LPCWSTR name) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetIterator( ICoreWebView2HttpHeadersCollectionIterator **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetHeader(LPCWSTR name,
+                                                LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetHeaders(
+        LPCWSTR name, ICoreWebView2HttpHeadersCollectionIterator** value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Contains(LPCWSTR name, BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE SetHeader(LPCWSTR name,
+                                                LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE RemoveHeader(LPCWSTR name) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetIterator(ICoreWebView2HttpHeadersCollectionIterator** value) = 0;
 };
 
 struct ICoreWebView2HttpHeadersCollectionIterator : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE GetCurrentHeader( LPWSTR *name, LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_HasCurrentHeader( BOOL *hasCurrent) = 0;
-virtual HRESULT STDMETHODCALLTYPE MoveNext( BOOL *hasNext) = 0;
+    virtual HRESULT STDMETHODCALLTYPE GetCurrentHeader(LPWSTR* name,
+                                                       LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_HasCurrentHeader(BOOL* hasCurrent) = 0;
+    virtual HRESULT STDMETHODCALLTYPE MoveNext(BOOL* hasNext) = 0;
 };
 
 struct ICoreWebView2Deferral : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Complete() = 0;
+    virtual HRESULT STDMETHODCALLTYPE Complete() = 0;
 };
 
 struct ICoreWebView2NavigationStartingEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Uri( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsUserInitiated( BOOL *isUserInitiated) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsRedirected( BOOL *isRedirected) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_RequestHeaders( ICoreWebView2HttpRequestHeaders **requestHeaders) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Cancel( BOOL *cancel) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Cancel( BOOL cancel) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_NavigationId( UINT64 *navigationId) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Uri(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsUserInitiated(BOOL* isUserInitiated) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_IsRedirected(BOOL* isRedirected) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_RequestHeaders(ICoreWebView2HttpRequestHeaders** requestHeaders) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Cancel(BOOL* cancel) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Cancel(BOOL cancel) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_NavigationId(UINT64* navigationId) = 0;
 };
 
 struct ICoreWebView2NewWindowRequestedEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Uri( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_NewWindow( ICoreWebView2 *newWindow) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_NewWindow( ICoreWebView2 **newWindow) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Handled( BOOL handled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Handled( BOOL *handled) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsUserInitiated( BOOL *isUserInitiated) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetDeferral( ICoreWebView2Deferral **deferral) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_WindowFeatures( ICoreWebView2WindowFeatures **value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Uri(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_NewWindow(ICoreWebView2* newWindow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_NewWindow(ICoreWebView2** newWindow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Handled(BOOL handled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Handled(BOOL* handled) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsUserInitiated(BOOL* isUserInitiated) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetDeferral(ICoreWebView2Deferral** deferral) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_WindowFeatures(ICoreWebView2WindowFeatures** value) = 0;
 };
 
 struct ICoreWebView2WindowFeatures : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_HasPosition( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_HasSize( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Left( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Top( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Height( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Width( UINT32 *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayMenuBar( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayStatus( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayToolbar( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayScrollBars( BOOL *value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_HasPosition(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_HasSize(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Left(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Top(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Height(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Width(UINT32* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayMenuBar(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayStatus(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_ShouldDisplayToolbar(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ShouldDisplayScrollBars(BOOL* value) = 0;
 };
 
 struct ICoreWebView2PermissionRequestedEventArgs : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_Uri( LPWSTR *uri) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_PermissionKind( COREWEBVIEW2_PERMISSION_KIND *permissionKind) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_IsUserInitiated( BOOL *isUserInitiated) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_State( COREWEBVIEW2_PERMISSION_STATE *state) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_State( COREWEBVIEW2_PERMISSION_STATE state) = 0;
-virtual HRESULT STDMETHODCALLTYPE GetDeferral( ICoreWebView2Deferral **deferral) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Uri(LPWSTR* uri) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_PermissionKind(COREWEBVIEW2_PERMISSION_KIND* permissionKind) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsUserInitiated(BOOL* isUserInitiated) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_State(COREWEBVIEW2_PERMISSION_STATE* state) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_State(COREWEBVIEW2_PERMISSION_STATE state) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetDeferral(ICoreWebView2Deferral** deferral) = 0;
 };
 
 struct ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, ICoreWebView2Environment *result) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(HRESULT errorCode, ICoreWebView2Environment* result) = 0;
 };
 
 struct ICoreWebView2CreateCoreWebView2ControllerCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, ICoreWebView2Controller *result) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(HRESULT errorCode, ICoreWebView2Controller* result) = 0;
 };
 
 struct ICoreWebView2WebMessageReceivedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2WebMessageReceivedEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2WebMessageReceivedEventArgs* args) = 0;
 };
 
 struct ICoreWebView2WebResourceRequestedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2WebResourceRequestedEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2WebResourceRequestedEventArgs* args) = 0;
 };
 
 struct ICoreWebView2NavigationStartingEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2NavigationStartingEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2NavigationStartingEventArgs* args) = 0;
 };
 
 struct ICoreWebView2NavigationCompletedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2NavigationCompletedEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2NavigationCompletedEventArgs* args) = 0;
 };
 
 struct ICoreWebView2ContentLoadingEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2ContentLoadingEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Invoke(
+        ICoreWebView2* sender, ICoreWebView2ContentLoadingEventArgs* args) = 0;
 };
 
 struct ICoreWebView2DocumentTitleChangedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, IUnknown *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* sender,
+                                             IUnknown* args) = 0;
 };
 
 struct ICoreWebView2NewWindowRequestedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2NewWindowRequestedEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2NewWindowRequestedEventArgs* args) = 0;
 };
 
 struct ICoreWebView2WindowCloseRequestedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, IUnknown *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2* sender,
+                                             IUnknown* args) = 0;
 };
 
 struct ICoreWebView2PermissionRequestedEventHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( ICoreWebView2 *sender, ICoreWebView2PermissionRequestedEventArgs *args) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    Invoke(ICoreWebView2* sender,
+           ICoreWebView2PermissionRequestedEventArgs* args) = 0;
 };
 
-struct ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, LPCWSTR result) = 0;
+struct ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler
+    : IUnknown {
+    virtual HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode,
+                                             LPCWSTR result) = 0;
 };
 
 struct ICoreWebView2ExecuteScriptCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode, LPCWSTR result) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode,
+                                             LPCWSTR result) = 0;
 };
 
 struct ICoreWebView2ClearBrowsingDataCompletedHandler : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE Invoke( HRESULT errorCode) = 0;
+    virtual HRESULT STDMETHODCALLTYPE Invoke(HRESULT errorCode) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_AdditionalBrowserArguments( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AdditionalBrowserArguments( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_Language( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_Language( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_TargetCompatibleBrowserVersion( LPWSTR *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_TargetCompatibleBrowserVersion( LPCWSTR value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_AllowSingleSignOnUsingOSPrimaryAccount( BOOL *allow) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AllowSingleSignOnUsingOSPrimaryAccount( BOOL allow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AdditionalBrowserArguments(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AdditionalBrowserArguments(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE get_Language(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE put_Language(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_TargetCompatibleBrowserVersion(LPWSTR* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_TargetCompatibleBrowserVersion(LPCWSTR value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AllowSingleSignOnUsingOSPrimaryAccount(BOOL* allow) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AllowSingleSignOnUsingOSPrimaryAccount(BOOL allow) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions2 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_ExclusiveUserDataFolderAccess( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ExclusiveUserDataFolderAccess( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ExclusiveUserDataFolderAccess(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ExclusiveUserDataFolderAccess(BOOL value) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions3 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_IsCustomCrashReportingEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_IsCustomCrashReportingEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_IsCustomCrashReportingEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_IsCustomCrashReportingEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions4 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE GetCustomSchemeRegistrations( UINT32 *count, IUnknown ***values) = 0;
-virtual HRESULT STDMETHODCALLTYPE SetCustomSchemeRegistrations( UINT32 count, IUnknown **values) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    GetCustomSchemeRegistrations(UINT32* count, IUnknown*** values) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    SetCustomSchemeRegistrations(UINT32 count, IUnknown** values) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions5 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_EnableTrackingPrevention( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_EnableTrackingPrevention( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_EnableTrackingPrevention(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_EnableTrackingPrevention(BOOL value) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions6 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_AreBrowserExtensionsEnabled( BOOL *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_AreBrowserExtensionsEnabled( BOOL value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_AreBrowserExtensionsEnabled(BOOL* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_AreBrowserExtensionsEnabled(BOOL value) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions7 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_ChannelSearchKind( COREWEBVIEW2_CHANNEL_SEARCH_KIND *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ChannelSearchKind( COREWEBVIEW2_CHANNEL_SEARCH_KIND value) = 0;
-virtual HRESULT STDMETHODCALLTYPE get_ReleaseChannels( COREWEBVIEW2_RELEASE_CHANNELS *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ReleaseChannels( COREWEBVIEW2_RELEASE_CHANNELS value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS value) = 0;
 };
 
 struct ICoreWebView2EnvironmentOptions8 : IUnknown {
-virtual HRESULT STDMETHODCALLTYPE get_ScrollBarStyle( COREWEBVIEW2_SCROLLBAR_STYLE *value) = 0;
-virtual HRESULT STDMETHODCALLTYPE put_ScrollBarStyle( COREWEBVIEW2_SCROLLBAR_STYLE value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    get_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE* value) = 0;
+    virtual HRESULT STDMETHODCALLTYPE
+    put_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE value) = 0;
 };
 
 // The handful of enum values we pass. Spelled out rather than typedef'd as a
@@ -1014,7 +1471,8 @@ static Str WstrToUtf8Temp(const WCHAR* ws, int wlen = -1) {
     if (wlen == 0) {
         return StrL("");
     }
-    int n = WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
+    int n =
+        WideCharToMultiByte(CP_UTF8, 0, ws, wlen, nullptr, 0, nullptr, nullptr);
     if (n <= 0) {
         return {};
     }
@@ -1097,8 +1555,10 @@ static int LoaderOverrideIds(WCHAR appId[256], WCHAR exeName[MAX_PATH],
     appId[0] = 0;
     exeName[0] = 0;
     typedef LONG(WINAPI * GetCurrentApplicationUserModelIdFn)(UINT32*, PWSTR);
-    auto getCurrentApplicationUserModelId = (GetCurrentApplicationUserModelIdFn)GetProcAddress(
-        GetModuleHandleW(L"kernel32.dll"), "GetCurrentApplicationUserModelId");
+    auto getCurrentApplicationUserModelId =
+        (GetCurrentApplicationUserModelIdFn)GetProcAddress(
+            GetModuleHandleW(L"kernel32.dll"),
+            "GetCurrentApplicationUserModelId");
     if (getCurrentApplicationUserModelId) {
         UINT32 len = 256;
         if (getCurrentApplicationUserModelId(&len, appId) != ERROR_SUCCESS) {
@@ -1106,11 +1566,13 @@ static int LoaderOverrideIds(WCHAR appId[256], WCHAR exeName[MAX_PATH],
         }
     }
     if (appId[0] == 0) {
-        typedef HRESULT(WINAPI * GetCurrentProcessExplicitAppUserModelIdFn)(PWSTR*);
+        typedef HRESULT(WINAPI *
+                        GetCurrentProcessExplicitAppUserModelIdFn)(PWSTR*);
         HMODULE shell32 = GetModuleHandleW(L"shell32.dll");
-        auto getExplicit = shell32 ? (GetCurrentProcessExplicitAppUserModelIdFn)GetProcAddress(
-                                         shell32, "GetCurrentProcessExplicitAppUserModelID")
-                                   : nullptr;
+        auto getExplicit =
+            shell32 ? (GetCurrentProcessExplicitAppUserModelIdFn)GetProcAddress(
+                          shell32, "GetCurrentProcessExplicitAppUserModelID")
+                    : nullptr;
         PWSTR explicitId = nullptr;
         if (getExplicit && SUCCEEDED(getExplicit(&explicitId)) && explicitId) {
             wcscpy_s(appId, 256, explicitId);
@@ -1119,7 +1581,8 @@ static int LoaderOverrideIds(WCHAR appId[256], WCHAR exeName[MAX_PATH],
     }
 
     WCHAR module[MAX_PATH * 2];
-    DWORD len = GetModuleFileNameW(nullptr, module, (DWORD)(sizeof(module) / sizeof(module[0])));
+    DWORD len = GetModuleFileNameW(nullptr, module,
+                                   (DWORD)(sizeof(module) / sizeof(module[0])));
     if (len > 0 && len < sizeof(module) / sizeof(module[0])) {
         const WCHAR* slash = wcsrchr(module, L'\\');
         wcscpy_s(exeName, MAX_PATH, slash ? slash + 1 : module);
@@ -1136,28 +1599,33 @@ static int LoaderOverrideIds(WCHAR appId[256], WCHAR exeName[MAX_PATH],
     return count;
 }
 
-static WCHAR* RegistryValueDup(HKEY root, const WCHAR* keyPath, const WCHAR* valueName) {
+static WCHAR* RegistryValueDup(HKEY root, const WCHAR* keyPath,
+                               const WCHAR* valueName) {
     HKEY key = nullptr;
-    if (RegOpenKeyExW(root, keyPath, 0, KEY_QUERY_VALUE, &key) != ERROR_SUCCESS) {
+    if (RegOpenKeyExW(root, keyPath, 0, KEY_QUERY_VALUE, &key) !=
+        ERROR_SUCCESS) {
         return nullptr;
     }
     DWORD type = 0;
     DWORD bytes = 0;
-    LSTATUS status = RegQueryValueExW(key, valueName, nullptr, &type, nullptr, &bytes);
+    LSTATUS status =
+        RegQueryValueExW(key, valueName, nullptr, &type, nullptr, &bytes);
     WCHAR* result = nullptr;
     if (status == ERROR_SUCCESS && type == REG_SZ && bytes >= sizeof(WCHAR)) {
         result = (WCHAR*)malloc((size_t)bytes + sizeof(WCHAR));
-        if (result && RegQueryValueExW(key, valueName, nullptr, &type, (BYTE*)result, &bytes) ==
-                          ERROR_SUCCESS) {
+        if (result &&
+            RegQueryValueExW(key, valueName, nullptr, &type, (BYTE*)result,
+                             &bytes) == ERROR_SUCCESS) {
             result[bytes / sizeof(WCHAR)] = 0;
         } else {
             free(result);
             result = nullptr;
         }
-    } else if (status == ERROR_SUCCESS && type == REG_DWORD && bytes == sizeof(DWORD)) {
+    } else if (status == ERROR_SUCCESS && type == REG_DWORD &&
+               bytes == sizeof(DWORD)) {
         DWORD value = 0;
-        if (RegQueryValueExW(key, valueName, nullptr, &type, (BYTE*)&value, &bytes) ==
-            ERROR_SUCCESS) {
+        if (RegQueryValueExW(key, valueName, nullptr, &type, (BYTE*)&value,
+                             &bytes) == ERROR_SUCCESS) {
             result = (WCHAR*)malloc(16 * sizeof(WCHAR));
             if (result) {
                 swprintf_s(result, 16, L"%u", value);
@@ -1179,7 +1647,8 @@ static WCHAR* PolicyOverrideDup(const WCHAR* property) {
 
     for (int r = 0; r < 2; r++) {
         WCHAR key[MAX_PATH];
-        swprintf_s(key, L"Software\\Policies\\Microsoft\\Edge\\WebView2\\%s", property);
+        swprintf_s(key, L"Software\\Policies\\Microsoft\\Edge\\WebView2\\%s",
+                   property);
         for (int i = 0; i < idCount; i++) {
             WCHAR* result = RegistryValueDup(roots[r], key, ids[i]);
             if (result) {
@@ -1191,7 +1660,8 @@ static WCHAR* PolicyOverrideDup(const WCHAR* property) {
         for (int i = 0; i < idCount; i++) {
             WCHAR key[MAX_PATH];
             swprintf_s(key,
-                       L"Software\\Policies\\Microsoft\\EmbeddedBrowserWebView\\LoaderOverride\\%s",
+                       L"Software\\Policies\\Microsoft\\EmbeddedBrowserWebView"
+                       L"\\LoaderOverride\\%s",
                        ids[i]);
             WCHAR* result = RegistryValueDup(roots[r], key, property);
             if (result) {
@@ -1202,7 +1672,8 @@ static WCHAR* PolicyOverrideDup(const WCHAR* property) {
     return nullptr;
 }
 
-static WCHAR* LoaderOverrideDup(const WCHAR* environment, const WCHAR* property) {
+static WCHAR* LoaderOverrideDup(const WCHAR* environment,
+                                const WCHAR* property) {
     WCHAR* result = EnvironmentVariableDup(environment);
     if (!result) {
         result = PolicyOverrideDup(property);
@@ -1235,11 +1706,13 @@ static UINT HwndDpi(HWND hwnd) {
         resolved = true;
         HMODULE user32 = LoadLibraryW(L"user32.dll");
         if (user32) {
-            getDpiForWindow = (GetDpiForWindowFn)GetProcAddress(user32, "GetDpiForWindow");
+            getDpiForWindow =
+                (GetDpiForWindowFn)GetProcAddress(user32, "GetDpiForWindow");
         }
         HMODULE shcore = LoadLibraryW(L"shcore.dll");
         if (shcore) {
-            getDpiForMonitor = (GetDpiForMonitorFn)GetProcAddress(shcore, "GetDpiForMonitor");
+            getDpiForMonitor =
+                (GetDpiForMonitorFn)GetProcAddress(shcore, "GetDpiForMonitor");
         }
     }
     if (getDpiForWindow) {
@@ -1289,10 +1762,11 @@ static const RuntimeChannel kRuntimeChannels[] = {
      L"Microsoft.WebView2Runtime.Canary_8wekyb3d8bbwe", 8},
 };
 
-static bool RegReadStr(HKEY root, const WCHAR* subKey, const WCHAR* name, DWORD extraFlags,
-                       WCHAR* out, DWORD outChars) {
+static bool RegReadStr(HKEY root, const WCHAR* subKey, const WCHAR* name,
+                       DWORD extraFlags, WCHAR* out, DWORD outChars) {
     HKEY key = nullptr;
-    if (RegOpenKeyExW(root, subKey, 0, KEY_QUERY_VALUE | extraFlags, &key) != ERROR_SUCCESS) {
+    if (RegOpenKeyExW(root, subKey, 0, KEY_QUERY_VALUE | extraFlags, &key) !=
+        ERROR_SUCCESS) {
         return false;
     }
     DWORD type = 0;
@@ -1420,9 +1894,10 @@ static bool FileVersion(const WCHAR* path, WCHAR* out, int outChars) {
     if (!versionDll) {
         return false;
     }
-    auto getSize =
-        (GetFileVersionInfoSizeWFn)GetProcAddress(versionDll, "GetFileVersionInfoSizeW");
-    auto getInfo = (GetFileVersionInfoWFn)GetProcAddress(versionDll, "GetFileVersionInfoW");
+    auto getSize = (GetFileVersionInfoSizeWFn)GetProcAddress(
+        versionDll, "GetFileVersionInfoSizeW");
+    auto getInfo = (GetFileVersionInfoWFn)GetProcAddress(versionDll,
+                                                         "GetFileVersionInfoW");
     auto query = (VerQueryValueWFn)GetProcAddress(versionDll, "VerQueryValueW");
     bool ok = false;
     if (getSize && getInfo && query) {
@@ -1433,7 +1908,8 @@ static bool FileVersion(const WCHAR* path, WCHAR* out, int outChars) {
             VS_FIXEDFILEINFO* info = nullptr;
             UINT infoSize = 0;
             if (query(data, L"\\", (void**)&info, &infoSize) && info &&
-                infoSize >= sizeof(*info) && info->dwSignature == VS_FFI_SIGNATURE) {
+                infoSize >= sizeof(*info) &&
+                info->dwSignature == VS_FFI_SIGNATURE) {
                 int n = swprintf_s(out, (size_t)outChars, L"%u.%u.%u.%u",
                                    HIWORD(info->dwProductVersionMS),
                                    LOWORD(info->dwProductVersionMS),
@@ -1451,30 +1927,33 @@ static bool FileVersion(const WCHAR* path, WCHAR* out, int outChars) {
 // Both places the SDK's loader looks: the per-machine key (which a 64-bit
 // process reaches through the WOW6432 view, since EdgeUpdate is 32-bit) and
 // the per-user one.
-static bool RuntimeVersionAndLocation(const WCHAR* id, WCHAR* version, DWORD versionChars,
-                                       WCHAR* location, DWORD locationChars) {
+static bool RuntimeVersionAndLocation(const WCHAR* id, WCHAR* version,
+                                      DWORD versionChars, WCHAR* location,
+                                      DWORD locationChars) {
     struct Where {
         HKEY root;
         const WCHAR* path;
         DWORD flags;
     };
     const Where places[] = {
-        {HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\", KEY_WOW64_32KEY},
+        {HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\",
+         KEY_WOW64_32KEY},
         {HKEY_CURRENT_USER, L"SOFTWARE\\Microsoft\\EdgeUpdate\\Clients\\", 0},
     };
     for (int i = 0; i < (int)(sizeof(places) / sizeof(places[0])); i++) {
         WCHAR key[256];
         wcscpy_s(key, places[i].path);
         wcscat_s(key, id);
-        if (!RegReadStr(places[i].root, key, L"pv", places[i].flags, version, versionChars)) {
+        if (!RegReadStr(places[i].root, key, L"pv", places[i].flags, version,
+                        versionChars)) {
             continue;
         }
         // "0.0.0.0" is how EdgeUpdate spells "not installed".
         if (wcscmp(version, L"0.0.0.0") == 0) {
             continue;
         }
-        if (RegReadStr(places[i].root, key, L"location", places[i].flags, location,
-                       locationChars)) {
+        if (RegReadStr(places[i].root, key, L"location", places[i].flags,
+                       location, locationChars)) {
             return true;
         }
     }
@@ -1485,14 +1964,17 @@ static bool RuntimeVersionAndLocation(const WCHAR* id, WCHAR* version, DWORD ver
 // the matching package to the process graph when neither EdgeUpdate registry
 // shape names the channel. Resolve every API dynamically: package dependency
 // support is absent on older Windows and registry discovery remains enough.
-static bool FindPackagedRuntime(const RuntimeChannel* channel, RuntimeInfo* out) {
+static bool FindPackagedRuntime(const RuntimeChannel* channel,
+                                RuntimeInfo* out) {
     typedef LONG(WINAPI * TryCreatePackageDependencyFn)(
-        PSID user, PCWSTR packageFamilyName, uint64_t minVersion, int architectures,
-        int lifetimeKind, PCWSTR lifetimeArtifact, int options, PWSTR* dependencyId);
-    typedef LONG(WINAPI * AddPackageDependencyFn)(PCWSTR dependencyId, int rank, int options,
-                                                   void** context, PWSTR* packageFullName);
-    typedef LONG(WINAPI * GetPackagePathByFullNameFn)(PCWSTR packageFullName,
-                                                       UINT32* pathLength, PWSTR path);
+        PSID user, PCWSTR packageFamilyName, uint64_t minVersion,
+        int architectures, int lifetimeKind, PCWSTR lifetimeArtifact,
+        int options, PWSTR* dependencyId);
+    typedef LONG(WINAPI * AddPackageDependencyFn)(PCWSTR dependencyId, int rank,
+                                                  int options, void** context,
+                                                  PWSTR* packageFullName);
+    typedef LONG(WINAPI * GetPackagePathByFullNameFn)(
+        PCWSTR packageFullName, UINT32 * pathLength, PWSTR path);
 
     HMODULE kernelBase = GetModuleHandleW(L"kernelbase.dll");
     HMODULE kernel32 = GetModuleHandleW(L"kernel32.dll");
@@ -1500,9 +1982,9 @@ static bool FindPackagedRuntime(const RuntimeChannel* channel, RuntimeInfo* out)
     auto tryCreate = apiModule ? (TryCreatePackageDependencyFn)GetProcAddress(
                                      apiModule, "TryCreatePackageDependency")
                                : nullptr;
-    auto add = apiModule
-                   ? (AddPackageDependencyFn)GetProcAddress(apiModule, "AddPackageDependency")
-                   : nullptr;
+    auto add = apiModule ? (AddPackageDependencyFn)GetProcAddress(
+                               apiModule, "AddPackageDependency")
+                         : nullptr;
     auto getPath = kernel32 ? (GetPackagePathByFullNameFn)GetProcAddress(
                                   kernel32, "GetPackagePathByFullName")
                             : nullptr;
@@ -1511,8 +1993,8 @@ static bool FindPackagedRuntime(const RuntimeChannel* channel, RuntimeInfo* out)
     }
 
     PWSTR dependencyId = nullptr;
-    LONG status = tryCreate(nullptr, channel->packageFamily, 0, 0, 0, nullptr, 0,
-                            &dependencyId);
+    LONG status = tryCreate(nullptr, channel->packageFamily, 0, 0, 0, nullptr,
+                            0, &dependencyId);
     if (status != ERROR_SUCCESS || !dependencyId) {
         return false;
     }
@@ -1544,7 +2026,8 @@ static bool FindPackagedRuntime(const RuntimeChannel* channel, RuntimeInfo* out)
                              L"%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll",
                              packagePath, ArchFolder());
     free(packagePath);
-    if (written < 0 || GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES ||
+    if (written < 0 ||
+        GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES ||
         !FileVersion(out->clientDll, out->version,
                      (int)(sizeof(out->version) / sizeof(out->version[0]))) ||
         !IsCompatibleInstalledRuntime(out->version)) {
@@ -1557,7 +2040,8 @@ static bool FindPackagedRuntime(const RuntimeChannel* channel, RuntimeInfo* out)
     return true;
 }
 
-static bool FindInstalledRuntime(const RuntimeChannel* channel, RuntimeInfo* out) {
+static bool FindInstalledRuntime(const RuntimeChannel* channel,
+                                 RuntimeInfo* out) {
     struct Place {
         HKEY root;
         DWORD flags;
@@ -1571,8 +2055,8 @@ static bool FindInstalledRuntime(const RuntimeChannel* channel, RuntimeInfo* out
     wcscat_s(key, channel->id);
     for (int i = 0; i < (int)(sizeof(places) / sizeof(places[0])); i++) {
         WCHAR folder[MAX_PATH * 2];
-        if (!RegReadStr(places[i].root, key, L"EBWebView", places[i].flags, folder,
-                         (DWORD)(sizeof(folder) / sizeof(folder[0])))) {
+        if (!RegReadStr(places[i].root, key, L"EBWebView", places[i].flags,
+                        folder, (DWORD)(sizeof(folder) / sizeof(folder[0])))) {
             continue;
         }
         const WCHAR* version = wcsrchr(folder, L'\\');
@@ -1580,10 +2064,11 @@ static bool FindInstalledRuntime(const RuntimeChannel* channel, RuntimeInfo* out
         if (!IsCompatibleInstalledRuntime(version)) {
             continue;
         }
-        int written = swprintf_s(out->clientDll,
-                                 L"%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll", folder,
-                                 ArchFolder());
-        if (written < 0 || GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
+        int written = swprintf_s(
+            out->clientDll, L"%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll",
+            folder, ArchFolder());
+        if (written < 0 ||
+            GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
             continue;
         }
         wcscpy_s(out->version, version);
@@ -1598,18 +2083,19 @@ static bool FindInstalledRuntime(const RuntimeChannel* channel, RuntimeInfo* out
     // Clients rather than the final EBWebView directory under ClientState.
     WCHAR location[MAX_PATH * 2];
     WCHAR version[64];
-    if (!RuntimeVersionAndLocation(channel->id, version,
-                                    (DWORD)(sizeof(version) / sizeof(version[0])), location,
-                                    (DWORD)(sizeof(location) / sizeof(location[0])))) {
+    if (!RuntimeVersionAndLocation(
+            channel->id, version, (DWORD)(sizeof(version) / sizeof(version[0])),
+            location, (DWORD)(sizeof(location) / sizeof(location[0])))) {
         return FindPackagedRuntime(channel, out);
     }
     if (!IsCompatibleInstalledRuntime(version)) {
         return FindPackagedRuntime(channel, out);
     }
-    int written = swprintf_s(out->clientDll,
-                             L"%s\\%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll", location,
-                             version, ArchFolder());
-    if (written < 0 || GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
+    int written = swprintf_s(
+        out->clientDll, L"%s\\%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll",
+        location, version, ArchFolder());
+    if (written < 0 ||
+        GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
         return FindPackagedRuntime(channel, out);
     }
     wcscpy_s(out->version, version);
@@ -1656,8 +2142,8 @@ static bool LeastStableFromEnvironment(bool fallback) {
         fallback = wcstol(legacy, nullptr, 10) == 1;
         free(legacy);
     }
-    WCHAR* value =
-        LoaderOverrideDup(L"WEBVIEW2_CHANNEL_SEARCH_KIND", L"ChannelSearchKind");
+    WCHAR* value = LoaderOverrideDup(L"WEBVIEW2_CHANNEL_SEARCH_KIND",
+                                     L"ChannelSearchKind");
     if (value) {
         fallback = wcstol(value, nullptr, 10) == 1;
         free(value);
@@ -1671,10 +2157,10 @@ static bool FindRuntime(RuntimeInfo* out, IUnknown* options = nullptr,
     out->clientDll[0] = 0;
     out->runtimeType = 0;
 
-    WCHAR* folder = useOverrides
-                        ? LoaderOverrideDup(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
-                                            L"BrowserExecutableFolder")
-                        : nullptr;
+    WCHAR* folder =
+        useOverrides ? LoaderOverrideDup(L"WEBVIEW2_BROWSER_EXECUTABLE_FOLDER",
+                                         L"BrowserExecutableFolder")
+                     : nullptr;
     if (folder && folder[0] != 0) {
         // A fixed-version drop: the folder is already the versioned one.
         WCHAR* resolvedFolder = FixedRuntimeFolderDup(folder);
@@ -1683,9 +2169,11 @@ static bool FindRuntime(RuntimeInfo* out, IUnknown* options = nullptr,
             return false;
         }
         out->runtimeType = 1;
-        int written = swprintf_s(out->clientDll, L"%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll",
-                                 resolvedFolder, ArchFolder());
-        if (written < 0 || GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
+        int written = swprintf_s(
+            out->clientDll, L"%s\\EBWebView\\%s\\EmbeddedBrowserWebView.dll",
+            resolvedFolder, ArchFolder());
+        if (written < 0 ||
+            GetFileAttributesW(out->clientDll) == INVALID_FILE_ATTRIBUTES) {
             free(resolvedFolder);
             return false;
         }
@@ -1700,8 +2188,8 @@ static bool FindRuntime(RuntimeInfo* out, IUnknown* options = nullptr,
     bool leastStable = false;
     ICoreWebView2EnvironmentOptions7* options7 = nullptr;
     if (options &&
-        SUCCEEDED(options->QueryInterface(__uuidof(ICoreWebView2EnvironmentOptions7),
-                                          (void**)&options7))) {
+        SUCCEEDED(options->QueryInterface(
+            __uuidof(ICoreWebView2EnvironmentOptions7), (void**)&options7))) {
         int searchKind = 0;
         if (SUCCEEDED(options7->get_ChannelSearchKind(&searchKind))) {
             leastStable = searchKind == 1;
@@ -1729,10 +2217,12 @@ static bool FindRuntime(RuntimeInfo* out, IUnknown* options = nullptr,
 }
 
 // The export the SDK's own loader calls, with the arguments it passes:
-// `CreateWebViewEnvironmentWithClientDll(dll, true, runtimeType, userDataFolder,
-// options, handler)` forwards everything but the dll path.
-typedef HRESULT(STDMETHODCALLTYPE* CreateWebViewEnvironmentWithOptionsInternalFn)(
-    BOOL fromClientDll, int runtimeType, PCWSTR userDataFolder, IUnknown* environmentOptions,
+// `CreateWebViewEnvironmentWithClientDll(dll, true, runtimeType,
+// userDataFolder, options, handler)` forwards everything but the dll path.
+typedef HRESULT(
+    STDMETHODCALLTYPE* CreateWebViewEnvironmentWithOptionsInternalFn)(
+    BOOL fromClientDll, int runtimeType, PCWSTR userDataFolder,
+    IUnknown* environmentOptions,
     ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler* handler);
 
 // WebView2Loader retries one failed asynchronous environment creation before
@@ -1745,7 +2235,8 @@ struct EnvironmentCreatedRetryHandler
     int runtimeType = 0;
     WCHAR* userDataFolder = nullptr;
     IUnknown* options = nullptr;
-    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler* original = nullptr;
+    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler* original =
+        nullptr;
     int retries = 1;
 
     ~EnvironmentCreatedRetryHandler() {
@@ -1763,15 +2254,20 @@ struct EnvironmentCreatedRetryHandler
             return E_POINTER;
         }
         if (riid == IID_IUnknown ||
-            riid == __uuidof(ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler)) {
-            *ppv = (ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*)this;
+            riid ==
+                __uuidof(
+                    ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler)) {
+            *ppv =
+                (ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler*)this;
             AddRef();
             return S_OK;
         }
         *ppv = nullptr;
         return E_NOINTERFACE;
     }
-    ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)InterlockedIncrement(&refs); }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
     ULONG STDMETHODCALLTYPE Release() override {
         LONG left = InterlockedDecrement(&refs);
         if (left == 0) {
@@ -1779,8 +2275,8 @@ struct EnvironmentCreatedRetryHandler
         }
         return (ULONG)left;
     }
-    HRESULT STDMETHODCALLTYPE Invoke(HRESULT result,
-                                     ICoreWebView2Environment* environment) override {
+    HRESULT STDMETHODCALLTYPE
+    Invoke(HRESULT result, ICoreWebView2Environment* environment) override {
         if (SUCCEEDED(result) || retries <= 0) {
             return original->Invoke(result, environment);
         }
@@ -1816,7 +2312,8 @@ static HRESULT CreateEnvironmentWithOptions(
     }
     WCHAR defaultFolder[MAX_PATH * 2];
     if (!userDataFolder || userDataFolder[0] == 0) {
-        DefaultUserDataFolder(defaultFolder, (int)(sizeof(defaultFolder) / sizeof(WCHAR)));
+        DefaultUserDataFolder(defaultFolder,
+                              (int)(sizeof(defaultFolder) / sizeof(WCHAR)));
         userDataFolder = defaultFolder;
     }
     RuntimeInfo rt;
@@ -1837,12 +2334,15 @@ static HRESULT CreateEnvironmentWithOptions(
     auto create = (CreateWebViewEnvironmentWithOptionsInternalFn)GetProcAddress(
         client, "CreateWebViewEnvironmentWithOptionsInternal");
     if (!create) {
-        logf("wry: the WebView2 client dll has no CreateWebViewEnvironmentWithOptionsInternal\n");
+        logf(
+            "wry: the WebView2 client dll has no "
+            "CreateWebViewEnvironmentWithOptionsInternal\n");
         FreeLibrary(client);
         free(userDataOverride);
         return HRESULT_FROM_WIN32(ERROR_PROC_NOT_FOUND);
     }
-    EnvironmentCreatedRetryHandler* retry = new EnvironmentCreatedRetryHandler();
+    EnvironmentCreatedRetryHandler* retry =
+        new EnvironmentCreatedRetryHandler();
     retry->create = create;
     retry->runtimeType = rt.runtimeType;
     retry->userDataFolder = WStrDup(userDataFolder);
@@ -1853,12 +2353,14 @@ static HRESULT CreateEnvironmentWithOptions(
     }
     handler->AddRef();
     HRESULT hr = retry->userDataFolder
-                     ? create(TRUE, rt.runtimeType, retry->userDataFolder, options, retry)
+                     ? create(TRUE, rt.runtimeType, retry->userDataFolder,
+                              options, retry)
                      : E_OUTOFMEMORY;
     // This is separate from the completion handler's asynchronous retry:
     // WebView2LoaderStatic also repeats one synchronously rejected call.
     if (FAILED(hr) && retry->userDataFolder) {
-        hr = create(TRUE, rt.runtimeType, retry->userDataFolder, options, retry);
+        hr =
+            create(TRUE, rt.runtimeType, retry->userDataFolder, options, retry);
     }
     retry->Release();
     // WebView2LoaderStatic releases its loader reference when this export is
@@ -1910,7 +2412,9 @@ struct ComObj : I {
         *ppv = nullptr;
         return E_NOINTERFACE;
     }
-    ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)InterlockedIncrement(&refs); }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
     ULONG STDMETHODCALLTYPE Release() override {
         LONG left = InterlockedDecrement(&refs);
         if (left == 0) {
@@ -1935,7 +2439,9 @@ struct Handler2 : ComObj<I> {
         }
     }
 
-    HRESULT STDMETHODCALLTYPE Invoke(A1 a1, A2 a2) override { return fn(ctx, a1, a2); }
+    HRESULT STDMETHODCALLTYPE Invoke(A1 a1, A2 a2) override {
+        return fn(ctx, a1, a2);
+    }
 };
 
 template <typename I, typename A1>
@@ -1995,9 +2501,11 @@ struct DownloadStateHandler : ComObj<ICoreWebView2StateChangedEventHandler> {
         }
     }
 
-    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2DownloadOperation* operation, IUnknown*) override {
+    HRESULT STDMETHODCALLTYPE Invoke(ICoreWebView2DownloadOperation* operation,
+                                     IUnknown*) override {
         if (!operation || !callback ||
-            InterlockedCompareExchange(&callback->alive, 0, 0) == 0 || !callback->fn) {
+            InterlockedCompareExchange(&callback->alive, 0, 0) == 0 ||
+            !callback->fn) {
             return S_OK;
         }
         COREWEBVIEW2_DOWNLOAD_STATE state = 0;
@@ -2116,7 +2624,8 @@ struct DragDropTarget : ComObj<IDropTarget> {
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL point, DWORD* effect) override {
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL point,
+                                       DWORD* effect) override {
         if (enterIsValid) {
             Emit(DragDropKind::Over, nullptr, point);
         }
@@ -2133,7 +2642,8 @@ struct DragDropTarget : ComObj<IDropTarget> {
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL point, DWORD*) override {
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject* data, DWORD, POINTL point,
+                                   DWORD*) override {
         if (enterIsValid) {
             Vec<Str> paths;
             HDROP hdrop = nullptr;
@@ -2170,13 +2680,15 @@ struct DragDropEnumCtx {
 static BOOL CALLBACK InjectDragDropTarget(HWND hwnd, LPARAM param) {
     // EnumWindows transports the callback context through LPARAM, which is
     // the Win32-defined integer-sized pointer slot.
-    DragDropEnumCtx* ctx = reinterpret_cast<DragDropEnumCtx*>(param); // NOLINT(performance-no-int-to-ptr)
+    DragDropEnumCtx* ctx = reinterpret_cast<DragDropEnumCtx*>(
+        param); // NOLINT(performance-no-int-to-ptr)
     DragDropTarget* target = new DragDropTarget();
     target->hwnd = hwnd;
     target->ctx = ctx->handlerCtx;
     target->fn = ctx->handler;
     HRESULT revoked = RevokeDragDrop(hwnd);
-    if (revoked != DRAGDROP_E_INVALIDHWND && SUCCEEDED(RegisterDragDrop(hwnd, target))) {
+    if (revoked != DRAGDROP_E_INVALIDHWND &&
+        SUCCEEDED(RegisterDragDrop(hwnd, target))) {
         VecAppend(ctx->controller->targets, target);
     } else {
         target->Release();
@@ -2232,8 +2744,9 @@ static bool DispatchToWindow(HWND hwnd, Func0 task) {
     return true;
 }
 
-static LRESULT CALLBACK MainThreadDispatcherProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp,
-                                                 UINT_PTR, DWORD_PTR) {
+static LRESULT CALLBACK MainThreadDispatcherProc(HWND hwnd, UINT msg, WPARAM wp,
+                                                 LPARAM lp, UINT_PTR,
+                                                 DWORD_PTR) {
     if (msg == ExecMsgId()) {
         Func0* task = (Func0*)wp;
         task->Call();
@@ -2286,7 +2799,8 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         if (!ppv) {
             return E_POINTER;
         }
-        if (riid == IID_IUnknown || riid == __uuidof(ICoreWebView2EnvironmentOptions)) {
+        if (riid == IID_IUnknown ||
+            riid == __uuidof(ICoreWebView2EnvironmentOptions)) {
             *ppv = (ICoreWebView2EnvironmentOptions*)this;
         } else if (riid == __uuidof(ICoreWebView2EnvironmentOptions2)) {
             *ppv = (ICoreWebView2EnvironmentOptions2*)this;
@@ -2309,7 +2823,9 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         AddRef();
         return S_OK;
     }
-    ULONG STDMETHODCALLTYPE AddRef() override { return (ULONG)InterlockedIncrement(&refs); }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
     ULONG STDMETHODCALLTYPE Release() override {
         LONG left = InterlockedDecrement(&refs);
         if (left == 0) {
@@ -2318,14 +2834,16 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         return (ULONG)left;
     }
 
-    HRESULT STDMETHODCALLTYPE get_AdditionalBrowserArguments(LPWSTR* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_AdditionalBrowserArguments(LPWSTR* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = CoTaskMemDupW(additionalBrowserArguments);
         return *value ? S_OK : E_OUTOFMEMORY;
     }
-    HRESULT STDMETHODCALLTYPE put_AdditionalBrowserArguments(LPCWSTR value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_AdditionalBrowserArguments(LPCWSTR value) override {
         free(additionalBrowserArguments);
         additionalBrowserArguments = WStrDup(value);
         return S_OK;
@@ -2342,14 +2860,16 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         language = WStrDup(value);
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE get_TargetCompatibleBrowserVersion(LPWSTR* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_TargetCompatibleBrowserVersion(LPWSTR* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = CoTaskMemDupW(targetCompatibleBrowserVersion);
         return *value ? S_OK : E_OUTOFMEMORY;
     }
-    HRESULT STDMETHODCALLTYPE put_TargetCompatibleBrowserVersion(LPCWSTR value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_TargetCompatibleBrowserVersion(LPCWSTR value) override {
         WCHAR* copy = WStrDup(value ? value : L"");
         if (!copy) {
             return E_OUTOFMEMORY;
@@ -2358,44 +2878,50 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         targetCompatibleBrowserVersion = copy;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE get_AllowSingleSignOnUsingOSPrimaryAccount(BOOL* allow) override {
+    HRESULT STDMETHODCALLTYPE
+    get_AllowSingleSignOnUsingOSPrimaryAccount(BOOL* allow) override {
         if (!allow) {
             return E_POINTER;
         }
         *allow = allowSingleSignOn;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_AllowSingleSignOnUsingOSPrimaryAccount(BOOL allow) override {
+    HRESULT STDMETHODCALLTYPE
+    put_AllowSingleSignOnUsingOSPrimaryAccount(BOOL allow) override {
         allowSingleSignOn = allow;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_ExclusiveUserDataFolderAccess(BOOL* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_ExclusiveUserDataFolderAccess(BOOL* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = exclusiveUserDataFolderAccess;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_ExclusiveUserDataFolderAccess(BOOL value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_ExclusiveUserDataFolderAccess(BOOL value) override {
         exclusiveUserDataFolderAccess = value;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_IsCustomCrashReportingEnabled(BOOL* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_IsCustomCrashReportingEnabled(BOOL* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = customCrashReportingEnabled;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_IsCustomCrashReportingEnabled(BOOL value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_IsCustomCrashReportingEnabled(BOOL value) override {
         customCrashReportingEnabled = value;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE GetCustomSchemeRegistrations(UINT32* count,
-                                                            IUnknown*** values) override {
+    HRESULT STDMETHODCALLTYPE
+    GetCustomSchemeRegistrations(UINT32* count, IUnknown*** values) override {
         if (!count || !values) {
             return E_POINTER;
         }
@@ -2404,7 +2930,8 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         if (len(customSchemeRegistrations) == 0) {
             return S_OK;
         }
-        IUnknown** copy = (IUnknown**)CoTaskMemAlloc(sizeof(IUnknown*) * (size_t)*count);
+        IUnknown** copy =
+            (IUnknown**)CoTaskMemAlloc(sizeof(IUnknown*) * (size_t)*count);
         if (!copy) {
             return E_OUTOFMEMORY;
         }
@@ -2415,8 +2942,8 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         *values = copy;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE SetCustomSchemeRegistrations(UINT32 count,
-                                                            IUnknown** values) override {
+    HRESULT STDMETHODCALLTYPE
+    SetCustomSchemeRegistrations(UINT32 count, IUnknown** values) override {
         if (count > 0 && !values) {
             return E_POINTER;
         }
@@ -2439,61 +2966,71 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_EnableTrackingPrevention(BOOL* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_EnableTrackingPrevention(BOOL* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = trackingPreventionEnabled;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_EnableTrackingPrevention(BOOL value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_EnableTrackingPrevention(BOOL value) override {
         trackingPreventionEnabled = value;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_AreBrowserExtensionsEnabled(BOOL* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_AreBrowserExtensionsEnabled(BOOL* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = browserExtensionsEnabled;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_AreBrowserExtensionsEnabled(BOOL value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_AreBrowserExtensionsEnabled(BOOL value) override {
         browserExtensionsEnabled = value;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = channelSearchKind;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_ChannelSearchKind(COREWEBVIEW2_CHANNEL_SEARCH_KIND value) override {
         channelSearchKind = value;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE get_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = releaseChannels;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_ReleaseChannels(COREWEBVIEW2_RELEASE_CHANNELS value) override {
         releaseChannels = value;
         return S_OK;
     }
 
-    HRESULT STDMETHODCALLTYPE get_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE* value) override {
+    HRESULT STDMETHODCALLTYPE
+    get_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE* value) override {
         if (!value) {
             return E_POINTER;
         }
         *value = scrollBarStyle;
         return S_OK;
     }
-    HRESULT STDMETHODCALLTYPE put_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE value) override {
+    HRESULT STDMETHODCALLTYPE
+    put_ScrollBarStyle(COREWEBVIEW2_SCROLLBAR_STYLE value) override {
         scrollBarStyle = value;
         return S_OK;
     }
@@ -2502,15 +3039,16 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
 // ─── the webview ─────────────────────────────────────────────────────────
 
 struct ProtocolCopy {
-    Str name;  // heap
+    Str name; // heap
     void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request, RequestResponder* responder);
+    void (*handler)(void* ctx, Str id, const Request* request,
+                    RequestResponder* responder);
 };
 
 struct WebViewEventState;
 
 struct WebView {
-    Str id = {};  // heap
+    Str id = {}; // heap
     HWND parent = nullptr;
     HWND hwnd = nullptr;
     bool isChild = false;
@@ -2526,15 +3064,16 @@ struct WebView {
     void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
     bool (*navigationHandler)(void* ctx, Str url) = nullptr;
     void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event, Str url) = nullptr;
+    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
+                              Str url) = nullptr;
     DownloadStartedHandler downloadStartedHandler = nullptr;
     DownloadCompletedHandler downloadCompletedHandler = nullptr;
     DownloadCallbackState* downloadCallbacks = nullptr;
     DragDropController* dragDropController = nullptr;
     bool oleInitialized = false;
-    NewWindowResponse (*newWindowReqHandler)(void* ctx, Str url,
-                                             const NewWindowFeatures* features,
-                                             WebView** createdWebView) = nullptr;
+    NewWindowResponse (*newWindowReqHandler)(
+        void* ctx, Str url, const NewWindowFeatures* features,
+        WebView** createdWebView) = nullptr;
 
     Vec<ProtocolCopy> protocols;
     // "http" or "https", the scheme custom protocols are tunnelled over.
@@ -2593,7 +3132,8 @@ struct RequestResponder {
 
 static HRESULT SetThemeInner(ICoreWebView2* webview, Theme theme) {
     ICoreWebView2_13* wv13 = nullptr;
-    HRESULT hr = webview->QueryInterface(__uuidof(ICoreWebView2_13), (void**)&wv13);
+    HRESULT hr =
+        webview->QueryInterface(__uuidof(ICoreWebView2_13), (void**)&wv13);
     if (FAILED(hr)) {
         return hr;
     }
@@ -2623,9 +3163,11 @@ static bool SetTheme(ICoreWebView2* webview, Theme theme) {
 // mod.rs forces the alpha to 255 on anything but a fully transparent colour,
 // because WebView2 has no translucent background. The Windows 7 half of that
 // test is gone with the rest of the Windows 7 branches.
-static bool SetBackgroundColor(ICoreWebView2Controller* controller, Rgba color) {
+static bool SetBackgroundColor(ICoreWebView2Controller* controller,
+                               Rgba color) {
     ICoreWebView2Controller2* c2 = nullptr;
-    if (FAILED(controller->QueryInterface(__uuidof(ICoreWebView2Controller2), (void**)&c2))) {
+    if (FAILED(controller->QueryInterface(__uuidof(ICoreWebView2Controller2),
+                                          (void**)&c2))) {
         return false;
     }
     COREWEBVIEW2_COLOR c;
@@ -2638,57 +3180,67 @@ static bool SetBackgroundColor(ICoreWebView2Controller* controller, Rgba color) 
     return ok;
 }
 
-static bool SetWebViewSettings(ICoreWebView2* webview, const WebViewAttributes* attrs) {
+static bool SetWebViewSettings(ICoreWebView2* webview,
+                               const WebViewAttributes* attrs) {
     ICoreWebView2Settings* settings = nullptr;
     if (FAILED(webview->get_Settings(&settings)) || !settings) {
         return false;
     }
     HRESULT hr = settings->put_IsStatusBarEnabled(FALSE);
     if (SUCCEEDED(hr)) {
-        hr = settings->put_AreDefaultContextMenusEnabled(attrs->defaultContextMenus ? TRUE : FALSE);
+        hr = settings->put_AreDefaultContextMenusEnabled(
+            attrs->defaultContextMenus ? TRUE : FALSE);
     }
     if (SUCCEEDED(hr)) {
-        hr = settings->put_IsZoomControlEnabled(attrs->zoomHotkeysEnabled ? TRUE : FALSE);
+        hr = settings->put_IsZoomControlEnabled(
+            attrs->zoomHotkeysEnabled ? TRUE : FALSE);
     }
     if (SUCCEEDED(hr)) {
         hr = settings->put_AreDevToolsEnabled(attrs->devtools ? TRUE : FALSE);
     }
     if (SUCCEEDED(hr)) {
-        hr = settings->put_IsScriptEnabled(attrs->javascriptDisabled ? FALSE : TRUE);
+        hr = settings->put_IsScriptEnabled(attrs->javascriptDisabled ? FALSE
+                                                                     : TRUE);
     }
 
     if (SUCCEEDED(hr) && attrs->userAgent.s) {
         ICoreWebView2Settings2* s2 = nullptr;
-        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings2), (void**)&s2))) {
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings2),
+                                               (void**)&s2))) {
             hr = s2->put_UserAgent(ToCWstrTemp(attrs->userAgent));
             Rel(&s2);
         }
     }
     if (SUCCEEDED(hr) && !attrs->browserAcceleratorKeys) {
         ICoreWebView2Settings3* s3 = nullptr;
-        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings3), (void**)&s3))) {
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings3),
+                                               (void**)&s3))) {
             hr = s3->put_AreBrowserAcceleratorKeysEnabled(FALSE);
             Rel(&s3);
         }
     }
     if (SUCCEEDED(hr)) {
         ICoreWebView2Settings5* s5 = nullptr;
-        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings5), (void**)&s5))) {
-            hr = s5->put_IsPinchZoomEnabled(attrs->zoomHotkeysEnabled ? TRUE : FALSE);
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings5),
+                                               (void**)&s5))) {
+            hr = s5->put_IsPinchZoomEnabled(attrs->zoomHotkeysEnabled ? TRUE
+                                                                      : FALSE);
             Rel(&s5);
         }
     }
     if (SUCCEEDED(hr)) {
         ICoreWebView2Settings6* s6 = nullptr;
-        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings6), (void**)&s6))) {
-            hr = s6->put_IsSwipeNavigationEnabled(attrs->backForwardNavigationGestures ? TRUE
-                                                                                       : FALSE);
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings6),
+                                               (void**)&s6))) {
+            hr = s6->put_IsSwipeNavigationEnabled(
+                attrs->backForwardNavigationGestures ? TRUE : FALSE);
             Rel(&s6);
         }
     }
     if (SUCCEEDED(hr)) {
         ICoreWebView2Settings9* s9 = nullptr;
-        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings9), (void**)&s9))) {
+        if (SUCCEEDED(settings->QueryInterface(__uuidof(ICoreWebView2Settings9),
+                                               (void**)&s9))) {
             hr = s9->put_IsNonClientRegionSupportEnabled(TRUE);
             Rel(&s9);
         }
@@ -2719,7 +3271,8 @@ static bool SetBoundsInner(WebView* wv, int width, int height, int x, int y) {
         return false;
     }
     return SetWindowPos(wv->hwnd, nullptr, x, y, width, height,
-                        SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER) != 0;
+                        SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER) !=
+           0;
 }
 
 static bool ResizeToParent(WebView* wv) {
@@ -2733,7 +3286,8 @@ static bool ResizeToParent(WebView* wv) {
 
 // ─── the parent subclass ─────────────────────────────────────────────────
 
-static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR,
+static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wp,
+                                           LPARAM lp, UINT_PTR,
                                            DWORD_PTR refData) {
     ICoreWebView2Controller* controller = (ICoreWebView2Controller*)refData;
     switch (msg) {
@@ -2749,9 +3303,11 @@ static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
                     r.bottom = h;
                     controller->put_Bounds(r);
                     HWND child = nullptr;
-                    if (SUCCEEDED(controller->get_ParentWindow(&child)) && child) {
-                        SetWindowPos(child, nullptr, 0, 0, w, h,
-                                     SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER);
+                    if (SUCCEEDED(controller->get_ParentWindow(&child)) &&
+                        child) {
+                        SetWindowPos(
+                            child, nullptr, 0, 0, w, h,
+                            SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOZORDER);
                     }
                 }
             }
@@ -2777,7 +3333,8 @@ static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
                     controller->Release();
                     // Null the reference data so a second WM_DESTROY (or the
                     // message the destructor sends) cannot release it twice.
-                    SetWindowSubclass(hwnd, ParentSubclassProc, kParentSubclassId, 0);
+                    SetWindowSubclass(hwnd, ParentSubclassProc,
+                                      kParentSubclassId, 0);
                 }
             }
             break;
@@ -2786,9 +3343,11 @@ static LRESULT CALLBACK ParentSubclassProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
     return DefSubclassProc(hwnd, msg, wp, lp);
 }
 
-static void AttachParentSubclass(HWND parent, ICoreWebView2Controller* controller) {
+static void AttachParentSubclass(HWND parent,
+                                 ICoreWebView2Controller* controller) {
     controller->AddRef();
-    SetWindowSubclass(parent, ParentSubclassProc, kParentSubclassId, (DWORD_PTR)controller);
+    SetWindowSubclass(parent, ParentSubclassProc, kParentSubclassId,
+                      (DWORD_PTR)controller);
 }
 
 static void DetachParentSubclass(HWND parent) {
@@ -2798,7 +3357,8 @@ static void DetachParentSubclass(HWND parent) {
 
 // ─── the container window ────────────────────────────────────────────────
 
-static LRESULT CALLBACK ContainerWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+static LRESULT CALLBACK ContainerWndProc(HWND hwnd, UINT msg, WPARAM wp,
+                                         LPARAM lp) {
     if (msg == WM_SETFOCUS) {
         // The WebView2 document window is this window's first child; without
         // this a click on the container leaves the page unfocused.
@@ -2810,7 +3370,8 @@ static LRESULT CALLBACK ContainerWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
-static HWND CreateContainerHwnd(HWND parent, const WebViewAttributes* attrs, bool isChild) {
+static HWND CreateContainerHwnd(HWND parent, const WebViewAttributes* attrs,
+                                bool isChild) {
     static const WCHAR* kClassName = L"WRY_WEBVIEW";
     static bool registered = false;
     HINSTANCE inst = GetModuleHandleW(nullptr);
@@ -2838,10 +3399,14 @@ static HWND CreateContainerHwnd(HWND parent, const WebViewAttributes* attrs, boo
     int h = 0;
     if (isChild) {
         if (attrs->hasBounds) {
-            x = ToPhysical(attrs->bounds.position.x, attrs->bounds.position.logical, scale);
-            y = ToPhysical(attrs->bounds.position.y, attrs->bounds.position.logical, scale);
-            w = ToPhysical(attrs->bounds.size.width, attrs->bounds.size.logical, scale);
-            h = ToPhysical(attrs->bounds.size.height, attrs->bounds.size.logical, scale);
+            x = ToPhysical(attrs->bounds.position.x,
+                           attrs->bounds.position.logical, scale);
+            y = ToPhysical(attrs->bounds.position.y,
+                           attrs->bounds.position.logical, scale);
+            w = ToPhysical(attrs->bounds.size.width, attrs->bounds.size.logical,
+                           scale);
+            h = ToPhysical(attrs->bounds.size.height,
+                           attrs->bounds.size.logical, scale);
         } else {
             x = CW_USEDEFAULT;
             y = CW_USEDEFAULT;
@@ -2852,8 +3417,8 @@ static HWND CreateContainerHwnd(HWND parent, const WebViewAttributes* attrs, boo
         return nullptr;
     }
 
-    HWND hwnd = CreateWindowExW(0, kClassName, nullptr, style, x, y, w, h, parent, nullptr, inst,
-                                nullptr);
+    HWND hwnd = CreateWindowExW(0, kClassName, nullptr, style, x, y, w, h,
+                                parent, nullptr, inst, nullptr);
     if (!hwnd) {
         logf("wry: CreateWindowEx for the webview container failed, error %d\n",
              (int)GetLastError());
@@ -2862,7 +3427,8 @@ static HWND CreateContainerHwnd(HWND parent, const WebViewAttributes* attrs, boo
     if (!SetWindowPos(hwnd, HWND_TOP, 0, 0, 0, 0,
                       SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE | SWP_NOMOVE |
                           SWP_NOOWNERZORDER | SWP_NOSIZE)) {
-        logf("wry: positioning the webview container failed, error %d\n", (int)GetLastError());
+        logf("wry: positioning the webview container failed, error %d\n",
+             (int)GetLastError());
         DestroyWindow(hwnd);
         return nullptr;
     }
@@ -2897,33 +3463,39 @@ struct ControllerWait {
     }
 };
 
-static ICoreWebView2Environment* CreateEnvironment(const WebViewAttributes* attrs) {
+static ICoreWebView2Environment* CreateEnvironment(
+    const WebViewAttributes* attrs) {
     EnvironmentOptions* options = new EnvironmentOptions();
 
     // The default arguments mod.rs passes: no mini menu (wry#535), no smart
     // screen (tauri#1345), and the autoplay and proxy switches when those
     // attributes ask for them.
     if (attrs->additionalBrowserArgs.s) {
-        options->additionalBrowserArguments = WStrDupUtf8(attrs->additionalBrowserArgs);
+        options->additionalBrowserArguments =
+            WStrDupUtf8(attrs->additionalBrowserArgs);
     } else {
         base::StrBuilder args;
-        args.Append(StrL("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
+        args.Append(StrL(
+            "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection"));
         if (attrs->autoplay) {
             args.Append(StrL(" --autoplay-policy=no-user-gesture-required"));
         }
         if (attrs->proxyConfig.kind != ProxyKind::None) {
-            const char* scheme =
-                attrs->proxyConfig.kind == ProxyKind::Http ? "http://" : "socks5://";
+            const char* scheme = attrs->proxyConfig.kind == ProxyKind::Http
+                                     ? "http://"
+                                     : "socks5://";
             args.Append(base::FormatTemp(" --proxy-server=%s%s:%s", Str(scheme),
-                                         attrs->proxyConfig.host, attrs->proxyConfig.port));
+                                         attrs->proxyConfig.host,
+                                         attrs->proxyConfig.port));
         }
         options->additionalBrowserArguments = WStrDupUtf8(args.TakeStr());
     }
 
     // WebView2Loader appends this override to the options object's own
     // arguments. Preserve an explicit empty builder value while doing so.
-    WCHAR* browserArgumentsOverride = LoaderOverrideDup(
-        L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", L"AdditionalBrowserArguments");
+    WCHAR* browserArgumentsOverride =
+        LoaderOverrideDup(L"WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+                          L"AdditionalBrowserArguments");
     if (browserArgumentsOverride) {
         size_t ownLen = options->additionalBrowserArguments
                             ? wcslen(options->additionalBrowserArguments)
@@ -2947,43 +3519,53 @@ static ICoreWebView2Environment* CreateEnvironment(const WebViewAttributes* attr
         options->additionalBrowserArguments = combined;
     }
 
-    options->browserExtensionsEnabled = attrs->browserExtensionsEnabled ? TRUE : FALSE;
-    options->scrollBarStyle = attrs->scrollBarStyle == ScrollBarStyle::FluentOverlay
-                                  ? kScrollBarStyleFluentOverlay
-                                  : kScrollBarStyleDefault;
+    options->browserExtensionsEnabled =
+        attrs->browserExtensionsEnabled ? TRUE : FALSE;
+    options->scrollBarStyle =
+        attrs->scrollBarStyle == ScrollBarStyle::FluentOverlay
+            ? kScrollBarStyleFluentOverlay
+            : kScrollBarStyleDefault;
 
     // The user's own UI language, the way mod.rs reads it.
     WCHAR lang[LOCALE_NAME_MAX_LENGTH];
     lang[0] = 0;
     LANGID lcid = GetUserDefaultUILanguage();
-    if (LCIDToLocaleName(lcid, lang, LOCALE_NAME_MAX_LENGTH, LOCALE_ALLOW_NEUTRAL_NAMES) > 0) {
+    if (LCIDToLocaleName(lcid, lang, LOCALE_NAME_MAX_LENGTH,
+                         LOCALE_ALLOW_NEUTRAL_NAMES) > 0) {
         options->language = WStrDup(lang);
     }
 
     EnvWait* wait = new EnvWait();
-    auto* handler =
-        MkHandler<Handler2<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler, HRESULT,
-                           ICoreWebView2Environment*>>(
-            wait, [](void* ctx, HRESULT code, ICoreWebView2Environment* env) -> HRESULT {
-                EnvWait* w = (EnvWait*)ctx;
-                if (SUCCEEDED(code) && env) {
-                    env->AddRef();
-                    w->env = env;
-                } else {
-                    logf("wry: creating the WebView2 environment failed, hr 0x%x\n", (int)code);
-                }
-                w->done = true;
-                return S_OK;
-            }, ReleaseWaitState<EnvWait>);
+    auto* handler = MkHandler<
+        Handler2<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
+                 HRESULT, ICoreWebView2Environment*>>(
+        wait,
+        [](void* ctx, HRESULT code, ICoreWebView2Environment* env) -> HRESULT {
+            EnvWait* w = (EnvWait*)ctx;
+            if (SUCCEEDED(code) && env) {
+                env->AddRef();
+                w->env = env;
+            } else {
+                logf("wry: creating the WebView2 environment failed, hr 0x%x\n",
+                     (int)code);
+            }
+            w->done = true;
+            return S_OK;
+        },
+        ReleaseWaitState<EnvWait>);
 
-    PCWSTR dataDirectory = attrs->dataDirectory.s ? ToCWstrTemp(attrs->dataDirectory) : nullptr;
+    PCWSTR dataDirectory =
+        attrs->dataDirectory.s ? ToCWstrTemp(attrs->dataDirectory) : nullptr;
     // One of three IUnknown bases, so the cast has to name which.
-    IUnknown* optionsUnknown = static_cast<ICoreWebView2EnvironmentOptions*>(options);
-    HRESULT hr = CreateEnvironmentWithOptions(dataDirectory, optionsUnknown, handler);
+    IUnknown* optionsUnknown =
+        static_cast<ICoreWebView2EnvironmentOptions*>(options);
+    HRESULT hr =
+        CreateEnvironmentWithOptions(dataDirectory, optionsUnknown, handler);
     handler->Release();
     options->Release();
     if (FAILED(hr)) {
-        logf("wry: CreateCoreWebView2EnvironmentWithOptions failed, hr 0x%x\n", (int)hr);
+        logf("wry: CreateCoreWebView2EnvironmentWithOptions failed, hr 0x%x\n",
+             (int)hr);
         wait->Release();
         return nullptr;
     }
@@ -2997,27 +3579,34 @@ static ICoreWebView2Environment* CreateEnvironment(const WebViewAttributes* attr
     return result;
 }
 
-static ICoreWebView2Controller* CreateController(HWND hwnd, ICoreWebView2Environment* env,
-                                                 bool incognito, const Rgba* backgroundColor) {
+static ICoreWebView2Controller* CreateController(HWND hwnd,
+                                                 ICoreWebView2Environment* env,
+                                                 bool incognito,
+                                                 const Rgba* backgroundColor) {
     ControllerWait* wait = new ControllerWait();
-    auto* handler =
-        MkHandler<Handler2<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler, HRESULT,
-                           ICoreWebView2Controller*>>(
-            wait, [](void* ctx, HRESULT code, ICoreWebView2Controller* controller) -> HRESULT {
-                ControllerWait* w = (ControllerWait*)ctx;
-                if (SUCCEEDED(code) && controller) {
-                    controller->AddRef();
-                    w->controller = controller;
-                } else {
-                    logf("wry: creating the WebView2 controller failed, hr 0x%x\n", (int)code);
-                }
-                w->done = true;
-                return S_OK;
-            }, ReleaseWaitState<ControllerWait>);
+    auto* handler = MkHandler<
+        Handler2<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler,
+                 HRESULT, ICoreWebView2Controller*>>(
+        wait,
+        [](void* ctx, HRESULT code,
+           ICoreWebView2Controller* controller) -> HRESULT {
+            ControllerWait* w = (ControllerWait*)ctx;
+            if (SUCCEEDED(code) && controller) {
+                controller->AddRef();
+                w->controller = controller;
+            } else {
+                logf("wry: creating the WebView2 controller failed, hr 0x%x\n",
+                     (int)code);
+            }
+            w->done = true;
+            return S_OK;
+        },
+        ReleaseWaitState<ControllerWait>);
 
     HRESULT hr = E_FAIL;
     ICoreWebView2Environment10* env10 = nullptr;
-    if (SUCCEEDED(env->QueryInterface(__uuidof(ICoreWebView2Environment10), (void**)&env10))) {
+    if (SUCCEEDED(env->QueryInterface(__uuidof(ICoreWebView2Environment10),
+                                      (void**)&env10))) {
         ICoreWebView2ControllerOptions* opts = nullptr;
         hr = env10->CreateCoreWebView2ControllerOptions(&opts);
         if (SUCCEEDED(hr) && !opts) {
@@ -3025,8 +3614,9 @@ static ICoreWebView2Controller* CreateController(HWND hwnd, ICoreWebView2Environ
         }
         if (SUCCEEDED(hr) && backgroundColor) {
             ICoreWebView2ControllerOptions3* opts3 = nullptr;
-            if (SUCCEEDED(opts->QueryInterface(__uuidof(ICoreWebView2ControllerOptions3),
-                                               (void**)&opts3))) {
+            if (SUCCEEDED(opts->QueryInterface(
+                    __uuidof(ICoreWebView2ControllerOptions3),
+                    (void**)&opts3))) {
                 COREWEBVIEW2_COLOR color;
                 color.R = backgroundColor->r;
                 color.G = backgroundColor->g;
@@ -3040,7 +3630,8 @@ static ICoreWebView2Controller* CreateController(HWND hwnd, ICoreWebView2Environ
             hr = opts->put_IsInPrivateModeEnabled(incognito ? TRUE : FALSE);
         }
         if (SUCCEEDED(hr)) {
-            hr = env10->CreateCoreWebView2ControllerWithOptions(hwnd, opts, handler);
+            hr = env10->CreateCoreWebView2ControllerWithOptions(hwnd, opts,
+                                                                handler);
         }
         Rel(&opts);
         Rel(&env10);
@@ -3086,20 +3677,26 @@ struct ScriptWait {
     }
 };
 
-static bool AddScriptToExecuteOnDocumentCreated(ICoreWebView2* webview, Str js) {
+static bool AddScriptToExecuteOnDocumentCreated(ICoreWebView2* webview,
+                                                Str js) {
     ScriptWait* wait = new ScriptWait();
-    auto* handler = MkHandler<
-        Handler2<ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler, HRESULT,
-                 LPCWSTR>>(wait, [](void* ctx, HRESULT code, LPCWSTR) -> HRESULT {
-        ScriptWait* wait = (ScriptWait*)ctx;
-        wait->result = code;
-        wait->done = true;
-        return S_OK;
-    }, ReleaseWaitState<ScriptWait>);
-    HRESULT hr = webview->AddScriptToExecuteOnDocumentCreated(ToCWstrTemp(js), handler);
+    auto* handler = MkHandler<Handler2<
+        ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler,
+        HRESULT, LPCWSTR>>(
+        wait,
+        [](void* ctx, HRESULT code, LPCWSTR) -> HRESULT {
+            ScriptWait* wait = (ScriptWait*)ctx;
+            wait->result = code;
+            wait->done = true;
+            return S_OK;
+        },
+        ReleaseWaitState<ScriptWait>);
+    HRESULT hr =
+        webview->AddScriptToExecuteOnDocumentCreated(ToCWstrTemp(js), handler);
     handler->Release();
     if (FAILED(hr)) {
-        logf("wry: AddScriptToExecuteOnDocumentCreated failed, hr 0x%x\n", (int)hr);
+        logf("wry: AddScriptToExecuteOnDocumentCreated failed, hr 0x%x\n",
+             (int)hr);
         wait->Release();
         return false;
     }
@@ -3126,15 +3723,17 @@ static void DeleteEvalCallback(void* ctx) {
 
 static bool ExecuteScript(ICoreWebView2* webview, Str js, EvalCallback cb) {
     EvalCallback* held = new EvalCallback(cb);
-    auto* handler =
-        MkHandler<Handler2<ICoreWebView2ExecuteScriptCompletedHandler, HRESULT, LPCWSTR>>(
-            held, [](void* ctx, HRESULT code, LPCWSTR result) -> HRESULT {
-                EvalCallback* c = (EvalCallback*)ctx;
-                if (c->fn) {
-                    c->fn(c->ctx, SUCCEEDED(code) ? WstrToUtf8Temp(result) : Str());
-                }
-                return S_OK;
-            }, DeleteEvalCallback);
+    auto* handler = MkHandler<
+        Handler2<ICoreWebView2ExecuteScriptCompletedHandler, HRESULT, LPCWSTR>>(
+        held,
+        [](void* ctx, HRESULT code, LPCWSTR result) -> HRESULT {
+            EvalCallback* c = (EvalCallback*)ctx;
+            if (c->fn) {
+                c->fn(c->ctx, SUCCEEDED(code) ? WstrToUtf8Temp(result) : Str());
+            }
+            return S_OK;
+        },
+        DeleteEvalCallback);
     HRESULT hr = webview->ExecuteScript(ToCWstrTemp(js), handler);
     handler->Release();
     if (FAILED(hr)) {
@@ -3150,84 +3749,148 @@ static bool ExecuteScript(ICoreWebView2* webview, Str js, EvalCallback cb) {
 // Wry falls back to "OK" for extension status codes.
 static LPCWSTR HttpStatusReason(int status) {
     switch (status) {
-        case 100: return L"Continue";
-        case 101: return L"Switching Protocols";
-        case 102: return L"Processing";
-        case 103: return L"Early Hints";
-        case 200: return L"OK";
-        case 201: return L"Created";
-        case 202: return L"Accepted";
-        case 203: return L"Non Authoritative Information";
-        case 204: return L"No Content";
-        case 205: return L"Reset Content";
-        case 206: return L"Partial Content";
-        case 207: return L"Multi-Status";
-        case 208: return L"Already Reported";
-        case 226: return L"IM Used";
-        case 300: return L"Multiple Choices";
-        case 301: return L"Moved Permanently";
-        case 302: return L"Found";
-        case 303: return L"See Other";
-        case 304: return L"Not Modified";
-        case 305: return L"Use Proxy";
-        case 307: return L"Temporary Redirect";
-        case 308: return L"Permanent Redirect";
-        case 400: return L"Bad Request";
-        case 401: return L"Unauthorized";
-        case 402: return L"Payment Required";
-        case 403: return L"Forbidden";
-        case 404: return L"Not Found";
-        case 405: return L"Method Not Allowed";
-        case 406: return L"Not Acceptable";
-        case 407: return L"Proxy Authentication Required";
-        case 408: return L"Request Timeout";
-        case 409: return L"Conflict";
-        case 410: return L"Gone";
-        case 411: return L"Length Required";
-        case 412: return L"Precondition Failed";
-        case 413: return L"Payload Too Large";
-        case 414: return L"URI Too Long";
-        case 415: return L"Unsupported Media Type";
-        case 416: return L"Range Not Satisfiable";
-        case 417: return L"Expectation Failed";
-        case 418: return L"I'm a teapot";
-        case 421: return L"Misdirected Request";
-        case 422: return L"Unprocessable Entity";
-        case 423: return L"Locked";
-        case 424: return L"Failed Dependency";
-        case 425: return L"Too Early";
-        case 426: return L"Upgrade Required";
-        case 428: return L"Precondition Required";
-        case 429: return L"Too Many Requests";
-        case 431: return L"Request Header Fields Too Large";
-        case 451: return L"Unavailable For Legal Reasons";
-        case 500: return L"Internal Server Error";
-        case 501: return L"Not Implemented";
-        case 502: return L"Bad Gateway";
-        case 503: return L"Service Unavailable";
-        case 504: return L"Gateway Timeout";
-        case 505: return L"HTTP Version Not Supported";
-        case 506: return L"Variant Also Negotiates";
-        case 507: return L"Insufficient Storage";
-        case 508: return L"Loop Detected";
-        case 510: return L"Not Extended";
-        case 511: return L"Network Authentication Required";
-        default: return L"OK";
+        case 100:
+            return L"Continue";
+        case 101:
+            return L"Switching Protocols";
+        case 102:
+            return L"Processing";
+        case 103:
+            return L"Early Hints";
+        case 200:
+            return L"OK";
+        case 201:
+            return L"Created";
+        case 202:
+            return L"Accepted";
+        case 203:
+            return L"Non Authoritative Information";
+        case 204:
+            return L"No Content";
+        case 205:
+            return L"Reset Content";
+        case 206:
+            return L"Partial Content";
+        case 207:
+            return L"Multi-Status";
+        case 208:
+            return L"Already Reported";
+        case 226:
+            return L"IM Used";
+        case 300:
+            return L"Multiple Choices";
+        case 301:
+            return L"Moved Permanently";
+        case 302:
+            return L"Found";
+        case 303:
+            return L"See Other";
+        case 304:
+            return L"Not Modified";
+        case 305:
+            return L"Use Proxy";
+        case 307:
+            return L"Temporary Redirect";
+        case 308:
+            return L"Permanent Redirect";
+        case 400:
+            return L"Bad Request";
+        case 401:
+            return L"Unauthorized";
+        case 402:
+            return L"Payment Required";
+        case 403:
+            return L"Forbidden";
+        case 404:
+            return L"Not Found";
+        case 405:
+            return L"Method Not Allowed";
+        case 406:
+            return L"Not Acceptable";
+        case 407:
+            return L"Proxy Authentication Required";
+        case 408:
+            return L"Request Timeout";
+        case 409:
+            return L"Conflict";
+        case 410:
+            return L"Gone";
+        case 411:
+            return L"Length Required";
+        case 412:
+            return L"Precondition Failed";
+        case 413:
+            return L"Payload Too Large";
+        case 414:
+            return L"URI Too Long";
+        case 415:
+            return L"Unsupported Media Type";
+        case 416:
+            return L"Range Not Satisfiable";
+        case 417:
+            return L"Expectation Failed";
+        case 418:
+            return L"I'm a teapot";
+        case 421:
+            return L"Misdirected Request";
+        case 422:
+            return L"Unprocessable Entity";
+        case 423:
+            return L"Locked";
+        case 424:
+            return L"Failed Dependency";
+        case 425:
+            return L"Too Early";
+        case 426:
+            return L"Upgrade Required";
+        case 428:
+            return L"Precondition Required";
+        case 429:
+            return L"Too Many Requests";
+        case 431:
+            return L"Request Header Fields Too Large";
+        case 451:
+            return L"Unavailable For Legal Reasons";
+        case 500:
+            return L"Internal Server Error";
+        case 501:
+            return L"Not Implemented";
+        case 502:
+            return L"Bad Gateway";
+        case 503:
+            return L"Service Unavailable";
+        case 504:
+            return L"Gateway Timeout";
+        case 505:
+            return L"HTTP Version Not Supported";
+        case 506:
+            return L"Variant Also Negotiates";
+        case 507:
+            return L"Insufficient Storage";
+        case 508:
+            return L"Loop Detected";
+        case 510:
+            return L"Not Extended";
+        case 511:
+            return L"Network Authentication Required";
+        default:
+            return L"OK";
     }
 }
 
 // `prepare_web_request_response`: the headers go over as one `name: value`
 // block and the body as a memory stream the runtime reads.
-static ICoreWebView2WebResourceResponse* MakeResponse(ICoreWebView2Environment* env, int status,
-                                                      Str headerBlock, const uint8_t* body,
-                                                      int bodyLen) {
+static ICoreWebView2WebResourceResponse* MakeResponse(
+    ICoreWebView2Environment* env, int status, Str headerBlock,
+    const uint8_t* body, int bodyLen) {
     IStream* stream = nullptr;
     if (body && bodyLen > 0) {
         stream = SHCreateMemStream(body, (UINT)bodyLen);
     }
     ICoreWebView2WebResourceResponse* res = nullptr;
-    HRESULT hr = env->CreateWebResourceResponse(stream, status, HttpStatusReason(status),
-                                                ToCWstrTemp(headerBlock), &res);
+    HRESULT hr =
+        env->CreateWebResourceResponse(stream, status, HttpStatusReason(status),
+                                       ToCWstrTemp(headerBlock), &res);
     if (stream) {
         stream->Release();
     }
@@ -3238,9 +3901,10 @@ static ICoreWebView2WebResourceResponse* MakeResponse(ICoreWebView2Environment* 
     return res;
 }
 
-static ICoreWebView2WebResourceResponse* MakeBadRequest(ICoreWebView2Environment* env,
-                                                        HRESULT cause) {
-    Str header = base::FormatTemp("X-Wry-Error: HRESULT 0x%08x\n", (uint32_t)cause);
+static ICoreWebView2WebResourceResponse* MakeBadRequest(
+    ICoreWebView2Environment* env, HRESULT cause) {
+    Str header =
+        base::FormatTemp("X-Wry-Error: HRESULT 0x%08x\n", (uint32_t)cause);
     return MakeResponse(env, 400, header, nullptr, 0);
 }
 
@@ -3318,8 +3982,9 @@ void Respond(RequestResponder* responder, const Response* response) {
     base::StrBuilder headers;
     if (response) {
         for (int i = 0; i < response->headerCount; i++) {
-            headers.Append(
-                base::FormatTemp("%s: %s\n", response->headers[i].name, response->headers[i].value));
+            headers
+                .Append(base::FormatTemp("%s: %s\n", response->headers[i].name,
+                                         response->headers[i].value));
         }
     }
     p->headers = StrDup(headers.TakeStr());
@@ -3335,8 +4000,9 @@ void Respond(RequestResponder* responder, const Response* response) {
 
 // `prepare_request`: the WebView2 request read out into the shape a handler
 // takes, with the work-around undone on the uri.
-static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req, Str uri,
-                              Str protocol, Request* out, Vec<Header>* headerStore,
+static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
+                              Str uri, Str protocol, Request* out,
+                              Vec<Header>* headerStore,
                               Vec<uint8_t>* bodyStore) {
     LPWSTR method = nullptr;
     HRESULT hr = req->get_Method(&method);
@@ -3417,8 +4083,9 @@ static HRESULT PrepareRequest(WebView* wv, ICoreWebView2WebResourceRequest* req,
     return S_OK;
 }
 
-static HRESULT OnWebResourceRequested(void* ctx, ICoreWebView2*,
-                                      ICoreWebView2WebResourceRequestedEventArgs* args) {
+static HRESULT OnWebResourceRequested(
+    void* ctx, ICoreWebView2*,
+    ICoreWebView2WebResourceRequestedEventArgs* args) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !args) {
         return S_OK;
@@ -3452,10 +4119,12 @@ static HRESULT OnWebResourceRequested(void* ctx, ICoreWebView2*,
     Vec<Header> headerStore;
     Vec<uint8_t> bodyStore;
     Request request;
-    hr = PrepareRequest(wv, req, uri, found->name, &request, &headerStore, &bodyStore);
+    hr = PrepareRequest(wv, req, uri, found->name, &request, &headerStore,
+                        &bodyStore);
     Rel(&req);
     if (FAILED(hr)) {
-        ICoreWebView2WebResourceResponse* response = MakeBadRequest(wv->env, hr);
+        ICoreWebView2WebResourceResponse* response =
+            MakeBadRequest(wv->env, hr);
         HRESULT responseHr = response ? args->put_Response(response) : E_FAIL;
         Rel(&response);
         VecReset(headerStore);
@@ -3487,42 +4156,46 @@ static HRESULT OnWebResourceRequested(void* ctx, ICoreWebView2*,
     return S_OK;
 }
 
-static bool AttachCustomProtocolHandler(WebView* wv, EventRegistrationToken* token) {
+static bool AttachCustomProtocolHandler(WebView* wv,
+                                        EventRegistrationToken* token) {
     for (int i = 0; i < wv->protocols.len; i++) {
-        Str filter =
-            base::FormatTemp("%s*", WorkAroundUriPrefix(Str(wv->httpOrHttps), wv->protocols[i].name));
+        Str filter = base::FormatTemp(
+            "%s*",
+            WorkAroundUriPrefix(Str(wv->httpOrHttps), wv->protocols[i].name));
         ICoreWebView2_22* wv22 = nullptr;
-        if (SUCCEEDED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_22), (void**)&wv22))) {
+        if (SUCCEEDED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_22),
+                                                  (void**)&wv22))) {
             // The newer filter, which is what lets a shared worker or an
             // iframe reach a custom protocol.
-            HRESULT hr = wv22->AddWebResourceRequestedFilterWithRequestSourceKinds(
-                ToCWstrTemp(filter), kWebResourceContextAll,
-                (COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS)
-                    kWebResourceRequestSourceKindsAll);
+            HRESULT hr =
+                wv22->AddWebResourceRequestedFilterWithRequestSourceKinds(
+                    ToCWstrTemp(filter), kWebResourceContextAll,
+                    (COREWEBVIEW2_WEB_RESOURCE_REQUEST_SOURCE_KINDS)
+                        kWebResourceRequestSourceKindsAll);
             Rel(&wv22);
             if (FAILED(hr)) {
                 return false;
             }
         } else {
-            if (FAILED(wv->webview->AddWebResourceRequestedFilter(ToCWstrTemp(filter),
-                                                                  kWebResourceContextAll))) {
+            if (FAILED(wv->webview->AddWebResourceRequestedFilter(
+                    ToCWstrTemp(filter), kWebResourceContextAll))) {
                 return false;
             }
         }
     }
 
-    auto* handler =
-        MkWebViewHandler<Handler2<ICoreWebView2WebResourceRequestedEventHandler,
-                                  ICoreWebView2*,
-                                  ICoreWebView2WebResourceRequestedEventArgs*>>(
-            wv, OnWebResourceRequested);
+    auto* handler = MkWebViewHandler<
+        Handler2<ICoreWebView2WebResourceRequestedEventHandler, ICoreWebView2*,
+                 ICoreWebView2WebResourceRequestedEventArgs*>>(
+        wv, OnWebResourceRequested);
     HRESULT hr = wv->webview->add_WebResourceRequested(handler, token);
     handler->Release();
     if (FAILED(hr)) {
         return false;
     }
 
-    SetWindowSubclass(wv->hwnd, MainThreadDispatcherProc, kMainThreadDispatcherSubclassId, 0);
+    SetWindowSubclass(wv->hwnd, MainThreadDispatcherProc,
+                      kMainThreadDispatcherSubclassId, 0);
     return true;
 }
 
@@ -3558,7 +4231,8 @@ static HRESULT OnWindowCloseRequested(void* ctx, ICoreWebView2*, IUnknown*) {
     return HRESULT_FROM_WIN32(GetLastError());
 }
 
-static HRESULT OnDocumentTitleChanged(void* ctx, ICoreWebView2* sender, IUnknown*) {
+static HRESULT OnDocumentTitleChanged(void* ctx, ICoreWebView2* sender,
+                                      IUnknown*) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !sender || !wv->documentTitleChangedHandler) {
         return S_OK;
@@ -3589,8 +4263,9 @@ static HRESULT OnContentLoading(void* ctx, ICoreWebView2* sender,
     return S_OK;
 }
 
-static HRESULT OnNavigationCompleted(void* ctx, ICoreWebView2* sender,
-                                     ICoreWebView2NavigationCompletedEventArgs*) {
+static HRESULT OnNavigationCompleted(
+    void* ctx, ICoreWebView2* sender,
+    ICoreWebView2NavigationCompletedEventArgs*) {
     WebView* wv = LiveWebView(ctx);
     if (!wv) {
         return S_OK;
@@ -3606,8 +4281,8 @@ static HRESULT OnNavigationCompleted(void* ctx, ICoreWebView2* sender,
     return S_OK;
 }
 
-static HRESULT OnNavigationStarting(void* ctx, ICoreWebView2*,
-                                    ICoreWebView2NavigationStartingEventArgs* args) {
+static HRESULT OnNavigationStarting(
+    void* ctx, ICoreWebView2*, ICoreWebView2NavigationStartingEventArgs* args) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !args || !wv->navigationHandler) {
         return S_OK;
@@ -3625,8 +4300,8 @@ static HRESULT OnNavigationStarting(void* ctx, ICoreWebView2*,
 // with a deferral, because a Rust closure may block. Here it is called where
 // the event arrives: this tree's handlers run on the thread that owns the
 // window and nothing they do can block on it.
-static HRESULT OnNewWindowRequested(void* ctx, ICoreWebView2*,
-                                    ICoreWebView2NewWindowRequestedEventArgs* args) {
+static HRESULT OnNewWindowRequested(
+    void* ctx, ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* args) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !args) {
         return S_OK;
@@ -3671,7 +4346,8 @@ static HRESULT OnNewWindowRequested(void* ctx, ICoreWebView2*,
     }
 
     WebView* created = nullptr;
-    NewWindowResponse response = wv->newWindowReqHandler(wv->ctx, url, &features, &created);
+    NewWindowResponse response =
+        wv->newWindowReqHandler(wv->ctx, url, &features, &created);
     if (response == NewWindowResponse::Allow) {
         return args->put_Handled(FALSE);
     }
@@ -3686,8 +4362,8 @@ static HRESULT OnNewWindowRequested(void* ctx, ICoreWebView2*,
     return args->put_Handled(TRUE);
 }
 
-static HRESULT OnPermissionRequested(void*, ICoreWebView2*,
-                                     ICoreWebView2PermissionRequestedEventArgs* args) {
+static HRESULT OnPermissionRequested(
+    void*, ICoreWebView2*, ICoreWebView2PermissionRequestedEventArgs* args) {
     if (!args) {
         return S_OK;
     }
@@ -3702,8 +4378,8 @@ static HRESULT OnPermissionRequested(void*, ICoreWebView2*,
     return S_OK;
 }
 
-static HRESULT OnDownloadStarting(void* ctx, ICoreWebView2*,
-                                  ICoreWebView2DownloadStartingEventArgs* args) {
+static HRESULT OnDownloadStarting(
+    void* ctx, ICoreWebView2*, ICoreWebView2DownloadStartingEventArgs* args) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !args) {
         return S_OK;
@@ -3758,8 +4434,8 @@ static HRESULT OnDownloadStarting(void* ctx, ICoreWebView2*,
     return hr;
 }
 
-static HRESULT OnWebMessageReceived(void* ctx, ICoreWebView2*,
-                                    ICoreWebView2WebMessageReceivedEventArgs* args) {
+static HRESULT OnWebMessageReceived(
+    void* ctx, ICoreWebView2*, ICoreWebView2WebMessageReceivedEventArgs* args) {
     WebView* wv = LiveWebView(ctx);
     if (!wv || !args || !wv->ipcHandler) {
         return S_OK;
@@ -3781,9 +4457,9 @@ static HRESULT OnWebMessageReceived(void* ctx, ICoreWebView2*,
 
 static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
     {
-        auto* h =
-            MkWebViewHandler<Handler2<ICoreWebView2WindowCloseRequestedEventHandler,
-                                      ICoreWebView2*, IUnknown*>>(wv, OnWindowCloseRequested);
+        auto* h = MkWebViewHandler<
+            Handler2<ICoreWebView2WindowCloseRequestedEventHandler,
+                     ICoreWebView2*, IUnknown*>>(wv, OnWindowCloseRequested);
         HRESULT hr = wv->webview->add_WindowCloseRequested(h, token);
         h->Release();
         if (FAILED(hr)) {
@@ -3791,9 +4467,9 @@ static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
         }
     }
     if (wv->documentTitleChangedHandler) {
-        auto* h =
-            MkWebViewHandler<Handler2<ICoreWebView2DocumentTitleChangedEventHandler,
-                                      ICoreWebView2*, IUnknown*>>(wv, OnDocumentTitleChanged);
+        auto* h = MkWebViewHandler<
+            Handler2<ICoreWebView2DocumentTitleChangedEventHandler,
+                     ICoreWebView2*, IUnknown*>>(wv, OnDocumentTitleChanged);
         HRESULT hr = wv->webview->add_DocumentTitleChanged(h, token);
         h->Release();
         if (FAILED(hr)) {
@@ -3801,18 +4477,19 @@ static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
         }
     }
     if (wv->onPageLoadHandler) {
-        auto* started =
-            MkWebViewHandler<Handler2<ICoreWebView2ContentLoadingEventHandler, ICoreWebView2*,
-                                      ICoreWebView2ContentLoadingEventArgs*>>(wv,
-                                                                             OnContentLoading);
+        auto* started = MkWebViewHandler<
+            Handler2<ICoreWebView2ContentLoadingEventHandler, ICoreWebView2*,
+                     ICoreWebView2ContentLoadingEventArgs*>>(wv,
+                                                             OnContentLoading);
         HRESULT hr = wv->webview->add_ContentLoading(started, token);
         started->Release();
         if (FAILED(hr)) {
             return false;
         }
-        auto* finished = MkWebViewHandler<
-            Handler2<ICoreWebView2NavigationCompletedEventHandler, ICoreWebView2*,
-                     ICoreWebView2NavigationCompletedEventArgs*>>(wv, OnNavigationCompleted);
+        auto* finished = MkWebViewHandler<Handler2<
+            ICoreWebView2NavigationCompletedEventHandler, ICoreWebView2*,
+            ICoreWebView2NavigationCompletedEventArgs*>>(wv,
+                                                         OnNavigationCompleted);
         hr = wv->webview->add_NavigationCompleted(finished, token);
         finished->Release();
         if (FAILED(hr)) {
@@ -3820,10 +4497,10 @@ static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
         }
     }
     if (wv->navigationHandler) {
-        auto* h = MkWebViewHandler<
-            Handler2<ICoreWebView2NavigationStartingEventHandler, ICoreWebView2*,
-                     ICoreWebView2NavigationStartingEventArgs*>>(
-            wv, OnNavigationStarting);
+        auto* h = MkWebViewHandler<Handler2<
+            ICoreWebView2NavigationStartingEventHandler, ICoreWebView2*,
+            ICoreWebView2NavigationStartingEventArgs*>>(wv,
+                                                        OnNavigationStarting);
         HRESULT hr = wv->webview->add_NavigationStarting(h, token);
         h->Release();
         if (FAILED(hr)) {
@@ -3831,10 +4508,10 @@ static bool AttachHandlers(WebView* wv, EventRegistrationToken* token) {
         }
     }
     {
-        auto* h = MkWebViewHandler<
-            Handler2<ICoreWebView2NewWindowRequestedEventHandler, ICoreWebView2*,
-                     ICoreWebView2NewWindowRequestedEventArgs*>>(
-            wv, OnNewWindowRequested);
+        auto* h = MkWebViewHandler<Handler2<
+            ICoreWebView2NewWindowRequestedEventHandler, ICoreWebView2*,
+            ICoreWebView2NewWindowRequestedEventArgs*>>(wv,
+                                                        OnNewWindowRequested);
         HRESULT hr = wv->webview->add_NewWindowRequested(h, token);
         h->Release();
         if (FAILED(hr)) {
@@ -3849,14 +4526,15 @@ static bool AttachDownloadHandlers(WebView* wv, EventRegistrationToken* token) {
         return true;
     }
     ICoreWebView2_4* webview4 = nullptr;
-    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_4), (void**)&webview4))) {
+    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_4),
+                                           (void**)&webview4))) {
         logf("wry: this WebView2 runtime does not support download handlers\n");
         return false;
     }
-    auto* handler =
-        MkWebViewHandler<Handler2<ICoreWebView2DownloadStartingEventHandler, ICoreWebView2*,
-                                  ICoreWebView2DownloadStartingEventArgs*>>(wv,
-                                                                           OnDownloadStarting);
+    auto* handler = MkWebViewHandler<
+        Handler2<ICoreWebView2DownloadStartingEventHandler, ICoreWebView2*,
+                 ICoreWebView2DownloadStartingEventArgs*>>(wv,
+                                                           OnDownloadStarting);
     HRESULT hr = webview4->add_DownloadStarting(handler, token);
     handler->Release();
     Rel(&webview4);
@@ -3871,15 +4549,15 @@ static bool AttachDownloadHandlers(WebView* wv, EventRegistrationToken* token) {
 // `postMessage` is WebView2's own.
 static bool AttachIpcHandler(WebView* wv, EventRegistrationToken* token) {
     if (!AddScriptToExecuteOnDocumentCreated(
-            wv->webview,
-            StrL("Object.defineProperty(window, 'ipc', { value: Object.freeze({ postMessage: s=> "
-                 "window.chrome.webview.postMessage(s) }) });"))) {
+            wv->webview, StrL("Object.defineProperty(window, 'ipc', { value: "
+                              "Object.freeze({ postMessage: s=> "
+                              "window.chrome.webview.postMessage(s) }) });"))) {
         return false;
     }
-    auto* h =
-        MkWebViewHandler<Handler2<ICoreWebView2WebMessageReceivedEventHandler, ICoreWebView2*,
-                                  ICoreWebView2WebMessageReceivedEventArgs*>>(
-            wv, OnWebMessageReceived);
+    auto* h = MkWebViewHandler<
+        Handler2<ICoreWebView2WebMessageReceivedEventHandler, ICoreWebView2*,
+                 ICoreWebView2WebMessageReceivedEventArgs*>>(
+        wv, OnWebMessageReceived);
     HRESULT hr = wv->webview->add_WebMessageReceived(h, token);
     h->Release();
     return SUCCEEDED(hr);
@@ -3887,18 +4565,22 @@ static bool AttachIpcHandler(WebView* wv, EventRegistrationToken* token) {
 
 // ─── load_url_with_headers ───────────────────────────────────────────────
 
-static bool LoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int headerCount) {
+static bool LoadUrlWithHeaders(WebView* wv, Str url, const Header* headers,
+                               int headerCount) {
     base::StrBuilder block;
     for (int i = 0; i < headerCount; i++) {
-        block.Append(base::FormatTemp("%s: %s\n", headers[i].name, headers[i].value));
+        block.Append(
+            base::FormatTemp("%s: %s\n", headers[i].name, headers[i].value));
     }
     ICoreWebView2Environment9* env9 = nullptr;
-    if (FAILED(wv->env->QueryInterface(__uuidof(ICoreWebView2Environment9), (void**)&env9))) {
+    if (FAILED(wv->env->QueryInterface(__uuidof(ICoreWebView2Environment9),
+                                       (void**)&env9))) {
         return false;
     }
     ICoreWebView2WebResourceRequest* request = nullptr;
-    HRESULT hr = env9->CreateWebResourceRequest(ToCWstrTemp(url), L"GET", nullptr,
-                                                ToCWstrTemp(block.TakeStr()), &request);
+    HRESULT hr =
+        env9->CreateWebResourceRequest(ToCWstrTemp(url), L"GET", nullptr,
+                                       ToCWstrTemp(block.TakeStr()), &request);
     Rel(&env9);
     // This unusual boundary is intentional: pinned Wry uses `if let Ok` for
     // request creation, so that one failure is a successful no-op.
@@ -3908,7 +4590,8 @@ static bool LoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int 
     }
 
     ICoreWebView2_10* wv10 = nullptr;
-    bool ok = SUCCEEDED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_10), (void**)&wv10)) &&
+    bool ok = SUCCEEDED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_10),
+                                                    (void**)&wv10)) &&
               wv10 && SUCCEEDED(wv10->NavigateWithWebResourceRequest(request));
     Rel(&wv10);
     Rel(&request);
@@ -3925,7 +4608,8 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
         return false;
     }
     ICoreWebView2_13* webview13 = nullptr;
-    if (FAILED(webview->QueryInterface(__uuidof(ICoreWebView2_13), (void**)&webview13))) {
+    if (FAILED(webview->QueryInterface(__uuidof(ICoreWebView2_13),
+                                       (void**)&webview13))) {
         logf("wry: this WebView2 runtime cannot load browser extensions\n");
         return false;
     }
@@ -3946,7 +4630,8 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
 
     WCHAR* root = WStrDupUtf8(extensionRoot);
     size_t rootLen = wcslen(root);
-    bool hasSeparator = rootLen > 0 && (root[rootLen - 1] == L'\\' || root[rootLen - 1] == L'/');
+    bool hasSeparator = rootLen > 0 && (root[rootLen - 1] == L'\\' ||
+                                        root[rootLen - 1] == L'/');
     size_t prefixLen = rootLen + (hasSeparator ? 0 : 1);
     size_t pathCap = prefixLen + MAX_PATH + 1;
     WCHAR* path = new WCHAR[pathCap];
@@ -3959,8 +4644,9 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
     WIN32_FIND_DATAW found = {};
     HANDLE iter = FindFirstFileW(path, &found);
     if (iter == INVALID_HANDLE_VALUE) {
-        logf("wry: cannot enumerate the browser extension directory, error %d\n",
-             (int)GetLastError());
+        logf(
+            "wry: cannot enumerate the browser extension directory, error %d\n",
+            (int)GetLastError());
         ok = false;
     } else {
         do {
@@ -3970,15 +4656,20 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
                 continue;
             }
             wcscpy_s(path + prefixLen, pathCap - prefixLen, found.cFileName);
-            auto* handler =
-                MkHandler<Handler2<ICoreWebView2ProfileAddBrowserExtensionCompletedHandler,
-                                   HRESULT, ICoreWebView2BrowserExtension*>>(
-                    nullptr, [](void*, HRESULT code, ICoreWebView2BrowserExtension*) -> HRESULT {
-                        if (FAILED(code)) {
-                            logf("wry: loading a browser extension failed, hr 0x%x\n", (int)code);
-                        }
-                        return S_OK;
-                    });
+            auto* handler = MkHandler<Handler2<
+                ICoreWebView2ProfileAddBrowserExtensionCompletedHandler,
+                HRESULT, ICoreWebView2BrowserExtension*>>(
+                nullptr,
+                [](void*, HRESULT code,
+                   ICoreWebView2BrowserExtension*) -> HRESULT {
+                    if (FAILED(code)) {
+                        logf(
+                            "wry: loading a browser extension failed, hr "
+                            "0x%x\n",
+                            (int)code);
+                    }
+                    return S_OK;
+                });
             HRESULT hr = profile7->AddBrowserExtension(path, handler);
             handler->Release();
             if (FAILED(hr)) {
@@ -3988,7 +4679,8 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
             }
         } while (FindNextFileW(iter, &found));
         if (ok && GetLastError() != ERROR_NO_MORE_FILES) {
-            logf("wry: enumerating browser extensions failed, error %d\n", (int)GetLastError());
+            logf("wry: enumerating browser extensions failed, error %d\n",
+                 (int)GetLastError());
             ok = false;
         }
         FindClose(iter);
@@ -4002,13 +4694,15 @@ static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
 
 // ─── WebViewNew ──────────────────────────────────────────────────────────
 
-WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asChild) {
+WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
+                    bool asChild) {
     if (!parentWindow || !attrs) {
         return nullptr;
     }
     if (attrs->headerCount < 0 || (attrs->headerCount > 0 && !attrs->headers) ||
         attrs->initializationScriptCount < 0 ||
-        (attrs->initializationScriptCount > 0 && !attrs->initializationScripts) ||
+        (attrs->initializationScriptCount > 0 &&
+         !attrs->initializationScripts) ||
         attrs->customProtocolCount < 0 ||
         (attrs->customProtocolCount > 0 && !attrs->customProtocols)) {
         logf("wry: invalid Windows webview attribute array\n");
@@ -4016,7 +4710,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     }
     for (int i = 0; i < attrs->customProtocolCount; i++) {
         for (int j = 0; j < i; j++) {
-            if (base::StrEq(attrs->customProtocols[i].name, attrs->customProtocols[j].name)) {
+            if (base::StrEq(attrs->customProtocols[i].name,
+                            attrs->customProtocols[j].name)) {
                 logf("wry: duplicate custom protocol '%s'\n",
                      attrs->customProtocols[i].name);
                 return nullptr;
@@ -4031,7 +4726,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         return nullptr;
     }
 
-    ICoreWebView2Environment* env = (ICoreWebView2Environment*)attrs->webviewEnvironment;
+    ICoreWebView2Environment* env = (ICoreWebView2Environment*)attrs
+                                        ->webviewEnvironment;
     if (env) {
         env->AddRef();
     } else {
@@ -4049,8 +4745,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         hasBackground = true;
     }
 
-    ICoreWebView2Controller* controller =
-        CreateController(hwnd, env, attrs->incognito, hasBackground ? &background : nullptr);
+    ICoreWebView2Controller* controller = CreateController(
+        hwnd, env, attrs->incognito, hasBackground ? &background : nullptr);
     if (!controller) {
         Rel(&env);
         DestroyWindow(hwnd);
@@ -4091,8 +4787,9 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     wv->newWindowReqHandler = attrs->newWindowReqHandler;
     wv->httpOrHttps = attrs->useHttpsScheme ? "https" : "http";
     // `attributes.id.unwrap_or_else(|| hwnd.to_string())`.
-    wv->id = attrs->id.s ? StrDup(attrs->id)
-                               : StrDup(base::FormatTemp("%lld", (int64_t)(intptr_t)hwnd));
+    wv->id = attrs->id.s
+                 ? StrDup(attrs->id)
+                 : StrDup(base::FormatTemp("%lld", (int64_t)(intptr_t)hwnd));
     for (int i = 0; i < attrs->customProtocolCount; i++) {
         ProtocolCopy p;
         p.name = StrDup(attrs->customProtocols[i].name);
@@ -4128,16 +4825,18 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         return nullptr;
     }
     for (int i = 0; i < attrs->initializationScriptCount; i++) {
-        if (!AddScriptToExecuteOnDocumentCreated(webview,
-                                                 attrs->initializationScripts[i].script)) {
+        if (!AddScriptToExecuteOnDocumentCreated(
+                webview, attrs->initializationScripts[i].script)) {
             WebViewFree(wv);
             return nullptr;
         }
     }
     if (attrs->clipboard) {
-        auto* h = MkHandler<Handler2<ICoreWebView2PermissionRequestedEventHandler, ICoreWebView2*,
-                                     ICoreWebView2PermissionRequestedEventArgs*>>(
-            nullptr, OnPermissionRequested);
+        auto* h =
+            MkHandler<Handler2<ICoreWebView2PermissionRequestedEventHandler,
+                               ICoreWebView2*,
+                               ICoreWebView2PermissionRequestedEventArgs*>>(
+                nullptr, OnPermissionRequested);
         HRESULT hr = webview->add_PermissionRequested(h, &token);
         h->Release();
         if (FAILED(hr)) {
@@ -4154,17 +4853,20 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
             // work-around scheme, the way every request in it does.
             Str prefix = base::FormatTemp("%s://", wv->protocols[i].name);
             if (base::StrStartsWith(url, prefix)) {
-                url = ApplyUriWorkAround(url, Str(wv->httpOrHttps), wv->protocols[i].name);
+                url = ApplyUriWorkAround(url, Str(wv->httpOrHttps),
+                                         wv->protocols[i].name);
                 break;
             }
         }
         if (attrs->headers) {
-            navigated = LoadUrlWithHeaders(wv, url, attrs->headers, attrs->headerCount);
+            navigated =
+                LoadUrlWithHeaders(wv, url, attrs->headers, attrs->headerCount);
         } else {
             navigated = SUCCEEDED(webview->Navigate(ToCWstrTemp(url)));
         }
     } else if (attrs->html.s) {
-        navigated = SUCCEEDED(webview->NavigateToString(ToCWstrTemp(attrs->html)));
+        navigated =
+            SUCCEEDED(webview->NavigateToString(ToCWstrTemp(attrs->html)));
     }
     if (!navigated) {
         WebViewFree(wv);
@@ -4176,7 +4878,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         wv->parentSubclassAttached = true;
     }
     if (FAILED(controller->put_IsVisible(attrs->visible ? TRUE : FALSE)) ||
-        (attrs->focused && FAILED(controller->MoveFocus(kMoveFocusReasonProgrammatic)))) {
+        (attrs->focused &&
+         FAILED(controller->MoveFocus(kMoveFocusReasonProgrammatic)))) {
         WebViewFree(wv);
         return nullptr;
     }
@@ -4195,12 +4898,13 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         // initialization that RegisterDragDrop requires.
         wv->oleInitialized = SUCCEEDED(OleInitialize(nullptr));
         ICoreWebView2Controller4* controller4 = nullptr;
-        if (SUCCEEDED(controller->QueryInterface(__uuidof(ICoreWebView2Controller4),
-                                                 (void**)&controller4))) {
+        if (SUCCEEDED(controller->QueryInterface(
+                __uuidof(ICoreWebView2Controller4), (void**)&controller4))) {
             controller4->put_AllowExternalDrop(FALSE);
             Rel(&controller4);
         }
-        wv->dragDropController = NewDragDropController(hwnd, attrs->ctx, attrs->dragDropHandler);
+        wv->dragDropController =
+            NewDragDropController(hwnd, attrs->ctx, attrs->dragDropHandler);
     }
 
     if (asChild) {
@@ -4292,7 +4996,8 @@ bool WebViewLoadUrl(WebView* wv, Str url) {
     return SUCCEEDED(wv->webview->Navigate(ToCWstrTemp(url)));
 }
 
-bool WebViewLoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int headerCount) {
+bool WebViewLoadUrlWithHeaders(WebView* wv, Str url, const Header* headers,
+                               int headerCount) {
     if (!wv) {
         return false;
     }
@@ -4331,7 +5036,8 @@ bool WebViewBounds(WebView* wv, Rect* out) {
     } else if (FAILED(wv->controller->get_Bounds(&r))) {
         return false;
     }
-    out->size = PhysicalSize((double)(r.right - r.left), (double)(r.bottom - r.top));
+    out->size =
+        PhysicalSize((double)(r.right - r.left), (double)(r.bottom - r.top));
     return true;
 }
 
@@ -4397,7 +5103,8 @@ bool WebViewSetMemoryUsageLevel(WebView* wv, MemoryUsageLevel level) {
         return false;
     }
     ICoreWebView2_19* wv19 = nullptr;
-    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_19), (void**)&wv19))) {
+    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_19),
+                                           (void**)&wv19))) {
         return false;
     }
     int value = level == MemoryUsageLevel::Low ? kMemoryUsageTargetLevelLow
@@ -4439,7 +5146,8 @@ static ICoreWebView2CookieManager* CookieManager(WebView* wv) {
         return nullptr;
     }
     ICoreWebView2_2* webview2 = nullptr;
-    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_2), (void**)&webview2))) {
+    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_2),
+                                           (void**)&webview2))) {
         return nullptr;
     }
     ICoreWebView2CookieManager* manager = nullptr;
@@ -4463,8 +5171,10 @@ static void FreeCookieFields(Cookie* cookie) {
 // `cookie` 0.18.1 exposes `time` 0.3.37 without its `large-dates` feature.
 // Keep WebView2's floating-point expiry inside the same OffsetDateTime range
 // Rust accepts, and model Rust's saturating float-to-integer cast explicitly.
-static constexpr int64_t kTimeMinUnixSeconds = -377705116800LL; // -9999-01-01 00:00:00 UTC
-static constexpr int64_t kTimeMaxUnixSeconds = 253402300799LL;  //  9999-12-31 23:59:59 UTC
+static constexpr int64_t kTimeMinUnixSeconds =
+    -377705116800LL; // -9999-01-01 00:00:00 UTC
+static constexpr int64_t kTimeMaxUnixSeconds =
+    253402300799LL; //  9999-12-31 23:59:59 UTC
 
 static bool CookieExpiryFromDouble(double value, int64_t* result) {
     if (value != value) { // Rust casts NaN to zero.
@@ -4532,20 +5242,23 @@ static bool CookieFromWebView2(ICoreWebView2Cookie* source, Cookie* out) {
         return false;
     }
     result.hasSameSite = true;
-    result.sameSite = sameSite == kCookieSameSiteStrict
-                          ? CookieSameSite::Strict
-                          : (sameSite == kCookieSameSiteLax ? CookieSameSite::Lax
-                                                            : CookieSameSite::None);
+    result.sameSite =
+        sameSite == kCookieSameSiteStrict
+            ? CookieSameSite::Strict
+            : (sameSite == kCookieSameSiteLax ? CookieSameSite::Lax
+                                              : CookieSameSite::None);
 
     BOOL isSession = FALSE;
     double expires = -1;
-    if (FAILED(source->get_IsSession(&isSession)) || FAILED(source->get_Expires(&expires))) {
+    if (FAILED(source->get_IsSession(&isSession)) ||
+        FAILED(source->get_Expires(&expires))) {
         FreeCookieFields(&result);
         return false;
     }
     result.session = isSession != FALSE || expires == -1;
     if (!result.session) {
-        result.hasExpires = CookieExpiryFromDouble(expires, &result.expiresUnixSeconds);
+        result.hasExpires =
+            CookieExpiryFromDouble(expires, &result.expiresUnixSeconds);
     }
     *out = result;
     return true;
@@ -4575,19 +5288,21 @@ static bool CookiesInner(WebView* wv, LPCWSTR uri, Vec<Cookie>* out) {
         return false;
     }
     CookieWait* wait = new CookieWait();
-    auto* handler =
-        MkHandler<Handler2<ICoreWebView2GetCookiesCompletedHandler, HRESULT,
-                           ICoreWebView2CookieList*>>(
-            wait, [](void* ctx, HRESULT code, ICoreWebView2CookieList* cookies) -> HRESULT {
-                CookieWait* wait = (CookieWait*)ctx;
-                wait->result = code;
-                if (SUCCEEDED(code) && cookies) {
-                    cookies->AddRef();
-                    wait->cookies = cookies;
-                }
-                wait->done = true;
-                return S_OK;
-            }, ReleaseWaitState<CookieWait>);
+    auto* handler = MkHandler<Handler2<ICoreWebView2GetCookiesCompletedHandler,
+                                       HRESULT, ICoreWebView2CookieList*>>(
+        wait,
+        [](void* ctx, HRESULT code,
+           ICoreWebView2CookieList* cookies) -> HRESULT {
+            CookieWait* wait = (CookieWait*)ctx;
+            wait->result = code;
+            if (SUCCEEDED(code) && cookies) {
+                cookies->AddRef();
+                wait->cookies = cookies;
+            }
+            wait->done = true;
+            return S_OK;
+        },
+        ReleaseWaitState<CookieWait>);
     HRESULT hr = manager->GetCookies(uri, handler);
     handler->Release();
     Rel(&manager);
@@ -4662,21 +5377,21 @@ static int64_t SaturatingCookieExpiry(int64_t now, int64_t duration) {
     return now + duration;
 }
 
-static ICoreWebView2Cookie* CookieToWebView2(ICoreWebView2CookieManager* manager,
-                                             const Cookie* source) {
+static ICoreWebView2Cookie* CookieToWebView2(
+    ICoreWebView2CookieManager* manager, const Cookie* source) {
     if (!manager || !source) {
         return nullptr;
     }
     ICoreWebView2Cookie* cookie = nullptr;
-    HRESULT hr = manager->CreateCookie(ToCWstrTemp(source->name), ToCWstrTemp(source->value),
-                                       ToCWstrTemp(source->domain), ToCWstrTemp(source->path),
-                                       &cookie);
+    HRESULT hr = manager->CreateCookie(
+        ToCWstrTemp(source->name), ToCWstrTemp(source->value),
+        ToCWstrTemp(source->domain), ToCWstrTemp(source->path), &cookie);
     if (FAILED(hr) || !cookie) {
         return nullptr;
     }
     if (source->hasMaxAge) {
-        hr = cookie->put_Expires(
-            (double)SaturatingCookieExpiry(UnixTimeNow(), source->maxAgeSeconds));
+        hr = cookie->put_Expires((double)SaturatingCookieExpiry(
+            UnixTimeNow(), source->maxAgeSeconds));
     } else if (source->hasExpires) {
         hr = cookie->put_Expires((double)source->expiresUnixSeconds);
     }
@@ -4686,8 +5401,9 @@ static ICoreWebView2Cookie* CookieToWebView2(ICoreWebView2CookieManager* manager
     if (SUCCEEDED(hr) && source->hasSameSite) {
         int sameSite = source->sameSite == CookieSameSite::Strict
                            ? kCookieSameSiteStrict
-                           : (source->sameSite == CookieSameSite::Lax ? kCookieSameSiteLax
-                                                                      : kCookieSameSiteNone);
+                           : (source->sameSite == CookieSameSite::Lax
+                                  ? kCookieSameSiteLax
+                                  : kCookieSameSiteNone);
         hr = cookie->put_SameSite(sameSite);
     }
     if (SUCCEEDED(hr) && source->hasSecure) {
@@ -4728,15 +5444,18 @@ bool WebViewClearAllBrowsingData(WebView* wv) {
         return false;
     }
     ICoreWebView2_13* wv13 = nullptr;
-    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_13), (void**)&wv13))) {
+    if (FAILED(wv->webview->QueryInterface(__uuidof(ICoreWebView2_13),
+                                           (void**)&wv13))) {
         return false;
     }
     bool ok = false;
     ICoreWebView2Profile* profile = nullptr;
     if (SUCCEEDED(wv13->get_Profile(&profile)) && profile) {
         ICoreWebView2Profile2* profile2 = nullptr;
-        if (SUCCEEDED(profile->QueryInterface(__uuidof(ICoreWebView2Profile2), (void**)&profile2))) {
-            auto* h = MkHandler<Handler1<ICoreWebView2ClearBrowsingDataCompletedHandler, HRESULT>>(
+        if (SUCCEEDED(profile->QueryInterface(__uuidof(ICoreWebView2Profile2),
+                                              (void**)&profile2))) {
+            auto* h = MkHandler<Handler1<
+                ICoreWebView2ClearBrowsingDataCompletedHandler, HRESULT>>(
                 nullptr, [](void*, HRESULT) -> HRESULT { return S_OK; });
             ok = SUCCEEDED(profile2->ClearBrowsingDataAll(h));
             h->Release();
@@ -4774,4 +5493,4 @@ void* WebViewNativeRaw(WebView* wv) {
     return wv ? wv->webview : nullptr;
 }
 
-}  // namespace wry
+} // namespace wry

@@ -528,11 +528,11 @@ constexpr AlignItems ResolveSelfRelative(AlignItems value,
                                          bool axisIsInline) {
     bool flip = axisIsInline && itemDirection != containerDirection;
     if (value.keyword == AlignItemsKeyword::SelfStart) {
-        value.keyword = flip ? AlignItemsKeyword::End
-                             : AlignItemsKeyword::Start;
+        value
+            .keyword = flip ? AlignItemsKeyword::End : AlignItemsKeyword::Start;
     } else if (value.keyword == AlignItemsKeyword::SelfEnd) {
-        value.keyword = flip ? AlignItemsKeyword::Start
-                             : AlignItemsKeyword::End;
+        value
+            .keyword = flip ? AlignItemsKeyword::Start : AlignItemsKeyword::End;
     }
     return value;
 }
@@ -669,8 +669,7 @@ struct SizeAvail {
         return {AvailableSpace::MinContent(), AvailableSpace::MinContent()};
     }
     static SizeAvail Definite(SizeF s) {
-        return {AvailableSpace::Definite(s.w),
-                AvailableSpace::Definite(s.h)};
+        return {AvailableSpace::Definite(s.w), AvailableSpace::Definite(s.h)};
     }
     static SizeAvail From(SizeFOpt s) {
         return {AvailableSpace::From(s.w), AvailableSpace::From(s.h)};

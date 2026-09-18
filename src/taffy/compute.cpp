@@ -131,10 +131,10 @@ static void RoundLayoutInner(TaffyTree* tree, NodeId nodeId, float cumulativeX,
 
     layout.location.x = F32Round(unrounded.location.x);
     layout.location.y = F32Round(unrounded.location.y);
-    layout.size.w =
-        F32Round(cumulativeX + unrounded.size.w) - F32Round(cumulativeX);
-    layout.size.h =
-        F32Round(cumulativeY + unrounded.size.h) - F32Round(cumulativeY);
+    layout.size
+        .w = F32Round(cumulativeX + unrounded.size.w) - F32Round(cumulativeX);
+    layout.size
+        .h = F32Round(cumulativeY + unrounded.size.h) - F32Round(cumulativeY);
     layout.scrollbarSize.w = F32Round(unrounded.scrollbarSize.w);
     layout.scrollbarSize.h = F32Round(unrounded.scrollbarSize.h);
     layout.border.left =
@@ -154,15 +154,13 @@ static void RoundLayoutInner(TaffyTree* tree, NodeId nodeId, float cumulativeX,
         F32Round(cumulativeX + unrounded.size.w - unrounded.padding.right);
     layout.padding.top =
         F32Round(cumulativeY + unrounded.padding.top) - F32Round(cumulativeY);
-    layout.padding.bottom = F32Round(cumulativeY + unrounded.size.h) -
-                            F32Round(cumulativeY + unrounded.size.h -
-                                     unrounded.padding.bottom);
-    layout.contentSize
-        .w = F32Round(cumulativeX + unrounded.contentSize.w) -
-                 F32Round(cumulativeX);
-    layout.contentSize
-        .h = F32Round(cumulativeY + unrounded.contentSize.h) -
-                  F32Round(cumulativeY);
+    layout.padding.bottom =
+        F32Round(cumulativeY + unrounded.size.h) -
+        F32Round(cumulativeY + unrounded.size.h - unrounded.padding.bottom);
+    layout.contentSize.w =
+        F32Round(cumulativeX + unrounded.contentSize.w) - F32Round(cumulativeX);
+    layout.contentSize.h =
+        F32Round(cumulativeY + unrounded.contentSize.h) - F32Round(cumulativeY);
 
     tree->SetFinalLayout(nodeId, layout);
 
@@ -298,8 +296,7 @@ LayoutOutput ComputeLeafLayout(const LayoutInput& inputs, const Style& style,
     out.size = size;
     out.contentSize = measuredSize + padding.SumAxes();
     out.marginsCanCollapseThrough = !hasStylesPreventingBeingCollapsedThrough &&
-                                    size.h == 0.0f &&
-                                    measuredSize.h == 0.0f;
+                                    size.h == 0.0f && measuredSize.h == 0.0f;
     return out;
 }
 
@@ -359,9 +356,10 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
                 return 0.0f;
             case AlignContentKeyword::SpaceAround:
                 return freeSpace >= 0.0f
-                           ? (freeSpace / (float)(numItems > 0 ? numItems : 1)) /
+                           ? (freeSpace /
+                              (float)(numItems > 0 ? numItems : 1)) /
                                  2.0f
-                                          : freeSpace / 2.0f;
+                           : freeSpace / 2.0f;
             case AlignContentKeyword::SpaceEvenly:
                 return freeSpace >= 0.0f ? freeSpace / (float)(numItems + 1)
                                          : freeSpace / 2.0f;
@@ -387,12 +385,11 @@ float ComputeAlignmentOffset(float freeSpace, int numItems, float gap,
 SizeF ComputeContentSizeContribution(PointF location, SizeF size,
                                      SizeF contentSize,
                                      PointOverflow overflow) {
-    SizeF contribution = {overflow.x == Overflow::Visible
-                              ? F32Max(size.w, contentSize.w)
-                              : size.w,
-                          overflow.y == Overflow::Visible
-                              ? F32Max(size.h, contentSize.h)
-                              : size.h};
+    SizeF contribution = {
+        overflow.x == Overflow::Visible ? F32Max(size.w, contentSize.w)
+                                        : size.w,
+        overflow.y == Overflow::Visible ? F32Max(size.h, contentSize.h)
+                                        : size.h};
     if (contribution.w > 0.0f && contribution.h > 0.0f) {
         float maxX = F32Max(location.x + contribution.w, 0.0f);
         float minX = F32Min(location.x, 0.0f);

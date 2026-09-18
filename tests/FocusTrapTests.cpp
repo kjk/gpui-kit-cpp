@@ -260,7 +260,6 @@ static void TheTabIndexGroupsTheTraversal() {
     ArenaDelete(a);
 }
 
-
 // FocusHandle's three questions, which are what a popover, a select and a
 // popup menu ask when they open and close: which element has focus, whether
 // focus is theirs, and putting back what they parked.

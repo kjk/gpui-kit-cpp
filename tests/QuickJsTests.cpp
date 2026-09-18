@@ -4,7 +4,8 @@
 
 #include <string.h>
 
-static JSValue Eval(JSContext* ctx, const char* source, int flags = JS_EVAL_TYPE_GLOBAL) {
+static JSValue Eval(JSContext* ctx, const char* source,
+                    int flags = JS_EVAL_TYPE_GLOBAL) {
     return JS_Eval(ctx, source, strlen(source), "quickjs-test.js", flags);
 }
 
@@ -24,18 +25,21 @@ void TestQuickJs() {
         return;
     }
 
-    JSValue value = Eval(context, "[1, 2, 3].map(v => v * 2).reduce((a, b) => a + b, 0)");
+    JSValue value =
+        Eval(context, "[1, 2, 3].map(v => v * 2).reduce((a, b) => a + b, 0)");
     utassert(!JS_IsException(value));
     int32_t number = 0;
     utassert(JS_ToInt32(context, &number, value) == 0);
     utassert(number == 12);
     JS_FreeValue(context, value);
 
-    JSValue module = Eval(context, "export const answer = 42", JS_EVAL_TYPE_MODULE);
+    JSValue module =
+        Eval(context, "export const answer = 42", JS_EVAL_TYPE_MODULE);
     utassert(!JS_IsException(module));
     JS_FreeValue(context, module);
 
-    JSValue promise = Eval(context, "Promise.resolve(40).then(value => value + 2)");
+    JSValue promise =
+        Eval(context, "Promise.resolve(40).then(value => value + 2)");
     utassert(!JS_IsException(promise));
     utassert(JS_PromiseState(context, promise) == JS_PROMISE_PENDING);
     JSContext* jobContext = nullptr;

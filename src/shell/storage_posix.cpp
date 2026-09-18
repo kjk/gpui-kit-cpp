@@ -10,7 +10,8 @@ bool StorageReplaceFile(Str temporary, Str path, Str* error) {
     if (rename(temporary.s, path.s) == 0) return true;
     if (error) {
         StrFree(*error);
-        *error = StrDup(fmt("cannot atomically replace storage file `%s`", path));
+        *error =
+            StrDup(fmt("cannot atomically replace storage file `%s`", path));
     }
     return false;
 }

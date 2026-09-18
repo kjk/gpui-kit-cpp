@@ -573,10 +573,12 @@ under two names (`/wd4505`, `-Wno-unused-function`) plus `/wd4996`, each with a
 comment saying why.
 
 **After changing `.cpp`/`.h`/`.ts` files, run `bun cmd/format.ts` on those
-paths** (clang-format on C++ in `src/` and `examples/`, Chromium-based, 80
-columns; Prettier on TypeScript, printWidth 120, lf). `-ts` / `-cpp` runs one.
-Pass the changed paths — with no arguments it reformats the whole tree, which
-buries a small change under unrelated churn. Never format `.work/` or `out/`.
+paths** (clang-format on C++ in `src/`, `examples/`, `tests/`, `bench/` and
+`gpui_shell/`, Chromium-based, 80 columns; Prettier on TypeScript, printWidth
+120, lf). `-ts` / `-cpp` runs one. Pass the changed paths — with no arguments
+it reformats the whole tree, which buries a small change under unrelated churn.
+Never format `.work/` or `out/`. The vendored QuickJS pair under
+`src/quickjs/` and the generated shader/icon tables are skipped.
 
 ### Tests and benchmarks
 

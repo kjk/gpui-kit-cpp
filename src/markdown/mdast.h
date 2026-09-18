@@ -317,8 +317,8 @@ inline ReferenceKind NodeRefKind(const Node* n) {
 }
 
 inline void NodeSetRefKind(Node* n, ReferenceKind k) {
-    n->flags = (uint8_t)((n->flags & ~NodeRefKindMask) |
-                         (((uint8_t)k & 3) << 6));
+    n->flags =
+        (uint8_t)((n->flags & ~NodeRefKindMask) | (((uint8_t)k & 3) << 6));
 }
 
 Node* NodeNew(Arena* a, NodeKind kind);

@@ -123,4 +123,4 @@ bool WebViewAvailable() {
     return false;
 }
 
-}  // namespace wry
+} // namespace wry

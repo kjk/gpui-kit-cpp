@@ -123,7 +123,6 @@ static void ReleaseOnlyFiresAfterAPress() {
     utassert(!SliderHandleRelease(&s));
 }
 
-
 // on_a11y_action(Increment | Decrement), which is what the arrows carry: the
 // value moves by the slider's own step and stops at its limits.
 static void TheArrowsStepByTheStep() {

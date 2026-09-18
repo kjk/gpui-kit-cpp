@@ -22,8 +22,8 @@ static void TheHighlightIsOnUnlessItIsTurnedOff() {
 }
 
 static void ASelectedRowTakesTheTintAndTheRule() {
-    ListActiveStyle st =
-        ListActiveStyleOf(ListSettings{}, kActive, kActiveBorder, kAccent, true);
+    ListActiveStyle st = ListActiveStyleOf(ListSettings{}, kActive,
+                                           kActiveBorder, kAccent, true);
     utassert(Same(st.bg.color, kActive));
     utassert(st.hasBorder);
     utassert(Same(st.border, kActiveBorder));
@@ -33,8 +33,8 @@ static void ASelectedRowTakesTheTintAndTheRule() {
 // whatever the setting says — the rule is the setting's, the fill is the
 // row's.
 static void ARowThatIsOnlySecondarySelectedKeepsAccent() {
-    ListActiveStyle st =
-        ListActiveStyleOf(ListSettings{}, kActive, kActiveBorder, kAccent, false);
+    ListActiveStyle st = ListActiveStyleOf(ListSettings{}, kActive,
+                                           kActiveBorder, kAccent, false);
     utassert(Same(st.bg.color, kAccent));
     utassert(st.hasBorder);
 }

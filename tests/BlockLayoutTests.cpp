@@ -55,9 +55,9 @@ static void ABlockPageOverflowsInsteadOfSquashing() {
 // The same tree with the page made a flex container, which is what every box
 // in this tree used to be. The column and the fillers clip, so their automatic
 // minimum size is zero — CSS's rule for a scroll container — and there is
-// nothing to stop flexbox sharing the 864px deficit out among them. That is the reading the
-// fix moved away from, and it is here so the two stay told apart rather than
-// rediscovered.
+// nothing to stop flexbox sharing the 864px deficit out among them. That is the
+// reading the fix moved away from, and it is here so the two stay told apart
+// rather than rediscovered.
 static void AFlexPageSharesTheDeficitOut() {
     Arena* a = ArenaNew();
     El* fillers[3] = {Div(a)->H(400)->W(kFill)->ClipY(),

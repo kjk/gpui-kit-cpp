@@ -46,8 +46,8 @@ State RawFlowStart(Tokenizer* t) {
 
 State RawFlowBeforeSequenceOpen(Tokenizer* t) {
     int32_t prefix = 0;
-    if (t->events.len > 0 &&
-        t->events[t->events.len - 1].name == Name::SpaceOrTab) {
+    if (t->events.len > 0 && t->events[t->events.len - 1]
+                                     .name == Name::SpaceOrTab) {
         Position position = PositionFromExitEvent(t->events, t->events.len - 1);
         prefix = SliceFromPosition(t->parseState->bytes, position).Len();
     }
@@ -131,7 +131,8 @@ State RawFlowInfo(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
         Exit(t, Name::Data);
         Exit(t, t->tokenizeState.token4);
-        TokenizerAttempt(t, StateNext(StateName::RawFlowMetaBefore), StateNok());
+        TokenizerAttempt(t, StateNext(StateName::RawFlowMetaBefore),
+                         StateNok());
         return StateRetry(SpaceOrTab(t));
     }
     if (t->current == (int32_t)t->tokenizeState.marker &&
@@ -211,8 +212,7 @@ State RawFlowSequenceClose(Tokenizer* t) {
         t->tokenizeState.sizeB = 0;
         Exit(t, t->tokenizeState.token3);
         if (t->current == '\t' || t->current == ' ') {
-            TokenizerAttempt(t,
-                             StateNext(StateName::RawFlowAfterSequenceClose),
+            TokenizerAttempt(t, StateNext(StateName::RawFlowAfterSequenceClose),
                              StateNok());
             return StateRetry(SpaceOrTab(t));
         }
@@ -289,9 +289,8 @@ State RawTextStart(Tokenizer* t) {
         t->parseState->options->constructs.codeText && t->current == '`';
     bool math =
         t->parseState->options->constructs.mathText && t->current == '$';
-    bool afterEscape =
-        t->events.len > 0 &&
-        t->events[t->events.len - 1].name == Name::CharacterEscape;
+    bool afterEscape = t->events.len > 0 && t->events[t->events.len - 1].name ==
+                                                Name::CharacterEscape;
     if ((code || math) && (t->previous != t->current || afterEscape)) {
         uint8_t marker = (uint8_t)t->current;
         if (marker == '`') {

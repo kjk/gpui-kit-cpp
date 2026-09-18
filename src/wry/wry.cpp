@@ -44,4 +44,4 @@ Str RevertUriWorkAround(Str uri, Str httpOrHttps, Str protocol) {
                                base::FormatTemp("%s://", protocol));
 }
 
-}  // namespace wry
+} // namespace wry

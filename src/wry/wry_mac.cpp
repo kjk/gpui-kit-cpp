@@ -84,13 +84,14 @@ static NSString* const kIpcScript =
     @"});";
 
 struct ProtocolCopy {
-    Str name;  // heap
+    Str name; // heap
     void* ctx;
-    void (*handler)(void* ctx, Str id, const Request* request, RequestResponder* responder);
+    void (*handler)(void* ctx, Str id, const Request* request,
+                    RequestResponder* responder);
 };
 
 struct WebView {
-    Str id = {};  // heap
+    Str id = {}; // heap
     WKWebView* webview = nil;
     WKUserContentController* manager = nil;
     NSView* parentView = nil;
@@ -101,10 +102,11 @@ struct WebView {
     void (*ipcHandler)(void* ctx, Str url, Str body) = nullptr;
     bool (*navigationHandler)(void* ctx, Str url) = nullptr;
     void (*documentTitleChangedHandler)(void* ctx, Str title) = nullptr;
-    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event, Str url) = nullptr;
-    NewWindowResponse (*newWindowReqHandler)(void* ctx, Str url,
-                                             const NewWindowFeatures* features,
-                                             WebView** createdWebView) = nullptr;
+    void (*onPageLoadHandler)(void* ctx, PageLoadEvent event,
+                              Str url) = nullptr;
+    NewWindowResponse (*newWindowReqHandler)(
+        void* ctx, Str url, const NewWindowFeatures* features,
+        WebView** createdWebView) = nullptr;
 
     Vec<ProtocolCopy> protocols;
 
@@ -183,7 +185,7 @@ static Str UrlFromWebView(WKWebView* webview) {
 static void FlushPendingScripts(WebView* wv);
 static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 
-}  // namespace wry
+} // namespace wry
 
 // ─── the delegates ───────────────────────────────────────────────────────
 
@@ -209,7 +211,9 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
     return self.acceptFirstMouseEnabled;
 }
 
-- (NSString*)syntheticMouseScript:(NSEvent*)event down:(BOOL)down back:(BOOL)back {
+- (NSString*)syntheticMouseScript:(NSEvent*)event
+                             down:(BOOL)down
+                             back:(BOOL)back {
     NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
     NSUInteger x = p.x < 0 ? 0 : (NSUInteger)p.x;
     NSUInteger y = p.y < 0 ? 0 : (NSUInteger)p.y;
@@ -227,11 +231,12 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
              "el.dispatchEvent(ev); if (!ev.defaultPrevented && '%@' === "
              "'mouseup') { if (ev.button === 3) history.back();"
              "if (ev.button === 4) history.forward(); } })()",
-            (unsigned long)x, (unsigned long)y, down ? @"mousedown" : @"mouseup",
-            back ? 3 : 4, (unsigned long)buttons, (unsigned long)x, (unsigned long)y,
-            (long)event.clickCount, (unsigned long)x, (unsigned long)y,
-            (unsigned long)x, (unsigned long)y, (unsigned long)x, (unsigned long)y,
             (unsigned long)x, (unsigned long)y,
+            down ? @"mousedown" : @"mouseup", back ? 3 : 4,
+            (unsigned long)buttons, (unsigned long)x, (unsigned long)y,
+            (long)event.clickCount, (unsigned long)x, (unsigned long)y,
+            (unsigned long)x, (unsigned long)y, (unsigned long)x,
+            (unsigned long)y, (unsigned long)x, (unsigned long)y,
             (mods & NSEventModifierFlagControl) ? "true" : "false",
             (mods & NSEventModifierFlagCommand) ? "true" : "false",
             (mods & NSEventModifierFlagShift) ? "true" : "false",
@@ -241,9 +246,12 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 
 - (void)otherMouseDown:(NSEvent*)event {
     NSInteger button = event.buttonNumber;
-    if (event.type == NSEventTypeOtherMouseDown && (button == 3 || button == 4)) {
-        [self evaluateJavaScript:[self syntheticMouseScript:event down:YES back:button == 3]
-              completionHandler:nil];
+    if (event.type == NSEventTypeOtherMouseDown &&
+        (button == 3 || button == 4)) {
+        [self evaluateJavaScript:[self syntheticMouseScript:event
+                                                       down:YES
+                                                       back:button == 3]
+               completionHandler:nil];
         return;
     }
     [self mouseDown:event];
@@ -252,8 +260,10 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 - (void)otherMouseUp:(NSEvent*)event {
     NSInteger button = event.buttonNumber;
     if (event.type == NSEventTypeOtherMouseUp && (button == 3 || button == 4)) {
-        [self evaluateJavaScript:[self syntheticMouseScript:event down:NO back:button == 3]
-              completionHandler:nil];
+        [self evaluateJavaScript:[self syntheticMouseScript:event
+                                                       down:NO
+                                                       back:button == 3]
+               completionHandler:nil];
         return;
     }
     [self mouseUp:event];
@@ -279,7 +289,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
     }
     NSString* body = (NSString*)message.body;
     NSURL* url = message.frameInfo.request.URL;
-    wv->ipcHandler(wv->ctx, url ? wry::FromNSTemp(url.absoluteString) : wry::Str(),
+    wv->ipcHandler(wv->ctx,
+                   url ? wry::FromNSTemp(url.absoluteString) : wry::Str(),
                    wry::FromNSTemp(body));
 }
 @end
@@ -297,7 +308,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
     (void)change;
     (void)context;
     wry::WebView* wv = self.wv;
-    if (!wv || !wv->documentTitleChangedHandler || ![keyPath isEqualToString:@"title"]) {
+    if (!wv || !wv->documentTitleChangedHandler ||
+        ![keyPath isEqualToString:@"title"]) {
         return;
     }
     NSString* title = [object title];
@@ -313,7 +325,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 @implementation GpuiWryNavigationDelegate
 - (void)webView:(WKWebView*)webView
     decidePolicyForNavigationAction:(WKNavigationAction*)action
-                    decisionHandler:(void (^)(WKNavigationActionPolicy))handler {
+                    decisionHandler:
+                        (void (^)(WKNavigationActionPolicy))handler {
     (void)webView;
     wry::WebView* wv = self.wv;
     // `shouldPerformDownload` is macOS 11.3+, and with no download handler
@@ -328,28 +341,33 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
         return;
     }
     NSURL* url = action.request.URL;
-    bool allow =
-        wv->navigationHandler(wv->ctx, url ? wry::FromNSTemp(url.absoluteString) : wry::Str());
-    handler(allow ? WKNavigationActionPolicyAllow : WKNavigationActionPolicyCancel);
+    bool allow = wv->navigationHandler(
+        wv->ctx, url ? wry::FromNSTemp(url.absoluteString) : wry::Str());
+    handler(allow ? WKNavigationActionPolicyAllow
+                  : WKNavigationActionPolicyCancel);
 }
 
-- (void)webView:(WKWebView*)webView didCommitNavigation:(WKNavigation*)navigation {
+- (void)webView:(WKWebView*)webView
+    didCommitNavigation:(WKNavigation*)navigation {
     (void)navigation;
     wry::WebView* wv = self.wv;
     if (!wv) {
         return;
     }
     if (wv->onPageLoadHandler) {
-        wv->onPageLoadHandler(wv->ctx, wry::PageLoadEvent::Started, wry::UrlFromWebView(webView));
+        wv->onPageLoadHandler(wv->ctx, wry::PageLoadEvent::Started,
+                              wry::UrlFromWebView(webView));
     }
     wry::FlushPendingScripts(wv);
 }
 
-- (void)webView:(WKWebView*)webView didFinishNavigation:(WKNavigation*)navigation {
+- (void)webView:(WKWebView*)webView
+    didFinishNavigation:(WKNavigation*)navigation {
     (void)navigation;
     wry::WebView* wv = self.wv;
     if (wv && wv->onPageLoadHandler) {
-        wv->onPageLoadHandler(wv->ctx, wry::PageLoadEvent::Finished, wry::UrlFromWebView(webView));
+        wv->onPageLoadHandler(wv->ctx, wry::PageLoadEvent::Finished,
+                              wry::UrlFromWebView(webView));
     }
 }
 @end
@@ -412,7 +430,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
     requestMediaCapturePermissionForOrigin:(WKSecurityOrigin*)origin
                           initiatedByFrame:(WKFrameInfo*)frame
                                       type:(WKMediaCaptureType)type
-                           decisionHandler:(void (^)(WKPermissionDecision))handler {
+                           decisionHandler:
+                               (void (^)(WKPermissionDecision))handler {
     (void)webView;
     (void)origin;
     (void)frame;
@@ -445,7 +464,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 
     wry::WebView* created = nullptr;
     wry::NewWindowResponse response = wv->newWindowReqHandler(
-        wv->ctx, url ? wry::FromNSTemp(url.absoluteString) : wry::Str(), &features, &created);
+        wv->ctx, url ? wry::FromNSTemp(url.absoluteString) : wry::Str(),
+        &features, &created);
     if (response == wry::NewWindowResponse::Deny) {
         return nil;
     }
@@ -457,33 +477,41 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
     // which is what the crate's `NewWindowResponse::Allow` arm does.
     NSWindow* current = webView.window;
     NSRect defaults = current ? current.frame : NSMakeRect(0, 0, 800, 600);
-    NSSize size = NSMakeSize(features.hasSize ? features.width : defaults.size.width,
-                             features.hasSize ? features.height : defaults.size.height);
+    NSSize size =
+        NSMakeSize(features.hasSize ? features.width : defaults.size.width,
+                   features.hasSize ? features.height : defaults.size.height);
     NSPoint origin = defaults.origin;
     if (features.hasPosition) {
         NSScreen* screen = current ? current.screen : [NSScreen mainScreen];
         CGFloat screenHeight = screen ? screen.frame.size.height : size.height;
-        origin = NSMakePoint(features.x, screenHeight - features.y - size.height);
+        origin =
+            NSMakePoint(features.x, screenHeight - features.y - size.height);
     }
 
-    NSWindowStyleMask mask =
-        NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable;
-    bool resizable = windowFeatures.allowsResizing ? windowFeatures.allowsResizing.boolValue : true;
+    NSWindowStyleMask mask = NSWindowStyleMaskTitled |
+                             NSWindowStyleMaskClosable |
+                             NSWindowStyleMaskMiniaturizable;
+    bool resizable = windowFeatures.allowsResizing
+                         ? windowFeatures.allowsResizing.boolValue
+                         : true;
     if (resizable) {
         mask |= NSWindowStyleMaskResizable;
     }
 
     NSRect rect = NSMakeRect(origin.x, origin.y, size.width, size.height);
-    NSWindow* window = [[NSWindow alloc] initWithContentRect:rect
-                                                   styleMask:mask
-                                                     backing:NSBackingStoreBuffered
-                                                       defer:NO];
+    NSWindow* window =
+        [[NSWindow alloc] initWithContentRect:rect
+                                    styleMask:mask
+                                      backing:NSBackingStoreBuffered
+                                        defer:NO];
     // The window is made outside a window controller, so it must not release
     // itself when closed — the array below is what owns it.
     window.releasedWhenClosed = NO;
 
-    WKWebView* child = [[WKWebView alloc] initWithFrame:window.frame configuration:configuration];
-    GpuiWryNewWindowDelegate* delegate = [[GpuiWryNewWindowDelegate alloc] init];
+    WKWebView* child = [[WKWebView alloc] initWithFrame:window.frame
+                                          configuration:configuration];
+    GpuiWryNewWindowDelegate* delegate =
+        [[GpuiWryNewWindowDelegate alloc] init];
     delegate.owner = self;
     delegate.window = window;
     window.delegate = delegate;
@@ -507,18 +535,21 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task);
 @end
 
 @implementation GpuiWrySchemeHandler
-- (void)webView:(WKWebView*)webView startURLSchemeTask:(id<WKURLSchemeTask>)task {
+- (void)webView:(WKWebView*)webView
+    startURLSchemeTask:(id<WKURLSchemeTask>)task {
     (void)webView;
     if (self.wv) {
         wry::HandleSchemeTask(self.wv, self.index, task);
     }
 }
 
-- (void)webView:(WKWebView*)webView stopURLSchemeTask:(id<WKURLSchemeTask>)task {
+- (void)webView:(WKWebView*)webView
+    stopURLSchemeTask:(id<WKURLSchemeTask>)task {
     (void)webView;
     wry::WebView* wv = self.wv;
     if (wv && wv->liveTasks) {
-        [wv->liveTasks removeObject:[NSValue valueWithPointer:(__bridge const void*)task]];
+        [wv->liveTasks
+            removeObject:[NSValue valueWithPointer:(__bridge const void*)task]];
     }
 }
 @end
@@ -529,10 +560,10 @@ namespace wry {
 
 // `InnerWebView::init`.
 static void AddUserScript(WebView* wv, Str js, bool forMainFrameOnly) {
-    WKUserScript* script =
-        [[WKUserScript alloc] initWithSource:ToNS(js)
-                               injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-                            forMainFrameOnly:forMainFrameOnly ? YES : NO];
+    WKUserScript* script = [[WKUserScript alloc]
+          initWithSource:ToNS(js)
+           injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+        forMainFrameOnly:forMainFrameOnly ? YES : NO];
     [wv->manager addUserScript:script];
 }
 
@@ -541,7 +572,8 @@ static void FlushPendingScripts(WebView* wv) {
         return;
     }
     for (int i = 0; i < wv->pendingScripts.len; i++) {
-        [wv->webview evaluateJavaScript:ToNS(wv->pendingScripts[i]) completionHandler:nil];
+        [wv->webview evaluateJavaScript:ToNS(wv->pendingScripts[i])
+                      completionHandler:nil];
         StrFree(wv->pendingScripts[i]);
     }
     VecReset(wv->pendingScripts);
@@ -562,7 +594,8 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task) {
     if (!wv->liveTasks) {
         wv->liveTasks = [NSMutableSet set];
     }
-    [wv->liveTasks addObject:[NSValue valueWithPointer:(__bridge const void*)task]];
+    [wv->liveTasks
+        addObject:[NSValue valueWithPointer:(__bridge const void*)task]];
 
     Vec<Header> headerStore;
     NSDictionary<NSString*, NSString*>* all = request.allHTTPHeaderFields;
@@ -629,9 +662,10 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task) {
 // and only while the task is still one the webview knows about — Rust's
 // per-task UUID check, which is there because a stopped task is a dangling
 // pointer.
-static void DeliverResponse(RequestResponder* responder, NSHTTPURLResponse* response,
-                            NSData* data) {
-    NSValue* key = [NSValue valueWithPointer:(__bridge const void*)responder->task];
+static void DeliverResponse(RequestResponder* responder,
+                            NSHTTPURLResponse* response, NSData* data) {
+    NSValue* key =
+        [NSValue valueWithPointer:(__bridge const void*)responder->task];
     if (responder->liveTasks && [responder->liveTasks containsObject:key]) {
         @try {
             [responder->task didReceiveResponse:response];
@@ -639,7 +673,9 @@ static void DeliverResponse(RequestResponder* responder, NSHTTPURLResponse* resp
             [responder->task didFinish];
         } @catch (NSException* e) {
             (void)e;
-            logf("wry: the custom protocol task went away before it was answered\n");
+            logf(
+                "wry: the custom protocol task went away before it was "
+                "answered\n");
         }
         [responder->liveTasks removeObject:key];
     }
@@ -666,21 +702,25 @@ void Respond(RequestResponder* responder, const Response* response) {
     headers[@"Content-Length"] = [NSString stringWithFormat:@"%d", bodyLen];
     if (response) {
         for (int i = 0; i < response->headerCount; i++) {
-            headers[ToNS(response->headers[i].name)] = ToNS(response->headers[i].value);
+            headers[ToNS(response->headers[i].name)] =
+                ToNS(response->headers[i].value);
         }
     }
-    NSData* data = bodyLen > 0
-                       ? [NSData dataWithBytes:response->body length:(NSUInteger)bodyLen]
-                       : [NSData data];
-    NSHTTPURLResponse* http = [[NSHTTPURLResponse alloc] initWithURL:responder->url
-                                                          statusCode:status
-                                                         HTTPVersion:@"HTTP/1.1"
-                                                        headerFields:headers];
+    NSData* data = bodyLen > 0 ? [NSData dataWithBytes:response->body
+                                                length:(NSUInteger)bodyLen]
+                               : [NSData data];
+    NSHTTPURLResponse* http =
+        [[NSHTTPURLResponse alloc] initWithURL:responder->url
+                                    statusCode:status
+                                   HTTPVersion:@"HTTP/1.1"
+                                  headerFields:headers];
     if (!http) {
-        logf("wry: could not build the response for a custom protocol request\n");
+        logf(
+            "wry: could not build the response for a custom protocol "
+            "request\n");
         if (responder->liveTasks && responder->task) {
-            NSValue* key =
-                [NSValue valueWithPointer:(__bridge const void*)responder->task];
+            NSValue* key = [NSValue
+                valueWithPointer:(__bridge const void*)responder->task];
             [responder->liveTasks removeObject:key];
         }
         delete responder;
@@ -759,7 +799,8 @@ static void SetTrafficLightInset(NSWindow* window, Position position) {
 
 // ─── the webview ─────────────────────────────────────────────────────────
 
-WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asChild) {
+WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs,
+                    bool asChild) {
     if (!parentWindow || !attrs) {
         return nullptr;
     }
@@ -771,16 +812,18 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     NSView* parentView = (__bridge NSView*)parentWindow;
 
     bool usingExistingConfig = attrs->webviewConfiguration != nullptr;
-    WKWebViewConfiguration* config = usingExistingConfig
-                                         ? (__bridge WKWebViewConfiguration*)attrs->webviewConfiguration
-                                         : [[WKWebViewConfiguration alloc] init];
+    WKWebViewConfiguration* config =
+        usingExistingConfig
+            ? (__bridge WKWebViewConfiguration*)attrs->webviewConfiguration
+            : [[WKWebViewConfiguration alloc] init];
     if (!usingExistingConfig) {
         if (attrs->incognito) {
-            config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+            config
+                .websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
         } else if (attrs->hasDataStoreIdentifier) {
             if (@available(macOS 14.0, *)) {
-                NSUUID* identifier =
-                    [[NSUUID alloc] initWithUUIDBytes:attrs->dataStoreIdentifier];
+                NSUUID* identifier = [[NSUUID alloc]
+                    initWithUUIDBytes:attrs->dataStoreIdentifier];
                 config.websiteDataStore =
                     [WKWebsiteDataStore dataStoreForIdentifier:identifier];
             } else {
@@ -805,13 +848,15 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     wv->schemeHandlers = [NSMutableArray array];
     // `attributes.id.unwrap_or_else(|| COUNTER.next().to_string())`.
     static int nextId = 1;
-    wv->id = len(attrs->id) > 0 ? StrDup(attrs->id) : StrDup(base::FormatTemp("%d", nextId++));
+    wv->id = len(attrs->id) > 0 ? StrDup(attrs->id)
+                                : StrDup(base::FormatTemp("%d", nextId++));
 
     // Custom protocols, before the webview exists: a scheme handler can only
     // be set on a configuration.
     for (int i = 0; i < attrs->customProtocolCount; i++) {
         NSString* scheme = ToNS(attrs->customProtocols[i].name);
-        if (usingExistingConfig && [config urlSchemeHandlerForURLScheme:scheme]) {
+        if (usingExistingConfig &&
+            [config urlSchemeHandlerForURLScheme:scheme]) {
             continue;
         }
         ProtocolCopy p;
@@ -842,15 +887,18 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         config.defaultWebpagePreferences.allowsContentJavaScript = NO;
     }
     if (attrs->autoplay) {
-        config.mediaTypesRequiringUserActionForPlayback = WKAudiovisualMediaTypeNone;
+        config.mediaTypesRequiringUserActionForPlayback =
+            WKAudiovisualMediaTypeNone;
     }
     if (attrs->hasBackgroundThrottling) {
         if (@available(macOS 14.0, *)) {
             // WKInactiveSchedulingPolicy is Suspend=0, Throttle=1, None=2.
             int policy = 2;
-            if (attrs->backgroundThrottling == BackgroundThrottlingPolicy::Suspend) {
+            if (attrs->backgroundThrottling ==
+                BackgroundThrottlingPolicy::Suspend) {
                 policy = 0;
-            } else if (attrs->backgroundThrottling == BackgroundThrottlingPolicy::Throttle) {
+            } else if (attrs->backgroundThrottling ==
+                       BackgroundThrottlingPolicy::Throttle) {
                 policy = 1;
             }
             [preferences setValue:@(policy) forKey:@"inactiveSchedulingPolicy"];
@@ -867,10 +915,14 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     double scale = ScaleFactor(parentView);
     NSRect frame;
     if (asChild && attrs->hasBounds) {
-        double x = ToLogical(attrs->bounds.position.x, attrs->bounds.position.logical, scale);
-        double y = ToLogical(attrs->bounds.position.y, attrs->bounds.position.logical, scale);
-        double w = ToLogical(attrs->bounds.size.width, attrs->bounds.size.logical, scale);
-        double h = ToLogical(attrs->bounds.size.height, attrs->bounds.size.logical, scale);
+        double x = ToLogical(attrs->bounds.position.x,
+                             attrs->bounds.position.logical, scale);
+        double y = ToLogical(attrs->bounds.position.y,
+                             attrs->bounds.position.logical, scale);
+        double w = ToLogical(attrs->bounds.size.width,
+                             attrs->bounds.size.logical, scale);
+        double h = ToLogical(attrs->bounds.size.height,
+                             attrs->bounds.size.logical, scale);
         frame.origin = WindowPosition(parentView, x, y, h);
         frame.size = NSMakeSize(w, h);
     } else {
@@ -910,7 +962,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         wv->ipcDelegate = [[GpuiWryScriptHandler alloc] init];
         wv->ipcDelegate.wv = wv;
         @try {
-            [wv->manager addScriptMessageHandler:wv->ipcDelegate name:kIpcHandlerName];
+            [wv->manager addScriptMessageHandler:wv->ipcDelegate
+                                            name:kIpcHandlerName];
         } @catch (NSException* e) {
             (void)e;
             logf("wry: could not install the ipc message handler\n");
@@ -946,7 +999,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     if (len(attrs->url) > 0) {
         NSURL* url = [NSURL URLWithString:ToNS(attrs->url)];
         if (url) {
-            NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:url];
+            NSMutableURLRequest* request =
+                [NSMutableURLRequest requestWithURL:url];
             for (int i = 0; i < attrs->headerCount; i++) {
                 [request addValue:ToNS(attrs->headers[i].value)
                     forHTTPHeaderField:ToNS(attrs->headers[i].name)];
@@ -974,7 +1028,8 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     // first responder by WryWebViewParent; a child must not steal GPUI focus.
     (void)attrs->focused;
     NSWindow* window = parentView.window;
-    if (window && [window respondsToSelector:@selector(setTitlebarSeparatorStyle:)]) {
+    if (window &&
+        [window respondsToSelector:@selector(setTitlebarSeparatorStyle:)]) {
         window.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     }
     if (!asChild && attrs->hasTrafficLightInset) {
@@ -1071,16 +1126,17 @@ bool WebViewEvalWithCallback(WebView* wv, Str js, void* ctx,
                     }
                     // The value as JSON, which is what Rust serialises here
                     // and what the Windows half hands back.
-                    NSData* json =
-                        [NSJSONSerialization dataWithJSONObject:result
-                                                        options:NSJSONWritingFragmentsAllowed
-                                                          error:nil];
+                    NSData* json = [NSJSONSerialization
+                        dataWithJSONObject:result
+                                   options:NSJSONWritingFragmentsAllowed
+                                     error:nil];
                     if (!json) {
                         callback(ctx, Str());
                         return;
                     }
-                    NSString* text = [[NSString alloc] initWithData:json
-                                                           encoding:NSUTF8StringEncoding];
+                    NSString* text =
+                        [[NSString alloc] initWithData:json
+                                              encoding:NSUTF8StringEncoding];
                     callback(ctx, FromNSTemp(text));
                   }];
     return true;
@@ -1094,7 +1150,8 @@ bool WebViewLoadUrl(WebView* wv, Str url) {
     return WebViewLoadUrlWithHeaders(wv, url, nullptr, 0);
 }
 
-bool WebViewLoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int headerCount) {
+bool WebViewLoadUrlWithHeaders(WebView* wv, Str url, const Header* headers,
+                               int headerCount) {
     if (!wv) {
         return false;
     }
@@ -1104,7 +1161,8 @@ bool WebViewLoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int 
     }
     NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:nsurl];
     for (int i = 0; i < headerCount; i++) {
-        [request addValue:ToNS(headers[i].value) forHTTPHeaderField:ToNS(headers[i].name)];
+        [request addValue:ToNS(headers[i].value)
+            forHTTPHeaderField:ToNS(headers[i].name)];
     }
     [wv->webview loadRequest:request];
     return true;
@@ -1136,7 +1194,8 @@ bool WebViewBounds(WebView* wv, Rect* out) {
     }
     NSRect frame = wv->webview.frame;
     double y = parent.isFlipped ? frame.origin.y
-                                : parent.frame.size.height - frame.origin.y - frame.size.height;
+                                : parent.frame.size.height - frame.origin.y -
+                                      frame.size.height;
     out->position = LogicalPosition(frame.origin.x, y);
     out->size = LogicalSize(frame.size.width, frame.size.height);
     return true;
@@ -1255,7 +1314,8 @@ bool WebViewPrint(WebView* wv) {
     if (!wv) {
         return false;
     }
-    if (![wv->webview respondsToSelector:@selector(printOperationWithPrintInfo:)]) {
+    if (![wv->webview
+            respondsToSelector:@selector(printOperationWithPrintInfo:)]) {
         return false;
     }
     NSWindow* window = wv->webview.window;
@@ -1263,7 +1323,8 @@ bool WebViewPrint(WebView* wv) {
         return false;
     }
     NSPrintInfo* info = [NSPrintInfo sharedPrintInfo];
-    NSPrintOperation* operation = [wv->webview printOperationWithPrintInfo:info];
+    NSPrintOperation* operation =
+        [wv->webview printOperationWithPrintInfo:info];
     // Let the modal detach from this thread rather than block the app.
     operation.canSpawnSeparateThread = YES;
     [operation runOperationModalForWindow:window
@@ -1385,4 +1446,4 @@ bool WebViewAvailable() {
     return true;
 }
 
-}  // namespace wry
+} // namespace wry

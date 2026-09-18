@@ -98,8 +98,8 @@ static void StyledThemeChangesProjectIntoBase() {
     utassert(a && b);
     utassert(a->scrollbar.mode == ScrollbarMode::Hover);
     utassert(b->scrollbar.mode == ScrollbarMode::Scrolling);
-    utassert(a->scrollbar.motion.thumbHoverEntrance ==
-             ScrollbarEntrance::SlideAndFade);
+    utassert(a->scrollbar.motion
+                 .thumbHoverEntrance == ScrollbarEntrance::SlideAndFade);
     utassert(a->scrollbar.styles.thumb.hasBackground);
     utassert(a->scrollbar.styles.thumb.hasRadius);
     utassertnear(a->scrollbar.styles.thumb.radius, 0.f);
@@ -107,12 +107,11 @@ static void StyledThemeChangesProjectIntoBase() {
     utassert(b->appearance == BaseThemeAppearance::Light);
     utassert(a->resizable.hasHandle && a->resizable.hasActiveHandle);
     utassert(SameColor(a->resizable.handle, ThemeNow(&first).border));
-    utassert(SameColor(a->resizable.activeHandle,
-                       ThemeNow(&first).dragBorder));
-    utassert(SameColor(a->tokens.colors.background,
-                       ThemeNow(&first).background));
-    utassert(SameColor(b->tokens.colors.background,
-                       ThemeNow(&second).background));
+    utassert(SameColor(a->resizable.activeHandle, ThemeNow(&first).dragBorder));
+    utassert(
+        SameColor(a->tokens.colors.background, ThemeNow(&first).background));
+    utassert(
+        SameColor(b->tokens.colors.background, ThemeNow(&second).background));
 
     Arena* arena = ArenaNew();
     Ctx cx = {};
@@ -121,8 +120,8 @@ static void StyledThemeChangesProjectIntoBase() {
     El* scrollbar = Scrollbar::New(&cx);
     utassert(scrollbar->scrollThemeSet);
     utassert(scrollbar->scrollMode == ScrollbarMode::Hover);
-    utassert(scrollbar->scrollMotion.thumbHoverEntrance ==
-             ScrollbarEntrance::SlideAndFade);
+    utassert(scrollbar->scrollMotion
+                 .thumbHoverEntrance == ScrollbarEntrance::SlideAndFade);
     utassertnear(scrollbar->scrollThumbRadius, 0.f);
     ArenaDelete(arena);
 
@@ -143,8 +142,8 @@ static void UnprojectedBaseVisualsResolveFromSemanticTokens() {
     InputEditorStyle resolved = InputEditorStyleResolve(projected, tokens);
     utassert(SameColor(resolved.foreground, tokens.colors.foreground));
     utassert(SameColor(resolved.caret, tokens.colors.foreground));
-    utassert(SameColor(resolved.mutedForeground,
-                       tokens.colors.mutedForeground));
+    utassert(
+        SameColor(resolved.mutedForeground, tokens.colors.mutedForeground));
     utassert(SameColor(resolved.background, tokens.colors.surface));
     utassert(SameColor(resolved.border, tokens.colors.border));
     utassert(resolved.selection.a == 102);
@@ -157,8 +156,8 @@ static void UnprojectedBaseVisualsResolveFromSemanticTokens() {
 
     BaseTheme base;
     base.tokens = tokens;
-    utassert(SameColor(ResizableHandleColor(base, false),
-                       tokens.colors.border));
+    utassert(
+        SameColor(ResizableHandleColor(base, false), tokens.colors.border));
     utassert(SameColor(ResizableHandleColor(base, true), tokens.colors.ring));
     base.resizable.handle = chosen;
     base.resizable.hasHandle = true;
@@ -185,11 +184,10 @@ static void BaseThemeSourceContractBuildsAndOwnsGlobals() {
     ScrollbarStyles styles;
     styles.thumb.hasRadius = true;
     styles.thumb.radius = 7;
-    base_theme::ScrollbarTheme scrollbar =
-        base_theme::ScrollbarTheme::New()
-            .WithMode(ScrollbarMode::Hover)
-            .WithMotion(motion)
-            .WithStyles(styles);
+    base_theme::ScrollbarTheme scrollbar = base_theme::ScrollbarTheme::New()
+                                               .WithMode(ScrollbarMode::Hover)
+                                               .WithMotion(motion)
+                                               .WithStyles(styles);
     utassert(scrollbar.Mode() == ScrollbarMode::Hover);
     utassertnear(scrollbar.Motion().enter, 0.12f);
     utassert(scrollbar.Styles().thumb.hasRadius);
@@ -228,8 +226,8 @@ static void StyledThemeChangesProjectIntoTheRuntimeSeam() {
     utassert(SameColor(runtime.popover, theme.popover));
     utassert(SameColor(runtime.popoverForeground, theme.popoverFg));
     utassert(runtime.progress.gradient == theme.tokens.progress.gradient);
-    utassert(runtime.scrollbarThumb.gradient ==
-             theme.tokens.scrollbarThumb.gradient);
+    utassert(runtime.scrollbarThumb.gradient == theme.tokens.scrollbarThumb
+                                                    .gradient);
     utassertnear(runtime.radius, 9.f);
     utassertnear(runtime.fontSize, 18.f);
     utassert(runtime.scrollbarMode == ScrollbarMode::Hover);

@@ -12,9 +12,9 @@ static DescriptionItem DlItem(Str label, int span = 1) {
 
 static void GroupsSpansLikeRust() {
     DescriptionItem items[7] = {
-        DlItem(StrL("test1")),    DlItem(StrL("test2"), 2),
-        DlItem(StrL("test3")),    DlItem(StrL("test4")),
-        DlItem(StrL("test5")),    DlItem(StrL("test6"), 3),
+        DlItem(StrL("test1")), DlItem(StrL("test2"), 2),
+        DlItem(StrL("test3")), DlItem(StrL("test4")),
+        DlItem(StrL("test5")), DlItem(StrL("test6"), 3),
         DlItem(StrL("test7")),
     };
     int counts[8] = {};

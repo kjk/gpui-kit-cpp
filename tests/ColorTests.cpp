@@ -162,13 +162,13 @@ static void TheColourLerpWalksInHsl() {
     utassert(Is(Lerp(Rgb(0xff, 0, 0), Rgb(0, 0, 0xff), 0.5f), 0x00ff00));
     // The colours it is meant for: two greys, halfway, is the grey between
     // them — the same answer either space gives.
-    utassert(Is(Lerp(Rgb(0x0a, 0x0a, 0x0a), Rgb(0xfa, 0xfa, 0xfa), 0.5f),
-                0x828282));
+    utassert(
+        Is(Lerp(Rgb(0x0a, 0x0a, 0x0a), Rgb(0xfa, 0xfa, 0xfa), 0.5f), 0x828282));
     // The ends are the colours themselves, not a round trip through HSL.
-    utassert(Is(Lerp(Rgb(0x12, 0x34, 0x56), Rgb(0xfe, 0xdc, 0xba), 0.f),
-                0x123456));
-    utassert(Is(Lerp(Rgb(0x12, 0x34, 0x56), Rgb(0xfe, 0xdc, 0xba), 1.f),
-                0xfedcba));
+    utassert(
+        Is(Lerp(Rgb(0x12, 0x34, 0x56), Rgb(0xfe, 0xdc, 0xba), 0.f), 0x123456));
+    utassert(
+        Is(Lerp(Rgb(0x12, 0x34, 0x56), Rgb(0xfe, 0xdc, 0xba), 1.f), 0xfedcba));
     // Alpha walks with the rest.
     Rgba fade = Lerp(Rgba8(0, 0, 0, 0), Rgba8(0, 0, 0, 0xff), 0.5f);
     utassert(fade.a == 127);

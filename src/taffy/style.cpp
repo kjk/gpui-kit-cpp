@@ -123,7 +123,7 @@ OriginZeroLine IntoOriginZeroLine(GridLine line, uint16_t explicitTrackCount) {
     } else if (line.v < 0) {
         value = (int32_t)line.v + explicitLineCount;
     }
-    value = value < kMinOzLine ? kMinOzLine
+    value = value < kMinOzLine   ? kMinOzLine
             : value > kMaxOzLine ? kMaxOzLine
                                  : value;
     return OriginZeroLine{(int16_t)value};
@@ -367,8 +367,7 @@ bool operator==(const Style& a, const Style& b) {
            // Grid container, named
            SameSlice(a.gridTemplateAreas.areas, b.gridTemplateAreas.areas) &&
            a.gridTemplateAreas.rowCount == b.gridTemplateAreas.rowCount &&
-           a.gridTemplateAreas.columnCount ==
-               b.gridTemplateAreas.columnCount &&
+           a.gridTemplateAreas.columnCount == b.gridTemplateAreas.columnCount &&
            SameSlice(a.gridTemplateColumnNames, b.gridTemplateColumnNames) &&
            SameSlice(a.gridTemplateRowNames, b.gridTemplateRowNames) &&
            // Grid child

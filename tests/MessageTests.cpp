@@ -34,20 +34,22 @@ static void TheBuilderCarriesAlignmentAndEverySlot() {
     utassert(message->header != nullptr);
     utassert(message->content != nullptr);
     utassert(message->footer != nullptr);
-    utassert(message->header->hasContentInset && !message->header->contentInset);
-    utassert(message->footer->hasContentInset && !message->footer->contentInset);
+    utassert(message->header->hasContentInset && !message->header
+                                                      ->contentInset);
+    utassert(message->footer->hasContentInset && !message->footer
+                                                      ->contentInset);
 
     MessageGroup* group = MessageGroup::New(&cx)
                               ->Child(TextEl(a, StrL("First")))
                               ->Child(TextEl(a, StrL("Second")));
     utassert(group->children.len == 2);
 
-    MessageContent* content =
-        MessageContent::New(&cx)->Aligned(MessageAlignment::End);
+    MessageContent* content = MessageContent::New(&cx)
+                                  ->Aligned(MessageAlignment::End);
     utassert(content->alignment == MessageAlignment::End);
 
-    MessageAvatar* avatar =
-        MessageAvatar::New(&cx)->Child(TextEl(a, StrL("ME")));
+    MessageAvatar* avatar = MessageAvatar::New(&cx)
+                                ->Child(TextEl(a, StrL("ME")));
     utassert(avatar->children.len == 1);
 
     AppGlobalClear(&app);
@@ -95,12 +97,12 @@ static void AGhostBubbleRemovesTheMetadataInsets() {
     El* framedStack = framed->first->first;
     utassertnear(framedStack->first->style.pad.left, 12.f);
 
-    El* ghost = Message::New(&cx)
-                    ->Header(MessageHeader::New(&cx)->Child(
-                        TextEl(a, StrL("System"))))
-                    ->Content(MessageContent::New(&cx)->WithBubble(
-                        Bubble::New(&cx)->WithVariant(BubbleVariant::Ghost)))
-                    ->IntoEl();
+    El* ghost =
+        Message::New(&cx)
+            ->Header(MessageHeader::New(&cx)->Child(TextEl(a, StrL("System"))))
+            ->Content(MessageContent::New(&cx)->WithBubble(
+                Bubble::New(&cx)->WithVariant(BubbleVariant::Ghost)))
+            ->IntoEl();
     El* ghostStack = ghost->first->first;
     utassertnear(ghostStack->first->style.pad.left, 0.f);
 

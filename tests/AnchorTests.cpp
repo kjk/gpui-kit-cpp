@@ -13,8 +13,8 @@ namespace {
 
 // A trigger at `y`, with an anchored popup `popupH` tall under it. Answers
 // where the popup landed.
-static float PopupTop(float viewH, float triggerY, float triggerH,
-                      float popupH, bool flip) {
+static float PopupTop(float viewH, float triggerY, float triggerH, float popupH,
+                      bool flip) {
     Arena* a = ArenaNew();
     PaintCtx ctx = {};
     ctx.viewW = 400;

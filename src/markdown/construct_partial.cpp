@@ -77,7 +77,8 @@ State SpaceOrTabInside(Tokenizer* t) {
 }
 
 State SpaceOrTabAfter(Tokenizer* t) {
-    State state = t->tokenizeState.spaceOrTabSize >= t->tokenizeState.spaceOrTabMin
+    State state = t->tokenizeState.spaceOrTabSize >= t->tokenizeState
+                                                         .spaceOrTabMin
                       ? StateOk()
                       : StateNok();
     t->tokenizeState.spaceOrTabConnect = false;
@@ -107,7 +108,7 @@ StateName SpaceOrTabEol(Tokenizer* t) {
 State SpaceOrTabEolStart(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
         TokenizerAttempt(t, StateNext(StateName::SpaceOrTabEolAfterFirst),
-                 StateNext(StateName::SpaceOrTabEolAtEol));
+                         StateNext(StateName::SpaceOrTabEolAtEol));
         SpaceOrTabOptions options;
         options.kind = Name::SpaceOrTab;
         options.min = 1;
@@ -152,7 +153,8 @@ State SpaceOrTabEolAtEol(Tokenizer* t) {
 
 State SpaceOrTabEolAfterEol(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
-        TokenizerAttempt(t, StateNext(StateName::SpaceOrTabEolAfterMore), StateNok());
+        TokenizerAttempt(t, StateNext(StateName::SpaceOrTabEolAfterMore),
+                         StateNok());
         SpaceOrTabOptions options;
         options.kind = Name::SpaceOrTab;
         options.min = 1;
@@ -210,7 +212,8 @@ State DataAtBreak(Tokenizer* t) {
 }
 
 State DataInside(Tokenizer* t) {
-    if (t->current >= 0 && t->current != '\n' && !MarkersContain(t, t->current)) {
+    if (t->current >= 0 && t->current != '\n' &&
+        !MarkersContain(t, t->current)) {
         Consume(t);
         return StateNext(StateName::DataInside);
     }
@@ -367,7 +370,7 @@ State LabelAtBreak(Tokenizer* t) {
     }
     if (t->current == '\n') {
         TokenizerAttempt(t, StateNext(StateName::LabelEolAfter),
-                 StateNext(StateName::LabelNok));
+                         StateNext(StateName::LabelNok));
         SpaceOrTabEolOptions options;
         options.content = ContentKind::String;
         options.contentSome = true;
@@ -476,7 +479,7 @@ State TitleAtBreak(Tokenizer* t) {
     }
     if (t->current == '\n') {
         TokenizerAttempt(t, StateNext(StateName::TitleAfterEol),
-                 StateNext(StateName::TitleNok));
+                         StateNext(StateName::TitleNok));
         SpaceOrTabEolOptions options;
         options.content = ContentKind::String;
         options.contentSome = true;
@@ -511,8 +514,8 @@ State TitleInside(Tokenizer* t) {
         Exit(t, Name::Data);
         return StateRetry(StateName::TitleAtBreak);
     }
-    StateName name = t->current == '\\' ? StateName::TitleEscape
-                                        : StateName::TitleInside;
+    StateName name =
+        t->current == '\\' ? StateName::TitleEscape : StateName::TitleInside;
     Consume(t);
     return StateNext(name);
 }
@@ -548,11 +551,11 @@ static void TrimData(Tokenizer* t, int32_t exitIndex, bool trimStart,
             index -= 1;
         }
         int32_t diff = slice.bytes.len - index;
-        Name name = (hardBreak && spacesOnly &&
-                     diff >= kHardBreakPrefixSizeMin &&
-                     exitIndex + 1 < t->events.len)
-                        ? Name::HardBreakTrailing
-                        : Name::SpaceOrTab;
+        Name name =
+            (hardBreak && spacesOnly && diff >= kHardBreakPrefixSizeMin &&
+             exitIndex + 1 < t->events.len)
+                ? Name::HardBreakTrailing
+                : Name::SpaceOrTab;
         if (index == 0) {
             t->events[exitIndex - 1].name = name;
             t->events[exitIndex].name = name;

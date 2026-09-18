@@ -86,8 +86,8 @@ static void CornerPositioningSupportsGpuisWholeAnchorVocabulary() {
     utassertnear(center.bounds.x, 80.f);
     utassertnear(center.bounds.y, 70.f);
 
-    Positioned side = PositionCorner(Anchor::RightCenter, {100, 100},
-                                     {40, 30}, {kViewW, kViewH}, kMargin);
+    Positioned side = PositionCorner(Anchor::RightCenter, {100, 100}, {40, 30},
+                                     {kViewW, kViewH}, kMargin);
     utassertnear(side.bounds.x, 60.f);
     utassertnear(side.bounds.y, 85.f);
 }
@@ -117,14 +117,14 @@ static void PublicPositionerMeasuresAndPlacesItsChildGroup() {
     cx.a = a;
     PaintCtx paint = {};
 
-    El* placed = LayoutPositioner(
-        Positioner::Side(&cx, Trigger(200, 200, 40, 20))
-            ->Placement(Placement::Bottom)
-            ->Align(Align::Start)
-            ->Offset(8)
-            ->Margin(kMargin)
-            ->Child(Div(a)->W(40)->H(30)),
-        a, &paint);
+    El* placed =
+        LayoutPositioner(Positioner::Side(&cx, Trigger(200, 200, 40, 20))
+                             ->Placement(Placement::Bottom)
+                             ->Align(Align::Start)
+                             ->Offset(8)
+                             ->Margin(kMargin)
+                             ->Child(Div(a)->W(40)->H(30)),
+                         a, &paint);
     utassertnear(placed->x, 200.f);
     utassertnear(placed->y, 228.f);
     utassertnear(placed->w, 40.f);
@@ -139,19 +139,19 @@ static void PublicPositionerFlipsAllFourSidesAfterMeasurement() {
     cx.a = a;
     PaintCtx paint = {};
 
-    El* vertical = LayoutPositioner(
-        Positioner::Side(&cx, Trigger(200, 10, 40, 20))
-            ->Placement(Placement::Top)
-            ->Child(Div(a)->W(80)->H(60)),
-        a, &paint);
+    El* vertical =
+        LayoutPositioner(Positioner::Side(&cx, Trigger(200, 10, 40, 20))
+                             ->Placement(Placement::Top)
+                             ->Child(Div(a)->W(80)->H(60)),
+                         a, &paint);
     utassertnear(vertical->y, 30.f);
 
-    El* horizontal = LayoutPositioner(
-        Positioner::Side(&cx, Trigger(260, 60, 32, 32))
-            ->Placement(Placement::Right)
-            ->Align(Align::Center)
-            ->Child(Div(a)->W(240)->H(30)),
-        a, &paint, 300, 200);
+    El* horizontal =
+        LayoutPositioner(Positioner::Side(&cx, Trigger(260, 60, 32, 32))
+                             ->Placement(Placement::Right)
+                             ->Align(Align::Center)
+                             ->Child(Div(a)->W(240)->H(30)),
+                         a, &paint, 300, 200);
     utassertnear(horizontal->x, 20.f);
     utassertnear(horizontal->y, 61.f);
 
@@ -180,8 +180,7 @@ static void PublicPositionerChildrenHaveNoPortOnlyCapacity() {
     Ctx cx = {};
     cx.a = a;
     PaintCtx paint = {};
-    Positioner* positioner =
-        Positioner::Corner(&cx, Anchor::TopLeft, {20, 20});
+    Positioner* positioner = Positioner::Corner(&cx, Anchor::TopLeft, {20, 20});
     for (int i = 0; i < 80; i++) {
         positioner->Child(Div(a)->W(1)->H(2));
     }
@@ -204,11 +203,11 @@ static void PublicPositionerAddsTheWindowClientInsetToItsMargin() {
     PaintCtx paint = {};
     paint.clientInset = 20;
 
-    El* placed = LayoutPositioner(
-        Positioner::Corner(&cx, Anchor::TopLeft, {0, 0})
-            ->Margin(kMargin)
-            ->Child(Div(a)->W(40)->H(30)),
-        a, &paint);
+    El* placed =
+        LayoutPositioner(Positioner::Corner(&cx, Anchor::TopLeft, {0, 0})
+                             ->Margin(kMargin)
+                             ->Child(Div(a)->W(40)->H(30)),
+                         a, &paint);
     utassertnear(placed->x, 24.f);
     utassertnear(placed->y, 24.f);
     ArenaDelete(a);

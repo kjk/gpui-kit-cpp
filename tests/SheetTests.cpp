@@ -177,13 +177,13 @@ static void ThemedSheetReadsItsMarginFromSheetSettings() {
     Style refinement = {};
     refinement.pad = EdgesAll(7);
     refinement.width = 999;
-    component::Sheet* themed = component::Sheet::New(&cx)
-                                   ->Open(true)
-                                   ->Title(customTitle)
-                                   ->OverlayClosable(false)
-                                   ->OnClose(Listen(&cx, &SheetRecorder::Closed))
-                                   ->Refine(refinement, StyleFieldPad |
-                                                           StyleFieldWidth);
+    component::Sheet* themed =
+        component::Sheet::New(&cx)
+            ->Open(true)
+            ->Title(customTitle)
+            ->OverlayClosable(false)
+            ->OnClose(Listen(&cx, &SheetRecorder::Closed))
+            ->Refine(refinement, StyleFieldPad | StyleFieldWidth);
     for (int i = 0; i < 40; i++) {
         themed->Child(Div(a));
     }
