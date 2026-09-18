@@ -14,12 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `d2e6bba2fcab8c605e983327207682a397c98060`
-(2026-09-17, chart: Animate the hover, cache heavy geometry and rework the
-gallery cards (#3112)). Identified charts spring the pointer and fade the
-overlay; pie slices lift; theme files read `chart.1` / `chart.bullish`. The
-gallery sidebar is off-canvas from a status-bar toggle. The current update
-target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `4ef4f79780058bbccb99cafd05550b7d93dbdca8`
+(2026-09-18, shell: update QuickJS JIT to 0.12.9 (#3116)). Upstream's shell
+moves quickjs-jit; this tree stays on QuickJS-NG. The current update target
+is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
