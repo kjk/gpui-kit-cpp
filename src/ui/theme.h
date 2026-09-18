@@ -240,8 +240,9 @@ struct Theme {
     Rgba yellowLight;
     Rgba cyanLight;
     Rgba magentaLight;
-    // chart_1..chart_5, and the pair a candlestick closes on. Both themes
-    // give them the same five blues (default-theme.json).
+    // chart.1..chart.5 in the theme file, and the pair a candlestick closes
+    // on (`chart.bullish` / `chart.bearish`). Both themes give them the same
+    // five blues (default-theme.json).
     Rgba chart1;
     Rgba chart2;
     Rgba chart3;

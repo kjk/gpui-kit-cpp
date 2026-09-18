@@ -756,16 +756,11 @@ static El* SearchBox(StoryApp* app, Ctx* cx) {
 // story window opens at 1600 wide (crates/story/src/lib.rs), so the sidebar
 // tracks 255/1600 of the window width, clamped to the size_range. It is 200 at
 // half a 1920 screen and 221 at 1400, which is what the Rust app draws.
-static float SidebarWidth(Ctx* cx) {
-    float w = WindowSize(cx->win).dipW * (255.f / 1600.f);
-    w = (float)lroundf(w); // GPUI rounds; truncating is off by one at 1400
-    if (w < 200.f) {
-        w = 200.f;
-    }
-    if (w > 320.f) {
-        w = 320.f;
-    }
-    return w;
+static float SidebarWidth(Ctx*) {
+    // gallery.rs: Sidebar::new().w(px(255.)).collapsible(Offcanvas). The
+    // resizable wrapper is gone; the sidebar is a fixed 255 DIP column that
+    // slides out of the layout when collapsed.
+    return 255.f;
 }
 
 static El* Sidebar(StoryApp* app, Ctx* cx) {
@@ -1172,6 +1167,11 @@ static El* AppearanceMenu(StoryApp* app, Ctx* cx) {
 
 static void OnGithub(StoryApp*, Ctx*, const ClickEvent*) {
     OpenUrl(StrL("https://github.com/longbridge/gpui-kit"));
+}
+
+static void OnToggleSidebar(StoryApp* app, Ctx* cx, const ClickEvent*) {
+    app->collapsed = !app->collapsed;
+    Notify(cx);
 }
 
 // ─── app_menus.rs ─────────────────────────────────────────────────────────
@@ -1680,6 +1680,16 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                 ->FlexRow()
                 ->Gap(8)
                 ->ItemsCenter()
+                ->Child(component::Button::New(cx, StrL("toggle-sidebar"))
+                            ->Ghost()
+                            ->WithSize(UiSize::XSmall)
+                            ->Icon(app->collapsed ? IconName::PanelLeftOpen
+                                                  : IconName::PanelLeftClose)
+                            ->Tooltip(app->collapsed ? StrL("Show sidebar")
+                                                     : StrL("Hide sidebar"))
+                            ->OnClick(Listen(cx, &OnToggleSidebar))
+                            ->IntoEl()
+                            ->Cursor(CursorKind::Pointer))
                 ->Child(IconEl(a, IconName::GalleryVerticalEnd, 12)
                             ->Fg(th.mutedFg))
                 ->Child(StoryTxt(cx, StoryFmt(cx, "%d components", StoryCount),
@@ -1733,7 +1743,9 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
         root->Child(StoryTitleBar(app, cx, defs, nDefs));
     }
     El* body = Div(frame)->FlexRow()->Flex1()->W(kFill)->MinH(0)->H(kFill);
-    body->Child(Sidebar(app, cx));
+    if (!app->collapsed) {
+        body->Child(Sidebar(app, cx));
+    }
     // The resizable handle reads as a 1px rule. Rust anchors it over the
     // boundary rather than in the flow, so the content starts where the
     // sidebar ends; a border here is painted inside the box without taking

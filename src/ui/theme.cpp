@@ -1563,14 +1563,11 @@ static Rgba MixOklab(Rgba a, Rgba b, float factor) {
 // it has one the grammar takes, and `fb` otherwise. The two macros differ in
 // Rust only by whether a gradient is allowed through, and a `Theme` field
 // here is one colour, so they are the same read.
-// The keys default-theme.json spells differently from the serde names the
-// schema declares, so serde drops the value and upstream paints the fallback
-// instead: five chart blues collapse to one lightened ramp, the drag border
-// goes from blue to the primary at 65%. Every one of them is plainly what the
-// theme's author meant, and a third-party file copying default-theme.json's
-// spelling — which is the only spelling anyone reading that file would copy —
-// would lose them the same way. So the second name is read too, after the
-// schema's own.
+// The keys some theme files still spell differently from the serde names the
+// schema declares (`chart_1` vs `chart.1`, `chart_bullish` vs `chart.bullish`,
+// `drag_border` vs `drag.border`). default-theme.json now uses the dotted
+// keys; the aliases keep older files applying. The second name is read after
+// the schema's own.
 //
 // `description_list_label.background` and `.foreground` were on this list and
 // are not any more. They are the two where reading the file's spelling makes
@@ -1584,6 +1581,8 @@ static const char* const kKeyAliases[][2] = {
     {"chart.3", "chart_3"},
     {"chart.4", "chart_4"},
     {"chart.5", "chart_5"},
+    {"chart.bullish", "chart_bullish"},
+    {"chart.bearish", "chart_bearish"},
     {"drag.border", "drag_border"},
     {"progress.bar.background", "progress_bar.background"},
 };
@@ -1772,8 +1771,8 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base) {
     out->chart3 = Pick(c, "chart.3", out->blue);
     out->chart4 = Pick(c, "chart.4", Darken(out->blue, 0.2f));
     out->chart5 = Pick(c, "chart.5", Darken(out->blue, 0.4f));
-    out->chartBullish = Pick(c, "chart_bullish", out->green);
-    out->chartBearish = Pick(c, "chart_bearish", out->red);
+    out->chartBullish = Pick(c, "chart.bullish", out->green);
+    out->chartBearish = Pick(c, "chart.bearish", out->red);
 
     SetToken(&out->danger, &out->tokens.danger,
              PickBg(c, "danger.background", out->red));

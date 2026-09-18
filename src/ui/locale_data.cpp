@@ -53,6 +53,39 @@ static const char* const kV_Calendar_week_5[] = {"Fr", "五", "五",
                                                  "五", "Ve", "Ve"};
 static const char* const kV_Calendar_week_6[] = {"Sa", "六", "六",
                                                  "六", "Sa", "Sa"};
+static const char* const kV_Carousel_go_to_slide[] = {"Go to slide %{current}",
+                                                      "前往第 %{current} 张",
+                                                      "前往第 %{current} 張",
+                                                      "前往第 %{current} 張",
+                                                      nullptr,
+                                                      nullptr};
+static const char* const kV_Carousel_label[] = {"Carousel", "轮播",  "輪播",
+                                                "輪播",     nullptr, nullptr};
+static const char* const kV_Carousel_next[] = {"Next slide", "下一张", "下一張",
+                                               "下一張",     nullptr,  nullptr};
+static const char* const kV_Carousel_pagination[] = {"Carousel pagination",
+                                                     "轮播分页",
+                                                     "輪播分頁",
+                                                     "輪播分頁",
+                                                     nullptr,
+                                                     nullptr};
+static const char* const kV_Carousel_previous[] = {
+    "Previous slide", "上一张", "上一張", "上一張", nullptr, nullptr};
+static const char* const kV_Carousel_slide[] = {
+    "Slide %{current} of %{total}",
+    "第 %{current} 张，共 %{total} 张",
+    "第 %{current} 張，共 %{total} 張",
+    "第 %{current} 張，共 %{total} 張",
+    nullptr,
+    nullptr};
+static const char* const kV_Chart_close[] = {"Close", "收盘",  "收市",
+                                             "收盤",  nullptr, nullptr};
+static const char* const kV_Chart_high[] = {"High", "最高",  "最高",
+                                            "最高", nullptr, nullptr};
+static const char* const kV_Chart_low[] = {"Low",  "最低",  "最低",
+                                           "最低", nullptr, nullptr};
+static const char* const kV_Chart_open[] = {"Open", "开盘",  "開市",
+                                            "開盤", nullptr, nullptr};
 static const char* const kV_ColorPicker_Alpha[] = {"Alpha",  "透明度", "透明度",
                                                    "透明度", "Alfa",   nullptr};
 static const char* const kV_ColorPicker_HSLA[] = {"HSLA", "HSLA", "HSLA",
@@ -156,6 +189,16 @@ extern const LocaleRow kLocaleRows[] = {
     {"Calendar.week.4", kV_Calendar_week_4},
     {"Calendar.week.5", kV_Calendar_week_5},
     {"Calendar.week.6", kV_Calendar_week_6},
+    {"Carousel.go_to_slide", kV_Carousel_go_to_slide},
+    {"Carousel.label", kV_Carousel_label},
+    {"Carousel.next", kV_Carousel_next},
+    {"Carousel.pagination", kV_Carousel_pagination},
+    {"Carousel.previous", kV_Carousel_previous},
+    {"Carousel.slide", kV_Carousel_slide},
+    {"Chart.close", kV_Chart_close},
+    {"Chart.high", kV_Chart_high},
+    {"Chart.low", kV_Chart_low},
+    {"Chart.open", kV_Chart_open},
     {"ColorPicker.Alpha", kV_ColorPicker_Alpha},
     {"ColorPicker.HSLA", kV_ColorPicker_HSLA},
     {"ColorPicker.Hue", kV_ColorPicker_Hue},
@@ -193,7 +236,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Settings.Reset All", kV_Settings_Reset_All},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
 };
-extern const int kLocaleRowCount = 55;
+extern const int kLocaleRowCount = 65;
 
 } // namespace component
 } // namespace gpui

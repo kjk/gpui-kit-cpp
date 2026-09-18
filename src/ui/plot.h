@@ -123,6 +123,9 @@ struct ScaleBand {
     static ScaleBand New(int domainN, const float* range, int rangeN);
     // band_width: what one band is drawn at, which Rust caps at thirty.
     float BandWidth() const;
+    // The distance between the starts of two adjacent bands: the band width
+    // plus the inner padding. The whole range for a single band.
+    float Step() const;
     // The range position of the band at `index`, or false when it is not one
     // of them. A one-band domain sits in the middle of the range.
     bool Tick(int index, float* out) const;
@@ -411,8 +414,18 @@ struct Arc {
     Point Centroid(const ArcData& arc) const;
     Path* PathFor(PaintCtx* ctx, const ArcData& arc, Bounds bounds,
                   float innerOverride = -1, float outerOverride = -1) const;
+    // Whether the cursor at `position` (relative to the bounds origin) is on
+    // this arc's slice: within its angles and between inner and outer radius
+    // (this arc's own radii when the overrides are negative).
+    bool Contains(const ArcData& arc, Point position, Bounds bounds,
+                  float innerOverride = -1, float outerOverride = -1) const;
     void Paint(PaintCtx* ctx, const ArcData& arc, Rgba color, Bounds bounds,
                float innerOverride = -1, float outerOverride = -1) const;
+    // Paint, reusing the path tessellated by an earlier paint while its
+    // angles, radii and the bounds size are unchanged.
+    void PaintCached(PaintCtx* ctx, const ArcData& arc, Rgba color,
+                     Bounds bounds, PathCache* cache, float innerOverride = -1,
+                     float outerOverride = -1) const;
 };
 
 struct Pie {
@@ -535,11 +548,14 @@ struct Dot {
     float size = 6;
     Rgba stroke = RgbaTransparent();
     Rgba fill = RgbaTransparent();
+    // Diameter of the translucent ring behind the dot; 0 draws no ring.
+    float halo = 0;
 
     static Dot New(Point point);
     Dot* Size(float value);
     Dot* Stroke(Rgba value);
     Dot* Fill(Rgba value);
+    Dot* Halo(float value);
     El* IntoEl(Ctx* cx) const;
 };
 
@@ -552,6 +568,29 @@ struct TooltipState {
     static TooltipState New(int index, Point crossLine, const Point* dots,
                             int dotCount);
 };
+
+// The datum a plot has in focus this frame, handed to Plot::hover.
+// Carries the TooltipState the cursor resolved to and how far the hover has
+// faded in. After the cursor leaves, the state lingers here while focus
+// eases back to zero.
+struct PlotHover {
+    TooltipState state = {};
+    float focus = 0;
+    bool hovered = false;
+
+    const TooltipState& State() const { return state; }
+    float Focus() const { return focus; }
+    bool IsHovered() const { return hovered; }
+    bool IsEntering() const { return hovered && focus == 0.f; }
+};
+
+// Resolve the datum a plot shows this frame from the live state the cursor
+// resolved to. While live is set it is shown as is; after the cursor leaves,
+// the last state lingers with its focus easing to zero. False means nothing
+// is hovered and nothing is fading. The returned cursor is the live one, or
+// the last one while the state lingers.
+bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
+                PlotHover* outHover, Point* outCursor);
 
 struct TooltipRow {
     Rgba color = {};
@@ -573,6 +612,9 @@ struct Tooltip {
     ArenaVec<El*> children;
     Point cursor = {};
     Size within = {};
+    // Opacity of the whole overlay when set; see Focus. Negative means
+    // follow the plot's tracked hover fade.
+    float focus = -1.f;
 
     static Tooltip* New(Ctx* cx, Point cursor, Size within);
     Tooltip* Title(Str value);
@@ -582,6 +624,7 @@ struct Tooltip {
     Tooltip* Dots(const Dot* values, int count);
     Tooltip* Appearance(bool value);
     Tooltip* Child(El* value);
+    Tooltip* Focus(float value);
     El* IntoEl();
 };
 

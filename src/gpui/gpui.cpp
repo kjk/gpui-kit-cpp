@@ -5268,87 +5268,185 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     }
 
     // The crosshair and the tooltip: a chart that asked for them shows what
-    // the pointer is over. Rust hangs this off a hover state; the pointer's
-    // position is already in the paint context here, so the chart reads it.
-    if (c.tooltip && ctx->mouseX >= x && ctx->mouseX <= x + w &&
-        ctx->mouseY >= y && ctx->mouseY <= y + plotH) {
+    // the pointer is over. PlotHover lingers after the cursor leaves so the
+    // overlay can fade out over the last datum.
+    if (c.tooltip) {
+        bool overPlot = ctx->mouseX >= x && ctx->mouseX <= x + w &&
+                        ctx->mouseY >= y && ctx->mouseY <= y + plotH;
         int index = 0;
         float lineX = ctx->mouseX;
-        if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
-            const float range[2] = {0.f, w};
-            component::ScaleBand band = component::ScaleBand::New(n, range, 2);
-            band.paddingInner = c.bandPadding;
-            band.paddingOuter = c.bandPadding * 0.5f;
-            index = band.LeastIndex(ctx->mouseX - x);
-            float bx = 0;
-            if (band.Tick(index, &bx)) {
-                lineX = x + bx + band.BandWidth() * 0.5f;
-            }
-        } else {
-            float t = n > 1 ? (ctx->mouseX - x) / (w / (float)(n - 1)) : 0.f;
-            index = (int)lroundf(t);
-            if (index < 0) {
-                index = 0;
-            }
-            if (index > n - 1) {
-                index = n - 1;
-            }
-            lineX = Xat(index);
-        }
-        // CrossLine: a dashed hairline down the plot, and a dot on the value.
-        // `border.mix(foreground, 0.8)` — the border walked a fifth of the way
-        // to the ink, in HSL, which is what makes it read on both themes.
-        const float kCrossDash[2] = {4.f, 3.f};
-        CanvasLine(ctx, lineX, y, lineX, y + plotH, 1.f,
-                   RgbaMixHsl(th.border, th.foreground, 0.8f), kCrossDash);
-        float dotY = Yat(ys[index]);
-        FillRound(ctx, lineX - 3.f, dotY - 3.f, 6.f, 6.f, 3.f, c.stroke);
-        for (int k = 0; k < c.nMore; k++) {
-            const ChartSeriesExtra& more = c.more[k];
-            if (more.ys) {
-                FillRound(ctx, lineX - 3.f, Yat(more.ys[index]) - 3.f, 6.f, 6.f,
-                          3.f, more.stroke);
+        if (overPlot) {
+            if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
+                const float range[2] = {0.f, w};
+                component::ScaleBand band =
+                    component::ScaleBand::New(n, range, 2);
+                band.paddingInner = c.bandPadding;
+                band.paddingOuter = c.bandPadding * 0.5f;
+                index = band.LeastIndex(ctx->mouseX - x);
+                float bx = 0;
+                if (band.Tick(index, &bx)) {
+                    lineX = x + bx + band.BandWidth() * 0.5f;
+                }
+            } else {
+                float t =
+                    n > 1 ? (ctx->mouseX - x) / (w / (float)(n - 1)) : 0.f;
+                index = (int)lroundf(t);
+                if (index < 0) {
+                    index = 0;
+                }
+                if (index > n - 1) {
+                    index = n - 1;
+                }
+                lineX = Xat(index);
             }
         }
+        Point dotsBuf[5] = {};
+        int nDots = 0;
+        if (overPlot && ys) {
+            dotsBuf[nDots++] = {lineX - x, Yat(ys[index]) - y};
+            for (int k = 0; k < c.nMore && nDots < 5; k++) {
+                if (c.more[k].ys) {
+                    dotsBuf[nDots++] = {lineX - x,
+                                        Yat(c.more[k].ys[index]) - y};
+                }
+            }
+        }
+        component::plot::TooltipState live = {};
+        const component::plot::TooltipState* livePtr = nullptr;
+        Point cursor = {ctx->mouseX - x, ctx->mouseY - y};
+        if (overPlot) {
+            live = component::plot::TooltipState::New(
+                index, {lineX - x, cursor.y}, dotsBuf, nDots);
+            livePtr = &live;
+        }
+        component::plot::PlotHover hover = {};
+        Point lingerCursor = cursor;
+        bool show = overPlot;
+        float focus = 1.f;
+        Ctx hoverCx = {};
+        hoverCx.app = ctx->app;
+        hoverCx.win = ctx->window;
+        if (ctx->window && ctx->app) {
+            show = component::plot::TrackHover(&hoverCx, livePtr,
+                                               overPlot ? &cursor : nullptr,
+                                               &hover, &lingerCursor);
+            if (show) {
+                focus = hover.Focus();
+                index = hover.State().index;
+                if (index < 0) {
+                    index = 0;
+                }
+                if (index > n - 1) {
+                    index = n - 1;
+                }
+                lineX = x + hover.State().crossLine.x;
+                if (hover.State().dotCount > 0 && hover.State().dots) {
+                    lineX = x + hover.State().dots[0].x;
+                }
+            }
+        }
+        if (show && focus > 0.f && ys && index >= 0 && index < n) {
+            float targetX = lineX;
+            float targetY = Yat(ys[index]);
+            if (hover.State().dotCount > 0 && hover.State().dots) {
+                targetX = x + hover.State().dots[0].x;
+                targetY = y + hover.State().dots[0].y;
+            }
+            float drawX = targetX;
+            float drawY = targetY;
+            if (ctx->window && ctx->app) {
+                Spring policy = component::ChartPointerSpring(ctx->app)
+                                    .WithTravel(!hover.IsEntering());
+                uint32_t tag = HashClickId(c.name.s ? c.name : StrL("chart"));
+                drawX = motion::spring(
+                    &hoverCx,
+                    motion::TransitionId(MotionId(StrL("chart"), StrL("x")) ^
+                                         tag),
+                    targetX, policy);
+                drawY = motion::spring(
+                    &hoverCx,
+                    motion::TransitionId(MotionId(StrL("chart"), StrL("y")) ^
+                                         tag),
+                    targetY, policy);
+            }
+            const float kCrossDash[2] = {4.f, 3.f};
+            Rgba hair =
+                RgbaOpacity(RgbaMixHsl(th.border, th.foreground, 0.8f), focus);
+            bool bandHover =
+                c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick;
+            if (bandHover) {
+                const float range[2] = {0.f, w};
+                component::ScaleBand band =
+                    component::ScaleBand::New(n, range, 2);
+                band.paddingInner = c.bandPadding;
+                band.paddingOuter = c.bandPadding * 0.5f;
+                float bw = band.BandWidth();
+                CanvasFillRect(ctx, drawX - bw * 0.5f, y, bw, plotH,
+                               RgbaOpacity(th.foreground, 0.08f * focus));
+            } else {
+                CanvasLine(ctx, drawX, y, drawX, y + plotH, 1.f, hair,
+                           kCrossDash);
+                float halo = component::ChartHoverHaloSize(focus);
+                if (halo > 0) {
+                    FillRound(ctx, drawX - halo * 0.5f, drawY - halo * 0.5f,
+                              halo, halo, halo * 0.5f,
+                              RgbaOpacity(c.stroke, 0.2f * focus));
+                }
+                float ds = component::kChartHoverDotSize;
+                FillRound(ctx, drawX - ds * 0.5f, drawY - ds * 0.5f, ds, ds,
+                          ds * 0.5f, c.stroke);
+                DrawRoundStroke(ctx, drawX - ds * 0.5f, drawY - ds * 0.5f, ds,
+                                ds, ds * 0.5f, 1.f, th.background);
+                for (int k = 0; k < c.nMore; k++) {
+                    const ChartSeriesExtra& more = c.more[k];
+                    if (!more.ys) {
+                        continue;
+                    }
+                    float my = Yat(more.ys[index]);
+                    FillRound(ctx, drawX - ds * 0.5f, my - ds * 0.5f, ds, ds,
+                              ds * 0.5f, more.stroke);
+                    DrawRoundStroke(ctx, drawX - ds * 0.5f, my - ds * 0.5f, ds,
+                                    ds, ds * 0.5f, 1.f, th.background);
+                }
+            }
 
-        // The box hugs the cursor and flips toward the middle past halfway,
-        // which is what keeps it inside the plot. Every series names its own
-        // line, the way Rust's tooltip lists them.
-        Str title = c.labels ? Str(c.labels[index]) : fmt("%d", index);
-        Str value = c.name.s ? fmt("%s  %.1f", c.name, (double)ys[index])
-                             : fmt("%.1f", (double)ys[index]);
-        Size titleSz = MeasureText(ctx, title, 11, 200);
-        Size valueSz = MeasureText(ctx, value, 11, 200);
-        float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
-        float boxH = titleSz.h + valueSz.h + 12.f;
-        // The extra lines, measured before the box is drawn so it holds them.
-        Str extra[4] = {};
-        int nExtra = c.nMore < 4 ? c.nMore : 4;
-        for (int k = 0; k < nExtra; k++) {
-            const ChartSeriesExtra& more = c.more[k];
-            extra[k] = more.name.s
-                           ? fmt("%s  %.1f", more.name, (double)more.ys[index])
-                           : fmt("%.1f", (double)more.ys[index]);
-            Size sz = MeasureText(ctx, extra[k], 11, 200);
-            if (sz.w + 16.f > boxW) {
-                boxW = sz.w + 16.f;
+            Str title = c.labels ? Str(c.labels[index]) : fmt("%d", index);
+            Str value = c.name.s ? fmt("%s  %.1f", c.name, (double)ys[index])
+                                 : fmt("%.1f", (double)ys[index]);
+            Size titleSz = MeasureText(ctx, title, 11, 200);
+            Size valueSz = MeasureText(ctx, value, 11, 200);
+            float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
+            float boxH = titleSz.h + valueSz.h + 12.f;
+            Str extra[4] = {};
+            int nExtra = c.nMore < 4 ? c.nMore : 4;
+            for (int k = 0; k < nExtra; k++) {
+                const ChartSeriesExtra& more = c.more[k];
+                extra[k] = more.name.s ? fmt("%s  %.1f", more.name,
+                                             (double)more.ys[index])
+                                       : fmt("%.1f", (double)more.ys[index]);
+                Size sz = MeasureText(ctx, extra[k], 11, 200);
+                if (sz.w + 16.f > boxW) {
+                    boxW = sz.w + 16.f;
+                }
+                boxH += sz.h;
             }
-            boxH += sz.h;
-        }
-        Point at = component::PlotTooltipPlace(
-            {ctx->mouseX - x, ctx->mouseY - y}, {w, plotH}, {boxW, boxH}, 8.f);
-        FillRound(ctx, x + at.x, y + at.y, boxW, boxH, 6.f, th.background);
-        DrawRoundStroke(ctx, x + at.x, y + at.y, boxW, boxH, 6.f, 1.f,
-                        th.border);
-        DrawTextAt(ctx, title, x + at.x + 8, y + at.y + 4, boxW, titleSz.h, 11,
-                   th.foreground, false);
-        DrawTextAt(ctx, value, x + at.x + 8, y + at.y + 6 + titleSz.h, boxW,
-                   valueSz.h, 11, th.mutedForeground, false);
-        float lineY = y + at.y + 6 + titleSz.h + valueSz.h;
-        for (int k = 0; k < nExtra; k++) {
-            DrawTextAt(ctx, extra[k], x + at.x + 8, lineY, boxW, valueSz.h, 11,
-                       th.mutedForeground, false);
-            lineY += valueSz.h;
+            Point at = component::PlotTooltipPlace(lingerCursor, {w, plotH},
+                                                   {boxW, boxH}, 8.f);
+            FillRound(ctx, x + at.x, y + at.y, boxW, boxH, 6.f,
+                      RgbaOpacity(th.background, focus));
+            DrawRoundStroke(ctx, x + at.x, y + at.y, boxW, boxH, 6.f, 1.f,
+                            RgbaOpacity(th.border, focus));
+            DrawTextAt(ctx, title, x + at.x + 8, y + at.y + 4, boxW, titleSz.h,
+                       11, RgbaOpacity(th.foreground, focus), false);
+            DrawTextAt(ctx, value, x + at.x + 8, y + at.y + 6 + titleSz.h, boxW,
+                       valueSz.h, 11, RgbaOpacity(th.mutedForeground, focus),
+                       false);
+            float textY = y + at.y + 6 + titleSz.h + valueSz.h;
+            for (int k = 0; k < nExtra; k++) {
+                DrawTextAt(ctx, extra[k], x + at.x + 8, textY, boxW, valueSz.h,
+                           11, RgbaOpacity(th.mutedForeground, focus), false);
+                textY += valueSz.h;
+            }
         }
     }
 

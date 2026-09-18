@@ -9,6 +9,16 @@ namespace gpui {
 
 namespace component {
 
+// The spring a chart's pointer — the crosshair, highlight band or hover
+// dot — follows the hovered datum with. A critically damped fast-tier
+// response, matching ECharts' 200 ms exponential-out axis pointer.
+Spring ChartPointerSpring(const App* app);
+// The size of the dot marking the hovered data point.
+const float kChartHoverDotSize = 8;
+// The ring behind a hovered dot, growing out of the dot as the hover fades
+// in. Full focus is 20 DIPs.
+float ChartHoverHaloSize(float focus);
+
 // A pie or donut: each slice is a value and a color, drawn clockwise from
 // twelve o'clock (crates/ui/src/chart/pie_chart.rs).
 struct PieSlice {
@@ -34,6 +44,8 @@ struct PieChart {
     float labelGap = 15;
     bool hasLabelColor = false;
     Rgba labelColor = {};
+    Str tooltipName = {};
+    bool tooltip = false;
 
     static PieChart* New(Ctx* cx);
     PieChart* Slice(float value, Rgba color, float outerInset = 0);
@@ -43,6 +55,9 @@ struct PieChart {
     PieChart* PadAngle(float radians);
     PieChart* LabelGap(float gap);
     PieChart* LabelColor(Rgba c);
+    // PieChart::id / name: a chart with a name takes the pointer and shows a
+    // tooltip for the hovered slice.
+    PieChart* Tooltip(Str name);
     El* IntoEl();
 };
 
@@ -199,10 +214,13 @@ struct CandlestickChart {
     Rgba down = {};
     float padding = 0.3f;
     float bodyWidthRatio = 0.8f;
+    Str tooltipName = {};
+    bool tooltip = false;
 
     static CandlestickChart* New(Ctx* cx, const float* opens,
                                  const float* highs, const float* lows,
                                  const float* closes, int n);
+    CandlestickChart* Tooltip(Str name);
     CandlestickChart* Colors(Rgba up, Rgba down);
     CandlestickChart* Labels(const char* const* l);
     CandlestickChart* TickMargin(int n);
@@ -249,8 +267,11 @@ struct RadarChart {
     float labelGap = 10;
     Rgba labelColor = {};
     bool hasLabelColor = false;
+    Str tooltipName = {};
+    bool tooltip = false;
 
     static RadarChart* New(Ctx* cx, const float* values, int n);
+    RadarChart* Tooltip(Str name);
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
     RadarChart* Labels(const char* const* l);
@@ -330,8 +351,11 @@ struct SankeyChart {
     // Whether the node's throughput is written above its name, which is
     // Rust's value_label.
     bool showValues = false;
+    Str tooltipName = {};
+    bool tooltip = false;
 
     static SankeyChart* New(Ctx* cx);
+    SankeyChart* Tooltip(Str name);
     // A node, by the order they are added — a link names them by index.
     SankeyChart* Node(Str label);
     SankeyChart* NodeColored(Str label, Rgba color);

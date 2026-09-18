@@ -324,6 +324,23 @@ static void ScaleBandLeastIndex() {
     utassert(b.LeastIndex(400.f) == 2);
 }
 
+static void ScaleBandStep() {
+    const float range[2] = {0.f, 90.f};
+    ScaleBand b = ScaleBand::New(3, range, 2);
+    float t0 = 0, t1 = 0;
+    utassert(b.Tick(0, &t0) && b.Tick(1, &t1));
+    utassertnear(b.Step(), t1 - t0);
+
+    ScaleBand padded = ScaleBand::New(3, range, 2);
+    padded.paddingInner = 0.4f;
+    padded.paddingOuter = 0.2f;
+    utassert(padded.Tick(0, &t0) && padded.Tick(1, &t1));
+    utassert(fabsf(padded.Step() - (t1 - t0)) < 1e-4f);
+
+    ScaleBand one = ScaleBand::New(1, range, 2);
+    utassertnear(one.Step(), 90.f);
+}
+
 // The tooltip box hugs the cursor and flips toward the middle past halfway,
 // which is what keeps it inside the plot.
 static void PlotTooltipQuadrants() {
@@ -431,6 +448,45 @@ static void PlotPieArcs() {
         utassertnear(resolved[1].endAngle, 2.f * kPi);
     }
     ArenaDelete(arena);
+}
+
+static void PlotArcContains() {
+    plot::Arc arc = plot::Arc::New();
+    arc.InnerRadius(10.f)->OuterRadius(40.f);
+    plot::ArcData right = {};
+    right.value = 1.f;
+    right.startAngle = 0.f;
+    right.endAngle = kPi;
+    Bounds bounds = {0, 0, 100, 100};
+    utassert(arc.Contains(right, {80.f, 50.f}, bounds));
+    utassert(!arc.Contains(right, {20.f, 50.f}, bounds));
+    utassert(!arc.Contains(right, {55.f, 50.f}, bounds));
+    utassert(!arc.Contains(right, {95.f, 50.f}, bounds));
+    utassert(arc.Contains(right, {95.f, 50.f}, bounds, -1, 50.f));
+    utassert(arc.Contains(right, {50.f, 20.f}, bounds));
+    utassert(!arc.Contains(right, {50.f, 80.f}, bounds));
+}
+
+static void PlotHoverReaders() {
+    plot::TooltipState state =
+        plot::TooltipState::New(2, {10.f, 20.f}, nullptr, 0);
+    plot::PlotHover hover;
+    hover.state = state;
+    hover.focus = 1.f;
+    hover.hovered = true;
+    utassert(hover.State().index == 2);
+    utassert(hover.IsHovered());
+    utassert(!hover.IsEntering());
+
+    plot::PlotHover entering = hover;
+    entering.focus = 0.f;
+    utassert(entering.IsEntering());
+
+    plot::PlotHover lingering = hover;
+    lingering.focus = 0.4f;
+    lingering.hovered = false;
+    utassert(!lingering.IsHovered());
+    utassert(!lingering.IsEntering());
 }
 
 struct PlotSales {
@@ -567,6 +623,7 @@ void TestScale() {
     ScaleBandSingle();
     ScaleBandDedup();
     ScaleBandLeastIndex();
+    ScaleBandStep();
 
     TestSuite("plot/tooltip");
     PlotTooltipQuadrants();
@@ -575,6 +632,8 @@ void TestScale() {
     TestSuite("plot/shapes");
     PlotShapeGeometry();
     PlotPieArcs();
+    PlotArcContains();
+    PlotHoverReaders();
     PlotStackSeries();
     PlotBarAndAxisContracts();
 }

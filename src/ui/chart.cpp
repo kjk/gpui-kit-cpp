@@ -1,9 +1,20 @@
 #include "ui/chart.h"
+#include "ui/plot.h"
+#include "base/motion.h"
 #include "gpui/paint.h"
 
 namespace gpui {
 
 namespace component {
+
+Spring ChartPointerSpring(const App* app) {
+    float ms = ThemeNow(app).motion.durationFastMs;
+    return Spring::New(ms).WithEpsilon(0.1f);
+}
+
+float ChartHoverHaloSize(float focus) {
+    return 20.f * focus;
+}
 
 AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n) {
     Arena* a = cx->a;
@@ -281,9 +292,14 @@ CandlestickChart* CandlestickChart::New(Ctx* cx, const float* opens,
     c->lows = lows;
     c->closes = closes;
     c->n = n;
-    c->up = ThemeNow(cx->app).green;
-    c->down = ThemeNow(cx->app).red;
+    c->up = ThemeNow(cx->app).chartBullish;
+    c->down = ThemeNow(cx->app).chartBearish;
     return c;
+}
+CandlestickChart* CandlestickChart::Tooltip(Str name) {
+    tooltipName = name;
+    tooltip = true;
+    return this;
 }
 CandlestickChart* CandlestickChart::Colors(Rgba u, Rgba d) {
     up = u;
@@ -320,6 +336,8 @@ El* CandlestickChart::IntoEl() {
     chart->down = down;
     chart->bandPadding = padding;
     chart->bodyWidthRatio = bodyWidthRatio;
+    chart->tooltip = tooltip;
+    chart->name = tooltipName;
     return e;
 }
 
@@ -468,6 +486,11 @@ RadarChart* RadarChart::GridLevels(int v) {
     gridLevels = v > 1 ? v : 1;
     return this;
 }
+RadarChart* RadarChart::Tooltip(Str name) {
+    tooltipName = name;
+    tooltip = true;
+    return this;
+}
 El* RadarChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, values, n, stroke, fill, none, 1);
@@ -479,6 +502,8 @@ El* RadarChart::IntoEl() {
     chart->gridLevels = gridLevels;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
+    chart->tooltip = tooltip;
+    chart->name = tooltipName;
     if (labels) {
         e->customPaint = PaintRadarLabels;
         e->customUser = this;
@@ -531,6 +556,11 @@ PieChart* PieChart::InnerRadius(float r) {
 }
 PieChart* PieChart::PadAngle(float radians) {
     padAngle = radians;
+    return this;
+}
+PieChart* PieChart::Tooltip(Str name) {
+    tooltipName = name;
+    tooltip = true;
     return this;
 }
 
@@ -662,6 +692,51 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     if (total <= 0) {
         return;
     }
+    const float kHoverLift = 6.f;
+    const float kHoverDim = 0.35f;
+    int hoverIndex = -1;
+    float focus = 0.f;
+    Point lingerCursor = {};
+    if (p->tooltip && p->cx) {
+        plot::Arc hit = plot::Arc::New();
+        hit.InnerRadius(p->innerRadius)->OuterRadius(p->outerRadius);
+        Bounds bounds = {e->x, e->y, e->w, e->h};
+        Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
+        // Hit-test in pie angles using the same start/end as Arc::Contains.
+        float pieAngle = 0;
+        for (int i = 0; i < p->slices.len; i++) {
+            plot::ArcData ad = {};
+            ad.index = i;
+            ad.value = p->slices[i].value;
+            ad.startAngle = pieAngle;
+            float sweep = 2.f * kPi * (p->slices[i].value / total);
+            ad.endAngle = pieAngle + sweep;
+            ad.padAngle = p->padAngle;
+            if (hit.Contains(ad, local, bounds, p->innerRadius,
+                             p->outerRadius - p->slices[i].outerInset)) {
+                hoverIndex = i;
+            }
+            pieAngle += sweep;
+        }
+        plot::TooltipState live = {};
+        const plot::TooltipState* livePtr = nullptr;
+        Point cursor = local;
+        if (hoverIndex >= 0) {
+            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
+            livePtr = &live;
+        }
+        plot::PlotHover hover = {};
+        Point linger = cursor;
+        if (plot::TrackHover(p->cx, livePtr,
+                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
+                             &linger)) {
+            focus = hover.Focus();
+            hoverIndex = hover.State().index;
+            lingerCursor = linger;
+        } else {
+            hoverIndex = -1;
+        }
+    }
     float angle = -kPi * 0.5f;
     for (int i = 0; i < p->slices.len; i++) {
         const PieSlice& s = p->slices[i];
@@ -670,9 +745,20 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             angle += 2.f * kPi * (s.value / total);
             continue;
         }
-        float ro = p->outerRadius - s.outerInset;
+        float lift = 0;
+        if (p->tooltip && p->cx && hoverIndex == i && focus > 0.f) {
+            Spring policy = ThemeNow(p->cx->app).motion.springControl;
+            lift = motion::spring(p->cx,
+                                  motion::TransitionId(fmt("pie-slice-%d", i)),
+                                  1.f, policy);
+        }
+        float ro = p->outerRadius - s.outerInset + kHoverLift * lift;
         float ri = p->innerRadius;
         float a0 = angle, a1 = angle + sweep;
+        Rgba color = s.color;
+        if (p->tooltip && hoverIndex >= 0 && i != hoverIndex) {
+            color = RgbaOpacity(color, 1.f - kHoverDim * focus);
+        }
         Path* wedge = PathNew(ctx, true);
         if (wedge) {
             PathArcTo(wedge, cx, cy, ro, a0, a1, true);
@@ -683,12 +769,36 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
                 PathLineTo(wedge, cx, cy);
             }
             PathClose(wedge);
-            PathFill(ctx, wedge, s.color);
+            PathFill(ctx, wedge, color);
             PathFree(wedge);
         }
         angle += 2.f * kPi * (s.value / total);
     }
     PaintPieLabels(ctx, p, cx, cy, total);
+    if (p->tooltip && hoverIndex >= 0 && focus > 0.f && p->cx) {
+        const PieSlice& s = p->slices[hoverIndex];
+        float share = s.value / total * 100.f;
+        Str title = s.label.s ? s.label : fmt("%d", hoverIndex);
+        Str value = p->tooltipName.s
+                        ? fmt("%s  %.1f (%.1f%%)", p->tooltipName,
+                              (double)s.value, (double)share)
+                        : fmt("%.1f (%.1f%%)", (double)s.value, (double)share);
+        Size titleSz = MeasureText(ctx, title, 11, 200);
+        Size valueSz = MeasureText(ctx, value, 11, 200);
+        float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
+        float boxH = titleSz.h + valueSz.h + 12.f;
+        Point at =
+            PlotTooltipPlace(lingerCursor, {e->w, e->h}, {boxW, boxH}, 8.f);
+        const Theme& th = ThemeNow(p->cx->app);
+        FillRound(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f,
+                  RgbaOpacity(th.background, focus));
+        DrawRoundStroke(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f, 1.f,
+                        RgbaOpacity(th.border, focus));
+        DrawTextAt(ctx, title, e->x + at.x + 8, e->y + at.y + 4, boxW,
+                   titleSz.h, 11, RgbaOpacity(th.foreground, focus), false);
+        DrawTextAt(ctx, value, e->x + at.x + 8, e->y + at.y + 6 + titleSz.h,
+                   boxW, valueSz.h, 11, RgbaOpacity(th.mutedFg, focus), false);
+    }
 }
 
 El* PieChart::IntoEl() {
@@ -1132,6 +1242,11 @@ SankeyChart* SankeyChart::LabelGap(float v) {
 }
 SankeyChart* SankeyChart::ShowValues(bool v) {
     showValues = v;
+    return this;
+}
+SankeyChart* SankeyChart::Tooltip(Str name) {
+    tooltipName = name;
+    tooltip = true;
     return this;
 }
 El* SankeyChart::IntoEl() {

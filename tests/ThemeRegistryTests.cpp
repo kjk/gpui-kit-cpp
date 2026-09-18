@@ -382,6 +382,34 @@ static void SourceRegistryAndConfigSettingsAreRetained() {
     AppGlobalClear(&app);
 }
 
+static void ApplyConfigReadsTheChartColors() {
+    App app;
+    const char* doc =
+        "{\"themes\":[{\"name\":\"Palette\",\"mode\":\"light\","
+        "\"colors\":{\"chart.1\":\"#111111\",\"chart.2\":\"not a color\","
+        "\"chart.3\":\"#333333\",\"chart.bullish\":\"#00ff00\","
+        "\"chart.bearish\":\"#ff0000\"}}]}";
+    utassert(ThemeRegistryLoadStr(&app, Str(doc)) == 1);
+    const ThemeConfig* config = ThemeRegistryFind(&app, StrL("Palette"));
+    utassert(config && ThemeRegistryApply(&app, config));
+    const Theme& theme = ThemeLight(&app);
+    utassert(theme.chart1.r == 0x11 && theme.chart1.g == 0x11 &&
+             theme.chart1.b == 0x11);
+    Rgba chart2 = RgbaLighten(theme.blue, 0.2f);
+    utassert(theme.chart2.r == chart2.r && theme.chart2.g == chart2.g &&
+             theme.chart2.b == chart2.b);
+    utassert(theme.chart3.r == 0x33 && theme.chart3.g == 0x33 &&
+             theme.chart3.b == 0x33);
+    Rgba chart4 = RgbaDarken(theme.blue, 0.2f);
+    utassert(theme.chart4.r == chart4.r && theme.chart4.g == chart4.g &&
+             theme.chart4.b == chart4.b);
+    utassert(theme.chartBullish.r == 0 && theme.chartBullish.g == 255 &&
+             theme.chartBullish.b == 0);
+    utassert(theme.chartBearish.r == 255 && theme.chartBearish.g == 0 &&
+             theme.chartBearish.b == 0);
+    AppGlobalClear(&app);
+}
+
 void TestThemeRegistry() {
     TestSuite("theme_registry");
     AColourIsAHexOrAName();
@@ -392,4 +420,5 @@ void TestThemeRegistry() {
     AConfigKnowsWhichKeysItsFileNamed();
     RegistriesAreIsolatedPerApplication();
     SourceRegistryAndConfigSettingsAreRetained();
+    ApplyConfigReadsTheChartColors();
 }

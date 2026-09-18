@@ -14,11 +14,12 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `27ab8e76bba409d969accdb9dc1cf9875ccda81f`
-(2026-09-17, scrollbar: Shrink the resting thumb on mobile (#3111)). On iOS
-and Android the idle thumb is a 3px pill 2px from the edge; hover and drag
-keep the desktop widths. The current update target is
-`7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `d2e6bba2fcab8c605e983327207682a397c98060`
+(2026-09-17, chart: Animate the hover, cache heavy geometry and rework the
+gallery cards (#3112)). Identified charts spring the pointer and fade the
+overlay; pie slices lift; theme files read `chart.1` / `chart.bullish`. The
+gallery sidebar is off-canvas from a status-bar toggle. The current update
+target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
@@ -63,6 +64,12 @@ keep the desktop widths. The current update target is
 - **Shell InputGroup bindings are not registered.** The native widget and
   story are ported; crates/component-shell's InputGroup host and TypeScript
   surface are not yet in `src/shell/` (`src/ui/input.cpp`).
+
+- **Chart story still uses the previous fixture set.** Hover, pie lift, and
+  the gallery's off-canvas sidebar are ported; the SaaS datasets, computed
+  footers, legends and width-wise bar ramps from #3112 are not yet
+  transcribed (`examples/story/chart.cpp`, `ChartFixtures.h`). Sankey node
+  hit-testing and tooltip are not painted (`src/ui/chart.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including the retained Tiles center. The older live

@@ -84,6 +84,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                     "Pie Chart - Pad Angle",
                                     "Pie Chart - Label"};
             auto* pie = component::PieChart::New(cx)
+                            ->Tooltip(StrL("Desktop"))
                             ->OuterRadius(index == 4 ? 80.f : 100.f);
             if (index > 1) pie->InnerRadius(index == 4 ? 50.f : 60.f);
             if (index == 3) pie->PadAngle(4.f / 100.f);
@@ -519,6 +520,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                              component::CandlestickChart::New(
                                  cx, kStockOpen, kStockHigh, kStockLow,
                                  kStockClose, kStockPriceCount)
+                                 ->Tooltip(StrL("Price"))
                                  ->Colors(th.chartBullish, th.chartBearish)
                                  ->Labels(kStockDate)
                                  ->TickMargin(1)
@@ -548,6 +550,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  component::CandlestickChart::New(
                                      cx, kStockOpen, kStockHigh, kStockLow,
                                      kStockClose, kStockPriceCount)
+                                     ->Tooltip(StrL("Price"))
                                      ->Colors(th.chartBullish, th.chartBearish)
                                      ->Labels(kStockDate)
                                      ->TickMargin(cc.tickMargin)

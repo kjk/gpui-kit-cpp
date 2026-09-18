@@ -1,5 +1,6 @@
 #include "ui/plot.h"
 #include "ui/popover.h"
+#include "base/motion.h"
 
 #include <math.h>
 #include <string.h>
@@ -230,6 +231,13 @@ static float ScaleBandDisplayAvgWidth(const ScaleBand& b) {
     }
     float outer = b.avgWidth * b.paddingOuter;
     return (b.rangeDiff - outer * 2.f) / (float)b.domainLen;
+}
+
+float ScaleBand::Step() const {
+    if (domainLen <= 1) {
+        return rangeDiff;
+    }
+    return ScaleBandDisplayAvgWidth(*this) * ScaleBandRatio(*this);
 }
 
 bool ScaleBand::Tick(int index, float* out) const {
@@ -1191,6 +1199,48 @@ void Arc::Paint(PaintCtx* ctx, const ArcData& arc, Rgba color, Bounds bounds,
     }
 }
 
+static float RemEuclid(float v, float m) {
+    float r = fmodf(v, m);
+    return r < 0 ? r + m : r;
+}
+
+bool Arc::Contains(const ArcData& arc, Point position, Bounds bounds,
+                   float innerOverride, float outerOverride) const {
+    float dx = position.x - bounds.w * .5f;
+    float dy = position.y - bounds.h * .5f;
+    float radius = sqrtf(dx * dx + dy * dy);
+    float r0 = innerOverride >= 0 ? innerOverride : innerRadius;
+    float r1 = outerOverride >= 0 ? outerOverride : outerRadius;
+    if (r0 < 0) r0 = 0;
+    if (r1 < 0) r1 = 0;
+    if (radius < r0 || radius > r1) {
+        return false;
+    }
+    // Screen angle -> pie angle (0 at 12 o'clock, clockwise), in [0, TAU).
+    float angle = RemEuclid(atan2f(dy, dx) + kPi * .5f, 2.f * kPi);
+    return angle >= arc.startAngle && angle < arc.endAngle;
+}
+
+void Arc::PaintCached(PaintCtx* ctx, const ArcData& arc, Rgba color,
+                      Bounds bounds, PathCache* cache, float innerOverride,
+                      float outerOverride) const {
+    float r0 = innerOverride >= 0 ? innerOverride : innerRadius;
+    float r1 = outerOverride >= 0 ? outerOverride : outerRadius;
+    uint64_t key = ShapeKey::New()
+                       .Float(bounds.w)
+                       .Float(bounds.h)
+                       .Float(arc.startAngle)
+                       .Float(arc.endAngle)
+                       .Float(arc.padAngle)
+                       .Float(r0)
+                       .Float(r1)
+                       .Finish();
+    if (cache) {
+        cache->Touch(key);
+    }
+    Paint(ctx, arc, color, bounds, innerOverride, outerOverride);
+}
+
 Pie Pie::New() {
     return Pie{};
 }
@@ -1557,17 +1607,34 @@ Dot* Dot::Fill(Rgba value) {
     return this;
 }
 
+Dot* Dot::Halo(float value) {
+    halo = value;
+    return this;
+}
+
 El* Dot::IntoEl(Ctx* cx) const {
     float offset = size * .5f - .5f;
-    return Div(cx->a)
-        ->Absolute()
-        ->W(size)
-        ->H(size)
-        ->Radius(size * .5f)
-        ->Border(1, stroke)
-        ->Bg(fill)
-        ->Left(point.x - offset)
-        ->Top(point.y - offset);
+    El* dot = Div(cx->a)
+                  ->Absolute()
+                  ->W(size)
+                  ->H(size)
+                  ->Radius(size * .5f)
+                  ->Border(1, stroke)
+                  ->Bg(fill)
+                  ->Left(point.x - offset)
+                  ->Top(point.y - offset);
+    if (halo <= 0) {
+        return dot;
+    }
+    El* ring = Div(cx->a)
+                   ->Absolute()
+                   ->W(halo)
+                   ->H(halo)
+                   ->Radius(halo * .5f)
+                   ->Bg(RgbaOpacity(fill, 0.2f))
+                   ->Left(point.x - halo * .5f)
+                   ->Top(point.y - halo * .5f);
+    return Div(cx->a)->Absolute()->Top(0)->Left(0)->Child(ring)->Child(dot);
 }
 
 TooltipState TooltipState::New(int value, Point cross, const Point* dotValues,
@@ -1578,6 +1645,64 @@ TooltipState TooltipState::New(int value, Point cross, const Point* dotValues,
     out.dots = dotValues;
     out.dotCount = count > 0 ? count : 0;
     return out;
+}
+
+struct HoverMemory {
+    bool hasState = false;
+    TooltipState state = {};
+    Point storedDots[8] = {};
+    Point cursor = {};
+    float focus = 1.f;
+};
+
+bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
+                PlotHover* outHover, Point* outCursor) {
+    if (!cx || !cx->win || !outHover) {
+        return false;
+    }
+    HoverMemory* memory =
+        ElementState<HoverMemory>(cx, StrL("__plot-hover"), StrL("memory"));
+    if (!memory) {
+        return false;
+    }
+    bool hovered = live != nullptr;
+    const MotionTokens& tokens = ThemeNow(cx->app).motion;
+    Easing easing = hovered ? tokens.easingEnter : tokens.easingExit;
+    float focus = motion::transition(
+        cx, motion::TransitionId(StrL("__plot-hover"), StrL("focus")),
+        hovered ? 1.f : 0.f,
+        motion::Transition::New(tokens.durationFastMs).Ease(easing));
+    if (live && cursor) {
+        memory->state = *live;
+        int n = live->dotCount;
+        if (n > 8) {
+            n = 8;
+        }
+        if (live->dots && n > 0) {
+            memcpy(memory->storedDots, live->dots, sizeof(Point) * (size_t)n);
+            memory->state.dots = memory->storedDots;
+            memory->state.dotCount = n;
+        } else {
+            memory->state.dots = nullptr;
+            memory->state.dotCount = 0;
+        }
+        memory->cursor = *cursor;
+        memory->hasState = true;
+    }
+    memory->focus = focus;
+    if (!hovered && focus <= 0.f) {
+        memory->hasState = false;
+    }
+    if (!memory->hasState) {
+        return false;
+    }
+    outHover->state = memory->state;
+    outHover->focus = focus;
+    outHover->hovered = hovered;
+    if (outCursor) {
+        *outCursor = memory->cursor;
+    }
+    return true;
 }
 
 Tooltip* Tooltip::New(Ctx* cx, Point cursor, Size within) {
@@ -1630,9 +1755,30 @@ Tooltip* Tooltip::Child(El* value) {
     return this;
 }
 
+Tooltip* Tooltip::Focus(float value) {
+    if (value < 0) {
+        value = 0;
+    }
+    if (value > 1) {
+        value = 1;
+    }
+    focus = value;
+    return this;
+}
+
 El* Tooltip::IntoEl() {
     const Theme& theme = ThemeNow(cx->app);
-    El* root = Div(a)->SizeFull()->Absolute()->Top(0)->Left(0);
+    float overlay = focus;
+    if (overlay < 0 && cx && cx->win) {
+        HoverMemory* memory =
+            ElementState<HoverMemory>(cx, StrL("__plot-hover"), StrL("memory"));
+        overlay = memory ? memory->focus : 1.f;
+    }
+    if (overlay < 0) {
+        overlay = 1.f;
+    }
+    El* root =
+        Div(a)->SizeFull()->Absolute()->Top(0)->Left(0)->Opacity(overlay);
     if (hasCrossLine) {
         root->Child(crossLine.IntoEl(cx));
     }
@@ -1670,9 +1816,13 @@ El* Tooltip::IntoEl() {
         }
     }
     if (!appearance) {
-        content->SizeFull();
+        content->SizeFull()->Opacity(overlay);
     } else {
-        PopoverSurface(cx, content)->Absolute()->MinW(150)->Pad(8);
+        PopoverSurface(cx, content)
+            ->Absolute()
+            ->MinW(150)
+            ->Pad(8)
+            ->Opacity(overlay);
         if (cursor.x < within.w * .5f) {
             content->Left(cursor.x + gap);
         } else {
