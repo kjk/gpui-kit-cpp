@@ -2272,6 +2272,46 @@ static void ReopeningSearchPanelPreservesThePreviousMatch() {
     EntityDropAll(&app);
 }
 
+// test_set_search_query_highlights_without_the_panel
+static void SetSearchQueryHighlightsWithoutThePanel() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    editor.searchable = false;
+    InputSetValue(&editor, StrL("foo bar foo"));
+    InputSetSearchQuery(&editor, &app, win, StrL("foo"), true);
+    utassert(SearchSessionIsActive(&editor.search));
+    utassert(!editor.search.open);
+    utassert(SearchMatcherLen(&editor.search.matcher) == 2);
+    InputCloseSearch(&editor, &app, win);
+    utassert(!SearchSessionIsActive(&editor.search));
+    delete win;
+}
+
+// test_search_shortcut_reaches_the_host_when_not_searchable /
+// test_search_shortcut_opens_the_panel_when_searchable
+static void SearchShortcutPropagatesWhenTheEditorIsNotSearchable() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    editor.searchable = false;
+    utassert(InputActionForKey(&editor, KeyF, false, true, false) ==
+             InputAction::Search);
+    utassert(!InputPerform(&editor, &app, win, InputAction::Search, false));
+    utassert(!editor.search.open);
+    utassert(!SearchSessionIsActive(&editor.search));
+
+    editor.searchable = true;
+    utassert(InputPerform(&editor, &app, win, InputAction::Search, false));
+    utassert(editor.search.open);
+    utassert(SearchSessionIsActive(&editor.search));
+    delete win;
+}
+
 static void TwoFindBarsHaveTwoPrevButtons() {
     App app;
     Window* win = new Window();
@@ -3574,6 +3614,8 @@ void TestInputState() {
     TwoFindBarsHaveTwoPrevButtons();
     ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames();
     ReopeningSearchPanelPreservesThePreviousMatch();
+    SetSearchQueryHighlightsWithoutThePanel();
+    SearchShortcutPropagatesWhenTheEditorIsNotSearchable();
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
     DecorationsAreIndependentClippedAndTrackEdits();

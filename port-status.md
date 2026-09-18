@@ -14,11 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `4d08d993ba5349604e15a32d04c07f5a83499c3a`
-(2026-09-17, setting: Preserve selected page identity when searching
-(#3104)). Settings search keeps original page and group indexes; the selected
-page stays put while it still matches, and Reset All only touches visible
-items. The current update target is
+Processed through `fb26e617da3add2ce2ac92a2ccc1a64bc8343135`
+(2026-09-17, input: Expose editor search API (#2533)). Search highlights
+follow the session being active rather than the built-in panel being open, so
+a custom search UI can drive the same matcher. The current update target is
 `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust

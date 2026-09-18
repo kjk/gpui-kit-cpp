@@ -3461,6 +3461,11 @@ inline bool SearchMatcherIsEmpty(const SearchMatcher* m) {
 inline int SearchMatcherIndex(const SearchMatcher* m) {
     return m->current;
 }
+// current(): the index of the current match into matched_ranges, -1 while
+// there is no match — so "no match" is not mistaken for the first one.
+inline int SearchMatcherCurrentIndex(const SearchMatcher* m) {
+    return m->ranges.len == 0 ? -1 : m->current;
+}
 // label(): "3/17", or "0/0" when nothing matched.
 Str SearchMatcherLabel(Arena* a, const SearchMatcher* m);
 // set_current_match_index: clamped into the list, as Rust's `.min(len - 1)`.
@@ -3556,9 +3561,10 @@ struct FoldIconBox {
     Bounds bounds = {};
 };
 
-// SearchSession: the panel's state, kept on the field so it survives the
-// panel being closed and opened again.
+// SearchSession: one search over an input. Read it on the field; write it
+// only through the search methods. It grows, so leave unused fields alone.
 struct SearchSession {
+    // The built-in search panel is showing.
     bool open = false;
     bool replaceMode = false;
     bool caseInsensitive = true;
@@ -3568,12 +3574,21 @@ struct SearchSession {
     // match chosen is the one nearest what you were looking at. -1 is None.
     int anchorOffset = -1;
     SearchMatcher matcher;
+    // A search is in progress and its matches are highlighted: the panel is
+    // open, or a query was set without it and not closed since.
+    bool active = false;
 
     ~SearchSession() {
         StrFree(query);
         StrFree(replacement);
     }
 };
+
+// is_active(): the built-in panel is open, or a query was set without it and
+// close_search has not run since. Matches are highlighted while this holds.
+inline bool SearchSessionIsActive(const SearchSession* s) {
+    return s && s->active;
+}
 
 void SearchSessionSetQuery(SearchSession* s, Str query, bool insensitive);
 void SearchSessionSetReplacement(SearchSession* s, Str replacement);
@@ -4129,11 +4144,13 @@ struct InputState {
     // changes; the active LanguageConfig is resolved at each edit.
     bool autoClose = true;
     bool smartIndent = true;
-    // searchable / replaceable: whether ctrl-f opens a find bar over this
-    // field at all, and whether that bar may write back. Rust defaults the
-    // first to false and turns it on for the code editor, and the second to
-    // true — a field that cannot be edited is not replaceable anyway, which
-    // `InputIsReplaceable` is what says.
+    // searchable / replaceable: whether the built-in search panel and its
+    // shortcut are enabled. Off by default, on for the code editor. This only
+    // concerns the panel — an input that is not searchable still answers
+    // InputSetSearchQuery and the other search methods, and lets Ctrl-F /
+    // Cmd-F bubble up so an application can put its own search UI on top of
+    // the same engine. replaceable defaults true; a field that cannot be
+    // edited is not replaceable anyway, which InputIsReplaceable is what says.
     bool searchable = false;
     bool replaceable = true;
     SearchSession search;
@@ -4546,7 +4563,8 @@ enum class InputAction : uint8_t {
     Redo,
     // ctrl-f and ctrl-h, which open the find bar over the field — the second
     // with its replace row already out. Rust binds both in the input's key
-    // context and both do nothing on a field that is not searchable.
+    // context. An input that is not searchable leaves the shortcut to its
+    // ancestors, so a custom search UI can take it.
     Search,
     Replace,
     // cmd-. / ctrl-.: the code action menu over whatever is selected.
@@ -4739,10 +4757,14 @@ void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch);
 // match. A field that is not searchable ignores it.
 void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode);
 uint64_t InputSearchActivationRevision(const InputState* s);
+// close_search: hide the built-in panel and the match highlights. The query
+// is kept so the next open_search resumes it.
 void InputCloseSearch(InputState* s, App* app, Window* win);
 // is_replaceable(): the field allows it and is editable right now.
 bool InputIsReplaceable(const InputState* s);
 void InputSetSearchReplaceMode(InputState* s, App* app, Window* win, bool on);
+// set_search_query: highlight matches. This is the entry point for a custom
+// search UI: it needs neither searchable nor the built-in panel.
 void InputSetSearchQuery(InputState* s, App* app, Window* win, Str query,
                          bool insensitive);
 // next_search_match / previous_search_match: the cursor moves, wrapping, and

@@ -201,6 +201,40 @@ static void IdenticalQueryKeepsTheCurrentMatch() {
     utassert(LabelIs(&session.matcher, "3/3"));
 }
 
+// a_query_set_without_the_panel_keeps_the_session_active_until_closed
+static void AQuerySetWithoutThePanelKeepsTheSessionActiveUntilClosed() {
+    SearchSession session;
+    utassert(!SearchSessionIsActive(&session));
+
+    session.open = true;
+    session.active = true;
+    utassert(SearchSessionIsActive(&session));
+    session.open = false;
+    session.active = false;
+    utassert(!SearchSessionIsActive(&session));
+
+    // A custom search UI never opens the panel; setting a query is what
+    // turns the match highlights on, and closing turns them off again.
+    session.active = true;
+    utassert(SearchSessionIsActive(&session));
+    utassert(!session.open);
+    session.active = false;
+    utassert(!SearchSessionIsActive(&session));
+}
+
+static void CurrentIsNoneWhileThereIsNoMatch() {
+    SearchMatcher m;
+    utassert(SearchMatcherCurrentIndex(&m) == -1);
+    utassert(LabelIs(&m, "0/0"));
+    SearchMatcherUpdate(&m, StrL("foo bar foo"));
+    SearchMatcherUpdateQuery(&m, StrL("foo"), true);
+    utassert(SearchMatcherCurrentIndex(&m) == 0);
+    utassert(LabelIs(&m, "1/2"));
+    SearchMatcherSetIndex(&m, 1);
+    utassert(SearchMatcherCurrentIndex(&m) == 1);
+    utassert(LabelIs(&m, "2/2"));
+}
+
 void TestSearchMatcher() {
     FindsNavigatesAndKeepsItsPlaceThroughAReplacement();
     IdenticalQueryKeepsTheCurrentMatch();
@@ -210,4 +244,6 @@ void TestSearchMatcher() {
     TheScanItself();
     TheCursorStartsAtWhatWasOnScreen();
     TheSameTextIsNotRescanned();
+    AQuerySetWithoutThePanelKeepsTheSessionActiveUntilClosed();
+    CurrentIsNoneWhileThereIsNoMatch();
 }

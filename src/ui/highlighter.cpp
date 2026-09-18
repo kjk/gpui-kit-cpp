@@ -1099,9 +1099,10 @@ El* Highlighter::IntoEl() {
     }
     style.spans = n > 0 ? spans : nullptr;
     style.nSpans = n;
-    // layout_search_matches: the matches are painted only while the bar is
-    // open, which is when Rust builds paths for them at all.
-    if (state && state->search.open) {
+    // layout_search_matches: the matches are painted while the session is
+    // active, whether the built-in panel is showing or a custom UI set the
+    // query without it.
+    if (state && SearchSessionIsActive(&state->search)) {
         const SearchMatcher* m = &state->search.matcher;
         style.matches = m->ranges.els;
         style.nMatches = m->ranges.len;

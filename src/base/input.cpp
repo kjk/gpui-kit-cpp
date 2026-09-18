@@ -5869,8 +5869,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return true;
         case InputAction::Search:
         case InputAction::Replace:
-            // on_action_search / on_action_replace, both of which are the
-            // same call with the replace row already out or not.
+            // on_action_search / on_action_replace. An input that is not
+            // searchable leaves the shortcut to its ancestors, so a custom
+            // search UI can take it — Rust's cx.propagate().
             if (!s->searchable) {
                 return false;
             }
@@ -5908,12 +5909,7 @@ InputAction InputActionForKey(const InputState* s, int vk, bool shift,
     uint32_t ctx = KeyContextOf(InputContext());
     KeyMatch m = KeymapMatch(c, &ctx, 1);
     InputAction act = InputActionOf(m.action, m.arg);
-    // Both open the find bar, and a field that is not searchable answers
-    // neither — Rust's handlers propagate instead of handling.
-    if ((act == InputAction::Search || act == InputAction::Replace) &&
-        !(s && s->searchable)) {
-        return InputAction::None;
-    }
+    (void)s;
     return act;
 }
 
@@ -5963,6 +5959,7 @@ void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode) {
     }
     s->searchActivationRevision++;
     s->search.open = true;
+    s->search.active = true;
     s->search.replaceMode = replaceMode && InputIsReplaceable(s);
     // Whatever is selected becomes the query, which is what makes ctrl-f on
     // a word search for that word. An empty selection leaves the last one.
@@ -5989,6 +5986,7 @@ void InputCloseSearch(InputState* s, App* app, Window* win) {
         return;
     }
     s->search.open = false;
+    s->search.active = false;
     Notify(app, win);
 }
 
@@ -6005,6 +6003,7 @@ void InputSetSearchQuery(InputState* s, App* app, Window* win, Str query,
     if (!s) {
         return;
     }
+    s->search.active = true;
     SearchSessionSetQuery(&s->search, query, insensitive);
     SearchMatcherUpdate(&s->search.matcher, InputValue(s));
     Notify(app, win);
@@ -6385,10 +6384,11 @@ void SearchMatcherUpdateQuery(SearchMatcher* m, Str query, bool insensitive) {
 }
 
 Str SearchMatcherLabel(Arena* a, const SearchMatcher* m) {
-    if (m->ranges.len == 0) {
+    int ix = SearchMatcherCurrentIndex(m);
+    if (ix < 0) {
         return StrDup(a, StrL("0/0"));
     }
-    return StrDup(a, fmt("%d/%d", m->current + 1, m->ranges.len));
+    return StrDup(a, fmt("%d/%d", ix + 1, m->ranges.len));
 }
 
 void SearchMatcherSetIndex(SearchMatcher* m, int ix) {
