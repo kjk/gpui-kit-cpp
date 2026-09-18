@@ -82,6 +82,12 @@ enum {
     StoryCount,
 };
 
+// crates/story/src/stories/input_tokens.rs. Shared by the Input and Textarea
+// pages. The state lives in input_tokens.cpp so Story.h does not pull a Vec
+// into every page.
+struct TokenExample;
+EntityId TokenExampleNew(App* app, bool multiline);
+
 struct StoryApp {
     static El* Render(StoryApp* self, Ctx* cx);
 

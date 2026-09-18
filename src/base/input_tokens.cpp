@@ -98,6 +98,38 @@ InputContent InputContent::New(Str text) {
     return c;
 }
 
+InputContent InputContentDup(const InputContent& content) {
+    InputContent out;
+    out.text = StrDup(content.text);
+    for (int i = 0; i < content.tokens.len; i++) {
+        VecAppend(out.tokens, InlineTokenSpanDup(content.tokens[i]));
+    }
+    return out;
+}
+
+void InputContentFree(InputContent* content) {
+    if (!content) {
+        return;
+    }
+    StrFree(content->text);
+    InlineTokenSpansClear(&content->tokens);
+}
+
+InputContent InputGetContent(const InputState* s) {
+    InputContent out;
+    if (!s) {
+        return out;
+    }
+    out.text = StrDup(InputValue(s));
+    const Vec<InlineTokenSpan>* spans = InputTokens(s);
+    if (spans) {
+        for (int i = 0; i < spans->len; i++) {
+            VecAppend(out.tokens, InlineTokenSpanDup((*spans)[i]));
+        }
+    }
+    return out;
+}
+
 InlineTokenError InputContent::WithToken(int start, int end,
                                          InlineToken token) {
     InlineTokenError err = token.Validate();

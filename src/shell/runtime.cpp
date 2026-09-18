@@ -17,6 +17,7 @@
 #include "shell/standard.h"
 #include "shell/theme_tokens.h"
 #include "shell/view.h"
+#include "base/input_tokens.h"
 #include "sys/task.h"
 
 #include <math.h>
@@ -136,6 +137,9 @@ struct CallbackArena {
     uint64_t buildingGeneration = 0;
     int buildingStart = 0;
     bool building = false;
+    bool tokenRender = false;
+    uint64_t tokenGeneration = 0;
+    uint32_t tokenFrame = 0;
 
     uint64_t Begin(JSContext* ctx) {
         Abort(ctx);
@@ -145,18 +149,27 @@ struct CallbackArena {
         return buildingGeneration;
     }
 
+    void BeginTokenFrame(JSContext* ctx, uint32_t frame) {
+        if (tokenFrame == frame && tokenGeneration) return;
+        if (tokenGeneration) Retire(ctx, tokenGeneration);
+        tokenGeneration = nextGeneration++;
+        tokenFrame = frame;
+    }
+
     shell::CallbackId Push(JSContext* ctx, JSValueConst function, EntityId view,
                            Policy* policy, uint64_t registeredIn,
                            AppModule* application) {
-        if (!building || nextCallback == UINT64_MAX) return UINT64_MAX;
+        if ((!building && !tokenRender) || nextCallback == UINT64_MAX)
+            return UINT64_MAX;
         CallbackEntry* entry = new CallbackEntry();
         entry->id = nextCallback++;
-        entry->generation = buildingGeneration;
+        entry->generation = tokenRender ? tokenGeneration : buildingGeneration;
         entry->function = JS_DupValue(ctx, function);
         entry->view = view;
         entry->policy = PolicyRetain(policy);
         entry->application = application;
         entry->registeredIn = registeredIn;
+        if (tokenRender) entry->committed = true;
         VecAppend(entries, entry);
         return entry->id;
     }
@@ -340,6 +353,7 @@ struct ShellRuntimeImpl {
     uint64_t interruptIdentity = UINT64_MAX;
     double interruptStarted = 0;
     bool interruptWasScoped = false;
+    uint32_t tokenFrame = 0;
 };
 
 struct ViewType {
@@ -1217,10 +1231,17 @@ static const char* const kBaseExports[] = {
     // Dock. The area is the state and `dock_area` is one description of it,
     // which is the split `v_virtual_list` already has.
     "DockArea", "dock_area", "dock_content", "set_theme"};
-static const char* const kComponentExports[] = {
-    "InputGroup",      "InputGroupAddon",    "InputGroupButton",
-    "InputGroupInput", "InputGroupTextarea", "InputGroupText",
-    "InputState",      "TextareaState",      "Button"};
+static const char* const kComponentExports[] = {"InputGroup",
+                                                "InputGroupAddon",
+                                                "InputGroupButton",
+                                                "InputGroupInput",
+                                                "InputGroupTextarea",
+                                                "InputGroupText",
+                                                "InputState",
+                                                "TextareaState",
+                                                "Button",
+                                                "Input",
+                                                "Textarea"};
 static const char* const kFpsExports[] = {"fps_monitor", "show_fps_monitor",
                                           "hide_fps_monitor",
                                           "fps_monitor_visible"};
@@ -1996,7 +2017,7 @@ static bool IsCallbackMethod(Str name) {
         "on_item_secondary_click\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
-        "on_link_click\0"
+        "on_link_click\0token\0on_token_click\0"
         // A dock's chrome handlers. They are callbacks like any other; what
         // makes them different is that they are asked from inside the frame
         // rather than from render, which the Layout scope around the call and
@@ -3637,6 +3658,407 @@ static JSValue NativeInputSetValue(JSContext* ctx, JSValueConst, int argc,
     Str value;
     bool ok = JsString(ctx, argv[1], arena, &value);
     if (ok) InputSetValue(entry->input, value);
+    ArenaDelete(arena);
+    if (!ok) return JS_EXCEPTION;
+    AppInvalidate(host.GetWindow());
+    return JS_UNDEFINED;
+}
+
+static JSValue ThrowTokenError(JSContext* ctx, InlineTokenError err) {
+    const char* code = "Error";
+    switch (err) {
+        case InlineTokenError::InvalidRange:
+            code = "InvalidRange";
+            break;
+        case InlineTokenError::InvalidBoundary:
+            code = "InvalidBoundary";
+            break;
+        case InlineTokenError::InvalidToken:
+            code = "InvalidToken";
+            break;
+        case InlineTokenError::OverlappingTokens:
+            code = "OverlappingTokens";
+            break;
+        case InlineTokenError::TextMismatch:
+            code = "TextMismatch";
+            break;
+        case InlineTokenError::UnsupportedMode:
+            code = "UnsupportedMode";
+            break;
+        case InlineTokenError::ValidationRejected:
+            code = "ValidationRejected";
+            break;
+        case InlineTokenError::CompositionActive:
+            code = "CompositionActive";
+            break;
+        default:
+            break;
+    }
+    JSValue error = JS_NewError(ctx);
+    const char* message = InlineTokenErrorMessage(err);
+    JS_SetPropertyStr(ctx, error, "message", JS_NewString(ctx, message));
+    JS_SetPropertyStr(ctx, error, "code", JS_NewString(ctx, code));
+    JS_SetPropertyStr(ctx, error, "name", JS_NewString(ctx, "Error"));
+    return JS_Throw(ctx, error);
+}
+
+static bool JsHeapString(JSContext* ctx, JSValueConst value, Str* out) {
+    size_t n = 0;
+    const char* text = JS_ToCStringLen(ctx, &n, value);
+    if (!text) return false;
+    *out = StrDup(Str(text, (int)n));
+    JS_FreeCString(ctx, text);
+    return true;
+}
+
+static bool Utf16ToUtf8Checked(Str text, double offset, int* out,
+                               InlineTokenError* err) {
+    if (!isfinite(offset) || offset < 0 || offset != floor(offset)) {
+        *err = InlineTokenError::InvalidRange;
+        return false;
+    }
+    int target = (int)offset;
+    int n = 0;
+    int i = 0;
+    while (i < len(text)) {
+        if (n == target) {
+            *out = i;
+            return true;
+        }
+        uint32_t c = 0;
+        int w = Utf8At(text, i, &c);
+        if (w <= 0) {
+            *err = InlineTokenError::InvalidRange;
+            return false;
+        }
+        int u16 = c >= 0x10000 ? 2 : 1;
+        if (n + u16 > target) {
+            *err = InlineTokenError::InvalidBoundary;
+            return false;
+        }
+        n += u16;
+        i += w;
+    }
+    if (n == target) {
+        *out = len(text);
+        return true;
+    }
+    *err = InlineTokenError::InvalidRange;
+    return false;
+}
+
+static bool DecodeToken(JSContext* ctx, JSValueConst value, InlineToken* out) {
+    if (!JS_IsObject(value) || JS_IsArray(value)) {
+        JS_ThrowTypeError(ctx, "token must be a plain object");
+        return false;
+    }
+    JSValue id = JS_GetPropertyStr(ctx, value, "id");
+    JSValue text = JS_GetPropertyStr(ctx, value, "text");
+    JSValue label = JS_GetPropertyStr(ctx, value, "label");
+    Str idStr = {}, textStr = {}, labelStr = {};
+    bool ok =
+        JsHeapString(ctx, id, &idStr) && JsHeapString(ctx, text, &textStr);
+    if (ok && !JS_IsUndefined(label) && !JS_IsNull(label)) {
+        ok = JsHeapString(ctx, label, &labelStr);
+    }
+    JS_FreeValue(ctx, id);
+    JS_FreeValue(ctx, text);
+    JS_FreeValue(ctx, label);
+    if (!ok) {
+        StrFree(idStr);
+        StrFree(textStr);
+        StrFree(labelStr);
+        return false;
+    }
+    out->id = idStr;
+    out->text = textStr;
+    out->label = labelStr.s ? labelStr : StrDup(textStr);
+    return true;
+}
+
+static void FreeDecodedToken(InlineToken* token) {
+    if (!token) return;
+    StrFree(token->id);
+    StrFree(token->text);
+    StrFree(token->label);
+    *token = {};
+}
+
+static bool DecodeUtf16Range(JSContext* ctx, JSValueConst value, Str text,
+                             int* start, int* end, InlineTokenError* err) {
+    if (!JS_IsObject(value) || JS_IsArray(value)) {
+        *err = InlineTokenError::InvalidRange;
+        return false;
+    }
+    JSValue startV = JS_GetPropertyStr(ctx, value, "start");
+    JSValue endV = JS_GetPropertyStr(ctx, value, "end");
+    double startN = 0, endN = 0;
+    bool ok = JS_ToFloat64(ctx, &startN, startV) == 0 &&
+              JS_ToFloat64(ctx, &endN, endV) == 0;
+    JS_FreeValue(ctx, startV);
+    JS_FreeValue(ctx, endV);
+    if (!ok) {
+        *err = InlineTokenError::InvalidRange;
+        return false;
+    }
+    if (!Utf16ToUtf8Checked(text, startN, start, err)) return false;
+    if (!Utf16ToUtf8Checked(text, endN, end, err)) return false;
+    if (*start > *end) {
+        *err = InlineTokenError::InvalidRange;
+        return false;
+    }
+    return true;
+}
+
+static bool DecodeContent(JSContext* ctx, JSValueConst value,
+                          InputContent* out) {
+    if (!JS_IsObject(value) || JS_IsArray(value)) {
+        JS_ThrowTypeError(ctx, "content must be a plain object");
+        return false;
+    }
+    JSValue textV = JS_GetPropertyStr(ctx, value, "text");
+    JSValue tokensV = JS_GetPropertyStr(ctx, value, "tokens");
+    Str text = {};
+    bool ok = JsHeapString(ctx, textV, &text);
+    JS_FreeValue(ctx, textV);
+    if (!ok) {
+        JS_FreeValue(ctx, tokensV);
+        return false;
+    }
+    *out = InputContent::New(text);
+    if (JS_IsUndefined(tokensV) || JS_IsNull(tokensV)) {
+        JS_FreeValue(ctx, tokensV);
+        return true;
+    }
+    if (!JS_IsArray(tokensV)) {
+        JS_FreeValue(ctx, tokensV);
+        InputContentFree(out);
+        JS_ThrowTypeError(ctx, "content.tokens must be an array");
+        return false;
+    }
+    int64_t count = 0;
+    if (JS_GetLength(ctx, tokensV, &count) < 0) {
+        JS_FreeValue(ctx, tokensV);
+        InputContentFree(out);
+        return false;
+    }
+    for (int i = 0; i < (int)count; i++) {
+        JSValue item = JS_GetPropertyUint32(ctx, tokensV, (uint32_t)i);
+        JSValue rangeV = JS_GetPropertyStr(ctx, item, "range");
+        JSValue tokenV = JS_GetPropertyStr(ctx, item, "token");
+        InlineToken token = {};
+        int start = 0, end = 0;
+        InlineTokenError err = InlineTokenError::Ok;
+        bool itemOk =
+            DecodeToken(ctx, tokenV, &token) &&
+            DecodeUtf16Range(ctx, rangeV, out->text, &start, &end, &err);
+        JS_FreeValue(ctx, rangeV);
+        JS_FreeValue(ctx, tokenV);
+        JS_FreeValue(ctx, item);
+        if (!itemOk) {
+            FreeDecodedToken(&token);
+            JS_FreeValue(ctx, tokensV);
+            InputContentFree(out);
+            if (err != InlineTokenError::Ok) ThrowTokenError(ctx, err);
+            return false;
+        }
+        err = out->WithToken(start, end, token);
+        if (err != InlineTokenError::Ok) {
+            FreeDecodedToken(&token);
+            JS_FreeValue(ctx, tokensV);
+            InputContentFree(out);
+            ThrowTokenError(ctx, err);
+            return false;
+        }
+    }
+    JS_FreeValue(ctx, tokensV);
+    return true;
+}
+
+static JSValue TokenJs(JSContext* ctx, const InlineToken& token) {
+    JSValue o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "id",
+                      JS_NewStringLen(ctx, token.id.s ? token.id.s : "",
+                                      (size_t)len(token.id)));
+    JS_SetPropertyStr(ctx, o, "text",
+                      JS_NewStringLen(ctx, token.text.s ? token.text.s : "",
+                                      (size_t)len(token.text)));
+    JS_SetPropertyStr(ctx, o, "label",
+                      JS_NewStringLen(ctx, token.label.s ? token.label.s : "",
+                                      (size_t)len(token.label)));
+    return o;
+}
+
+static JSValue RangeJs(JSContext* ctx, Str text, int start, int end) {
+    JSValue o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "start",
+                      JS_NewInt32(ctx, RopeOffsetToOffsetUtf16(text, start)));
+    JS_SetPropertyStr(ctx, o, "end",
+                      JS_NewInt32(ctx, RopeOffsetToOffsetUtf16(text, end)));
+    return o;
+}
+
+static JSValue ContentJs(JSContext* ctx, const InputContent& content) {
+    JSValue o = JS_NewObject(ctx);
+    JS_SetPropertyStr(ctx, o, "text",
+                      JS_NewStringLen(ctx, content.text.s ? content.text.s : "",
+                                      (size_t)len(content.text)));
+    JSValue tokens = JS_NewArray(ctx);
+    for (int i = 0; i < content.tokens.len; i++) {
+        const InlineTokenSpan& span = content.tokens[i];
+        JSValue item = JS_NewObject(ctx);
+        JS_SetPropertyStr(ctx, item, "range",
+                          RangeJs(ctx, content.text, span.start, span.end));
+        JS_SetPropertyStr(ctx, item, "token", TokenJs(ctx, span.token));
+        JS_SetPropertyUint32(ctx, tokens, (uint32_t)i, item);
+    }
+    JS_SetPropertyStr(ctx, o, "tokens", tokens);
+    return o;
+}
+
+static shell::RetainedEntry* LiveTextState(JSContext* ctx,
+                                           shell::EntityHandle handle) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    shell::RetainedEntry* entry = impl ? impl->retained.Find(handle) : nullptr;
+    if (!entry || (entry->kind != shell::RetainedKind::Input &&
+                   entry->kind != shell::RetainedKind::Textarea)) {
+        JS_ThrowTypeError(ctx, "this text state has been released");
+        return nullptr;
+    }
+    return entry;
+}
+
+static JSValue NativeInputSetContent(JSContext* ctx, JSValueConst, int argc,
+                                     JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, "set_value()")) return JS_EXCEPTION;
+    shell::EntityHandle handle = 0;
+    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet())
+        return JS_ThrowTypeError(ctx, "set_value() needs a live host call");
+    InputContent content;
+    if (!DecodeContent(ctx, argv[1], &content)) return JS_EXCEPTION;
+    InputSetValue(entry->input, content);
+    InputContentFree(&content);
+    AppInvalidate(host.GetWindow());
+    return JS_UNDEFINED;
+}
+
+static JSValue NativeInputContent(JSContext* ctx, JSValueConst, int argc,
+                                  JSValueConst* argv) {
+    shell::EntityHandle handle = 0;
+    if (argc < 1 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    InputContent content = InputGetContent(entry->input);
+    JSValue result = ContentJs(ctx, content);
+    InputContentFree(&content);
+    return result;
+}
+
+static JSValue NativeInputTokens(JSContext* ctx, JSValueConst, int argc,
+                                 JSValueConst* argv) {
+    JSValue content = NativeInputContent(ctx, JS_UNDEFINED, argc, argv);
+    if (JS_IsException(content)) return content;
+    JSValue tokens = JS_GetPropertyStr(ctx, content, "tokens");
+    JS_FreeValue(ctx, content);
+    return tokens;
+}
+
+static JSValue NativeInputReplaceWithToken(JSContext* ctx, JSValueConst,
+                                           int argc, JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, "replace_with_token()"))
+        return JS_EXCEPTION;
+    shell::EntityHandle handle = 0;
+    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet())
+        return JS_ThrowTypeError(ctx,
+                                 "replace_with_token() needs a live host call");
+    InlineToken token = {};
+    if (!DecodeToken(ctx, argv[1], &token)) return JS_EXCEPTION;
+    InlineTokenError err = InputReplaceWithToken(entry->input, host.GetApp(),
+                                                 host.GetWindow(), token);
+    FreeDecodedToken(&token);
+    if (err != InlineTokenError::Ok) return ThrowTokenError(ctx, err);
+    AppInvalidate(host.GetWindow());
+    return JS_UNDEFINED;
+}
+
+static JSValue NativeInputReplaceRangeWithToken(JSContext* ctx, JSValueConst,
+                                                int argc, JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, "replace_range_with_token()"))
+        return JS_EXCEPTION;
+    shell::EntityHandle handle = 0;
+    if (argc < 3 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet())
+        return JS_ThrowTypeError(
+            ctx, "replace_range_with_token() needs a live host call");
+    InlineToken token = {};
+    if (!DecodeToken(ctx, argv[2], &token)) return JS_EXCEPTION;
+    int start = 0, end = 0;
+    InlineTokenError err = InlineTokenError::Ok;
+    Str text = InputValue(entry->input);
+    if (!DecodeUtf16Range(ctx, argv[1], text, &start, &end, &err)) {
+        FreeDecodedToken(&token);
+        return ThrowTokenError(ctx, err);
+    }
+    err = InputReplaceRangeWithToken(entry->input, host.GetApp(),
+                                     host.GetWindow(), start, end, token);
+    FreeDecodedToken(&token);
+    if (err != InlineTokenError::Ok) return ThrowTokenError(ctx, err);
+    AppInvalidate(host.GetWindow());
+    return JS_UNDEFINED;
+}
+
+static JSValue NativeInputSetSelectedRange(JSContext* ctx, JSValueConst,
+                                           int argc, JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, "set_selected_range()"))
+        return JS_EXCEPTION;
+    shell::EntityHandle handle = 0;
+    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet())
+        return JS_ThrowTypeError(ctx,
+                                 "set_selected_range() needs a live host call");
+    int start = 0, end = 0;
+    InlineTokenError err = InlineTokenError::Ok;
+    if (!DecodeUtf16Range(ctx, argv[1], InputValue(entry->input), &start, &end,
+                          &err)) {
+        return ThrowTokenError(ctx, err);
+    }
+    InputSetSelectedRange(entry->input, host.GetApp(), host.GetWindow(), start,
+                          end);
+    AppInvalidate(host.GetWindow());
+    return JS_UNDEFINED;
+}
+
+static JSValue NativeInputReplace(JSContext* ctx, JSValueConst, int argc,
+                                  JSValueConst* argv) {
+    if (RefuseRetainedMutation(ctx, "replace()")) return JS_EXCEPTION;
+    shell::EntityHandle handle = 0;
+    if (argc < 2 || !JsHandle(ctx, argv[0], &handle)) return JS_EXCEPTION;
+    shell::RetainedEntry* entry = LiveTextState(ctx, handle);
+    if (!entry) return JS_EXCEPTION;
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet())
+        return JS_ThrowTypeError(ctx, "replace() needs a live host call");
+    Arena* arena = ArenaNew();
+    Str text;
+    bool ok = JsString(ctx, argv[1], arena, &text);
+    if (ok) {
+        InputReplaceTextInRange(entry->input, host.GetApp(), host.GetWindow(),
+                                nullptr, text);
+    }
     ArenaDelete(arena);
     if (!ok) return JS_EXCEPTION;
     AppInvalidate(host.GetWindow());
@@ -7341,7 +7763,13 @@ globalThis.__gpui = (() => {
   const inputState = (handle) => ({
     __handle: handle,
     value: () => __input_value(handle),
-    set_value: (value) => __input_set_value(handle, String(value ?? "")),
+    set_value: (value) => value && typeof value === "object" ? __input_set_content(handle, value) : __input_set_value(handle, String(value ?? "")),
+    content: () => __input_content(handle),
+    tokens: () => __input_tokens(handle),
+    replace_with_token: (token) => __input_replace_with_token(handle, token),
+    replace_range_with_token: (range, token) => __input_replace_range_with_token(handle, range, token),
+    set_selected_range: (range) => __input_set_selected_range(handle, range),
+    replace: (text) => __input_replace(handle, String(text ?? "")),
     set_step: (value) => __input_set_step(handle, value == null ? null : Number(value)),
     set_min: (value) => __input_set_min(handle, value == null ? null : Number(value)),
     set_max: (value) => __input_set_max(handle, value == null ? null : Number(value)),
@@ -7353,7 +7781,13 @@ globalThis.__gpui = (() => {
   const textareaState = (handle) => ({
     __handle: handle,
     value: () => __textarea_value(handle),
-    set_value: (value) => __textarea_set_value(handle, String(value ?? "")),
+    set_value: (value) => value && typeof value === "object" ? __textarea_set_content(handle, value) : __textarea_set_value(handle, String(value ?? "")),
+    content: () => __textarea_content(handle),
+    tokens: () => __textarea_tokens(handle),
+    replace_with_token: (token) => __textarea_replace_with_token(handle, token),
+    replace_range_with_token: (range, token) => __textarea_replace_range_with_token(handle, range, token),
+    set_selected_range: (range) => __textarea_set_selected_range(handle, range),
+    replace: (text) => __textarea_replace(handle, String(text ?? "")),
     set_rows: (rows) => __textarea_set_rows(handle, Number(rows)),
     set_auto_grow: (min, max) => __textarea_set_auto_grow(handle, Number(min), Number(max)),
     set_soft_wrap: (value) => __textarea_set_soft_wrap(handle, Boolean(value)),
@@ -9556,6 +9990,35 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                       NativeInputSetValue, 2);
     SetGlobalFunction(impl->context, global, "__textarea_set_value",
                       NativeInputSetValue, 2);
+    SetGlobalFunction(impl->context, global, "__input_set_content",
+                      NativeInputSetContent, 2);
+    SetGlobalFunction(impl->context, global, "__textarea_set_content",
+                      NativeInputSetContent, 2);
+    SetGlobalFunction(impl->context, global, "__input_content",
+                      NativeInputContent, 1);
+    SetGlobalFunction(impl->context, global, "__textarea_content",
+                      NativeInputContent, 1);
+    SetGlobalFunction(impl->context, global, "__input_tokens",
+                      NativeInputTokens, 1);
+    SetGlobalFunction(impl->context, global, "__textarea_tokens",
+                      NativeInputTokens, 1);
+    SetGlobalFunction(impl->context, global, "__input_replace_with_token",
+                      NativeInputReplaceWithToken, 2);
+    SetGlobalFunction(impl->context, global, "__textarea_replace_with_token",
+                      NativeInputReplaceWithToken, 2);
+    SetGlobalFunction(impl->context, global, "__input_replace_range_with_token",
+                      NativeInputReplaceRangeWithToken, 3);
+    SetGlobalFunction(impl->context, global,
+                      "__textarea_replace_range_with_token",
+                      NativeInputReplaceRangeWithToken, 3);
+    SetGlobalFunction(impl->context, global, "__input_set_selected_range",
+                      NativeInputSetSelectedRange, 2);
+    SetGlobalFunction(impl->context, global, "__textarea_set_selected_range",
+                      NativeInputSetSelectedRange, 2);
+    SetGlobalFunction(impl->context, global, "__input_replace",
+                      NativeInputReplace, 2);
+    SetGlobalFunction(impl->context, global, "__textarea_replace",
+                      NativeInputReplace, 2);
     SetGlobalMagicFunction(impl->context, global, "__input_set_step",
                            NativeInputNumberOption, 2, 0);
     SetGlobalMagicFunction(impl->context, global, "__input_set_min",
@@ -11101,6 +11564,111 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
         ShellErrorClear(&error);
     }
     return element;
+}
+
+void ShellRuntime::BeginTokenFrame() {
+    if (!impl) return;
+    impl->tokenFrame++;
+    impl->callbacks.BeginTokenFrame(impl->context, impl->tokenFrame);
+}
+
+El* ShellRuntime::RenderInlineToken(shell::CallbackId render,
+                                    const InlineTokenContext* ctx, Str text,
+                                    Ctx* cx) {
+    if (!impl || !ctx || !cx || !render) return nullptr;
+    CallbackEntry* entry = impl->callbacks.Get(render);
+    if (!entry || !cx->win || !cx->app) return nullptr;
+    if (entry->view.IsValid() && !EntityGet(cx->app, entry->view))
+        return nullptr;
+    impl->callbacks.BeginTokenFrame(impl->context, impl->tokenFrame);
+    shell::SpecArena* outer = impl->scratch;
+    shell::SpecArena* batch = new shell::SpecArena(cx->a);
+    impl->scratch = batch;
+    shell::SpecId root = 0;
+    bool hasRoot = false;
+    bool succeeded = true;
+    {
+        shell::CallScopeGuard scope =
+            shell::ScopeEnter(cx->win, cx->app, ScopePhase::Render, entry->view,
+                              entry->policy, this, entry->application);
+        shell::ScopeAdopt(entry->registeredIn);
+        BeginExecution(impl);
+        impl->callbacks.tokenRender = true;
+        JSValue payload = JS_NewObject(impl->context);
+        JS_SetPropertyStr(impl->context, payload, "token",
+                          TokenJs(impl->context, ctx->Token()));
+        JS_SetPropertyStr(
+            impl->context, payload, "range",
+            RangeJs(impl->context, text, ctx->span.start, ctx->span.end));
+        JS_SetPropertyStr(impl->context, payload, "selected",
+                          JS_NewBool(impl->context, ctx->selected));
+        JS_SetPropertyStr(impl->context, payload, "disabled",
+                          JS_NewBool(impl->context, ctx->disabled));
+        JS_SetPropertyStr(impl->context, payload, "readonly",
+                          JS_NewBool(impl->context, ctx->readonly));
+        JS_SetPropertyStr(impl->context, payload, "line_height",
+                          JS_NewFloat64(impl->context, ctx->lineHeight));
+        JS_SetPropertyStr(impl->context, payload, "available_width",
+                          JS_NewFloat64(impl->context, ctx->availableWidth));
+        JSValue context = ContextObject(impl, scope.Generation());
+        JSValue args[2] = {payload, context};
+        JSValue produced =
+            JS_Call(impl->context, entry->function, JS_UNDEFINED, 2, args);
+        impl->callbacks.tokenRender = false;
+        JS_FreeValue(impl->context, context);
+        JS_FreeValue(impl->context, payload);
+        if (JS_IsException(produced)) {
+            succeeded = false;
+        } else if (!JS_IsNull(produced) && !JS_IsUndefined(produced)) {
+            succeeded = ElementId(impl->context, produced, &root);
+            hasRoot = succeeded;
+        }
+        JS_FreeValue(impl->context, produced);
+    }
+    impl->scratch = outer;
+    El* el = nullptr;
+    if (!succeeded) {
+        Arena* arena = ArenaNew();
+        log(ExceptionText(arena, impl->context));
+        ArenaDelete(arena);
+    } else if (hasRoot) {
+        ShellError error = {};
+        el = ShellMaterializeSpec(cx, this, batch, root, &error);
+        if (error.IsSet()) {
+            log(error.message);
+            ShellErrorClear(&error);
+            el = nullptr;
+        }
+    }
+    delete batch;
+    return el;
+}
+
+void ShellRuntime::DispatchTokenClick(shell::CallbackId click,
+                                      const InlineTokenClickEvent* ev, Str text,
+                                      Ctx* cx) {
+    if (!impl || !ev || !click) return;
+    JSValue payload = JS_NewObject(impl->context);
+    JS_SetPropertyStr(impl->context, payload, "token",
+                      TokenJs(impl->context, ev->Token()));
+    JS_SetPropertyStr(
+        impl->context, payload, "range",
+        RangeJs(impl->context, text, ev->span.start, ev->span.end));
+    JSValue bounds = JS_NewObject(impl->context);
+    JS_SetPropertyStr(impl->context, bounds, "x",
+                      JS_NewFloat64(impl->context, ev->bounds.x));
+    JS_SetPropertyStr(impl->context, bounds, "y",
+                      JS_NewFloat64(impl->context, ev->bounds.y));
+    JS_SetPropertyStr(impl->context, bounds, "width",
+                      JS_NewFloat64(impl->context, ev->bounds.w));
+    JS_SetPropertyStr(impl->context, bounds, "height",
+                      JS_NewFloat64(impl->context, ev->bounds.h));
+    JS_SetPropertyStr(impl->context, payload, "bounds", bounds);
+    JS_SetPropertyStr(impl->context, payload, "modifiers",
+                      ModifiersObject(impl->context, ev->click.modifiers));
+    Window* win = cx ? cx->win : nullptr;
+    App* app = cx ? cx->app : nullptr;
+    Dispatch(this, click, payload, win, app);
 }
 
 ViewType* ViewTypeRetain(ViewType* type) {

@@ -228,6 +228,8 @@ static int MaskedOffset(Str text, int off) {
 
 struct TokenClick {
     InputState* state = nullptr;
+    App* app = nullptr;
+    Window* win = nullptr;
     int start = 0;
     int end = 0;
 };
@@ -236,9 +238,9 @@ static void OnTokenChipClick(TokenClick* p) {
     if (!p || !p->state) {
         return;
     }
-    InputSetSelectedRange(p->state, nullptr, nullptr, p->start, p->end);
+    InputSetSelectedRange(p->state, p->app, p->win, p->start, p->end);
     InlineTokenStore* store = p->state->tokens;
-    if (!store || !store->click) {
+    if (!store || !store->click || p->state->disabled) {
         return;
     }
     InlineTokenClickEvent ev = {};
@@ -252,36 +254,133 @@ static void OnTokenChipClick(TokenClick* p) {
             }
         }
     }
-    store->click(&ev, nullptr, store->clickUser);
+    Ctx cx = {};
+    cx.app = p->app;
+    cx.win = p->win;
+    if (p->win) {
+        cx.a = p->win->frameArena;
+    }
+    store->click(&ev, &cx, store->clickUser);
 }
 
 static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
-                     const Selection& sel) {
+                     const Selection& sel, float lineH) {
     Arena* a = cx->a;
     InlineTokenContext ctx = {};
     ctx.span = span;
     ctx.selected = sel.start < span.end && span.start < sel.end;
     ctx.disabled = state->disabled;
     ctx.readonly = state->readonly;
-    ctx.lineHeight = kInputLineH;
+    ctx.lineHeight = lineH > 0 ? lineH : kInputLineH;
     ctx.availableWidth = state->lastBounds.w > 0 ? state->lastBounds.w : kFill;
     El* chip = nullptr;
     InlineTokenStore* store = state->tokens;
     if (store && store->renderer) {
         chip = store->renderer(cx, &ctx, store->rendererUser);
-    } else {
+    }
+    if (!chip) {
         chip = Div(a)
                    ->FlexRow()
                    ->ItemsCenter()
-                   ->H(kInputLineH)
+                   ->H(ctx.lineHeight)
                    ->Child(TextEl(a, span.token.label));
+    }
+    if (state->disabled) {
+        return chip;
     }
     TokenClick* click = ArenaNew<TokenClick>(a);
     click->state = state;
+    click->app = cx->app;
+    click->win = cx->win;
     click->start = span.start;
     click->end = span.end;
     chip->OnClick(MkFunc0(&OnTokenChipClick, click))->StopClick();
     return chip;
+}
+
+static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
+    if (!InputTokensVisible(state)) {
+        return false;
+    }
+    const Vec<InlineTokenSpan>* spans = InputTokens(state);
+    if (!spans) {
+        return false;
+    }
+    for (int i = 0; i < spans->len; i++) {
+        if ((*spans)[i].start < end && start < (*spans)[i].end) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
+                             const InputEditorStyle& style, float font,
+                             float lineMult, Str slice, int docStart,
+                             const Selection& sel, bool caret, int cursor) {
+    if (!row || len(slice) == 0) {
+        return;
+    }
+    El* piece = TextEl(a, slice)
+                    ->Font(font)
+                    ->LineHeight(lineMult)
+                    ->Fg(style.foreground)
+                    ->BindInput(state);
+    if (style.mono) {
+        piece->Mono();
+    }
+    int lo = sel.start - docStart;
+    int hi = sel.end - docStart;
+    if (lo < 0) {
+        lo = 0;
+    }
+    if (hi > len(slice)) {
+        hi = len(slice);
+    }
+    if (!sel.IsEmpty() && lo < hi) {
+        piece->SelRange(lo, hi, style.selection);
+    }
+    if (caret && cursor >= docStart && cursor <= docStart + len(slice)) {
+        piece->Caret(cursor - docStart, style.caret);
+    }
+    row->Child(piece);
+}
+
+// Split a document range into text runs and chips. Tokens cannot contain
+// newlines, so a logical line is a complete set of pieces.
+static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
+                              const InputEditorStyle& style, float font,
+                              float lineMult, float lineH, Str run, int start,
+                              const Selection& sel, bool caret, int cursor) {
+    if (!row) {
+        return;
+    }
+    const Vec<InlineTokenSpan>* spans = InputTokens(state);
+    int end = start + len(run);
+    int at = start;
+    if (spans) {
+        for (int i = 0; i < spans->len; i++) {
+            const InlineTokenSpan& span = (*spans)[i];
+            if (span.end <= start) {
+                continue;
+            }
+            if (span.start >= end) {
+                break;
+            }
+            if (span.start > at) {
+                EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
+                                 Str(run.s + (at - start), span.start - at), at,
+                                 sel, caret, cursor);
+            }
+            row->Child(TokenChip(cx, state, span, sel, lineH));
+            at = span.end;
+        }
+    }
+    if (at < end) {
+        EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
+                         Str(run.s + (at - start), end - at), at, sel, caret,
+                         cursor);
+    }
 }
 
 El* Input::New(Ctx* cx, InputState* state) {
@@ -352,46 +451,9 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         mark.start = MaskedOffset(text, mark.start);
         mark.end = MaskedOffset(text, mark.end);
     }
-    auto emitRun = [&](Str slice, int docStart) {
-        if (len(slice) == 0) {
-            return;
-        }
-        El* piece = TextEl(a, slice)
-                        ->Font(font)
-                        ->LineHeight(lineMult)
-                        ->Fg(style.foreground)
-                        ->BindInput(state);
-        int lo = sel.start - docStart;
-        int hi = sel.end - docStart;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len(slice)) {
-            hi = len(slice);
-        }
-        if (!sel.IsEmpty() && lo < hi) {
-            piece->SelRange(lo, hi, style.selection);
-        }
-        if (caret && cursor >= docStart && cursor <= docStart + len(slice)) {
-            piece->Caret(cursor - docStart, style.caret);
-        }
-        row->Child(piece);
-    };
-    const Vec<InlineTokenSpan>* spans =
-        InputTokensVisible(state) ? InputTokens(state) : nullptr;
-    if (spans && spans->len > 0 && !masked) {
-        int at = 0;
-        for (int i = 0; i < spans->len; i++) {
-            const InlineTokenSpan& span = (*spans)[i];
-            if (span.start > at) {
-                emitRun(Str(run.s + at, span.start - at), at);
-            }
-            row->Child(TokenChip(cx, state, span, sel));
-            at = span.end;
-        }
-        if (at < len(run)) {
-            emitRun(Str(run.s + at, len(run) - at), at);
-        }
+    if (InputTokensVisible(state) && !masked) {
+        AppendTokenPieces(row, cx, state, style, font, lineMult, kInputLineH,
+                          run, 0, sel, caret, cursor);
         return row;
     }
     El* el = TextEl(a, run)
@@ -953,10 +1015,32 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 matchAt++;
             }
         }
-        El* el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
-            style.foreground);
-        if (style.mono) {
-            el->Mono();
+        bool tokenLine = LineHasVisibleTokens(state, start, start + len(line));
+        El* el = nullptr;
+        if (tokenLine) {
+            // Overlay chips instead of the raw token text, matching
+            // Input::New. A logical line is a flex row of text runs and
+            // chips; wrap is flex-wrap so a chip stays atomic. Rust uses
+            // display-map inline metrics so wrapping can break around a
+            // chip mid-line; this is the same picture as long as a gap
+            // does not itself need to wrap.
+            el = Div(a)->FlexRow()->ItemsCenter();
+            if (wrap) {
+                el->FlexWrap()->W(kFill);
+                if (lineNumbers) {
+                    el->Flex1();
+                }
+            } else {
+                el->H(lineH);
+            }
+            AppendTokenPieces(el, cx, state, style, font, lineMult, lineH, line,
+                              start, sel, caret, cursor);
+        } else {
+            el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
+                style.foreground);
+            if (style.mono) {
+                el->Mono();
+            }
         }
         // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this —
         // minified output, generated code — draws in the default style
@@ -964,9 +1048,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // over an enormous run. The cursor is not advanced here; the next
         // row's catch-up loop above skips whatever this one left behind.
         const int kMaxHighlightLineLen = 10000;
-        // The runs that fall inside this row, rebased onto it. The document's
-        // are in order, so the walk carries on where the last row left off.
-        if (nDocSpans > 0 && len(line) <= kMaxHighlightLineLen) {
+        // Highlight, diagnostics, wrap and selection belong to the shaped
+        // TextEl. A token line is already split into runs and chips.
+        if (!tokenLine && nDocSpans > 0 && len(line) <= kMaxHighlightLineLen) {
             while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
                 spanAt++;
             }
@@ -1006,7 +1090,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // element.rs composes the diagnostic styles over the rest: a wavy
         // underline in the severity's colour, which is a run of its own
         // rather than a recolouring of the glyphs.
-        if (state->diagnostics.len > 0) {
+        if (!tokenLine && state->diagnostics.len > 0) {
             int nDiag = 0;
             for (int d = 0; d < state->diagnostics.len; d++) {
                 const Diagnostic& dg = state->diagnostics[d];
@@ -1060,7 +1144,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // underlined in the link colour, one hairline and not a wavy one.
         // Rust pushes it as another highlight style over the row; here it is
         // one more underline run, which is the same list the diagnostics use.
-        if (state->hoverDef.locations.len > 0 && style.linkText.a != 0) {
+        if (!tokenLine && state->hoverDef.locations.len > 0 &&
+            style.linkText.a != 0) {
             Selection sym = state->hoverDef.symbolRange;
             int lo = sym.start - start;
             int hi = sym.end - start;
@@ -1099,7 +1184,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         int popoverHi = popoverRange.end - start;
         if (popoverLo < 0) popoverLo = 0;
         if (popoverHi > len(line)) popoverHi = len(line);
-        if (popoverHi > popoverLo) {
+        if (!tokenLine && popoverHi > popoverLo) {
             if (state->popoverTriggerRange.start != popoverRange.start ||
                 state->popoverTriggerRange.end != popoverRange.end) {
                 state->popoverTriggerRange = popoverRange;
@@ -1108,8 +1193,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             el->RangeOut(popoverLo, popoverHi, &state->popoverTriggerBounds);
         }
-        RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
-        if (state->softWrap) {
+        if (!tokenLine) {
+            RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
+        }
+        if (!tokenLine && state->softWrap) {
             // flex_1: the run is bounded by what the gutter leaves, so it
             // breaks at the text column's edge and its second line starts
             // under its first rather than under the line number.
@@ -1131,27 +1218,28 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (hi > len(line)) {
             hi = len(line);
         }
-        if (!sel.IsEmpty() && lo < hi) {
+        if (!tokenLine && !sel.IsEmpty() && lo < hi) {
             el->SelRange(lo, hi, style.selection);
         }
-        if (caretFolded) {
+        if (!tokenLine && caretFolded) {
             if (row == caretRow) {
                 el->Caret(0, style.caret);
             }
-        } else if (caret && cursor >= start && cursor <= start + len(line)) {
+        } else if (!tokenLine && caret && cursor >= start &&
+                   cursor <= start + len(line)) {
             el->Caret(cursor - start, style.caret, 2,
                       state->cursorLineEndAffinity);
             // Where it lands is the anchor a completion menu hangs off.
             el->CaretOut(&state->caretWinX, &state->caretWinY);
         }
-        if (state->extraCursors.len > 0) {
+        if (!tokenLine && state->extraCursors.len > 0) {
             RowExtraCursors(a, el, state, style, start, len(line), caret);
         }
         // indent_guides: a hairline every tab stop of the row's own leading
         // whitespace, drawn behind the text. show_whitespaces shares the
         // same underlay: a mid-dot on every space and an arrow on every tab.
         El* guides = nullptr;
-        if (colW > 0) {
+        if (!tokenLine && colW > 0) {
             int lead = 0;
             while (lead < len(line) && line.s[lead] == ' ') {
                 lead++;
@@ -1171,7 +1259,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
             }
         }
-        if (state->showWhitespaces) {
+        if (!tokenLine && state->showWhitespaces) {
             float charW = colW > 0 ? colW : font * 0.6f;
             if (charW > 0) {
                 if (!guides) {

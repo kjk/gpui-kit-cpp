@@ -1328,6 +1328,104 @@ static void ShellHostsInputGroupPartsAndAddonActions() {
     AppGlobalClear(&app);
 }
 
+static void ShellHostsInlineTokenOperationsAndRenderers() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui';\n"
+        "import { Input, InputState, Textarea, TextareaState } from "
+        "'gpui-component';\n"
+        "function assert(value, message) { if (!value) throw new "
+        "Error(message); }\n"
+        "function exercise(state) {\n"
+        "  state.set_value('🙂 @a!');\n"
+        "  state.replace_range_with_token({start: 3, end: 5}, {id: 'a', text: "
+        "'@a', label: 'Alice'});\n"
+        "  const saved = state.content();\n"
+        "  assert(saved.tokens[0].range.start === 3, 'UTF-16 range');\n"
+        "  let code = '';\n"
+        "  try { state.replace_range_with_token({start: 1, end: 2}, {id: "
+        "'bad', "
+        "text: 'x'}); } catch (error) { code = error.code; }\n"
+        "  assert(code === 'InvalidBoundary', 'surrogate boundary must fail "
+        "with code');\n"
+        "  assert(JSON.stringify(state.content()) === JSON.stringify(saved), "
+        "'failure must be atomic');\n"
+        "  state.set_selected_range({start: 4, end: 5}); state.replace('');\n"
+        "  assert(state.value() === '🙂 !' && state.tokens().length === 0, "
+        "'partial token deletion');\n"
+        "  state.set_value(saved);\n"
+        "  state.set_value(state.value());\n"
+        "  assert(state.tokens().length === 0, 'explicit same value clears "
+        "identity');\n"
+        "  state.set_value(saved);\n"
+        "  return state;\n"
+        "}\n"
+        "export default class TokenHost extends View {\n"
+        "  init() {\n"
+        "    this.input = exercise(InputState.new());\n"
+        "    this.textarea = exercise(TextareaState.new());\n"
+        "    this.status = 'verified';\n"
+        "  }\n"
+        "  render() {\n"
+        "    return div().w(400).h(80)\n"
+        "      .child(Input.new(this.input).w(350).aria_label('Token input')\n"
+        "        .token(token => div().w(80).h(20).child(token.token.label))\n"
+        "        .on_token_click((event, cx) => {\n"
+        "          assert(event.token.id === 'a', 'current identity');\n"
+        "          this.input.set_value('opened');\n"
+        "          this.status = 'clicked';\n"
+        "          cx.notify();\n"
+        "        }))\n"
+        "      .child(div().child(`${this.status}:${this.input.value()}:`"
+        " + `${this.input.tokens().length}`));\n"
+        "  }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("inline-tokens.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    El* root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    utassert(root != nullptr && !error.IsSet());
+    utassert(FindShellText(root, StrL("verified:🙂 @a!:1")) != nullptr);
+    utassert(FindShellText(root, StrL("Alice")) != nullptr);
+    struct Walk {
+        static bool Click(El* el) {
+            if (!el) return false;
+            if (el->onClick.IsValid()) {
+                el->onClick.Call();
+                return true;
+            }
+            for (El* child = el->first; child; child = child->next) {
+                if (Click(child)) return true;
+            }
+            return false;
+        }
+    };
+    utassert(Walk::Click(root));
+    if (view.IsValid()) {
+        ScriptView* script = view.Get(&app);
+        if (script) script->dirty = true;
+    }
+    frame->Reset();
+    root = EntityRender(&app, &window, frame, view.id);
+    utassert(FindShellText(root, StrL("clicked:opened:0")) != nullptr);
+    EntityDrop(&app, view.id);
+    ArenaDelete(frame);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 static void ShellRootHostsDialogsSheetsAndToasts() {
     App app;
     Window window;
@@ -4232,6 +4330,7 @@ void TestShellCore() {
     ShellHostsHtmlAndMarkdownTextViews();
     ShellMaterializesStateTemplatesInputsAndPaths();
     ShellHostsInputGroupPartsAndAddonActions();
+    ShellHostsInlineTokenOperationsAndRenderers();
     ShellRootHostsDialogsSheetsAndToasts();
     ScriptViewsReuseSnapshotsUntilNotified();
     RetainedScriptStateSurvivesFramesAndDispatchesEvents();

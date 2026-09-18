@@ -19,6 +19,8 @@ struct MaterializedDependencies;
 }
 namespace gpui {
 struct ShellTaskDriver;
+struct InlineTokenContext;
+struct InlineTokenClickEvent;
 
 class ShellRuntime {
   public:
@@ -134,6 +136,15 @@ class ShellRuntime {
                             shell::CallbackId onItemClick,
                             shell::CallbackId onItemSecondaryClick, int first,
                             int end, Ctx* cx, El** out);
+    // Token chips are built while materializing, not while describing. A
+    // dedicated generation holds callbacks the renderer registers (a nested
+    // button's on_click) and is retired at the next materialize, after last
+    // frame's clicks have already run.
+    void BeginTokenFrame();
+    El* RenderInlineToken(shell::CallbackId render,
+                          const InlineTokenContext* ctx, Str text, Ctx* cx);
+    void DispatchTokenClick(shell::CallbackId click,
+                            const InlineTokenClickEvent* ev, Str text, Ctx* cx);
 
   private:
     friend struct ShellRuntimeAccess;

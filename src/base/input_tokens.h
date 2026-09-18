@@ -79,6 +79,10 @@ struct InputContent {
     InlineTokenError WithToken(int start, int end, InlineToken token);
 };
 
+InputContent InputContentDup(const InputContent& content);
+void InputContentFree(InputContent* content);
+InputContent InputGetContent(const InputState* s);
+
 struct InlineTokenContext {
     InlineTokenSpan span = {};
     bool selected = false;

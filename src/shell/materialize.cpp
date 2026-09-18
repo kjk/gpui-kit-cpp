@@ -113,6 +113,8 @@ struct MaterialBehavior {
     // the press itself. Registered on the list for the same reason
     // on_item_click is: the rows are rebuilt every frame.
     shell::CallbackId onItemSecondaryClick = 0;
+    shell::CallbackId onToken = 0;
+    shell::CallbackId onTokenClick = 0;
     shell::EntityHandle virtualScroll = 0;
     // Reports a key press or release that reached this element. GPUI routes a
     // key event down the focus path, so an element only hears one while it —
@@ -245,6 +247,10 @@ static void ResolveBehavior(const shell::SpecNode* node,
                 out->onItemClick = op.callback;
             else if (StrEq(op.name, StrL("on_link_click")))
                 out->onLinkClick = op.callback;
+            else if (StrEq(op.name, StrL("token")))
+                out->onToken = op.callback;
+            else if (StrEq(op.name, StrL("on_token_click")))
+                out->onTokenClick = op.callback;
             else if (StrEq(op.name, StrL("on_item_secondary_click")))
                 out->onItemSecondaryClick = op.callback;
             else if (StrEq(op.name, StrL("on_key_down")))
@@ -1570,6 +1576,48 @@ static FocusHandle RetainedFocus(ShellRuntime* runtime,
                                                               : FocusHandle{};
 }
 
+struct ShellTokenUser {
+    ShellRuntime* runtime = nullptr;
+    shell::CallbackId render = 0;
+    shell::CallbackId click = 0;
+    InputState* state = nullptr;
+};
+
+static El* ShellRenderToken(Ctx* cx, const InlineTokenContext* ctx,
+                            void* user) {
+    ShellTokenUser* values = (ShellTokenUser*)user;
+    if (values && values->runtime && values->render) {
+        El* el = values->runtime->RenderInlineToken(
+            values->render, ctx, InputValue(values->state), cx);
+        if (el) return el;
+    }
+    return component::InputToken::New(cx, *ctx)->IntoEl();
+}
+
+static void ShellClickToken(const InlineTokenClickEvent* ev, Ctx* cx,
+                            void* user) {
+    ShellTokenUser* values = (ShellTokenUser*)user;
+    if (values && values->runtime && values->click) {
+        values->runtime->DispatchTokenClick(values->click, ev,
+                                            InputValue(values->state), cx);
+    }
+}
+
+static void InstallShellTokens(Ctx* cx, ShellRuntime* runtime,
+                               InputState* state, const MaterialBehavior& b,
+                               bool secret) {
+    if (!state) return;
+    if (!b.onToken && !b.onTokenClick) return;
+    ShellTokenUser* user = ArenaNew<ShellTokenUser>(cx->a);
+    user->runtime = runtime;
+    user->render = b.onToken;
+    user->click = b.onTokenClick;
+    user->state = state;
+    InputSetTokenPresentation(state, &ShellRenderToken, user,
+                              b.onTokenClick ? &ShellClickToken : nullptr, user,
+                              secret);
+}
+
 struct MaterialVirtualUser {
     ShellRuntime* runtime = nullptr;
     shell::CallbackId render = 0;
@@ -2228,6 +2276,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                     : nullptr;
             if (!state) return Div(cx->a);
             state->disabled = behavior.disabled;
+            InstallShellTokens(cx, runtime, state, behavior, false);
             state->onChange = Listen(cx, &ScriptView::OnInputEvent,
                                      (intptr_t)(uint32_t)retained->id);
             Str nativeId =
@@ -2356,7 +2405,8 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
     return Div(cx->a);
 }
 
-static void BindInputGroupControl(Ctx* cx, const shell::SpecNode* node,
+static void BindInputGroupControl(Ctx* cx, ShellRuntime* runtime,
+                                  const shell::SpecNode* node,
                                   InputState* state,
                                   shell::EntityHandle handle) {
     if (!state) return;
@@ -2385,6 +2435,7 @@ static void BindInputGroupControl(Ctx* cx, const shell::SpecNode* node,
         state->mode.kind = LayoutModeKind::PlainText;
         LayoutModeSetRows(&state->mode, (int)rows);
     }
+    InstallShellTokens(cx, runtime, state, behavior, false);
     ShellInputGroupBinding* binding = ArenaNew<ShellInputGroupBinding>(cx->a);
     binding->handle = handle;
     binding->onChange = behavior.onChange;
@@ -2813,7 +2864,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         if (!state) {
             element = Div(cx->a);
         } else {
-            BindInputGroupControl(cx, node, state, retained->id);
+            BindInputGroupControl(cx, runtime, node, state, retained->id);
             Str nativeId =
                 StrDup(cx->a, fmt("gpui-shell-input-group-%s-%u",
                                   textarea ? StrL("textarea") : StrL("input"),
@@ -2875,7 +2926,8 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
                     ? retained->input
                     : nullptr;
             if (state) {
-                BindInputGroupControl(cx, controlNode, state, retained->id);
+                BindInputGroupControl(cx, runtime, controlNode, state,
+                                      retained->id);
                 MaterialBehavior controlBehavior = {};
                 ResolveBehavior(controlNode, &controlBehavior);
                 Str nativeId = StrDup(
@@ -3120,6 +3172,7 @@ El* ShellMaterialize(Ctx* cx, ShellRuntime* runtime,
                       StrL("cannot materialize an empty shell snapshot"));
         return cx ? Div(cx->a) : nullptr;
     }
+    if (runtime) runtime->BeginTokenFrame();
     double started = TimeNow();
     El* result = ShellMaterializeSpec(cx, runtime, snapshot->Specs(),
                                       snapshot->Root(), error);

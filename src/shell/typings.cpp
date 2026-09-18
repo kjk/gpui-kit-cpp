@@ -116,7 +116,56 @@ void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules) {
     out->Append(StrL(
         "\ndeclare module \"gpui-kit\" {\n  export * from \"gpui\";\n}\n"));
     out->Append(StrL(R"TS(
+declare module "gpui-kit" {
+  interface NativeElement {
+    token(render: (token: import("gpui-base").InlineTokenContext, cx: Context) => Element | null): this;
+    on_token_click(listener: (event: import("gpui-base").InlineTokenClickEvent, cx: Context) => void): this;
+  }
+  interface InputState {
+    content(): import("gpui-base").InputContent;
+    tokens(): import("gpui-base").InlineTokenSpan[];
+    set_value(next: string | import("gpui-base").InputContent): void;
+    replace_with_token(token: import("gpui-base").InlineToken): void;
+    replace_range_with_token(range: import("gpui-base").InputRange, token: import("gpui-base").InlineToken): void;
+    set_selected_range(range: import("gpui-base").InputRange): void;
+    replace(text: string): void;
+  }
+  interface TextareaState {
+    content(): import("gpui-base").InputContent;
+    tokens(): import("gpui-base").InlineTokenSpan[];
+    set_value(next: string | import("gpui-base").InputContent): void;
+    replace_with_token(token: import("gpui-base").InlineToken): void;
+    replace_range_with_token(range: import("gpui-base").InputRange, token: import("gpui-base").InlineToken): void;
+    set_selected_range(range: import("gpui-base").InputRange): void;
+    replace(text: string): void;
+  }
+}
+)TS"));
+    out->Append(StrL(R"TS(
 declare module "gpui-base" {
+  export interface InlineToken {
+    id: string;
+    text: string;
+    label: string;
+  }
+  export interface InputRange { start: number; end: number; }
+  export interface InlineTokenSpan { range: InputRange; token: InlineToken; }
+  export interface InputContent { text: string; tokens: InlineTokenSpan[]; }
+  export interface InlineTokenContext {
+    token: InlineToken;
+    range: InputRange;
+    selected: boolean;
+    disabled: boolean;
+    readonly: boolean;
+    line_height: number;
+    available_width: number;
+  }
+  export interface InlineTokenClickEvent {
+    token: InlineToken;
+    range: InputRange;
+    bounds: { x: number; y: number; width: number; height: number };
+    modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
+  }
   export const InputGroup: { new: (id: string) => import("gpui-kit").NativeElement };
   export const InputGroupAddon: { new: (id: string) => import("gpui-kit").NativeElement };
   export const InputGroupButton: { new: (id: string) => import("gpui-kit").NativeElement };
@@ -131,6 +180,8 @@ declare module "gpui-component" {
   export const InputGroupInput: { new: (state: import("gpui-base").InputState) => import("gpui-kit").NativeElement };
   export const InputGroupTextarea: { new: (state: import("gpui-base").TextareaState) => import("gpui-kit").NativeElement };
   export const InputGroupText: { new: () => import("gpui-kit").NativeElement };
+  export const Input: { new: (state: import("gpui-base").InputState) => import("gpui-kit").NativeElement };
+  export const Textarea: { new: (state: import("gpui-base").TextareaState) => import("gpui-kit").NativeElement };
   export { InputState, TextareaState, Button } from "gpui-base";
 }
 )TS"));

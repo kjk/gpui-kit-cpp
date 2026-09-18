@@ -17,8 +17,9 @@ work left is depth, not breadth.
 Processed through `7f6d92327936fbab7994a35c86328d793acc060d`
 (2026-09-18, input: Add atomic inline tokens to Input and Textarea
 (#3113)). InlineToken, InputContent validation, InputToken appearance,
-atomic caret movement, token history and Input/Textarea token() slots
-are ported; the composer story and shell JS bindings are not. The current
+atomic caret movement, token history, Input/Textarea token() slots, the
+composer story, shell JS token bindings and textarea overlay chips are
+ported. The current
 update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
@@ -67,11 +68,11 @@ update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
   transcribed (`examples/story/chart.cpp`, `ChartFixtures.h`). Sankey node
   hit-testing and tooltip are not painted (`src/ui/chart.cpp`).
 
-- **Composer story and shell JS token bindings are not registered.** Atomic
-  caret movement, token history and Input/Textarea `token()` /
-  `on_token_click` are ported; the chat-composer story and
-  crates/component-shell token host are not (`src/base/input_tokens.cpp`,
-  `src/ui/input.cpp`).
+- **Textarea token wrap is flex-wrap, not display-map inline metrics.** A
+  chip stays atomic; a text gap does not reflow character-by-character
+  around it (`src/base/input.cpp`). Composer token icons map Image /
+  Sparkles / AtSign onto File / Star / User
+  (`examples/story/input_tokens.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including the retained Tiles center. The older live

@@ -51,6 +51,7 @@ struct TextareaStory {
     InputState both;
     InputState chat;
     bool seeded = false;
+    EntityId tokens;
 
     static El* Render(TextareaStory* self, Ctx* cx);
 };
@@ -147,6 +148,18 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
                         ->IntoEl()
                         ->W(560));
     page->Child(chat);
+
+    if (!self->tokens.IsValid()) {
+        self->tokens = TokenExampleNew(cx->app, true);
+    }
+    El* tokens = StorySection(
+        cx, "Atomic inline tokens",
+        "References keep their identity through selection, deletion and undo. "
+        "Copy returns the underlying text.");
+    StorySectionBody(tokens)->W(kFill);
+    StorySectionAdd(tokens,
+                    EntityRender(cx->app, cx->win, cx->a, self->tokens));
+    page->Child(tokens);
     return page;
 }
 

@@ -109,6 +109,7 @@ struct InputStory {
     int focusedField = -1;
     StoryToolbarState toolbar;
     bool seeded = false;
+    EntityId tokens;
 
     static El* Render(InputStory* self, Ctx* cx);
     static void OnKey(InputStory* self, Ctx* cx, const KeyEvent* ev);
@@ -407,6 +408,18 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
                                ->IntoEl()
                                ->W(512));
     page->Child(color);
+
+    if (!self->tokens.IsValid()) {
+        self->tokens = TokenExampleNew(cx->app, false);
+    }
+    El* tokens = StorySection(
+        cx, "Atomic inline tokens",
+        "References keep their identity through selection, deletion and undo. "
+        "Copy returns the underlying text.");
+    StorySectionBody(tokens)->W(kFill);
+    StorySectionAdd(tokens,
+                    EntityRender(cx->app, cx->win, cx->a, self->tokens));
+    page->Child(tokens);
     return page;
 }
 
