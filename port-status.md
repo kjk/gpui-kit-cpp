@@ -14,10 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `ce20527de4a7efa43d29dd7ba0f689fe70c1ece1`
-(2026-09-18, chore: Add a /release-notes command (#3117)). A Claude command
-for writing GitHub release notes; nothing to port. The current update
-target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `c1add35a897238d35b1f62001e6f1f0bab506678`
+(2026-09-18, chart: Start a pie leader line at the lifted slice edge
+(#3121)). A hovered slice's leader starts at the lifted outer radius,
+clamped to the label radius. The current update target is
+`7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
