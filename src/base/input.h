@@ -9,6 +9,7 @@
 #include "base/input_editor.h"
 #include "base/input_lsp.h"
 #include "base/input_rope.h"
+#include "base/input_tokens.h"
 
 namespace gpui {
 

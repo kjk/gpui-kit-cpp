@@ -14,10 +14,12 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `851544dc1d4553b89f838ec6ad10030ef8818d97`
-(2026-09-18, docs: Bind keys before the menu bar, and say what makes a
-handle a Tab stop (#3124)). Website and skill docs only. The current
-update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `7f6d92327936fbab7994a35c86328d793acc060d`
+(2026-09-18, input: Add atomic inline tokens to Input and Textarea
+(#3113)). InlineToken, InputContent validation and InputToken appearance
+are ported; atomic caret/history, the composer story and shell JS bindings
+are not. The current update target is
+`7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
@@ -68,6 +70,12 @@ update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
   footers, legends and width-wise bar ramps from #3112 are not yet
   transcribed (`examples/story/chart.cpp`, `ChartFixtures.h`). Sankey node
   hit-testing and tooltip are not painted (`src/ui/chart.cpp`).
+
+- **Atomic inline tokens are data-only so far.** `InlineToken` /
+  `InputContent` validation and the themed `InputToken` chip are ported;
+  atomic caret movement, token history, Input/Textarea `token()` slots, the
+  composer story and shell JS bindings are not (`src/base/input_tokens.cpp`,
+  `src/ui/input.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
   persisted tree format, including the retained Tiles center. The older live

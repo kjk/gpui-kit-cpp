@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "851544dc1d4553b89f838ec6ad10030ef8818d97";
+const pinnedGpuiComponent = "7f6d92327936fbab7994a35c86328d793acc060d";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -116,6 +116,8 @@ const baseOverrides: Record<string, string[]> = {
     "src/base/input_rope.cpp",
     "src/base/input_keys.h",
     "src/base/input_keys.cpp",
+    "src/base/input_tokens.h",
+    "src/base/input_tokens.cpp",
   ],
   observe: ["src/gpui/gpui.h", "src/gpui/gpui.cpp"],
   reduce_motion: ["src/base/lib.h", "src/base/lib.cpp", "src/base/motion.h"],
@@ -581,13 +583,13 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 443, sha256: "17a9c3753e1ca002d7c2818138ea7c5c9fda91901e8ff164fce1947f778b32be" },
-    "pub-use": { count: 137, sha256: "1af13d0e6328b21e81464d1858472207071aee393ed50600a032895ed12f5933" },
-    test: { count: 973, sha256: "e9db2a7c342a708386e8cbc6f592531e0e44a1fb352d14856a72b83470058473" },
+    declaration: { count: 451, sha256: "bb649448aab1222c0041fc8c7e148c1e6f9843b5de6d8f8ad478737f5c05760d" },
+    "pub-use": { count: 139, sha256: "1ee6e41738dc1d698434cdaf066710094815dc759327e67f799bf0a8fad5591b" },
+    test: { count: 978, sha256: "6094e14df369ca28dd31ef22864c04a393d078fb36b82cbace0ae74e8d0530d8" },
   },
   ui: {
-    declaration: { count: 461, sha256: "ba2e49d888ce4d61ecf727bf7bc42a277483d37c6a995e816dfece7efc5a6adb" },
-    "pub-use": { count: 164, sha256: "c7447253d4c52dcb0b114bc57bdff68cfd9bdd1cee17af2edbf208ad4eb15fe9" },
+    declaration: { count: 462, sha256: "6968eba4f3401bdd29331d84a7f17e2f6618dcba5d1c90b1ca06ab300858a9b8" },
+    "pub-use": { count: 166, sha256: "e41bd5c98930fa5333ec85dfd5ae747ee705d5d080f266465f46f2e5b527c628" },
     test: { count: 568, sha256: "c7ef3487543db86eace70d7118c5cce8a560546e262b1b9625a7dbd1cc1ad7b0" },
   },
 };

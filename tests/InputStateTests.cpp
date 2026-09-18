@@ -3515,8 +3515,24 @@ static void TheThreeInputBuildersInstallPasteInterception() {
     delete win;
 }
 
+static void InlineTokenContentValidatesRanges() {
+    InputContent c = InputContent::New(StrL("Ask @alice"));
+    InlineToken tok = InlineToken::New(StrL("person:alice"), StrL("@alice"))
+                          .WithLabel(StrL("Alice"));
+    utassert(c.WithToken(4, 10, tok) == InlineTokenError::Ok);
+    utassert(c.tokens.len == 1);
+    utassert(c.tokens[0].start == 4 && c.tokens[0].end == 10);
+    utassert(c.WithToken(4, 10, tok) == InlineTokenError::OverlappingTokens);
+    utassert(c.WithToken(0, 0, tok) == InlineTokenError::InvalidRange);
+    utassert(c.WithToken(4, 9, tok) == InlineTokenError::TextMismatch);
+    InlineToken bad = InlineToken::New(StrL(""), StrL("@alice"));
+    utassert(bad.Validate() == InlineTokenError::InvalidToken);
+    VecReset(c.tokens);
+}
+
 void TestInputState() {
     TestSuite("input_state");
+    InlineTokenContentValidatesRanges();
     AnAltClickAddsACursorAndTypingWritesAtEach();
     DeletesAtEveryCursorAreOneUndoStep();
     TypingAtEveryCursorUndoesToEveryCursor();

@@ -4,6 +4,8 @@
 
 #include "ui/sizing.h"
 #include "ui/button.h"
+#include "ui/icon.h"
+#include "base/input_tokens.h"
 
 namespace gpui {
 
@@ -170,6 +172,20 @@ struct Input {
     Input* OnChange(Listener fn);
     Input* OnFocus(Listener fn);
     Input* OnPaste(InputPasteFn fn, void* data = nullptr);
+    El* IntoEl();
+};
+
+// The element an InlineToken renders as by default. Editing and activation
+// belong to the input.
+struct InputToken {
+    Arena* a = nullptr;
+    Ctx* cx = nullptr;
+    InlineTokenContext context = {};
+    IconName icon = IconName::None;
+    bool hasIcon = false;
+
+    static InputToken* New(Ctx* cx, const InlineTokenContext& context);
+    InputToken* Icon(IconName name);
     El* IntoEl();
 };
 

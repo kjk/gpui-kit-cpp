@@ -8,6 +8,45 @@ namespace gpui {
 
 namespace component {
 
+InputToken* InputToken::New(Ctx* cx, const InlineTokenContext& context) {
+    InputToken* t = ArenaNew<InputToken>(cx->a);
+    t->a = cx->a;
+    t->cx = cx;
+    t->context = context;
+    return t;
+}
+
+InputToken* InputToken::Icon(IconName name) {
+    icon = name;
+    hasIcon = true;
+    return this;
+}
+
+El* InputToken::IntoEl() {
+    const Theme& th = ThemeNow(cx->app);
+    El* el =
+        Div(a)
+            ->FlexRow()
+            ->ItemsCenter()
+            ->Gap(4)
+            ->PadX(4)
+            ->H(context.lineHeight > 0 ? context.lineHeight : 20.f)
+            ->MaxW(context.availableWidth > 0 ? context.availableWidth : kFill)
+            ->Radius(th.radius)
+            ->Border(1, context.selected ? RgbaOpacity(th.selection, 1.f)
+                                         : th.border)
+            ->Bg(context.selected ? th.selection : th.muted)
+            ->Fg(th.foreground);
+    if (context.disabled) {
+        el->Opacity(0.5f);
+    }
+    if (hasIcon) {
+        el->Child(IconEl(a, icon, 12)->Shrink0());
+    }
+    el->Child(TextEl(a, context.Token().label)->MinW(0));
+    return el;
+}
+
 AnyInputState AnyInputState::From(InputState* state) {
     if (!state) return {};
     switch (state->kind) {
