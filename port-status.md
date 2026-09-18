@@ -14,10 +14,9 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `6b7e3a62b586e5d4c623ac459a85c00fcaaae4a0`
-(2026-09-18, text_view: Keep a paragraph's shaped text and rendered
-highlights across frames (#3115)). The parsed MdRun list is already kept on
-MdNode; there is no StyledText table to hand between frames. The current
+Processed through `122c36f7be19ea0e179107c067b679efccb7d66a`
+(2026-09-18, Version 0.6.2). Workspace crates 0.6.1 → 0.6.2; the five
+ported dependencies and the GPUI reference are unchanged. The current
 update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust

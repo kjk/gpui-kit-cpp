@@ -538,17 +538,17 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6b7e3a62b586e5d4c623ac459a85c00fcaaae4a0",
+  sha: "122c36f7be19ea0e179107c067b679efccb7d66a",
   date: "2026-09-18",
-  subject: "text_view: Keep a paragraph's shaped text and rendered highlights across frames (#3115)",
+  subject: "Version 0.6.2",
   crates: {
-    "gpui-kit": "0.6.1",
-    "gpui-base": "0.6.1",
-    "gpui-component": "0.6.1",
-    "gpui-component-story": "0.6.1",
-    "gpui-wry": "0.6.1",
-    "gpui-shell": "0.6.1",
-    "gpui-component-shell": "0.6.1",
+    "gpui-kit": "0.6.2",
+    "gpui-base": "0.6.2",
+    "gpui-component": "0.6.2",
+    "gpui-component-story": "0.6.2",
+    "gpui-wry": "0.6.2",
+    "gpui-shell": "0.6.2",
+    "gpui-component-shell": "0.6.2",
   },
   dir: ".work/gpui-component",
 } as const;
