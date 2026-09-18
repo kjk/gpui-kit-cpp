@@ -139,6 +139,10 @@ struct Button {
     bool compact = false;
     bool justifyStart = false;
     bool selected = false;
+    // Held by the popover, menu or dropdown this button triggers, for as long
+    // as it is open. Kept apart from selected because the two states mean
+    // different things, even though they paint the same today.
+    bool open = false;
     bool dropdown = false;
     // hover_group: while any member of the group is hovered, an idle member
     // shows its hover surface at half strength, so a composite such as a
@@ -207,6 +211,9 @@ struct Button {
     // leading edge rather than in the middle.
     Button* JustifyStart(bool v = true);
     Button* Selected(bool v);
+    // Selectable::open: the trigger's open state, stored apart from selected.
+    Button* Open(bool v);
+    bool ShowsSelectedStyle() const;
     Button* SelectedStyle(const StateStyle& s);
     Button* DisabledStyle(const StateStyle& s);
     Button* DropdownCaret(bool v = true);

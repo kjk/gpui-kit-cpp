@@ -465,6 +465,40 @@ static void ClipboardButtonsAcceptTheSharedSizeContract() {
     AppGlobalClear(&app);
 }
 
+static void AnOpenTriggerIsStoredApartFromASelectedOne() {
+    App app;
+    component::Init(&app);
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, nullptr, arena, {}};
+    component::Button* opened = component::Button::New(&cx, StrL("trigger"))
+                                    ->Open(true);
+    utassert(opened->open);
+    utassert(!opened->selected);
+    utassert(opened->ShowsSelectedStyle());
+
+    component::Button* selected = component::Button::New(&cx, StrL("trigger"))
+                                      ->Selected(true);
+    utassert(selected->selected);
+    utassert(!selected->open);
+    utassert(selected->ShowsSelectedStyle());
+
+    utassert(!component::Button::New(&cx, StrL("trigger"))
+                  ->ShowsSelectedStyle());
+
+    El* openEl = component::Button::New(&cx, StrL("open-ghost"))
+                     ->Ghost()
+                     ->Open(true)
+                     ->IntoEl();
+    El* selectedEl = component::Button::New(&cx, StrL("selected-ghost"))
+                         ->Ghost()
+                         ->Selected(true)
+                         ->IntoEl();
+    utassert(
+        SameButtonColor(openEl->style.bg.color, selectedEl->style.bg.color));
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestButtonGroup() {
     TestSuite("button_group");
     BaseButtonCentersOrdinaryChildGeometry();
@@ -475,4 +509,5 @@ void TestButtonGroup() {
     SourceToggleAndSegmentedGroupKeepStateAndGeometry();
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
     ClipboardButtonsAcceptTheSharedSizeContract();
+    AnOpenTriggerIsStoredApartFromASelectedOne();
 }

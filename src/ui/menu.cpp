@@ -786,26 +786,28 @@ El* AppMenuBar::IntoEl() {
     Listener click = ListenTo(state, &AppMenuBarState::OnMenuClick, 0);
     Listener hover = ListenTo(state, &AppMenuBarState::OnMenuHover, 0);
     for (int i = 0; i < items.len; i++) {
-        bool on = s && s->selected == i;
+        // is_open: this title's popup is the one the menu bar currently has
+        // open, not an application-level selection.
+        bool isOpen = s && s->selected == i;
         El* wrap = Div(a)->FlexCol();
         El* item = Div(a)
                        ->Role(AccessibilityRole::MenuItem)
                        ->AriaLabel(items[i].title)
-                       ->AriaSelected(on)
+                       ->AriaSelected(isOpen)
                        ->FlexRow()
                        ->H(24)
                        ->PadX(8)
                        ->ItemsCenter()
                        ->Radius(th.radius)
                        ->HoverBg(th.tokens.secondary);
-        if (on) {
+        if (isOpen) {
             item->Bg(th.tokens.secondary);
         }
         item->Child(TextEl(a, items[i].title)->Font(14)->Fg(th.foreground));
         BindClick(item, StrDup(a, fmt("%d", i)), ListenerArg(click, i));
         item->OnHover(ListenerArg(hover, i));
         wrap->Child(item);
-        if (on && items[i].menu) {
+        if (isOpen && items[i].menu) {
             // The menu of the open title hangs under it, over everything the
             // frame drew after it.
             wrap->Child(

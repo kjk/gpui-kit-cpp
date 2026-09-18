@@ -193,6 +193,11 @@ Popover* Popover::Trigger(El* e) {
     if (!e) {
         return this;
     }
+    // Rust re-renders a Selectable trigger with `.open(is_open)` so the
+    // control lights while the popover is up without touching selected. The
+    // trigger here is already an El, so the caller applies Button::Open
+    // (or Selected, for a control that has not split the two) when building
+    // it.
     if (state.IsValid()) {
         // A press, not a click: Rust hangs the toggle off on_mouse_down so the
         // popover is up before the button comes back. The handler reads the

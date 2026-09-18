@@ -14,6 +14,10 @@ namespace gpui {
 struct ComponentStateFlags {
     bool selected = false;
     bool secondarySelected = false;
+    // Selectable::open: a popover, menu or dropdown holds this on its trigger
+    // while it is open. Defaults to selected on types that do not store it
+    // apart; Button does.
+    bool open = false;
     bool disabled = false;
     bool focusRing = true;
     bool collapsed = false;

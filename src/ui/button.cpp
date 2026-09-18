@@ -267,6 +267,13 @@ Button* Button::Selected(bool v) {
     selected = v;
     return this;
 }
+Button* Button::Open(bool v) {
+    open = v;
+    return this;
+}
+bool Button::ShowsSelectedStyle() const {
+    return selected || open;
+}
 
 Button* Button::SelectedStyle(const StateStyle& s) {
     selectedStyle = s;
@@ -539,7 +546,8 @@ El* Button::IntoEl() {
             press = RgbaMixOklab(th.inputBorder, clear, 0.7f);
         }
     }
-    if (selected) {
+    bool showsSelected = ShowsSelectedStyle();
+    if (showsSelected) {
         // ButtonVariant::selected: Ghost keeps its distinct persistent
         // secondary surface, while Link and Text remain transparent.
         switch (variant) {
@@ -597,7 +605,7 @@ El* Button::IntoEl() {
     }
     // state_style.rs resolve_style: whatever the caller asked for goes on last
     // and only for the fields it named — the value state, then disabled.
-    const StateStyle* active[2] = {selected ? &selectedStyle : nullptr,
+    const StateStyle* active[2] = {showsSelected ? &selectedStyle : nullptr,
                                    disabled ? &disabledStyle : nullptr};
     StateStyle resolved = StateStyleResolve(StateStyle{}, active, 2);
     float borderW = 1;
@@ -774,7 +782,7 @@ El* Button::IntoEl() {
     // `when(!disabled && !selected)` and then `when(interactive)`: a selected
     // button shows its selected fill and nothing else, and a loading one
     // keeps its normal colours because it is not waiting for another click.
-    if (interactive && !selected) {
+    if (interactive && !showsSelected) {
         e->HoverBg(hover);
         e->ActiveBg(press);
         if (hasFgHover) {

@@ -14,11 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `35491fea89d69ed37b2429c830fe8f1e42b6f41e`
-(2026-09-18, theme: Add `Theme::update` to keep colors, tokens and the
-Base projection in step (#3122)). ThemeUpdate reconciles colors and
-tokens after an edit, syncs the Base projection and refreshes windows.
-The current
+Processed through `c8140863e57570b809cc5ac19f93b6a364ba0f5c`
+(2026-09-18, popover: Tell the trigger it is open instead of selected
+(#3125)). Button stores open apart from selected and paints both the
+same way. The popover trigger is a built El, so the caller applies
+Button::Open when building it. The current
 update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust
