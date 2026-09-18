@@ -8,8 +8,8 @@ namespace gpui {
 
 struct ListSettings {
     // Whether a selected row takes the active highlight — the translucent
-    // list.active tint with a list.active.border rule around it — or the plain
-    // `accent` block. Rust defaults it on.
+    // list.active tint — or the plain `accent` block. Rust defaults it on.
+    // The outline around a selected item was dropped in upstream #3108.
     bool activeHighlight = true;
 };
 

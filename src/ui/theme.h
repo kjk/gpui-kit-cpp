@@ -217,7 +217,8 @@ struct Theme {
     // list.active.background / list.active.border, and the table pair that
     // falls back to them (theme/schema.rs). What ListSettings::active_highlight
     // picks instead of plain `accent` for a selected row: a translucent tint
-    // with a solid rule around it, rather than a filled block.
+    // rather than a filled block. The outline around a selected item was
+    // dropped in upstream #3108.
     Rgba listActive;
     Rgba listActiveBorder;
     Rgba tableActive;

@@ -19,11 +19,11 @@ ListActiveStyle ListActiveStyleOf(const ListSettings& settings,
     ListActiveStyle out;
     bool highlight = settings.activeHighlight;
     // list_item.rs: the tint is for the selection proper — a row marked by a
-    // right press takes `accent` either way — and the rule comes with the
-    // setting, not with the row's state.
+    // right press takes `accent` either way. The outline around a selected
+    // item, row or cell was dropped in upstream #3108.
     out.bg = (selected && highlight) ? active : accent;
     out.border = activeBorder;
-    out.hasBorder = highlight;
+    out.hasBorder = false;
     return out;
 }
 

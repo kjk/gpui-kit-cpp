@@ -63,20 +63,14 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     }
     if (selected || secondarySelected) {
         // list_item.rs: the selection takes the active highlight when the
-        // setting is on — the list.active tint, ruled with list.active.border
-        // — and plain `accent` when it is off. A row a right press marked is
-        // outlined rather than filled, so it is not mistaken for the
-        // selection.
+        // setting is on — the list.active tint — and plain `accent` when it
+        // is off. A row a right press marked is not filled, so it is not
+        // mistaken for the selection.
         ListActiveStyle st =
             ListActiveStyleOf(ListSettingsNow(cx->app), th.tokens.listActive,
                               th.listActiveBorder, th.tokens.accent, selected);
         if (!secondarySelected) {
             row->Bg(st.bg);
-        }
-        if (st.hasBorder) {
-            row->Child(ListActiveOverlay(a, st.border, th.radius));
-        } else if (secondarySelected) {
-            row->Border(1, th.border);
         }
     }
     if (child) {

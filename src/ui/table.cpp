@@ -1165,9 +1165,6 @@ El* DataTable::BuildEl() {
                     ListSettingsNow(cx->app), th.tokens.tableActive,
                     th.tableActiveBorder, th.tokens.accent, true);
                 row->Bg(sel.bg);
-                if (sel.hasBorder) {
-                    row->Child(ListActiveOverlay(a, sel.border, 0));
-                }
             } else if (s && s->rightClickedRow == r) {
                 row->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
@@ -1209,9 +1206,6 @@ El* DataTable::BuildEl() {
                     ListSettingsNow(cx->app), th.tokens.tableActive,
                     th.tableActiveBorder, th.tokens.accent, true);
                 td->Bg(sel.bg);
-                if (sel.hasBorder) {
-                    td->Child(ListActiveOverlay(a, sel.border, 0));
-                }
             }
             // A cell takes the click when the table is cell-selectable, which
             // is what `SelectCell` and `DoubleClickedCell` come from.

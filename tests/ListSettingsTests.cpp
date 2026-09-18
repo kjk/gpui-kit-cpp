@@ -2,8 +2,8 @@
  * — crates/ui/src/list/list_item.rs and crates/ui/src/table/state.rs.
  *
  * One setting, `active_highlight`, decides what a selected row looks like: the
- * translucent list.active tint ruled with list.active.border, or the plain
- * `accent` block. */
+ * translucent list.active tint, or the plain `accent` block. The outline
+ * around a selected item was dropped in upstream #3108. */
 
 #include "Test.h"
 
@@ -21,12 +21,11 @@ static void TheHighlightIsOnUnlessItIsTurnedOff() {
     utassert(s.activeHighlight);
 }
 
-static void ASelectedRowTakesTheTintAndTheRule() {
+static void ASelectedRowTakesTheTint() {
     ListActiveStyle st = ListActiveStyleOf(ListSettings{}, kActive,
                                            kActiveBorder, kAccent, true);
     utassert(Same(st.bg.color, kActive));
-    utassert(st.hasBorder);
-    utassert(Same(st.border, kActiveBorder));
+    utassert(!st.hasBorder);
 }
 
 // The row a right press marked is not the selection, so it takes `accent`
@@ -36,7 +35,7 @@ static void ARowThatIsOnlySecondarySelectedKeepsAccent() {
     ListActiveStyle st = ListActiveStyleOf(ListSettings{}, kActive,
                                            kActiveBorder, kAccent, false);
     utassert(Same(st.bg.color, kAccent));
-    utassert(st.hasBorder);
+    utassert(!st.hasBorder);
 }
 
 static void WithTheHighlightOffASelectionIsAPlainBlock() {
@@ -94,7 +93,7 @@ static void TheTableTakesTheListColorsWhenItHasNoneOfItsOwn() {
 void TestListSettings() {
     TestSuite("list_settings");
     TheHighlightIsOnUnlessItIsTurnedOff();
-    ASelectedRowTakesTheTintAndTheRule();
+    ASelectedRowTakesTheTint();
     ARowThatIsOnlySecondarySelectedKeepsAccent();
     WithTheHighlightOffASelectionIsAPlainBlock();
     TheRuleCoversTheRowWithoutResizingIt();

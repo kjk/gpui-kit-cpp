@@ -14,10 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `fb26e617da3add2ce2ac92a2ccc1a64bc8343135`
-(2026-09-17, input: Expose editor search API (#2533)). Search highlights
-follow the session being active rather than the built-in panel being open, so
-a custom search UI can drive the same matcher. The current update target is
+Processed through `e338aeb895b2946e3f6555072a8b62d6f0a9f9d9`
+(2026-09-17, list, table: Drop the outline from the selected item, row and
+cell (#3108)). A selected list item, table row or table cell is a tinted
+block with no outline. The current update target is
 `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
