@@ -108,18 +108,9 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 - **Dialogs, sheets and notifications draw inside their window** — which is
   where Rust draws them too; they are `Root` layers, not windows. Real second
   windows do exist (`StoryOpenWindow`).
-- **Text selection and virtual lists are approximations.** Selection is
-  character-accurate through the platform hit-test; the virtual list
-  virtualizes with a spacer rather than GPUI's `v_virtual_list`. The shell's
-  `list` and `uniform_list` are built the same way rather than on GPUI's
-  `ListState` / `UniformListScrollHandle`: the scroll position is a pixel
-  offset in window keyed state, not a logical (item, offset) pair; the box
-  the rows are chosen for is the one the frame before painted
-  (`WindowLastScrollRect`), so the first frame builds against the window
-  height and settles on the second; and an unmeasured `list` item is taken
-  at the mean of the measured ones. A `Scrollbar` pairs by the same name, but
-  the shared-slot `SharedScroll` enum and its scroll-area-versus-list
-  collision warning have no counterpart, since a scroll id is the pairing.
+- **Text selection is character-accurate through the platform hit-test.**
+  A `Scrollbar` pairs by element id; the shared-slot `SharedScroll` enum and
+  its scroll-area-versus-list collision warning have no counterpart.
 - **Icons fall back.** `assets/icons/*.svg` are Lucide's own files; where the
   folder is missing, `DrawIcon`'s stroke sketches cover every `IconName`.
 - **wasm is not a desktop** — one window, `AppRun` never returns, no threads,

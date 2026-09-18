@@ -412,77 +412,60 @@ El* List::IntoEl() {
     VirtualRange range =
         sizes ? VirtualListVisibleRange(sizes, total, s->scrollY, h)
               : VirtualListVisibleRows(total, s->rowH, s->scrollY, h);
-    El* body = Div(a)
-                   ->Id(StrL("body"))
-                   ->FlexCol()
-                   ->W(kFill)
-                   ->H(h)
-                   ->Pad(padding)
-                   ->ClipY()
-                   ->ScrollY(s->scrollY)
-                   ->ScrollFromPath()
-                   ->OnScroll(ListenTo(state, &ListState::OnScroll));
-    if (!scrollbarVisible) {
-        body->HideScrollbar();
-    }
-    // The two spacers stand in for the rows that were not built. With a size
-    // per row they are the running scan `VirtualListItemOrigin` does, not a
-    // count times one height.
-    if (range.first > 0) {
-        float before = sizes ? VirtualListItemOrigin(sizes, total, range.first)
-                             : (float)range.first * s->rowH;
-        body->Child(Div(a)->W(kFill)->Shrink0()->H(before));
-    }
-    Listener click = ListenTo(state, &ListState::OnRowClick, 0);
-    Listener down = ListenTo(state, &ListState::OnRowMouseDown, 0);
-    for (int r = range.first; r < range.end; r++) {
+    struct ListVirtualUser {
+        ListState* s = nullptr;
+        ListDelegate delegate = {};
+        Listener click = {};
+        Listener down = {};
+    };
+    ListVirtualUser* rows = ArenaNew<ListVirtualUser>(a);
+    rows->s = s;
+    rows->delegate = delegate;
+    rows->click = ListenTo(state, &ListState::OnRowClick, 0);
+    rows->down = ListenTo(state, &ListState::OnRowMouseDown, 0);
+    VirtualListOpts opts;
+    opts.count = total;
+    opts.rowH = s->rowH;
+    opts.viewH = h;
+    opts.sizes = sizes;
+    opts.scrollY = s->scrollY;
+    opts.pad = padding;
+    opts.axis = ScrollAxis::Vertical;
+    opts.row = [](void* user, Ctx* cx, int r) -> El* {
+        auto* u = (ListVirtualUser*)user;
+        ListState* s = u->s;
         ListRow row = ListRowAt(s, r);
         El* el = nullptr;
         if (row.kind == ListRowKind::SectionHeader) {
-            el = delegate.renderSectionHeader
-                     ? delegate
-                           .renderSectionHeader(cx, delegate.data, row.section)
+            el = u->delegate.renderSectionHeader
+                     ? u->delegate.renderSectionHeader(cx, u->delegate.data,
+                                                       row.section)
                      : nullptr;
         } else if (row.kind == ListRowKind::SectionFooter) {
-            el = delegate.renderSectionFooter
-                     ? delegate
-                           .renderSectionFooter(cx, delegate.data, row.section)
+            el = u->delegate.renderSectionFooter
+                     ? u->delegate.renderSectionFooter(cx, u->delegate.data,
+                                                       row.section)
                      : nullptr;
-        } else if (delegate.renderItem) {
-            ListItem* it = delegate.renderItem(cx, delegate.data, row.section,
-                                               row.row, row.entry);
+        } else if (u->delegate.renderItem) {
+            ListItem* it = u->delegate.renderItem(
+                cx, u->delegate.data, row.section, row.row, row.entry);
             if (it) {
                 it->selected = s->selectable && s->selected == row.entry;
                 it->secondarySelected = s->rightClicked == row.entry;
-                // Each row names the state and carries its own index, which
-                // is what Rust's per-row closure captures. The name is the
-                // row's IndexPath, the way `impl From<IndexPath> for
-                // ElementId` spells it, so it stays the same when a section
-                // above it grows or shrinks and the flat index shifts.
-                el = it->IntoEl(StrDup(a, IndexPathIdStr(a, row.Path())),
-                                ListenerArg(click, row.entry),
-                                ListenerArg(down, row.entry));
+                el =
+                    it->IntoEl(StrDup(cx->a, IndexPathIdStr(cx->a, row.Path())),
+                               ListenerArg(u->click, row.entry),
+                               ListenerArg(u->down, row.entry));
                 el->AriaPositionInSet(row.row + 1)->AriaSizeOfSet(s->count);
             }
         }
-        // Each row takes the height it was measured at, which is what lets
-        // the two spacers stand in for the rest. Shrink0 because the rows are
-        // taller than the box they scroll in: a flex column shrinks what
-        // overflows it, and a row squeezed to fit is a row the visible range
-        // -- worked out against these same heights -- no longer measures,
-        // which left a band of empty list under the last one.
-        float slotH = sizes && r < total ? sizes[r] : s->rowH;
-        El* slot = Div(a)->FlexCol()->W(kFill)->Shrink0()->H(slotH);
-        if (el) {
-            slot->Child(el);
-        }
-        body->Child(slot);
-    }
-    if (range.end < total) {
-        float after = sizes ? VirtualListContentSize(sizes, total) -
-                                  VirtualListItemOrigin(sizes, total, range.end)
-                            : (float)(total - range.end) * s->rowH;
-        body->Child(Div(a)->W(kFill)->Shrink0()->H(after));
+        return el;
+    };
+    opts.user = rows;
+    opts.onScroll = ListenTo(state, &ListState::OnScroll);
+    El* body = gpui::VirtualList::New(cx, StrL("body"), opts)->ScrollFromPath();
+    if (!scrollbarVisible) {
+        body->HideScrollbar();
     }
     inner->Child(body);
 

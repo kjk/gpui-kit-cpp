@@ -2089,6 +2089,10 @@ struct El {
     // the press is the taller track, so the two are not the same element.
     SliderState* sliderBounds = nullptr;
     void (*customPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
+    // After layout, before hit-testing and ScrollRect: a virtual list binds
+    // the visible rows here from the laid-out box, the way GPUI prepaint
+    // places items with layout_as_root. Shares customUser.
+    void (*prePaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* customUser = nullptr;
     El* first = nullptr;
     El* last = nullptr;
@@ -2604,7 +2608,7 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1824,
+static_assert(sizeof(El) <= 1840,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {
@@ -5333,10 +5337,8 @@ struct Window {
     Vec<EntityId> rendered;
     // The scroll boxes the frame before this one painted, swapped out of
     // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
-    // and `ListState::viewport_bounds()` answer with the box the last layout
-    // gave them; a view here has no handle to keep it on, so this is where a
-    // lazy list finds how tall it was before it decides how many rows to
-    // build. `WindowLastScrollRect` is the lookup.
+    // answers with the box the last layout gave it. Virtual lists bind rows
+    // in prePaint from this frame's laid-out box, so they do not read this.
     Vec<ScrollRect> prevScrolls;
     // Rebuilt after layout from the frame's element tree. Platform adapters
     // read this; it owns no strings or callbacks beyond the frame arena.

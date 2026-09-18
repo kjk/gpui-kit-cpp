@@ -1668,12 +1668,12 @@ static const float kListOverdraw = 160;
 // upstream files under `use_keyed_state` so they outlive the description.
 // Window keyed state under the list's id does the same here.
 struct LazyListState {
-    // The scroll position, positive-down as El::ScrollY takes it. Rust's
-    // ListState keeps a logical top (an item and an offset into it); a pixel
-    // offset is what this tree's scroll boxes speak, and is what the wheel
-    // reports back through OnLazyListScroll.
+    // ListState's logical top: the item at the viewport's start and how far
+    // into it. Pixel offset is derived from measured heights, so unmeasured
+    // items are not guessed at the mean of the rest.
+    int topItem = 0;
+    float topInto = 0;
     float offset = 0;
-    // The count the measurements were taken for.
     int itemCount = 0;
     // `list` only: the height each item measured at, 0 until it is drawn.
     Vec<float> measured;
@@ -1696,40 +1696,9 @@ static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
     LazyListState* state = KeyedState<LazyListState>(cx, (uint32_t)key);
     if (!state || !event) return;
     state->offset = event->offsetY;
-}
-
-// The box the list was given, for the rows to be chosen by. GPUI decides this
-// inside layout, which here has not run yet, so it is the box of the frame
-// before — Rust's `viewport_bounds()`, which is a frame old too. The first
-// frame has no box and takes the window's height: it over-builds once and
-// settles.
-static float LazyListViewport(Ctx* cx, int scrollId) {
-    const ScrollRect* last =
-        cx->win ? WindowLastScrollRect(cx->win, scrollId) : nullptr;
-    if (last && last->bounds.h > 0) return last->bounds.h;
-    if (cx->win && cx->win->paint.viewH > 0) return cx->win->paint.viewH;
-    return VirtualListOpts{}.viewH;
-}
-
-// An item's height as the list currently knows it: what it measured at, or
-// the mean of the measured ones while it has not been drawn. GPUI's list
-// scrolls in logical items and never needs the guess; a pixel offset does.
-static float LazyListExtent(const LazyListState* state, int ix,
-                            float estimate) {
-    float measured = ix < state->measured.len ? state->measured[ix] : 0;
-    return measured > 0 ? measured : estimate;
-}
-
-static float LazyListEstimate(const LazyListState* state) {
-    float sum = 0;
-    int n = 0;
-    for (int i = 0; i < state->measured.len; i++) {
-        if (state->measured[i] > 0) {
-            sum += state->measured[i];
-            n++;
-        }
-    }
-    return n > 0 ? sum / (float)n : 0;
+    VirtualListLogicalFromPixel(
+        state->measured.len ? state->measured.els : nullptr, state->itemCount,
+        state->rowH, event->offsetY, &state->topItem, &state->topInto);
 }
 
 static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
@@ -1758,7 +1727,6 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
     if (!state) return Div(cx->a);
     int count = spec->itemCount;
     int scrollId = HashClickId(spec->id);
-    float viewport = LazyListViewport(cx, scrollId);
     PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
     Listener onScroll = Listen(cx, &OnLazyListScroll, (intptr_t)key);
 
@@ -1788,92 +1756,36 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
                 if (got > 0) state->rowH = got;
             }
         }
-        float content = state->rowH * (float)count;
-        float most = content > viewport ? content - viewport : 0;
-        if (state->offset > most) state->offset = most;
-        if (state->offset < 0) state->offset = 0;
         VirtualListOpts opts;
         opts.count = count;
         opts.rowH = state->rowH;
-        opts.viewH = viewport;
         opts.scrollY = state->offset;
         opts.range = MaterialVirtualRange;
         opts.user = user;
         opts.scrollId = scrollId;
         opts.onScroll = onScroll;
-        // Base's virtual list fills its box unless told otherwise; the same
-        // default here, so a list dropped into a sized column shows rows
-        // rather than a zero-height strip. The refinement may say otherwise.
         return VirtualList::New(cx, spec->id, opts)->SizeFull();
     }
 
     if (state->itemCount != count) {
-        // Every item is a new one as far as the measurements go; what
-        // survives is the scroll position, which a reset would throw away.
         VecClear(state->measured);
         for (int i = 0; i < count; i++) VecAppend(state->measured, 0.f);
         state->itemCount = count;
+        if (state->topItem >= count) state->topItem = 0;
     }
-    float estimate = LazyListEstimate(state);
-    float content = 0;
-    for (int i = 0; i < count; i++) {
-        content += LazyListExtent(state, i, estimate);
-    }
-    float most = content > viewport ? content - viewport : 0;
-    if (state->offset > most) state->offset = most;
-    if (state->offset < 0) state->offset = 0;
-    float offset = state->offset;
-
-    // The first item the offset reaches, and where it starts. An item nothing
-    // has been measured for yet has no extent to skip by, so drawing starts
-    // at it — which on the first frame is item 0.
-    float origin = 0;
-    int first = 0;
-    while (first < count) {
-        float extent = LazyListExtent(state, first, estimate);
-        if (extent <= 0 || origin + extent > offset) break;
-        origin += extent;
-        first++;
-    }
-    El* column = Div(cx->a)->FlexCol();
-    if (first > 0) column->Child(Div(cx->a)->H(origin));
-
-    // Draw and measure from there until the box and the band past it are
-    // filled. One host crossing per item: `gpui::list`'s renderer takes a
-    // single index, and so does this loop.
-    float filled = 0;
-    int end = first;
-    while (end < count && filled < viewport + kListOverdraw) {
-        El* item = nullptr;
-        runtime->RenderVirtualItems(
-            spec->renderItems, spec->getKey, behavior.onItemClick,
-            behavior.onItemSecondaryClick, end, end + 1, cx, &item);
-        // An item the renderer failed still takes its slot, or every row
-        // after it would slide up by one.
-        if (!item) item = Div(cx->a);
-        float got = MeasureEl(paint, item).h;
-        if (got > 0) state->measured[end] = got;
-        filled += LazyListExtent(state, end, estimate);
-        column->Child(item);
-        end++;
-    }
-    // What was not drawn stands in as a spacer, so the box has the whole list
-    // to scroll through and the bar shows how much of it this is.
-    estimate = LazyListEstimate(state);
-    float after = 0;
-    for (int ix = end; ix < count; ix++) {
-        after += LazyListExtent(state, ix, estimate);
-    }
-    if (after > 0) column->Child(Div(cx->a)->H(after));
-
-    return VirtualList::New(cx, spec->id)
-        ->ClipX()
-        ->ClipY()
-        ->ScrollY(offset)
-        ->ScrollId(scrollId)
-        ->OnScroll(onScroll)
-        ->SizeFull()
-        ->Child(column);
+    VirtualListOpts opts;
+    opts.count = count;
+    opts.sizes = state->measured.len ? state->measured.els : nullptr;
+    opts.scrollY = state->offset;
+    opts.logicalScroll = true;
+    opts.topItem = state->topItem;
+    opts.topInto = state->topInto;
+    opts.overdraw = kListOverdraw;
+    opts.range = MaterialVirtualRange;
+    opts.user = user;
+    opts.scrollId = scrollId;
+    opts.onScroll = onScroll;
+    return VirtualList::New(cx, spec->id, opts)->SizeFull();
 }
 
 // `dock_area` — the one element whose contents the description does not

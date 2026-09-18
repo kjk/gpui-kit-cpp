@@ -171,11 +171,13 @@ using VirtualRangeFn = void (*)(void* user, Ctx* cx, int first, int end,
 struct VirtualListOpts {
     int count = 0;
     float rowH = 32;
-    float viewH = 192;
+    // 0 means fill the parent (Rust `.size_full()`). A positive value is an
+    // explicit along-axis viewport used until layout reports the real box.
+    float viewH = 0;
     // The horizontal counterpart. `rowH` remains the historical name for a
     // uniform along-axis extent, so it is a width when layoutAxis is
-    // horizontal.
-    float viewW = 192;
+    // horizontal. 0 fills the parent.
+    float viewW = 0;
     const float* sizes = nullptr;
     // The offsets, for a list without a handle. A list with one reads its
     // offset from the handle instead — `track_scroll(&handle)`.
@@ -200,9 +202,18 @@ struct VirtualListOpts {
     float gap = 0;
     // The list's own inset, which behaves as CSS scroll-padding does: the two
     // ends keep their inset and a row scrolled under the edge clips flush
-    // against it. `viewH` is the rows' height, so the element is this much
-    // taller.
+    // against it.
     float pad = 0;
+    // Extra pixels past the fold to draw and measure. GPUI ListState overdraw;
+    // v_virtual_list with known sizes already adds one spare item and leaves
+    // this at 0.
+    float overdraw = 0;
+    // GPUI ListState's logical top: an item index and a pixel offset into it.
+    // Used when `sizes` still has zeros for undrawn items so the list does
+    // not guess their height. Pixel `scrollY` is derived from this.
+    bool logicalScroll = false;
+    int topItem = 0;
+    float topInto = 0;
     VirtualRowFn row = nullptr;
     VirtualRangeFn range = nullptr;
     void* user = nullptr;
@@ -211,11 +222,20 @@ struct VirtualListOpts {
 struct VirtualList {
     // The bare box, for a caller that builds the rows itself.
     static El* New(Ctx* cx, Str id);
-    // The list: only the rows the viewport can show are built, and a spacer
-    // at each end stands in for the rest — without the second one the list
-    // would scroll only as far as the last row it made.
+    // The list. Visible rows are bound in prePaint from the laid-out box —
+    // GPUI's layout_as_root / prepaint_at — not as flex children behind a
+    // spacer. `viewH`/`viewW` of 0 fills the parent, so the first frame uses
+    // the real viewport rather than the window height.
     static El* New(Ctx* cx, Str id, const VirtualListOpts& o);
 };
+
+// Pixel offset of logical (item, into). Unmeasured (non-positive) sizes stop
+// the walk, matching ListState scrolling only through what it has measured.
+float VirtualListPixelFromLogical(const float* sizes, int count, int item,
+                                  float into);
+// The inverse. `item`/`into` are written even when sizes is null (uniform).
+void VirtualListLogicalFromPixel(const float* sizes, int count, float rowH,
+                                 float pixel, int* item, float* into);
 
 // Source-named constructors. The callback and entity closure are represented
 // by VirtualListOpts::row + user under the repository's no-closure rule.

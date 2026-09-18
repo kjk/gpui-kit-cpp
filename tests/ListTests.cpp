@@ -401,6 +401,9 @@ static void TheDelegateTableOwnsTheWholeContract() {
                    ->ScrollbarVisible(false)
                    ->H(120)
                    ->IntoEl();
+    win->paint.app = &app;
+    win->paint.window = win;
+    if (root) LayoutEl(&win->paint, root, 0, 0, 300, 120, 14, Rgba{});
     ListState* list = state.Get(&app);
     utassert(root && list);
     utassert(list->count == 3 && list->sectionCounts.len == 2);

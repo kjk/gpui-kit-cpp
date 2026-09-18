@@ -250,6 +250,14 @@ static El* CaptureVirtualRow(void* user, Ctx* cx, int ix) {
     return Div(cx->a)->W(20)->H(10);
 }
 
+static void InvokePrePaint(El* e, App* app, Window* win) {
+    if (!e || !e->prePaint) return;
+    PaintCtx paint = {};
+    paint.app = app;
+    paint.window = win;
+    e->prePaint(&paint, e, e->customUser);
+}
+
 static void HorizontalConstructorUsesXAxisEndToEnd() {
     App app;
     Window* win = new Window();
@@ -273,9 +281,11 @@ static void HorizontalConstructorUsesXAxisEndToEnd() {
     utassertnear(handle.offset, 200.f);
     utassertnear(root->scrollX, 200.f);
     utassertnear(root->scrollY, 7.f);
-    utassert(root->first && root->first == root->last);
-    El* list = root->first;
-    utassert(list->style.dir == FlexDir::Row);
+    root->x = 0;
+    root->y = 0;
+    root->w = 60;
+    root->h = 10;
+    InvokePrePaint(root, &app, win);
     bool containsTarget = false;
     for (int i = 0; i < rows.count; i++) {
         containsTarget = containsTarget || rows.indices[i] == 12;
@@ -288,6 +298,45 @@ static void HorizontalConstructorUsesXAxisEndToEnd() {
     utassert(rows.count == 0);
     delete win;
     ArenaDelete(arena);
+}
+
+static void PrePaintUsesTheLaidOutBoxNotViewH() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    BuiltRows rows;
+    VirtualListOpts opts;
+    opts.count = 100;
+    opts.rowH = 10;
+    opts.viewH = 1000;
+    opts.row = &CaptureVirtualRow;
+    opts.user = &rows;
+    El* root = v_virtual_list(&cx, StrL("first-frame"), opts);
+    root->x = 0;
+    root->y = 0;
+    root->w = 40;
+    root->h = 30;
+    InvokePrePaint(root, &app, win);
+    // 30px of 10px rows plus the spare GPUI adds past the fold: not 1000px.
+    utassert(rows.count >= 3 && rows.count <= 8);
+    utassertnear(root->contentH, 1000.f);
+    delete win;
+    ArenaDelete(arena);
+}
+
+static void LogicalOffsetIgnoresUnmeasuredItems() {
+    const float sizes[] = {20, 30, 0, 40};
+    utassertnear(VirtualListPixelFromLogical(sizes, 4, 2, 0), 50.f);
+    int item = -1;
+    float into = -1;
+    VirtualListLogicalFromPixel(sizes, 4, 0, 45, &item, &into);
+    utassert(item == 1);
+    utassertnear(into, 25.f);
+    VirtualListLogicalFromPixel(sizes, 4, 0, 50, &item, &into);
+    utassert(item == 2);
+    utassertnear(into, 0.f);
 }
 
 void TestVirtualList() {
@@ -310,4 +359,6 @@ void TestVirtualList() {
     TheHandleAnswersTheVisibleRange();
     ItemSizeLayoutCarriesOriginsGapsAndCrossSize();
     HorizontalConstructorUsesXAxisEndToEnd();
+    PrePaintUsesTheLaidOutBoxNotViewH();
+    LogicalOffsetIgnoresUnmeasuredItems();
 }

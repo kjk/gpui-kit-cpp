@@ -1,5 +1,7 @@
 #include "base/virtual_list.h"
 
+#include <string.h>
+
 namespace gpui {
 
 static int VirtualListEndsBefore(const float* origins, const float* sizes,
@@ -113,6 +115,43 @@ float VirtualListItemOrigin(const float* sizes, int count, int ix) {
 
 float VirtualListContentSize(const float* sizes, int count) {
     return VirtualListItemOrigin(sizes, count, count);
+}
+
+float VirtualListPixelFromLogical(const float* sizes, int count, int item,
+                                  float into) {
+    if (item < 0) item = 0;
+    if (item > count) item = count;
+    float pixel = 0;
+    if (sizes) {
+        for (int i = 0; i < item && i < count; i++) {
+            if (sizes[i] <= 0) return pixel;
+            pixel += sizes[i];
+        }
+    }
+    return pixel + (into > 0 ? into : 0);
+}
+
+void VirtualListLogicalFromPixel(const float* sizes, int count, float rowH,
+                                 float pixel, int* item, float* into) {
+    if (pixel < 0) pixel = 0;
+    int ix = 0;
+    float rest = pixel;
+    if (sizes) {
+        while (ix < count) {
+            float h = sizes[ix];
+            if (h <= 0) break;
+            if (rest < h) break;
+            rest -= h;
+            ix++;
+        }
+    } else if (rowH > 0 && count > 0) {
+        ix = (int)(pixel / rowH);
+        if (ix >= count) ix = count - 1;
+        if (ix < 0) ix = 0;
+        rest = pixel - (float)ix * rowH;
+    }
+    if (item) *item = ix;
+    if (into) *into = rest;
 }
 
 float VirtualListScrollTo(float origin, float size, float offset,
@@ -252,97 +291,220 @@ void ItemSizeLayoutBuild(ItemSizeLayout* layout, Axis axis,
     }
 }
 
-El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
-    Arena* a = cx->a;
-    VirtualListFrameState frame;
-    float viewport = o.layoutAxis == Axis::Horizontal ? o.viewW : o.viewH;
-    float crossSize = o.layoutAxis == Axis::Horizontal ? o.viewH : o.viewW;
-    ItemSizeLayoutBuild(&frame.sizeLayout, o.layoutAxis, o.sizes, o.count,
-                        o.rowH, o.gap, crossSize);
-    // The layout is where the handle is answered: it learns how many items
-    // there are and how much of them is showing, a pending scroll_to_item is
-    // applied against that, and the offset is clamped to the list.
-    float offset = o.layoutAxis == Axis::Horizontal ? o.scrollX : o.scrollY;
-    if (o.handle) {
-        o.handle->axis = o.layoutAxis;
-        const float* sizes =
-            frame.sizeLayout.sizes.len ? frame.sizeLayout.sizes.els : nullptr;
-        VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
-        offset = o.handle->offset;
-    }
-    // The rows the viewport can show, and a spacer at each end standing in
-    // for the ones that were not built — without the second one the list
-    // would scroll only as far as the last row it made.
-    const float* layoutSizes =
-        frame.sizeLayout.sizes.len ? frame.sizeLayout.sizes.els : nullptr;
-    const float* layoutOrigins =
-        frame.sizeLayout.origins.len ? frame.sizeLayout.origins.els : nullptr;
-    frame.visible = VirtualListVisibleRangeFromLayout(
-        layoutOrigins, layoutSizes, o.count, offset, viewport);
-    El* list = Div(a);
-    if (o.layoutAxis == Axis::Horizontal) {
-        list->FlexRow();
+struct VirtualListPaint {
+    VirtualListOpts opts = {};
+    Arena* a = nullptr;
+    App* app = nullptr;
+    Window* win = nullptr;
+};
+
+static El* VirtualListTakeRow(const VirtualListOpts& o, El** rangeRows,
+                              int first, int ix, Ctx* cx) {
+    if (rangeRows) return rangeRows[ix - first];
+    if (o.row) return o.row(o.user, cx, ix);
+    return nullptr;
+}
+
+static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
+                             float pad, float innerW, float innerH,
+                             float origin, float offset, float extent) {
+    float x = e->x + pad;
+    float y = e->y + pad;
+    float w = innerW;
+    float h = innerH;
+    if (axis == Axis::Horizontal) {
+        x += origin - offset;
+        w = extent;
     } else {
-        list->FlexCol();
+        y += origin - offset;
+        h = extent;
     }
-    if (frame.visible.first > 0) {
-        frame.before = frame.sizeLayout.origins[frame.visible.first];
-        El* spacer = Div(a);
-        if (o.layoutAxis == Axis::Horizontal) {
-            spacer->W(frame.before);
-        } else {
-            spacer->H(frame.before);
+    LayoutEl(ctx, made, x, y, w, h, 0, {});
+    e->Child(made);
+}
+
+static float VirtualListMeasureItem(PaintCtx* ctx, El* made, Axis axis,
+                                    float fallback) {
+    Size got = MeasureEl(ctx, made);
+    float extent = axis == Axis::Horizontal ? got.w : got.h;
+    if (extent <= 0) extent = fallback > 0 ? fallback : 1.f;
+    return extent;
+}
+
+static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
+                                ItemSizeLayout* layout, float offset,
+                                float viewport, float pad, float innerW,
+                                float innerH) {
+    const VirtualListOpts& o = paint->opts;
+    Axis axis = o.layoutAxis;
+    Ctx cx = {};
+    cx.app = paint->app;
+    cx.win = paint->win;
+    cx.a = paint->a;
+    e->first = nullptr;
+    e->last = nullptr;
+    if (o.logicalScroll) {
+        int ix = o.topItem;
+        if (ix < 0) ix = 0;
+        float along = -o.topInto;
+        float origin = offset + along;
+        while (ix < o.count && along < viewport + o.overdraw) {
+            El* made = nullptr;
+            if (o.row) {
+                made = o.row(o.user, &cx, ix);
+            } else if (o.range) {
+                El* one = nullptr;
+                o.range(o.user, &cx, ix, ix + 1, &one);
+                made = one;
+            }
+            if (!made) {
+                if (!cx.a) break;
+                made = Div(cx.a);
+            }
+            float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
+            if (extent <= 0) {
+                extent = VirtualListMeasureItem(ctx, made, axis, o.rowH);
+                if (o.sizes && ix < o.count) {
+                    const_cast<float*>(o.sizes)[ix] = extent;
+                }
+                if (ix < layout->sizes.len) layout->sizes[ix] = extent;
+            }
+            VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, origin,
+                             offset, extent);
+            along += extent;
+            origin += extent;
+            ix++;
         }
-        list->Child(spacer);
+        return;
     }
-    int visibleCount = frame.visible.end - frame.visible.first;
+    VirtualRange vis = VirtualListVisibleRangeFromLayout(
+        layout->origins.len ? layout->origins.els : nullptr,
+        layout->sizes.len ? layout->sizes.els : nullptr, o.count, offset,
+        viewport);
+    int visibleCount = vis.end - vis.first;
     El** rangeRows = nullptr;
-    if (o.range && visibleCount > 0) {
-        rangeRows = (El**)Alloc(a, (int)(sizeof(El*) * (size_t)visibleCount));
+    if (o.range && visibleCount > 0 && cx.a) {
+        rangeRows =
+            (El**)Alloc(cx.a, (int)(sizeof(El*) * (size_t)visibleCount));
         if (rangeRows) {
             memset(static_cast<void*>(rangeRows), 0,
                    sizeof(El*) * (size_t)visibleCount);
-            o.range(o.user, cx, frame.visible.first, frame.visible.end,
-                    rangeRows);
+            o.range(o.user, &cx, vis.first, vis.end, rangeRows);
         }
     }
-    for (int ix = frame.visible.first; ix < frame.visible.end; ix++) {
-        El* made = rangeRows ? rangeRows[ix - frame.visible.first]
-                             : (o.row ? o.row(o.user, cx, ix) : nullptr);
-        if (El* built = made) {
-            if (o.gap != 0 && ix + 1 < o.count) {
-                El* allocation = Div(a);
-                if (o.layoutAxis == Axis::Horizontal) {
-                    allocation->FlexRow()->W(frame.sizeLayout.sizes[ix]);
-                } else {
-                    allocation->FlexCol()->H(frame.sizeLayout.sizes[ix]);
-                }
-                allocation->Child(built);
-                built = allocation;
-            }
-            list->Child(built);
+    for (int ix = vis.first; ix < vis.end; ix++) {
+        El* made = VirtualListTakeRow(o, rangeRows, vis.first, ix, &cx);
+        if (!made) {
+            if (!cx.a) continue;
+            made = Div(cx.a);
         }
+        float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
+        float origin =
+            ix < layout->origins.len ? layout->origins[ix] : (float)ix * o.rowH;
+        VirtualListPlace(ctx, e, made, axis, pad, innerW, innerH, origin,
+                         offset, extent);
     }
-    if (frame.visible.end < o.count) {
-        float content = o.layoutAxis == Axis::Horizontal
-                            ? frame.sizeLayout.contentSize.w
-                            : frame.sizeLayout.contentSize.h;
-        frame.after = content - frame.sizeLayout.origins[frame.visible.end];
-        El* spacer = Div(a);
-        if (o.layoutAxis == Axis::Horizontal) {
-            spacer->W(frame.after);
-        } else {
-            spacer->H(frame.after);
-        }
-        list->Child(spacer);
-    }
+}
 
-    frame.scrollOffset = offset;
+static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* paint = (VirtualListPaint*)user;
+    if (!paint || !e || !paint->a) return;
+    VirtualListOpts& o = paint->opts;
+    float pad = o.pad;
+    float innerW = e->w - pad * 2;
+    float innerH = e->h - pad * 2;
+    if (innerW < 0) innerW = 0;
+    if (innerH < 0) innerH = 0;
+    Axis axis = o.layoutAxis;
+    float viewport = axis == Axis::Horizontal ? innerW : innerH;
+    float cross = axis == Axis::Horizontal ? innerH : innerW;
+
+    ItemSizeLayout layout;
+    ItemSizeLayoutBuild(&layout, axis, o.sizes, o.count, o.rowH, o.gap, cross);
+    float offset = axis == Axis::Horizontal ? e->scrollX : e->scrollY;
+    if (o.logicalScroll) {
+        offset =
+            VirtualListPixelFromLogical(o.sizes, o.count, o.topItem, o.topInto);
+        if (axis == Axis::Horizontal)
+            e->scrollX = offset;
+        else
+            e->scrollY = offset;
+    }
+    const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
+    if (o.handle) {
+        o.handle->axis = axis;
+        VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
+        offset = o.handle->offset;
+        if (axis == Axis::Horizontal)
+            e->scrollX = offset;
+        else
+            e->scrollY = offset;
+    }
+    float content =
+        axis == Axis::Horizontal ? layout.contentSize.w : layout.contentSize.h;
+    if (axis == Axis::Horizontal) {
+        e->contentW = content > innerW ? content : innerW;
+        e->contentH = innerH;
+    } else {
+        e->contentH = content > innerH ? content : innerH;
+        e->contentW = innerW;
+    }
+    VirtualListBindRows(ctx, e, paint, &layout, offset, viewport, pad, innerW,
+                        innerH);
+    if (o.logicalScroll && o.sizes) {
+        float measured = VirtualListContentSize(o.sizes, o.count);
+        if (axis == Axis::Horizontal) {
+            e->contentW = measured > innerW ? measured : innerW;
+        } else {
+            e->contentH = measured > innerH ? measured : innerH;
+        }
+    }
+}
+
+El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
+    Arena* a = cx->a;
+    float viewport = o.layoutAxis == Axis::Horizontal ? o.viewW : o.viewH;
+    float offset = o.layoutAxis == Axis::Horizontal ? o.scrollX : o.scrollY;
+    if (o.logicalScroll) {
+        offset =
+            VirtualListPixelFromLogical(o.sizes, o.count, o.topItem, o.topInto);
+    }
+    if (o.handle && viewport > 0) {
+        o.handle->axis = o.layoutAxis;
+        ItemSizeLayout layout;
+        float cross = o.layoutAxis == Axis::Horizontal ? o.viewH : o.viewW;
+        ItemSizeLayoutBuild(&layout, o.layoutAxis, o.sizes, o.count, o.rowH,
+                            o.gap, cross);
+        const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
+        VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
+        offset = o.handle->offset;
+    }
+    auto* paint = ArenaNew<VirtualListPaint>(a);
+    paint->opts = o;
+    paint->a = a;
+    paint->app = cx->app;
+    paint->win = cx->win;
     El* e = New(cx, id)->ClipY()->ClipX();
     if (o.layoutAxis == Axis::Horizontal) {
-        e->W(o.viewW + o.pad * 2)->ScrollX(offset)->ScrollY(o.scrollY);
+        e->ScrollX(offset)->ScrollY(o.scrollY);
+        if (o.viewW > 0)
+            e->W(o.viewW + o.pad * 2);
+        else
+            e->W(kFill);
+        if (o.viewH > 0)
+            e->H(o.viewH);
+        else
+            e->H(kFill);
     } else {
-        e->H(o.viewH + o.pad * 2)->ScrollY(offset)->ScrollX(o.scrollX);
+        e->ScrollY(offset)->ScrollX(o.scrollX);
+        if (o.viewH > 0)
+            e->H(o.viewH + o.pad * 2);
+        else
+            e->H(kFill);
+        if (o.viewW > 0)
+            e->W(o.viewW);
+        else
+            e->W(kFill);
     }
     if (o.pad > 0) {
         e->Pad(o.pad);
@@ -355,7 +517,9 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     if (o.scrollId) {
         e->ScrollId(o.scrollId)->OnScroll(o.onScroll);
     }
-    return e->Child(list);
+    e->prePaint = &VirtualListPrePaint;
+    e->customUser = paint;
+    return e;
 }
 
 El* VirtualList::New(Ctx* cx, Str id) {

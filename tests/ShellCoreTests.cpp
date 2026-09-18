@@ -1794,14 +1794,17 @@ static void VirtualListsRenderOneVisibleBatch() {
         type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
     ViewTypeRelease(type);
     Arena* frame = ArenaNew();
+    window.paint.app = &app;
+    window.paint.window = &window;
     El* root =
         view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    if (root) LayoutEl(&window.paint, root, 0, 0, 300, 400, 14, Rgba{});
     utassert(root != nullptr && !error.IsSet());
     utassert(runtime
                  ->Eval(StrL("if (globalThis.virtualBatches !== 1) throw new "
                              "Error('virtual list did not render one range')"),
                         StrL("virtual-list-check.js"), &error));
-    El* firstRow = root && root->first ? root->first->first : nullptr;
+    El* firstRow = root ? root->first : nullptr;
     utassert(firstRow && firstRow->listener.IsValid());
     if (firstRow && firstRow->listener.IsValid()) {
         ClickEvent click = {};
@@ -1867,9 +1870,9 @@ struct LazyListFixture {
 
     // v_flex > v_flex(h 200) > the list's scroll box.
     El* Box() { return root && root->first ? root->first->first : nullptr; }
-    // The rows the box holds, from the first one built.
+    // The rows the box holds, bound in prePaint from the laid-out viewport.
     El* Row(int ix) {
-        El* row = Box() && Box()->first ? Box()->first->first : nullptr;
+        El* row = Box() ? Box()->first : nullptr;
         for (int i = 0; row && i < ix; i++) row = row->next;
         return row;
     }
@@ -2006,8 +2009,9 @@ static void AListMeasuresEachItemAndFollowsTheScroll() {
     utassert(f
                  .Check(StrL("if (globalThis.listLo !== 7) throw new Error('"
                              "scrolled start ' + globalThis.listLo)")));
-    El* spacer = f.Row(0);
-    utassertnear(spacer ? spacer->h : -1.f, 200.f);
+    // Item 7 is odd, so 40px; there is no leading spacer.
+    El* first = f.Row(0);
+    utassertnear(first ? first->h : -1.f, 40.f);
 }
 
 static void AListReportsWhichItemWasClicked() {
@@ -4267,10 +4271,13 @@ static void VirtualListRowsReportASecondaryPress() {
         type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
     ViewTypeRelease(type);
     Arena* frame = ArenaNew();
+    window.paint.app = &app;
+    window.paint.window = &window;
     El* root =
         view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    if (root) LayoutEl(&window.paint, root, 0, 0, 300, 400, 14, Rgba{});
     utassert(root != nullptr && !error.IsSet());
-    El* firstRow = root && root->first ? root->first->first : nullptr;
+    El* firstRow = root ? root->first : nullptr;
     utassert(firstRow && firstRow->onMouseDown.IsValid());
     if (firstRow && firstRow->onMouseDown.IsValid()) {
         // A left press on the same row reports nothing: the row already

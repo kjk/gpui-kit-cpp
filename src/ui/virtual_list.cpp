@@ -105,7 +105,6 @@ El* VirtualList::IntoEl() {
     o.onScroll = onScroll;
     o.axis = axis;
     o.pad = pad;
-    DefaultRow d = {sizes, rowH};
     if (rowWithUser) {
         o.row = rowWithUser;
         o.user = rowUser;
@@ -113,8 +112,11 @@ El* VirtualList::IntoEl() {
         o.row = &CallerRow;
         o.user = (void*)row;
     } else {
+        DefaultRow* d = ArenaNew<DefaultRow>(a);
+        d->sizes = sizes;
+        d->rowH = rowH;
         o.row = &ThemedDefaultRow;
-        o.user = &d;
+        o.user = d;
     }
     return gpui::VirtualList::New(cx, id, o);
 }

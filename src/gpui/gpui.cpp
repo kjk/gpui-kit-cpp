@@ -3964,6 +3964,11 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     }
 
     WriteBackChildren(lc, ctx, e);
+    // GPUI Element::prepaint: the box is final. A virtual list binds visible
+    // rows here from the laid-out viewport, as layout_as_root / prepaint_at.
+    if (e->prePaint) {
+        e->prePaint(ctx, e, e->customUser);
+    }
 }
 
 static float PositionMax(float a, float b) {
