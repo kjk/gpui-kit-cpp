@@ -196,6 +196,39 @@ static void PublicPositionerChildrenHaveNoPortOnlyCapacity() {
     ArenaDelete(a);
 }
 
+static void FrameInsetsApplyTheClientInsetOnlyOnUntiledEdges() {
+    float inset = 20.f;
+    Tiling none = {};
+    utassert(PositionerFrameInsets(false, none, inset) == Edges{});
+
+    Tiling all = {true, true, true, true};
+    utassert(PositionerFrameInsets(true, all, inset) == Edges{});
+
+    Tiling leftBottom = {};
+    leftBottom.left = true;
+    leftBottom.bottom = true;
+    Edges got = PositionerFrameInsets(true, leftBottom, inset);
+    utassertnear(got.top, inset);
+    utassertnear(got.right, inset);
+    utassertnear(got.bottom, 0.f);
+    utassertnear(got.left, 0.f);
+}
+
+static void ClampingKeepsOnlyTheMarginOnATiledEdge() {
+    Size popup = {120, 30};
+    Point at = {kViewW - 10.f, 100};
+    Edges margin = EdgesAll(kMargin);
+    Positioned tiled =
+        PositionCorner(Anchor::TopRight, at, popup, {kViewW, kViewH}, margin);
+    utassertnear(tiled.bounds.Right(), kViewW - 10.f);
+
+    Edges untiled =
+        Edges::New(kMargin + 20, kMargin + 20, kMargin + 20, kMargin + 20);
+    Positioned inseted =
+        PositionCorner(Anchor::TopRight, at, popup, {kViewW, kViewH}, untiled);
+    utassertnear(inseted.bounds.Right(), kViewW - kMargin - 20.f);
+}
+
 static void PublicPositionerAddsTheWindowClientInsetToItsMargin() {
     Arena* a = ArenaNew();
     Ctx cx = {};
@@ -314,6 +347,8 @@ void TestPositioner() {
     PublicCornerPositionerUsesTheMeasuredGroupCorner();
     PublicPositionerChildrenHaveNoPortOnlyCapacity();
     PublicPositionerAddsTheWindowClientInsetToItsMargin();
+    FrameInsetsApplyTheClientInsetOnlyOnUntiledEdges();
+    ClampingKeepsOnlyTheMarginOnATiledEdge();
 
     TestSuite("positioner/tooltip");
     PrefersAboveWhenSpaceAllows();

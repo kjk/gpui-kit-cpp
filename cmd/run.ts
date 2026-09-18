@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c8140863e57570b809cc5ac19f93b6a364ba0f5c",
-  date: "2026-09-18",
-  subject: "popover: Tell the trigger it is open instead of selected (#3125)",
+  sha: "41672098cbc73a712512093e746eaefcdd2ea129",
+  date: "2026-09-19",
+  subject: "popup: Keep the client inset only on untiled window edges (#3130)",
   crates: {
     "gpui-kit": "0.6.2",
     "gpui-base": "0.6.2",

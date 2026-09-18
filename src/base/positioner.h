@@ -93,6 +93,14 @@ ResolvedPosition PositionSide(Bounds trigger, Size popup, Size view,
 // viewport. Never flips, and never reports a side.
 ResolvedPosition PositionCorner(Anchor anchor, Point at, Size popup, Size view,
                                 float margin);
+ResolvedPosition PositionCorner(Anchor anchor, Point at, Size popup, Size view,
+                                Edges margin);
+
+// positioner.rs frame_insets: the part of the viewport that is frame rather
+// than content, per side. A tiled edge of a client-decorated window draws no
+// shadow, so the inset is zero there; a server-decorated window has none.
+Edges PositionerFrameInsets(bool clientDecorated, Tiling tiling,
+                            float clientInset);
 
 } // namespace gpui
 #endif // GPUI_BASE_POSITIONER_H_

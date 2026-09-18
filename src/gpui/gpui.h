@@ -1390,8 +1390,13 @@ struct AnchoredPosition {
 AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
                                      float margin, int preferred, int align,
                                      float offset);
+AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
+                                     Edges margin, int preferred, int align,
+                                     float offset);
 AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
                                        Size view, float margin);
+AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
+                                       Size view, Edges margin);
 
 struct Style {
     // Keep pointer-aligned members together at the front, then 32-bit values,
@@ -2929,8 +2934,8 @@ struct PaintCtx {
     float viewW = 0;
     float viewH = 0;
     // Window::client_inset. A client-decorated Root writes its shadow inset
-    // while building; every shared Positioner adds it to its requested edge
-    // margin, matching the window-coordinate viewport Rust resolves against.
+    // while building; Positioner adds it only on untiled client-decorated
+    // edges, matching WindowBorder's per-side padding.
     float clientInset = 0;
     int hoverId = 0;
     // Which drop target the pointer is over and what is being dragged, so a

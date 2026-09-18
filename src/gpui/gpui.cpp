@@ -3954,20 +3954,20 @@ static float PositionMax(float a, float b) {
     return a > b ? a : b;
 }
 
-static Bounds AnchoredClamp(Bounds b, Size view, float margin) {
-    float rightLimit = PositionMax(view.w - margin, margin);
-    float bottomLimit = PositionMax(view.h - margin, margin);
+static Bounds AnchoredClamp(Bounds b, Size view, Edges margin) {
+    float rightLimit = PositionMax(view.w - margin.right, margin.left);
+    float bottomLimit = PositionMax(view.h - margin.bottom, margin.top);
     if (b.Right() > rightLimit) {
         b.x -= b.Right() - rightLimit;
     }
-    if (b.x < margin) {
-        b.x = margin;
+    if (b.x < margin.left) {
+        b.x = margin.left;
     }
     if (b.Bottom() > bottomLimit) {
         b.y -= b.Bottom() - bottomLimit;
     }
-    if (b.y < margin) {
-        b.y = margin;
+    if (b.y < margin.top) {
+        b.y = margin.top;
     }
     return b;
 }
@@ -3975,11 +3975,18 @@ static Bounds AnchoredClamp(Bounds b, Size view, float margin) {
 AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
                                      float margin, int preferred, int align,
                                      float offset) {
-    float rightLimit = PositionMax(view.w - margin, margin);
-    float bottomLimit = PositionMax(view.h - margin, margin);
-    float availLeft = PositionMax(trigger.x - margin, 0.f);
+    return AnchoredSideResolve(trigger, popup, view, EdgesAll(margin),
+                               preferred, align, offset);
+}
+
+AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
+                                     Edges margin, int preferred, int align,
+                                     float offset) {
+    float rightLimit = PositionMax(view.w - margin.right, margin.left);
+    float bottomLimit = PositionMax(view.h - margin.bottom, margin.top);
+    float availLeft = PositionMax(trigger.x - margin.left, 0.f);
     float availRight = PositionMax(rightLimit - trigger.Right(), 0.f);
-    float availAbove = PositionMax(trigger.y - margin, 0.f);
+    float availAbove = PositionMax(trigger.y - margin.top, 0.f);
     float availBelow = PositionMax(bottomLimit - trigger.Bottom(), 0.f);
 
     // Placement ordinals: Top 0, Bottom 1, Left 2, Right 3. The arms are in
@@ -4044,6 +4051,11 @@ AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
 
 AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
                                        Size view, float margin) {
+    return AnchoredCornerResolve(anchor, at, popup, view, EdgesAll(margin));
+}
+
+AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
+                                       Size view, Edges margin) {
     Bounds bounds = BoundsAt(at, popup);
     if (anchor == Anchor::TopCenter || anchor == Anchor::BottomCenter) {
         bounds.x -= popup.w * 0.5f;
@@ -4066,9 +4078,9 @@ AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
 // anchored under or over its trigger, one centred on it, and the
 // `relative(f)` half of a left/right inset. Each moves a subtree that taffy
 // has already sized and placed.
-static void PlaceAnchored(El* e, float viewW, float viewH, float clientInset) {
+static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
     for (El* c = e->first; c; c = c->next) {
-        PlaceAnchored(c, viewW, viewH, clientInset);
+        PlaceAnchored(c, viewW, viewH, frame);
         const Style& s = c->style;
         bool anchored = s.anchorBelow || s.anchorAbove || s.anchorCenterX ||
                         s.anchorCorner || s.explicitPositioner;
@@ -4171,8 +4183,10 @@ static void PlaceAnchored(El* e, float viewW, float viewH, float clientInset) {
             }
             ay += s.anchorGap;
         }
+        Edges margin = Edges::New(
+            frame.left + s.anchorMargin, frame.right + s.anchorMargin,
+            frame.top + s.anchorMargin, frame.bottom + s.anchorMargin);
         if (s.explicitPositioner) {
-            float margin = s.anchorMargin + clientInset;
             AnchoredPosition resolved =
                 s.positionerCorner
                     ? AnchoredCornerResolve(s.anchor, s.positionerPoint,
@@ -4188,22 +4202,26 @@ static void PlaceAnchored(El* e, float viewW, float viewH, float clientInset) {
         // positioner.rs `clamp`: whatever the corner worked out, the popup is
         // then pulled back inside the viewport with WINDOW_MARGIN to spare.
         // It never flips — that is the side strategy's job — so a popup with
-        // nowhere to go simply sits against the edge.
+        // nowhere to go simply sits against the edge. The client inset is
+        // kept only on untiled edges of a client-decorated window.
         if (anchored && viewW > 0 && viewH > 0) {
-            float m = s.anchorMargin + clientInset;
-            float rightLimit = viewW - m > m ? viewW - m : m;
-            float bottomLimit = viewH - m > m ? viewH - m : m;
+            float rightLimit = viewW - margin.right > margin.left
+                                   ? viewW - margin.right
+                                   : margin.left;
+            float bottomLimit = viewH - margin.bottom > margin.top
+                                    ? viewH - margin.bottom
+                                    : margin.top;
             if (ax + c->w > rightLimit) {
                 ax = rightLimit - c->w;
             }
-            if (ax < m) {
-                ax = m;
+            if (ax < margin.left) {
+                ax = margin.left;
             }
             if (ay + c->h > bottomLimit) {
                 ay = bottomLimit - c->h;
             }
-            if (ay < m) {
-                ay = m;
+            if (ay < margin.top) {
+                ay = margin.top;
             }
         }
         if (s.explicitPositioner) {
@@ -4330,8 +4348,17 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
     for (int i = 0; i < len(gLayoutFixed); i++) {
         WriteBackEl(lc, ctx, gLayoutFixed[i], 0, 0);
     }
-    PlaceAnchored(e, ctx ? ctx->viewW : 0.f, ctx ? ctx->viewH : 0.f,
-                  ctx ? ctx->clientInset : 0.f);
+    Edges frame = {};
+    if (ctx) {
+        if (ctx->window) {
+            frame =
+                PositionerFrameInsets(WindowClientDecorated(ctx->window),
+                                      ctx->window->tiling, ctx->clientInset);
+        } else {
+            frame = EdgesAll(ctx->clientInset);
+        }
+    }
+    PlaceAnchored(e, ctx ? ctx->viewW : 0.f, ctx ? ctx->viewH : 0.f, frame);
     lc->stats.allocs = lc->tree.allocs;
 }
 

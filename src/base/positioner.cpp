@@ -17,12 +17,27 @@ ResolvedPosition PositionSide(Bounds trigger, Size popup, Size view,
 
 ResolvedPosition PositionCorner(Anchor anchor, Point at, Size popup, Size view,
                                 float margin) {
+    return PositionCorner(anchor, at, popup, view, EdgesAll(margin));
+}
+
+ResolvedPosition PositionCorner(Anchor anchor, Point at, Size popup, Size view,
+                                Edges margin) {
     AnchoredPosition resolved =
         AnchoredCornerResolve(anchor, at, popup, view, margin);
     ResolvedPosition out = {};
     out.bounds = resolved.bounds;
     out.hasPlacement = false;
     return out;
+}
+
+Edges PositionerFrameInsets(bool clientDecorated, Tiling tiling,
+                            float clientInset) {
+    if (!clientDecorated) {
+        return {};
+    }
+    return Edges::New(
+        tiling.left ? 0.f : clientInset, tiling.right ? 0.f : clientInset,
+        tiling.top ? 0.f : clientInset, tiling.bottom ? 0.f : clientInset);
 }
 
 Positioner* Positioner::Side(Ctx* cx, Bounds trigger) {
