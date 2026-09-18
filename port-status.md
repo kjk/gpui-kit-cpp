@@ -14,11 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `d407f2da39a7ba55c83d8b5422d5532b555bcb61`
-(2026-09-18, chart: Fix the pie radius fallback and fit the gallery's
-region labels (#3123)). An unset outer radius is 40% of the laid-out
-height. The current update target is
-`7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `851544dc1d4553b89f838ec6ad10030ef8818d97`
+(2026-09-18, docs: Bind keys before the menu bar, and say what makes a
+handle a Tab stop (#3124)). Website and skill docs only. The current
+update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
