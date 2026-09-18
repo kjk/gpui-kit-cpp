@@ -49,7 +49,7 @@ bool TreeExpands(bool isFolder, bool isExpanded);
 // which is the same tree without the reference counting.
 struct TreeItem {
     // One StrDup2 block: id.s is the allocation, label.s is interior.
-    // StrFree2(id) frees both; do not StrFree(label).
+    // StrFree(id) frees both; do not StrFree(label).
     Str id = {};
     Str label = {};
     int parent = -1;
@@ -134,7 +134,7 @@ struct TreeState {
 
     ~TreeState() {
         for (int i = 0; i < items.len; i++) {
-            StrFree2(items[i].id);
+            StrFree(items[i].id);
         }
         VecReset(items);
         VecReset(entries);

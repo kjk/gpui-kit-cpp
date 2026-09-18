@@ -144,7 +144,7 @@ void TreeSetItems(TreeState* s, Ctx* cx, const TreeItem* items, int count) {
     // The state owns every item's strings (see TreeAddItem): the old ones go
     // with the old items, and the new ones come in as copies.
     for (int i = 0; i < s->items.len; i++) {
-        StrFree2(s->items[i].id);
+        StrFree(s->items[i].id);
     }
     s->items.len = 0;
     if (items && count > 0) {

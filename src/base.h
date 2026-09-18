@@ -1686,10 +1686,8 @@ void StrFree(const char*) = delete;
 Str StrDup(Arena*, Str str);
 Str StrDup(Str s);
 // Two strings in one heap block. `s1Out.s` is the allocation; `s2Out.s` is
-// interior. Free with StrFree2(s1Out) only — StrFree2 is StrFree by another
-// name, so calling it on `s2Out` would free an interior pointer.
+// interior. Free with StrFree(s1Out) only — not `s2Out`, which is interior.
 void StrDup2(Str s1, Str s2, Str& s1Out, Str& s2Out);
-void StrFree2(Str s);
 
 GPUI_NOINLINE bool StrEqRest(Str s1, Str s2);
 inline bool StrEq(Str s1, Str s2) {
@@ -1698,7 +1696,9 @@ inline bool StrEq(Str s1, Str s2) {
     }
     return StrEqRest(s1, s2);
 }
-bool StrEq(Str s1, const char* s2);
+inline bool StrEq(Str s1, const char* s2) {
+    return StrEq(s1, Str(s2));
+}
 int StrCmp(Str s1, Str s2);
 GPUI_NOINLINE bool StrEqIRest(Str s1, Str s2);
 inline bool StrEqI(Str s1, Str s2) {
@@ -1707,27 +1707,40 @@ inline bool StrEqI(Str s1, Str s2) {
     }
     return StrEqIRest(s1, s2);
 }
-bool StrEqI(Str s1, const char* s2);
-bool StrStartsWith(Str s, Str prefix);
-bool StrStartsWith(Str s, const char* prefix);
-bool StrStartsWithAny(Str s, const char* chars);
-inline bool StrStartsWithI(Str s, Str prefix) {
-    if (prefix.len > s.len) {
-        return false;
-    }
-    return StrEqI(Str(s.s, prefix.len), prefix);
+inline bool StrEqI(Str s1, const char* s2) {
+    return StrEqI(s1, Str(s2));
 }
-bool StrStartsWithI(Str s, const char* prefix);
+bool StrStartsWith(Str s, Str prefix);
+inline bool StrStartsWith(Str s, const char* prefix) {
+    return StrStartsWith(s, Str(prefix));
+}
+bool StrStartsWithAny(Str s, const char* chars);
+bool StrStartsWithI(Str s, Str prefix);
+inline bool StrStartsWithI(Str s, const char* prefix) {
+    return StrStartsWithI(s, Str(prefix));
+}
 bool StrEndsWith(Str s, Str suffix);
-bool StrEndsWith(Str s, const char* suffix);
+inline bool StrEndsWith(Str s, const char* suffix) {
+    return StrEndsWith(s, Str(suffix));
+}
 bool StrEndsWithI(Str s, Str suffix);
-bool StrEndsWithI(Str s, const char* suffix);
+inline bool StrEndsWithI(Str s, const char* suffix) {
+    return StrEndsWithI(s, Str(suffix));
+}
 int StrFind(Str s, Str sub);
-int StrFind(Str s, const char* sub);
+inline int StrFind(Str s, const char* sub) {
+    return StrFind(s, Str(sub));
+}
 int StrFindI(Str s, Str sub);
-int StrFindI(Str s, const char* sub);
-bool StrContains(Str s, Str sub);
-bool StrContainsI(Str s, Str sub);
+inline int StrFindI(Str s, const char* sub) {
+    return StrFindI(s, Str(sub));
+}
+inline bool StrContains(Str s, Str sub) {
+    return StrFind(s, sub) >= 0;
+}
+inline bool StrContainsI(Str s, Str sub) {
+    return StrFindI(s, sub) >= 0;
+}
 // Trims ASCII space, tab, newline, carriage return and form feed without
 // allocating. The result is a slice into `s`.
 Str StrTrimAscii(Str s);

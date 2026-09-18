@@ -401,7 +401,7 @@ int GpuiMain(int argc, char** argv) {
         }
         StrFree(linkError);
         PolicyRelease(policy);
-        StrFree2(root);
+        StrFree(root);
         ShellErrorClear(&error);
         return status;
     }
@@ -411,7 +411,7 @@ int GpuiMain(int argc, char** argv) {
         fprintf(stderr, "gpui-shell: ");
         Print(error.message, stderr);
         fputc('\n', stderr);
-        StrFree2(root);
+        StrFree(root);
         ShellErrorClear(&error);
         return 1;
     }
@@ -424,7 +424,7 @@ int GpuiMain(int argc, char** argv) {
         status = Run(root, entry, invocation, policy);
     }
     PolicyRelease(policy);
-    StrFree2(root);
+    StrFree(root);
     ShellErrorClear(&error);
     return status;
 }

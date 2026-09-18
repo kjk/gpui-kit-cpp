@@ -147,7 +147,7 @@ static int gAssetResolveN = 0;
 
 static void AssetResolveClear() {
     for (int i = 0; i < gAssetResolveN; i++) {
-        StrFree2(gAssetResolve[i].src);
+        StrFree(gAssetResolve[i].src);
         gAssetResolve[i] = {};
     }
     gAssetResolveN = 0;

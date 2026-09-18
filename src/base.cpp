@@ -1012,27 +1012,12 @@ void VecDbgArenaDeath(int id, int len, int totalCap, int segCount) noexcept {
 }
 #endif
 
-static bool StrIsNull(const Str& s) {
-    return !s.s;
-}
-
-static Str WrapAllocated(char* s, int cch = -1) {
-    if (!s) {
-        return {};
-    }
-    if (cch < 0) {
-        return Str(s);
-    }
-    return Str(s, cch);
-}
-
 Str StrDup(Arena* a, Str s) {
-    if (StrIsNull(s) || s.len < 0) {
+    if (!s.s || s.len < 0) {
         return {};
     }
-    int cch = s.len;
-    return WrapAllocated(
-        (char*)MemDup(a, s.s, (size_t)cch * sizeof(char), sizeof(char)), cch);
+    char* p = (char*)MemDup(a, s.s, (size_t)s.len * sizeof(char), sizeof(char));
+    return p ? Str(p, s.len) : Str{};
 }
 
 Str StrDup(Str s) {
@@ -1066,10 +1051,6 @@ void StrDup2(Str s1, Str s2, Str& s1Out, Str& s2Out) {
 
 void StrFree(Str s) {
     free(s.s);
-}
-
-void StrFree2(Str s) {
-    StrFree(s);
 }
 
 // A page that draws "today" cannot be screenshot twice: the picture changes at
@@ -1166,18 +1147,19 @@ void StrLowerAscii(char* s) {
     }
 }
 
-GPUI_NOINLINE bool StrEqRest(Str s1, Str s2) {
+static bool StrEqRestCommon(Str s1, Str s2, bool ignoreCase) {
     if (s1.s == s2.s || s1.len == 0) {
         return true;
     }
     if (!s1.s || !s2.s) {
         return false;
     }
-    return memcmp(s1.s, s2.s, (size_t)s1.len) == 0;
+    return ignoreCase ? StrCmpNI(s1.s, s2.s, s1.len) == 0
+                      : memcmp(s1.s, s2.s, (size_t)s1.len) == 0;
 }
 
-bool StrEq(Str s1, const char* s2) {
-    return StrEq(s1, Str(s2));
+GPUI_NOINLINE bool StrEqRest(Str s1, Str s2) {
+    return StrEqRestCommon(s1, s2, false);
 }
 
 int StrCmp(Str s1, Str s2) {
@@ -1190,31 +1172,25 @@ int StrCmp(Str s1, Str s2) {
 }
 
 GPUI_NOINLINE bool StrEqIRest(Str s1, Str s2) {
-    if (s1.s == s2.s || s1.len == 0) {
-        return true;
-    }
-    if (StrIsNull(s1) || StrIsNull(s2)) {
-        return false;
-    }
-    return 0 == StrCmpNI(s1.s, s2.s, s1.len);
+    return StrEqRestCommon(s1, s2, true);
 }
 
-bool StrEqI(Str s1, const char* s2) {
-    return StrEqI(s1, Str(s2));
+static bool StrHasAffix(Str s, Str affix, bool fromEnd, bool ignoreCase) {
+    if (affix.len > s.len) {
+        return false;
+    }
+    if (affix.len == 0) {
+        return true;
+    }
+    if (!s.s || !affix.s) {
+        return false;
+    }
+    Str slice(s.s + (fromEnd ? s.len - affix.len : 0), affix.len);
+    return ignoreCase ? StrEqI(slice, affix) : StrEq(slice, affix);
 }
 
 bool StrStartsWith(Str s, Str prefix) {
-    if (prefix.len > s.len) {
-        return false;
-    }
-    if (prefix.len == 0) {
-        return true;
-    }
-    return s.s && prefix.s && StrEq(Str(s.s, prefix.len), prefix);
-}
-
-bool StrStartsWith(Str s, const char* prefix) {
-    return StrStartsWith(s, Str(prefix));
+    return StrHasAffix(s, prefix, false, false);
 }
 
 bool StrStartsWithAny(Str s, const char* chars) {
@@ -1229,78 +1205,37 @@ bool StrStartsWithAny(Str s, const char* chars) {
     return false;
 }
 
-bool StrStartsWithI(Str s, const char* prefix) {
-    return StrStartsWithI(s, Str(prefix));
+bool StrStartsWithI(Str s, Str prefix) {
+    return StrHasAffix(s, prefix, false, true);
 }
 
 bool StrEndsWith(Str s, Str suffix) {
-    if (suffix.len > s.len) {
-        return false;
-    }
-    if (suffix.len == 0) {
-        return true;
-    }
-    return s.s && suffix.s &&
-           StrEq(Str(s.s + s.len - suffix.len, suffix.len), suffix);
-}
-
-bool StrEndsWith(Str s, const char* suffix) {
-    return StrEndsWith(s, Str(suffix));
+    return StrHasAffix(s, suffix, true, false);
 }
 
 bool StrEndsWithI(Str s, Str suffix) {
-    if (suffix.len > s.len) {
-        return false;
-    }
-    if (suffix.len == 0) {
-        return true;
-    }
-    return s.s && suffix.s &&
-           StrEqI(Str(s.s + s.len - suffix.len, suffix.len), suffix);
+    return StrHasAffix(s, suffix, true, true);
 }
 
-bool StrEndsWithI(Str s, const char* suffix) {
-    return StrEndsWithI(s, Str(suffix));
+static int StrFindCommon(Str s, Str sub, bool ignoreCase) {
+    if (!s.s || !sub.s || sub.len <= 0 || sub.len > s.len) {
+        return -1;
+    }
+    for (int off = 0; off + sub.len <= s.len; off++) {
+        Str slice(s.s + off, sub.len);
+        if (ignoreCase ? StrEqI(slice, sub) : StrEq(slice, sub)) {
+            return off;
+        }
+    }
+    return -1;
 }
 
 int StrFind(Str s, Str sub) {
-    if (!s.s || !sub.s || sub.len <= 0 || sub.len > s.len) {
-        return -1;
-    }
-    for (int off = 0; off + sub.len <= s.len; off++) {
-        if (StrEq(Str(s.s + off, sub.len), sub)) {
-            return off;
-        }
-    }
-    return -1;
-}
-
-int StrFind(Str s, const char* sub) {
-    return StrFind(s, Str(sub));
+    return StrFindCommon(s, sub, false);
 }
 
 int StrFindI(Str s, Str sub) {
-    if (!s.s || !sub.s || sub.len <= 0 || sub.len > s.len) {
-        return -1;
-    }
-    for (int off = 0; off + sub.len <= s.len; off++) {
-        if (StrEqI(Str(s.s + off, sub.len), sub)) {
-            return off;
-        }
-    }
-    return -1;
-}
-
-int StrFindI(Str s, const char* sub) {
-    return StrFindI(s, Str(sub));
-}
-
-bool StrContains(Str s, Str sub) {
-    return StrFind(s, sub) >= 0;
-}
-
-bool StrContainsI(Str s, Str sub) {
-    return StrFindI(s, sub) >= 0;
+    return StrFindCommon(s, sub, true);
 }
 
 static bool IsStrTrimAscii(char c) {
@@ -1328,12 +1263,12 @@ Str StrReplaceAll(Str value, Str from, Str to) {
     }
     int count = 0;
     for (int i = 0; i <= value.len - from.len;) {
-        if (StrEq(Str(value.s + i, from.len), from)) {
-            count++;
-            i += from.len;
-        } else {
-            i++;
+        int at = StrFind(Str(value.s + i, value.len - i), from);
+        if (at < 0) {
+            break;
         }
+        count++;
+        i += at + from.len;
     }
     if (count == 0) {
         return value;
@@ -1354,14 +1289,24 @@ Str StrReplaceAll(Str value, Str from, Str to) {
     int src = 0;
     int dst = 0;
     while (src < value.len) {
-        if (src <= value.len - from.len &&
-            StrEq(Str(value.s + src, from.len), from)) {
-            memcpy(result.s + dst, to.s, (size_t)to.len);
-            src += from.len;
-            dst += to.len;
-        } else {
-            result.s[dst++] = value.s[src++];
+        int remain = value.len - src;
+        int at =
+            remain >= from.len ? StrFind(Str(value.s + src, remain), from) : -1;
+        if (at < 0) {
+            memcpy(result.s + dst, value.s + src, (size_t)remain);
+            dst += remain;
+            break;
         }
+        if (at > 0) {
+            memcpy(result.s + dst, value.s + src, (size_t)at);
+            dst += at;
+            src += at;
+        }
+        if (to.len > 0) {
+            memcpy(result.s + dst, to.s, (size_t)to.len);
+            dst += to.len;
+        }
+        src += from.len;
     }
     result.s[dst] = 0;
     result.len = dst;
@@ -1387,28 +1332,16 @@ Str SeqStrNext(Str s) {
     return next[0] ? Str(next) : Str{};
 }
 
-// Compare before advancing so a lookup does not strlen every candidate first.
-// The two lookups differ only in case folding, so they share the walk.
 static int SeqStrIndexCmp(SeqStrings strs, Str toFind, bool ignoreCase) {
-    if (!strs || !toFind) return -1;
-    const char* candidate = strs;
+    if (!strs || !toFind) {
+        return -1;
+    }
     int idx = 0;
-    while (*candidate) {
-        int i = 0;
-        while (i < toFind.len && candidate[i]) {
-            char a = candidate[i];
-            char b = toFind.s[i];
-            if (ignoreCase) {
-                if (a >= 'A' && a <= 'Z') a = (char)(a + ('a' - 'A'));
-                if (b >= 'A' && b <= 'Z') b = (char)(b + ('a' - 'A'));
-            }
-            if (a != b) break;
-            i++;
+    for (Str cand = SeqStrFirst(strs); cand.len > 0;
+         cand = SeqStrNext(cand), idx++) {
+        if (ignoreCase ? StrEqI(cand, toFind) : StrEq(cand, toFind)) {
+            return idx;
         }
-        if (i == toFind.len && !candidate[i]) return idx;
-        while (*candidate) candidate++;
-        candidate++;
-        idx++;
     }
     return -1;
 }
@@ -1520,7 +1453,7 @@ bool StrBuilder::AppendChar(char c) {
 }
 
 bool StrBuilder::Append(Str src) {
-    if (StrIsNull(src) || 0 == src.len) {
+    if (!src.s || src.len == 0) {
         return true;
     }
     if (!StrBuilderEnsureCap(*this, len + src.len)) {

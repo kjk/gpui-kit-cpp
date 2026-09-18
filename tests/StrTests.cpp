@@ -135,11 +135,36 @@ static void PrefixSuffixAndFindHelpersHandleBoundaries() {
     utassert(base::StrEndsWith(text, ""));
     utassert(base::StrFind(text, StrL("beta")) == 6);
     utassert(base::StrFindI(text, StrL("BETA")) == 6);
-    utassert(base::StrFind(text, StrL("gamma")) == -1);
     utassert(base::StrFind(text, StrL("")) == -1);
     utassert(base::StrContains(text, StrL("Alpha")));
     utassert(base::StrContainsI(text, StrL("BETA")));
     utassert(!base::StrContains(text, StrL("alpha")));
+
+    // Str and const char* overloads share one affix/find path, including
+    // empty/null slices and the case-insensitive pair.
+    utassert(base::StrStartsWith(text, StrL("Alpha")) ==
+             base::StrStartsWith(text, "Alpha"));
+    utassert(base::StrStartsWithI(text, StrL("aL")) ==
+             base::StrStartsWithI(text, "aL"));
+    utassert(base::StrEndsWith(text, StrL("beta")) ==
+             base::StrEndsWith(text, "beta"));
+    utassert(base::StrEndsWithI(text, StrL("BETA")) ==
+             base::StrEndsWithI(text, "BETA"));
+    utassert(base::StrFind(text, StrL("beta")) == base::StrFind(text, "beta"));
+    utassert(base::StrFindI(text, StrL("BETA")) ==
+             base::StrFindI(text, "BETA"));
+    utassert(base::StrFind(text, StrL("gamma")) ==
+             base::StrFind(text, "gamma"));
+    utassert(base::StrEq(text, StrL("Alpha beta")) ==
+             base::StrEq(text, "Alpha beta"));
+    utassert(base::StrEqI(text, StrL("ALPHA BETA")) ==
+             base::StrEqI(text, "ALPHA BETA"));
+    utassert(base::StrStartsWith(Str{}, StrL("")) &&
+             base::StrStartsWith(Str{}, ""));
+    utassert(!base::StrStartsWith(Str{}, StrL("a")) &&
+             !base::StrStartsWith(Str{}, "a"));
+    utassert(base::StrFind(text, (const char*)nullptr) == -1);
+    utassert(base::StrFindI(Str{}, "x") == -1);
 }
 
 static void TrimAsciiReturnsASlice() {
@@ -213,7 +238,7 @@ static void Dup2PutsBothStringsInOneBlock() {
     utassert(base::StrEq(b, StrL("label")));
     utassert(a.s && b.s == a.s + a.len + 1);
     utassert(a.s[a.len] == 0 && b.s[b.len] == 0);
-    StrFree2(a);
+    StrFree(a);
 }
 
 static void Dup2TreatsNullAsEmptyInsideTheSameBlock() {
@@ -222,12 +247,12 @@ static void Dup2TreatsNullAsEmptyInsideTheSameBlock() {
     utassert(a.len == 0 && a.s);
     utassert(base::StrEq(b, StrL("x")));
     utassert(b.s == a.s + 1);
-    StrFree2(a);
+    StrFree(a);
 
     StrDup2(StrL("y"), Str{}, a, b);
     utassert(base::StrEq(a, StrL("y")));
     utassert(b.len == 0 && b.s == a.s + a.len + 1);
-    StrFree2(a);
+    StrFree(a);
 }
 
 static void StartsWithAnyChecksFirstCharInSet() {
