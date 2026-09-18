@@ -3530,9 +3530,112 @@ static void InlineTokenContentValidatesRanges() {
     VecReset(c.tokens);
 }
 
+static int TokenCount(const InputState& s) {
+    const Vec<InlineTokenSpan>* spans = InputTokens(&s);
+    return spans ? spans->len : 0;
+}
+
+static bool TokenRangeIs(const InputState& s, int i, int start, int end) {
+    const Vec<InlineTokenSpan>* spans = InputTokens(&s);
+    return spans && i < spans->len && (*spans)[i].start == start &&
+           (*spans)[i].end == end;
+}
+
+static void InlineTokensAreAtomicForCaretAndHistory() {
+    InputState s;
+    InputSetValue(&s, StrL("问 @alice!"));
+    InlineToken tok = InlineToken::New(StrL("alice-1"), StrL("@alice"))
+                          .WithLabel(StrL("Alice"));
+    utassert(InputReplaceRangeWithToken(&s, nullptr, nullptr, 4, 10, tok) ==
+             InlineTokenError::Ok);
+    utassert(ValueIs(s, "问 @alice!"));
+    utassert(TokenCount(s) == 1);
+    utassert(TokenRangeIs(s, 0, 4, 10));
+    utassert(InputNextEndOfWordAt(&s, 4) == 10);
+    utassert(InputPreviousStartOfWordAt(&s, 10) == 4);
+    utassert(InputPreviousBoundary(&s, 10) == 4);
+    utassert(InputNextBoundary(&s, 4) == 10);
+
+    Act(&s, InputAction::Undo);
+    utassert(TokenCount(s) == 0);
+    utassert(ValueIs(s, "问 @alice!"));
+    Act(&s, InputAction::Redo);
+    utassert(TokenCount(s) == 1);
+    utassert(InlineTokenEq((*InputTokens(&s))[0].token, tok));
+
+    InputSetSelectedRange(&s, nullptr, nullptr, 6, 7);
+    utassert(RangeIs(s, 4, 10));
+    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, Str{});
+    utassert(ValueIs(s, "问 !"));
+    utassert(TokenCount(s) == 0);
+    Act(&s, InputAction::Undo);
+    utassert(TokenCount(s) == 1);
+    utassert(InlineTokenEq((*InputTokens(&s))[0].token, tok));
+
+    InputSetSelectedRange(&s, nullptr, nullptr, 0, 0);
+    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, StrL("🙂"));
+    utassert(TokenRangeIs(s, 0, 8, 14));
+    Act(&s, InputAction::Undo);
+    utassert(TokenRangeIs(s, 0, 4, 10));
+
+    utassert(InputReplaceRangeWithToken(&s, nullptr, nullptr, 0, 0, tok) ==
+             InlineTokenError::Ok);
+    utassert(ValueIs(s, "@alice问 @alice!"));
+    utassert(TokenCount(s) == 2);
+    Act(&s, InputAction::Undo);
+    utassert(TokenCount(s) == 1);
+    utassert(TokenRangeIs(s, 0, 4, 10));
+
+    InputSetValue(&s, StrL("问 @alice!"));
+    utassert(TokenCount(s) == 0);
+    utassert(s.undo.undos.len == 0);
+}
+
+static void InlineTokensRespectModeAndContent() {
+    InputState multi;
+    multi.kind = InputKind::Textarea;
+    InputContent content = InputContent::New(StrL("@a@b\n后面"));
+    utassert(content.WithToken(0, 2, InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    utassert(content.WithToken(2, 4, InlineToken::New(StrL("b"), StrL("@b"))) ==
+             InlineTokenError::Ok);
+    InputSetValue(&multi, content);
+    utassert(TokenCount(multi) == 2);
+    utassert(InputPreviousBoundary(&multi, 2) == 0);
+    utassert(InputNextBoundary(&multi, 2) == 4);
+
+    Mark(&multi, "中");
+    utassert(InputReplaceWithToken(&multi, nullptr, nullptr,
+                                   InlineToken::New(StrL("x"), StrL("x"))) ==
+             InlineTokenError::CompositionActive);
+    InputUnmarkText(&multi, nullptr, nullptr);
+
+    InputState masked;
+    InputSetValue(&masked, StrL("ab"));
+    utassert(InputReplaceWithToken(&masked, nullptr, nullptr,
+                                   InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    masked.masked = true;
+    utassert(!InputTokensVisible(&masked));
+    utassert(InputReplaceWithToken(&masked, nullptr, nullptr,
+                                   InlineToken::New(StrL("b"), StrL("b"))) ==
+             InlineTokenError::UnsupportedMode);
+
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    InputSetValue(&editor, StrL("ab"));
+    utassert(InputReplaceWithToken(&editor, nullptr, nullptr,
+                                   InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::UnsupportedMode);
+
+    VecReset(content.tokens);
+}
+
 void TestInputState() {
     TestSuite("input_state");
     InlineTokenContentValidatesRanges();
+    InlineTokensAreAtomicForCaretAndHistory();
+    InlineTokensRespectModeAndContent();
     AnAltClickAddsACursorAndTypingWritesAtEach();
     DeletesAtEveryCursorAreOneUndoStep();
     TypingAtEveryCursorUndoesToEveryCursor();

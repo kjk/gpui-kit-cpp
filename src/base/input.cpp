@@ -226,6 +226,64 @@ static int MaskedOffset(Str text, int off) {
     return chars * 3;
 }
 
+struct TokenClick {
+    InputState* state = nullptr;
+    int start = 0;
+    int end = 0;
+};
+
+static void OnTokenChipClick(TokenClick* p) {
+    if (!p || !p->state) {
+        return;
+    }
+    InputSetSelectedRange(p->state, nullptr, nullptr, p->start, p->end);
+    InlineTokenStore* store = p->state->tokens;
+    if (!store || !store->click) {
+        return;
+    }
+    InlineTokenClickEvent ev = {};
+    ev.span.start = p->start;
+    ev.span.end = p->end;
+    if (const Vec<InlineTokenSpan>* spans = InputTokens(p->state)) {
+        for (int i = 0; i < spans->len; i++) {
+            if ((*spans)[i].start == p->start) {
+                ev.span = (*spans)[i];
+                break;
+            }
+        }
+    }
+    store->click(&ev, nullptr, store->clickUser);
+}
+
+static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
+                     const Selection& sel) {
+    Arena* a = cx->a;
+    InlineTokenContext ctx = {};
+    ctx.span = span;
+    ctx.selected = sel.start < span.end && span.start < sel.end;
+    ctx.disabled = state->disabled;
+    ctx.readonly = state->readonly;
+    ctx.lineHeight = kInputLineH;
+    ctx.availableWidth = state->lastBounds.w > 0 ? state->lastBounds.w : kFill;
+    El* chip = nullptr;
+    InlineTokenStore* store = state->tokens;
+    if (store && store->renderer) {
+        chip = store->renderer(cx, &ctx, store->rendererUser);
+    } else {
+        chip = Div(a)
+                   ->FlexRow()
+                   ->ItemsCenter()
+                   ->H(kInputLineH)
+                   ->Child(TextEl(a, span.token.label));
+    }
+    TokenClick* click = ArenaNew<TokenClick>(a);
+    click->state = state;
+    click->start = span.start;
+    click->end = span.end;
+    chip->OnClick(MkFunc0(&OnTokenChipClick, click))->StopClick();
+    return chip;
+}
+
 El* Input::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
@@ -293,6 +351,48 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         sel.end = MaskedOffset(text, sel.end);
         mark.start = MaskedOffset(text, mark.start);
         mark.end = MaskedOffset(text, mark.end);
+    }
+    auto emitRun = [&](Str slice, int docStart) {
+        if (len(slice) == 0) {
+            return;
+        }
+        El* piece = TextEl(a, slice)
+                        ->Font(font)
+                        ->LineHeight(lineMult)
+                        ->Fg(style.foreground)
+                        ->BindInput(state);
+        int lo = sel.start - docStart;
+        int hi = sel.end - docStart;
+        if (lo < 0) {
+            lo = 0;
+        }
+        if (hi > len(slice)) {
+            hi = len(slice);
+        }
+        if (!sel.IsEmpty() && lo < hi) {
+            piece->SelRange(lo, hi, style.selection);
+        }
+        if (caret && cursor >= docStart && cursor <= docStart + len(slice)) {
+            piece->Caret(cursor - docStart, style.caret);
+        }
+        row->Child(piece);
+    };
+    const Vec<InlineTokenSpan>* spans =
+        InputTokensVisible(state) ? InputTokens(state) : nullptr;
+    if (spans && spans->len > 0 && !masked) {
+        int at = 0;
+        for (int i = 0; i < spans->len; i++) {
+            const InlineTokenSpan& span = (*spans)[i];
+            if (span.start > at) {
+                emitRun(Str(run.s + at, span.start - at), at);
+            }
+            row->Child(TokenChip(cx, state, span, sel));
+            at = span.end;
+        }
+        if (at < len(run)) {
+            emitRun(Str(run.s + at, len(run) - at), at);
+        }
+        return row;
     }
     El* el = TextEl(a, run)
                  ->Font(font)
@@ -1389,6 +1489,8 @@ InputState::~InputState() {
     }
     StrFree(placeholder);
     MaskPatternFree(&maskPattern);
+    InlineTokenStoreFree(tokens);
+    tokens = nullptr;
     if (highlighter.drop) {
         highlighter.drop(highlighter.data);
     }
@@ -1831,6 +1933,7 @@ Str InputUnmaskValue(Arena* a, const InputState* s) {
 static int InputCursorBoundary(const InputState* s, int offset, Bias bias) {
     Str t = InputValue(s);
     offset = RopeClipOffset(t, offset, bias);
+    offset = InputTokenBoundary(s, offset, bias);
     if (offset > 0 && offset < len(t) && t.s[offset - 1] == '\r' &&
         t.s[offset] == '\n') {
         return bias == Bias::Left ? offset - 1 : offset + 1;
@@ -1932,7 +2035,7 @@ int InputEndOfLine(const InputState* s, Window* win) {
 // unicode-segmentation for the word bounds and takes the nearest one whose
 // text is not all whitespace; the same answer falls out of walking the
 // character classes text_boundary.rs already sorts characters into.
-int InputPreviousStartOfWord(const InputState* s) {
+int InputPreviousStartOfWordAt(const InputState* s, int offset) {
     if (s->masked) {
         // Every character shows as the same bullet, so there are no word
         // boundaries on screen to move or delete by: the word is the whole
@@ -1940,7 +2043,7 @@ int InputPreviousStartOfWord(const InputState* s) {
         return 0;
     }
     Str t = InputValue(s);
-    int off = RopeClipOffset(t, s->selectedRange.start, Bias::Left);
+    int off = RopeClipOffset(t, offset, Bias::Left);
     while (off > 0) {
         int prev = Utf8Prev(t, off);
         uint32_t c = 0;
@@ -1966,16 +2069,20 @@ int InputPreviousStartOfWord(const InputState* s) {
         }
         off = prev;
     }
-    return off;
+    return InputTokenBoundary(s, off, Bias::Left);
 }
 
-int InputNextEndOfWord(const InputState* s) {
+int InputPreviousStartOfWord(const InputState* s) {
+    return InputPreviousStartOfWordAt(s, s->selectedRange.start);
+}
+
+int InputNextEndOfWordAt(const InputState* s, int offset) {
     Str t = InputValue(s);
     if (s->masked) {
         // See InputPreviousStartOfWord.
         return len(t);
     }
-    int off = RopeClipOffset(t, InputCursor(s), Bias::Left);
+    int off = RopeClipOffset(t, offset, Bias::Left);
     while (off < len(t)) {
         uint32_t c = 0;
         int n = Utf8At(t, off, &c);
@@ -1999,7 +2106,11 @@ int InputNextEndOfWord(const InputState* s) {
         }
         off += n;
     }
-    return off;
+    return InputTokenBoundary(s, off, Bias::Right);
+}
+
+int InputNextEndOfWord(const InputState* s) {
+    return InputNextEndOfWordAt(s, InputCursor(s));
 }
 
 static void Notify(App* app, Window* win) {
@@ -2282,6 +2393,7 @@ void InputUnselect(InputState* s, App* app, Window* win) {
 void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b) {
     Str t = InputValue(s);
     s->cursorLineEndAffinity = false;
+    InputNormalizeTokenRange(s, &a, &b);
     // A non-empty range grows out to character boundaries; an empty one stays
     // empty and clips to the boundary before it.
     Bias endBias = a == b ? Bias::Left : Bias::Right;
@@ -2790,10 +2902,62 @@ static Str NormalizeInput(Arena* a, const InputState* s, Str newText) {
 
 // push_history. `oldAll` is the whole document as it was before the splice;
 // `range` indexes into it.
+static TokenDelta* EditTokens(InputState* s, int start, int end, int newLen) {
+    InlineTokenStore* store = s->tokens;
+    if (!store || store->replaying) {
+        return nullptr;
+    }
+    InlineTokenSpan inserted = {};
+    int n = 0;
+    if (store->hasPending) {
+        inserted.start = 0;
+        inserted.end = newLen;
+        inserted.token = store->pending;
+        store->hasPending = false;
+        store->pending = {};
+        n = 1;
+    }
+    if (n == 0 && store->spans.len == 0) {
+        return nullptr;
+    }
+    TokenDelta* delta = TokenStoreReplace(&store->spans, start, end, newLen,
+                                          n ? &inserted : nullptr, n);
+    if (n) {
+        InlineTokenFree(&inserted.token);
+    }
+    return delta;
+}
+
+static void ReplayTokens(InputState* s, int start, int end, int newLen,
+                         const TokenDelta* delta, bool undo) {
+    const InlineTokenSpan* inserted = nullptr;
+    int n = 0;
+    if (delta) {
+        if (undo) {
+            inserted = delta->removed.els;
+            n = delta->removed.len;
+        } else {
+            inserted = delta->inserted.els;
+            n = delta->inserted.len;
+        }
+    }
+    if (n > 0) {
+        InputTokenStore(s, true);
+    }
+    if (!s->tokens) {
+        return;
+    }
+    TokenDelta* scratch =
+        TokenStoreReplace(&s->tokens->spans, start, end, newLen, inserted, n);
+    TokenDeltaFree(scratch);
+}
+
 static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
                         bool hasIntent, EditIntent requested,
                         Selection selBefore, const Selection* selAfter) {
+    TokenDelta* delta = EditTokens(s, range.start, range.end, len(newText));
     if (UndoIsIgnoring(&s->undo)) {
+        TokenDeltaFree(delta);
         return;
     }
     Selection r = {RopeClipOffset(oldAll, range.start, Bias::Left),
@@ -2828,6 +2992,7 @@ static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
     c.newText = StrDup(newText);
     c.selBefore = before;
     c.selAfter = selAfter ? *selAfter : SelectionAt(newRange.end);
+    c.tokenDelta = delta;
     UndoRecordTransaction(&s->undo, c, intent);
 }
 
@@ -3051,6 +3216,9 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     Selection r = range           ? *range
                   : s->imeMarking ? s->imeMarked
                                   : s->selectedRange;
+    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
+        InputNormalizeTokenRange(s, &r.start, &r.end);
+    }
     Str before = InputValue(s);
     if (r.start < 0) {
         r.start = 0;
@@ -3373,6 +3541,9 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     Selection r = range           ? *range
                   : s->imeMarking ? s->imeMarked
                                   : s->selectedRange;
+    if (!s->tokens || (!s->tokens->replaying && !s->tokens->validatedEdit)) {
+        InputNormalizeTokenRange(s, &r.start, &r.end);
+    }
     Str before = InputValue(s);
     if (r.start < 0) {
         r.start = 0;
@@ -3480,9 +3651,28 @@ static void ResetSelection(InputState* s) {
 // undo history rather than becoming a step in it. Rust takes a window and a
 // context because it emits and notifies; this one suppresses both, so seeding
 // a field before the window exists is the same call as changing it later.
+static void InstallTokens(InputState* s, const InputContent& content) {
+    bool supported = s->kind != InputKind::Editor && MaskIsNone(s->maskPattern);
+    bool textKept = StrEq(InputValue(s), content.text);
+    InlineTokenStore* store = InputTokenStore(s, content.tokens.len > 0);
+    if (!store) {
+        return;
+    }
+    InlineTokenSpansClear(&store->spans);
+    if (!supported || !textKept) {
+        return;
+    }
+    for (int i = 0; i < content.tokens.len; i++) {
+        VecAppend(store->spans, InlineTokenSpanDup(content.tokens[i]));
+    }
+}
+
 void InputSetValue(InputState* s, Str value) {
     App* app = nullptr;
     Window* win = nullptr;
+    if (s->tokens) {
+        InlineTokenSpansClear(&s->tokens->spans);
+    }
     UndoSetIgnoring(&s->undo, true);
     s->emitEvents = false;
     ReplaceText(s, app, win, value);
@@ -3491,6 +3681,116 @@ void InputSetValue(InputState* s, Str value) {
     ResetSelection(s);
     UndoClear(&s->undo);
     Notify(app, win);
+}
+
+void InputSetValue(InputState* s, const InputContent& content) {
+    InputSetValue(s, content.text);
+    InstallTokens(s, content);
+}
+
+static InlineTokenError CheckTokenMode(const InputState* s) {
+    if (s->imeMarking) {
+        return InlineTokenError::CompositionActive;
+    }
+    const InlineTokenStore* store = InputTokenStore(s);
+    if (s->kind == InputKind::Editor || s->masked || (store && store->secret) ||
+        !MaskIsNone(s->maskPattern)) {
+        return InlineTokenError::UnsupportedMode;
+    }
+    return InlineTokenError::Ok;
+}
+
+InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
+                                            Window* win, int start, int end,
+                                            InlineToken token) {
+    if (!s) {
+        return InlineTokenError::InvalidRange;
+    }
+    InlineTokenError err = CheckTokenMode(s);
+    if (err != InlineTokenError::Ok) {
+        return err;
+    }
+    err = token.Validate();
+    if (err != InlineTokenError::Ok) {
+        return err;
+    }
+    Str text = InputValue(s);
+    if (start < 0 || end < start || end > len(text)) {
+        return InlineTokenError::InvalidRange;
+    }
+    if (start != end) {
+        InputContent probe = InputContent::New(text);
+        err = probe.WithToken(start, end, token);
+        VecReset(probe.tokens);
+        if (err != InlineTokenError::Ok &&
+            err != InlineTokenError::OverlappingTokens) {
+            return err;
+        }
+    }
+    InputNormalizeTokenRange(s, &start, &end);
+    if (start < 0) {
+        start = 0;
+    }
+    if (end > len(text)) {
+        end = len(text);
+    }
+    if (end < start) {
+        end = start;
+    }
+    Arena* tmp = GetTempArena();
+    StrBuilder next;
+    next.Append(Str(text.s, start));
+    next.Append(token.text);
+    next.Append(Str(text.s + end, len(text) - end));
+    Str built = next.TakeStr();
+    Str normalized = NormalizeInput(tmp, s, built);
+    if (!StrEq(normalized, built)) {
+        StrFree(built);
+        return InlineTokenError::TextMismatch;
+    }
+    if (!IsValidInput(s, normalized) && IsValidInput(s, text)) {
+        StrFree(built);
+        return InlineTokenError::ValidationRejected;
+    }
+    const Vec<InlineTokenSpan>* spans = InputTokens(s);
+    if (spans) {
+        for (int i = 0; i < spans->len; i++) {
+            const InlineTokenSpan& span = (*spans)[i];
+            if (span.start == start && span.end == end &&
+                InlineTokenEq(span.token, token)) {
+                StrFree(built);
+                return InlineTokenError::Ok;
+            }
+        }
+    }
+    InlineTokenStore* store = InputTokenStore(s, true);
+    if (store->hasPending) {
+        InlineTokenFree(&store->pending);
+    }
+    store->pending = InlineTokenDup(token);
+    store->hasPending = true;
+    store->validatedEdit = true;
+    UndoBreakCoalescing(&s->undo);
+    s->undo.hasPendingIntent = true;
+    s->undo.pendingIntent = EditIntent::Atomic;
+    Selection range = {start, end};
+    InputReplaceTextInRange(s, app, win, &range, token.text);
+    store->validatedEdit = false;
+    if (store->hasPending) {
+        InlineTokenFree(&store->pending);
+        store->hasPending = false;
+    }
+    StrFree(built);
+    return InlineTokenError::Ok;
+}
+
+InlineTokenError InputReplaceWithToken(InputState* s, App* app, Window* win,
+                                       InlineToken token) {
+    if (!s) {
+        return InlineTokenError::InvalidRange;
+    }
+    return InputReplaceRangeWithToken(s, app, win, s->selectedRange.start,
+                                      s->selectedRange.end, token);
 }
 
 void InputReplaceAll(InputState* s, App* app, Window* win, Str value) {
@@ -5138,16 +5438,36 @@ static void DoCopy(InputState* s, Window* win) {
     ClipboardSetText(win, SelectedTexts(GetTempArena(), s));
 }
 
+static bool TransactionHasTokenDelta(const UndoTransaction* t) {
+    if (!t) {
+        return false;
+    }
+    for (int i = 0; i < t->len; i++) {
+        if (t->changes[i].tokenDelta) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static void DoUndo(InputState* s, App* app, Window* win) {
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopUndo(&s->undo);
     if (t && t->len > 0) {
+        bool tokenAware = TransactionHasTokenDelta(t);
+        if (s->tokens) {
+            s->tokens->replaying = tokenAware;
+        }
         // The list is applied backwards, so the selection to restore is the
         // one recorded before the first change in it.
         Selection sel = t->changes[0].selBefore;
         for (int i = t->len - 1; i >= 0; i--) {
             Selection r = t->changes[i].newRange;
             InputReplaceTextInRange(s, app, win, &r, t->changes[i].oldText);
+            if (tokenAware) {
+                ReplayTokens(s, r.start, r.end, len(t->changes[i].oldText),
+                             t->changes[i].tokenDelta, true);
+            }
         }
         if (t->nSelsBefore > 0) {
             RestoreCursors(s, t->selsBefore, t->nSelsBefore);
@@ -5155,6 +5475,9 @@ static void DoUndo(InputState* s, App* app, Window* win) {
             s->cursorLineEndAffinity = false;
             s->selectedRange = sel;
             s->selectionReversed = false;
+        }
+        if (s->tokens) {
+            s->tokens->replaying = false;
         }
     }
     UndoSetIgnoring(&s->undo, false);
@@ -5164,10 +5487,18 @@ static void DoRedo(InputState* s, App* app, Window* win) {
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopRedo(&s->undo);
     if (t && t->len > 0) {
+        bool tokenAware = TransactionHasTokenDelta(t);
+        if (s->tokens) {
+            s->tokens->replaying = tokenAware;
+        }
         Selection sel = t->changes[t->len - 1].selAfter;
         for (int i = 0; i < t->len; i++) {
             Selection r = t->changes[i].oldRange;
             InputReplaceTextInRange(s, app, win, &r, t->changes[i].newText);
+            if (tokenAware) {
+                ReplayTokens(s, r.start, r.end, len(t->changes[i].newText),
+                             t->changes[i].tokenDelta, false);
+            }
         }
         if (t->nSelsAfter > 0) {
             RestoreCursors(s, t->selsAfter, t->nSelsAfter);
@@ -5175,6 +5506,9 @@ static void DoRedo(InputState* s, App* app, Window* win) {
             s->cursorLineEndAffinity = false;
             s->selectedRange = sel;
             s->selectionReversed = false;
+        }
+        if (s->tokens) {
+            s->tokens->replaying = false;
         }
     }
     UndoSetIgnoring(&s->undo, false);
@@ -7109,8 +7443,10 @@ static void ChangeFree(Change* c) {
     // keeping oldText, so the two allocations have to be independent.
     StrFree(c->oldText);
     StrFree(c->newText);
+    TokenDeltaFree(c->tokenDelta);
     c->oldText = {};
     c->newText = {};
+    c->tokenDelta = nullptr;
 }
 
 static void TransactionFree(UndoTransaction* t) {
@@ -7305,9 +7641,10 @@ void UndoRecordTransaction(UndoManager* m, Change change, EditIntent intent) {
         return;
     }
     // A no-op edit records nothing, but still ends the run before it, so the
-    // undo history keeps whatever it already had.
+    // undo history keeps whatever it already had. An identity-only token
+    // association changes no text and still has to be undoable.
     if (RangeSame(change.oldRange, change.newRange) &&
-        base::StrEq(change.oldText, change.newText)) {
+        base::StrEq(change.oldText, change.newText) && !change.tokenDelta) {
         ChangeFree(&change);
         UndoBreakCoalescing(m);
         return;

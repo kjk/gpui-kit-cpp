@@ -141,6 +141,10 @@ struct Input {
     Listener onToggleMask;
     InputPasteFn onPaste = nullptr;
     void* onPasteData = nullptr;
+    InlineTokenRenderer tokenRenderer = nullptr;
+    void* tokenRendererUser = nullptr;
+    InlineTokenClickListener tokenClick = nullptr;
+    void* tokenClickUser = nullptr;
 
     static Input* New(Ctx* cx, Str id, InputState* state);
     Input* Label(Str s);
@@ -172,6 +176,10 @@ struct Input {
     Input* OnChange(Listener fn);
     Input* OnFocus(Listener fn);
     Input* OnPaste(InputPasteFn fn, void* data = nullptr);
+    // The element each atomic token renders as; the input keeps editing
+    // and history. Default is InputToken.
+    Input* Token(InlineTokenRenderer fn, void* user = nullptr);
+    Input* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
     El* IntoEl();
 };
 
@@ -341,6 +349,10 @@ struct Textarea {
     Listener onFocus;
     InputPasteFn onPaste = nullptr;
     void* onPasteData = nullptr;
+    InlineTokenRenderer tokenRenderer = nullptr;
+    void* tokenRendererUser = nullptr;
+    InlineTokenClickListener tokenClick = nullptr;
+    void* tokenClickUser = nullptr;
 
     static Textarea* New(Ctx* cx, Str id, InputState* state);
     // Rust sizes a textarea by rows (`auto_grow(min, max)`); without one it
@@ -358,6 +370,8 @@ struct Textarea {
     Textarea* FocusRing(bool v);
     Textarea* OnFocus(Listener fn);
     Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
+    Textarea* Token(InlineTokenRenderer fn, void* user = nullptr);
+    Textarea* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
     El* IntoEl();
 };
 

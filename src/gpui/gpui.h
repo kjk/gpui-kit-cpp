@@ -3194,6 +3194,8 @@ enum class EditIntent : uint8_t {
 
 // change.rs Change. Rust's owns two `String`s; these are heap `Str`s the
 // transaction that holds them frees.
+struct TokenDelta;
+
 struct Change {
     Selection oldRange = {};
     Str oldText = {};
@@ -3201,6 +3203,7 @@ struct Change {
     Str newText = {};
     Selection selBefore = {};
     Selection selAfter = {};
+    TokenDelta* tokenDelta = nullptr;
 };
 
 // One undo step. Rust's holds a `Vec<Change>`; a `Vec<T>` here is memcpy-only
@@ -4133,6 +4136,9 @@ struct InputState {
     double numberMax = 0;
     // A masked field draws one bullet per character. InputMode only.
     bool masked = false;
+    // Atomic inline tokens. Owned; created on first use. Coordinates are
+    // UTF-8 byte ranges of `text`.
+    struct InlineTokenStore* tokens = nullptr;
     bool cleanOnEscape = false;
     bool submitOnEnter = false;
     // Input/Editor/Textarea::on_paste. The current frame's themed facade sets
@@ -4455,6 +4461,8 @@ int InputStartOfLine(const InputState* s, Window* win = nullptr);
 int InputEndOfLine(const InputState* s, Window* win = nullptr);
 int InputPreviousStartOfWord(const InputState* s);
 int InputNextEndOfWord(const InputState* s);
+int InputPreviousStartOfWordAt(const InputState* s, int offset);
+int InputNextEndOfWordAt(const InputState* s, int offset);
 
 // move_to(): drops the selection and puts the caret at `offset`.
 void InputMoveTo(InputState* s, App* app, Window* win, int offset);

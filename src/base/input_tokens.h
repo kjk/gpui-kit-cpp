@@ -41,6 +41,34 @@ struct InlineTokenSpan {
     InlineToken token = {};
 };
 
+InlineToken InlineTokenDup(InlineToken t);
+void InlineTokenFree(InlineToken* t);
+InlineTokenSpan InlineTokenSpanDup(InlineTokenSpan s);
+void InlineTokenSpanFree(InlineTokenSpan* s);
+bool InlineTokenEq(InlineToken a, InlineToken b);
+
+// Only affected records are retained in history. Ranges are relative to
+// the edit start.
+struct TokenDelta {
+    Vec<InlineTokenSpan> removed;
+    Vec<InlineTokenSpan> inserted;
+};
+
+void TokenDeltaFree(TokenDelta* d);
+TokenDelta* TokenDeltaDup(const TokenDelta* d);
+
+void InlineTokenSpansClear(Vec<InlineTokenSpan>* spans);
+
+// Replace [start, end) with newLen bytes. inserted ranges are relative to
+// start. Returns a delta when any token was added or removed.
+TokenDelta* TokenStoreReplace(Vec<InlineTokenSpan>* spans, int start, int end,
+                              int newLen, const InlineTokenSpan* inserted,
+                              int nInserted);
+
+int TokenBoundary(const Vec<InlineTokenSpan>& spans, int offset, Bias bias);
+void NormalizeTokenRange(const Vec<InlineTokenSpan>& spans, int* start,
+                         int* end);
+
 struct InputContent {
     Str text = {};
     Vec<InlineTokenSpan> tokens;
@@ -73,7 +101,40 @@ struct InlineTokenClickEvent {
 typedef El* (*InlineTokenRenderer)(Ctx* cx, const InlineTokenContext* ctx,
                                    void* user);
 typedef void (*InlineTokenClickListener)(const InlineTokenClickEvent* ev,
-                                         void* user);
+                                         Ctx* cx, void* user);
+
+struct InlineTokenStore {
+    Vec<InlineTokenSpan> spans;
+    InlineToken pending = {};
+    bool hasPending = false;
+    InlineTokenRenderer renderer = nullptr;
+    void* rendererUser = nullptr;
+    InlineTokenClickListener click = nullptr;
+    void* clickUser = nullptr;
+    bool secret = false;
+    bool replaying = false;
+    bool validatedEdit = false;
+};
+
+void InlineTokenStoreFree(InlineTokenStore* store);
+InlineTokenStore* InputTokenStore(InputState* s, bool create);
+const InlineTokenStore* InputTokenStore(const InputState* s);
+bool InputTokensVisible(const InputState* s);
+const Vec<InlineTokenSpan>* InputTokens(const InputState* s);
+int InputTokenBoundary(const InputState* s, int offset, Bias bias);
+void InputNormalizeTokenRange(const InputState* s, int* start, int* end);
+void InputSetTokenPresentation(InputState* s, InlineTokenRenderer renderer,
+                               void* rendererUser,
+                               InlineTokenClickListener click, void* clickUser,
+                               bool secret);
+void InputSetValue(InputState* s, const InputContent& content);
+InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
+                                            Window* win, int start, int end,
+                                            InlineToken token);
+InlineTokenError InputReplaceWithToken(InputState* s, App* app, Window* win,
+                                       InlineToken token);
+int InputPreviousStartOfWordAt(const InputState* s, int offset);
+int InputNextEndOfWordAt(const InputState* s, int offset);
 
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_TOKENS_H_

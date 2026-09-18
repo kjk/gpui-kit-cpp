@@ -364,6 +364,23 @@ Input* Input::OnPaste(InputPasteFn fn, void* data) {
     onPasteData = data;
     return this;
 }
+
+Input* Input::Token(InlineTokenRenderer fn, void* user) {
+    tokenRenderer = fn;
+    tokenRendererUser = user;
+    return this;
+}
+
+Input* Input::OnTokenClick(InlineTokenClickListener fn, void* user) {
+    tokenClick = fn;
+    tokenClickUser = user;
+    return this;
+}
+
+static El* DefaultInputTokenRender(Ctx* cx, const InlineTokenContext* ctx,
+                                   void*) {
+    return InputToken::New(cx, *ctx)->IntoEl();
+}
 Input* Input::WithSize(UiSize s) {
     size = s;
     return this;
@@ -588,6 +605,11 @@ El* Input::IntoEl() {
         bool editable = !disabled && !readonly && !state->readonly;
         state->pasteHandler = editable ? onPaste : nullptr;
         state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
+        bool secret =
+            hasContentType && InputContentIsSecret(hasContentType, contentType);
+        InputSetTokenPresentation(
+            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
+            tokenRendererUser, tokenClick, tokenClickUser, secret);
     }
     if (focused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
@@ -786,6 +808,18 @@ Textarea* Textarea::OnFocus(Listener fn) {
     return this;
 }
 
+Textarea* Textarea::Token(InlineTokenRenderer fn, void* user) {
+    tokenRenderer = fn;
+    tokenRendererUser = user;
+    return this;
+}
+
+Textarea* Textarea::OnTokenClick(InlineTokenClickListener fn, void* user) {
+    tokenClick = fn;
+    tokenClickUser = user;
+    return this;
+}
+
 Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
     onPaste = fn;
     onPasteData = data;
@@ -806,6 +840,9 @@ El* Textarea::IntoEl() {
             !disabled && !readonly && !state->disabled && !state->readonly;
         state->pasteHandler = editable ? onPaste : nullptr;
         state->pasteHandlerData = state->pasteHandler ? onPasteData : nullptr;
+        InputSetTokenPresentation(
+            state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
+            tokenRendererUser, tokenClick, tokenClickUser, false);
         state->softWrap = softWrap;
         if (rows > 0) {
             LayoutModeSetRows(&state->mode, rows);

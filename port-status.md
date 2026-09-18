@@ -16,10 +16,10 @@ work left is depth, not breadth.
 
 Processed through `7f6d92327936fbab7994a35c86328d793acc060d`
 (2026-09-18, input: Add atomic inline tokens to Input and Textarea
-(#3113)). InlineToken, InputContent validation and InputToken appearance
-are ported; atomic caret/history, the composer story and shell JS bindings
-are not. The current update target is
-`7f6d92327936fbab7994a35c86328d793acc060d`.
+(#3113)). InlineToken, InputContent validation, InputToken appearance,
+atomic caret movement, token history and Input/Textarea token() slots
+are ported; the composer story and shell JS bindings are not. The current
+update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
@@ -67,10 +67,10 @@ are not. The current update target is
   transcribed (`examples/story/chart.cpp`, `ChartFixtures.h`). Sankey node
   hit-testing and tooltip are not painted (`src/ui/chart.cpp`).
 
-- **Atomic inline tokens are data-only so far.** `InlineToken` /
-  `InputContent` validation and the themed `InputToken` chip are ported;
-  atomic caret movement, token history, Input/Textarea `token()` slots, the
-  composer story and shell JS bindings are not (`src/base/input_tokens.cpp`,
+- **Composer story and shell JS token bindings are not registered.** Atomic
+  caret movement, token history and Input/Textarea `token()` /
+  `on_token_click` are ported; the chat-composer story and
+  crates/component-shell token host are not (`src/base/input_tokens.cpp`,
   `src/ui/input.cpp`).
 
 - **Dock tree persistence integration.** `PaneTree::ToState` implements the
