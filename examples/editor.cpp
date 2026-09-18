@@ -852,23 +852,23 @@ static int DocumentColorsIn(void*, Str text, DocumentColor* out, int cap) {
     int n = 0;
     for (int i = 0; i < len(text); i++) {
         Rgba color = {};
-        int len = 0;
+        int colorLen = 0;
         if (text.s[i] == '#') {
-            len = HexColorAt(text, i, &color);
+            colorLen = HexColorAt(text, i, &color);
         } else if ((text.s[i] == 'r' && i + 3 < len(text) &&
                     StrEq(Str(text.s + i, 3), StrL("rgb"))) &&
                    !WordCharAt(text, i - 1)) {
-            len = RgbColorAt(text, i, &color);
+            colorLen = RgbColorAt(text, i, &color);
         }
-        if (len <= 0) {
+        if (colorLen <= 0) {
             continue;
         }
         if (n < cap && out) {
-            out[n].range = Selection{i, i + len};
+            out[n].range = Selection{i, i + colorLen};
             out[n].color = color;
         }
         n++;
-        i += len - 1;
+        i += colorLen - 1;
     }
     return n;
 }
