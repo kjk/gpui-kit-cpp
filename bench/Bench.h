@@ -3,7 +3,7 @@
    Most of what runs here is a port of the benchmarks in taffy's `benches/`
    directory, one file per Rust one. That directory is a crate of its own —
    `taffy_benchmarks` — and is not part of the published crate, so it comes
-   from the git checkout the recipe in port-upstream.md clones.
+   from the git checkout .claude/skills/update-port/crates.md describes.
    `MarkdownBench.cpp` and `Html5everBench.cpp` are not ports: their crates
    carry no comparable benchmarks to translate, so those cases are ours and
    the files say what each measures.

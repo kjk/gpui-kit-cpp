@@ -8,7 +8,7 @@ The pinned version is the one `gpui-kit`'s `Cargo.lock` resolves for
 `gpui`. The pin lives in
 [`cmd/run.ts`](../../cmd/run.ts) (`taffy`) alongside the
 gpui-kit and Zed GPUI pins, and moves when they do — see
-[`port-upstream.md`](../../port-upstream.md).
+[`/update-port`](../../.claude/skills/update-port/crates.md).
 
 ## Where the Rust went
 
@@ -123,7 +123,8 @@ pins behaviour rather than Rust specifics — `util/math.rs`, `util/resolve.rs`,
 
 The crate's larger generated suite lives in its `tests/` directory, which is
 not part of the published crate (its `Cargo.toml` `include` covers only `src/`
-and `examples/`), so it takes the git checkout `port-upstream.md` clones.
+and `examples/`), so it takes the git checkout of taffy
+(`.claude/skills/update-port/crates.md`).
 
 Three grid internals are reached through the seams `GridExplicitSizeForTest`,
 `GridChildMinMaxSpanForTest`, `GridSizeEstimateForTest`,
@@ -149,15 +150,9 @@ pins the first draws against that crate.
 
 ## Refreshing the port
 
-When the `gpuiComponent` pin moves to a checkin whose `Cargo.lock` resolves a
-different taffy, bump `taffy.version` there too and diff the crate:
-
-```
-git -C <a taffy checkout> log --oneline v0.13.0..vNEW -- src
-```
-
-The C++ file that owns each Rust file is in the table above, and every function
-keeps its Rust name in CamelCase, so a diff maps across mechanically.
+The `/update-port` skill moves this crate when a gpui-kit checkin's
+`Cargo.lock` does — [`crates.md`](../../.claude/skills/update-port/crates.md).
+The table above is the map it applies the diff through.
 
 ## The standalone extras/ pair
 

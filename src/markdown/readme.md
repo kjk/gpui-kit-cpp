@@ -9,7 +9,7 @@ returns into its `MdNode` tree, which is what
 
 The pin lives in [`cmd/run.ts`](../../cmd/run.ts) (`markdown`)
 alongside the gpui-kit, Zed GPUI and taffy pins, and moves when they do
-— see [`port-upstream.md`](../../port-upstream.md).
+— see [`/update-port`](../../.claude/skills/update-port/crates.md).
 
 This remains the default parser. `-markdown=mini` selects the independent,
 size-focused implementation in [`src/markdown-mini`](../markdown-mini) while
@@ -153,7 +153,7 @@ the tree the way `TextView` does.
 
 The crate's real suite is the ~8000 CommonMark and GFM cases in its `tests/`
 directory, which is not part of the published crate (`Cargo.toml`'s `include`
-covers `src/` only), the same gap `port-upstream.md` describes for taffy. What
+covers `src/` only), the same gap taffy has. What
 was run in its place, once, from a scratch cargo project holding this exact
 crate version:
 
@@ -188,15 +188,9 @@ cell.
 
 ## Refreshing the port
 
-When the `gpuiComponent` pin moves to a checkin whose `Cargo.lock` resolves a
-different `markdown`, bump `markdown.version` there too and diff the crate:
-
-```
-git -C <a markdown-rs checkout> log --oneline 1.0.0..NEW -- src
-```
-
-The C++ file that owns each Rust file is in the tables above, and every state
-function keeps its Rust name, so a diff maps across mechanically.
+The `/update-port` skill moves this crate when a gpui-kit checkin's
+`Cargo.lock` does — [`crates.md`](../../.claude/skills/update-port/crates.md).
+The tables above are the map it applies the diff through.
 
 Two files are generated rather than typed, and their headers say so:
 `constant.cpp` (the tag-name lists and the 2125 character references) and

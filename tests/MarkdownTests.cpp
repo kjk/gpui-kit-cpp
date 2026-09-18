@@ -4,9 +4,10 @@
    constants, the character classifier and the option shortcuts, and those are
    ported below. Everything else it has lives in the crate's `tests/`
    directory — around 8000 CommonMark and GFM cases — which is not part of the
-   published crate, the same gap `port-upstream.md` describes for taffy. What
-   stands in for them here is the second half of this file: an end-to-end
-   check of each construct, reading the mdast the way TextView does.
+   published crate, the same gap taffy has
+   (.claude/skills/update-port/crates.md). What stands in for them here is the
+   second half of this file: an end-to-end check of each construct, reading
+   the mdast the way TextView does.
 
    Not ported, and named here: the `Debug`/`serde` cases in `mdast.rs`,
    `unist.rs` and `configuration.rs` (neither trait is ported), and

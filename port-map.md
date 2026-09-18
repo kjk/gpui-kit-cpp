@@ -44,7 +44,9 @@ Every non-`full` entry carries a reason in the ledger.
 
 ## Non-mechanical mappings
 
-Everything else follows the naming rule in `port-upstream.md`. These do not:
+Everything else follows the naming rule in
+[`.claude/skills/update-port/SKILL.md`](.claude/skills/update-port/SKILL.md).
+These do not:
 
 | Rust module family | C++ surface | Decision |
 | --- | --- | --- |

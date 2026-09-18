@@ -7,10 +7,11 @@
 //
 // The benchmarks live in bench/. The layout ones are ports of taffy's
 // benches/ directory, which is a crate of its own and not part of the
-// published crate — see port-upstream.md for the checkout. The markdown and
-// html5ever ones are ours: neither crate carries a comparable benchmark to
-// port. The runner is an ordinary build target, so every flag build.ts takes
-// works here too, and everything else goes through to the binary.
+// published crate — see .claude/skills/update-port/crates.md for the
+// checkout. The markdown and html5ever ones are ours: neither crate carries a
+// comparable benchmark to port. The runner is an ordinary build target, so
+// every flag build.ts takes works here too, and everything else goes through
+// to the binary.
 //
 //   bun cmd/bench.ts markdown     # just the parser, after changing it
 //   bun cmd/bench.ts html5ever    # the large HTML document parser

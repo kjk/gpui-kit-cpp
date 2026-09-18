@@ -8,7 +8,7 @@ itself — and it is the only thing in the tree that calls in here.
 
 The pin lives in [`cmd/run.ts`](../../cmd/run.ts) (`wry`) next to
 the gpui-kit, Zed GPUI, taffy and markdown pins, and moves the same way
-— see [`port-upstream.md`](../../port-upstream.md).
+— see [`/update-port`](../../.claude/skills/update-port/crates.md).
 
 ## Where the Rust went
 

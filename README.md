@@ -32,7 +32,7 @@ int GpuiMain(int argc, char** argv) {
 
 Entities are generational handles owned by `App`, not refcounted; `cx.listener` becomes `Listen(cx, &T::Handler)` and `cx.notify()` becomes `Notify(cx)`. See the _App, Window, Entity, Ctx_ section of [AGENTS.md](AGENTS.md).
 
-The Rust sources used as the spec live in a gitignored clone at `.work/gpui-component/`. Exact checkins we are porting are in [`cmd/run.ts`](cmd/run.ts); `bun cmd/build.ts` installs that tree. Ingest playbook: [port-upstream.md](port-upstream.md).
+The Rust sources used as the spec live in a gitignored clone at `.work/gpui-component/`. Exact checkins we are porting are in [`cmd/run.ts`](cmd/run.ts); `bun cmd/build.ts` installs that tree. Ingesting later upstream checkins: the `/update-port` skill ([.claude/skills/update-port/SKILL.md](.claude/skills/update-port/SKILL.md)).
 
 ## Build
 

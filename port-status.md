@@ -130,5 +130,5 @@ Processed through `d604a2ace1c6d8629b94e0498a9158c4a713defa`
 Per-crate exclusion lists live with the crate: `src/taffy/readme.md`,
 `src/markdown/readme.md`, `src/markdown-mini/readme.md`,
 `src/html5ever/readme.md`, `src/html5ever-mini/readme.md`, `src/wry/readme.md`
-and `src/autocorrect/readme.md`. `port-upstream.md` lists the dependencies we
-replace rather than port.
+and `src/autocorrect/readme.md`. `.claude/skills/update-port/crates.md` lists
+the dependencies we replace rather than port.

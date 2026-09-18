@@ -17,7 +17,9 @@ gitignored clone at `.work/gpui-component/`, installed at the pinned SHA by
 (`gpuiComponent`, `zedGpui`, and the five crates we port: `taffy`, `markdown`,
 `html5ever`, `wry`, `autocorrect`). `bun cmd/run.ts -versions` prints and
 syncs them.
-Ingesting a later checkin: [`port-upstream.md`](port-upstream.md).
+Ingesting later checkins, the five crates included: the `/update-port` skill,
+[`.claude/skills/update-port/SKILL.md`](.claude/skills/update-port/SKILL.md).
+`bun cmd/upstream-pending.ts` lists what is waiting.
 
 **Fidelity is the bar.** When a widget's look or numbers are in question, read
 the Rust file under `.work/gpui-component/` at the pinned SHA and copy the
@@ -126,8 +128,9 @@ ported for a reason *other* than these belongs in `port-status.md`.
   syntect, an LSP client, resvg, ropey. Where Rust reaches for one
   and the feature is worth having, write the small version this tree needs or
   port the crate the way `src/taffy`, `src/markdown`, `src/html5ever`,
-  `src/wry` and `src/autocorrect` are ported. `port-upstream.md` lists which
-  is which.
+  `src/wry` and `src/autocorrect` are ported.
+  [`.claude/skills/update-port/crates.md`](.claude/skills/update-port/crates.md)
+  lists which is which.
   `src/wry/` is the worked example of the second route: WebView2's COM bindings
   and Microsoft's loader are declared and written out in `wry_win.cpp` rather
   than vendored.
@@ -685,9 +688,10 @@ in either order. All of it is the same on every platform.
 ```
 AGENTS.md              this file
 port-status.md         known gaps and deliberate deviations
-port-upstream.md       how to ingest a later upstream checkin
 port-map.md            the Base/UI module ledger (cmd/audit-port.ts)
 readme-dist.md         the published snapshot's readme; edit here, never there
+.claude/skills/update-port/  /update-port: ingest upstream checkin by checkin,
+                       and the ported crates with it (crates.md)
 
 cmd/build.ts           the whole build, every platform
 cmd/run.ts             build then run; also holds the upstream pins
@@ -697,6 +701,7 @@ cmd/bench.ts           build bench/ and run it
 cmd/format.ts          clang-format + prettier (pass the changed paths)
 cmd/clang-tidy.ts      clang-tidy over src/**/*.cpp
 cmd/audit-port.ts      the Base/UI declaration/export/test audit; CI runs it
+cmd/upstream-pending.ts  the upstream checkins after the pin, oldest first
 cmd/update-dist.ts     amalgamate src/** into gpui.h + gpui.cpp
 cmd/update-win-shaders.ts  FXC over paintgpu_win.hlsl -> checked-in DXBC
 cmd/update-quickjs.ts  regenerate src/quickjs/ from the pinned QuickJS-NG
