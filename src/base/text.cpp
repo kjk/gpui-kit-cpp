@@ -2944,6 +2944,12 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
 }
 
 El* TextView::IntoEl() {
+    // inline.rs RetainedLayout and node.rs ParagraphRenderCache: Rust hands
+    // StyledText between frames through a table keyed by InlineState, and
+    // caches concatenated highlights on the paragraph. This tree keeps the
+    // parsed MdRun list on MdNode (MdParseCached) and reshapes in paint from
+    // those runs; there is no StyledText object to retain. The gpui::test
+    // that two copies of one document keep two layouts needs TestAppContext.
     // The style this view renders with: its own, then the application's
     // TextViewDefaults, then the Base theme's palette. A Base application
     // that installs neither still gets a readable document.

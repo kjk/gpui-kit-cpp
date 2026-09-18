@@ -14,10 +14,11 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `4ef4f79780058bbccb99cafd05550b7d93dbdca8`
-(2026-09-18, shell: update QuickJS JIT to 0.12.9 (#3116)). Upstream's shell
-moves quickjs-jit; this tree stays on QuickJS-NG. The current update target
-is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `6b7e3a62b586e5d4c623ac459a85c00fcaaae4a0`
+(2026-09-18, text_view: Keep a paragraph's shaped text and rendered
+highlights across frames (#3115)). The parsed MdRun list is already kept on
+MdNode; there is no StyledText table to hand between frames. The current
+update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
