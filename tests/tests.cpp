@@ -118,6 +118,7 @@ int GpuiMain(int argc, char** argv) {
     TestJson();
     TestInspector();
     TestThemeColor();
+    TestThemeFont();
     TestColor();
     TestWryUri();
     TestAutocorrect();

@@ -2,6 +2,7 @@
 
 #include "base/lib.h"
 #include "gpui/assets.h"
+#include "gpui/paint.h"
 #include "ui/text.h"
 
 #include <math.h>
@@ -670,8 +671,107 @@ static void ThemeSyncRuntime(App* app, const AppThemeState* state) {
     RuntimeStyleInstall(app, style);
 }
 
+// font_name_with_fallbacks: `.SystemUIFont` is the platform face, `.ZedSans`
+// / `Zed Plex Sans` are IBM Plex Sans, `.ZedMono` / `Zed Plex Mono` are Lilex.
+static Str ThemeFontNameWithFallbacks(Str name) {
+    if (StrEq(name, ".SystemUIFont")) {
+        return PaintSystemUIFontMappedFamily();
+    }
+    if (StrEq(name, ".ZedSans") || StrEq(name, "Zed Plex Sans")) {
+        return StrL("IBM Plex Sans");
+    }
+    if (StrEq(name, ".ZedMono") || StrEq(name, "Zed Plex Mono")) {
+        return StrL("Lilex");
+    }
+    return name;
+}
+
+static bool ThemeFontNameLoads(Str name, const Str* installed, int n) {
+    if (!name) {
+        return false;
+    }
+    // Core Text's virtual system face is always loadable and is not always
+    // in CTFontManagerCopyAvailableFontFamilyNames.
+    if (StrEq(name, ".AppleSystemUIFont")) {
+        return true;
+    }
+    for (int i = 0; i < n; i++) {
+        if (StrEq(installed[i], name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// resolve_font + get_font_for_id: the lookup key of the first family that
+// loads. That is still `.SystemUIFont` when its mapped face is installed,
+// which is why Windows and macOS keep the virtual name.
+static Str ThemeResolvedSystemUIFont(const Str* installed, int n) {
+    Str requested = StrL(".SystemUIFont");
+    if (ThemeFontNameLoads(ThemeFontNameWithFallbacks(requested), installed,
+                           n)) {
+        return requested;
+    }
+    // text_system.rs fallback_font_stack. Virtual `.Zed*` keys map through
+    // font_name_with_fallbacks; get_font_for_id then returns the key, so
+    // substitute only names a fallback that is itself in `installed`.
+    static const char* kFallbacks[] = {
+        ".ZedMono",     ".ZedSans",  "Helvetica", "Segoe UI",    "Ubuntu",
+        "Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans", "Arial",
+    };
+    for (int i = 0; i < (int)dimof(kFallbacks); i++) {
+        Str key = Str(kFallbacks[i]);
+        if (ThemeFontNameLoads(ThemeFontNameWithFallbacks(key), installed, n)) {
+            return key;
+        }
+    }
+    return {};
+}
+
+Str ThemeSubstituteSystemFont(Str requested, Str resolved, const Str* installed,
+                              int n) {
+    if (!resolved.s || StrEq(resolved, requested)) {
+        return {};
+    }
+    for (int i = 0; i < n; i++) {
+        if (StrEq(installed[i], resolved)) {
+            return resolved;
+        }
+    }
+    return {};
+}
+
+// system_font.rs resolve_default_font. Paint still uses its platform default
+// face; this is the name Theme.fontFamily and semantic tokens expose.
+static void ThemeResolveDefaultFont(App* app, AppThemeState* state) {
+    int n = 0;
+    const Str* installed =
+        PaintInstalledFontNames(app ? app->paint : nullptr, &n);
+    if (n == 0) {
+        return;
+    }
+    Str resolved = {};
+    bool resolvedReady = false;
+    for (int i = 0; i < 2; i++) {
+        Theme* t = &state->active[i];
+        if (!StrEq(t->fontFamily, ".SystemUIFont")) {
+            continue;
+        }
+        if (!resolvedReady) {
+            resolved = ThemeResolvedSystemUIFont(installed, n);
+            resolvedReady = true;
+        }
+        Str family = ThemeSubstituteSystemFont(StrL(".SystemUIFont"), resolved,
+                                               installed, n);
+        if (family.s) {
+            t->fontFamily = family;
+        }
+    }
+}
+
 static void ThemeDidChange(App* app, AppThemeState* state) {
     if (state) {
+        ThemeResolveDefaultFont(app, state);
         ThemeSyncRuntime(app, state);
         ThemeSyncBase(app);
     }

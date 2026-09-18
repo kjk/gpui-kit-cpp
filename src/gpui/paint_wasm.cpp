@@ -962,6 +962,20 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
+const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+    (void)pa;
+    // WebTextSystem starts with an empty font database and only sees fonts
+    // the application adds, usually after init.
+    if (n) {
+        *n = 0;
+    }
+    return nullptr;
+}
+
+Str PaintSystemUIFontMappedFamily() {
+    return {};
+}
+
 void PaintTargetFree(PaintCtx* ctx) {
     if (!ctx || !ctx->rt) {
         return;

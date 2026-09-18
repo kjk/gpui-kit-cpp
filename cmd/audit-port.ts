@@ -331,6 +331,7 @@ const testTargets: Record<string, string[]> = {
   "ui/text": ["tests/TextViewTests.cpp", "tests/MarkdownTests.cpp"],
   "ui/theme": [
     "tests/ThemeColorTests.cpp",
+    "tests/ThemeFontTests.cpp",
     "tests/ThemeRegistryTests.cpp",
     "tests/ThemeSettingsTests.cpp",
     "tests/MotionTests.cpp",

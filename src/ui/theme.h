@@ -400,6 +400,8 @@ struct Theme {
     // rather than half its own height, so one setting governs the lot.
     float radiusFull;
     ThemeMode mode = ThemeMode::Light;
+    // Default `.SystemUIFont`. When that virtual name resolves to an installed
+    // fallback instead of itself, Theme::change names the fallback here.
     Str fontFamily = Str(".SystemUIFont");
     float fontSize = 16.f;
 #if GPUI_OS_MAC
@@ -511,6 +513,11 @@ bool ThemeFocusRing(const App* app);
 void ThemeSetFocusRing(App* app, bool on);
 const Theme& ThemeNow(const App* app);
 void ThemeSet(App* app, ThemeMode mode);
+// system_font.rs substitute: the family to name instead of `requested` when
+// GPUI resolved it to a different installed family. Empty `resolved` is
+// None; empty return means keep `requested`.
+Str ThemeSubstituteSystemFont(Str requested, Str resolved, const Str* installed,
+                              int n);
 ThemeMode ThemeGet(const App* app);
 // Theme::scrollbar_mode. An element that names its own mode wins.
 ScrollbarMode ScrollbarModeNow(const App* app);

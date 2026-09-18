@@ -159,6 +159,15 @@ const float kLineHeight = 1.618034f;
 PaintApp* PaintAppNew();
 void PaintAppFree(PaintApp* pa);
 
+// Families the OS reports as installed. Listed once per process; names live
+// until exit. Empty while the text system has no fonts (the browser before
+// add_fonts). `pa` may be null: listing does not need a bound target.
+const Str* PaintInstalledFontNames(PaintApp* pa, int* n);
+// The family `.SystemUIFont` maps to on this platform, before fallbacks:
+// Segoe UI (or the icon-title face) on Windows, `.AppleSystemUIFont` on
+// macOS, IBM Plex Sans on Linux. Empty while no font is installed.
+Str PaintSystemUIFontMappedFamily();
+
 // Bind `native` — the HWND on Windows, the cairo surface on Linux — as this
 // frame's target and open a drawing batch. False means skip the frame.
 //

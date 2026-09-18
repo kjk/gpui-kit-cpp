@@ -263,6 +263,95 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
+static Vec<Str> gInstalledFonts;
+static bool gInstalledFontsReady = false;
+
+static void LoadInstalledFonts(IDWriteFactory* dwrite) {
+    if (gInstalledFontsReady) {
+        return;
+    }
+    gInstalledFontsReady = true;
+    if (!dwrite) {
+        return;
+    }
+    IDWriteFontCollection* coll = nullptr;
+    if (FAILED(dwrite->GetSystemFontCollection(&coll, FALSE)) || !coll) {
+        return;
+    }
+    UINT32 n = coll->GetFontFamilyCount();
+    for (UINT32 i = 0; i < n; i++) {
+        IDWriteFontFamily* fam = nullptr;
+        if (FAILED(coll->GetFontFamily(i, &fam)) || !fam) {
+            continue;
+        }
+        IDWriteLocalizedStrings* names = nullptr;
+        if (FAILED(fam->GetFamilyNames(&names)) || !names) {
+            fam->Release();
+            continue;
+        }
+        UINT32 index = 0;
+        BOOL exists = FALSE;
+        names->FindLocaleName(L"en-us", &index, &exists);
+        if (!exists) {
+            index = 0;
+        }
+        UINT32 wlen = 0;
+        names->GetStringLength(index, &wlen);
+        if (wlen > 0 && wlen < 256) {
+            wchar_t wbuf[256];
+            if (SUCCEEDED(names->GetString(index, wbuf, wlen + 1))) {
+                char utf8[512];
+                int bytes =
+                    WideCharToMultiByte(CP_UTF8, 0, wbuf, -1, utf8,
+                                        (int)sizeof(utf8), nullptr, nullptr);
+                if (bytes > 1) {
+                    VecAppend(gInstalledFonts, StrDup(Str(utf8, bytes - 1)));
+                }
+            }
+        }
+        names->Release();
+        fam->Release();
+    }
+    coll->Release();
+}
+
+const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+    if (!gInstalledFontsReady) {
+        IDWriteFactory* dwrite = pa ? pa->dwrite : nullptr;
+        IDWriteFactory* owned = nullptr;
+        if (!dwrite) {
+            DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+                                __uuidof(IDWriteFactory), (IUnknown**)&owned);
+            dwrite = owned;
+        }
+        LoadInstalledFonts(dwrite);
+        Rel(&owned);
+    }
+    if (n) {
+        *n = gInstalledFonts.len;
+    }
+    return gInstalledFonts.els;
+}
+
+Str PaintSystemUIFontMappedFamily() {
+    LOGFONTW info = {};
+    if (!SystemParametersInfoW(SPI_GETICONTITLELOGFONT, sizeof(info), &info,
+                               0)) {
+        return StrL("Segoe UI");
+    }
+    char utf8[128];
+    int bytes = WideCharToMultiByte(CP_UTF8, 0, info.lfFaceName, -1, utf8,
+                                    (int)sizeof(utf8), nullptr, nullptr);
+    if (bytes <= 1) {
+        return StrL("Segoe UI");
+    }
+    static Str cached = {};
+    if (!cached.s) {
+        cached = StrDup(Str(utf8, bytes - 1));
+    }
+    return cached;
+}
+
 void PaintTargetFree(PaintCtx* ctx) {
     // Before anything is released: the scene's path cache holds geometry
     // realizations, which belong to the device context about to go.

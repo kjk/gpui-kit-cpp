@@ -63,6 +63,41 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
+static Vec<Str> gInstalledFonts;
+static bool gInstalledFontsReady = false;
+
+const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+    (void)pa;
+    if (!gInstalledFontsReady) {
+        gInstalledFontsReady = true;
+        CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames();
+        if (names) {
+            CFIndex count = CFArrayGetCount(names);
+            for (CFIndex i = 0; i < count; i++) {
+                auto cf = (CFStringRef)CFArrayGetValueAtIndex(names, i);
+                if (!cf) {
+                    continue;
+                }
+                char utf8[256];
+                if (CFStringGetCString(cf, utf8, sizeof(utf8),
+                                       kCFStringEncodingUTF8) &&
+                    utf8[0]) {
+                    VecAppend(gInstalledFonts, StrDup(Str(utf8)));
+                }
+            }
+            CFRelease(names);
+        }
+    }
+    if (n) {
+        *n = gInstalledFonts.len;
+    }
+    return gInstalledFonts.els;
+}
+
+Str PaintSystemUIFontMappedFamily() {
+    return StrL(".AppleSystemUIFont");
+}
+
 void PaintTargetFree(PaintCtx* ctx) {
     if (!ctx || !ctx->rt) {
         return;

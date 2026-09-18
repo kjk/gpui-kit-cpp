@@ -69,6 +69,39 @@ void PaintAppFree(PaintApp* pa) {
     delete pa;
 }
 
+static Vec<Str> gInstalledFonts;
+static bool gInstalledFontsReady = false;
+
+const Str* PaintInstalledFontNames(PaintApp* pa, int* n) {
+    (void)pa;
+    if (!gInstalledFontsReady) {
+        gInstalledFontsReady = true;
+        PangoFontMap* map = pango_cairo_font_map_get_default();
+        PangoFontFamily** families = nullptr;
+        int count = 0;
+        if (map) {
+            pango_font_map_list_families(map, &families, &count);
+        }
+        for (int i = 0; i < count; i++) {
+            const char* name = pango_font_family_get_name(families[i]);
+            if (name && name[0]) {
+                VecAppend(gInstalledFonts, StrDup(Str(name)));
+            }
+        }
+        g_free(families);
+    }
+    if (n) {
+        *n = gInstalledFonts.len;
+    }
+    return gInstalledFonts.els;
+}
+
+Str PaintSystemUIFontMappedFamily() {
+    // CosmicTextSystem::new("IBM Plex Sans"): the Linux mapping of
+    // `.SystemUIFont`, which most desktops do not ship.
+    return StrL("IBM Plex Sans");
+}
+
 void PaintTargetFree(PaintCtx* ctx) {
     if (!ctx || !ctx->rt) {
         return;

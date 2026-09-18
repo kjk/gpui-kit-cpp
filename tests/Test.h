@@ -108,6 +108,7 @@ void TestSankey();
 void TestJson();
 void TestInspector();
 void TestThemeColor();
+void TestThemeFont();
 void TestColor();
 void TestWryUri();
 void TestAutocorrect();
