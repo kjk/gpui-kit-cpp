@@ -40,6 +40,23 @@ static void AChainedBlockTakesItsSizeFromTheArena() {
     ArenaDelete(a);
 }
 
+static void AllocAndMemberAllocShareOnePath() {
+    Arena* a = ArenaNew();
+    void* viaFree = Alloc(a, 64);
+    void* viaMember = a->Alloc(64);
+    utassert(viaFree && viaMember);
+    utassert(viaFree != viaMember);
+    // Heap fallback is the same wrapper with a null arena.
+    void* heap = Alloc((Arena*)nullptr, 32);
+    utassert(heap);
+    Free(nullptr, heap);
+    utassert(Alloc(a, 0) == nullptr);
+    utassert(a->Alloc(0) == nullptr);
+    utassert(Alloc(a, -1) == nullptr);
+    ArenaDelete(a);
+}
+
 void TestArena() {
     AChainedBlockTakesItsSizeFromTheArena();
+    AllocAndMemberAllocShareOnePath();
 }

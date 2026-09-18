@@ -57,6 +57,17 @@ static void TheLengthModifierIsNormalized() {
     utassert(base::StrEq(fmt("%zu", (size_t)12), StrL("12")));
     utassert(base::StrEq(fmt("%ld", 12), StrL("12")));
     utassert(base::StrEq(fmt("%hd", 12), StrL("12")));
+
+    // 32-bit and 64-bit integer conversions share one snprintf hand-off;
+    // width only changes the length modifier and the C type passed in.
+    utassert(base::StrEq(fmt("%x", 255), StrL("ff")));
+    utassert(base::StrEq(fmt("%llx", (long long)255), StrL("ff")));
+    utassert(base::StrEq(fmt("%i", 42), StrL("42")));
+    utassert(base::StrEq(fmt("%lli", big), StrL("5000000000")));
+    unsigned int u32 = 0xffffffffu;
+    utassert(base::StrEq(fmt("%x", u32), StrL("ffffffff")));
+    utassert(
+        base::StrEq(fmt("%llx", (unsigned long long)u32), StrL("ffffffff")));
 }
 
 static void TheAnyDirectives() {

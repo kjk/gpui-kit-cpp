@@ -91,20 +91,11 @@ static uint64_t ArenaAlignPow2(uint64_t value, uint64_t align) {
     return (value + align - 1) & ~(align - 1);
 }
 
-static uint64_t ArenaMin(uint64_t a, uint64_t b) {
-    return (a < b) ? a : b;
-}
-
-static uint64_t ArenaMax(uint64_t a, uint64_t b) {
-    return (a > b) ? a : b;
-}
-
-static uint64_t ArenaClampTop(uint64_t value, uint64_t maxValue) {
-    return (value < maxValue) ? value : maxValue;
-}
-
-static uint64_t ArenaClampBot(uint64_t minValue, uint64_t value) {
-    return (value > minValue) ? value : minValue;
+static uint64_t ArenaPosAfter(Arena* current, uint64_t size, uint64_t align) {
+    if (align == 0) {
+        align = 1;
+    }
+    return ArenaAlignPow2(current->pos, align) + size;
 }
 
 static Arena* ArenaAlloc(const ArenaParams& params);
@@ -114,22 +105,14 @@ static void ArenaRelease(Arena* arena) {
 }
 
 // Whether a push of this size would land in a freshly chained block rather
-// than at the end of the current one. Callers that need the bytes to be
-// contiguous with what is already there have to ask before they push: the
-// answer decides how much to ask for, and asking afterwards is too late.
-// The lock must be held.
+// than at the end of the current one. The lock must be held.
 static bool ArenaPushWouldChainLocked(Arena* arena, uint64_t size,
                                       uint64_t align) {
     if (!arena || (arena->flags & ArenaFlagNoChain)) {
-        // a no-chain arena fails the push instead of chaining
         return false;
     }
-    if (align == 0) {
-        align = 1;
-    }
-    Arena* current = arena->current;
-    uint64_t posPost = ArenaAlignPow2(current->pos, align) + size;
-    return current->reserved < posPost;
+    return arena->current
+               ->reserved < ArenaPosAfter(arena->current, size, align);
 }
 
 static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
@@ -137,17 +120,13 @@ static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
     if (!arena) {
         return nullptr;
     }
-    if (align == 0) {
-        align = 1;
-    }
-
     Arena* current = arena->current;
-    uint64_t posPre = ArenaAlignPow2(current->pos, align);
-    uint64_t posPost = posPre + size;
+    uint64_t posPost = ArenaPosAfter(current, size, align);
+    uint64_t posPre = posPost - size;
 
     uint64_t sizeToZero = 0;
     if (zero && current->committed > posPre) {
-        sizeToZero = ArenaMin(current->committed, posPost) - posPre;
+        sizeToZero = std::min(current->committed, posPost) - posPre;
     }
 
     if (current->reserved < posPost && !(arena->flags & ArenaFlagNoChain)) {
@@ -160,7 +139,7 @@ static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
         uint64_t commitChunkSize = arena->commitChunkSize;
         if (size + kArenaHeaderSize > reserveChunkSize) {
             reserveChunkSize = ArenaAlignPow2(size + kArenaHeaderSize,
-                                              ArenaMax(align, PlatPageSize()));
+                                              std::max(align, PlatPageSize()));
             commitChunkSize = reserveChunkSize;
         }
 
@@ -181,8 +160,8 @@ static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
         newBlock->prev = current;
         arena->current = newBlock;
         current = newBlock;
-        posPre = ArenaAlignPow2(current->pos, align);
-        posPost = posPre + size;
+        posPost = ArenaPosAfter(current, size, align);
+        posPre = posPost - size;
         sizeToZero = 0;
     }
 
@@ -192,7 +171,7 @@ static void* ArenaPushLocked(Arena* arena, uint64_t size, uint64_t align,
         }
 
         uint64_t commitEnd = ArenaAlignPow2(posPost, current->commitChunkSize);
-        uint64_t commitClamped = ArenaClampTop(commitEnd, current->reserved);
+        uint64_t commitClamped = std::min(commitEnd, current->reserved);
         uint64_t commitSize = commitClamped - current->committed;
         void* commitPtr = (char*)current + current->committed;
         if (!PlatMemCommit(commitPtr, commitSize, false)) {
@@ -247,10 +226,10 @@ static Arena* ArenaAlloc(const ArenaParams& srcParams) {
     const uint64_t pageSize =
         useLargePages ? PlatLargePageSize() : PlatPageSize();
     uint64_t reserveSize = ArenaAlignPow2(
-        ArenaMax(params.reserveSize, kArenaHeaderSize), pageSize);
+        std::max(params.reserveSize, kArenaHeaderSize), pageSize);
     uint64_t commitSize =
-        ArenaAlignPow2(ArenaMax(params.commitSize, kArenaHeaderSize), pageSize);
-    commitSize = ArenaClampTop(commitSize, reserveSize);
+        ArenaAlignPow2(std::max(params.commitSize, kArenaHeaderSize), pageSize);
+    commitSize = std::min(commitSize, reserveSize);
 
     void* base = params.optionalBackingBuffer;
     bool usesExternalBuffer = (base != nullptr);
@@ -332,7 +311,7 @@ void Arena::PopTo(uint64_t popPos) {
     Arena* arena = this;
     lock.Lock();
 
-    uint64_t bigPos = ArenaClampBot(kArenaHeaderSize, popPos);
+    uint64_t bigPos = std::max(kArenaHeaderSize, popPos);
     Arena* node = arena->current;
     while (node && node->basePos >= bigPos) {
         Arena* prevNode = node->prev;
@@ -363,23 +342,6 @@ uint64_t ArenaUsed(Arena* arena) {
     return cur ? cur->basePos + cur->pos : 0;
 }
 
-// ─── ArenaStr ─────────────────────────────────────────────────────────────
-//
-// The block a position lands in, found by walking back from the newest. The
-// chain is short — one block until an arena outgrows its reserve — and the
-// newest is where a just-allocated string is, so the common walk is one
-// comparison.
-static Arena* ArenaBlockAt(Arena* arena, uint64_t pos) {
-    Arena* node = arena ? arena->current : nullptr;
-    while (node && node->basePos > pos) {
-        node = node->prev;
-    }
-    return node;
-}
-
-// The length, ahead of the bytes, in as few of them as it fits: seven bits
-// to a byte, low bits first, the high bit saying another follows. Under 128
-// characters is one byte, which is nearly every string anything here stores.
 int VarintSize(uint32_t v) {
     int n = 1;
     while (v >= 0x80) {
@@ -415,14 +377,12 @@ int VarintGet(const char* src, uint32_t* out) {
     return n;
 }
 
-// Where an ArenaStr's first byte is, which is its length prefix and not its
-// characters.
 static char* ArenaStrAt(Arena* a, ArenaStr s) {
-    Arena* node = ArenaBlockAt(a, s);
-    if (!node) {
-        return nullptr;
-    }
-    return (char*)node + ((uint64_t)s - node->basePos);
+    return (char*)ArenaAtOffset(a, s);
+}
+
+static uint64_t ArenaBlockOff(Arena* block, const void* p) {
+    return block->basePos + (uint64_t)((const char*)p - (const char*)block);
 }
 
 ArenaStr ArenaStrDup(Arena* a, Str src) {
@@ -436,8 +396,7 @@ ArenaStr ArenaStrDup(Arena* a, Str src) {
     // alignment the pusher applies is known — so the pointer is what says
     // where they went, and the position is worked back out of it.
     char* dst = (char*)ArenaPushLocked(a, (uint64_t)vlen + len + 1, 1, false);
-    Arena* cur = a->current;
-    uint64_t at = dst ? cur->basePos + (uint64_t)((char*)dst - (char*)cur) : 0;
+    uint64_t at = dst ? ArenaBlockOff(a->current, dst) : 0;
     a->lock.Unlock();
     if (!dst) {
         return kArenaStrNone;
@@ -502,11 +461,7 @@ ArenaStr ArenaStrAppend(Arena* a, ArenaStr s, Str more) {
         newest = false;
     }
     char* dst = (char*)ArenaPushLocked(a, want, 1, false);
-    uint64_t at = 0;
-    if (dst) {
-        Arena* after = a->current;
-        at = after->basePos + (uint64_t)((char*)dst - (char*)after);
-    }
+    uint64_t at = dst ? ArenaBlockOff(a->current, dst) : 0;
     a->lock.Unlock();
     if (!dst) {
         return s;
@@ -560,7 +515,7 @@ uint32_t ArenaOffsetOf(Arena* a, const void* p) {
         if (at < lo || at >= lo + node->pos) {
             continue;
         }
-        uint64_t off = node->basePos + (uint64_t)(at - lo);
+        uint64_t off = ArenaBlockOff(node, at);
         if (off > UINT32_MAX) {
             // Four bytes of offset: past four gigabytes of arena the answer
             // would name a different object, so there is no answer.
@@ -571,11 +526,18 @@ uint32_t ArenaOffsetOf(Arena* a, const void* p) {
     return kArenaPtrNone;
 }
 
-void* Arena::Alloc(int size) {
-    if (size <= 0) {
+static void* AllocBytes(Arena* arena, uint64_t size) {
+    if (size == 0) {
         return nullptr;
     }
-    return Push((uint64_t)size, 8, false);
+    if (!arena) {
+        return malloc((size_t)size);
+    }
+    return arena->Push(size, 8, false);
+}
+
+void* Arena::Alloc(int size) {
+    return AllocBytes(this, size <= 0 ? 0 : (uint64_t)size);
 }
 
 void Arena::Reset() {
@@ -584,34 +546,18 @@ void Arena::Reset() {
     peakBytesSinceReset = 0;
 }
 
-// size_t overloads that match the legacy Allocator::* static helper API
-// and fall back to malloc/free when arena is nullptr.
 void* Alloc(Arena* arena, int size) {
-    if (size <= 0) {
-        return nullptr;
-    }
-    if (!arena) {
-        return malloc(size);
-    }
-    return arena->Alloc(size);
+    return AllocBytes(arena, size <= 0 ? 0 : (uint64_t)size);
 }
 
 void Free(Arena* arena, void* mem) {
-    // Arena has no free
-    if (arena) return;
-    free(mem);
+    if (!arena) {
+        free(mem);
+    }
 }
 
-// size_t overloads that match the legacy Allocator::* static helper API
-// and fall back to malloc/free when arena is nullptr.
 static void* Alloc(Arena* arena, size_t size) {
-    if (size == 0) {
-        return nullptr;
-    }
-    if (!arena) {
-        return malloc(size);
-    }
-    return arena->Push((uint64_t)size, 8, false);
+    return AllocBytes(arena, (uint64_t)size);
 }
 
 static void* Realloc(Arena* arena, void* mem, size_t newSize, size_t copySize) {
@@ -1582,6 +1528,15 @@ struct Fmt {
     char buf[256] = {};
 };
 
+static int parseUintAt(Str f, int* off) {
+    int n = 0;
+    while (*off < f.len && IsDigit(f.s[*off])) {
+        n = (n * 10) + (f.s[*off] - '0');
+        (*off)++;
+    }
+    return n;
+}
+
 static void addRawStr(Fmt& fmt, int off, size_t n) {
     if (n == 0) {
         return;
@@ -1603,16 +1558,15 @@ static int parseArgDefBrace(Fmt& fmt, int off) {
     off++;
     int n = 0;
     bool positional = false;
-    // a '{' with no closing '}' must not walk past the end of the format
-    // string. Reachable via a translated format string (fmt(_TRA("...").s,
-    // ...)).
+    if (off < fmt.format.len && IsDigit(fmt.format.s[off])) {
+        n = parseUintAt(fmt.format, &off);
+        positional = true;
+    }
     while (off < fmt.format.len && fmt.format.s[off] != '}') {
         if (!IsDigit(fmt.format.s[off])) {
             fmt.isOk = false;
             return off;
         }
-        n = (n * 10) + (fmt.format.s[off] - '0');
-        positional = true;
         off++;
     }
     if (off >= fmt.format.len) {
@@ -1674,15 +1628,43 @@ static bool startsWith(Str s, int off, const char* prefix) {
     return true;
 }
 
+static int parseLenMod(Str f, int off, int* bits) {
+    *bits = 32;
+    struct Mod {
+        const char* s;
+        int n;
+        int wide;
+    };
+    static const Mod kMods[] = {
+        {"I64", 3, 64},
+        {"I32", 3, 32},
+        {"ll", 2, 64},
+        {"hh", 2, 32},
+    };
+    for (const Mod& m : kMods) {
+        if (startsWith(f, off, m.s)) {
+            *bits = m.wide;
+            return off + m.n;
+        }
+    }
+    char c = off < f.len ? f.s[off] : 0;
+    if (c == 'l' || c == 'h' || c == 'L' || c == 'w') {
+        return off + 1;
+    }
+    if (c == 'z' || c == 'j' || c == 't' || c == 'I') {
+        *bits = 64;
+        return off + 1;
+    }
+    return off;
+}
+
 // parse: %[flags][width][.prec][length]<conv>
-// We capture flags+width+precision verbatim (fed to snprintf) and normalize the
-// length modifier into an explicit 32/64-bit width so output matches printf.
+// Flags+width+precision go to snprintf; the length modifier becomes 32/64.
 static int parseArgDefPerc(Fmt& fmt, int off) {
     Str f = fmt.format;
     off++; // past '%'
     int fwpStart = off;
     bool leftJust = false;
-    // flags
     while (off < f.len &&
            (f.s[off] == '-' || f.s[off] == '+' || f.s[off] == ' ' ||
             f.s[off] == '0' || f.s[off] == '#')) {
@@ -1691,47 +1673,15 @@ static int parseArgDefPerc(Fmt& fmt, int off) {
         }
         off++;
     }
-    // width
-    int width = 0;
-    while (off < f.len && IsDigit(f.s[off])) {
-        width = (width * 10) + (f.s[off] - '0');
-        off++;
-    }
-    // precision
+    int width = parseUintAt(f, &off);
     int prec = -1;
     if (off < f.len && f.s[off] == '.') {
         off++;
-        prec = 0;
-        while (off < f.len && IsDigit(f.s[off])) {
-            prec = (prec * 10) + (f.s[off] - '0');
-            off++;
-        }
+        prec = parseUintAt(f, &off);
     }
     int fwpEnd = off;
-    // length modifier; determine integer width (32/64 on LLP64 / win64)
     int bits = 32;
-    char lenMod = (off < f.len) ? f.s[off] : 0;
-    bool is32BitLenMod =
-        lenMod == 'l' || lenMod == 'h' || lenMod == 'L' || lenMod == 'w';
-    // size_t / intmax_t / ptrdiff_t / MS size_t
-    bool is64BitLenMod =
-        lenMod == 'z' || lenMod == 'j' || lenMod == 't' || lenMod == 'I';
-    if (startsWith(f, off, "I64")) {
-        bits = 64;
-        off += 3;
-    } else if (startsWith(f, off, "I32")) {
-        off += 3;
-    } else if (startsWith(f, off, "ll")) {
-        bits = 64;
-        off += 2;
-    } else if (startsWith(f, off, "hh")) {
-        off += 2;
-    } else if (is32BitLenMod) {
-        off++; // long is 32-bit on win64
-    } else if (is64BitLenMod) {
-        bits = 64;
-        off++;
-    }
+    off = parseLenMod(f, off, &bits);
     char conv = (off < f.len) ? f.s[off] : 0;
     off++;
 
@@ -1916,111 +1866,79 @@ static int64_t argToI64(const FmtArg& arg) {
     }
 }
 
-// format a typed % spec by reconstructing a single-conversion printf format and
-// delegating to snprintf (bufFmt), normalizing the length modifier so the
-// 32/64-bit value width matches printf. %s padding/truncation is done by hand
-// to avoid relying on the Str being NUL-terminated.
+static bool appendSpaces(Fmt& fmt, int n) {
+    for (int j = 0; j < n; j++) {
+        if (!fmt.res.AppendChar(' ')) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool isFloatConv(char c) {
+    return c == 'f' || c == 'F' || c == 'e' || c == 'E' || c == 'g' ||
+           c == 'G' || c == 'a' || c == 'A';
+}
+
+static bool isUnsignedConv(char c) {
+    return c == 'u' || c == 'o' || c == 'x' || c == 'X';
+}
+
+// One snprintf hand-off: reconstruct "%" + flags/width/prec + optional "ll"
+// + conversion. %s is padded here because a Str need not be NUL-terminated.
 static bool evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
     if (inst.conv == 's' || inst.conv == 'S') {
-        Str sv = arg.str;
-        int slen = sv.len;
+        int slen = arg.str.len;
         if (inst.prec >= 0 && inst.prec < slen) {
             slen = inst.prec;
         }
-        int pad = inst.width - slen;
-        pad = std::max(pad, 0);
-        if (!inst.leftJust) {
-            for (int j = 0; j < pad; j++) {
-                if (!fmt.res.AppendChar(' ')) {
-                    return false;
-                }
-            }
-        }
-        if (!fmt.res.Append(Str(sv.s, slen))) {
+        int pad = std::max(inst.width - slen, 0);
+        if (!inst.leftJust && !appendSpaces(fmt, pad)) {
             return false;
         }
-        if (inst.leftJust) {
-            for (int j = 0; j < pad; j++) {
-                if (!fmt.res.AppendChar(' ')) {
-                    return false;
-                }
-            }
+        if (!fmt.res.Append(Str(arg.str.s, slen))) {
+            return false;
         }
-        return true;
+        return inst.leftJust ? appendSpaces(fmt, pad) : true;
+    }
+    if (inst.conv == 'p') {
+        const void* pv = arg.t == FmtArg::Kind::Ptr
+                             ? arg.ptr
+                             : (const void*)(intptr_t)argToI64(arg);
+        return appendConv(fmt, "%p", pv);
     }
 
-    // build "%" + flags+width+precision into fbuf
     char fbuf[64];
     int k = 0;
     fbuf[k++] = '%';
     for (int j = 0; j < inst.fwpLen && k < (int)dimof(fbuf) - 5; j++) {
         fbuf[k++] = fmt.format.s[inst.fwpOff + j];
     }
-    char conv = inst.conv;
-    int64_t ival = argToI64(arg);
-    bool ok = true;
-    switch (conv) {
-        case 'd':
-        case 'i':
-            if (inst.intBits == 64) {
-                fbuf[k++] = 'l';
-                fbuf[k++] = 'l';
-                fbuf[k++] = 'd';
-                fbuf[k] = 0;
-                ok = appendConv(fmt, fbuf, (long long)ival);
-            } else {
-                fbuf[k++] = 'd';
-                fbuf[k] = 0;
-                ok = appendConv(fmt, fbuf, (int)ival);
-            }
-            break;
-        case 'u':
-        case 'o':
-        case 'x':
-        case 'X':
-            if (inst.intBits == 64) {
-                fbuf[k++] = 'l';
-                fbuf[k++] = 'l';
-                fbuf[k++] = conv;
-                fbuf[k] = 0;
-                ok = appendConv(fmt, fbuf, (unsigned long long)ival);
-            } else {
-                fbuf[k++] = conv;
-                fbuf[k] = 0;
-                ok = appendConv(fmt, fbuf,
-                                (unsigned int)(unsigned long long)ival);
-            }
-            break;
-        case 'c':
-            fbuf[k++] = 'c';
-            fbuf[k] = 0;
-            ok = appendConv(fmt, fbuf, (int)ival);
-            break;
-        case 'f':
-        case 'F':
-        case 'e':
-        case 'E':
-        case 'g':
-        case 'G':
-        case 'a':
-        case 'A': {
-            fbuf[k++] = conv;
-            fbuf[k] = 0;
-            double dv = (arg.t == FmtArg::Kind::Double) ? arg.d : (double)arg.f;
-            ok = appendConv(fmt, fbuf, dv);
-        } break;
-        case 'p': {
-            // flags/width are uncommon (and platform-specific) for %p; emit
-            // plain
-            const void* pv = (arg.t == FmtArg::Kind::Ptr)
-                                 ? arg.ptr
-                                 : (const void*)(intptr_t)ival;
-            ok = appendConv(fmt, "%p", pv);
-        } break;
-        default:
-            break;
+    bool wideInt =
+        inst.intBits == 64 &&
+        (inst.conv == 'd' || inst.conv == 'i' || isUnsignedConv(inst.conv));
+    if (wideInt) {
+        fbuf[k++] = 'l';
+        fbuf[k++] = 'l';
     }
-    return ok;
+    fbuf[k++] = inst.conv == 'i' ? 'd' : inst.conv;
+    fbuf[k] = 0;
+
+    if (isFloatConv(inst.conv)) {
+        double dv = arg.t == FmtArg::Kind::Double ? arg.d : (double)arg.f;
+        return appendConv(fmt, fbuf, dv);
+    }
+    int64_t ival = argToI64(arg);
+    if (isUnsignedConv(inst.conv)) {
+        if (wideInt) {
+            return appendConv(fmt, fbuf, (unsigned long long)ival);
+        }
+        return appendConv(fmt, fbuf, (unsigned int)(unsigned long long)ival);
+    }
+    if (wideInt) {
+        return appendConv(fmt, fbuf, (long long)ival);
+    }
+    return appendConv(fmt, fbuf, (int)ival);
 }
 
 bool Fmt::Eval(const FmtArg** args, int nArgs) {
