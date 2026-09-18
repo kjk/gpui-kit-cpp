@@ -246,6 +246,22 @@ static void TakingBorrowedStorageReturnsAnOwnedCopy() {
     Free(nullptr, taken);
 }
 
+static void HeapAndBorrowedGrowWithTheSamePolicy() {
+    Vec<int> heap;
+    utassert(VecAppend(heap, 1));
+    utassert(VecAbsCap(heap.cap) == VecNextCap(0, 1, (int)sizeof(int)));
+
+    int buf[1] = {};
+    Vec<int> borrowed;
+    VecUseExternalBuffer(borrowed, buf);
+    utassert(VecAppend(borrowed, 1));
+    utassert(borrowed.els == buf);
+    utassert(VecAppend(borrowed, 2));
+    utassert(borrowed.els != buf);
+    utassert(VecAbsCap(borrowed.cap) == VecNextCap(1, 2, (int)sizeof(int)));
+    utassert(borrowed[0] == 1 && borrowed[1] == 2);
+}
+
 void TestVec() {
     TestSuite("vec");
     AnInlineVecStartsInTheBufferAndDoesNotAllocate();
@@ -259,4 +275,5 @@ void TestVec() {
     TaffyFlexLinesSurviveOutgrowingTheBuffer();
     TheFreeFunctionSurfaceKeepsVecSemantics();
     TakingBorrowedStorageReturnsAnOwnedCopy();
+    HeapAndBorrowedGrowWithTheSamePolicy();
 }

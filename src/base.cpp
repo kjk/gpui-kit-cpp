@@ -767,24 +767,13 @@ GPUI_NOINLINE bool VecRealloc(Arena* a, void** els, int len, int* cap,
     return true;
 }
 
-// Doubling, but never from a first capacity of one. The byte-sensitive floor
-// is the policy measured by cmd/vec-log.ts; keep it shared by every erased
-// element type.
-static int VecNextCap(int cap, int wanted, int elSize) {
-    if (cap == 0) {
-        int floorCap = elSize == 1 ? 8 : elSize <= 1024 ? 4 : 1;
-        return std::max(floorCap, wanted);
-    }
-    return std::max(cap * 2, wanted);
-}
-
 // The element type is erased below so these storage operations are compiled
 // once rather than once per Vec<T>. A negative cap is caller-owned external
 // storage; growing copies out of it and freeing leaves it alone.
 GPUI_NOINLINE bool VecReserveNT(Arena* arena, VecNonTemplated* v, int elSize,
                                 int wantedSize) {
     int cap = v->cap;
-    int curCap = cap < 0 ? -cap : cap;
+    int curCap = VecAbsCap(cap);
     if (wantedSize <= curCap) {
         return true;
     }
@@ -826,12 +815,12 @@ GPUI_NOINLINE bool VecResizeNT(VecNonTemplated* v, int elSize, int newSize) {
     if (newSize < 0) {
         return false;
     }
-    int curCap = v->cap < 0 ? -v->cap : v->cap;
+    int curCap = VecAbsCap(v->cap);
     if (newSize > curCap) {
         if (!VecReserveNT(nullptr, v, elSize, newSize)) {
             return false;
         }
-        curCap = v->cap < 0 ? -v->cap : v->cap;
+        curCap = VecAbsCap(v->cap);
     }
     v->len = newSize;
     if (v->els && curCap > newSize) {
@@ -886,7 +875,7 @@ GPUI_NOINLINE void VecFreeElementsNT(VecNonTemplated* v) {
 
 GPUI_NOINLINE void VecClearNT(VecNonTemplated* v, int elSize) {
     v->len = 0;
-    int curCap = v->cap < 0 ? -v->cap : v->cap;
+    int curCap = VecAbsCap(v->cap);
     if (v->els && curCap > 0) {
         memset(v->els, 0, (size_t)curCap * (size_t)elSize);
     }
@@ -925,7 +914,7 @@ GPUI_NOINLINE void VecCopyFromNT(VecNonTemplated* v, int elSize, int srcLen,
         memcpy(v->els, srcEls, (size_t)srcLen * (size_t)elSize);
     }
     if (zeroTail && v->els) {
-        int curCap = v->cap < 0 ? -v->cap : v->cap;
+        int curCap = VecAbsCap(v->cap);
         if (curCap > srcLen) {
             char* tail = (char*)v->els + (size_t)srcLen * (size_t)elSize;
             memset(tail, 0, (size_t)(curCap - srcLen) * (size_t)elSize);

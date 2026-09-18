@@ -12,7 +12,7 @@
 static const int kMany = 300;
 
 static void AnEmptyVecHasNothing() {
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     utassert(v.len == 0);
     utassert(!v.first.IsSet() && !v.last.IsSet());
     utassert(v.Flatten(nullptr) == nullptr);
@@ -21,7 +21,7 @@ static void AnEmptyVecHasNothing() {
 
 static void TheIteratorWalksEverySegment() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i);
     }
@@ -42,7 +42,7 @@ static void TheIteratorWalksEverySegment() {
     utassert(v[kMany - 1] == kMany - 1 + 1000);
 
     // A vec of one element, and one that never got a segment at all.
-    ArenaVec<int> one {};
+    ArenaVec<int> one{};
     one.Append(a, 7);
     seen = 0;
     for (int el : one) {
@@ -50,7 +50,7 @@ static void TheIteratorWalksEverySegment() {
         seen++;
     }
     utassert(seen == 1);
-    ArenaVec<int> none {};
+    ArenaVec<int> none{};
     for (int el : none) {
         (void)el;
         utassert(false);
@@ -60,7 +60,7 @@ static void TheIteratorWalksEverySegment() {
 
 static void TheIteratorSkipsTheSegmentsATruncateEmptied() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i);
     }
@@ -87,7 +87,7 @@ static void TheIteratorSkipsTheSegmentsATruncateEmptied() {
 
 static void AppendsReadBackAcrossSegments() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         utassert(v.Append(a, i * 3));
         utassert(v.len == i + 1);
@@ -115,7 +115,7 @@ static void AppendsReadBackAcrossSegments() {
 
 static void ElementsDoNotMoveWhenTheVecGrows() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     v.Append(a, 1);
     int* firstEl = &v[0];
     for (int i = 1; i < kMany; i++) {
@@ -134,7 +134,7 @@ static void AppendManyFillsTheSameOrder() {
     for (int i = 0; i < kMany; i++) {
         src[i] = i;
     }
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     // Two runs, so the second one starts partway into a segment.
     utassert(v.AppendMany(a, src, 7));
     utassert(v.AppendMany(a, src + 7, kMany - 7));
@@ -142,12 +142,23 @@ static void AppendManyFillsTheSameOrder() {
     for (int i = 0; i < kMany; i++) {
         utassert(v[i] == i);
     }
+
+    // Append is AppendMany of one; a one-at-a-time fill must match.
+    ArenaVec<int> one{};
+    for (int i = 0; i < kMany; i++) {
+        utassert(one.Append(a, src[i]));
+    }
+    utassert(one.len == v.len);
+    for (int i = 0; i < kMany; i++) {
+        utassert(one[i] == v[i]);
+    }
+    utassert(one.first != one.last && v.first != v.last);
     ArenaDelete(a);
 }
 
 static void ReserveSkipsTheClimb() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     utassert(v.Reserve(a, kMany));
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i);
@@ -162,7 +173,7 @@ static void ReserveSkipsTheClimb() {
 
 static void PopAndTruncateGiveTheRoomBack() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i);
     }
@@ -200,7 +211,7 @@ static void PopAndTruncateGiveTheRoomBack() {
 
 static void PopAtASegmentBoundaryDoesNotAllocate() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     // Fill the first segment exactly — asked for rather than written out,
     // since the first step is a count capped by a byte budget — so the next
     // append is the one that takes a second segment.
@@ -223,7 +234,7 @@ static void PopAtASegmentBoundaryDoesNotAllocate() {
 
 static void FlattenIsOneArrayEitherWay() {
     Arena* a = ArenaNew();
-    ArenaVec<int> few {};
+    ArenaVec<int> few{};
     for (int i = 0; i < 3; i++) {
         few.Append(a, i);
     }
@@ -233,7 +244,7 @@ static void FlattenIsOneArrayEitherWay() {
     utassert(flat == &few[0]);
     utassert(flat[2] == 2);
 
-    ArenaVec<int> many {};
+    ArenaVec<int> many{};
     for (int i = 0; i < kMany; i++) {
         many.Append(a, i);
     }
@@ -248,7 +259,7 @@ static void FlattenIsOneArrayEitherWay() {
 
 static void ACopyOfTheHandleSeesTheSameElements() {
     Arena* a = ArenaNew();
-    ArenaVec<int> v {};
+    ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i);
     }

@@ -617,6 +617,21 @@ void* ArenaVecAlloc(struct Arena* a, int count, int elSize, int align,
 GPUI_NOINLINE bool VecRealloc(struct Arena* a, void** els, int len, int* cap,
                               int newCap, int elSize);
 
+// Doubling, never from a first capacity of one. The byte-sensitive floor is
+// the policy measured by cmd/vec-log.ts.
+inline int VecNextCap(int cap, int wanted, int elSize) {
+    if (cap == 0) {
+        int floorCap = elSize == 1 ? 8 : elSize <= 1024 ? 4 : 1;
+        return std::max(floorCap, wanted);
+    }
+    return std::max(cap * 2, wanted);
+}
+
+// A negative cap is borrowed storage; the magnitude is the real capacity.
+inline int VecAbsCap(int cap) {
+    return cap < 0 ? -cap : cap;
+}
+
 // ─── growth instrumentation (debug builds only) ──────────────────────────
 //
 // The question these answer: what should `Vec`'s doubling and `ArenaVec`'s
@@ -728,120 +743,6 @@ void VecCopyFromNT(VecNonTemplated* v, int elSize, int srcLen,
 template <typename T>
 VecNonTemplated* VecNT(Vec<T>& v);
 
-// ─── storage ─────────────────────────────────────────────────────────────
-
-// Ensure capacity is at least n for a vec-like {len,cap,els}. Returns the
-// elements, or null if it could not allocate. A never-allocated vec also
-// returns null for n == 0 because there are no elements to point at.
-template <typename T>
-auto VecReserve(Arena* arena, T& v, int n) -> decltype(v.els);
-
-// Heap Vec: same growth and return value.
-template <typename T>
-inline T* VecReserve(Vec<T>& v, int n);
-
-// Set the logical length, growing if necessary and zeroing unused capacity.
-template <typename T>
-bool VecResize(Vec<T>& v, int newSize);
-
-// Open a hole of count elements at idx and return its first element.
-template <typename T>
-T* VecInsertSpace(Vec<T>& v, int idx, int count);
-
-// Empty the vec but retain its storage for reuse.
-template <typename T>
-void VecClear(Vec<T>& v);
-
-// Free the storage and leave len, cap and els all zero.
-template <typename T>
-void VecReset(Vec<T>& v);
-
-// free() every element, then reset. Only for a vec of pointers.
-template <typename T>
-void VecFreeMembers(Vec<T>& v);
-
-// Hand ownership of the allocation to the caller without copying it.
-template <typename T>
-T* VecTake(Vec<T>& v);
-
-// Return the storage without giving it up.
-template <typename T>
-T* VecData(const Vec<T>& v);
-
-// ─── adding ──────────────────────────────────────────────────────────────
-
-template <typename T>
-bool VecAppend(Vec<T>& v, const VecIdentityT<T>& el);
-
-// Append every element of other.
-template <typename T>
-bool VecAppendVec(Vec<T>& v, const Vec<T>& other);
-
-// Append count elements from src.
-template <typename T>
-bool VecAppendN(Vec<T>& v, const T* src, int count);
-
-// Append count zeroed elements.
-template <typename T>
-T* VecAppendBlanks(Vec<T>& v, int count);
-
-// Insert el at idx, moving the rest up.
-template <typename T>
-bool VecInsertAt(Vec<T>& v, int idx, const VecIdentityT<T>& el);
-
-// Append to any vec-shaped struct, using an arena or the heap.
-template <typename T, typename E>
-bool VecPush(Arena* arena, T& v, E el);
-
-// ─── removing ────────────────────────────────────────────────────────────
-
-// Remove count elements at idx, moving the rest down.
-template <typename T>
-void VecRemoveAtN(Vec<T>& v, int idx, int count);
-
-// Remove the element at idx.
-template <typename T>
-void VecRemoveAt(Vec<T>& v, int idx);
-
-// Remove and return the element at idx.
-template <typename T>
-T VecPopAt(Vec<T>& v, int idx);
-
-// Fill the hole with the last element. This changes order and requires an
-// element type that can be moved with memcpy().
-template <typename T>
-void VecRemoveAtFast(Vec<T>& v, int idx);
-
-// Drop the last element; a no-op for an empty vec.
-template <typename T>
-void VecRemoveLast(Vec<T>& v);
-
-// Remove and return the last element; the vec must not be empty.
-template <typename T>
-T VecPop(Vec<T>& v);
-
-// Remove the first matching element and return its old index, or -1.
-template <typename T>
-int VecRemove(Vec<T>& v, const T& el);
-
-// ─── reading ─────────────────────────────────────────────────────────────
-
-template <typename T>
-bool VecIsValidIndex(const Vec<T>& v, int idx);
-
-// The last element; the vec must not be empty.
-template <typename T>
-T& VecLast(const Vec<T>& v);
-
-// Index of the first matching element at or after startAt, or -1.
-template <typename T>
-int VecFind(const Vec<T>& v, const T& el, int startAt = 0);
-
-template <typename T>
-bool VecContains(const Vec<T>& v, const T& el);
-
-// ─── the vec itself ──────────────────────────────────────────────────────
-
 template <typename T>
 struct Vec {
     int len = 0;
@@ -885,7 +786,7 @@ struct Vec {
 
     ~Vec() {
 #if defined(DEBUG)
-        VecDbgDeath(dbgId, len, cap < 0 ? -cap : cap);
+        VecDbgDeath(dbgId, len, VecAbsCap(cap));
 #endif
         VecReset(*this);
     }
@@ -910,11 +811,6 @@ static_assert(offsetof(Vec<double>, els) == offsetof(VecNonTemplated, els));
 static_assert(sizeof(Vec<char>) == sizeof(VecNonTemplated));
 static_assert(sizeof(Vec<double>) == sizeof(VecNonTemplated));
 #endif
-
-template <typename T>
-inline int len(const Vec<T>& v) {
-    return v.len;
-}
 
 template <typename T>
 VecNonTemplated* VecNT(Vec<T>& v) {
@@ -956,12 +852,10 @@ inline void VecUseExternalBuffer(Vec<T>& v, T (&buf)[N]) {
 template <typename T>
 inline T* VecReserve(Vec<T>& v, int n) {
 #if defined(DEBUG)
-    int curCap = v.cap < 0 ? -v.cap : v.cap;
+    int curCap = VecAbsCap(v.cap);
     if (n > curCap) {
-        int floorCap = sizeof(T) == 1 ? 8 : sizeof(T) <= 1024 ? 4 : 1;
-        int next =
-            curCap == 0 ? std::max(floorCap, n) : std::max(curCap * 2, n);
-        VecDbgGrow(v.dbgId, v.len, curCap, n, next);
+        VecDbgGrow(v.dbgId, v.len, curCap, n,
+                   VecNextCap(curCap, n, (int)sizeof(T)));
     }
 #endif
     return VecReserve(nullptr, v, n);
@@ -988,21 +882,8 @@ void VecReset(Vec<T>& v) {
 }
 
 template <typename T>
-void VecFreeMembers(Vec<T>& v) {
-    for (int i = 0; i < v.len; i++) {
-        free(v.els[i]);
-    }
-    VecReset(v);
-}
-
-template <typename T>
 T* VecTake(Vec<T>& v) {
     return (T*)VecTakeNT(VecNT(v), (int)sizeof(T));
-}
-
-template <typename T>
-T* VecData(const Vec<T>& v) {
-    return v.els;
 }
 
 template <typename T>
@@ -1098,14 +979,6 @@ int VecRemove(Vec<T>& v, const T& el) {
 }
 
 template <typename T>
-inline void DeleteVecMembers(Vec<T>& v) {
-    for (T& el : v) {
-        delete el;
-    }
-    VecClear(v);
-}
-
-template <typename T>
 bool VecIsValidIndex(const Vec<T>& v, int idx) {
     return idx >= 0 && idx < v.len;
 }
@@ -1116,7 +989,7 @@ T& VecLast(const Vec<T>& v) {
 }
 
 template <typename T>
-int VecFind(const Vec<T>& v, const T& el, int startAt) {
+int VecFind(const Vec<T>& v, const T& el, int startAt = 0) {
     for (int i = startAt; i < v.len; i++) {
         if (v.els[i] == el) {
             return i;
@@ -1128,26 +1001,6 @@ int VecFind(const Vec<T>& v, const T& el, int startAt) {
 template <typename T>
 bool VecContains(const Vec<T>& v, const T& el) {
     return VecFind(v, el) >= 0;
-}
-
-template <typename T>
-struct VecSortCmp {
-    using Fn = int (*)(const T* a, const T* b);
-};
-
-template <typename T>
-void VecSort(Vec<T>& v, typename VecSortCmp<T>::Fn cmpFunc) {
-    if (v.len > 0) {
-        auto cmp = (int (*)(const void*, const void*))cmpFunc;
-        qsort((void*)v.els, (size_t)v.len, sizeof(T), cmp);
-    }
-}
-
-template <typename T>
-void VecReverse(Vec<T>& v) {
-    for (int i = 0; i < v.len / 2; i++) {
-        std::swap(v.els[i], v.els[v.len - i - 1]);
-    }
 }
 
 // An array that grows into an arena. `Vec<T>` frees its storage in its
@@ -1398,18 +1251,7 @@ struct ArenaVec {
     }
     Iter end() const { return Iter{a, nullptr, 0}; }
 
-    bool Append(Arena* arena, const T& el) {
-        Segment* seg = ArenaPtrGet(a, last);
-        if (!seg || seg->len >= seg->cap) {
-            seg = NextSegment(arena, 1);
-            if (!seg) {
-                return false;
-            }
-        }
-        seg->Els()[seg->len++] = el;
-        len++;
-        return true;
-    }
+    bool Append(Arena* arena, const T& el) { return AppendMany(arena, &el, 1); }
 
     bool AppendMany(Arena* arena, const T* src, int n) {
         while (n > 0) {
@@ -1497,20 +1339,23 @@ struct ArenaVec {
     // segment it can hold something in. Constant-folded per instantiation,
     // since sizeof(T) is a constant.
     static constexpr int CapFor(int count, int bytes) {
-        return bytes / (int)sizeof(T) < count
-                   ? (bytes / (int)sizeof(T) > 0 ? bytes / (int)sizeof(T) : 1)
-                   : count;
+        int byBytes = bytes / (int)sizeof(T);
+        if (byBytes < 1) {
+            byBytes = 1;
+        }
+        return byBytes < count ? byBytes : count;
     }
 
     static int NextCap(int prevCap) {
-        if (prevCap < CapFor(kArenaVecCap0, kArenaVecBytes0)) {
-            return CapFor(kArenaVecCap0, kArenaVecBytes0);
-        }
-        if (prevCap < CapFor(kArenaVecCap1, kArenaVecBytes1)) {
-            return CapFor(kArenaVecCap1, kArenaVecBytes1);
-        }
-        if (prevCap < CapFor(kArenaVecCap2, kArenaVecBytes2)) {
-            return CapFor(kArenaVecCap2, kArenaVecBytes2);
+        const int steps[3] = {
+            CapFor(kArenaVecCap0, kArenaVecBytes0),
+            CapFor(kArenaVecCap1, kArenaVecBytes1),
+            CapFor(kArenaVecCap2, kArenaVecBytes2),
+        };
+        for (int s : steps) {
+            if (prevCap < s) {
+                return s;
+            }
         }
         return prevCap * 2;
     }
