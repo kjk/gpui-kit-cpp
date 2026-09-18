@@ -39,9 +39,9 @@ struct ClipboardItem {
     Str externalPaths = {};
 
     bool HasImage() const { return imageBytes && imageBytesLen > 0; }
-    bool HasExternalPaths() const { return externalPaths.len > 0; }
+    bool HasExternalPaths() const { return len(externalPaths) > 0; }
     bool IsEmpty() const {
-        return text.len <= 0 && !HasImage() && !HasExternalPaths();
+        return len(text) <= 0 && !HasImage() && !HasExternalPaths();
     }
 };
 

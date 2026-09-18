@@ -523,15 +523,15 @@ static bool PointInSelectionBand(Point position, float charWidth,
 static TextSelectionRange ProjectRun(const TextSelectionRun& run,
                                      const TextSelectionSnapshot& snapshot) {
     TextSelectionRange out;
-    if (!run.layout || run.text.len <= 0) return out;
+    if (!run.layout || len(run.text) <= 0) return out;
     if (snapshot.coverage == TextSelectionCoverage::Full) {
-        out.end = run.text.len;
+        out.end = len(run.text);
         out.selected = true;
         return out;
     }
     if (!snapshot.hasWindowPoints) return out;
     int at = 0;
-    while (at < run.text.len) {
+    while (at < len(run.text)) {
         uint32_t cp = 0;
         int bytes = Utf8At(run.text, at, &cp);
         (void)cp;
@@ -914,8 +914,8 @@ bool WindowSelectionHasEntity(const Window* win, EntityId owner) {
     for (int i = 0; i < paint->texts.len; i++) {
         const TextHit& hit = paint->texts[i];
         if (hit.owner != owner || hit.scope != selection->scope) continue;
-        int len = hit.atom ? 1 : hit.text.len;
-        if (a < hit.docOff + len && b > hit.docOff) return true;
+        int n = hit.atom ? 1 : len(hit.text);
+        if (a < hit.docOff + n && b > hit.docOff) return true;
     }
     return false;
 }
@@ -957,7 +957,7 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
             firstBounds = hit.bounds;
         }
         if (hit.scope != scope) continue;
-        last = hit.docOff + (hit.atom ? 1 : hit.text.len);
+        last = hit.docOff + (hit.atom ? 1 : len(hit.text));
         lastBounds = hit.bounds;
     }
     if (!found || first == last) return;
@@ -977,7 +977,7 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
 }
 
 static bool HasNonWhitespace(Str text) {
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         char c = text.s[i];
         if (c != ' ' && c != '\t' && c != '\r' && c != '\n') return true;
     }
@@ -999,7 +999,7 @@ static int CopyParticipantItem(const ParticipantCopyItem& item, App* app,
         if (n < 0) return 0;
         return n < cap ? n : cap - 1;
     }
-    int n = item.text.len < cap - 1 ? item.text.len : cap - 1;
+    int n = len(item.text) < cap - 1 ? len(item.text) : cap - 1;
     if (n > 0) memcpy(out, item.text.s, (size_t)n);
     out[n] = 0;
     return n;

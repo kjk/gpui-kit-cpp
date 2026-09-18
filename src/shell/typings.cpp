@@ -17,10 +17,10 @@ struct TypesDirectory {
 
 static TempStr JoinPathTemp(Str directory, Str name) {
     if (!directory || !name) return {};
-    bool separator = directory.s[directory.len - 1] != '/' &&
-                     directory.s[directory.len - 1] != '\\';
-    int len = directory.len + (separator ? 1 : 0) + name.len;
-    if (len >= kMaxPath) return {};
+    bool separator = directory.s[len(directory) - 1] != '/' &&
+                     directory.s[len(directory) - 1] != '\\';
+    int n = len(directory) + (separator ? 1 : 0) + len(name);
+    if (n >= kMaxPath) return {};
     if (!separator) return fmt("%s%s", directory, name);
     return fmt("%s%c%s", directory, GPUI_OS_WINDOWS ? '\\' : '/', name);
 }
@@ -49,16 +49,16 @@ static bool SkipDirectory(Str name) {
 
 static bool AppendDirectory(Vec<TypesDirectory>* directories, Str path,
                             int depth) {
-    if (!path || path.len >= kMaxPath) return false;
+    if (!path || len(path) >= kMaxPath) return false;
     TypesDirectory directory;
-    memcpy(directory.path, path.s, (size_t)path.len);
-    directory.path[path.len] = 0;
+    memcpy(directory.path, path.s, (size_t)len(path));
+    directory.path[len(path)] = 0;
     directory.depth = depth;
     return VecAppend(*directories, directory);
 }
 
 static void AppendQuoted(StrBuilder* out, Str value) {
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char ch = value.s[i];
         if (ch == '\\' || ch == '"') out->AppendChar('\\');
         out->AppendChar(ch);
@@ -68,9 +68,9 @@ static void AppendQuoted(StrBuilder* out, Str value) {
 static void AppendReindented(StrBuilder* out, Str declarations) {
     int common = INT_MAX;
     int at = 0;
-    while (at < declarations.len) {
+    while (at < len(declarations)) {
         int end = at;
-        while (end < declarations.len && declarations.s[end] != '\n') end++;
+        while (end < len(declarations) && declarations.s[end] != '\n') end++;
         int first = at;
         while (first < end &&
                (declarations.s[first] == ' ' || declarations.s[first] == '\t'))
@@ -80,9 +80,9 @@ static void AppendReindented(StrBuilder* out, Str declarations) {
     }
     if (common == INT_MAX) common = 0;
     at = 0;
-    while (at < declarations.len) {
+    while (at < len(declarations)) {
         int lineEnd = at;
-        while (lineEnd < declarations.len && declarations.s[lineEnd] != '\n')
+        while (lineEnd < len(declarations) && declarations.s[lineEnd] != '\n')
             lineEnd++;
         int end = lineEnd;
         while (end > at && (declarations.s[end - 1] == ' ' ||
@@ -200,8 +200,8 @@ static bool WriteEditorConfig(Str directory, bool* wrote, ShellError* error) {
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
     }
-    size_t count = fwrite(contents.s, 1, (size_t)contents.len, file);
-    if (count != (size_t)contents.len || fclose(file) != 0) {
+    size_t count = fwrite(contents.s, 1, (size_t)len(contents), file);
+    if (count != (size_t)len(contents) || fclose(file) != 0) {
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
     }
@@ -247,8 +247,8 @@ static bool RefreshTypes(Str directory, Str declarations, DirEntry* entries,
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
     }
-    size_t count = fwrite(declarations.s, 1, (size_t)declarations.len, file);
-    bool ok = count == (size_t)declarations.len && fclose(file) == 0;
+    size_t count = fwrite(declarations.s, 1, (size_t)len(declarations), file);
+    bool ok = count == (size_t)len(declarations) && fclose(file) == 0;
     if (!ok) {
         ShellErrorSet(error, fmt("cannot write `%s`", path));
         return false;
@@ -261,14 +261,14 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
                                 int* written, ShellError* error) {
     ShellErrorClear(error);
     if (written) *written = 0;
-    if (!root || root.len >= kMaxPath) {
+    if (!root || len(root) >= kMaxPath) {
         ShellErrorSet(error,
                       StrL("application directory is empty or too long"));
         return false;
     }
     TypesDirectory rootDirectory;
-    memcpy(rootDirectory.path, root.s, (size_t)root.len);
-    rootDirectory.path[root.len] = 0;
+    memcpy(rootDirectory.path, root.s, (size_t)len(root));
+    rootDirectory.path[len(root)] = 0;
     if (!PlatDirExists(rootDirectory.path)) {
         ShellErrorSet(error,
                       fmt("application directory `%s` does not exist", root));
@@ -278,7 +278,7 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
     StrBuilder declarations;
     ShellTypeDeclarations(&declarations, modules);
     Str text = declarations.TakeStr();
-    if (!text || text.len > kTypesMaxDeclarationBytes) {
+    if (!text || len(text) > kTypesMaxDeclarationBytes) {
         StrFree(text);
         ShellErrorSet(error, StrL("type declarations exceed the size limit"));
         return false;

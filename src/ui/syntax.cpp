@@ -157,7 +157,7 @@ constexpr int kNLangs = (int)(sizeof(kLangs) / sizeof(kLangs[0]));
 
 // Whether `list` — space-separated — holds `word`.
 static bool SyntaxInList(const char* list, Str word, bool ci) {
-    if (!list || word.len <= 0) {
+    if (!list || len(word) <= 0) {
         return false;
     }
     for (const char* p = list; *p;) {
@@ -165,9 +165,9 @@ static bool SyntaxInList(const char* list, Str word, bool ci) {
         while (*p && *p != ' ') {
             p++;
         }
-        int len = (int)(p - start);
-        if (len == word.len) {
-            Str candidate(start, len);
+        int n = (int)(p - start);
+        if (n == len(word)) {
+            Str candidate(start, n);
             bool same = ci ? base::StrEqI(word, candidate)
                            : base::StrEq(word, candidate);
             if (same) {
@@ -182,7 +182,7 @@ static bool SyntaxInList(const char* list, Str word, bool ci) {
 }
 
 SyntaxLang SyntaxLangFor(Str info) {
-    if (!info.s || info.len <= 0) {
+    if (!info.s || len(info) <= 0) {
         return SyntaxLangNone;
     }
     // An HTML <code class="language-cpp"> and a fence whose info string
@@ -190,19 +190,19 @@ SyntaxLang SyntaxLangFor(Str info) {
     const char* kPrefixes[] = {"language-", "lang-"};
     for (const char* pre : kPrefixes) {
         int n = (int)strlen(pre);
-        if (info.len > n && StrEq(Str(info.s, n), Str(pre, n))) {
-            info = Str(info.s + n, info.len - n);
+        if (len(info) > n && StrEq(Str(info.s, n), Str(pre, n))) {
+            info = Str(info.s + n, len(info) - n);
         }
     }
-    int len = 0;
-    while (len < info.len && info.s[len] != ' ' && info.s[len] != '\t' &&
-           info.s[len] != ',' && info.s[len] != '{') {
-        len++;
+    int n = 0;
+    while (n < len(info) && info.s[n] != ' ' && info.s[n] != '\t' &&
+           info.s[n] != ',' && info.s[n] != '{') {
+        n++;
     }
-    if (len <= 0) {
+    if (n <= 0) {
         return SyntaxLangNone;
     }
-    Str name(info.s, len);
+    Str name(info.s, n);
     for (int i = 0; i < kNLangs; i++) {
         if (SyntaxInList(kLangs[i].names, name, true)) {
             return (SyntaxLang)i;
@@ -275,7 +275,7 @@ static void SyntaxEmit(SyntaxLexer* lx, int start, SyntaxTok tok) {
 // The byte after the run of spaces at `at`, so a name can look at what
 // follows it without the scan moving.
 static int SyntaxSkipSpace(const SyntaxLexer* lx, int at) {
-    while (at < lx->src.len &&
+    while (at < len(lx->src) &&
            (lx->src.s[at] == ' ' || lx->src.s[at] == '\t')) {
         at++;
     }
@@ -284,16 +284,16 @@ static int SyntaxSkipSpace(const SyntaxLexer* lx, int at) {
 
 static bool SyntaxAt(const SyntaxLexer* lx, int at, const char* s) {
     int n = (int)strlen(s);
-    return at + n <= lx->src.len && StrEq(Str(lx->src.s + at, n), Str(s, n));
+    return at + n <= len(lx->src) && StrEq(Str(lx->src.s + at, n), Str(s, n));
 }
 
 // A quoted run, to its closing quote. `escapes` is whether a backslash
 // escapes the next byte — a shell's '..' and a raw string's do not.
 static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes) {
     lx->at++; // the opening quote
-    while (lx->at < lx->src.len) {
+    while (lx->at < len(lx->src)) {
         char c = lx->src.s[lx->at];
-        if (escapes && c == '\\' && lx->at + 1 < lx->src.len) {
+        if (escapes && c == '\\' && lx->at + 1 < len(lx->src)) {
             lx->at += 2;
             continue;
         }
@@ -311,7 +311,7 @@ static void SyntaxScanString(SyntaxLexer* lx, char quote, bool escapes) {
 
 static void SyntaxScanTripleQuote(SyntaxLexer* lx, char quote) {
     lx->at += 3;
-    while (lx->at < lx->src.len) {
+    while (lx->at < len(lx->src)) {
         if (lx->src.s[lx->at] == quote && SyntaxAt(lx, lx->at, "\"\"\"")) {
             lx->at += 3;
             return;
@@ -337,10 +337,10 @@ static void SyntaxScanTripleQuote(SyntaxLexer* lx, char quote) {
 
 static bool MdIsFenceLine(Str line) {
     int at = 0;
-    while (at < line.len && (line.s[at] == ' ' || line.s[at] == '\t')) {
+    while (at < len(line) && (line.s[at] == ' ' || line.s[at] == '\t')) {
         at++;
     }
-    if (at + 3 > line.len) {
+    if (at + 3 > len(line)) {
         return false;
     }
     char c = line.s[at];
@@ -350,34 +350,34 @@ static bool MdIsFenceLine(Str line) {
 // One past the end of the line `at` is on -- the newline included, so the
 // tokens partition the source.
 static int MdLineEnd(Str s, int at) {
-    while (at < s.len && s.s[at] != '\n') {
+    while (at < len(s) && s.s[at] != '\n') {
         at++;
     }
-    return at < s.len ? at + 1 : at;
+    return at < len(s) ? at + 1 : at;
 }
 
 // `- `, `* `, `+ `, `1. ` or `1) ` at the start of a line, with whatever
 // indent is in front of it. Answers where the marker ends.
 static bool MdIsListMarker(Str s, int at, int* out) {
     int i = at;
-    while (i < s.len && (s.s[i] == ' ' || s.s[i] == '\t')) {
+    while (i < len(s) && (s.s[i] == ' ' || s.s[i] == '\t')) {
         i++;
     }
     int marker = i;
-    if (i < s.len && (s.s[i] == '-' || s.s[i] == '*' || s.s[i] == '+')) {
+    if (i < len(s) && (s.s[i] == '-' || s.s[i] == '*' || s.s[i] == '+')) {
         i++;
     } else {
         int digits = 0;
-        while (i < s.len && s.s[i] >= '0' && s.s[i] <= '9') {
+        while (i < len(s) && s.s[i] >= '0' && s.s[i] <= '9') {
             i++;
             digits++;
         }
-        if (digits == 0 || i >= s.len || (s.s[i] != '.' && s.s[i] != ')')) {
+        if (digits == 0 || i >= len(s) || (s.s[i] != '.' && s.s[i] != ')')) {
             return false;
         }
         i++;
     }
-    if (i == marker || i >= s.len || (s.s[i] != ' ' && s.s[i] != '\t')) {
+    if (i == marker || i >= len(s) || (s.s[i] != ' ' && s.s[i] != '\t')) {
         return false;
     }
     *out = i;
@@ -405,7 +405,7 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
     if (lx->linkDest && c == '(') {
         lx->linkDest = false;
         int depth = 0;
-        while (lx->at < s.len && s.s[lx->at] != '\n') {
+        while (lx->at < len(s) && s.s[lx->at] != '\n') {
             char d = s.s[lx->at++];
             if (d == '(') {
                 depth++;
@@ -452,17 +452,17 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
     if (c == '`') {
         // A code span, to the run of backticks that closes it.
         int ticks = 0;
-        while (lx->at < s.len && s.s[lx->at] == '`') {
+        while (lx->at < len(s) && s.s[lx->at] == '`') {
             lx->at++;
             ticks++;
         }
-        while (lx->at < s.len && s.s[lx->at] != '\n') {
+        while (lx->at < len(s) && s.s[lx->at] != '\n') {
             if (s.s[lx->at] != '`') {
                 lx->at++;
                 continue;
             }
             int run = 0;
-            while (lx->at < s.len && s.s[lx->at] == '`') {
+            while (lx->at < len(s) && s.s[lx->at] == '`') {
                 lx->at++;
                 run++;
             }
@@ -473,11 +473,11 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
         SyntaxEmit(lx, start, SyntaxTok::Literal);
         return true;
     }
-    bool image = c == '!' && lx->at + 1 < s.len && s.s[lx->at + 1] == '[';
+    bool image = c == '!' && lx->at + 1 < len(s) && s.s[lx->at + 1] == '[';
     if (c == '[' || image) {
         int i = lx->at + (image ? 2 : 1);
         int depth = 1;
-        while (i < s.len && s.s[i] != '\n' && depth > 0) {
+        while (i < len(s) && s.s[i] != '\n' && depth > 0) {
             if (s.s[i] == '[') {
                 depth++;
             } else if (s.s[i] == ']') {
@@ -487,17 +487,17 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
         }
         if (depth == 0) {
             lx->at = i;
-            lx->linkDest = i < s.len && s.s[i] == '(';
+            lx->linkDest = i < len(s) && s.s[i] == '(';
             SyntaxEmit(lx, start, SyntaxTok::Function);
             return true;
         }
     }
     if (c == '<') {
         int i = lx->at + 1;
-        while (i < s.len && s.s[i] != '>' && s.s[i] != '\n') {
+        while (i < len(s) && s.s[i] != '>' && s.s[i] != '\n') {
             i++;
         }
-        if (i < s.len && s.s[i] == '>') {
+        if (i < len(s) && s.s[i] == '>') {
             lx->at = i + 1;
             SyntaxEmit(lx, start, SyntaxTok::Tag);
             return true;
@@ -512,7 +512,7 @@ static bool SyntaxNextMarkdown(SyntaxLexer* lx) {
     }
     // Prose, to the next byte that could start a mark.
     lx->at++;
-    while (lx->at < s.len) {
+    while (lx->at < len(s)) {
         char d = s.s[lx->at];
         if (d == '\n' || d == '`' || d == '[' || d == '<' || d == '!') {
             break;
@@ -530,17 +530,17 @@ static bool SyntaxNextMarkup(SyntaxLexer* lx) {
     char c = lx->src.s[lx->at];
     if (SyntaxAt(lx, lx->at, "<!--")) {
         lx->at += 4;
-        while (lx->at < lx->src.len && !SyntaxAt(lx, lx->at, "-->")) {
+        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "-->")) {
             lx->at++;
         }
-        lx->at = lx->at < lx->src.len ? lx->at + 3 : lx->src.len;
+        lx->at = lx->at < len(lx->src) ? lx->at + 3 : len(lx->src);
         SyntaxEmit(lx, start, SyntaxTok::Comment);
         return true;
     }
     if (!lx->inTag) {
         if (c == '<') {
             lx->at++;
-            if (lx->at < lx->src.len &&
+            if (lx->at < len(lx->src) &&
                 (lx->src.s[lx->at] == '/' || lx->src.s[lx->at] == '!' ||
                  lx->src.s[lx->at] == '?')) {
                 lx->at++;
@@ -550,7 +550,7 @@ static bool SyntaxNextMarkup(SyntaxLexer* lx) {
             SyntaxEmit(lx, start, SyntaxTok::Text);
             return true;
         }
-        while (lx->at < lx->src.len && lx->src.s[lx->at] != '<') {
+        while (lx->at < len(lx->src) && lx->src.s[lx->at] != '<') {
             lx->at++;
         }
         SyntaxEmit(lx, start, SyntaxTok::Text);
@@ -573,7 +573,7 @@ static bool SyntaxNextMarkup(SyntaxLexer* lx) {
         // the tag is an attribute.
         bool tag = lx->tagName;
         lx->tagName = false;
-        while (lx->at < lx->src.len &&
+        while (lx->at < len(lx->src) &&
                (SyntaxIsIdent(lx->src.s[lx->at]) || lx->src.s[lx->at] == '-' ||
                 lx->src.s[lx->at] == ':')) {
             lx->at++;
@@ -588,12 +588,12 @@ static bool SyntaxNextMarkup(SyntaxLexer* lx) {
 }
 
 bool SyntaxLexNext(SyntaxLexer* lx) {
-    if (!lx->src.s || lx->at >= lx->src.len) {
+    if (!lx->src.s || lx->at >= len(lx->src)) {
         return false;
     }
     const SyntaxLangDef* d = (const SyntaxLangDef*)lx->def;
     if (!d) {
-        lx->at = lx->src.len;
+        lx->at = len(lx->src);
         lx->tok = SyntaxTok::Text;
         lx->text = lx->src;
         return true;
@@ -609,14 +609,14 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
     char c = lx->src.s[lx->at];
 
     if (SyntaxIsSpace(c)) {
-        while (lx->at < lx->src.len && SyntaxIsSpace(lx->src.s[lx->at])) {
+        while (lx->at < len(lx->src) && SyntaxIsSpace(lx->src.s[lx->at])) {
             lx->at++;
         }
         SyntaxEmit(lx, start, SyntaxTok::Text);
         return true;
     }
     if (d->lineComment && SyntaxAt(lx, lx->at, d->lineComment)) {
-        while (lx->at < lx->src.len && lx->src.s[lx->at] != '\n') {
+        while (lx->at < len(lx->src) && lx->src.s[lx->at] != '\n') {
             lx->at++;
         }
         SyntaxEmit(lx, start, SyntaxTok::Comment);
@@ -624,19 +624,19 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
     }
     if (d->blockComment && SyntaxAt(lx, lx->at, "/*")) {
         lx->at += 2;
-        while (lx->at < lx->src.len && !SyntaxAt(lx, lx->at, "*/")) {
+        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "*/")) {
             lx->at++;
         }
-        lx->at = lx->at < lx->src.len ? lx->at + 2 : lx->src.len;
+        lx->at = lx->at < len(lx->src) ? lx->at + 2 : len(lx->src);
         SyntaxEmit(lx, start, SyntaxTok::Comment);
         return true;
     }
     if (d->htmlComment && SyntaxAt(lx, lx->at, "<!--")) {
         lx->at += 4;
-        while (lx->at < lx->src.len && !SyntaxAt(lx, lx->at, "-->")) {
+        while (lx->at < len(lx->src) && !SyntaxAt(lx, lx->at, "-->")) {
             lx->at++;
         }
-        lx->at = lx->at < lx->src.len ? lx->at + 3 : lx->src.len;
+        lx->at = lx->at < len(lx->src) ? lx->at + 3 : len(lx->src);
         SyntaxEmit(lx, start, SyntaxTok::Comment);
         return true;
     }
@@ -655,7 +655,7 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
             // JSON: a string before a ':' is the object's key, which the
             // theme paints as a property rather than as a string.
             int next = SyntaxSkipSpace(lx, lx->at);
-            if (next < lx->src.len && lx->src.s[next] == ':') {
+            if (next < len(lx->src) && lx->src.s[next] == ':') {
                 tok = SyntaxTok::Property;
             }
         }
@@ -674,16 +674,16 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         }
         if (atLineStart) {
             lx->at++;
-            while (lx->at < lx->src.len && SyntaxIsIdent(lx->src.s[lx->at])) {
+            while (lx->at < len(lx->src) && SyntaxIsIdent(lx->src.s[lx->at])) {
                 lx->at++;
             }
             SyntaxEmit(lx, start, SyntaxTok::Keyword);
             return true;
         }
     }
-    if (SyntaxIsDigit(c) || (c == '.' && lx->at + 1 < lx->src.len &&
+    if (SyntaxIsDigit(c) || (c == '.' && lx->at + 1 < len(lx->src) &&
                              SyntaxIsDigit(lx->src.s[lx->at + 1]))) {
-        while (lx->at < lx->src.len &&
+        while (lx->at < len(lx->src) &&
                (SyntaxIsIdent(lx->src.s[lx->at]) || lx->src.s[lx->at] == '.')) {
             lx->at++;
         }
@@ -691,7 +691,7 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
         return true;
     }
     if (SyntaxIsIdentStart(c)) {
-        while (lx->at < lx->src.len && SyntaxIsIdent(lx->src.s[lx->at])) {
+        while (lx->at < len(lx->src) && SyntaxIsIdent(lx->src.s[lx->at])) {
             lx->at++;
         }
         Str word(lx->src.s + start, lx->at - start);
@@ -705,7 +705,7 @@ bool SyntaxLexNext(SyntaxLexer* lx) {
             tok = SyntaxTok::Keyword;
         } else {
             int next = SyntaxSkipSpace(lx, lx->at);
-            char after = next < lx->src.len ? lx->src.s[next] : 0;
+            char after = next < len(lx->src) ? lx->src.s[next] : 0;
             if (after == '(') {
                 tok = SyntaxTok::Function;
             } else if (d->identProperty && (after == ':' || after == '=')) {

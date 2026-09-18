@@ -976,7 +976,7 @@ static int HexDigit(char c) {
 // hash, where the short forms double each digit.
 static bool ParseHex(Str s, Rgba* out) {
     const char* p = s.s + 1;
-    int n = s.len - 1;
+    int n = len(s) - 1;
     if (n != 3 && n != 4 && n != 6 && n != 8) {
         return false;
     }
@@ -1054,7 +1054,7 @@ static float ParseFloatOr(const char* s, int len, float fallback) {
 }
 
 bool ThemeParseColor(Str s, Rgba* out) {
-    if (!s.s || s.len <= 0 || !out) {
+    if (!s.s || len(s) <= 0 || !out) {
         return false;
     }
     if (s.s[0] == '#') {
@@ -1064,21 +1064,21 @@ bool ThemeParseColor(Str s, Rgba* out) {
     // so a name with neither is the whole string and takes scale 500.
     int dash = -1;
     int slash = -1;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         if (s.s[i] == '-' && dash < 0 && slash < 0) {
             dash = i;
         } else if (s.s[i] == '/' && slash < 0) {
             slash = i;
         }
     }
-    int nameLen = dash >= 0 ? dash : (slash >= 0 ? slash : s.len);
+    int nameLen = dash >= 0 ? dash : (slash >= 0 ? slash : len(s));
     Str name = Str(s.s, nameLen);
-    if (name.len <= 0) {
+    if (len(name) <= 0) {
         return false;
     }
     int scale = 500;
     if (dash >= 0) {
-        int end = slash >= 0 ? slash : s.len;
+        int end = slash >= 0 ? slash : len(s);
         scale = ParseUint(s.s + dash + 1, end - dash - 1);
         if (scale < 0) {
             // `parse::<usize>().ok()` leaving None is the same as no scale.
@@ -1103,7 +1103,7 @@ bool ThemeParseColor(Str s, Rgba* out) {
         }
     }
     if (slash >= 0) {
-        float pct = ParseFloatOr(s.s + slash + 1, s.len - slash - 1, -1.f);
+        float pct = ParseFloatOr(s.s + slash + 1, len(s) - slash - 1, -1.f);
         if (pct > 100.f) {
             return false;
         }
@@ -1240,7 +1240,7 @@ static int SplitTopLevelCommas(Str inner, Str* out, int cap) {
     int n = 0;
     int depth = 0;
     int start = 0;
-    for (int i = 0; i < inner.len; i++) {
+    for (int i = 0; i < len(inner); i++) {
         char c = inner.s[i];
         if (c == '(') {
             depth++;
@@ -1257,7 +1257,7 @@ static int SplitTopLevelCommas(Str inner, Str* out, int cap) {
         }
     }
     if (n < cap) {
-        out[n] = base::StrTrimAscii(Str(inner.s + start, inner.len - start));
+        out[n] = base::StrTrimAscii(Str(inner.s + start, len(inner) - start));
     }
     n++;
     return n;
@@ -1267,12 +1267,12 @@ static int SplitTopLevelCommas(Str inner, Str* out, int cap) {
 static bool ParseGradientDirection(Str dir, float* out) {
     bool top = false, right = false, bottom = false, left = false;
     int i = 0;
-    while (i < dir.len) {
-        while (i < dir.len && (dir.s[i] == ' ' || dir.s[i] == '\t')) {
+    while (i < len(dir)) {
+        while (i < len(dir) && (dir.s[i] == ' ' || dir.s[i] == '\t')) {
             i++;
         }
         int start = i;
-        while (i < dir.len && dir.s[i] != ' ' && dir.s[i] != '\t') {
+        while (i < len(dir) && dir.s[i] != ' ' && dir.s[i] != '\t') {
             i++;
         }
         if (i == start) {
@@ -1316,9 +1316,10 @@ static bool ParseGradientDirection(Str dir, float* out) {
 // parse_linear_gradient_angle: `135deg`, or `to bottom right`.
 static bool ParseGradientAngle(Str angle, float* out) {
     angle = base::StrTrimAscii(angle);
-    if (angle.len > 3 && base::StrEqI(Str(angle.s + angle.len - 3, 3), "deg")) {
-        Str num = base::StrTrimAscii(Str(angle.s, angle.len - 3));
-        float deg = ParseFloatOr(num.s, num.len, 1e30f);
+    if (len(angle) > 3 &&
+        base::StrEqI(Str(angle.s + len(angle) - 3, 3), "deg")) {
+        Str num = base::StrTrimAscii(Str(angle.s, len(angle) - 3));
+        float deg = ParseFloatOr(num.s, len(num), 1e30f);
         if (deg >= 1e29f) {
             return false;
         }
@@ -1332,7 +1333,7 @@ static bool ParseGradientAngle(Str angle, float* out) {
     }
     if (base::StrStartsWithI(angle, "to ")) {
         return ParseGradientDirection(
-            base::StrTrimAscii(Str(angle.s + 3, angle.len - 3)), out);
+            base::StrTrimAscii(Str(angle.s + 3, len(angle) - 3)), out);
     }
     return false;
 }
@@ -1341,23 +1342,23 @@ static bool ParseGradientAngle(Str angle, float* out) {
 // sits — `red-500 25%`. Without one it takes the end it was given.
 static bool ParseColorStop(Str stop, float defaultPct, ColorStop* out) {
     stop = base::StrTrimAscii(stop);
-    if (stop.len <= 0) {
+    if (len(stop) <= 0) {
         return false;
     }
     float pct = defaultPct;
-    if (stop.s[stop.len - 1] == '%') {
+    if (stop.s[len(stop) - 1] == '%') {
         // The percentage is the last whitespace-separated word.
-        int i = stop.len - 1;
+        int i = len(stop) - 1;
         while (i > 0 && stop.s[i - 1] != ' ' && stop.s[i - 1] != '\t') {
             i--;
         }
-        float v = ParseFloatOr(stop.s + i, stop.len - 1 - i, 1e30f);
+        float v = ParseFloatOr(stop.s + i, len(stop) - 1 - i, 1e30f);
         if (v >= 1e29f) {
             return false;
         }
         pct = Clamp01f(v / 100.f);
         stop = base::StrTrimAscii(Str(stop.s, i));
-        if (stop.len <= 0) {
+        if (len(stop) <= 0) {
             return false;
         }
     }
@@ -1372,11 +1373,12 @@ static bool ParseColorStop(Str stop, float defaultPct, ColorStop* out) {
 
 static bool ParseLinearGradient(Str s, Background* out) {
     s = base::StrTrimAscii(s);
-    if (!base::StrStartsWithI(s, "linear-gradient(") || s.s[s.len - 1] != ')') {
+    if (!base::StrStartsWithI(s, "linear-gradient(") ||
+        s.s[len(s) - 1] != ')') {
         return false;
     }
     const int kPrefix = 16; // "linear-gradient("
-    Str inner = Str(s.s + kPrefix, s.len - kPrefix - 1);
+    Str inner = Str(s.s + kPrefix, len(s) - kPrefix - 1);
     Str parts[4] = {};
     int n = SplitTopLevelCommas(inner, parts, 4);
     float angle = 180.f;
@@ -1404,7 +1406,7 @@ static bool ParseLinearGradient(Str s, Background* out) {
 }
 
 bool ThemeParseBackground(Str s, Background* out) {
-    if (!s.s || s.len <= 0 || !out) {
+    if (!s.s || len(s) <= 0 || !out) {
         return false;
     }
     Rgba c;
@@ -1986,7 +1988,7 @@ bool ThemeSetConfigParse(const JsonValue* value, ThemeSetConfig* out) {
 
 int ThemeRegistryLoadStr(App* app, Str json) {
     ThemeRegistry* state = RegistryOf(app);
-    if (!state || !state->arena || !json.s || json.len <= 0) {
+    if (!state || !state->arena || !json.s || len(json) <= 0) {
         return 0;
     }
     // What a theme keeps — its name, its colors object — points into the
@@ -2012,7 +2014,7 @@ int ThemeRegistryLoadStr(App* app, Str json) {
         }
         ThemeConfig cfg;
         cfg.name = JsonString(JsonGet(t, "name"));
-        if (cfg.name.len <= 0 || ThemeRegistryFind(app, cfg.name)) {
+        if (len(cfg.name) <= 0 || ThemeRegistryFind(app, cfg.name)) {
             continue;
         }
         cfg.author = setAuthor;
@@ -2382,7 +2384,7 @@ bool ThemeSemanticConfigApply(const JsonValue* doc, SemanticThemeTokens* io) {
 
 bool ThemeApplySemanticConfigStr(App* app, ThemeMode mode, Str json,
                                  SemanticThemeTokens* out) {
-    if (!json.s || json.len <= 0) {
+    if (!json.s || len(json) <= 0) {
         return false;
     }
     ThemeRegistry* registry = RegistryOf(app);
@@ -2419,11 +2421,11 @@ int ThemeRegistryLoadDir(App* app, Str dir) {
     if (!state || !state->arena) {
         return 0;
     }
-    int n = dir.len < kMaxPath - 1 ? dir.len : kMaxPath - 1;
+    int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
     TempStr path = StrDupTemp(Str(dir.s ? dir.s : "", n));
     if (!PlatDirExists(path.s)) {
         TempStr resolved = AllocStrTemp(kMaxPath - 1);
-        if (!AssetsFindDir(dir, resolved.s, resolved.len + 1)) {
+        if (!AssetsFindDir(dir, resolved.s, len(resolved) + 1)) {
             return 0;
         }
         path = Str(resolved.s);
@@ -2451,12 +2453,12 @@ int ThemeRegistryLoadDir(App* app, Str dir) {
             continue;
         }
         const char* name = entries[i].name;
-        int len = (int)strlen(name);
-        if (len < 6 || !base::StrEqI(Str(name + len - 5), ".json")) {
+        int nameLen = (int)strlen(name);
+        if (nameLen < 6 || !base::StrEqI(Str(name + nameLen - 5), ".json")) {
             continue;
         }
         TempStr file = fmt("%s%c%s", path, kSep, Str(name));
-        Str text = file.len < kMaxPath ? ReadTextFile(file.s) : Str{};
+        Str text = len(file) < kMaxPath ? ReadTextFile(file.s) : Str{};
         if (text.s) {
             // An unparseable file is skipped rather than fatal, the way
             // Rust's `reload()` logs and carries on.

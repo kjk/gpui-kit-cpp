@@ -44,7 +44,7 @@ static void FullMatchesAreCaseInsensitiveAndOverlap() {
 
     Label* unicode = Label::New(&cx, StrL("你好世界，Hello World"))
                          ->Highlights(StrL("世界"));
-    n = unicode->HighlightRanges(unicode->text.len, ranges, 16);
+    n = unicode->HighlightRanges(len(unicode->text), ranges, 16);
     utassert(n == 1);
     utassert(ranges[0].start == 6 && ranges[0].end == 12);
 
@@ -67,7 +67,7 @@ static void PrefixAndSecondaryRangesMatchRust() {
                        ->Highlights(prefix);
     Str full = label->FullText();
     utassert(base::StrEq(full, StrL("Hello World")));
-    int n = label->HighlightRanges(full.len, ranges, 8);
+    int n = label->HighlightRanges(len(full), ranges, 8);
     utassert(n == 3);
     utassert(ranges[0].start == 0 && ranges[0].end == 5);
     utassert(ranges[1].start == 5 && ranges[1].end == 11);
@@ -120,7 +120,7 @@ static void RenderUsesOneStyledRunAndRealBullets() {
 
     El* masked = Label::New(&cx, StrL("A中"))->Masked(true)->IntoEl()->first;
     utassert(masked != nullptr);
-    utassert(masked && masked->text.len == 6);
+    utassert(masked && len(masked->text) == 6);
     utassert(masked && base::StrEq(masked->text, StrL("••")));
 
     TempStr longText = AllocStrTemp(80);
@@ -128,7 +128,7 @@ static void RenderUsesOneStyledRunAndRealBullets() {
         longText.s[i] = 'x';
     }
     El* longMasked = Label::New(&cx, longText)->Masked(true)->IntoEl()->first;
-    utassert(longMasked && longMasked->text.len == 240);
+    utassert(longMasked && len(longMasked->text) == 240);
 
     AppGlobalClear(&app);
     ArenaDelete(a);

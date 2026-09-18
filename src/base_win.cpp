@@ -81,8 +81,8 @@ void StrCopyZ(char* dst, int cap, const char* src) {
 WCHAR* ToCWstrTemp(Str s) {
     Arena* arena = GetTempArena();
     int n = 0;
-    if (s.s && s.len > 0) {
-        n = MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, nullptr, 0);
+    if (s.s && len(s) > 0) {
+        n = MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), nullptr, 0);
         if (n < 0) {
             n = 0;
         }
@@ -90,7 +90,7 @@ WCHAR* ToCWstrTemp(Str s) {
     auto res = (WCHAR*)arena->Push((uint64_t)(n + 1) * sizeof(WCHAR),
                                    alignof(WCHAR), false);
     if (n > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, res, n);
+        MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), res, n);
     }
     res[n] = 0;
     return res;

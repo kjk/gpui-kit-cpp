@@ -85,7 +85,7 @@ static void AddRun(Window* win, float y, const char* text, int scope) {
     VecAppend(win->paint.texts, h);
     // The gap of one, which is where CopyTextHits puts the newline between
     // two runs.
-    win->paint.textDocLen += h.text.len + 1;
+    win->paint.textDocLen += len(h.text) + 1;
 }
 
 static void AWindowWithNoTextSelectsNothing() {
@@ -122,7 +122,7 @@ static void ADragAcrossTwoRunsCopiesBoth() {
     WindowSelectionRelease(&win);
     utassert(WindowSelectionHas(&win));
     TempStr buf = AllocStrTemp(63);
-    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(n > 0);
     // Without a text backend a hit resolves to the start of its run, so what
     // is pinned here is the span and the join, not the glyph the drag ended
@@ -144,15 +144,15 @@ static void TwoClicksTakeTheWordAndThreeTheLine() {
     // word this lands on is the first one.
     WindowSelectionPress(&win, 25, 5, 2, false);
     utassert(WindowSelectionHas(&win));
-    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("hello")));
     // The press ended the gesture, so a drag does not grow it.
     WindowSelectionDrag(&win, 115, 45);
-    n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("hello")));
 
     WindowSelectionPress(&win, 25, 5, 3, false);
-    n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("hello brave world")));
     // And it stops at the run: the line is this run's, not the document's.
     WindowSelectionFree(&win);
@@ -166,7 +166,7 @@ static void ALongPressTakesAWordAndKeepsDragging() {
     PlatformInput began = InputLongPress(TouchPhase::Started, start, start);
     WindowDispatchInput(&win, &began);
     TempStr buf = AllocStrTemp(63);
-    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(StrEq(Str(buf.s, n), StrL("quick")));
     utassert(win.longPressSelection);
 
@@ -176,7 +176,7 @@ static void ALongPressTakesAWordAndKeepsDragging() {
     PlatformInput ended =
         InputLongPress(TouchPhase::Ended, start, Point{115, 45});
     WindowDispatchInput(&win, &ended);
-    n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(n > 5 && StrStartsWith(Str(buf.s, n), StrL("quick")));
     utassert(!win.longPressSelection);
     WindowSelectionFree(&win);
@@ -196,7 +196,7 @@ static void ADoubleTapOnReadOnlyTextSelectsNothing() {
     Ctx cx = {&app, &win, nullptr, {}};
     utassert(WindowIsTouchPress(&cx));
     TempStr buf = AllocStrTemp(31);
-    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(n == 0);
     WindowSelectionFree(&win);
 }
@@ -226,7 +226,7 @@ static void ADragOutOfAScopeStaysInIt() {
     WindowSelectionDrag(&win, 115, 5);
     WindowSelectionRelease(&win);
     TempStr buf = AllocStrTemp(63);
-    int n = WindowSelectionText(&win, buf.s, buf.len + 1);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(n == 0 || !StrEq(Str(buf.s, n), StrL("page")));
     // And the frame is told which scope the range belongs to, so a run
     // outside it does not paint one.
@@ -247,7 +247,7 @@ static void AMarginOnlyDragPublishesNothing() {
     WindowSelectionRelease(&win);
     utassert(!WindowSelectionHas(&win));
     TempStr buf = AllocStrTemp(15);
-    utassert(WindowSelectionText(&win, buf.s, buf.len + 1) == 0);
+    utassert(WindowSelectionText(&win, buf.s, len(buf) + 1) == 0);
     WindowSelectionApply(&win);
     utassert(win.paint.selA < 0);
     WindowSelectionFree(&win);
@@ -416,7 +416,7 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
 
     TempStr selected = AllocStrTemp(63);
     int selectedLen =
-        TextSelection::SelectedText(&win, &app, selected.s, selected.len + 1);
+        TextSelection::SelectedText(&win, &app, selected.s, len(selected) + 1);
     utassert(StrEq(Str(selected.s, selectedLen), StrL("first\nsecond")));
     utassert(TextSelection::HasSelection(&win, &app));
     WindowSelectionRelease(&win);
@@ -425,7 +425,7 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
     outside.CopyWith(&ParticipantCopy, nullptr, &app);
     outside.SetLocalSelection(true, &app);
     selectedLen =
-        TextSelection::SelectedText(&win, &app, selected.s, selected.len + 1);
+        TextSelection::SelectedText(&win, &app, selected.s, len(selected) + 1);
     utassert(
         StrEq(Str(selected.s, selectedLen), StrL("first\nsecond\ncustom")));
     outside.SetLocalSelection(false, &app);

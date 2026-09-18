@@ -96,7 +96,7 @@ struct Slice {
     int32_t before = 0;
     int32_t after = 0;
 
-    int32_t Len() const { return bytes.len + before + after; }
+    int32_t Len() const { return len(bytes) + before + after; }
 };
 
 Slice SliceFromPosition(Str bytes, const Position& position);

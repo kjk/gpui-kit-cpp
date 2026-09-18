@@ -193,7 +193,7 @@ bool ColorPickerParseHex(Str text, uint32_t* out) {
         return false;
     }
     const char* p = text.s;
-    int n = text.len;
+    int n = len(text);
     while (n > 0 && (*p == ' ' || *p == '\t')) {
         p++;
         n--;

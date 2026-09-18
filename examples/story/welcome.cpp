@@ -24,9 +24,9 @@ struct WelcomeStory {
 static void LoadReadme(WelcomeStory* self) {
     self->loaded = true;
     TempStr md = AssetsLoadTextTemp(StrL("story/README.md"));
-    if (md.s && md.len > 0) {
+    if (md.s && len(md) > 0) {
         int cap = (int)sizeof(self->source) - 1;
-        int n = md.len < cap ? md.len : cap;
+        int n = len(md) < cap ? len(md) : cap;
         memcpy(self->source, md.s, (size_t)n);
         self->source[n] = 0;
         return;

@@ -75,10 +75,10 @@ void AssetsRemoveSource(int id) {
 }
 
 void AssetsAddRoot(Str dir) {
-    if (!dir.s || dir.len <= 0) {
+    if (!dir.s || len(dir) <= 0) {
         return;
     }
-    int n = dir.len < kMaxPath - 1 ? dir.len : kMaxPath - 1;
+    int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
     TempStr path = StrDupTemp(Str(dir.s, n));
     AddRootRaw(path.s);
 }
@@ -107,7 +107,7 @@ static void ParentDir(Str* path) {
 // Asset paths are written with forward slashes; rewrite them to whatever the
 // OS wants.
 static void ToNativeSep(Str s) {
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         if (s.s[i] == '/' || s.s[i] == '\\') {
             s.s[i] = kSep;
         }
@@ -117,12 +117,12 @@ static void ToNativeSep(Str s) {
 void AssetsAddDefaultRoots(Str exampleName) {
     TempStr cwd = AllocStrTemp(kMaxPath - 1);
     cwd.s[0] = 0;
-    PlatGetCwd(cwd.s, cwd.len + 1);
+    PlatGetCwd(cwd.s, len(cwd) + 1);
     cwd.len = (int)strlen(cwd.s);
 
     TempStr exe = AllocStrTemp(kMaxPath - 1);
     exe.s[0] = 0;
-    PlatGetExeDir(exe.s, exe.len + 1);
+    PlatGetExeDir(exe.s, len(exe) + 1);
     exe.len = (int)strlen(exe.s);
 
     TempStr sub = exampleName ? fmt("assets%c%s", kSep, exampleName)
@@ -204,10 +204,10 @@ static bool ReadFileAll(const char* path, Vec<uint8_t>* out) {
 }
 
 bool AssetsFindDir(Str relDir, char* out, int cap) {
-    if (!relDir.s || relDir.len <= 0 || !out || cap <= 0) {
+    if (!relDir.s || len(relDir) <= 0 || !out || cap <= 0) {
         return false;
     }
-    int n = relDir.len < kMaxPath - 1 ? relDir.len : kMaxPath - 1;
+    int n = len(relDir) < kMaxPath - 1 ? len(relDir) : kMaxPath - 1;
     TempStr rel = StrDupTemp(Str(relDir.s, n));
     ToNativeSep(rel);
 
@@ -222,13 +222,13 @@ bool AssetsFindDir(Str relDir, char* out, int cap) {
 }
 
 bool AssetsLoad(Str relPath, Vec<uint8_t>* out) {
-    if (!relPath.s || relPath.len <= 0 || !out) {
+    if (!relPath.s || len(relPath) <= 0 || !out) {
         return false;
     }
     for (int i = gSourceN - 1; i >= 0; i--)
         if (gSources[i].load(gSources[i].user, relPath, out)) return true;
 
-    int n = relPath.len < kMaxPath - 1 ? relPath.len : kMaxPath - 1;
+    int n = len(relPath) < kMaxPath - 1 ? len(relPath) : kMaxPath - 1;
     TempStr rel = StrDupTemp(Str(relPath.s, n));
     ToNativeSep(rel);
 
@@ -260,14 +260,14 @@ TempStr AssetsLoadTextTemp(Str relPath) {
 // per candidate path; the image layout asks it several times per picture per
 // measure pass, so it was the single biggest thing in the story's layout.
 bool AssetsExists(Str relPath) {
-    if (!relPath.s || relPath.len <= 0) {
+    if (!relPath.s || len(relPath) <= 0) {
         return false;
     }
     for (int i = gSourceN - 1; i >= 0; i--)
         if (gSources[i].exists && gSources[i].exists(gSources[i].user, relPath))
             return true;
 
-    int n = relPath.len < kMaxPath - 1 ? relPath.len : kMaxPath - 1;
+    int n = len(relPath) < kMaxPath - 1 ? len(relPath) : kMaxPath - 1;
     TempStr rel = StrDupTemp(Str(relPath.s, n));
     ToNativeSep(rel);
 

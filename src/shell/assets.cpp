@@ -36,16 +36,17 @@ bool AppAssets::Resolve(Str path, Str* relative, Str* error) const {
         StrFree(*error);
         *error = {};
     }
-    if (!path || path.len >= kMaxPath || StrStartsWithAny(path, "/\\") ||
-        (path.len >= 2 && path.s[1] == ':')) {
+    if (!path || len(path) >= kMaxPath || StrStartsWithAny(path, "/\\") ||
+        (len(path) >= 2 && path.s[1] == ':')) {
         if (error)
             *error = StrDup(
                 fmt("asset `%s` is outside the application directory", path));
         return false;
     }
     int segment = 0;
-    for (int i = 0; i <= path.len; i++) {
-        bool separator = i == path.len || path.s[i] == '/' || path.s[i] == '\\';
+    for (int i = 0; i <= len(path); i++) {
+        bool separator =
+            i == len(path) || path.s[i] == '/' || path.s[i] == '\\';
         if (!separator) continue;
         int n = i - segment;
         if (n == 2 && path.s[segment] == '.' && path.s[segment + 1] == '.') {

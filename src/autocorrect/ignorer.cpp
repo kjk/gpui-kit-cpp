@@ -125,7 +125,7 @@ static bool PatternMatches(const IgnorePattern& pat, Str path, bool isDir) {
         return false;
     }
     const char* pe = pat.glob.s + pat.glob.len;
-    const char* te = path.s + path.len;
+    const char* te = path.s + len(path);
     if (pat.anchored) {
         return GlobMatch(pat.glob.s, pe, path.s, te);
     }
@@ -161,7 +161,7 @@ static int MatchedOrParents(const Ignorer* ig, Str path, bool isDir) {
     if (m != 0) {
         return m;
     }
-    int end = path.len;
+    int end = len(path);
     for (;;) {
         while (end > 0 && path.s[end - 1] != '/') {
             end--;
@@ -181,13 +181,13 @@ static int MatchedOrParents(const Ignorer* ig, Str path, bool isDir) {
 
 static void AddPatternsFromFile(base::Vec<IgnorePattern>& out, Str workDir,
                                 Str name) {
-    int dirLen = workDir.len;
+    int dirLen = len(workDir);
     while (dirLen > 0 &&
            (workDir.s[dirLen - 1] == '/' || workDir.s[dirLen - 1] == '\\')) {
         dirLen--;
     }
     base::TempStr path = base::fmt("%s/%s", Str(workDir.s, dirLen), name);
-    if (path.len >= 1024) {
+    if (len(path) >= 1024) {
         return;
     }
     FILE* f = fopen(path.s, "rb");
@@ -211,8 +211,8 @@ static void AddPatternsFromFile(base::Vec<IgnorePattern>& out, Str workDir,
     fclose(f);
     Str text(buf, (int)got);
     int lineStart = 0;
-    for (int i = 0; i <= text.len; i++) {
-        if (i < text.len && text.s[i] != '\n') {
+    for (int i = 0; i <= len(text); i++) {
+        if (i < len(text) && text.s[i] != '\n') {
             continue;
         }
         int end = i;
@@ -223,28 +223,28 @@ static void AddPatternsFromFile(base::Vec<IgnorePattern>& out, Str workDir,
         }
         Str line(text.s + lineStart, end - lineStart);
         lineStart = i + 1;
-        if (line.len == 0 || line.s[0] == '#') {
+        if (len(line) == 0 || line.s[0] == '#') {
             continue;
         }
         IgnorePattern pat;
         if (line.s[0] == '!') {
             pat.negated = true;
-            line = Str(line.s + 1, line.len - 1);
+            line = Str(line.s + 1, len(line) - 1);
         }
-        if (line.len > 0 && line.s[line.len - 1] == '/') {
+        if (len(line) > 0 && line.s[len(line) - 1] == '/') {
             pat.dirOnly = true;
-            line = Str(line.s, line.len - 1);
+            line = Str(line.s, len(line) - 1);
         }
         // A leading '/' or a '/' anywhere inside anchors the pattern to the
         // root; only a bare name floats to any depth.
-        if (line.len > 0 && line.s[0] == '/') {
+        if (len(line) > 0 && line.s[0] == '/') {
             pat.anchored = true;
-            line = Str(line.s + 1, line.len - 1);
+            line = Str(line.s + 1, len(line) - 1);
         }
-        if (line.len == 0) {
+        if (len(line) == 0) {
             continue;
         }
-        for (int k = 0; !pat.anchored && k < line.len; k++) {
+        for (int k = 0; !pat.anchored && k < len(line); k++) {
             if (line.s[k] == '/') {
                 pat.anchored = true;
             }
@@ -281,18 +281,18 @@ void IgnorerInit(Ignorer* ig, Str workDir) {
 }
 
 bool IgnorerIsIgnored(const Ignorer* ig, Str relativePath) {
-    if (!ig || ig->nPatterns == 0 || relativePath.len == 0) {
+    if (!ig || ig->nPatterns == 0 || len(relativePath) == 0) {
         return false;
     }
     // Normalize: backslashes to slashes, a leading "./" dropped.
-    base::TempStr buf = base::AllocStrTemp(std::min(relativePath.len, 1024));
+    base::TempStr buf = base::AllocStrTemp(std::min(len(relativePath), 1024));
     int n = 0;
     int start = 0;
-    if (relativePath.len >= 2 && relativePath.s[0] == '.' &&
+    if (len(relativePath) >= 2 && relativePath.s[0] == '.' &&
         (relativePath.s[1] == '/' || relativePath.s[1] == '\\')) {
         start = 2;
     }
-    for (int i = start; i < relativePath.len && n < buf.len; i++) {
+    for (int i = start; i < len(relativePath) && n < len(buf); i++) {
         char c = relativePath.s[i];
         buf.s[n++] = c == '\\' ? '/' : c;
     }

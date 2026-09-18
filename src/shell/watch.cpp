@@ -22,7 +22,7 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
                     int maxFiles) {
     ShellErrorClear(error);
     if (stamp) *stamp = {};
-    if (!directory.s || directory.len <= 0 || directory.len >= kMaxPath ||
+    if (!directory.s || len(directory) <= 0 || len(directory) >= kMaxPath ||
         maxFiles < 0) {
         ShellErrorSet(error,
                       StrL("source watch directory is empty or too long"));
@@ -31,8 +31,8 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
 
     Vec<PendingDirectory> pending;
     PendingDirectory root;
-    memcpy(root.path, directory.s, (size_t)directory.len);
-    root.path[directory.len] = 0;
+    memcpy(root.path, directory.s, (size_t)len(directory));
+    root.path[len(directory)] = 0;
     if (!VecAppend(pending, root)) {
         ShellErrorSet(error, StrL("out of memory while scanning source tree"));
         return false;
@@ -76,13 +76,13 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
                 PendingDirectory child;
                 child.depth = dir.depth + 1;
                 TempStr childPath = fmt("%s/%s", Str(dir.path), Str(item.name));
-                if (!childPath || childPath.len >= (int)sizeof(child.path)) {
+                if (!childPath || len(childPath) >= (int)sizeof(child.path)) {
                     ShellErrorSet(error, StrL("source path is too long or "
                                               "could not be recorded"));
                     ok = false;
                     break;
                 }
-                memcpy(child.path, childPath.s, (size_t)childPath.len + 1);
+                memcpy(child.path, childPath.s, (size_t)len(childPath) + 1);
                 if (!VecAppend(pending, child)) {
                     ShellErrorSet(error, StrL("source path is too long or "
                                               "could not be recorded"));
@@ -122,7 +122,7 @@ bool SourceWatcher::Init(Str value, ShellError* error, int debounce) {
     SourceTreeStamp initial;
     if (!ScanSourceTree(value, &initial, error)) return false;
     Str copy = StrDup(value);
-    if (!copy.s && value.len > 0) {
+    if (!copy.s && len(value) > 0) {
         ShellErrorSet(error, StrL("out of memory while starting source watch"));
         return false;
     }
@@ -278,8 +278,8 @@ Entity<ShellWatcher> ShellWatcher::Start(ShellRuntime* runtime,
     watcher->window = window;
     watcher->directory = StrDup(directory);
     watcher->entry = StrDup(entry);
-    if ((!watcher->directory.s && directory.len > 0) ||
-        (!watcher->entry.s && entry.len > 0) ||
+    if ((!watcher->directory.s && len(directory) > 0) ||
+        (!watcher->entry.s && len(entry) > 0) ||
         !watcher->source.Init(directory, error)) {
         EntityDrop(app, entity.id);
         return {};
@@ -301,7 +301,7 @@ void ShellWatcher::OnPoll(ShellWatcher* self, Ctx* cx, const TickEvent*) {
     job->window = cx->win;
     job->watcher = cx->self;
     job->directory = StrDup(self->directory);
-    if (!job->directory.s && self->directory.len > 0) {
+    if (!job->directory.s && len(self->directory) > 0) {
         delete job;
         ShellErrorSet(&self->error,
                       StrL("out of memory while scheduling source scan"));

@@ -91,7 +91,7 @@ static void LoadDir(TreeState* s, Str path, int parent, int depth) {
         // walk is two deep, so the buffer is the sum rather than a guess —
         // which is also what keeps the compiler from calling it a truncation.
         TempStr child = fmt("%s/%s", path, Str(found[i].name));
-        if (child.len >= 1024) {
+        if (len(child) >= 1024) {
             continue;
         }
         // The id has to be unique and stable, so it is the path; the label is

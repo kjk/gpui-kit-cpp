@@ -105,7 +105,7 @@ static void SaveLayoutFrom(DockApp* self, DockState* s) {
     }
     FILE* f = fopen(kStateFile, "wb");
     if (f) {
-        fwrite(json.s, 1, (size_t)json.len, f);
+        fwrite(json.s, 1, (size_t)len(json), f);
         fclose(f);
         Say(self, StrL("Layout saved"));
     } else {

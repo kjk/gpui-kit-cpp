@@ -55,11 +55,11 @@ static Str StrFromNS(NSString* s) {
 }
 
 static NSString* NSFromStr(Str s) {
-    if (s.len <= 0) {
+    if (len(s) <= 0) {
         return @"";
     }
     return [[NSString alloc] initWithBytes:s.s
-                                    length:(NSUInteger)s.len
+                                    length:(NSUInteger)len(s)
                                   encoding:NSUTF8StringEncoding];
 }
 
@@ -71,7 +71,7 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
     }
     @autoreleasepool {
         NSString* s = [[NSString alloc] initWithBytes:url.s
-                                               length:(NSUInteger)url.len
+                                               length:(NSUInteger)len(url)
                                              encoding:NSUTF8StringEncoding];
         NSURL* u = s ? [NSURL URLWithString:s] : nil;
         if (!u) {
@@ -82,7 +82,7 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
                 cachePolicy:NSURLRequestUseProtocolCachePolicy
             timeoutInterval:(NSTimeInterval)kHttpTimeoutMs / 1000.0];
         NSString* verb =
-            request.method.len > 0 ? NSFromStr(request.method) : @"GET";
+            len(request.method) > 0 ? NSFromStr(request.method) : @"GET";
         [req setHTTPMethod:verb];
         [req setValue:@"gpui/1.0" forHTTPHeaderField:@"User-Agent"];
         for (int i = 0; i < request.nHeaders; i++) {
@@ -92,10 +92,10 @@ bool HttpSend(const HttpReq& request, HttpRsp* out) {
                 [req setValue:value forHTTPHeaderField:name];
             }
         }
-        if (request.body.len > 0) {
+        if (len(request.body) > 0) {
             [req setHTTPBody:[NSData
                                  dataWithBytes:request.body.s
-                                        length:(NSUInteger)request.body.len]];
+                                        length:(NSUInteger)len(request.body)]];
         }
 
         __block NSData* body = nil;

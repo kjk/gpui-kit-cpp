@@ -23,9 +23,9 @@ static bool IsAsciiAlnum(char c) {
 // matched at s[i], or 0.
 static int MatchRuleName(Str s, int i) {
     int at = i;
-    while (at < s.len && IsAsciiAlnum(s.s[at])) {
+    while (at < len(s) && IsAsciiAlnum(s.s[at])) {
         at++;
-        while (at < s.len && (s.s[at] == '-' || s.s[at] == '_')) {
+        while (at < len(s) && (s.s[at] == '-' || s.s[at] == '_')) {
             at++;
         }
     }
@@ -46,18 +46,18 @@ static void ToggleAddRule(Toggle* t, Str name) {
 Toggle ToggleParse(Str comment) {
     Str s = comment;
     static const Str kWord = StrL("autocorrect");
-    for (int i = 0; i + kWord.len <= s.len; i++) {
-        if (!base::StrEq(Str(s.s + i, kWord.len), kWord)) {
+    for (int i = 0; i + len(kWord) <= len(s); i++) {
+        if (!base::StrEq(Str(s.s + i, len(kWord)), kWord)) {
             continue;
         }
-        int at = i + kWord.len;
+        int at = i + len(kWord);
         // (":" ~ " "*) | "-"
-        if (at < s.len && s.s[at] == ':') {
+        if (at < len(s) && s.s[at] == ':') {
             at++;
-            while (at < s.len && s.s[at] == ' ') {
+            while (at < len(s) && s.s[at] == ' ') {
                 at++;
             }
-        } else if (at < s.len && s.s[at] == '-') {
+        } else if (at < len(s) && s.s[at] == '-') {
             at++;
         } else {
             continue;
@@ -67,29 +67,29 @@ Toggle ToggleParse(Str comment) {
         static const Str kTrue = StrL("true");
         static const Str kDisable = StrL("disable");
         static const Str kFalse = StrL("false");
-        if (at + kEnable.len <= s.len &&
-            base::StrEq(Str(s.s + at, kEnable.len), kEnable)) {
+        if (at + len(kEnable) <= len(s) &&
+            base::StrEq(Str(s.s + at, len(kEnable)), kEnable)) {
             kind = ToggleKind::Enable;
-            at += kEnable.len;
-        } else if (at + kTrue.len <= s.len &&
-                   base::StrEq(Str(s.s + at, kTrue.len), kTrue)) {
+            at += len(kEnable);
+        } else if (at + len(kTrue) <= len(s) &&
+                   base::StrEq(Str(s.s + at, len(kTrue)), kTrue)) {
             kind = ToggleKind::Enable;
-            at += kTrue.len;
-        } else if (at + kDisable.len <= s.len &&
-                   base::StrEq(Str(s.s + at, kDisable.len), kDisable)) {
+            at += len(kTrue);
+        } else if (at + len(kDisable) <= len(s) &&
+                   base::StrEq(Str(s.s + at, len(kDisable)), kDisable)) {
             kind = ToggleKind::Disable;
-            at += kDisable.len;
-        } else if (at + kFalse.len <= s.len &&
-                   base::StrEq(Str(s.s + at, kFalse.len), kFalse)) {
+            at += len(kDisable);
+        } else if (at + len(kFalse) <= len(s) &&
+                   base::StrEq(Str(s.s + at, len(kFalse)), kFalse)) {
             kind = ToggleKind::Disable;
-            at += kFalse.len;
+            at += len(kFalse);
         } else {
             continue;
         }
         Toggle t;
         t.kind = kind;
         // pair* : " " ~ (rule_name ~ ","* ~ " "*)+
-        while (at < s.len && s.s[at] == ' ') {
+        while (at < len(s) && s.s[at] == ' ') {
             at++;
             for (;;) {
                 int n = MatchRuleName(s, at);
@@ -98,7 +98,7 @@ Toggle ToggleParse(Str comment) {
                 }
                 ToggleAddRule(&t, Str(s.s + at, n));
                 at += n;
-                while (at < s.len && (s.s[at] == ',' || s.s[at] == ' ')) {
+                while (at < len(s) && (s.s[at] == ',' || s.s[at] == ' ')) {
                     at++;
                 }
             }

@@ -3,7 +3,7 @@
 namespace gpui {
 
 bool IsOpenableUrl(Str url) {
-    if (!url || url.len > 32768) return false;
+    if (!url || len(url) > 32768) return false;
     int schemeEnd = StrFind(url, StrL("://"));
     if (schemeEnd <= 0) return false;
     Str scheme(url.s, schemeEnd);
@@ -12,7 +12,7 @@ bool IsOpenableUrl(Str url) {
     }
     int authorityStart = schemeEnd + 3;
     int authorityEnd = authorityStart;
-    while (authorityEnd < url.len && url.s[authorityEnd] != '/' &&
+    while (authorityEnd < len(url) && url.s[authorityEnd] != '/' &&
            url.s[authorityEnd] != '?' && url.s[authorityEnd] != '#') {
         unsigned char c = (unsigned char)url.s[authorityEnd];
         if (c <= 0x20 || c >= 0x7f || c == '\\') return false;
@@ -77,7 +77,7 @@ static Str Lower(Str value) {
 
 static Str Upper(Str value) {
     Str out = StrDup(value);
-    for (int i = 0; i < out.len; i++) {
+    for (int i = 0; i < len(out); i++) {
         char c = out.s[i];
         if (c >= 'a' && c <= 'z') out.s[i] = (char)(c - 'a' + 'A');
     }
@@ -207,8 +207,8 @@ static uint16_t EffectivePort(Str scheme, uint16_t port, bool hasPort) {
 
 static bool PrefixAllows(Str prefix, Str path) {
     if (StrEq(prefix, path)) return true;
-    if (!StrStartsWith(path, prefix) || path.len <= prefix.len) return false;
-    return prefix.s[prefix.len - 1] == '/' || path.s[prefix.len] == '/';
+    if (!StrStartsWith(path, prefix) || len(path) <= len(prefix)) return false;
+    return prefix.s[len(prefix) - 1] == '/' || path.s[len(prefix)] == '/';
 }
 
 bool HttpRequestGrant::Allows(Str requestScheme, Str requestHost,
@@ -394,10 +394,10 @@ static bool IsSeparator(char c) {
 }
 
 static bool IsAbsolute(Str path) {
-    if (path.len == 0) return false;
+    if (len(path) == 0) return false;
     if (IsSeparator(path.s[0])) return true;
 #if GPUI_OS_WINDOWS
-    return path.len >= 3 &&
+    return len(path) >= 3 &&
            ((path.s[0] >= 'A' && path.s[0] <= 'Z') ||
             (path.s[0] >= 'a' && path.s[0] <= 'z')) &&
            path.s[1] == ':' && IsSeparator(path.s[2]);
@@ -411,7 +411,7 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
     StrBuilder out(arena);
     int prefix = 0;
 #if GPUI_OS_WINDOWS
-    if (path.len >= 2 && path.s[1] == ':') {
+    if (len(path) >= 2 && path.s[1] == ':') {
         char drive = path.s[0];
         if (drive >= 'a' && drive <= 'z') drive = (char)(drive - 'a' + 'A');
         out.AppendChar(drive);
@@ -419,17 +419,17 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
         prefix = 2;
     }
 #endif
-    if (prefix < path.len && IsSeparator(path.s[prefix])) {
+    if (prefix < len(path) && IsSeparator(path.s[prefix])) {
         out.AppendChar('/');
-        while (prefix < path.len && IsSeparator(path.s[prefix])) prefix++;
+        while (prefix < len(path) && IsSeparator(path.s[prefix])) prefix++;
     }
     Vec<Str> parts;
     int at = prefix;
-    while (at <= path.len) {
+    while (at <= len(path)) {
         int end = at;
-        while (end < path.len && !IsSeparator(path.s[end])) end++;
+        while (end < len(path) && !IsSeparator(path.s[end])) end++;
         Str part(path.s + at, end - at);
-        if (part.len == 0 || StrEq(part, StrL("."))) {
+        if (len(part) == 0 || StrEq(part, StrL("."))) {
         } else if (StrEq(part, StrL(".."))) {
             if (len(parts) == 0) {
                 if (escaped) *escaped = true;
@@ -449,7 +449,7 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
         out.Append(parts[i]);
     }
     Str result = out.TakeStr();
-    return result.len == 0 ? StrDup(arena, StrL(".")) : result;
+    return len(result) == 0 ? StrDup(arena, StrL(".")) : result;
 }
 
 static bool PathPrefix(Str root, Str path, Str* relative) {
@@ -463,14 +463,14 @@ static bool PathPrefix(Str root, Str path, Str* relative) {
         *relative = StrL(".");
         return true;
     }
-    if (path.len <= root.len || path.s[root.len] != '/') return false;
-    Str head(path.s, root.len);
+    if (len(path) <= len(root) || path.s[len(root)] != '/') return false;
+    Str head(path.s, len(root));
 #if GPUI_OS_WINDOWS
     if (!StrEqI(head, root)) return false;
 #else
     if (!StrEq(head, root)) return false;
 #endif
-    *relative = Str(path.s + root.len + 1, path.len - root.len - 1);
+    *relative = Str(path.s + len(root) + 1, len(path) - len(root) - 1);
     return true;
 }
 

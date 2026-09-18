@@ -248,7 +248,7 @@ El* ShimmerText::IntoEl() {
 
     // The animation identity: an explicit id, or the text itself, which is
     // what `RenderOnce::render` falls back to.
-    uint32_t key = id.len > 0 ? MotionName(cx, id) : MotionName(cx, text);
+    uint32_t key = len(id) > 0 ? MotionName(cx, id) : MotionName(cx, text);
     float phase = ShimmerPhase(cx, key, shimmerStyle);
     if (shimmerStyle.reverse) {
         phase = 1.f - phase;
@@ -265,9 +265,9 @@ El* ShimmerText::IntoEl() {
     // uses. Only an absolute spread reads the font size; a relative one is a
     // fraction of this width whatever it is.
     const char* bytes = text.s;
-    int len = text.len;
+    int n = len(text);
     int chars = 0;
-    for (int i = 0; i < len; i++) {
+    for (int i = 0; i < n; i++) {
         if (((uint8_t)bytes[i] & 0xC0) != 0x80) {
             chars++;
         }
@@ -282,9 +282,9 @@ El* ShimmerText::IntoEl() {
     int nSpans = 0;
     int charIx = 0;
     int i = 0;
-    while (i < len) {
+    while (i < n) {
         int next = i + 1;
-        while (next < len && ((uint8_t)bytes[next] & 0xC0) == 0x80) {
+        while (next < n && ((uint8_t)bytes[next] & 0xC0) == 0x80) {
             next++;
         }
         float x = ((float)charIx + 0.5f) * advance;

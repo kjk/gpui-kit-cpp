@@ -17,7 +17,7 @@ TempStr AvatarInitialsTemp(Str name) {
     // The first letter of each of the first two words.
     int n = 0;
     bool atWord = true;
-    for (int i = 0; i < name.len && n < 2; i++) {
+    for (int i = 0; i < len(name) && n < 2; i++) {
         char c = name.s[i];
         if (c == ' ') {
             atWord = true;
@@ -31,7 +31,7 @@ TempStr AvatarInitialsTemp(Str name) {
     // One word only: its first two letters instead.
     if (n == 1) {
         n = 0;
-        for (int i = 0; i < name.len && n < 2; i++) {
+        for (int i = 0; i < len(name) && n < 2; i++) {
             out.s[n++] = name.s[i];
         }
     }
@@ -122,7 +122,7 @@ struct AvatarIdentityColors {
 // from the same pinned ring.
 static AvatarIdentityColors AvatarIdentity(const Theme& th, Str initials) {
     uint32_t h = 2166136261u;
-    for (int i = 0; i < initials.len; i++) {
+    for (int i = 0; i < len(initials); i++) {
         h ^= (uint8_t)initials.s[i];
         h *= 16777619u;
     }
@@ -155,7 +155,7 @@ El* Avatar::IntoEl() {
     // of it; drawn edge to edge it would paint over the ring.
     float inset = borderW > 0 ? borderW : 0;
     float innerSize = size - inset * 2;
-    bool named = initials.s && initials.len > 0;
+    bool named = initials.s && len(initials) > 0;
     Background fill = th.tokens.secondary;
     Rgba text = th.mutedFg;
     Rgba identityBorder = th.border;
@@ -182,7 +182,7 @@ El* Avatar::IntoEl() {
     // The base is opaque (bg tokens.secondary) and the fallback tint sits on
     // top, so overlapping group avatars do not show through each other.
     gpui::Avatar* base = gpui::Avatar::New(cx)->Size(size)->Fallback(fb);
-    if (src.s && src.len > 0) {
+    if (src.s && len(src) > 0) {
         // AvatarImage::new(src).size_full().rounded_full(): the picture takes
         // the whole of the base and the fallback is not drawn at all.
         base->Image(
@@ -195,8 +195,8 @@ El* Avatar::IntoEl() {
     }
     El* el = base->IntoEl()->Radius(r)->Bg(th.tokens.secondary);
     Rgba bd = hasBorderC ? borderC
-                         : (named && !(src.s && src.len > 0) ? identityBorder
-                                                             : th.border);
+                         : (named && !(src.s && len(src) > 0) ? identityBorder
+                                                              : th.border);
     if (borderW > 0) {
         el->Pad(inset)->Border(borderW, bd);
     }

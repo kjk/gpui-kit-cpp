@@ -29,14 +29,18 @@ using base::Arena;
 using base::Str;
 
 // result/mod.rs Severity. The values are the crate's serialized ones.
-enum class Severity : uint8_t { Pass = 0, Error = 1, Warning = 2 };
+enum class Severity : uint8_t {
+    Pass = 0,
+    Error = 1,
+    Warning = 2
+};
 
 // result/mod.rs LineResult: one line the lint would change.
 struct LineResult {
-    int line = 1;  // 1-based, like the crate's
-    int col = 1;   // 1-based; counted in chars, the way pest counts columns
-    Str neu = {};  // the corrected text (Rust field is `new`)
-    Str old = {};  // the original slice, whitespace-trimmed
+    int line = 1; // 1-based, like the crate's
+    int col = 1;  // 1-based; counted in chars, the way pest counts columns
+    Str neu = {}; // the corrected text (Rust field is `new`)
+    Str old = {}; // the original slice, whitespace-trimmed
     Severity severity = Severity::Error;
 };
 
@@ -47,7 +51,7 @@ struct LintResult {
     int nLines = 0;
     Str error = {};
 
-    bool HasError() const { return error.len > 0; }
+    bool HasError() const { return len(error) > 0; }
 };
 
 // result/mod.rs FormatResult. On error `out` is the raw input, like the
@@ -56,7 +60,7 @@ struct FormatResult {
     Str out = {};
     Str error = {};
 
-    bool HasError() const { return error.len > 0; }
+    bool HasError() const { return len(error) > 0; }
 };
 
 // format.rs format(): correct plain text, no filetype dispatch.

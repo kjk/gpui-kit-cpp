@@ -34,9 +34,9 @@ static Str DepTempDir() {
         const char* value = getenv(names[i]);
         if (value && *value) {
             Str result = StrDup(Str(value));
-            for (int c = 0; c < result.len; c++)
+            for (int c = 0; c < len(result); c++)
                 if (result.s[c] == '\\') result.s[c] = '/';
-            while (result.len > 1 && result.s[result.len - 1] == '/')
+            while (len(result) > 1 && result.s[len(result) - 1] == '/')
                 result.len--;
             return result;
         }
@@ -45,12 +45,12 @@ static Str DepTempDir() {
 }
 
 static bool DepWrite(Str path, Str contents) {
-    if (path.len >= kMaxPath) return false;
+    if (len(path) >= kMaxPath) return false;
     TempStr name = StrDupTemp(path);
     FILE* file = fopen(name.s, "wb");
     if (!file) return false;
-    bool ok = contents.len == 0 || fwrite(contents.s, 1, (size_t)contents.len,
-                                          file) == (size_t)contents.len;
+    bool ok = len(contents) == 0 || fwrite(contents.s, 1, (size_t)len(contents),
+                                           file) == (size_t)len(contents);
     return fclose(file) == 0 && ok;
 }
 
@@ -117,8 +117,8 @@ static void DependencyCacheLivesInTheShellCache() {
     Str first = GitDependencyRemoteKey(StrL("https://example.test/ui"));
     Str again = GitDependencyRemoteKey(StrL("https://example.test/ui"));
     Str other = GitDependencyRemoteKey(StrL("https://example.test/ui.git"));
-    utassert(first.len == 64 && StrEq(first, again) && !StrEq(first, other));
-    for (int i = 0; i < first.len; i++) {
+    utassert(len(first) == 64 && StrEq(first, again) && !StrEq(first, other));
+    for (int i = 0; i < len(first); i++) {
         char c = first.s[i];
         utassert((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'));
     }
@@ -469,9 +469,9 @@ struct GitFixture {
     bool Write(const char* name, Str source) {
         Str path = DepJoin(remote, Str(name));
         int lastSeparator = -1;
-        for (int i = 0; i < path.len; i++)
+        for (int i = 0; i < len(path); i++)
             if (path.s[i] == '/') lastSeparator = i;
-        if (lastSeparator > remote.len) {
+        if (lastSeparator > len(remote)) {
             Str parent(path.s, lastSeparator);
             DependencyMakeDirectories(parent, nullptr);
         }
@@ -496,22 +496,22 @@ struct GitFixture {
     // cache is checked against.
     Str Url() {
         TempStr resolved = AllocStrTemp(kMaxPath - 1);
-        if (!PlatCanonicalPath(remote.s, resolved.s, resolved.len + 1))
+        if (!PlatCanonicalPath(remote.s, resolved.s, len(resolved) + 1))
             return {};
         Str url = StrDup(Str(resolved.s));
-        for (int i = 0; i < url.len; i++)
+        for (int i = 0; i < len(url); i++)
             if (url.s[i] == '\\') url.s[i] = '/';
         return url;
     }
 };
 
 static Str ReadWhole(Str path) {
-    if (!path || path.len >= kMaxPath) return {};
+    if (!path || len(path) >= kMaxPath) return {};
     TempStr name = StrDupTemp(path);
     FILE* file = fopen(name.s, "rb");
     if (!file) return {};
     TempStr block = AllocStrTemp(4096);
-    size_t read = fread(block.s, 1, (size_t)block.len, file);
+    size_t read = fread(block.s, 1, (size_t)len(block), file);
     fclose(file);
     return StrDup(Str(block.s, (int)read));
 }

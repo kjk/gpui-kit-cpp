@@ -70,7 +70,7 @@ static void AppendCp(StrBuilder& out, uint32_t cp) {
 
 static ArenaStr Decode(Arena* a, Str value) {
     bool needsDecode = false;
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         if (value.s[i] == '&') {
             needsDecode = true;
             break;
@@ -79,23 +79,23 @@ static ArenaStr Decode(Arena* a, Str value) {
     if (!needsDecode) return ArenaStrDup(a, value);
 
     StrBuilder out(a);
-    out.Reserve(value.len);
-    for (int i = 0; i < value.len;) {
+    out.Reserve(len(value));
+    for (int i = 0; i < len(value);) {
         if (value.s[i] != '&') {
             out.AppendChar(value.s[i++]);
             continue;
         }
         int start = i++;
-        if (i < value.len && value.s[i] == '#') {
+        if (i < len(value) && value.s[i] == '#') {
             i++;
             int radix = 10;
-            if (i < value.len && (value.s[i] == 'x' || value.s[i] == 'X')) {
+            if (i < len(value) && (value.s[i] == 'x' || value.s[i] == 'X')) {
                 radix = 16;
                 i++;
             }
             int digits = i;
             uint32_t cp = 0;
-            while (i < value.len) {
+            while (i < len(value)) {
                 char c = value.s[i];
                 int d = c >= '0' && c <= '9'                  ? c - '0'
                         : radix == 16 && c >= 'a' && c <= 'f' ? c - 'a' + 10
@@ -110,12 +110,12 @@ static ArenaStr Decode(Arena* a, Str value) {
                 out.AppendChar('&');
                 continue;
             }
-            if (i < value.len && value.s[i] == ';') i++;
+            if (i < len(value) && value.s[i] == ';') i++;
             AppendCp(out, cp);
             continue;
         }
         int end = i;
-        while (end < value.len && Alpha(value.s[end])) end++;
+        while (end < len(value) && Alpha(value.s[end])) end++;
         Str decoded = {};
         int used = 0;
         for (int n = end - i; n > 0; n--) {
@@ -133,7 +133,7 @@ static ArenaStr Decode(Arena* a, Str value) {
         }
         out.Append(decoded);
         i += used;
-        if (i < value.len && value.s[i] == ';') i++;
+        if (i < len(value) && value.s[i] == ';') i++;
     }
     return ArenaStrDup(a, out.TakeStr());
 }
@@ -153,14 +153,14 @@ static void Emit(Lex* l, const Token& token) {
 }
 
 static void SkipSpace(Lex* l) {
-    while (l->at < l->source.len && Space(l->source.s[l->at])) {
+    while (l->at < len(l->source) && Space(l->source.s[l->at])) {
         if (l->source.s[l->at++] == '\n') l->line++;
     }
 }
 
 static ArenaStr Name(Lex* l) {
     int start = l->at;
-    while (l->at < l->source.len && NameChar(l->source.s[l->at])) l->at++;
+    while (l->at < len(l->source) && NameChar(l->source.s[l->at])) l->at++;
     return Lower(l->a, Str(l->source.s + start, l->at - start));
 }
 
@@ -170,19 +170,19 @@ static Attribute* Attrs(Lex* l, bool* selfClose) {
     *selfClose = false;
     for (;;) {
         SkipSpace(l);
-        if (l->at >= l->source.len) return first;
+        if (l->at >= len(l->source)) return first;
         if (l->source.s[l->at] == '>') {
             l->at++;
             return first;
         }
-        if (l->source.s[l->at] == '/' && l->at + 1 < l->source.len &&
+        if (l->source.s[l->at] == '/' && l->at + 1 < len(l->source) &&
             l->source.s[l->at + 1] == '>') {
             l->at += 2;
             *selfClose = true;
             return first;
         }
         int start = l->at;
-        while (l->at < l->source.len && NameChar(l->source.s[l->at])) l->at++;
+        while (l->at < len(l->source) && NameChar(l->source.s[l->at])) l->at++;
         if (start == l->at) {
             l->at++;
             continue;
@@ -190,23 +190,23 @@ static Attribute* Attrs(Lex* l, bool* selfClose) {
         ArenaStr name = Lower(l->a, Str(l->source.s + start, l->at - start));
         SkipSpace(l);
         ArenaStr value = {};
-        if (l->at < l->source.len && l->source.s[l->at] == '=') {
+        if (l->at < len(l->source) && l->source.s[l->at] == '=') {
             l->at++;
             SkipSpace(l);
             char quote = 0;
-            if (l->at < l->source.len &&
+            if (l->at < len(l->source) &&
                 (l->source.s[l->at] == '\'' || l->source.s[l->at] == '"')) {
                 quote = l->source.s[l->at++];
             }
             start = l->at;
-            while (l->at < l->source.len &&
+            while (l->at < len(l->source) &&
                    (quote ? l->source.s[l->at] != quote
                           : !Space(l->source.s[l->at]) &&
                                 l->source.s[l->at] != '>')) {
                 l->at++;
             }
             value = Decode(l->a, Str(l->source.s + start, l->at - start));
-            if (quote && l->at < l->source.len) l->at++;
+            if (quote && l->at < len(l->source)) l->at++;
         }
         Attribute* attr = ArenaNew<Attribute>(l->a);
         attr->name = name;
@@ -220,13 +220,13 @@ static Attribute* Attrs(Lex* l, bool* selfClose) {
 }
 
 static int RawEnd(Lex* l, Str name) {
-    for (int i = l->at; i + name.len + 2 <= l->source.len; i++) {
+    for (int i = l->at; i + len(name) + 2 <= len(l->source); i++) {
         if (l->source.s[i] == '<' && l->source.s[i + 1] == '/' &&
-            StrEqI(Str(l->source.s + i + 2, name.len), name)) {
+            StrEqI(Str(l->source.s + i + 2, len(name)), name)) {
             return i;
         }
     }
-    return l->source.len;
+    return len(l->source);
 }
 
 void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
@@ -239,7 +239,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
     l.user = user;
     l.options = options;
     Str rawName = {};
-    while (l.at < source.len) {
+    while (l.at < len(source)) {
         if (rawName.s) {
             int end = RawEnd(&l, rawName);
             Token token;
@@ -253,7 +253,7 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
         }
         if (source.s[l.at] != '<') {
             int start = l.at;
-            while (l.at < source.len && source.s[l.at] != '<') l.at++;
+            while (l.at < len(source) && source.s[l.at] != '<') l.at++;
             Token token;
             token.kind = TokenKind::Character;
             token.data = Decode(a, Str(source.s + start, l.at - start));
@@ -261,11 +261,11 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             Emit(&l, token);
             continue;
         }
-        if (l.at + 3 < source.len &&
+        if (l.at + 3 < len(source) &&
             StrEq(Str(source.s + l.at, 4), StrL("<!--"))) {
             l.at += 4;
             int start = l.at;
-            while (l.at + 2 < source.len &&
+            while (l.at + 2 < len(source) &&
                    !(source.s[l.at] == '-' && source.s[l.at + 1] == '-' &&
                      source.s[l.at + 2] == '>')) {
                 l.at++;
@@ -273,25 +273,25 @@ void Tokenize(Arena* a, Str source, TokenSink sink, void* user,
             Token token;
             token.kind = TokenKind::Comment;
             token.data = ArenaStrDup(a, Str(source.s + start, l.at - start));
-            if (l.at + 2 < source.len) l.at += 3;
+            if (l.at + 2 < len(source)) l.at += 3;
             Emit(&l, token);
             continue;
         }
-        if (l.at + 1 < source.len && source.s[l.at + 1] == '!') {
+        if (l.at + 1 < len(source) && source.s[l.at + 1] == '!') {
             l.at += 2;
-            while (l.at < source.len && source.s[l.at] != '>') l.at++;
-            if (l.at < source.len) l.at++;
+            while (l.at < len(source) && source.s[l.at] != '>') l.at++;
+            if (l.at < len(source)) l.at++;
             continue;
         }
         Token token;
         token.line = l.line;
-        if (l.at + 1 < source.len && source.s[l.at + 1] == '/') {
+        if (l.at + 1 < len(source) && source.s[l.at + 1] == '/') {
             l.at += 2;
             token.kind = TokenKind::EndTag;
             token.name = Name(&l);
-            while (l.at < source.len && source.s[l.at] != '>') l.at++;
-            if (l.at < source.len) l.at++;
-        } else if (l.at + 1 < source.len && Alpha(source.s[l.at + 1])) {
+            while (l.at < len(source) && source.s[l.at] != '>') l.at++;
+            if (l.at < len(source)) l.at++;
+        } else if (l.at + 1 < len(source) && Alpha(source.s[l.at + 1])) {
             l.at++;
             token.kind = TokenKind::StartTag;
             token.name = Name(&l);
@@ -403,7 +403,7 @@ Str AttrValue(Arena* a, const Node* node, Str name) {
 }
 
 static void WriteEscaped(StrBuilder& out, Str value, bool attribute) {
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char c = value.s[i];
         if (c == '&')
             out.Append(StrL("&amp;"));

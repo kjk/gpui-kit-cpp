@@ -67,7 +67,7 @@ static void ConfirmGoTo(LargeTextApp* self, Ctx* cx, const ClickEvent* ev) {
     int column = 1;
     int at = 0;
     bool any = false;
-    while (at < query.len && query.s[at] >= '0' && query.s[at] <= '9') {
+    while (at < len(query) && query.s[at] >= '0' && query.s[at] <= '9') {
         line = line * 10 + (query.s[at] - '0');
         at++;
         any = true;
@@ -75,10 +75,10 @@ static void ConfirmGoTo(LargeTextApp* self, Ctx* cx, const ClickEvent* ev) {
     if (!any) {
         return;
     }
-    if (at < query.len && query.s[at] == ':') {
+    if (at < len(query) && query.s[at] == ':') {
         at++;
         column = 0;
-        while (at < query.len && query.s[at] >= '0' && query.s[at] <= '9') {
+        while (at < len(query) && query.s[at] >= '0' && query.s[at] <= '9') {
             column = column * 10 + (query.s[at] - '0');
             at++;
         }

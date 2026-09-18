@@ -75,7 +75,7 @@ bool HostValue::CopyFrom(const HostValue& other) {
         field.name = StrDup(other.object[i].name);
         field.value =
             other.object[i].value ? CopyValue(*other.object[i].value) : nullptr;
-        if ((!field.name.s && other.object[i].name.len > 0) || !field.value ||
+        if ((!field.name.s && len(other.object[i].name) > 0) || !field.value ||
             !VecAppend(object, field)) {
             StrFree(field.name);
             if (field.value) {
@@ -109,7 +109,7 @@ bool HostValue::SetString(Str value) {
     Free();
     kind = HostValueKind::String;
     string = StrDup(value);
-    if (!string.s && value.len > 0) {
+    if (!string.s && len(value) > 0) {
         kind = HostValueKind::Null;
         return false;
     }
@@ -149,7 +149,7 @@ bool HostValue::SetField(Str fieldName, const HostValue& value) {
     HostField field;
     field.name = StrDup(fieldName);
     field.value = CopyValue(value);
-    if ((!field.name.s && fieldName.len > 0) || !field.value ||
+    if ((!field.name.s && len(fieldName) > 0) || !field.value ||
         !VecAppend(object, field)) {
         StrFree(field.name);
         if (field.value) {
@@ -392,12 +392,12 @@ bool HostIsReservedSpecifier(Str value) {
 }
 
 bool HostIsIdentifier(Str value) {
-    if (!value.s || value.len == 0) return false;
+    if (!value.s || len(value) == 0) return false;
     char first = value.s[0];
     if (!((first >= 'a' && first <= 'z') || (first >= 'A' && first <= 'Z') ||
           first == '_' || first == '$'))
         return false;
-    for (int i = 1; i < value.len; i++) {
+    for (int i = 1; i < len(value); i++) {
         char c = value.s[i];
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') || c == '_' || c == '$'))
@@ -421,7 +421,7 @@ static void AppendNames(StrBuilder* out, const HostModule* module,
 
 bool HostModule::Validate(HostError* error) const {
     if (error) error->Clear();
-    if (!name.s || name.len == 0) {
+    if (!name.s || len(name) == 0) {
         if (error) error->Set(StrL("HostModule name cannot be empty"));
         return false;
     }
@@ -437,7 +437,7 @@ bool HostModule::Validate(HostError* error) const {
 
     Vec<Str> declared;
     const char* at = declarations.s;
-    const char* end = declarations.s + declarations.len;
+    const char* end = declarations.s + len(declarations);
     while (at < end) {
         const char* lineEnd = (const char*)memchr(at, '\n', (size_t)(end - at));
         if (!lineEnd) lineEnd = end;
@@ -447,9 +447,9 @@ bool HostModule::Validate(HostError* error) const {
         const char* rest = nullptr;
         for (int i = 0; i < 3; i++) {
             Str prefix = Str(prefixes[i]);
-            if (lineEnd - at >= prefix.len &&
-                StrEq(Str(at, prefix.len), prefix)) {
-                rest = at + prefix.len;
+            if (lineEnd - at >= len(prefix) &&
+                StrEq(Str(at, len(prefix)), prefix)) {
+                rest = at + len(prefix);
                 break;
             }
         }

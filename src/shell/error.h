@@ -8,7 +8,7 @@ namespace gpui {
 struct ShellError {
     Str message;
 
-    bool IsSet() const { return message.len > 0; }
+    bool IsSet() const { return len(message) > 0; }
 };
 
 void ShellErrorClear(ShellError* error);

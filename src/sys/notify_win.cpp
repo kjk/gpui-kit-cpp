@@ -49,7 +49,7 @@ static void FillIconData(NOTIFYICONDATAW* nid) {
 
 // `tag` is not NUL-terminated; the copy is.
 static void SetTag(Str tag) {
-    int n = tag.len;
+    int n = len(tag);
     if (n > kTagCap - 1) {
         n = kTagCap - 1;
     }
@@ -120,7 +120,7 @@ static bool EnsureIcon() {
         nid.hIcon = LoadIconW(nullptr, IDI_APPLICATION);
     }
     Str name = Str(gNotify.appName[0] ? gNotify.appName : "");
-    if (name.len > 0) {
+    if (len(name) > 0) {
         wcsncpy_s(nid.szTip, ToCWstrTemp(name), _TRUNCATE);
     }
     if (!Shell_NotifyIconW(NIM_ADD, &nid)) {
@@ -162,7 +162,7 @@ bool SysNotifyShow(Str tag, Str title, Str body) {
     nid.dwInfoFlags = NIIF_NONE | NIIF_RESPECT_QUIET_TIME;
     // A balloon with an empty body is not shown at all, so a title-only
     // notification puts its text where the shell will draw it.
-    if (body.len > 0) {
+    if (len(body) > 0) {
         wcsncpy_s(nid.szInfoTitle, ToCWstrTemp(title), _TRUNCATE);
         wcsncpy_s(nid.szInfo, ToCWstrTemp(body), _TRUNCATE);
     } else {

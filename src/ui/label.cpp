@@ -89,19 +89,19 @@ Str Label::FullText() const {
     if (!hasSecondary) {
         return text;
     }
-    int len = text.len + 1 + secondary.len;
-    char* out = (char*)Alloc(a, len);
+    int n = len(text) + 1 + len(secondary);
+    char* out = (char*)Alloc(a, n);
     if (!out) {
         return {};
     }
-    if (text.len > 0) {
-        memcpy(out, text.s, text.len);
+    if (len(text) > 0) {
+        memcpy(out, text.s, len(text));
     }
-    out[text.len] = ' ';
-    if (secondary.len > 0) {
-        memcpy(out + text.len + 1, secondary.s, secondary.len);
+    out[len(text)] = ' ';
+    if (len(secondary) > 0) {
+        memcpy(out + len(text) + 1, secondary.s, len(secondary));
     }
-    return Str(out, len);
+    return Str(out, n);
 }
 
 // Common simple-case mappings keep the comparison portable without pulling
@@ -149,12 +149,12 @@ static uint32_t LabelLower(uint32_t c) {
 // Every mapping retained here has the same encoded width as its source, so
 // the byte offsets handed to TextSpan remain offsets in the original string.
 static bool LabelEqI(Str left, Str right) {
-    if (left.len != right.len) {
+    if (len(left) != len(right)) {
         return false;
     }
     int li = 0;
     int ri = 0;
-    while (li < left.len && ri < right.len) {
+    while (li < len(left) && ri < len(right)) {
         uint32_t lc = 0;
         uint32_t rc = 0;
         int ln = Utf8At(left, li, &lc);
@@ -165,7 +165,7 @@ static bool LabelEqI(Str left, Str right) {
         li += ln;
         ri += rn;
     }
-    return li == left.len && ri == right.len;
+    return li == len(left) && ri == len(right);
 }
 
 static int LabelHighlightRanges(const Label* label, Str full, int totalLength,
@@ -178,29 +178,29 @@ static int LabelHighlightRanges(const Label* label, Str full, int totalLength,
         count++;
     };
     if (label->hasSecondary) {
-        append(0, label->text.len);
-        append(label->text.len, totalLength);
+        append(0, len(label->text));
+        append(len(label->text), totalLength);
     }
-    if (!label->hasHighlight || label->highlight.text.len == 0) {
+    if (!label->hasHighlight || len(label->highlight.text) == 0) {
         return count;
     }
 
     Str needle = label->highlight.AsStr();
-    if (!full.s || needle.len > full.len) {
+    if (!full.s || len(needle) > len(full)) {
         return count;
     }
     if (label->highlight.IsPrefix()) {
-        if (LabelEqI(Str(full.s, needle.len), needle)) {
-            append(0, needle.len);
+        if (LabelEqI(Str(full.s, len(needle)), needle)) {
+            append(0, len(needle));
         }
         return count;
     }
 
     int search = 0;
-    while (search + needle.len <= full.len) {
+    while (search + len(needle) <= len(full)) {
         int match = -1;
-        for (int at = search; at + needle.len <= full.len;) {
-            if (LabelEqI(Str(full.s + at, needle.len), needle)) {
+        for (int at = search; at + len(needle) <= len(full);) {
+            if (LabelEqI(Str(full.s + at, len(needle)), needle)) {
                 match = at;
                 break;
             }
@@ -211,14 +211,14 @@ static int LabelHighlightRanges(const Label* label, Str full, int totalLength,
         if (match < 0) {
             break;
         }
-        append(match, match + needle.len);
+        append(match, match + len(needle));
         // Rust advances one byte from the match and then moves to the next
         // character boundary, which deliberately retains overlapping hits.
         search = match + 1;
-        while (search < full.len && ((uint8_t)full.s[search] & 0xc0) == 0x80) {
+        while (search < len(full) && ((uint8_t)full.s[search] & 0xc0) == 0x80) {
             search++;
         }
-        if (search >= full.len) {
+        if (search >= len(full)) {
             break;
         }
     }
@@ -232,7 +232,7 @@ int Label::HighlightRanges(int totalLength, Selection* out,
 
 static Str LabelMasked(Arena* a, Str text) {
     int chars = 0;
-    for (int at = 0; at < text.len;) {
+    for (int at = 0; at < len(text);) {
         uint32_t c = 0;
         int n = Utf8At(text, at, &c);
         at += n > 0 ? n : 1;
@@ -255,23 +255,23 @@ static Str LabelMasked(Arena* a, Str text) {
 
 static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
                       TextSpan* spans, int capacity) {
-    int maxRanges = full.len + 2;
+    int maxRanges = len(full) + 2;
     Selection* ranges =
         (Selection*)Alloc(label->a, (int)sizeof(Selection) * maxRanges);
     int nRanges =
-        LabelHighlightRanges(label, full, shown.len, ranges, maxRanges);
+        LabelHighlightRanges(label, full, len(shown), ranges, maxRanges);
     int firstMatch = label->hasSecondary ? 2 : 0;
     int pointsCap = 3 + 2 * (nRanges - firstMatch);
     int* points = (int*)Alloc(label->a, (int)sizeof(int) * pointsCap);
     int nPoints = 0;
     points[nPoints++] = 0;
-    points[nPoints++] = shown.len;
+    points[nPoints++] = len(shown);
     if (label->hasSecondary) {
-        points[nPoints++] = label->text.len;
+        points[nPoints++] = len(label->text);
     }
     for (int i = firstMatch; i < nRanges; i++) {
-        int lo = std::max(0, std::min(shown.len, ranges[i].start));
-        int hi = std::max(0, std::min(shown.len, ranges[i].end));
+        int lo = std::max(0, std::min(len(shown), ranges[i].start));
+        int hi = std::max(0, std::min(len(shown), ranges[i].end));
         points[nPoints++] = lo;
         points[nPoints++] = hi;
     }
@@ -297,7 +297,7 @@ static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
                 break;
             }
         }
-        bool muted = label->hasSecondary && lo >= label->text.len;
+        bool muted = label->hasSecondary && lo >= len(label->text);
         if (!matched && !muted) {
             continue;
         }
@@ -324,7 +324,7 @@ El* Label::IntoEl() {
     Str full = FullText();
     Str shown = masked ? LabelMasked(a, full) : full;
 
-    int spanCap = shown.len + 1;
+    int spanCap = len(shown) + 1;
     TextSpan* spans = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * spanCap);
     int nSpans = LabelSpans(this, full, shown, th, spans, spanCap);
     El* styled = TextEl(a, shown);

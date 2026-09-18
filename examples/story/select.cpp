@@ -306,7 +306,7 @@ static void BuildCountries() {
         // The section is named by the first character, not the first byte:
         // "Åland Islands" starts with two bytes of one.
         int n = 1;
-        while (n < name.len && ((uint8_t)name.s[n] & 0xc0) == 0x80) {
+        while (n < len(name) && ((uint8_t)name.s[n] & 0xc0) == 0x80) {
             n++;
         }
         Str letter = Str(name.s, n);

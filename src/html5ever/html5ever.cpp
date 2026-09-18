@@ -45,7 +45,7 @@ static bool IsNameChar(char c) {
 // Tag names have already been folded to lowercase by ScanName. Branching on
 // their first byte keeps the common membership tests to one or two compares.
 static bool IsVoid(Str name) {
-    if (!name.s || name.len == 0) return false;
+    if (!name.s || len(name) == 0) return false;
     switch (name.s[0]) {
         case 'a':
             return StrEq(name, StrL("area"));
@@ -81,7 +81,7 @@ static bool IsVoid(Str name) {
 }
 
 static bool IsFormatting(Str name) {
-    if (!name.s || name.len == 0) return false;
+    if (!name.s || len(name) == 0) return false;
     switch (name.s[0]) {
         case 'a':
             return StrEq(name, StrL("a"));
@@ -136,7 +136,7 @@ static Str NamedEntity(Str name) {
 static uint32_t NumericEntity(Str value, int radix) {
     uint32_t cp = 0;
     bool any = false;
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char c = value.s[i];
         uint32_t digit = 0;
         if (IsDigit(c)) {
@@ -197,7 +197,7 @@ static void AppendCp(StrBuilder& out, uint32_t cp) {
 
 static ArenaStr Decode(Arena* a, Str value, bool attribute) {
     bool needsDecode = false;
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         if (value.s[i] == '&' || value.s[i] == '\r' || value.s[i] == 0) {
             needsDecode = true;
             break;
@@ -206,11 +206,11 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
     if (!needsDecode) return ArenaStrDup(a, value);
 
     StrBuilder out(a);
-    out.Reserve(value.len);
-    for (int i = 0; i < value.len;) {
+    out.Reserve(len(value));
+    for (int i = 0; i < len(value);) {
         if (value.s[i] != '&') {
             char c = value.s[i++] == '\r' ? '\n' : value.s[i - 1];
-            if (c == '\n' && i < value.len && value.s[i] == '\n' &&
+            if (c == '\n' && i < len(value) && value.s[i] == '\n' &&
                 value.s[i - 1] == '\r') {
                 i++;
             }
@@ -222,16 +222,16 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
             continue;
         }
         int start = i++;
-        if (i < value.len && value.s[i] == '#') {
+        if (i < len(value) && value.s[i] == '#') {
             i++;
             int radix = 10;
-            if (i < value.len && (value.s[i] == 'x' || value.s[i] == 'X')) {
+            if (i < len(value) && (value.s[i] == 'x' || value.s[i] == 'X')) {
                 radix = 16;
                 i++;
             }
             int digits = i;
             while (
-                i < value.len &&
+                i < len(value) &&
                 (IsDigit(value.s[i]) ||
                  (radix == 16 && ((value.s[i] >= 'a' && value.s[i] <= 'f') ||
                                   (value.s[i] >= 'A' && value.s[i] <= 'F'))))) {
@@ -244,13 +244,13 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
             }
             uint32_t cp =
                 NumericEntity(Str(value.s + digits, i - digits), radix);
-            if (i < value.len && value.s[i] == ';') i++;
+            if (i < len(value) && value.s[i] == ';') i++;
             AppendCp(out, cp);
             continue;
         }
         int end = i;
-        while (end < value.len && IsAlpha(value.s[end]) && end - i < 31) end++;
-        if (end < value.len && IsDigit(value.s[end])) end++;
+        while (end < len(value) && IsAlpha(value.s[end]) && end - i < 31) end++;
+        if (end < len(value) && IsDigit(value.s[end])) end++;
         int matched = -1;
         Str decoded = {};
         for (int n = end - i; n > 0; n--) {
@@ -260,10 +260,10 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
                 break;
             }
         }
-        bool semi = matched > 0 && i + matched < value.len &&
+        bool semi = matched > 0 && i + matched < len(value) &&
                     value.s[i + matched] == ';';
         if (matched < 0 ||
-            (attribute && !semi && i + matched < value.len &&
+            (attribute && !semi && i + matched < len(value) &&
              (IsDigit(value.s[i + matched]) || IsAlpha(value.s[i + matched]) ||
               value.s[i + matched] == '='))) {
             out.AppendChar('&');
@@ -302,14 +302,14 @@ static void Error(Scanner* s, const char* message) {
 }
 
 static void SkipSpace(Scanner* s) {
-    while (s->at < s->source.len && IsSpace(s->source.s[s->at])) {
+    while (s->at < len(s->source) && IsSpace(s->source.s[s->at])) {
         if (s->source.s[s->at++] == '\n') s->line++;
     }
 }
 
 static ArenaStr ScanName(Scanner* s) {
     int start = s->at;
-    while (s->at < s->source.len && IsNameChar(s->source.s[s->at])) s->at++;
+    while (s->at < len(s->source) && IsNameChar(s->source.s[s->at])) s->at++;
     return LowerCopy(s->a, Str(s->source.s + start, s->at - start));
 }
 
@@ -319,20 +319,20 @@ static Attribute* ScanAttrs(Scanner* s, bool* selfClosing) {
     *selfClosing = false;
     for (;;) {
         SkipSpace(s);
-        if (s->at >= s->source.len) return first;
+        if (s->at >= len(s->source)) return first;
         char c = s->source.s[s->at];
         if (c == '>') {
             s->at++;
             return first;
         }
-        if (c == '/' && s->at + 1 < s->source.len &&
+        if (c == '/' && s->at + 1 < len(s->source) &&
             s->source.s[s->at + 1] == '>') {
             s->at += 2;
             *selfClosing = true;
             return first;
         }
         int nameStart = s->at;
-        while (s->at < s->source.len && !IsSpace(s->source.s[s->at]) &&
+        while (s->at < len(s->source) && !IsSpace(s->source.s[s->at]) &&
                s->source.s[s->at] != '=' && s->source.s[s->at] != '>' &&
                s->source.s[s->at] != '/') {
             s->at++;
@@ -346,22 +346,22 @@ static Attribute* ScanAttrs(Scanner* s, bool* selfClosing) {
             LowerCopy(s->a, Str(s->source.s + nameStart, s->at - nameStart));
         SkipSpace(s);
         ArenaStr value = {};
-        if (s->at < s->source.len && s->source.s[s->at] == '=') {
+        if (s->at < len(s->source) && s->source.s[s->at] == '=') {
             s->at++;
             SkipSpace(s);
             int start = s->at;
-            if (s->at < s->source.len &&
+            if (s->at < len(s->source) &&
                 (s->source.s[s->at] == '\'' || s->source.s[s->at] == '"')) {
                 char quote = s->source.s[s->at++];
                 start = s->at;
-                while (s->at < s->source.len && s->source.s[s->at] != quote) {
+                while (s->at < len(s->source) && s->source.s[s->at] != quote) {
                     if (s->source.s[s->at++] == '\n') s->line++;
                 }
                 value =
                     Decode(s->a, Str(s->source.s + start, s->at - start), true);
-                if (s->at < s->source.len) s->at++;
+                if (s->at < len(s->source)) s->at++;
             } else {
-                while (s->at < s->source.len && !IsSpace(s->source.s[s->at]) &&
+                while (s->at < len(s->source) && !IsSpace(s->source.s[s->at]) &&
                        s->source.s[s->at] != '>') {
                     s->at++;
                 }
@@ -391,27 +391,27 @@ static Attribute* ScanAttrs(Scanner* s, bool* selfClosing) {
 }
 
 static int FindRawClose(const Scanner* s) {
-    for (int i = s->at; i + 2 + s->rawName.len <= s->source.len; i++) {
+    for (int i = s->at; i + 2 + len(s->rawName) <= len(s->source); i++) {
         if (s->source.s[i] != '<' || s->source.s[i + 1] != '/') continue;
-        if (!StrEqI(Str(s->source.s + i + 2, s->rawName.len), s->rawName)) {
+        if (!StrEqI(Str(s->source.s + i + 2, len(s->rawName)), s->rawName)) {
             continue;
         }
-        int end = i + 2 + s->rawName.len;
-        if (end >= s->source.len || IsSpace(s->source.s[end]) ||
+        int end = i + 2 + len(s->rawName);
+        if (end >= len(s->source) || IsSpace(s->source.s[end]) ||
             s->source.s[end] == '>') {
             return i;
         }
     }
-    return s->source.len;
+    return len(s->source);
 }
 
 static void TokenizeRun(Scanner* s) {
-    if (s->options.discardBom && s->source.len >= 3 &&
+    if (s->options.discardBom && len(s->source) >= 3 &&
         (uint8_t)s->source.s[0] == 0xef && (uint8_t)s->source.s[1] == 0xbb &&
         (uint8_t)s->source.s[2] == 0xbf) {
         s->at = 3;
     }
-    while (s->at < s->source.len) {
+    while (s->at < len(s->source)) {
         if (s->rawName.s) {
             int end = FindRawClose(s);
             if (end > s->at) {
@@ -433,7 +433,7 @@ static void TokenizeRun(Scanner* s) {
         }
         if (s->source.s[s->at] != '<') {
             int start = s->at;
-            while (s->at < s->source.len && s->source.s[s->at] != '<') {
+            while (s->at < len(s->source) && s->source.s[s->at] != '<') {
                 if (s->source.s[s->at++] == '\n') s->line++;
             }
             Token text;
@@ -445,11 +445,11 @@ static void TokenizeRun(Scanner* s) {
             continue;
         }
         int tokenLine = s->line;
-        if (s->at + 3 < s->source.len &&
+        if (s->at + 3 < len(s->source) &&
             StrEq(Str(s->source.s + s->at, 4), StrL("<!--"))) {
             s->at += 4;
             int start = s->at;
-            while (s->at + 2 < s->source.len &&
+            while (s->at + 2 < len(s->source) &&
                    !(s->source.s[s->at] == '-' &&
                      s->source.s[s->at + 1] == '-' &&
                      s->source.s[s->at + 2] == '>')) {
@@ -460,28 +460,28 @@ static void TokenizeRun(Scanner* s) {
             comment.data =
                 ArenaStrDup(s->a, Str(s->source.s + start, s->at - start));
             comment.line = tokenLine;
-            if (s->at + 2 < s->source.len)
+            if (s->at + 2 < len(s->source))
                 s->at += 3;
             else
                 Error(s, "eof in comment");
             Emit(s, comment);
             continue;
         }
-        if (s->at + 2 < s->source.len && s->source.s[s->at + 1] == '!') {
+        if (s->at + 2 < len(s->source) && s->source.s[s->at + 1] == '!') {
             int start = s->at + 2;
             s->at = start;
-            while (s->at < s->source.len && s->source.s[s->at] != '>') {
+            while (s->at < len(s->source) && s->source.s[s->at] != '>') {
                 s->at++;
             }
             Str body = StrTrimAscii(Str(s->source.s + start, s->at - start));
-            if (s->at < s->source.len) s->at++;
+            if (s->at < len(s->source)) s->at++;
             Token token;
             token.kind = TokenKind::Doctype;
             token.line = tokenLine;
             if (StrStartsWithI(body, StrL("doctype"))) {
-                body = StrTrimAscii(Str(body.s + 7, body.len - 7));
+                body = StrTrimAscii(Str(body.s + 7, len(body) - 7));
                 int n = 0;
-                while (n < body.len && !IsSpace(body.s[n])) n++;
+                while (n < len(body) && !IsSpace(body.s[n])) n++;
                 token.name = LowerCopy(s->a, Str(body.s, n));
                 token.forceQuirks =
                     !StrEqI(TokenName(s->a, &token), StrL("html"));
@@ -492,19 +492,19 @@ static void TokenizeRun(Scanner* s) {
             Emit(s, token);
             continue;
         }
-        if (s->at + 1 < s->source.len && s->source.s[s->at + 1] == '/') {
+        if (s->at + 1 < len(s->source) && s->source.s[s->at + 1] == '/') {
             s->at += 2;
             SkipSpace(s);
             Token token;
             token.kind = TokenKind::EndTag;
             token.name = ScanName(s);
             token.line = tokenLine;
-            while (s->at < s->source.len && s->source.s[s->at] != '>') s->at++;
-            if (s->at < s->source.len) s->at++;
+            while (s->at < len(s->source) && s->source.s[s->at] != '>') s->at++;
+            if (s->at < len(s->source)) s->at++;
             Emit(s, token);
             continue;
         }
-        if (s->at + 1 < s->source.len && IsAlpha(s->source.s[s->at + 1])) {
+        if (s->at + 1 < len(s->source) && IsAlpha(s->source.s[s->at + 1])) {
             s->at++;
             Token token;
             token.kind = TokenKind::StartTag;
@@ -658,7 +658,7 @@ static Node* Body(Builder* b) {
 }
 
 static bool AllSpace(Str value) {
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         if (!IsSpace(value.s[i])) return false;
     }
     return true;
@@ -706,7 +706,7 @@ static Node* InsertionParent(Builder* b, Str child, bool textIsSpace,
 
 static void AppendText(Builder* b, ArenaStr stored) {
     Str data = ArenaStrGet(b->a, stored);
-    if (data.len <= 0) return;
+    if (len(data) <= 0) return;
     Node* table = nullptr;
     bool foster = false;
     Node* parent = InsertionParent(b, {}, AllSpace(data), &table, &foster);
@@ -727,7 +727,7 @@ static void AppendText(Builder* b, ArenaStr stored) {
 }
 
 static bool ClosesP(Str name) {
-    if (!name.s || name.len == 0) return false;
+    if (!name.s || len(name) == 0) return false;
     char first = name.s[0];
     if (first >= 'A' && first <= 'Z') first = (char)(first + ('a' - 'A'));
     switch (first) {
@@ -791,11 +791,12 @@ static void CloseImplied(Builder* b, Str name) {
         int at = td > th ? td : th;
         if (at >= 0) b->open.Truncate(at);
     }
-    if (name.len == 2 && name.s[0] == 'h' && name.s[1] >= '1' &&
+    if (len(name) == 2 && name.s[0] == 'h' && name.s[1] >= '1' &&
         name.s[1] <= '6') {
         for (int i = b->open.len - 1; i >= 0; i--) {
             Str n = NodeName(b->a, b->open[i]);
-            if (n.len == 2 && n.s[0] == 'h' && n.s[1] >= '1' && n.s[1] <= '6') {
+            if (len(n) == 2 && n.s[0] == 'h' && n.s[1] >= '1' &&
+                n.s[1] <= '6') {
                 b->open.Truncate(i);
                 break;
             }
@@ -1047,7 +1048,7 @@ Str AttrValue(Arena* a, const Node* node, Str name) {
 }
 
 static void WriteEscaped(StrBuilder& out, Str value, bool attribute) {
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char c = value.s[i];
         if (c == '&')
             out.Append(StrL("&amp;"));

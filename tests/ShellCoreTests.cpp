@@ -877,7 +877,7 @@ static void ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories() {
     StrBuilder declarations;
     ShellTypeDeclarations(&declarations, modules);
     Str text = declarations.TakeStr();
-    utassert(text.len > 600000);
+    utassert(len(text) > 600000);
     utassert(StrContains(text, StrL("declare module \"gpui-kit\"")) &&
              StrContains(text, StrL("declare module \"gpui\"")) &&
              StrContains(text, StrL("export const Link: ComponentType;")) &&
@@ -2484,12 +2484,12 @@ static void ShellCryptoAndCompressionMatchStandardRuntime() {
         Str compressionError;
         utassert(ZlibDeflate(StrL("stored compression round trip"), gzip != 0,
                              &compressed, &compressionError));
-        utassert(!compressionError && compressed.len > 0);
+        utassert(!compressionError && len(compressed) > 0);
         utassert(
             ZlibInflate(compressed, gzip != 0, &inflated, &compressionError));
         utassert(!compressionError &&
                  StrEq(inflated, StrL("stored compression round trip")));
-        compressed.s[compressed.len - 1] ^= 1;
+        compressed.s[len(compressed) - 1] ^= 1;
         utassert(
             !ZlibInflate(compressed, gzip != 0, &inflated, &compressionError));
         utassert(compressionError);
@@ -2680,9 +2680,9 @@ static void ShellFetchRedirectsRewriteMethodAndBody() {
 
         utassert(StrEq(method, Str(c.expected)));
         if (StrEq(method, StrL("GET"))) {
-            utassert(body.len == 0 && len(headers) == 0);
+            utassert(len(body) == 0 && len(headers) == 0);
         } else {
-            utassert(body.len > 0 && len(headers) == 1);
+            utassert(len(body) > 0 && len(headers) == 1);
         }
         StrFree(method);
         StrFree(body);
@@ -2915,7 +2915,7 @@ static void ShellFetchChecksEveryGetTargetBeforeContact() {
     utassert(!result.error && result.status == 200 &&
              StrEq(result.body, StrL("after")) && gShellFetchCalls == 2 &&
              StrEq(gShellFetchMethod, StrL("GET")) &&
-             gShellFetchBody.len == 0 && gShellFetchHeaders.len == 0);
+             len(gShellFetchBody) == 0 && len(gShellFetchHeaders) == 0);
     result.Free();
     posted.Free();
     request.Free();
@@ -3429,7 +3429,7 @@ static bool ShellTemplateRefuses(Str source, Str expected) {
     Arena* arena = ArenaNew();
     Str failure = {};
     Str tree = ShellTemplateTree(arena, source, &failure);
-    bool refused = tree.len == 0 && StrFind(failure, expected) >= 0;
+    bool refused = len(tree) == 0 && StrFind(failure, expected) >= 0;
     ArenaDelete(arena);
     return refused;
 }
@@ -3466,9 +3466,9 @@ static void ShellTemplatesRecordOnceAndFillPerCall() {
     Arena* arena = ArenaNew();
     Str failure = {};
     Str inlineTree = ShellTemplateTree(arena, inlineSource, &failure);
-    utassert(inlineTree.len > 0 && failure.len == 0);
+    utassert(len(inlineTree) > 0 && len(failure) == 0);
     Str templatedTree = ShellTemplateTree(arena, templatedSource, &failure);
-    utassert(templatedTree.len > 0 && failure.len == 0);
+    utassert(len(templatedTree) > 0 && len(failure) == 0);
     utassert(StrEq(inlineTree, templatedTree));
 
     // A style argument and a handler are slots too, and each call writes its
@@ -3488,7 +3488,7 @@ static void ShellTemplatesRecordOnceAndFillPerCall() {
              "  }\n"
              "}\n"),
         &failure);
-    utassert(failure.len == 0);
+    utassert(len(failure) == 0);
     utassert(StrFind(slots, StrL(".bg(\"#f8f8f8\")")) >= 0);
     utassert(StrFind(slots, StrL(".bg(\"#2563eb\")")) >= 0);
     utassert(StrFind(slots, StrL("text \"one\"")) >= 0);
@@ -3635,7 +3635,7 @@ static void ShellTemplatesRecordOnceAndFillPerCall() {
                  "  }\n"
                  "}\n"),
             &failure);
-        utassert(failure.len == 0 && reused.len > 0);
+        utassert(len(failure) == 0 && len(reused) > 0);
         utassert(StrFind(reused, StrL("text \"one\"")) >= 0);
         utassert(StrFind(reused, StrL("text \"two\"")) >= 0);
         ArenaDelete(a);
@@ -3660,7 +3660,7 @@ static void ShellTemplatesRecordOnceAndFillPerCall() {
                  "  }\n"
                  "}\n"),
             &failure);
-        utassert(failure.len == 0);
+        utassert(len(failure) == 0);
         utassert(StrFind(after, StrL("text \"recovered\"")) >= 0);
         ArenaDelete(a);
     }
@@ -4027,7 +4027,7 @@ static void ScriptsSwitchOnARootOwnedPerformanceHud() {
     utassert(!FpsAnchorFromName(StrL("middle"), &named));
     int anchors = 0;
     SeqStrings all = FpsAnchorNames();
-    for (Str name = SeqStrFirst(all); name.len > 0; name = SeqStrNext(name)) {
+    for (Str name = SeqStrFirst(all); len(name) > 0; name = SeqStrNext(name)) {
         utassert(FpsAnchorFromName(name, &named));
         anchors++;
     }

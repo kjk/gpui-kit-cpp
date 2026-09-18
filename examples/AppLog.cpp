@@ -15,11 +15,11 @@ static void LogToFile(Str s) {
         tried = true;
         f = fopen("out/gpui.log", "wb");
     }
-    if (!f || !s.s || s.len <= 0) {
+    if (!f || !s.s || len(s) <= 0) {
         return;
     }
-    fwrite(s.s, 1, (size_t)s.len, f);
-    if (s.s[s.len - 1] != '\n') {
+    fwrite(s.s, 1, (size_t)len(s), f);
+    if (s.s[len(s) - 1] != '\n') {
         fwrite("\n", 1, 1, f);
     }
     fflush(f);
@@ -29,18 +29,18 @@ static void LogToFile(Str s) {
 // both are what a developer running the example is already watching.
 static void LogToConsole(Str s) {
 #if GPUI_OS_WINDOWS
-    if (s.s && s.len > 0) {
+    if (s.s && len(s) > 0) {
         OutputDebugStringA(s.s);
-        if (s.s[s.len - 1] != '\n') {
+        if (s.s[len(s) - 1] != '\n') {
             OutputDebugStringA("\n");
         }
     } else {
         OutputDebugStringA("\n");
     }
 #else
-    if (s.s && s.len > 0) {
-        fwrite(s.s, 1, (size_t)s.len, stderr);
-        if (s.s[s.len - 1] != '\n') {
+    if (s.s && len(s) > 0) {
+        fwrite(s.s, 1, (size_t)len(s), stderr);
+        if (s.s[len(s) - 1] != '\n') {
             fputc('\n', stderr);
         }
     } else {

@@ -782,7 +782,7 @@ void SankeyChartThroughput(const SankeyLink* links, int nLinks, double* out,
 // one centred on it, 1 for one starting there.
 static void SankeyLabelLine(PaintCtx* ctx, Str text, float x, float y,
                             float maxW, float fontSize, Rgba color, int align) {
-    if (!text.s || text.len <= 0 || maxW <= 0) {
+    if (!text.s || len(text) <= 0 || maxW <= 0) {
         return;
     }
     // sankey_chart.rs sends these through truncate_text_to_width and

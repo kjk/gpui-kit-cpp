@@ -171,10 +171,10 @@ static El* DialogDescriptionText(Ctx* cx, Str text) {
 
 static El* DialogHeader(Ctx* cx, Str title, Str description) {
     El* header = Div(cx->a)->FlexCol()->W(kFill)->Gap(8);
-    if (title.len > 0) {
+    if (len(title) > 0) {
         header->Child(DialogTitleText(cx, title, ThemeNow(cx->app).foreground));
     }
-    if (description.len > 0) {
+    if (len(description) > 0) {
         header->Child(DialogDescriptionText(cx, description));
     }
     return header;

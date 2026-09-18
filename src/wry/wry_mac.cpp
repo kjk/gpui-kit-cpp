@@ -145,11 +145,11 @@ struct RequestResponder {
 // ─── strings ─────────────────────────────────────────────────────────────
 
 static NSString* ToNS(Str s) {
-    if (!s.s || s.len == 0) {
+    if (!s.s || len(s) == 0) {
         return @"";
     }
     NSString* res = [[NSString alloc] initWithBytes:s.s
-                                             length:(NSUInteger)s.len
+                                             length:(NSUInteger)len(s)
                                            encoding:NSUTF8StringEncoding];
     return res ? res : @"";
 }
@@ -805,7 +805,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     wv->schemeHandlers = [NSMutableArray array];
     // `attributes.id.unwrap_or_else(|| COUNTER.next().to_string())`.
     static int nextId = 1;
-    wv->id = attrs->id.len > 0 ? StrDup(attrs->id) : StrDup(base::FormatTemp("%d", nextId++));
+    wv->id = len(attrs->id) > 0 ? StrDup(attrs->id) : StrDup(base::FormatTemp("%d", nextId++));
 
     // Custom protocols, before the webview exists: a scheme handler can only
     // be set on a configuration.
@@ -938,12 +938,12 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
     wv->uiDelegate.wv = wv;
     wv->webview.UIDelegate = wv->uiDelegate;
 
-    if (attrs->userAgent.len > 0) {
+    if (len(attrs->userAgent) > 0) {
         wv->webview.customUserAgent = ToNS(attrs->userAgent);
     }
 
     // Navigation.
-    if (attrs->url.len > 0) {
+    if (len(attrs->url) > 0) {
         NSURL* url = [NSURL URLWithString:ToNS(attrs->url)];
         if (url) {
             NSMutableURLRequest* request = [NSMutableURLRequest requestWithURL:url];
@@ -955,7 +955,7 @@ WebView* WebViewNew(void* parentWindow, const WebViewAttributes* attrs, bool asC
         } else {
             logf("wry: the url could not be parsed\n");
         }
-    } else if (attrs->html.len > 0) {
+    } else if (len(attrs->html) > 0) {
         [wv->webview loadHTMLString:ToNS(attrs->html) baseURL:nil];
     }
 

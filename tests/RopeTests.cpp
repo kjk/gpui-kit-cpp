@@ -107,7 +107,7 @@ static void Utf16Conversion() {
     utassert(RopeOffsetUtf16ToOffset(r, 7) == 9);
     utassert(RopeOffsetUtf16ToOffset(r, 8) == 12);
     utassert(RopeOffsetUtf16ToOffset(r, 10) == 16);
-    utassert(RopeOffsetUtf16ToOffset(r, 100) == r.len);
+    utassert(RopeOffsetUtf16ToOffset(r, 100) == len(r));
 }
 
 static void ClipOffset() {

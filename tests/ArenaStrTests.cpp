@@ -21,7 +21,7 @@ static void WhatGoesInComesOut() {
     // NUL-terminated the way StrDup's is, so a caller that needs a C string
     // has one without copying again.
     Str got = ArenaStrGet(a, s);
-    utassert(got.s[got.len] == 0);
+    utassert(got.s[len(got)] == 0);
 
     // Several, none of them disturbing the others.
     ArenaStr one = ArenaStrDup(a, StrL("one"));
@@ -72,7 +72,7 @@ static void TheLengthRidesAlongInOneByte() {
     // two. Both read back as themselves, which is the boundary the decode
     // gets wrong if the continuation bit is.
     TempStr buf = AllocStrTemp(300);
-    for (int i = 0; i < buf.len; i++) {
+    for (int i = 0; i < len(buf); i++) {
         buf.s[i] = (char)('a' + (i % 26));
     }
     for (int len = 126; len <= 130; len++) {
@@ -93,7 +93,7 @@ static void TheLengthRidesAlongInOneByte() {
 static void GrowingPastTheOneByteLength() {
     Arena* a = ArenaNew();
     TempStr buf = AllocStrTemp(200);
-    for (int i = 0; i < buf.len; i++) {
+    for (int i = 0; i < len(buf); i++) {
         buf.s[i] = (char)('a' + (i % 26));
     }
     ArenaStr s = ArenaStrDup(a, Str(buf.s, 120));
@@ -109,7 +109,7 @@ static void GrowingPastTheOneByteLength() {
     utassert(ArenaUsed(a) == after + 1 + 10);
 
     Str got = ArenaStrGet(a, s);
-    utassert(got.s[got.len] == 0);
+    utassert(got.s[len(got)] == 0);
     ArenaDelete(a);
 }
 
@@ -149,7 +149,7 @@ static void AppendingToTheNewestCostsOnlyTheBytes() {
     // Still NUL-terminated, which the in-place path has to keep true or the
     // next append would find the wrong end.
     Str got = ArenaStrGet(a, s);
-    utassert(got.s[got.len] == 0);
+    utassert(got.s[len(got)] == 0);
 
     // Appending nothing is not an allocation.
     uint64_t before = ArenaUsed(a);
@@ -224,7 +224,7 @@ static void AppendingAtTheEndOfABlockAsksForBothHalves() {
     // Two hundred bytes of block left, a string in the last of them, and an
     // append too big to follow it there.
     TempStr buf = AllocStrTemp(250);
-    for (int i = 0; i < buf.len; i++) {
+    for (int i = 0; i < len(buf); i++) {
         buf.s[i] = (char)('a' + (i % 26));
     }
     ArenaStr was = ArenaStrDup(a, Str(buf.s, 5));
@@ -239,7 +239,7 @@ static void AppendingAtTheEndOfABlockAsksForBothHalves() {
     utassert(base::StrEq(ArenaStrGet(a, s), Str(buf.s, 250)));
     utassert(base::StrEq(ArenaStrGet(a, next), StrL("0123456789")));
     Str got = ArenaStrGet(a, s);
-    utassert(got.s[got.len] == 0);
+    utassert(got.s[len(got)] == 0);
     ArenaDelete(a);
 }
 

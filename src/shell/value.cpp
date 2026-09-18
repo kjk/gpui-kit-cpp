@@ -91,11 +91,11 @@ static int HexDigit(char c) {
 }
 
 static bool ParseHex(Str value, Hsla* out) {
-    if (!out || (value.len != 3 && value.len != 6 && value.len != 8)) {
+    if (!out || (len(value) != 3 && len(value) != 6 && len(value) != 8)) {
         return false;
     }
     uint32_t rgba = 0;
-    if (value.len == 3) {
+    if (len(value) == 3) {
         int r = HexDigit(value.s[0]);
         int g = HexDigit(value.s[1]);
         int b = HexDigit(value.s[2]);
@@ -103,12 +103,12 @@ static bool ParseHex(Str value, Hsla* out) {
         rgba = (uint32_t)(r * 17) << 24 | (uint32_t)(g * 17) << 16 |
                (uint32_t)(b * 17) << 8 | 0xffu;
     } else {
-        for (int i = 0; i < value.len; i++) {
+        for (int i = 0; i < len(value); i++) {
             int digit = HexDigit(value.s[i]);
             if (digit < 0) return false;
             rgba = (rgba << 4) | (uint32_t)digit;
         }
-        if (value.len == 6) rgba = (rgba << 8) | 0xffu;
+        if (len(value) == 6) rgba = (rgba << 8) | 0xffu;
     }
     Rgba color = {(uint8_t)(rgba >> 24), (uint8_t)(rgba >> 16),
                   (uint8_t)(rgba >> 8), (uint8_t)rgba};
@@ -121,8 +121,8 @@ bool BridgedAsColor(const Bridged& value, Hsla* out, ShellError* error) {
     if (!BridgedAsString(value, &text, error)) {
         return false;
     }
-    if (text.len > 0 && text.s[0] == '#') {
-        if (ParseHex(Str(text.s + 1, text.len - 1), out)) {
+    if (len(text) > 0 && text.s[0] == '#') {
+        if (ParseHex(Str(text.s + 1, len(text) - 1), out)) {
             return true;
         }
         ShellErrorSet(error, fmt("`%s` is not a valid color literal (expected "
@@ -153,7 +153,7 @@ bool BridgedIsTruthy(const Bridged& value) {
         case BridgedKind::Number:
             return value.number != 0.0 && !isnan(value.number);
         case BridgedKind::String:
-            return value.string.len != 0;
+            return len(value.string) != 0;
     }
     return false;
 }

@@ -29,15 +29,15 @@ static int Children(MdNode* n) {
 
 // Every run of a node concatenated, which is the text it shows.
 static Str NodeText(Arena* a, MdNode* n) {
-    int len = 0;
+    int total = 0;
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
-        len += r->text.len;
+        total += len(r->text);
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, total + 1);
     int at = 0;
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
-        memcpy(buf + at, r->text.s, (size_t)r->text.len);
-        at += r->text.len;
+        memcpy(buf + at, r->text.s, (size_t)len(r->text));
+        at += len(r->text);
     }
     buf[at] = 0;
     return Str(buf, at);
@@ -50,10 +50,10 @@ static bool TextIs(Arena* a, MdNode* n, const char* want) {
 
 // The marks on the run covering `needle`, or 0xff when no run holds it.
 static uint8_t MarksOf(MdNode* n, const char* needle) {
-    int len = (int)strlen(needle);
+    int needleLen = (int)strlen(needle);
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
-        for (int i = 0; i + len <= r->text.len; i++) {
-            if (StrEq(Str(r->text.s + i, len), Str(needle, len))) {
+        for (int i = 0; i + needleLen <= len(r->text); i++) {
+            if (StrEq(Str(r->text.s + i, needleLen), Str(needle, needleLen))) {
                 return r->marks;
             }
         }
@@ -62,10 +62,10 @@ static uint8_t MarksOf(MdNode* n, const char* needle) {
 }
 
 static Str HrefOf(MdNode* n, const char* needle) {
-    int len = (int)strlen(needle);
+    int needleLen = (int)strlen(needle);
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
-        for (int i = 0; i + len <= r->text.len; i++) {
-            if (StrEq(Str(r->text.s + i, len), Str(needle, len))) {
+        for (int i = 0; i + needleLen <= len(r->text); i++) {
+            if (StrEq(Str(r->text.s + i, needleLen), Str(needle, needleLen))) {
                 return r->href;
             }
         }
@@ -344,7 +344,7 @@ static void TestMarkdownHardBreak(Arena* a) {
 // The run covering `needle`, or the first image run when `needle` is null.
 static MdRun* ImageRunOf(MdNode* n) {
     for (MdRun* r = n ? n->runFirst : nullptr; r; r = r->next) {
-        if (r->imgSrc.len > 0) {
+        if (len(r->imgSrc) > 0) {
             return r;
         }
     }
@@ -466,7 +466,7 @@ struct SrcDoc {
         VecAppend(ctx.texts, h);
         // The gap of one between runs, which is what the copier's document
         // order leaves room for.
-        ctx.textDocLen += h.text.len + 1;
+        ctx.textDocLen += len(h.text) + 1;
     }
 
     // An inline image: a run with no text of its own, holding one place in
@@ -489,14 +489,14 @@ static TempStr SrcCopyTemp(SrcDoc* d, SelectionFormat fmt) {
     TempStr buf = AllocStrTemp(511);
     // One short of the gap after the last run, so nothing reaches past it.
     int n = CopyTextHitsIn(&d->ctx, 0, d->ctx.textDocLen - 1, -1, buf.s,
-                           buf.len + 1, fmt);
+                           len(buf) + 1, fmt);
     buf.len = n;
     return buf;
 }
 
 static TempStr SrcRangeCopyTemp(SrcDoc* d, int start, int end) {
     TempStr buf = AllocStrTemp(511);
-    buf.len = CopyTextHitsIn(&d->ctx, start, end, -1, buf.s, buf.len + 1,
+    buf.len = CopyTextHitsIn(&d->ctx, start, end, -1, buf.s, len(buf) + 1,
                              SelectionFormat::Source);
     return buf;
 }
@@ -750,7 +750,7 @@ static void TestTableToMarkdown(Arena* a) {
 
 static int CountByte(Str s, char needle) {
     int n = 0;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         n += s.s[i] == needle ? 1 : 0;
     }
     return n;
@@ -785,7 +785,7 @@ static El* NeverRenderPlugin(Ctx* cx, const MdPluginNode* node, void* data) {
 }
 
 static int ElementTextBytes(El* e) {
-    int n = e ? e->text.len : 0;
+    int n = e ? len(e->text) : 0;
     for (El* child = e ? e->first : nullptr; child; child = child->next) {
         n += ElementTextBytes(child);
     }
@@ -1239,7 +1239,7 @@ static void TestManagedTextViewAndParseTimePlugins(Arena* a) {
     managed->SelectAll(&window, &app);
     utassert(managed->HasSelection(&window));
     TempStr selected = AllocStrTemp(63);
-    int n = managed->SelectedText(&window, selected.s, selected.len + 1);
+    int n = managed->SelectedText(&window, selected.s, len(selected) + 1);
     utassert(base::StrEq(Str(selected.s, n), StrL("alpha\nomega")));
     managed->ClearSelection(&window, &app);
     utassert(!managed->HasSelection(&window));

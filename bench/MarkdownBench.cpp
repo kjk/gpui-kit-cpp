@@ -64,11 +64,11 @@ struct Doc {
     }
 
     void Add(Str s) {
-        if (len + s.len > cap) {
+        if (len + len(s) > cap) {
             return;
         }
-        memcpy(buf + len, s.s, (size_t)s.len);
-        len += s.len;
+        memcpy(buf + len, s.s, (size_t)len(s));
+        len += len(s);
     }
 
     void Add(const char* s) { Add(Str(s)); }

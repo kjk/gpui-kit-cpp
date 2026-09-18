@@ -78,11 +78,11 @@ static const gpui::AccessibilityNode* GpuiAccessibilityNode(
 }
 
 static NSString* GpuiAccessibilityString(gpui::Str value) {
-    if (!value.s || value.len <= 0) {
+    if (!value.s || len(value) <= 0) {
         return @"";
     }
     return [[NSString alloc] initWithBytes:value.s
-                                    length:(NSUInteger)value.len
+                                    length:(NSUInteger)len(value)
                                   encoding:NSUTF8StringEncoding];
 }
 
@@ -397,7 +397,7 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
     gpui::Str text =
         node && node->input ? gpui::InputValue(node->input) : gpui::Str{};
-    return gpui::RopeOffsetToOffsetUtf16(text, text.len);
+    return gpui::RopeOffsetToOffsetUtf16(text, len(text));
 }
 - (NSRange)accessibilitySelectedTextRange {
     const gpui::AccessibilityNode* node = GpuiAccessibilityNode(self);
@@ -879,7 +879,7 @@ static bool PressedButton(MouseButton* out) {
     gpui::Str doc = gpui::InputValue(in);
     int lo = gpui::Utf16OffsetToUtf8(doc, (int)range.location);
     int hi = gpui::Utf16OffsetToUtf8(doc, (int)(range.location + range.length));
-    if (lo < 0 || hi > doc.len || hi < lo) {
+    if (lo < 0 || hi > len(doc) || hi < lo) {
         return nil;
     }
     if (actual) {
@@ -1263,7 +1263,7 @@ void AppSetTitle(Window* win, Str title) {
         return;
     }
     NSString* s = [[NSString alloc] initWithBytes:title.s
-                                           length:(NSUInteger)title.len
+                                           length:(NSUInteger)len(title)
                                          encoding:NSUTF8StringEncoding];
     if (s) {
         [win->plat->window setTitle:s];
@@ -1527,12 +1527,12 @@ static NSString* KeyEquivalent(Str key) {
         }
     }
     // f1..f12, which AppKit also names with a code point of its own.
-    if (StrStartsWithAny(key, "fF") && key.len >= 2 && key.s[1] >= '0' &&
+    if (StrStartsWithAny(key, "fF") && len(key) >= 2 && key.s[1] >= '0' &&
         key.s[1] <= '9') {
         int n = key.s[1] - '0';
-        if (key.len == 3 && key.s[2] >= '0' && key.s[2] <= '9') {
+        if (len(key) == 3 && key.s[2] >= '0' && key.s[2] <= '9') {
             n = n * 10 + (key.s[2] - '0');
-        } else if (key.len != 2) {
+        } else if (len(key) != 2) {
             n = 0;
         }
         if (n >= 1 && n <= 12) {
@@ -1544,7 +1544,7 @@ static NSString* KeyEquivalent(Str key) {
     // A letter, a digit or a punctuation key is its own equivalent, and a
     // binding already spells it lowercase — which is what AppKit wants, with
     // the shift in the modifier mask rather than in the character.
-    if (key.len == 1) {
+    if (len(key) == 1) {
         TempStr keyZ = StrDupTemp(key);
         return [NSString stringWithUTF8String:keyZ.s];
     }
@@ -1769,11 +1769,11 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || url.len <= 0) {
+    if (!url.s || len(url) <= 0) {
         return;
     }
     NSString* s = [[NSString alloc] initWithBytes:url.s
-                                           length:(NSUInteger)url.len
+                                           length:(NSUInteger)len(url)
                                          encoding:NSUTF8StringEncoding];
     NSURL* u = s ? [NSURL URLWithString:s] : nil;
     if (u) {
@@ -1789,10 +1789,11 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     [panel setCanChooseFiles:opts.files ? YES : NO];
     [panel setCanChooseDirectories:opts.directories ? YES : NO];
     [panel setAllowsMultipleSelection:NO];
-    if (opts.title.len > 0) {
-        NSString* t = [[NSString alloc] initWithBytes:opts.title.s
-                                               length:(NSUInteger)opts.title.len
-                                             encoding:NSUTF8StringEncoding];
+    if (len(opts.title) > 0) {
+        NSString* t =
+            [[NSString alloc] initWithBytes:opts.title.s
+                                     length:(NSUInteger)len(opts.title)
+                                   encoding:NSUTF8StringEncoding];
         if (t) {
             [panel setMessage:t];
         }
@@ -1810,11 +1811,11 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 
 void ClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (!text.s || text.len <= 0) {
+    if (!text.s || len(text) <= 0) {
         return;
     }
     NSString* s = [[NSString alloc] initWithBytes:text.s
-                                           length:(NSUInteger)text.len
+                                           length:(NSUInteger)len(text)
                                          encoding:NSUTF8StringEncoding];
     if (!s) {
         return;
@@ -1836,9 +1837,9 @@ void WindowSetTextContentType(Window* win, Str value) {
         if (protocol) class_addProtocol([GpuiView class], protocol);
     }
     NSString* content = nil;
-    if (value.s && value.len > 0) {
+    if (value.s && len(value) > 0) {
         content = [[NSString alloc] initWithBytes:value.s
-                                           length:(NSUInteger)value.len
+                                           length:(NSUInteger)len(value)
                                          encoding:NSUTF8StringEncoding];
     }
     [win->plat->view setContentType:content];

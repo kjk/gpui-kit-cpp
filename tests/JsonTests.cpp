@@ -34,12 +34,11 @@ static void AnObjectReadsBackByName() {
 
 static void TheEscapesComeBackOut() {
     Arena* a = ArenaNew();
-    JsonValue* v =
-        JsonParse(a, StrL("{\"s\": \"a\\\"b\\\\c\\nd\\u00e9\"}"));
+    JsonValue* v = JsonParse(a, StrL("{\"s\": \"a\\\"b\\\\c\\nd\\u00e9\"}"));
     utassert(v);
     Str s = JsonString(JsonGet(v, "s"));
     // a " b \ c newline d é — nine bytes, since é takes two of them.
-    utassert(s.len == 9);
+    utassert(len(s) == 9);
     utassert(s.s[1] == '"' && s.s[3] == '\\' && s.s[5] == '\n');
     utassert(s.s[6] == 'd');
     // é, as the two bytes UTF-8 spells it with.

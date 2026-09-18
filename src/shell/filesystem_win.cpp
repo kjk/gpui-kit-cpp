@@ -24,19 +24,19 @@ static void FsError(Str* error, Str message) {
 }
 
 static WCHAR* WideDup(Str value) {
-    if (!value.s || value.len < 0) return nullptr;
-    for (int i = 0; i < value.len; i++) {
+    if (!value.s || len(value) < 0) return nullptr;
+    for (int i = 0; i < len(value); i++) {
         if (value.s[i] == 0) return nullptr;
     }
-    int count = value.len == 0
+    int count = len(value) == 0
                     ? 0
                     : MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                          value.s, value.len, nullptr, 0);
-    if (value.len > 0 && count <= 0) return nullptr;
+                                          value.s, len(value), nullptr, 0);
+    if (len(value) > 0 && count <= 0) return nullptr;
     WCHAR* result = AllocArray<WCHAR>(count + 1);
     if (!result) return nullptr;
     if (count > 0 && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.s,
-                                         value.len, result, count) != count) {
+                                         len(value), result, count) != count) {
         Free(nullptr, result);
         return nullptr;
     }
@@ -342,9 +342,9 @@ static bool WriteGrantedFile(HANDLE root, Str rootName, Str relative, Str input,
         return false;
     }
     int written = 0;
-    while (written < input.len) {
+    while (written < len(input)) {
         DWORD count = 0;
-        DWORD wanted = (DWORD)(input.len - written);
+        DWORD wanted = (DWORD)(len(input) - written);
         if (!::WriteFile(file, input.s + written, wanted, &count, nullptr) ||
             count == 0) {
             FsError(error, fmt("cannot write `%s/%s`: Windows error %u",
@@ -397,7 +397,7 @@ static bool ReadDirectory(HANDLE root, Str rootName, Str relative,
                         entry->FileName[1] == L'.');
             if (!dot) {
                 Str name = Utf8Dup(entry->FileName, chars);
-                nameBytes += name.len;
+                nameBytes += len(name);
                 if (!name.s || result->entries.len >= kFsMaxDirectoryEntries ||
                     nameBytes > kFsMaxDirectoryNameBytes) {
                     StrFree(name);

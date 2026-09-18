@@ -106,7 +106,7 @@ MarkdownNode& MarkdownNode::Markdown(Str value) {
 }
 
 Str MarkdownNode::ToMarkdown() const {
-    return markdown.len > 0 ? markdown : text;
+    return len(markdown) > 0 ? markdown : text;
 }
 
 static uint64_t gMarkdownExtensionsRevision = 1;
@@ -212,7 +212,7 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     for (int i = 0; i < blockRenderers.len; i++) {
         uint64_t one = 1469598103934665603ull;
         Str name = blockRenderers[i].name;
-        for (int at = 0; at < name.len; at++) {
+        for (int at = 0; at < len(name); at++) {
             one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
         }
         names += one;
@@ -220,7 +220,7 @@ uint64_t MarkdownExtensions::ParserFingerprint() const {
     for (int i = 0; i < inlineRenderers.len; i++) {
         uint64_t one = 1469598103934665603ull;
         Str name = inlineRenderers[i].name;
-        for (int at = 0; at < name.len; at++) {
+        for (int at = 0; at < len(name); at++) {
             one = (one ^ (uint64_t)(uint8_t)name.s[at]) * 1099511628211ull;
         }
         names += one;
@@ -554,19 +554,19 @@ void TextViewState::SetText(Str value, App* app, Window* window) {
 }
 
 void TextViewState::PushStr(Str value, App* app, Window* window) {
-    if (value.len <= 0) return;
+    if (len(value) <= 0) return;
     if (motion.streamFadeMs > 0) {
         streamFadePending = true;
         streamFadeReplace = false;
     }
-    int oldLen = text.len;
-    char* joined = (char*)Alloc(nullptr, oldLen + value.len + 1);
+    int oldLen = len(text);
+    char* joined = (char*)Alloc(nullptr, oldLen + len(value) + 1);
     if (!joined) return;
     if (oldLen > 0) memcpy(joined, text.s, (size_t)oldLen);
-    memcpy(joined + oldLen, value.s, (size_t)value.len);
-    joined[oldLen + value.len] = 0;
+    memcpy(joined + oldLen, value.s, (size_t)len(value));
+    joined[oldLen + len(value)] = 0;
     StrFree(text);
-    text = Str(joined, oldLen + value.len);
+    text = Str(joined, oldLen + len(value));
     Changed(app, window, true);
 }
 
@@ -721,14 +721,14 @@ static void Pop(MdBuild* b) {
 // one uninterrupted stretch of source, so this usually collapses to one run
 // pointing straight at the tree's text with nothing copied.
 static void AddText(MdBuild* b, Str s) {
-    if (s.len <= 0) {
+    if (len(s) <= 0) {
         return;
     }
     MdNode* n = b->cur;
     MdRun* r = n->runLast;
     if (r && !r->imgSrc.s && r->marks == b->marks && r->href.s == b->href.s &&
-        r->text.s + r->text.len == s.s) {
-        r->text.len += s.len;
+        r->text.s + len(r->text) == s.s) {
+        r->text.len += len(s);
         return;
     }
     r = ArenaNew<MdRun>(b->a);
@@ -746,7 +746,7 @@ static void AddText(MdBuild* b, Str s) {
 // node.rs InlineNode::image: an image sits in the flow beside the words,
 // carrying the marks in force — an image inside a link is a link.
 static void AddImage(MdBuild* b, Str src, Str alt, float w, float h) {
-    if (src.len <= 0) {
+    if (len(src) <= 0) {
         return;
     }
     MdNode* n = b->cur;
@@ -791,18 +791,18 @@ static void AddCustomInline(MdBuild* b, const MarkdownNode& custom) {
 // table knows. Kept as the public compatibility helper; both parsers decode
 // character references before their trees reach the GPUI projection.
 Str MdDecodeEntity(Arena* a, Str e) {
-    if (e.len < 3 || e.s[0] != '&' || e.s[e.len - 1] != ';') {
+    if (len(e) < 3 || e.s[0] != '&' || e.s[len(e) - 1] != ';') {
         return e;
     }
-    Str body((char*)e.s + 1, e.len - 2);
+    Str body((char*)e.s + 1, len(e) - 2);
     Str value;
-    if (body.len > 1 && body.s[0] == '#') {
+    if (len(body) > 1 && body.s[0] == '#') {
         if (body.s[1] == 'x' || body.s[1] == 'X') {
             value =
-                md::DecodeNumeric(a, Str((char*)body.s + 2, body.len - 2), 16);
+                md::DecodeNumeric(a, Str((char*)body.s + 2, len(body) - 2), 16);
         } else {
             value =
-                md::DecodeNumeric(a, Str((char*)body.s + 1, body.len - 1), 10);
+                md::DecodeNumeric(a, Str((char*)body.s + 1, len(body) - 1), 10);
         }
     } else {
         value = md::DecodeNamed(a, body);
@@ -898,20 +898,20 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
             // nodes and code keep their own line-ending semantics.
             Str value = V(b, n, md::NodeStrKind::Value);
             int firstBreak = 0;
-            while (firstBreak < value.len && value.s[firstBreak] != '\r' &&
+            while (firstBreak < len(value) && value.s[firstBreak] != '\r' &&
                    value.s[firstBreak] != '\n') {
                 firstBreak++;
             }
-            if (firstBreak == value.len) {
+            if (firstBreak == len(value)) {
                 AddText(b, value);
                 break;
             }
             StrBuilder text(b->a);
-            text.Reserve(value.len);
-            for (int i = 0; i < value.len; i++) {
+            text.Reserve(len(value));
+            for (int i = 0; i < len(value); i++) {
                 char c = value.s[i];
                 if (c == '\r' || c == '\n') {
-                    if (c == '\r' && i + 1 < value.len &&
+                    if (c == '\r' && i + 1 < len(value) &&
                         value.s[i + 1] == '\n') {
                         i++;
                     }
@@ -1207,18 +1207,18 @@ static void MdExpandHtml(Arena* a, MdNode* n) {
     if (n->kind != MdKind::Html || !n->runFirst) {
         return;
     }
-    int len = 0;
+    int nbytes = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        len += r->text.len;
+        nbytes += len(r->text);
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, nbytes + 1);
     if (!buf) {
         return;
     }
     int at = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        memcpy(buf + at, r->text.s, (size_t)r->text.len);
-        at += r->text.len;
+        memcpy(buf + at, r->text.s, (size_t)len(r->text));
+        at += len(r->text);
     }
     buf[at] = 0;
     n->runFirst = nullptr;
@@ -1230,7 +1230,7 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
                                      const MarkdownExtensions* extensions) {
     MdNode* doc = ArenaNew<MdNode>(a);
     doc->kind = MdKind::Doc;
-    if (!source.s || source.len <= 0) {
+    if (!source.s || len(source) <= 0) {
         return doc;
     }
 
@@ -1466,24 +1466,24 @@ static Str OrderedMarker(Arena* a, int n, int depth) {
 static Str SrcCat(Arena* a, Str p0, Str p1 = {}, Str p2 = {}, Str p3 = {},
                   Str p4 = {}) {
     Str parts[5] = {p0, p1, p2, p3, p4};
-    int len = 0;
+    int n = 0;
     for (const Str& p : parts) {
-        len += p.len > 0 ? p.len : 0;
+        n += len(p) > 0 ? len(p) : 0;
     }
-    if (len <= 0) {
+    if (n <= 0) {
         return Str{};
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, n + 1);
     if (!buf) {
         return Str{};
     }
     int at = 0;
     for (const Str& p : parts) {
-        if (p.len <= 0 || !p.s) {
+        if (len(p) <= 0 || !p.s) {
             continue;
         }
-        memcpy(buf + at, p.s, (size_t)p.len);
-        at += p.len;
+        memcpy(buf + at, p.s, (size_t)len(p));
+        at += len(p);
     }
     buf[at] = 0;
     return Str(buf, at);
@@ -1493,16 +1493,16 @@ static Str SrcCat(Arena* a, Str p0, Str p1 = {}, Str p2 = {}, Str p3 = {},
 // list_selected_source puts under a marker so an item's later lines line up
 // with its text.
 static Str SrcIndent(Arena* a, Str s) {
-    if (s.len <= 0) {
+    if (len(s) <= 0) {
         return Str{};
     }
-    char* buf = (char*)Alloc(a, s.len + 1);
+    char* buf = (char*)Alloc(a, len(s) + 1);
     if (!buf) {
         return Str{};
     }
-    memset(buf, ' ', (size_t)s.len);
-    buf[s.len] = 0;
-    return Str(buf, s.len);
+    memset(buf, ' ', (size_t)len(s));
+    buf[len(s)] = 0;
+    return Str(buf, len(s));
 }
 
 // node.rs wrap_with_mark, split into the two halves a run is emitted between.
@@ -1635,8 +1635,8 @@ El* TextView::SrcMark(El* t, uint8_t marks, Str href) {
     // `**one two three**` rather than as three wrapped words, which is what
     // reconstruct_markdown gets from walking mark ranges instead of words.
     bool same = srcRunLast && srcRunLast->block == srcBlock &&
-                srcRunMarks == marks && srcRunHref.len == href.len &&
-                (href.len == 0 || srcRunHref.s == href.s);
+                srcRunMarks == marks && srcRunHref.len == len(href) &&
+                (len(href) == 0 || srcRunHref.s == href.s);
     if (!same) {
         SelSource* s = ArenaNew<SelSource>(a);
         if (!s) {
@@ -1732,7 +1732,7 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     // even when HTML supplied a width. The README's showcase image says
     // width=1763, for example, but Rust scales it to the text column.
     e->MaxW(kFill);
-    if ((r->marks & MdLink) && r->href.len > 0) {
+    if ((r->marks & MdLink) && len(r->href) > 0) {
         e->Cursor(CursorKind::Pointer);
         if (onLink.IsValid()) {
             e->OnClick(LinkListener(r->href));
@@ -1774,7 +1774,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         // the run's full advance.
         TextSpan* sp = ArenaNew<TextSpan>(a);
         sp->lo = 0;
-        sp->hi = w.len;
+        sp->hi = len(w);
         // The rule takes the colour the glyphs will: a run that named none
         // draws in the theme's own foreground, and a span with no alpha is
         // not drawn at all.
@@ -1805,7 +1805,7 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         t->Selectable();
     }
     SrcMark(t, marks, href);
-    if ((marks & MdLink) && href.len > 0) {
+    if ((marks & MdLink) && len(href) > 0) {
         // handle_link_click: the handler if one was given, the desktop's
         // browser otherwise. The href is NUL-terminated in the arena the
         // parse lives in, so the handler gets a `const char*` it can read for
@@ -1822,10 +1822,10 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
 }
 
 static bool IsPlainRun(MdRun* r) {
-    if (!r || r->next || r->marks != 0 || r->imgSrc.len > 0 || r->hasCustom) {
+    if (!r || r->next || r->marks != 0 || len(r->imgSrc) > 0 || r->hasCustom) {
         return false;
     }
-    for (int i = 0; i < r->text.len; i++) {
+    for (int i = 0; i < len(r->text); i++) {
         if (r->text.s[i] == '\n') {
             return false;
         }
@@ -1880,30 +1880,30 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // nothing else is a block, and keeps the picture's own size.
     bool inFlow = false;
     for (MdRun* r = n->runFirst; r && !inFlow; r = r->next) {
-        inFlow = r->hasCustom || (r->imgSrc.len <= 0 && r->text.len > 0);
+        inFlow = r->hasCustom || (len(r->imgSrc) <= 0 && len(r->text) > 0);
     }
     El* col = Div(a)->FlexCol()->W(kFill);
     El* row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
     int wordCap = 1;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        if (r->text.len > 0) {
-            wordCap += r->text.len;
+        if (len(r->text) > 0) {
+            wordCap += len(r->text);
         }
     }
     char* word = (char*)Alloc(a, wordCap);
     if (!word) {
         return col;
     }
-    int len = 0;
+    int wordLen = 0;
     uint8_t marks = 0;
     Str href = {};
     auto flush = [&]() {
-        if (len <= 0) {
+        if (wordLen <= 0) {
             return;
         }
-        row->Child(
-            Word(StrDup(a, Str(word, len)), font, color, marks, weight, href));
-        len = 0;
+        row->Child(Word(StrDup(a, Str(word, wordLen)), font, color, marks,
+                        weight, href));
+        wordLen = 0;
     };
     for (MdRun* r = n->runFirst; r; r = r->next) {
         flush();
@@ -1953,11 +1953,11 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             }
             continue;
         }
-        if (r->imgSrc.len > 0) {
+        if (len(r->imgSrc) > 0) {
             row->Child(SrcImage(ImageRun(r, font, color, inFlow), r));
             continue;
         }
-        for (int i = 0; i < r->text.len; i++) {
+        for (int i = 0; i < len(r->text); i++) {
             char c = r->text.s[i];
             if (c == '\n') {
                 flush();
@@ -1966,7 +1966,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
                 continue;
             }
-            word[len++] = c;
+            word[wordLen++] = c;
             if (c == ' ') {
                 flush();
             }
@@ -1978,31 +1978,31 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
 }
 
 static int RunsLen(MdNode* n) {
-    int len = 0;
+    int total = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        len += r->text.len;
+        total += len(r->text);
     }
-    return len;
+    return total;
 }
 
 // The text of one cell, its runs joined. A cell that holds a pipe or a
 // backslash has to escape it, or the row it is written into stops parsing
 // where the pipe is — which is what `Table::to_markdown` does upstream.
 static Str TableCellText(Arena* a, MdNode* c) {
-    int len = 0;
+    int n = 0;
     for (MdRun* r = c->runFirst; r; r = r->next) {
-        for (int i = 0; i < r->text.len; i++) {
+        for (int i = 0; i < len(r->text); i++) {
             char ch = r->text.s[i];
-            len += (ch == '|' || ch == '\\') ? 2 : 1;
+            n += (ch == '|' || ch == '\\') ? 2 : 1;
         }
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, n + 1);
     if (!buf) {
         return {};
     }
     int at = 0;
     for (MdRun* r = c->runFirst; r; r = r->next) {
-        for (int i = 0; i < r->text.len; i++) {
+        for (int i = 0; i < len(r->text); i++) {
             char ch = r->text.s[i];
             if (ch == '|' || ch == '\\') {
                 buf[at++] = '\\';
@@ -2190,21 +2190,21 @@ El* TextView::CodeBlock(MdNode* n) {
     // out against the same metrics, so a line that needs a font fallback (box
     // drawing, CJK) cannot set its own leading and make the block ragged.
     // Nothing wraps, so a long line clips the way a <pre> does.
-    int len = RunsLen(n);
-    while (len > 0 && n->runLast && n->runLast->text.len > 0 &&
-           n->runLast->text.s[n->runLast->text.len - 1] == '\n') {
+    int nBytes = RunsLen(n);
+    while (nBytes > 0 && n->runLast && len(n->runLast->text) > 0 &&
+           n->runLast->text.s[len(n->runLast->text) - 1] == '\n') {
         // The fence's own trailing newline would paint an empty last line.
         n->runLast->text.len--;
-        len--;
+        nBytes--;
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, nBytes + 1);
     if (!buf) {
         return box;
     }
     int at = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        memcpy(buf + at, r->text.s, (size_t)r->text.len);
-        at += r->text.len;
+        memcpy(buf + at, r->text.s, (size_t)len(r->text));
+        at += len(r->text);
     }
     buf[at] = 0;
     // Syntax highlighting is opt-in: the view's own highlighter, then the one
@@ -2265,7 +2265,7 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
     El* row = Div(a)->FlexRow()->H(lineH);
     // The run being gathered: adjacent tokens of one color are one element,
     // which keeps a line of code down to a handful.
-    char* piece = (char*)Alloc(a, code.len + 1);
+    char* piece = (char*)Alloc(a, len(code) + 1);
     if (!piece) {
         return col->ReportLineSpan(lineH);
     }
@@ -2694,7 +2694,7 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     if (n->hasCheck) {
         row->Child(
             TaskBox(a, textViewStyle, baseFont * kLineHeight, n->checked));
-    } else if (marker.len > 0) {
+    } else if (len(marker) > 0) {
         // list_item_prefix is a plain string child: it takes the color the
         // list inherits, so a bullet inside a red alert is red.
         row->Child(TextEl(a, marker)->Font(baseFont)->Shrink0());
@@ -2704,14 +2704,14 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
 
 static int MdRenderedLen(const MdNode* n) {
     if (!n) return 0;
-    int len = 0;
+    int total = 0;
     for (const MdRun* run = n->runFirst; run; run = run->next) {
-        len += run->text.len;
+        total += len(run->text);
     }
     for (const MdNode* child = n->first; child; child = child->next) {
-        len += MdRenderedLen(child);
+        total += MdRenderedLen(child);
     }
-    return len;
+    return total;
 }
 
 static void MdAppendRendered(StrBuilder* out, const MdNode* n) {
@@ -2725,11 +2725,11 @@ static void MdAppendRendered(StrBuilder* out, const MdNode* n) {
 }
 
 static int StreamCommonPrefix(Str a, Str b) {
-    int n = std::min(a.len, b.len);
+    int n = std::min(len(a), len(b));
     int at = 0;
     while (at < n && a.s[at] == b.s[at]) at++;
     // UTF-8 continuation bytes cannot begin the newly fading range.
-    while (at > 0 && at < b.len && ((uint8_t)b.s[at] & 0xc0) == 0x80) at--;
+    while (at > 0 && at < len(b) && ((uint8_t)b.s[at] & 0xc0) == 0x80) at--;
     return at;
 }
 
@@ -2761,24 +2761,24 @@ Str TextView::BlockText(MdNode* n) {
     if (n->kind == MdKind::Html && n->raw.len > 0) {
         return n->raw;
     }
-    int len = 0;
+    int total = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        len += r->text.len;
+        total += len(r->text);
     }
-    if (len <= 0) {
+    if (total <= 0) {
         return Str{};
     }
     if (!n->runFirst->next) {
         return n->runFirst->text;
     }
-    char* buf = (char*)Alloc(a, len + 1);
+    char* buf = (char*)Alloc(a, total + 1);
     if (!buf) {
         return Str{};
     }
     int at = 0;
     for (MdRun* r = n->runFirst; r; r = r->next) {
-        memcpy(buf + at, r->text.s, (size_t)r->text.len);
-        at += r->text.len;
+        memcpy(buf + at, r->text.s, (size_t)len(r->text));
+        at += len(r->text);
     }
     buf[at] = 0;
     return Str(buf, at);
@@ -2968,8 +2968,8 @@ El* TextView::IntoEl() {
         if (TextViewState* managed = state.Get(cx)) {
             if (!managed->self.IsValid()) managed->self = state.id;
             bool sameAllocation = managed->elementTextPtr == source.s &&
-                                  managed->elementTextLen == source.len &&
-                                  managed->text.len == source.len;
+                                  managed->elementTextLen == len(source) &&
+                                  len(managed->text) == len(source);
             if (!sameAllocation && !base::StrEq(managed->text, source)) {
                 StrFree(managed->text);
                 managed->text = StrDup(source);
@@ -2977,7 +2977,7 @@ El* TextView::IntoEl() {
                 managed->selectionRevision++;
             }
             managed->elementTextPtr = source.s;
-            managed->elementTextLen = source.len;
+            managed->elementTextLen = len(source);
             managed->format =
                 html ? TextViewFormat::Html : TextViewFormat::Markdown;
         }
@@ -3025,7 +3025,7 @@ El* TextView::IntoEl() {
             } else {
                 int prefix =
                     StreamCommonPrefix(managed->streamRenderedText, rendered);
-                managed->streamFadeFrom = prefix < rendered.len ? prefix : -1;
+                managed->streamFadeFrom = prefix < len(rendered) ? prefix : -1;
                 managed->streamFadeStartedAt = MotionNow(cx);
             }
             managed->streamFadePending = false;

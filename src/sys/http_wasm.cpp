@@ -236,16 +236,16 @@ bool HttpWasmSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done) {
     WasmHttpTransfer* transfer = new WasmHttpTransfer();
     transfer->done = done;
     int token = (int)(intptr_t)transfer;
-    if (!GpJsHttpBegin(token, req.url.s, req.url.len, req.method.s,
-                       req.method.len, req.noRedirect ? 1 : 0)) {
+    if (!GpJsHttpBegin(token, req.url.s, len(req.url), req.method.s,
+                       len(req.method), req.noRedirect ? 1 : 0)) {
         delete transfer;
         return false;
     }
     for (int i = 0; i < req.nHeaders; i++) {
-        GpJsHttpHeader(token, req.headers[i].name.s, req.headers[i].name.len,
-                       req.headers[i].value.s, req.headers[i].value.len);
+        GpJsHttpHeader(token, req.headers[i].name.s, len(req.headers[i].name),
+                       req.headers[i].value.s, len(req.headers[i].value));
     }
-    GpJsHttpStart(token, (const uint8_t*)req.body.s, req.body.len,
+    GpJsHttpStart(token, (const uint8_t*)req.body.s, len(req.body),
                   kHttpTimeoutMs, kHttpMaxBody);
     return true;
 }

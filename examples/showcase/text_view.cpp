@@ -74,7 +74,7 @@ El* ShowcaseTextView(ShowcaseApp* app, Ctx* cx) {
     if (!app->textView.IsValid()) {
         TempStr md = AssetsLoadTextTemp(StrL("test.md"));
         Str source =
-            md.s && md.len > 0 ? Str(md.s, md.len) : Str(kFallbackMarkdown);
+            md.s && len(md) > 0 ? Str(md.s, len(md)) : Str(kFallbackMarkdown);
         app->textView = TextViewState::Markdown(cx->app, source);
     }
     ExamplePalette palette = PaletteActive();

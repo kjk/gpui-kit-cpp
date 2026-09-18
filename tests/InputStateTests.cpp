@@ -644,7 +644,7 @@ static void CompletionAndActionEditListsGrowPastThirtyTwo() {
     item.nAdditionalEdits = len(additions);
     InputPresentCompletionItems(&completion, 0, {}, &item, 1);
     InputAcceptCompletion(&completion, nullptr, nullptr);
-    utassert(InputValue(&completion).len == 41);
+    utassert(len(InputValue(&completion)) == 41);
     utassert(InputValue(&completion).s[40] == 'z');
 
     InputState action;
@@ -655,7 +655,7 @@ static void CompletionAndActionEditListsGrowPastThirtyTwo() {
     codeAction.nEdits = len(additions);
     InputPresentCodeActions(&action, &codeAction, 1);
     InputPerformCodeAction(&action, nullptr, nullptr);
-    utassert(InputValue(&action).len == 40);
+    utassert(len(InputValue(&action)) == 40);
 }
 
 // ─── the rest of the completion surface (lsp/completions.rs) ─────────────
@@ -716,10 +716,10 @@ static CompletionTrigger TestTrigger(void* data, Str text, int offset,
     (void)data;
     (void)text;
     (void)offset;
-    if (typed.len > 0 && typed.s[0] == ':') {
+    if (len(typed) > 0 && typed.s[0] == ':') {
         return CompletionTrigger::Open;
     }
-    if (typed.len > 0 && typed.s[0] == '#') {
+    if (len(typed) > 0 && typed.s[0] == '#') {
         return CompletionTrigger::Close;
     }
     return CompletionTrigger::Continue;
@@ -906,7 +906,7 @@ static void ALongInlineCompletionSurvivesAcceptance() {
     utassert(InputHasInlineCompletion(&s));
     utassert(InputAcceptInlineCompletion(&s, nullptr, nullptr));
     Str value = InputValue(&s);
-    utassert(value.len == 701);
+    utassert(len(value) == 701);
     utassert(value.s[0] == 'a' && value.s[700] == 'x');
 }
 
@@ -1072,7 +1072,7 @@ static bool TestShowDocument(void* data, Str uri, bool external,
     // A local target names no document at all, which is what an empty uri
     // means — the host still gets first refusal on it.
     gShown = true;
-    gShownExternal = external && uri.len > 0;
+    gShownExternal = external && len(uri) > 0;
     return true;
 }
 
@@ -1910,10 +1910,10 @@ static int Complete(void* data, Str, int, Str query, CompletionItem* out,
     }
     int n = 0;
     for (const CompletionItem& item : kItems) {
-        if (query.len > item.label.len) {
+        if (len(query) > len(item.label)) {
             continue;
         }
-        if (query.len > 0 && !StrEq(Str(item.label.s, query.len), query)) {
+        if (len(query) > 0 && !StrEq(Str(item.label.s, len(query)), query)) {
             continue;
         }
         if (n < cap && out) {
@@ -2099,7 +2099,7 @@ static int OneColor(void* data, Str text, DocumentColor* out, int cap) {
     if (data) {
         (*(int*)data)++;
     }
-    if (text.len < 4) {
+    if (len(text) < 4) {
         return 0;
     }
     if (cap > 0 && out) {
@@ -2207,7 +2207,7 @@ static void ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames() {
     utassert(StrEq(InputSelectedValue(query), StrL("foo")));
     InputSetSelectedRange(query, &app, win, 1, 1);
     component::SearchPanel::New(&cx, StrL("find"), &editor)->IntoEl();
-    utassert(InputSelectedValue(query).len == 0);
+    utassert(len(InputSelectedValue(query)) == 0);
     uint64_t revision = InputSearchActivationRevision(&editor);
     InputFocus(&editor, &app, win);
     InputOpenSearch(&editor, &app, win, false);
@@ -2330,7 +2330,7 @@ static void TheUiInputFacadeKeepsTheSourceShapes() {
 
     state.masked = true;
     Str masked = any.Value(a, &app);
-    utassert(masked.len == 15); // five UTF-8 bullets
+    utassert(len(masked) == 15); // five UTF-8 bullets
     state.masked = false;
     InputFocus(&state, &app, win);
     utassert(any.FocusHandleOf(win, &app).IsValid());
@@ -2750,7 +2750,7 @@ static void SoftWrapBoundariesKeepTheVisualRowAffinity() {
     const float lineMult = 1.5f;
     int boundary = -1;
     float endY = 0, endH = 0, nextY = 0, nextH = 0;
-    for (int i = 1; i < line.len; i++) {
+    for (int i = 1; i < len(line); i++) {
         float endX = 0, nextX = 0;
         if (TextPointAt(&ctx, line, font, width, true, i, &endX, &endY, &endH,
                         false, lineMult, true) &&
@@ -3347,7 +3347,7 @@ static void AColumnarSelectionFollowsTheWrappedRows() {
     // Where the first line breaks, read the way the block reads it.
     Str line = StrL("alpha beta gamma delta epsilon");
     int boundary = -1;
-    for (int i = 1; i < line.len; i++) {
+    for (int i = 1; i < len(line); i++) {
         float ex = 0, ey = 0, eh = 0, nx = 0, ny = 0, nh = 0;
         if (TextPointAt(&win->paint, line, font, width, true, i, &ex, &ey, &eh,
                         false, 1.5f, true) &&

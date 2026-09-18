@@ -310,10 +310,10 @@ static void AddArc(SvgIcon* ic, float x1, float y1, float rx, float ry,
 }
 
 static void ParsePathD(SvgIcon* ic, Str d) {
-    if (!d.s || d.len <= 0) {
+    if (!d.s || len(d) <= 0) {
         return;
     }
-    PathScan s{d.s, d.s + d.len};
+    PathScan s{d.s, d.s + len(d)};
     char cmd = 0;
     float cx = 0, cy = 0, sx = 0, sy = 0;
     float pcx = 0, pcy = 0; // previous cubic control (for S)
@@ -515,7 +515,7 @@ static void ParsePathD(SvgIcon* ic, Str d) {
 }
 
 static void ParsePolyline(SvgIcon* ic, Str pts, bool close) {
-    PathScan s{pts.s, pts.s + pts.len};
+    PathScan s{pts.s, pts.s + len(pts)};
     bool first = true;
     float x, y;
     while (ParseNum(&s, &x) && ParseNum(&s, &y)) {
@@ -545,7 +545,7 @@ static bool IsIdentChar(char c) {
 static TempStr GetAttrTemp(Str tag, const char* name) {
     int nlen = (int)strlen(name);
     const char* p = tag.s;
-    const char* end = tag.s + tag.len;
+    const char* end = tag.s + len(tag);
     while (p + nlen + 2 < end) {
         bool bound = (p == tag.s) || !IsIdentChar(p[-1]);
         if (bound && base::StrStartsWithI(Str(p, (int)(end - p)), name) &&
@@ -577,10 +577,10 @@ static float AttrF(Str tag, const char* name, float def) {
 // `fill="#rrggbb"` on a shape. "none" and "currentColor" both leave the shape
 // in the caller's colour, which is what every Lucide icon says.
 static bool ParseSvgColor(Str s, Rgba* out) {
-    if (!s.s || s.len < 4 || s.s[0] != '#') {
+    if (!s.s || len(s) < 4 || s.s[0] != '#') {
         return false;
     }
-    int n = s.len - 1;
+    int n = len(s) - 1;
     if (n != 3 && n != 6) {
         return false;
     }
@@ -616,11 +616,11 @@ static bool ParseSvgPaint(const SvgIcon* ic, Str v, Rgba* out) {
     if (ParseSvgColor(v, out)) {
         return true;
     }
-    if (!ic || v.len < 6 || !base::StrStartsWithI(v, "url(")) {
+    if (!ic || len(v) < 6 || !base::StrStartsWithI(v, "url(")) {
         return false;
     }
     const char* p = v.s + 4;
-    const char* end = v.s + v.len;
+    const char* end = v.s + len(v);
     if (p < end && *p == '#') {
         p++;
     }
@@ -631,7 +631,7 @@ static bool ParseSvgPaint(const SvgIcon* ic, Str v, Rgba* out) {
     Str id(idStart, (int)(p - idStart));
     for (int i = 0; i < ic->gradients.len; i++) {
         const SvgGradient& g = ic->gradients[i];
-        if (g.hasColor && id.len > 0 && StrEq(g.id, id)) {
+        if (g.hasColor && len(id) > 0 && StrEq(g.id, id)) {
             *out = g.color;
             return true;
         }
@@ -682,11 +682,11 @@ static void MatApply(const SvgMatrix& m, float* x, float* y) {
 // the two it does not know.
 static SvgMatrix ParseTransform(Str s) {
     SvgMatrix out;
-    if (!s.s || s.len <= 0) {
+    if (!s.s || len(s) <= 0) {
         return out;
     }
     const char* p = s.s;
-    const char* end = s.s + s.len;
+    const char* end = s.s + len(s);
     while (p < end) {
         while (p < end && (*p == ' ' || *p == ',' || *p == '\t' || *p == '\n' ||
                            *p == '\r')) {
@@ -997,11 +997,11 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
     ic->hasOwnColors = false;
     ic->hasText = false;
     VecReset(ic->gradients);
-    if (!xml.s || xml.len <= 0) {
+    if (!xml.s || len(xml) <= 0) {
         return;
     }
     const char* p = xml.s;
-    const char* end = xml.s + xml.len;
+    const char* end = xml.s + len(xml);
     // How deep inside a <defs> / <clipPath> / <mask> / ... we are. Nothing is
     // drawn while this is above zero.
     int hidden = 0;
@@ -1059,16 +1059,16 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
             break;
         }
         Str tag(tagStart, (int)(p - tagStart));
-        bool selfClosing = tag.len > 0 && tag.s[tag.len - 1] == '/';
+        bool selfClosing = len(tag) > 0 && tag.s[len(tag) - 1] == '/';
         p++; // skip >
 
-        if (IsHiddenContainer(tagStart, tagStart + tag.len)) {
+        if (IsHiddenContainer(tagStart, tagStart + len(tag))) {
             if (!selfClosing) {
                 // Wherever it is declared, including inside the <defs> that
                 // is the usual place for it.
-                if (IsTagNamed(tagStart, tagStart + tag.len,
+                if (IsTagNamed(tagStart, tagStart + len(tag),
                                "linearGradient") ||
-                    IsTagNamed(tagStart, tagStart + tag.len,
+                    IsTagNamed(tagStart, tagStart + len(tag),
                                "radialGradient")) {
                     SvgGradient g;
                     g.id = GetAttrTemp(tag, "id");
@@ -1086,7 +1086,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
             // reduces to, and the rest of what is in here still draws nothing.
             if (gradIx >= 0 && gradIx < ic->gradients.len &&
                 !ic->gradients[gradIx].hasColor &&
-                IsTagNamed(tagStart, tagStart + tag.len, "stop")) {
+                IsTagNamed(tagStart, tagStart + len(tag), "stop")) {
                 TempStr stop = GetAttrTemp(tag, "stop-color");
                 Rgba c;
                 if (stop && ParseSvgColor(stop, &c)) {
@@ -1121,7 +1121,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         const SvgCtx& outer = gdepth > 0 && gdepth <= kMaxGroupDepth
                                   ? gstack[gdepth - 1]
                                   : kRootCtx;
-        if (IsGroupTag(tagStart, tagStart + tag.len)) {
+        if (IsGroupTag(tagStart, tagStart + len(tag))) {
             if (!selfClosing) {
                 SvgCtx cur = RefineCtx(ic, outer, tag);
                 if (gdepth < kMaxGroupDepth) {
@@ -1137,8 +1137,8 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         // The characters that follow the tag, up to the next one, are the run
         // -- an element that holds only another element contributes nothing
         // itself, and the tspan inside it does the drawing.
-        bool isText = IsTagNamed(tagStart, tagStart + tag.len, "text");
-        bool isTspan = IsTagNamed(tagStart, tagStart + tag.len, "tspan");
+        bool isText = IsTagNamed(tagStart, tagStart + len(tag), "text");
+        bool isTspan = IsTagNamed(tagStart, tagStart + len(tag), "tspan");
         if (isText || isTspan) {
             SvgCtx cur = RefineCtx(ic, outer, tag);
             AddTextRun(ic, cur, p, end);
@@ -1156,7 +1156,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
         if (base::StrStartsWithI(tag, "svg")) {
             TempStr viewBox = GetAttrTemp(tag, "viewBox");
             if (viewBox) {
-                PathScan s{viewBox.s, viewBox.s + viewBox.len};
+                PathScan s{viewBox.s, viewBox.s + len(viewBox)};
                 float a = 0, b = 0, c = 24, d = 24;
                 ParseNum(&s, &a);
                 ParseNum(&s, &b);
@@ -1378,14 +1378,14 @@ const uint8_t* AssetIconForPath(Str assetPath, int* lenOut) {
     const char* kDir = "icons/";
     const int kDirLen = 6;
     const int kExtLen = 4; // ".svg"
-    if (assetPath.len <= kDirLen + kExtLen) {
+    if (len(assetPath) <= kDirLen + kExtLen) {
         return nullptr;
     }
     if (!base::StrStartsWithI(assetPath, kDir)) {
         return nullptr;
     }
-    Str base(assetPath.s + kDirLen, assetPath.len - kDirLen - kExtLen);
-    if (!base::StrEqI(Str(base.s + base.len, kExtLen), ".svg")) {
+    Str base(assetPath.s + kDirLen, len(assetPath) - kDirLen - kExtLen);
+    if (!base::StrEqI(Str(base.s + len(base), kExtLen), ".svg")) {
         return nullptr;
     }
     return AssetIconFind(base, lenOut);
@@ -1439,14 +1439,14 @@ static OpsCache* CacheSlotFor(Str assetPath) {
     e->data = nullptr;
     e->len = 0;
     e->owned = false;
-    memcpy(e->path, assetPath.s, (size_t)assetPath.len);
-    e->path[assetPath.len] = 0;
+    memcpy(e->path, assetPath.s, (size_t)len(assetPath));
+    e->path[len(assetPath)] = 0;
     return e;
 }
 
 const uint8_t* SvgDrawOpsFor(Str assetPath, int* lenOut) {
     *lenOut = 0;
-    if (!assetPath.s || assetPath.len <= 0 || assetPath.len > 127) {
+    if (!assetPath.s || len(assetPath) <= 0 || len(assetPath) > 127) {
         return nullptr;
     }
     for (int i = 0; i < gCacheN; i++) {
@@ -1543,7 +1543,7 @@ static int gXmlCacheN = 0;
 static uint64_t XmlHash(Str xml) {
     // FNV-1a over the source.
     uint64_t h = 1469598103934665603ull;
-    for (int i = 0; i < xml.len; i++) {
+    for (int i = 0; i < len(xml); i++) {
         h ^= (uint8_t)xml.s[i];
         h *= 1099511628211ull;
     }
@@ -1552,13 +1552,13 @@ static uint64_t XmlHash(Str xml) {
 
 const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
     *lenOut = 0;
-    if (!xml.s || xml.len <= 0) {
+    if (!xml.s || len(xml) <= 0) {
         return nullptr;
     }
     uint64_t hash = XmlHash(xml);
     for (int i = 0; i < kMaxXmlCache; i++) {
         if (gXmlCache[i].data && gXmlCache[i].hash == hash &&
-            gXmlCache[i].xmlLen == xml.len) {
+            gXmlCache[i].xmlLen == len(xml)) {
             *lenOut = gXmlCache[i].len;
             return gXmlCache[i].data;
         }
@@ -1580,7 +1580,7 @@ const uint8_t* SvgDrawOpsForXml(Str xml, int* lenOut) {
         Free(nullptr, e->data);
     }
     e->hash = hash;
-    e->xmlLen = xml.len;
+    e->xmlLen = len(xml);
     e->data = buf;
     e->len = b.data.len;
     *lenOut = e->len;

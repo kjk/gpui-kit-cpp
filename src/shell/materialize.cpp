@@ -440,7 +440,7 @@ static void ResolveBehavior(const shell::SpecNode* node,
 }
 
 static bool ParseNumber(Str text, float* out) {
-    if (!text || text.len <= 0 || text.len >= 64) return false;
+    if (!text || len(text) <= 0 || len(text) >= 64) return false;
     TempStr value = StrDupTemp(text);
     char* end = nullptr;
     double number = strtod(value.s, &end);
@@ -463,9 +463,10 @@ static Str TrimSpace(Str value) {
         value.s++;
         value.len--;
     }
-    while (value.len > 0 &&
-           (value.s[value.len - 1] == ' ' || value.s[value.len - 1] == '\t' ||
-            value.s[value.len - 1] == '\r' || value.s[value.len - 1] == '\n')) {
+    while (len(value) > 0 &&
+           (value.s[len(value) - 1] == ' ' || value.s[len(value) - 1] == '\t' ||
+            value.s[len(value) - 1] == '\r' ||
+            value.s[len(value) - 1] == '\n')) {
         value.len--;
     }
     return value;
@@ -518,11 +519,11 @@ static bool StyleColor(const shell::SpecOp& op, Rgba* out) {
 
 static float PresetNumber(Str name, Str prefix, bool* found) {
     *found = false;
-    if (!StrStartsWith(name, prefix) || name.len <= prefix.len) return 0;
-    Str suffix(name.s + prefix.len, name.len - prefix.len);
-    if (suffix.len >= 32) return 0;
+    if (!StrStartsWith(name, prefix) || len(name) <= len(prefix)) return 0;
+    Str suffix(name.s + len(prefix), len(name) - len(prefix));
+    if (len(suffix) >= 32) return 0;
     TempStr text = StrDupTemp(suffix);
-    for (int i = 0; i < suffix.len; i++)
+    for (int i = 0; i < len(suffix); i++)
         text.s[i] = suffix.s[i] == 'p' ? '.' : suffix.s[i];
     float value = 0;
     if (!ParseNumber(text, &value)) return 0;

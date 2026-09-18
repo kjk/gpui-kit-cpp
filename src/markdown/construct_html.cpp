@@ -27,7 +27,8 @@ static const uint8_t kHtmlComplete = 7;
 // The name lists are SeqStrings runs. Tag names are ASCII by CommonMark;
 // base's case-insensitive slice comparison avoids a folded copy.
 static bool NamesContainI(SeqStrings names, Str name) {
-    for (Str item = SeqStrFirst(names); item.len > 0; item = SeqStrNext(item)) {
+    for (Str item = SeqStrFirst(names); len(item) > 0;
+         item = SeqStrNext(item)) {
         if (base::StrEqI(item, name)) {
             return true;
         }
@@ -118,7 +119,8 @@ State HtmlFlowCommentOpenInside(Tokenizer* t) {
 }
 
 State HtmlFlowCdataOpenInside(Tokenizer* t) {
-    if (t->current == (int32_t)(uint8_t)kHtmlCdataPrefix.s[t->tokenizeState.size]) {
+    if (t->current == (int32_t)(uint8_t)kHtmlCdataPrefix
+                          .s[t->tokenizeState.size]) {
         Consume(t);
         t->tokenizeState.size += 1;
         if (t->tokenizeState.size == kHtmlCdataPrefix.len) {
@@ -553,7 +555,8 @@ State HtmlTextCommentEnd(Tokenizer* t) {
 }
 
 State HtmlTextCdataOpenInside(Tokenizer* t) {
-    if (t->current == (int32_t)(uint8_t)kHtmlCdataPrefix.s[t->tokenizeState.size]) {
+    if (t->current == (int32_t)(uint8_t)kHtmlCdataPrefix
+                          .s[t->tokenizeState.size]) {
         t->tokenizeState.size += 1;
         Consume(t);
         if (t->tokenizeState.size == kHtmlCdataPrefix.len) {
@@ -814,8 +817,7 @@ State HtmlTextLineEndingBefore(Tokenizer* t) {
 
 State HtmlTextLineEndingAfter(Tokenizer* t) {
     if (t->current == '\t' || t->current == ' ') {
-        TokenizerAttempt(t,
-                         StateNext(StateName::HtmlTextLineEndingAfterPrefix),
+        TokenizerAttempt(t, StateNext(StateName::HtmlTextLineEndingAfterPrefix),
                          StateNok());
         return StateRetry(SpaceOrTab(t));
     }

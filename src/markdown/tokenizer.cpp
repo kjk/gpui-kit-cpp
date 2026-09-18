@@ -22,7 +22,7 @@ static ByteAction ByteActionAt(Str bytes, const Point& point) {
     uint8_t byte = (uint8_t)bytes.s[point.index];
     if (byte == '\r') {
         // A CR before an LF is not there; a CR alone stands in for one.
-        if (point.index < bytes.len - 1 && bytes.s[point.index + 1] == '\n') {
+        if (point.index < len(bytes) - 1 && bytes.s[point.index + 1] == '\n') {
             return ByteAction{ByteActionKind::Ignore, 0};
         }
         return ByteAction{ByteActionKind::Normal, '\n'};

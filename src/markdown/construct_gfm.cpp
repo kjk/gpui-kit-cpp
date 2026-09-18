@@ -1011,12 +1011,12 @@ static int32_t PeekProtocol(Str bytes, int32_t min, int32_t end, Name* name) {
 static int32_t PeekBytesEmailDomain(Str bytes, int32_t start, bool xmpp) {
     int32_t index = start;
     bool dot = false;
-    while (index < bytes.len) {
+    while (index < len(bytes)) {
         uint8_t byte = (uint8_t)bytes.s[index];
         if (byte == '-' || byte == '_' || IsAsciiAlphanumeric(byte) ||
             (byte == '/' && xmpp)) {
             // Fine.
-        } else if (byte == '.' && index + 1 < bytes.len &&
+        } else if (byte == '.' && index + 1 < len(bytes) &&
                    IsAsciiAlphanumeric((uint8_t)bytes.s[index + 1])) {
             dot = true;
         } else {
@@ -1056,7 +1056,7 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
                 int32_t startIndex = point.index;
                 int32_t min = 0;
 
-                while (byteIndex < bytes.len) {
+                while (byteIndex < len(bytes)) {
                     if (bytes.s[byteIndex] == '@') {
                         int32_t rangeStart = 0;
                         int32_t rangeEnd = 0;
@@ -1112,7 +1112,7 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
                 }
 
                 // The data after the last email, if any.
-                if (min != 0 && min < bytes.len) {
+                if (min != 0 && min < len(bytes)) {
                     Event enter;
                     enter.kind = Kind::Enter;
                     enter.name = Name::Data;

@@ -75,7 +75,7 @@ void AddChild(MdNode* parent, MdNode* child) {
 
 bool AtLit(Str s, int i, const char* lit) {
     for (int k = 0; lit[k]; k++) {
-        if (i + k >= s.len || s.s[i + k] != lit[k]) {
+        if (i + k >= len(s) || s.s[i + k] != lit[k]) {
             return false;
         }
     }
@@ -84,10 +84,10 @@ bool AtLit(Str s, int i, const char* lit) {
 
 // newline = "\n" | "\r\n"
 int MatchNewline(Str s, int i) {
-    if (i < s.len && s.s[i] == '\n') {
+    if (i < len(s) && s.s[i] == '\n') {
         return 1;
     }
-    if (i + 1 < s.len && s.s[i] == '\r' && s.s[i + 1] == '\n') {
+    if (i + 1 < len(s) && s.s[i] == '\r' && s.s[i + 1] == '\n') {
         return 2;
     }
     return -1;
@@ -108,7 +108,7 @@ MdNode* ParseInline(MdParser* p, int* pos);
 // Whether an inline construct matches at `i` — the `!(inline)` used inside
 // string and mark_string. The nodes an attempt builds are arena garbage.
 bool InlineStartsAt(MdParser* p, int i) {
-    char c = i < p->s.len ? p->s.s[i] : 0;
+    char c = i < len(p->s) ? p->s.s[i] : 0;
     if (c != '[' && c != '!' && c != '`' && c != '*' && c != '~' && c != '"') {
         return false;
     }
@@ -120,9 +120,10 @@ bool InlineStartsAt(MdParser* p, int i) {
 int ScanString(MdParser* p, int i) {
     Str s = p->s;
     int at = i;
-    while (at < s.len) {
+    while (at < len(s)) {
         char c = s.s[at];
-        if (c == '\n' || (c == '\r' && at + 1 < s.len && s.s[at + 1] == '\n')) {
+        if (c == '\n' ||
+            (c == '\r' && at + 1 < len(s) && s.s[at + 1] == '\n')) {
             break;
         }
         if ((c == '[' || c == '!' || c == '`' || c == '*' || c == '~' ||
@@ -144,7 +145,7 @@ MdNode* ParseWikilinks(MdParser* p, int* pos) {
     if (!AtLit(s, i, "[[")) {
         return nullptr;
     }
-    for (int at = i + 2; at + 1 < s.len; at++) {
+    for (int at = i + 2; at + 1 < len(s); at++) {
         if (s.s[at] == ']' && s.s[at + 1] == ']') {
             MdNode* n = NewNode(p, MdRule::Container, i);
             n->end = at + 2;
@@ -158,17 +159,17 @@ MdNode* ParseWikilinks(MdParser* p, int* pos) {
 // paren = { "(" ~ inner_paren ~ paren* ~ inner_paren* ~ ")" | "(" ~ ")" }
 // inner_paren = (!(newline | "(" | ")") ~ ANY)+
 int MatchParen(Str s, int i) {
-    if (i >= s.len || s.s[i] != '(') {
+    if (i >= len(s) || s.s[i] != '(') {
         return -1;
     }
     int at = i + 1;
-    if (at < s.len && s.s[at] == ')') {
+    if (at < len(s) && s.s[at] == ')') {
         return at + 1 - i;
     }
     auto inner = [&s](int from) {
         int j = from;
-        while (j < s.len && s.s[j] != '\n' && s.s[j] != '(' && s.s[j] != ')' &&
-               !(s.s[j] == '\r' && j + 1 < s.len && s.s[j + 1] == '\n')) {
+        while (j < len(s) && s.s[j] != '\n' && s.s[j] != '(' && s.s[j] != ')' &&
+               !(s.s[j] == '\r' && j + 1 < len(s) && s.s[j + 1] == '\n')) {
             j++;
         }
         return j;
@@ -186,7 +187,7 @@ int MatchParen(Str s, int i) {
         at += sub;
     }
     at = inner(at);
-    if (at >= s.len || s.s[at] != ')') {
+    if (at >= len(s) || s.s[at] != ')') {
         return -1;
     }
     return at + 1 - i;
@@ -200,7 +201,7 @@ MdNode* ParseMark(MdParser* p, int* pos);
 MdNode* ParseLink(MdParser* p, int* pos) {
     Str s = p->s;
     int i = *pos;
-    if (i >= s.len || s.s[i] != '[') {
+    if (i >= len(s) || s.s[i] != '[') {
         return nullptr;
     }
     MdNode* n = NewNode(p, MdRule::Container, i);
@@ -215,10 +216,10 @@ MdNode* ParseLink(MdParser* p, int* pos) {
         AddChild(n, mark);
     }
     int stringStart = at;
-    while (at < s.len && s.s[at] != ']') {
+    while (at < len(s) && s.s[at] != ']') {
         at++;
     }
-    if (at >= s.len) {
+    if (at >= len(s)) {
         return nullptr;
     }
     MdNode* ls = NewNode(p, MdRule::LinkString, stringStart);
@@ -238,15 +239,15 @@ MdNode* ParseLink(MdParser* p, int* pos) {
 MdNode* ParseCodeInline(MdParser* p, int* pos) {
     Str s = p->s;
     int i = *pos;
-    if (i >= s.len || s.s[i] != '`') {
+    if (i >= len(s) || s.s[i] != '`') {
         return nullptr;
     }
     int at = i + 1;
-    while (at < s.len && s.s[at] != '`' && s.s[at] != '\n' &&
-           !(s.s[at] == '\r' && at + 1 < s.len && s.s[at + 1] == '\n')) {
+    while (at < len(s) && s.s[at] != '`' && s.s[at] != '\n' &&
+           !(s.s[at] == '\r' && at + 1 < len(s) && s.s[at + 1] == '\n')) {
         at++;
     }
-    if (at >= s.len || s.s[at] != '`') {
+    if (at >= len(s) || s.s[at] != '`') {
         return nullptr;
     }
     MdNode* n = NewNode(p, MdRule::Container, i);
@@ -288,7 +289,7 @@ MdNode* ParseMark(MdParser* p, int* pos) {
             at = save;
             // mark_string = { (!(PEEK | inline) ~ ANY)* }
             int stringStart = at;
-            while (at < s.len && !AtLit(s, at, open)) {
+            while (at < len(s) && !AtLit(s, at, open)) {
                 char c = s.s[at];
                 if ((c == '[' || c == '!' || c == '`' || c == '*' || c == '~' ||
                      c == '"')) {
@@ -321,7 +322,7 @@ MdNode* ParseMark(MdParser* p, int* pos) {
 MdNode* ParseImg(MdParser* p, int* pos) {
     Str s = p->s;
     int i = *pos;
-    if (i >= s.len || s.s[i] != '!') {
+    if (i >= len(s) || s.s[i] != '!') {
         return nullptr;
     }
     int at = i + 1;
@@ -368,7 +369,7 @@ MdNode* ParseComment(MdParser* p, int* pos) {
     if (!AtLit(s, i, "<!--")) {
         return nullptr;
     }
-    for (int at = i + 4; at + 3 <= s.len; at++) {
+    for (int at = i + 4; at + 3 <= len(s); at++) {
         if (AtLit(s, at, "-->")) {
             MdNode* n = NewNode(p, MdRule::Comment, i);
             n->end = at + 3;
@@ -382,15 +383,15 @@ MdNode* ParseComment(MdParser* p, int* pos) {
 // tag_self = "<" ~ … ~ "/>"; tag_start stops at the first '/' or '>';
 // tag_end = "</" ~ (!">" ~ ANY)* ~ ">".
 int MatchTagSelf(Str s, int i) {
-    if (i >= s.len || s.s[i] != '<') {
+    if (i >= len(s) || s.s[i] != '<') {
         return -1;
     }
     int at = i + 1;
-    while (at < s.len) {
+    while (at < len(s)) {
         if (s.s[at] == '>') {
             return -1;
         }
-        if (s.s[at] == '/' && at + 1 < s.len && s.s[at + 1] == '>') {
+        if (s.s[at] == '/' && at + 1 < len(s) && s.s[at + 1] == '>') {
             return at + 2 - i;
         }
         at++;
@@ -399,11 +400,11 @@ int MatchTagSelf(Str s, int i) {
 }
 
 int MatchTagStart(Str s, int i) {
-    if (i >= s.len || s.s[i] != '<') {
+    if (i >= len(s) || s.s[i] != '<') {
         return -1;
     }
     int at = i + 1;
-    while (at < s.len) {
+    while (at < len(s)) {
         if (s.s[at] == '/') {
             return -1;
         }
@@ -419,7 +420,7 @@ int MatchTagEnd(Str s, int i) {
     if (!AtLit(s, i, "</")) {
         return -1;
     }
-    for (int at = i + 2; at < s.len; at++) {
+    for (int at = i + 2; at < len(s); at++) {
         if (s.s[at] == '>') {
             return at + 1 - i;
         }
@@ -449,7 +450,7 @@ MdNode* ParseHtml(MdParser* p, int* pos) {
     int at = i + n;
     // ws* — spaces and newlines right after the start tag are pest's ws
     // pairs, not inner_text.
-    while (at < s.len && (s.s[at] == ' ' || MatchNewline(s, at) > 0)) {
+    while (at < len(s) && (s.s[at] == ' ' || MatchNewline(s, at) > 0)) {
         at += s.s[at] == ' ' ? 1 : MatchNewline(s, at);
     }
     // inner_html* = (html | inner_text)*
@@ -465,7 +466,7 @@ MdNode* ParseHtml(MdParser* p, int* pos) {
         at = save;
         // inner_text = { (!("<" | ">") ~ ANY)+ }
         int textStart = at;
-        while (at < s.len && s.s[at] != '<' && s.s[at] != '>') {
+        while (at < len(s) && s.s[at] != '<' && s.s[at] != '>') {
             at++;
         }
         if (at == textStart) {
@@ -489,7 +490,7 @@ MdNode* ParseHtml(MdParser* p, int* pos) {
 // meta_wrap = "-"{3,}
 int MatchMetaWrap(Str s, int i) {
     int at = i;
-    while (at < s.len && s.s[at] == '-') {
+    while (at < len(s) && s.s[at] == '-') {
         at++;
     }
     return at - i >= 3 ? at - i : -1;
@@ -498,14 +499,14 @@ int MatchMetaWrap(Str s, int i) {
 // meta_key = (!(":" | newline) ~ identifier)* ~ ":" ~ " "*
 int MatchMetaKey(Str s, int i) {
     int at = i;
-    while (at < s.len && s.s[at] != ':' && IsIdentifierCh(s.s[at])) {
+    while (at < len(s) && s.s[at] != ':' && IsIdentifierCh(s.s[at])) {
         at++;
     }
-    if (at >= s.len || s.s[at] != ':') {
+    if (at >= len(s) || s.s[at] != ':') {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     return at - i;
@@ -570,7 +571,7 @@ MdNode* ParseMetaInfo(MdParser* p, int* pos) {
 //                meta_tags_item ~ newline } — the whole line is ignored.
 bool IsMetaTagsItemCh(Str s, int* i) {
     int at = *i;
-    if (at >= s.len) {
+    if (at >= len(s)) {
         return false;
     }
     char c = s.s[at];
@@ -601,12 +602,12 @@ int MatchMetaTags(Str s, int i) {
         while (IsMetaTagsItemCh(s, &at)) {
         }
         int save = at;
-        while (at < s.len && s.s[at] == ' ') {
+        while (at < len(s) && s.s[at] == ' ') {
             at++;
         }
-        if (at < s.len && s.s[at] == ',') {
+        if (at < len(s) && s.s[at] == ',') {
             at++;
-            while (at < s.len && s.s[at] == ' ') {
+            while (at < len(s) && s.s[at] == ' ') {
                 at++;
             }
             commas++;
@@ -630,7 +631,7 @@ int MatchMetaTags(Str s, int i) {
 // hr = "--" ~ "-"+
 int MatchHr(Str s, int i) {
     int at = i;
-    while (at < s.len && s.s[at] == '-') {
+    while (at < len(s) && s.s[at] == '-') {
         at++;
     }
     return at - i >= 3 ? at - i : -1;
@@ -640,11 +641,11 @@ int MatchHr(Str s, int i) {
 //              | indent_code+ }
 // indent_code = @{ (" "{4,} | "\t") ~ (!"\n" ~ ANY)* ~ newline }
 int MatchIndent(Str s, int i) {
-    if (i < s.len && s.s[i] == '\t') {
+    if (i < len(s) && s.s[i] == '\t') {
         return 1;
     }
     int at = i;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     return at - i >= 4 ? at - i : -1;
@@ -656,15 +657,15 @@ MdNode* ParseCodeblock(MdParser* p, int* pos) {
     if (AtLit(s, i, "```")) {
         int at = i + 3;
         int langStart = at;
-        while (at < s.len && IsIdentifierCh(s.s[at])) {
+        while (at < len(s) && IsIdentifierCh(s.s[at])) {
             at++;
         }
         int langEnd = at;
         int codeStart = at;
-        while (at < s.len && !AtLit(s, at, "```")) {
+        while (at < len(s) && !AtLit(s, at, "```")) {
             at++;
         }
-        if (at >= s.len) {
+        if (at >= len(s)) {
             return nullptr;
         }
         MdNode* n = NewNode(p, MdRule::Codeblock, i);
@@ -685,8 +686,8 @@ MdNode* ParseCodeblock(MdParser* p, int* pos) {
             break;
         }
         int j = at + indent;
-        while (j < s.len && s.s[j] != '\n' &&
-               !(s.s[j] == '\r' && j + 1 < s.len && s.s[j + 1] == '\n')) {
+        while (j < len(s) && s.s[j] != '\n' &&
+               !(s.s[j] == '\r' && j + 1 < len(s) && s.s[j + 1] == '\n')) {
             j++;
         }
         int nl = MatchNewline(s, j);
@@ -737,18 +738,18 @@ int ParseInlineOrStringSeq(MdParser* p, int* pos, MdNode* parent) {
 //               ~ " "*
 int MatchListPrefix(Str s, int i) {
     int at = i;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
-    if (at >= s.len) {
+    if (at >= len(s)) {
         return -1;
     }
     char c = s.s[at];
     if (c == '*' || c == '-') {
         at++;
-    } else if (c >= '0' && c <= '9' && at + 1 < s.len && s.s[at + 1] == '.') {
+    } else if (c >= '0' && c <= '9' && at + 1 < len(s) && s.s[at + 1] == '.') {
         at += 2;
-    } else if (c == '[' && at + 2 < s.len &&
+    } else if (c == '[' && at + 2 < len(s) &&
                (s.s[at + 1] == ' ' || s.s[at + 1] == 'x' ||
                 s.s[at + 1] == 'X') &&
                s.s[at + 2] == ']') {
@@ -756,7 +757,7 @@ int MatchListPrefix(Str s, int i) {
     } else {
         return -1;
     }
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     return at - i;
@@ -852,11 +853,11 @@ MdNode* ParseBlockItem(MdParser* p, int* pos) {
     Str s = p->s;
     int i = *pos;
     int at = i;
-    if (at < s.len && s.s[at] == '>') {
+    if (at < len(s) && s.s[at] == '>') {
         at++;
     } else {
         int hashes = 0;
-        while (at < s.len && s.s[at] == '#' && hashes < 6) {
+        while (at < len(s) && s.s[at] == '#' && hashes < 6) {
             at++;
             hashes++;
         }
@@ -864,7 +865,7 @@ MdNode* ParseBlockItem(MdParser* p, int* pos) {
             return nullptr;
         }
     }
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     MdNode* n = NewNode(p, MdRule::Container, i);
@@ -970,14 +971,14 @@ MdNode* ParseBlock(MdParser* p, int* pos) {
 // td_tag = @{ space* ~ "|" ~ space* }
 int MatchTdTag(Str s, int i) {
     int at = i;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
-    if (at >= s.len || s.s[at] != '|') {
+    if (at >= len(s) || s.s[at] != '|') {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     return at - i;
@@ -1060,9 +1061,9 @@ void ScanMarkdown(Results* res, Str raw) {
     p.s = raw;
     p.a = res->a;
     MdNode* root = NewNode(&p, MdRule::Container, 0);
-    root->end = raw.len;
+    root->end = len(raw);
     int pos = 0;
-    while (pos < raw.len) {
+    while (pos < len(raw)) {
         // line = expr | newline; expr = comment | html | meta_info | block |
         // inline | td_tag.
         int save = pos;

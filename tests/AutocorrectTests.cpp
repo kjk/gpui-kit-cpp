@@ -37,7 +37,7 @@ static bool AcFormatEq(const char* input, const char* expected) {
     bool ok = StrEq(out, Str(expected));
     if (!ok) {
         printf("  format(\"%s\")\n    got      \"%.*s\"\n    expected \"%s\"\n",
-               input, out.len, out.s, expected);
+               input, len(out), out.s, expected);
     }
     return ok;
 }

@@ -1346,14 +1346,14 @@ struct TextLayout {
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                           bool wrap, uint8_t weight, float lineH,
                           Size* outSize) {
-    if (!ctx || !ctx->pa || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }
     if (fontSize <= 0) {
         fontSize = 16.f;
     }
     float size[2] = {0, 0};
-    int id = GpJsTextNew((const uint8_t*)s.s, s.len, fontSize, maxW,
+    int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
                          wrap ? 1 : 0, weight, lineH, size);
     if (!id) {
         return nullptr;
@@ -1420,8 +1420,8 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (at < 0) {
         at = 0;
     }
-    if (at > s.len) {
-        at = s.len;
+    if (at > len(s)) {
+        at = len(s);
     }
     return at;
 }

@@ -388,8 +388,8 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
     const ThemeConfig* active = ThemeRegistryFind(
         cx->app, ThemeRegistryActive(cx->app, ThemeGet(cx->app)));
     Str query = InputValue(&self->filter);
-    while (query.len > 0 && query.s[0] == '#') {
-        query = Str(query.s + 1, query.len - 1);
+    while (len(query) > 0 && query.s[0] == '#') {
+        query = Str(query.s + 1, len(query) - 1);
     }
     const ColorRow** shown =
         (const ColorRow**)Alloc(a, (int)sizeof(ColorRow*) * nAll);
@@ -398,12 +398,12 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
         if (!self->showInherited && !RowIsExplicit(active, rows[i].key)) {
             continue;
         }
-        if (query.len > 0) {
+        if (len(query) > 0) {
             Str hex = HexOf(cx, rows[i].color.color);
             bool hit = base::StrContainsI(Str(rows[i].group), query) ||
                        base::StrContainsI(Str(rows[i].name), query) ||
-                       (hex.len > query.len + 1 &&
-                        base::StrContainsI(Str(hex.s + 1, query.len), query));
+                       (len(hex) > len(query) + 1 &&
+                        base::StrContainsI(Str(hex.s + 1, len(query)), query));
             if (!hit) {
                 continue;
             }

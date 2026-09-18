@@ -8,7 +8,7 @@ namespace gpui {
 static uint32_t HashName(Str s) {
     uint32_t h = 2166136261u;
     if (s.s) {
-        for (int i = 0; i < s.len; i++) {
+        for (int i = 0; i < len(s); i++) {
             h ^= (uint8_t)s.s[i];
             h *= 16777619u;
         }
@@ -118,7 +118,7 @@ static const NamedKey kNamedKeys[] = {
 };
 
 static int VkForName(Str name, bool* shift) {
-    if (name.len == 0) {
+    if (len(name) == 0) {
         return 0;
     }
     for (int i = 0; i < (int)(sizeof(kNamedKeys) / sizeof(kNamedKeys[0]));
@@ -132,9 +132,9 @@ static int VkForName(Str name, bool* shift) {
     }
     // Windows names F1..F24; macOS and XKB continue the same vocabulary to
     // F35. The latter live in the reserved portable range above the VKs.
-    if (StrStartsWithAny(name, "fF") && name.len >= 2 && name.len <= 3) {
+    if (StrStartsWithAny(name, "fF") && len(name) >= 2 && len(name) <= 3) {
         int n = 0;
-        for (int i = 1; i < name.len; i++) {
+        for (int i = 1; i < len(name); i++) {
             if (name.s[i] < '0' || name.s[i] > '9') {
                 return 0;
             }
@@ -148,7 +148,7 @@ static int VkForName(Str name, bool* shift) {
         }
         return 0;
     }
-    if (name.len != 1) {
+    if (len(name) != 1) {
         return 0;
     }
     char c = name.s[0];
@@ -168,7 +168,7 @@ static int VkForName(Str name, bool* shift) {
 }
 
 bool KeyChordParse(Str spec, KeyChord* out) {
-    if (!out || spec.len == 0) {
+    if (!out || len(spec) == 0) {
         return false;
     }
     KeyChord c = {};
@@ -176,9 +176,9 @@ bool KeyChordParse(Str spec, KeyChord* out) {
     // The modifiers are dash-separated prefixes; the last field is the key,
     // which may itself be "-" — so a dash is only a separator when something
     // follows it.
-    while (i < spec.len) {
+    while (i < len(spec)) {
         int dash = -1;
-        for (int j = i; j < spec.len - 1; j++) {
+        for (int j = i; j < len(spec) - 1; j++) {
             if (spec.s[j] == '-') {
                 dash = j;
                 break;
@@ -214,7 +214,7 @@ bool KeyChordParse(Str spec, KeyChord* out) {
         }
         i = dash + 1;
     }
-    c.vk = VkForName(Str(spec.s + i, spec.len - i), &c.shift);
+    c.vk = VkForName(Str(spec.s + i, len(spec) - i), &c.shift);
     if (!c.vk) {
         return false;
     }
@@ -229,17 +229,17 @@ bool KeyChordEq(const KeyChord& a, const KeyChord& b) {
 }
 
 int KeyChordsParse(Str spec, KeyChord* out, int maxChords) {
-    if (!out || maxChords <= 0 || spec.len == 0) {
+    if (!out || maxChords <= 0 || len(spec) == 0) {
         return 0;
     }
     int n = 0;
     int i = 0;
-    while (i < spec.len) {
-        while (i < spec.len && IsSpace(spec.s[i])) {
+    while (i < len(spec)) {
+        while (i < len(spec) && IsSpace(spec.s[i])) {
             i++;
         }
         int start = i;
-        while (i < spec.len && !IsSpace(spec.s[i])) {
+        while (i < len(spec) && !IsSpace(spec.s[i])) {
             i++;
         }
         if (i == start) {
@@ -283,12 +283,12 @@ static int gNContexts = 0;
 
 static void ParseContextInto(Str spec, ParsedContext* c) {
     int i = 0;
-    while (i < spec.len) {
-        while (i < spec.len && IsSpace(spec.s[i])) {
+    while (i < len(spec)) {
+        while (i < len(spec) && IsSpace(spec.s[i])) {
             i++;
         }
         int s0 = i;
-        while (i < spec.len && IsNameChar(spec.s[i])) {
+        while (i < len(spec) && IsNameChar(spec.s[i])) {
             i++;
         }
         if (i == s0) {
@@ -299,16 +299,16 @@ static void ParseContextInto(Str spec, ParsedContext* c) {
         }
         uint32_t name = HashName(Str(spec.s + s0, i - s0));
         int j = i;
-        while (j < spec.len && IsSpace(spec.s[j])) {
+        while (j < len(spec) && IsSpace(spec.s[j])) {
             j++;
         }
-        if (j < spec.len && spec.s[j] == '=') {
+        if (j < len(spec) && spec.s[j] == '=') {
             j++;
-            while (j < spec.len && IsSpace(spec.s[j])) {
+            while (j < len(spec) && IsSpace(spec.s[j])) {
                 j++;
             }
             int v0 = j;
-            while (j < spec.len && IsNameChar(spec.s[j])) {
+            while (j < len(spec) && IsNameChar(spec.s[j])) {
                 j++;
             }
             if (j > v0 && c->nPairs < kMaxPairs) {
@@ -424,7 +424,7 @@ struct PredParser {
 };
 
 static void PredSkipWs(PredParser* p) {
-    while (p->i < p->s.len && IsSpace(p->s.s[p->i])) {
+    while (p->i < len(p->s) && IsSpace(p->s.s[p->i])) {
         p->i++;
     }
 }
@@ -448,14 +448,14 @@ static int ParsePredExpr(PredParser* p, int minPrec);
 
 static int ParsePredPrimary(PredParser* p) {
     PredSkipWs(p);
-    if (p->i >= p->s.len) {
+    if (p->i >= len(p->s)) {
         p->bad = true;
         return -1;
     }
     char c = p->s.s[p->i];
     // `!` is negation unless it is the first half of `!=`, which is an
     // operator and belongs to the caller.
-    if (c == '!' && !(p->i + 1 < p->s.len && p->s.s[p->i + 1] == '=')) {
+    if (c == '!' && !(p->i + 1 < len(p->s) && p->s.s[p->i + 1] == '=')) {
         p->i++;
         int inner = ParsePredPrimary(p);
         if (p->bad) {
@@ -467,7 +467,7 @@ static int ParsePredPrimary(PredParser* p) {
         p->i++;
         int e = ParsePredExpr(p, 1);
         PredSkipWs(p);
-        if (p->bad || p->i >= p->s.len || p->s.s[p->i] != ')') {
+        if (p->bad || p->i >= len(p->s) || p->s.s[p->i] != ')') {
             p->bad = true;
             return -1;
         }
@@ -475,7 +475,7 @@ static int ParsePredPrimary(PredParser* p) {
         return e;
     }
     int s0 = p->i;
-    while (p->i < p->s.len && IsNameChar(p->s.s[p->i])) {
+    while (p->i < len(p->s) && IsNameChar(p->s.s[p->i])) {
         p->i++;
     }
     if (p->i == s0) {
@@ -497,7 +497,7 @@ struct PredOpTok {
 // child of a conjunction.
 static bool PeekPredOp(PredParser* p, PredOpTok* out) {
     PredSkipWs(p);
-    int n = p->s.len - p->i;
+    int n = len(p->s) - p->i;
     const char* s = p->s.s + p->i;
     if (n >= 2 && s[0] == '&' && s[1] == '&') {
         *out = {PredOp::And, 3, 2};
@@ -562,7 +562,7 @@ static int PredParse(Str spec, bool* ok) {
     p.s = spec;
     int root = ParsePredExpr(&p, 1);
     PredSkipWs(&p);
-    if (p.bad || p.i != p.s.len || root < 0) {
+    if (p.bad || p.i != len(p.s) || root < 0) {
         *ok = false;
         return -1;
     }

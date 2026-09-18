@@ -319,11 +319,11 @@ static bool ListSpace(char c) {
 }
 
 static Str TrimQuery(Str query) {
-    while (query.len > 0 && ListSpace(query.s[0])) {
+    while (len(query) > 0 && ListSpace(query.s[0])) {
         query.s++;
         query.len--;
     }
-    while (query.len > 0 && ListSpace(query.s[query.len - 1])) {
+    while (len(query) > 0 && ListSpace(query.s[len(query) - 1])) {
         query.len--;
     }
     return query;
@@ -344,7 +344,7 @@ static void StartSearch(ListState* s, Ctx* cx, Str query, bool dedupe) {
     ListSetSelectedIndex(s, cx, s->count > 0 ? 0 : -1, false);
     s->scrollY = 0;
     StrFree(s->lastQuery);
-    s->lastQuery = query.len > 0 ? StrDup(query) : Str{};
+    s->lastQuery = len(query) > 0 ? StrDup(query) : Str{};
     Notify(cx);
 }
 

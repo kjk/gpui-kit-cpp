@@ -276,13 +276,13 @@ static JsonValue* ParseValue(JsonParser* jp) {
 }
 
 JsonValue* JsonParse(Arena* a, Str text) {
-    if (!a || !text.s || text.len <= 0) {
+    if (!a || !text.s || len(text) <= 0) {
         return nullptr;
     }
     JsonParser jp;
     jp.a = a;
     jp.p = text.s;
-    jp.end = text.s + text.len;
+    jp.end = text.s + len(text);
     JsonValue* v = ParseValue(&jp);
     if (jp.bad) {
         return nullptr;
@@ -425,7 +425,7 @@ void JsonWriter::String(const char* key, Str v) {
         return;
     }
     out->AppendChar('"');
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         char c = v.s[i];
         if (c == '"' || c == '\\') {
             out->AppendChar('\\');

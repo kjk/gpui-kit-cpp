@@ -26,10 +26,11 @@ namespace autocorrect {
 
 static int LitLen(Str s, int i, const char* lit) {
     Str literal = Str(lit);
-    if (i + literal.len > s.len || !StrEq(Str(s.s + i, literal.len), literal)) {
+    if (i + len(literal) > len(s) ||
+        !StrEq(Str(s.s + i, len(literal)), literal)) {
         return -1;
     }
-    return literal.len;
+    return len(literal);
 }
 
 // `prefix ~ (!NEWLINE ~ ANY)*`
@@ -39,7 +40,7 @@ static int MatchLineComment(Str s, int i, const char* prefix) {
         return -1;
     }
     int at = i + n;
-    while (at < s.len && s.s[at] != '\n') {
+    while (at < len(s) && s.s[at] != '\n') {
         at++;
     }
     return at - i;
@@ -52,8 +53,8 @@ static int MatchBlock(Str s, int i, const char* open, const char* close) {
         return -1;
     }
     Str closing = Str(close);
-    int closeLen = closing.len;
-    for (int at = i + n; at + closeLen <= s.len; at++) {
+    int closeLen = len(closing);
+    for (int at = i + n; at + closeLen <= len(s); at++) {
         if (StrEq(Str(s.s + at, closeLen), closing)) {
             return at + closeLen - i;
         }
@@ -63,10 +64,10 @@ static int MatchBlock(Str s, int i, const char* open, const char* close) {
 
 // `q ~ (!(NEWLINE | q) ~ ANY)* ~ q`
 static int MatchSingleLine(Str s, int i, char q) {
-    if (i >= s.len || s.s[i] != q) {
+    if (i >= len(s) || s.s[i] != q) {
         return -1;
     }
-    for (int at = i + 1; at < s.len && s.s[at] != '\n'; at++) {
+    for (int at = i + 1; at < len(s) && s.s[at] != '\n'; at++) {
         if (s.s[at] == q) {
             return at + 1 - i;
         }
@@ -76,10 +77,10 @@ static int MatchSingleLine(Str s, int i, char q) {
 
 // `q ~ (!q ~ ANY)* ~ q` — may span lines.
 static int MatchMultiLine(Str s, int i, char q) {
-    if (i >= s.len || s.s[i] != q) {
+    if (i >= len(s) || s.s[i] != q) {
         return -1;
     }
-    for (int at = i + 1; at < s.len; at++) {
+    for (int at = i + 1; at < len(s); at++) {
         if (s.s[at] == q) {
             return at + 1 - i;
         }
@@ -99,7 +100,7 @@ static int MatchCallWithString(Str s, int i, const char* fn,
         return -1;
     }
     int at = i + n;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     int sn = matchString(s, at);
@@ -107,10 +108,10 @@ static int MatchCallWithString(Str s, int i, const char* fn,
         return -1;
     }
     at += sn;
-    while (at < s.len && s.s[at] != ')') {
+    while (at < len(s) && s.s[at] != ')') {
         at++;
     }
-    if (at >= s.len) {
+    if (at >= len(s)) {
         return -1;
     }
     return at + 1 - i;
@@ -128,7 +129,7 @@ struct Alt {
 static void ScanAlts(Results* res, Str raw, const Alt* alts, int nAlts) {
     int ignoreStart = 0;
     int i = 0;
-    while (i < raw.len) {
+    while (i < len(raw)) {
         int matched = -1;
         const Alt* hit = nullptr;
         for (int k = 0; k < nAlts; k++) {
@@ -152,8 +153,8 @@ static void ScanAlts(Results* res, Str raw, const Alt* alts, int nAlts) {
         // An ignored form (a regexp, an include) just extends the run.
         i += matched;
     }
-    if (raw.len > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, raw.len - ignoreStart));
+    if (len(raw) > ignoreStart) {
+        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
     }
 }
 
@@ -191,23 +192,23 @@ static int RustString(Str s, int i) {
         return n;
     }
     // "r" ~ PUSH("#"*) ~ "\"" ~ (!PEEK ~ ANY)* ~ "\"" ~ POP
-    if (i >= s.len || s.s[i] != 'r') {
+    if (i >= len(s) || s.s[i] != 'r') {
         return -1;
     }
     int hashes = 0;
     int at = i + 1;
-    while (at < s.len && s.s[at] == '#') {
+    while (at < len(s) && s.s[at] == '#') {
         at++;
         hashes++;
     }
-    if (hashes == 0 || at >= s.len || s.s[at] != '"') {
+    if (hashes == 0 || at >= len(s) || s.s[at] != '"') {
         return -1;
     }
     at++;
     // The PEG stops the inner text at the first run of hashes — a raw
     // string containing '#' fails to match, faithfully.
-    for (; at < s.len; at++) {
-        bool atHashes = at + hashes <= s.len;
+    for (; at < len(s); at++) {
+        bool atHashes = at + hashes <= len(s);
         for (int h = 0; atHashes && h < hashes; h++) {
             atHashes = s.s[at + h] == '#';
         }
@@ -215,12 +216,12 @@ static int RustString(Str s, int i) {
             break;
         }
     }
-    if (at >= s.len || s.s[at] != '"') {
+    if (at >= len(s) || s.s[at] != '"') {
         return -1;
     }
     at++;
     for (int h = 0; h < hashes; h++) {
-        if (at >= s.len || s.s[at] != '#') {
+        if (at >= len(s) || s.s[at] != '#') {
             return -1;
         }
         at++;
@@ -246,7 +247,7 @@ static int CInclude(Str s, int i) {
     }
     int at = i + n;
     int spaces = 0;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
         spaces++;
     }
@@ -278,8 +279,8 @@ static int ObjcString(Str s, int i) {
 }
 
 static int ObjcSkipBlank(Str s, int i) {
-    while (i < s.len && ((uint8_t)s.s[i] == ' ' || s.s[i] == '\t' ||
-                         s.s[i] == '\n' || s.s[i] == '\r')) {
+    while (i < len(s) && ((uint8_t)s.s[i] == ' ' || s.s[i] == '\t' ||
+                          s.s[i] == '\n' || s.s[i] == '\r')) {
         i++;
     }
     return i;
@@ -294,7 +295,7 @@ static int ObjcIgnoreString(Str s, int i) {
             continue;
         }
         int at = i + n;
-        if (at >= s.len || s.s[at] != '(') {
+        if (at >= len(s) || s.s[at] != '(') {
             continue;
         }
         at = ObjcSkipBlank(s, at + 1);
@@ -310,7 +311,7 @@ static int ObjcIgnoreString(Str s, int i) {
             continue;
         }
         int at = i + n;
-        if (at >= s.len || s.s[at] != ':') {
+        if (at >= len(s) || s.s[at] != ':') {
             continue;
         }
         at = ObjcSkipBlank(s, at + 1);
@@ -345,7 +346,7 @@ static int PyString(Str s, int i) {
     if (n > 0) {
         // `"""…"""` then `"`+: extra closing quotes belong to the string.
         int at = i + n;
-        while (at < s.len && s.s[at] == '"') {
+        while (at < len(s) && s.s[at] == '"') {
             at++;
         }
         return at - i;
@@ -353,7 +354,7 @@ static int PyString(Str s, int i) {
     return MatchSingleLine(s, i, '"');
 }
 static int PyRegexp(Str s, int i) {
-    if (i < s.len && s.s[i] == 'r') {
+    if (i < len(s) && s.s[i] == 'r') {
         int n = PyString(s, i + 1);
         if (n > 0) {
             return 1 + n;
@@ -384,7 +385,7 @@ static int RubyRegexp(Str s, int i) {
     }
     n = LitLen(s, i, "%r{");
     if (n > 0) {
-        for (int at = i + n; at < s.len && s.s[at] != '\n'; at++) {
+        for (int at = i + n; at < len(s) && s.s[at] != '\n'; at++) {
             if (s.s[at] == '}') {
                 return at + 1 - i;
             }
@@ -406,11 +407,11 @@ void ScanRuby(Results* res, Str raw) {
 
 // go: `…%s…` verbs make a string pass through, regexp./time. calls ignored.
 static int GoString(Str s, int i) {
-    char q = i < s.len ? s.s[i] : 0;
+    char q = i < len(s) ? s.s[i] : 0;
     if (q != '"' && q != '`') {
         return -1;
     }
-    for (int at = i + 1; at < s.len; at++) {
+    for (int at = i + 1; at < len(s); at++) {
         char c = s.s[at];
         if (c == q) {
             return at + 1 - i;
@@ -418,7 +419,7 @@ static int GoString(Str s, int i) {
         if (q == '"' && c == '\n') {
             return -1;
         }
-        if (c == '%' && at + 1 < s.len &&
+        if (c == '%' && at + 1 < len(s) &&
             (s.s[at + 1] == 's' || s.s[at + 1] == 'q' || s.s[at + 1] == 'v')) {
             return -1;
         }
@@ -433,16 +434,16 @@ static int GoCall(Str s, int i, const char* pkg) {
     }
     int at = i + n;
     int letters = 0;
-    while (at < s.len && ((s.s[at] >= 'a' && s.s[at] <= 'z') ||
-                          (s.s[at] >= 'A' && s.s[at] <= 'Z'))) {
+    while (at < len(s) && ((s.s[at] >= 'a' && s.s[at] <= 'z') ||
+                           (s.s[at] >= 'A' && s.s[at] <= 'Z'))) {
         at++;
         letters++;
     }
-    if (letters == 0 || at >= s.len || s.s[at] != '(') {
+    if (letters == 0 || at >= len(s) || s.s[at] != '(') {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     int sn = GoString(s, at);
@@ -450,10 +451,10 @@ static int GoCall(Str s, int i, const char* pkg) {
         return -1;
     }
     at += sn;
-    while (at < s.len && s.s[at] != ')') {
+    while (at < len(s) && s.s[at] != ')') {
         at++;
     }
-    return at < s.len ? at + 1 - i : -1;
+    return at < len(s) ? at + 1 - i : -1;
 }
 
 static int GoRegexp(Str s, int i) {
@@ -562,7 +563,7 @@ static int SwiftIgnoreString(Str s, int i) {
             continue;
         }
         int at = i + n;
-        if (at >= s.len || s.s[at] != '(') {
+        if (at >= len(s) || s.s[at] != '(') {
             continue;
         }
         at = ObjcSkipBlank(s, at + 1);
@@ -578,7 +579,7 @@ static int SwiftIgnoreString(Str s, int i) {
             continue;
         }
         int at = i + n;
-        if (at >= s.len || s.s[at] != ':') {
+        if (at >= len(s) || s.s[at] != ':') {
             continue;
         }
         at = ObjcSkipBlank(s, at + 1);
@@ -636,7 +637,7 @@ static int ScalaString(Str s, int i) {
     return n > 0 ? n : MatchSingleLine(s, i, '"');
 }
 static int ScalaStringLiteral(Str s, int i) {
-    if (i >= s.len || s.s[i] != 's') {
+    if (i >= len(s) || s.s[i] != 's') {
         return -1;
     }
     int n = ScalaString(s, i + 1);
@@ -677,7 +678,7 @@ static int DartString(Str s, int i) {
     return n > 0 ? n : MatchSingleLine(s, i, '"');
 }
 static int DartRegexp(Str s, int i) {
-    if (i >= s.len || s.s[i] != 'r') {
+    if (i >= len(s) || s.s[i] != 'r') {
         return -1;
     }
     int n = DartString(s, i + 1);
@@ -709,7 +710,7 @@ static int ElixirString(Str s, int i) {
         return n;
     }
     if ((LitLen(s, i, "~s(") > 0 || LitLen(s, i, "~c(") > 0)) {
-        for (int at = i + 3; at < s.len && s.s[at] != '\n'; at++) {
+        for (int at = i + 3; at < len(s) && s.s[at] != '\n'; at++) {
             if (s.s[at] == ')') {
                 return at + 1 - i;
             }
@@ -719,7 +720,7 @@ static int ElixirString(Str s, int i) {
 }
 static int ElixirRegexp(Str s, int i) {
     if (LitLen(s, i, "~r/") > 0) {
-        for (int at = i + 3; at < s.len && s.s[at] != '\n'; at++) {
+        for (int at = i + 3; at < len(s) && s.s[at] != '\n'; at++) {
             if (s.s[at] == '/') {
                 return at + 1 - i;
             }
@@ -743,7 +744,7 @@ void ScanElixir(Results* res, Str raw) {
 // grammar's small HTML mode — text inside a matched <tag>…</tag> is
 // corrected, the tags themselves and a `key:` string pass through.
 static int JsString(Str s, int i) {
-    char q = i < s.len ? s.s[i] : 0;
+    char q = i < len(s) ? s.s[i] : 0;
     if (q == '\'') {
         return MatchMultiLine(s, i, '\'');
     }
@@ -757,7 +758,7 @@ static int JsString(Str s, int i) {
         }
         // "`"+ — extra closing backticks belong to the string.
         int at = i + n;
-        while (at < s.len && s.s[at] == '`') {
+        while (at < len(s) && s.s[at] == '`') {
             at++;
         }
         return at - i;
@@ -773,16 +774,16 @@ static int JsRegexp(Str s, int i) {
     n = LitLen(s, i, "RegExp(");
     if (n > 0) {
         int at = i + n;
-        while (at < s.len && s.s[at] == ' ') {
+        while (at < len(s) && s.s[at] == ' ') {
             at++;
         }
         int sn = JsString(s, at);
         if (sn > 0) {
             at += sn;
-            while (at < s.len && s.s[at] != ')') {
+            while (at < len(s) && s.s[at] != ')') {
                 at++;
             }
-            if (at < s.len) {
+            if (at < len(s)) {
                 return at + 1 - i;
             }
         }
@@ -792,10 +793,10 @@ static int JsRegexp(Str s, int i) {
 
 // open_html `< … >` (the tag body may span lines); close_html `</ … >`.
 static int JsOpenHtml(Str s, int i) {
-    if (i >= s.len || s.s[i] != '<') {
+    if (i >= len(s) || s.s[i] != '<') {
         return -1;
     }
-    for (int at = i + 1; at < s.len; at++) {
+    for (int at = i + 1; at < len(s); at++) {
         if (s.s[at] == '>') {
             return at + 1 - i;
         }
@@ -807,7 +808,7 @@ static int JsCloseHtml(Str s, int i) {
     if (LitLen(s, i, "</") < 0) {
         return -1;
     }
-    for (int at = i + 2; at < s.len; at++) {
+    for (int at = i + 2; at < len(s); at++) {
         if (s.s[at] == '>') {
             return at + 1 - i;
         }
@@ -824,7 +825,7 @@ static int JsHtmlNode(Str s, int i) {
     }
     int at = i + n;
     int children = 0;
-    while (at < s.len) {
+    while (at < len(s)) {
         int c = JsCloseHtml(s, at);
         if (c > 0) {
             return children > 0 ? at + c - i : -1;
@@ -836,7 +837,7 @@ static int JsHtmlNode(Str s, int i) {
             }
             at += sub;
         } else {
-            while (at < s.len && s.s[at] != '<') {
+            while (at < len(s) && s.s[at] != '<') {
                 at++;
             }
         }
@@ -853,7 +854,7 @@ void ScanJavascript(Results* res, Str raw) {
             EmitIgnore(res, Str(raw.s + ignoreStart, upTo - ignoreStart));
         }
     };
-    while (i < raw.len) {
+    while (i < len(raw)) {
         int n = CppLineComment(raw, i);
         if (n < 0) {
             n = CppBlockComment(raw, i);
@@ -869,12 +870,12 @@ void ScanJavascript(Results* res, Str raw) {
         n = JsString(raw, i);
         if (n > 0) {
             int at = i + n;
-            while (at < raw.len && raw.s[at] == ' ') {
+            while (at < len(raw) && raw.s[at] == ' ') {
                 at++;
             }
-            if (at < raw.len && raw.s[at] == ':') {
+            if (at < len(raw) && raw.s[at] == ':') {
                 at++;
-                while (at < raw.len && raw.s[at] == ' ') {
+                while (at < len(raw) && raw.s[at] == ' ') {
                     at++;
                 }
                 int vn = JsString(raw, at);
@@ -931,7 +932,7 @@ void ScanJavascript(Results* res, Str raw) {
         }
         i++;
     }
-    flush(raw.len);
+    flush(len(raw));
 }
 
 // php: only what sits between <?php … ?> is source; the crate ignores
@@ -957,7 +958,7 @@ void ScanPhp(Results* res, Str raw) {
         {CppBlockComment, "COMMENT"}, {PhpRegexp, nullptr},
         {PhpString, "string"},
     };
-    while (i < raw.len) {
+    while (i < len(raw)) {
         if (!inPhp) {
             // Comments are implicit at every level of the grammar, so they
             // are corrected outside <?php too.
@@ -1014,8 +1015,8 @@ void ScanPhp(Results* res, Str raw) {
         }
         i += matched;
     }
-    if (raw.len > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, raw.len - ignoreStart));
+    if (len(raw) > ignoreStart) {
+        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
     }
 }
 
@@ -1024,10 +1025,10 @@ void ScanPhp(Results* res, Str raw) {
 // crate's grammar too.
 static int JsonString(Str s, int i) {
     // `"` ~ (chars | escape)* ~ `"` — this grammar honours \" escapes.
-    if (i >= s.len || s.s[i] != '"') {
+    if (i >= len(s) || s.s[i] != '"') {
         return -1;
     }
-    for (int at = i + 1; at < s.len; at++) {
+    for (int at = i + 1; at < len(s); at++) {
         if (s.s[at] == '\\') {
             at++;
             continue;
@@ -1042,7 +1043,7 @@ static int JsonString(Str s, int i) {
 void ScanJson(Results* res, Str raw) {
     int ignoreStart = 0;
     int i = 0;
-    while (i < raw.len) {
+    while (i < len(raw)) {
         int n = CppLineComment(raw, i);
         bool isComment = n > 0;
         if (!isComment) {
@@ -1062,10 +1063,10 @@ void ScanJson(Results* res, Str raw) {
         if (n > 0) {
             // A key when the next non-space char is ':'.
             int at = i + n;
-            while (at < raw.len && (raw.s[at] == ' ' || raw.s[at] == '\t')) {
+            while (at < len(raw) && (raw.s[at] == ' ' || raw.s[at] == '\t')) {
                 at++;
             }
-            bool isKey = at < raw.len && raw.s[at] == ':';
+            bool isKey = at < len(raw) && raw.s[at] == ':';
             if (!isKey) {
                 if (i > ignoreStart) {
                     EmitIgnore(res, Str(raw.s + ignoreStart, i - ignoreStart));
@@ -1078,8 +1079,8 @@ void ScanJson(Results* res, Str raw) {
         }
         i++;
     }
-    if (raw.len > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, raw.len - ignoreStart));
+    if (len(raw) > ignoreStart) {
+        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
     }
 }
 
@@ -1088,14 +1089,14 @@ void ScanJson(Results* res, Str raw) {
 void ScanYaml(Results* res, Str raw) {
     int ignoreStart = 0;
     int i = 0;
-    while (i < raw.len) {
+    while (i < len(raw)) {
         int at = i;
-        while (at < raw.len && raw.s[at] == ' ') {
+        while (at < len(raw) && raw.s[at] == ' ') {
             at++;
         }
-        if (at < raw.len && raw.s[at] == '#') {
+        if (at < len(raw) && raw.s[at] == '#') {
             int end = at;
-            while (end < raw.len && raw.s[end] != '\n') {
+            while (end < len(raw) && raw.s[end] != '\n') {
                 end++;
             }
             if (at > ignoreStart) {
@@ -1103,46 +1104,46 @@ void ScanYaml(Results* res, Str raw) {
             }
             EmitText(res, StrL("comment"), Str(raw.s + at, end - at));
             ignoreStart = end;
-            i = end < raw.len ? end + 1 : end;
+            i = end < len(raw) ? end + 1 : end;
             continue;
         }
         // key: — chars that are not ':', quote or newline, then ':'.
         int keyEnd = at;
-        if (at < raw.len && raw.s[at] == '"') {
+        if (at < len(raw) && raw.s[at] == '"') {
             int n = MatchSingleLine(raw, at, '"');
             keyEnd = n > 0 ? at + n : at;
         } else {
-            while (keyEnd < raw.len && raw.s[keyEnd] != ':' &&
+            while (keyEnd < len(raw) && raw.s[keyEnd] != ':' &&
                    raw.s[keyEnd] != '"' && raw.s[keyEnd] != '\'' &&
                    raw.s[keyEnd] != '\n') {
                 keyEnd++;
             }
         }
-        bool isPair = keyEnd > at && keyEnd < raw.len && raw.s[keyEnd] == ':';
+        bool isPair = keyEnd > at && keyEnd < len(raw) && raw.s[keyEnd] == ':';
         if (!isPair) {
             // `other`: the rest of the line passes through.
-            while (i < raw.len && raw.s[i] != '\n') {
+            while (i < len(raw) && raw.s[i] != '\n') {
                 i++;
             }
-            if (i < raw.len) {
+            if (i < len(raw)) {
                 i++;
             }
             continue;
         }
         int valueStart = keyEnd + 1;
-        if (valueStart < raw.len && raw.s[valueStart] == ' ') {
+        if (valueStart < len(raw) && raw.s[valueStart] == ' ') {
             valueStart++;
         }
         // string = quoted (one line) or the rest of the line up to a quote.
         int valueEnd = valueStart;
-        if (valueStart < raw.len &&
+        if (valueStart < len(raw) &&
             (raw.s[valueStart] == '"' || raw.s[valueStart] == '\'')) {
             int n = MatchSingleLine(raw, valueStart, raw.s[valueStart]);
             if (n > 0) {
                 valueEnd = valueStart + n;
             }
         } else {
-            while (valueEnd < raw.len && raw.s[valueEnd] != '\n' &&
+            while (valueEnd < len(raw) && raw.s[valueEnd] != '\n' &&
                    raw.s[valueEnd] != '"' && raw.s[valueEnd] != '\'') {
                 valueEnd++;
             }
@@ -1154,15 +1155,15 @@ void ScanYaml(Results* res, Str raw) {
                  Str(raw.s + valueStart, valueEnd - valueStart));
         ignoreStart = valueEnd;
         i = valueEnd;
-        while (i < raw.len && raw.s[i] != '\n') {
+        while (i < len(raw) && raw.s[i] != '\n') {
             i++;
         }
-        if (i < raw.len) {
+        if (i < len(raw)) {
             i++;
         }
     }
-    if (raw.len > ignoreStart) {
-        EmitIgnore(res, Str(raw.s + ignoreStart, raw.len - ignoreStart));
+    if (len(raw) > ignoreStart) {
+        EmitIgnore(res, Str(raw.s + ignoreStart, len(raw) - ignoreStart));
     }
 }
 

@@ -89,9 +89,9 @@ int GpuiMain(int argc, char** argv) {
     Entity<MdApp> view = EntityNew<MdApp>(app);
     MdApp* self = view.Get(app);
     TempStr md = AssetsLoadTextTemp(StrL("report.md"));
-    if (md.s && md.len > 0) {
-        int n = md.len < (int)sizeof(self->source) - 1
-                    ? md.len
+    if (md.s && len(md) > 0) {
+        int n = len(md) < (int)sizeof(self->source) - 1
+                    ? len(md)
                     : (int)sizeof(self->source) - 1;
         memcpy(self->source, md.s, (size_t)n);
         self->source[n] = 0;

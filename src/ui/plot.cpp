@@ -392,7 +392,7 @@ Text* Text::Align(PlotTextAlign value) {
 }
 
 float MeasureTextWidth(PaintCtx* ctx, Str text, float fontSize) {
-    if (!ctx || !ctx->pa || !text.s || text.len <= 0) {
+    if (!ctx || !ctx->pa || !text.s || len(text) <= 0) {
         return 0;
     }
     return MeasureText(ctx, text, fontSize, 0, false, kFontWeightExplicitNormal,
@@ -421,7 +421,7 @@ Str TruncateTextToWidth(PaintCtx* ctx, Arena* arena, Str text, float fontSize,
     }
     Arena* outArena = arena ? arena : GetTempArena();
     Vec<int> cuts;
-    for (int at = 0; at < text.len;) {
+    for (int at = 0; at < len(text);) {
         uint32_t rune = 0;
         int n = Utf8At(text, at, &rune);
         (void)rune;
@@ -429,7 +429,7 @@ Str TruncateTextToWidth(PaintCtx* ctx, Arena* arena, Str text, float fontSize,
             n = 1;
         }
         at += n;
-        if (at < text.len) {
+        if (at < len(text)) {
             VecAppend(cuts, at);
         }
     }
@@ -472,7 +472,7 @@ void PlotLabel::Paint(PaintCtx* ctx, Bounds bounds) const {
         return;
     }
     for (const Text& item : items) {
-        if (!item.text.s || item.text.len <= 0) {
+        if (!item.text.s || len(item.text) <= 0) {
             continue;
         }
         // Use the window's shaped-text cache, as GPUI's text_system does.

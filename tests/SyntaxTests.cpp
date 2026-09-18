@@ -12,8 +12,8 @@ static SyntaxTok TokAt(SyntaxLang lang, const char* src, const char* needle) {
     Str s(src);
     Str n(needle);
     int want = -1;
-    for (int i = 0; i + n.len <= s.len; i++) {
-        if (StrEq(Str(s.s + i, n.len), n)) {
+    for (int i = 0; i + len(n) <= len(s); i++) {
+        if (StrEq(Str(s.s + i, len(n)), n)) {
             want = i;
             break;
         }
@@ -25,7 +25,7 @@ static SyntaxTok TokAt(SyntaxLang lang, const char* src, const char* needle) {
     SyntaxLexStart(&lx, lang, s);
     while (SyntaxLexNext(&lx)) {
         int off = (int)(lx.text.s - s.s);
-        if (want >= off && want < off + lx.text.len) {
+        if (want >= off && want < off + len(lx.text)) {
             return lx.tok;
         }
     }
@@ -40,12 +40,12 @@ static bool Partitions(SyntaxLang lang, const char* src) {
     SyntaxLexStart(&lx, lang, s);
     int at = 0;
     while (SyntaxLexNext(&lx)) {
-        if (lx.text.s != s.s + at || lx.text.len <= 0) {
+        if (lx.text.s != s.s + at || len(lx.text) <= 0) {
             return false;
         }
-        at += lx.text.len;
+        at += len(lx.text);
     }
-    return at == s.len;
+    return at == len(s);
 }
 
 static bool NameIs(SyntaxLang lang, const char* want) {
@@ -174,7 +174,7 @@ static void TestSyntaxUnknownLang() {
     SyntaxLexStart(&lx, SyntaxLangNone, src);
     utassert(SyntaxLexNext(&lx));
     utassert(lx.tok == SyntaxTok::Text);
-    utassert(lx.text.len == src.len);
+    utassert(len(lx.text) == len(src));
     utassert(!SyntaxLexNext(&lx));
 }
 

@@ -26,9 +26,9 @@ static void FetchError(Str* error, Str message) {
 }
 
 static bool ParsePort(Str text, uint16_t* value) {
-    if (text.len == 0 || text.len > 5) return false;
+    if (len(text) == 0 || len(text) > 5) return false;
     uint32_t port = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] < '0' || text.s[i] > '9') return false;
         port = port * 10 + (uint32_t)(text.s[i] - '0');
     }
@@ -39,12 +39,12 @@ static bool ParsePort(Str text, uint16_t* value) {
 
 static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
     if (parsed) *parsed = {};
-    if (!url.s || url.len <= 0 || url.len > 32768) {
+    if (!url.s || len(url) <= 0 || len(url) > 32768) {
         FetchError(error, StrL("invalid fetch URL"));
         return false;
     }
     int schemeEnd = -1;
-    for (int i = 0; i + 2 < url.len; i++) {
+    for (int i = 0; i + 2 < len(url); i++) {
         if (url.s[i] == ':' && url.s[i + 1] == '/' && url.s[i + 2] == '/') {
             schemeEnd = i;
             break;
@@ -61,7 +61,7 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
     }
     int authorityStart = schemeEnd + 3;
     int authorityEnd = authorityStart;
-    while (authorityEnd < url.len && url.s[authorityEnd] != '/' &&
+    while (authorityEnd < len(url) && url.s[authorityEnd] != '/' &&
            url.s[authorityEnd] != '?' && url.s[authorityEnd] != '#') {
         authorityEnd++;
     }
@@ -123,8 +123,8 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
     }
     int pathStart = authorityEnd;
     int pathEnd = pathStart;
-    if (pathStart < url.len && url.s[pathStart] == '/') {
-        while (pathEnd < url.len && url.s[pathEnd] != '?' &&
+    if (pathStart < len(url) && url.s[pathStart] == '/') {
+        while (pathEnd < len(url) && url.s[pathEnd] != '?' &&
                url.s[pathEnd] != '#') {
             pathEnd++;
         }
@@ -143,8 +143,8 @@ static bool ParseFetchUrl(Str url, FetchUrl* parsed, Str* error) {
 
 // RFC 7230's `token`, which is what `reqwest::Method::from_bytes` accepts.
 bool FetchIsHttpMethod(Str method) {
-    if (!method.s || method.len <= 0) return false;
-    for (int i = 0; i < method.len; i++) {
+    if (!method.s || len(method) <= 0) return false;
+    for (int i = 0; i < len(method); i++) {
         char c = method.s[i];
         bool token = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                      (c >= '0' && c <= '9') || c == '!' || c == '#' ||
@@ -164,7 +164,7 @@ bool FetchAuthorize(Str url, Str method, const Capabilities& capabilities,
     }
     FetchUrl parsed;
     if (!ParseFetchUrl(url, &parsed, error)) return false;
-    Str verb = method.len > 0 ? method : StrL("GET");
+    Str verb = len(method) > 0 ? method : StrL("GET");
     if (capabilities.MayRequest(parsed.scheme, parsed.host, parsed.port,
                                 parsed.hasPort, verb, parsed.path)) {
         return true;
@@ -219,7 +219,7 @@ bool FetchAuthorizeRedirect(const Capabilities& capabilities, Str method,
         return false;
     }
     bool sameOrigin = FetchSameOrigin(current, next);
-    Str verb = method.len > 0 ? method : StrL("GET");
+    Str verb = len(method) > 0 ? method : StrL("GET");
     if (!StrEq(verb, StrL("GET")) && !sameOrigin) {
         FetchError(error,
                    fmt("cross-origin redirect from %s to %s refused because "
@@ -345,10 +345,11 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
 
     FetchWalk walk;
     walk.url = StrDup(request.url);
-    walk.method = StrDup(request.method.len > 0 ? request.method : StrL("GET"));
+    walk.method =
+        StrDup(len(request.method) > 0 ? request.method : StrL("GET"));
     walk.body = StrDup(request.body);
     bool allocated =
-        walk.url.s && walk.method.s && (walk.body.s || request.body.len == 0);
+        walk.url.s && walk.method.s && (walk.body.s || len(request.body) == 0);
     for (int i = 0; i < len(request.headers) && allocated; i++) {
         FetchHeader copy;
         copy.name = StrDup(request.headers[i].name);
@@ -366,7 +367,7 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         walk.Free();
         return false;
     }
-    if (walk.body.len > kFetchMaxRequestBody) {
+    if (len(walk.body) > kFetchMaxRequestBody) {
         FetchError(&out->error,
                    fmt("fetch request body exceeded the %d byte limit",
                        kFetchMaxRequestBody));
@@ -445,7 +446,7 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
             continue;
         }
 
-        if (response.body.len > kFetchMaxBody) {
+        if (len(response.body) > kFetchMaxBody) {
             FetchError(&out->error,
                        fmt("response body from %s exceeded the %d byte limit",
                            walk.url, kFetchMaxBody));
@@ -456,8 +457,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         }
         out->status = response.status;
         out->body =
-            StrDup(Str((const char*)response.body.els, response.body.len));
-        bool copied = out->body.s || response.body.len == 0;
+            StrDup(Str((const char*)response.body.els, len(response.body)));
+        bool copied = out->body.s || len(response.body) == 0;
         HttpRspFree(&response);
         VecReset(wire);
         if (!copied) {
@@ -505,11 +506,11 @@ static void FetchAsyncStateFree(FetchAsyncState* state) {
 static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
                            const Capabilities& capabilities) {
     state->walk.url = StrDup(request.url);
-    state->walk
-        .method = StrDup(request.method.len > 0 ? request.method : StrL("GET"));
+    state->walk.method =
+        StrDup(len(request.method) > 0 ? request.method : StrL("GET"));
     state->walk.body = StrDup(request.body);
     bool allocated = state->walk.url.s && state->walk.method.s &&
-                     (state->walk.body.s || request.body.len == 0);
+                     (state->walk.body.s || len(request.body) == 0);
     for (int i = 0; i < len(request.headers) && allocated; i++) {
         FetchHeader copy;
         copy.name = StrDup(request.headers[i].name);
@@ -526,7 +527,7 @@ static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
                    StrL("allocating the fetch request failed"));
         return false;
     }
-    if (state->walk.body.len > kFetchMaxRequestBody) {
+    if (len(state->walk.body) > kFetchMaxRequestBody) {
         FetchError(&state->result.error,
                    fmt("fetch request body exceeded the %d byte limit",
                        kFetchMaxRequestBody));
@@ -595,7 +596,7 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
         return;
     }
 
-    if (response->body.len > kFetchMaxBody) {
+    if (len(response->body) > kFetchMaxBody) {
         FetchError(&state->result.error,
                    fmt("response body from %s exceeded the %d byte limit",
                        state->walk.url, kFetchMaxBody));
@@ -604,8 +605,8 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     }
     state->result.status = response->status;
     state->result.body =
-        StrDup(Str((const char*)response->body.els, response->body.len));
-    if (!state->result.body.s && response->body.len != 0) {
+        StrDup(Str((const char*)response->body.els, len(response->body)));
+    if (!state->result.body.s && len(response->body) != 0) {
         state->result.status = 0;
         FetchError(&state->result.error,
                    StrL("allocating the fetch response failed"));
@@ -631,7 +632,7 @@ static void FetchAsyncTestDone(FetchAsyncState* state) {
     HttpRsp response;
     response.status = state->testResponse.status;
     response.body.els = state->testResponse.body.els;
-    response.body.len = state->testResponse.body.len;
+    response.body.len = len(state->testResponse.body);
     response.body.cap = state->testResponse.body.cap;
     response.contentType = state->testResponse.contentType;
     response.redirectUrl = state->testResponse.redirectUrl;

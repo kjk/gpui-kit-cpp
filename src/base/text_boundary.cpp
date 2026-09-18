@@ -31,13 +31,13 @@ CharKind CharKindOf(uint32_t c) {
 
 // clip_offset_left: into the string, then back to a character boundary.
 int Utf8ClipLeft(Str s, int off) {
-    if (off > s.len) {
-        off = s.len;
+    if (off > len(s)) {
+        off = len(s);
     }
     if (off < 0) {
         off = 0;
     }
-    while (off > 0 && off < s.len && ((uint8_t)s.s[off] & 0xC0) == 0x80) {
+    while (off > 0 && off < len(s) && ((uint8_t)s.s[off] & 0xC0) == 0x80) {
         off--;
     }
     return off;
@@ -48,11 +48,11 @@ int Utf8ClipLeft(Str s, int off) {
 static const int kWordScanMax = 128;
 
 bool TextWordRangeAt(Str s, int off, int* outA, int* outB) {
-    if (!s.s || s.len <= 0) {
+    if (!s.s || len(s) <= 0) {
         return false;
     }
     off = Utf8ClipLeft(s, off);
-    if (off >= s.len) {
+    if (off >= len(s)) {
         return false;
     }
     uint32_t c = 0;
@@ -70,7 +70,7 @@ bool TextWordRangeAt(Str s, int off, int* outA, int* outB) {
         }
         a = prev;
     }
-    for (int i = 0; joins && b < s.len && i < kWordScanMax; i++) {
+    for (int i = 0; joins && b < len(s) && i < kWordScanMax; i++) {
         uint32_t nc = 0;
         int nlen = Utf8At(s, b, &nc);
         if (CharKindOf(nc) != kind) {
@@ -86,7 +86,7 @@ bool TextWordRangeAt(Str s, int off, int* outA, int* outB) {
 void TextLineRangeAt(Str s, int off, int* outA, int* outB) {
     *outA = 0;
     *outB = 0;
-    if (!s.s || s.len <= 0) {
+    if (!s.s || len(s) <= 0) {
         return;
     }
     off = Utf8ClipLeft(s, off);
@@ -97,8 +97,8 @@ void TextLineRangeAt(Str s, int off, int* outA, int* outB) {
             break;
         }
     }
-    int b = s.len;
-    for (int i = off; i < s.len; i++) {
+    int b = len(s);
+    for (int i = off; i < len(s); i++) {
         if (s.s[i] == '\n') {
             b = i;
             break;

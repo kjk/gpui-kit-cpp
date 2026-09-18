@@ -98,7 +98,7 @@ static void SaveTiles(TilesApp* self, TilesState* s) {
     }
     FILE* f = fopen(kStateFile, "wb");
     if (f) {
-        fwrite(json.s, 1, (size_t)json.len, f);
+        fwrite(json.s, 1, (size_t)len(json), f);
         fclose(f);
         Say(self, StrL("Layout saved"));
     } else {
@@ -148,7 +148,7 @@ static bool LoadTiles(TilesApp* self, TilesState* s) {
             // The child's name is the panel index it was saved under.
             Str name = state.nodes[node.children[i]].panelName;
             int p = 0;
-            for (int k = 0; k < name.len; k++) {
+            for (int k = 0; k < len(name); k++) {
                 if (name.s[k] >= '0' && name.s[k] <= '9') {
                     p = p * 10 + (name.s[k] - '0');
                 }

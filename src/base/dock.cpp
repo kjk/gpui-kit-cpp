@@ -177,7 +177,7 @@ static void DockEmit(DockState* s, Ctx* cx) {
 }
 
 int DockPanelByName(const DockState* s, Str name) {
-    if (!name.s || name.len <= 0) {
+    if (!name.s || len(name) <= 0) {
         return -1;
     }
     for (int i = 0; i < s->panels.len; i++) {

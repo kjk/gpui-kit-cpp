@@ -26,13 +26,13 @@ struct WinHttpHandle {
 
 // UTF-8 to UTF-16, into a buffer the caller frees with Free.
 static wchar_t* ToWide(Str s) {
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, nullptr, 0);
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), nullptr, 0);
     wchar_t* w = AllocArray<wchar_t>(n + 1);
     if (!w) {
         return nullptr;
     }
     if (n > 0) {
-        MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, w, n);
+        MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), w, n);
     }
     w[n] = 0;
     return w;
@@ -129,10 +129,10 @@ static bool ReadResponse(HINTERNET req, const wchar_t* base, bool noRedirect,
         if (avail == 0) {
             return true;
         }
-        if ((int64_t)out->body.len + (int64_t)avail > (int64_t)kHttpMaxBody) {
+        if ((int64_t)len(out->body) + (int64_t)avail > (int64_t)kHttpMaxBody) {
             return false; // refused, not truncated
         }
-        int at = out->body.len;
+        int at = len(out->body);
         uint8_t* dst = VecAppendBlanks(out->body, (int)avail);
         if (!dst) {
             return false;
@@ -201,7 +201,7 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
                                   ? WINHTTP_FLAG_SECURE
                                   : 0;
                 wchar_t* verb =
-                    ToWide(req.method.len > 0 ? req.method : StrL("GET"));
+                    ToWide(len(req.method) > 0 ? req.method : StrL("GET"));
                 // Every request header in one CRLF-separated block, which is
                 // the shape WinHttpSendRequest takes. The caller has already
                 // decided these may be sent.
@@ -237,9 +237,9 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
                         request.h,
                         headers ? headers : WINHTTP_NO_ADDITIONAL_HEADERS,
                         headers ? (DWORD)-1 : 0,
-                        req.body.len > 0 ? (void*)req.body.s
-                                         : WINHTTP_NO_REQUEST_DATA,
-                        (DWORD)req.body.len, (DWORD)req.body.len, 0) &&
+                        len(req.body) > 0 ? (void*)req.body.s
+                                          : WINHTTP_NO_REQUEST_DATA,
+                        (DWORD)len(req.body), (DWORD)len(req.body), 0) &&
                     WinHttpReceiveResponse(request.h, nullptr)) {
                     ok = ReadResponse(request.h, wurl, noRedirect, out);
                 }

@@ -26,7 +26,7 @@ static bool FrontmatterPlainKey(Str key) {
     if (!key) {
         return false;
     }
-    for (int i = 0; i < key.len; i++) {
+    for (int i = 0; i < len(key); i++) {
         char c = key.s[i];
         if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
               (c >= '0' && c <= '9') || c == '-' || c == '_')) {
@@ -37,15 +37,15 @@ static bool FrontmatterPlainKey(Str key) {
 }
 
 static bool FrontmatterStarts(Str value, char c) {
-    return value.len > 0 && value.s[0] == c;
+    return len(value) > 0 && value.s[0] == c;
 }
 
 static bool FrontmatterContains(Str value, Str needle) {
-    if (needle.len <= 0 || needle.len > value.len) {
+    if (len(needle) <= 0 || len(needle) > len(value)) {
         return false;
     }
-    for (int i = 0; i <= value.len - needle.len; i++) {
-        if (memcmp(value.s + i, needle.s, (size_t)needle.len) == 0) {
+    for (int i = 0; i <= len(value) - len(needle); i++) {
+        if (memcmp(value.s + i, needle.s, (size_t)len(needle)) == 0) {
             return true;
         }
     }
@@ -60,7 +60,7 @@ static bool FrontmatterUnsupportedPlain(Str value) {
             return true;
         }
     }
-    if (value.len > 0 && value.s[value.len - 1] == ':') {
+    if (len(value) > 0 && value.s[len(value) - 1] == ':') {
         return true;
     }
     return FrontmatterContains(value, StrL(" #")) ||
@@ -72,7 +72,7 @@ static bool FrontmatterUnsupportedPlain(Str value) {
 }
 
 static Str FrontmatterTrimNewlines(Str value) {
-    while (value.len > 0 && value.s[value.len - 1] == '\n') {
+    while (len(value) > 0 && value.s[len(value) - 1] == '\n') {
         value.len--;
     }
     return value;
@@ -108,14 +108,14 @@ static bool FrontmatterParse(const markdown::Node* node,
         haveEntry = false;
     };
 
-    for (int at = 0; at <= source.len;) {
+    for (int at = 0; at <= len(source);) {
         int end = at;
-        while (end < source.len && source.s[end] != '\n' &&
+        while (end < len(source) && source.s[end] != '\n' &&
                source.s[end] != '\r') {
             end++;
         }
         Str line(source.s + at, end - at);
-        while (end < source.len &&
+        while (end < len(source) &&
                (source.s[end] == '\n' || source.s[end] == '\r')) {
             end++;
         }
@@ -128,29 +128,29 @@ static bool FrontmatterParse(const markdown::Node* node,
                 value.AppendChar('\n');
                 scalarLines++;
             }
-            if (at >= source.len) {
+            if (at >= len(source)) {
                 break;
             }
             continue;
         }
         bool topLevel =
-            line.len == 0 || (line.s[0] != ' ' && line.s[0] != '\t');
+            len(line) == 0 || (line.s[0] != ' ' && line.s[0] != '\t');
         if (trimmed.s[0] == '#' && (topLevel || !block)) {
-            if (at >= source.len) {
+            if (at >= len(source)) {
                 break;
             }
             continue;
         }
         if (topLevel) {
             int colon = -1;
-            for (int i = 0; i < line.len; i++) {
+            for (int i = 0; i < len(line); i++) {
                 if (line.s[i] == ':') {
                     colon = i;
                     break;
                 }
             }
             if (colon < 0 ||
-                (colon + 1 < line.len && line.s[colon + 1] != ' ' &&
+                (colon + 1 < len(line) && line.s[colon + 1] != ' ' &&
                  line.s[colon + 1] != '\t')) {
                 return false;
             }
@@ -160,7 +160,7 @@ static bool FrontmatterParse(const markdown::Node* node,
                 return false;
             }
             Str raw =
-                StrTrimAscii(Str(line.s + colon + 1, line.len - colon - 1));
+                StrTrimAscii(Str(line.s + colon + 1, len(line) - colon - 1));
             style = FrontmatterScalar::Plain;
             if (!raw) {
                 style = FrontmatterScalar::Empty;
@@ -182,7 +182,7 @@ static bool FrontmatterParse(const markdown::Node* node,
                 return false;
             }
             int spaces = 0;
-            while (spaces < line.len && line.s[spaces] == ' ') {
+            while (spaces < len(line) && line.s[spaces] == ' ') {
                 spaces++;
             }
             if (spaces == 0) {
@@ -194,13 +194,13 @@ static bool FrontmatterParse(const markdown::Node* node,
             if (spaces < indent) {
                 return false;
             }
-            Str continuation(line.s + indent, line.len - indent);
+            Str continuation(line.s + indent, len(line) - indent);
             if (style == FrontmatterScalar::Folded) {
-                if (continuation.len > 0 &&
+                if (len(continuation) > 0 &&
                     (continuation.s[0] == ' ' || continuation.s[0] == '\t')) {
                     return false;
                 }
-                if (value.len > 0 && value.LastChar() != '\n') {
+                if (len(value) > 0 && value.LastChar() != '\n') {
                     value.AppendChar(' ');
                 }
             } else if (scalarLines > 0) {
@@ -209,7 +209,7 @@ static bool FrontmatterParse(const markdown::Node* node,
             value.Append(continuation);
             scalarLines++;
         }
-        if (at >= source.len) {
+        if (at >= len(source)) {
             break;
         }
     }
@@ -308,12 +308,12 @@ void UiCodeBlockHighlighter(void* data, const CodeBlock* block, Arena* a,
     SyntaxLexStart(&lx, lang, code);
     while (SyntaxLexNext(&lx)) {
         Rgba color = SyntaxTokColor(lx.tok, mode, fallback);
-        if (!color.a || lx.text.len <= 0) {
+        if (!color.a || len(lx.text) <= 0) {
             continue;
         }
         CodeHighlight span;
         span.start = (int)(lx.text.s - code.s);
-        span.end = span.start + lx.text.len;
+        span.end = span.start + len(lx.text);
         span.color = color;
         out->Append(a, span);
     }

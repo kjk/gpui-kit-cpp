@@ -90,9 +90,9 @@ static int32_t NodeToStringFill(Arena* a, const Node* node, char* out,
     }
     Str value =
         NodeHasOwnValue(node) ? NodeGetStr(a, node, NodeStrKind::Value) : Str{};
-    if (value.len > 0) {
-        memcpy(out + at, value.s, (size_t)value.len);
-        at += value.len;
+    if (len(value) > 0) {
+        memcpy(out + at, value.s, (size_t)len(value));
+        at += len(value);
     }
     return at;
 }
@@ -202,7 +202,7 @@ Str NodeGetStr(Arena* a, const Node* n, NodeStrKind k) {
 
 int32_t NodeGetStrLen(Arena* a, const Node* n, NodeStrKind k) {
     char* rec = FindRec(a, n, k, nullptr);
-    return rec ? RecStr(rec).len : 0;
+    return rec ? len(RecStr(rec)) : 0;
 }
 
 bool NodeHasStr(Arena* a, const Node* n, NodeStrKind k) {
@@ -229,18 +229,18 @@ void NodeSetStr(Arena* a, Node* n, NodeStrKind k, Str s) {
         return;
     }
     NodeClearStr(a, n, k);
-    if (!s.s || s.len <= 0) {
+    if (!s.s || len(s) <= 0) {
         return;
     }
     int32_t head = 0;
-    char* rec = RecNew(a, n, k, (uint32_t)s.len, &head);
+    char* rec = RecNew(a, n, k, (uint32_t)len(s), &head);
     if (rec) {
-        memcpy(rec + head, s.s, (size_t)s.len);
+        memcpy(rec + head, s.s, (size_t)len(s));
     }
 }
 
 void NodeGrowStr(Arena* a, Node* n, NodeStrKind k, Str more) {
-    if (!a || !n || !more.s || more.len <= 0) {
+    if (!a || !n || !more.s || len(more) <= 0) {
         return;
     }
     char* prev = nullptr;
@@ -252,17 +252,17 @@ void NodeGrowStr(Arena* a, Node* n, NodeStrKind k, Str more) {
 
     int32_t head = 0;
     Str had = RecStr(rec, &head);
-    uint32_t nlen = (uint32_t)had.len + (uint32_t)more.len;
+    uint32_t nlen = (uint32_t)len(had) + (uint32_t)len(more);
     int32_t nhead = kRecLen + base::VarintSize(nlen);
 
     uint64_t used = base::ArenaUsed(a);
     uint64_t end = (uint64_t)base::ArenaOffsetOf(a, rec) + (uint64_t)head +
-                   (uint64_t)had.len + 1;
+                   (uint64_t)len(had) + 1;
     // The newest record in the arena grows where it stands: the terminator's
     // own byte is already ours, so only the difference is asked for. A
     // length that has outgrown its varint asks for that byte as well.
     bool newest = end == used;
-    uint64_t want = newest ? (uint64_t)(nhead - head) + (uint64_t)more.len
+    uint64_t want = newest ? (uint64_t)(nhead - head) + (uint64_t)len(more)
                            : (uint64_t)nhead + nlen + 1;
     char* dst = (char*)a->Push(want, 1, false);
     if (!dst) {
@@ -273,10 +273,10 @@ void NodeGrowStr(Arena* a, Node* n, NodeStrKind k, Str more) {
     // A push that chained onto a new block is not contiguous after all.
     if (newest && at == used) {
         if (nhead != head) {
-            memmove(rec + nhead, rec + head, (size_t)had.len);
+            memmove(rec + nhead, rec + head, (size_t)len(had));
         }
         base::VarintPut(rec + kRecLen, nlen);
-        memcpy(rec + nhead + had.len, more.s, (size_t)more.len);
+        memcpy(rec + nhead + len(had), more.s, (size_t)len(more));
         rec[nhead + nlen] = 0;
         return;
     }
@@ -285,8 +285,8 @@ void NodeGrowStr(Arena* a, Node* n, NodeStrKind k, Str more) {
     // out of the list, which is what concatenating always did.
     dst[kRecKind] = (char)(uint8_t)k;
     base::VarintPut(dst + kRecLen, nlen);
-    memcpy(dst + nhead, had.s, (size_t)had.len);
-    memcpy(dst + nhead + had.len, more.s, (size_t)more.len);
+    memcpy(dst + nhead, had.s, (size_t)len(had));
+    memcpy(dst + nhead + len(had), more.s, (size_t)len(more));
     dst[nhead + nlen] = 0;
     if (prev) {
         RecSetNext(prev, RecNext(rec));
@@ -395,8 +395,8 @@ UnistPosition GetUnistPosition(Str md, uint32_t start, uint32_t end) {
     if (!md.s) {
         return out;
     }
-    if (stop > md.len) {
-        stop = md.len;
+    if (stop > len(md)) {
+        stop = len(md);
     }
     bool haveStart = false;
     while (at <= stop) {
@@ -408,7 +408,7 @@ UnistPosition GetUnistPosition(Str md, uint32_t start, uint32_t end) {
             break;
         }
         uint8_t byte = (uint8_t)md.s[at];
-        if (byte == '\r' && at + 1 < md.len && md.s[at + 1] == '\n') {
+        if (byte == '\r' && at + 1 < len(md) && md.s[at + 1] == '\n') {
             // Not a character: the LF behind it is the line ending.
             at += 1;
             continue;

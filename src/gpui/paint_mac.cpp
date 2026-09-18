@@ -506,14 +506,14 @@ static int Utf8OffToU16(Str s, int u8off) {
     if (!s.s || u8off <= 0) {
         return 0;
     }
-    if (u8off > s.len) {
-        u8off = s.len;
+    if (u8off > len(s)) {
+        u8off = len(s);
     }
     int i = 0;
     int u16 = 0;
     while (i < u8off) {
         uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, s.len - i, &cp);
+        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -529,9 +529,9 @@ static int U16OffToUtf8(Str s, int u16off) {
     }
     int i = 0;
     int u16 = 0;
-    while (i < s.len && u16 < u16off) {
+    while (i < len(s) && u16 < u16off) {
         uint32_t cp = 0;
-        int adv = Utf8Decode(s.s + i, s.len - i, &cp);
+        int adv = Utf8Decode(s.s + i, len(s) - i, &cp);
         if (adv <= 0) {
             break;
         }
@@ -839,7 +839,7 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint8_t weight) {
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                           bool wrap, uint8_t weight, float lineH,
                           Size* outSize) {
-    if (!ctx || !ctx->pa || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }
     if (fontSize <= 0) {
@@ -850,7 +850,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         return nullptr;
     }
     CFStringRef text = CFStringCreateWithBytes(
-        nullptr, (const UInt8*)s.s, s.len, kCFStringEncodingUTF8, false);
+        nullptr, (const UInt8*)s.s, len(s), kCFStringEncodingUTF8, false);
     if (!text) {
         return nullptr;
     }

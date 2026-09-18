@@ -26,15 +26,15 @@ static bool IsSeparator(char c) {
 static Str JoinPath(Str left, Str right) {
     if (!left) return StrDup(right);
     if (!right) return StrDup(left);
-    bool separated = IsSeparator(left.s[left.len - 1]);
+    bool separated = IsSeparator(left.s[len(left) - 1]);
     return StrDup(separated ? fmt("%s%s", left, right)
                             : fmt("%s%c%s", left, kSeparator, right));
 }
 
 static bool PathEq(Str a, Str b) {
-    if (a.len != b.len) return false;
+    if (len(a) != len(b)) return false;
 #if GPUI_OS_WINDOWS
-    for (int i = 0; i < a.len; i++) {
+    for (int i = 0; i < len(a); i++) {
         char ca = a.s[i];
         char cb = b.s[i];
         if (IsSeparator(ca) && IsSeparator(cb)) continue;
@@ -49,9 +49,9 @@ static bool PathEq(Str a, Str b) {
 
 // A path prefix test that also refuses `<root>x`.
 static bool WithinPath(Str root, Str path) {
-    if (!root || !path || path.len < root.len) return false;
+    if (!root || !path || len(path) < len(root)) return false;
 #if GPUI_OS_WINDOWS
-    for (int i = 0; i < root.len; i++) {
+    for (int i = 0; i < len(root); i++) {
         char a = root.s[i];
         char b = path.s[i];
         if (IsSeparator(a) && IsSeparator(b)) continue;
@@ -59,34 +59,34 @@ static bool WithinPath(Str root, Str path) {
             return false;
     }
 #else
-    if (!StrEq(root, Str(path.s, root.len))) return false;
+    if (!StrEq(root, Str(path.s, len(root)))) return false;
 #endif
-    return path.len == root.len || IsSeparator(path.s[root.len]);
+    return len(path) == len(root) || IsSeparator(path.s[len(root)]);
 }
 
 static Str Canonical(Str path) {
-    if (!path || path.len >= kMaxPath) return {};
+    if (!path || len(path) >= kMaxPath) return {};
     TempStr input = StrDupTemp(path);
     TempStr output = AllocStrTemp(kMaxPath - 1);
-    if (!PlatCanonicalPath(input.s, output.s, output.len + 1)) return {};
+    if (!PlatCanonicalPath(input.s, output.s, len(output) + 1)) return {};
     return StrDup(Str(output.s));
 }
 
 static Str TrimAscii(Str value) {
     int start = 0;
-    int end = value.len;
+    int end = len(value);
     while (start < end && (uint8_t)value.s[start] <= ' ') start++;
     while (end > start && (uint8_t)value.s[end - 1] <= ' ') end--;
     return Str(value.s + start, end - start);
 }
 
 static bool WriteWhole(Str path, Str contents) {
-    if (!path || path.len >= kMaxPath) return false;
+    if (!path || len(path) >= kMaxPath) return false;
     TempStr name = StrDupTemp(path);
     FILE* file = fopen(name.s, "wb");
     if (!file) return false;
-    bool ok = contents.len == 0 || fwrite(contents.s, 1, (size_t)contents.len,
-                                          file) == (size_t)contents.len;
+    bool ok = len(contents) == 0 || fwrite(contents.s, 1, (size_t)len(contents),
+                                           file) == (size_t)len(contents);
     if (fclose(file) != 0) ok = false;
     return ok;
 }
@@ -105,7 +105,7 @@ Str GitDependencyCacheRoot(Str home) {
 static bool AbsolutePath(Str path) {
     if (!path) return false;
     if (IsSeparator(path.s[0])) return true;
-    return path.len >= 3 && path.s[1] == ':' && IsSeparator(path.s[2]);
+    return len(path) >= 3 && path.s[1] == ':' && IsSeparator(path.s[2]);
 }
 
 bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
@@ -113,10 +113,10 @@ bool GitDependencyUserCacheRoot(Str home, Str userProfile, Str* out,
     if (out) *out = {};
     Str selected = {};
     Str variable = {};
-    if (home && home.len > 0) {
+    if (home && len(home) > 0) {
         selected = home;
         variable = StrL("HOME");
-    } else if (userProfile && userProfile.len > 0) {
+    } else if (userProfile && len(userProfile) > 0) {
         selected = userProfile;
         variable = StrL("USERPROFILE");
     } else {
@@ -146,11 +146,11 @@ static void AppendLengthLe(Vec<uint8_t>* out, int value) {
 Str GitDependencyRemoteKey(Str git) {
     Vec<uint8_t> input;
     Str kind = StrL("git");
-    AppendLengthLe(&input, kind.len);
-    memcpy(VecAppendBlanks(input, kind.len), kind.s, (size_t)kind.len);
-    AppendLengthLe(&input, git.len);
-    if (git.len > 0)
-        memcpy(VecAppendBlanks(input, git.len), git.s, (size_t)git.len);
+    AppendLengthLe(&input, len(kind));
+    memcpy(VecAppendBlanks(input, len(kind)), kind.s, (size_t)len(kind));
+    AppendLengthLe(&input, len(git));
+    if (len(git) > 0)
+        memcpy(VecAppendBlanks(input, len(git)), git.s, (size_t)len(git));
     uint8_t digest[32];
     Sha256(Str((const char*)input.els, len(input)), digest);
     VecReset(input);
@@ -228,18 +228,18 @@ static Str ConfiguredOrigin(Str name, Str mirror, Str* error) {
                 error))
         return {};
     Str text = output.out;
-    if (text.len == 0 || text.s[text.len - 1] != 0) {
+    if (len(text) == 0 || text.s[len(text) - 1] != 0) {
         DepError(error, fmt("Git dependency `%s` cache origin config is "
                             "malformed; remove %s and retry",
                             name, mirror));
         output.Free();
         return {};
     }
-    Str origin(text.s, text.len - 1);
+    Str origin(text.s, len(text) - 1);
     bool embedded = false;
-    for (int i = 0; i < origin.len; i++)
+    for (int i = 0; i < len(origin); i++)
         if (origin.s[i] == 0) embedded = true;
-    if (origin.len == 0 || embedded) {
+    if (len(origin) == 0 || embedded) {
         DepError(error, fmt("Git dependency `%s` cache origin config must "
                             "contain exactly one non-empty URL; remove %s and "
                             "retry",
@@ -314,12 +314,12 @@ static Str DependencyEntryName(Str name, const GitDependency& dependency,
     }
     Str entry = StrDup(main->str);
     ArenaDelete(arena);
-    bool escapes = entry.len == 0 || AbsolutePath(entry) ||
+    bool escapes = len(entry) == 0 || AbsolutePath(entry) ||
                    StrContains(entry, StrL("\\")) ||
                    StrContains(entry, StrL(":"));
     int start = 0;
-    for (int i = 0; !escapes && i <= entry.len; i++) {
-        if (i < entry.len && entry.s[i] != '/') continue;
+    for (int i = 0; !escapes && i <= len(entry); i++) {
+        if (i < len(entry) && entry.s[i] != '/') continue;
         if (i - start == 2 && entry.s[start] == '.' &&
             entry.s[start + 1] == '.')
             escapes = true;
@@ -483,8 +483,8 @@ bool GitDependencyStore::Materialize(Str name, const GitDependency& dependency,
                     &output, error);
         if (ok) {
             Str trimmed = TrimAscii(output.out);
-            bool valid = trimmed.len == 40 || trimmed.len == 64;
-            for (int i = 0; valid && i < trimmed.len; i++) {
+            bool valid = len(trimmed) == 40 || len(trimmed) == 64;
+            for (int i = 0; valid && i < len(trimmed); i++) {
                 char c = trimmed.s[i];
                 valid = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') ||
                         (c >= 'A' && c <= 'F');
@@ -615,7 +615,7 @@ static bool IsEditorLinkStub(Str link) {
 
 static void AppendJsonString(StrBuilder* out, Str value) {
     out->AppendChar('"');
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char c = value.s[i];
         if (c == '"' || c == '\\') {
             out->AppendChar('\\');
@@ -644,7 +644,7 @@ static bool WriteEditorLinkStub(Str link, Str name,
     Str indexPath = JoinPath(link, StrL("index.js"));
     // A path as TypeScript wants to read it: rooted, with forward slashes.
     Str specifier = StrDup(dependency.entry);
-    for (int i = 0; i < specifier.len; i++)
+    for (int i = 0; i < len(specifier); i++)
         if (specifier.s[i] == '\\') specifier.s[i] = '/';
     StrBuilder manifest;
     manifest.Append(StrL("{\n  \"main\": \"index.js\",\n  \"name\": "));
@@ -692,7 +692,7 @@ bool GitDependencyStore::LinkForEditor(
         VecAppend(declared, link);
         // A scoped name is a directory and a package.
         int lastSeparator = -1;
-        for (int c = 0; c < link.len; c++)
+        for (int c = 0; c < len(link); c++)
             if (IsSeparator(link.s[c])) lastSeparator = c;
         if (lastSeparator > 0) {
             Str parent(link.s, lastSeparator);

@@ -393,7 +393,7 @@ El* Dialog::Header() {
         }
         ic = nullptr;
     }
-    if (title.s && title.len > 0) {
+    if (title.s && len(title) > 0) {
         El* text = TextEl(a, title)->Font(16)->Semibold()->Fg(th.foreground);
         El* line = text;
         if (ic) {
@@ -404,7 +404,7 @@ El* Dialog::Header() {
     } else if (ic) {
         head->Child(ic);
     }
-    if (description.s && description.len > 0) {
+    if (description.s && len(description) > 0) {
         head->Child(DialogDescription::New(cx)
                         ->Child(TextEl(a, description)
                                     ->Font(14)

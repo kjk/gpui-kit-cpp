@@ -31,9 +31,9 @@ static int FractionDigits(Str s) {
     if (!s.s) {
         return 0;
     }
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         if (s.s[i] == '.') {
-            return s.len - i - 1;
+            return len(s) - i - 1;
         }
     }
     return 0;
@@ -50,10 +50,10 @@ static int FractionDigitsOf(double v) {
 // `value.trim().parse::<f64>().ok()`, which refuses trailing junk, so a
 // partial parse does not count.
 bool NumberParseValue(Str value, double* out) {
-    if (!value.s || value.len <= 0) {
+    if (!value.s || len(value) <= 0) {
         return false;
     }
-    TempStr buf = StrDupTemp(value.len < 127 ? value : Str(value.s, 127));
+    TempStr buf = StrDupTemp(len(value) < 127 ? value : Str(value.s, 127));
     char* end = nullptr;
     double v = strtod(buf.s, &end);
     if (end == buf.s) {
@@ -131,7 +131,7 @@ void NumberInputEnsureMask(InputState* state) {
 }
 
 static bool NumberInputCandidateValid(const InputState* state, Str value) {
-    if (!state || value.len == 0) {
+    if (!state || len(value) == 0) {
         return true;
     }
     if (state->validate && !state->validate(value, state->validateArg)) {

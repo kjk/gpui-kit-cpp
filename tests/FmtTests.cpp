@@ -94,45 +94,46 @@ static void TheAnyDirectives() {
 
 static void AFormatThatDoesNotHoldUpAnswersNothing() {
     // A type that does not match its directive.
-    utassert(fmt("%d", StrL("no")).len == 0);
-    utassert(fmt("%s", 1).len == 0);
-    utassert(fmt("%f", 1).len == 0);
+    utassert(len(fmt("%d", StrL("no"))) == 0);
+    utassert(len(fmt("%s", 1)) == 0);
+    utassert(len(fmt("%f", 1)) == 0);
 
     // An argument that was not passed.
-    utassert(fmt("%{1}", 1).len == 0);
-    utassert(fmt("%d %d", 1).len == 0);
+    utassert(len(fmt("%{1}", 1)) == 0);
+    utassert(len(fmt("%d %d", 1)) == 0);
 
     // A positional format with a hole in it: %{1} was never named, so the
     // argument it would have checked cannot be checked at all.
-    utassert(fmt("%{0} %{2}", 1, 2, 3).len == 0);
+    utassert(len(fmt("%{0} %{2}", 1, 2, 3)) == 0);
 
     // A '{' that never closes, and the '$' spelling that reads like it
     // should work and does not.
-    utassert(fmt("%{0", 1).len == 0);
-    utassert(fmt("%{$0}", 1).len == 0);
+    utassert(len(fmt("%{0", 1)) == 0);
+    utassert(len(fmt("%{$0}", 1)) == 0);
 
     // More directives than Fmt holds instructions for. Thirty-two is the
     // whole array, and an escape flushes the literal before it, so this
     // needs no arguments to ask for more than there is room for.
-    utassert(fmt("a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%"
-                 "a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%")
-                 .len == 0);
+    utassert(
+        len(fmt("a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%"
+                "a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%a%%")) == 0);
     // Within the array it still works, escapes and all.
     utassert(base::StrEq(fmt("a%%b%%c"), StrL("a%b%c")));
 
     // The same past the array with % specs, which parse down a different
     // path than the literals do: thirty-four directives, all of them fed.
-    utassert(fmt("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%"
-                 "d%d%d%d",
-                 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-                 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34)
-                 .len == 0);
+    utassert(
+        len(fmt("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%"
+                "d%d%d%d",
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
+                19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33,
+                34)) == 0);
     // And thirty-two of them, which is the most that fits, still formats.
     utassert(
-        fmt("%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
+        len(fmt(
+            "%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d%d",
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-            20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32)
-            .len > 0);
+            20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32)) > 0);
 
     // An integer directive takes anything integer-like, which is printf's
     // own leniency rather than an accident.
@@ -145,22 +146,22 @@ static void OutputLongerThanTheScratchBuffer() {
     // too wide for it is written straight into the answer instead, so the
     // width says what it says.
     Str s = fmt("%500d", 1);
-    utassert(s.len == 500);
+    utassert(len(s) == 500);
     utassert(s.s[0] == ' ' && s.s[498] == ' ' && s.s[499] == '1');
 
     // What follows the wide field is still appended after it.
     Str after = fmt("%500d|", 1);
-    utassert(after.len == 501 && after.s[500] == '|');
+    utassert(len(after) == 501 && after.s[500] == '|');
 
     // And a precision, which is the other way to outgrow the buffer.
     Str precise = fmt("%.400f", 0.5);
-    utassert(precise.len == 402);
+    utassert(len(precise) == 402);
     utassert(precise.s[0] == '0' && precise.s[1] == '.' && precise.s[2] == '5');
 
     // Two of them in one format, so the second is not written over the
     // first: the answer grows, it is not a buffer being reused.
     Str both = fmt("%300d;%300d", 1, 2);
-    utassert(both.len == 601 && both.s[300] == ';');
+    utassert(len(both) == 601 && both.s[300] == ';');
     utassert(both.s[299] == '1' && both.s[600] == '2');
 
     // And what outlives the frame is a copy in an arena of the caller's:

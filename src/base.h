@@ -110,6 +110,11 @@ struct Str {
     explicit operator bool() const { return len > 0 && s; }
 };
 
+// Call sites read length with len(s). The field is what constructors write.
+constexpr int len(Str s) noexcept {
+    return s.len;
+}
+
 float StrToFloatUnchecked(Str s);
 
 void log(Str s);
@@ -1096,7 +1101,7 @@ void StrDup2(Str s1, Str s2, Str& s1Out, Str& s2Out);
 
 GPUI_NOINLINE bool StrEqRest(Str s1, Str s2);
 inline bool StrEq(Str s1, Str s2) {
-    if (s1.len != s2.len) {
+    if (len(s1) != len(s2)) {
         return false;
     }
     return StrEqRest(s1, s2);
@@ -1107,7 +1112,7 @@ inline bool StrEq(Str s1, const char* s2) {
 int StrCmp(Str s1, Str s2);
 GPUI_NOINLINE bool StrEqIRest(Str s1, Str s2);
 inline bool StrEqI(Str s1, Str s2) {
-    if (s1.len != s2.len) {
+    if (len(s1) != len(s2)) {
         return false;
     }
     return StrEqIRest(s1, s2);

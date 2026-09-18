@@ -395,7 +395,7 @@ static void ATextRunIsReadAndPlaced() {
     TempStr text = AllocStrTemp(63);
     text.s[0] = 0;
     utassert(FirstText(b.data.els, b.data.len, &x, &y, &size, &tlen, &flags,
-                       text.s, text.len + 1));
+                       text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("crates.io")));
     utassertnear(x, 29.5f);
     utassertnear(y, 14.f);
@@ -413,7 +413,7 @@ static void ATextRunIsReadAndPlaced() {
                                "</text></g></svg>"),
                           &nested));
     utassert(FirstText(nested.data.els, nested.data.len, &x, &y, &size, &tlen,
-                       &flags, text.s, text.len + 1));
+                       &flags, text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("CI")));
     utassertnear(x, 22.f);
     utassertnear(y, 14.f);
@@ -441,7 +441,7 @@ static void ATextRunIsReadAndPlaced() {
                                "</text></g></svg>"),
                           &wrapper));
     utassert(FirstText(wrapper.data.els, wrapper.data.len, &x, &y, &size, &tlen,
-                       &flags, text.s, text.len + 1));
+                       &flags, text.s, len(text) + 1));
     utassert(StrEq(Str(text.s), StrL("CI")));
     utassertnear(x, 5.f);
     utassertnear(y, 6.f);
@@ -465,7 +465,7 @@ static void GeneratedTableMatchesReader() {
     for (int i = 0; i < kAssetIconsCount; i++) {
         const AssetIcon& e = kAssetIcons[i];
         Str name = SeqStrByIndex(kAssetIconNames, i);
-        utassert(name.len > 0);
+        utassert(len(name) > 0);
         // Name order, which is what makes the generated file's diff readable.
         if (i > 0) {
             utassert(StrCmp(prev, name) < 0);

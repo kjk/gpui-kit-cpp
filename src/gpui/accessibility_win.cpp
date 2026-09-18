@@ -13,10 +13,10 @@ struct WinAccessibilityNode;
 struct WinTextRange;
 
 static BSTR AccessibilityBstr(Str value) {
-    if (!value.s || value.len <= 0) {
+    if (!value.s || len(value) <= 0) {
         return SysAllocStringLen(nullptr, 0);
     }
-    int n = MultiByteToWideChar(CP_UTF8, 0, value.s, value.len, nullptr, 0);
+    int n = MultiByteToWideChar(CP_UTF8, 0, value.s, len(value), nullptr, 0);
     if (n <= 0) {
         return SysAllocStringLen(nullptr, 0);
     }
@@ -24,7 +24,7 @@ static BSTR AccessibilityBstr(Str value) {
     if (!out) {
         return nullptr;
     }
-    MultiByteToWideChar(CP_UTF8, 0, value.s, value.len, out, n);
+    MultiByteToWideChar(CP_UTF8, 0, value.s, len(value), out, n);
     return out;
 }
 
@@ -432,7 +432,7 @@ struct WinTextRange : ITextRangeProvider {
         const AccessibilityNode* node = Node();
         return node && node->input ? InputValue(node->input) : Str{};
     }
-    int Length() const { return RopeOffsetToOffsetUtf16(Text(), Text().len); }
+    int Length() const { return RopeOffsetToOffsetUtf16(Text(), len(Text())); }
     void Clamp() {
         int n = Length();
         start = std::max(0, std::min(start, n));
@@ -1572,7 +1572,7 @@ HRESULT WinAccessibilityNode::GetVisibleRanges(SAFEARRAY** out) {
         return node ? UIA_E_INVALIDOPERATION : UIA_E_ELEMENTNOTAVAILABLE;
     }
     int n = RopeOffsetToOffsetUtf16(InputValue(node->input),
-                                    InputValue(node->input).len);
+                                    len(InputValue(node->input)));
     return AccessibilityRangeArray(new WinTextRange(root, id, 0, n), out);
 }
 
@@ -1623,7 +1623,7 @@ HRESULT WinAccessibilityNode::get_DocumentRange(ITextRangeProvider** out) {
     }
     Str text = InputValue(node->input);
     *out =
-        new WinTextRange(root, id, 0, RopeOffsetToOffsetUtf16(text, text.len));
+        new WinTextRange(root, id, 0, RopeOffsetToOffsetUtf16(text, len(text)));
     return S_OK;
 }
 

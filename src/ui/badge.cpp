@@ -100,7 +100,7 @@ El* Badge::IntoEl() {
             top = -4;
         }
         mark->Top(top)
-            ->Right(-step * (float)txt.len)
+            ->Right(-step * (float)len(txt))
             ->Pad(2)
             ->MinW(14)
             ->Radius(7)

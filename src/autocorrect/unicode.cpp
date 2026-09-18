@@ -18,15 +18,15 @@ uint32_t Utf8Next(Str s, int* i) {
     // byte as itself, so a scan always terminates.
     int size = 1;
     uint32_t cp = b0;
-    if ((b0 & 0xE0) == 0xC0 && at + 1 < s.len) {
+    if ((b0 & 0xE0) == 0xC0 && at + 1 < len(s)) {
         size = 2;
         cp = ((uint32_t)(b0 & 0x1F) << 6) | ((uint8_t)s.s[at + 1] & 0x3F);
-    } else if ((b0 & 0xF0) == 0xE0 && at + 2 < s.len) {
+    } else if ((b0 & 0xF0) == 0xE0 && at + 2 < len(s)) {
         size = 3;
         cp = ((uint32_t)(b0 & 0x0F) << 12) |
              (((uint32_t)(uint8_t)s.s[at + 1] & 0x3F) << 6) |
              ((uint8_t)s.s[at + 2] & 0x3F);
-    } else if ((b0 & 0xF8) == 0xF0 && at + 3 < s.len) {
+    } else if ((b0 & 0xF8) == 0xF0 && at + 3 < len(s)) {
         size = 4;
         cp = ((uint32_t)(b0 & 0x07) << 18) |
              (((uint32_t)(uint8_t)s.s[at + 1] & 0x3F) << 12) |
@@ -50,7 +50,7 @@ uint32_t Utf8At(Str s, int i) {
 
 int Utf8Count(Str s) {
     int n = 0;
-    for (int i = 0; i < s.len;) {
+    for (int i = 0; i < len(s);) {
         Utf8Next(s, &i);
         n++;
     }
@@ -116,7 +116,8 @@ static const CpRange kBopomofo[] = {
 };
 
 bool IsHan(uint32_t cp) {
-    return cp >= 0x2E80 && InRanges(cp, kHan, (int)(sizeof(kHan) / sizeof(kHan[0])));
+    return cp >= 0x2E80 &&
+           InRanges(cp, kHan, (int)(sizeof(kHan) / sizeof(kHan[0])));
 }
 
 bool IsHangul(uint32_t cp) {
@@ -173,7 +174,7 @@ bool IsWordCp(uint32_t cp) {
 }
 
 bool HasCjk(Str s) {
-    for (int i = 0; i < s.len;) {
+    for (int i = 0; i < len(s);) {
         if (IsCjk(Utf8Next(s, &i))) {
             return true;
         }

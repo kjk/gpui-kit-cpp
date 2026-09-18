@@ -38,7 +38,7 @@ Icon* Icon::Path(Str assetPath) {
 }
 
 Icon* Icon::Data(Str svg) {
-    data = svg.len > 0 ? StrDup(a, svg) : Str{};
+    data = len(svg) > 0 ? StrDup(a, svg) : Str{};
     source = IconSource::Data;
     return this;
 }

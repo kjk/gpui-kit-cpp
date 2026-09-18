@@ -31,7 +31,7 @@ static void ADeliverySaysWhichHalvesRun() {
 
 static void ATagIsNamespacedAndCarriesTheId() {
     TempStr tag = NotificationSystemTagTemp(7);
-    utassert(tag.len > 0);
+    utassert(len(tag) > 0);
     int id = 0;
     utassert(NotificationTagId(tag, &id) && id == 7);
 

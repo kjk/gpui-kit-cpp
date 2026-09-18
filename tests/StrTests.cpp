@@ -40,7 +40,7 @@ static void SequentialStringLookupsAvoidLengthPrepass() {
     item = base::SeqStrNext(item);
     utassert(base::StrEq(item, StrL("longer value")));
     item = base::SeqStrNext(item);
-    utassert(item.len == 0);
+    utassert(len(item) == 0);
     utassert(base::SeqStrFirst(nullptr).len == 0);
     utassert(base::SeqStrNext({}).len == 0);
 
@@ -79,9 +79,9 @@ static void ReplaceAllReplacesNonOverlappingMatches() {
 static void ReplaceAllHandlesEmptyAndMissingMatches() {
     Str value = StrL("hello");
     Str unchanged = base::StrReplaceAll(value, StrL(""), StrL("x"));
-    utassert(unchanged.s == value.s && unchanged.len == value.len);
+    utassert(unchanged.s == value.s && len(unchanged) == len(value));
     unchanged = base::StrReplaceAll(value, StrL("z"), StrL("x"));
-    utassert(unchanged.s == value.s && unchanged.len == value.len);
+    utassert(unchanged.s == value.s && len(unchanged) == len(value));
     utassert(base::StrEq(base::StrReplaceAll(value, StrL("l"), StrL("")),
                          StrL("heo")));
 }
@@ -91,15 +91,15 @@ static void ReplaceAllHandlesEmptyAndMissingMatches() {
 // the same answer rather than a terminator written at a negative offset.
 static void AllocStrTempRefusesNothingAndLessThanNothing() {
     TempStr none = AllocStrTemp(0);
-    utassert(none.s == nullptr && none.len == 0);
+    utassert(none.s == nullptr && len(none) == 0);
     TempStr negative = AllocStrTemp(-1);
-    utassert(negative.s == nullptr && negative.len == 0);
+    utassert(negative.s == nullptr && len(negative) == 0);
     TempStr huge = AllocStrTemp(-1000000);
-    utassert(huge.s == nullptr && huge.len == 0);
+    utassert(huge.s == nullptr && len(huge) == 0);
 
     // And one byte is one byte, terminated.
     TempStr one = AllocStrTemp(1);
-    utassert(one.s != nullptr && one.len == 1 && one.s[1] == 0);
+    utassert(one.s != nullptr && len(one) == 1 && one.s[1] == 0);
 }
 
 // The answer's length is a product — one difference per match — and a wide
@@ -107,17 +107,17 @@ static void AllocStrTempRefusesNothingAndLessThanNothing() {
 // writes past, so a replacement that cannot be expressed is not made.
 static void ReplaceAllRefusesALengthItCannotHold() {
     TempStr many = AllocStrTemp(30000);
-    for (int i = 0; i < many.len; i++) {
+    for (int i = 0; i < len(many); i++) {
         many.s[i] = 'a';
     }
     TempStr wide = AllocStrTemp(100000);
-    for (int i = 0; i < wide.len; i++) {
+    for (int i = 0; i < len(wide); i++) {
         wide.s[i] = 'b';
     }
     // Thirty thousand matches, each a hundred thousand bytes wider: three
     // billion, which is not an int.
     Str answer = base::StrReplaceAll(many, StrL("a"), wide);
-    utassert(answer.s == many.s && answer.len == many.len);
+    utassert(answer.s == many.s && len(answer) == len(many));
 
     // The same shape below the limit is still replaced.
     Str fits = base::StrReplaceAll(StrL("aaa"), StrL("a"), StrL("bb"));
@@ -178,7 +178,7 @@ static void TrimAsciiReturnsASlice() {
 static void BuilderBorrowsThenGrowsLikeAVec() {
     TempStr scratch = AllocStrTemp(4);
     StrBuilder b;
-    StrBuilderUseExternalBuffer(b, Str(scratch.s, scratch.len + 1));
+    StrBuilderUseExternalBuffer(b, Str(scratch.s, len(scratch) + 1));
     utassert(b.cap == -4); // the fifth byte is held back for the NUL
     utassert(b.Append(StrL("four")));
     utassert(b.els == scratch.s && scratch.s[4] == 0);
@@ -236,22 +236,22 @@ static void Dup2PutsBothStringsInOneBlock() {
     StrDup2(StrL("id"), StrL("label"), a, b);
     utassert(base::StrEq(a, StrL("id")));
     utassert(base::StrEq(b, StrL("label")));
-    utassert(a.s && b.s == a.s + a.len + 1);
-    utassert(a.s[a.len] == 0 && b.s[b.len] == 0);
+    utassert(a.s && b.s == a.s + len(a) + 1);
+    utassert(a.s[len(a)] == 0 && b.s[b.len] == 0);
     StrFree(a);
 }
 
 static void Dup2TreatsNullAsEmptyInsideTheSameBlock() {
     Str a, b;
     StrDup2(Str{}, StrL("x"), a, b);
-    utassert(a.len == 0 && a.s);
+    utassert(len(a) == 0 && a.s);
     utassert(base::StrEq(b, StrL("x")));
     utassert(b.s == a.s + 1);
     StrFree(a);
 
     StrDup2(StrL("y"), Str{}, a, b);
     utassert(base::StrEq(a, StrL("y")));
-    utassert(b.len == 0 && b.s == a.s + a.len + 1);
+    utassert(b.len == 0 && b.s == a.s + len(a) + 1);
     StrFree(a);
 }
 

@@ -777,7 +777,7 @@ static PangoWeight PangoWeightFor(uint8_t weight, float fontSize) {
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                           bool wrap, uint8_t weight, float lineH,
                           Size* outSize) {
-    if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || len(s) <= 0) {
         return nullptr;
     }
     if (fontSize <= 0) {
@@ -811,7 +811,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         pango_attr_list_unref(attrs);
     }
 
-    pango_layout_set_text(l, s.s, s.len);
+    pango_layout_set_text(l, s.s, len(s));
     if (wrap && maxW > 0) {
         pango_layout_set_width(l, (int)(maxW * PANGO_SCALE));
         pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
@@ -968,8 +968,8 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (index < 0) {
         index = 0;
     }
-    if (index > s.len) {
-        index = s.len;
+    if (index > len(s)) {
+        index = len(s);
     }
     return index;
 }

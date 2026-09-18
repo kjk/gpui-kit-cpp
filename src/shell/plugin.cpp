@@ -17,7 +17,7 @@ static void SetError(ShellError* error, Str message) {
 static Str Join(Arena* arena, Str left, Str right) {
     StrBuilder path(arena);
     path.Append(left);
-    if (left && left.s[left.len - 1] != '/' && left.s[left.len - 1] != '\\')
+    if (left && left.s[len(left) - 1] != '/' && left.s[len(left) - 1] != '\\')
         path.AppendChar(GPUI_OS_WINDOWS ? '\\' : '/');
     path.Append(right);
     return path.TakeStr();
@@ -74,25 +74,25 @@ static bool ParseSemver(Str value, int* major, int* minor, int* patch) {
     int parts[3] = {};
     int at = 0;
     for (int part = 0; part < 3; part++) {
-        if (at >= value.len || value.s[at] < '0' || value.s[at] > '9')
+        if (at >= len(value) || value.s[at] < '0' || value.s[at] > '9')
             return false;
-        if (value.s[at] == '0' && at + 1 < value.len &&
+        if (value.s[at] == '0' && at + 1 < len(value) &&
             value.s[at + 1] >= '0' && value.s[at + 1] <= '9')
             return false;
         int number = 0;
-        while (at < value.len && value.s[at] >= '0' && value.s[at] <= '9') {
+        while (at < len(value) && value.s[at] >= '0' && value.s[at] <= '9') {
             if (number > 100000000) return false;
             number = number * 10 + value.s[at++] - '0';
         }
         parts[part] = number;
         if (part < 2) {
-            if (at >= value.len || value.s[at] != '.') return false;
+            if (at >= len(value) || value.s[at] != '.') return false;
             at++;
         }
     }
-    if (at < value.len) {
+    if (at < len(value)) {
         if (value.s[at] != '-' && value.s[at] != '+') return false;
-        for (; at < value.len; at++) {
+        for (; at < len(value); at++) {
             char ch = value.s[at];
             if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
                   (ch >= '0' && ch <= '9') || ch == '-' || ch == '.' ||
@@ -108,14 +108,14 @@ static bool ParseSemver(Str value, int* major, int* minor, int* patch) {
 
 static bool ValidId(Str id) {
     if (!id) return false;
-    for (int i = 0; i < id.len; i++) {
+    for (int i = 0; i < len(id); i++) {
         char ch = id.s[i];
         if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
               ch == '.' || ch == '-' || ch == '_'))
             return false;
     }
     char first = id.s[0];
-    char last = id.s[id.len - 1];
+    char last = id.s[len(id) - 1];
     if (first == '.' || first == '-' || first == '_' || last == '.' ||
         last == '-' || last == '_')
         return false;
@@ -127,8 +127,8 @@ static bool ValidEntry(Str entry) {
         StrFind(entry, StrL(":")) >= 0)
         return false;
     int start = 0;
-    for (int i = 0; i <= entry.len; i++) {
-        if (i < entry.len && entry.s[i] != '/' && entry.s[i] != '\\') continue;
+    for (int i = 0; i <= len(entry); i++) {
+        if (i < len(entry) && entry.s[i] != '/' && entry.s[i] != '\\') continue;
         if (i - start == 2 && entry.s[start] == '.' &&
             entry.s[start + 1] == '.')
             return false;
@@ -162,11 +162,11 @@ static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
                                  ShellError* error) {
     for (int p = 0; p < len(paths); p++) {
         Str value = paths[p];
-        for (int i = 0; i + 2 < value.len; i++) {
+        for (int i = 0; i + 2 < len(value); i++) {
             if (value.s[i] != '$' || value.s[i + 1] != '{') continue;
             int end = i + 2;
-            while (end < value.len && value.s[end] != '}') end++;
-            if (end >= value.len) {
+            while (end < len(value) && value.s[end] != '}') end++;
+            if (end >= len(value)) {
                 SetError(error, fmt("unterminated placeholder in %s", field));
                 return false;
             }
@@ -192,7 +192,7 @@ static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
 
 static Str TrimAscii(Str value) {
     int start = 0;
-    int end = value.len;
+    int end = len(value);
     while (start < end && (uint8_t)value.s[start] <= ' ') start++;
     while (end > start && (uint8_t)value.s[end - 1] <= ' ') end--;
     return Str(value.s + start, end - start);
@@ -203,24 +203,24 @@ static Str TrimAscii(Str value) {
 static bool ValidGitRefName(Str reference) {
     if (!reference || StrEq(reference, StrL("@"))) return false;
     char first = reference.s[0];
-    char last = reference.s[reference.len - 1];
+    char last = reference.s[len(reference) - 1];
     if (first == '.' || first == '/' || last == '.' || last == '/')
         return false;
     if (StrContains(reference, StrL("..")) ||
         StrContains(reference, StrL("@{")) ||
         StrContains(reference, StrL("//")))
         return false;
-    for (int i = 0; i < reference.len; i++) {
+    for (int i = 0; i < len(reference); i++) {
         uint8_t c = (uint8_t)reference.s[i];
         if (c < 0x20 || c == 0x7f || c == ' ' || c == '~' || c == '^' ||
             c == ':' || c == '?' || c == '*' || c == '[' || c == '\\')
             return false;
     }
     int start = 0;
-    for (int i = 0; i <= reference.len; i++) {
-        if (i < reference.len && reference.s[i] != '/') continue;
+    for (int i = 0; i <= len(reference); i++) {
+        if (i < len(reference) && reference.s[i] != '/') continue;
         Str component(reference.s + start, i - start);
-        if (component.len == 0 || component.s[0] == '.' ||
+        if (len(component) == 0 || component.s[0] == '.' ||
             StrEndsWith(component, ".lock"))
             return false;
         start = i + 1;
@@ -229,10 +229,10 @@ static bool ValidGitRefName(Str reference) {
 }
 
 static bool ValidGitHubComponent(Str component) {
-    if (component.len == 0 || StrEq(component, StrL(".")) ||
+    if (len(component) == 0 || StrEq(component, StrL(".")) ||
         StrEq(component, StrL("..")))
         return false;
-    for (int i = 0; i < component.len; i++) {
+    for (int i = 0; i < len(component); i++) {
         char c = component.s[i];
         bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                   (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
@@ -245,9 +245,9 @@ static bool LooksLikeScpGitUrl(Str remote) {
     int colon = StrFind(remote, StrL(":"));
     if (colon < 0) return false;
     Str authority(remote.s, colon);
-    Str path(remote.s + colon + 1, remote.len - colon - 1);
+    Str path(remote.s + colon + 1, len(remote) - colon - 1);
     return StrContains(authority, StrL("@")) &&
-           !StrContains(authority, StrL("/")) && path.len > 0 &&
+           !StrContains(authority, StrL("/")) && len(path) > 0 &&
            StrContains(path, StrL("/"));
 }
 
@@ -256,9 +256,9 @@ static bool LooksLikeScpGitUrl(Str remote) {
 static bool ParseGitDependencyString(Arena* arena, Str source, Str* git,
                                      Str* reference, Str* detail) {
     int hashes = 0;
-    for (int i = 0; i < source.len; i++)
+    for (int i = 0; i < len(source); i++)
         if (source.s[i] == '#') hashes++;
-    if (!StrEq(TrimAscii(source), source) || source.len == 0 || hashes > 1) {
+    if (!StrEq(TrimAscii(source), source) || len(source) == 0 || hashes > 1) {
         *detail = StrL(
             "a string dependency must be a Git URL or GitHub "
             "owner/repository with one optional #Git ref");
@@ -268,8 +268,8 @@ static bool ParseGitDependencyString(Arena* arena, Str source, Str* git,
     Str remote = hash < 0 ? source : Str(source.s, hash);
     Str fragment = {};
     if (hash >= 0) {
-        fragment = Str(source.s + hash + 1, source.len - hash - 1);
-        if (fragment.len == 0) {
+        fragment = Str(source.s + hash + 1, len(source) - hash - 1);
+        if (len(fragment) == 0) {
             *detail = StrL("a string dependency #Git ref must not be empty");
             return false;
         }
@@ -284,7 +284,7 @@ static bool ParseGitDependencyString(Arena* arena, Str source, Str* git,
 
     if (StrContains(remote, StrL("://")) || LooksLikeScpGitUrl(remote)) {
         bool whitespace = false;
-        for (int i = 0; i < remote.len; i++)
+        for (int i = 0; i < len(remote); i++)
             if ((uint8_t)remote.s[i] <= ' ') whitespace = true;
         if (whitespace || StrEndsWith(remote, "://") ||
             StrStartsWith(remote, "://")) {
@@ -300,8 +300,8 @@ static bool ParseGitDependencyString(Arena* arena, Str source, Str* git,
     Str repository = {};
     int components = 0;
     int start = 0;
-    for (int i = 0; i <= remote.len; i++) {
-        if (i < remote.len && remote.s[i] != '/') continue;
+    for (int i = 0; i <= len(remote); i++) {
+        if (i < len(remote) && remote.s[i] != '/') continue;
         Str component(remote.s + start, i - start);
         if (components == 0)
             owner = component;
@@ -327,10 +327,10 @@ static bool ValidBareModuleName(Str name) {
     if (StrContains(name, StrL("\\")) || StrContains(name, StrL(":")))
         return false;
     int start = 0;
-    for (int i = 0; i <= name.len; i++) {
-        if (i < name.len && name.s[i] != '/') continue;
+    for (int i = 0; i <= len(name); i++) {
+        if (i < len(name) && name.s[i] != '/') continue;
         Str part(name.s + start, i - start);
-        if (part.len == 0 || StrEq(part, StrL(".."))) return false;
+        if (len(part) == 0 || StrEq(part, StrL(".."))) return false;
         start = i + 1;
     }
     return true;
@@ -360,7 +360,7 @@ static bool ValidateDependency(const GitDependency& dependency,
                                       name));
         return false;
     }
-    if (TrimAscii(dependency.git).len == 0) {
+    if (len(TrimAscii(dependency.git)) == 0) {
         SetDependencyError(error, fmt("`%s.git` must not be empty", name));
         return false;
     }
@@ -373,8 +373,8 @@ static bool ValidateDependency(const GitDependency& dependency,
         }
         return true;
     }
-    bool hasBranch = dependency.branch && TrimAscii(dependency.branch).len > 0;
-    bool hasTag = dependency.tag && TrimAscii(dependency.tag).len > 0;
+    bool hasBranch = dependency.branch && len(TrimAscii(dependency.branch)) > 0;
+    bool hasTag = dependency.tag && len(TrimAscii(dependency.tag)) > 0;
     if (dependency.branch && dependency.tag) {
         SetDependencyError(
             error,
@@ -406,13 +406,13 @@ static bool ValidateDependency(const GitDependency& dependency,
 // Rust's BTreeMap iterates by key; the store, the resolver and the editor
 // links all walk dependencies in that order, so the vector is kept sorted.
 static bool DependencyNameOrdered(Str left, Str right) {
-    int shared = left.len < right.len ? left.len : right.len;
+    int shared = len(left) < len(right) ? len(left) : len(right);
     for (int i = 0; i < shared; i++) {
         uint8_t a = (uint8_t)left.s[i];
         uint8_t b = (uint8_t)right.s[i];
         if (a != b) return a < b;
     }
-    return left.len <= right.len;
+    return len(left) <= len(right);
 }
 
 static bool ParseDependencies(const JsonValue* value, PluginManifest* out,
@@ -798,18 +798,18 @@ void PluginManifestSchema(StrBuilder* out) {
 
 static bool AbsolutePath(Str path) {
     if (StrStartsWithAny(path, "/\\")) return true;
-    return path.len >= 3 && path.s[1] == ':' &&
+    return len(path) >= 3 && path.s[1] == ':' &&
            (path.s[2] == '/' || path.s[2] == '\\');
 }
 
 static Str ExpandPath(Str raw, Str plugin, Str data) {
     StrBuilder out;
-    for (int i = 0; i < raw.len;) {
-        if (i + 12 <= raw.len &&
+    for (int i = 0; i < len(raw);) {
+        if (i + 12 <= len(raw) &&
             StrEq(Str(raw.s + i, 12), StrL("${pluginDir}"))) {
             out.Append(plugin);
             i += 12;
-        } else if (i + 10 <= raw.len &&
+        } else if (i + 10 <= len(raw) &&
                    StrEq(Str(raw.s + i, 10), StrL("${dataDir}"))) {
             out.Append(data);
             i += 10;
@@ -821,8 +821,8 @@ static Str ExpandPath(Str raw, Str plugin, Str data) {
     if (AbsolutePath(expanded)) return expanded;
     StrBuilder joined;
     joined.Append(plugin);
-    if (plugin && plugin.s[plugin.len - 1] != '/' &&
-        plugin.s[plugin.len - 1] != '\\')
+    if (plugin && plugin.s[len(plugin) - 1] != '/' &&
+        plugin.s[len(plugin) - 1] != '\\')
         joined.AppendChar(GPUI_OS_WINDOWS ? '\\' : '/');
     joined.Append(expanded);
     StrFree(expanded);
@@ -887,7 +887,7 @@ Str ShellDataHome() {
     if (!user || !*user) {
         cwd = AllocStrTemp(kMaxPath - 1);
         cwd.s[0] = 0;
-        PlatGetCwd(cwd.s, cwd.len + 1);
+        PlatGetCwd(cwd.s, len(cwd) + 1);
         user = cwd.s;
     }
     StrBuilder path;
@@ -904,17 +904,17 @@ Str ShellDataHome() {
 
 Str ShellBundleIdForPath(Str root) {
     uint64_t hash = 0xcbf29ce484222325ull;
-    for (int i = 0; i < root.len; i++) {
+    for (int i = 0; i < len(root); i++) {
         hash ^= (uint8_t)root.s[i];
         hash *= 0x100000001b3ull;
     }
-    int start = root.len;
+    int start = len(root);
     while (start > 0 && root.s[start - 1] != '/' && root.s[start - 1] != '\\')
         start--;
-    Str name(root.s + start, root.len - start);
+    Str name(root.s + start, len(root) - start);
     StrBuilder safe;
     bool previousDot = false;
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         char ch = name.s[i];
         if (ch >= 'A' && ch <= 'Z') ch = (char)(ch + ('a' - 'A'));
         bool allowed = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
@@ -1005,7 +1005,7 @@ static bool ManifestAt(Str root) {
     Arena* arena = ArenaNew();
     Str manifest = Join(arena, root, Str(kShellManifestFile));
     bool found = false;
-    if (manifest.len < kMaxPath) {
+    if (len(manifest) < kMaxPath) {
         TempStr path = StrDupTemp(manifest);
         found = PlatFileExists(path.s);
     }

@@ -1838,8 +1838,8 @@ El* El::Spans(const TextSpan* runs, int n) {
     return this;
 }
 int Utf8OffsetToUtf16(Str s, int u8) {
-    if (u8 > s.len) {
-        u8 = s.len;
+    if (u8 > len(s)) {
+        u8 = len(s);
     }
     int u16 = 0;
     int i = 0;
@@ -1856,7 +1856,7 @@ int Utf8OffsetToUtf16(Str s, int u8) {
 int Utf16OffsetToUtf8(Str s, int u16) {
     int at = 0;
     int i = 0;
-    while (i < s.len && at < u16) {
+    while (i < len(s) && at < u16) {
         unsigned char c = (unsigned char)s.s[i];
         int len = c < 0x80 ? 1 : (c < 0xE0 ? 2 : (c < 0xF0 ? 3 : 4));
         at += len == 4 ? 2 : 1;
@@ -1922,7 +1922,7 @@ bool ClickFromKeyRelease(bool pending, int pendingGen, int focusGen, int key,
 int HashClickId(Str s) {
     uint32_t h = 2166136261u;
     if (s.s) {
-        for (int i = 0; i < s.len; i++) {
+        for (int i = 0; i < len(s); i++) {
             h ^= (uint8_t)s.s[i];
             h *= 16777619u;
         }
@@ -2264,7 +2264,7 @@ static uint32_t MurmurHash2(const void* key, int n) {
 }
 
 static uint32_t MurmurHash2(Str s) {
-    return MurmurHash2(s.s, s.len);
+    return MurmurHash2(s.s, len(s));
 }
 
 struct TextMeasSlot {
@@ -2308,14 +2308,14 @@ static uint32_t TextMeasHash(Str s, float fontSize, float maxW, bool wrap,
 static bool TextMeasKeyEq(const TextMeasSlot* sl, uint32_t hash, Str s,
                           float fontSize, float maxW, bool wrap, uint8_t weight,
                           float lineH) {
-    if (!sl->occupied || sl->hash != hash || sl->len != s.len) {
+    if (!sl->occupied || sl->hash != hash || sl->len != len(s)) {
         return false;
     }
     if (sl->fontSize != fontSize || sl->maxW != maxW || sl->lineH != lineH ||
         sl->wrap != (wrap ? 1 : 0) || sl->bold != weight) {
         return false;
     }
-    return StrEq(Str(sl->text, s.len), s);
+    return StrEq(Str(sl->text, len(s)), s);
 }
 
 static uint8_t ElTextWeight(const El* e) {
@@ -2503,7 +2503,7 @@ static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
             return nullptr;
         }
         sl->text = copy.s;
-        sl->len = copy.len;
+        sl->len = len(copy);
         sl->hash = hash;
         sl->fontSize = keyFont;
         sl->maxW = keyMaxW;
@@ -2678,7 +2678,7 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
         outSize->h =
             fontSize > 0 ? fontSize * (lineH > 0 ? lineH : kLineHeight) : 16.f;
     }
-    if (!ctx || !ctx->pa || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }
     // A run that does not wrap is the same size whatever width it was
@@ -2734,7 +2734,7 @@ Size MeasureText(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int weight, float lineH) {
     Size size = {};
     size.h = fontSize > 0 ? fontSize * (lineH > 0 ? lineH : kLineHeight) : 16.f;
-    if (!ctx || !ctx->pa || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return size;
     }
     // Same premise as TextMeasLayout: a run that does not wrap measures the
@@ -2767,7 +2767,7 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     }
     // An empty line has no layout to measure, and asking for one would fail;
     // the only point in it is its start.
-    if (s.len <= 0) {
+    if (len(s) <= 0) {
         *outX = 0;
         *outY = 0;
         *outH = fontSize;
@@ -2777,8 +2777,8 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     if (off < 0) {
         off = 0;
     }
-    if (off > s.len) {
-        off = s.len;
+    if (off > len(s)) {
+        off = len(s);
     }
     TextLayout* tl = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
                                     lineHeight, nullptr);
@@ -2787,12 +2787,12 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     }
     Bounds r[32] = {};
     bool ok = false;
-    if (s.len == 0) {
+    if (len(s) == 0) {
         *outX = 0;
         *outY = 0;
         *outH = fontSize;
         ok = true;
-    } else if (off > 0 && (lineEndAffinity || off == s.len)) {
+    } else if (off > 0 && (lineEndAffinity || off == len(s))) {
         // The trailing edge of everything before it, the way the caret is
         // placed.
         int n = TextLayoutRangeRects(tl, s, 0, off, r, 32);
@@ -2806,7 +2806,7 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
         // The leading edge of what follows. At a soft-wrap boundary this is
         // the start of the next visual row; the prefix branch above is the
         // trailing edge of the previous one.
-        int n = TextLayoutRangeRects(tl, s, off, s.len, r, 32);
+        int n = TextLayoutRangeRects(tl, s, off, len(s), r, 32);
         if (n > 0) {
             *outX = r[0].x;
             *outY = r[0].y;
@@ -3588,7 +3588,7 @@ bool LayoutReuseTakeArg(Str arg) {
     if (!base::StrStartsWith(arg, k)) {
         return false;
     }
-    Str value(arg.s + k.len, arg.len - k.len);
+    Str value(arg.s + len(k), len(arg) - len(k));
     if (base::StrEqI(value, "off") || base::StrEq(value, StrL("0"))) {
         gLayoutReuse = 0;
         logf("layout: reuse off (__layout_reuse=off), rebuilding every frame");
@@ -3651,8 +3651,8 @@ static uint64_t LayoutMeasureKey(PaintCtx* ctx, El* e) {
         // Progress answers with a constant, so nothing about it moves it.
         return h;
     }
-    if (e->text.len > 0 && e->text.s) {
-        h = FnvMix(h, e->text.s, (size_t)e->text.len);
+    if (len(e->text) > 0 && e->text.s) {
+        h = FnvMix(h, e->text.s, (size_t)len(e->text));
     }
     h = FnvMix(h, &e->laidFont, sizeof(e->laidFont));
     uint8_t weight = ElTextWeight(e);
@@ -4598,7 +4598,7 @@ static void DrawLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
 void DrawTextAt(PaintCtx* ctx, Str s, float x, float y, float w, float h,
                 float fontSize, Rgba c, bool truncate, bool wrap,
                 float measMaxW, int weight, float lineH) {
-    if (!s.s || s.len <= 0 || !ctx->pa) {
+    if (!s.s || len(s) <= 0 || !ctx->pa) {
         return;
     }
     (void)w;
@@ -4619,7 +4619,7 @@ void DrawTextAt(PaintCtx* ctx, Str s, float x, float y, float w, float h,
 
 void DrawTextBaseline(PaintCtx* ctx, Str s, float x, float baselineY,
                       float fontSize, Rgba color, int weight) {
-    if (!s.s || s.len <= 0 || !ctx || !ctx->pa) {
+    if (!s.s || len(s) <= 0 || !ctx || !ctx->pa) {
         return;
     }
     TextLayout* layout =
@@ -4870,8 +4870,8 @@ void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* layout, Str text, float x,
     Bounds rects[32] = {};
     int at = 0;
     for (int i = 0; i <= n; i++) {
-        int lo = i < n ? spans[i].lo : text.len;
-        int hi = i < n ? spans[i].hi : text.len;
+        int lo = i < n ? spans[i].lo : len(text);
+        int hi = i < n ? spans[i].hi : len(text);
         if (lo > at) {
             int count = TextLayoutRangeRects(layout, text, at, lo, rects, 32);
             for (int r = 0; r < count; r++) {
@@ -5575,7 +5575,7 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
     float x = e->x;
     float y = e->y;
     float h = e->h;
-    if (e->text.s && e->text.len > 0) {
+    if (e->text.s && len(e->text) > 0) {
         float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
         // The weight and line height the run was drawn with, or the rects
         // come back measured against a different font -- the mono family is a
@@ -5586,11 +5586,11 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
                            ElTextWeight(e), e->style.lineHeight, nullptr);
         if (tl) {
             Bounds r[32] = {};
-            if (off > e->text.len) {
-                off = e->text.len;
+            if (off > len(e->text)) {
+                off = len(e->text);
             }
             int n = 0;
-            if (off > 0 && (lineEndAffinity || off == e->text.len)) {
+            if (off > 0 && (lineEndAffinity || off == len(e->text))) {
                 // The trailing edge of everything before it.
                 n = TextLayoutRangeRects(tl, e->text, 0, off, r, 32);
                 if (n > 0) {
@@ -5601,7 +5601,7 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
             } else {
                 // The leading edge of what follows. At a wrap boundary this
                 // puts a no-affinity caret on the next row.
-                n = TextLayoutRangeRects(tl, e->text, off, e->text.len, r, 32);
+                n = TextLayoutRangeRects(tl, e->text, off, len(e->text), r, 32);
                 if (n > 0) {
                     x = e->x + r[0].x;
                     y = e->y + r[0].y;
@@ -6005,7 +6005,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             th.scope = e->style.trapId;
             th.paintLayer = ctx->paintLayer;
             VecAppend(ctx->texts, th);
-            ctx->textDocLen += e->text.len + 1;
+            ctx->textDocLen += len(e->text) + 1;
             int a = ctx->selA;
             int b = ctx->selB;
             if (ctx->selScope >= 0 && ctx->selScope != e->style.trapId) {
@@ -6019,7 +6019,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                     b = t;
                 }
                 int tlo = a > docOff ? a : docOff;
-                int thi = b < docOff + e->text.len ? b : docOff + e->text.len;
+                int thi = b < docOff + len(e->text) ? b : docOff + len(e->text);
                 if (tlo < thi) {
                     lo = tlo - docOff;
                     hi = thi - docOff;
@@ -6162,7 +6162,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             // it is the vector the icon renderer already walks, and a picture
             // with colours of its own keeps them.
         } else if (!img && e->imageLoadState == ImageLoadState::Failed &&
-                   e->text.s && e->text.len > 0) {
+                   e->text.s && len(e->text) > 0) {
             // The alt text, in the color the text around it uses.
             float font =
                 e->laidFont > 0
@@ -6545,8 +6545,8 @@ static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     if (local < 0) {
         local = 0;
     }
-    if (local > h->text.len) {
-        local = h->text.len;
+    if (local > len(h->text)) {
+        local = len(h->text);
     }
     return local;
 }
@@ -6582,7 +6582,7 @@ int Utf8At(Str s, int i, uint32_t* out) {
             : (c & 0xF0) == 0xE0 ? 3
             : (c & 0xF8) == 0xF0 ? 4
                                  : 1;
-    if (n == 1 || i + n > s.len) {
+    if (n == 1 || i + n > len(s)) {
         *out = c;
         return 1;
     }
@@ -6658,10 +6658,10 @@ struct CopyOut {
 };
 
 static void CopyPut(CopyOut* o, Str s) {
-    if (s.len <= 0 || !s.s) {
+    if (len(s) <= 0 || !s.s) {
         return;
     }
-    int take = s.len;
+    int take = len(s);
     if (o->n + take > o->cap - 1) {
         take = o->cap - 1 - o->n;
     }
@@ -6676,12 +6676,12 @@ static void CopyPut(CopyOut* o, Str s) {
 // blockquote puts on each of its lines, applied to a run that carries its own
 // line breaks (an unhighlighted code block is one such run).
 static void CopyPutLines(CopyOut* o, Str s, Str linePre) {
-    if (linePre.len <= 0) {
+    if (len(linePre) <= 0) {
         CopyPut(o, s);
         return;
     }
     int at = 0;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         if (s.s[i] != '\n') {
             continue;
         }
@@ -6689,7 +6689,7 @@ static void CopyPutLines(CopyOut* o, Str s, Str linePre) {
         CopyPut(o, linePre);
         at = i + 1;
     }
-    CopyPut(o, Str(s.s + at, s.len - at));
+    CopyPut(o, Str(s.s + at, len(s) - at));
 }
 
 // Whether the selection has run into the inline image registered at `i`.
@@ -6778,7 +6778,7 @@ static int CopyTextHitsFiltered(PaintCtx* ctx, int a, int b, int scope,
             continue;
         }
         int pos = t.docOff;
-        int plen = t.text.len;
+        int plen = len(t.text);
         int lo = a > pos ? a : pos;
         int hi = b < pos + plen ? b : pos + plen;
         int gap = pos + plen;
@@ -7260,7 +7260,7 @@ static uint32_t IdFold(uint32_t parent, Str name) {
     // The separator is what keeps "ab"+"c" apart from "a"+"bc".
     h ^= (uint8_t)'/';
     h *= 16777619u;
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         h ^= (uint8_t)name.s[i];
         h *= 16777619u;
     }
@@ -7279,7 +7279,7 @@ static int IdToClick(uint32_t h) {
 
 static void IdCollect(El* e, uint32_t parent) {
     uint32_t here = parent;
-    if (e->id.s && e->id.len > 0) {
+    if (e->id.s && len(e->id) > 0) {
         here = IdFold(parent, e->id);
     }
     e->pathId = here;
@@ -7293,7 +7293,7 @@ static void IdCollect(El* e, uint32_t parent) {
     }
     if (e->scrollFromPath) {
         e->scrollId = IdToClick(here);
-    } else if (e->scrollId == 0 && e->id.s && e->id.len > 0 &&
+    } else if (e->scrollId == 0 && e->id.s && len(e->id) > 0 &&
                (e->style.overflowY == Overflow::Scroll ||
                 e->style.overflowX == Overflow::Scroll)) {
         // A named scroll box has to be findable next frame, or a thumb
@@ -7472,9 +7472,9 @@ static int AccessibilityTextSize(El* e, int* pieces, bool root = true) {
     if (!root && e->accessibility.role != AccessibilityRole::None) {
         return 0;
     }
-    if (e->text.s && e->text.len > 0) {
+    if (e->text.s && len(e->text) > 0) {
         (*pieces)++;
-        return e->text.len;
+        return len(e->text);
     }
     int size = 0;
     for (El* child = e->first; child; child = child->next) {
@@ -7495,12 +7495,12 @@ static void AccessibilityTextWrite(El* e, char* out, int* at, bool* wrote,
     if (!e || (!root && e->accessibility.role != AccessibilityRole::None)) {
         return;
     }
-    if (e->text.s && e->text.len > 0) {
+    if (e->text.s && len(e->text) > 0) {
         if (*wrote) {
             out[(*at)++] = ' ';
         }
-        memcpy(out + *at, e->text.s, (size_t)e->text.len);
-        *at += e->text.len;
+        memcpy(out + *at, e->text.s, (size_t)len(e->text));
+        *at += len(e->text);
         *wrote = true;
         return;
     }

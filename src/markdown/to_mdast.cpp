@@ -58,7 +58,7 @@ struct CompileContext {
 // the tree is. ASCII only, as in util.h.
 static Str IdentifierFrom(Arena* a, Str value) {
     Str id = NormalizeIdentifier(a, value);
-    for (int32_t i = 0; i < id.len; i++) {
+    for (int32_t i = 0; i < len(id); i++) {
         if (id.s[i] >= 'A' && id.s[i] <= 'Z') {
             id.s[i] = (char)(id.s[i] + 32);
         }
@@ -69,13 +69,13 @@ static Str IdentifierFrom(Arena* a, Str value) {
 // to_mdast.rs `trim_eol`.
 static Str TrimEol(Str value, bool atStart, bool atEnd) {
     int32_t start = 0;
-    int32_t end = value.len;
-    if (atStart && value.len > 0) {
+    int32_t end = len(value);
+    if (atStart && len(value) > 0) {
         if (value.s[0] == '\n') {
             start += 1;
         } else if (value.s[0] == '\r') {
             start += 1;
-            if (value.len > 1 && value.s[1] == '\n') {
+            if (len(value) > 1 && value.s[1] == '\n') {
                 start += 1;
             }
         }
@@ -441,37 +441,37 @@ static void OnExitRawText(CompileContext* c) {
     // In a table cell, `\|` is an escaped pipe.
     if (c->gfmTableInside) {
         int32_t index = 0;
-        int32_t len = value.len;
+        int32_t n = len(value);
         bool replace = false;
         char* bytes = value.s;
-        while (index < len) {
-            if (index + 1 < len && bytes[index] == '\\' &&
+        while (index < n) {
+            if (index + 1 < n && bytes[index] == '\\' &&
                 bytes[index + 1] == '|') {
                 replace = true;
-                for (int32_t i = index; i + 1 < len; i++) {
+                for (int32_t i = index; i + 1 < n; i++) {
                     bytes[i] = bytes[i + 1];
                 }
-                len -= 1;
+                n -= 1;
             }
             index += 1;
         }
         if (replace) {
-            value.len = len;
-            value.s[len] = 0;
+            value.len = n;
+            value.s[n] = 0;
         }
     }
 
     // One space at either end is stripped, unless it is all spaces.
-    if (value.len > 2 && value.s[0] == ' ' && value.s[value.len - 1] == ' ') {
+    if (len(value) > 2 && value.s[0] == ' ' && value.s[len(value) - 1] == ' ') {
         bool allSpaces = true;
-        for (int32_t i = 0; i < value.len; i++) {
+        for (int32_t i = 0; i < len(value); i++) {
             if (value.s[i] != ' ') {
                 allSpaces = false;
                 break;
             }
         }
         if (!allSpaces) {
-            value = Str(value.s + 1, value.len - 2);
+            value = Str(value.s + 1, len(value) - 2);
         }
     }
 
@@ -611,11 +611,12 @@ static void OnExitListItem(CompileContext* c) {
                 start += 1;
             } else if (StrStartsWithAny(value, "\r\n")) {
                 start += 1;
-                if (value.len > 1 && value.s[0] == '\r' && value.s[1] == '\n') {
+                if (len(value) > 1 && value.s[0] == '\r' &&
+                    value.s[1] == '\n') {
                     start += 1;
                 }
             }
-            if (start == value.len) {
+            if (start == len(value)) {
                 // Remove the empty text: the paragraph was only a checkbox.
                 // Dropping the first of a ring is the last one's link, or
                 // the ring itself when the two are the same node.
@@ -627,7 +628,7 @@ static void OnExitListItem(CompileContext* c) {
                 }
             } else {
                 Keep(c, text, NodeStrKind::Value,
-                     Str(value.s + start, value.len - start));
+                     Str(value.s + start, len(value) - start));
             }
         }
     }
@@ -637,7 +638,7 @@ static void OnExitListItem(CompileContext* c) {
 static void OnExitListItemValue(CompileContext* c) {
     Str value = ExitSlice(c).bytes;
     uint32_t start = 0;
-    for (int32_t i = 0; i < value.len; i++) {
+    for (int32_t i = 0; i < len(value); i++) {
         start = start * 10 + (uint32_t)(value.s[i] - '0');
     }
     Node* node = TailPenultimateMut(c);

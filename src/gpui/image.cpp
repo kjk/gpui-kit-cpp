@@ -33,7 +33,7 @@ static int Base64Value(char c) {
 static void Base64Decode(Str s, Vec<uint8_t>* out) {
     uint32_t acc = 0;
     int bits = 0;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         int v = Base64Value(s.s[i]);
         if (v < 0) {
             continue;
@@ -61,8 +61,8 @@ static int HexValue(char c) {
 }
 
 static void PercentDecode(Str s, Vec<uint8_t>* out) {
-    for (int i = 0; i < s.len; i++) {
-        if (s.s[i] == '%' && i + 2 < s.len) {
+    for (int i = 0; i < len(s); i++) {
+        if (s.s[i] == '%' && i + 2 < len(s)) {
             int hi = HexValue(s.s[i + 1]);
             int lo = HexValue(s.s[i + 2]);
             if (hi >= 0 && lo >= 0) {
@@ -82,7 +82,7 @@ static bool DataUriBytes(Str src, Vec<uint8_t>* out) {
         return false;
     }
     int comma = -1;
-    for (int i = 5; i < src.len; i++) {
+    for (int i = 5; i < len(src); i++) {
         if (src.s[i] == ',') {
             comma = i;
             break;
@@ -92,9 +92,9 @@ static bool DataUriBytes(Str src, Vec<uint8_t>* out) {
         return false;
     }
     Str header(src.s + 5, comma - 5);
-    Str payload(src.s + comma + 1, src.len - comma - 1);
+    Str payload(src.s + comma + 1, len(src) - comma - 1);
     bool base64 = false;
-    for (int i = 0; i + 6 <= header.len; i++) {
+    for (int i = 0; i + 6 <= len(header); i++) {
         if (StrEq(Str(header.s + i, 6), StrL("base64"))) {
             base64 = true;
             break;
@@ -109,14 +109,14 @@ static bool DataUriBytes(Str src, Vec<uint8_t>* out) {
 }
 
 bool ImageSrcIsLocal(Str src) {
-    if (!src.s || src.len <= 0) {
+    if (!src.s || len(src) <= 0) {
         return false;
     }
     if (base::StrStartsWithI(src, "data:")) {
         return true;
     }
     // Anything with a scheme is somewhere else: http, https, ftp, mailto.
-    for (int i = 0; i + 2 < src.len; i++) {
+    for (int i = 0; i + 2 < len(src); i++) {
         if (src.s[i] == ':' && src.s[i + 1] == '/' && src.s[i + 2] == '/') {
             return false;
         }
@@ -156,7 +156,7 @@ static void AssetResolveClear() {
 static Str ImageAssetResolve(Arena* a, Str src);
 
 Str ImageAssetFor(Arena* a, Str src) {
-    if (!src.s || src.len <= 0 || base::StrStartsWithI(src, "data:")) {
+    if (!src.s || len(src) <= 0 || base::StrStartsWithI(src, "data:")) {
         return {};
     }
     for (int i = 0; i < gAssetResolveN; i++) {
@@ -374,7 +374,7 @@ static ImageCacheSlot* ImageSlotFind(Str src) {
 // Decodes `src` once and remembers the answer, whichever of the two it is.
 // Null while a fetch is still running: nothing is written down then.
 static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
-    if (!src.s || src.len <= 0) {
+    if (!src.s || len(src) <= 0) {
         return nullptr;
     }
     ImageCacheSlot* hit = ImageSlotFind(src);
@@ -508,7 +508,7 @@ ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
     if (loadingSeconds) {
         *loadingSeconds = 0;
     }
-    if (!src.s || src.len <= 0) {
+    if (!src.s || len(src) <= 0) {
         return ImageLoadState::Failed;
     }
     ImageCacheSlot* s = ImageSlotFor(pa, src);
@@ -689,8 +689,8 @@ const uint8_t* ImageVectorForSrc(Str src, int* lenOut) {
     // every icon in the tree comes from and which knows the compiled-in
     // table. Only a src that is not an asset needs the slot above.
     Str asset = ImageAssetFor(GetTempArena(), src);
-    if (asset.s && asset.len > 4 &&
-        StrEqI(Str(asset.s + asset.len - 4, 4), ".svg")) {
+    if (asset.s && len(asset) > 4 &&
+        StrEqI(Str(asset.s + len(asset) - 4, 4), ".svg")) {
         return SvgDrawOpsFor(asset, lenOut);
     }
     ImageCacheSlot* s = ImageSlotFor(nullptr, src);

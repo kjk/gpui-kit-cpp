@@ -68,7 +68,7 @@ bool CommandItemMatches(const CommandItem* item, Str query) {
     if (!item) {
         return false;
     }
-    if (query.len == 0) {
+    if (len(query) == 0) {
         return true;
     }
     if (StrContainsI(item->label, query)) {
@@ -86,7 +86,7 @@ bool CommandItemMatches(const CommandItem* item, Str query) {
 // not part of it.
 static Str TrimQuery(Str s) {
     int lo = 0;
-    int hi = s.len;
+    int hi = len(s);
     while (lo < hi && (unsigned char)s.s[lo] <= ' ') {
         lo++;
     }
@@ -100,10 +100,10 @@ static Str AppliedQuery(const CommandState* s) {
     return Str(s->applied.els, s->applied.len);
 }
 static bool SameQuery(Str a, Str b) {
-    if (a.len != b.len) {
+    if (len(a) != len(b)) {
         return false;
     }
-    for (int i = 0; i < a.len; i++) {
+    for (int i = 0; i < len(a); i++) {
         if (a.s[i] != b.s[i]) {
             return false;
         }
@@ -112,7 +112,7 @@ static bool SameQuery(Str a, Str b) {
 }
 static void SetApplied(CommandState* s, Str q) {
     s->applied.len = 0;
-    for (int i = 0; i < q.len; i++) {
+    for (int i = 0; i < len(q); i++) {
         VecAppend(s->applied, q.s[i]);
     }
 }
@@ -138,7 +138,7 @@ static const CommandItem* ItemOfMatch(const CommandState* s, int matchIx) {
 
 static bool ItemMatchesQuery(const CommandState* s, const CommandItem* item,
                              Str query) {
-    if (!s->searchable || !s->filterable || query.len == 0) {
+    if (!s->searchable || !s->filterable || len(query) == 0) {
         return true;
     }
     return CommandItemMatches(item, query);
@@ -537,7 +537,7 @@ void CommandState::OnAction(CommandState* self, Ctx* cx,
     if (id == action::Cancel() || id == input::Escape()) {
         // Escape clears a non-empty query first, and only then leaves the
         // palette — the dialog hosting it closes on the second press.
-        if (self->searchable && InputValue(&self->query).len > 0) {
+        if (self->searchable && len(InputValue(&self->query)) > 0) {
             CommandSetQuery(self, cx, Str{});
             return;
         }
@@ -687,7 +687,7 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
         if (item->icon != IconName::None) {
             content->Child(IconEl(a, item->icon, 16)->Fg(iconFg));
         }
-        if (item->label.len > 0) {
+        if (len(item->label) > 0) {
             content->Child(
                 TextEl(a, item->label)
                     ->Font(14)
@@ -743,7 +743,7 @@ El* Command::IntoEl() {
     s->onCancel = onCancel;
     // t!("Command.placeholder") where the caller named none, which is Rust's
     // own `unwrap_or_else` on the same key.
-    InputSetPlaceholder(&s->query, placeholder.len > 0
+    InputSetPlaceholder(&s->query, len(placeholder) > 0
                                        ? placeholder
                                        : Tr("Command.placeholder"));
     CommandInstall(s, cx, entries, nEntries, searchable, filterable);

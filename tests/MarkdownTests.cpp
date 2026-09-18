@@ -147,8 +147,8 @@ static void TestMarkdownConstants() {
     TestSuite("markdown constants");
     // The digits of the largest code point, in each base: "1114111" and
     // "10ffff".
-    utassert(kCharacterReferenceDecimalSizeMax == fmt("%d", 0x10ffff).len);
-    utassert(kCharacterReferenceHexadecimalSizeMax == fmt("%x", 0x10ffff).len);
+    utassert(kCharacterReferenceDecimalSizeMax == len(fmt("%d", 0x10ffff)));
+    utassert(kCharacterReferenceHexadecimalSizeMax == len(fmt("%x", 0x10ffff)));
 
     // The two runs and the table are three parallel things now, so the walk
     // has to agree with the offsets the table holds: an entry pointing a byte
@@ -164,9 +164,9 @@ static void TestMarkdownConstants() {
                      .nameOff == name.s - kCharacterReferenceNames);
         utassert(kCharacterReferences[i]
                      .valueOff == value.s - kCharacterReferenceValues);
-        utassert(name.len > 0);
-        if (name.len > longestName) {
-            longestName = name.len;
+        utassert(len(name) > 0);
+        if (len(name) > longestName) {
+            longestName = len(name);
         }
         name = base::SeqStrNext(name);
         value = base::SeqStrNext(value);
@@ -175,10 +175,10 @@ static void TestMarkdownConstants() {
 
     int32_t longestRaw = 0;
     int rawCount = 0;
-    for (Str raw = base::SeqStrFirst(kHtmlRawNames); raw.len > 0;
+    for (Str raw = base::SeqStrFirst(kHtmlRawNames); len(raw) > 0;
          raw = base::SeqStrNext(raw)) {
-        if (raw.len > longestRaw) {
-            longestRaw = raw.len;
+        if (len(raw) > longestRaw) {
+            longestRaw = len(raw);
         }
         rawCount++;
     }
@@ -309,9 +309,9 @@ static void TestMarkdownPositions() {
     utassert(GetUnistPosition(StrL("\xc3\xa9x"), 2, 2).start.column == 3);
 
     // The whole of the source, and an offset past its end that clamps.
-    UnistPosition all = GetUnistPosition(md, 0, (uint32_t)md.len);
-    utassert(all.start.offset == 0 && all.end.offset == md.len);
-    utassert(GetUnistPosition(md, 0, 999).end.offset == md.len);
+    UnistPosition all = GetUnistPosition(md, 0, (uint32_t)len(md));
+    utassert(all.start.offset == 0 && all.end.offset == len(md));
+    utassert(GetUnistPosition(md, 0, 999).end.offset == len(md));
 
     // The offset a heading starts at, counted the way the tokenizer would
     // have: no node keeps one any more, so this is the source and a number,

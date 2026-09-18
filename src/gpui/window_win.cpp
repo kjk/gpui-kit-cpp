@@ -104,7 +104,7 @@ static bool ImeComposition(Window* win, LPARAM lParam) {
     }
     TempStr buf = AllocStrTemp(1023);
     if (lParam & GCS_RESULTSTR) {
-        int n = ImeStringUtf8(imc, GCS_RESULTSTR, buf.s, buf.len + 1);
+        int n = ImeStringUtf8(imc, GCS_RESULTSTR, buf.s, len(buf) + 1);
         if (n > 0) {
             // The commit replaces the marked run, which replace_text_in_range
             // does for a null range, and clears the mark with it.
@@ -114,7 +114,7 @@ static bool ImeComposition(Window* win, LPARAM lParam) {
         }
     }
     if (lParam & GCS_COMPSTR) {
-        int n = ImeStringUtf8(imc, GCS_COMPSTR, buf.s, buf.len + 1);
+        int n = ImeStringUtf8(imc, GCS_COMPSTR, buf.s, len(buf) + 1);
         if (n >= 0) {
             Str text = Str(buf.s, n);
             LONG caret =
@@ -1135,7 +1135,7 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || url.len <= 0) {
+    if (!url.s || len(url) <= 0) {
         return;
     }
     ShellExecuteW(nullptr, L"open", ToCWstrTemp(url), nullptr, nullptr,
@@ -1165,7 +1165,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
         flags &= ~(DWORD)FOS_PICKFOLDERS;
     }
     dlg->SetOptions(flags | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-    if (opts.title.len > 0) {
+    if (len(opts.title) > 0) {
         dlg->SetTitle(ToCWstrTemp(opts.title));
     }
     HWND owner = win && win->plat ? win->plat->hwnd : nullptr;
@@ -1200,7 +1200,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
-    if (!text.s || text.len <= 0) {
+    if (!text.s || len(text) <= 0) {
         return;
     }
     WCHAR* w = ToCWstrTemp(text);

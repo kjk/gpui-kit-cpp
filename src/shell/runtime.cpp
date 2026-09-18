@@ -757,7 +757,7 @@ static void SettleShellTask(ShellTaskLease* lease, bool failed, Str message,
         JS_SetPropertyStr(
             impl->context, value, "message",
             JS_NewStringLen(impl->context, message.s ? message.s : "",
-                            (size_t)(message.s ? message.len : 0)));
+                            (size_t)(message.s ? len(message) : 0)));
     } else {
         value = makeValue(impl, user);
     }
@@ -851,7 +851,7 @@ static JSValue FsJobValue(JSContext* context, FsJob* job) {
     for (int i = 0; i < job->result.entries.len; i++) {
         const shell::FsEntry& entry = job->result.entries[i];
         JSValue name =
-            JS_NewStringLen(context, entry.name.s, (size_t)entry.name.len);
+            JS_NewStringLen(context, entry.name.s, (size_t)len(entry.name));
         JSValue value = name;
         if (job->withFileTypes) {
             JSValue args[2] = {name, JS_NewBool(context, entry.isDirectory)};
@@ -898,9 +898,9 @@ static JSValue FetchJobValue(JSContext* context, ShellFetchJob* job) {
     JSValue args[3] = {
         JS_NewInt32(context, job->result.status),
         JS_NewStringLen(context, job->result.url.s ? job->result.url.s : "",
-                        (size_t)job->result.url.len),
+                        (size_t)len(job->result.url)),
         JS_NewStringLen(context, job->result.body.s ? job->result.body.s : "",
-                        (size_t)job->result.body.len),
+                        (size_t)len(job->result.body)),
     };
     JSValue value = JS_IsException(make)
                         ? JS_EXCEPTION
@@ -990,7 +990,7 @@ static void StorageFlushDone(StorageFlushState* state,
                 impl->context, value, "message",
                 JS_NewStringLen(impl->context,
                                 outcome.error.s ? outcome.error.s : fallback,
-                                (size_t)(outcome.error.s ? outcome.error.len
+                                (size_t)(outcome.error.s ? len(outcome.error)
                                                          : strlen(fallback))));
             argc = 1;
         }
@@ -1171,7 +1171,7 @@ static bool Await(ShellRuntimeImpl* impl, JSValueConst value,
 }
 
 static TempStr ReadModuleFileTemp(Str path, ShellError* error) {
-    if (path.len <= 0 || path.len >= kMaxPath) {
+    if (len(path) <= 0 || len(path) >= kMaxPath) {
         SetError(error, StrL("module path is empty or too long"));
         return {};
     }
@@ -1324,7 +1324,7 @@ static int InitBuiltinModule(JSContext* ctx, JSModuleDef* module) {
 }
 
 static int LastByte(Str value, char needle) {
-    for (int i = value.len - 1; i >= 0; i--) {
+    for (int i = len(value) - 1; i >= 0; i--) {
         if (value.s[i] == needle) return i;
     }
     return -1;
@@ -1332,10 +1332,10 @@ static int LastByte(Str value, char needle) {
 
 static AppModule* ApplicationForBase(ShellRuntimeImpl* impl, Str base) {
     int tag = LastByte(base, '?');
-    if (tag < 0 || !StrStartsWith(Str(base.s + tag, base.len - tag), "?v="))
+    if (tag < 0 || !StrStartsWith(Str(base.s + tag, len(base) - tag), "?v="))
         return nullptr;
     uint32_t generation = 0;
-    for (int at = tag + 3; at < base.len; at++) {
+    for (int at = tag + 3; at < len(base); at++) {
         if (base.s[at] < '0' || base.s[at] > '9') return nullptr;
         generation = generation * 10u + (uint32_t)(base.s[at] - '0');
     }
@@ -1347,12 +1347,11 @@ static AppModule* ApplicationForBase(ShellRuntimeImpl* impl, Str base) {
 
 static TempStr UntagTemp(Str name) {
     int tag = LastByte(name, '?');
-    int len =
-        tag >= 0 && StrStartsWith(Str(name.s + tag, name.len - tag), "?v=")
-            ? tag
-            : name.len;
-    if (len >= kMaxPath) len = kMaxPath - 1;
-    return StrDupTemp(Str(name.s, len));
+    int n = tag >= 0 && StrStartsWith(Str(name.s + tag, len(name) - tag), "?v=")
+                ? tag
+                : len(name);
+    if (n >= kMaxPath) n = kMaxPath - 1;
+    return StrDupTemp(Str(name.s, n));
 }
 
 static void DirectoryName(Str* path) {
@@ -1367,13 +1366,13 @@ static void DirectoryName(Str* path) {
 }
 
 static bool WithinRoot(Str root, Str path) {
-    if (path.len < root.len) return false;
+    if (len(path) < len(root)) return false;
 #if GPUI_OS_WINDOWS
-    if (StrCmpNI(root.s, path.s, root.len) != 0) return false;
+    if (StrCmpNI(root.s, path.s, len(root)) != 0) return false;
 #else
-    if (!StrEq(root, Str(path.s, root.len))) return false;
+    if (!StrEq(root, Str(path.s, len(root)))) return false;
 #endif
-    return path.len == root.len || path.s[root.len] == '/';
+    return len(path) == len(root) || path.s[len(root)] == '/';
 }
 
 static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
@@ -1382,8 +1381,8 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
     Str baseName = Str(base);
     Str moduleName = Str(name);
     if (IsBuiltin(moduleName)) {
-        char* out = (char*)js_malloc(ctx, (size_t)moduleName.len + 1);
-        if (out) memcpy(out, moduleName.s, (size_t)moduleName.len + 1);
+        char* out = (char*)js_malloc(ctx, (size_t)len(moduleName) + 1);
+        if (out) memcpy(out, moduleName.s, (size_t)len(moduleName) + 1);
         return out;
     }
     if (name[0] != '.' && name[0] != '/' && name[0] != '\\') {
@@ -1401,10 +1400,10 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
         if (found) {
             TempStr tagged = fmt("host:%s?m=%llu", moduleName,
                                  (unsigned long long)generation);
-            char* out = tagged ? (char*)js_malloc(ctx, (size_t)tagged.len + 1)
+            char* out = tagged ? (char*)js_malloc(ctx, (size_t)len(tagged) + 1)
                                : nullptr;
             if (out) {
-                memcpy(out, tagged.s, (size_t)tagged.len + 1);
+                memcpy(out, tagged.s, (size_t)len(tagged) + 1);
             }
             return out;
         }
@@ -1442,30 +1441,30 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
                 application->dependencies.items[i];
             Str dependencyName = dependency.name;
             if (!StrStartsWith(moduleName, dependencyName)) continue;
-            char after = dependencyName.len < moduleName.len
-                             ? moduleName.s[dependencyName.len]
+            char after = len(dependencyName) < len(moduleName)
+                             ? moduleName.s[len(dependencyName)]
                              : 0;
             if (after != 0 && after != '/') continue;
-            if (!named || dependencyName.len > named->name.len)
+            if (!named || len(dependencyName) > len(named->name))
                 named = &dependency;
         }
         if (named) {
-            if (moduleName.len == named->name.len) {
+            if (len(moduleName) == len(named->name)) {
                 // The entry was resolved and confined when it was
                 // materialized; no second file test can improve on that.
                 TempStr entryTagged =
                     fmt("%s?v=%u", named->entry, application->generation);
-                if (!entryTagged || entryTagged.len >= kMaxPath + 32)
+                if (!entryTagged || len(entryTagged) >= kMaxPath + 32)
                     return nullptr;
-                char* out = (char*)js_malloc(ctx, (size_t)entryTagged.len + 1);
+                char* out = (char*)js_malloc(ctx, (size_t)len(entryTagged) + 1);
                 if (out)
-                    memcpy(out, entryTagged.s, (size_t)entryTagged.len + 1);
+                    memcpy(out, entryTagged.s, (size_t)len(entryTagged) + 1);
                 return out;
             }
             start = StrDupTemp(named->root);
             boundary = named->root;
-            tail = Str(moduleName.s + named->name.len + 1,
-                       moduleName.len - named->name.len - 1);
+            tail = Str(moduleName.s + len(named->name) + 1,
+                       len(moduleName) - len(named->name) - 1);
         } else if (importing) {
             // A dependency imports nothing but its own files and the
             // dependencies the application declared.
@@ -1477,16 +1476,16 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
         }
     }
     TempStr joined = fmt("%s/%s", start, tail);
-    if (!joined || joined.len >= kMaxPath) {
+    if (!joined || len(joined) >= kMaxPath) {
         JS_ThrowReferenceError(ctx, "module path `%s` is too long", name);
         return nullptr;
     }
-    bool found = PlatCanonicalPath(joined.s, candidate.s, candidate.len + 1) &&
+    bool found = PlatCanonicalPath(joined.s, candidate.s, len(candidate) + 1) &&
                  PlatFileExists(candidate.s);
     if (!found) {
         joined = fmt("%s/%s.js", start, tail);
-        found = joined && joined.len < kMaxPath &&
-                PlatCanonicalPath(joined.s, candidate.s, candidate.len + 1) &&
+        found = joined && len(joined) < kMaxPath &&
+                PlatCanonicalPath(joined.s, candidate.s, len(candidate) + 1) &&
                 PlatFileExists(candidate.s);
     }
     if (!found) {
@@ -1502,9 +1501,9 @@ static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
         return nullptr;
     }
     TempStr tagged = fmt("%s?v=%u", canonical, application->generation);
-    if (!tagged || tagged.len >= kMaxPath + 32) return nullptr;
-    char* out = (char*)js_malloc(ctx, (size_t)tagged.len + 1);
-    if (out) memcpy(out, tagged.s, (size_t)tagged.len + 1);
+    if (!tagged || len(tagged) >= kMaxPath + 32) return nullptr;
+    char* out = (char*)js_malloc(ctx, (size_t)len(tagged) + 1);
+    if (out) memcpy(out, tagged.s, (size_t)len(tagged) + 1);
     return out;
 }
 
@@ -1512,10 +1511,10 @@ static bool HostModuleTag(Str tagged, Str* module, uint64_t* generation) {
     if (!StrStartsWith(tagged, "host:")) return false;
     int tag = LastByte(tagged, '?');
     if (tag < 0 || tag == 5 ||
-        !StrStartsWith(Str(tagged.s + tag, tagged.len - tag), "?m="))
+        !StrStartsWith(Str(tagged.s + tag, len(tagged) - tag), "?m="))
         return false;
     uint64_t value = 0;
-    for (int at = tag + 3; at < tagged.len; at++) {
+    for (int at = tag + 3; at < len(tagged); at++) {
         if (tagged.s[at] < '0' || tagged.s[at] > '9' ||
             value > (UINT64_MAX - (uint64_t)(tagged.s[at] - '0')) / 10)
             return false;
@@ -1529,7 +1528,7 @@ static bool HostModuleTag(Str tagged, Str* module, uint64_t* generation) {
 static void AppendJsQuoted(StrBuilder* out, Str value) {
     out->AppendChar('"');
     static const char hex[] = "0123456789abcdef";
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         uint8_t c = (uint8_t)value.s[i];
         if (c == '"' || c == '\\') {
             out->AppendChar('\\');
@@ -1569,7 +1568,7 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
             ctx,
             "the HostModule registry changed while `%.*s` was being imported; "
             "export modules before loading an application",
-            moduleName.len, moduleName.s);
+            len(moduleName), moduleName.s);
         return nullptr;
     }
     StrBuilder source;
@@ -1581,7 +1580,7 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
             JS_ThrowReferenceError(ctx,
                                    "HostModule `%.*s` registered `%.*s`, which "
                                    "is not a JavaScript identifier",
-                                   moduleName.len, moduleName.s, function.len,
+                                   len(moduleName), moduleName.s, len(function),
                                    function.s);
             return nullptr;
         }
@@ -1599,7 +1598,7 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
     if (release) PolicyRelease(policy);
     Str script = source.TakeStr();
     JSValue value =
-        JS_Eval(ctx, script.s ? script.s : "", (size_t)script.len, name.s,
+        JS_Eval(ctx, script.s ? script.s : "", (size_t)len(script), name.s,
                 JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     StrFree(script);
     if (JS_IsException(value)) return nullptr;
@@ -1628,12 +1627,12 @@ static JSModuleDef* ModuleLoad(JSContext* ctx, const char* name, void*) {
     TempStr source = ReadModuleFileTemp(path, &error);
     if (!source.s) {
         JS_ThrowReferenceError(
-            ctx, "%.*s", error.message.len,
+            ctx, "%.*s", len(error.message),
             error.message.s ? error.message.s : "module load failed");
         ShellErrorClear(&error);
         return nullptr;
     }
-    JSValue value = JS_Eval(ctx, source.s, (size_t)source.len, name,
+    JSValue value = JS_Eval(ctx, source.s, (size_t)len(source), name,
                             JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     if (JS_IsException(value)) return nullptr;
     JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(value);
@@ -1799,7 +1798,7 @@ static bool JsArrayString(JSContext* ctx, JSValueConst array, uint32_t index,
 }
 
 static bool ParseFiniteText(Str text, float* out) {
-    if (!text.s || text.len <= 0 || text.len >= 64) return false;
+    if (!text.s || len(text) <= 0 || len(text) >= 64) return false;
     TempStr buf = StrDupTemp(text);
     char* end = nullptr;
     double value = strtod(buf.s, &end);
@@ -1890,7 +1889,7 @@ static bool JsSpecId(JSContext* ctx, JSValueConst value, shell::SpecId* out) {
 static JSValue SpecFailure(JSContext* ctx, const shell::SpecError& failure) {
     Arena* arena = ArenaNew();
     Str message = shell::SpecErrorMessage(arena, failure);
-    JSValue result = JS_ThrowTypeError(ctx, "%.*s", message.len, message.s);
+    JSValue result = JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
     ArenaDelete(arena);
     return result;
 }
@@ -2322,7 +2321,7 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
             "`%.*s` inside a template body registers one handler for the life "
             "of the template, which would capture this first call's values "
             "forever. Take the handler as a parameter and pass it in",
-            method.len, method.s);
+            len(method), method.s);
     } else if (int unused = UnusedArgument(discovery->arity, discovery->slots);
                unused >= 0) {
         failure = JS_ThrowTypeError(
@@ -2509,7 +2508,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 "renderer or a dock's chrome handler: those are rebuilt every "
                 "frame, so a handler registered there would pile up for as "
                 "long as the view stood",
-                name.len, name.s);
+                len(name), name.s);
             ArenaDelete(arena);
             return thrown;
         }
@@ -2521,7 +2520,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
         JS_FreeValue(ctx, firstValue);
         // The message names strings the arena holds, so it is built before the
         // arena goes rather than after it.
-        if (!haveFirst || first.len == 0) {
+        if (!haveFirst || len(first) == 0) {
             JSValue thrown = JS_ThrowTypeError(
                 ctx,
                 actionCallback
@@ -2529,7 +2528,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                       "first, as a non-empty string"
                     : "%.*s(button, handler) expects a button first: "
                       "\"left\", \"right\" or \"middle\"",
-                name.len, name.s);
+                len(name), name.s);
             ArenaDelete(arena);
             return thrown;
         }
@@ -2541,7 +2540,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     ctx,
                     "`%.*s` is not a mouse button; expected \"left\", "
                     "\"right\" or \"middle\"",
-                    first.len, first.s);
+                    len(first), first.s);
                 ArenaDelete(arena);
                 return thrown;
             }
@@ -2551,7 +2550,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
         if (!JS_IsFunction(ctx, handler)) {
             JS_FreeValue(ctx, handler);
             JSValue thrown = JS_ThrowTypeError(
-                ctx, "%.*s(%s, handler) expects a function second", name.len,
+                ctx, "%.*s(%s, handler) expects a function second", len(name),
                 name.s, actionCallback ? "action" : "button");
             ArenaDelete(arena);
             return thrown;
@@ -2622,7 +2621,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 JS_FreeValue(ctx, handler);
                 ArenaDelete(arena);
                 return JS_ThrowTypeError(
-                    ctx, "%.*s(handler) expects a function", name.len, name.s);
+                    ctx, "%.*s(handler) expects a function", len(name), name.s);
             }
             shell::CallbackId callback = impl->callbacks.Push(
                 ctx, handler, shell::ScopeCurrentView(),
@@ -2669,7 +2668,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                             "template fills text children, style arguments "
                             "and handlers. Compute the value where the "
                             "template is called and pass the result",
-                            name.len, name.s);
+                            len(name), name.s);
                         ArenaDelete(arena);
                         return thrown;
                     }
@@ -2715,7 +2714,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                     ctx,
                     "%.*s(...) expects the group, dock or tile its chrome "
                     "handler was given as its first argument",
-                    name.len, name.s);
+                    len(name), name.s);
                 ArenaDelete(arena);
                 return thrown;
             }
@@ -2739,7 +2738,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 AccessibilityRole::None) {
                 JSValue thrown =
                     JS_ThrowRangeError(ctx, "unknown accessibility role `%.*s`",
-                                       roleName.len, roleName.s);
+                                       len(roleName), roleName.s);
                 ArenaDelete(arena);
                 return thrown;
             }
@@ -2826,7 +2825,7 @@ static JSValue ThrowNestedError(JSContext* ctx, ShellError* error,
                                 const char* fallback) {
     JSValue result =
         error && error->IsSet()
-            ? JS_ThrowInternalError(ctx, "%.*s", error->message.len,
+            ? JS_ThrowInternalError(ctx, "%.*s", len(error->message),
                                     error->message.s)
             : JS_ThrowInternalError(ctx, "%s", fallback);
     ShellErrorClear(error);
@@ -3251,7 +3250,7 @@ static bool SheetPlacementFromJs(JSContext* ctx, JSValueConst value,
             JS_ThrowTypeError(ctx,
                               "unknown sheet placement `%.*s`; expected left, "
                               "right, top or bottom",
-                              name.len, name.s);
+                              len(name), name.s);
             ok = false;
         }
     }
@@ -3337,7 +3336,7 @@ static JSValue NativeShowFpsMonitor(JSContext* ctx, JSValueConst, int argc,
             StrBuilder names;
             bool first = true;
             SeqStrings all = FpsAnchorNames();
-            for (Str name = SeqStrFirst(all); name.len > 0;
+            for (Str name = SeqStrFirst(all); len(name) > 0;
                  name = SeqStrNext(name)) {
                 if (!first) names.Append(StrL(", "));
                 first = false;
@@ -3346,7 +3345,7 @@ static JSValue NativeShowFpsMonitor(JSContext* ctx, JSValueConst, int argc,
             Str list = names.TakeStr();
             JSValue thrown = JS_ThrowTypeError(
                 ctx, "%s: unknown anchor `%.*s`; expected one of %.*s", kApi,
-                anchor.len, anchor.s, list.len, list.s);
+                len(anchor), anchor.s, len(list), list.s);
             StrFree(list);
             ArenaDelete(arena);
             return thrown;
@@ -3438,7 +3437,7 @@ static JSValue NativePushToast(JSContext* ctx, JSValueConst, int argc,
         JS_ThrowTypeError(ctx,
                           "unknown toast level `%.*s`; expected info, success, "
                           "warning or error",
-                          levelName.len, levelName.s);
+                          len(levelName), levelName.s);
         ok = false;
     }
     bool id = false;
@@ -3596,7 +3595,7 @@ static JSValue NativeInputValue(JSContext* ctx, JSValueConst, int argc,
     if (!host.IsSet())
         return JS_ThrowTypeError(ctx, "value() needs a live host call");
     Str value = InputValue(entry->input);
-    return JS_NewStringLen(ctx, value.s ? value.s : "", (size_t)value.len);
+    return JS_NewStringLen(ctx, value.s ? value.s : "", (size_t)len(value));
 }
 
 static JSValue NativeInputSetValue(JSContext* ctx, JSValueConst, int argc,
@@ -3924,7 +3923,7 @@ static JSValue NativeOtpSetValue(JSContext* ctx, JSValueConst, int argc,
     Str value;
     bool ok = state && JsString(ctx, argv[1], arena, &value);
     if (ok) {
-        int n = value.len;
+        int n = len(value);
         if (n > (int)sizeof(state->value) - 1)
             n = (int)sizeof(state->value) - 1;
         if (n > 0) memcpy(state->value, value.s, (size_t)n);
@@ -4445,7 +4444,8 @@ static void AppendThemeColor(StrBuilder* out, Str name, bool comma) {
 static void AppendThemeColors(StrBuilder* out) {
     int index = 0;
     SeqStrings names = shell::ThemeColorTokenNames();
-    for (Str name = SeqStrFirst(names); name.len > 0; name = SeqStrNext(name)) {
+    for (Str name = SeqStrFirst(names); len(name) > 0;
+         name = SeqStrNext(name)) {
         AppendThemeColor(out, name, index++ > 0);
     }
 }
@@ -4453,7 +4453,8 @@ static void AppendThemeColors(StrBuilder* out) {
 static void AppendThemeScale(StrBuilder* out, SeqStrings names,
                              bool (*value)(Str, float*)) {
     int index = 0;
-    for (Str name = SeqStrFirst(names); name.len > 0; name = SeqStrNext(name)) {
+    for (Str name = SeqStrFirst(names); len(name) > 0;
+         name = SeqStrNext(name)) {
         float number = 0;
         if (value(name, &number)) {
             if (index++) out->AppendChar(',');
@@ -4555,7 +4556,8 @@ static bool SetThemeRadius(RadiusTokens* radius, Str name, float value) {
 static bool ReadThemeColors(JSContext* ctx, JSValueConst object,
                             ColorTokens* colors) {
     SeqStrings names = shell::ThemeColorTokenNames();
-    for (Str name = SeqStrFirst(names); name.len > 0; name = SeqStrNext(name)) {
+    for (Str name = SeqStrFirst(names); len(name) > 0;
+         name = SeqStrNext(name)) {
         JSValue property = JS_UNDEFINED;
         if (!ThemeRequiredProperty(ctx, object, name.s, &property,
                                    "theme tokens.colors")) {
@@ -4564,7 +4566,7 @@ static bool ReadThemeColors(JSContext* ctx, JSValueConst object,
         if (!JS_IsString(property)) {
             JS_FreeValue(ctx, property);
             JS_ThrowTypeError(ctx, "theme color `%.*s` must be a string",
-                              name.len, name.s);
+                              len(name), name.s);
             return false;
         }
         size_t len = 0;
@@ -4593,7 +4595,8 @@ static bool ReadThemeColors(JSContext* ctx, JSValueConst object,
 static bool ReadThemeScale(JSContext* ctx, JSValueConst object,
                            SeqStrings names, const char* container,
                            SpacingTokens* spacing, RadiusTokens* radius) {
-    for (Str name = SeqStrFirst(names); name.len > 0; name = SeqStrNext(name)) {
+    for (Str name = SeqStrFirst(names); len(name) > 0;
+         name = SeqStrNext(name)) {
         JSValue property = JS_UNDEFINED;
         if (!ThemeRequiredProperty(ctx, object, name.s, &property, container)) {
             return false;
@@ -4606,7 +4609,7 @@ static bool ReadThemeScale(JSContext* ctx, JSValueConst object,
         if (!ok) {
             JS_ThrowTypeError(
                 ctx, "theme token `%.*s` must be finite and non-negative",
-                name.len, name.s);
+                len(name), name.s);
             return false;
         }
         if (spacing)
@@ -4760,7 +4763,7 @@ static bool ReadThemeTypography(JSContext* ctx, JSValueConst tokensValue,
 // characters JSON cannot carry raw are escaped rather than assumed absent.
 static void AppendJsonString(StrBuilder* out, Str value) {
     out->AppendChar('"');
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         char c = value.s[i];
         if (c == '\\' || c == '"') out->AppendChar('\\');
         out->AppendChar(c);
@@ -4917,7 +4920,7 @@ static shell::ScopeHostContext ThemeHost(JSContext* ctx, int argc,
     if (!host.IsSet()) {
         Str message = error.IsSet() ? error.message
                                     : StrL("cx.theme() needs a live host call");
-        JS_ThrowTypeError(ctx, "%.*s", message.len, message.s);
+        JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
     }
     ShellErrorClear(&error);
     return host;
@@ -4947,7 +4950,7 @@ static JSValue NativeThemeSnapshot(JSContext* ctx, JSValueConst, int argc,
     uint32_t revision = shell::ThemeTokensSync(host.GetApp());
     if (gThemeSnapshotJson && revision == gThemeSnapshotRevision) {
         return JS_NewStringLen(ctx, gThemeSnapshotJson.s,
-                               (size_t)gThemeSnapshotJson.len);
+                               (size_t)len(gThemeSnapshotJson));
     }
     StrBuilder json;
     json.AppendChar('{');
@@ -4970,7 +4973,7 @@ static JSValue NativeThemeSnapshot(JSContext* ctx, JSValueConst, int argc,
     gThemeSnapshotJson = json.TakeStr();
     gThemeSnapshotRevision = revision;
     JSValue result = JS_NewStringLen(ctx, gThemeSnapshotJson.s,
-                                     (size_t)gThemeSnapshotJson.len);
+                                     (size_t)len(gThemeSnapshotJson));
     ShellErrorClear(&error);
     return result;
 }
@@ -5007,7 +5010,8 @@ static JSValue NativeOpenUrl(JSContext* ctx, JSValueConst, int argc,
         Str message = error.IsSet()
                           ? error.message
                           : StrL("cx.open_url(url) needs a live host call");
-        JSValue result = JS_ThrowTypeError(ctx, "%.*s", message.len, message.s);
+        JSValue result =
+            JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
         ShellErrorClear(&error);
         ArenaDelete(arena);
         return result;
@@ -5029,7 +5033,7 @@ static JSValue NativeNotify(JSContext* ctx, JSValueConst, int argc,
         shell::ScopeHostForGeneration(generation, &error);
     if (!host.IsSet()) {
         JSValue result =
-            JS_ThrowTypeError(ctx, "%.*s", error.message.len, error.message.s);
+            JS_ThrowTypeError(ctx, "%.*s", len(error.message), error.message.s);
         ShellErrorClear(&error);
         return result;
     }
@@ -5273,7 +5277,7 @@ static JSValue NativeStorageGet(JSContext* ctx, JSValueConst, int argc,
     bool ok = argc >= 1 && JsString(ctx, argv[0], arena, &key);
     Str value = ok ? storage->Get(key) : Str{};
     JSValue result = !ok     ? JS_EXCEPTION
-                     : value ? JS_NewStringLen(ctx, value.s, (size_t)value.len)
+                     : value ? JS_NewStringLen(ctx, value.s, (size_t)len(value))
                              : JS_NULL;
     ArenaDelete(arena);
     PolicyRelease(held);
@@ -5296,7 +5300,7 @@ static JSValue NativeStorageSet(JSContext* ctx, JSValueConst, int argc,
     }
     JSValue result =
         ok      ? JS_UNDEFINED
-        : error ? JS_ThrowInternalError(ctx, "%.*s", error.len, error.s)
+        : error ? JS_ThrowInternalError(ctx, "%.*s", len(error), error.s)
                 : JS_EXCEPTION;
     StrFree(error);
     ArenaDelete(arena);
@@ -5319,7 +5323,7 @@ static JSValue NativeStorageRemove(JSContext* ctx, JSValueConst, int argc,
     }
     JSValue result =
         ok      ? JS_UNDEFINED
-        : error ? JS_ThrowInternalError(ctx, "%.*s", error.len, error.s)
+        : error ? JS_ThrowInternalError(ctx, "%.*s", len(error), error.s)
                 : JS_EXCEPTION;
     StrFree(error);
     ArenaDelete(arena);
@@ -5340,7 +5344,7 @@ static JSValue NativeStorageClear(JSContext* ctx, JSValueConst, int,
     }
     JSValue result =
         ok ? JS_UNDEFINED
-           : JS_ThrowInternalError(ctx, "%.*s", error.len, error.s);
+           : JS_ThrowInternalError(ctx, "%.*s", len(error), error.s);
     StrFree(error);
     PolicyRelease(held);
     return result;
@@ -5367,7 +5371,7 @@ static JSValue NativeStorageKey(JSContext* ctx, JSValueConst, int argc,
     bool ok = argc >= 1 && JS_ToInt32(ctx, &index, argv[0]) == 0;
     Str key = ok ? storage->Key(index) : Str{};
     JSValue result = !ok   ? JS_EXCEPTION
-                     : key ? JS_NewStringLen(ctx, key.s, (size_t)key.len)
+                     : key ? JS_NewStringLen(ctx, key.s, (size_t)len(key))
                            : JS_NULL;
     PolicyRelease(held);
     return result;
@@ -5436,7 +5440,8 @@ static JSValue NativeStorageFlush(JSContext* ctx, JSValueConst, int,
         ControlRelease(state->control);
         delete state;
         JS_FreeValue(ctx, promise);
-        JSValue result = JS_ThrowInternalError(ctx, "%.*s", error.len, error.s);
+        JSValue result =
+            JS_ThrowInternalError(ctx, "%.*s", len(error), error.s);
         StrFree(error);
         PolicyRelease(held);
         return result;
@@ -5477,7 +5482,7 @@ static JSValue NativeClipboard(JSContext* ctx, JSValueConst, int argc,
         Arena* arena = ArenaNew();
         Str value = ClipboardGetText(arena, host.GetWindow());
         result =
-            value ? JS_NewStringLen(ctx, value.s, (size_t)value.len) : JS_NULL;
+            value ? JS_NewStringLen(ctx, value.s, (size_t)len(value)) : JS_NULL;
         ArenaDelete(arena);
     } else {
         Arena* arena = ArenaNew();
@@ -5671,7 +5676,7 @@ static JSValue HostIntoJs(JSContext* ctx, const HostValue& value,
             return JS_NewFloat64(ctx, value.number);
         case HostValueKind::String:
             return JS_NewStringLen(ctx, value.string.s ? value.string.s : "",
-                                   (size_t)value.string.len);
+                                   (size_t)len(value.string));
         case HostValueKind::Array: {
             if (value.array.len > kHostBridgeMaxItems)
                 return JS_ThrowRangeError(
@@ -5742,8 +5747,8 @@ static JSValue NativeHostCall(JSContext* ctx, JSValueConst, int argc,
     JSValue result = JS_EXCEPTION;
     if (!ok) {
         result = JS_ThrowTypeError(
-            ctx, "`%.*s.%.*s`: %.*s", module.len, module.s, function.len,
-            function.s, call.error.message.len,
+            ctx, "`%.*s.%.*s`: %.*s", len(module), module.s, len(function),
+            function.s, len(call.error.message),
             call.error.message.s ? call.error.message.s : "host call failed");
     } else {
         result = HostIntoJs(ctx, call.result);
@@ -5824,8 +5829,8 @@ static JSValue NativeHostAsyncCall(JSContext* ctx, JSValueConst, int argc,
     shell::MetricsEnd(&timer);
     if (!ok) {
         JSValue result = JS_ThrowTypeError(
-            ctx, "`%.*s.%.*s`: %.*s", module.len, module.s, function.len,
-            function.s, request.error.message.len,
+            ctx, "`%.*s.%.*s`: %.*s", len(module), module.s, len(function),
+            function.s, len(request.error.message),
             request.error.message.s ? request.error.message.s
                                     : "host call failed");
         request.error.Clear();
@@ -5990,7 +5995,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
     if (!shell::FetchIsHttpMethod(method)) {
         JSValue thrown = JS_ThrowTypeError(
             ctx, "fetch(url, options).method `%.*s` is not an HTTP method",
-            method.len, method.s ? method.s : "");
+            len(method), method.s ? method.s : "");
         ArenaDelete(arena);
         return thrown;
     }
@@ -6000,7 +6005,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
     // Upper-cased on the way through, the way `fetch` does with a known
     // method, so a policy written in the ordinary spelling matches.
     Str upper = StrDup(method);
-    for (int i = 0; i < upper.len; i++) {
+    for (int i = 0; i < len(upper); i++) {
         if (upper.s[i] >= 'a' && upper.s[i] <= 'z') {
             upper.s[i] = (char)(upper.s[i] - 'a' + 'A');
         }
@@ -6026,7 +6031,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
                     JS_FreeValue(ctx, valueValue);
                     JSValue thrown = JS_ThrowTypeError(
                         ctx, "fetch(url, options).headers may not set `%.*s`",
-                        name.len, name.s ? name.s : "");
+                        len(name), name.s ? name.s : "");
                     request.Free();
                     ArenaDelete(arena);
                     return thrown;
@@ -6054,7 +6059,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
             Str text;
             if (JsString(ctx, argv[3], arena, &text)) {
                 request.body = StrDup(text);
-                ok = request.body.s || text.len == 0;
+                ok = request.body.s || len(text) == 0;
             } else {
                 ok = false;
             }
@@ -6070,7 +6075,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
             ok = request.body.s || count == 0;
         }
     }
-    if (ok && request.body.len > shell::kFetchMaxRequestBody) {
+    if (ok && len(request.body) > shell::kFetchMaxRequestBody) {
         JSValue thrown = JS_ThrowRangeError(
             ctx, "fetch request body exceeded the %d byte limit",
             shell::kFetchMaxRequestBody);
@@ -6091,7 +6096,7 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
         shell::FetchAuthorize(request.url, request.method,
                               PolicyCapabilities(policy), &authorizationError);
     if (!allowed) {
-        JSValue result = JS_ThrowTypeError(ctx, "%.*s", authorizationError.len,
+        JSValue result = JS_ThrowTypeError(ctx, "%.*s", len(authorizationError),
                                            authorizationError.s
                                                ? authorizationError.s
                                                : "fetch URL is not granted");
@@ -6198,7 +6203,8 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
     if (release) PolicyRelease(policy);
     if (!ok) {
         Str message = CapabilityErrorMessage(arena, capabilityError);
-        JSValue result = JS_ThrowTypeError(ctx, "%.*s", message.len, message.s);
+        JSValue result =
+            JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
         CapabilityErrorFree(&capabilityError);
         ArenaDelete(arena);
         return result;
@@ -6240,13 +6246,13 @@ static JSValue NativeFs(JSContext* ctx, JSValueConst, int argc,
                 ok = false;
             }
         }
-        if (ok && job->input.len > shell::kFsMaxWriteBytes) {
+        if (ok && len(job->input) > shell::kFsMaxWriteBytes) {
             JS_ThrowRangeError(
                 ctx,
                 "fs.writeFile contents exceed the 8388608-byte write limit");
             ok = false;
         }
-        if (ok && !job->input.s && job->input.len != 0) {
+        if (ok && !job->input.s && len(job->input) != 0) {
             JS_ThrowOutOfMemory(ctx);
             ok = false;
         }
@@ -6315,7 +6321,7 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
         JSValue result = JS_ThrowTypeError(
             ctx,
             "running `%.*s` is not granted; add it to capabilities.fs.execute",
-            command.len, command.s);
+            len(command), command.s);
         ArenaDelete(arena);
         return result;
     }
@@ -6357,7 +6363,7 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
             ok = false;
             break;
         }
-        if (argument.len > 1024 * 1024 - totalBytes) {
+        if (len(argument) > 1024 * 1024 - totalBytes) {
             JS_ThrowRangeError(ctx,
                                "process.run arguments exceed the 1 MiB limit");
             ok = false;
@@ -6370,7 +6376,7 @@ static JSValue NativeProcessRun(JSContext* ctx, JSValueConst, int argc,
             ok = false;
             break;
         }
-        totalBytes += argument.len;
+        totalBytes += len(argument);
     }
     ArenaDelete(arena);
     if (!ok) {
@@ -6518,14 +6524,14 @@ static JSValue NativeZlib(JSContext* ctx, JSValueConst, int argc,
     if (!ok) {
         const char* message =
             error.s ? error.s : "compression operation failed";
-        int messageLen = error.s ? error.len : (int)strlen(message);
+        int messageLen = error.s ? len(error) : (int)strlen(message);
         JSValue result = JS_ThrowTypeError(ctx, "%.*s", messageLen, message);
         StrFree(error);
         StrFree(output);
         return result;
     }
     JSValue result = JS_NewUint8ArrayCopy(
-        ctx, (const uint8_t*)(output.s ? output.s : ""), (size_t)output.len);
+        ctx, (const uint8_t*)(output.s ? output.s : ""), (size_t)len(output));
     StrFree(error);
     StrFree(output);
     return result;
@@ -8105,7 +8111,7 @@ static JSValue NativeBindKeys(JSContext* ctx, JSValueConst, int argc,
         JS_FreeValue(ctx, actionValue);
         JS_FreeValue(ctx, contextValue);
         JS_FreeValue(ctx, entry);
-        if (!ok || action.len == 0 || stroke.len == 0) {
+        if (!ok || len(action) == 0 || len(stroke) == 0) {
             VecReset(parsed);
             ArenaDelete(arena);
             return JS_ThrowTypeError(
@@ -8120,7 +8126,7 @@ static JSValue NativeBindKeys(JSContext* ctx, JSValueConst, int argc,
         if (KeyChordsParse(stroke, chords, kMaxStrokes) == 0) {
             JSValue thrown = JS_ThrowTypeError(
                 ctx, "binding %d has an unparsable keystroke `%.*s`", (int)i,
-                stroke.len, stroke.s);
+                len(stroke), stroke.s);
             VecReset(parsed);
             ArenaDelete(arena);
             return thrown;
@@ -8145,7 +8151,7 @@ static JSValue NativeDispatchAction(JSContext* ctx, JSValueConst, int argc,
     Arena* arena = ArenaNew();
     Str action;
     if (argc < 1 || !JsString(ctx, argv[0], arena, &action) ||
-        action.len == 0) {
+        len(action) == 0) {
         ArenaDelete(arena);
         return JS_ThrowTypeError(
             ctx,
@@ -8230,7 +8236,7 @@ static JSValue JsDate(JSContext* ctx, LocalDate date) {
 }
 
 static bool JsToDate(Str text, LocalDate* out) {
-    if (text.len != 10 || text.s[4] != '-' || text.s[7] != '-') return false;
+    if (len(text) != 10 || text.s[4] != '-' || text.s[7] != '-') return false;
     int year = 0, month = 0, day = 0;
     for (int i = 0; i < 10; i++) {
         if (i == 4 || i == 7) continue;
@@ -8609,7 +8615,7 @@ static void DeserializeScriptPanel(Entity<ScriptView> handle, Str json,
         window, app, ScopePhase::Event, handle.id, view->policy,
         registered->impl->owner, registered->application);
     (void)scope;
-    JSValue payload = JS_ParseJSON(ctx, json.s, (size_t)json.len, "<panel>");
+    JSValue payload = JS_ParseJSON(ctx, json.s, (size_t)len(json), "<panel>");
     if (JS_IsException(payload)) {
         Arena* arena = ArenaNew();
         log(ExceptionText(arena, ctx));
@@ -8914,7 +8920,7 @@ static JSValue NativeDockRemovePanel(JSContext* ctx, JSValueConst, int argc,
         int node = DockNodeOfPanel(state, i);
         if (node < 0) return JS_NewBool(ctx, false);
         const DockNode& group = state->nodes[node];
-        for (int ix = 0; ix < group.panel.len; ix++) {
+        for (int ix = 0; ix < len(group.panel); ix++) {
             if (group.panel[ix] != i) continue;
             Ctx cx = {app, window, window ? window->frameArena : nullptr, {}};
             DockClosePanel(state, &cx, node, ix);
@@ -8944,7 +8950,7 @@ static JSValue NativeDockPanels(JSContext* ctx, JSValueConst, int argc,
         if (!group.used || group.split) continue;
         int active = DockActiveIx(state, node);
         DockPlacement placement = DockPlacementOfNode(state, node);
-        for (int ix = 0; ix < group.panel.len; ix++) {
+        for (int ix = 0; ix < len(group.panel); ix++) {
             int at = group.panel[ix];
             if (at < 0 || at >= state->panels.len) continue;
             const DockPanelDef& def = state->panels[at];
@@ -8963,7 +8969,7 @@ static JSValue NativeDockPanels(JSContext* ctx, JSValueConst, int argc,
     }
     json.EndArray();
     Str text = out.TakeStr();
-    JSValue result = JS_NewStringLen(ctx, text.s, (size_t)text.len);
+    JSValue result = JS_NewStringLen(ctx, text.s, (size_t)len(text));
     StrFree(text);
     return result;
 }
@@ -8980,7 +8986,7 @@ static JSValue NativeDockDump(JSContext* ctx, JSValueConst, int argc,
     StrBuilder out;
     DockAreaStateWrite(&saved, &out);
     Str text = out.TakeStr();
-    JSValue result = JS_NewStringLen(ctx, text.s, (size_t)text.len);
+    JSValue result = JS_NewStringLen(ctx, text.s, (size_t)len(text));
     StrFree(text);
     return result;
 }
@@ -9242,7 +9248,7 @@ static JSValue NativeDockRegisterPanel(JSContext* ctx, JSValueConst, int argc,
         ShellRegisterPanelClass(impl, ctx, host.GetApp(), panel, argv[1]);
     ArenaDelete(arena);
     if (!name) return JS_EXCEPTION;
-    return JS_NewStringLen(ctx, name.s, (size_t)name.len);
+    return JS_NewStringLen(ctx, name.s, (size_t)len(name));
 }
 
 static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
@@ -9741,7 +9747,7 @@ static ViewType* LoadModule(ShellRuntime* runtime, Str name, Str source,
         nullptr, nullptr, ScopePhase::Task, {}, policy, runtime, application);
     BeginExecution(impl);
     JSValue module =
-        JS_Eval(impl->context, source.s, (size_t)source.len, name.s,
+        JS_Eval(impl->context, source.s, (size_t)len(source), name.s,
                 JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
     if (JS_IsException(module)) {
         CaptureException(impl, error);
@@ -9790,7 +9796,7 @@ ViewType* ShellRuntime::LoadSource(Str name, Str source, ShellError* error) {
 ViewType* ShellRuntime::LoadSource(Str name, Str source, Policy* policy,
                                    ShellError* error) {
     ShellErrorClear(error);
-    if (!name.s || name.len == 0) name = StrL("<module>");
+    if (!name.s || len(name) == 0) name = StrL("<module>");
     Str ownedName = StrDup(name);
     ViewType* result =
         LoadModule(this, ownedName, source, nullptr, policy, error);
@@ -9816,14 +9822,14 @@ ViewType* ShellRuntime::ReloadApp(Str directory, Str entry, Policy* policy,
                                   const shell::MaterializedDependencies* reuse,
                                   ShellError* error) {
     ShellErrorClear(error);
-    if (directory.len <= 0 || directory.len >= kMaxPath) {
+    if (len(directory) <= 0 || len(directory) >= kMaxPath) {
         SetError(error, StrL("application directory is empty or too long"));
         return nullptr;
     }
     TempStr input = StrDupTemp(directory);
     TempStr dir = AllocStrTemp(kMaxPath - 1);
     dir.s[0] = 0;
-    if (!PlatCanonicalPath(input.s, dir.s, dir.len + 1) ||
+    if (!PlatCanonicalPath(input.s, dir.s, len(dir) + 1) ||
         !PlatDirExists(dir.s)) {
         SetError(error,
                  fmt("application directory `%s` does not exist", directory));
@@ -9833,8 +9839,8 @@ ViewType* ShellRuntime::ReloadApp(Str directory, Str entry, Policy* policy,
     TempStr entryPath = fmt("%s/%s", dir, entry);
     TempStr canonical = AllocStrTemp(kMaxPath - 1);
     canonical.s[0] = 0;
-    if (!entryPath || entryPath.len >= kMaxPath ||
-        !PlatCanonicalPath(entryPath.s, canonical.s, canonical.len + 1) ||
+    if (!entryPath || len(entryPath) >= kMaxPath ||
+        !PlatCanonicalPath(entryPath.s, canonical.s, len(canonical) + 1) ||
         !PlatFileExists(canonical.s) ||
         !WithinRoot(Str(dir.s), Str(canonical.s))) {
         SetError(error, fmt("entry module `%s` is not a file inside `%s`",
@@ -10087,7 +10093,7 @@ bool ShellRuntime::Eval(Str source, Str name, ShellError* error) {
     BeginExecution(impl);
     Str file = name ? name : StrL("<eval>");
     Str owned = StrDup(file);
-    JSValue value = JS_Eval(impl->context, source.s, (size_t)source.len,
+    JSValue value = JS_Eval(impl->context, source.s, (size_t)len(source),
                             owned.s, JS_EVAL_TYPE_GLOBAL);
     StrFree(owned);
     if (JS_IsException(value)) return CaptureException(impl, error);
@@ -10420,7 +10426,7 @@ void ShellRuntime::DispatchItemSecondaryClick(shell::CallbackId callback,
     JS_SetPropertyStr(impl->context, payload, "modifiers",
                       ModifiersObject(impl->context, event.modifiers));
     JSValue leading[2] = {
-        JS_NewStringLen(impl->context, key.s, (size_t)key.len), payload};
+        JS_NewStringLen(impl->context, key.s, (size_t)len(key)), payload};
     DispatchArgs(this, callback, leading, 2, window, app);
 }
 
@@ -10486,7 +10492,7 @@ void ShellRuntime::DispatchString(shell::CallbackId callback, Str value,
                                   Window* window, App* app) {
     Dispatch(this, callback,
              JS_NewStringLen(impl->context, value.s ? value.s : "",
-                             (size_t)value.len),
+                             (size_t)len(value)),
              window, app);
 }
 
@@ -10597,15 +10603,15 @@ void ShellRuntime::DispatchKey(shell::CallbackId callback,
     Str key = event.vk ? KeyName(event.vk) : keystroke;
     JSValue payload = JS_NewObject(impl->context);
     JS_SetPropertyStr(impl->context, payload, "key",
-                      JS_NewStringLen(impl->context, key.s, (size_t)key.len));
+                      JS_NewStringLen(impl->context, key.s, (size_t)len(key)));
     JS_SetPropertyStr(
         impl->context, payload, "keystroke",
-        JS_NewStringLen(impl->context, keystroke.s, (size_t)keystroke.len));
+        JS_NewStringLen(impl->context, keystroke.s, (size_t)len(keystroke)));
     if (event.ch) {
         TempStr utf8 = ShellUtf8Temp(event.ch);
         JS_SetPropertyStr(
             impl->context, payload, "key_char",
-            JS_NewStringLen(impl->context, utf8.s, (size_t)utf8.len));
+            JS_NewStringLen(impl->context, utf8.s, (size_t)len(utf8)));
     } else {
         JS_SetPropertyStr(impl->context, payload, "key_char", JS_UNDEFINED);
     }
@@ -10690,7 +10696,7 @@ void ShellRuntime::DispatchAction(shell::CallbackId callback, Str action,
     JSValue payload = JS_NewObject(impl->context);
     JS_SetPropertyStr(
         impl->context, payload, "action",
-        JS_NewStringLen(impl->context, action.s, (size_t)action.len));
+        JS_NewStringLen(impl->context, action.s, (size_t)len(action)));
     ShellPropagationGuard guard(propagate);
     Dispatch(this, callback, payload, window, app);
 }
@@ -11011,7 +11017,7 @@ El* ShellRuntime::DescribeDockChrome(Ctx* cx, shell::EntityHandle dock,
             shell::ScopeAdopt(entry->registeredIn);
             BeginExecution(impl);
             JSValue state = JS_ParseJSON(impl->context, payload.s,
-                                         (size_t)payload.len, "<dock>");
+                                         (size_t)len(payload), "<dock>");
             JSValue context = ContextObject(impl, scope.Generation());
             JSValue args[2] = {state, context};
             JSValue produced = JS_IsException(state)

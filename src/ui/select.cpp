@@ -173,7 +173,7 @@ void SelectState::ToggleMenu(Ctx* cx) {
 }
 
 void SelectState::ClearQueryAndRestore(Ctx* cx) {
-    if (activeQuery && InputValue(activeQuery).len > 0) {
+    if (activeQuery && len(InputValue(activeQuery)) > 0) {
         InputSetValue(activeQuery, Str{});
     }
     SearchableListSearch(&state, state.items, state.nItems, Str{});

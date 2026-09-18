@@ -17,10 +17,10 @@ uint64_t StructureMix(uint64_t state, uint64_t value) {
 // on and the bytes are what separate two names.
 static uint64_t StructureName(Str name) {
     uint64_t hashed = 0;
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         hashed = StructureMix(hashed, (uint64_t)(uint8_t)name.s[i]);
     }
-    return StructureMix(hashed, (uint64_t)name.len);
+    return StructureMix(hashed, (uint64_t)len(name));
 }
 
 // What this node contributes to a fingerprint: which constructor produced it,

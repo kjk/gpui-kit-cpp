@@ -23,7 +23,7 @@ struct Invocation {
 };
 
 static void Print(Str value, FILE* file = stdout) {
-    if (value) fwrite(value.s, 1, (size_t)value.len, file);
+    if (value) fwrite(value.s, 1, (size_t)len(value), file);
 }
 
 static void PrintVersion() {
@@ -106,9 +106,9 @@ static bool Parse(int argc, char** argv, Invocation* out, Str* error) {
 
 static TempStr JoinPathTemp(Str left, Str right) {
     bool separator =
-        left && left.s[left.len - 1] != '/' && left.s[left.len - 1] != '\\';
-    int len = left.len + (separator ? 1 : 0) + right.len;
-    if (!left || !right || len >= kMaxPath) return {};
+        left && left.s[len(left) - 1] != '/' && left.s[len(left) - 1] != '\\';
+    int n = len(left) + (separator ? 1 : 0) + len(right);
+    if (!left || !right || n >= kMaxPath) return {};
     if (!separator) return fmt("%s%s", left, right);
     return fmt("%s%c%s", left, GPUI_OS_WINDOWS ? '\\' : '/', right);
 }
@@ -117,13 +117,13 @@ static bool ResolveRoot(Str input, bool requireEntry, Str* root, Str* entry,
                         ShellError* error) {
     *root = {};
     *entry = {};
-    if (!input || input.len >= kMaxPath) {
+    if (!input || len(input) >= kMaxPath) {
         ShellErrorSet(error, StrL("application path is empty or too long"));
         return false;
     }
     TempStr candidate = StrDupTemp(input);
     if (PlatFileExists(candidate.s)) {
-        int slash = input.len - 1;
+        int slash = len(input) - 1;
         while (slash >= 0 && candidate.s[slash] != '/' &&
                candidate.s[slash] != '\\')
             slash--;
@@ -139,7 +139,7 @@ static bool ResolveRoot(Str input, bool requireEntry, Str* root, Str* entry,
         return false;
     }
     TempStr canonical = AllocStrTemp(kMaxPath - 1);
-    if (!PlatCanonicalPath(candidate.s, canonical.s, canonical.len + 1)) {
+    if (!PlatCanonicalPath(candidate.s, canonical.s, len(canonical) + 1)) {
         ShellErrorSet(error, fmt("cannot read `%s`", candidate));
         return false;
     }
@@ -281,11 +281,11 @@ static void OnExitRequest(const ShellExitRequest& request, Ctx* cx) {
 }
 
 static Str WindowTitle(Str root) {
-    int start = root.len;
+    int start = len(root);
     while (start > 0 && root.s[start - 1] != '/' && root.s[start - 1] != '\\')
         start--;
     StrBuilder title;
-    title.Append(Str(root.s + start, root.len - start));
+    title.Append(Str(root.s + start, len(root) - start));
     title.Append(StrL(" — gpui-shell"));
     return title.TakeStr();
 }

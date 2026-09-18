@@ -302,7 +302,7 @@ let a = "你好 hello";
         Str want = Str(expected);
         int line = 1;
         int i = 0;
-        int n = got.len < want.len ? got.len : want.len;
+        int n = len(got) < len(want) ? len(got) : len(want);
         while (i < n && got.s[i] == want.s[i]) {
             if (got.s[i] == '\n') {
                 line++;
@@ -310,11 +310,11 @@ let a = "你好 hello";
             i++;
         }
         int gotEnd = i;
-        while (gotEnd < got.len && got.s[gotEnd] != '\n') {
+        while (gotEnd < len(got) && got.s[gotEnd] != '\n') {
             gotEnd++;
         }
         int wantEnd = i;
-        while (wantEnd < want.len && want.s[wantEnd] != '\n') {
+        while (wantEnd < len(want) && want.s[wantEnd] != '\n') {
             wantEnd++;
         }
         int lineStart = i;
@@ -323,7 +323,7 @@ let a = "你好 hello";
         }
         printf("  markdown format differs at line %d:\n    got      \"%.*s\"\n",
                line, gotEnd - lineStart, got.s + lineStart);
-        int wantStart = lineStart < want.len ? lineStart : 0;
+        int wantStart = lineStart < len(want) ? lineStart : 0;
         printf("    expected \"%.*s\"\n", wantEnd - wantStart,
                want.s + wantStart);
     }
@@ -336,8 +336,8 @@ let a = "你好 hello";
     if (lr.nLines > 0) {
         for (int k = 0; k < lr.nLines && k < 8; k++) {
             printf("  unexpected lint %d:%d old \"%.*s\" new \"%.*s\"\n",
-                   lr.lines[k].line, lr.lines[k].col, lr.lines[k].old.len,
-                   lr.lines[k].old.s, lr.lines[k].neu.len, lr.lines[k].neu.s);
+                   lr.lines[k].line, lr.lines[k].col, len(lr.lines[k].old),
+                   lr.lines[k].old.s, len(lr.lines[k].neu), lr.lines[k].neu.s);
         }
     }
 }

@@ -275,7 +275,7 @@ static void LayoutDumpEl(FILE* f, El* e, int depth) {
     // The text, cut short: what is on the line matters for telling one
     // element from another, not what it says.
     char text[41] = {};
-    int n = e->text.len < 40 ? e->text.len : 40;
+    int n = len(e->text) < 40 ? len(e->text) : 40;
     for (int i = 0; i < n; i++) {
         char c = e->text.s[i];
         text[i] = (c == '\n' || c == '\r' || c == '\t') ? ' ' : c;
@@ -322,9 +322,9 @@ static uint64_t AccessibilityHashBytes(uint64_t hash, const void* data,
 }
 
 static uint64_t AccessibilityHashStr(uint64_t hash, Str value) {
-    hash = AccessibilityHashBytes(hash, &value.len, (int)sizeof(value.len));
-    return value.s && value.len > 0
-               ? AccessibilityHashBytes(hash, value.s, value.len)
+    hash = AccessibilityHashBytes(hash, &value.len, (int)sizeof(len(value)));
+    return value.s && len(value) > 0
+               ? AccessibilityHashBytes(hash, value.s, len(value))
                : hash;
 }
 
@@ -3115,19 +3115,19 @@ static bool ParseGeom(Str value, int out[4]) {
     int at = 0;
     for (int i = 0; i < 4; i++) {
         if (i > 0) {
-            if (at >= value.len || value.s[at] != ',') {
+            if (at >= len(value) || value.s[at] != ',') {
                 return false;
             }
             at++;
         }
         bool neg = false;
-        if (at < value.len && value.s[at] == '-') {
+        if (at < len(value) && value.s[at] == '-') {
             neg = true;
             at++;
         }
         int digits = 0;
         int v = 0;
-        while (at < value.len && value.s[at] >= '0' && value.s[at] <= '9') {
+        while (at < len(value) && value.s[at] >= '0' && value.s[at] <= '9') {
             v = v * 10 + (value.s[at] - '0');
             at++;
             digits++;
@@ -3140,7 +3140,7 @@ static bool ParseGeom(Str value, int out[4]) {
         }
         out[i] = neg ? -v : v;
     }
-    return at == value.len && out[2] > 0 && out[3] > 0;
+    return at == len(value) && out[2] > 0 && out[3] > 0;
 }
 
 bool WindowGeomRequested(int* x, int* y, int* w, int* h) {
@@ -3178,8 +3178,8 @@ int GpuiTakeRuntimeArgs(int argc, char** argv) {
         }
         if (i > 0 && StrStartsWith(argument, geomPrefix)) {
             int g[4];
-            if (ParseGeom(Str(argument.s + geomPrefix.len,
-                              argument.len - geomPrefix.len),
+            if (ParseGeom(Str(argument.s + len(geomPrefix),
+                              len(argument) - len(geomPrefix)),
                           g)) {
                 gGeomAsked = true;
                 for (int k = 0; k < 4; k++) {
@@ -3304,7 +3304,7 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
     for (int i = 0; i < n; i++) {
         const MenuRow& r = rows[i];
         PlatMenuItem& p = out[i];
-        if (r.separator || r.label.len <= 0) {
+        if (r.separator || len(r.label) <= 0) {
             p.separator = true;
             continue;
         }
@@ -3329,7 +3329,7 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
         KeyChord chord = {};
         if (r.action && KeymapAnyBindingForAction(r.action, &chord)) {
             Str key = KeyName(chord.vk);
-            if (key.len > 0) {
+            if (len(key) > 0) {
                 p.key = StrDup(a, key).s;
                 p.keyMods.control = chord.ctrl;
                 p.keyMods.alt = chord.alt;

@@ -25,9 +25,9 @@ static const bool kContextCodeblockEnabled = true;
 // chars, the way pest counts them; \r\n is one newline, a lone \r is a char.
 static void CursorAdvance(Results* res, Str part) {
     int i = 0;
-    while (i < part.len) {
+    while (i < len(part)) {
         char c = part.s[i];
-        if (c == '\r' && i + 1 < part.len && part.s[i + 1] == '\n') {
+        if (c == '\r' && i + 1 < len(part) && part.s[i + 1] == '\n') {
             res->line++;
             res->col = 1;
             i += 2;
@@ -54,16 +54,16 @@ void EmitIgnore(Results* res, Str part) {
 // str::trim, on the whitespace documents actually carry.
 static Str TrimStart(Str s, int* leadingBytes) {
     int i = 0;
-    while (i < s.len && (s.s[i] == ' ' || s.s[i] == '\t' || s.s[i] == '\r' ||
-                         s.s[i] == '\n' || s.s[i] == '\f')) {
+    while (i < len(s) && (s.s[i] == ' ' || s.s[i] == '\t' || s.s[i] == '\r' ||
+                          s.s[i] == '\n' || s.s[i] == '\f')) {
         i++;
     }
     *leadingBytes = i;
-    return Str(s.s + i, s.len - i);
+    return Str(s.s + i, len(s) - i);
 }
 
 static Str TrimEnd(Str s) {
-    int end = s.len;
+    int end = len(s);
     while (end > 0 && (s.s[end - 1] == ' ' || s.s[end - 1] == '\t' ||
                        s.s[end - 1] == '\r' || s.s[end - 1] == '\n' ||
                        s.s[end - 1] == '\f')) {
@@ -98,8 +98,8 @@ void EmitText(Results* res, Str rule, Str part) {
         }
         int subLine = 0;
         int lineStart = 0;
-        for (int i = 0; i <= part.len; i++) {
-            if (i < part.len && part.s[i] != '\n') {
+        for (int i = 0; i <= len(part); i++) {
+            if (i < len(part) && part.s[i] != '\n') {
                 continue;
             }
             Str lineStr(part.s + lineStart, i - lineStart);
@@ -132,8 +132,8 @@ void EmitText(Results* res, Str rule, Str part) {
     // format: each line through the rules, joined back with '\n'.
     int lineStart = 0;
     bool first = true;
-    for (int i = 0; i <= part.len; i++) {
-        if (i < part.len && part.s[i] != '\n') {
+    for (int i = 0; i <= len(part); i++) {
+        if (i < len(part) && part.s[i] != '\n') {
             continue;
         }
         if (!first) {
@@ -187,7 +187,7 @@ static void EmitSub(Results* res, Str part, Str lang, Str code,
     }
     if (!replaceInPart) {
         res->out.Append(sub.out);
-    } else if (code.len == 0) {
+    } else if (len(code) == 0) {
         // An indented code block has no lang and no code child; formatting
         // the empty string leaves the block as it was.
         res->out.Append(part);
@@ -195,16 +195,16 @@ static void EmitSub(Results* res, Str part, Str lang, Str code,
         // Codeblock::update_data — the code replaced inside the fenced
         // block, fences kept.
         int at = 0;
-        while (at + code.len <= part.len) {
-            if (StrEq(Str(part.s + at, code.len), code)) {
+        while (at + len(code) <= len(part)) {
+            if (StrEq(Str(part.s + at, len(code)), code)) {
                 res->out.Append(sub.out);
-                at += code.len;
+                at += len(code);
                 continue;
             }
             res->out.AppendChar(part.s[at]);
             at++;
         }
-        res->out.Append(Str(part.s + at, part.len - at));
+        res->out.Append(Str(part.s + at, len(part) - at));
     }
     CursorAdvance(res, part);
 }
@@ -240,7 +240,7 @@ FormatResult FormatTake(Results* res, Str raw) {
     FormatResult out;
     out.error = res->error;
     // FormatResult::error reverts to the raw input.
-    out.out = res->error.len > 0
+    out.out = len(res->error) > 0
                   ? base::StrDup(res->a, raw)
                   : base::StrDup(res->a, Str(res->out.els, res->out.len));
     return out;

@@ -15,12 +15,10 @@ namespace autocorrect {
 
 // rule/mod.rs default_rule_names order; the mask bit is the index.
 static const char* const kRuleNames[kNRules] = {
-    "space-word",         "space-punctuation",
-    "space-bracket",      "space-dash",
-    "space-backticks",    "space-dollar",
-    "fullwidth",          "halfwidth-word",
-    "halfwidth-punctuation", "no-space-fullwidth",
-    "no-space-fullwidth-quote", "spellcheck",
+    "space-word",         "space-punctuation",        "space-bracket",
+    "space-dash",         "space-backticks",          "space-dollar",
+    "fullwidth",          "halfwidth-word",           "halfwidth-punctuation",
+    "no-space-fullwidth", "no-space-fullwidth-quote", "spellcheck",
 };
 
 SeverityMode RuleSeverity(int rule) {
@@ -38,8 +36,7 @@ SeverityMode RuleSeverity(int rule) {
 int RuleIdByName(Str name) {
     for (int i = 0; i < kNRules; i++) {
         Str candidate(kRuleNames[i]);
-        if (name.len == candidate.len &&
-            base::StrEqI(name, kRuleNames[i])) {
+        if (len(name) == len(candidate) && base::StrEqI(name, kRuleNames[i])) {
             return i;
         }
     }
@@ -167,7 +164,8 @@ static const FileType kFileTypes[] = {
     {"txt", "text"},
 };
 
-static const int kNFileTypes = (int)(sizeof(kFileTypes) / sizeof(kFileTypes[0]));
+static const int kNFileTypes =
+    (int)(sizeof(kFileTypes) / sizeof(kFileTypes[0]));
 
 // Config::get_file_type. Extensions are case-sensitive, like the crate's
 // HashMap keys ("Gemfile" vs "gemfile").
@@ -181,7 +179,7 @@ static Str FileTypeFor(Str ext) {
 }
 
 bool IsSupportType(Str filenameOrExt) {
-    return FileTypeFor(filenameOrExt).len > 0;
+    return len(FileTypeFor(filenameOrExt)) > 0;
 }
 
 Str GetFileExtension(Arena* a, Str filename) {
@@ -190,9 +188,9 @@ Str GetFileExtension(Arena* a, Str filename) {
         return base::StrDup(a, name);
     }
     // Last path segment, split on '/' like the crate.
-    for (int i = name.len - 1; i >= 0; i--) {
+    for (int i = len(name) - 1; i >= 0; i--) {
         if (name.s[i] == '/') {
-            name = Str(name.s + i + 1, name.len - i - 1);
+            name = Str(name.s + i + 1, len(name) - i - 1);
             break;
         }
     }
@@ -201,7 +199,7 @@ Str GetFileExtension(Arena* a, Str filename) {
     int lastDot = -1;
     int secondLastDot = -1;
     int nDots = 0;
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         if (name.s[i] == '.') {
             secondLastDot = lastDot;
             lastDot = i;
@@ -211,9 +209,10 @@ Str GetFileExtension(Arena* a, Str filename) {
     if (nDots == 0) {
         return base::StrDup(a, name);
     }
-    Str ext(name.s + lastDot + 1, name.len - lastDot - 1);
+    Str ext(name.s + lastDot + 1, len(name) - lastDot - 1);
     if (nDots >= 2) {
-        Str doubleExt(name.s + secondLastDot + 1, name.len - secondLastDot - 1);
+        Str doubleExt(name.s + secondLastDot + 1,
+                      len(name) - secondLastDot - 1);
         if (IsSupportType(doubleExt)) {
             ext = doubleExt;
         }
@@ -224,7 +223,7 @@ Str GetFileExtension(Arena* a, Str filename) {
 Str MatchFilename(Arena* a, Str filenameOrExt) {
     Str ext = GetFileExtension(a, filenameOrExt);
     Str type = FileTypeFor(ext);
-    if (type.len > 0) {
+    if (len(type) > 0) {
         return type;
     }
     return base::StrDup(a, filenameOrExt);

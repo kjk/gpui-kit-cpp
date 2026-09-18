@@ -199,7 +199,7 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
 // One bullet per character, not per byte, for a masked field.
 static Str MaskedRun(Arena* a, Str text) {
     int chars = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
             chars++;
         }
@@ -218,7 +218,7 @@ static Str MaskedRun(Arena* a, Str text) {
 // bytes per character, so the caret and the selection land between bullets.
 static int MaskedOffset(Str text, int off) {
     int chars = 0;
-    for (int i = 0; i < off && i < text.len; i++) {
+    for (int i = 0; i < off && i < len(text); i++) {
         if (((unsigned char)text.s[i] & 0xc0) != 0x80) {
             chars++;
         }
@@ -264,7 +264,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         row->W(kFill)->JustifyEnd();
     }
 
-    if (text.len == 0) {
+    if (len(text) == 0) {
         // The cue takes the muted color and the caret sits at the left edge of
         // the row, so the placeholder is not pushed aside by it.
         if (caret) {
@@ -303,7 +303,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     // A masked one is not searched: what it holds is not what it shows.
     if (!masked) {
         int matchAt = 0;
-        RowMatchWashes(a, el, style, state, 0, run.len, &matchAt);
+        RowMatchWashes(a, el, style, state, 0, len(run), &matchAt);
     }
     if (!sel.IsEmpty()) {
         el->SelRange(sel.start, sel.end, style.selection);
@@ -484,7 +484,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool wrap = state->softWrap;
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
-    if (text.len == 0) {
+    if (len(text) == 0) {
         VecClear(state->rowBoxes);
         if (caret) {
             col->Caret(0, style.caret);
@@ -803,7 +803,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         firstRow < len(lineStarts)) {
         Selection vis = {lineStarts[firstRow], endRow < len(lineStarts)
                                                    ? lineStarts[endRow]
-                                                   : text.len};
+                                                   : len(text)};
         TextSpan* hl = nullptr;
         int nHl = state->highlighter
                       .Styles(vis, &style.highlightStyles, a, &hl);
@@ -829,7 +829,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     for (int row = firstRow; row < endRow; row++) {
         int start = lineStarts[row];
         int lineEnd =
-            row + 1 < len(lineStarts) ? lineStarts[row + 1] - 1 : text.len;
+            row + 1 < len(lineStarts) ? lineStarts[row + 1] - 1 : len(text);
         Str line = Str(text.s + start, lineEnd - start);
         // A line inside a closed fold is not built at all, which is what
         // makes the rows below it move up. Its box is zeroed rather than left
@@ -866,14 +866,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         const int kMaxHighlightLineLen = 10000;
         // The runs that fall inside this row, rebased onto it. The document's
         // are in order, so the walk carries on where the last row left off.
-        if (nDocSpans > 0 && line.len <= kMaxHighlightLineLen) {
+        if (nDocSpans > 0 && len(line) <= kMaxHighlightLineLen) {
             while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
                 spanAt++;
             }
             int first = spanAt;
             int count = 0;
             while (first + count < nDocSpans &&
-                   docSpans[first + count].lo < start + line.len) {
+                   docSpans[first + count].lo < start + len(line)) {
                 count++;
             }
             if (count > 0) {
@@ -887,8 +887,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     if (lo < 0) {
                         lo = 0;
                     }
-                    if (hi > line.len) {
-                        hi = line.len;
+                    if (hi > len(line)) {
+                        hi = len(line);
                     }
                     if (hi <= lo) {
                         continue;
@@ -911,7 +911,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             for (int d = 0; d < state->diagnostics.len; d++) {
                 const Diagnostic& dg = state->diagnostics[d];
                 if (dg.range.end <= start ||
-                    dg.range.start >= start + line.len) {
+                    dg.range.start >= start + len(line)) {
                     continue;
                 }
                 nDiag++;
@@ -926,8 +926,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     if (lo < 0) {
                         lo = 0;
                     }
-                    if (hi > line.len) {
-                        hi = line.len;
+                    if (hi > len(line)) {
+                        hi = len(line);
                     }
                     if (hi <= lo) {
                         continue;
@@ -967,8 +967,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (lo < 0) {
                 lo = 0;
             }
-            if (hi > line.len) {
-                hi = line.len;
+            if (hi > len(line)) {
+                hi = len(line);
             }
             if (hi > lo) {
                 auto* run = (TextSpan*)Alloc(a, (int)sizeof(TextSpan));
@@ -998,7 +998,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         int popoverLo = popoverRange.start - start;
         int popoverHi = popoverRange.end - start;
         if (popoverLo < 0) popoverLo = 0;
-        if (popoverHi > line.len) popoverHi = line.len;
+        if (popoverHi > len(line)) popoverHi = len(line);
         if (popoverHi > popoverLo) {
             if (state->popoverTriggerRange.start != popoverRange.start ||
                 state->popoverTriggerRange.end != popoverRange.end) {
@@ -1008,7 +1008,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             el->RangeOut(popoverLo, popoverHi, &state->popoverTriggerBounds);
         }
-        RowMatchWashes(a, el, style, state, start, line.len, &matchAt);
+        RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
         if (state->softWrap) {
             // flex_1: the run is bounded by what the gutter leaves, so it
             // breaks at the text column's edge and its second line starts
@@ -1028,8 +1028,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (lo < 0) {
             lo = 0;
         }
-        if (hi > line.len) {
-            hi = line.len;
+        if (hi > len(line)) {
+            hi = len(line);
         }
         if (!sel.IsEmpty() && lo < hi) {
             el->SelRange(lo, hi, style.selection);
@@ -1038,14 +1038,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             if (row == caretRow) {
                 el->Caret(0, style.caret);
             }
-        } else if (caret && cursor >= start && cursor <= start + line.len) {
+        } else if (caret && cursor >= start && cursor <= start + len(line)) {
             el->Caret(cursor - start, style.caret, 2,
                       state->cursorLineEndAffinity);
             // Where it lands is the anchor a completion menu hangs off.
             el->CaretOut(&state->caretWinX, &state->caretWinY);
         }
         if (state->extraCursors.len > 0) {
-            RowExtraCursors(a, el, state, style, start, line.len, caret);
+            RowExtraCursors(a, el, state, style, start, len(line), caret);
         }
         // indent_guides: a hairline every tab stop of the row's own leading
         // whitespace, drawn behind the text. show_whitespaces shares the
@@ -1053,7 +1053,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         El* guides = nullptr;
         if (colW > 0) {
             int lead = 0;
-            while (lead < line.len && line.s[lead] == ' ') {
+            while (lead < len(line) && line.s[lead] == ' ') {
                 lead++;
             }
             int stops = lead / style.indentWidth;
@@ -1079,7 +1079,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
                 int displayCol = 0;
                 Rgba invis = style.mutedForeground;
-                for (int i = 0; i < line.len;) {
+                for (int i = 0; i < len(line);) {
                     unsigned char c = (unsigned char)line.s[i];
                     if (c == ' ' || c == '\t') {
                         float startX = charW * (float)displayCol;
@@ -1113,8 +1113,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                     } else {
                         i += 4;
                     }
-                    if (i > line.len) {
-                        i = line.len;
+                    if (i > len(line)) {
+                        i = len(line);
                     }
                     displayCol++;
                 }
@@ -1216,17 +1216,17 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         float gx = state->caretWinX - state->contentBox.x;
         float gy = state->caretWinY - state->contentBox.y - lineH;
         Str rest = state->inlineCompletion.text;
-        for (int line = 0; rest.len > 0 || line == 0; line++) {
+        for (int line = 0; len(rest) > 0 || line == 0; line++) {
             int nl = -1;
-            for (int i = 0; i < rest.len; i++) {
+            for (int i = 0; i < len(rest); i++) {
                 if (rest.s[i] == '\n') {
                     nl = i;
                     break;
                 }
             }
             Str one = nl >= 0 ? Str(rest.s, nl) : rest;
-            rest = nl >= 0 ? Str(rest.s + nl + 1, rest.len - nl - 1) : Str{};
-            if (one.len > 0) {
+            rest = nl >= 0 ? Str(rest.s + nl + 1, len(rest) - nl - 1) : Str{};
+            if (len(one) > 0) {
                 El* ghost = Div(a)
                                 ->Absolute()
                                 ->Left(line == 0 ? gx : textLeft)
@@ -1285,10 +1285,10 @@ El* Editor::New(Ctx* cx, InputState* state, const InputEditorStyle& style) {
 // terminator is not counted in the length.
 
 Str InputValue(const InputState* s) {
-    if (!s || s->text.len <= 0) {
+    if (!s || len(s->text) <= 0) {
         return {};
     }
-    return Str(s->text.els, s->text.len);
+    return Str(s->text.els, len(s->text));
 }
 
 const char* InputCStr(const InputState* s) {
@@ -1311,9 +1311,9 @@ static void LineStartsEnsure(InputState* s) {
     VecAppend(s->lineStarts, 0);
     Str t = InputValue(s);
     int at = 0;
-    while (at < t.len) {
+    while (at < len(t)) {
         const char* nl =
-            (const char*)memchr(t.s + at, '\n', (size_t)(t.len - at));
+            (const char*)memchr(t.s + at, '\n', (size_t)(len(t) - at));
         if (!nl) {
             break;
         }
@@ -1339,7 +1339,7 @@ int InputLineStartOffset(const InputState* s, int row) {
         return 0;
     }
     if (row >= len(starts)) {
-        return s->text.len;
+        return len(s->text);
     }
     return starts[row];
 }
@@ -1350,7 +1350,7 @@ Str InputSliceLine(const InputState* s, int row) {
         return {};
     }
     int a = starts[row];
-    int b = row + 1 < len(starts) ? starts[row + 1] - 1 : s->text.len;
+    int b = row + 1 < len(starts) ? starts[row + 1] - 1 : len(s->text);
     return Str(s->text.els + a, b - a);
 }
 
@@ -1400,23 +1400,23 @@ static void TextReserve(InputState* s, int want) {
 
 // Rope::replace, over the flat buffer.
 static void TextSplice(InputState* s, int a, int b, Str ins) {
-    int len = s->text.len;
+    int n = len(s->text);
     if (a < 0) {
         a = 0;
     }
-    if (b > len) {
-        b = len;
+    if (b > n) {
+        b = n;
     }
     if (b < a) {
         b = a;
     }
-    int insLen = ins.len > 0 ? ins.len : 0;
-    int out = len - (b - a) + insLen;
+    int insLen = len(ins) > 0 ? len(ins) : 0;
+    int out = n - (b - a) + insLen;
     TextReserve(s, out);
     if (!s->text.els) {
         return;
     }
-    memmove(s->text.els + a + insLen, s->text.els + b, (size_t)(len - b));
+    memmove(s->text.els + a + insLen, s->text.els + b, (size_t)(n - b));
     if (insLen > 0) {
         memcpy(s->text.els + a, ins.s, (size_t)insLen);
     }
@@ -1427,7 +1427,7 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
     // a second before the last was consumed is more than one envelope can
     // say, so it collapses to the whole-document marker.
     if (s->hasPendingEdit) {
-        s->pendingEdit = InputEdit{0, -1, s->text.len};
+        s->pendingEdit = InputEdit{0, -1, len(s->text)};
     } else {
         s->pendingEdit = InputEdit{a, b, a + insLen};
         s->hasPendingEdit = true;
@@ -1435,7 +1435,7 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
 }
 
 static void TextSet(InputState* s, Str v) {
-    int n = v.len > 0 ? v.len : 0;
+    int n = len(v) > 0 ? len(v) : 0;
     TextReserve(s, n);
     if (!s->text.els) {
         return;
@@ -1818,7 +1818,7 @@ RopePoint InputCursorPosition(const InputState* s) {
 Str InputSelectedValue(const InputState* s) {
     Str t = InputValue(s);
     Selection r = s->selectedRange;
-    if (r.IsEmpty() || r.start < 0 || r.end > t.len) {
+    if (r.IsEmpty() || r.start < 0 || r.end > len(t)) {
         return {};
     }
     return Str(t.s + r.start, r.end - r.start);
@@ -1831,7 +1831,7 @@ Str InputUnmaskValue(Arena* a, const InputState* s) {
 static int InputCursorBoundary(const InputState* s, int offset, Bias bias) {
     Str t = InputValue(s);
     offset = RopeClipOffset(t, offset, bias);
-    if (offset > 0 && offset < t.len && t.s[offset - 1] == '\r' &&
+    if (offset > 0 && offset < len(t) && t.s[offset - 1] == '\r' &&
         t.s[offset] == '\n') {
         return bias == Bias::Left ? offset - 1 : offset + 1;
     }
@@ -1857,7 +1857,8 @@ static bool WrappedRowOfCaret(const InputState* s, Window* win, Str line,
                               int rel, int* outLo, int* outHi) {
     // `soft_wrap && is_code_editor()`: a plain textarea keeps the logical
     // line even when it wraps, which is what Rust gates this on.
-    if (!win || !s->softWrap || s->kind != InputKind::Editor || line.len == 0) {
+    if (!win || !s->softWrap || s->kind != InputKind::Editor ||
+        len(line) == 0) {
         return false;
     }
     PaintCtx* ctx = &win->paint;
@@ -1913,7 +1914,7 @@ int InputStartOfLine(const InputState* s, Window* win) {
 int InputEndOfLine(const InputState* s, Window* win) {
     Str t = InputValue(s);
     if (InputIsSingleLine(s)) {
-        return t.len;
+        return len(t);
     }
     int cursor = InputCursor(s);
     int row = RopeOffsetToPoint(t, cursor).row;
@@ -1972,10 +1973,10 @@ int InputNextEndOfWord(const InputState* s) {
     Str t = InputValue(s);
     if (s->masked) {
         // See InputPreviousStartOfWord.
-        return t.len;
+        return len(t);
     }
     int off = RopeClipOffset(t, InputCursor(s), Bias::Left);
-    while (off < t.len) {
+    while (off < len(t)) {
         uint32_t c = 0;
         int n = Utf8At(t, off, &c);
         CharKind k = CharKindOf(c);
@@ -1984,13 +1985,13 @@ int InputNextEndOfWord(const InputState* s) {
         }
         off += n;
     }
-    if (off >= t.len) {
-        return t.len;
+    if (off >= len(t)) {
+        return len(t);
     }
     uint32_t first = 0;
     Utf8At(t, off, &first);
     CharKind kind = CharKindOf(first);
-    while (off < t.len) {
+    while (off < len(t)) {
         uint32_t c = 0;
         int n = Utf8At(t, off, &c);
         if (CharKindOf(c) != kind) {
@@ -2263,7 +2264,7 @@ void InputSelectAll(InputState* s, App* app, Window* win) {
     UndoBreakCoalescing(&s->undo);
     InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
-    s->selectedRange = Selection{0, InputValue(s).len};
+    s->selectedRange = Selection{0, len(InputValue(s))};
     s->selectionReversed = false;
     s->hasSelectedWordRange = false;
     Notify(app, win);
@@ -2497,8 +2498,8 @@ static int WrappedRowStarts(const InputState* s, PaintCtx* ctx, Str line,
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
     float lineMult = lineH / font;
     float endX = 0, endY = 0, endH = 0;
-    if (!TextPointAt(ctx, line, font, maxW, true, line.len, &endX, &endY, &endH,
-                     s->lastMono, lineMult, true)) {
+    if (!TextPointAt(ctx, line, font, maxW, true, len(line), &endX, &endY,
+                     &endH, s->lastMono, lineMult, true)) {
         return 0;
     }
     float rowH = endH > 0 ? endH : lineH;
@@ -2618,7 +2619,7 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
         }
         for (int k = kFrom; k <= kTo; k++) {
             int rs = starts[k];
-            int re = k + 1 < rows ? starts[k + 1] : text.len;
+            int re = k + 1 < rows ? starts[k + 1] : len(text);
             int a0 = lineStart + (rs + col0 < re ? rs + col0 : re);
             int a1 = lineStart + (rs + col1 < re ? rs + col1 : re);
             CursorSelection c;
@@ -2648,8 +2649,8 @@ void InputBuildColumnarSelection(InputState* s, App* app, Window* win,
     if (start.offset < 0) {
         start.offset = 0;
     }
-    if (end.offset > t.len) {
-        end.offset = t.len;
+    if (end.offset > len(t)) {
+        end.offset = len(t);
     }
     Arena* a = GetTempArena();
     CursorSelection* sels = nullptr;
@@ -2751,7 +2752,7 @@ static bool ReplaceAtEveryCursor(InputState* s, App* app, Window* win,
 // is_valid_input: the validator, the mask, and (in Rust) a regex we have no
 // engine for.
 static bool IsValidInput(const InputState* s, Str text) {
-    if (text.len == 0) {
+    if (len(text) == 0) {
         return true;
     }
     if (s->validate && !s->validate(text, s->validateArg)) {
@@ -2770,15 +2771,15 @@ static Str NormalizeInput(Arena* a, const InputState* s, Str newText) {
         return out;
     }
     bool hasBreak = false;
-    for (int i = 0; i < out.len && !hasBreak; i++) {
+    for (int i = 0; i < len(out) && !hasBreak; i++) {
         hasBreak = out.s[i] == '\n' || out.s[i] == '\r';
     }
     if (!hasBreak) {
         return out;
     }
-    char* buf = (char*)Alloc(a, out.len + 1);
+    char* buf = (char*)Alloc(a, len(out) + 1);
     int n = 0;
-    for (int i = 0; i < out.len; i++) {
+    for (int i = 0; i < len(out); i++) {
         if (out.s[i] != '\n' && out.s[i] != '\r') {
             buf[n++] = out.s[i];
         }
@@ -2801,12 +2802,12 @@ static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
         r.end = r.start;
     }
     Str oldText = Str(oldAll.s + r.start, r.end - r.start);
-    Selection newRange = {r.start, r.start + newText.len};
+    Selection newRange = {r.start, r.start + len(newText)};
 
     EditIntent intent = requested;
     if (!hasIntent) {
-        bool typed = r.IsEmpty() && oldText.len == 0 && newText.len > 0;
-        for (int i = 0; typed && i < newText.len; i++) {
+        bool typed = r.IsEmpty() && len(oldText) == 0 && len(newText) > 0;
+        for (int i = 0; typed && i < len(newText); i++) {
             typed = newText.s[i] != '\n' && newText.s[i] != '\r';
         }
         intent = typed ? EditIntent::Typing : EditIntent::Atomic;
@@ -2845,9 +2846,9 @@ static int InputClosingPairCount(const LanguageConfig& config) {
 }
 
 static bool InputSliceEq(Str text, int at, Str part) {
-    return at >= 0 && part.len >= 0 && at + part.len <= text.len &&
-           (part.len == 0 ||
-            memcmp(text.s + at, part.s, (size_t)part.len) == 0);
+    return at >= 0 && len(part) >= 0 && at + len(part) <= len(text) &&
+           (len(part) == 0 ||
+            memcmp(text.s + at, part.s, (size_t)len(part)) == 0);
 }
 
 static bool InputEscapedAt(Str text, int at) {
@@ -2871,12 +2872,12 @@ static bool InputPairBlocked(const AutoClosingPair& pair,
 
 static bool InputOneCodepoint(Str text) {
     uint32_t c = 0;
-    return text.len > 0 && Utf8At(text, 0, &c) == text.len;
+    return len(text) > 0 && Utf8At(text, 0, &c) == len(text);
 }
 
 static bool InputAutoCloseBefore(const LanguageConfig& config, Str all,
                                  int at) {
-    if (at >= all.len) {
+    if (at >= len(all)) {
         return true;
     }
     uint32_t c = 0;
@@ -2929,7 +2930,7 @@ static bool InputTrySkipCloser(InputState* s, App* app, Window* win, Str typed,
                   StrEq(pair.open, pair.close))) {
                 continue;
             }
-            s->selectedRange = SelectionAt(cursor + typed.len);
+            s->selectedRange = SelectionAt(cursor + len(typed));
             s->selectionReversed = false;
             UpdatePreferredColumn(s);
             PauseBlink(s, app, win);
@@ -2952,11 +2953,11 @@ static Str InputAutoCloseText(InputState* s, App* app, Arena* a, Str typed,
     int count = InputClosingPairCount(config);
     for (int p = 0; p < count; p++) {
         AutoClosingPair pair = InputClosingPairAt(config, p);
-        if (!pair.open || !pair.close || pair.open.len < typed.len ||
-            !InputSliceEq(pair.open, pair.open.len - typed.len, typed)) {
+        if (!pair.open || !pair.close || pair.open.len < len(typed) ||
+            !InputSliceEq(pair.open, pair.open.len - len(typed), typed)) {
             continue;
         }
-        int prefix = pair.open.len - typed.len;
+        int prefix = pair.open.len - len(typed);
         int start = at - prefix;
         if (!InputSliceEq(all, start, Str(pair.open.s, prefix))) {
             continue;
@@ -2979,15 +2980,15 @@ static Str InputAutoCloseText(InputState* s, App* app, Arena* a, Str typed,
         if (InputPairBlocked(pair, InputEditingContext(s, app, start))) {
             continue;
         }
-        char* joined = (char*)Alloc(a, typed.len + pair.close.len + 1);
+        char* joined = (char*)Alloc(a, len(typed) + pair.close.len + 1);
         if (!joined) {
             return typed;
         }
-        memcpy(joined, typed.s, (size_t)typed.len);
-        memcpy(joined + typed.len, pair.close.s, (size_t)pair.close.len);
-        joined[typed.len + pair.close.len] = 0;
-        *caret = at + typed.len;
-        return Str(joined, typed.len + pair.close.len);
+        memcpy(joined, typed.s, (size_t)len(typed));
+        memcpy(joined + len(typed), pair.close.s, (size_t)pair.close.len);
+        joined[len(typed) + pair.close.len] = 0;
+        *caret = at + len(typed);
+        return Str(joined, len(typed) + pair.close.len);
     }
     return typed;
 }
@@ -3054,8 +3055,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     if (r.start < 0) {
         r.start = 0;
     }
-    if (r.end > before.len) {
-        r.end = before.len;
+    if (r.end > len(before)) {
+        r.end = len(before);
     }
     if (r.end < r.start) {
         r.end = r.start;
@@ -3086,7 +3087,7 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         int editEndLine = RopeOffsetToPoint(before, r.end).row;
         int removed = editEndLine - editStartLine;
         int added = 0;
-        for (int i = 0; i < text.len; i++) {
+        for (int i = 0; i < len(text); i++) {
             if (text.s[i] == '\n') {
                 added++;
             }
@@ -3096,9 +3097,9 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     }
 
     TextSplice(s, r.start, r.end, text);
-    int newOffset = r.start + text.len;
-    if (newOffset > s->text.len) {
-        newOffset = s->text.len;
+    int newOffset = r.start + len(text);
+    if (newOffset > len(s->text)) {
+        newOffset = len(s->text);
     }
     bool maskChanged = false;
 
@@ -3114,14 +3115,14 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         if (!MaskIsNone(s->maskPattern)) {
             Str maskText = MaskApply(tmp, s->maskPattern, pending);
             maskChanged = !base::StrEq(maskText, pending);
-            int grown = text.len + maskText.len - pending.len;
+            int grown = len(text) + len(maskText) - len(pending);
             if (grown < 0) {
                 grown = 0;
             }
             TextSet(s, maskText);
             newOffset = r.start + grown;
-            if (newOffset > maskText.len) {
-                newOffset = maskText.len;
+            if (newOffset > len(maskText)) {
+                newOffset = len(maskText);
             }
         }
     }
@@ -3131,11 +3132,11 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         // longer matches it — record a whole-document change instead, and
         // undo/redo can restore the text exactly.
         Selection after = SelectionAt(newOffset);
-        PushHistory(s, oldAll, Selection{0, oldAll.len}, InputValue(s), true,
+        PushHistory(s, oldAll, Selection{0, len(oldAll)}, InputValue(s), true,
                     EditIntent::Atomic, selBefore, &after);
     } else {
         Selection after = pairedCaret >= 0 ? SelectionAt(pairedCaret)
-                                           : SelectionAt(r.start + text.len);
+                                           : SelectionAt(r.start + len(text));
         PushHistory(s, oldAll, r, text, hasIntent, requested, selBefore,
                     pairedCaret >= 0 ? &after : nullptr);
     }
@@ -3201,10 +3202,10 @@ void InputSetSmartIndent(InputState* s, bool enabled, App* app, Window* win) {
 // typing_intent: the intent of a batch the caller did not label. Inserting
 // text at collapsed cursors is typing; anything else stands on its own.
 static EditIntent TypingIntent(const Selection* ranges, int n, Str newText) {
-    if (newText.len == 0) {
+    if (len(newText) == 0) {
         return EditIntent::Atomic;
     }
-    for (int i = 0; i < newText.len; i++) {
+    for (int i = 0; i < len(newText); i++) {
         if (newText.s[i] == '\n' || newText.s[i] == '\r') {
             return EditIntent::Atomic;
         }
@@ -3277,7 +3278,7 @@ bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
     for (int k = n - 1; k >= 0; k--) {
         int i = desc[k];
         int off = ranges[i].start + delta + texts[i].len;
-        result[i] = off > t.len ? t.len : off;
+        result[i] = off > len(t) ? len(t) : off;
         delta += texts[i].len - (ranges[i].end - ranges[i].start);
     }
     auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
@@ -3376,8 +3377,8 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     if (r.start < 0) {
         r.start = 0;
     }
-    if (r.end > before.len) {
-        r.end = before.len;
+    if (r.end > len(before)) {
+        r.end = len(before);
     }
     if (r.end < r.start) {
         r.end = r.start;
@@ -3398,7 +3399,7 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
         }
     }
     s->cursorLineEndAffinity = false;
-    if (text.len == 0) {
+    if (len(text) == 0) {
         // An empty insert is the composition being abandoned: the caret goes
         // back where it started and nothing is marked.
         s->selectedRange = SelectionAt(r.start);
@@ -3406,16 +3407,16 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
         s->imeMarked = {};
     } else {
         s->imeMarking = true;
-        s->imeMarked = Selection{r.start, r.start + text.len};
+        s->imeMarked = Selection{r.start, r.start + len(text)};
         if (sel) {
             int lo = r.start + sel->start;
             int hi = r.start + sel->end;
-            int end = r.start + text.len;
+            int end = r.start + len(text);
             s->selectedRange =
                 Selection{lo < r.start ? r.start : (lo > end ? end : lo),
                           hi < r.start ? r.start : (hi > end ? end : hi)};
         } else {
-            s->selectedRange = SelectionAt(r.start + text.len);
+            s->selectedRange = SelectionAt(r.start + len(text));
         }
     }
     s->selectionReversed = false;
@@ -3429,7 +3430,7 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     if (InputIsMultiLine(s) && s->mode.kind == LayoutModeKind::AutoGrow) {
         LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
     }
-    if (text.len == 0) {
+    if (len(text) == 0) {
         UndoCommitTransaction(&s->undo);
     }
     Notify(app, win);
@@ -3457,7 +3458,7 @@ static void ReplaceText(InputState* s, App* app, Window* win, Str value) {
     EditsAllowed allow(s);
     s->undo.hasPendingIntent = true;
     s->undo.pendingIntent = EditIntent::Atomic;
-    Selection all = {0, InputValue(s).len};
+    Selection all = {0, len(InputValue(s))};
     InputReplaceTextInRange(s, app, win, &all, value);
 }
 
@@ -3467,7 +3468,7 @@ static void ResetSelection(InputState* s) {
     InputRemoveExtraCursors(s);
     s->cursorLineEndAffinity = false;
     if (InputIsSingleLine(s)) {
-        s->selectedRange = SelectionAt(InputValue(s).len);
+        s->selectedRange = SelectionAt(len(InputValue(s)));
     } else {
         s->selectedRange = {};
     }
@@ -3526,7 +3527,7 @@ void InputSetMaskPattern(InputState* s, MaskPattern pattern) {
     s->maskPatternSet = true;
     // Rust's `mask_pattern()` builder puts the derived cue in as well.
     Str cue = MaskPlaceholder(GetTempArena(), s->maskPattern);
-    if (cue.len > 0) {
+    if (len(cue) > 0) {
         InputSetPlaceholder(s, cue);
     }
 }
@@ -3541,8 +3542,8 @@ static bool CompletionWordChar(char c) {
 Str InputCompletionQuery(const InputState* s, int* startOut) {
     Str t = InputValue(s);
     int at = InputCursor(s);
-    if (at > t.len) {
-        at = t.len;
+    if (at > len(t)) {
+        at = len(t);
     }
     int start = at;
     while (start > 0 && CompletionWordChar(t.s[start - 1])) {
@@ -3563,7 +3564,7 @@ Str InputCompletionDocumentation(InputState* s) {
         return Str{};
     }
     CompletionItem& item = s->completion.items[sel];
-    if (item.documentation.len > 0 || !s->completionResolve) {
+    if (len(item.documentation) > 0 || !s->completionResolve) {
         return item.documentation;
     }
     // `resolve_completions`: asked once for the item being looked at, and the
@@ -3614,7 +3615,7 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
     }
     int start = 0;
     Str query = InputCompletionQuery(s, &start);
-    if (!force && query.len == 0) {
+    if (!force && len(query) == 0) {
         InputDismissCompletion(s);
         return;
     }
@@ -3646,7 +3647,7 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
         VecAppend(s->completion.items, items.els[i]);
     }
     s->completion.open = n > 0;
-    Str queryCopy = query.len > 0 ? StrDup(query) : Str{};
+    Str queryCopy = len(query) > 0 ? StrDup(query) : Str{};
     StrFree(s->completion.query);
     s->completion.query = queryCopy;
     s->completion.triggerStart = start;
@@ -3722,7 +3723,7 @@ void InputPresentCompletionItems(InputState* s, int triggerStart, Str query,
     s->completion.offset = InputCursor(s);
     s->completion.selected = 0;
     s->completion.open = n > 0;
-    Str queryCopy = query.len > 0 ? StrDup(query) : Str{};
+    Str queryCopy = len(query) > 0 ? StrDup(query) : Str{};
     StrFree(s->completion.query);
     s->completion.query = queryCopy;
     s->completion.revision++;
@@ -3953,7 +3954,7 @@ InlineCompletion::~InlineCompletion() {
 }
 
 bool InputHasInlineCompletion(const InputState* s) {
-    return s && s->inlineCompletion.text.len > 0;
+    return s && len(s->inlineCompletion.text) > 0;
 }
 
 void InputClearInlineCompletion(InputState* s) {
@@ -4020,7 +4021,7 @@ bool InputAcceptInlineCompletion(InputState* s, App* app, Window* win) {
     // The text is in the suggestion's own arena, which the insert below is
     // about to drop, so it is copied first.
     Str keep = StrDup(s->inlineCompletion.text);
-    if (!keep.s && s->inlineCompletion.text.len > 0) {
+    if (!keep.s && len(s->inlineCompletion.text) > 0) {
         return false;
     }
     InputClearInlineCompletion(s);
@@ -4161,7 +4162,7 @@ void InputUpdateSemanticTokens(InputState* s) {
     int n = 0;
     for (;;) {
         n = s->semanticTokensProvider(s->semanticTokensData, text,
-                                      Selection{0, text.len}, buf.els, cap);
+                                      Selection{0, len(text)}, buf.els, cap);
         if (n < 0) {
             n = 0;
         }
@@ -4302,7 +4303,7 @@ void InputFollowDefinition(InputState* s, App* app, Window* win,
     }
     // A uri that names another document is one this tree cannot open: there
     // is one buffer per field, and nothing to open it into.
-    if (link.uri.len > 0) {
+    if (len(link.uri) > 0) {
         return;
     }
     InputMoveTo(s, app, win, link.target.start);
@@ -4471,8 +4472,8 @@ void InputApplyEdits(InputState* s, App* app, Window* win,
         if (range.start < 0) {
             range.start = 0;
         }
-        if (range.end > text.len) {
-            range.end = text.len;
+        if (range.end > len(text)) {
+            range.end = len(text);
         }
         if (range.end < range.start) {
             range.end = range.start;
@@ -4672,7 +4673,7 @@ struct VerticalTarget {
 static bool InputLineEndAffinityAt(PaintCtx* ctx, Str line, float font,
                                    float maxW, int offset, float relY,
                                    bool mono, float lineMult) {
-    if (!ctx || offset <= 0 || offset >= line.len) {
+    if (!ctx || offset <= 0 || offset >= len(line)) {
         return false;
     }
     float endX = 0, endY = 0, endH = 0;
@@ -4753,7 +4754,7 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     Str target = RopeSliceLine(t, row);
     int targetStart = RopeLineStartOffset(t, row);
     out->offset = targetStart;
-    if (target.len > 0) {
+    if (len(target) > 0) {
         int local = TextIndexAt(ctx, target, font, maxW, true, wantX, y,
                                 s->lastMono, lineMult);
         out->offset += local;
@@ -4848,11 +4849,11 @@ static void MoveAllCursors(InputState* s, App* app, Window* win, F f) {
     CursorSelection active = ActiveCursor(s);
     ApplyAnchors(s, &active, targets[0]);
     SetActiveCursor(s, active);
-    int len = InputValue(s).len;
+    int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
         int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c;
-        c.range = SelectionAt(off < 0 ? 0 : (off > len ? len : off));
+        c.range = SelectionAt(off < 0 ? 0 : (off > textLen ? textLen : off));
         ApplyAnchors(s, &c, targets[i]);
         VecAppend(s->extraCursors, c);
     }
@@ -4895,11 +4896,11 @@ static void SelectAllCursorsTo(InputState* s, App* app, Window* win, F f) {
         s->preferredX = targets[0].preferredX;
         s->preferredColumn = targets[0].preferredColumn;
     }
-    int len = InputValue(s).len;
+    int textLen = len(InputValue(s));
     for (int i = 1; i < n; i++) {
         int off = InputCursorBoundary(s, targets[i].offset, Bias::Left);
         CursorSelection c = s->extraCursors[i - 1];
-        ExtendSelection(&c, off < 0 ? 0 : (off > len ? len : off));
+        ExtendSelection(&c, off < 0 ? 0 : (off > textLen ? textLen : off));
         if (c.IsEmpty() || targets[i].anchors) {
             ApplyAnchors(s, &c, targets[i]);
         }
@@ -5057,7 +5058,7 @@ static bool PasteLinesToCursors(InputState* s, App* app, Window* win,
     InputMergeOverlappingCursors(s);
     int count = InputCursorCount(s);
     int lines = 1;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] == '\n') {
             lines++;
         }
@@ -5074,7 +5075,7 @@ static bool PasteLinesToCursors(InputState* s, App* app, Window* win,
     int at = 0;
     for (int k = 0; k < n; k++) {
         int end = at;
-        while (end < text.len && text.s[end] != '\n') {
+        while (end < len(text) && text.s[end] != '\n') {
             end++;
         }
         parts[k] = Str(text.s + at, end - at);
@@ -5101,15 +5102,15 @@ static bool PasteLinesToCursors(InputState* s, App* app, Window* win,
 // is now.
 static void RestoreCursors(InputState* s, const CursorSelection* sels, int n) {
     Arena* a = GetTempArena();
-    int len = InputValue(s).len;
+    int textLen = len(InputValue(s));
     auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
     for (int i = 0; i < n; i++) {
         out[i] = sels[i];
-        if (out[i].range.start > len) {
-            out[i].range.start = len;
+        if (out[i].range.start > textLen) {
+            out[i].range.start = textLen;
         }
-        if (out[i].range.end > len) {
-            out[i].range.end = len;
+        if (out[i].range.end > textLen) {
+            out[i].range.end = textLen;
         }
     }
     SetAllCursors(s, out, n);
@@ -5213,8 +5214,8 @@ enum class IndentDirection {
 
 // Whether the line starting at `lineStart` begins with the tab.
 static bool LineHasTab(Str t, int lineStart, Str tab) {
-    return t.len - lineStart >= tab.len &&
-           StrEq(Str(t.s + lineStart, tab.len), tab);
+    return len(t) - lineStart >= len(tab) &&
+           StrEq(Str(t.s + lineStart, len(tab)), tab);
 }
 
 static int CountEditsWithStartAtOrBefore(const Selection* edits, int n,
@@ -5269,13 +5270,13 @@ static void ComputeBlockIndent(Arena* a, const InputState* s,
         if (dir == IndentDirection::Indent) {
             edits[m++] = Selection{lineStart, lineStart};
         } else if (LineHasTab(t, lineStart, tab)) {
-            edits[m++] = Selection{lineStart, lineStart + tab.len};
+            edits[m++] = Selection{lineStart, lineStart + len(tab)};
         }
     }
     auto mapOffset = [&](int offset) {
         if (dir == IndentDirection::Indent) {
             return offset +
-                   CountEditsWithStartAtOrBefore(edits, m, offset) * tab.len;
+                   CountEditsWithStartAtOrBefore(edits, m, offset) * len(tab);
         }
         int preceding = 0;
         while (preceding < m && edits[preceding].end <= offset) {
@@ -5285,7 +5286,7 @@ static void ComputeBlockIndent(Arena* a, const InputState* s,
         if (preceding < m && offset > edits[preceding].start) {
             partial = offset - edits[preceding].start;
         }
-        return offset - preceding * tab.len - partial;
+        return offset - preceding * len(tab) - partial;
     };
     auto* out = (CursorSelection*)Alloc(a, n * (int)sizeof(CursorSelection));
     for (int i = 0; i < n; i++) {
@@ -5323,7 +5324,7 @@ static void ComputeInlineIndent(Arena* a, const InputState* s,
             if (!LineHasTab(t, start, tab)) {
                 continue;
             }
-            r = Selection{start, start + tab.len};
+            r = Selection{start, start + len(tab)};
         }
         int j = nRanges;
         while (j > 0 && ranges[j - 1].start > r.start) {
@@ -5348,7 +5349,7 @@ static void ComputeInlineIndent(Arena* a, const InputState* s,
         int cursor = sels[i].Cursor();
         int at = cursor;
         if (dir == IndentDirection::Indent) {
-            at += CountEditsWithStartAtOrBefore(edits, m, cursor) * tab.len;
+            at += CountEditsWithStartAtOrBefore(edits, m, cursor) * len(tab);
         } else {
             int removed = 0;
             for (int k = 0; k < m; k++) {
@@ -5426,7 +5427,7 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
         lineStart--;
     }
     int indentEnd = lineStart;
-    while (indentEnd < all.len &&
+    while (indentEnd < len(all) &&
            (all.s[indentEnd] == ' ' || all.s[indentEnd] == '\t')) {
         indentEnd++;
     }
@@ -5455,8 +5456,8 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
         } else {
             for (int i = 0; i < config.nBrackets; i++) {
                 Str open = config.brackets[i].open;
-                if (open && before.len >= open.len &&
-                    InputSliceEq(before, before.len - open.len, open)) {
+                if (open && len(before) >= len(open) &&
+                    InputSliceEq(before, len(before) - len(open), open)) {
                     increase = true;
                     break;
                 }
@@ -5464,28 +5465,28 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
         }
     }
     Str tab = TabIndent(s);
-    int innerLen = indent.len + (increase || split ? tab.len : 0);
-    int total = 1 + innerLen + (split ? 1 + indent.len : 0);
+    int innerLen = len(indent) + (increase || split ? len(tab) : 0);
+    int total = 1 + innerLen + (split ? 1 + len(indent) : 0);
     char* out = (char*)Alloc(a, total + 1);
     if (!out) {
         return StrL("\n");
     }
     int at = 0;
     out[at++] = '\n';
-    if (indent.len > 0) {
-        memcpy(out + at, indent.s, (size_t)indent.len);
-        at += indent.len;
+    if (len(indent) > 0) {
+        memcpy(out + at, indent.s, (size_t)len(indent));
+        at += len(indent);
     }
     if (increase || split) {
-        memcpy(out + at, tab.s, (size_t)tab.len);
-        at += tab.len;
+        memcpy(out + at, tab.s, (size_t)len(tab));
+        at += len(tab);
     }
     if (split) {
         *caretInText = at;
         out[at++] = '\n';
-        if (indent.len > 0) {
-            memcpy(out + at, indent.s, (size_t)indent.len);
-            at += indent.len;
+        if (len(indent) > 0) {
+            memcpy(out + at, indent.s, (size_t)len(indent));
+            at += len(indent);
         }
     }
     out[at] = 0;
@@ -5573,7 +5574,7 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputMoveTo(s, app, win, 0);
             return true;
         case InputAction::MoveToEnd:
-            InputMoveTo(s, app, win, t.len);
+            InputMoveTo(s, app, win, len(t));
             return true;
         case InputAction::MoveToPreviousWord:
             MoveAllCursors(s, app, win,
@@ -5620,7 +5621,7 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return true;
         case InputAction::SelectToEnd:
             SelectAllCursorsTo(s, app, win, [&](const CursorSelection&, bool) {
-                return TargetAt(t.len);
+                return TargetAt(len(t));
             });
             return true;
         case InputAction::SelectToStartOfLine:
@@ -5730,7 +5731,7 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             }
             int offset = InputEndOfLine(s, win);
             if (offset == InputCursor(s)) {
-                offset = offset + 1 > t.len ? t.len : offset + 1;
+                offset = offset + 1 > len(t) ? len(t) : offset + 1;
             }
             DeleteRange(s, app, win, InputCursor(s), offset);
             return true;
@@ -5842,10 +5843,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 return true;
             }
             Str text = item.text;
-            if (text.len == 0 && item.externalPaths.len > 0) {
+            if (len(text) == 0 && item.externalPaths.len > 0) {
                 text = item.externalPaths;
             }
-            if (text.len == 0) {
+            if (len(text) == 0) {
                 return true;
             }
             // A paste is one atomic edit, never part of a typing run.
@@ -5966,7 +5967,7 @@ void InputOpenSearch(InputState* s, App* app, Window* win, bool replaceMode) {
     // Whatever is selected becomes the query, which is what makes ctrl-f on
     // a word search for that word. An empty selection leaves the last one.
     Str selected = InputSelectedValue(s);
-    Str query = selected.len > 0 ? selected : s->search.query;
+    Str query = len(selected) > 0 ? selected : s->search.query;
     bool queryChanged = !StrEq(query, s->search.query);
     // A retained query resumes its previous occurrence. Only a new query is
     // anchored to the current viewport.
@@ -6095,10 +6096,10 @@ int InputSearchReplaceAll(InputState* s, App* app, Window* win, Str with) {
         sb.Append(with);
         at = r.end;
     }
-    sb.Append(Str(text.s + at, text.len - at));
+    sb.Append(Str(text.s + at, len(text) - at));
     Str whole = sb.TakeStr();
     SearchMatcherBeginReplacement(m);
-    Selection all = {0, text.len};
+    Selection all = {0, len(text)};
     InputReplaceTextInRange(s, app, win, &all, whole);
     StrFree(whole);
     InputScrollToOffset(s, 0, InputMoveDir::Down);
@@ -6183,7 +6184,7 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         *columnsPastLineEnd = 0;
     }
     Str t = InputValue(s);
-    if (t.len == 0 || !ctx) {
+    if (len(t) == 0 || !ctx) {
         return 0;
     }
     const Bounds& b = s->lastBounds;
@@ -6257,7 +6258,7 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     // A wrapped line still needs shaping at its left edge: the same x starts
     // every visual row, and relY is what distinguishes those offsets.  The
     // logical-line shortcut is valid only when the line does not wrap.
-    if (line.len == 0 || (x <= b.x && !s->softWrap)) {
+    if (len(line) == 0 || (x <= b.x && !s->softWrap)) {
         return start;
     }
     float maxW = s->softWrap ? b.w : 0;
@@ -6268,11 +6269,11 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         *lineEndAffinity = InputLineEndAffinityAt(ctx, line, font, maxW, local,
                                                   relY, s->lastMono, lineMult);
     }
-    if (columnsPastLineEnd && local == line.len) {
+    if (columnsPastLineEnd && local == len(line)) {
         float endX = 0, endY = 0, endH = 0;
         float spaceX = 0, spaceY = 0, spaceH = 0;
         bool finalVisualRow = !s->softWrap;
-        if (TextPointAt(ctx, line, font, maxW, s->softWrap, line.len, &endX,
+        if (TextPointAt(ctx, line, font, maxW, s->softWrap, len(line), &endX,
                         &endY, &endH, s->lastMono, lineMult, true)) {
             float rowH = endH > 0 ? endH : lineH;
             finalVisualRow = finalVisualRow || relY + rowH * 0.5f >= endY;
@@ -6299,12 +6300,12 @@ static char FoldAscii(char c) {
 
 // The first occurrence of `needle` in `hay` at or after `from`, or -1.
 static int FindFrom(Str hay, Str needle, int from, bool fold) {
-    if (needle.len <= 0 || needle.len > hay.len) {
+    if (len(needle) <= 0 || len(needle) > len(hay)) {
         return -1;
     }
-    for (int i = from; i + needle.len <= hay.len; i++) {
+    for (int i = from; i + len(needle) <= len(hay); i++) {
         int k = 0;
-        for (; k < needle.len; k++) {
+        for (; k < len(needle); k++) {
             char a = hay.s[i + k], b = needle.s[k];
             if (fold) {
                 a = FoldAscii(a);
@@ -6314,7 +6315,7 @@ static int FindFrom(Str hay, Str needle, int from, bool fold) {
                 break;
             }
         }
-        if (k == needle.len) {
+        if (k == len(needle)) {
             return i;
         }
     }
@@ -6322,7 +6323,7 @@ static int FindFrom(Str hay, Str needle, int from, bool fold) {
 }
 
 static Str MatcherText(const SearchMatcher* m) {
-    return Str(m->text.els, m->text.len);
+    return Str(m->text.els, len(m->text));
 }
 
 // update_matches. `stream_find_iter` answers leftmost non-overlapping
@@ -6330,7 +6331,7 @@ static Str MatcherText(const SearchMatcher* m) {
 static void MatcherUpdateMatches(SearchMatcher* m) {
     VecClear(m->ranges);
     m->ranges.len = 0;
-    if (m->query.len > 0) {
+    if (len(m->query) > 0) {
         Str hay = MatcherText(m);
         int at = 0;
         for (;;) {
@@ -6338,8 +6339,8 @@ static void MatcherUpdateMatches(SearchMatcher* m) {
             if (lo < 0) {
                 break;
             }
-            VecAppend(m->ranges, Selection{lo, lo + m->query.len});
-            at = lo + m->query.len;
+            VecAppend(m->ranges, Selection{lo, lo + len(m->query)});
+            at = lo + len(m->query);
         }
     }
     if (!m->replacing || m->ranges.len == 0) {
@@ -6362,15 +6363,15 @@ void SearchMatcherReset(SearchMatcher* m) {
 void SearchMatcherUpdate(SearchMatcher* m, Str text) {
     // The unchanged text is Rust's early return, and it clears `replacing`
     // on the way out — a replacement that did not move a byte still ends.
-    if (StrEq(Str(m->text.els, m->text.len), text)) {
+    if (StrEq(Str(m->text.els, len(m->text)), text)) {
         m->replacing = false;
         return;
     }
     m->text.len = 0;
-    if (text.len > 0) {
-        char* dst = VecAppendBlanks(m->text, text.len);
+    if (len(text) > 0) {
+        char* dst = VecAppendBlanks(m->text, len(text));
         if (dst) {
-            memcpy(dst, text.s, (size_t)text.len);
+            memcpy(dst, text.s, (size_t)len(text));
         }
     }
     MatcherUpdateMatches(m);
@@ -6378,7 +6379,7 @@ void SearchMatcherUpdate(SearchMatcher* m, Str text) {
 
 void SearchMatcherUpdateQuery(SearchMatcher* m, Str query, bool insensitive) {
     StrFree(m->query);
-    m->query = query.len > 0 ? StrDup(query) : Str{};
+    m->query = len(query) > 0 ? StrDup(query) : Str{};
     m->caseInsensitive = insensitive;
     MatcherUpdateMatches(m);
 }
@@ -6471,14 +6472,14 @@ void SearchSessionSetQuery(SearchSession* s, Str query, bool insensitive) {
         return;
     }
     StrFree(s->query);
-    s->query = query.len > 0 ? StrDup(query) : Str{};
+    s->query = len(query) > 0 ? StrDup(query) : Str{};
     s->caseInsensitive = insensitive;
     SearchMatcherUpdateQuery(&s->matcher, s->query, insensitive);
 }
 
 void SearchSessionSetReplacement(SearchSession* s, Str replacement) {
     StrFree(s->replacement);
-    s->replacement = replacement.len > 0 ? StrDup(replacement) : Str{};
+    s->replacement = len(replacement) > 0 ? StrDup(replacement) : Str{};
 }
 
 /* Port of crates/base/src/input/base/mask_pattern.rs.
@@ -6591,7 +6592,7 @@ bool MaskTokenAt(const MaskPattern& p, int pos, MaskToken* out, uint32_t* sep) {
 bool MaskIsNone(const MaskPattern& p) {
     switch (p.kind) {
         case MaskKind::Pattern:
-            return p.pattern.len == 0;
+            return len(p.pattern) == 0;
         case MaskKind::Number:
             return false;
         case MaskKind::None:
@@ -6603,11 +6604,11 @@ bool MaskIsNone(const MaskPattern& p) {
 // The number half of is_valid: at most one dot, at most one sign and only at
 // the front, digits or the group separator everywhere else.
 static bool NumberIsValid(const MaskPattern& p, Str text) {
-    if (text.len == 0) {
+    if (len(text) == 0) {
         return true;
     }
     int dot = -1;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] != '.') {
             continue;
         }
@@ -6616,7 +6617,7 @@ static bool NumberIsValid(const MaskPattern& p, Str text) {
         }
         dot = i;
     }
-    int intEnd = dot < 0 ? text.len : dot;
+    int intEnd = dot < 0 ? len(text) : dot;
     int charPos = 0;
     for (int i = 0; i < intEnd;) {
         uint32_t c = 0;
@@ -6631,7 +6632,7 @@ static bool NumberIsValid(const MaskPattern& p, Str text) {
         }
         charPos++;
     }
-    for (int i = intEnd + 1; i < text.len && dot >= 0;) {
+    for (int i = intEnd + 1; i < len(text) && dot >= 0;) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
         if (!IsAsciiDigit(c) && !(p.separator && c == p.separator)) {
@@ -6651,9 +6652,9 @@ bool MaskIsValid(const MaskPattern& p, Str maskText) {
     // Rust walks the tokens, consuming a text character for each one that
     // matches, and calls the text valid when every character was consumed.
     int ti = 0;
-    int tokens = RopeOffsetToCharIndex(p.pattern, p.pattern.len);
+    int tokens = RopeOffsetToCharIndex(p.pattern, len(p.pattern));
     for (int pos = 0; pos < tokens; pos++) {
-        if (ti >= maskText.len) {
+        if (ti >= len(maskText)) {
             break;
         }
         MaskToken tok = MaskToken::Any;
@@ -6665,7 +6666,7 @@ bool MaskIsValid(const MaskPattern& p, Str maskText) {
             ti += n;
         }
     }
-    return ti == maskText.len;
+    return ti == len(maskText);
 }
 
 bool MaskIsValidAt(const MaskPattern& p, uint32_t ch, int pos) {
@@ -6721,7 +6722,7 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
     // Remove the existing group separator, then split on the dot.
     StrBuilder bare;
     int dot = -1;
-    for (int i = 0; i < text.len;) {
+    for (int i = 0; i < len(text);) {
         uint32_t c = 0;
         int n = Utf8At(text, i, &c);
         if (c != p.separator) {
@@ -6735,7 +6736,7 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
         i += n;
     }
     Str flat = Str(bare.els, bare.len);
-    int intEnd = dot < 0 ? flat.len : dot;
+    int intEnd = dot < 0 ? len(flat) : dot;
 
     // Reverse the integer part for easier grouping, taking the sign out first
     // so the result cannot come out as `-,123`.
@@ -6766,7 +6767,7 @@ static Str MaskNumber(Arena* a, const MaskPattern& p, Str text) {
     if (dot >= 0 && p.fraction != 0) {
         out.AppendChar('.');
         int kept = 0;
-        for (int i = intEnd + 1; i < flat.len;) {
+        for (int i = intEnd + 1; i < len(flat);) {
             uint32_t c = 0;
             int n = Utf8At(flat, i, &c);
             if (p.fraction >= 0 && kept >= p.fraction) {
@@ -6789,9 +6790,9 @@ Str MaskApply(Arena* a, const MaskPattern& p, Str text) {
     }
     StrBuilder out;
     int ti = 0;
-    int tokens = RopeOffsetToCharIndex(p.pattern, p.pattern.len);
+    int tokens = RopeOffsetToCharIndex(p.pattern, len(p.pattern));
     for (int pos = 0; pos < tokens; pos++) {
-        if (ti >= text.len) {
+        if (ti >= len(text)) {
             break;
         }
         MaskToken tok = MaskToken::Any;
@@ -6821,7 +6822,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
         }
         StrBuilder out;
         bool hasDot = false;
-        for (int i = 0; i < maskText.len;) {
+        for (int i = 0; i < len(maskText);) {
             uint32_t c = 0;
             int n = Utf8At(maskText, i, &c);
             if (c != p.separator) {
@@ -6844,7 +6845,7 @@ Str MaskUnapply(Arena* a, const MaskPattern& p, Str maskText) {
     // Pattern: Rust walks the tokens against the *character* at the same
     // index, so a separator drops out and everything else is kept.
     StrBuilder out;
-    int tokens = RopeOffsetToCharIndex(p.pattern, p.pattern.len);
+    int tokens = RopeOffsetToCharIndex(p.pattern, len(p.pattern));
     int ti = 0;
     for (int pos = 0; pos < tokens; pos++) {
         uint32_t ch = 0;
@@ -6868,7 +6869,7 @@ Str MaskPlaceholder(Arena* a, const MaskPattern& p) {
         return {};
     }
     StrBuilder out;
-    int tokens = RopeOffsetToCharIndex(p.pattern, p.pattern.len);
+    int tokens = RopeOffsetToCharIndex(p.pattern, len(p.pattern));
     for (int pos = 0; pos < tokens; pos++) {
         MaskToken tok = MaskToken::Any;
         uint32_t sep = 0;
@@ -6906,7 +6907,7 @@ static uint32_t NormalizeChar(uint32_t ch) {
 
 Str NormalizeNumberInput(Arena* a, Str text) {
     bool any = false;
-    for (int i = 0; i < text.len && !any;) {
+    for (int i = 0; i < len(text) && !any;) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
         any = NormalizeChar(c) != c;
@@ -6915,7 +6916,7 @@ Str NormalizeNumberInput(Arena* a, Str text) {
         return StrDup(a, text); // Rust's Cow::Borrowed
     }
     StrBuilder out;
-    for (int i = 0; i < text.len;) {
+    for (int i = 0; i < len(text);) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
         PushChar(out, NormalizeChar(c));
@@ -6941,14 +6942,14 @@ int RopeClipOffset(Str text, int offset, Bias bias) {
     if (offset <= 0 || !text.s) {
         return 0;
     }
-    if (offset >= text.len) {
-        return text.len;
+    if (offset >= len(text)) {
+        return len(text);
     }
     if (bias == Bias::Left) {
         return Utf8ClipLeft(text, offset);
     }
     // Bias::Right: forward to the next boundary instead.
-    while (offset < text.len && ((uint8_t)text.s[offset] & 0xC0) == 0x80) {
+    while (offset < len(text) && ((uint8_t)text.s[offset] & 0xC0) == 0x80) {
         offset++;
     }
     return offset;
@@ -6956,7 +6957,7 @@ int RopeClipOffset(Str text, int offset, Bias bias) {
 
 int RopeCharAt(Str text, int offset, uint32_t* out) {
     *out = 0;
-    if (!text.s || offset < 0 || offset >= text.len) {
+    if (!text.s || offset < 0 || offset >= len(text)) {
         return 0;
     }
     return Utf8At(text, offset, out);
@@ -6966,7 +6967,7 @@ int RopeLinesLen(Str text) {
     // len_lines(LineType::LF): one more than the number of LFs, and an empty
     // rope still has one line.
     int n = 1;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] == '\n') {
             n++;
         }
@@ -6980,7 +6981,7 @@ int RopeLineStartOffset(Str text, int row) {
         return 0;
     }
     int seen = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (text.s[i] != '\n') {
             continue;
         }
@@ -6989,7 +6990,7 @@ int RopeLineStartOffset(Str text, int row) {
             return i + 1;
         }
     }
-    return text.len;
+    return len(text);
 }
 
 Str RopeSliceLine(Str text, int row) {
@@ -6998,14 +6999,14 @@ Str RopeSliceLine(Str text, int row) {
     }
     int a = RopeLineStartOffset(text, row);
     int b = a;
-    while (b < text.len && text.s[b] != '\n') {
+    while (b < len(text) && text.s[b] != '\n') {
         b++;
     }
     return Str(text.s + a, b - a);
 }
 
 int RopeLineLen(Str text, int row) {
-    return RopeSliceLine(text, row).len;
+    return len(RopeSliceLine(text, row));
 }
 
 int RopeLineEndOffset(Str text, int row) {
@@ -7030,7 +7031,7 @@ int RopePointToOffset(Str text, RopePoint point) {
     // Rust does not clamp the column: the callers hand it one they measured
     // off a line, and a column past the end is their bug, not this one's.
     if (point.row < 0 || point.row >= RopeLinesLen(text)) {
-        return text.len;
+        return len(text);
     }
     return RopeLineStartOffset(text, point.row) + point.column;
 }
@@ -7039,8 +7040,8 @@ int RopePointToOffset(Str text, RopePoint point) {
 // through. A character outside the BMP is one UTF-16 surrogate pair, so it
 // counts as two.
 int RopeOffsetToOffsetUtf16(Str text, int offset) {
-    if (offset > text.len) {
-        offset = text.len;
+    if (offset > len(text)) {
+        offset = len(text);
     }
     int n = 0;
     int i = 0;
@@ -7055,7 +7056,7 @@ int RopeOffsetToOffsetUtf16(Str text, int offset) {
 int RopeOffsetUtf16ToOffset(Str text, int offsetUtf16) {
     int n = 0;
     int i = 0;
-    while (i < text.len && n < offsetUtf16) {
+    while (i < len(text) && n < offsetUtf16) {
         uint32_t c = 0;
         int len = Utf8At(text, i, &c);
         n += c >= 0x10000 ? 2 : 1;
@@ -7067,7 +7068,7 @@ int RopeOffsetUtf16ToOffset(Str text, int offsetUtf16) {
 int RopeCharIndexToOffset(Str text, int charIndex) {
     int i = 0;
     int n = 0;
-    while (i < text.len && n < charIndex) {
+    while (i < len(text) && n < charIndex) {
         uint32_t c = 0;
         i += Utf8At(text, i, &c);
         n++;
@@ -7166,7 +7167,7 @@ UndoManager::~UndoManager() {
 static bool IsAdjacent(EditIntent intent, const Change& prev,
                        const Change& cur) {
     auto hasNewline = [](Str s) {
-        for (int i = 0; i < s.len; i++) {
+        for (int i = 0; i < len(s); i++) {
             if (s.s[i] == '\n' || s.s[i] == '\r') {
                 return true;
             }
@@ -7179,10 +7180,10 @@ static bool IsAdjacent(EditIntent intent, const Change& prev,
                    !hasNewline(prev.newText) && !hasNewline(cur.newText) &&
                    prev.newRange.end == cur.oldRange.start;
         case EditIntent::Backspace:
-            return prev.newText.len == 0 && cur.newText.len == 0 &&
+            return len(prev.newText) == 0 && len(cur.newText) == 0 &&
                    cur.oldRange.end == prev.oldRange.start;
         case EditIntent::DeleteForward:
-            return prev.newText.len == 0 && cur.newText.len == 0 &&
+            return len(prev.newText) == 0 && len(cur.newText) == 0 &&
                    cur.oldRange.start == prev.oldRange.start;
         case EditIntent::Atomic:
             return false;
@@ -7213,7 +7214,7 @@ static bool IsAdjacentBatch(EditIntent intent, const Change* prev,
         if (!IsAdjacent(intent, Shifted(prev[i], shift), cur[i])) {
             return false;
         }
-        shift += prev[i].newText.len - prev[i].oldText.len;
+        shift += len(prev[i].newText) - prev[i].oldText.len;
     }
     return true;
 }

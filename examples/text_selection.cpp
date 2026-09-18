@@ -111,7 +111,7 @@ El* SelApp::Render(SelApp* app, Ctx* cx) {
     col->Child(ButtonEl(frame, 1, StrL("Clicking me must not start selection"))
                    ->OnClick(Listen(cx, &ClearSelection)));
     Str value = InputValue(&app->in);
-    Str shown = value.len > 0 ? value : app->in.placeholder;
+    Str shown = len(value) > 0 ? value : app->in.placeholder;
     col->Child(Div(frame)
                    ->W(kFill)
                    ->H(36)
@@ -122,7 +122,7 @@ El* SelApp::Render(SelApp* app, Ctx* cx) {
                    ->OnClick(Listen(cx, &FocusField))
                    ->Child(TextEl(frame, shown)
                                ->Font(14)
-                               ->Fg(value.len ? th.foreground : th.mutedFg)));
+                               ->Fg(len(value) ? th.foreground : th.mutedFg)));
     return col;
 }
 

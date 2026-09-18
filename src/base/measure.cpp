@@ -23,7 +23,7 @@ void MeasureEnd(Measure* measure) {
         return;
     }
     double elapsedMs = (TimeNow() - measure->started) * 1000.0;
-    printf("%.*s in %.3f ms\n", measure->name.len,
+    printf("%.*s in %.3f ms\n", len(measure->name),
            measure->name.s ? measure->name.s : "", elapsedMs);
     measure->active = false;
 }

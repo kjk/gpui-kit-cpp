@@ -444,7 +444,7 @@ int GpuiMain(int argc, char** argv) {
             int x = StrFind(size, "x");
             int h =
                 x >= 0
-                    ? StrToIntUnchecked(Str(size.s + x + 1, size.len - x - 1))
+                    ? StrToIntUnchecked(Str(size.s + x + 1, len(size) - x - 1))
                     : 0;
             if (w > 0 && h > 0) {
                 winW = w;

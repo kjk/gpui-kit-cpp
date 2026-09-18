@@ -18,14 +18,15 @@ static WCHAR* Wide(Str value) {
 }
 
 bool DependencyMakeDirectories(Str path, Str* error) {
-    if (!path || path.len >= kMaxPath) {
+    if (!path || len(path) >= kMaxPath) {
         DependencyError(error,
                         StrL("dependency cache path is empty or too long"));
         return false;
     }
     TempStr buffer = StrDupTemp(path);
-    for (int i = 1; i <= path.len; i++) {
-        if (i < path.len && buffer.s[i] != '/' && buffer.s[i] != '\\') continue;
+    for (int i = 1; i <= len(path); i++) {
+        if (i < len(path) && buffer.s[i] != '/' && buffer.s[i] != '\\')
+            continue;
         char saved = buffer.s[i];
         buffer.s[i] = 0;
         // A drive root ("C:") is not a directory anyone creates.
@@ -42,7 +43,7 @@ bool DependencyMakeDirectories(Str path, Str* error) {
 }
 
 static void RemoveTreeAt(Str path) {
-    if (path.len + 3 >= kMaxPath) return;
+    if (len(path) + 3 >= kMaxPath) return;
     DWORD attributes = GetFileAttributesW(Wide(path));
     if (attributes == INVALID_FILE_ATTRIBUTES) return;
     if ((attributes & FILE_ATTRIBUTE_DIRECTORY) == 0) {
@@ -63,7 +64,7 @@ static void RemoveTreeAt(Str path) {
                 continue;
             TempStr name = AllocStrTemp(kMaxPath - 1);
             int n = WideCharToMultiByte(CP_UTF8, 0, found.cFileName, -1, name.s,
-                                        name.len + 1, nullptr, nullptr);
+                                        len(name) + 1, nullptr, nullptr);
             if (n <= 1) continue;
             RemoveTreeAt(fmt("%s\\%s", path, Str(name.s, n - 1)));
         } while (FindNextFileW(search, &found));
@@ -74,7 +75,7 @@ static void RemoveTreeAt(Str path) {
 }
 
 void DependencyRemoveTree(Str path) {
-    if (!path || path.len >= kMaxPath) return;
+    if (!path || len(path) >= kMaxPath) return;
     RemoveTreeAt(path);
 }
 

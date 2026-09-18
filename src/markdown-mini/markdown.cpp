@@ -89,7 +89,7 @@ static bool MiniPunctuation(char c) {
 }
 
 static Str MiniSlice(Str s, int32_t start, int32_t end) {
-    if (!s.s || start < 0 || end < start || end > s.len) {
+    if (!s.s || start < 0 || end < start || end > len(s)) {
         return {};
     }
     return Str(s.s + start, end - start);
@@ -97,7 +97,7 @@ static Str MiniSlice(Str s, int32_t start, int32_t end) {
 
 static Str MiniTrim(Str s) {
     int32_t start = 0;
-    int32_t end = s.len;
+    int32_t end = len(s);
     while (start < end && MiniSpace(s.s[start])) {
         start++;
     }
@@ -108,30 +108,30 @@ static Str MiniTrim(Str s) {
 }
 
 static Str MiniOwn(Arena* a, Str s) {
-    char* out = (char*)Alloc(a, s.len + 1);
+    char* out = (char*)Alloc(a, len(s) + 1);
     if (!out) {
         return {};
     }
-    if (s.len > 0) {
-        memcpy(out, s.s, (size_t)s.len);
+    if (len(s) > 0) {
+        memcpy(out, s.s, (size_t)len(s));
     }
-    out[s.len] = 0;
-    return Str(out, s.len);
+    out[len(s)] = 0;
+    return Str(out, len(s));
 }
 
 static MiniLine MiniReadLine(Str source, int32_t at) {
     MiniLine line;
     line.start = at;
-    while (at < source.len && source.s[at] != '\n' && source.s[at] != '\r') {
+    while (at < len(source) && source.s[at] != '\n' && source.s[at] != '\r') {
         at++;
     }
     line.end = at;
-    if (at < source.len && source.s[at] == '\r') {
+    if (at < len(source) && source.s[at] == '\r') {
         at++;
-        if (at < source.len && source.s[at] == '\n') {
+        if (at < len(source) && source.s[at] == '\n') {
             at++;
         }
-    } else if (at < source.len) {
+    } else if (at < len(source)) {
         at++;
     }
     line.next = at;
@@ -144,7 +144,7 @@ static Str MiniLineText(Str source, const MiniLine& line) {
 
 static int32_t MiniIndent(Str line) {
     int32_t n = 0;
-    while (n < line.len && n < 4) {
+    while (n < len(line) && n < 4) {
         if (line.s[n] == ' ') {
             n++;
         } else if (line.s[n] == '\t') {
@@ -157,7 +157,7 @@ static int32_t MiniIndent(Str line) {
 }
 
 static bool MiniBlank(Str line) {
-    for (int32_t i = 0; i < line.len; i++) {
+    for (int32_t i = 0; i < len(line); i++) {
         if (!MiniSpace(line.s[i])) {
             return false;
         }
@@ -174,7 +174,7 @@ static Node* MiniNode(MiniParser* p, NodeKind kind, Node* parent) {
 }
 
 static void MiniText(MiniParser* p, Node* parent, Str value) {
-    if (value.len <= 0) {
+    if (len(value) <= 0) {
         return;
     }
     Node* text = MiniNode(p, NodeKind::Text, parent);
@@ -184,13 +184,13 @@ static void MiniText(MiniParser* p, Node* parent, Str value) {
 }
 
 static int32_t MiniFind(Str text, int32_t at, char marker, int32_t count) {
-    for (int32_t i = at; i + count <= text.len; i++) {
+    for (int32_t i = at; i + count <= len(text); i++) {
         if (text.s[i] == '\\') {
             i++;
             continue;
         }
         int32_t n = 0;
-        while (i + n < text.len && text.s[i + n] == marker) {
+        while (i + n < len(text) && text.s[i + n] == marker) {
             n++;
         }
         if (n >= count && i > at && !MiniSpace(text.s[i - 1])) {
@@ -203,8 +203,8 @@ static int32_t MiniFind(Str text, int32_t at, char marker, int32_t count) {
 
 static int32_t MiniBracketEnd(Str text, int32_t at) {
     int32_t depth = 1;
-    for (int32_t i = at; i < text.len; i++) {
-        if (text.s[i] == '\\' && i + 1 < text.len) {
+    for (int32_t i = at; i < len(text); i++) {
+        if (text.s[i] == '\\' && i + 1 < len(text)) {
             i++;
             continue;
         }
@@ -220,9 +220,9 @@ static int32_t MiniBracketEnd(Str text, int32_t at) {
 static int32_t MiniResourceEnd(Str text, int32_t at) {
     int32_t depth = 1;
     char quote = 0;
-    for (int32_t i = at; i < text.len; i++) {
+    for (int32_t i = at; i < len(text); i++) {
         char c = text.s[i];
-        if (c == '\\' && i + 1 < text.len) {
+        if (c == '\\' && i + 1 < len(text)) {
             i++;
             continue;
         }
@@ -249,7 +249,7 @@ static bool MiniLink(MiniParser* p, Node* parent, Str text, int32_t at,
                      int32_t* after) {
     bool image = text.s[at] == '!';
     int32_t open = at + (image ? 1 : 0);
-    if (open >= text.len || text.s[open] != '[') {
+    if (open >= len(text) || text.s[open] != '[') {
         return false;
     }
     if (image && !p->options->constructs.labelStartImage) {
@@ -259,7 +259,7 @@ static bool MiniLink(MiniParser* p, Node* parent, Str text, int32_t at,
         return false;
     }
     int32_t close = MiniBracketEnd(text, open + 1);
-    if (close < 0 || close + 1 >= text.len || text.s[close + 1] != '(') {
+    if (close < 0 || close + 1 >= len(text) || text.s[close + 1] != '(') {
         return false;
     }
     int32_t resourceEnd = MiniResourceEnd(text, close + 2);
@@ -270,20 +270,20 @@ static bool MiniLink(MiniParser* p, Node* parent, Str text, int32_t at,
     Str body = MiniTrim(MiniSlice(text, close + 2, resourceEnd));
     Str url = {};
     Str title = {};
-    if (body.len > 1 && body.s[0] == '<') {
+    if (len(body) > 1 && body.s[0] == '<') {
         int32_t end = 1;
-        while (end < body.len && body.s[end] != '>') {
+        while (end < len(body) && body.s[end] != '>') {
             end++;
         }
-        if (end >= body.len) {
+        if (end >= len(body)) {
             return false;
         }
         url = MiniSlice(body, 1, end);
-        body = MiniTrim(MiniSlice(body, end + 1, body.len));
+        body = MiniTrim(MiniSlice(body, end + 1, len(body)));
     } else {
         int32_t end = 0;
         int32_t depth = 0;
-        while (end < body.len) {
+        while (end < len(body)) {
             char c = body.s[end];
             if (c == '(') {
                 depth++;
@@ -295,14 +295,14 @@ static bool MiniLink(MiniParser* p, Node* parent, Str text, int32_t at,
             end++;
         }
         url = MiniSlice(body, 0, end);
-        body = MiniTrim(MiniSlice(body, end, body.len));
+        body = MiniTrim(MiniSlice(body, end, len(body)));
     }
-    if (body.len >= 2) {
+    if (len(body) >= 2) {
         char first = body.s[0];
-        char last = body.s[body.len - 1];
+        char last = body.s[len(body) - 1];
         if ((first == '"' && last == '"') || (first == '\'' && last == '\'') ||
             (first == '(' && last == ')')) {
-            title = MiniSlice(body, 1, body.len - 1);
+            title = MiniSlice(body, 1, len(body) - 1);
         }
     }
 
@@ -352,32 +352,32 @@ static base::TempStr MiniUtf8Temp(uint32_t cp) {
 static bool MiniEntity(MiniParser* p, Str text, int32_t at, int32_t* after,
                        Str* value) {
     int32_t semi = at + 1;
-    while (semi < text.len && semi - at <= 33 && text.s[semi] != ';' &&
+    while (semi < len(text) && semi - at <= 33 && text.s[semi] != ';' &&
            !MiniSpace(text.s[semi])) {
         semi++;
     }
-    if (semi >= text.len || text.s[semi] != ';' || semi == at + 1) {
+    if (semi >= len(text) || text.s[semi] != ';' || semi == at + 1) {
         return false;
     }
     Str name = MiniSlice(text, at + 1, semi);
     if (name.s[0] == '#') {
         int32_t start = 1;
         int radix = 10;
-        if (start < name.len &&
+        if (start < len(name) &&
             (name.s[start] == 'x' || name.s[start] == 'X')) {
             start++;
             radix = 16;
         }
-        if (start == name.len) {
+        if (start == len(name)) {
             return false;
         }
-        for (int32_t i = start; i < name.len; i++) {
+        for (int32_t i = start; i < len(name); i++) {
             if ((radix == 10 && !MiniDigit(name.s[i])) ||
                 (radix == 16 && !MiniHex(name.s[i]))) {
                 return false;
             }
         }
-        *value = DecodeNumeric(p->a, MiniSlice(name, start, name.len), radix);
+        *value = DecodeNumeric(p->a, MiniSlice(name, start, len(name)), radix);
     } else {
         *value = DecodeNamed(p->a, name);
     }
@@ -391,13 +391,13 @@ static bool MiniEntity(MiniParser* p, Str text, int32_t at, int32_t* after,
 static void MiniInline(MiniParser* p, Node* parent, Str text) {
     int32_t plain = 0;
     int32_t at = 0;
-    while (at < text.len) {
+    while (at < len(text)) {
         int32_t after = at;
         NodeKind markKind = NodeKind::Text;
         int32_t close = -1;
         char c = text.s[at];
 
-        bool linkStart = c == '[' || (c == '!' && at + 1 < text.len &&
+        bool linkStart = c == '[' || (c == '!' && at + 1 < len(text) &&
                                       text.s[at + 1] == '[');
         bool linkEnabled = p->options->constructs.labelEnd &&
                            (c == '!' ? p->options->constructs.labelStartImage
@@ -405,7 +405,7 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
         if (linkStart && linkEnabled) {
             int32_t labelOpen = at + (c == '!' ? 1 : 0);
             int32_t labelClose = MiniBracketEnd(text, labelOpen + 1);
-            if (labelClose >= 0 && labelClose + 1 < text.len &&
+            if (labelClose >= 0 && labelClose + 1 < len(text) &&
                 text.s[labelClose + 1] == '(') {
                 int32_t resourceEnd = MiniResourceEnd(text, labelClose + 2);
                 if (resourceEnd >= 0) {
@@ -423,7 +423,7 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
 
         if (p->options->constructs.codeText && c == '`') {
             int32_t count = 1;
-            while (at + count < text.len && text.s[at + count] == '`') {
+            while (at + count < len(text) && text.s[at + count] == '`') {
                 count++;
             }
             close = MiniFind(text, at + count, '`', count);
@@ -433,16 +433,16 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
                 }
                 Node* code = MiniNode(p, NodeKind::InlineCode, parent);
                 Str value = MiniSlice(text, at + count, close);
-                char* normalized = (char*)Alloc(p->a, value.len + 1);
+                char* normalized = (char*)Alloc(p->a, len(value) + 1);
                 if (normalized) {
-                    for (int32_t i = 0; i < value.len; i++) {
+                    for (int32_t i = 0; i < len(value); i++) {
                         normalized[i] = value.s[i] == '\n' || value.s[i] == '\r'
                                             ? ' '
                                             : value.s[i];
                     }
-                    normalized[value.len] = 0;
+                    normalized[len(value)] = 0;
                     NodeSetStr(p->a, code, NodeStrKind::Value,
-                               Str(normalized, value.len));
+                               Str(normalized, len(value)));
                 }
                 at = close + count;
                 plain = at;
@@ -452,16 +452,16 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
 
         if (p->options->constructs.attention && (c == '*' || c == '_')) {
             int32_t count = 1;
-            while (count < 3 && at + count < text.len &&
+            while (count < 3 && at + count < len(text) &&
                    text.s[at + count] == c) {
                 count++;
             }
-            bool intraword = c == '_' && at > 0 && at + count < text.len &&
+            bool intraword = c == '_' && at > 0 && at + count < len(text) &&
                              !MiniSpace(text.s[at - 1]) &&
                              !MiniPunctuation(text.s[at - 1]) &&
                              !MiniSpace(text.s[at + count]) &&
                              !MiniPunctuation(text.s[at + count]);
-            if (!intraword && at + count < text.len &&
+            if (!intraword && at + count < len(text) &&
                 !MiniSpace(text.s[at + count])) {
                 close = MiniFind(text, at + count, c, count);
             }
@@ -485,7 +485,7 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
             }
         }
 
-        if (c == '\\' && at + 1 < text.len) {
+        if (c == '\\' && at + 1 < len(text)) {
             char next = text.s[at + 1];
             if (p->options->constructs.hardBreakEscape &&
                 (next == '\n' || next == '\r')) {
@@ -494,7 +494,7 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
                 }
                 MiniNode(p, NodeKind::Break, parent);
                 at +=
-                    next == '\r' && at + 2 < text.len && text.s[at + 2] == '\n'
+                    next == '\r' && at + 2 < len(text) && text.s[at + 2] == '\n'
                         ? 3
                         : 2;
                 plain = at;
@@ -547,15 +547,15 @@ static void MiniInline(MiniParser* p, Node* parent, Str text) {
             } else {
                 MiniText(p, parent, StrL(" "));
             }
-            at += c == '\r' && at + 1 < text.len && text.s[at + 1] == '\n' ? 2
-                                                                           : 1;
+            at += c == '\r' && at + 1 < len(text) && text.s[at + 1] == '\n' ? 2
+                                                                            : 1;
             plain = at;
             continue;
         }
         at++;
     }
-    if (text.len > plain) {
-        MiniText(p, parent, MiniSlice(text, plain, text.len));
+    if (len(text) > plain) {
+        MiniText(p, parent, MiniSlice(text, plain, len(text)));
     }
 }
 
@@ -565,18 +565,18 @@ static bool MiniAtx(Str line, int32_t* level, Str* content) {
         return false;
     }
     int32_t count = 0;
-    while (at + count < line.len && line.s[at + count] == '#' && count < 7) {
+    while (at + count < len(line) && line.s[at + count] == '#' && count < 7) {
         count++;
     }
     if (count < 1 || count > 6 ||
-        (at + count < line.len && !MiniSpace(line.s[at + count]))) {
+        (at + count < len(line) && !MiniSpace(line.s[at + count]))) {
         return false;
     }
     int32_t start = at + count;
-    while (start < line.len && MiniSpace(line.s[start])) {
+    while (start < len(line) && MiniSpace(line.s[start])) {
         start++;
     }
-    int32_t end = line.len;
+    int32_t end = len(line);
     while (end > start && MiniSpace(line.s[end - 1])) {
         end--;
     }
@@ -603,7 +603,7 @@ static bool MiniSetext(Str line, int32_t* level) {
     }
     char marker = value.s[0];
     int32_t count = 0;
-    for (int32_t i = 0; i < value.len; i++) {
+    for (int32_t i = 0; i < len(value); i++) {
         if (value.s[i] == marker) {
             count++;
         } else if (!MiniSpace(value.s[i])) {
@@ -619,12 +619,12 @@ static bool MiniSetext(Str line, int32_t* level) {
 
 static bool MiniThematic(Str line) {
     Str value = MiniTrim(line);
-    if (value.len < 3 || !StrStartsWithAny(value, "*-_")) {
+    if (len(value) < 3 || !StrStartsWithAny(value, "*-_")) {
         return false;
     }
     char marker = value.s[0];
     int32_t count = 0;
-    for (int32_t i = 0; i < value.len; i++) {
+    for (int32_t i = 0; i < len(value); i++) {
         if (value.s[i] == marker) {
             count++;
         } else if (!MiniSpace(value.s[i])) {
@@ -636,12 +636,12 @@ static bool MiniThematic(Str line) {
 
 static bool MiniFence(Str line, char* marker, int32_t* count, Str* info) {
     int32_t at = MiniIndent(line);
-    if (at > 3 || at >= line.len || (line.s[at] != '`' && line.s[at] != '~')) {
+    if (at > 3 || at >= len(line) || (line.s[at] != '`' && line.s[at] != '~')) {
         return false;
     }
     char c = line.s[at];
     int32_t n = 0;
-    while (at + n < line.len && line.s[at + n] == c) {
+    while (at + n < len(line) && line.s[at + n] == c) {
         n++;
     }
     if (n < 3) {
@@ -649,7 +649,7 @@ static bool MiniFence(Str line, char* marker, int32_t* count, Str* info) {
     }
     *marker = c;
     *count = n;
-    *info = MiniTrim(MiniSlice(line, at + n, line.len));
+    *info = MiniTrim(MiniSlice(line, at + n, len(line)));
     return true;
 }
 
@@ -659,13 +659,13 @@ static bool MiniFenceClose(Str line, char marker, int32_t count) {
         return false;
     }
     int32_t n = 0;
-    while (at + n < line.len && line.s[at + n] == marker) {
+    while (at + n < len(line) && line.s[at + n] == marker) {
         n++;
     }
     if (n < count) {
         return false;
     }
-    for (int32_t i = at + n; i < line.len; i++) {
+    for (int32_t i = at + n; i < len(line); i++) {
         if (!MiniSpace(line.s[i])) {
             return false;
         }
@@ -676,18 +676,18 @@ static bool MiniFenceClose(Str line, char marker, int32_t count) {
 static MiniListMarker MiniList(Str line) {
     MiniListMarker out;
     int32_t at = MiniIndent(line);
-    if (at > 3 || at >= line.len) {
+    if (at > 3 || at >= len(line)) {
         return out;
     }
     out.indent = at;
     char c = line.s[at];
     if (c == '-' || c == '+' || c == '*') {
-        if (at + 1 < line.len && !MiniSpace(line.s[at + 1])) {
+        if (at + 1 < len(line) && !MiniSpace(line.s[at + 1])) {
             return out;
         }
         out.valid = true;
-        out.content = at + 1 < line.len ? at + 2 : line.len;
-        while (out.content < line.len && MiniSpace(line.s[out.content]) &&
+        out.content = at + 1 < len(line) ? at + 2 : len(line);
+        while (out.content < len(line) && MiniSpace(line.s[out.content]) &&
                out.content < at + 5) {
             out.content++;
         }
@@ -698,22 +698,22 @@ static MiniListMarker MiniList(Str line) {
     }
     int32_t value = 0;
     int32_t digits = 0;
-    while (at + digits < line.len && MiniDigit(line.s[at + digits]) &&
+    while (at + digits < len(line) && MiniDigit(line.s[at + digits]) &&
            digits < 9) {
         value = value * 10 + line.s[at + digits] - '0';
         digits++;
     }
     int32_t mark = at + digits;
-    if (digits == 0 || mark >= line.len ||
+    if (digits == 0 || mark >= len(line) ||
         (line.s[mark] != '.' && line.s[mark] != ')') ||
-        (mark + 1 < line.len && !MiniSpace(line.s[mark + 1]))) {
+        (mark + 1 < len(line) && !MiniSpace(line.s[mark + 1]))) {
         return out;
     }
     out.valid = true;
     out.ordered = true;
     out.start = value;
-    out.content = mark + 1 < line.len ? mark + 2 : line.len;
-    while (out.content < line.len && MiniSpace(line.s[out.content]) &&
+    out.content = mark + 1 < len(line) ? mark + 2 : len(line);
+    while (out.content < len(line) && MiniSpace(line.s[out.content]) &&
            out.content < mark + 5) {
         out.content++;
     }
@@ -722,11 +722,11 @@ static MiniListMarker MiniList(Str line) {
 
 static bool MiniQuote(Str line, int32_t* content) {
     int32_t at = MiniIndent(line);
-    if (at > 3 || at >= line.len || line.s[at] != '>') {
+    if (at > 3 || at >= len(line) || line.s[at] != '>') {
         return false;
     }
     at++;
-    if (at < line.len && line.s[at] == ' ') {
+    if (at < len(line) && line.s[at] == ' ') {
         at++;
     }
     *content = at;
@@ -750,16 +750,16 @@ static Str MiniCopiedLines(MiniParser* p, int32_t start, int32_t end,
         }
         Str value = MiniLineText(p->source, line);
         int32_t cut =
-            first ? (stripFirst < value.len ? stripFirst : value.len) : 0;
+            first ? (stripFirst < len(value) ? stripFirst : len(value)) : 0;
         if (!first) {
-            while (cut < value.len && cut < stripRest &&
+            while (cut < len(value) && cut < stripRest &&
                    MiniSpace(value.s[cut])) {
                 cut++;
             }
         }
-        if (value.len > cut) {
-            memcpy(out + used, value.s + cut, (size_t)(value.len - cut));
-            used += value.len - cut;
+        if (len(value) > cut) {
+            memcpy(out + used, value.s + cut, (size_t)(len(value) - cut));
+            used += len(value) - cut;
         }
         at = line.next;
         if (at < end) {
@@ -797,12 +797,12 @@ static int32_t MiniCodeFence(MiniParser* p, Node* parent,
     NodeSetStr(p->a, code, NodeStrKind::Value,
                MiniSlice(p->source, contentStart, contentEnd));
     int32_t split = 0;
-    while (split < info.len && !MiniSpace(info.s[split])) {
+    while (split < len(info) && !MiniSpace(info.s[split])) {
         split++;
     }
     NodeSetStr(p->a, code, NodeStrKind::Lang, MiniSlice(info, 0, split));
     NodeSetStr(p->a, code, NodeStrKind::Meta,
-               MiniTrim(MiniSlice(info, split, info.len)));
+               MiniTrim(MiniSlice(info, split, len(info))));
     return after;
 }
 
@@ -829,15 +829,15 @@ static int32_t MiniBlockquote(MiniParser* p, Node* parent, int32_t start,
                 !MiniQuote(MiniLineText(p->source, next), &ignored)) {
                 break;
             }
-            content = value.len;
+            content = len(value);
         }
         if (used > 0) {
             out[used++] = '\n';
         }
-        if (value.len > content) {
+        if (len(value) > content) {
             memcpy(out + used, value.s + content,
-                   (size_t)(value.len - content));
-            used += value.len - content;
+                   (size_t)(len(value) - content));
+            used += len(value) - content;
         }
         at = line.next;
     }
@@ -902,7 +902,7 @@ static int32_t MiniListBlock(MiniParser* p, Node* parent, int32_t start,
                                      marker.content);
         MiniParser nested = *p;
         nested.source = copied;
-        MiniBlocks(&nested, item, 0, copied.len);
+        MiniBlocks(&nested, item, 0, len(copied));
         at = scan;
     }
     return at;
@@ -987,7 +987,7 @@ static void MiniBlocks(MiniParser* p, Node* parent, int32_t start,
                 scan = codeLine.next;
             }
             Str value = MiniCopiedLines(p, at, scan, 4, 4);
-            while (value.len > 0 && value.s[value.len - 1] == '\n') {
+            while (len(value) > 0 && value.s[len(value) - 1] == '\n') {
                 value.len--;
             }
             Node* code = MiniNode(p, NodeKind::Code, parent);
@@ -1052,8 +1052,8 @@ Node* ToMdast(Arena* a, Str source, const ParseOptions& options) {
     parser.source = source;
     parser.options = &options;
     Node* root = NodeNew(a, NodeKind::Root);
-    if (root && source.s && source.len > 0) {
-        MiniBlocks(&parser, root, 0, source.len);
+    if (root && source.s && len(source) > 0) {
+        MiniBlocks(&parser, root, 0, len(source));
     }
     return root;
 }
@@ -1079,8 +1079,8 @@ Str DecodeNamed(Arena* a, Str name) {
 
 Str DecodeNumeric(Arena* a, Str value, int radix) {
     uint32_t cp = 0;
-    bool bad = value.len <= 0 || (radix != 10 && radix != 16);
-    for (int32_t i = 0; !bad && i < value.len; i++) {
+    bool bad = len(value) <= 0 || (radix != 10 && radix != 16);
+    for (int32_t i = 0; !bad && i < len(value); i++) {
         uint8_t c = (uint8_t)value.s[i];
         uint32_t digit = 0;
         if (c >= '0' && c <= '9') {

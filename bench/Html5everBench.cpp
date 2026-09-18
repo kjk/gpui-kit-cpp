@@ -67,11 +67,11 @@ void BenchHtml5ever() {
     c.out = out;
     c.source = BuildLargeHtml(sourceArena);
 
-    BenchCase(group, name, "bytes", c.source.len, MkFunc0(HtmlSetup, &c),
+    BenchCase(group, name, "bytes", len(c.source), MkFunc0(HtmlSetup, &c),
               MkFunc0(HtmlParseRun, &c));
     HtmlSetup(&c);
     HtmlParseRun(&c);
-    BenchMem(group, name, c.source.len, ArenaUsed(out));
+    BenchMem(group, name, len(c.source), ArenaUsed(out));
     printf("  struct sizes: Attribute %zu B, Node %zu B, Token %zu B\n",
            sizeof(html5ever::Attribute), sizeof(html5ever::Node),
            sizeof(html5ever::Token));

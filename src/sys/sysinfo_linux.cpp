@@ -89,13 +89,13 @@ static uint64_t MeminfoKb(Str text, Str key) {
     if (at < 0) {
         return 0;
     }
-    at += key.len;
-    while (at < text.len &&
+    at += len(key);
+    while (at < len(text) &&
            (text.s[at] == ' ' || text.s[at] == ':' || text.s[at] == '\t')) {
         at++;
     }
     uint64_t value = 0;
-    while (at < text.len && text.s[at] >= '0' && text.s[at] <= '9') {
+    while (at < len(text) && text.s[at] >= '0' && text.s[at] <= '9') {
         value = value * 10 + (uint64_t)(text.s[at++] - '0');
     }
     return value * 1024ull;
@@ -318,18 +318,18 @@ bool SysSelfPrivateMemory(uint64_t* bytes) {
         return false;
     }
     Str key = StrL("RssAnon:");
-    for (int line = 0; line < buf.len;) {
-        Str remaining = Str(buf.s + line, buf.len - line);
+    for (int line = 0; line < len(buf);) {
+        Str remaining = Str(buf.s + line, len(buf) - line);
         if (StrStartsWith(remaining, key)) {
-            int at = line + key.len;
-            while (at < buf.len && (buf.s[at] == ' ' || buf.s[at] == '\t')) {
+            int at = line + len(key);
+            while (at < len(buf) && (buf.s[at] == ' ' || buf.s[at] == '\t')) {
                 at++;
             }
-            if (at >= buf.len || buf.s[at] < '0' || buf.s[at] > '9') {
+            if (at >= len(buf) || buf.s[at] < '0' || buf.s[at] > '9') {
                 return false;
             }
             uint64_t value = 0;
-            while (at < buf.len && buf.s[at] >= '0' && buf.s[at] <= '9') {
+            while (at < len(buf) && buf.s[at] >= '0' && buf.s[at] <= '9') {
                 value = value * 10 + (uint64_t)(buf.s[at++] - '0');
             }
             if (bytes) {

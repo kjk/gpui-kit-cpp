@@ -38,7 +38,8 @@ static void WhatComesOutReadsBackIn() {
     utassert(fields & StyleFieldBg);
     utassert(fields & StyleFieldColor);
     utassert(fields & StyleFieldWidth);
-    utassert(back.bg.color.r == 0x17 && back.bg.color.g == 0x17 && back.bg.color.b == 0x17);
+    utassert(back.bg.color.r == 0x17 && back.bg.color.g == 0x17 &&
+             back.bg.color.b == 0x17);
     utassert(back.color.a == 0x80);
     utassert(back.borderColor.b == 0x26);
     utassertnear(back.pad.left, 10.f);
@@ -148,8 +149,9 @@ static void DivInspectorOwnsUpdateEditAndReset() {
     inspector->UpdateInspectedElement(pick, &cx);
     utassert(inspector->inspectorId == 77);
     utassert(inspector->jsonInput.kind == InputKind::Textarea);
-    utassert(base::StrEq(InputValue(&inspector->jsonInput), inspector->applied));
-    utassert(InputValue(&inspector->jsonInput).len > 0);
+    utassert(
+        base::StrEq(InputValue(&inspector->jsonInput), inspector->applied));
+    utassert(len(InputValue(&inspector->jsonInput)) > 0);
 
     utassert(inspector->EditJson(StrL("{ \"gap\": 9 }"), &cx));
     utassert(inspector->error.s == nullptr);
@@ -164,7 +166,8 @@ static void DivInspectorOwnsUpdateEditAndReset() {
     utassert(inspector->error.s != nullptr);
     inspector->Reset(&cx);
     utassert(inspector->error.s == nullptr);
-    utassert(base::StrEq(InputValue(&inspector->jsonInput), inspector->applied));
+    utassert(
+        base::StrEq(InputValue(&inspector->jsonInput), inspector->applied));
     El* reset = Div(arena)->Gap(2);
     reset->clickId = 77;
     StyleOverrideApply(reset);

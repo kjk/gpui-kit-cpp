@@ -57,13 +57,13 @@ State LabelEndAfter(Tokenizer* t) {
         // The footnote call is not defined: it is a link with a `^` in it.
         t->tokenizeState.labelStarts[startIndex]
             .kind = LabelKind::GfmUndefinedFootnote;
-        char* caret = (char*)base::Alloc(a, id.len + 2);
+        char* caret = (char*)base::Alloc(a, len(id) + 2);
         caret[0] = '^';
-        if (id.len > 0) {
-            memcpy(caret + 1, id.s, (size_t)id.len);
+        if (len(id) > 0) {
+            memcpy(caret + 1, id.s, (size_t)len(id));
         }
-        caret[id.len + 1] = 0;
-        id = Str(caret, id.len + 1);
+        caret[len(id) + 1] = 0;
+        id = Str(caret, len(id) + 1);
     }
 
     bool defined = DefinitionsContain(t->parseState->definitions, id);

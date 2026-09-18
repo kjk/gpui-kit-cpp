@@ -53,7 +53,7 @@ using namespace gpui;
 // itself a reason to skip: `.github` and `.cache` stay unless an ignore file
 // names them.
 static bool SkipEntry(const autocorrect::Ignorer* ig, Str relPath, Str name) {
-    if (name.len == 0) {
+    if (len(name) == 0) {
         return true;
     }
     if (StrEq(name, StrL(".git"))) {
@@ -158,7 +158,7 @@ static void LoadDir(TreeState* s, const autocorrect::Ignorer* ig, Str path,
     SortDir(found, got);
     for (int i = 0; i < got; i++) {
         TempStr child = fmt("%s/%s", path, Str(found[i].name));
-        if (child.len >= 1024) {
+        if (len(child) >= 1024) {
             continue;
         }
         // The ignorer is asked with the path relative to the walked root,
@@ -190,7 +190,7 @@ static void LanguageFor(Str path, char* out, int cap) {
         return;
     }
     int dot = -1;
-    for (int i = 0; i < path.len; i++) {
+    for (int i = 0; i < len(path); i++) {
         if (path.s[i] == '.') {
             dot = i + 1;
         } else if (path.s[i] == '/' || path.s[i] == '\\') {
@@ -198,7 +198,7 @@ static void LanguageFor(Str path, char* out, int cap) {
         }
     }
     if (dot >= 0) {
-        int n = std::min(path.len - dot, cap - 1);
+        int n = std::min(len(path) - dot, cap - 1);
         memcpy(out, path.s + dot, (size_t)n);
         out[n] = 0;
     }
@@ -223,14 +223,14 @@ static void LanguageFor(Str path, char* out, int cap) {
 // "text" (linted as markdown). SyntaxLangFor is that same table here.
 static Str LintLanguageName(const char* ext) {
     Str name = component::SyntaxLangName(component::SyntaxLangFor(Str(ext)));
-    return name.len > 0 ? name : StrL("text");
+    return len(name) > 0 ? name : StrL("text");
 }
 
 // `n` chars forward from byte `at`, staying inside the text — the crate
 // counts columns and lengths in chars, the document is bytes.
 static int AdvanceChars(Str text, int at, int n) {
     uint32_t cp = 0;
-    while (n > 0 && at < text.len) {
+    while (n > 0 && at < len(text)) {
         at += Utf8At(text, at, &cp);
         n--;
     }
@@ -244,7 +244,7 @@ static void Lint(EditorApp* self) {
     }
     self->nDiagnostics = 0;
     Str text = InputValue(&self->editor);
-    self->lintedLen = text.len;
+    self->lintedLen = len(text);
 
     Arena* a = ArenaNew();
     autocorrect::LintResult result =
@@ -269,7 +269,7 @@ static void Lint(EditorApp* self) {
                                  0, item.col - 1) +
                     lineStart;
         int oldChars = 0;
-        for (int at = 0; at < item.old.len;) {
+        for (int at = 0; at < len(item.old);) {
             uint32_t cp = 0;
             at += Utf8At(item.old, at, &cp);
             oldChars++;
@@ -351,7 +351,7 @@ static void OpenFile(EditorApp* self, Str path) {
     buf[got] = 0;
     InputSetValue(&self->editor, Str(buf, (int)got));
     Free(nullptr, buf);
-    int pathLen = std::min(path.len, (int)sizeof(self->openPath) - 1);
+    int pathLen = std::min(len(path), (int)sizeof(self->openPath) - 1);
     memcpy(self->openPath, path.s, (size_t)pathLen);
     self->openPath[pathLen] = 0;
     LanguageFor(path, self->language, (int)sizeof(self->language));
@@ -389,7 +389,7 @@ static void LoadCompletionItems() {
         return;
     }
     TempStr json = AssetsLoadTextTemp(StrL("completion_items.json"));
-    if (json.len <= 0) {
+    if (len(json) <= 0) {
         return;
     }
     gItemArena = ArenaNew();
@@ -403,7 +403,7 @@ static void LoadCompletionItems() {
         item.label = JsonString(JsonGet(v, "label"));
         item.detail = JsonString(JsonGet(v, "detail"));
         item.documentation = JsonString(JsonGet(v, "documentation"));
-        if (item.label.len == 0) {
+        if (len(item.label) == 0) {
             continue;
         }
         gNItems++;
@@ -424,8 +424,9 @@ static Str HoverAt(void*, Str text, int offset) {
         if (!StrEq(item.label, word)) {
             continue;
         }
-        return item.documentation.len > 0 ? item.documentation
-                                          : StrL("No documentation available.");
+        return len(item.documentation) > 0
+                   ? item.documentation
+                   : StrL("No documentation available.");
     }
     return Str{};
 }
@@ -436,10 +437,10 @@ static int CompleteFrom(void*, Str, int, Str query, CompletionItem* out,
     int n = 0;
     for (int i = 0; i < gNItems; i++) {
         const CompletionItem& item = gItems[i];
-        if (query.len > item.label.len) {
+        if (len(query) > len(item.label)) {
             continue;
         }
-        if (query.len > 0 && !StrEq(Str(item.label.s, query.len), query)) {
+        if (len(query) > 0 && !StrEq(Str(item.label.s, len(query)), query)) {
             continue;
         }
         if (n < cap && out) {
@@ -475,7 +476,7 @@ static Str ResolveCompletion(void*, Arena* a, const CompletionItem* item) {
 // is a word character or `.`; a C++ document wants `:` as well, since a
 // member of a namespace is reached through one.
 static CompletionTrigger CompletionTriggerAt(void*, Str, int, Str typed) {
-    if (typed.len == 0) {
+    if (len(typed) == 0) {
         return CompletionTrigger::Close;
     }
     char c = typed.s[0];
@@ -496,10 +497,10 @@ static CompletionTrigger CompletionTriggerAt(void*, Str, int, Str typed) {
 // field is the one document here, so an action is the range and the text.
 
 static Str CaseMapped(Arena* a, Str src, int which) {
-    char* out = (char*)Alloc(a, src.len * 2 + 1);
+    char* out = (char*)Alloc(a, len(src) * 2 + 1);
     int n = 0;
     bool startOfWord = true;
-    for (int i = 0; i < src.len; i++) {
+    for (int i = 0; i < len(src); i++) {
         char c = src.s[i];
         bool upper = c >= 'A' && c <= 'Z';
         bool lower = c >= 'a' && c <= 'z';
@@ -536,7 +537,7 @@ static Str CaseMapped(Arena* a, Str src, int which) {
 // this one answers for two openings a C++ file has plenty of — `for (` and
 // `if (` — so the debounce, the drawing and Tab can all be seen working.
 static Str InlineCompletionAt(void*, Arena* a, Str text, int offset) {
-    if (offset <= 0 || offset > text.len) {
+    if (offset <= 0 || offset > len(text)) {
         return Str{};
     }
     // What was typed up to the caret, back to the start of the line.
@@ -547,7 +548,7 @@ static Str InlineCompletionAt(void*, Arena* a, Str text, int offset) {
     Str line(text.s + lineStart, offset - lineStart);
     auto endsWith = [](Str s, const char* suffix) {
         int n = (int)strlen(suffix);
-        return s.len >= n && StrEq(Str(s.s + s.len - n, n), Str(suffix, n));
+        return len(s) >= n && StrEq(Str(s.s + len(s) - n, n), Str(suffix, n));
     };
     if (endsWith(line, "for (")) {
         return StrDup(a, StrL("int i = 0; i < n; i++) {\n}"));
@@ -608,15 +609,15 @@ static int SemanticTokensFor(void*, Str text, Selection range,
             if (text.s[i] != word.s[0]) {
                 continue;
             }
-            if (i + word.len > range.end) {
+            if (i + len(word) > range.end) {
                 continue;
             }
-            if (!StrEq(Str(text.s + i, word.len), word)) {
+            if (!StrEq(Str(text.s + i, len(word)), word)) {
                 continue;
             }
             RopePoint p = RopeOffsetToPoint(text, i);
-            VecAppend(hits, MarkerHit{p.row, p.column, word.len, t});
-            i += word.len - 1;
+            VecAppend(hits, MarkerHit{p.row, p.column, len(word), t});
+            i += len(word) - 1;
             break;
         }
     }
@@ -667,8 +668,8 @@ static int DefinitionsAt(void*, Arena* a, Str text, int offset,
     // is where the word is declared.
     if (StrEqI(word, "Duration")) {
         int at = -1;
-        for (int i = 0; i + word.len <= text.len; i++) {
-            if (StrEq(Str(text.s + i, word.len), word) && i != wa) {
+        for (int i = 0; i + len(word) <= len(text); i++) {
+            if (StrEq(Str(text.s + i, len(word)), word) && i != wa) {
                 at = i;
                 break;
             }
@@ -677,7 +678,7 @@ static int DefinitionsAt(void*, Arena* a, Str text, int offset,
             if (cap > 0 && out) {
                 out[0].origin = {wa, wb};
                 out[0].uri = Str{};
-                out[0].target = {at, at + word.len};
+                out[0].target = {at, at + len(word)};
             }
             return 1;
         }
@@ -699,7 +700,7 @@ static int DefinitionsAt(void*, Arena* a, Str text, int offset,
 
 static int CodeActionsFor(void*, Arena* a, Str text, Selection sel,
                           CodeActionItem* out, int cap) {
-    if (sel.IsEmpty() || sel.end > text.len) {
+    if (sel.IsEmpty() || sel.end > len(text)) {
         return 0;
     }
     static const char* kTitles[] = {
@@ -761,7 +762,7 @@ static int HexDigit(char c) {
 // A hex colour at `at`, or 0 if what stands there is not one.
 static int HexColorAt(Str text, int at, Rgba* out) {
     int n = 0;
-    while (at + 1 + n < text.len && n < 9 &&
+    while (at + 1 + n < len(text) && n < 9 &&
            HexDigit(text.s[at + 1 + n]) >= 0) {
         n++;
     }
@@ -790,32 +791,32 @@ static int HexColorAt(Str text, int at, Rgba* out) {
 // `rgb(1, 2, 3)` or `rgba(1, 2, 3, 0.5)`, in as many spellings as a scan this
 // small can take: the numbers, in order, and whatever separates them.
 static int RgbColorAt(Str text, int at, Rgba* out) {
-    bool hasAlpha = at + 4 < text.len && text.s[at + 3] == 'a';
+    bool hasAlpha = at + 4 < len(text) && text.s[at + 3] == 'a';
     int i = at + (hasAlpha ? 4 : 3);
-    if (i >= text.len || text.s[i] != '(') {
+    if (i >= len(text) || text.s[i] != '(') {
         return 0;
     }
     i++;
     float ch[4] = {0, 0, 0, 1};
     int got = 0;
-    while (i < text.len && got < 4) {
-        while (i < text.len && (text.s[i] == ' ' || text.s[i] == ',')) {
+    while (i < len(text) && got < 4) {
+        while (i < len(text) && (text.s[i] == ' ' || text.s[i] == ',')) {
             i++;
         }
-        if (i >= text.len || text.s[i] == ')') {
+        if (i >= len(text) || text.s[i] == ')') {
             break;
         }
         int digits = 0;
         float value = 0;
-        while (i < text.len && text.s[i] >= '0' && text.s[i] <= '9') {
+        while (i < len(text) && text.s[i] >= '0' && text.s[i] <= '9') {
             value = value * 10 + (float)(text.s[i] - '0');
             i++;
             digits++;
         }
-        if (i < text.len && text.s[i] == '.') {
+        if (i < len(text) && text.s[i] == '.') {
             i++;
             float scale = 0.1f;
-            while (i < text.len && text.s[i] >= '0' && text.s[i] <= '9') {
+            while (i < len(text) && text.s[i] >= '0' && text.s[i] <= '9') {
                 value += (float)(text.s[i] - '0') * scale;
                 scale *= 0.1f;
                 i++;
@@ -827,7 +828,7 @@ static int RgbColorAt(Str text, int at, Rgba* out) {
         }
         ch[got++] = value;
     }
-    if (i >= text.len || text.s[i] != ')' || got < 3) {
+    if (i >= len(text) || text.s[i] != ')' || got < 3) {
         return 0;
     }
     auto clamp = [](float v) {
@@ -839,7 +840,7 @@ static int RgbColorAt(Str text, int at, Rgba* out) {
 }
 
 static bool WordCharAt(Str text, int at) {
-    if (at < 0 || at >= text.len) {
+    if (at < 0 || at >= len(text)) {
         return false;
     }
     char c = text.s[at];
@@ -849,12 +850,12 @@ static bool WordCharAt(Str text, int at) {
 
 static int DocumentColorsIn(void*, Str text, DocumentColor* out, int cap) {
     int n = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         Rgba color = {};
         int len = 0;
         if (text.s[i] == '#') {
             len = HexColorAt(text, i, &color);
-        } else if ((text.s[i] == 'r' && i + 3 < text.len &&
+        } else if ((text.s[i] == 'r' && i + 3 < len(text) &&
                     StrEq(Str(text.s + i, 3), StrL("rgb"))) &&
                    !WordCharAt(text, i - 1)) {
             len = RgbColorAt(text, i, &color);
@@ -973,15 +974,15 @@ static void ConfirmGoTo(EditorApp* self, Ctx* cx, const ClickEvent* ev) {
     int column = 1;
     int at = 0;
     bool any = false;
-    while (at < query.len && query.s[at] >= '0' && query.s[at] <= '9') {
+    while (at < len(query) && query.s[at] >= '0' && query.s[at] <= '9') {
         line = line * 10 + (query.s[at] - '0');
         at++;
         any = true;
     }
-    if (any && at < query.len && query.s[at] == ':') {
+    if (any && at < len(query) && query.s[at] == ':') {
         at++;
         column = 0;
-        while (at < query.len && query.s[at] >= '0' && query.s[at] <= '9') {
+        while (at < len(query) && query.s[at] >= '0' && query.s[at] <= '9') {
             column = column * 10 + (query.s[at] - '0');
             at++;
         }
@@ -1321,7 +1322,7 @@ static component::PopupMenu* EditorPopupMenu(Ctx* cx, Str id,
     component::PopupMenu* menu = component::PopupMenu::New(cx, id);
     for (int i = 0; i < n; i++) {
         const MenuRow& r = rows[i];
-        if (r.separator || r.label.len <= 0) {
+        if (r.separator || len(r.label) <= 0) {
             menu->Separator();
             continue;
         }
@@ -1586,7 +1587,7 @@ El* EditorApp::Render(EditorApp* self, Ctx* cx) {
     }
     // The document is linted when it changes; Rust's store does it on every
     // InputEvent and publishes what it found.
-    if (self->lintedLen != InputValue(&self->editor).len) {
+    if (self->lintedLen != len(InputValue(&self->editor))) {
         Lint(self);
     }
     cx->win->input = self->dialogOpen ? &self->goToLine : &self->editor;
@@ -1806,8 +1807,8 @@ int GpuiMain(int argc, char** argv) {
     // colour provider -- its last line names four -- and it is what makes
     // `bun cmd/run.ts -compare editor` put the same text in both windows.
     TempStr fixture = AssetsLoadTextTemp(StrL("test.rs"));
-    if (fixture.len > 0) {
-        InputSetValue(&self->editor, Str(fixture.s, fixture.len));
+    if (len(fixture) > 0) {
+        InputSetValue(&self->editor, Str(fixture.s, len(fixture)));
     }
     StrCopyZ(self->language, (int)sizeof(self->language), "rs");
     Lint(self);

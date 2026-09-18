@@ -7,11 +7,11 @@ InputEdit InputEdit::New(Str oldText, Selection range, Str inserted) {
     InputEdit edit;
     edit.startByte = RopeClipOffset(oldText, range.start, Bias::Left);
     edit.oldEndByte = RopeClipOffset(oldText, range.end, Bias::Right);
-    edit.newEndByte = edit.startByte + inserted.len;
+    edit.newEndByte = edit.startByte + len(inserted);
     edit.startPosition = RopeOffsetToPoint(oldText, edit.startByte);
     edit.oldEndPosition = RopeOffsetToPoint(oldText, edit.oldEndByte);
     edit.newEndPosition = edit.startPosition;
-    for (int i = 0; i < inserted.len; i++) {
+    for (int i = 0; i < len(inserted); i++) {
         if (inserted.s[i] == '\n') {
             edit.newEndPosition.row++;
             edit.newEndPosition.column = 0;

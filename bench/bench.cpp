@@ -138,7 +138,7 @@ int GpuiMain(int argc, char** argv) {
             gBenchLarge = true;
         } else if (StrStartsWith(argument, "-n=")) {
             gBenchSamples =
-                StrToIntUnchecked(Str(argument.s + 3, argument.len - 3));
+                StrToIntUnchecked(Str(argument.s + 3, len(argument) - 3));
             if (gBenchSamples < 1) {
                 gBenchSamples = 1;
             }

@@ -451,16 +451,16 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date) {
     int yearDay = DateYearDay(date);
     int isoYear = 0, isoWeek = 0;
     DateIsoWeek(date, &isoYear, &isoWeek);
-    for (int i = 0; i < pattern.len; i++) {
+    for (int i = 0; i < len(pattern); i++) {
         char ch = pattern.s[i];
-        if (ch != '%' || i + 1 >= pattern.len) {
+        if (ch != '%' || i + 1 >= len(pattern)) {
             out.AppendChar(ch);
             continue;
         }
         char directive = pattern.s[++i];
         char modifier = 0;
         if ((directive == '-' || directive == '_' || directive == '0') &&
-            i + 1 < pattern.len) {
+            i + 1 < len(pattern)) {
             modifier = directive;
             directive = pattern.s[++i];
         }

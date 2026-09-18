@@ -21,7 +21,7 @@ Str StrOwn(Arena* a, const char* s, int32_t len) {
 }
 
 Str StrOwn(Arena* a, Str s) {
-    return StrOwn(a, s.s, s.len);
+    return StrOwn(a, s.s, len(s));
 }
 
 // ─── util/char.rs ────────────────────────────────────────────────────────
@@ -89,7 +89,7 @@ static int32_t Utf8Decode(Str bytes, int32_t index) {
 }
 
 int32_t CharAfterIndex(Str bytes, int32_t index) {
-    if (index >= bytes.len) {
+    if (index >= len(bytes)) {
         return -1;
     }
     return Utf8Decode(bytes, index);
@@ -139,7 +139,7 @@ CharKind Classify(int32_t cp) {
 }
 
 CharKind KindAfterIndex(Str bytes, int32_t index) {
-    if (index == bytes.len) {
+    if (index == len(bytes)) {
         return CharKind::Whitespace;
     }
     uint8_t byte = (uint8_t)bytes.s[index];
@@ -499,7 +499,7 @@ int32_t SkipToBack(const Vec<Event>& events, int32_t index, const Name* names,
 // ─── util/normalize_identifier.rs ────────────────────────────────────────
 
 Str NormalizeIdentifier(Arena* a, Str value) {
-    char* out = (char*)Alloc(a, value.len + 1);
+    char* out = (char*)Alloc(a, len(value) + 1);
     if (!out) {
         return {};
     }
@@ -507,7 +507,7 @@ Str NormalizeIdentifier(Arena* a, Str value) {
     bool inWhitespace = true;
     int32_t index = 0;
     int32_t start = 0;
-    while (index < value.len) {
+    while (index < len(value)) {
         char c = value.s[index];
         if (c == '\t' || c == '\n' || c == '\r' || c == ' ') {
             if (!inWhitespace) {
@@ -525,8 +525,8 @@ Str NormalizeIdentifier(Arena* a, Str value) {
         index++;
     }
     if (!inWhitespace) {
-        memcpy(out + at, value.s + start, (size_t)(value.len - start));
-        at += value.len - start;
+        memcpy(out + at, value.s + start, (size_t)(len(value) - start));
+        at += len(value) - start;
     }
     // `to_lowercase().to_uppercase()`, ASCII only. See util.h.
     for (int32_t i = 0; i < at; i++) {
@@ -725,7 +725,7 @@ Str DecodeNamed(Arena* a, Str name) {
 static uint32_t DecodeNumericCp(Str value, int radix) {
     uint32_t cp = 0;
     bool overflow = false;
-    for (int32_t i = 0; i < value.len; i++) {
+    for (int32_t i = 0; i < len(value); i++) {
         uint8_t c = (uint8_t)value.s[i];
         uint32_t digit;
         if (c >= '0' && c <= '9') {

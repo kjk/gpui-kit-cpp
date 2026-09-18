@@ -151,7 +151,7 @@ static PlatMenuItem* ToPlat(Arena* a, const NativeMenu* m, int* nextId) {
         // the name's path, is what the backend looks up.
         if (it.iconSvg.s) {
             p.iconSvg = StrDup(a, it.iconSvg).s;
-            p.iconSvgLen = it.iconSvg.len;
+            p.iconSvgLen = len(it.iconSvg);
         } else if (it.iconPath.s) {
             p.iconPath = StrDup(a, it.iconPath).s;
         } else if (it.icon != IconName::None) {

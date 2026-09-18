@@ -31,7 +31,7 @@ ActionNames& ActionTable() {
 } // namespace
 
 uint32_t ShellActionOf(Str id) {
-    if (!id || id.len <= 0) {
+    if (!id || len(id) <= 0) {
         return 0;
     }
     StrBuilder qualified;

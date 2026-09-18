@@ -125,7 +125,7 @@ int PlatListDir(const char* dir, DirEntry* out, int max) {
         StrCopyZ(e.name, (int)sizeof(e.name), ent->d_name);
         TempStr full = fmt("%s/%s", Str(dir), name);
         struct stat st = {};
-        if (full.len >= kMaxPath || lstat(full.s, &st) != 0) {
+        if (len(full) >= kMaxPath || lstat(full.s, &st) != 0) {
             continue;
         }
         e.isSymlink = S_ISLNK(st.st_mode);

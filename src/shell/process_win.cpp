@@ -16,20 +16,19 @@ static void ProcessError(Str* error, Str message) {
 }
 
 static WCHAR* WideDup(Str value) {
-    if (!value.s || value.len < 0) return nullptr;
-    for (int i = 0; i < value.len; i++) {
+    if (!value.s || len(value) < 0) return nullptr;
+    for (int i = 0; i < len(value); i++) {
         if (value.s[i] == 0) return nullptr;
     }
-    int count = value.len == 0
+    int count = len(value) == 0
                     ? 0
                     : MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
-                                          value.s, value.len, nullptr, 0);
-    if (value.len > 0 && count <= 0) return nullptr;
+                                          value.s, len(value), nullptr, 0);
+    if (len(value) > 0 && count <= 0) return nullptr;
     WCHAR* result = AllocArray<WCHAR>(count + 1);
     if (!result) return nullptr;
-    if (count > 0 &&
-        MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.s, value.len,
-                            result, count) != count) {
+    if (count > 0 && MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.s,
+                                         len(value), result, count) != count) {
         Free(nullptr, result);
         return nullptr;
     }
@@ -53,17 +52,18 @@ static bool HasPathComponent(const WCHAR* command) {
 static bool HasExtension(const WCHAR* command) {
     const WCHAR* dot = nullptr;
     for (const WCHAR* at = command; *at; at++) {
-        if (*at == L'\\' || *at == L'/') dot = nullptr;
-        else if (*at == L'.') dot = at;
+        if (*at == L'\\' || *at == L'/')
+            dot = nullptr;
+        else if (*at == L'.')
+            dot = at;
     }
     return dot != nullptr;
 }
 
 static WCHAR* JoinExecutable(const WCHAR* directory, int directoryLen,
                              const WCHAR* command, const WCHAR* extension) {
-    while (directoryLen > 1 &&
-           (directory[directoryLen - 1] == L'\\' ||
-            directory[directoryLen - 1] == L'/')) {
+    while (directoryLen > 1 && (directory[directoryLen - 1] == L'\\' ||
+                                directory[directoryLen - 1] == L'/')) {
         directoryLen--;
     }
     int commandLen = (int)wcslen(command);
@@ -93,7 +93,8 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     WCHAR* wide = WideDup(command);
     if (!wide || !wide[0]) {
         Free(nullptr, wide);
-        ProcessError(error, StrL("process.run command must be non-empty UTF-8 without NUL bytes"));
+        ProcessError(error, StrL("process.run command must be non-empty UTF-8 "
+                                 "without NUL bytes"));
         return nullptr;
     }
     if (HasPathComponent(wide)) return wide;
@@ -101,17 +102,22 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     DWORD needed = GetEnvironmentVariableW(L"PATH", nullptr, 0);
     if (needed == 0) {
         Free(nullptr, wide);
-        ProcessError(error, fmt("running `%s` failed: the host PATH environment variable is not set", command));
+        ProcessError(error, fmt("running `%s` failed: the host PATH "
+                                "environment variable is not set",
+                                command));
         return nullptr;
     }
     WCHAR* path = AllocArray<WCHAR>((int)needed + 1);
     if (!path || GetEnvironmentVariableW(L"PATH", path, needed) == 0) {
         Free(nullptr, path);
         Free(nullptr, wide);
-        ProcessError(error, fmt("running `%s` failed: reading the host PATH failed", command));
+        ProcessError(
+            error,
+            fmt("running `%s` failed: reading the host PATH failed", command));
         return nullptr;
     }
-    static const WCHAR* extensions[] = {L"", L".exe", L".com", L".bat", L".cmd"};
+    static const WCHAR* extensions[] = {L"", L".exe", L".com", L".bat",
+                                        L".cmd"};
     int extensionCount = HasExtension(wide) ? 1 : 5;
     WCHAR* result = nullptr;
     const WCHAR* at = path;
@@ -122,15 +128,18 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
             at++;
             count--;
         }
-        while (count > 0 && (at[count - 1] == L' ' || at[count - 1] == L'\t')) count--;
+        while (count > 0 && (at[count - 1] == L' ' || at[count - 1] == L'\t'))
+            count--;
         if (count >= 2 && at[0] == L'"' && at[count - 1] == L'"') {
             at++;
             count -= 2;
         }
         for (int i = 0; i < extensionCount && !result; i++) {
             WCHAR* candidate = JoinExecutable(at, count, wide, extensions[i]);
-            if (candidate && ExecutableFile(candidate)) result = candidate;
-            else Free(nullptr, candidate);
+            if (candidate && ExecutableFile(candidate))
+                result = candidate;
+            else
+                Free(nullptr, candidate);
         }
         if (!end) break;
         at = end + 1;
@@ -138,7 +147,9 @@ static WCHAR* ResolveExecutable(Str command, Str* error) {
     Free(nullptr, path);
     Free(nullptr, wide);
     if (!result) {
-        ProcessError(error, fmt("running `%s` failed: executable was not found on the host PATH", command));
+        ProcessError(error, fmt("running `%s` failed: executable was not found "
+                                "on the host PATH",
+                                command));
     }
     return result;
 }
@@ -210,12 +221,15 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
                 *closed = true;
                 return true;
             }
-            ProcessError(error, fmt("reading child %s failed with Windows error %u", Str(name), code));
+            ProcessError(error,
+                         fmt("reading child %s failed with Windows error %u",
+                             Str(name), code));
             return false;
         }
         if (available == 0) return true;
         char bytes[8192];
-        DWORD wanted = available < sizeof(bytes) ? available : (DWORD)sizeof(bytes);
+        DWORD wanted =
+            available < sizeof(bytes) ? available : (DWORD)sizeof(bytes);
         DWORD count = 0;
         if (!ReadFile(*pipe, bytes, wanted, &count, nullptr)) {
             DWORD code = GetLastError();
@@ -224,7 +238,9 @@ static bool DrainPipe(HANDLE* pipe, StrBuilder* output, bool* closed,
                 *closed = true;
                 return true;
             }
-            ProcessError(error, fmt("reading child %s failed with Windows error %u", Str(name), code));
+            ProcessError(error,
+                         fmt("reading child %s failed with Windows error %u",
+                             Str(name), code));
             return false;
         }
         if (count == 0) return true;
@@ -280,9 +296,8 @@ static WCHAR* BuildEnvironment(const ProcessOptions* options, bool* ok) {
 }
 
 bool ProcessRunBounded(Str command, const Str* args, int count,
-                       ProcessCancellation* cancellation,
-                       ProcessOutput* output, Str* error,
-                       const ProcessOptions* options) {
+                       ProcessCancellation* cancellation, ProcessOutput* output,
+                       Str* error, const ProcessOptions* options) {
     if (output) output->Free();
     if (error) {
         StrFree(*error);
@@ -293,10 +308,12 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     Vec<WCHAR> commandLine;
     Str executableUtf8 = command;
     bool ok = AppendArgument(&commandLine, executableUtf8);
-    for (int i = 0; ok && i < count; i++) ok = AppendArgument(&commandLine, args[i]);
+    for (int i = 0; ok && i < count; i++)
+        ok = AppendArgument(&commandLine, args[i]);
     if (!ok) {
         Free(nullptr, executable);
-        ProcessError(error, StrL("building the child-process command line failed"));
+        ProcessError(error,
+                     StrL("building the child-process command line failed"));
         return false;
     }
 
@@ -318,28 +335,38 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         !CreatePipe(&errRead, &errWrite, &security, 0) ||
         !SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0) ||
         !SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0)) {
-        ProcessError(error, fmt("creating child-process pipes failed with Windows error %u", GetLastError()));
+        ProcessError(
+            error,
+            fmt("creating child-process pipes failed with Windows error %u",
+                GetLastError()));
         ok = false;
         goto cleanup;
     }
-    nullInput = CreateFileW(L"NUL", GENERIC_READ,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE, &security,
-                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    nullInput =
+        CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                    &security, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (nullInput == INVALID_HANDLE_VALUE) {
-        ProcessError(error, fmt("opening the child-process null input failed with Windows error %u", GetLastError()));
+        ProcessError(error, fmt("opening the child-process null input failed "
+                                "with Windows error %u",
+                                GetLastError()));
         ok = false;
         goto cleanup;
     }
     job = CreateJobObjectW(nullptr, nullptr);
     if (!job) {
-        ProcessError(error, fmt("creating the child-process Job Object failed with Windows error %u", GetLastError()));
+        ProcessError(error, fmt("creating the child-process Job Object failed "
+                                "with Windows error %u",
+                                GetLastError()));
         ok = false;
         goto cleanup;
     }
-    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    limits.BasicLimitInformation
+        .LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
                                  &limits, sizeof(limits))) {
-        ProcessError(error, fmt("configuring the child-process Job Object failed with Windows error %u", GetLastError()));
+        ProcessError(error, fmt("configuring the child-process Job Object "
+                                "failed with Windows error %u",
+                                GetLastError()));
         ok = false;
         goto cleanup;
     }
@@ -367,22 +394,27 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     startup.hStdInput = nullInput;
     startup.hStdOutput = outWrite;
     startup.hStdError = errWrite;
-    if (!CreateProcessW(executable, commandLine.els, nullptr, nullptr, TRUE,
-                        CREATE_NO_WINDOW | CREATE_SUSPENDED |
-                            CREATE_UNICODE_ENVIRONMENT,
-                        environment ? environment : emptyEnvironment, directory,
-                        &startup, &process)) {
-        ProcessError(error, fmt("running `%s` failed with Windows error %u", command, GetLastError()));
+    if (!CreateProcessW(
+            executable, commandLine.els, nullptr, nullptr, TRUE,
+            CREATE_NO_WINDOW | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT,
+            environment ? environment : emptyEnvironment, directory, &startup,
+            &process)) {
+        ProcessError(error, fmt("running `%s` failed with Windows error %u",
+                                command, GetLastError()));
         ok = false;
         goto cleanup;
     }
     if (!AssignProcessToJobObject(job, process.hProcess)) {
-        ProcessError(error, fmt("isolating `%s` process tree failed with Windows error %u", command, GetLastError()));
+        ProcessError(
+            error,
+            fmt("isolating `%s` process tree failed with Windows error %u",
+                command, GetLastError()));
         ok = false;
         goto cleanup;
     }
     if (ResumeThread(process.hThread) == (DWORD)-1) {
-        ProcessError(error, fmt("resuming `%s` failed with Windows error %u", command, GetLastError()));
+        ProcessError(error, fmt("resuming `%s` failed with Windows error %u",
+                                command, GetLastError()));
         ok = false;
         goto cleanup;
     }
@@ -397,18 +429,26 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         DWORD exitCode = (DWORD)-1;
         double started = TimeNow();
         while (!done || !stdoutClosed || !stderrClosed) {
-            if (!stdoutClosed) ok = DrainPipe(&outRead, &stdoutText, &stdoutClosed, error, "stdout");
-            if (ok && !stderrClosed) ok = DrainPipe(&errRead, &stderrText, &stderrClosed, error, "stderr");
+            if (!stdoutClosed)
+                ok = DrainPipe(&outRead, &stdoutText, &stdoutClosed, error,
+                               "stdout");
+            if (ok && !stderrClosed)
+                ok = DrainPipe(&errRead, &stderrText, &stderrClosed, error,
+                               "stderr");
             bool cancelled = cancellation && cancellation->IsCancelled();
             if (!ok || cancelled || TimeNow() - started >= kProcessTimeout) {
-                if (ok && cancelled) ProcessError(error, fmt("`%s` was cancelled", command));
-                else if (ok) ProcessError(error, fmt("`%s` timed out after 30000 ms", command));
+                if (ok && cancelled)
+                    ProcessError(error, fmt("`%s` was cancelled", command));
+                else if (ok)
+                    ProcessError(error,
+                                 fmt("`%s` timed out after 30000 ms", command));
                 ok = false;
                 TerminateJobObject(job, 1);
                 WaitForSingleObject(process.hProcess, 5000);
                 break;
             }
-            if (!done && WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0) {
+            if (!done &&
+                WaitForSingleObject(process.hProcess, 0) == WAIT_OBJECT_0) {
                 done = true;
                 GetExitCodeProcess(process.hProcess, &exitCode);
             }
@@ -423,8 +463,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
 
 cleanup:
     if (!ok && process.hProcess) {
-        if (job) TerminateJobObject(job, 1);
-        else TerminateProcess(process.hProcess, 1);
+        if (job)
+            TerminateJobObject(job, 1);
+        else
+            TerminateProcess(process.hProcess, 1);
         WaitForSingleObject(process.hProcess, 5000);
     }
     Close(&process.hThread);

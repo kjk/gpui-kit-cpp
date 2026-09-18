@@ -81,10 +81,10 @@ static int ChunkEnd(Str s, int from, uint32_t* seed) {
     *seed = *seed * 1664525u + 1013904223u;
     int want = 5 + (int)((*seed >> 16) % 15u);
     int end = from + want;
-    if (end >= s.len) {
-        return s.len;
+    if (end >= len(s)) {
+        return len(s);
     }
-    while (end < s.len && ((uint8_t)s.s[end] & 0xC0) == 0x80) {
+    while (end < len(s) && ((uint8_t)s.s[end] & 0xC0) == 0x80) {
         end++;
     }
     return end;
@@ -129,7 +129,7 @@ static void PostChunk(StreamJob* job, int from, int end) {
 static void StreamWorker(StreamJob* job) {
     uint32_t seed = (uint32_t)job->gen * 2654435761u + 12345u;
     int at = 0;
-    while (at < job->text.len) {
+    while (at < len(job->text)) {
         if (StreamGen() != job->gen) {
             break;
         }
@@ -149,7 +149,7 @@ static void StreamWorker(StreamJob* job) {
 
 // The wasm path: no thread, so the interval cuts the next chunk itself.
 static void OnTick(StreamApp* self, Ctx* cx, const TickEvent*) {
-    if (!self->streaming || self->sent >= self->source.len) {
+    if (!self->streaming || self->sent >= len(self->source)) {
         if (self->timer) {
             WindowCancelTimer(cx->win, self->timer);
             self->timer = 0;
@@ -213,7 +213,7 @@ El* StreamApp::Render(StreamApp* self, Ctx* cx) {
             ->OnClick(Listen(cx, &Replay))
             ->IntoEl());
 
-    Str doc = Str(self->doc.els, self->doc.len);
+    Str doc = Str(self->doc.els, len(self->doc));
     El* content =
         Div(a)
             ->FlexCol()

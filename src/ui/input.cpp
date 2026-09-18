@@ -66,7 +66,7 @@ Entity<OtpState> AnyInputState::AsOtp() const {
 
 static Str MaskedInputValue(Arena* a, Str text) {
     int chars = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (((uint8_t)text.s[i] & 0xc0) != 0x80) chars++;
     }
     char* out = (char*)Alloc(a, chars * 3 + 1);
@@ -646,7 +646,7 @@ El* Input::IntoEl() {
         // `.pl_0()`: the prefix owns the space to the left of the editor.
         field->PadL(0)->Child(prefix);
     }
-    bool hasValue = state && InputValue(state).len > 0;
+    bool hasValue = state && len(InputValue(state)) > 0;
     bool trailing = suffix || (cleanable && hasValue) || maskToggle;
     if (prefix || trailing) {
         field->Child(

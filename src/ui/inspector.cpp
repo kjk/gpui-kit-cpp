@@ -98,11 +98,11 @@ Str StyleToJson(Arena* a, const Style& style) {
     }
     Str out = sb.TakeStr();
     // Drop the comma the last member left behind, then close the object.
-    while (out.len > 0 &&
-           (out.s[out.len - 1] == '\n' || out.s[out.len - 1] == ' ')) {
+    while (len(out) > 0 &&
+           (out.s[len(out) - 1] == '\n' || out.s[len(out) - 1] == ' ')) {
         out.len--;
     }
-    if (out.len > 0 && out.s[out.len - 1] == ',') {
+    if (len(out) > 0 && out.s[len(out) - 1] == ',') {
         out.len--;
     }
     Str body = StrDup(a, out);
@@ -112,10 +112,10 @@ Str StyleToJson(Arena* a, const Style& style) {
 
 // "#rgb" / "#rrggbb" / "#rrggbbaa", the three a theme json uses.
 static bool ParseHexColor(Str s, Rgba* out) {
-    if (!s.s || s.len < 4 || s.s[0] != '#') {
+    if (!s.s || len(s) < 4 || s.s[0] != '#') {
         return false;
     }
-    int n = s.len - 1;
+    int n = len(s) - 1;
     if (n != 3 && n != 6 && n != 8) {
         return false;
     }
@@ -451,7 +451,7 @@ El* Inspector::IntoEl() {
         dl->Item(StrL("background"),
                  StrDup(a, fmt("#%02x%02x%02x", p.bg.r, p.bg.g, p.bg.b)));
     }
-    if (p.text.s && p.text.len > 0) {
+    if (p.text.s && len(p.text) > 0) {
         dl->Item(StrL("text"), p.text);
     }
     body->Child(dl->IntoEl());

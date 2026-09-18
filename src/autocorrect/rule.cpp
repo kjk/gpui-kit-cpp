@@ -26,23 +26,23 @@ static bool IsPathCh(char c) {
 static bool IsMatchPath(Str s) {
     // scheme://
     int i = 0;
-    while (i < s.len && IsAsciiAlnumCh(s.s[i])) {
+    while (i < len(s) && IsAsciiAlnumCh(s.s[i])) {
         i++;
     }
-    if (i > 0 && i + 2 < s.len && s.s[i] == ':' && s.s[i + 1] == '/' &&
+    if (i > 0 && i + 2 < len(s) && s.s[i] == ':' && s.s[i + 1] == '/' &&
         s.s[i + 2] == '/') {
         return true;
     }
     // /?name{2,}/
     i = 0;
-    if (i < s.len && s.s[i] == '/') {
+    if (i < len(s) && s.s[i] == '/') {
         i++;
     }
     int start = i;
-    while (i < s.len && IsPathCh(s.s[i])) {
+    while (i < len(s) && IsPathCh(s.s[i])) {
         i++;
     }
-    return i - start >= 2 && i < s.len && s.s[i] == '/';
+    return i - start >= 2 && i < len(s) && s.s[i] == '/';
 }
 
 // `[a-zA-Z0-9\-_.]+#[\w\-_.]*[\p{Han}]+[a-zA-Z0-9\-_.]*` — an anchor into a
@@ -54,22 +54,22 @@ static bool IsWordDashDotCp(uint32_t cp) {
 
 static bool IsMatchPathHash(Str s) {
     s = base::StrTrimAscii(s);
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         if (!IsPathCh(s.s[i])) {
             continue;
         }
         int j = i;
-        while (j < s.len && IsPathCh(s.s[j])) {
+        while (j < len(s) && IsPathCh(s.s[j])) {
             j++;
         }
-        if (j >= s.len || s.s[j] != '#') {
+        if (j >= len(s) || s.s[j] != '#') {
             i = j;
             continue;
         }
         // After '#': within the following run of word/dash/dot chars there
         // must be a Han char — `[\w\-_.]*` can absorb everything before it.
         int k = j + 1;
-        while (k < s.len) {
+        while (k < len(s)) {
             int at = k;
             uint32_t cp = Utf8Next(s, &at);
             if (!IsWordDashDotCp(cp)) {
@@ -167,7 +167,7 @@ RuleResult FormatOrLintText(Arena* a, Str text, bool lint,
         StrBuilder joined;
         Severity severity = Severity::Pass;
         int start = 0;
-        for (int i = 0; i < text.len; i++) {
+        for (int i = 0; i < len(text); i++) {
             char c = text.s[i];
             if (c != ' ' && c != '\n' && c != '\r') {
                 continue;
@@ -180,9 +180,9 @@ RuleResult FormatOrLintText(Arena* a, Str text, bool lint,
             severity = sub.severity;
             start = i + 1;
         }
-        if (start < text.len) {
+        if (start < len(text)) {
             RuleResult sub;
-            sub.out = Str(text.s + start, text.len - start);
+            sub.out = Str(text.s + start, len(text) - start);
             sub.severity = severity;
             FormatPart(a, lint, disableMask, &sub);
             joined.Append(sub.out);

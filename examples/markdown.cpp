@@ -74,8 +74,8 @@ struct MarkdownApp {
 // memcmp over the document, from `from`, since the editor's text is not a
 // C string and the markers are plain words.
 static int FindFrom(Str hay, Str needle, int from) {
-    for (int i = from; i + needle.len <= hay.len; i++) {
-        if (StrEq(Str(hay.s + i, needle.len), needle)) {
+    for (int i = from; i + len(needle) <= len(hay); i++) {
+        if (StrEq(Str(hay.s + i, len(needle)), needle)) {
             return i;
         }
     }
@@ -97,13 +97,13 @@ static int FindMarkers(Ctx* cx, Str text, TextSpan* out, int cap) {
                 break;
             }
             out[n].lo = lo;
-            out[n].hi = lo + word.len;
+            out[n].hi = lo + len(word);
             out[n].color =
                 component::SyntaxTokColor(kMarkers[i].tok, mode, th.foreground);
             out[n].bg = Rgba8(0, 0, 0, 0);
             out[n].underline = false;
             n++;
-            at = lo + word.len;
+            at = lo + len(word);
         }
     }
     // The decorations arrive in document order, which is what the merge with
@@ -149,12 +149,12 @@ static const TickerQuote* QuoteFor(Str symbol) {
 
 // ticker_symbol: `$` then letters, digits and at least one dot.
 static bool TickerSymbol(Str text, Str* out) {
-    if (text.len < 2 || text.s[0] != '$') {
+    if (len(text) < 2 || text.s[0] != '$') {
         return false;
     }
-    Str sym = Str(text.s + 1, text.len - 1);
+    Str sym = Str(text.s + 1, len(text) - 1);
     bool dot = false;
-    for (int i = 0; i < sym.len; i++) {
+    for (int i = 0; i < len(sym); i++) {
         char c = sym.s[i];
         bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                      (c >= '0' && c <= '9');
@@ -262,30 +262,30 @@ static const UserCardDef kUsers[] = {
 // makes, without a regex.
 static bool HtmlTagIs(Str raw, const char* name) {
     int at = 0;
-    while (at < raw.len && (raw.s[at] == ' ' || raw.s[at] == '\n')) {
+    while (at < len(raw) && (raw.s[at] == ' ' || raw.s[at] == '\n')) {
         at++;
     }
-    if (at >= raw.len || raw.s[at] != '<') {
+    if (at >= len(raw) || raw.s[at] != '<') {
         return false;
     }
     at++;
     Str want = Str(name);
-    if (at + want.len > raw.len || !StrEq(Str(raw.s + at, want.len), want)) {
+    if (at + len(want) > len(raw) || !StrEq(Str(raw.s + at, len(want)), want)) {
         return false;
     }
-    char after = at + want.len < raw.len ? raw.s[at + want.len] : '\0';
+    char after = at + len(want) < len(raw) ? raw.s[at + len(want)] : '\0';
     return after == ' ' || after == '/' || after == '>' || after == '\n';
 }
 
 static bool HtmlAttr(Str raw, const char* name, Str* out) {
     TempStr pattern = fmt("%s=\"", Str(name));
-    int n = pattern.len;
-    for (int i = 0; i + n <= raw.len; i++) {
+    int n = len(pattern);
+    for (int i = 0; i + n <= len(raw); i++) {
         if (!StrEq(Str(raw.s + i, n), pattern)) {
             continue;
         }
         int start = i + n;
-        for (int j = start; j < raw.len; j++) {
+        for (int j = start; j < len(raw); j++) {
             if (raw.s[j] == '"') {
                 *out = Str(raw.s + start, j - start);
                 return true;
@@ -511,12 +511,12 @@ static Str MathPrettify(Ctx* cx, Str src) {
     // split_whitespace().join(" ")
     int at = 0;
     bool first = true;
-    while (at < src.len) {
-        while (at < src.len && MathIsSpace(src.s[at])) {
+    while (at < len(src)) {
+        while (at < len(src) && MathIsSpace(src.s[at])) {
             at++;
         }
         int start = at;
-        while (at < src.len && !MathIsSpace(src.s[at])) {
+        while (at < len(src) && !MathIsSpace(src.s[at])) {
             at++;
         }
         if (at > start) {
@@ -530,12 +530,12 @@ static Str MathPrettify(Ctx* cx, Str src) {
     Str joined = sb.TakeStr();
 
     StrBuilder named;
-    for (int i = 0; i < joined.len;) {
+    for (int i = 0; i < len(joined);) {
         const MathReplacement* hit = nullptr;
         for (const MathReplacement& r : kMathNames) {
             Str from = Str(r.from);
-            if (i + from.len <= joined.len &&
-                StrEq(Str(joined.s + i, from.len), from)) {
+            if (i + len(from) <= len(joined) &&
+                StrEq(Str(joined.s + i, len(from)), from)) {
                 hit = &r;
                 break;
             }
@@ -552,7 +552,7 @@ static Str MathPrettify(Ctx* cx, Str src) {
     StrFree(joined);
 
     StrBuilder out;
-    for (int i = 0; i < replaced.len;) {
+    for (int i = 0; i < len(replaced);) {
         char c = replaced.s[i];
         if (c != '^' && c != '_') {
             out.AppendChar(c);
@@ -563,12 +563,12 @@ static Str MathPrettify(Ctx* cx, Str src) {
         // take_script: a braced run, or the one character after the mark.
         int from = i + 1;
         int to = from;
-        bool braced = from < replaced.len && replaced.s[from] == '{';
+        bool braced = from < len(replaced) && replaced.s[from] == '{';
         if (braced) {
             int depth = 1;
             from++;
             to = from;
-            while (to < replaced.len && depth > 0) {
+            while (to < len(replaced) && depth > 0) {
                 if (replaced.s[to] == '{') {
                     depth++;
                 } else if (replaced.s[to] == '}') {
@@ -579,7 +579,7 @@ static Str MathPrettify(Ctx* cx, Str src) {
                 }
                 to++;
             }
-        } else if (from < replaced.len) {
+        } else if (from < len(replaced)) {
             to = from + 1;
         }
         if (to <= from) {

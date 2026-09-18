@@ -259,7 +259,7 @@ static uint32_t CharOf(const EmscriptenKeyboardEvent* e) {
     }
     uint8_t c0 = (uint8_t)key.s[0];
     int need = c0 < 0x80 ? 1 : (c0 < 0xe0 ? 2 : (c0 < 0xf0 ? 3 : 4));
-    if (key.len != need) {
+    if (len(key) != need) {
         // More than one codepoint: a name, not a character.
         return 0;
     }
@@ -580,7 +580,7 @@ void AppDrag(Window* win) {
 void AppSetTitle(Window* win, Str title) {
     (void)win;
     if (title.s) {
-        GpJsSetTitle(title.s, title.len);
+        GpJsSetTitle(title.s, len(title));
     }
 }
 
@@ -670,8 +670,8 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (url.s && url.len > 0) {
-        GpJsOpenUrl(url.s, url.len);
+    if (url.s && len(url) > 0) {
+        GpJsOpenUrl(url.s, len(url));
     }
 }
 
@@ -686,8 +686,8 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 
 void ClipboardSetText(Window* win, Str text) {
     (void)win;
-    if (text.s && text.len > 0) {
-        GpJsClipboardWrite(text.s, text.len);
+    if (text.s && len(text) > 0) {
+        GpJsClipboardWrite(text.s, len(text));
     }
 }
 

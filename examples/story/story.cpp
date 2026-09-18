@@ -1511,7 +1511,7 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
 static uint32_t StoryMenuHash(const MenuRow* rows, int n, uint32_t h) {
     for (int i = 0; i < n; i++) {
         const MenuRow& r = rows[i];
-        for (int c = 0; c < r.label.len; c++) {
+        for (int c = 0; c < len(r.label); c++) {
             h = (h ^ (uint32_t)(uint8_t)r.label.s[c]) * 16777619u;
         }
         h = (h ^ r.action) * 16777619u;
@@ -1534,7 +1534,7 @@ static void StorySetSystemMenus(StoryApp* app, Ctx* cx, const MenuDef* menus,
                                 int n) {
     uint32_t h = 2166136261u;
     for (int i = 0; i < n; i++) {
-        for (int c = 0; c < menus[i].name.len; c++) {
+        for (int c = 0; c < len(menus[i].name); c++) {
             h = (h ^ (uint32_t)(uint8_t)menus[i].name.s[c]) * 16777619u;
         }
         h = StoryMenuHash(menus[i].items, menus[i].n, h);
@@ -1553,7 +1553,7 @@ static component::PopupMenu* StoryPopupMenu(Ctx* cx, Str id,
     component::PopupMenu* menu = component::PopupMenu::New(cx, id);
     for (int i = 0; i < n; i++) {
         const MenuRow& r = rows[i];
-        if (r.separator || r.label.len <= 0) {
+        if (r.separator || len(r.label) <= 0) {
             menu->Separator();
             continue;
         }

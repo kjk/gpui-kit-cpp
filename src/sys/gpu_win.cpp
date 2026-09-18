@@ -67,8 +67,8 @@ static bool ProbeOpenLocked() {
         return false;
     }
     Str owner = fmt("pid_%d_", (int)GetCurrentProcessId());
-    gProbe.ownerLen = owner.len < (int)sizeof(gProbe.owner) - 1
-                          ? owner.len
+    gProbe.ownerLen = len(owner) < (int)sizeof(gProbe.owner) - 1
+                          ? len(owner)
                           : (int)sizeof(gProbe.owner) - 1;
     memcpy(gProbe.owner, owner.s, (size_t)gProbe.ownerLen);
     gProbe.owner[gProbe.ownerLen] = 0;
@@ -157,7 +157,7 @@ static float GpuUsagePercentLocked() {
         }
         TempStr whole = EngineOfTemp(instance);
         Str engine = whole;
-        if (engine.len == 0) {
+        if (len(engine) == 0) {
             continue;
         }
         if (!StrStartsWith(whole, Str(gProbe.owner, gProbe.ownerLen))) {

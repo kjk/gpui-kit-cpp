@@ -18,7 +18,7 @@ namespace autocorrect {
 
 static bool HtmlLitI(Str s, int i, const char* lit) {
     for (int k = 0; lit[k]; k++) {
-        if (i + k >= s.len) {
+        if (i + k >= len(s)) {
             return false;
         }
         char c = s.s[i + k];
@@ -43,11 +43,11 @@ static int HtmlLitLen(const char* lit) {
 // A tag from '<' to its '>', honouring quoted attribute values. -1 when the
 // tag never closes.
 static int MatchTag(Str s, int i) {
-    if (i >= s.len || s.s[i] != '<') {
+    if (i >= len(s) || s.s[i] != '<') {
         return -1;
     }
     char quote = 0;
-    for (int at = i + 1; at < s.len; at++) {
+    for (int at = i + 1; at < len(s); at++) {
         char c = s.s[at];
         if (quote) {
             if (c == quote) {
@@ -76,11 +76,11 @@ static int MatchCloseTag(Str s, int i, const char* name) {
         return -1;
     }
     at += HtmlLitLen(name);
-    while (at < s.len && (s.s[at] == ' ' || s.s[at] == '\t' ||
-                          s.s[at] == '\n' || s.s[at] == '\r')) {
+    while (at < len(s) && (s.s[at] == ' ' || s.s[at] == '\t' ||
+                           s.s[at] == '\n' || s.s[at] == '\r')) {
         at++;
     }
-    if (at >= s.len || s.s[at] != '>') {
+    if (at >= len(s) || s.s[at] != '>') {
         return -1;
     }
     return at + 1 - i;
@@ -100,11 +100,11 @@ static int FindCloseTag(Str s, int from, const char* name, int* len) {
 
 // An opening `<name` whose name ends there (`<style>` yes, `<styles>` no).
 static bool AtOpenTag(Str s, int i, const char* name) {
-    if (i >= s.len || s.s[i] != '<' || !HtmlLitI(s, i + 1, name)) {
+    if (i >= len(s) || s.s[i] != '<' || !HtmlLitI(s, i + 1, name)) {
         return false;
     }
     int after = i + 1 + HtmlLitLen(name);
-    if (after >= s.len) {
+    if (after >= len(s)) {
         return false;
     }
     char c = s.s[after];
@@ -120,11 +120,11 @@ void ScanHtml(Results* res, Str raw) {
             EmitIgnore(res, Str(raw.s + ignoreStart, upTo - ignoreStart));
         }
     };
-    while (i < raw.len) {
+    while (i < len(raw)) {
         if (raw.s[i] != '<') {
             // text = (!("<" | comment start) ~ ANY)+ — a text node.
             int start = i;
-            while (i < raw.len && raw.s[i] != '<') {
+            while (i < len(raw) && raw.s[i] != '<') {
                 i++;
             }
             flush(start);
@@ -135,7 +135,7 @@ void ScanHtml(Results* res, Str raw) {
         // `<!-- … -->`
         if (HtmlLitI(raw, i, "<!--")) {
             int end = -1;
-            for (int at = i + 4; at + 3 <= raw.len; at++) {
+            for (int at = i + 4; at + 3 <= len(raw); at++) {
                 if (raw.s[at] == '-' && raw.s[at + 1] == '-' &&
                     raw.s[at + 2] == '>') {
                     end = at + 3;
@@ -155,7 +155,7 @@ void ScanHtml(Results* res, Str raw) {
         // `<% server %>`
         if (HtmlLitI(raw, i, "<%")) {
             int end = -1;
-            for (int at = i + 2; at + 2 <= raw.len; at++) {
+            for (int at = i + 2; at + 2 <= len(raw); at++) {
                 if (raw.s[at] == '%' && raw.s[at + 1] == '>') {
                     end = at + 2;
                     break;
@@ -225,7 +225,7 @@ void ScanHtml(Results* res, Str raw) {
         // A '<' that never closes — pest's `other`, one char at a time.
         i++;
     }
-    flush(raw.len);
+    flush(len(raw));
 }
 
 } // namespace autocorrect

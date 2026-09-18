@@ -94,7 +94,7 @@ static bool OpenParent(int root, Str relative, int* parent, TempStr* leaf,
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
         Str component = Str(at);
-        if (!ValidComponent(component) || component.len >= 256) {
+        if (!ValidComponent(component) || len(component) >= 256) {
             FsError(error,
                     fmt("refusing invalid path component in `%s`", relative));
             ok = false;
@@ -202,9 +202,9 @@ static bool WriteFile(int root, Str rootName, Str relative, Str input,
         return false;
     }
     int written = 0;
-    while (written < input.len) {
+    while (written < len(input)) {
         ssize_t count =
-            write(file, input.s + written, (size_t)(input.len - written));
+            write(file, input.s + written, (size_t)(len(input) - written));
         if (count > 0)
             written += (int)count;
         else if (count < 0 && errno == EINTR)
@@ -252,7 +252,7 @@ static bool ReadDirectory(int root, Str rootName, Str relative,
         }
         Str name = Str(entry->d_name);
         if (StrEq(name, StrL(".")) || StrEq(name, StrL(".."))) continue;
-        int nameLen = name.len;
+        int nameLen = len(name);
         nameBytes += nameLen;
         if (result->entries.len >= kFsMaxDirectoryEntries ||
             nameBytes > kFsMaxDirectoryNameBytes) {
@@ -295,7 +295,7 @@ static bool MakeDirectoryRecursive(int root, Str rootName, Str relative,
         char* slash = strchr(at, '/');
         if (slash) *slash = 0;
         Str component = Str(at);
-        if (!ValidComponent(component) || component.len >= 256) {
+        if (!ValidComponent(component) || len(component) >= 256) {
             FsError(error,
                     fmt("refusing invalid path component in `%s`", relative));
             ok = false;

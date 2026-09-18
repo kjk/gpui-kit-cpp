@@ -36,7 +36,7 @@ static void TrimMediaType(Str* s) {
 static size_t OnBody(char* data, size_t size, size_t n, void* userp) {
     HttpRsp* out = (HttpRsp*)userp;
     size_t want = size * n;
-    if ((int64_t)out->body.len + (int64_t)want > (int64_t)kHttpMaxBody) {
+    if ((int64_t)len(out->body) + (int64_t)want > (int64_t)kHttpMaxBody) {
         return 0;
     }
     uint8_t* dst = VecAppendBlanks(out->body, (int)want);
@@ -58,13 +58,13 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
         return false;
     }
     // curl wants a C string and Str is a slice, so the URL is copied once.
-    char* u = AllocArray<char>(url.len + 1);
+    char* u = AllocArray<char>(len(url) + 1);
     if (!u) {
         curl_easy_cleanup(c);
         return false;
     }
-    memcpy(u, url.s, (size_t)url.len);
-    u[url.len] = 0;
+    memcpy(u, url.s, (size_t)len(url));
+    u[len(url)] = 0;
 
     curl_easy_setopt(c, CURLOPT_URL, u);
     curl_easy_setopt(c, CURLOPT_FOLLOWLOCATION, noRedirect ? 0L : 1L);
@@ -93,20 +93,20 @@ bool HttpSend(const HttpReq& req, HttpRsp* out) {
     // this wants: POSTFIELDS alone would also turn a redirect's method into
     // GET behind curl's back, and the redirect rules are the caller's.
     char* verb = nullptr;
-    if (req.method.len > 0 && !StrEq(req.method, StrL("GET"))) {
-        verb = AllocArray<char>(req.method.len + 1);
+    if (len(req.method) > 0 && !StrEq(req.method, StrL("GET"))) {
+        verb = AllocArray<char>(len(req.method) + 1);
         if (!verb) {
             curl_easy_cleanup(c);
             Free(nullptr, u);
             return false;
         }
-        memcpy(verb, req.method.s, (size_t)req.method.len);
-        verb[req.method.len] = 0;
+        memcpy(verb, req.method.s, (size_t)len(req.method));
+        verb[len(req.method)] = 0;
         curl_easy_setopt(c, CURLOPT_CUSTOMREQUEST, verb);
     }
-    if (req.body.len > 0) {
+    if (len(req.body) > 0) {
         curl_easy_setopt(c, CURLOPT_POSTFIELDS, req.body.s);
-        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)req.body.len);
+        curl_easy_setopt(c, CURLOPT_POSTFIELDSIZE, (long)len(req.body));
     }
     struct curl_slist* headers = nullptr;
     bool headersReady = true;

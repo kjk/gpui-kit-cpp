@@ -31,7 +31,7 @@ bool InputExtras::HasHover() const {
 }
 
 bool InputExtras::HasInlineCompletion() const {
-    return state && state->inlineCompletion.text.len > 0;
+    return state && len(state->inlineCompletion.text) > 0;
 }
 
 EditorExtras EditorExtras::Of(const InputState* state) {
@@ -181,7 +181,7 @@ void InputDefaultNativeMenu(const InputState* state, NativeMenu* out) {
         .MenuWithDisabled(StrL("Paste"), !c.IsEditable(), InputAction::Paste)
         .Separator()
         .MenuWithDisabled(StrL("Select All"),
-                          !state || InputValue(state).len == 0,
+                          !state || len(InputValue(state)) == 0,
                           InputAction::SelectAll);
     if (c.IsCodeEditor() && (c.HasDefinition() || c.HasCodeActions())) {
         out->Separator();

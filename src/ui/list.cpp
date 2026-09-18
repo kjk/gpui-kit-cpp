@@ -341,7 +341,7 @@ El* List::IntoEl() {
     // render_initial: what the list shows before anything has been searched
     // for. Rust asks for it only while the query field is empty, which is the
     // one place it could be reached from.
-    if (search && search->text.len == 0) {
+    if (search && len(search->text) == 0) {
         El* initialView = delegate.renderInitial
                               ? delegate.renderInitial(cx, delegate.data)
                               : initial;

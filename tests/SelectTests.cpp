@@ -172,7 +172,7 @@ static void SelectStateOwnsCommittedSelectionAndEvents() {
     SearchableListSearch(s->List(), items, 3, InputValue(&s->queryInput));
     utassert(s->state.matches.len == 1);
     s->SetSelectedValue(StrL("rust"), &cx);
-    utassert(InputValue(&s->queryInput).len == 0);
+    utassert(len(InputValue(&s->queryInput)) == 0);
     utassert(s->state.matches.len == 3);
 
     Entity<SelectEventSink> sink = EntityNewState<SelectEventSink>(&app);
@@ -217,7 +217,7 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
     s->state.list.selected = 0;
     utassert(s->state.matches.len == 1 && s->state.matches[0] == 3);
     s->SetOpen(false, &cx);
-    utassert(InputValue(&s->queryInput).len == 0);
+    utassert(len(InputValue(&s->queryInput)) == 0);
     utassert(s->state.matches.len == 4);
     utassert(s->state.list.selected == 2);
 
@@ -228,7 +228,7 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
     SearchableListSearch(s->List(), items, 4, InputValue(&s->queryInput));
     SearchableListState::OnRowClick(s->List(), &cx, nullptr, 0);
     utassert(base::StrEq(s->SelectedValue(), StrL("hu")));
-    utassert(InputValue(&s->queryInput).len == 0);
+    utassert(len(InputValue(&s->queryInput)) == 0);
     utassert(s->state.matches.len == 4);
     utassert(s->state.list.selected == 3);
 

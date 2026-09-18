@@ -77,16 +77,16 @@ void Sha256(Str data, uint8_t digest[32]) {
     uint32_t state[8] = {0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
                          0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19};
     int offset = 0;
-    while (offset + 64 <= data.len) {
+    while (offset + 64 <= len(data)) {
         Sha256Block(state, (const uint8_t*)data.s + offset);
         offset += 64;
     }
     uint8_t tail[128] = {};
-    int remaining = data.len - offset;
+    int remaining = len(data) - offset;
     if (remaining > 0) memcpy(tail, data.s + offset, (size_t)remaining);
     tail[remaining] = 0x80;
     int blocks = remaining < 56 ? 1 : 2;
-    uint64_t bits = (uint64_t)(uint32_t)data.len * 8;
+    uint64_t bits = (uint64_t)(uint32_t)len(data) * 8;
     for (int i = 0; i < 8; i++) {
         tail[blocks * 64 - 1 - i] = (uint8_t)(bits >> (i * 8));
     }
@@ -103,7 +103,7 @@ static void StandardError(Str* error, Str message) {
 
 static uint32_t Adler32(Str data) {
     uint32_t a = 1, b = 0;
-    for (int i = 0; i < data.len; i++) {
+    for (int i = 0; i < len(data); i++) {
         a = (a + (uint8_t)data.s[i]) % 65521;
         b = (b + a) % 65521;
     }
@@ -112,7 +112,7 @@ static uint32_t Adler32(Str data) {
 
 static uint32_t Crc32(Str data) {
     uint32_t crc = 0xffffffffu;
-    for (int i = 0; i < data.len; i++) {
+    for (int i = 0; i < len(data); i++) {
         crc ^= (uint8_t)data.s[i];
         for (int bit = 0; bit < 8; bit++) {
             crc = (crc >> 1) ^ (0xedb88320u & (uint32_t)-(int)(crc & 1));
@@ -143,15 +143,15 @@ static void AppendBig32(StrBuilder* out, uint32_t value) {
 static bool DeflateStored(Str input, StrBuilder* out) {
     int offset = 0;
     do {
-        int count = input.len - offset;
+        int count = len(input) - offset;
         if (count > 65535) count = 65535;
-        bool final = offset + count == input.len;
+        bool final = offset + count == len(input);
         out->AppendChar(final ? 1 : 0);
         AppendLittle16(out, (uint16_t)count);
         AppendLittle16(out, (uint16_t)~count);
         out->Append(Str(input.s ? input.s + offset : "", count));
         offset += count;
-    } while (offset < input.len);
+    } while (offset < len(input));
     return true;
 }
 
@@ -164,7 +164,7 @@ bool ZlibDeflate(Str input, bool gzip, Str* output, Str* error) {
         StrFree(*error);
         *error = {};
     }
-    if (input.len < 0 || input.len > kStandardDataLimit) {
+    if (len(input) < 0 || len(input) > kStandardDataLimit) {
         StandardError(error,
                       StrL("compression input exceeds the 64 MiB limit"));
         return false;
@@ -180,7 +180,7 @@ bool ZlibDeflate(Str input, bool gzip, Str* output, Str* error) {
     DeflateStored(input, &encoded);
     if (gzip) {
         AppendLittle32(&encoded, Crc32(input));
-        AppendLittle32(&encoded, (uint32_t)input.len);
+        AppendLittle32(&encoded, (uint32_t)len(input));
     } else {
         AppendBig32(&encoded, Adler32(input));
     }
@@ -422,8 +422,8 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
         StrFree(*error);
         *error = {};
     }
-    if (!input.s || input.len < (gzip ? 18 : 6) ||
-        input.len > kStandardDataLimit) {
+    if (!input.s || len(input) < (gzip ? 18 : 6) ||
+        len(input) > kStandardDataLimit) {
         StandardError(
             error,
             StrL("compressed input is invalid or exceeds the 64 MiB limit"));
@@ -440,7 +440,7 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
         uint8_t flags = bytes[3];
         start = 10;
         if (flags & 4) {
-            if (start + 2 > input.len - 8) {
+            if (start + 2 > len(input) - 8) {
                 StandardError(error, StrL("invalid gzip extra field"));
                 return false;
             }
@@ -448,10 +448,10 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
             start += 2 + extra;
         }
         if (flags & 8) {
-            while (start < input.len - 8 && bytes[start] != 0) start++;
+            while (start < len(input) - 8 && bytes[start] != 0) start++;
         }
         if (flags & 16) {
-            while (start < input.len - 8 && bytes[start] != 0) start++;
+            while (start < len(input) - 8 && bytes[start] != 0) start++;
         }
         if (flags & 2) start += 2;
         trailer = 8;
@@ -464,13 +464,13 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
         }
         start = 2;
     }
-    if (start < 0 || start > input.len - trailer) {
+    if (start < 0 || start > len(input) - trailer) {
         StandardError(error, StrL("compressed header exceeds its input"));
         return false;
     }
     Vec<uint8_t> decoded;
     int consumed = 0;
-    int compressedLength = input.len - start - trailer;
+    int compressedLength = len(input) - start - trailer;
     bool ok =
         InflateRaw(bytes + start, compressedLength, &decoded, &consumed) &&
         consumed == compressedLength;
@@ -479,7 +479,7 @@ bool ZlibInflate(Str input, bool gzip, Str* output, Str* error) {
         return false;
     }
     Str decodedText((const char*)decoded.els, len(decoded));
-    const uint8_t* check = bytes + input.len - trailer;
+    const uint8_t* check = bytes + len(input) - trailer;
     if (gzip) {
         ok = ReadLittle32(check) == Crc32(decodedText) &&
              ReadLittle32(check + 4) == (uint32_t)len(decoded);

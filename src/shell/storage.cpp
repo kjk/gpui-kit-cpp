@@ -44,8 +44,8 @@ void Storage::ResetEntries() {
 bool Storage::SetPath(Str value, Str* error) {
     ClearError(error);
     if (inFlight || waiters.len) {
-        StorageError(error,
-                     StrL("cannot replace the localStorage path while a write or flush is pending"));
+        StorageError(error, StrL("cannot replace the localStorage path while a "
+                                 "write or flush is pending"));
         return false;
     }
     ResetEntries();
@@ -55,7 +55,7 @@ bool Storage::SetPath(Str value, Str* error) {
     written = 0;
     inFlight = 0;
     failed = 0;
-    if (!path.s && value.len != 0) {
+    if (!path.s && len(value) != 0) {
         StorageError(error, StrL("allocating the storage path failed"));
         return false;
     }
@@ -101,9 +101,8 @@ bool Storage::Load(Str* error) {
     bool ok = root && root->kind == JsonKind::Object;
     for (JsonValue* item = ok ? root->first : nullptr; item;
          item = item->next) {
-        if (item->kind != JsonKind::String ||
-            entries.len >= kMaxStorageKeys ||
-            item->key.len > kMaxStorageValueBytes ||
+        if (item->kind != JsonKind::String || entries.len >= kMaxStorageKeys ||
+            len(item->key) > kMaxStorageValueBytes ||
             item->str.len > kMaxStorageValueBytes) {
             ok = false;
             break;
@@ -111,7 +110,7 @@ bool Storage::Load(Str* error) {
         StorageEntry* entry = new StorageEntry();
         entry->key = StrDup(item->key);
         entry->value = StrDup(item->str);
-        if ((!entry->key.s && item->key.len) ||
+        if ((!entry->key.s && len(item->key)) ||
             (!entry->value.s && item->str.len) || !VecAppend(entries, entry)) {
             StrFree(entry->key);
             StrFree(entry->value);
@@ -154,18 +153,20 @@ bool Storage::Encode(Str* encoded, Str* error) const {
     }
     writer.EndObject();
     Str result = body.TakeStr();
-    if (!result.s && result.len != 0) {
+    if (!result.s && len(result) != 0) {
         StorageError(error, StrL("allocating the encoded storage file failed"));
         return false;
     }
-    if (result.len > kMaxStorageBytes) {
+    if (len(result) > kMaxStorageBytes) {
         StorageError(error,
                      StrL("the encoded storage file exceeds the 8 MiB limit"));
         StrFree(result);
         return false;
     }
-    if (encoded) *encoded = result;
-    else StrFree(result);
+    if (encoded)
+        *encoded = result;
+    else
+        StrFree(result);
     return true;
 }
 
@@ -180,14 +181,14 @@ void Storage::Touch() {
 
 bool Storage::Set(Str key, Str value, Str* error) {
     ClearError(error);
-    if (key.len > kMaxStorageValueBytes ||
-        value.len > kMaxStorageValueBytes) {
+    if (len(key) > kMaxStorageValueBytes ||
+        len(value) > kMaxStorageValueBytes) {
         StorageError(error,
                      StrL("a storage key or value exceeds the 1 MiB limit"));
         return false;
     }
     Str copy = StrDup(value);
-    if (!copy.s && value.len != 0) {
+    if (!copy.s && len(value) != 0) {
         StorageError(error, StrL("allocating the storage value failed"));
         return false;
     }
@@ -212,7 +213,7 @@ bool Storage::Set(Str key, Str value, Str* error) {
     StorageEntry* entry = new StorageEntry();
     entry->key = StrDup(key);
     entry->value = copy;
-    if ((!entry->key.s && key.len != 0) || !VecAppend(entries, entry)) {
+    if ((!entry->key.s && len(key) != 0) || !VecAppend(entries, entry)) {
         StrFree(entry->key);
         StrFree(entry->value);
         delete entry;
@@ -272,17 +273,15 @@ bool Storage::BeginWrite(StorageWrite* write, Str* error) {
     write->Free();
     if (inFlight || !IsDirty() || failed == revision) return true;
     if (!path) {
-        StorageError(
-            error,
-            StrL("localStorage has no backing file; call ShellSetStoragePath first"));
+        StorageError(error, StrL("localStorage has no backing file; call "
+                                 "ShellSetStoragePath first"));
         return false;
     }
     uint64_t snapshotRevision = revision;
     StorageWrite pending;
     pending.revision = snapshotRevision;
     pending.path = StrDup(path);
-    if ((!pending.path.s && path.len != 0) ||
-        !Encode(&pending.body, error)) {
+    if ((!pending.path.s && len(path) != 0) || !Encode(&pending.body, error)) {
         pending.Free();
         write->revision = snapshotRevision;
         return false;
@@ -294,8 +293,7 @@ bool Storage::BeginWrite(StorageWrite* write, Str* error) {
     return true;
 }
 
-void Storage::ReadyThrough(uint64_t through,
-                           Vec<StorageWaiter*>* ready) {
+void Storage::ReadyThrough(uint64_t through, Vec<StorageWaiter*>* ready) {
     int keep = 0;
     for (int i = 0; i < waiters.len; i++) {
         StorageWaiter* waiter = waiters[i];
@@ -337,8 +335,10 @@ bool Storage::Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,
         return true;
     }
     if (waiters.len >= kMaxStorageWaiters) {
-        StorageError(error,
-                     StrL("localStorage.flush() exceeded the 1024 pending-waiter limit"));
+        StorageError(
+            error,
+            StrL(
+                "localStorage.flush() exceeded the 1024 pending-waiter limit"));
         return false;
     }
     if (!inFlight && failed == revision) failed = 0;
@@ -347,7 +347,8 @@ bool Storage::Wait(Func1<StorageOutcome> settle, StorageWaiter** waiter,
     pending->settle = settle;
     if (!VecAppend(waiters, pending)) {
         delete pending;
-        StorageError(error, StrL("allocating a localStorage flush waiter failed"));
+        StorageError(error,
+                     StrL("allocating a localStorage flush waiter failed"));
         return false;
     }
     if (waiter) *waiter = pending;
@@ -373,8 +374,8 @@ bool StoragePersist(const StorageWrite& write, Str* error) {
     }
     Str temporary = StrDup(fmt("%s.tmp", write.path));
     FILE* file = temporary.s ? fopen(temporary.s, "wb") : nullptr;
-    bool ok = file && fwrite(write.body.s, 1, (size_t)write.body.len, file) ==
-                               (size_t)write.body.len;
+    bool ok = file && fwrite(write.body.s, 1, (size_t)len(write.body), file) ==
+                          (size_t)len(write.body);
     if (file && fclose(file) != 0) ok = false;
     if (ok) ok = StorageReplaceFile(temporary, write.path, error);
     if (!ok) {

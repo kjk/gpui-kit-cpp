@@ -12,7 +12,8 @@ static const char kRoleNames[] =
     "PasswordInput\0PhoneNumberInput\0UrlInput\0Abbr\0Alert\0AlertDialog\0"
     "Application\0Article\0Audio\0Banner\0Blockquote\0Canvas\0Caption\0Caret\0"
     "Code\0ColorWell\0ComboBox\0EditableComboBox\0Complementary\0Comment\0"
-    "ContentDeletion\0ContentInsertion\0ContentInfo\0Definition\0DescriptionList\0"
+    "ContentDeletion\0ContentInsertion\0ContentInfo\0Definition\0DescriptionLis"
+    "t\0"
     "Details\0Dialog\0DisclosureTriangle\0Document\0EmbeddedObject\0Emphasis\0"
     "Feed\0FigureCaption\0Figure\0Footer\0Form\0Grid\0GridCell\0Group\0Header\0"
     "Heading\0Iframe\0IframePresentational\0ImeCandidate\0Keyboard\0Legend\0"
@@ -24,12 +25,16 @@ static const char kRoleNames[] =
     "SvgRoot\0Tab\0TabList\0TabPanel\0Term\0Time\0Timer\0TitleBar\0Toolbar\0"
     "Tooltip\0Tree\0TreeGrid\0Video\0WebView\0Window\0PdfActionableHighlight\0"
     "PdfRoot\0GraphicsDocument\0GraphicsObject\0GraphicsSymbol\0DocAbstract\0"
-    "DocAcknowledgements\0DocAfterword\0DocAppendix\0DocBackLink\0DocBiblioEntry\0"
+    "DocAcknowledgements\0DocAfterword\0DocAppendix\0DocBackLink\0DocBiblioEntr"
+    "y\0"
     "DocBibliography\0DocBiblioRef\0DocChapter\0DocColophon\0DocConclusion\0"
     "DocCover\0DocCredit\0DocCredits\0DocDedication\0DocEndnote\0DocEndnotes\0"
-    "DocEpigraph\0DocEpilogue\0DocErrata\0DocExample\0DocFootnote\0DocForeword\0"
-    "DocGlossary\0DocGlossRef\0DocIndex\0DocIntroduction\0DocNoteRef\0DocNotice\0"
-    "DocPageBreak\0DocPageFooter\0DocPageHeader\0DocPageList\0DocPart\0DocPreface\0"
+    "DocEpigraph\0DocEpilogue\0DocErrata\0DocExample\0DocFootnote\0DocForeword"
+    "\0"
+    "DocGlossary\0DocGlossRef\0DocIndex\0DocIntroduction\0DocNoteRef\0DocNotice"
+    "\0"
+    "DocPageBreak\0DocPageFooter\0DocPageHeader\0DocPageList\0DocPart\0DocPrefa"
+    "ce\0"
     "DocPrologue\0DocPullquote\0DocQna\0DocSubtitle\0DocTip\0DocToc\0ListGrid\0"
     "Terminal\0";
 
@@ -40,15 +45,15 @@ static bool RoleNameMatches(Str snake, const char* variantName) {
         char ch = variantName[i];
         if (ch >= 'A' && ch <= 'Z') {
             if (i > 0) {
-                if (at >= snake.len || snake.s[at] != '_') return false;
+                if (at >= len(snake) || snake.s[at] != '_') return false;
                 at++;
             }
             ch = (char)(ch - 'A' + 'a');
         }
-        if (at >= snake.len || snake.s[at] != ch) return false;
+        if (at >= len(snake) || snake.s[at] != ch) return false;
         at++;
     }
-    return at == snake.len;
+    return at == len(snake);
 }
 
 AccessibilityRole AccessibilityRoleFromName(Str name) {

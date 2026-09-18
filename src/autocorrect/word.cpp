@@ -46,7 +46,7 @@ static bool IsCjkClassCp(uint32_t cp) {
 }
 
 static int MatchCp(Str s, int i, bool (*pred)(uint32_t)) {
-    if (i >= s.len) {
+    if (i >= len(s)) {
         return -1;
     }
     int at = i;
@@ -58,7 +58,7 @@ static int MatchCp(Str s, int i, bool (*pred)(uint32_t)) {
 
 // `\p{Han}|\p{Hangul}|\p{Katakana}|\p{Hiragana}|\p{Bopomofo}[^%\$\\]`
 static int SideCjkWordOne(Str s, int i) {
-    if (i >= s.len) {
+    if (i >= len(s)) {
         return -1;
     }
     int at = i;
@@ -66,7 +66,7 @@ static int SideCjkWordOne(Str s, int i) {
     if (IsHan(cp) || IsHangul(cp) || IsKatakana(cp) || IsHiragana(cp)) {
         return at - i;
     }
-    if (IsBopomofo(cp) && at < s.len) {
+    if (IsBopomofo(cp) && at < len(s)) {
         uint32_t c2 = Utf8Next(s, &at);
         if (c2 != '%' && c2 != '$' && c2 != '\\') {
             return at - i;
@@ -82,7 +82,7 @@ static int SideAlnum(Str s, int i) {
 
 // `[^%\$\\][a-zA-Z0-9]`
 static int SideNotEscapeThenAlnum(Str s, int i) {
-    if (i >= s.len) {
+    if (i >= len(s)) {
         return -1;
     }
     int at = i;
@@ -90,7 +90,7 @@ static int SideNotEscapeThenAlnum(Str s, int i) {
     if (cp == '%' || cp == '$' || cp == '\\') {
         return -1;
     }
-    if (at >= s.len || !IsAsciiAlnumCp(Utf8At(s, at))) {
+    if (at >= len(s) || !IsAsciiAlnumCp(Utf8At(s, at))) {
         return -1;
     }
     return at + 1 - i;
@@ -103,12 +103,12 @@ static int SideCjk(Str s, int i) {
 
 // `[\-+][\d]+`
 static int SideSignedNumber(Str s, int i) {
-    if (i >= s.len || (s.s[i] != '-' && s.s[i] != '+')) {
+    if (i >= len(s) || (s.s[i] != '-' && s.s[i] != '+')) {
         return -1;
     }
     int at = i + 1;
     int digits = 0;
-    while (at < s.len && s.s[at] >= '0' && s.s[at] <= '9') {
+    while (at < len(s) && s.s[at] >= '0' && s.s[at] <= '9') {
         at++;
         digits++;
     }
@@ -125,7 +125,7 @@ static int SideStartAlnum(Str s, int i) {
 
 // `[0-9][%]`
 static int SideDigitPercent(Str s, int i) {
-    if (i + 1 < s.len && s.s[i] >= '0' && s.s[i] <= '9' && s.s[i + 1] == '%') {
+    if (i + 1 < len(s) && s.s[i] >= '0' && s.s[i] <= '9' && s.s[i + 1] == '%') {
         return 2;
     }
     return -1;
@@ -133,12 +133,12 @@ static int SideDigitPercent(Str s, int i) {
 
 // `[a-zA-Z0-9][+#]+`
 static int SideAlnumPlusHash(Str s, int i) {
-    if (i >= s.len || !IsAsciiAlnumCp((uint8_t)s.s[i])) {
+    if (i >= len(s) || !IsAsciiAlnumCp((uint8_t)s.s[i])) {
         return -1;
     }
     int at = i + 1;
     int n = 0;
-    while (at < s.len && (s.s[at] == '+' || s.s[at] == '#')) {
+    while (at < len(s) && (s.s[at] == '+' || s.s[at] == '#')) {
         at++;
         n++;
     }
@@ -181,14 +181,14 @@ static int SideCjkOrLeftQuote(Str s, int i) {
 
 // `[\|+][\p{CJK_N}\s（【「《“‘]` and `[\-][…]`
 static int SidePipeThenOpen(Str s, int i) {
-    if (i >= s.len || (s.s[i] != '|' && s.s[i] != '+')) {
+    if (i >= len(s) || (s.s[i] != '|' && s.s[i] != '+')) {
         return -1;
     }
     int n = MatchCp(s, i + 1, IsCjkSpaceOrLeftQuoteCp);
     return n > 0 ? 1 + n : -1;
 }
 static int SideDashThenOpen(Str s, int i) {
-    if (i >= s.len || s.s[i] != '-') {
+    if (i >= len(s) || s.s[i] != '-') {
         return -1;
     }
     int n = MatchCp(s, i + 1, IsCjkSpaceOrLeftQuoteCp);
@@ -198,15 +198,14 @@ static int SideDashThenOpen(Str s, int i) {
 // `[\p{CJK_N}\s）】」”’》][\|+]` and `[…][\-]`
 static int SideCloseThenPipe(Str s, int i) {
     int n = MatchCp(s, i, IsCjkSpaceOrCloseQuoteCp);
-    if (n <= 0 || i + n >= s.len ||
-        (s.s[i + n] != '|' && s.s[i + n] != '+')) {
+    if (n <= 0 || i + n >= len(s) || (s.s[i + n] != '|' && s.s[i + n] != '+')) {
         return -1;
     }
     return n + 1;
 }
 static int SideCloseThenDash(Str s, int i) {
     int n = MatchCp(s, i, IsCjkSpaceOrCloseQuoteCp);
-    if (n <= 0 || i + n >= s.len || s.s[i + n] != '-') {
+    if (n <= 0 || i + n >= len(s) || s.s[i + n] != '-') {
         return -1;
     }
     return n + 1;
@@ -214,25 +213,25 @@ static int SideCloseThenDash(Str s, int i) {
 
 // `[!]`
 static int SideBang(Str s, int i) {
-    return i < s.len && s.s[i] == '!' ? 1 : -1;
+    return i < len(s) && s.s[i] == '!' ? 1 : -1;
 }
 
 // `[\[\(]` and `[\]\)]`
 static int SideOpenBracket(Str s, int i) {
-    return i < s.len && (s.s[i] == '[' || s.s[i] == '(') ? 1 : -1;
+    return i < len(s) && (s.s[i] == '[' || s.s[i] == '(') ? 1 : -1;
 }
 static int SideCloseBracket(Str s, int i) {
-    return i < s.len && (s.s[i] == ']' || s.s[i] == ')') ? 1 : -1;
+    return i < len(s) && (s.s[i] == ']' || s.s[i] == ')') ? 1 : -1;
 }
 
 // `` `.+` `` — a backtick, at least one non-newline char, greedily to the
 // last backtick in the line (regex greediness).
 static int SideBacktickString(Str s, int i) {
-    if (i >= s.len || s.s[i] != '`') {
+    if (i >= len(s) || s.s[i] != '`') {
         return -1;
     }
     int last = -1;
-    for (int j = i + 1; j < s.len && s.s[j] != '\n'; j++) {
+    for (int j = i + 1; j < len(s) && s.s[j] != '\n'; j++) {
         if (s.s[j] == '`' && j > i + 1) {
             last = j;
         }
@@ -242,7 +241,7 @@ static int SideBacktickString(Str s, int i) {
 
 // `\$`
 static int SideDollar(Str s, int i) {
-    return i < s.len && s.s[i] == '$' ? 1 : -1;
+    return i < len(s) && s.s[i] == '$' ? 1 : -1;
 }
 
 // `\w|\p{CJK}|`` ` `` — the char a fullwidth punctuation may absorb a space
@@ -305,7 +304,7 @@ static int SideFullwidthQuote(Str s, int i) {
 static bool PassAdd(Str in, SideFn one, SideFn other, StrBuilder* out) {
     bool changed = false;
     int i = 0;
-    while (i < in.len) {
+    while (i < len(in)) {
         int n1 = one(in, i);
         if (n1 > 0) {
             int n2 = other(in, i + n1);
@@ -329,11 +328,11 @@ static bool PassAdd(Str in, SideFn one, SideFn other, StrBuilder* out) {
 static bool PassRemove(Str in, SideFn one, SideFn other, StrBuilder* out) {
     bool changed = false;
     int i = 0;
-    while (i < in.len) {
+    while (i < len(in)) {
         int n1 = one(in, i);
         if (n1 > 0) {
             int sp = i + n1;
-            while (sp < in.len && in.s[sp] == ' ') {
+            while (sp < len(in) && in.s[sp] == ' ') {
                 sp++;
             }
             if (sp > i + n1) {
@@ -430,11 +429,11 @@ bool FormatSpaceDash(Arena* a, Str in, Str* out) {
 static bool PassBacktickThenCjk(Str in, StrBuilder* out) {
     bool changed = false;
     int i = 0;
-    while (i < in.len) {
+    while (i < len(in)) {
         if (in.s[i] == '`') {
             int end = -1; // byte after the closing backtick
-            for (int j = i + 2; j < in.len && in.s[j] != '\n'; j++) {
-                if (in.s[j] == '`' && j + 1 < in.len &&
+            for (int j = i + 2; j < len(in) && in.s[j] != '\n'; j++) {
+                if (in.s[j] == '`' && j + 1 < len(in) &&
                     SideCjk(in, j + 1) > 0) {
                     end = j + 1;
                 }

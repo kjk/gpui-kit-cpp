@@ -58,7 +58,7 @@ static void AppendCp(StrBuilder* out, uint32_t cp) {
 bool FormatHalfwidthWord(Arena* a, Str in, Str* out) {
     StrBuilder b;
     bool changed = false;
-    for (int i = 0; i < in.len;) {
+    for (int i = 0; i < len(in);) {
         uint32_t cp = Utf8Next(in, &i);
         // Fullwidth ０-９ Ａ-Ｚ ａ-ｚ → ASCII; ideographic space → space.
         if ((cp >= 0xFF10 && cp <= 0xFF19) || (cp >= 0xFF21 && cp <= 0xFF3A) ||
@@ -79,13 +79,13 @@ bool FormatHalfwidthWord(Arena* a, Str in, Str* out) {
     Str cur = changed ? Str(b.els, b.len) : in;
     StrBuilder t;
     bool timeHit = false;
-    for (int i = 0; i < cur.len;) {
+    for (int i = 0; i < len(cur);) {
         int save = i;
         uint32_t cp = Utf8Next(cur, &i);
-        if (IsAsciiDigitCp(cp) && i < cur.len) {
+        if (IsAsciiDigitCp(cp) && i < len(cur)) {
             int j = i;
             uint32_t c2 = Utf8Next(cur, &j);
-            if (c2 == 0xFF1A && j < cur.len && // ：
+            if (c2 == 0xFF1A && j < len(cur) && // ：
                 IsAsciiDigitCp(Utf8At(cur, j))) {
                 AppendCp(&t, cp);
                 t.AppendChar(':');
@@ -161,23 +161,23 @@ static bool IsEnglishSep(uint32_t cp) {
 
 static bool HasEnglishShape(Str s) {
     int i = 0;
-    while (i < s.len) {
+    while (i < len(s)) {
         if (!IsWordCp(Utf8At(s, i))) {
             Utf8Next(s, &i);
             continue;
         }
         // A word run…
-        while (i < s.len && IsWordCp(Utf8At(s, i))) {
+        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
             Utf8Next(s, &i);
         }
         // …then at least one separator…
         int seps = 0;
-        while (i < s.len && IsEnglishSep(Utf8At(s, i))) {
+        while (i < len(s) && IsEnglishSep(Utf8At(s, i))) {
             Utf8Next(s, &i);
             seps++;
         }
         // …then a word char.
-        if (seps > 0 && i < s.len && IsWordCp(Utf8At(s, i))) {
+        if (seps > 0 && i < len(s) && IsWordCp(Utf8At(s, i))) {
             return true;
         }
     }
@@ -187,10 +187,10 @@ static bool HasEnglishShape(Str s) {
 // START_WITH_WORD_RE `^\s*[\w]+`.
 static bool StartsWithWord(Str s) {
     int i = 0;
-    while (i < s.len && IsWhitespaceCp(Utf8At(s, i))) {
+    while (i < len(s) && IsWhitespaceCp(Utf8At(s, i))) {
         Utf8Next(s, &i);
     }
-    return i < s.len && IsWordCp(Utf8At(s, i));
+    return i < len(s) && IsWordCp(Utf8At(s, i));
 }
 
 // QUOTE_RE `^\s*(["'`]).+(["'`])\s*$`.
@@ -200,21 +200,21 @@ static bool IsQuoteCh(uint32_t cp) {
 
 static bool IsQuoted(Str s) {
     int first = 0;
-    while (first < s.len && IsWhitespaceCp(Utf8At(s, first))) {
+    while (first < len(s) && IsWhitespaceCp(Utf8At(s, first))) {
         Utf8Next(s, &first);
     }
-    if (first >= s.len || !IsQuoteCh(Utf8At(s, first))) {
+    if (first >= len(s) || !IsQuoteCh(Utf8At(s, first))) {
         return false;
     }
     int last = -1;
-    for (int i = first; i < s.len;) {
+    for (int i = first; i < len(s);) {
         int at = i;
         uint32_t cp = Utf8Next(s, &i);
         if (IsQuoteCh(cp)) {
             // A closing candidate only if just whitespace follows.
             int j = i;
             bool tail = true;
-            while (j < s.len) {
+            while (j < len(s)) {
                 if (!IsWhitespaceCp(Utf8At(s, j))) {
                     tail = false;
                     break;
@@ -244,7 +244,7 @@ static bool IsQuoted(Str s) {
 // WORD_RE `[a-zA-Z]{2,}`.
 static bool HasTwoLetters(Str s) {
     int run = 0;
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         char c = s.s[i];
         bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
         run = letter ? run + 1 : 0;
@@ -257,11 +257,11 @@ static bool HasTwoLetters(Str s) {
 
 // CODE_STRING_RE `([#%$]\{.+\})|([\w]+\.[\w]+\()`.
 static bool LooksLikeCodeString(Str s) {
-    for (int i = 0; i < s.len; i++) {
+    for (int i = 0; i < len(s); i++) {
         char c = s.s[i];
-        if ((c == '#' || c == '%' || c == '$') && i + 2 < s.len &&
+        if ((c == '#' || c == '%' || c == '$') && i + 2 < len(s) &&
             s.s[i + 1] == '{') {
-            for (int j = i + 3; j < s.len && s.s[j] != '\n'; j++) {
+            for (int j = i + 3; j < len(s) && s.s[j] != '\n'; j++) {
                 if (s.s[j] == '}') {
                     return true;
                 }
@@ -269,20 +269,20 @@ static bool LooksLikeCodeString(Str s) {
         }
     }
     int i = 0;
-    while (i < s.len) {
+    while (i < len(s)) {
         if (!IsWordCp(Utf8At(s, i))) {
             Utf8Next(s, &i);
             continue;
         }
-        while (i < s.len && IsWordCp(Utf8At(s, i))) {
+        while (i < len(s) && IsWordCp(Utf8At(s, i))) {
             Utf8Next(s, &i);
         }
-        if (i + 1 < s.len && s.s[i] == '.' && IsWordCp(Utf8At(s, i + 1))) {
+        if (i + 1 < len(s) && s.s[i] == '.' && IsWordCp(Utf8At(s, i + 1))) {
             int j = i + 1;
-            while (j < s.len && IsWordCp(Utf8At(s, j))) {
+            while (j < len(s) && IsWordCp(Utf8At(s, j))) {
                 Utf8Next(s, &j);
             }
-            if (j < s.len && s.s[j] == '(') {
+            if (j < len(s) && s.s[j] == '(') {
                 return true;
             }
         }
@@ -325,7 +325,7 @@ static bool FormatLine(Str line, uint32_t wrapQuote, StrBuilder* out) {
     bool changed = false;
     uint32_t lastCp = 0;
     bool hasLast = false;
-    for (int i = 0; i < line.len;) {
+    for (int i = 0; i < len(line);) {
         uint32_t cp = Utf8Next(line, &i);
         const ReplaceRule* rule = RuleFor(cp);
         if (!rule) {
@@ -334,7 +334,7 @@ static bool FormatLine(Str line, uint32_t wrapQuote, StrBuilder* out) {
             hasLast = true;
             continue;
         }
-        bool hasNext = i < line.len;
+        bool hasNext = i < len(line);
         uint32_t next = hasNext ? Utf8At(line, i) : 0;
         // A left quote as the very last char stays: "Escher puzzle（".
         if (!hasNext && rule->type == CharType::LeftQuote) {
@@ -374,7 +374,7 @@ bool FormatHalfwidthPunctuation(Arena* a, Str in, Str* out) {
     // The first non-whitespace char is the quote the whole text is wrapped
     // in, if any — what EscapeQuote escapes against.
     uint32_t wrapQuote = ' ';
-    for (int i = 0; i < in.len;) {
+    for (int i = 0; i < len(in);) {
         uint32_t cp = Utf8Next(in, &i);
         if (!IsWhitespaceCp(cp)) {
             wrapQuote = cp;
@@ -384,13 +384,13 @@ bool FormatHalfwidthPunctuation(Arena* a, Str in, Str* out) {
     StrBuilder b;
     bool changed = false;
     int lineStart = 0;
-    for (int i = 0; i <= in.len; i++) {
-        bool eol = i == in.len || in.s[i] == '\n';
+    for (int i = 0; i <= len(in); i++) {
+        bool eol = i == len(in) || in.s[i] == '\n';
         if (!eol) {
             continue;
         }
         // split_inclusive('\n'): the line keeps its newline.
-        int end = i == in.len ? i : i + 1;
+        int end = i == len(in) ? i : i + 1;
         if (end > lineStart) {
             changed |= FormatLine(Str(in.s + lineStart, end - lineStart),
                                   wrapQuote, &b);

@@ -168,7 +168,7 @@ struct DrawOpsExec {
     void Text(Str s, float u, float v, float size, float targetW,
               uint32_t flags) {
         float px = size * (sx + sy) * 0.5f;
-        if (!s.s || s.len <= 0 || px < 1.f) {
+        if (!s.s || len(s) <= 0 || px < 1.f) {
             return;
         }
         int weight = (flags & kTextBold) ? kFontWeightBold : kFontWeightNormal;
@@ -557,7 +557,7 @@ void DrawOpsBuilder::ClosePath() {
 
 void DrawOpsBuilder::Text(float x, float y, float size, float textLength,
                           uint32_t flags, Str s) {
-    int n = s.len;
+    int n = len(s);
     if (!s.s || n <= 0) {
         return;
     }

@@ -401,7 +401,7 @@ void SearchableListState::SetSelectedIndices(const IndexPath* indices, int n) {
 }
 
 bool SearchableItemMatches(const SearchableItem* it, Str query) {
-    if (query.len <= 0) {
+    if (len(query) <= 0) {
         return true;
     }
     return StrContainsI(it->title, query);

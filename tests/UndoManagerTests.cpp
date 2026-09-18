@@ -9,7 +9,7 @@
 
 static Change TypingChange(int offset, const char* text) {
     Str s = Str(text);
-    int end = offset + s.len;
+    int end = offset + len(s);
     Change c = {};
     c.oldRange = SelectionAt(offset);
     c.oldText = StrDup(Str{});

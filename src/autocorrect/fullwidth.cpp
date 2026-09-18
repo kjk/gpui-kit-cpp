@@ -34,7 +34,7 @@ static bool IsSpecialPunct(char c) {
 // A run of class chars starting at i; byte length (0 when none).
 static int MatchClassRun(Str s, int i, bool (*pred)(uint32_t)) {
     int at = i;
-    while (at < s.len) {
+    while (at < len(s)) {
         int next = at;
         if (!pred(Utf8Next(s, &next))) {
             break;
@@ -66,12 +66,12 @@ static Str FullwidthFor(char c) {
 // the fullwidth char, trailing spaces dropped.
 static void AppendMappedSpan(StrBuilder* out, Str span) {
     int i = 0;
-    while (i < span.len) {
+    while (i < len(span)) {
         char c = span.s[i];
         if (IsNormalPunct(c) || IsSpecialPunct(c)) {
             out->Append(FullwidthFor(c));
             i++;
-            while (i < span.len && span.s[i] == ' ') {
+            while (i < len(span) && span.s[i] == ' ') {
                 i++;
             }
             continue;
@@ -91,11 +91,11 @@ static int MatchLeft(Str s, int i) {
         return -1;
     }
     int at = i + a;
-    if (at >= s.len || !IsNormalPunct(s.s[at])) {
+    if (at >= len(s) || !IsNormalPunct(s.s[at])) {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     int b = MatchClassRun(s, at, IsCjClassCp);
@@ -112,11 +112,11 @@ static int MatchRight(Str s, int i) {
         return -1;
     }
     int at = i + a;
-    if (at >= s.len || !IsNormalPunct(s.s[at])) {
+    if (at >= len(s) || !IsNormalPunct(s.s[at])) {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     return at - i;
@@ -129,11 +129,11 @@ static int MatchSpecial(Str s, int i) {
         return -1;
     }
     int at = i + a;
-    if (at >= s.len || !IsSpecialPunct(s.s[at])) {
+    if (at >= len(s) || !IsSpecialPunct(s.s[at])) {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
     int b = MatchClassRun(s, at, IsCjClassCp);
@@ -150,17 +150,17 @@ static int MatchSpecialLast(Str s, int i) {
         return -1;
     }
     int at = i + a;
-    if (at >= s.len || !IsSpecialPunct(s.s[at])) {
+    if (at >= len(s) || !IsSpecialPunct(s.s[at])) {
         return -1;
     }
     at++;
-    while (at < s.len && s.s[at] == ' ') {
+    while (at < len(s) && s.s[at] == ' ') {
         at++;
     }
-    if (at < s.len && (s.s[at] == '"' || s.s[at] == '\'')) {
+    if (at < len(s) && (s.s[at] == '"' || s.s[at] == '\'')) {
         at++;
     }
-    return at == s.len ? at - i : -1;
+    return at == len(s) ? at - i : -1;
 }
 
 using MatchFn = int (*)(Str, int);
@@ -168,7 +168,7 @@ using MatchFn = int (*)(Str, int);
 static bool PassReplace(Str in, MatchFn match, StrBuilder* out) {
     bool changed = false;
     int i = 0;
-    while (i < in.len) {
+    while (i < len(in)) {
         int n = match(in, i);
         if (n > 0) {
             AppendMappedSpan(out, Str(in.s + i, n));

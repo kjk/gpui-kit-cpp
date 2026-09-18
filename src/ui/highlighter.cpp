@@ -212,8 +212,8 @@ El* CompletionMenu::IntoEl() {
                           view, &InputMenuViewState::CompletionHover, i));
         if (selected) row->Bg(theme.tokens.accent)->Fg(theme.accentFg);
         El* label = TextEl(a, item.label)->LineHeight(1.f);
-        int matched = editor->completion.query.len;
-        if (matched > item.label.len) matched = item.label.len;
+        int matched = len(editor->completion.query);
+        if (matched > len(item.label)) matched = len(item.label);
         if (matched > 0) {
             TextSpan* prefix = ArenaNew<TextSpan>(a);
             prefix->lo = 0;
@@ -223,7 +223,7 @@ El* CompletionMenu::IntoEl() {
         }
         if (item.deprecated) label->Strikethrough();
         row->Child(label);
-        if (item.detail.len > 0) {
+        if (len(item.detail) > 0) {
             El* detail = TextEl(a, item.detail)
                              ->LineHeight(1.f)
                              ->Italic()
@@ -237,9 +237,9 @@ El* CompletionMenu::IntoEl() {
     vertical ? menu->FlexCol() : menu->FlexRow();
 
     Str documentation = InputCompletionDocumentation(editor);
-    if (documentation.len > 0) {
+    if (len(documentation) > 0) {
         if (vertical) {
-            for (int i = 0; i < documentation.len; i++) {
+            for (int i = 0; i < len(documentation); i++) {
                 if (documentation.s[i] == '\n') {
                     documentation = Str(documentation.s, i);
                     break;
@@ -408,7 +408,7 @@ HoverPopover* HoverPopover::New(Ctx* cx, InputState* editor,
 }
 
 El* HoverPopover::IntoEl() {
-    if (!editor || hover.len <= 0) return nullptr;
+    if (!editor || len(hover) <= 0) return nullptr;
     const Theme& theme = ThemeNow(cx->app);
     TextViewStyle textStyle = TextViewStyle::Default();
     textStyle.WithParagraphGap(8);
@@ -483,7 +483,7 @@ static bool HighlightNameColor(Str name, ThemeMode mode, Rgba fallback,
         }
         // Try the head of a dotted name once, and then give up.
         int dot = -1;
-        for (int i = 0; i < head.len; i++) {
+        for (int i = 0; i < len(head); i++) {
             if (head.s[i] == '.') {
                 dot = i;
                 break;
@@ -579,7 +579,7 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
                          Vec<FoldRange>* folds) {
     VecClear(*runs);
     VecClear(*folds);
-    if (lang == SyntaxLangNone || text.len == 0) {
+    if (lang == SyntaxLangNone || len(text) == 0) {
         return;
     }
     // Brace nesting deeper than this folds no further; startLine per open
@@ -592,14 +592,14 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
     SyntaxLexStart(&lx, lang, text);
     while (SyntaxLexNext(&lx)) {
         int tokStart = (int)(lx.text.s - text.s);
-        for (; at < tokStart && at < text.len; at++) {
+        for (; at < tokStart && at < len(text); at++) {
             if (text.s[at] == '\n') {
                 line++;
             }
         }
         bool literal =
             lx.tok == SyntaxTok::String || lx.tok == SyntaxTok::Comment;
-        for (int i = 0; i < lx.text.len; i++) {
+        for (int i = 0; i < len(lx.text); i++) {
             char c = lx.text.s[i];
             if (c == '\n') {
                 line++;
@@ -629,13 +629,13 @@ static void SynHlLexInto(SyntaxLang lang, Str text, Vec<HlRun>* runs,
                 }
             }
         }
-        at = tokStart + lx.text.len;
+        at = tokStart + len(lx.text);
         if (lx.tok == SyntaxTok::Text) {
             continue;
         }
         // Adjacent runs of one kind are one run, which keeps a document of a
         // few hundred lines to a few hundred of them.
-        int hi = tokStart + lx.text.len;
+        int hi = tokStart + len(lx.text);
         if (runs->len > 0 && (*runs)[runs->len - 1].hi == tokStart &&
             (*runs)[runs->len - 1].tok == lx.tok) {
             (*runs)[runs->len - 1].hi = hi;
@@ -912,7 +912,7 @@ static int SemanticSpans(Ctx* cx, InputState* state, Str text, TextSpan* out,
     // over the whole document, so the whole document is the window.
     int n = SemanticTokensForRange(state->semanticTokens.els,
                                    state->semanticTokens.len, text,
-                                   Selection{0, text.len}, window, kWindow);
+                                   Selection{0, len(text)}, window, kWindow);
     int m = 0;
     for (int i = 0; i < n && m < cap; i++) {
         Rgba c;
@@ -1010,10 +1010,10 @@ El* Highlighter::IntoEl() {
             hl->mode = ThemeGet(cx->app);
             hl->foreground = th.foreground;
             if (!hl->valid || hl->version != state->docVersion) {
-                if (text.len <= kSyncLexMaxBytes) {
+                if (len(text) <= kSyncLexMaxBytes) {
                     InputEdit whole = {};
                     whole.oldEndByte = -1;
-                    whole.newEndByte = text.len;
+                    whole.newEndByte = len(text);
                     const InputEdit* edit =
                         state->hasPendingEdit ? &state->pendingEdit : &whole;
                     state->highlighter.Update(edit, text, folding);
@@ -1039,11 +1039,11 @@ El* Highlighter::IntoEl() {
                         job->view = cx->self;
                         job->version = state->docVersion;
                         job->lang = hl->lang;
-                        job->text = (char*)Alloc(nullptr, text.len + 1);
+                        job->text = (char*)Alloc(nullptr, len(text) + 1);
                         if (job->text) {
-                            memcpy(job->text, text.s, (size_t)text.len);
-                            job->text[text.len] = 0;
-                            job->len = text.len;
+                            memcpy(job->text, text.s, (size_t)len(text));
+                            job->text[len(text)] = 0;
+                            job->len = len(text);
                             hl->flightTask =
                                 ExecSpawn(MkFunc0(SynHlLexWork, job),
                                           MkFunc0(SynHlLexDone, job));
@@ -1061,7 +1061,7 @@ El* Highlighter::IntoEl() {
             if (folding) {
                 FoldRange* ranges = nullptr;
                 int nRanges = state->highlighter.FoldRanges(
-                    text, Selection{0, text.len}, a, &ranges);
+                    text, Selection{0, len(text)}, a, &ranges);
                 InputSetFoldCandidates(state, ranges, nRanges);
             }
             // highlight_styles: how the element resolves what the

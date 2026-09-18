@@ -119,14 +119,14 @@ TempStr NotificationSystemTagTemp(int id) {
 
 bool NotificationTagId(Str tag, int* outId) {
     int prefixLen = (int)sizeof(kSystemTagPrefix) - 1;
-    if (!tag.s || tag.len <= prefixLen) {
+    if (!tag.s || len(tag) <= prefixLen) {
         return false;
     }
     if (!StrEq(Str(tag.s, prefixLen), Str(kSystemTagPrefix, prefixLen))) {
         return false;
     }
     int id = 0;
-    for (int i = prefixLen; i < tag.len; i++) {
+    for (int i = prefixLen; i < len(tag); i++) {
         char c = tag.s[i];
         if (c < '0' || c > '9') {
             return false;
@@ -473,11 +473,11 @@ static void NotificationPushSystem(NotificationListState* s, Ctx* cx,
                                    const Notification& item) {
     Str title = item.title;
     Str body = item.message;
-    if (title.len == 0) {
+    if (len(title) == 0) {
         // A message with no title becomes the system notification's title,
         // and one with neither — a content-only notification — has nothing
         // textual to show.
-        if (body.len == 0) {
+        if (len(body) == 0) {
             return;
         }
         title = body;
@@ -991,7 +991,7 @@ El* NotificationList::IntoEl() {
             if (hasIcon) {
                 body->PadL(24);
             }
-            if (item.title.len > 0) {
+            if (len(item.title) > 0) {
                 body->Child(TextEl(a, item.title)
                                 ->Font(14)
                                 ->Semibold()
@@ -999,7 +999,7 @@ El* NotificationList::IntoEl() {
                                 ->Wrap()
                                 ->W(kFill));
             }
-            if (item.message.len > 0) {
+            if (len(item.message) > 0) {
                 body->Child(TextEl(a, item.message)
                                 ->Font(14)
                                 ->Fg(th.foreground)

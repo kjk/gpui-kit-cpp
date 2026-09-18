@@ -26,12 +26,12 @@ Minifier& Minifier::PreserveComments(bool value) {
 }
 
 Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
-    if (!a || source.len <= 0) return {};
-    char* out = (char*)Alloc(a, source.len + 1);
+    if (!a || len(source) <= 0) return {};
+    char* out = (char*)Alloc(a, len(source) + 1);
     if (!out) return {};
     int n = 0;
     bool whitespace = precedingWhitespace;
-    for (int i = 0; i < source.len; i++) {
+    for (int i = 0; i < len(source); i++) {
         char c = source.s[i];
         if (HtmlSpace(c)) {
             if (!whitespace) out[n++] = ' ';
@@ -49,22 +49,22 @@ Str Minifier::WriteCollapseWhitespace(Arena* a, Str source) {
 // crates/base/src/text/format/html5minify. Minification stays a source pass:
 // serializing a DOM would insert html/head/body and normalize malformed input.
 Str Minifier::Minify(Arena* a, Str source) {
-    if (!a || source.len <= 0) return {};
-    char* out = (char*)Alloc(a, source.len + 1);
+    if (!a || len(source) <= 0) return {};
+    char* out = (char*)Alloc(a, len(source) + 1);
     if (!out) return {};
     int n = 0;
     int at = 0;
     bool whitespace = precedingWhitespace;
     Str raw = {};
-    while (at < source.len) {
-        if (StrStartsWithI(Str(source.s + at, source.len - at), "<!--")) {
+    while (at < len(source)) {
+        if (StrStartsWithI(Str(source.s + at, len(source) - at), "<!--")) {
             int end = at + 4;
-            while (end + 2 < source.len &&
+            while (end + 2 < len(source) &&
                    !(source.s[end] == '-' && source.s[end + 1] == '-' &&
                      source.s[end + 2] == '>')) {
                 end++;
             }
-            end = end + 2 < source.len ? end + 3 : source.len;
+            end = end + 2 < len(source) ? end + 3 : len(source);
             if (preserveComments) {
                 memcpy(out + n, source.s + at, (size_t)(end - at));
                 n += end - at;
@@ -74,15 +74,15 @@ Str Minifier::Minify(Arena* a, Str source) {
             continue;
         }
         if (omitDoctype &&
-            StrStartsWithI(Str(source.s + at, source.len - at), "<!doctype")) {
-            while (at < source.len && source.s[at] != '>') at++;
-            if (at < source.len) at++;
+            StrStartsWithI(Str(source.s + at, len(source) - at), "<!doctype")) {
+            while (at < len(source) && source.s[at] != '>') at++;
+            if (at < len(source)) at++;
             continue;
         }
         if (source.s[at] == '<') {
             int end = at + 1;
             char quote = 0;
-            while (end < source.len) {
+            while (end < len(source)) {
                 char c = source.s[end];
                 if (quote) {
                     if (c == quote) quote = 0;
@@ -95,10 +95,10 @@ Str Minifier::Minify(Arena* a, Str source) {
                 end++;
             }
             int nameAt = at + 1;
-            bool close = nameAt < source.len && source.s[nameAt] == '/';
+            bool close = nameAt < len(source) && source.s[nameAt] == '/';
             if (close) nameAt++;
             int nameEnd = nameAt;
-            while (nameEnd < source.len &&
+            while (nameEnd < len(source) &&
                    ((source.s[nameEnd] >= 'a' && source.s[nameEnd] <= 'z') ||
                     (source.s[nameEnd] >= 'A' && source.s[nameEnd] <= 'Z'))) {
                 nameEnd++;
@@ -175,33 +175,33 @@ static float LengthValue(Str value) {
     float result = 0;
     bool any = false;
     int at = 0;
-    while (at < value.len && value.s[at] >= '0' && value.s[at] <= '9') {
+    while (at < len(value) && value.s[at] >= '0' && value.s[at] <= '9') {
         result = result * 10 + (float)(value.s[at++] - '0');
         any = true;
     }
-    if (at < value.len && value.s[at] == '.') {
+    if (at < len(value) && value.s[at] == '.') {
         at++;
         float scale = 0.1f;
-        while (at < value.len && value.s[at] >= '0' && value.s[at] <= '9') {
+        while (at < len(value) && value.s[at] >= '0' && value.s[at] <= '9') {
             result += (float)(value.s[at++] - '0') * scale;
             scale *= 0.1f;
             any = true;
         }
     }
-    if (!any || (at < value.len && value.s[at] == '%')) return 0;
+    if (!any || (at < len(value) && value.s[at] == '%')) return 0;
     return result;
 }
 
 static Str StyleValue(Str style, const char* name) {
     int nameLen = (int)strlen(name);
-    for (int i = 0; i + nameLen <= style.len; i++) {
+    for (int i = 0; i + nameLen <= len(style); i++) {
         if (!StrEqI(Str(style.s + i, nameLen), Str(name, nameLen))) continue;
         int at = i + nameLen;
-        while (at < style.len && HtmlSpace(style.s[at])) at++;
-        if (at >= style.len || style.s[at++] != ':') continue;
-        while (at < style.len && HtmlSpace(style.s[at])) at++;
+        while (at < len(style) && HtmlSpace(style.s[at])) at++;
+        if (at >= len(style) || style.s[at++] != ':') continue;
+        while (at < len(style) && HtmlSpace(style.s[at])) at++;
         int end = at;
-        while (end < style.len && style.s[end] != ';') end++;
+        while (end < len(style) && style.s[end] != ';') end++;
         return StrTrimAscii(Str(style.s + at, end - at));
     }
     return {};
@@ -219,14 +219,14 @@ static float ElementLength(Arena* a, const html5ever::Node* node,
 HtmlInlineTag HtmlParseInlineTag(Arena* a, Str tag) {
     HtmlInlineTag result;
     Str trimmed = StrTrimAscii(tag);
-    if (trimmed.len < 3 || trimmed.s[0] != '<') return result;
+    if (len(trimmed) < 3 || trimmed.s[0] != '<') return result;
     int at = 1;
     if (trimmed.s[at] == '/') {
         result.close = true;
         at++;
     }
     int start = at;
-    while (at < trimmed.len &&
+    while (at < len(trimmed) &&
            ((trimmed.s[at] >= 'a' && trimmed.s[at] <= 'z') ||
             (trimmed.s[at] >= 'A' && trimmed.s[at] <= 'Z') ||
             (trimmed.s[at] >= '0' && trimmed.s[at] <= '9'))) {
@@ -282,7 +282,7 @@ static bool BlockKind(Arena* a, const html5ever::Node* node, MdKind* kind,
                       uint8_t* level) {
     *level = 0;
     Str name = html5ever::NodeName(a, node);
-    if (name.len == 2 && name.s[0] == 'h' && name.s[1] >= '1' &&
+    if (len(name) == 2 && name.s[0] == 'h' && name.s[1] >= '1' &&
         name.s[1] <= '6') {
         *kind = MdKind::Heading;
         *level = (uint8_t)(name.s[1] - '0');
@@ -336,7 +336,7 @@ static bool TargetEmpty(Project* p) {
 }
 
 static void AddRun(Project* p, Str text) {
-    if (text.len <= 0) return;
+    if (len(text) <= 0) return;
     MdNode* target = TextTarget(p);
     MdRun* run = ArenaNew<MdRun>(p->a);
     run->text = text;
@@ -350,18 +350,18 @@ static void AddRun(Project* p, Str text) {
 }
 
 static void AddText(Project* p, Str text) {
-    if (text.len <= 0) return;
+    if (len(text) <= 0) return;
     if (p->raw) {
         if (!p->cur->runFirst && text.s[0] == '\n') {
-            text = Str(text.s + 1, text.len - 1);
+            text = Str(text.s + 1, len(text) - 1);
         }
         AddRun(p, text);
         return;
     }
-    char* out = (char*)Alloc(p->a, text.len + 1);
+    char* out = (char*)Alloc(p->a, len(text) + 1);
     int n = 0;
     bool space = false;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (HtmlSpace(text.s[i])) {
             if (!space) out[n++] = ' ';
             space = true;
@@ -379,7 +379,7 @@ static void AddText(Project* p, Str text) {
 
 static void AddImage(Project* p, const html5ever::Node* node) {
     Str src = html5ever::AttrValue(p->a, node, StrL("src"));
-    if (src.len <= 0) return;
+    if (len(src) <= 0) return;
     MdNode* target = TextTarget(p);
     MdRun* run = ArenaNew<MdRun>(p->a);
     run->imgSrc = src;
@@ -414,9 +414,9 @@ static uint8_t CellAlign(Arena* a, const html5ever::Node* node) {
 
 static int ListStart(Arena* a, const html5ever::Node* node) {
     Str value = html5ever::AttrValue(a, node, StrL("start"));
-    if (!value.s || value.len <= 0) return 1;
+    if (!value.s || len(value) <= 0) return 1;
     int result = 0;
-    for (int i = 0; i < value.len; i++) {
+    for (int i = 0; i < len(value); i++) {
         if (value.s[i] < '0' || value.s[i] > '9') return 1;
         result = result * 10 + value.s[i] - '0';
     }
@@ -494,7 +494,7 @@ static void ProjectElement(Project* p, const html5ever::Node* source) {
             StrEqI(html5ever::NodeName(p->a, first), "code")) {
             Str cls = html5ever::AttrValue(p->a, first, StrL("class"));
             if (StrStartsWith(cls, "language-")) {
-                node->lang = Str(cls.s + 9, cls.len - 9);
+                node->lang = Str(cls.s + 9, len(cls) - 9);
             }
         }
         ProjectChildren(p, source);
@@ -529,7 +529,7 @@ static void ProjectNode(Project* p, const html5ever::Node* source) {
 }
 
 void HtmlParseInto(Arena* a, MdNode* parent, Str source) {
-    if (!a || !parent || !source.s || source.len <= 0) return;
+    if (!a || !parent || !source.s || len(source) <= 0) return;
     html5ever::ParseOptions options;
     options.dropDoctype = true;
     html5ever::Node* dom =
@@ -543,7 +543,7 @@ void HtmlParseInto(Arena* a, MdNode* parent, Str source) {
 MdNode* HtmlParse(Arena* a, Str source) {
     MdNode* doc = ArenaNew<MdNode>(a);
     doc->kind = MdKind::Doc;
-    if (!source.s || source.len <= 0) return doc;
+    if (!source.s || len(source) <= 0) return doc;
     html5ever::ParseOptions options;
     options.dropDoctype = true;
     html5ever::Node* dom = html5ever::ParseDocument(a, source, options);

@@ -107,7 +107,7 @@ EntityHandle RetainedStore::CreateOtp(int length, Str value, bool masked,
     state->length = length;
     state->masked = masked;
     state->focus = FocusHandleNew(app);
-    int n = value.len;
+    int n = len(value);
     if (n > (int)sizeof(state->value) - 1) n = (int)sizeof(state->value) - 1;
     if (n > 0) memcpy(state->value, value.s, (size_t)n);
     state->len = n;

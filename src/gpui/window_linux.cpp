@@ -553,15 +553,15 @@ static void PreeditDraw(XIC, XPointer client, XPointer call) {
     if (d->text && d->text->length > 0) {
         if (d->text->encoding_is_wchar) {
             const wchar_t* w = d->text->string.wide_char;
-            for (int i = 0; w && i < d->text->length && insLen < ins.len - 8;
+            for (int i = 0; w && i < d->text->length && insLen < len(ins) - 8;
                  i++) {
                 insLen += PreeditUtf8Encode((uint32_t)w[i], ins.s + insLen);
             }
         } else if (d->text->string.multi_byte) {
             const char* m = d->text->string.multi_byte;
             insLen = (int)strlen(m);
-            if (insLen > ins.len) {
-                insLen = ins.len;
+            if (insLen > len(ins)) {
+                insLen = len(ins);
             }
             memcpy(ins.s, m, (size_t)insLen);
         }
@@ -663,7 +663,7 @@ static void OnKeyRelease(Window* win, XKeyEvent* ke) {
     TempStr buf = AllocStrTemp(7);
     buf.s[0] = 0;
     KeySym ks = 0;
-    XLookupString(ke, buf.s, buf.len, &ks, nullptr);
+    XLookupString(ke, buf.s, len(buf), &ks, nullptr);
     int key = KeyFor(ks);
     if (key) {
         WindowKeyUp(win, key, (ke->state & ShiftMask) != 0,
@@ -933,10 +933,10 @@ bool PlatReduceMotion() {
 }
 
 void OpenUrl(Str url) {
-    if (!url.s || url.len <= 0) {
+    if (!url.s || len(url) <= 0) {
         return;
     }
-    TempStr value = StrDupTemp(url.len < 1023 ? url : Str(url.s, 1023));
+    TempStr value = StrDupTemp(len(url) < 1023 ? url : Str(url.s, 1023));
     pid_t pid = fork();
     if (pid == 0) {
         // The grandchild is orphaned deliberately: nobody is left to reap it.
@@ -960,7 +960,7 @@ void OpenUrl(Str url) {
 TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     (void)win;
     TempStr title =
-        StrDupTemp(opts.title.len < 255 ? opts.title : Str(opts.title.s, 255));
+        StrDupTemp(len(opts.title) < 255 ? opts.title : Str(opts.title.s, 255));
     bool dirs = opts.directories && !opts.files;
     int fds[2] = {-1, -1};
     if (pipe(fds) != 0) {
@@ -1002,12 +1002,12 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
     }
     int n = 0;
     for (;;) {
-        ssize_t got = read(fds[0], result.s + n, (size_t)(result.len - n));
+        ssize_t got = read(fds[0], result.s + n, (size_t)(len(result) - n));
         if (got <= 0) {
             break;
         }
         n += (int)got;
-        if (n >= result.len) {
+        if (n >= len(result)) {
             break;
         }
     }
@@ -1025,7 +1025,7 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
-    if (!win || !win->plat || !text.s || text.len <= 0) {
+    if (!win || !win->plat || !text.s || len(text) <= 0) {
         return;
     }
     if (gClipboard.s) {
@@ -1118,7 +1118,7 @@ static void OnSelectionRequest(XSelectionRequestEvent* req) {
                gClipboard.s) {
         XChangeProperty(gDpy, req->requestor, prop, req->target, 8,
                         PropModeReplace, (unsigned char*)gClipboard.s,
-                        gClipboard.len);
+                        len(gClipboard));
         resp.xselection.property = prop;
     }
     XSendEvent(gDpy, req->requestor, False, 0, &resp);
@@ -1483,7 +1483,7 @@ void AppSetTitle(Window* win, Str title) {
     // _NET_WM_NAME is the UTF-8 one modern window managers read; WM_NAME is
     // the Latin-1 fallback.
     XChangeProperty(gDpy, xwin, aNetWmName, aUtf8String, 8, PropModeReplace,
-                    (unsigned char*)title.s, title.len);
+                    (unsigned char*)title.s, len(title));
     Str z = StrDup(title);
     if (z.s) {
         XStoreName(gDpy, xwin, z.s);

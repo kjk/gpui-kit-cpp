@@ -19,14 +19,14 @@ static void DependencyError(Str* error, Str message) {
 }
 
 bool DependencyMakeDirectories(Str path, Str* error) {
-    if (!path || path.len >= kMaxPath) {
+    if (!path || len(path) >= kMaxPath) {
         DependencyError(error,
                         StrL("dependency cache path is empty or too long"));
         return false;
     }
     TempStr buffer = StrDupTemp(path);
-    for (int i = 1; i <= path.len; i++) {
-        if (i < path.len && buffer.s[i] != '/') continue;
+    for (int i = 1; i <= len(path); i++) {
+        if (i < len(path) && buffer.s[i] != '/') continue;
         char saved = buffer.s[i];
         buffer.s[i] = 0;
         if (mkdir(buffer.s, 0700) != 0 && errno != EEXIST) {
@@ -52,7 +52,7 @@ static void RemoveTreeAt(const char* path) {
             Str name = Str(entry->d_name);
             if (StrEq(name, StrL(".")) || StrEq(name, StrL(".."))) continue;
             TempStr child = fmt("%s/%s", Str(path), name);
-            if (child.len < kMaxPath) RemoveTreeAt(child.s);
+            if (len(child) < kMaxPath) RemoveTreeAt(child.s);
         }
         closedir(dir);
     }
@@ -60,7 +60,7 @@ static void RemoveTreeAt(const char* path) {
 }
 
 void DependencyRemoveTree(Str path) {
-    if (!path || path.len >= kMaxPath) return;
+    if (!path || len(path) >= kMaxPath) return;
     TempStr buffer = StrDupTemp(path);
     RemoveTreeAt(buffer.s);
 }
@@ -124,7 +124,7 @@ bool DependencyReadDirectoryLink(Str link, Str* target) {
     if (target) *target = {};
     if (!link) return false;
     TempStr buffer = AllocStrTemp(kMaxPath - 1);
-    ssize_t n = readlink(link.s, buffer.s, (size_t)buffer.len);
+    ssize_t n = readlink(link.s, buffer.s, (size_t)len(buffer));
     if (n <= 0) return false;
     buffer.s[n] = 0;
     if (target) *target = StrDup(Str(buffer.s, (int)n));

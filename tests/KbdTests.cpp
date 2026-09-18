@@ -105,9 +105,9 @@ static void ABufferTooSmallStillEndsTheString() {
     k.ctrl = true;
     k.key = StrL("c");
     TempStr buf = KbdFmtTemp(k, kShortBufferCap);
-    int n = buf.len;
+    int n = len(buf);
     Str expected = Str(kExpected[ExpectedShortBuffer]);
-    utassert(n == expected.len);
+    utassert(n == len(expected));
     utassert(buf.s[n] == 0);
     utassert(base::StrEq(buf, expected));
 }

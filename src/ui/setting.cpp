@@ -57,7 +57,7 @@ RenderOptions RenderOptions::WithDisabled(bool value) const {
 }
 
 bool SettingItemMatches(const SettingItem* it, Str query) {
-    if (query.len <= 0) {
+    if (len(query) <= 0) {
         return true;
     }
     if (base::StrContainsI(it->title, query) ||
@@ -73,7 +73,7 @@ bool SettingItemMatches(const SettingItem* it, Str query) {
 }
 
 bool SettingGroupMatches(const SettingGroup* g, Str query) {
-    if (query.len <= 0) {
+    if (len(query) <= 0) {
         return true;
     }
     // A group is shown when anything in it is: Rust drops a group whose
@@ -87,7 +87,7 @@ bool SettingGroupMatches(const SettingGroup* g, Str query) {
 }
 
 bool SettingPageMatches(const SettingPage* p, Str query) {
-    if (query.len <= 0) {
+    if (len(query) <= 0) {
         return true;
     }
     for (const SettingGroup& g : p->groups) {

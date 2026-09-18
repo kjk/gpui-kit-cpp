@@ -50,16 +50,16 @@ static Str LanguageCanonical(const LanguageSettings* settings, Arena* a,
         return settings->provider
             .languageName(settings->provider.data, a, name);
     }
-    char* copy = (char*)Alloc(a, name.len + 1);
+    char* copy = (char*)Alloc(a, len(name) + 1);
     if (!copy) {
         return {};
     }
-    for (int i = 0; i < name.len; i++) {
+    for (int i = 0; i < len(name); i++) {
         char c = name.s[i];
         copy[i] = c >= 'A' && c <= 'Z' ? (char)(c + ('a' - 'A')) : c;
     }
-    copy[name.len] = 0;
-    return Str(copy, name.len);
+    copy[len(name)] = 0;
+    return Str(copy, len(name));
 }
 
 static LanguageConfig LanguageConfigCopy(Arena* a,
@@ -173,7 +173,7 @@ Str TabSize::ToString(Arena* a) const {
 int TabSize::IndentCount(Str line) const {
     int tab = std::max(1, tabSize);
     int count = 0;
-    for (int i = 0; i < line.len;) {
+    for (int i = 0; i < len(line);) {
         uint32_t c = 0;
         int n = Utf8At(line, i, &c);
         if (n <= 0) {
@@ -670,7 +670,7 @@ BufferPoint DisplayMap::DisplayPosToBufferPos(DisplayPoint point) const {
 static int DisplayColumnAt(Str text, int end, int tabSize) {
     int column = 0;
     int tab = std::max(1, tabSize);
-    for (int at = 0; at < text.len && at < end;) {
+    for (int at = 0; at < len(text) && at < end;) {
         uint32_t rune = 0;
         int n = Utf8At(text, at, &rune);
         if (n <= 0) {
@@ -691,7 +691,7 @@ static int DisplayAdvanceColumns(Str text, int start, int columns,
     int at = start;
     int used = 0;
     int tab = std::max(1, tabSize);
-    while (at < text.len) {
+    while (at < len(text)) {
         uint32_t rune = 0;
         int n = Utf8At(text, at, &rune);
         if (n <= 0) {
@@ -708,21 +708,21 @@ static int DisplayAdvanceColumns(Str text, int start, int columns,
         }
     }
     // A wrap narrower than one glyph still has to make progress.
-    if (at == start && at < text.len) {
+    if (at == start && at < len(text)) {
         uint32_t rune = 0;
         int n = Utf8At(text, at, &rune);
         at += std::max(1, n);
     }
-    return std::min(at, text.len);
+    return std::min(at, len(text));
 }
 
 static int DisplayWrappedLineCount(Str value, int wrapColumns,
                                    WrappingIndent indent, int tabSize) {
-    if (wrapColumns <= 0 || value.len == 0) {
+    if (wrapColumns <= 0 || len(value) == 0) {
         return 1;
     }
     int leadingEnd = 0;
-    while (leadingEnd < value.len &&
+    while (leadingEnd < len(value) &&
            (value.s[leadingEnd] == ' ' || value.s[leadingEnd] == '\t')) {
         leadingEnd++;
     }
@@ -732,7 +732,7 @@ static int DisplayWrappedLineCount(Str value, int wrapColumns,
     int continuation = std::max(1, wrapColumns - leading);
     int count = 0;
     int start = 0;
-    while (start < value.len) {
+    while (start < len(value)) {
         int columns = count == 0 ? wrapColumns : continuation;
         start = DisplayAdvanceColumns(value, start, columns, tabSize);
         count++;
@@ -817,7 +817,7 @@ void DisplayMap::AdjustFoldsForEdit(Str oldText, Selection editedRange,
     RopePoint start = RopeOffsetToPoint(oldText, editedRange.start);
     RopePoint end = RopeOffsetToPoint(oldText, editedRange.end);
     int newLines = 0;
-    for (int i = 0; i < inserted.len; i++) {
+    for (int i = 0; i < len(inserted); i++) {
         newLines += inserted.s[i] == '\n';
     }
     FoldMapAdjustForEdit(&foldMap, start.row, end.row,
@@ -833,12 +833,12 @@ void DisplayMap::Rebuild() {
             continue;
         }
         Str value = RopeSliceLine(text, line);
-        if (wrapColumns <= 0 || value.len == 0) {
-            VecAppend(rows, {line, 0, value.len});
+        if (wrapColumns <= 0 || len(value) == 0) {
+            VecAppend(rows, {line, 0, len(value)});
             continue;
         }
         int leadingEnd = 0;
-        while (leadingEnd < value.len &&
+        while (leadingEnd < len(value) &&
                (value.s[leadingEnd] == ' ' || value.s[leadingEnd] == '\t')) {
             leadingEnd++;
         }
@@ -848,7 +848,7 @@ void DisplayMap::Rebuild() {
         int continuation = std::max(1, wrapColumns - leading);
         int start = 0;
         int row = 0;
-        while (start < value.len) {
+        while (start < len(value)) {
             int columns = row == 0 ? wrapColumns : continuation;
             int end = DisplayAdvanceColumns(value, start, columns, tab.tabSize);
             VecAppend(rows, {line, start, end});

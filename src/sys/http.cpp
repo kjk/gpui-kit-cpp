@@ -24,7 +24,7 @@ void HttpRspFree(HttpRsp* r) {
 }
 
 bool HttpUrlIsRemote(Str url) {
-    if (!url.s || url.len <= 0) {
+    if (!url.s || len(url) <= 0) {
         return false;
     }
     return base::StrStartsWithI(url, "http://") ||
@@ -69,15 +69,15 @@ static HttpAsyncJob* HttpAsyncJobNew(const HttpReq& req,
     job->url = StrDup(req.url);
     job->method = StrDup(req.method);
     job->body = StrDup(req.body);
-    bool ok = (job->url.s || req.url.len == 0) &&
-              (job->method.s || req.method.len == 0) &&
-              (job->body.s || req.body.len == 0);
+    bool ok = (job->url.s || len(req.url) == 0) &&
+              (job->method.s || len(req.method) == 0) &&
+              (job->body.s || len(req.body) == 0);
     for (int i = 0; i < req.nHeaders && ok; i++) {
         HttpHeader header;
         header.name = StrDup(req.headers[i].name);
         header.value = StrDup(req.headers[i].value);
-        if ((!header.name.s && req.headers[i].name.len != 0) ||
-            (!header.value.s && req.headers[i].value.len != 0) ||
+        if ((!header.name.s && len(req.headers[i].name) != 0) ||
+            (!header.value.s && len(req.headers[i].value) != 0) ||
             !VecAppend(job->headers, header)) {
             StrFree(header.name);
             StrFree(header.value);
@@ -226,7 +226,7 @@ static void SlotDrop(FetchSlot* s) {
 static void FetchDone(FetchJob* job, HttpAsyncResult result) {
     HttpRsp* response = result.response;
     bool got = result.ok && response && response->status >= 200 &&
-               response->status < 300 && response->body.len > 0;
+               response->status < 300 && len(response->body) > 0;
 
     gFetchLock.Lock();
     FetchSlot* s = &gFetch[job->slot];
@@ -237,7 +237,7 @@ static void FetchDone(FetchJob* job, HttpAsyncResult result) {
         // The body moves rather than copies: Vec's assignment is a deep copy
         // and this is the one place that would rather not pay for it.
         s->body = response->body.els;
-        s->len = response->body.len;
+        s->len = len(response->body);
         response->body.els = nullptr;
         response->body.len = 0;
         response->body.cap = 0;
@@ -265,7 +265,7 @@ static void FetchWorker(FetchJob* job) {
     HttpRsp response;
     bool ok = HttpGet(job->url, &response);
     bool got = ok && response.status >= 200 && response.status < 300 &&
-               response.body.len > 0;
+               len(response.body) > 0;
 
     gFetchLock.Lock();
     FetchSlot* s = &gFetch[job->slot];
@@ -274,7 +274,7 @@ static void FetchWorker(FetchJob* job) {
         SlotDrop(s);
     } else if (got) {
         s->body = response.body.els;
-        s->len = response.body.len;
+        s->len = len(response.body);
         response.body.els = nullptr;
         response.body.len = 0;
         response.body.cap = 0;

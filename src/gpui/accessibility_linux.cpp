@@ -71,8 +71,8 @@ static void PutBool(DbusWriter* w, bool value) {
 
 static void PutString(DbusWriter* w, Str value) {
     PutAlign(w, 4);
-    PutU32(w, (uint32_t)std::max(0, value.len));
-    PutBytes(w, value.s, std::max(0, value.len));
+    PutU32(w, (uint32_t)std::max(0, len(value)));
+    PutBytes(w, value.s, std::max(0, len(value)));
     PutByte(w, 0);
 }
 
@@ -113,7 +113,7 @@ static void PutHeaderString(DbusWriter* fields, uint8_t code,
     PutByte(fields, code);
     PutSignature(fields, signature);
     if (signature[0] == 'g') {
-        TempStr copy = StrDupTemp(Str(value.s, std::min(value.len, 255)));
+        TempStr copy = StrDupTemp(Str(value.s, std::min(len(value), 255)));
         PutSignature(fields, copy.s);
     } else {
         PutString(fields, value);
@@ -299,7 +299,7 @@ static bool ParseUnixAddress(Str address, sockaddr_un* out, socklen_t* outLen) {
     if (!address.s || !out || !outLen) {
         return false;
     }
-    int copyLen = std::min(address.len, 511);
+    int copyLen = std::min(len(address), 511);
     TempStr copy = StrDupTemp(Str(address.s, copyLen));
     int key = StrFind(copy, "unix:path=");
     bool abstract = false;
@@ -344,12 +344,12 @@ static bool ParseUnixAddress(Str address, sockaddr_un* out, socklen_t* outLen) {
 static bool Authenticate() {
     TempStr uid = fmt("%u", (unsigned)getuid());
     TempStr auth = AllocStrTemp(159);
-    memset(auth.s, 0, (size_t)auth.len);
+    memset(auth.s, 0, (size_t)len(auth));
     int at = 0;
     auth.s[at++] = 0;
     memcpy(auth.s + at, "AUTH EXTERNAL ", 14);
     at += 14;
-    for (const char* p = uid.s; *p && at + 4 < auth.len; p++) {
+    for (const char* p = uid.s; *p && at + 4 < len(auth); p++) {
         static const char hex[] = "0123456789abcdef";
         auth.s[at++] = hex[((uint8_t)*p) >> 4];
         auth.s[at++] = hex[((uint8_t)*p) & 15];
@@ -362,8 +362,8 @@ static bool Authenticate() {
     TempStr reply = AllocStrTemp(255);
     reply.s[0] = 0;
     int n = 0;
-    while (n < reply.len) {
-        ssize_t got = recv(gA11y.fd, reply.s + n, (size_t)(reply.len - n), 0);
+    while (n < len(reply)) {
+        ssize_t got = recv(gA11y.fd, reply.s + n, (size_t)(len(reply) - n), 0);
         if (got <= 0) {
             return false;
         }
@@ -393,7 +393,7 @@ static LinuxAccessible AccessibleForPath(Str path) {
         result.root = true;
         return result;
     }
-    TempStr value = StrDupTemp(Str(path.s, std::min(path.len, 127)));
+    TempStr value = StrDupTemp(Str(path.s, std::min(len(path), 127)));
     int windowIndex = -1;
     unsigned nodeId = 0;
     if (sscanf(value.s, "/org/a11y/atspi/accessible/w%d/n%u", &windowIndex,
@@ -1528,7 +1528,7 @@ static bool HandleValue(const Incoming& in, const LinuxAccessible& object) {
 
 static int Utf8Characters(Str text) {
     int n = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (((uint8_t)text.s[i] & 0xc0) != 0x80) n++;
     }
     return n;
@@ -1537,16 +1537,16 @@ static int Utf8Characters(Str text) {
 static int Utf8ByteForCharacter(Str text, int character) {
     character = std::max(0, character);
     int n = 0;
-    for (int i = 0; i < text.len; i++) {
+    for (int i = 0; i < len(text); i++) {
         if (((uint8_t)text.s[i] & 0xc0) != 0x80) {
             if (n++ == character) return i;
         }
     }
-    return text.len;
+    return len(text);
 }
 
 static int Utf8CharacterForByte(Str text, int byte) {
-    byte = std::max(0, std::min(byte, text.len));
+    byte = std::max(0, std::min(byte, len(text)));
     int n = 0;
     for (int i = 0; i < byte; i++) {
         if (((uint8_t)text.s[i] & 0xc0) != 0x80) n++;
@@ -1556,9 +1556,9 @@ static int Utf8CharacterForByte(Str text, int byte) {
 
 static uint32_t Utf8CodepointForCharacter(Str text, int character) {
     int at = Utf8ByteForCharacter(text, character);
-    if (at < 0 || at >= text.len) return 0;
+    if (at < 0 || at >= len(text)) return 0;
     const uint8_t* s = (const uint8_t*)text.s + at;
-    int left = text.len - at;
+    int left = len(text) - at;
     if (s[0] < 0x80) return s[0];
     if ((s[0] & 0xe0) == 0xc0 && left >= 2)
         return ((uint32_t)(s[0] & 0x1f) << 6) | (s[1] & 0x3f);
@@ -1672,8 +1672,8 @@ static Selection TextSelection(Str text, int lo, int hi) {
 }
 
 static Str TextSlice(Str text, int lo, int hi) {
-    lo = std::max(0, std::min(lo, text.len));
-    hi = std::max(lo, std::min(hi, text.len));
+    lo = std::max(0, std::min(lo, len(text)));
+    hi = std::max(lo, std::min(hi, len(text)));
     return text.s ? Str(text.s + lo, hi - lo) : Str{};
 }
 
@@ -1820,10 +1820,10 @@ static bool HandleText(const Incoming& in, const LinuxAccessible& object) {
         int position = ReadI32(in.body, in.bodyLen, &at);
         Str value = ReadString(in.body, in.bodyLen, &at);
         int length = ReadI32(in.body, in.bodyLen, &at);
-        int available = value.len;
-        value.len = std::max(0, std::min(value.len, length));
-        while (value.len > 0 && value.len < available &&
-               ((uint8_t)value.s[value.len] & 0xc0) == 0x80) {
+        int available = len(value);
+        value.len = std::max(0, std::min(len(value), length));
+        while (len(value) > 0 && len(value) < available &&
+               ((uint8_t)value.s[len(value)] & 0xc0) == 0x80) {
             value.len--;
         }
         Selection range = TextSelection(text, position, position);
@@ -2024,7 +2024,7 @@ static void ProcessMessages() {
 }
 
 void AccessibilityLinuxInit(App* app, Str busAddress) {
-    if (gA11y.fd >= 0 || !app || !busAddress.s || busAddress.len <= 0) {
+    if (gA11y.fd >= 0 || !app || !busAddress.s || len(busAddress) <= 0) {
         return;
     }
     sockaddr_un address = {};

@@ -1066,7 +1066,7 @@ static WCHAR* WStrDup(const WCHAR* s) {
 // A UTF-8 Str widened onto the heap, for the strings a webview outlives its
 // creation call with.
 static WCHAR* WStrDupUtf8(Str s) {
-    if (s.len == 0) {
+    if (len(s) == 0) {
         return WStrDup(L"");
     }
     return WStrDup(ToCWstrTemp(s));
@@ -3920,7 +3920,7 @@ static bool LoadUrlWithHeaders(WebView* wv, Str url, const Header* headers, int 
 static bool LoadExtensions(ICoreWebView2* webview, Str extensionRoot) {
     // `fs::read_dir(PathBuf::from(""))` is ERROR_PATH_NOT_FOUND on Windows.
     // Do not turn that explicit empty Some into a scan of the drive root.
-    if (extensionRoot.len == 0) {
+    if (len(extensionRoot) == 0) {
         logf("wry: cannot enumerate an empty browser extension path\n");
         return false;
     }

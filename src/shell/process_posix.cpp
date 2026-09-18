@@ -26,7 +26,7 @@ static void ProcessError(Str* error, Str message) {
 }
 
 static bool HasSlash(Str command) {
-    for (int i = 0; i < command.len; i++) {
+    for (int i = 0; i < len(command); i++) {
         if (command.s[i] == '/') return true;
     }
     return false;
@@ -35,12 +35,14 @@ static bool HasSlash(Str command) {
 static Str ResolveExecutable(Str command, Str* error) {
     if (HasSlash(command)) {
         if (access(command.s, X_OK) == 0) return StrDup(command);
-        ProcessError(error, fmt("running `%s` failed: executable was not found", command));
+        ProcessError(error, fmt("running `%s` failed: executable was not found",
+                                command));
         return {};
     }
     const char* path = getenv("PATH");
     if (!path) {
-        ProcessError(error, fmt("running `%s` failed: PATH is not set", command));
+        ProcessError(error,
+                     fmt("running `%s` failed: PATH is not set", command));
         return {};
     }
     const char* at = path;
@@ -53,7 +55,9 @@ static Str ResolveExecutable(Str command, Str* error) {
         if (!end) break;
         at = end + 1;
     }
-    ProcessError(error, fmt("running `%s` failed: executable was not found on PATH", command));
+    ProcessError(
+        error,
+        fmt("running `%s` failed: executable was not found on PATH", command));
     return {};
 }
 
@@ -83,9 +87,8 @@ static bool DrainFd(int fd, StrBuilder* out, bool* closed, Str* error,
 }
 
 bool ProcessRunBounded(Str command, const Str* args, int count,
-                       ProcessCancellation* cancellation,
-                       ProcessOutput* output, Str* error,
-                       const ProcessOptions* options) {
+                       ProcessCancellation* cancellation, ProcessOutput* output,
+                       Str* error, const ProcessOptions* options) {
     if (output) output->Free();
     if (error) {
         StrFree(*error);
@@ -96,7 +99,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     int outPipe[2] = {-1, -1};
     int errPipe[2] = {-1, -1};
     if (pipe(outPipe) != 0 || pipe(errPipe) != 0) {
-        if (outPipe[0] >= 0) { close(outPipe[0]); close(outPipe[1]); }
+        if (outPipe[0] >= 0) {
+            close(outPipe[0]);
+            close(outPipe[1]);
+        }
         ProcessError(error, StrL("creating child-process pipes failed"));
         StrFree(executable);
         return false;
@@ -126,8 +132,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         dup2(errPipe[1], STDERR_FILENO);
         int nullFd = open("/dev/null", O_RDONLY);
         if (nullFd >= 0) dup2(nullFd, STDIN_FILENO);
-        close(outPipe[0]); close(outPipe[1]);
-        close(errPipe[0]); close(errPipe[1]);
+        close(outPipe[0]);
+        close(outPipe[1]);
+        close(errPipe[0]);
+        close(errPipe[1]);
         execve(executable.s, argv, envp);
         _exit(127);
     }
@@ -137,7 +145,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     close(outPipe[1]);
     close(errPipe[1]);
     if (pid < 0) {
-        close(outPipe[0]); close(errPipe[0]);
+        close(outPipe[0]);
+        close(errPipe[0]);
         ProcessError(error, fmt("running `%s` failed", command));
         return false;
     }
@@ -148,14 +157,19 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     int status = 0;
     double started = TimeNow();
     while (!done || !stdoutClosed || !stderrClosed) {
-        if (!stdoutClosed) ok = DrainFd(outPipe[0], &stdoutText, &stdoutClosed, error, "stdout");
-        if (ok && !stderrClosed) ok = DrainFd(errPipe[0], &stderrText, &stderrClosed, error, "stderr");
+        if (!stdoutClosed)
+            ok = DrainFd(outPipe[0], &stdoutText, &stdoutClosed, error,
+                         "stdout");
+        if (ok && !stderrClosed)
+            ok = DrainFd(errPipe[0], &stderrText, &stderrClosed, error,
+                         "stderr");
         bool cancelled = cancellation && cancellation->IsCancelled();
         if (!ok || cancelled || TimeNow() - started >= kProcessTimeout) {
             if (ok && cancelled) {
                 ProcessError(error, fmt("`%s` was cancelled", command));
             } else if (ok) {
-                ProcessError(error, fmt("`%s` timed out after 30000 ms", command));
+                ProcessError(error,
+                             fmt("`%s` timed out after 30000 ms", command));
             }
             kill(-pid, SIGKILL);
             waitpid(pid, &status, 0);
@@ -165,7 +179,8 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
         }
         if (!done) {
             pid_t waited = waitpid(pid, &status, WNOHANG);
-            if (waited == pid) done = true;
+            if (waited == pid)
+                done = true;
             else if (waited < 0 && errno != EINTR) {
                 ProcessError(error, fmt("waiting for `%s` failed", command));
                 ok = false;
@@ -177,7 +192,10 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
     if (!stdoutClosed) close(outPipe[0]);
     if (!stderrClosed) close(errPipe[0]);
     if (!ok) {
-        if (!done) { kill(-pid, SIGKILL); waitpid(pid, &status, 0); }
+        if (!done) {
+            kill(-pid, SIGKILL);
+            waitpid(pid, &status, 0);
+        }
         return false;
     }
     if (output) {
@@ -195,7 +213,9 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
 namespace gpui::shell {
 bool ProcessRunBounded(Str command, const Str*, int, ProcessCancellation*,
                        ProcessOutput*, Str* error, const ProcessOptions*) {
-    if (error) *error = StrDup(fmt("running `%s` is unavailable in a browser", command));
+    if (error)
+        *error =
+            StrDup(fmt("running `%s` is unavailable in a browser", command));
     return false;
 }
 } // namespace gpui::shell

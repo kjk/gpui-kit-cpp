@@ -58,7 +58,7 @@ static bool WinPaintBackendAvailable(WinPaintBackend backend) {
 bool WinPaintOptionsTakeArg(Str arg) {
     const Str paint = StrL("__paint=");
     if (base::StrStartsWith(arg, paint)) {
-        Str value(arg.s + paint.len, arg.len - paint.len);
+        Str value(arg.s + len(paint), len(arg) - len(paint));
         WinPaintBackend backend = WinPaintBackend::Direct2D;
         bool valid = true;
         if (base::StrEqI(value, "d2d")) {
@@ -78,7 +78,7 @@ bool WinPaintOptionsTakeArg(Str arg) {
 
     const Str msaa = StrL("__msaa=");
     if (base::StrStartsWith(arg, msaa)) {
-        Str value(arg.s + msaa.len, arg.len - msaa.len);
+        Str value(arg.s + len(msaa), len(arg) - len(msaa));
         if (base::StrEq(value, StrL("1"))) {
             gWinPaintOptions.msaa = WinPaintMsaa::X1;
         } else if (base::StrEq(value, StrL("2"))) {
@@ -93,7 +93,7 @@ bool WinPaintOptionsTakeArg(Str arg) {
 
     const Str scene = StrL("__scene=");
     if (base::StrStartsWith(arg, scene)) {
-        Str value(arg.s + scene.len, arg.len - scene.len);
+        Str value(arg.s + len(scene), len(arg) - len(scene));
         if (base::StrEqI(value, "off")) {
             gWinPaintOptions.scene = WinSceneMode::Off;
         } else if (base::StrEqI(value, "replay")) {
@@ -110,9 +110,9 @@ bool WinPaintOptionsTakeArg(Str arg) {
 
     const Str reset = StrL("__gpu_reset_every=");
     if (base::StrStartsWith(arg, reset)) {
-        Str value(arg.s + reset.len, arg.len - reset.len);
-        bool valid = value.len > 0;
-        for (int i = 0; i < value.len; i++) {
+        Str value(arg.s + len(reset), len(arg) - len(reset));
+        bool valid = len(value) > 0;
+        for (int i = 0; i < len(value); i++) {
             valid = valid && value.s[i] >= '0' && value.s[i] <= '9';
         }
         int n = valid ? StrToIntUnchecked(value) : -1;
@@ -1304,13 +1304,13 @@ static DWRITE_FONT_WEIGHT DwriteWeight(uint8_t weight) {
 }
 
 static int Utf8ToWideN(Str s, WCHAR* wbuf, int cap) {
-    if (!s.s || s.len <= 0 || cap < 2) {
+    if (!s.s || len(s) <= 0 || cap < 2) {
         if (wbuf && cap > 0) {
             wbuf[0] = 0;
         }
         return 0;
     }
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.s, s.len, wbuf, cap - 1);
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), wbuf, cap - 1);
     if (n < 0) {
         n = 0;
     }
@@ -1322,8 +1322,8 @@ static int Utf8OffToWide(Str s, int u8off) {
     if (u8off <= 0 || !s.s) {
         return 0;
     }
-    if (u8off > s.len) {
-        u8off = s.len;
+    if (u8off > len(s)) {
+        u8off = len(s);
     }
     return MultiByteToWideChar(CP_UTF8, 0, s.s, u8off, nullptr, 0);
 }
@@ -1716,7 +1716,7 @@ static IDWriteTextLayout* Dw(TextLayout* tl) {
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
                           bool wrap, uint8_t weight, float lineH,
                           Size* outSize) {
-    if (!ctx || !ctx->pa || !ctx->pa->dwrite || !s.s || s.len <= 0) {
+    if (!ctx || !ctx->pa || !ctx->pa->dwrite || !s.s || len(s) <= 0) {
         return nullptr;
     }
     IDWriteTextFormat* fmt = FontFor(ctx->pa, fontSize, weight);

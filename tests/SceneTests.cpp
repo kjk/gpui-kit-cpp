@@ -572,7 +572,7 @@ static void ColoredTextSurvivesRecordingAndRestyling() {
     spans[1].color = black;
     utassert(record());
     utassert(!record());
-    spans[1].hi = text.len;
+    spans[1].hi = len(text);
     utassert(record());
     TextLayoutRelease(layout);
     scene::Free(&paint);

@@ -19,8 +19,8 @@ static void TheCatalogueLeadsWithEnglish() {
     utassert(LocaleIndex(StrL("zh-CN")) > 0);
     utassert(LocaleIndex(StrL("fr")) > 0);
     utassert(LocaleIndex(StrL("kl")) == -1);
-    utassert(LocaleAt(-1).len == 0);
-    utassert(LocaleAt(LocaleCount()).len == 0);
+    utassert(len(LocaleAt(-1)) == 0);
+    utassert(len(LocaleAt(LocaleCount())) == 0);
 }
 
 // set_locale takes a locale the catalogue has and nothing else: a typo that
