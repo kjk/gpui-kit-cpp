@@ -882,6 +882,11 @@ El* El::ScrollX(float off) {
     scrollX = off;
     return this;
 }
+El* El::PaintOffset(float dx, float dy) {
+    paintDx = dx;
+    paintDy = dy;
+    return this;
+}
 El* El::ClipX() {
     style.overflowX = Overflow::Hidden;
     return this;
@@ -3902,6 +3907,17 @@ static void LayoutCacheReset(LayoutCache* lc) {
 static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
                         float originY);
 
+static void ShiftElTree(El* e, float dx, float dy) {
+    if (!e || (dx == 0 && dy == 0)) {
+        return;
+    }
+    e->x += dx;
+    e->y += dy;
+    for (El* c = e->first; c; c = c->next) {
+        ShiftElTree(c, dx, dy);
+    }
+}
+
 static void WriteBackChildren(LayoutCache* lc, PaintCtx* ctx, El* e) {
     // A scrolled box slides its in-flow content; an out-of-flow child is
     // pinned to the box and does not move with it, which is what the old
@@ -5822,6 +5838,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->boundsOut) {
         *e->boundsOut = e->Bounds();
     }
+    float paintDx = e->paintDx;
+    float paintDy = e->paintDy;
+    if (paintDx != 0 || paintDy != 0) {
+        ShiftElTree(e, paintDx, paintDy);
+    }
     // The inspector picking an element. GPUI offers the topmost *hitbox*
     // under the pointer; the nearest thing to a hitbox here is an element
     // that draws something or answers to an id, which is what keeps an
@@ -6343,6 +6364,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     ctx->hasHitMask = previousHasHitMask;
     ctx->hitParent = outerHitParent;
     ctx->paintDepth--;
+
+    if (paintDx != 0 || paintDy != 0) {
+        ShiftElTree(e, -paintDx, -paintDy);
+    }
 
     if (clip) {
         CanvasPopClip(ctx);

@@ -2164,6 +2164,11 @@ struct El {
     // pass writes them a component at a time. The return type is qualified
     // because this member hides `Bounds` inside El.
     gpui::Bounds Bounds() const { return {x, y, w, h}; }
+    // window.with_element_offset: a paint-only shift of this subtree, used by
+    // a looping carousel to draw an item in the nearest cycle without moving
+    // its layout id. Applied after boundsOut so geometry stays unscrolled.
+    float paintDx = 0;
+    float paintDy = 0;
     float scrollY = 0;
     // overflow_x_scroll: how far the content is slid to the left. Positive
     // means the view has moved right over it, as scrollY is positive-down.
@@ -2385,6 +2390,7 @@ struct El {
     El* ClipY();
     El* ScrollY(float off);
     El* ScrollX(float off);
+    El* PaintOffset(float dx, float dy);
     El* ClipX();
     El* ScrollMode(ScrollbarMode m);
     El* ScrollId(int v);
@@ -2598,7 +2604,7 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1800,
+static_assert(sizeof(El) <= 1824,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {

@@ -31,11 +31,6 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 
-- **Carousel keeps the desktop interaction core.** Controls, pagination,
-  keyboard navigation, accessibility and selection events are ported. Touch
-  dragging, spring tracking and the looping runway wait on a touch-phase input
-  seam (`src/ui/carousel.cpp`).
-
 - **Mobile host integration is still incomplete.** The library compiles with
   the iPhoneOS SDK and Android NDK, and mobile-specific component policy is
   enabled by target. Handle bounds, selection edges and the `ScrollBounce`

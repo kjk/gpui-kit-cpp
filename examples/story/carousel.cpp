@@ -49,8 +49,9 @@ struct CarouselStory {
                         ->Child(pagination->IntoEl())
                         ->Child(CarouselNext::New(cx, self->state)->IntoEl()))
                 ->IntoEl();
-        El* section = StorySection(
-            cx, "Carousel", "Use the controls, pagination, or arrow keys.");
+        El* section =
+            StorySection(cx, "Carousel",
+                         "Use the controls, pagination, arrow keys, or drag.");
         StorySectionBody(section)->MaxW(560);
         StorySectionAdd(section, demo);
         return Div(cx->a)->FlexCol()->W(kFill)->Child(section);

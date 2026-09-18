@@ -11,12 +11,64 @@ struct CarouselEvent {
     int index = 0;
 };
 
+struct CarouselPointerGesture {
+    Point startPosition = {};
+    Point startOffset = {};
+    int startIndex = -1;
+    float totalDelta = 0;
+    bool axisLocked = false;
+    bool active = false;
+};
+
+struct CarouselScrollGesture {
+    Point startOffset = {};
+    int startIndex = -1;
+    float totalDelta = 0;
+    bool active = false;
+};
+
+struct CarouselLoopLayout {
+    float cycleExtent = 0;
+    float trackGap = 0;
+    float runwayExtent = 0;
+    bool runwayReady = false;
+    bool active = false;
+};
+
 struct CarouselState {
     Entity<CarouselState> self = {};
     int itemCount = 0;
     int selectedIndex = -1;
     Axis axis = Axis::Horizontal;
     bool looping = false;
+    Point offset = {};
+    Point maxOffset = {};
+    Bounds viewport = {};
+    Bounds frame = {};
+    Vec<Bounds> items;
+    bool hasViewport = false;
+    bool hasFrame = false;
+    CarouselPointerGesture pointerGesture = {};
+    CarouselScrollGesture scrollGesture = {};
+    bool ignoreScrollUntilQuiet = false;
+    int scrollSettleEpoch = 0;
+    bool suppressPointerClick = false;
+    int motionRevision = 0;
+    int geometryRevision = 0;
+    CarouselLoopLayout loopLayout = {};
+    bool geometryHasRunway = false;
+    bool loopLayoutRemovalPending = false;
+    Point loopMotionTarget = {};
+    bool hasLoopMotionTarget = false;
+    bool wheelBurstActive = false;
+    int wheelBurstEpoch = 0;
+    FocusHandle focus = {};
+    bool focusRingSuppressed = false;
+    OngoingScroll wheelLock = {};
+    Vec<Bounds> pendingItems;
+    Bounds pendingViewport = {};
+    Bounds pendingFrame = {};
+    bool pendingHasRunway = false;
 
     static CarouselState New(int itemCount);
     CarouselState& WithSelectedIndex(int index);
@@ -37,6 +89,38 @@ struct CarouselState {
     bool SelectNext(Ctx* cx);
     bool SelectFirst(Ctx* cx);
     bool SelectLast(Ctx* cx);
+    FocusHandle Focus(Ctx* cx);
+    void SuppressFocusRing(bool suppressed);
+    bool IsFocusRingSuppressed() const { return focusRingSuppressed; }
+    bool IsInteracting() const;
+    bool HasScrollGesture() const { return scrollGesture.active; }
+    bool IsPointerDragLocked() const;
+    bool ShouldSuppressPointerClick() const { return suppressPointerClick; }
+    int MotionRevision() const { return motionRevision; }
+    Size FrameSize() const;
+    void SetGeometry(Bounds viewport, Bounds frame, const Bounds* itemBounds,
+                     int n, bool hasRunway);
+    void SetGeometry(Bounds viewport, const Bounds* itemBounds, int n);
+    float LoopRunway() const;
+    bool IsLoopLayoutTransitioning() const;
+    Point LoopItemOffset(int index) const;
+    Point MotionTargetFor(int index) const;
+    bool HasMotionTargetFor(int index) const;
+    bool SettleLoopMotion(Point rendered, Point* out, Ctx* cx);
+    bool HasSnapTarget(int index) const;
+    Point SnapTargetFor(int index) const;
+    int NearestIndex(Point offset) const;
+    bool NormalizeLoopCoordinate();
+    bool BeginDrag(Point position, Ctx* cx);
+    bool UpdateDrag(Point position, Ctx* cx);
+    bool FinishDrag(Ctx* cx);
+    bool HandleScrollDelta(Axis axis, float delta, TouchPhase phase, Ctx* cx);
+    bool FinishScroll(bool cancelled, Ctx* cx);
+    void DeferScrollToAncestor(Ctx* cx);
+    bool HandleWheelStep(Axis axis, float delta, Ctx* cx);
+    Point Offset() const { return offset; }
+    void SetOffset(Point value) { offset = value; }
+    void IngestPendingGeometry(Ctx* cx);
 
     static void OnAction(CarouselState* self, Ctx* cx,
                          const ActionEvent* event);
@@ -45,6 +129,22 @@ struct CarouselState {
     static void OnNext(CarouselState* self, Ctx* cx, const ClickEvent* event);
     static void OnSelect(CarouselState* self, Ctx* cx, const ClickEvent* event,
                          intptr_t index);
+    static void OnPointerDown(CarouselState* self, Ctx* cx,
+                              const MouseDownEvent* event);
+    static void OnPointerMove(CarouselState* self, Ctx* cx,
+                              const DragMoveEvent* event);
+    static void OnPointerUp(CarouselState* self, Ctx* cx,
+                            const MouseUpEvent* event);
+    static void OnWheel(CarouselState* self, Ctx* cx,
+                        const ScrollWheelEvent* event);
+    static void OnScrollSettle(CarouselState* self, Ctx* cx,
+                               const TickEvent* event, intptr_t epoch);
+    static void OnIgnoredScrollRecovery(CarouselState* self, Ctx* cx,
+                                        const TickEvent* event, intptr_t epoch);
+    static void OnWheelBurstEnd(CarouselState* self, Ctx* cx,
+                                const TickEvent* event, intptr_t epoch);
+    static void OnRootMouseDown(CarouselState* self, Ctx* cx,
+                                const MouseDownEvent* event);
 };
 
 Entity<CarouselState> CarouselStateNew(App* app, int itemCount);

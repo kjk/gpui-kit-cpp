@@ -49,7 +49,7 @@ table tag text theme touch_selection tooltip tree
 
 const partialBase = new Set(["input", "reduce_motion", "scroll_bounce", "text", "touch_selection"]);
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support"]);
-const partialUi = new Set(["carousel", "touch_selection"]);
+const partialUi = new Set(["touch_selection"]);
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
@@ -63,8 +63,6 @@ const partialReasons: Record<string, string> = {
   "base/text": "inline native elements use portable element callbacks rather than Rust AnyElement entities",
   "base/touch_selection":
     "selection-edge and handle geometry are ported; mobile long-press, drag, and edit-menu integration have no platform event seam",
-  "ui/carousel":
-    "navigation, controls, pagination, keyboard handling, and accessibility are ported; touch dragging, spring tracking, and the looping runway remain",
   "ui/touch_selection":
     "the themed layer uses Base's geometry, but the mobile overlay and native edit menu have no supported platform target",
 };
@@ -271,7 +269,7 @@ const testTargets: Record<string, string[]> = {
   "ui/avatar": ["tests/AvatarTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/bubble": ["tests/BubbleTests.cpp"],
   "ui/button": ["tests/ButtonGroupTests.cpp", "tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
-  "ui/carousel": ["tests/TabTests.cpp", "tests/AccessibilityTests.cpp"],
+  "ui/carousel": ["tests/CarouselTests.cpp", "tests/TabTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/chart": [
     "tests/ChartTests.cpp",
     "tests/BuilderCapacityTests.cpp",

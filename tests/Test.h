@@ -60,6 +60,7 @@ void TestResizable();
 void TestTree();
 void TestNavStack();
 void TestCalendar();
+void TestCarousel();
 void TestColorPicker();
 void TestToast();
 void TestVirtualList();

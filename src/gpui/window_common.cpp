@@ -1774,6 +1774,22 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         DragMoveEvent ev = {pressed->drag, in, pressed->bounds};
         ListenerCall(win->app, win, pressed->onDragMove, &ev);
     }
+    // A carousel viewport listens for the drag even when the press landed on
+    // a child button. Walk ancestors so that capture-phase begin_drag on the
+    // viewport still sees the moves.
+    if (win->mouseDown && pressed && win->paint.hits.len > 0) {
+        int ix = (int)(pressed - &win->paint.hits[0]);
+        if (ix >= 0 && ix < win->paint.hits.len) {
+            for (int i = win->paint.hits[ix].parent; i >= 0;
+                 i = win->paint.hits[i].parent) {
+                const HitRect& hr = win->paint.hits[i];
+                if (hr.onDragMove.IsValid()) {
+                    DragMoveEvent ev = {hr.drag, in, hr.bounds};
+                    ListenerCall(win->app, win, hr.onDragMove, &ev);
+                }
+            }
+        }
+    }
     if (pressed && pressed->slider) {
         SliderDrag(win, pressed, {x, y});
     }
