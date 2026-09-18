@@ -14,10 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `122c36f7be19ea0e179107c067b679efccb7d66a`
-(2026-09-18, Version 0.6.2). Workspace crates 0.6.1 → 0.6.2; the five
-ported dependencies and the GPUI reference are unchanged. The current
-update target is `7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `ce20527de4a7efa43d29dd7ba0f689fe70c1ece1`
+(2026-09-18, chore: Add a /release-notes command (#3117)). A Claude command
+for writing GitHub release notes; nothing to port. The current update
+target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
