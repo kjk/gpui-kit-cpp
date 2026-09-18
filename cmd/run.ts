@@ -538,17 +538,17 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "41672098cbc73a712512093e746eaefcdd2ea129",
+  sha: "6b8581a1e5458eace91beb842376f833beaef2ff",
   date: "2026-09-19",
-  subject: "popup: Keep the client inset only on untiled window edges (#3130)",
+  subject: "Version 0.6.4",
   crates: {
-    "gpui-kit": "0.6.2",
-    "gpui-base": "0.6.2",
-    "gpui-component": "0.6.2",
-    "gpui-component-story": "0.6.2",
-    "gpui-wry": "0.6.2",
-    "gpui-shell": "0.6.2",
-    "gpui-component-shell": "0.6.2",
+    "gpui-kit": "0.6.4",
+    "gpui-base": "0.6.4",
+    "gpui-component": "0.6.4",
+    "gpui-component-story": "0.6.4",
+    "gpui-wry": "0.6.4",
+    "gpui-shell": "0.6.4",
+    "gpui-component-shell": "0.6.4",
   },
   dir: ".work/gpui-component",
 } as const;

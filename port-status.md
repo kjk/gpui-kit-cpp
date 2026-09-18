@@ -14,11 +14,9 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `41672098cbc73a712512093e746eaefcdd2ea129`
-(2026-09-19, popup: Keep the client inset only on untiled window edges
-(#3130)). Positioner clamp margins keep the client inset only on
-untiled edges of a client-decorated window. The current
-update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
+Processed through `6b8581a1e5458eace91beb842376f833beaef2ff`
+(2026-09-19, Version 0.6.4). Workspace crates move 0.6.2 to 0.6.4. The
+current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust
 
