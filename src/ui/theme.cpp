@@ -1,5 +1,6 @@
 #include "ui/theme.h"
 
+#include "base/lib.h"
 #include "gpui/assets.h"
 #include "ui/text.h"
 
@@ -909,6 +910,24 @@ void ThemeSyncBase(App* app) {
     styles.thumbHover.hasBackground = true;
     styles.thumbHover.hasRadius = true;
     styles.thumbActive = styles.thumbHover;
+    if (IsMobile()) {
+        // The resting thumb is a 3px pill 2px from the edge, matching the
+        // iOS/Android indicator. Hover and drag keep Base's 6px / 8px
+        // widths and 4px inset so a grabbed thumb still grows.
+        styles.thumb.width = 3.f;
+        styles.thumb.inset = 2.f;
+        styles.thumb.radius = kRadiusFull;
+        styles.thumb.hasWidth = true;
+        styles.thumb.hasInset = true;
+        styles.thumbHover.width = 6.f;
+        styles.thumbHover.inset = 4.f;
+        styles.thumbHover.hasWidth = true;
+        styles.thumbHover.hasInset = true;
+        styles.thumbActive.width = 8.f;
+        styles.thumbActive.inset = 4.f;
+        styles.thumbActive.hasWidth = true;
+        styles.thumbActive.hasInset = true;
+    }
 
     base.resizable.handle = ui.border;
     base.resizable.activeHandle = ui.dragBorder;

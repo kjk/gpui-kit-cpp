@@ -14,10 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `142e4016b6b34e03978b532f3b2fc9f1a99bed30`
-(2026-09-17, input_group: Add InputGroup (#3042)). InputGroup frames one
-input or textarea with aligned addons; the shell JavaScript bindings are
-not registered yet. The current update target is
+Processed through `27ab8e76bba409d969accdb9dc1cf9875ccda81f`
+(2026-09-17, scrollbar: Shrink the resting thumb on mobile (#3111)). On iOS
+and Android the idle thumb is a 3px pill 2px from the edge; hover and drag
+keep the desktop widths. The current update target is
 `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
