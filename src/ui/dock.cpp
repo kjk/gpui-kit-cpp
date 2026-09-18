@@ -65,25 +65,6 @@ void DockSkin::SetToggleButtonVisible(App* app, Window* win, bool visible) {
     }
 }
 
-bool DockSkin::HasTilesScrollbarMode(App* app) const {
-    DockState* value = state.Get(app);
-    return value ? value->hasTilesScrollbarMode : false;
-}
-
-ScrollbarMode DockSkin::GetTilesScrollbarMode(App* app) const {
-    DockState* value = state.Get(app);
-    return value ? value->tilesScrollbarMode : ScrollbarMode::Always;
-}
-
-void DockSkin::SetTilesScrollbarMode(App* app, Window* win, bool hasMode,
-                                     ScrollbarMode mode) {
-    if (DockState* value = state.Get(app)) {
-        value->hasTilesScrollbarMode = hasMode;
-        value->tilesScrollbarMode = mode;
-        NotifyEntity(app, state.id, win);
-    }
-}
-
 El* DockInvalidPanelRender(Ctx* cx, void* data) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);

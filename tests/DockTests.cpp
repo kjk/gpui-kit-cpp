@@ -610,9 +610,6 @@ static void TheUiPanelHandleCrossesTheBaseSeam() {
     skin.SetToggleButtonVisible(&app, nullptr, false);
     utassert(skin.GetPanelStyle(&app) == component::PanelStyle::TabBar);
     utassert(!skin.IsToggleButtonVisible(&app));
-    skin.SetTilesScrollbarMode(&app, nullptr, true, ScrollbarMode::Scrolling);
-    utassert(skin.HasTilesScrollbarMode(&app));
-    utassert(skin.GetTilesScrollbarMode(&app) == ScrollbarMode::Scrolling);
 
     El* content = renderer->tabContentFrame(&cx, renderer->data, &group);
     utassert(content && content->style.pad.top == 0);
@@ -677,7 +674,7 @@ static void ThePurePaneTreeMatchesTheSourceAlgebra() {
     utassert(!tree.SetSizes(other, &requested, nullptr, 1).Changed());
 }
 
-static void PurePaneTreeNormalizesSizesAndTiles() {
+static void PurePaneTreeNormalizesSizes() {
     PaneTree tree(RootKind::Split);
     NodeId root = tree.Root()->Id();
     float outer = 400;
@@ -701,20 +698,6 @@ static void PurePaneTreeNormalizesSizesAndTiles() {
     utassert(tree.Split(oneNode, three, Placement::Bottom).Changed());
     utassert(tree.FindNode(oneNode) != nullptr);
     utassert(tree.IsNormalized());
-
-    PaneTree tiles(RootKind::Any);
-    Bounds a = {0, 0, 100, 100};
-    TilePanel initial = TilePanel::New(one, a).WithZIndex(4);
-    NodeId canvas = tiles.SetRootTiles(&initial, 1);
-    Bounds b = {70, 0, 100, 100};
-    utassert(tiles.InsertPanel(two, InsertTarget::Tile(canvas, b)).Changed());
-    const PaneNode* tileNode = tiles.FindNode(canvas);
-    utassert(tileNode && tileNode->tiles.len == 2);
-    utassert(tileNode->tiles[1].zIndex == 5);
-    Bounds moved = {90, 20, 120, 110};
-    utassert(tiles.SetTileBounds(one, moved).Changed());
-    utassert(tiles.BringToFront(one).Changed());
-    utassert(tileNode->tiles[0].zIndex > tileNode->tiles[1].zIndex);
 }
 
 static void DockLayoutDescribesWithoutBuildingUi() {
@@ -1073,7 +1056,7 @@ void TestDock() {
     AHiddenGroupIsNotASlot();
     TheUiPanelHandleCrossesTheBaseSeam();
     ThePurePaneTreeMatchesTheSourceAlgebra();
-    PurePaneTreeNormalizesSizesAndTiles();
+    PurePaneTreeNormalizesSizes();
     DockLayoutDescribesWithoutBuildingUi();
     ThePanelRegistryRebuildsPersistedPanels();
     SourceDockGeometryFacadesAreExact();

@@ -48,11 +48,6 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   all motion, but the Linux portal's live-change subscription and a separate
   application override are not exposed (`src/base/lib.cpp`).
 
-- **Tiles is retained as a compatibility extension.** Upstream removed the
-  Tiles story and public component in this revision; existing C++ callers and
-  persisted dock layouts still use it, so its sources remain but the story is
-  no longer registered (`src/ui/tiles.cpp`, `examples/story/tiles.cpp`).
-
 - **Chart story still uses the previous fixture set.** Hover, pie lift, and
   the gallery's off-canvas sidebar are ported; the SaaS datasets, computed
   footers, legends and width-wise bar ramps from #3112 are not yet
@@ -64,12 +59,6 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   around it (`src/base/input.cpp`). Composer token icons map Image /
   Sparkles / AtSign onto File / Star / User
   (`examples/story/input_tokens.cpp`).
-
-- **Dock tree persistence integration.** `PaneTree::ToState` implements the
-  persisted tree format, including the retained Tiles center. The older live
-  `DockState` still uses its separate `DockDump`/`DockLoad` path;
-  `PaneTree::FromState` and live Tiles-center reconciliation remain missing
-  (`src/base/dock_state.cpp`, `src/base/dock_layout.cpp`).
 
 - **Image loading uses bounded process caches.** `src/gpui/image.cpp` keeps
   32 resources and 16 encoded `Image` values rather than Rust's configurable

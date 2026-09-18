@@ -17,20 +17,9 @@ enum class RootKind : uint8_t {
     Any
 };
 
-struct TilePanel {
-    PanelId panel = {};
-    Bounds bounds = {};
-    int zIndex = 0;
-
-    static TilePanel New(PanelId panel, Bounds bounds);
-    TilePanel WithZIndex(int value) const;
-    TilePanel WithBounds(Bounds value) const;
-};
-
 enum class PaneKind : uint8_t {
     Split,
-    Tabs,
-    Tiles
+    Tabs
 };
 
 struct PaneNode;
@@ -44,7 +33,6 @@ struct PaneRef {
     const Vec<float>* sizes = nullptr;
     const Vec<uint8_t>* sizeKnown = nullptr;
     const Vec<PanelId>* panels = nullptr;
-    const Vec<TilePanel>* tiles = nullptr;
     int activeIx = 0;
 };
 
@@ -58,11 +46,9 @@ struct PaneNode {
     Vec<uint8_t> sizeKnown;
     Vec<PanelId> panels;
     int activeIx = 0;
-    Vec<TilePanel> tiles;
 
     static PaneNode* Split(NodeId id, Axis axis);
     static PaneNode* Tabs(NodeId id);
-    static PaneNode* Tiles(NodeId id);
     NodeId Id() const { return nodeId; }
     PaneRef Kind() const;
     void Walk(Func1<const PaneNode*> visit) const;
@@ -72,8 +58,7 @@ struct PaneNode {
 
 enum class InsertTargetKind : uint8_t {
     Tabs,
-    Split,
-    Tile
+    Split
 };
 
 struct InsertTarget {
@@ -84,12 +69,9 @@ struct InsertTarget {
     Placement placement = Placement::Right;
     bool hasSize = false;
     float size = 0;
-    Bounds bounds = {};
-
     static InsertTarget Tabs(NodeId node, int ix = -1, bool activate = true);
     static InsertTarget Split(NodeId node, Placement placement,
                               const float* size = nullptr);
-    static InsertTarget Tile(NodeId node, Bounds bounds);
 };
 
 struct EditResult {
@@ -100,6 +82,13 @@ struct EditResult {
 struct DockLayout;
 struct PanelSource;
 struct DockAreaState;
+struct PanelStateNode;
+
+// Turns a persisted leaf into a live panel id. Rust's PanelBuilder.
+struct PaneBuilder {
+    void* data = nullptr;
+    PanelId (*build)(void* data, const PanelStateNode* state) = nullptr;
+};
 
 struct PaneTree {
     PaneNode* root = nullptr;
@@ -125,7 +114,6 @@ struct PaneTree {
     // and for hosts that already have their own builder.
     NodeId SetRootSplit(Axis axis);
     NodeId SetRootTabs(const PanelId* panels, int count, int activeIx = 0);
-    NodeId SetRootTiles(const TilePanel* panels, int count);
     NodeId AddSplit(NodeId parent, Axis axis, const float* size = nullptr);
     NodeId AddTabs(NodeId parent, const PanelId* panels, int count,
                    const float* size = nullptr);
@@ -138,12 +126,13 @@ struct PaneTree {
     EditResult SetActive(NodeId node, int ix);
     EditResult SetSizes(NodeId node, const float* sizes, const uint8_t* known,
                         int count);
-    EditResult SetTileBounds(PanelId panel, Bounds bounds);
-    EditResult BringToFront(PanelId panel);
     void Normalize();
     bool IsNormalized() const;
     // Appends a persisted subtree and returns its node index.
     int ToState(const PanelSource& source, DockAreaState* out) const;
+    // Read a persisted subtree into this tree, replacing the root.
+    void FromState(const DockAreaState* st, int nodeIx,
+                   const PaneBuilder& builder);
 
     static PaneTree* FromLayout(DockLayout* layout, RootKind kind,
                                 Vec<DockPanelDef>* panels = nullptr);
@@ -153,7 +142,6 @@ struct PaneTree {
     bool DetachPanel(PanelId panel);
     bool InsertBeside(NodeId at, PanelId panel, Placement placement,
                       const float* size);
-    int MaxZIndex() const;
 };
 
 // Describes a layout without building an entity. It owns child descriptions;
@@ -167,16 +155,13 @@ struct DockLayout {
     Vec<uint8_t> sizeKnown;
     Vec<PanelId> panelIds;
     Vec<DockPanelDef> panelViews;
-    Vec<Bounds> tileBounds;
     int activeIx = 0;
 
     static DockLayout* HSplit();
     static DockLayout* VSplit();
     static DockLayout* Tabs();
-    static DockLayout* Tiles();
     DockLayout* Child(DockLayout* child, const float* size = nullptr);
     DockLayout* Panel(PanelId id, DockPanelDef view = {});
-    DockLayout* Tile(PanelId id, Bounds bounds, DockPanelDef view = {});
     DockLayout* ActiveIndex(int ix);
     ~DockLayout();
 };

@@ -83,8 +83,6 @@ struct DockChromeHooks {
     CallbackId emptyGroup = 0;
     CallbackId dropIndicator = 0;
     CallbackId dock = 0;
-    CallbackId tileDragBar = 0;
-    CallbackId tileResizeHandles = 0;
 };
 
 struct RetainedCallback {

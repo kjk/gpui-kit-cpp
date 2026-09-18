@@ -1,11 +1,11 @@
-/* Ported from crates/ui/src/dock/state.rs and the layout it reads in
+/* Ported from crates/ui/src/dock/state.rs,
+ * crates/base/src/dock/state_convert.rs, and the layout they read in
  * crates/ui/src/fixtures/layout.json.
  *
  * A saved dock layout is a tree of panel states: a split carries its sizes
  * and its axis, a tab group its active index, a leaf whatever the panel
- * wrote, and a tiles node a TileMeta per tile. `test_deserialize_item_state`
- * is the fixture read back; the rest is the round trip and the tiles' own
- * half of it. */
+ * wrote. `test_deserialize_item_state` is the fixture read back; the rest is
+ * the round trip and PaneTree::FromState. */
 
 #include "Test.h"
 
@@ -145,21 +145,22 @@ static void TheFixtureLayoutReadsBack() {
     ArenaDelete(a);
 }
 
-// A layout written out and read back says the same thing, tiles included.
+// A layout written out and read back says the same thing.
 static void ALayoutSurvivesTheRoundTrip() {
     Arena* a = ArenaNew();
     DockAreaState s;
     s.hasVersion = true;
     s.version = 2;
-    s.center = s.NewNode(StrL("Tiles"));
-    int one = s.NewNode(StrL("TabPanel"));
-    int two = s.NewNode(StrL("TabPanel"));
-    PanelStateNode& tiles = s.nodes[s.center];
-    tiles.kind = PanelInfoKind::Tiles;
-    VecAppend(tiles.children, one);
-    VecAppend(tiles.children, two);
-    VecAppend(tiles.metas, TileMeta{{16, 24, 300, 200}, 0});
-    VecAppend(tiles.metas, TileMeta{{340, 24, 260, 160}, 3});
+    s.center = s.NewNode(StrL("TabPanel"));
+    int one = s.NewNode(StrL("Alpha"));
+    int two = s.NewNode(StrL("Beta"));
+    s.nodes[one].kind = PanelInfoKind::Panel;
+    s.nodes[two].kind = PanelInfoKind::Panel;
+    PanelStateNode& tabs = s.nodes[s.center];
+    tabs.kind = PanelInfoKind::Tabs;
+    tabs.activeIndex = 1;
+    VecAppend(tabs.children, one);
+    VecAppend(tabs.children, two);
     s.left.present = true;
     s.left.node = s.NewNode(StrL("TabPanel"));
     s.left.placement = DockPlacement::Left;
@@ -174,16 +175,12 @@ static void ALayoutSurvivesTheRoundTrip() {
     utassert(DockAreaStateParse(a, text, &back));
     utassert(back.hasVersion && back.version == 2);
     const PanelStateNode& node = back.nodes[back.center];
-    utassert(StrEqI(node.panelName, "Tiles"));
-    utassert(node.kind == PanelInfoKind::Tiles);
+    utassert(StrEqI(node.panelName, "TabPanel"));
+    utassert(node.kind == PanelInfoKind::Tabs);
+    utassert(node.activeIndex == 1);
     utassert(node.children.len == 2);
-    utassert(node.metas.len == 2);
-    utassertnear(node.metas[0].bounds.x, 16.f);
-    utassertnear(node.metas[0].bounds.h, 200.f);
-    utassert(node.metas[0].zIndex == 0);
-    utassertnear(node.metas[1].bounds.x, 340.f);
-    utassertnear(node.metas[1].bounds.w, 260.f);
-    utassert(node.metas[1].zIndex == 3);
+    utassert(StrEqI(back.nodes[node.children[0]].panelName, "Alpha"));
+    utassert(StrEqI(back.nodes[node.children[1]].panelName, "Beta"));
     // A dock that is not there is left out rather than written as null, so
     // the ones that are come back and the others do not.
     utassert(back.left.present && !back.left.open);
@@ -191,60 +188,6 @@ static void ALayoutSurvivesTheRoundTrip() {
     utassert(!back.right.present && !back.bottom.present);
     StrFree(text);
     ArenaDelete(a);
-}
-
-// TileMeta::default: a 200x200 box ten pixels in, which is what a tile with
-// nothing saved for it gets.
-static void ATileWithNothingSavedGetsTheDefaultBox() {
-    TileMeta meta;
-    utassertnear(meta.bounds.x, 10.f);
-    utassertnear(meta.bounds.y, 10.f);
-    utassertnear(meta.bounds.w, 200.f);
-    utassertnear(meta.bounds.h, 200.f);
-    utassert(meta.zIndex == 0);
-}
-
-// The tiles' own half: where every tile sits, saved and put back.
-static void TheTilesGoBackWhereTheyWere() {
-    TilesState s;
-    TilesAdd(&s, 0, {16, 16, 300, 200});
-    TilesAdd(&s, 1, {340, 16, 260, 160});
-    s.items[1].zIndex = 2;
-
-    TileMeta metas[4] = {};
-    int panels[4] = {};
-    int n = TilesToMetas(&s, metas, panels, 4);
-    utassert(n == 2);
-    utassertnear(metas[1].bounds.x, 340.f);
-    utassert(metas[1].zIndex == 2);
-    utassert(panels[0] == 0 && panels[1] == 1);
-
-    // Moved, and then put back where the metas say.
-    s.items[0].bounds = {500, 500, 120, 120};
-    s.items[1].zIndex = 0;
-    TilesFromMetas(&s, metas, panels, n);
-    utassertnear(s.items[0].bounds.x, 16.f);
-    utassertnear(s.items[0].bounds.w, 300.f);
-    utassert(s.items[1].zIndex == 2);
-    utassert(s.dragging < 0 && s.resizing < 0);
-
-    // The tiles are reordered as they come to the front, so a meta goes back
-    // on the panel it was saved from rather than on whatever is in its slot.
-    TilesBringToFront(&s, 0);
-    utassert(s.items[0].panel == 1);
-    TilesFromMetas(&s, metas, panels, n);
-    utassert(s.items[0].panel == 0);
-    utassertnear(s.items[0].bounds.x, 16.f);
-    utassert(s.items[1].panel == 1);
-    utassertnear(s.items[1].bounds.x, 340.f);
-
-    // A tile the layout says nothing about keeps its place, after the ones it
-    // does.
-    TilesAdd(&s, 7, {0, 400, 100, 100});
-    TilesFromMetas(&s, metas, panels, n);
-    utassert(s.items.len == 3);
-    utassert(s.items[2].panel == 7);
-    utassertnear(s.items[2].bounds.y, 400.f);
 }
 
 // Text that is not a layout is refused rather than half-read.
@@ -258,38 +201,204 @@ static void SomethingThatIsNotALayoutIsRefused() {
     ArenaDelete(a);
 }
 
-static void ATilesCenterPersistsWithoutItsInternalSplit() {
+struct RecordingBuilder {
+    Str names[8] = {};
+    int n = 0;
+    static PanelId Build(void* data, const PanelStateNode* state) {
+        auto* self = (RecordingBuilder*)data;
+        if (self->n < 8) {
+            self->names[self->n] = state->panelName;
+        }
+        self->n++;
+        return PanelId::FromU64((uint64_t)self->n);
+    }
+};
+
+// An older file whose centre is a tiles node is a tab group: writers never
+// emit tiles, and the metas are ignored.
+static void ASavedTilesNodeReadsAsTabs() {
+    static const char* kTilesJson = R"JSON({
+  "center": {
+    "panel_name": "Tiles",
+    "children": [
+      {
+        "panel_name": "Alpha",
+        "children": [],
+        "info": { "panel": null }
+      },
+      {
+        "panel_name": "Beta",
+        "children": [],
+        "info": { "panel": null }
+      }
+    ],
+    "info": {
+      "tiles": {
+        "metas": [
+          {
+            "bounds": {
+              "origin": { "x": 16, "y": 24 },
+              "size": { "width": 300, "height": 200 }
+            },
+            "z_index": 0
+          }
+        ]
+      }
+    }
+  }
+})JSON";
+    Arena* a = ArenaNew();
+    DockAreaState s;
+    utassert(DockAreaStateParse(a, Str(kTilesJson), &s));
+    const PanelStateNode& node = s.nodes[s.center];
+    utassert(StrEqI(node.panelName, "Tiles"));
+    utassert(node.kind == PanelInfoKind::Tabs);
+    utassert(node.activeIndex == 0);
+    utassert(node.children.len == 2);
+    utassert(StrEqI(s.nodes[node.children[0]].panelName, "Alpha"));
+    utassert(StrEqI(s.nodes[node.children[1]].panelName, "Beta"));
+
+    StrBuilder sb;
+    DockAreaStateWrite(&s, &sb);
+    Str text = sb.TakeStr();
+    utassert(!StrContains(text, StrL("\"tiles\"")));
+    utassert(StrContains(text, StrL("\"tabs\"")));
+    StrFree(text);
+
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Any);
+    tree.FromState(&s, s.center, builder);
+    utassert(tree.Root() && tree.Root()->paneKind == PaneKind::Tabs);
+    utassert(tree.Root()->panels.len == 2);
+    utassert(rec.n == 2);
+    utassert(StrEq(rec.names[0], StrL("Alpha")));
+    utassert(StrEq(rec.names[1], StrL("Beta")));
+    ArenaDelete(a);
+}
+
+static int AddPanelNode(DockAreaState* s, Str name) {
+    int ix = s->NewNode(name);
+    s->nodes[ix].kind = PanelInfoKind::Panel;
+    return ix;
+}
+
+static int AddTabsNode(DockAreaState* s, const int* children, int n,
+                       int active) {
+    int ix = s->NewNode(StrL("TabPanel"));
+    s->nodes[ix].kind = PanelInfoKind::Tabs;
+    s->nodes[ix].activeIndex = active;
+    for (int i = 0; i < n; i++) {
+        VecAppend(s->nodes[ix].children, children[i]);
+    }
+    return ix;
+}
+
+// nested_tab_groups_are_flattened.
+static void NestedTabGroupsAreFlattened() {
+    DockAreaState s;
+    int alpha = AddPanelNode(&s, StrL("Alpha"));
+    int beta = AddPanelNode(&s, StrL("Beta"));
+    int inner0 = AddTabsNode(&s, &alpha, 1, 0);
+    int inner1 = AddTabsNode(&s, &beta, 1, 0);
+    int nested[2] = {inner0, inner1};
+    s.center = AddTabsNode(&s, nested, 2, 1);
+
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Any);
+    tree.FromState(&s, s.center, builder);
+    utassert(rec.n == 2);
+    utassert(StrEq(rec.names[0], StrL("Alpha")));
+    utassert(StrEq(rec.names[1], StrL("Beta")));
+    utassert(tree.Root() && tree.Root()->paneKind == PaneKind::Tabs);
+    utassert(tree.Root()->panels.len == 2);
+    utassert(tree.Root()->activeIx == 1);
+}
+
+// a_bare_panel_leaf_is_wrapped_in_a_tab_group.
+static void ABarePanelLeafIsWrappedInATabGroup() {
+    DockAreaState s;
+    s.center = AddPanelNode(&s, StrL("Alpha"));
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Any);
+    tree.FromState(&s, s.center, builder);
+    utassert(rec.n == 1);
+    utassert(tree.Root() && tree.Root()->paneKind == PaneKind::Tabs);
+    utassert(tree.Root()->panels.len == 1);
+}
+
+// a_tab_panel_carrying_panel_info_is_read_as_an_empty_group.
+static void ATabPanelCarryingPanelInfoIsAnEmptyGroup() {
+    DockAreaState s;
+    s.center = s.NewNode(StrL("TabPanel"));
+    s.nodes[s.center].kind = PanelInfoKind::Panel;
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
+    PaneTree tree(RootKind::Any);
+    tree.FromState(&s, s.center, builder);
+    utassert(rec.n == 0);
+    utassert(tree.Root() && tree.Root()->paneKind == PaneKind::Tabs);
+    utassert(tree.Root()->panels.len == 0);
+}
+
+// a_split_root_is_forced_even_when_the_state_is_a_tab_group.
+static void ASplitRootIsForcedWhenTheStateIsATabGroup() {
+    DockAreaState s;
+    int alpha = AddPanelNode(&s, StrL("Alpha"));
+    s.center = AddTabsNode(&s, &alpha, 1, 0);
+    RecordingBuilder rec;
+    PaneBuilder builder;
+    builder.data = &rec;
+    builder.build = RecordingBuilder::Build;
     PaneTree tree(RootKind::Split);
-    TilePanel tiles[] = {
-        TilePanel::New(PanelId::FromU64(1), {20, 30, 400, 200})};
-    tiles[0].zIndex = 7;
-    tree.SetRootTiles(tiles, 1);
-    tree.Normalize();
-    utassert(tree.Root()->paneKind == PaneKind::Split);
+    tree.FromState(&s, s.center, builder);
+    utassert(tree.Root() && tree.Root()->paneKind == PaneKind::Split);
+    utassert(tree.Root()->children.len == 1);
+    utassert(tree.Root()->children[0]->paneKind == PaneKind::Tabs);
+}
+
+// an_empty_tab_group_serializes_as_tabs_not_as_a_panel.
+static void AnEmptyTabGroupSerializesAsTabs() {
+    PaneTree tree(RootKind::Any);
+    tree.SetRootTabs(nullptr, 0);
     PanelSource source;
-    source.panelName = [](void*, PanelId) { return StrL("Alpha"); };
     DockAreaState state;
     state.center = tree.ToState(source, &state);
-    const PanelState& saved = state.nodes[state.center];
-    utassert(StrEq(saved.panelName, StrL("Tiles")));
-    utassert(saved.kind == PanelInfoKind::Tiles && saved.children.len == 1);
-    utassert(StrEq(state.nodes[saved.children[0]].panelName, StrL("Alpha")));
-    utassert(saved.metas.len == 1 && saved.metas[0].zIndex == 7);
-    utassertnear(saved.metas[0].bounds.x, 20);
-    utassertnear(saved.metas[0].bounds.w, 400);
-    StrBuilder json;
-    DockAreaStateWrite(&state, &json);
-    Arena* arena = ArenaNew();
-    DockAreaState loaded;
-    utassert(DockAreaStateParse(arena, Str(json.els, json.len), &loaded));
-    utassert(loaded.nodes[loaded.center].kind == PanelInfoKind::Tiles);
-    ArenaDelete(arena);
+    utassert(state.center >= 0);
+    utassert(StrEq(state.nodes[state.center].panelName, StrL("TabPanel")));
+    utassert(state.nodes[state.center].kind == PanelInfoKind::Tabs);
+}
 
+// an_empty_center_still_serializes_as_a_stack_panel.
+static void AnEmptyCenterSerializesAsAStackPanel() {
+    PaneTree tree(RootKind::Split);
+    PanelSource source;
+    DockAreaState state;
+    state.center = tree.ToState(source, &state);
+    utassert(state.center >= 0);
+    utassert(StrEq(state.nodes[state.center].panelName, StrL("StackPanel")));
+    utassert(state.nodes[state.center].kind == PanelInfoKind::Stack);
+}
+
+// A RootKind::Split tree whose live root is tabs is wrapped before dump.
+static void ASplitRootSerializesAsAStackPanel() {
     PaneTree tabs(RootKind::Split);
     PanelId panel = PanelId::FromU64(1);
     tabs.SetRootTabs(&panel, 1);
     tabs.Normalize();
-    state.Clear();
+    PanelSource source;
+    source.panelName = [](void*, PanelId) { return StrL("Alpha"); };
+    DockAreaState state;
     state.center = tabs.ToState(source, &state);
     utassert(state.nodes[state.center].kind == PanelInfoKind::Stack);
 }
@@ -297,9 +406,14 @@ static void ATilesCenterPersistsWithoutItsInternalSplit() {
 void TestDockState() {
     TestSuite("dock/state");
     TheFixtureLayoutReadsBack();
-    ATilesCenterPersistsWithoutItsInternalSplit();
     ALayoutSurvivesTheRoundTrip();
-    ATileWithNothingSavedGetsTheDefaultBox();
-    TheTilesGoBackWhereTheyWere();
     SomethingThatIsNotALayoutIsRefused();
+    ASavedTilesNodeReadsAsTabs();
+    NestedTabGroupsAreFlattened();
+    ABarePanelLeafIsWrappedInATabGroup();
+    ATabPanelCarryingPanelInfoIsAnEmptyGroup();
+    ASplitRootIsForcedWhenTheStateIsATabGroup();
+    AnEmptyTabGroupSerializesAsTabs();
+    AnEmptyCenterSerializesAsAStackPanel();
+    ASplitRootSerializesAsAStackPanel();
 }

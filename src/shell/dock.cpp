@@ -526,39 +526,4 @@ bool ShellIsScriptPanel(const DockPanelDef& def) {
     return def.render == RenderPanel;
 }
 
-void ShellTileData(const TileContext* tile, const DockState* dock,
-                   StrBuilder* out) {
-    const TileItem* item = tile ? tile->Item() : nullptr;
-    const DockPanelDef* panel =
-        item && dock && item->panel >= 0 && item->panel < dock->panels.len
-            ? &dock->panels[item->panel]
-            : nullptr;
-    JsonWriter json;
-    json.out = out;
-    json.BeginObject();
-    json.Number("node", tile ? (double)tile->node.AsU64() : 0);
-    json.BeginObject("panel");
-    json.String("name", panel ? panel->name : Str{});
-    json.Number("id", panel ? (double)panel->id.AsU64() : 0);
-    json.Bool("visible", panel && panel->visible);
-    json.EndObject();
-    Bounds bounds = item ? item->bounds : Bounds{};
-    json.BeginObject("bounds");
-    json.Number("x", bounds.x);
-    json.Number("y", bounds.y);
-    json.Number("width", bounds.w);
-    json.Number("height", bounds.h);
-    json.EndObject();
-    json.Number("z_index", item ? item->zIndex : 0);
-    json.Bool("moving",
-              tile && tile->state && tile->state->dragging == tile->ix);
-    json.Bool("resizing",
-              tile && tile->state && tile->state->resizing == tile->ix);
-    json.Bool("closable", panel && panel->closable);
-    json.Bool("zoomed", tile && tile->state && item &&
-                            tile->state->zoomedPanel == item->panel);
-    json.Bool("zoomable", panel && panel->canZoom);
-    json.EndObject();
-}
-
 } // namespace gpui::shell

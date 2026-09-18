@@ -6,14 +6,12 @@ namespace gpui {
 
 static int PaneNodeToState(const PaneNode* node, const PanelSource& source,
                            DockAreaState* out) {
-    Str name = node->paneKind == PaneKind::Split  ? StrL("StackPanel")
-               : node->paneKind == PaneKind::Tabs ? StrL("TabPanel")
-                                                  : StrL("Tiles");
+    Str name = node->paneKind == PaneKind::Split ? StrL("StackPanel")
+                                                 : StrL("TabPanel");
     int ix = out->NewNode(name);
-    out->nodes[ix]
-        .kind = node->paneKind == PaneKind::Split  ? PanelInfoKind::Stack
-                : node->paneKind == PaneKind::Tabs ? PanelInfoKind::Tabs
-                                                   : PanelInfoKind::Tiles;
+    out->nodes[ix].kind = node->paneKind == PaneKind::Split
+                              ? PanelInfoKind::Stack
+                              : PanelInfoKind::Tabs;
     out->nodes[ix].axis = node->axis;
     out->nodes[ix].activeIndex = node->activeIx;
     if (node->paneKind == PaneKind::Split) {
@@ -29,22 +27,14 @@ static int PaneNodeToState(const PaneNode* node, const PanelSource& source,
             VecAppend(out->nodes[ix].sizes, size);
         }
     } else {
-        bool tiles = node->paneKind == PaneKind::Tiles;
-        int count = tiles ? node->tiles.len : node->panels.len;
-        for (int i = 0; i < count; i++) {
-            PanelId panel = tiles ? node->tiles[i].panel : node->panels[i];
+        for (int i = 0; i < node->panels.len; i++) {
+            PanelId panel = node->panels[i];
             int child = out->NewNode(source.panelName
                                          ? source.panelName(source.data, panel)
                                          : StrL(""));
             if (source.dump)
                 source.dump(source.data, panel, &out->nodes[child]);
             VecAppend(out->nodes[ix].children, child);
-            if (tiles) {
-                TileMeta meta;
-                meta.bounds = node->tiles[i].bounds;
-                meta.zIndex = node->tiles[i].zIndex;
-                VecAppend(out->nodes[ix].metas, meta);
-            }
         }
     }
     return ix;
@@ -52,22 +42,13 @@ static int PaneNodeToState(const PaneNode* node, const PanelSource& source,
 
 int PaneTree::ToState(const PanelSource& source, DockAreaState* out) const {
     if (!root || !out) return -1;
-    const PaneNode* persisted = root;
-    // state_convert.rs::persisted_root: the Split wrapper is an in-memory
-    // invariant. Older readers require a bare Tiles center on disk.
-    if (rootKind == RootKind::Split && root->paneKind == PaneKind::Split &&
-        root->children.len == 1 &&
-        root->children[0]->paneKind == PaneKind::Tiles) {
-        persisted = root->children[0];
-    }
-    return PaneNodeToState(persisted, source, out);
+    return PaneNodeToState(root, source, out);
 }
 
 void DockAreaState::Clear() {
     for (int i = 0; i < nodes.len; i++) {
         VecReset(nodes[i].children);
         VecReset(nodes[i].sizes);
-        VecReset(nodes[i].metas);
     }
     VecClear(nodes);
     hasVersion = false;
@@ -83,31 +64,6 @@ int DockAreaState::NewNode(Str panelName) {
     node.panelName = panelName;
     VecAppend(nodes, node);
     return nodes.len - 1;
-}
-
-// Bounds, the way GPUI writes one: an origin and a size, each a pair.
-static Bounds ParseBounds(const JsonValue* v) {
-    Bounds b = {};
-    const JsonValue* origin = JsonGet(v, "origin");
-    const JsonValue* size = JsonGet(v, "size");
-    b.x = (float)JsonNumber(JsonGet(origin, "x"));
-    b.y = (float)JsonNumber(JsonGet(origin, "y"));
-    b.w = (float)JsonNumber(JsonGet(size, "width"));
-    b.h = (float)JsonNumber(JsonGet(size, "height"));
-    return b;
-}
-
-static void WriteBounds(JsonWriter* w, const char* key, Bounds b) {
-    w->BeginObject(key);
-    w->BeginObject("origin");
-    w->Number("x", b.x);
-    w->Number("y", b.y);
-    w->EndObject();
-    w->BeginObject("size");
-    w->Number("width", b.w);
-    w->Number("height", b.h);
-    w->EndObject();
-    w->EndObject();
 }
 
 // One node and everything under it. Answers the node's index, or -1.
@@ -158,15 +114,9 @@ static int ParseNode(Arena* a, const JsonValue* v, DockAreaState* out) {
         node.kind = PanelInfoKind::Tabs;
         node.activeIndex = (int)JsonNumber(JsonGet(tabs, "active_index"));
     } else if (tiles) {
-        node.kind = PanelInfoKind::Tiles;
-        const JsonValue* metas = JsonGet(tiles, "metas");
-        for (const JsonValue* m = metas ? metas->first : nullptr; m;
-             m = m->next) {
-            TileMeta meta;
-            meta.bounds = ParseBounds(JsonGet(m, "bounds"));
-            meta.zIndex = (int)JsonNumber(JsonGet(m, "z_index"));
-            VecAppend(node.metas, meta);
-        }
+        // Upstream dropped Tiles; a saved tiles node is a tab group.
+        node.kind = PanelInfoKind::Tabs;
+        node.activeIndex = 0;
     } else {
         node.kind = PanelInfoKind::Panel;
         // Whatever the panel wrote is kept as it reads, so a round trip does
@@ -277,18 +227,6 @@ static void WriteNode(JsonWriter* w, const char* key, const DockAreaState* s,
         case PanelInfoKind::Tabs:
             w->BeginObject("tabs");
             w->Number("active_index", node.activeIndex);
-            w->EndObject();
-            break;
-        case PanelInfoKind::Tiles:
-            w->BeginObject("tiles");
-            w->BeginArray("metas");
-            for (int i = 0; i < node.metas.len; i++) {
-                w->BeginObject(nullptr);
-                WriteBounds(w, "bounds", node.metas[i].bounds);
-                w->Number("z_index", node.metas[i].zIndex);
-                w->EndObject();
-            }
-            w->EndArray();
             w->EndObject();
             break;
         case PanelInfoKind::Panel:
@@ -566,59 +504,6 @@ bool DockLoad(DockState* s, const DockAreaState* st, Arena* a,
     // assume the canonical shape.
     DockNormalize(s);
     return s->center >= 0;
-}
-
-int TilesToMetas(const TilesState* s, TileMeta* out, int* outPanels, int cap) {
-    int n = 0;
-    for (int i = 0; i < s->items.len && n < cap; i++) {
-        out[n].bounds = s->items[i].bounds;
-        out[n].zIndex = s->items[i].zIndex;
-        if (outPanels) {
-            outPanels[n] = s->items[i].panel;
-        }
-        n++;
-    }
-    return n;
-}
-
-void TilesFromMetas(TilesState* s, const TileMeta* metas, const int* panels,
-                    int n) {
-    Vec<TileItem> rebuilt;
-    int count = 0;
-    for (int i = 0; i < n; i++) {
-        VecAppend(rebuilt, TileItem{});
-        int panel = panels ? panels[i] : i;
-        // The tile showing that panel, wherever it has ended up in the list.
-        int at = TilesIndexOfPanel(s, panel);
-        rebuilt[count] = at >= 0 ? s->items[at] : TileItem{};
-        rebuilt[count].panel = panel;
-        rebuilt[count].bounds = metas[i].bounds;
-        rebuilt[count].zIndex = metas[i].zIndex;
-        count++;
-    }
-    // A tile the layout says nothing about keeps its place, after the ones it
-    // does — the same as a panel the saved tree has no child for.
-    for (int i = 0; i < s->items.len; i++) {
-        bool saved = false;
-        for (int k = 0; k < count; k++) {
-            if (rebuilt[k].panel == s->items[i].panel) {
-                saved = true;
-                break;
-            }
-        }
-        if (!saved) {
-            VecAppend(rebuilt, s->items[i]);
-            count++;
-        }
-    }
-    VecClear(s->items);
-    for (int i = 0; i < count; i++) {
-        VecAppend(s->items, rebuilt[i]);
-    }
-    VecReset(rebuilt);
-    s->dragging = -1;
-    s->resizing = -1;
-    s->side = TileSide::None;
 }
 
 } // namespace gpui

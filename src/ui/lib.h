@@ -25,7 +25,6 @@
 #include "ui/dialog.h"
 #include "ui/dock.h"
 #include "ui/empty.h"
-#include "ui/tiles.h"
 #include "ui/inspector.h"
 #include "ui/form.h"
 #include "ui/global_state.h"

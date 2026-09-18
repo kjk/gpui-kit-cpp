@@ -2022,8 +2022,7 @@ static bool IsCallbackMethod(Str name) {
         // makes them different is that they are asked from inside the frame
         // rather than from render, which the Layout scope around the call and
         // the description cache behind it are for.
-        "tab_bar\0empty_group\0drop_indicator\0dock\0tile_drag_bar\0"
-        "tile_resize_handles\0";
+        "tab_bar\0empty_group\0drop_indicator\0dock\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
         if (StrEq(name, at)) return true;
     }
@@ -2038,8 +2037,7 @@ static bool IsCallbackMethod(Str name) {
 static bool IsDockCommand(Str name) {
     static const char names[] =
         "select_tab\0close_panel\0toggle_zoom\0drag_tab\0drop_tab\0"
-        "toggle_dock\0resize_dock\0move_tile\0resize_tile\0raise_tile\0"
-        "toggle_tile_zoom\0close_tile\0";
+        "toggle_dock\0resize_dock\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
         if (StrEq(name, at)) return true;
     }
@@ -2754,7 +2752,7 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                 op.args[0].number < 0) {
                 JSValue thrown = JS_ThrowTypeError(
                     ctx,
-                    "%.*s(...) expects the group, dock or tile its chrome "
+                    "%.*s(...) expects the group or dock its chrome "
                     "handler was given as its first argument",
                     len(name), name.s);
                 ArenaDelete(arena);
@@ -7906,7 +7904,7 @@ globalThis.__gpui = (() => {
   const dockTarget = (value, api) => {
     const handle = value?.__dock;
     if (typeof handle !== "number") {
-      throw new TypeError(api + " expects the group, dock or tile your chrome handler was given as its first argument");
+      throw new TypeError(api + " expects the group or dock your chrome handler was given as its first argument");
     }
     return handle;
   };

@@ -4,41 +4,33 @@
 
    A DockArea can be written out and read back: the centre item, the three
    docks around it, and for every node what kind it is — a split with its
-   sizes and axis, a tab group with its active index, a leaf panel, or a set
-   of tiles with a TileMeta each. Rust does it with serde; this does it over
-   the small JSON reader in base. */
+   sizes and axis, a tab group with its active index, or a leaf panel. Rust
+   does it with serde; this does it over the small JSON reader in base. An
+   older file whose centre is a tiles node is read as a tab group. */
 
 #include "base/json.h"
 #include "base/dock.h"
-#include "base/tiles.h"
 
 namespace gpui {
 
-// PanelInfo: which of the four a node is.
+// PanelInfo: which of the three a node is. Upstream dropped Tiles; a saved
+// tiles node is read as a tab group.
 enum class PanelInfoKind : uint8_t {
     Panel,
     Stack,
-    Tabs,
-    Tiles
+    Tabs
 };
 
 using PanelInfo = PanelInfoKind;
-
-// TileMeta: where a tile sits and how high it stacks. Rust's Default is a
-// 200x200 box ten pixels in, which is what a tile with no saved place gets.
-struct TileMeta {
-    Bounds bounds = {10, 10, 200, 200};
-    int zIndex = 0;
-};
 
 // PanelState: one node of the tree. Rust nests them by ownership; the nodes
 // here live in one array and name their children by index, the way the dock's
 // own tree does.
 struct PanelStateNode {
     Str panelName = {};
-    // As many children, sizes and metas as the tree has. The live tree they
-    // are written from is unbounded, so a saved layout that truncated it
-    // would be a layout that could not be read back.
+    // As many children and sizes as the tree has. The live tree they are
+    // written from is unbounded, so a saved layout that truncated it would
+    // be a layout that could not be read back.
     Vec<int> children;
     PanelInfoKind kind = PanelInfoKind::Panel;
     // Stack: the size of each child, and which way they are laid out.
@@ -46,8 +38,6 @@ struct PanelStateNode {
     Axis axis = Axis::Horizontal;
     // Tabs.
     int activeIndex = 0;
-    // Tiles: one meta per child.
-    Vec<TileMeta> metas;
     // Panel: whatever the panel itself wrote, kept as it was so a round trip
     // does not lose it. Rust holds a serde_json::Value here.
     Str info = {};
@@ -102,7 +92,6 @@ struct DockAreaState {
         for (int i = 0; i < len(nodes); i++) {
             VecReset(nodes[i].children);
             VecReset(nodes[i].sizes);
-            VecReset(nodes[i].metas);
         }
         VecReset(nodes);
     }
@@ -143,17 +132,6 @@ bool DockLoad(DockState* s, const DockAreaState* st, Arena* a,
               El* (*invalidRender)(Ctx* cx, void* data) = nullptr,
               App* app = nullptr, Window* win = nullptr,
               Entity<DockState> dockArea = {});
-
-// The tiles' own half of it: the metas a TilesState is saved as, and a
-// TilesState built back from them. `panels` is the caller's panel for each
-// tile, which is what Rust's children list carries beside the metas — the
-// tiles are reordered as they come to the front, so a meta on its own does
-// not say which panel it belongs to.
-int TilesToMetas(const TilesState* s, TileMeta* out, int* outPanels, int cap);
-// The tiles are put back in the order they were saved in, each with its own
-// panel, which is what makes a restore after a reorder land right.
-void TilesFromMetas(TilesState* s, const TileMeta* metas, const int* panels,
-                    int n);
 
 } // namespace gpui
 #endif // GPUI_BASE_DOCK_STATE_H_

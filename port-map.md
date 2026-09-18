@@ -51,7 +51,7 @@ These do not:
 | Rust module family | C++ surface | Decision |
 | --- | --- | --- |
 | `base/calendar`, `base/date_picker` | `base/calendar*`, `base/date_picker*` | payload enums are tagged POD values; `CalendarState` is an emitting entity; label/item closures become function tables |
-| `base/dock/*` | `base/dock*`, `base/tiles*` | one Base dock family |
+| `base/dock/*` | `base/dock*` | one Base dock family |
 | `base/input/*` | `base/input*`, `base/input_keys*` | one Base input family |
 | `ui/table/data_table` | `ui/data_table.h`, `ui/table*` | canonical UI include; behaviour delegates to `base/data_table*` |
 | `ui/list/*` | `ui/list*` | themed surface over shared `base/list*` |

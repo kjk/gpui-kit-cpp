@@ -26,7 +26,6 @@
    same under a Rust host. */
 
 #include "base/dock_registry.h"
-#include "base/tiles.h"
 #include "shell/view.h"
 
 namespace gpui::shell {
@@ -135,8 +134,6 @@ void ShellDockData(const DockCtx* dock, StrBuilder* out);
 // placeholder's box in the hovered group's own coordinates, already sprung
 // and clamped. The rest is read off the area, which is where base keeps it.
 void ShellDropIndicatorData(const DockState* state, Bounds to, StrBuilder* out);
-void ShellTileData(const TileContext* tile, const DockState* dock,
-                   StrBuilder* out);
 
 } // namespace gpui::shell
 

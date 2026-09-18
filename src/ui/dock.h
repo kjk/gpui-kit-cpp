@@ -62,10 +62,6 @@ struct DockSkin {
     void SetPanelStyle(App* app, Window* win, PanelStyle style);
     bool IsToggleButtonVisible(App* app) const;
     void SetToggleButtonVisible(App* app, Window* win, bool visible);
-    bool HasTilesScrollbarMode(App* app) const;
-    ScrollbarMode GetTilesScrollbarMode(App* app) const;
-    void SetTilesScrollbarMode(App* app, Window* win, bool hasMode,
-                               ScrollbarMode mode = ScrollbarMode::Always);
     const DockRenderer* Renderer() const;
 };
 

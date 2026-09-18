@@ -205,7 +205,6 @@ export const simpleExamples = [
   "html",
   "large_text",
   "dock",
-  "tiles",
   "brush",
   "editor",
   "webview",

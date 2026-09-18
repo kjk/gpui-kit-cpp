@@ -351,11 +351,6 @@ struct DockState {
     // DockArea::toggle_button_visible: whether the three dock toggles are
     // drawn at all.
     bool toggleButtonVisible = true;
-    // UI DockSkin::tiles_scrollbar_mode. Rust retains this on the shared
-    // skin; the C++ entity is the shared retained object, so copies of the
-    // lightweight DockSkin handle continue to observe the same setting.
-    bool hasTilesScrollbarMode = false;
-    ScrollbarMode tilesScrollbarMode = ScrollbarMode::Always;
     // DockArea::version, kept so a layout that was loaded writes back the
     // version it came with.
     bool hasVersion = false;
@@ -542,10 +537,10 @@ void DockSetCollapsible(DockState* s, DockPlacement p, bool collapsible);
 //
 // Upstream splits the dock the way it splits everything else: `crates/base`
 // owns the tree, the drag, the drop and the resize, and every pixel is the
-// caller's, handed over through `DockAreaRenderer`, `TabGroupRenderer` and
-// `TilesRenderer`. `crates/ui` is one implementation of those traits and the
-// base showcase is another — which is why upstream's showcase can put a dock
-// on a page without reaching for the themed one.
+// caller's, handed over through `DockAreaRenderer` and `TabGroupRenderer`.
+// `crates/ui` is one implementation of those traits and the base showcase is
+// another — which is why upstream's showcase can put a dock on a page without
+// reaching for the themed one.
 //
 // An element here holds no closures, so a trait object is a struct of
 // function pointers and a `data`, the way `CalendarItemFn` and
@@ -732,7 +727,6 @@ struct DockRenderer {
 // disjoint hooks without virtual dispatch or reference counting.
 using DockAreaRenderer = DockRenderer;
 using TabGroupRenderer = DockRenderer;
-using TilesRenderer = DockRenderer;
 
 // DockArea, as an element. The tree, the three Docks around the centre, the
 // splits and their handles, each group's body and the drop placeholder are

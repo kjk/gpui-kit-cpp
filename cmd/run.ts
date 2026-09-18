@@ -821,7 +821,6 @@ const rustStoryExamples: Record<string, string> = {
   large_text: "large-text",
   markdown: "markdown",
   stream_markdown: "stream_markdown",
-  tiles: "tiles",
 };
 
 /** null when the port wrote this example and gpui-kit has no such thing. */

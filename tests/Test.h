@@ -103,7 +103,6 @@ void TestNativeMenu();
 void TestAppMenu();
 void TestI18n();
 void TestLayoutReuse();
-void TestTiles();
 void TestRoot();
 void TestSankey();
 void TestJson();

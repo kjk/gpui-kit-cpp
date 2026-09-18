@@ -1,27 +1,11 @@
 #include "base/dock_layout.h"
+#include "base/dock_state.h"
 
 namespace gpui {
 
 static uint64_t gNextPaneNodeId = 1;
 
-TilePanel TilePanel::New(PanelId panel, Bounds bounds) {
-    TilePanel tile;
-    tile.panel = panel;
-    tile.bounds = bounds;
-    return tile;
-}
-
-TilePanel TilePanel::WithZIndex(int value) const {
-    TilePanel tile = *this;
-    tile.zIndex = value;
-    return tile;
-}
-
-TilePanel TilePanel::WithBounds(Bounds value) const {
-    TilePanel tile = *this;
-    tile.bounds = value;
-    return tile;
-}
+static const char kTabPanelName[] = "TabPanel";
 
 PaneNode* PaneNode::Split(NodeId id, Axis axis) {
     PaneNode* node = new PaneNode();
@@ -38,13 +22,6 @@ PaneNode* PaneNode::Tabs(NodeId id) {
     return node;
 }
 
-PaneNode* PaneNode::Tiles(NodeId id) {
-    PaneNode* node = new PaneNode();
-    node->nodeId = id;
-    node->paneKind = PaneKind::Tiles;
-    return node;
-}
-
 PaneRef PaneNode::Kind() const {
     PaneRef ref;
     ref.kind = paneKind;
@@ -53,7 +30,6 @@ PaneRef PaneNode::Kind() const {
     ref.sizes = &sizes;
     ref.sizeKnown = &sizeKnown;
     ref.panels = &panels;
-    ref.tiles = &tiles;
     ref.activeIx = activeIx;
     return ref;
 }
@@ -73,10 +49,7 @@ bool PaneNode::Empty() const {
     if (paneKind == PaneKind::Split) {
         return children.len == 0;
     }
-    if (paneKind == PaneKind::Tabs) {
-        return panels.len == 0;
-    }
-    return tiles.len == 0;
+    return panels.len == 0;
 }
 
 PaneNode::~PaneNode() {
@@ -87,7 +60,6 @@ PaneNode::~PaneNode() {
     VecReset(sizes);
     VecReset(sizeKnown);
     VecReset(panels);
-    VecReset(tiles);
 }
 
 InsertTarget InsertTarget::Tabs(NodeId node, int ix, bool activate) {
@@ -107,14 +79,6 @@ InsertTarget InsertTarget::Split(NodeId node, Placement placement,
     target.placement = placement;
     target.hasSize = size != nullptr;
     target.size = size ? *size : 0;
-    return target;
-}
-
-InsertTarget InsertTarget::Tile(NodeId node, Bounds bounds) {
-    InsertTarget target;
-    target.kind = InsertTargetKind::Tile;
-    target.node = node;
-    target.bounds = bounds;
     return target;
 }
 
@@ -173,15 +137,6 @@ static bool FindPanelNodeRec(const PaneNode* node, PanelId panel, NodeId* out) {
                 return true;
             }
         }
-    } else if (node->paneKind == PaneKind::Tiles) {
-        for (int i = 0; i < node->tiles.len; i++) {
-            if (node->tiles[i].panel == panel) {
-                if (out) {
-                    *out = node->nodeId;
-                }
-                return true;
-            }
-        }
     } else {
         for (int i = 0; i < node->children.len; i++) {
             if (FindPanelNodeRec(node->children[i], panel, out)) {
@@ -215,10 +170,6 @@ static void CollectPanelsRec(const PaneNode* node, Vec<PanelId>* out) {
         for (int i = 0; i < node->panels.len; i++) {
             VecAppend(*out, node->panels[i]);
         }
-    } else if (node->paneKind == PaneKind::Tiles) {
-        for (int i = 0; i < node->tiles.len; i++) {
-            VecAppend(*out, node->tiles[i].panel);
-        }
     } else {
         for (int i = 0; i < node->children.len; i++) {
             CollectPanelsRec(node->children[i], out);
@@ -249,15 +200,6 @@ NodeId PaneTree::SetRootTabs(const PanelId* values, int count, int active) {
         VecAppend(node->panels, values[i]);
     }
     node->activeIx = active;
-    SetRoot(this, node);
-    return node->nodeId;
-}
-
-NodeId PaneTree::SetRootTiles(const TilePanel* values, int count) {
-    PaneNode* node = PaneNode::Tiles(AllocateNodeId());
-    for (int i = 0; values && i < count; i++) {
-        VecAppend(node->tiles, values[i]);
-    }
     SetRoot(this, node);
     return node->nodeId;
 }
@@ -325,15 +267,6 @@ static void RemoveAt(Vec<PanelId>* values, int ix) {
     }
 }
 
-static void RemoveTileAt(Vec<TilePanel>* values, int ix) {
-    for (int i = ix; i + 1 < values->len; i++) {
-        (*values)[i] = (*values)[i + 1];
-    }
-    if (values->len > 0) {
-        values->len--;
-    }
-}
-
 bool PaneTree::DetachPanel(PanelId panel) {
     NodeId nodeId;
     if (!FindPanelNode(panel, &nodeId)) {
@@ -351,34 +284,8 @@ bool PaneTree::DetachPanel(PanelId panel) {
             }
             return true;
         }
-    } else if (node->paneKind == PaneKind::Tiles) {
-        for (int i = 0; i < node->tiles.len; i++) {
-            if (node->tiles[i].panel == panel) {
-                RemoveTileAt(&node->tiles, i);
-                return true;
-            }
-        }
     }
     return false;
-}
-
-int PaneTree::MaxZIndex() const {
-    Vec<const PaneNode*> stack;
-    VecAppend(stack, root);
-    int top = 0;
-    while (len(stack) > 0) {
-        const PaneNode* node = stack[--stack.len];
-        if (node->paneKind == PaneKind::Tiles) {
-            for (int i = 0; i < node->tiles.len; i++) {
-                top = std::max(top, node->tiles[i].zIndex);
-            }
-        } else if (node->paneKind == PaneKind::Split) {
-            for (int i = 0; i < node->children.len; i++) {
-                VecAppend(stack, node->children[i]);
-            }
-        }
-    }
-    return top;
 }
 
 bool PaneTree::ApplyInsert(PanelId panel, InsertTarget target) {
@@ -400,14 +307,6 @@ bool PaneTree::ApplyInsert(PanelId panel, InsertTarget target) {
         } else if (at <= node->activeIx && node->panels.len > 1) {
             node->activeIx++;
         }
-        return true;
-    }
-    if (target.kind == InsertTargetKind::Tile) {
-        if (node->paneKind != PaneKind::Tiles) {
-            return false;
-        }
-        VecAppend(node->tiles, TilePanel::New(panel, target.bounds)
-                                   .WithZIndex(MaxZIndex() + 1));
         return true;
     }
     const float* size = target.hasSize ? &target.size : nullptr;
@@ -585,9 +484,6 @@ static bool NormalizedNode(const PaneNode* node, NodeId rootId) {
                 (node->activeIx >= 0 && node->activeIx < node->panels.len)) &&
                (node->nodeId == rootId || node->panels.len > 0);
     }
-    if (node->paneKind == PaneKind::Tiles) {
-        return node->nodeId == rootId || node->tiles.len > 0;
-    }
     if (node->children.len != node->sizes.len ||
         node->children.len != node->sizeKnown.len) {
         return false;
@@ -674,48 +570,6 @@ EditResult PaneTree::SetSizes(NodeId id, const float* values,
     return EditResult{changed};
 }
 
-EditResult PaneTree::SetTileBounds(PanelId panel, Bounds bounds) {
-    NodeId id;
-    if (!FindPanelNode(panel, &id)) {
-        return {};
-    }
-    PaneNode* node = FindNode(id);
-    if (!node || node->paneKind != PaneKind::Tiles) {
-        return {};
-    }
-    for (int i = 0; i < node->tiles.len; i++) {
-        TilePanel& tile = node->tiles[i];
-        if (tile.panel != panel) {
-            continue;
-        }
-        bool changed = tile.bounds.x != bounds.x || tile.bounds.y != bounds.y ||
-                       tile.bounds.w != bounds.w || tile.bounds.h != bounds.h;
-        tile.bounds = bounds;
-        return EditResult{changed};
-    }
-    return {};
-}
-
-EditResult PaneTree::BringToFront(PanelId panel) {
-    NodeId id;
-    if (!FindPanelNode(panel, &id)) {
-        return {};
-    }
-    PaneNode* node = FindNode(id);
-    if (!node || node->paneKind != PaneKind::Tiles) {
-        return {};
-    }
-    int top = MaxZIndex();
-    for (int i = 0; i < node->tiles.len; i++) {
-        TilePanel& tile = node->tiles[i];
-        if (tile.panel == panel && tile.zIndex < top) {
-            tile.zIndex = top + 1;
-            return EditResult{true};
-        }
-    }
-    return {};
-}
-
 static DockLayout* NewLayout(PaneKind kind, Axis axis) {
     DockLayout* layout = new DockLayout();
     layout->kind = kind;
@@ -735,10 +589,6 @@ DockLayout* DockLayout::Tabs() {
     return NewLayout(PaneKind::Tabs, Axis::Horizontal);
 }
 
-DockLayout* DockLayout::Tiles() {
-    return NewLayout(PaneKind::Tiles, Axis::Horizontal);
-}
-
 DockLayout* DockLayout::Child(DockLayout* child, const float* size) {
     if (kind == PaneKind::Split && child) {
         VecAppend(children, child);
@@ -752,15 +602,6 @@ DockLayout* DockLayout::Panel(PanelId id, DockPanelDef view) {
     if (kind == PaneKind::Tabs) {
         VecAppend(panelIds, id);
         VecAppend(panelViews, view);
-    }
-    return this;
-}
-
-DockLayout* DockLayout::Tile(PanelId id, Bounds bounds, DockPanelDef view) {
-    if (kind == PaneKind::Tiles) {
-        VecAppend(panelIds, id);
-        VecAppend(panelViews, view);
-        VecAppend(tileBounds, bounds);
     }
     return this;
 }
@@ -781,7 +622,6 @@ DockLayout::~DockLayout() {
     VecReset(sizeKnown);
     VecReset(panelIds);
     VecReset(panelViews);
-    VecReset(tileBounds);
 }
 
 static PaneNode* BuildLayoutNode(PaneTree* tree, const DockLayout* layout,
@@ -809,17 +649,7 @@ static PaneNode* BuildLayoutNode(PaneTree* tree, const DockLayout* layout,
         }
         return node;
     }
-    PaneNode* node = PaneNode::Tiles(id);
-    for (int i = 0; i < layout->panelIds.len; i++) {
-        Bounds bounds =
-            i < layout->tileBounds.len ? layout->tileBounds[i] : Bounds{};
-        VecAppend(node->tiles, TilePanel::New(layout->panelIds[i], bounds)
-                                   .WithZIndex(i));
-        if (collected && i < layout->panelViews.len) {
-            VecAppend(*collected, layout->panelViews[i]);
-        }
-    }
-    return node;
+    return PaneNode::Tabs(id);
 }
 
 PaneTree* PaneTree::FromLayout(DockLayout* layout, RootKind kind,
@@ -838,6 +668,81 @@ PaneTree* PaneTree::FromLayout(DockLayout* layout, RootKind kind,
     SetRoot(tree, built);
     tree->Normalize();
     return tree;
+}
+
+static void CollectTabPanels(const DockAreaState* st, int ix,
+                             const PaneBuilder& builder, Vec<PanelId>* out);
+
+static PaneNode* BuildStateNode(PaneTree* tree, const DockAreaState* st, int ix,
+                                const PaneBuilder& builder) {
+    if (!st || ix < 0 || ix >= st->nodes.len) {
+        return PaneNode::Tabs(tree->AllocateNodeId());
+    }
+    const PanelStateNode& sn = st->nodes[ix];
+    NodeId id = tree->AllocateNodeId();
+    if (sn.kind == PanelInfoKind::Stack) {
+        PaneNode* node = PaneNode::Split(id, sn.axis);
+        for (int i = 0; i < sn.children.len; i++) {
+            PaneNode* child = BuildStateNode(tree, st, sn.children[i], builder);
+            const float* size =
+                i < sn.sizes.len && sn.sizes[i] > 0 ? &sn.sizes[i] : nullptr;
+            AppendChild(node, child, size);
+        }
+        return node;
+    }
+    if (sn.kind == PanelInfoKind::Tabs) {
+        PaneNode* node = PaneNode::Tabs(id);
+        CollectTabPanels(st, ix, builder, &node->panels);
+        node->activeIx = sn.activeIndex;
+        return node;
+    }
+    PaneNode* node = PaneNode::Tabs(id);
+    if (StrEq(sn.panelName, kTabPanelName)) {
+        return node;
+    }
+    if (builder.build) {
+        VecAppend(node->panels, builder.build(builder.data, &sn));
+    }
+    return node;
+}
+
+static void CollectTabPanels(const DockAreaState* st, int ix,
+                             const PaneBuilder& builder, Vec<PanelId>* out) {
+    if (!st || !out || ix < 0 || ix >= st->nodes.len) {
+        return;
+    }
+    const PanelStateNode& sn = st->nodes[ix];
+    for (int i = 0; i < sn.children.len; i++) {
+        int childIx = sn.children[i];
+        if (childIx < 0 || childIx >= st->nodes.len) {
+            continue;
+        }
+        const PanelStateNode& child = st->nodes[childIx];
+        if (child.kind == PanelInfoKind::Tabs) {
+            CollectTabPanels(st, childIx, builder, out);
+            continue;
+        }
+        if (child.kind == PanelInfoKind::Panel &&
+            StrEq(child.panelName, kTabPanelName)) {
+            continue;
+        }
+        if (builder.build) {
+            VecAppend(*out, builder.build(builder.data, &child));
+        }
+    }
+}
+
+void PaneTree::FromState(const DockAreaState* st, int nodeIx,
+                         const PaneBuilder& builder) {
+    PaneNode* built = BuildStateNode(this, st, nodeIx, builder);
+    if (rootKind == RootKind::Split && built &&
+        built->paneKind != PaneKind::Split) {
+        PaneNode* wrapper = PaneNode::Split(AllocateNodeId(), Axis::Horizontal);
+        AppendChild(wrapper, built, nullptr);
+        built = wrapper;
+    }
+    SetRoot(this, built);
+    Normalize();
 }
 
 } // namespace gpui
