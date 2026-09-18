@@ -570,6 +570,12 @@ VecNonTemplated* VecNT(Vec<T>& v) {
     return (VecNonTemplated*)&v;
 }
 
+// Call sites read length with len(v). The field is what the helpers write.
+template <typename T>
+inline int len(const Vec<T>& v) {
+    return v.len;
+}
+
 template <typename T>
 auto VecReserve(Arena* arena, T& v, int n) -> decltype(v.els) {
     static_assert(offsetof(T, len) == offsetof(VecNonTemplated, len));
@@ -594,7 +600,7 @@ inline T* VecReserve(Vec<T>& v, int n) {
 #if defined(DEBUG)
     int curCap = VecAbsCap(v.cap);
     if (n > curCap) {
-        VecDbgGrow(v.dbgId, v.len, curCap, n,
+        VecDbgGrow(v.dbgId, len(v), curCap, n,
                    VecNextCap(curCap, n, (int)sizeof(T)));
     }
 #endif
@@ -628,12 +634,12 @@ T* VecTake(Vec<T>& v) {
 
 template <typename T>
 bool VecAppend(Vec<T>& v, const VecIdentityT<T>& el) {
-    return VecInsertAt(v, v.len, el);
+    return VecInsertAt(v, len(v), el);
 }
 
 template <typename T>
 bool VecAppendVec(Vec<T>& v, const Vec<T>& other) {
-    return VecAppendN(v, other.els, other.len);
+    return VecAppendN(v, other.els, len(other));
 }
 
 template <typename T>
@@ -641,7 +647,7 @@ bool VecAppendN(Vec<T>& v, const T* src, int count) {
     if (count == 0) {
         return true;
     }
-    T* dst = VecInsertSpace(v, v.len, count);
+    T* dst = VecInsertSpace(v, len(v), count);
     if (!dst) {
         return false;
     }
@@ -651,7 +657,7 @@ bool VecAppendN(Vec<T>& v, const T* src, int count) {
 
 template <typename T>
 T* VecAppendBlanks(Vec<T>& v, int count) {
-    return VecInsertSpace(v, v.len, count);
+    return VecInsertSpace(v, len(v), count);
 }
 
 template <typename T>
@@ -697,15 +703,15 @@ void VecRemoveAtFast(Vec<T>& v, int idx) {
 
 template <typename T>
 void VecRemoveLast(Vec<T>& v) {
-    if (v.len > 0) {
-        VecRemoveAt(v, v.len - 1);
+    if (len(v) > 0) {
+        VecRemoveAt(v, len(v) - 1);
     }
 }
 
 template <typename T>
 T VecPop(Vec<T>& v) {
-    T el = v.els[v.len - 1];
-    VecRemoveAtFast(v, v.len - 1);
+    T el = v.els[len(v) - 1];
+    VecRemoveAtFast(v, len(v) - 1);
     return el;
 }
 
@@ -720,17 +726,17 @@ int VecRemove(Vec<T>& v, const T& el) {
 
 template <typename T>
 bool VecIsValidIndex(const Vec<T>& v, int idx) {
-    return idx >= 0 && idx < v.len;
+    return idx >= 0 && idx < len(v);
 }
 
 template <typename T>
 T& VecLast(const Vec<T>& v) {
-    return v.els[v.len - 1];
+    return v.els[len(v) - 1];
 }
 
 template <typename T>
 int VecFind(const Vec<T>& v, const T& el, int startAt = 0) {
-    for (int i = startAt; i < v.len; i++) {
+    for (int i = startAt; i < len(v); i++) {
         if (v.els[i] == el) {
             return i;
         }
@@ -992,6 +998,11 @@ struct ArenaVec {
         return seg;
     }
 };
+
+template <typename T>
+inline int len(const ArenaVec<T>& v) {
+    return v.len;
+}
 
 struct PointF {
     float x = 0.0f;

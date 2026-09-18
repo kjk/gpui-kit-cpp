@@ -12,14 +12,14 @@ static void AnInlineVecStartsInTheBufferAndDoesNotAllocate() {
     int buf[4] = {};
     Vec<int> v;
     VecUseExternalBuffer(v, buf);
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
     utassert(VecCap(v) == 4);
     utassert(v.els == buf);
 
     for (int i = 0; i < 4; i++) {
         utassert(VecAppend(v, i * 7));
     }
-    utassert(v.len == 4);
+    utassert(len(v) == 4);
     // Still the caller's array: the elements were written straight into it,
     // and nothing was allocated to hold them.
     utassert(v.els == buf);
@@ -43,7 +43,7 @@ static void TheAppendPastTheBufferMovesToTheHeapWithTheElements() {
     utassert(v.els != buf);
     utassert(v.cap > 0);
     utassert(VecCap(v) >= 5);
-    utassert(v.len == 5);
+    utassert(len(v) == 5);
     for (int i = 0; i < 4; i++) {
         utassert(v[i] == i * 7);
     }
@@ -57,7 +57,7 @@ static void TheAppendPastTheBufferMovesToTheHeapWithTheElements() {
     for (int i = 0; i < 200; i++) {
         VecAppend(v, 1000 + i);
     }
-    utassert(v.len == 205);
+    utassert(len(v) == 205);
     utassert(v[204] == 1199);
     utassert(v[0] == 0);
 }
@@ -72,7 +72,7 @@ static void AReserveStraightPastTheBufferAlsoCarries() {
     utassert(VecReserve(v, 64) != nullptr);
     utassert(v.els != buf);
     utassert(VecCap(v) >= 64);
-    utassert(v.len == 2);
+    utassert(len(v) == 2);
     utassert(v[0] == 1 && v[1] == 2);
 }
 
@@ -85,14 +85,14 @@ static void ResetGivesTheBufferBackWithoutFreeingIt() {
     // Reaching the end of this test at all is the assertion; the rest says
     // the vec is empty afterwards and the array is untouched.
     VecReset(v);
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
     utassert(VecCap(v) == 0);
     utassert(v.els == nullptr);
     utassert(buf[0] == 1);
 
     // Empty and owning nothing, it allocates the way any other vec does.
     VecAppend(v, 5);
-    utassert(v.len == 1 && v[0] == 5);
+    utassert(len(v) == 1 && v[0] == 5);
     utassert(v.els != buf);
 }
 
@@ -117,7 +117,7 @@ static void ACopyOfABorrowedVecOwnsItsOwnElements() {
     VecAppend(v, 22);
 
     Vec<int> copy = v;
-    utassert(copy.len == 2);
+    utassert(len(copy) == 2);
     utassert(copy[0] == 11 && copy[1] == 22);
     // The copy borrows nothing — it allocated — so writing through one is not
     // seen by the other, and the copy's own destructor has a block to free.
@@ -137,7 +137,7 @@ static void ClearOnABorrowedVecZeroesTheBuffer() {
     // Clear zeroes the whole capacity, and the capacity here is the array —
     // the size of it is what the sign of `cap` has to be read through.
     VecClear(v);
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
     for (int i = 0; i < 4; i++) {
         utassert(buf[i] == 0);
     }
@@ -149,11 +149,11 @@ static void AnOrdinaryVecIsUnaffected() {
     for (int i = 0; i < 100; i++) {
         VecAppend(v, i);
     }
-    utassert(v.len == 100);
+    utassert(len(v) == 100);
     utassert(v.cap >= 100 && VecCap(v) == v.cap);
     utassert(v[99] == 99);
     VecReset(v);
-    utassert(v.len == 0 && v.cap == 0 && v.els == nullptr);
+    utassert(len(v) == 0 && v.cap == 0 && v.els == nullptr);
 }
 
 // The caller `VecUseExternalBuffer` was written for, driven past its buffer.
@@ -199,7 +199,7 @@ static void TheFreeFunctionSurfaceKeepsVecSemantics() {
     int more[] = {4, 6};
     utassert(VecAppendN(v, more, 2));
     utassert(VecInsertAt(v, 1, 3));
-    utassert(v.len == 4 && v[0] == 2 && v[1] == 3 && v[2] == 4 && v[3] == 6);
+    utassert(len(v) == 4 && v[0] == 2 && v[1] == 3 && v[2] == 4 && v[3] == 6);
     utassert(VecFind(v, 4) == 2);
     utassert(VecContains(v, 6));
     utassert(VecLast(v) == 6);
@@ -207,29 +207,29 @@ static void TheFreeFunctionSurfaceKeepsVecSemantics() {
 
     utassert(VecPopAt(v, 1) == 3);
     VecRemoveAtN(v, 0, 2);
-    utassert(v.len == 1 && v[0] == 6);
+    utassert(len(v) == 1 && v[0] == 6);
     utassert(VecAppend(v, 8));
     VecRemoveAtFast(v, 0);
-    utassert(v.len == 1 && v[0] == 8);
+    utassert(len(v) == 1 && v[0] == 8);
     VecRemoveLast(v);
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
 
     utassert(VecResize(v, 3));
-    utassert(v.len == 3 && v[0] == 0 && v[1] == 0 && v[2] == 0);
+    utassert(len(v) == 3 && v[0] == 0 && v[1] == 0 && v[2] == 0);
     v[0] = 10;
     v[1] = 20;
     v[2] = 30;
     utassert(VecPop(v) == 30);
     utassert(VecRemove(v, 10) == 0);
-    utassert(v.len == 1 && v[0] == 20);
+    utassert(len(v) == 1 && v[0] == 20);
 
     Vec<int> other;
     utassert(VecAppend(other, 40));
     utassert(VecAppendVec(v, other));
-    utassert(v.len == 2 && v[1] == 40);
+    utassert(len(v) == 2 && v[1] == 40);
     int* taken = VecTake(v);
     utassert(taken && taken[0] == 20 && taken[1] == 40);
-    utassert(v.len == 0 && v.cap == 0 && v.els == nullptr);
+    utassert(len(v) == 0 && v.cap == 0 && v.els == nullptr);
     Free(nullptr, taken);
 }
 
@@ -241,7 +241,7 @@ static void TakingBorrowedStorageReturnsAnOwnedCopy() {
     VecAppend(v, 9);
     int* taken = VecTake(v);
     utassert(taken && taken != buf && taken[0] == 7 && taken[1] == 9);
-    utassert(v.len == 0 && v.cap == 0 && v.els == nullptr);
+    utassert(len(v) == 0 && v.cap == 0 && v.els == nullptr);
     utassert(buf[0] == 7 && buf[1] == 9);
     Free(nullptr, taken);
 }

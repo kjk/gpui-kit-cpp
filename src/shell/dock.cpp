@@ -23,11 +23,11 @@ struct ScriptPanelManager {
     Vec<ScriptPanelData*> panels;
 
     ~ScriptPanelManager() {
-        for (int i = 0; i < panels.len; i++) {
+        for (int i = 0; i < len(panels); i++) {
             StrFree(panels[i]->serialized);
             delete panels[i];
         }
-        for (int i = 0; i < registrations.len; i++) {
+        for (int i = 0; i < len(registrations); i++) {
             ScriptPanelRegistration* registration = registrations[i];
             if (registration->script.release)
                 registration->script.release(registration->script.data);

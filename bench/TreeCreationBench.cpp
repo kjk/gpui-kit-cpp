@@ -40,12 +40,12 @@ static void CreationRun(CreationCase* c) {
             VecAppend(sub, c->tree.NewLeaf(taffy::Style{}));
         }
         VecAppend(children,
-                  c->tree.NewWithChildren(taffy::Style{}, sub.els, sub.len));
+                  c->tree.NewWithChildren(taffy::Style{}, sub.els, len(sub)));
         nodeCount += 1 + (uint32_t)subCount;
     }
 
     taffy::NodeId root =
-        c->tree.NewWithChildren(taffy::Style{}, children.els, children.len);
+        c->tree.NewWithChildren(taffy::Style{}, children.els, len(children));
     BenchKeep(&c->tree);
     BenchKeep(&root);
 }

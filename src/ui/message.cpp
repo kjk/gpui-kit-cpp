@@ -137,7 +137,7 @@ static El* MessageMetaRow(Arena* a, Ctx* cx, bool contentInset,
     if (styleSet) {
         row->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         row->Child(children[i]);
     }
     return row;
@@ -197,7 +197,7 @@ El* MessageContent::IntoEl() {
     if (styleSet) {
         column->Refine(style, styleSet);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         column->Child(children[i]);
     }
     return column;

@@ -391,7 +391,7 @@ static Vec<ColorPickerBoundKeys> gColorPickerBoundKeys;
 static void ColorPickerInitKeys(const char* context) {
     uint32_t id = KeyContextOf(Str(context));
     uint32_t generation = KeymapGeneration();
-    for (int i = 0; i < gColorPickerBoundKeys.len; i++) {
+    for (int i = 0; i < len(gColorPickerBoundKeys); i++) {
         if (gColorPickerBoundKeys[i].context != id) {
             continue;
         }

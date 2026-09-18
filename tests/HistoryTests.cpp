@@ -4,8 +4,8 @@
 static void ExpectHistory(const Vec<int>& values, int a, int b = -1,
                           int c = -1) {
     int n = c >= 0 ? 3 : b >= 0 ? 2 : 1;
-    utassert(values.len == n);
-    if (values.len != n) return;
+    utassert(len(values) == n);
+    if (len(values) != n) return;
     utassert(values[0] == a);
     if (n > 1) utassert(values[1] == b);
     if (n > 2) utassert(values[2] == c);

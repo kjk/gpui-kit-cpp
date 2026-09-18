@@ -412,7 +412,7 @@ struct DockState {
     static void OnResizeEnd(DockState* self, Ctx* cx, const MouseUpEvent* ev);
 
     ~DockState() {
-        for (int i = 0; i < nodes.len; i++) {
+        for (int i = 0; i < len(nodes); i++) {
             VecReset(nodes[i].child);
             VecReset(nodes[i].size);
             VecReset(nodes[i].panel);

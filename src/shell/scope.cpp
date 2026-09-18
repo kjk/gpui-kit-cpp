@@ -63,11 +63,11 @@ CallScopeGuard::~CallScopeGuard() {
 
 void CallScopeGuard::Leave() {
     if (!active) return;
-    if (gScopeStack.len == 0) {
+    if (len(gScopeStack) == 0) {
         active = false;
         return;
     }
-    ScopeFrame& frame = gScopeStack[gScopeStack.len - 1];
+    ScopeFrame& frame = gScopeStack[len(gScopeStack) - 1];
     if (frame.generation != generation) {
         active = false;
         return;
@@ -83,8 +83,8 @@ CallScopeGuard ScopeEnter(Window* window, App* app, ScopePhase phase,
     Policy* heldPolicy = nullptr;
     if (policy) {
         heldPolicy = PolicyRetain(policy);
-    } else if (gScopeStack.len > 0) {
-        heldPolicy = PolicyRetain(gScopeStack[gScopeStack.len - 1].policy);
+    } else if (len(gScopeStack) > 0) {
+        heldPolicy = PolicyRetain(gScopeStack[len(gScopeStack) - 1].policy);
     } else {
         heldPolicy = PolicyDefault();
     }
@@ -98,43 +98,43 @@ CallScopeGuard ScopeEnter(Window* window, App* app, ScopePhase phase,
 }
 
 void ScopeAdopt(uint64_t generation) {
-    if (generation != 0 && gScopeStack.len > 0) {
-        gScopeStack[gScopeStack.len - 1].adopted = generation;
+    if (generation != 0 && len(gScopeStack) > 0) {
+        gScopeStack[len(gScopeStack) - 1].adopted = generation;
     }
 }
 
 uint64_t ScopeCurrentGeneration() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].generation
-                               : 0;
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].generation
+                                : 0;
 }
 
 ScopePhase ScopeCurrentPhase() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].phase
-                               : ScopePhase::Render;
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].phase
+                                : ScopePhase::Render;
 }
 
 bool ScopeHasCurrent() {
-    return gScopeStack.len > 0;
+    return len(gScopeStack) > 0;
 }
 
 Policy* ScopeCurrentPolicy() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].policy
-                               : nullptr;
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].policy
+                                : nullptr;
 }
 
 ShellRuntime* ScopeCurrentRuntime() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].runtime
-                               : nullptr;
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].runtime
+                                : nullptr;
 }
 
 EntityId ScopeCurrentView() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].view
-                               : EntityId{};
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].view
+                                : EntityId{};
 }
 
 void* ScopeCurrentApplication() {
-    return gScopeStack.len > 0 ? gScopeStack[gScopeStack.len - 1].application
-                               : nullptr;
+    return len(gScopeStack) > 0 ? gScopeStack[len(gScopeStack) - 1].application
+                                : nullptr;
 }
 
 ScopeHostContext::ScopeHostContext(Window* win, App* application, bool owns)
@@ -189,7 +189,7 @@ ScopeHostContext ScopeHostContext::Acquire(Window* window, App* app) {
 
 ScopeHostContext ScopeCurrentHost() {
     const ScopeFrame* frame =
-        gScopeStack.len > 0 ? &gScopeStack[gScopeStack.len - 1] : nullptr;
+        len(gScopeStack) > 0 ? &gScopeStack[len(gScopeStack) - 1] : nullptr;
     return ScopeHostContext::Acquire(frame ? frame->window : nullptr,
                                      frame ? frame->app : nullptr);
 }
@@ -204,7 +204,7 @@ Str ScopeStaleContextMessage() {
 ScopeHostContext ScopeHostForGeneration(uint64_t generation,
                                         ShellError* error) {
     const ScopeFrame* frame =
-        gScopeStack.len > 0 ? &gScopeStack[gScopeStack.len - 1] : nullptr;
+        len(gScopeStack) > 0 ? &gScopeStack[len(gScopeStack) - 1] : nullptr;
     bool valid = frame && (frame->generation == generation ||
                            frame->adopted == generation);
     if (!valid || gHostContextBorrowed) {

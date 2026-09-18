@@ -551,9 +551,9 @@ bool SearchableListClick(SearchableListState* s, int index) {
     Vec<SearchableListChange> changes;
     SearchableListChangesFor(s, s->items, s->nItems, index, &changes);
     if (s->hasDelegate) {
-        s->delegate.OnWillChange(s, changes.els, changes.len);
+        s->delegate.OnWillChange(s, changes.els, len(changes));
     } else {
-        SearchableListApply(s, s->items, s->nItems, changes.els, changes.len);
+        SearchableListApply(s, s->items, s->nItems, changes.els, len(changes));
     }
     VecReset(changes);
     return s->mode == SearchableListMode::Single && s->closeOnSelect;

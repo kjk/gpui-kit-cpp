@@ -81,15 +81,15 @@ struct ToastManager {
         return out;
     }
 
-    int Len() const { return entries.len; }
-    bool IsEmpty() const { return entries.len == 0; }
+    int Len() const { return len(entries); }
+    bool IsEmpty() const { return len(entries) == 0; }
 
     const ManagedToast<I, T>* At(int index) const {
-        return index >= 0 && index < entries.len ? &entries[index] : nullptr;
+        return index >= 0 && index < len(entries) ? &entries[index] : nullptr;
     }
 
     const T* Get(const I& id) const {
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             if (entries[i].id == id) {
                 return &entries[i].value;
             }
@@ -101,7 +101,7 @@ struct ToastManager {
     // display order. The returned views borrow this manager.
     int Visible(int limit, ToastVisible<I, T>* out, int cap) const {
         int active = 0;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             if (entries[i].status != ToastTransitionStatus::Ending) {
                 active++;
             }
@@ -109,7 +109,7 @@ struct ToastManager {
         int first = active > limit ? active - limit : 0;
         int activeIndex = 0;
         int count = 0;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             const ManagedToast<I, T>& entry = entries[i];
             bool ending = entry.status == ToastTransitionStatus::Ending;
             bool visible = ending || activeIndex >= first;
@@ -134,7 +134,7 @@ struct ToastManager {
         if (hadReplaced) {
             *hadReplaced = false;
         }
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             if (!(entries[i].id == id)) {
                 continue;
             }
@@ -157,7 +157,7 @@ struct ToastManager {
     }
 
     bool Dismiss(const I& id, int64_t nowMs) {
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             ManagedToast<I, T>& entry = entries[i];
             if (!(entry.id == id) ||
                 entry.status == ToastTransitionStatus::Ending) {
@@ -173,7 +173,7 @@ struct ToastManager {
 
     Vec<I> DismissAll(int64_t nowMs) {
         Vec<I> changed;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             ManagedToast<I, T>& entry = entries[i];
             if (entry.status == ToastTransitionStatus::Ending) {
                 continue;
@@ -188,7 +188,7 @@ struct ToastManager {
 
     ToastAdvance<I, T> Advance(int64_t nowMs, bool paused) {
         ToastAdvance<I, T> out;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             ManagedToast<I, T>& entry = entries[i];
             int64_t elapsed = nowMs - entry.lastAdvanceMs;
             int delta = elapsed > 0x7fffffffLL ? 0x7fffffff
@@ -223,7 +223,7 @@ struct ToastManager {
             }
         }
         int index = 0;
-        while (index < entries.len) {
+        while (index < len(entries)) {
             ManagedToast<I, T>& entry = entries[index];
             if (entry.status != ToastTransitionStatus::Ending ||
                 entry.transitionElapsedMs < exitDurationMs) {
@@ -243,12 +243,12 @@ struct ToastManager {
 
   private:
     void EraseAt(int index) {
-        for (int i = index; i < entries.len - 1; i++) {
+        for (int i = index; i < len(entries) - 1; i++) {
             entries[i] = entries[i + 1];
         }
         entries.len--;
         if (entries.els) {
-            entries.els[entries.len] = {};
+            entries.els[len(entries)] = {};
         }
     }
 };

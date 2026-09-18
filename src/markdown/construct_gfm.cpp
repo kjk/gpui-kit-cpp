@@ -119,9 +119,9 @@ State GfmFootnoteDefinitionStart(Tokenizer* t) {
     }
     Enter(t, Name::GfmFootnoteDefinition);
     if (t->current == '\t' || t->current == ' ') {
-        TokenizerAttempt(
-            t, StateNext(StateName::GfmFootnoteDefinitionLabelBefore),
-            StateNok());
+        TokenizerAttempt(t,
+                         StateNext(StateName::GfmFootnoteDefinitionLabelBefore),
+                         StateNok());
         int32_t max = t->parseState->options->constructs.codeIndented
                           ? kTabSize - 1
                           : kSizeMax;
@@ -159,7 +159,8 @@ State GfmFootnoteDefinitionLabelAtMarker(Tokenizer* t) {
 State GfmFootnoteDefinitionLabelInside(Tokenizer* t) {
     if (t->tokenizeState.size > kLinkReferenceSizeMax || t->current < 0 ||
         t->current == '\t' || t->current == '\n' || t->current == ' ' ||
-        t->current == '[' || (t->current == ']' && t->tokenizeState.size == 0)) {
+        t->current == '[' ||
+        (t->current == ']' && t->tokenizeState.size == 0)) {
         t->tokenizeState.size = 0;
         return StateNok();
     }
@@ -443,8 +444,8 @@ State GfmTableHeadDelimiterCellAfter(Tokenizer* t) {
     if (t->current < 0 || t->current == '\n') {
         // Exit if there was no `-` at all, or if the head and delimiter rows
         // are not the same size.
-        if (!t->tokenizeState.seen ||
-            t->tokenizeState.size != t->tokenizeState.sizeB) {
+        if (!t->tokenizeState.seen || t->tokenizeState.size != t->tokenizeState
+                                                                   .sizeB) {
             return StateRetry(StateName::GfmTableHeadDelimiterNok);
         }
         t->tokenizeState.seen = false;
@@ -530,10 +531,10 @@ struct CellRange {
     int32_t valueEnd = 0;
 };
 
-static void FlushCell(Tokenizer* t, const CellRange& range,
-                      bool inDelimiterRow, int32_t rowEnd) {
-    Name groupName = inDelimiterRow ? Name::GfmTableDelimiterCell
-                                    : Name::GfmTableCell;
+static void FlushCell(Tokenizer* t, const CellRange& range, bool inDelimiterRow,
+                      int32_t rowEnd) {
+    Name groupName =
+        inDelimiterRow ? Name::GfmTableDelimiterCell : Name::GfmTableCell;
     Name valueName = inDelimiterRow ? Name::GfmTableDelimiterCellValue
                                     : Name::GfmTableCellText;
 
@@ -712,8 +713,7 @@ bool GfmTableResolve(Tokenizer* t, Subresult*) {
 // ─── gfm_autolink_literal.rs ─────────────────────────────────────────────
 
 State GfmAutolinkLiteralProtocolStart(Tokenizer* t) {
-    bool alphaBefore =
-        t->previous >= 0 && IsAsciiAlpha((uint8_t)t->previous);
+    bool alphaBefore = t->previous >= 0 && IsAsciiAlpha((uint8_t)t->previous);
     if (t->parseState->options->constructs.gfmAutolinkLiteral &&
         (t->current == 'H' || t->current == 'h') && !alphaBefore) {
         Enter(t, Name::GfmAutolinkLiteralProtocol);
@@ -818,9 +818,9 @@ State GfmAutolinkLiteralWwwPrefixAfter(Tokenizer* t) {
 
 State GfmAutolinkLiteralDomainInside(Tokenizer* t) {
     if (t->current == '.' || t->current == '_') {
-        TokenizerCheck(t, StateNext(StateName::GfmAutolinkLiteralDomainAfter),
-                       StateNext(
-                           StateName::GfmAutolinkLiteralDomainAtPunctuation));
+        TokenizerCheck(
+            t, StateNext(StateName::GfmAutolinkLiteralDomainAfter),
+            StateNext(StateName::GfmAutolinkLiteralDomainAtPunctuation));
         return StateRetry(StateName::GfmAutolinkLiteralTrail);
     }
     // GH documents that only alphanumerics work, but they also support `-`,
@@ -876,10 +876,9 @@ State GfmAutolinkLiteralPathInside(Tokenizer* t) {
         return StateNext(StateName::GfmAutolinkLiteralPathInside);
     }
     int32_t c = t->current;
-    bool trailing = c == '!' || c == '"' || c == '&' || c == '\'' ||
-                    c == ')' || c == '*' || c == ',' || c == '.' ||
-                    c == ':' || c == ';' || c == '<' || c == '?' ||
-                    c == ']' || c == '_' || c == '~';
+    bool trailing = c == '!' || c == '"' || c == '&' || c == '\'' || c == ')' ||
+                    c == '*' || c == ',' || c == '.' || c == ':' || c == ';' ||
+                    c == '<' || c == '?' || c == ']' || c == '_' || c == '~';
     if (trailing) {
         StateName next = StateName::GfmAutolinkLiteralPathAfter;
         if (c == ')' && t->tokenizeState.sizeB < t->tokenizeState.size) {
@@ -915,9 +914,9 @@ State GfmAutolinkLiteralPathAfter(Tokenizer* t) {
 
 State GfmAutolinkLiteralTrail(Tokenizer* t) {
     int32_t c = t->current;
-    bool trailing = c == '!' || c == '"' || c == '\'' || c == ')' ||
-                    c == '*' || c == ',' || c == '.' || c == ':' ||
-                    c == ';' || c == '?' || c == '_' || c == '~';
+    bool trailing = c == '!' || c == '"' || c == '\'' || c == ')' || c == '*' ||
+                    c == ',' || c == '.' || c == ':' || c == ';' || c == '?' ||
+                    c == '_' || c == '~';
     if (trailing) {
         Consume(t);
         return StateNext(StateName::GfmAutolinkLiteralTrail);
@@ -972,8 +971,8 @@ static int32_t PeekBytesAtext(Str bytes, int32_t min, int32_t end) {
     int32_t index = end;
     while (index > min) {
         uint8_t byte = (uint8_t)bytes.s[index - 1];
-        bool atext = byte == '+' || byte == '-' || byte == '.' ||
-                     byte == '_' || IsAsciiAlphanumeric(byte);
+        bool atext = byte == '+' || byte == '-' || byte == '.' || byte == '_' ||
+                     IsAsciiAlphanumeric(byte);
         if (!atext) {
             break;
         }
@@ -1049,11 +1048,10 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
         } else {
             if (event.name == Name::Data && links == 0) {
                 Position position = PositionFromExitEvent(t->events, index);
-                Slice slice =
-                    SliceFromPosition(t->parseState->bytes, position);
+                Slice slice = SliceFromPosition(t->parseState->bytes, position);
                 Str bytes = slice.bytes;
                 int32_t byteIndex = 0;
-                ArenaVec<Event> replace {};
+                ArenaVec<Event> replace{};
                 Point point = t->events[index - 1].point;
                 int32_t startIndex = point.index;
                 int32_t min = 0;
@@ -1086,9 +1084,9 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
                                 enter.name = Name::Data;
                                 enter.point = point;
                                 replace.Append(a, enter);
-                                point = PointShiftTo(point,
-                                                     t->parseState->bytes,
-                                                     startIndex + rangeStart);
+                                point =
+                                    PointShiftTo(point, t->parseState->bytes,
+                                                 startIndex + rangeStart);
                                 Event exit;
                                 exit.kind = Kind::Exit;
                                 exit.name = Name::Data;
@@ -1127,9 +1125,9 @@ void GfmAutolinkLiteralResolve(Tokenizer* t) {
                     replace.Append(a, exit);
                 }
 
-                if (replace.len > 0) {
+                if (len(replace) > 0) {
                     EditMapAdd(t->map, index - 1, 2, replace.Flatten(a),
-                               replace.len);
+                               len(replace));
                 }
             }
             if (event.name == Name::Link) {

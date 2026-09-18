@@ -489,9 +489,12 @@ void FormatBytes(uint64_t bytes, StrBuilder& out);
 - Own a heap `Str` only if it must survive a frame: `StrDup` / `StrFree`.
 - `Vec<T>` for arrays of POD, not for `Str` graphs — hold a `char name[kMax]`
   or an arena `Str` in the element.
+- Read a `Vec`'s (or `ArenaVec`'s) length with `len(v)`, not `v.len`. The
+  field is what growth/reset write; call sites use the free function. `Str`
+  still uses `.len` — it is a slice, not a growable array.
 - `logf("...")` for debug prints.
 - Prefer `int32_t` indexes; `int` where an existing base API uses it
-  (`Vec::len`).
+  (`len(v)`).
 - **Strings are UTF-8 `Str` everywhere**, including our own API. Convert with
   `ToCWstrTemp(s)` only where an OS call needs UTF-16, at the call itself. Do
   not widen a signature to `wchar_t*` to save a conversion.

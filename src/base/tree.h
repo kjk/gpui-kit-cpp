@@ -133,7 +133,7 @@ struct TreeState {
     static void OnScroll(TreeState* self, Ctx* cx, const ScrollEvent* ev);
 
     ~TreeState() {
-        for (int i = 0; i < items.len; i++) {
+        for (int i = 0; i < len(items); i++) {
             StrFree(items[i].id);
         }
         VecReset(items);

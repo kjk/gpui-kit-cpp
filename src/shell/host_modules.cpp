@@ -471,24 +471,24 @@ bool HostModule::Validate(HostError* error) const {
     Vec<Str> extra;
     for (int i = 0; i < functions.len; i++) {
         bool found = false;
-        for (int j = 0; j < declared.len; j++)
+        for (int j = 0; j < len(declared); j++)
             if (StrEq(functions[i]->name, declared[j])) found = true;
         if (!found) VecAppend(missing, functions[i]->name);
     }
-    for (int i = 0; i < declared.len; i++) {
+    for (int i = 0; i < len(declared); i++) {
         if (!Has(declared[i])) VecAppend(extra, declared[i]);
     }
-    if (missing.len == 0 && extra.len == 0) return true;
+    if (len(missing) == 0 && len(extra) == 0) return true;
     StrBuilder message;
     message
         .Append(fmt("HostModule `%s` declares a different set of functions "
                     "than it registers",
                     name));
-    if (missing.len) {
+    if (len(missing)) {
         message.Append(StrL("; registered but not declared: "));
         AppendNames(&message, nullptr, &missing);
     }
-    if (extra.len) {
+    if (len(extra)) {
         message.Append(StrL("; declared but not registered: "));
         AppendNames(&message, nullptr, &extra);
     }

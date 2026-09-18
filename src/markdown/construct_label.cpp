@@ -13,7 +13,7 @@ namespace markdown {
 
 // `Vec<String>::contains`.
 static bool DefinitionsContain(const Vec<Str>& definitions, Str id) {
-    for (int32_t i = 0; i < definitions.len; i++) {
+    for (int32_t i = 0; i < len(definitions); i++) {
         if (base::StrEq(definitions[i], id)) {
             return true;
         }
@@ -55,8 +55,8 @@ State LabelEndAfter(Tokenizer* t) {
             return StateRetry(StateName::LabelEndOk);
         }
         // The footnote call is not defined: it is a link with a `^` in it.
-        t->tokenizeState.labelStarts[startIndex].kind =
-            LabelKind::GfmUndefinedFootnote;
+        t->tokenizeState.labelStarts[startIndex]
+            .kind = LabelKind::GfmUndefinedFootnote;
         char* caret = (char*)base::Alloc(a, id.len + 2);
         caret[0] = '^';
         if (id.len > 0) {
@@ -75,10 +75,9 @@ State LabelEndAfter(Tokenizer* t) {
         return StateRetry(StateName::LabelEndResourceStart);
     }
     if (t->current == '[') {
-        TokenizerAttempt(
-            t, StateNext(StateName::LabelEndOk),
-            StateNext(defined ? StateName::LabelEndReferenceNotFull
-                              : StateName::LabelEndNok));
+        TokenizerAttempt(t, StateNext(StateName::LabelEndOk),
+                         StateNext(defined ? StateName::LabelEndReferenceNotFull
+                                           : StateName::LabelEndNok));
         return StateRetry(StateName::LabelEndReferenceFull);
     }
     return StateRetry(defined ? StateName::LabelEndOk : StateName::LabelEndNok);
@@ -118,8 +117,8 @@ State LabelEndOk(Tokenizer* t) {
 }
 
 State LabelEndNok(Tokenizer* t) {
-    LabelStartMark start =
-        t->tokenizeState.labelStarts[--t->tokenizeState.labelStarts.len];
+    LabelStartMark start = t->tokenizeState
+                               .labelStarts[--t->tokenizeState.labelStarts.len];
     VecAppend(t->tokenizeState.labelStartsLoose, start);
     t->tokenizeState.end = 0;
     return StateNok();
@@ -152,9 +151,8 @@ State LabelEndResourceOpen(Tokenizer* t) {
     t->tokenizeState.token4 = Name::ResourceDestinationRaw;
     t->tokenizeState.token5 = Name::ResourceDestinationString;
     t->tokenizeState.sizeB = kResourceDestinationBalanceMax;
-    TokenizerAttempt(
-        t, StateNext(StateName::LabelEndResourceDestinationAfter),
-        StateNext(StateName::LabelEndResourceDestinationMissing));
+    TokenizerAttempt(t, StateNext(StateName::LabelEndResourceDestinationAfter),
+                     StateNext(StateName::LabelEndResourceDestinationMissing));
     return StateRetry(StateName::DestinationStart);
 }
 
@@ -269,7 +267,7 @@ State LabelEndReferenceCollapsedOpen(Tokenizer* t) {
 }
 
 static void InjectLabels(Tokenizer* t, const Vec<Label>& labels) {
-    for (int32_t index = 0; index < labels.len; index++) {
+    for (int32_t index = 0; index < len(labels); index++) {
         const Label& label = labels[index];
         Name groupName = Name::Link;
         if (label.kind == LabelKind::GfmFootnote) {
@@ -337,7 +335,7 @@ static void InjectLabels(Tokenizer* t, const Vec<Label>& labels) {
 }
 
 static void MarkAsData(Tokenizer* t, const Vec<LabelStartMark>& events) {
-    for (int32_t index = 0; index < events.len; index++) {
+    for (int32_t index = 0; index < len(events); index++) {
         int32_t dataEnterIndex = events[index].startA;
         int32_t dataExitIndex = events[index].startB;
         Event add[2];
@@ -347,15 +345,15 @@ static void MarkAsData(Tokenizer* t, const Vec<LabelStartMark>& events) {
         add[1].kind = Kind::Exit;
         add[1].name = Name::Data;
         add[1].point = t->events[dataExitIndex].point;
-        EditMapAdd(t->map, dataEnterIndex,
-                   dataExitIndex - dataEnterIndex + 1, add, 2);
+        EditMapAdd(t->map, dataEnterIndex, dataExitIndex - dataEnterIndex + 1,
+                   add, 2);
     }
 }
 
 bool LabelEndResolve(Tokenizer* t, Subresult*) {
     // Inject the labels.
     Vec<Label> labels;
-    for (int32_t i = 0; i < t->tokenizeState.labels.len; i++) {
+    for (int32_t i = 0; i < len(t->tokenizeState.labels); i++) {
         VecAppend(labels, t->tokenizeState.labels[i]);
     }
     t->tokenizeState.labels.len = 0;

@@ -140,7 +140,7 @@ struct CallbackArena {
     uint64_t Begin(JSContext* ctx) {
         Abort(ctx);
         building = true;
-        buildingStart = entries.len;
+        buildingStart = len(entries);
         buildingGeneration = nextGeneration++;
         return buildingGeneration;
     }
@@ -180,7 +180,7 @@ struct CallbackArena {
 
     void Commit() {
         if (!building) return;
-        for (int i = buildingStart; i < entries.len; i++) {
+        for (int i = buildingStart; i < len(entries); i++) {
             entries[i]->committed = true;
         }
         building = false;
@@ -188,8 +188,8 @@ struct CallbackArena {
 
     void Abort(JSContext* ctx) {
         if (!building) return;
-        while (entries.len > buildingStart) {
-            CallbackEntry* entry = entries[entries.len - 1];
+        while (len(entries) > buildingStart) {
+            CallbackEntry* entry = entries[len(entries) - 1];
             if (ctx) JS_FreeValue(ctx, entry->function);
             PolicyRelease(entry->policy);
             delete entry;
@@ -199,7 +199,7 @@ struct CallbackArena {
     }
 
     CallbackEntry* Get(shell::CallbackId id) const {
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             if (entry->committed && entry->id == id) return entry;
         }
@@ -208,7 +208,7 @@ struct CallbackArena {
 
     void Retire(JSContext* ctx, uint64_t generation) {
         int out = 0;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             if (entry->committed && entry->generation == generation) {
                 JS_FreeValue(ctx, entry->function);
@@ -223,13 +223,13 @@ struct CallbackArena {
     }
 
     void RetireId(JSContext* ctx, shell::CallbackId id) {
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             if (entry->id != id) continue;
             JS_FreeValue(ctx, entry->function);
             PolicyRelease(entry->policy);
             delete entry;
-            for (int j = i + 1; j < entries.len; j++) {
+            for (int j = i + 1; j < len(entries); j++) {
                 entries[j - 1] = entries[j];
             }
             entries.len--;
@@ -241,7 +241,7 @@ struct CallbackArena {
     void RetireApplication(JSContext* ctx, AppModule* application) {
         if (!application) return;
         int out = 0;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             if (entry->application == application) {
                 JS_FreeValue(ctx, entry->function);
@@ -256,7 +256,7 @@ struct CallbackArena {
     }
 
     void Clear(JSContext* ctx) {
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             CallbackEntry* entry = entries[i];
             JS_FreeValue(ctx, entry->function);
             PolicyRelease(entry->policy);
@@ -269,7 +269,7 @@ struct CallbackArena {
 
     int Live() const {
         int count = 0;
-        for (int i = 0; i < entries.len; i++) {
+        for (int i = 0; i < len(entries); i++) {
             if (entries[i]->committed) count++;
         }
         return count;
@@ -449,7 +449,7 @@ struct ProcessJob {
     Str error;
 
     void Free() {
-        for (int i = 0; i < args.len; i++) StrFree(args[i]);
+        for (int i = 0; i < len(args); i++) StrFree(args[i]);
         VecReset(args);
         StrFree(command);
         output.Free();
@@ -2266,7 +2266,7 @@ static Str InlineHandler(const shell::SpecArena* recorded,
             const shell::SpecOp& op = node->ops[index];
             if (op.kind != shell::SpecOpKind::Callback) continue;
             bool filled = false;
-            for (int i = 0; i < slots.len && !filled; i++) {
+            for (int i = 0; i < len(slots) && !filled; i++) {
                 filled = slots[i].node == id &&
                          slots[i].site.kind == shell::SlotSiteKind::Handler &&
                          slots[i].site.op == (uint16_t)index;
@@ -2281,7 +2281,7 @@ static Str InlineHandler(const shell::SpecArena* recorded,
 static int UnusedArgument(int arity, const Vec<shell::Slot>& slots) {
     for (int argument = 0; argument < arity; argument++) {
         bool used = false;
-        for (int i = 0; i < slots.len && !used; i++) {
+        for (int i = 0; i < len(slots) && !used; i++) {
             used = slots[i].argument == (uint16_t)argument;
         }
         if (!used) return argument;
@@ -2437,14 +2437,14 @@ static JSValue NativeTemplateInstantiate(JSContext* ctx, JSValueConst, int argc,
     // half-grown.
     Arena* arena = ArenaNew();
     shell::SlotValue* values = nullptr;
-    if (tmpl->slots.len > 0) {
+    if (len(tmpl->slots) > 0) {
         values = (shell::SlotValue*)Alloc(
-            arena, (int)(sizeof(shell::SlotValue) * (size_t)tmpl->slots.len));
-        for (int i = 0; i < tmpl->slots.len; i++) {
+            arena, (int)(sizeof(shell::SlotValue) * (size_t)len(tmpl->slots)));
+        for (int i = 0; i < len(tmpl->slots); i++) {
             values[i] = shell::SlotValue{};
         }
     }
-    for (int i = 0; i < tmpl->slots.len; i++) {
+    for (int i = 0; i < len(tmpl->slots); i++) {
         JSValue argument =
             JS_GetPropertyUint32(ctx, argv[1], tmpl->slots[i].argument);
         bool ok =
@@ -2459,7 +2459,7 @@ static JSValue NativeTemplateInstantiate(JSContext* ctx, JSValueConst, int argc,
 
     shell::SpecId root = impl->scratch->Graft(*tmpl);
     shell::SpecId base = root - tmpl->root;
-    for (int i = 0; i < tmpl->slots.len; i++) {
+    for (int i = 0; i < len(tmpl->slots); i++) {
         shell::SpecError failure = {};
         if (!impl->scratch
                  ->WriteSlot(base, tmpl->slots[i], values[i], &failure)) {
@@ -2997,7 +2997,7 @@ static JSValue NativeViewSetProps(JSContext* ctx, JSValueConst, int argc,
         }
         Vec<shell::CallbackId> retired;
         impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < retired.len; i++) {
+        for (int i = 0; i < len(retired); i++) {
             impl->callbacks.RetireId(ctx, retired[i]);
         }
         VecReset(retired);
@@ -4068,7 +4068,7 @@ static JSValue NativeRetainedRelease(JSContext* ctx, JSValueConst, int argc,
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
     Vec<shell::CallbackId> callbacks;
     bool released = impl && impl->retained.Release(handle, &callbacks);
-    for (int i = 0; impl && i < callbacks.len; i++) {
+    for (int i = 0; impl && i < len(callbacks); i++) {
         impl->callbacks.RetireId(ctx, callbacks[i]);
     }
     VecReset(callbacks);
@@ -6495,7 +6495,7 @@ static JSValue NativeRandom(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowInternalError(
             ctx, "the platform secure random generator failed");
     }
-    return JS_NewUint8ArrayCopy(ctx, bytes.els, (size_t)bytes.len);
+    return JS_NewUint8ArrayCopy(ctx, bytes.els, (size_t)len(bytes));
 }
 
 static JSValue NativeZlib(JSContext* ctx, JSValueConst, int argc,
@@ -8486,7 +8486,7 @@ static JSValue NativeCalendarRelease(JSContext* ctx, JSValueConst, int argc,
     }
     Vec<shell::CallbackId> retired;
     bool released = impl->retained.Release(handle, &retired);
-    for (int i = 0; i < retired.len; i++)
+    for (int i = 0; i < len(retired); i++)
         impl->callbacks.RetireId(ctx, retired[i]);
     VecReset(retired);
     return JS_NewBool(ctx, released);
@@ -9117,7 +9117,7 @@ static JSValue NativeDockAreaVerb(JSContext* ctx, JSValueConst, int argc,
         }
         Vec<shell::CallbackId> retired;
         bool released = impl->retained.Release(handle, &retired);
-        for (int i = 0; i < retired.len; i++) {
+        for (int i = 0; i < len(retired); i++) {
             impl->callbacks.RetireId(ctx, retired[i]);
         }
         VecReset(retired);
@@ -9633,7 +9633,7 @@ ShellRuntime::~ShellRuntime() {
             }
             Vec<shell::CallbackId> retired;
             impl->retained.Clear(&retired);
-            for (int i = 0; i < retired.len; i++) {
+            for (int i = 0; i < len(retired); i++) {
                 impl->callbacks.RetireId(impl->context, retired[i]);
             }
             VecReset(retired);
@@ -9926,7 +9926,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
     if (JS_IsException(object)) {
         Vec<shell::CallbackId> retired;
         impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < retired.len; i++) {
+        for (int i = 0; i < len(retired); i++) {
             impl->callbacks.RetireId(impl->context, retired[i]);
         }
         VecReset(retired);
@@ -9957,7 +9957,7 @@ static ViewObject* InstantiateObject(ShellRuntime* runtime, ViewType* type,
         JS_FreeValue(impl->context, object);
         Vec<shell::CallbackId> retired;
         impl->retained.Rollback(retainedCheckpoint, &retired);
-        for (int i = 0; i < retired.len; i++) {
+        for (int i = 0; i < len(retired); i++) {
             impl->callbacks.RetireId(impl->context, retired[i]);
         }
         VecReset(retired);
@@ -10211,7 +10211,7 @@ void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
     }
     Vec<shell::CallbackId> callbacks;
     impl->retained.ReleaseOwner(view, &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         impl->callbacks.RetireId(impl->context, callbacks[i]);
     }
     VecReset(callbacks);
@@ -10238,7 +10238,7 @@ void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
     }
     Vec<shell::CallbackId> callbacks;
     impl->retained.ReleaseApplication(application, &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         impl->callbacks.RetireId(impl->context, callbacks[i]);
     }
     VecReset(callbacks);
@@ -10704,7 +10704,7 @@ void ShellRuntime::DispatchCalendarEvent(shell::EntityHandle handle,
     Vec<shell::CallbackId> callbacks;
     RetainedCallbackIds(entry, shell::RetainedEvent::CalendarChange,
                         &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         // The same conversion `value()` answers with, so a handler and a read
         // cannot disagree about the shape of one date.
         Dispatch(this, callbacks[i], DateToParts(impl->context, event.date),
@@ -10743,7 +10743,7 @@ void ShellRuntime::DispatchInputEvent(shell::EntityHandle handle,
     }
     Vec<shell::CallbackId> callbacks;
     RetainedCallbackIds(EventRetained(impl, handle), wanted, &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         JSValue payload = JS_NewObject(impl->context);
         if (event.kind == InputEventKind::PressEnter) {
             JS_SetPropertyStr(impl->context, payload, "secondary",
@@ -10764,7 +10764,7 @@ void ShellRuntime::DispatchSliderEvent(shell::EntityHandle handle,
                                       : shell::RetainedEvent::SliderChange;
     Vec<shell::CallbackId> callbacks;
     RetainedCallbackIds(EventRetained(impl, handle), wanted, &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         JSValue payload = event.value.range
                               ? SliderValueJs(impl->context, event.value)
                               : JS_NewFloat64(impl->context, event.value.hi);
@@ -10786,7 +10786,7 @@ void ShellRuntime::DispatchOtpEvent(shell::EntityHandle handle,
     }
     Vec<shell::CallbackId> callbacks;
     RetainedCallbackIds(EventRetained(impl, handle), wanted, &callbacks);
-    for (int i = 0; i < callbacks.len; i++) {
+    for (int i = 0; i < len(callbacks); i++) {
         Dispatch(this, callbacks[i], JS_NewObject(impl->context), window, app);
     }
     VecReset(callbacks);
@@ -10873,7 +10873,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
             succeeded = !JS_IsException(result) &&
                         JsString(impl->context, result, keys, &text);
             JS_FreeValue(impl->context, result);
-            for (int i = 0; succeeded && i < seen.len; i++) {
+            for (int i = 0; succeeded && i < len(seen); i++) {
                 if (StrEq(seen[i], text)) {
                     JS_ThrowTypeError(
                         impl->context,
@@ -10896,7 +10896,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
         ArenaDelete(arena);
     } else {
         ShellError error = {};
-        for (int i = 0; i < roots.len; i++) {
+        for (int i = 0; i < len(roots); i++) {
             out[i] = ShellMaterializeSpec(cx, this, batch, roots[i], &error);
             if (error.IsSet()) {
                 log(error.message);
@@ -10909,7 +10909,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
             // element is, so `local_position` means the same thing in both
             // handlers.
             if ((onItemClick || onItemSecondaryClick) && out[i] &&
-                i < itemKeys.len) {
+                i < len(itemKeys)) {
                 Str rowId = StrDup(
                     cx->a, fmt("gpui-shell-virtual-item:%s", itemKeys[i]));
                 El* row =

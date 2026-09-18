@@ -23,7 +23,7 @@ static const int kN = 4;
 static void Apply(SearchableListState* s, int index) {
     Vec<SearchableListChange> changes;
     SearchableListChangesFor(s, kItems, kN, index, &changes);
-    SearchableListApply(s, kItems, kN, changes.els, changes.len);
+    SearchableListApply(s, kItems, kN, changes.els, len(changes));
     VecReset(changes);
 }
 
@@ -180,7 +180,7 @@ static void StateAccessorsUseGroupedIndexPaths() {
     utassert(!s.AddSelectedIndex(IndexPathNew(0).Section(1)));
     Vec<Str> values;
     s.SelectedValues(&values);
-    utassert(values.len == 1 && base::StrEq(values[0], StrL("apple")));
+    utassert(len(values) == 1 && base::StrEq(values[0], StrL("apple")));
     utassert(s.RemoveSelectedIndex(IndexPathNew(0).Section(1)));
     utassert(!s.RemoveSelectedIndex(IndexPathNew(0).Section(1)));
 
@@ -188,7 +188,7 @@ static void StateAccessorsUseGroupedIndexPaths() {
     s.SetSelectedIndices(selection, 2);
     utassert(s.Selection().len == 2);
     s.SelectedValues(&values);
-    utassert(values.len == 2);
+    utassert(len(values) == 2);
     utassert(base::StrEq(values[0], StrL("banana")));
     utassert(base::StrEq(values[1], StrL("apple")));
     utassert(!s.IsOpen());

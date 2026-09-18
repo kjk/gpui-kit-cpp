@@ -398,14 +398,14 @@ static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
         }
         return hit;
     }
-    const uint8_t* bytes = owned.len > 0 ? owned.els : borrowed;
-    int len = owned.len > 0 ? owned.len : borrowedLen;
+    const uint8_t* bytes = len(owned) > 0 ? owned.els : borrowed;
+    int n = len(owned) > 0 ? len(owned) : borrowedLen;
 
     RenderImage* img = nullptr;
     uint8_t* ops = nullptr;
     int opsLen = 0;
-    if (got == SrcBytes::Yes && bytes && len > 0) {
-        if (!pa && !LooksLikeSvg(bytes, len)) {
+    if (got == SrcBytes::Yes && bytes && n > 0) {
+        if (!pa && !LooksLikeSvg(bytes, n)) {
             // ImageVectorForSrc probes a one-dimension image before layout so
             // an SVG can supply its aspect ratio. A bitmap is not a failed
             // vector decode: leave it uncached so ImageForSrc can hand the
@@ -415,7 +415,7 @@ static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
             VecReset(owned);
             return nullptr;
         }
-        DecodeImageBytes(pa, bytes, len, &img, &ops, &opsLen);
+        DecodeImageBytes(pa, bytes, n, &img, &ops, &opsLen);
     }
 
     ImageCacheSlot* slot = hit;

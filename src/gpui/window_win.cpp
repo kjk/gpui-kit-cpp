@@ -1101,7 +1101,7 @@ int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
         (int)TrackPopupMenuEx(menu, flags, pt.x, pt.y, hwnd, nullptr);
     DestroyMenu(menu);
     // The menu is gone, so nothing refers to the bitmaps any more.
-    for (int i = 0; i < gMenuBitmaps.len; i++) {
+    for (int i = 0; i < len(gMenuBitmaps); i++) {
         DeleteObject(gMenuBitmaps[i]);
     }
     VecReset(gMenuBitmaps);

@@ -317,7 +317,7 @@ El* CarouselControl::IntoEl() {
                          ->Disabled(disabled)
                          ->AccessibilityLabel(label)
                          ->Tooltip(label);
-    if (children.len == 0)
+    if (len(children) == 0)
         button->Icon(icon);
     else
         for (El* child : children) button->Child(child);

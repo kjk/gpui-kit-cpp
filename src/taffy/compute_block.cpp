@@ -80,8 +80,8 @@ struct Segment {
     // Whether the segment can fit the box in the horizontal axis.
     bool FitsFloatWidth(SizeF floatedBox, FloatDirection direction,
                         float bfcWidth, const float cbInsets[2]) const {
-        return FloatFitsHorizontally(floatedBox.w, direction, bfcWidth,
-                                     insets, cbInsets);
+        return FloatFitsHorizontally(floatedBox.w, direction, bfcWidth, insets,
+                                     cbInsets);
     }
     bool Contains(float y) const { return y >= yStart && y < yEnd; }
 };
@@ -143,7 +143,7 @@ struct FloatContext {
     Optf floatCeiling = None();
 
     float LastSegmentEnd() const {
-        return segments.len > 0 ? segments[segments.len - 1].yEnd : 0.0f;
+        return len(segments) > 0 ? segments[len(segments) - 1].yEnd : 0.0f;
     }
 
     bool HasActiveFloats(float minY) const {
@@ -187,12 +187,10 @@ struct FloatContext {
         int slot = (int)direction;
         float bottom = placed.y + placed.height;
         clearBottoms[slot] =
-            Some(IsSome(clearBottoms[slot])
-                     ? F32Max(clearBottoms[slot], bottom)
-                     : bottom);
-        floatCeiling = Some(IsSome(floatCeiling)
-                                ? F32Max(floatCeiling, placed.y)
-                                : placed.y);
+            Some(IsSome(clearBottoms[slot]) ? F32Max(clearBottoms[slot], bottom)
+                                            : bottom);
+        floatCeiling = Some(
+            IsSome(floatCeiling) ? F32Max(floatCeiling, placed.y) : placed.y);
         float xInset = placed.xInset;
         float y = placed.y;
         if (direction == FloatDirection::Left) {
@@ -213,9 +211,8 @@ struct FloatContext {
             case Clear::Right:
                 return right > 0 ? right : -1;
             case Clear::Both: {
-                return left > 0 || right > 0
-                           ? (left > right ? left : right)
-                           : -1;
+                return left > 0 || right > 0 ? (left > right ? left : right)
+                                             : -1;
             }
             default:
                 return -1;
@@ -312,9 +309,8 @@ PlacedFloatedBox FloatContext::PlaceFloatedBoxInner(
         }
 
         const Segment& startSegment = segments[startIdx];
-        if (!startSegment
-                 .FitsFloatWidth(floatedBox, direction, availableWidth,
-                                 containingBlockInsets)) {
+        if (!startSegment.FitsFloatWidth(floatedBox, direction, availableWidth,
+                                         containingBlockInsets)) {
             startIdx++;
             if (endIdx < startIdx) {
                 endIdx = startIdx;
@@ -556,8 +552,7 @@ BfcSlot FloatContext::FindBfcSlot(float minY,
     slot.x = fitInsets[0];
     slot.y = F32Max(segment.yStart, minY);
     slot.borderWidth = availableWidth - fitInsets[0] - fitInsets[1];
-    slot.stretchWidth =
-        availableWidth - stretchInsets[0] - stretchInsets[1];
+    slot.stretchWidth = availableWidth - stretchInsets[0] - stretchInsets[1];
     return slot;
 }
 
@@ -668,8 +663,8 @@ struct BlockContext {
         slot.x -= insets[0];
         return slot;
     }
-    BfcSlot FindBfcSlot(float minY, const float margins[2],
-                        Direction direction, Clear clear, int after) const {
+    BfcSlot FindBfcSlot(float minY, const float margins[2], Direction direction,
+                        Clear clear, int after) const {
         BfcSlot slot = bfc->floatContext.FindBfcSlot(
             minY + yOffset, contentBoxInsets, margins, direction, clear, after);
         slot.y -= yOffset;
@@ -709,10 +704,10 @@ struct BlockContext {
         adjoiningFloats[1] = false;
     }
     void GetTopAdjoiningFloats(bool out[2]) const {
-        out[0] = hasTopAdjoiningFloats ? topAdjoiningFloats[0]
-                                      : adjoiningFloats[0];
-        out[1] = hasTopAdjoiningFloats ? topAdjoiningFloats[1]
-                                      : adjoiningFloats[1];
+        out[0] =
+            hasTopAdjoiningFloats ? topAdjoiningFloats[0] : adjoiningFloats[0];
+        out[1] =
+            hasTopAdjoiningFloats ? topAdjoiningFloats[1] : adjoiningFloats[1];
     }
     void AddChildFloatedContentHeightContribution(float childContribution) {
         floatContentContribution =
@@ -842,7 +837,7 @@ float DetermineContentBasedContainerWidth(TaffyTree* tree,
     FloatIntrinsicWidthCalculator floatContribution;
     floatContribution.availableWidth = availableWidth;
 
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         const BlockItem& item = items[i];
         if (item.position == Position::Absolute) {
             continue;
@@ -888,8 +883,8 @@ struct InFlowResult {
 InFlowResult PerformFinalLayoutOnInFlowChildren(
     TaffyTree* tree, RunMode runMode, Vec<BlockItem>* items,
     float containerOuterWidth, Optf containerPercentageResolutionHeight,
-    RectF contentBoxInset, RectF resolvedContentBoxInset,
-    RectF resolvedBorder, TextAlign textAlign, Direction direction,
+    RectF contentBoxInset, RectF resolvedContentBoxInset, RectF resolvedBorder,
+    TextAlign textAlign, Direction direction,
     LineBool ownMarginsCollapseWithChildren, BlockContext* blockCtx) {
     CalcResolver calc = tree->calc;
     float containerInnerWidth = containerOuterWidth - resolvedContentBoxInset
@@ -953,8 +948,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         if (floatDirection.IsSome()) {
             hasActiveFloats = true;
 
-            float availableWidth =
-                containerInnerWidth - itemNonAutoXMarginSum;
+            float availableWidth = containerInnerWidth - itemNonAutoXMarginSum;
             LayoutOutput itemLayout = tree->PerformChildLayout(
                 item.nodeId, SizeFOptNone(), parentSize,
                 {AvailableSpace::Definite(availableWidth),
@@ -962,9 +956,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                 SizingMode::InherentSize, LineBool::False());
             SizeF marginBox = itemLayout.size + itemNonAutoMargin.SumAxes();
 
-            bool adjoinsUnresolvedStrut =
-                isCollapsingWithFirstMarginSet &&
-                ownMarginsCollapseWithChildren.start;
+            bool adjoinsUnresolvedStrut = isCollapsingWithFirstMarginSet &&
+                                          ownMarginsCollapseWithChildren.start;
             float yOffsetForFloat =
                 adjoinsUnresolvedStrut
                     ? committedYOffset
@@ -989,16 +982,15 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             layout.margin = itemNonAutoMargin;
             tree->SetUnroundedLayout(item.nodeId, layout);
 
-            res.inflowContentSize =
-                Max(res.inflowContentSize, ComputeContentSizeContribution(
-                    {IsRtl(direction)
-                         ? containerOuterWidth -
-                               (location.x + itemLayout.size.w) -
-                               resolvedBorder.right
-                         : location.x - resolvedBorder.left,
+            res.inflowContentSize = Max(
+                res.inflowContentSize,
+                ComputeContentSizeContribution(
+                    {IsRtl(direction) ? containerOuterWidth -
+                                            (location.x + itemLayout.size.w) -
+                                            resolvedBorder.right
+                                      : location.x - resolvedBorder.left,
                      location.y - resolvedBorder.top},
-                    itemLayout.size, itemLayout.contentSize,
-                    item.overflow));
+                    itemLayout.size, itemLayout.contentSize, item.overflow));
             continue;
         }
 
@@ -1023,8 +1015,8 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
             float minY = committedYOffset + yMarginOffset;
             if (hasActiveFloats || blockCtx->HasActiveFloats(minY)) {
-                float xMargins[2] = {itemNonAutoMargin.left,
-                                     itemNonAutoMargin.right};
+                float xMargins[2] = {itemNonAutoMargin.left, itemNonAutoMargin
+                                                                 .right};
                 float minAutoWidth = -itemNonAutoXMarginSum;
                 int after = -1;
                 BfcSlot slot;
@@ -1150,17 +1142,17 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         bool hasClearance = false;
         if (item.isInSameBfc && IsSome(clearThreshold)) {
             float hypotheticalY =
-                committedYOffset +
-                activeCollapsibleMarginSet.CollapseWithSet(topMarginSet)
-                    .Resolve();
+                committedYOffset + activeCollapsibleMarginSet
+                                       .CollapseWithSet(topMarginSet)
+                                       .Resolve();
             bool forcedClearance = blockCtx->HasAdjoiningFloat(item.clear);
             if (forcedClearance || hypotheticalY < clearThreshold) {
                 hasClearance = true;
-                float escapedMargin =
-                    isCollapsingWithFirstMarginSet &&
-                            ownMarginsCollapseWithChildren.start
-                        ? activeCollapsibleMarginSet.Resolve()
-                        : 0.0f;
+                float escapedMargin = isCollapsingWithFirstMarginSet &&
+                                              ownMarginsCollapseWithChildren
+                                                  .start
+                                          ? activeCollapsibleMarginSet.Resolve()
+                                          : 0.0f;
                 yMarginOffset =
                     clearThreshold - committedYOffset - escapedMargin;
             }
@@ -1183,8 +1175,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             item.staticPosition = {direction == Direction::Ltr
                                        ? floatAvoidingPosition.x
                                        : floatAvoidingPosition.x +
-                                             floatAvoidingWidth -
-                                             finalSize.w,
+                                             floatAvoidingWidth - finalSize.w,
                                    floatAvoidingPosition.y};
         }
 
@@ -1194,31 +1185,27 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
                             ? resolvedContentBoxInset.left + insetOffset.x +
                                   resolvedMargin.left
                             : containerOuterWidth -
-                                  resolvedContentBoxInset.right -
-                                  finalSize.w - resolvedMargin.right +
-                                  insetOffset.x,
+                                  resolvedContentBoxInset.right - finalSize.w -
+                                  resolvedMargin.right + insetOffset.x,
                         committedYOffset + yMarginOffset + insetOffset.y};
         } else {
             float extraLeft = itemAvoidsFloats
-                                  ? resolvedMargin.left -
-                                        itemNonAutoMargin.left
+                                  ? resolvedMargin.left - itemNonAutoMargin.left
                                   : resolvedMargin.left;
-            float extraRight = itemAvoidsFloats
-                                   ? resolvedMargin.right -
-                                         itemNonAutoMargin.right
-                                   : resolvedMargin.right;
-            location = {direction == Direction::Ltr
-                            ? floatAvoidingPosition.x + extraLeft +
-                                  insetOffset.x
-                            : floatAvoidingPosition.x + floatAvoidingWidth -
-                                  finalSize.w - extraRight +
-                                  insetOffset.x,
-                        floatAvoidingPosition.y + insetOffset.y};
+            float extraRight = itemAvoidsFloats ? resolvedMargin.right -
+                                                      itemNonAutoMargin.right
+                                                : resolvedMargin.right;
+            location = {
+                direction == Direction::Ltr
+                    ? floatAvoidingPosition.x + extraLeft + insetOffset.x
+                    : floatAvoidingPosition.x + floatAvoidingWidth -
+                          finalSize.w - extraRight + insetOffset.x,
+                floatAvoidingPosition.y + insetOffset.y};
         }
 
         // Legacy text-align on the block container shifts the item.
         float itemOuterWidth = itemLayout.size.w + resolvedMargin
-                                                           .HorizontalAxisSum();
+                                                       .HorizontalAxisSum();
         if (itemOuterWidth < containerInnerWidth) {
             float free = containerInnerWidth - itemOuterWidth;
             switch (textAlign) {
@@ -1240,8 +1227,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             }
         }
 
-        if (!IsSome(res.firstBaseline) &&
-            IsSome(itemLayout.firstBaselines.y)) {
+        if (!IsSome(res.firstBaseline) && IsSome(itemLayout.firstBaselines.y)) {
             res.firstBaseline = Some(location.y + itemLayout.firstBaselines.y);
         }
 
@@ -1258,13 +1244,14 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
         item.finalLayout.margin = resolvedMargin;
 
         res.inflowContentSize =
-            Max(res.inflowContentSize, ComputeContentSizeContribution(
-                {IsRtl(direction)
-                     ? containerOuterWidth - (location.x + finalSize.w) -
-                           resolvedBorder.right
-                     : location.x - resolvedBorder.left,
-                 location.y - resolvedBorder.top},
-                finalSize, itemLayout.contentSize, item.overflow));
+            Max(res.inflowContentSize,
+                ComputeContentSizeContribution(
+                    {IsRtl(direction)
+                         ? containerOuterWidth - (location.x + finalSize.w) -
+                               resolvedBorder.right
+                         : location.x - resolvedBorder.left,
+                     location.y - resolvedBorder.top},
+                    finalSize, itemLayout.contentSize, item.overflow));
 
         if (isCollapsingWithFirstMarginSet && itemPushedBelowFloat) {
             isCollapsingWithFirstMarginSet = false;
@@ -1290,8 +1277,7 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
             yOffsetForAbsolute =
                 committedYOffset + itemLayout.size.h + yMarginOffset;
         } else {
-            committedYOffset =
-                location.y - insetOffset.y + itemLayout.size.h;
+            committedYOffset = location.y - insetOffset.y + itemLayout.size.h;
             if (hasClearance && itemLayout.marginsCanCollapseThrough) {
                 committedYOffset -= topMarginSet.Resolve();
                 activeCollapsibleMarginSet =
@@ -1310,12 +1296,11 @@ InFlowResult PerformFinalLayoutOnInFlowChildren(
     res.lastChildBottomMarginSet = activeMarginSetHasClearance
                                        ? CollapsibleMarginSet{}
                                        : activeCollapsibleMarginSet;
-    float bottomYMarginOffset =
-        activeMarginSetHasClearance
-            ? activeCollapsibleMarginSet.Resolve()
-        : ownMarginsCollapseWithChildren.end
-            ? 0.0f
-            : res.lastChildBottomMarginSet.Resolve();
+    float bottomYMarginOffset = activeMarginSetHasClearance
+                                    ? activeCollapsibleMarginSet.Resolve()
+                                : ownMarginsCollapseWithChildren.end
+                                    ? 0.0f
+                                    : res.lastChildBottomMarginSet.Resolve();
     committedYOffset += resolvedContentBoxInset.bottom + bottomYMarginOffset;
     res.intrinsicOuterHeight = F32Max(0.0f, committedYOffset);
     return res;
@@ -1332,7 +1317,7 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
     float areaHeight = areaSize.h;
     SizeF absoluteContentSize = SizeF::Zero();
 
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         const BlockItem& item = items[i];
         if (item.position != Position::Absolute) {
             continue;
@@ -1466,11 +1451,10 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
         } else if (IsSome(right)) {
             xOffset = areaSize.w - finalSize.w - right - resolvedMargin.right;
         } else {
-            xOffset = IsRtl(direction)
-                          ? item.staticPosition.x - finalSize.w -
-                                resolvedMargin.right - areaOffset.x
-                          : item.staticPosition.x + resolvedMargin.left -
-                                areaOffset.x;
+            xOffset = IsRtl(direction) ? item.staticPosition.x - finalSize.w -
+                                             resolvedMargin.right - areaOffset.x
+                                       : item.staticPosition.x +
+                                             resolvedMargin.left - areaOffset.x;
         }
 
         float yLocation;
@@ -1503,11 +1487,10 @@ SizeF PerformAbsoluteLayoutOnAbsoluteChildren(TaffyTree* tree,
 
         PointF relativeLocation = {location.x - areaOffset.x,
                                    location.y - areaOffset.y};
-        absoluteContentSize =
-            Max(absoluteContentSize,
-                ComputeContentSizeContribution(relativeLocation, finalSize,
-                                               layoutOutput.contentSize,
-                                               item.overflow));
+        absoluteContentSize = Max(absoluteContentSize,
+                                  ComputeContentSizeContribution(
+                                      relativeLocation, finalSize,
+                                      layoutOutput.contentSize, item.overflow));
     }
 
     return absoluteContentSize;
@@ -1672,7 +1655,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             intrinsicOuterHeight - resolvedContentBoxInset.VerticalAxisSum();
         float freeSpace = containerInnerHeight - inflowContentHeight;
         bool anyInFlow = false;
-        for (int i = 0; i < items.len; i++) {
+        for (int i = 0; i < len(items); i++) {
             if (items[i].hasFinalLayout) {
                 anyInFlow = true;
                 break;
@@ -1686,22 +1669,22 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
             if (IsSome(inFlow.firstBaseline)) {
                 inFlow.firstBaseline += groupOffset;
             }
-            for (int i = 0; i < items.len; i++) {
+            for (int i = 0; i < len(items); i++) {
                 if (items[i].hasFinalLayout) {
                     items[i].finalLayout.location.y += groupOffset;
                 }
             }
             inflowContentSize = SizeF::Zero();
-            for (int i = 0; i < items.len; i++) {
+            for (int i = 0; i < len(items); i++) {
                 if (!items[i].hasFinalLayout) {
                     continue;
                 }
                 const Layout& l = items[i].finalLayout;
-                inflowContentSize =
-                    Max(inflowContentSize, ComputeContentSizeContribution(
+                inflowContentSize = Max(
+                    inflowContentSize,
+                    ComputeContentSizeContribution(
                         {IsRtl(direction)
-                             ? containerOuterWidth -
-                                   (l.location.x + l.size.w) -
+                             ? containerOuterWidth - (l.location.x + l.size.w) -
                                    resolvedBorder.right
                              : l.location.x - resolvedBorder.left,
                          l.location.y - resolvedBorder.top},
@@ -1711,7 +1694,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     }
 
     bool allInFlowChildrenCanBeCollapsedThrough = true;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (IsFloated(items[i].floatMode)) {
             continue;
         }
@@ -1746,7 +1729,7 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     }
 
     // Commit the deferred in-flow layouts. Floated items already wrote theirs.
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (items[i].hasFinalLayout) {
             tree->SetUnroundedLayout(items[i].nodeId, items[i].finalLayout);
         }
@@ -1761,8 +1744,8 @@ LayoutOutput ComputeInner(TaffyTree* tree, NodeId nodeId,
     SizeF absoluteContentSize = PerformAbsoluteLayoutOnAbsoluteChildren(
         tree, items, absolutePositionArea, absolutePositionOffset, direction);
 
-    inflowContentSize.w +=
-        IsRtl(direction) ? resolvedPadding.left : resolvedPadding.right;
+    inflowContentSize
+        .w += IsRtl(direction) ? resolvedPadding.left : resolvedPadding.right;
     inflowContentSize.h += resolvedPadding.bottom;
     output.contentSize = Max(inflowContentSize, absoluteContentSize);
 

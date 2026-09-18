@@ -1101,7 +1101,7 @@ struct ScrollFade {
 static Vec<ScrollFade> gScrollFades;
 
 static ScrollFade* ScrollFadeFor(int id, float y, float x) {
-    for (int i = 0; i < gScrollFades.len; i++) {
+    for (int i = 0; i < len(gScrollFades); i++) {
         if (gScrollFades[i].id == id) {
             return &gScrollFades[i];
         }
@@ -1111,7 +1111,7 @@ static ScrollFade* ScrollFadeFor(int id, float y, float x) {
     f.y = y;
     f.x = x;
     VecAppend(gScrollFades, f);
-    return &gScrollFades[gScrollFades.len - 1];
+    return &gScrollFades[len(gScrollFades) - 1];
 }
 
 void ScrollFadeClear() {
@@ -1268,7 +1268,7 @@ void StyleOverrideSet(int clickId, uint32_t fields, const Style& style) {
         StyleOverrideClear(clickId);
         return;
     }
-    for (int i = 0; i < gStyleOverrides.len; i++) {
+    for (int i = 0; i < len(gStyleOverrides); i++) {
         if (gStyleOverrides[i].clickId == clickId) {
             gStyleOverrides[i].fields = fields;
             gStyleOverrides[i].style = style;
@@ -1283,9 +1283,9 @@ void StyleOverrideSet(int clickId, uint32_t fields, const Style& style) {
 }
 
 void StyleOverrideClear(int clickId) {
-    for (int i = 0; i < gStyleOverrides.len; i++) {
+    for (int i = 0; i < len(gStyleOverrides); i++) {
         if (gStyleOverrides[i].clickId == clickId) {
-            for (int j = i + 1; j < gStyleOverrides.len; j++) {
+            for (int j = i + 1; j < len(gStyleOverrides); j++) {
                 gStyleOverrides[j - 1] = gStyleOverrides[j];
             }
             gStyleOverrides.len--;
@@ -1369,10 +1369,10 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
 
 void StyleOverrideApply(El* e) {
     // Nothing picked, nothing edited: the common case costs one compare.
-    if (gStyleOverrides.len == 0 || !e || e->clickId == 0) {
+    if (len(gStyleOverrides) == 0 || !e || e->clickId == 0) {
         return;
     }
-    for (int i = 0; i < gStyleOverrides.len; i++) {
+    for (int i = 0; i < len(gStyleOverrides); i++) {
         const StyleOverride& o = gStyleOverrides[i];
         if (o.clickId != e->clickId) {
             continue;
@@ -4276,13 +4276,13 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
             own++;
         }
     }
-    int wantFixed = own + gLayoutFixed.len;
+    int wantFixed = own + len(gLayoutFixed);
     bool droppedFixed = false;
     for (int j = lc->tree.ChildCount(root) - 1; j >= wantFixed; j--) {
         LayoutDropSubtree(lc, lc->tree.ChildAtIndex(root, j));
         droppedFixed = true;
     }
-    for (int i = 0; i < gLayoutFixed.len; i++) {
+    for (int i = 0; i < len(gLayoutFixed); i++) {
         El* f = gLayoutFixed[i];
         int at = own + i;
         bool had = at < lc->tree.ChildCount(root);
@@ -4327,7 +4327,7 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
     WriteBackEl(lc, ctx, e, x, y);
     // The fixed elements are laid out as children of the root, so their boxes
     // come out in window coordinates already.
-    for (int i = 0; i < gLayoutFixed.len; i++) {
+    for (int i = 0; i < len(gLayoutFixed); i++) {
         WriteBackEl(lc, ctx, gLayoutFixed[i], 0, 0);
     }
     PlaceAnchored(e, ctx ? ctx->viewW : 0.f, ctx ? ctx->viewH : 0.f,
@@ -5531,7 +5531,7 @@ static bool ResolveLineClamp(PaintCtx* ctx, El* e, float* clipBottom) {
         ListenerCall(ctx->app, ctx->window, e->onLineClamp, &ev);
     }
     bool tighter =
-        clamped && LineSafeClipBottom(spans.els, spans.len, boxBottom,
+        clamped && LineSafeClipBottom(spans.els, len(spans), boxBottom,
                                       contentBottom, clipBottom);
     VecReset(spans);
     return tighter;
@@ -7349,8 +7349,8 @@ static void IdCheck(El* root) {
     Vec<IdSeen> seen;
     IdCheckCollect(root, &seen);
     int dups = 0;
-    for (int i = 0; i < seen.len; i++) {
-        for (int j = i + 1; j < seen.len; j++) {
+    for (int i = 0; i < len(seen); i++) {
+        for (int j = i + 1; j < len(seen); j++) {
             if (seen[i].id != seen[j].id) {
                 continue;
             }
@@ -7360,7 +7360,7 @@ static void IdCheck(El* root) {
             logf("id-check: %d shared by \"%s\" and \"%s\"", seen[i].id, a, b);
         }
     }
-    logf("id-check: %d ids, %d shared", seen.len, dups);
+    logf("id-check: %d ids, %d shared", len(seen), dups);
     VecReset(seen);
 }
 

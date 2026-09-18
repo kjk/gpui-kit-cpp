@@ -138,7 +138,7 @@ struct TextSelectionProjection {
     Vec<TextSelectionRange> ranges;
     bool active = false;
 
-    int Len() const { return ranges.len; }
+    int Len() const { return len(ranges); }
     const TextSelectionRange* Ranges() const { return ranges.els; }
     bool IsActive() const { return active; }
     void Reset() { VecReset(ranges); }

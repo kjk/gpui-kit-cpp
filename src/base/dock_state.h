@@ -99,7 +99,7 @@ struct DockAreaState {
     void Clear();
 
     ~DockAreaState() {
-        for (int i = 0; i < nodes.len; i++) {
+        for (int i = 0; i < len(nodes); i++) {
             VecReset(nodes[i].children);
             VecReset(nodes[i].sizes);
             VecReset(nodes[i].metas);

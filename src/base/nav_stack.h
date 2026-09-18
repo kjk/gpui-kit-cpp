@@ -92,7 +92,8 @@ struct NavStackState {
     // Every view on the stack, root first.
     EntityId ViewAt(int index) const {
         const Vec<NavEntry>& undos = history.Entries();
-        return index >= 0 && index < undos.len ? undos[index].view : EntityId{};
+        return index >= 0 && index < len(undos) ? undos[index].view
+                                                : EntityId{};
     }
 
     // The views popped since the last push, nearest first: the one Forward

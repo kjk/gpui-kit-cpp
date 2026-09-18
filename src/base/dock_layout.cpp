@@ -366,7 +366,7 @@ int PaneTree::MaxZIndex() const {
     Vec<const PaneNode*> stack;
     VecAppend(stack, root);
     int top = 0;
-    while (stack.len > 0) {
+    while (len(stack) > 0) {
         const PaneNode* node = stack[--stack.len];
         if (node->paneKind == PaneKind::Tiles) {
             for (int i = 0; i < node->tiles.len; i++) {
@@ -523,7 +523,7 @@ static bool NormalizeNode(PaneNode* node) {
         Vec<PaneNode*> children;
         Vec<float> sizes;
         Vec<uint8_t> known;
-        for (int i = 0; i < node->children.len; i++) {
+        for (int i = 0; i < len(node->children); i++) {
             PaneNode* child = node->children[i];
             if (child->paneKind != PaneKind::Split ||
                 child->axis != node->axis) {
@@ -534,13 +534,13 @@ static bool NormalizeNode(PaneNode* node) {
             }
             float total = 0;
             bool allKnown = true;
-            for (int k = 0; k < child->children.len; k++) {
+            for (int k = 0; k < len(child->children); k++) {
                 allKnown &= child->sizeKnown[k] != 0;
                 total += child->sizes[k];
             }
             bool scale = node->sizeKnown[i] && allKnown && total > 0;
             float ratio = scale ? node->sizes[i] / total : 1.f;
-            for (int k = 0; k < child->children.len; k++) {
+            for (int k = 0; k < len(child->children); k++) {
                 VecAppend(children, child->children[k]);
                 VecAppend(sizes, child->sizes[k] * ratio);
                 VecAppend(known, child->sizeKnown[k]);

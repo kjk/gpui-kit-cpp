@@ -155,7 +155,7 @@ static SankeyError ComputeNodeRanks(SankeyGraph* g) {
     }
 
     int visited = 0;
-    while (visited < order.len) {
+    while (visited < len(order)) {
         int index = order[visited];
         visited++;
         int depth = depths[index] + 1;
@@ -171,13 +171,13 @@ static SankeyError ComputeNodeRanks(SankeyGraph* g) {
             }
         }
     }
-    if (order.len != n) {
+    if (len(order) != n) {
         return SankeyError::CircularLink;
     }
 
     // Walking the order backwards means a target's height is already final
     // when its sources are reached.
-    for (int i = order.len - 1; i >= 0; i--) {
+    for (int i = len(order) - 1; i >= 0; i--) {
         int index = order[i];
         for (int k = 0; k < g->nodes[index].srcCount; k++) {
             int link = g->srcLinks[g->nodes[index].srcStart + k];

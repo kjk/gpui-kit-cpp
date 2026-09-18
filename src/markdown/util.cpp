@@ -230,9 +230,9 @@ static void ShiftLinks(Vec<Event>& events, const Vec<Jump>& jumps) {
     int32_t index = 0;
     int32_t add = 0;
     int32_t rm = 0;
-    while (index < events.len) {
+    while (index < len(events)) {
         int32_t rmCurr = rm;
-        while (jumpIndex < jumps.len && jumps[jumpIndex].at <= index) {
+        while (jumpIndex < len(jumps) && jumps[jumpIndex].at <= index) {
             add = jumps[jumpIndex].add;
             rm = jumps[jumpIndex].remove;
             jumpIndex++;
@@ -244,7 +244,7 @@ static void ShiftLinks(Vec<Event>& events, const Vec<Jump>& jumps) {
         if (events[index].hasLink && events[index].link.next != -1) {
             int32_t next = events[index].link.next;
             events[next].link.previous = index + add - rm;
-            while (jumpIndex < jumps.len && jumps[jumpIndex].at <= next) {
+            while (jumpIndex < len(jumps) && jumps[jumpIndex].at <= next) {
                 add = jumps[jumpIndex].add;
                 rm = jumps[jumpIndex].remove;
                 jumpIndex++;
@@ -268,7 +268,7 @@ static int32_t BucketFor(const Vec<int32_t>& buckets,
                          const Vec<EditMap::Entry>& entries, int32_t at) {
     uint32_t h = (uint32_t)at * 2654435761u;
     h ^= h >> 15;
-    int32_t mask = buckets.len - 1;
+    int32_t mask = len(buckets) - 1;
     int32_t i = (int32_t)h & mask;
     while (buckets[i] != 0 && entries[buckets[i] - 1].at != at) {
         i = (i + 1) & mask;
@@ -293,8 +293,8 @@ static void AddImpl(EditMap& map, int32_t at, int32_t remove, const Event* add,
         return;
     }
     // Keep the load factor under 3/4, counting the entry this call may add.
-    if ((map.map.len + 1) * 4 >= map.buckets.len * 3) {
-        RehashBuckets(map, map.buckets.len > 0 ? map.buckets.len * 2 : 16);
+    if ((len(map.map) + 1) * 4 >= len(map.buckets) * 3) {
+        RehashBuckets(map, len(map.buckets) > 0 ? len(map.buckets) * 2 : 16);
     }
     int32_t bucket = BucketFor(map.buckets, map.map, at);
     if (map.buckets[bucket] != 0) {
@@ -339,7 +339,7 @@ void EditMapAddBefore(EditMap& map, int32_t index, int32_t remove,
 // an `at` (`add` merges those), so this reaches the same order an unstable
 // sort would.
 static void SortEntries(Vec<EditMap::Entry>& entries) {
-    int32_t n = entries.len;
+    int32_t n = len(entries);
     if (n < 2) {
         return;
     }
@@ -396,7 +396,7 @@ void EditMapConsume(EditMap& map, Vec<Event>& events) {
     // Rust splits the list apart and puts it back together; this builds the
     // new one in order, which is the same list and one allocation.
     Vec<Event> out;
-    VecReserve(out, events.len + addAcc - removeAcc);
+    VecReserve(out, len(events) + addAcc - removeAcc);
     int32_t index = 0;
     for (int32_t i = 0; i < map.map.len; i++) {
         const EditMap::Entry& e = map.map[i];
@@ -408,13 +408,13 @@ void EditMapConsume(EditMap& map, Vec<Event>& events) {
         }
         index = e.at + e.remove;
     }
-    for (int32_t j = index; j < events.len; j++) {
+    for (int32_t j = index; j < len(events); j++) {
         VecAppend(out, events[j]);
     }
 
     VecReset(events);
     events.els = out.els;
-    events.len = out.len;
+    events.len = len(out);
     events.cap = out.cap;
     out.els = nullptr;
     out.len = 0;
@@ -422,9 +422,9 @@ void EditMapConsume(EditMap& map, Vec<Event>& events) {
     map.map.len = 0;
     // The sort above moved the entries the buckets point at, and the map is
     // empty now anyway.
-    if (map.buckets.len > 0) {
+    if (len(map.buckets) > 0) {
         memset((void*)map.buckets.els, 0,
-               (size_t)map.buckets.len * sizeof(int32_t));
+               (size_t)len(map.buckets) * sizeof(int32_t));
     }
 }
 
@@ -441,7 +441,7 @@ static bool NamesContain(const Name* names, int32_t namesLen, Name name) {
 
 static int32_t SkipToImpl(const Vec<Event>& events, int32_t index,
                           const Name* names, int32_t namesLen, bool forward) {
-    while (index < events.len) {
+    while (index < len(events)) {
         if (NamesContain(names, namesLen, events[index].name)) {
             break;
         }
@@ -454,7 +454,7 @@ static int32_t SkipOptImpl(const Vec<Event>& events, int32_t index,
                            const Name* names, int32_t namesLen, bool forward) {
     int32_t balance = 0;
     Kind open = forward ? Kind::Enter : Kind::Exit;
-    while (index < events.len) {
+    while (index < len(events)) {
         Name current = events[index].name;
         if (!NamesContain(names, namesLen, current) || events[index]
                                                                .kind != open) {
@@ -543,7 +543,7 @@ Str NormalizeIdentifier(Arena* a, Str value) {
 bool ListLoose(const Vec<Event>& events, int32_t index, bool includeItems) {
     int32_t balance = 0;
     Name name = events[index].name;
-    while (index < events.len) {
+    while (index < len(events)) {
         const Event& event = events[index];
         if (event.kind == Kind::Enter) {
             balance += 1;
@@ -584,7 +584,7 @@ bool ListLoose(const Vec<Event>& events, int32_t index, bool includeItems) {
 
 bool ListItemLoose(const Vec<Event>& events, int32_t index) {
     int32_t balance = 0;
-    while (index < events.len) {
+    while (index < len(events)) {
         const Event& event = events[index];
         if (event.kind == Kind::Enter) {
             balance += 1;
@@ -618,7 +618,7 @@ static int32_t ScanTableAlign(const Vec<Event>& events, int32_t index, Arena* a,
                               ArenaAlign out) {
     bool inDelimiterRow = false;
     int32_t count = 0;
-    while (index < events.len) {
+    while (index < len(events)) {
         const Event& event = events[index];
         if (inDelimiterRow) {
             if (event.kind == Kind::Enter) {

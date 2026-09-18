@@ -88,7 +88,7 @@ void ExecPostNow(Func0 f) {
 
 int ExecQueued() {
     gMainLock.Lock();
-    int n = gMainQueue.len;
+    int n = len(gMainQueue);
     gMainLock.Unlock();
     return n;
 }
@@ -105,17 +105,17 @@ int ExecDrain() {
     // and this runs on every pass of the event loop.
     Vec<MainTask> batch;
     batch.els = gMainQueue.els;
-    batch.len = gMainQueue.len;
+    batch.len = len(gMainQueue);
     batch.cap = gMainQueue.cap;
     gMainQueue.els = nullptr;
     gMainQueue.len = 0;
     gMainQueue.cap = 0;
     gMainLock.Unlock();
 
-    for (int i = 0; i < batch.len; i++) {
+    for (int i = 0; i < len(batch); i++) {
         batch[i].f.Call();
     }
-    int n = batch.len;
+    int n = len(batch);
     VecReset(batch);
     return n;
 }
@@ -156,14 +156,14 @@ static void WorkerMain() {
         if (gPoolStop) {
             break;
         }
-        if (gJobs.len == 0) {
+        if (len(gJobs) == 0) {
             gIdle++;
             gPoolWake.Wait(&gPoolLock, kWorkerWaitForever);
             gIdle--;
             continue;
         }
         Job job = gJobs[0];
-        for (int i = 1; i < gJobs.len; i++) {
+        for (int i = 1; i < len(gJobs); i++) {
             gJobs[i - 1] = gJobs[i];
         }
         gJobs.len--;
@@ -201,12 +201,12 @@ static void RunOnMainThread(void* arg) {
     Job job;
     bool found = false;
     gPoolLock.Lock();
-    for (int i = 0; i < gJobs.len; i++) {
+    for (int i = 0; i < len(gJobs); i++) {
         if (gJobs[i].id != id) {
             continue;
         }
         job = gJobs[i];
-        for (int j = i + 1; j < gJobs.len; j++) {
+        for (int j = i + 1; j < len(gJobs); j++) {
             gJobs[j - 1] = gJobs[j];
         }
         gJobs.len--;
@@ -278,11 +278,11 @@ bool ExecCancel(TaskId id) {
     }
     bool found = false;
     gPoolLock.Lock();
-    for (int i = 0; i < gJobs.len; i++) {
+    for (int i = 0; i < len(gJobs); i++) {
         if (gJobs[i].id != id) {
             continue;
         }
-        for (int j = i + 1; j < gJobs.len; j++) {
+        for (int j = i + 1; j < len(gJobs); j++) {
             gJobs[j - 1] = gJobs[j];
         }
         gJobs.len--;
@@ -295,7 +295,7 @@ bool ExecCancel(TaskId id) {
 
 int ExecPending() {
     gPoolLock.Lock();
-    int n = gJobs.len + gRunning;
+    int n = len(gJobs) + gRunning;
     gPoolLock.Unlock();
     return n;
 }

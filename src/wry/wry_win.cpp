@@ -2152,7 +2152,7 @@ struct DragDropController {
     Vec<DragDropTarget*> targets;
 
     ~DragDropController() {
-        for (int i = 0; i < targets.len; i++) {
+        for (int i = 0; i < len(targets); i++) {
             DragDropTarget* target = targets.els[i];
             RevokeDragDrop(target->hwnd);
             target->Release();
@@ -2276,7 +2276,7 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         free(additionalBrowserArguments);
         free(language);
         free(targetCompatibleBrowserVersion);
-        for (int i = 0; i < customSchemeRegistrations.len; i++) {
+        for (int i = 0; i < len(customSchemeRegistrations); i++) {
             customSchemeRegistrations[i]->Release();
         }
         VecReset(customSchemeRegistrations);
@@ -2399,9 +2399,9 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         if (!count || !values) {
             return E_POINTER;
         }
-        *count = (UINT32)customSchemeRegistrations.len;
+        *count = (UINT32)len(customSchemeRegistrations);
         *values = nullptr;
-        if (customSchemeRegistrations.len == 0) {
+        if (len(customSchemeRegistrations) == 0) {
             return S_OK;
         }
         IUnknown** copy = (IUnknown**)CoTaskMemAlloc(sizeof(IUnknown*) * (size_t)*count);
@@ -2423,7 +2423,7 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
         Vec<IUnknown*> copy;
         for (UINT32 i = 0; i < count; i++) {
             if (!values[i] || !VecAppend(copy, values[i])) {
-                for (int j = 0; j < copy.len; j++) {
+                for (int j = 0; j < len(copy); j++) {
                     copy[j]->Release();
                 }
                 VecReset(copy);
@@ -2431,7 +2431,7 @@ struct EnvironmentOptions : ICoreWebView2EnvironmentOptions,
             }
             values[i]->AddRef();
         }
-        for (int i = 0; i < customSchemeRegistrations.len; i++) {
+        for (int i = 0; i < len(customSchemeRegistrations); i++) {
             customSchemeRegistrations[i]->Release();
         }
         VecReset(customSchemeRegistrations);

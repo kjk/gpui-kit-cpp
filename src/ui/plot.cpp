@@ -435,7 +435,7 @@ Str TruncateTextToWidth(PaintCtx* ctx, Arena* arena, Str text, float fontSize,
     }
     int best = -1;
     int lo = 0;
-    int hi = cuts.len;
+    int hi = len(cuts);
     while (lo < hi) {
         int mid = (lo + hi) / 2;
         Str candidate = PrefixEllipsis(outArena, text, cuts[mid]);
@@ -778,34 +778,34 @@ int Line::Points(Bounds bounds, Point* out, int capacity) const {
 }
 
 static void PlotRun(Path* path, const Vec<Point>& points, StrokeStyle style) {
-    if (!path || points.len <= 0) {
+    if (!path || len(points) <= 0) {
         return;
     }
     PathMoveTo(path, points[0].x, points[0].y);
-    if (points.len == 1) {
+    if (len(points) == 1) {
         return;
     }
     if (style == StrokeStyle::Linear) {
-        for (int i = 1; i < points.len; i++) {
+        for (int i = 1; i < len(points); i++) {
             PathLineTo(path, points[i].x, points[i].y);
         }
         return;
     }
     if (style == StrokeStyle::StepAfter) {
-        for (int i = 0; i < points.len - 1; i++) {
+        for (int i = 0; i < len(points) - 1; i++) {
             PathLineTo(path, points[i + 1].x, points[i].y);
-            if (i < points.len - 2) {
+            if (i < len(points) - 2) {
                 PathLineTo(path, points[i + 1].x, points[i + 1].y);
             }
         }
         return;
     }
-    for (int i = 0; i < points.len - 1; i++) {
+    for (int i = 0; i < len(points) - 1; i++) {
         const Point& p0 = i == 0 ? points[0] : points[i - 1];
         const Point& p1 = points[i];
         const Point& p2 = points[i + 1];
         const Point& p3 =
-            i + 2 < points.len ? points[i + 2] : points[points.len - 1];
+            i + 2 < len(points) ? points[i + 2] : points[len(points) - 1];
         PathCubicTo(path, p1.x + (p2.x - p0.x) / 6.f,
                     p1.y + (p2.y - p0.y) / 6.f, p2.x - (p3.x - p1.x) / 6.f,
                     p2.y - (p3.y - p1.y) / 6.f, p2.x, p2.y);
@@ -833,7 +833,7 @@ static void PaintDot(PaintCtx* ctx, Point point, float size, Rgba fill,
 
 void Line::Paint(PaintCtx* ctx, Bounds bounds) const {
     Vec<Point> points = ResolveLinePoints(*this, bounds);
-    if (points.len > 0) {
+    if (len(points) > 0) {
         Path* path = PathNew(ctx, false);
         PlotRun(path, points, strokeStyle);
         PaintPathStroke(ctx, path, strokeWidth, stroke);
@@ -841,7 +841,7 @@ void Line::Paint(PaintCtx* ctx, Bounds bounds) const {
     }
     if (dot) {
         Rgba edge = hasDotStrokeColor ? dotStrokeColor : dotFillColor;
-        for (int i = 0; i < points.len; i++) {
+        for (int i = 0; i < len(points); i++) {
             PaintDot(ctx, points[i], dotSize, dotFillColor, edge);
         }
     }
@@ -912,14 +912,14 @@ void Area::Paint(PaintCtx* ctx, Bounds bounds) const {
             VecAppend(points, OriginPoint(px, py, {bounds.x, bounds.y}));
         }
     }
-    if (points.len <= 0) {
+    if (len(points) <= 0) {
         return;
     }
     Path* area = PathNew(ctx, true);
     Path* line = PathNew(ctx, false);
     PlotRun(area, points, strokeStyle);
     PlotRun(line, points, strokeStyle);
-    if (points.len > 1 && hasY0 && hasFirst && hasLast) {
+    if (len(points) > 1 && hasY0 && hasFirst && hasLast) {
         PathLineTo(area, bounds.x + last, bounds.y + y0);
         PathLineTo(area, bounds.x + first, bounds.y + y0);
         PathClose(area);
@@ -1100,7 +1100,7 @@ void Bar::Paint(PaintCtx* ctx, Bounds bounds) const {
             label(item, i, origin, labelUser, &labels);
         }
     }
-    for (int i = 0; i < labels.len; i++) {
+    for (int i = 0; i < len(labels); i++) {
         PlotLabel one = PlotLabel::New(GetTempArena());
         one.Add(labels[i]);
         one.Paint(ctx, bounds);
@@ -1335,23 +1335,23 @@ void RadialLine::Paint(PaintCtx* ctx, Bounds bounds) const {
                                bounds.y + bounds.h * .5f + r * sinf(a)});
         }
     }
-    if (hasFill && points.len >= 3) {
+    if (hasFill && len(points) >= 3) {
         Path* path = PathNew(ctx, true);
         PathMoveTo(path, points[0].x, points[0].y);
-        for (int i = 1; i < points.len; i++) {
+        for (int i = 1; i < len(points); i++) {
             PathLineTo(path, points[i].x, points[i].y);
         }
         PathClose(path);
         PaintPathFill(ctx, path, fill, bounds);
         PathFree(path);
     }
-    if (points.len > 0) {
+    if (len(points) > 0) {
         Path* path = PathNew(ctx, false);
         PathMoveTo(path, points[0].x, points[0].y);
-        for (int i = 1; i < points.len; i++) {
+        for (int i = 1; i < len(points); i++) {
             PathLineTo(path, points[i].x, points[i].y);
         }
-        if (closed && points.len > 2) {
+        if (closed && len(points) > 2) {
             PathClose(path);
         }
         PaintPathStroke(ctx, path, strokeWidth, stroke);
@@ -1359,7 +1359,7 @@ void RadialLine::Paint(PaintCtx* ctx, Bounds bounds) const {
     }
     if (dot) {
         Rgba edge = hasDotStrokeColor ? dotStrokeColor : dotFillColor;
-        for (int i = 0; i < points.len; i++) {
+        for (int i = 0; i < len(points); i++) {
             PaintDot(ctx, points[i], dotSize, dotFillColor, edge);
         }
     }

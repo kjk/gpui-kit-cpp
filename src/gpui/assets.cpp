@@ -243,15 +243,15 @@ bool AssetsLoad(Str relPath, Vec<uint8_t>* out) {
 
 TempStr AssetsLoadTextTemp(Str relPath) {
     Vec<uint8_t> buf;
-    if (!AssetsLoad(relPath, &buf) || buf.len <= 0) {
+    if (!AssetsLoad(relPath, &buf) || len(buf) <= 0) {
         return {};
     }
-    Str s = AllocStrTemp(buf.len);
+    Str s = AllocStrTemp(len(buf));
     if (!s.s) {
         return {};
     }
-    memcpy(s.s, buf.els, (size_t)buf.len);
-    s.s[buf.len] = 0;
+    memcpy(s.s, buf.els, (size_t)len(buf));
+    s.s[len(buf)] = 0;
     return s;
 }
 

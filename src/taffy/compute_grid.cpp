@@ -339,9 +339,9 @@ struct CellOccupancyMatrix {
     // while scanning, preserving the placement jump without another owning
     // container shape.
     OptOriginZeroLine LineAreaCollisionJump(AbsoluteAxis primaryAxis,
-                                             LineOzl primarySpan,
-                                             LineOzl secondarySpan,
-                                             bool reversed) const {
+                                            LineOzl primarySpan,
+                                            LineOzl secondarySpan,
+                                            bool reversed) const {
         const TrackCounts& pc = Counts(primaryAxis);
         const TrackCounts& sc = Counts(OtherAxis(primaryAxis));
         int primaryStart = pc.OzLineToNextTrack(primarySpan.start);
@@ -353,20 +353,18 @@ struct CellOccupancyMatrix {
         primaryStart = primaryStart < 0 ? 0 : primaryStart;
         primaryEnd = primaryEnd > primaryLen ? primaryLen : primaryEnd;
         secondaryStart = secondaryStart < 0 ? 0 : secondaryStart;
-        secondaryEnd = secondaryEnd > secondaryLen ? secondaryLen
-                                                     : secondaryEnd;
+        secondaryEnd =
+            secondaryEnd > secondaryLen ? secondaryLen : secondaryEnd;
 
         bool found = false;
         int best = 0;
         for (int secondary = secondaryStart; secondary < secondaryEnd;
              secondary++) {
             for (int primary = primaryStart; primary < primaryEnd; primary++) {
-                int row = primaryAxis == AbsoluteAxis::Horizontal
-                              ? secondary
-                              : primary;
-                int col = primaryAxis == AbsoluteAxis::Horizontal
-                              ? primary
-                              : secondary;
+                int row = primaryAxis == AbsoluteAxis::Horizontal ? secondary
+                                                                  : primary;
+                int col = primaryAxis == AbsoluteAxis::Horizontal ? primary
+                                                                  : secondary;
                 if (Get(row, col) == CellOccupancyState::Unoccupied) {
                     continue;
                 }
@@ -409,7 +407,7 @@ struct CellOccupancyMatrix {
         }
         OriginZeroLine line = pc.TrackToPrevOzLine((uint16_t)best);
         int32_t next = (int32_t)line.v + (reversed ? -1 : 1);
-        next = next < INT16_MIN ? INT16_MIN
+        next = next < INT16_MIN   ? INT16_MIN
                : next > INT16_MAX ? INT16_MAX
                                   : next;
         return OptOriginZeroLine(OriginZeroLine{(int16_t)next});
@@ -687,10 +685,10 @@ struct NamedLineResolver {
     uint16_t explicitRowCount = 0;
 
     void Free() {
-        for (int i = 0; i < rowLines.len; i++) {
+        for (int i = 0; i < len(rowLines); i++) {
             VecReset(rowLines[i].lines);
         }
-        for (int i = 0; i < columnLines.len; i++) {
+        for (int i = 0; i < len(columnLines); i++) {
             VecReset(columnLines[i].lines);
         }
         VecReset(rowLines);
@@ -720,7 +718,7 @@ struct NamedLineResolver {
 
     static const Vec<uint32_t>* Find(const Vec<LineNameEntry>& map, Str name,
                                      NameSuffix suffix) {
-        for (int i = 0; i < map.len; i++) {
+        for (int i = 0; i < len(map); i++) {
             const LineNameEntry& e = map[i];
             if (e.suffix == suffix && base::StrEq(e.name, name)) {
                 return &e.lines;
@@ -778,8 +776,7 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
             currentLine += 1;
             const LineNameSet& set = ax.names[i];
             for (int k = 0; k < set.names.len; k++) {
-                Upsert(ax.map, set.names[k], NameSuffix::None,
-                       currentLine);
+                Upsert(ax.map, set.names[k], NameSuffix::None, currentLine);
             }
             if (trackIdx >= ax.tracks.len) {
                 continue;
@@ -817,11 +814,10 @@ void NamedLineResolver::Init(const Style& style, uint16_t columnAutoRepetitions,
 GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
                                           GridAreaAxis axis, GridAreaEnd end,
                                           int filterFrom, int filterTo) const {
-    int32_t explicitTrackCount = axis == GridAreaAxis::Row
-                                     ? explicitRowCount
-                                     : explicitColumnCount;
+    int32_t explicitTrackCount =
+        axis == GridAreaAxis::Row ? explicitRowCount : explicitColumnCount;
     auto gridLine = [](int64_t value) {
-        value = value < INT16_MIN ? INT16_MIN
+        value = value < INT16_MIN   ? INT16_MIN
                 : value > INT16_MAX ? INT16_MAX
                                     : value;
         return GridLine{(int16_t)value};
@@ -847,8 +843,7 @@ GridLine NamedLineResolver::FindLineIndex(Str name, int32_t idx,
         if (count < 0) {
             count = 0;
         }
-        uint32_t absIdx = idx < 0 ? (uint32_t)(-(int64_t)idx)
-                                  : (uint32_t)idx;
+        uint32_t absIdx = idx < 0 ? (uint32_t)(-(int64_t)idx) : (uint32_t)idx;
         if (absIdx <= (uint32_t)count) {
             if (idx > 0) {
                 return gridLine((*lines)[from + (int)absIdx - 1]);
@@ -1270,10 +1265,10 @@ ExplicitGridSize ComputeExplicitGridSizeInAxis(
                         : ceilf(numRepetitionThatFit);
                 // 4294967040 is the greatest float below UINT32_MAX. Clamp
                 // there so the conversion and the following +1 stay defined.
-                numRepetitions =
-                    !isfinite(rounded) || rounded >= 4294967040.0f
-                        ? UINT32_MAX
-                        : rounded < 0.0f ? 1u : (uint32_t)rounded + 1u;
+                numRepetitions = !isfinite(rounded) || rounded >= 4294967040.0f
+                                     ? UINT32_MAX
+                                 : rounded < 0.0f ? 1u
+                                                  : (uint32_t)rounded + 1u;
             }
         }
     }
@@ -1285,12 +1280,10 @@ ExplicitGridSize ComputeExplicitGridSizeInAxis(
         numRepetitions = 0;
     } else {
         uint32_t maxRepetitions =
-            (remainingTracks + repetitionTrackCount - 1) /
-            repetitionTrackCount;
+            (remainingTracks + repetitionTrackCount - 1) / repetitionTrackCount;
         numRepetitions = numRepetitions < 1 ? 1 : numRepetitions;
-        numRepetitions = numRepetitions > maxRepetitions
-                             ? maxRepetitions
-                             : numRepetitions;
+        numRepetitions =
+            numRepetitions > maxRepetitions ? maxRepetitions : numRepetitions;
     }
     uint32_t gridTemplateTrackCount =
         nonAutoRepeatingTrackCount +
@@ -1367,8 +1360,8 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
     }
 
     int currentTrackIndex = (int)counts.negativeImplicit;
-    int explicitTrackLimit =
-        (int)counts.negativeImplicit + (int)counts.explicitCount;
+    int explicitTrackLimit = (int)counts.negativeImplicit + (int)counts
+                                                                .explicitCount;
 
     // Explicit tracks. The count is checked rather than the template being
     // empty, because a count of zero can come from an invalid template.
@@ -1390,8 +1383,7 @@ void InitializeGridTracks(Vec<GridTrack>* tracks, TrackCounts counts,
                 int total = (int)c.repeat.TrackCount() * (int)c.repeat.count
                                                              .count;
                 for (int k = 0;
-                     k < total && currentTrackIndex < explicitTrackLimit;
-                     k++) {
+                     k < total && currentTrackIndex < explicitTrackLimit; k++) {
                     TrackSizingFunction f =
                         c.repeat.tracks[k % c.repeat.tracks.len];
                     VecAppend(*tracks, GridTrack::New(f.MinSizingFunction(),
@@ -1844,7 +1836,7 @@ bool AxisIsReversed(Direction direction, AbsoluteAxis axis) {
 
 OriginZeroLine AdvancePosition(OriginZeroLine position, bool reversed) {
     int32_t value = (int32_t)position.v + (reversed ? -1 : 1);
-    value = value < INT16_MIN ? INT16_MIN
+    value = value < INT16_MIN   ? INT16_MIN
             : value > INT16_MAX ? INT16_MAX
                                 : value;
     return OriginZeroLine{(int16_t)value};
@@ -1858,7 +1850,7 @@ OriginZeroLine SearchStartLine(OriginZeroLine gridStartLine,
 LineOzl ResolveIndefiniteGridSpan(OriginZeroLine position, uint16_t span,
                                   bool reversed) {
     auto line = [](int32_t value) {
-        value = value < INT16_MIN ? INT16_MIN
+        value = value < INT16_MIN   ? INT16_MIN
                 : value > INT16_MAX ? INT16_MAX
                                     : value;
         return OriginZeroLine{(int16_t)value};
@@ -1870,16 +1862,13 @@ LineOzl ResolveIndefiniteGridSpan(OriginZeroLine position, uint16_t span,
     return {position, line((int32_t)position.v + span)};
 }
 
-LineOzl ClampSpanToLimitedGrid(LineOzl span, int16_t minLine,
-                               int16_t maxLine) {
+LineOzl ClampSpanToLimitedGrid(LineOzl span, int16_t minLine, int16_t maxLine) {
     int32_t start = span.start.v;
-    start = start < minLine ? minLine
-            : start > (int32_t)maxLine - 1 ? (int32_t)maxLine - 1
-                                          : start;
+    start = start<minLine ? minLine : start>(int32_t) maxLine - 1
+                ? (int32_t)maxLine - 1
+                : start;
     int32_t end = span.end.v;
-    end = end < start + 1 ? start + 1
-          : end > maxLine ? maxLine
-                          : end;
+    end = end < start + 1 ? start + 1 : end > maxLine ? maxLine : end;
     return {OriginZeroLine{(int16_t)start}, OriginZeroLine{(int16_t)end}};
 }
 
@@ -1899,13 +1888,12 @@ LineOzl MaybeMirrorSpan(LineOzl span, AbsoluteAxis axis, Direction direction,
     return span;
 }
 
-LineOzl ClampSpanForAxis(LineOzl span, AbsoluteAxis axis,
-                         Direction direction, uint16_t explicitColCount) {
+LineOzl ClampSpanForAxis(LineOzl span, AbsoluteAxis axis, Direction direction,
+                         uint16_t explicitColCount) {
     if (axis == AbsoluteAxis::Horizontal && IsRtl(direction)) {
         int16_t explicitEnd = (int16_t)explicitColCount;
-        return ClampSpanToLimitedGrid(
-            span, (int16_t)(explicitEnd - kMaxOzLine),
-            (int16_t)(explicitEnd - kMinOzLine));
+        return ClampSpanToLimitedGrid(span, (int16_t)(explicitEnd - kMaxOzLine),
+                                      (int16_t)(explicitEnd - kMinOzLine));
     }
     return ClampSpanToLimitedGrid(span, kMinOzLine, kMaxOzLine);
 }
@@ -1930,10 +1918,10 @@ void RecordGridPlacement(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                          uint16_t explicitColCount, LineOzl primarySpan,
                          LineOzl secondarySpan,
                          CellOccupancyState placementType) {
-    primarySpan = ClampSpanForAxis(primarySpan, primaryAxis, direction,
-                                   explicitColCount);
-    secondarySpan = ClampSpanForAxis(
-        secondarySpan, OtherAxis(primaryAxis), direction, explicitColCount);
+    primarySpan =
+        ClampSpanForAxis(primarySpan, primaryAxis, direction, explicitColCount);
+    secondarySpan = ClampSpanForAxis(secondarySpan, OtherAxis(primaryAxis),
+                                     direction, explicitColCount);
     matrix->MarkAreaAs(primaryAxis, primarySpan, secondarySpan, placementType);
 
     LineOzl colSpan =
@@ -2013,8 +2001,7 @@ SpanPair PlaceDefiniteSecondaryAxisItem(const CellOccupancyMatrix& matrix,
         LineOzl primaryPlacement = ResolveIndefiniteGridSpan(
             position, primarySpanLen, primaryReversed);
         OptOriginZeroLine collision = matrix.LineAreaCollisionJump(
-            primaryAxis, primaryPlacement, secondaryPlacement,
-            primaryReversed);
+            primaryAxis, primaryPlacement, secondaryPlacement, primaryReversed);
         if (!collision.IsSome()) {
             return {primaryPlacement, secondaryPlacement};
         }
@@ -2074,8 +2061,7 @@ SpanPair PlaceIndefinitelyPositionedItem(const CellOccupancyMatrix& matrix,
             LineOzl secondarySpan = ResolveIndefiniteGridSpan(
                 secondaryIdx, secondarySpanLen, secondaryReversed);
             OptOriginZeroLine collision = matrix.LineAreaCollisionJump(
-                secondaryAxis, secondarySpan, primarySpan,
-                secondaryReversed);
+                secondaryAxis, secondarySpan, primarySpan, secondaryReversed);
             if (!collision.IsSome()) {
                 return {primarySpan, secondarySpan};
             }
@@ -2122,7 +2108,7 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
                                     .explicitCount;
 
     // 1. Children with definite positions in both axes.
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const PlacementChild& c = children[i];
         if (!c.horizontal.IsDefinite() || !c.vertical.IsDefinite()) {
             continue;
@@ -2133,13 +2119,12 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
             c, secondaryAxis, direction, explicitColCount);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
                             justifyItems, primaryAxis, direction,
-                            explicitColCount, primarySpan,
-                            secondarySpan,
+                            explicitColCount, primarySpan, secondarySpan,
                             CellOccupancyState::DefinitelyPlaced);
     }
 
     // 2. Children with a definite secondary axis position only.
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const PlacementChild& c = children[i];
         if (!c.Get(secondaryAxis).IsDefinite() || c.Get(primaryAxis)
                                                       .IsDefinite()) {
@@ -2149,8 +2134,8 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
             *matrix, c, gridAutoFlow, direction, explicitColCount);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
                             justifyItems, primaryAxis, direction,
-                            explicitColCount, spans.primary,
-                            spans.secondary, CellOccupancyState::AutoPlaced);
+                            explicitColCount, spans.primary, spans.secondary,
+                            CellOccupancyState::AutoPlaced);
     }
 
     // 3. Determining the number of columns in the implicit grid is already
@@ -2169,7 +2154,7 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
     OriginZeroLine posPrimary = startPrimary;
     OriginZeroLine posSecondary = startSecondary;
 
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         const PlacementChild& c = children[i];
         if (c.Get(secondaryAxis).IsDefinite()) {
             continue;
@@ -2179,8 +2164,8 @@ void PlaceGridItems(CellOccupancyMatrix* matrix, Vec<GridItem>* items,
             explicitColCount);
         RecordGridPlacement(matrix, items, tree, c.node, c.index, alignItems,
                             justifyItems, primaryAxis, direction,
-                            explicitColCount, spans.primary,
-                            spans.secondary, CellOccupancyState::AutoPlaced);
+                            explicitColCount, spans.primary, spans.secondary,
+                            CellOccupancyState::AutoPlaced);
 
         // Dense packing restarts from the beginning for the next item; sparse
         // packing carries on from this one.
@@ -2667,12 +2652,11 @@ void DistributeItemSpaceToBaseSizeInner(
                        ? minimumFilter(t)
                        : maximumFilter(t);
         };
-        DistributeSpaceUpToLimits(extraSpace, tracks, n, filter,
-                                  trackDistributionProportion, getBaseSize,
-                                  [&](const GridTrack& t) {
-                                      return t.FitContentLimit(
-                                          axisInnerNodeSize);
-                                  });
+        DistributeSpaceUpToLimits(
+            extraSpace, tracks, n, filter, trackDistributionProportion,
+            getBaseSize, [&](const GridTrack& t) {
+                return t.FitContentLimit(axisInnerNodeSize);
+            });
     }
 
     // 4. Roll each track's item-incurred increase into its planned increase.
@@ -2687,8 +2671,8 @@ void DistributeItemSpaceToBaseSizeInner(
 
 template <typename Affected, typename Limit>
 void DistributeItemSpaceToBaseSize(
-    bool isFlex, bool, float space,
-    GridTrack* tracks, int n, Affected trackIsAffected, Limit trackLimit,
+    bool isFlex, bool, float space, GridTrack* tracks, int n,
+    Affected trackIsAffected, Limit trackLimit,
     IntrinsicContributionType intrinsicContributionType,
     Optf axisInnerNodeSize) {
     auto one = [](const GridTrack&) { return 1.0f; };
@@ -2704,15 +2688,13 @@ void DistributeItemSpaceToBaseSize(
         }
         if (flexFactorSum > 0.0f) {
             auto flexFactor = [](const GridTrack& t) { return t.FlexFactor(); };
-            DistributeItemSpaceToBaseSizeInner(space, tracks, n, filter,
-                                               flexFactor, trackLimit,
-                                               intrinsicContributionType,
-                                               axisInnerNodeSize);
+            DistributeItemSpaceToBaseSizeInner(
+                space, tracks, n, filter, flexFactor, trackLimit,
+                intrinsicContributionType, axisInnerNodeSize);
         } else {
-            DistributeItemSpaceToBaseSizeInner(space, tracks, n, filter, one,
-                                               trackLimit,
-                                               intrinsicContributionType,
-                                               axisInnerNodeSize);
+            DistributeItemSpaceToBaseSizeInner(
+                space, tracks, n, filter, one, trackLimit,
+                intrinsicContributionType, axisInnerNodeSize);
         }
         return;
     }
@@ -3009,15 +2991,13 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                             return t.FitContentLimitedGrowthLimit(
                                 axisInnerNodeSize);
                         },
-                        IntrinsicContributionType::Minimum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasIntrinsicMin,
                         [](const GridTrack& t) { return t.growthLimit; },
-                        IntrinsicContributionType::Minimum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
                 }
             }
         }
@@ -3044,15 +3024,13 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                             return t.FitContentLimitedGrowthLimit(
                                 axisInnerNodeSize);
                         },
-                        IntrinsicContributionType::Minimum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasMinOrMaxContentMin,
                         [](const GridTrack& t) { return t.growthLimit; },
-                        IntrinsicContributionType::Minimum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Minimum, axisInnerNodeSize);
                 }
             }
         }
@@ -3098,8 +3076,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                         isFlex, useFlexFactorForDistribution, space,
                         axisTracks + from, count, hasMaxContentMin,
                         [](const GridTrack&) { return INFINITY; },
-                        IntrinsicContributionType::Maximum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Maximum, axisInnerNodeSize);
                 } else {
                     DistributeItemSpaceToBaseSize(
                         isFlex, useFlexFactorForDistribution, space,
@@ -3108,8 +3085,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                             return t.FitContentLimitedGrowthLimit(
                                 axisInnerNodeSize);
                         },
-                        IntrinsicContributionType::Maximum,
-                        axisInnerNodeSize);
+                        IntrinsicContributionType::Maximum, axisInnerNodeSize);
                 }
             }
             FlushPlannedBaseSizeIncreases(axisTracks, nAxisTracks);
@@ -3130,8 +3106,7 @@ void ResolveIntrinsicTrackSizes(TaffyTree* tree, AbstractAxis axis,
                     isFlex, useFlexFactorForDistribution, space,
                     axisTracks + from, count, hasMaxContentMinFn,
                     [](const GridTrack& t) { return t.growthLimit; },
-                    IntrinsicContributionType::Maximum,
-                    axisInnerNodeSize);
+                    IntrinsicContributionType::Maximum, axisInnerNodeSize);
             }
         }
         FlushPlannedBaseSizeIncreases(axisTracks, nAxisTracks);
@@ -3510,8 +3485,8 @@ void AlignTracks(float gridContainerContentBoxSize, LineF padding, LineF border,
 
     float emptyGridOffset =
         numTracks == 0
-            ? ComputeAlignmentOffset(freeSpace, numTracks, gap,
-                                     trackAlignment, layoutIsReversed, true)
+            ? ComputeAlignmentOffset(freeSpace, numTracks, gap, trackAlignment,
+                                     layoutIsReversed, true)
             : 0.0f;
     float totalOffset = origin + emptyGridOffset;
     bool seenNonCollapsedTrack = false;
@@ -3763,12 +3738,12 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
 
     AlignedAxis xr = AlignItemWithinArea(
         {gridArea.left, gridArea.right},
-        justifySelf.UnwrapOr(horizontalAlignment), finalSize.w, position,
-        inset, false, margin, 0.0f, direction);
-    AlignedAxis yr = AlignItemWithinArea(
-        {gridArea.top, gridArea.bottom}, alignSelf.UnwrapOr(verticalAlignment),
-        finalSize.h, position, inset, true, margin, baselineShim,
-        Direction::Ltr);
+        justifySelf.UnwrapOr(horizontalAlignment), finalSize.w, position, inset,
+        false, margin, 0.0f, direction);
+    AlignedAxis yr = AlignItemWithinArea({gridArea.top, gridArea.bottom},
+                                         alignSelf.UnwrapOr(verticalAlignment),
+                                         finalSize.h, position, inset, true,
+                                         margin, baselineShim, Direction::Ltr);
 
     SizeF scrollbarSize = {
         overflow.y == Overflow::Scroll ? scrollbarWidth : 0.0f,
@@ -3787,13 +3762,11 @@ AlignedItem AlignAndPositionItem(TaffyTree* tree, NodeId node, uint32_t order,
     tree->SetUnroundedLayout(node, layout);
 
     SizeF contribution = ComputeContentSizeContribution(
-        {IsRtl(direction)
-             ? containerBorderBoxWidth - (xr.start + finalSize.w) -
-                   containerBorder.right
-             : xr.start - containerBorder.left,
+        {IsRtl(direction) ? containerBorderBoxWidth - (xr.start + finalSize.w) -
+                                containerBorder.right
+                          : xr.start - containerBorder.left,
          yr.start - containerBorder.top},
-        finalSize,
-        layoutOutput.contentSize, overflow);
+        finalSize, layoutOutput.contentSize, overflow);
     return {contribution, yr.start, finalSize.h};
 }
 
@@ -3911,8 +3884,9 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
 
     AlignContent alignContent =
         style.alignContent.UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
-    AlignContent justifyContent = style.justifyContent.UnwrapOr(
-        AlignContent{AlignContentKeyword::Stretch});
+    AlignContent justifyContent =
+        style.justifyContent
+            .UnwrapOr(AlignContent{AlignContentKeyword::Stretch});
     OptAlignItems alignItems = style.alignItems;
     OptAlignItems justifyItems = style.justifyItems;
 
@@ -3931,8 +3905,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     }
     constrainedAvailableSpace =
         MaybeClamp(constrainedAvailableSpace, minSize, maxSize);
-    constrainedAvailableSpace.width =
-        MaybeMax(constrainedAvailableSpace.width, paddingBorderSize.w);
+    constrainedAvailableSpace
+        .width = MaybeMax(constrainedAvailableSpace.width, paddingBorderSize.w);
     constrainedAvailableSpace.height =
         MaybeMax(constrainedAvailableSpace.height, paddingBorderSize.h);
 
@@ -4007,12 +3981,10 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     uint16_t explicitRowCount = rowSize.trackCount > nameResolver.areaRowCount
                                     ? rowSize.trackCount
                                     : nameResolver.areaRowCount;
-    explicitColCount = explicitColCount > kMaxGridTracks
-                           ? kMaxGridTracks
-                           : explicitColCount;
-    explicitRowCount = explicitRowCount > kMaxGridTracks
-                           ? kMaxGridTracks
-                           : explicitRowCount;
+    explicitColCount =
+        explicitColCount > kMaxGridTracks ? kMaxGridTracks : explicitColCount;
+    explicitRowCount =
+        explicitRowCount > kMaxGridTracks ? kMaxGridTracks : explicitRowCount;
     nameResolver.explicitColumnCount = explicitColCount;
     nameResolver.explicitRowCount = explicitRowCount;
 
@@ -4044,18 +4016,18 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     TrackCounts estColCounts;
     TrackCounts estRowCounts;
     ComputeGridSizeEstimate(explicitColCount, explicitRowCount, direction,
-                            childPlacements.els, childPlacements.len,
+                            childPlacements.els, len(childPlacements),
                             &estColCounts, &estRowCounts);
 
     // 4. Grid item placement.
     Vec<GridItem> items;
     CellOccupancyMatrix cellOccupancyMatrix;
     cellOccupancyMatrix.Init(estColCounts, estRowCounts);
-    PlaceGridItems(
-        &cellOccupancyMatrix, &items, tree, children, direction,
-        style.gridAutoFlow,
-        alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
-        justifyItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
+    PlaceGridItems(&cellOccupancyMatrix, &items, tree, children, direction,
+                   style.gridAutoFlow,
+                   alignItems.UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}),
+                   justifyItems
+                       .UnwrapOr(AlignItems{AlignItemsKeyword::Stretch}));
 
     // Auto-placement can add tracks, so the counts are read back here.
     TrackCounts finalColCounts = cellOccupancyMatrix
@@ -4087,17 +4059,17 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                              return cellOccupancyMatrix.RowIsOccupied(rowIndex);
                          });
     if (IsRtl(direction)) {
-        ReverseNonGutterTracks(columns.els, columns.len, finalColCounts);
+        ReverseNonGutterTracks(columns.els, len(columns), finalColCounts);
     }
 
     // 6. Track sizing.
-    ResolveItemTrackIndexes(items.els, items.len, finalColCounts,
+    ResolveItemTrackIndexes(items.els, len(items), finalColCounts,
                             finalRowCounts);
-    DetermineIfItemCrossesFlexibleOrIntrinsicTracks(items.els, items.len,
+    DetermineIfItemCrossesFlexibleOrIntrinsicTracks(items.els, len(items),
                                                     columns.els, rows.els);
 
     bool hasBaselineAlignedItem = false;
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         if (items[i].alignSelf.keyword == AlignItemsKeyword::Baseline) {
             hasBaselineAlignedItem = true;
             break;
@@ -4107,30 +4079,30 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     TrackSizingAlgorithm(
         tree, AbstractAxis::Inline, Get(innerMinSize, AbstractAxis::Inline),
         Get(innerMaxSize, AbstractAxis::Inline), justifyContent, alignContent,
-        availableGridSpace, innerNodeSize, columns.els, columns.len, rows.els,
-        rows.len, items.els, items.len,
+        availableGridSpace, innerNodeSize, columns.els, len(columns), rows.els,
+        len(rows), items.els, len(items),
         TrackSizeEstimate::MaxTrackSizingFunction, hasBaselineAlignedItem);
     float initialColumnSum = 0.0f;
-    for (int i = 0; i < columns.len; i++) {
+    for (int i = 0; i < len(columns); i++) {
         initialColumnSum += columns[i].baseSize;
     }
     if (!IsSome(innerNodeSize.w)) {
         innerNodeSize.w = Some(initialColumnSum);
     }
 
-    for (int i = 0; i < items.len; i++) {
+    for (int i = 0; i < len(items); i++) {
         items[i].hasGridAreaSizeCache = false;
     }
 
     TrackSizingAlgorithm(
         tree, AbstractAxis::Block, Get(innerMinSize, AbstractAxis::Block),
         Get(innerMaxSize, AbstractAxis::Block), alignContent, justifyContent,
-        availableGridSpace, innerNodeSize, rows.els, rows.len, columns.els,
-        columns.len, items.els, items.len, TrackSizeEstimate::BaseSize,
+        availableGridSpace, innerNodeSize, rows.els, len(rows), columns.els,
+        len(columns), items.els, len(items), TrackSizeEstimate::BaseSize,
         // TODO(taffy): baseline alignment in the block axis.
         false);
     float initialRowSum = 0.0f;
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         initialRowSum += rows[i].baseSize;
     }
     if (!IsSome(innerNodeSize.h)) {
@@ -4152,9 +4124,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                paddingBorderSize.h)};
     SizeF containerContentBox = {
         F32Max(0.0f, containerBorderBox.w - contentBoxInset
-                                                    .HorizontalAxisSum()),
-        F32Max(0.0f, containerBorderBox.h - contentBoxInset
-                                                     .VerticalAxisSum())};
+                                                .HorizontalAxisSum()),
+        F32Max(0.0f, containerBorderBox.h - contentBoxInset.VerticalAxisSum())};
 
     if (runMode == RunMode::ComputeSize) {
         VecReset(items);
@@ -4171,22 +4142,22 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // container resolves them to zero during "Initialise Tracks", so they are
     // resolved again here against the content-sized content box.
     if (!availableGridSpace.width.IsDefinite()) {
-        for (int i = 0; i < columns.len; i++) {
+        for (int i = 0; i < len(columns); i++) {
             GridTrack& c = columns[i];
-            Optf mn = c.minTrackSizingFunction.ResolvedPercentageSize(
-                containerContentBox.w, calc);
-            Optf mx = c.maxTrackSizingFunction.ResolvedPercentageSize(
-                containerContentBox.w, calc);
+            Optf mn = c.minTrackSizingFunction
+                          .ResolvedPercentageSize(containerContentBox.w, calc);
+            Optf mx = c.maxTrackSizingFunction
+                          .ResolvedPercentageSize(containerContentBox.w, calc);
             c.baseSize = MaybeClamp(c.baseSize, mn, mx);
         }
     }
     if (!availableGridSpace.height.IsDefinite()) {
-        for (int i = 0; i < rows.len; i++) {
+        for (int i = 0; i < len(rows); i++) {
             GridTrack& r = rows[i];
-            Optf mn = r.minTrackSizingFunction.ResolvedPercentageSize(
-                containerContentBox.h, calc);
-            Optf mx = r.maxTrackSizingFunction.ResolvedPercentageSize(
-                containerContentBox.h, calc);
+            Optf mn = r.minTrackSizingFunction
+                          .ResolvedPercentageSize(containerContentBox.h, calc);
+            Optf mx = r.maxTrackSizingFunction
+                          .ResolvedPercentageSize(containerContentBox.h, calc);
             r.baseSize = MaybeClamp(r.baseSize, mn, mx);
         }
     }
@@ -4195,14 +4166,14 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     // there are percentage columns, or if any item's min-content contribution
     // across an intrinsic track changed.
     bool hasPercentageColumn = false;
-    for (int i = 0; i < columns.len; i++) {
+    for (int i = 0; i < len(columns); i++) {
         if (columns[i].UsesPercentage()) {
             hasPercentageColumn = true;
             break;
         }
     }
     bool hasPercentageRow = false;
-    for (int i = 0; i < rows.len; i++) {
+    for (int i = 0; i < len(rows); i++) {
         if (rows[i].UsesPercentage()) {
             hasPercentageRow = true;
             break;
@@ -4213,7 +4184,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     bool intrinsicColumnContributionChanged = false;
 
     if (!rerunColumnSizing) {
-        for (int i = 0; i < items.len; i++) {
+        for (int i = 0; i < len(items); i++) {
             GridItem* item = &items[i];
             if (!item->crossesIntrinsicColumn) {
                 continue;
@@ -4239,7 +4210,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         }
         rerunColumnSizing = intrinsicColumnContributionChanged;
     } else {
-        for (int i = 0; i < items.len; i++) {
+        for (int i = 0; i < len(items); i++) {
             items[i].hasGridAreaSizeCache = false;
             items[i].minContentContributionCache.w = None();
             items[i].maxContentContributionCache.w = None();
@@ -4252,16 +4223,15 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         TrackSizingAlgorithm(
             tree, AbstractAxis::Inline, Get(innerMinSize, AbstractAxis::Inline),
             Get(innerMaxSize, AbstractAxis::Inline), justifyContent,
-            alignContent,
-            availableGridSpace, innerNodeSize, columns.els, columns.len,
-            rows.els, rows.len, items.els, items.len,
+            alignContent, availableGridSpace, innerNodeSize, columns.els,
+            len(columns), rows.els, len(rows), items.els, len(items),
             TrackSizeEstimate::BaseSize, hasBaselineAlignedItem);
 
         bool parentHeightIndefinite = !availableSpace.height.IsDefinite();
         bool rerunRowSizing = parentHeightIndefinite && hasPercentageRow;
 
         if (!rerunRowSizing) {
-            for (int i = 0; i < items.len; i++) {
+            for (int i = 0; i < len(items); i++) {
                 GridItem* item = &items[i];
                 if (!item->crossesIntrinsicColumn) {
                     continue;
@@ -4287,7 +4257,7 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
             }
             rerunRowSizing = intrinsicRowContributionChanged;
         } else {
-            for (int i = 0; i < items.len; i++) {
+            for (int i = 0; i < len(items); i++) {
                 items[i].hasGridAreaSizeCache = false;
                 items[i].minContentContributionCache.h = None();
                 items[i].maxContentContributionCache.h = None();
@@ -4300,9 +4270,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                 tree, AbstractAxis::Block,
                 Get(innerMinSize, AbstractAxis::Block),
                 Get(innerMaxSize, AbstractAxis::Block), alignContent,
-                justifyContent,
-                availableGridSpace, innerNodeSize, rows.els, rows.len,
-                columns.els, columns.len, items.els, items.len,
+                justifyContent, availableGridSpace, innerNodeSize, rows.els,
+                len(rows), columns.els, len(columns), items.els, len(items),
                 TrackSizeEstimate::BaseSize, false);
         }
     }
@@ -4310,11 +4279,11 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
     if ((intrinsicColumnContributionChanged && !hasPercentageColumn) ||
         (intrinsicRowContributionChanged && !hasPercentageRow)) {
         float finalColumnSum = 0.0f;
-        for (int i = 0; i < columns.len; i++) {
+        for (int i = 0; i < len(columns); i++) {
             finalColumnSum += columns[i].baseSize;
         }
         float finalRowSum = 0.0f;
-        for (int i = 0; i < rows.len; i++) {
+        for (int i = 0; i < len(rows); i++) {
             finalRowSum += rows[i].baseSize;
         }
         if (intrinsicColumnContributionChanged && !hasPercentageColumn) {
@@ -4325,9 +4294,9 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                                                   .HorizontalAxisSum()),
                     minSize.w, maxSize.w),
                 paddingBorderSize.w);
-            containerContentBox
-                .w = F32Max(0.0f, containerBorderBox.w -
-                                          contentBoxInset.HorizontalAxisSum());
+            containerContentBox.w =
+                F32Max(0.0f, containerBorderBox.w - contentBoxInset
+                                                        .HorizontalAxisSum());
         }
         if (intrinsicRowContributionChanged && !hasPercentageRow) {
             containerBorderBox.h = F32Max(
@@ -4336,9 +4305,8 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                              finalRowSum + contentBoxInset.VerticalAxisSum()),
                     minSize.h, maxSize.h),
                 paddingBorderSize.h);
-            containerContentBox
-                .h = F32Max(0.0f, containerBorderBox.h -
-                                           contentBoxInset.VerticalAxisSum());
+            containerContentBox.h = F32Max(
+                0.0f, containerBorderBox.h - contentBoxInset.VerticalAxisSum());
         }
     }
 
@@ -4353,39 +4321,39 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
              (IsRtl(direction) ? inlineScrollbarGutterForAlignment : 0.0f),
          padding.right +
              (IsRtl(direction) ? 0.0f : inlineScrollbarGutterForAlignment)},
-        {border.left, border.right}, columns.els, columns.len, justifyContent,
+        {border.left, border.right}, columns.els, len(columns), justifyContent,
         IsRtl(direction));
     AlignTracks(Get(containerContentBox, AbstractAxis::Block),
                 {padding.top, padding.bottom}, {border.top, border.bottom},
-                rows.els, rows.len, alignContent, false);
+                rows.els, len(rows), alignContent, false);
 
     // 9. Size, align and position the grid items.
     SizeF itemContentSizeContribution = SizeF::Zero();
     SizeF absoluteContentSize = SizeF::Zero();
 
     // Back into source order, so items line up with their styles again.
-    StableSort(items.els, items.len, [](const GridItem& a, const GridItem& b) {
+    StableSort(items.els, len(items), [](const GridItem& a, const GridItem& b) {
         return a.sourceOrder < b.sourceOrder;
     });
 
-    for (int index = 0; index < items.len; index++) {
+    for (int index = 0; index < len(items); index++) {
         GridItem& item = items[index];
         RectF gridArea = {columns[(int)item.columnIndexes.start + 1].offset,
                           columns[(int)item.columnIndexes.end].offset,
                           rows[(int)item.rowIndexes.start + 1].offset,
                           rows[(int)item.rowIndexes.end].offset};
-        AlignedItem placed = AlignAndPositionItem(
-            tree, item.node, (uint32_t)index, gridArea, justifyItems,
-            alignItems, item.baselineShim, direction, containerBorderBox.w,
-            border);
+        AlignedItem placed =
+            AlignAndPositionItem(tree, item.node, (uint32_t)index, gridArea,
+                                 justifyItems, alignItems, item.baselineShim,
+                                 direction, containerBorderBox.w, border);
         item.yPosition = placed.yPosition;
         item.height = placed.height;
-        itemContentSizeContribution = Max(itemContentSizeContribution,
-                                          placed.contentSizeContribution);
+        itemContentSizeContribution =
+            Max(itemContentSizeContribution, placed.contentSizeContribution);
     }
 
     // Hidden and absolutely positioned children.
-    uint32_t order = (uint32_t)items.len;
+    uint32_t order = (uint32_t)len(items);
     for (int index = 0; index < childCount; index++) {
         NodeId child = tree->GetChildId(node, index);
         const Style& cs = tree->GetStyle(child);
@@ -4445,20 +4413,19 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
         }
 
         auto lineAsStartEdge = [](const Vec<GridTrack>& tracks, int index) {
-            return index + 1 < tracks.len ? tracks[index + 1].offset
-                                          : tracks[index].offset;
+            return index + 1 < len(tracks) ? tracks[index + 1].offset
+                                           : tracks[index].offset;
         };
         auto lineAsEndEdge = [](const Vec<GridTrack>& tracks, int index) {
             if (index == 0) {
-                return tracks.len > 1 ? tracks[1].offset : tracks[0].offset;
+                return len(tracks) > 1 ? tracks[1].offset : tracks[0].offset;
             }
             return tracks[index].offset;
         };
 
         RectF gridArea;
-        gridArea.top = rowStartIdx >= 0
-                           ? lineAsStartEdge(rows, rowStartIdx)
-                           : border.top;
+        gridArea.top =
+            rowStartIdx >= 0 ? lineAsStartEdge(rows, rowStartIdx) : border.top;
         gridArea.bottom =
             rowEndIdx >= 0
                 ? lineAsEndEdge(rows, rowEndIdx)
@@ -4476,34 +4443,33 @@ LayoutOutput ComputeGridLayout(TaffyTree* tree, NodeId node,
                                           scrollbarGutter.x);
 
         // TODO(taffy): baseline alignment for absolutely positioned items.
-        AlignedItem placed =
-            AlignAndPositionItem(tree, child, order, gridArea, justifyItems,
-                                 alignItems, 0.0f, direction,
-                                 containerBorderBox.w, border);
-        absoluteContentSize = Max(absoluteContentSize,
-                                  placed.contentSizeContribution);
+        AlignedItem placed = AlignAndPositionItem(
+            tree, child, order, gridArea, justifyItems, alignItems, 0.0f,
+            direction, containerBorderBox.w, border);
+        absoluteContentSize =
+            Max(absoluteContentSize, placed.contentSizeContribution);
         order += 1;
     }
 
-    itemContentSizeContribution.w +=
-        IsRtl(direction) ? padding.left : padding.right;
+    itemContentSizeContribution
+        .w += IsRtl(direction) ? padding.left : padding.right;
     itemContentSizeContribution.h += padding.bottom;
     SizeF finalContentSize =
         Max(itemContentSizeContribution, absoluteContentSize);
 
     LayoutOutput out;
-    if (items.len == 0) {
+    if (len(items) == 0) {
         out = LayoutOutput::FromOuterSize(containerBorderBox);
     } else {
         // The grid container's first baseline. Sort by row start so the items
         // of the first row are contiguous.
-        StableSort(items.els, items.len,
+        StableSort(items.els, len(items),
                    [](const GridItem& a, const GridItem& b) {
                        return a.row.start < b.row.start;
                    });
         OriginZeroLine firstRow = items[0].row.start;
         int rowEnd = 0;
-        while (rowEnd < items.len && items[rowEnd].row.start == firstRow) {
+        while (rowEnd < len(items) && items[rowEnd].row.start == firstRow) {
             rowEnd++;
         }
         const GridItem* chosen = &items[0];
@@ -4569,7 +4535,7 @@ void GridSizeEstimateForTest(uint16_t explicitColCount,
     TrackCounts cols;
     TrackCounts rws;
     ComputeGridSizeEstimate(explicitColCount, explicitRowCount, direction,
-                            children.els, children.len, &cols, &rws);
+                            children.els, len(children), &cols, &rws);
     VecReset(children);
     outColCounts[0] = cols.negativeImplicit;
     outColCounts[1] = cols.explicitCount;
@@ -4588,7 +4554,7 @@ int GridInitTracksForTest(const Style& style, AbsoluteAxis axis,
         TrackCounts::FromRaw(negativeImplicit, explicitCount, positiveImplicit);
     InitializeGridTracks(&tracks, counts, style, axis,
                          [](int) { return false; });
-    int n = tracks.len;
+    int n = len(tracks);
     for (int i = 0; i < n && i < cap; i++) {
         out[i].isGutter = tracks[i].kind == GridTrackKind::Gutter;
         out[i].isCollapsed = tracks[i].isCollapsed;
@@ -4632,7 +4598,7 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
     TrackCounts estCols;
     TrackCounts estRows;
     ComputeGridSizeEstimate(explicitColCount, explicitRowCount, Direction::Ltr,
-                            childPlacements.els, childPlacements.len, &estCols,
+                            childPlacements.els, len(childPlacements), &estCols,
                             &estRows);
 
     Vec<GridItem> items;
@@ -4642,7 +4608,7 @@ int GridPlaceForTest(TaffyTree* tree, NodeId parent, uint16_t explicitColCount,
                    AlignItems{AlignItemsKeyword::Start},
                    AlignItems{AlignItemsKeyword::Start});
 
-    int n = items.len;
+    int n = len(items);
     for (int i = 0; i < n && i < cap; i++) {
         out[i].columnStart = items[i].column.start.v;
         out[i].columnEnd = items[i].column.end.v;

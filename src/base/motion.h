@@ -580,9 +580,9 @@ struct Sequence {
     SequenceSample<T> Sample(Ctx* cx) const {
         SequenceSample<T> out;
         out.value = from;
-        if (!cx || steps.len == 0) return out;
+        if (!cx || len(steps) == 0) return out;
 
-        const int32_t last = steps.len - 1;
+        const int32_t last = len(steps) - 1;
         uint32_t stateKey = id.key ^ 0x9e3779b9u;
         auto* state = (SequenceState<T>*)MotionSlot(
             cx, stateKey, (int)sizeof(SequenceState<T>));

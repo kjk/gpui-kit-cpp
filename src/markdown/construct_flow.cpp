@@ -220,8 +220,8 @@ State HeadingAtxBefore(Tokenizer* t) {
 }
 
 State HeadingAtxSequenceOpen(Tokenizer* t) {
-    if (t->current == '#' &&
-        t->tokenizeState.size < kHeadingAtxOpeningFenceSizeMax) {
+    if (t->current == '#' && t->tokenizeState
+                                     .size < kHeadingAtxOpeningFenceSizeMax) {
         t->tokenizeState.size += 1;
         Consume(t);
         return StateNext(StateName::HeadingAtxSequenceOpen);
@@ -245,7 +245,8 @@ State HeadingAtxAtBreak(Tokenizer* t) {
         return StateOk();
     }
     if (t->current == '\t' || t->current == ' ') {
-        TokenizerAttempt(t, StateNext(StateName::HeadingAtxAtBreak), StateNok());
+        TokenizerAttempt(t, StateNext(StateName::HeadingAtxAtBreak),
+                         StateNok());
         return StateRetry(SpaceOrTab(t));
     }
     if (t->current == '#') {
@@ -387,7 +388,8 @@ bool HeadingSetextResolve(Tokenizer* t, Subresult*) {
 
         Name names[3] = {Name::SpaceOrTab, Name::LineEnding,
                          Name::BlockQuotePrefix};
-        int32_t paragraphExitBefore = SkipOptBack(t->events, enter - 1, names, 3);
+        int32_t paragraphExitBefore =
+            SkipOptBack(t->events, enter - 1, names, 3);
 
         if (t->events[paragraphExitBefore].name == Name::Paragraph) {
             Name paragraph = Name::Paragraph;
@@ -639,7 +641,7 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
                 current.start = index;
                 current.end = end;
 
-                int32_t listIndex = listsWip.len;
+                int32_t listIndex = len(listsWip);
                 bool matched = false;
                 while (listIndex > 0) {
                     listIndex -= 1;
@@ -653,7 +655,8 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
                         previous.balance == current.balance &&
                         before == current.start) {
                         listsWip[listIndex].end = current.end;
-                        for (int32_t i = listIndex + 1; i < listsWip.len; i++) {
+                        for (int32_t i = listIndex + 1; i < len(listsWip);
+                             i++) {
                             VecAppend(lists, listsWip[i]);
                         }
                         listsWip.len = listIndex + 1;
@@ -663,7 +666,7 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
                 }
 
                 if (!matched) {
-                    int32_t i = listsWip.len;
+                    int32_t i = len(listsWip);
                     int32_t exit = -1;
                     while (i > 0) {
                         i -= 1;
@@ -674,7 +677,7 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
                         }
                     }
                     if (exit != -1) {
-                        for (int32_t j = exit; j < listsWip.len; j++) {
+                        for (int32_t j = exit; j < len(listsWip); j++) {
                             VecAppend(lists, listsWip[j]);
                         }
                         listsWip.len = exit;
@@ -690,11 +693,11 @@ bool ListItemResolve(Tokenizer* t, Subresult*) {
         index += 1;
     }
 
-    for (int32_t i = 0; i < listsWip.len; i++) {
+    for (int32_t i = 0; i < len(listsWip); i++) {
         VecAppend(lists, listsWip[i]);
     }
 
-    for (int32_t i = 0; i < lists.len; i++) {
+    for (int32_t i = 0; i < len(lists); i++) {
         const ListWip& listItem = lists[i];
         Event listStart = t->events[listItem.start];
         Event listEnd = t->events[listItem.end];
@@ -754,8 +757,8 @@ State DefinitionLabelAfter(Tokenizer* t) {
     t->tokenizeState.token3 = Name::Data;
     if (t->current == ':') {
         Name labelString = Name::DefinitionLabelString;
-        t->tokenizeState.end =
-            SkipToBack(t->events, t->events.len - 1, &labelString, 1);
+        t->tokenizeState
+            .end = SkipToBack(t->events, t->events.len - 1, &labelString, 1);
         Enter(t, Name::DefinitionMarker);
         Consume(t);
         Exit(t, Name::DefinitionMarker);

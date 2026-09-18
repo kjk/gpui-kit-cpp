@@ -264,20 +264,20 @@ void IgnorerInit(Ignorer* ig, Str workDir) {
     // the crate's GitignoreBuilder add order.
     AddPatternsFromFile(patterns, workDir, StrL(".autocorrectignore"));
     AddPatternsFromFile(patterns, workDir, StrL(".gitignore"));
-    if (patterns.len == 0) {
+    if (len(patterns) == 0) {
         return;
     }
     ig->patterns = (IgnorePattern*)base::Alloc(
-        nullptr, patterns.len * (int)sizeof(IgnorePattern));
+        nullptr, len(patterns) * (int)sizeof(IgnorePattern));
     if (!ig->patterns) {
-        for (int i = 0; i < patterns.len; i++) {
+        for (int i = 0; i < len(patterns); i++) {
             base::StrFree(patterns[i].glob);
         }
         return;
     }
     memcpy(ig->patterns, patterns.els,
-           (size_t)patterns.len * sizeof(IgnorePattern));
-    ig->nPatterns = patterns.len;
+           (size_t)len(patterns) * sizeof(IgnorePattern));
+    ig->nPatterns = len(patterns);
 }
 
 bool IgnorerIsIgnored(const Ignorer* ig, Str relativePath) {

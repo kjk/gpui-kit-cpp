@@ -184,7 +184,7 @@ static void ManagerReplacesLimitsAndDismissesLikeTheSource() {
     utassert(count == 2);
     utassert(*visible[0].id == 2 && *visible[1].id == 1);
     Vec<int> dismissed = manager.DismissAll(100);
-    utassert(dismissed.len == 1 && dismissed[0] == 1);
+    utassert(len(dismissed) == 1 && dismissed[0] == 1);
 }
 
 static void StackBuilderUsesStableMeasurementsAndSourceMotion() {

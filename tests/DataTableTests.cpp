@@ -577,9 +577,9 @@ static void ADumpRangeIsClampedToTheTable() {
     Vec<Str> heads;
     Vec<Str> cells;
     t->DumpRange(1, 3, &heads, &cells);
-    utassert(heads.len == 2);
+    utassert(len(heads) == 2);
     // Two rows of two.
-    utassert(cells.len == 4);
+    utassert(len(cells) == 4);
     utassert(cells[0].s[0] == '2' && cells[1].s[0] == 'b');
     utassert(cells[2].s[0] == '3' && cells[3].s[0] == 'c');
 
@@ -588,18 +588,18 @@ static void ADumpRangeIsClampedToTheTable() {
     VecReset(heads);
     VecReset(cells);
     t->DumpRange(2, 99, &heads, &cells);
-    utassert(cells.len == 2);
+    utassert(len(cells) == 2);
     // A range the wrong way round, or past the end entirely, is no rows.
     VecReset(heads);
     VecReset(cells);
     t->DumpRange(3, 1, &heads, &cells);
-    utassert(cells.len == 0 && heads.len == 2);
+    utassert(len(cells) == 0 && len(heads) == 2);
 
     // The whole table is what dump answers.
     VecReset(heads);
     VecReset(cells);
     t->Dump(&heads, &cells);
-    utassert(cells.len == 6);
+    utassert(len(cells) == 6);
     VecReset(heads);
     VecReset(cells);
     ArenaDelete(a);

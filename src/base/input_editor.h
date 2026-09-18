@@ -95,8 +95,8 @@ struct DiagnosticSet {
     void Reset(Str value);
     void Push(const Diagnostic& diagnostic);
     void Extend(const Diagnostic* values, int n);
-    int Len() const { return diagnostics.len; }
-    bool IsEmpty() const { return diagnostics.len == 0; }
+    int Len() const { return len(diagnostics); }
+    bool IsEmpty() const { return len(diagnostics) == 0; }
     void Clear();
     DiagnosticSummary Summary() const;
     int Range(Selection range, const DiagnosticEntry** out, int cap) const;
@@ -154,7 +154,7 @@ struct DisplayMap {
     BufferPoint ClipBufferPoint(BufferPoint point) const;
     DisplayPoint BufferPosToDisplayPos(BufferPoint point) const;
     BufferPoint DisplayPosToBufferPos(DisplayPoint point) const;
-    int DisplayRowCount() const { return rows.len; }
+    int DisplayRowCount() const { return len(rows); }
     int WrapRowCount() const;
     int BufferLineCount() const;
     int DisplayRowToBufferLine(int row) const;

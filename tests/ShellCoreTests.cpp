@@ -2133,7 +2133,7 @@ static void ShellStorageWritesRevisionsInOrderAndFlushes() {
     utassert(waiter != nullptr && !immediate && settlement.calls == 0);
     Vec<StorageWaiter*> ready;
     storage.FinishWrite(first.revision, true, &ready);
-    utassert(ready.len == 0 && storage.IsDirty());
+    utassert(len(ready) == 0 && storage.IsDirty());
     first.Free();
 
     StorageWrite second;
@@ -2442,7 +2442,7 @@ static void ShellAssetsStayInsideTheApplicationRoot() {
         utassert(assets.Install());
         Vec<uint8_t> bytes;
         utassert(AssetsLoad(StrL("icons/check.svg"), &bytes));
-        utassert(StrEq(Str((char*)bytes.els, bytes.len), StrL("<svg/>")));
+        utassert(StrEq(Str((char*)bytes.els, len(bytes)), StrL("<svg/>")));
         VecReset(bytes);
         Str relative;
         utassert(!assets.Resolve(StrL("../secret.svg"), &relative, &error));
@@ -2450,8 +2450,8 @@ static void ShellAssetsStayInsideTheApplicationRoot() {
         error = {};
         Vec<Str> names;
         utassert(assets.List(StrL("icons"), &names, &error));
-        utassert(names.len == 1 && StrEq(names[0], StrL("check.svg")));
-        for (int i = 0; i < names.len; i++) StrFree(names[i]);
+        utassert(len(names) == 1 && StrEq(names[0], StrL("check.svg")));
+        for (int i = 0; i < len(names); i++) StrFree(names[i]);
         VecReset(names);
     }
     utassert(AssetsRootCount() == 0);
@@ -2680,13 +2680,13 @@ static void ShellFetchRedirectsRewriteMethodAndBody() {
 
         utassert(StrEq(method, Str(c.expected)));
         if (StrEq(method, StrL("GET"))) {
-            utassert(body.len == 0 && headers.len == 0);
+            utassert(body.len == 0 && len(headers) == 0);
         } else {
-            utassert(body.len > 0 && headers.len == 1);
+            utassert(body.len > 0 && len(headers) == 1);
         }
         StrFree(method);
         StrFree(body);
-        for (int i = 0; i < headers.len; i++) {
+        for (int i = 0; i < len(headers); i++) {
             StrFree(headers[i].name);
             StrFree(headers[i].value);
         }
@@ -3333,9 +3333,9 @@ static void ShellPluginManifestsDiscoverAuthorizeAndUnload() {
     PluginManager manager(container);
     manager.DataHome(dataDir);
     const Vec<PluginDiscovery>& discovered = manager.Discover();
-    utassert(discovered.len == 2);
+    utassert(len(discovered) == 2);
     int good = 0, broken = 0;
-    for (int i = 0; i < discovered.len; i++) {
+    for (int i = 0; i < len(discovered); i++) {
         good += discovered[i].manifest != nullptr;
         broken += discovered[i].error.s != nullptr;
     }

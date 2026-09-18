@@ -852,7 +852,7 @@ Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState) {
     VecAppend(context.trees, frame);
 
     int32_t index = 0;
-    while (index < events.len) {
+    while (index < len(events)) {
         context.index = index;
         if (events[index].kind == Kind::Enter) {
             Enter(&context);

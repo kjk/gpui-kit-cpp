@@ -60,7 +60,7 @@ struct NativeMenu {
     NativeMenu* Separator();
     NativeMenu* Submenu(Str label, NativeMenu* menu);
     NativeMenu* OnSelect(Listener l);
-    bool IsEmpty() const { return items.len == 0; }
+    bool IsEmpty() const { return len(items) == 0; }
 
     // Show the menu at (x, y) in the window, in logical pixels, and run
     // onSelect for the row that was chosen. False means this platform has no

@@ -67,7 +67,7 @@ void TestWryUri() {
     cookie.path = StrDup(StrL("/"));
     VecAppend(cookies, cookie);
     wry::CookieListFree(&cookies);
-    utassert(cookies.len == 0);
+    utassert(len(cookies) == 0);
 
     // The crate's own case, verbatim.
     Str scheme = StrL("http");

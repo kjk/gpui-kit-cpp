@@ -681,17 +681,17 @@ static void SynHlLexDone(SynHlJob* job) {
         hl->flight = nullptr;
         hl->flightTask = 0;
         VecClear(hl->runs);
-        if (job->runs.len > 0) {
-            if (HlRun* dst = VecAppendBlanks(hl->runs, job->runs.len)) {
+        if (len(job->runs) > 0) {
+            if (HlRun* dst = VecAppendBlanks(hl->runs, len(job->runs))) {
                 memcpy(dst, job->runs.els,
-                       (size_t)job->runs.len * sizeof(HlRun));
+                       (size_t)len(job->runs) * sizeof(HlRun));
             }
         }
         VecClear(hl->folds);
-        if (job->folds.len > 0) {
-            if (FoldRange* dst = VecAppendBlanks(hl->folds, job->folds.len)) {
+        if (len(job->folds) > 0) {
+            if (FoldRange* dst = VecAppendBlanks(hl->folds, len(job->folds))) {
                 memcpy(dst, job->folds.els,
-                       (size_t)job->folds.len * sizeof(FoldRange));
+                       (size_t)len(job->folds) * sizeof(FoldRange));
             }
         }
         hl->valid = true;
@@ -741,13 +741,13 @@ static int SynHlStyles(void* data, Selection range,
                        TextSpan** out) {
     auto* hl = (SyntaxInputHighlighter*)data;
     *out = nullptr;
-    if (hl->runs.len == 0 || range.end <= range.start) {
+    if (len(hl->runs) == 0 || range.end <= range.start) {
         return 0;
     }
     // The first run that ends after the range starts, then every run that
     // begins before it ends.
     int lo = 0;
-    int hi = hl->runs.len;
+    int hi = len(hl->runs);
     while (lo < hi) {
         int mid = lo + (hi - lo) / 2;
         if (hl->runs[mid].hi <= range.start) {
@@ -758,8 +758,8 @@ static int SynHlStyles(void* data, Selection range,
     }
     int first = lo;
     int count = 0;
-    while (first + count < hl->runs.len && hl->runs[first + count]
-                                                   .lo < range.end) {
+    while (first + count < len(hl->runs) && hl->runs[first + count]
+                                                    .lo < range.end) {
         count++;
     }
     if (count == 0) {
@@ -808,16 +808,16 @@ static int SynHlFoldRanges(void* data, Str, Selection, Arena* a,
     // list is cached, so answering all of it is a copy either way.
     auto* hl = (SyntaxInputHighlighter*)data;
     *out = nullptr;
-    if (hl->folds.len == 0) {
+    if (len(hl->folds) == 0) {
         return 0;
     }
-    auto* folds = (FoldRange*)Alloc(a, (int)sizeof(FoldRange) * hl->folds.len);
+    auto* folds = (FoldRange*)Alloc(a, (int)sizeof(FoldRange) * len(hl->folds));
     if (!folds) {
         return 0;
     }
-    memcpy(folds, hl->folds.els, (size_t)hl->folds.len * sizeof(FoldRange));
+    memcpy(folds, hl->folds.els, (size_t)len(hl->folds) * sizeof(FoldRange));
     *out = folds;
-    return hl->folds.len;
+    return len(hl->folds);
 }
 
 static void SynHlDrop(void* data) {

@@ -230,7 +230,7 @@ void TreeBuilder::BuildDeepTree(uint32_t maxNodes, uint32_t branchingFactor,
         uint32_t sub = (maxNodes - branchingFactor) / branchingFactor;
         Vec<taffy::NodeId> children;
         BuildDeepTree(sub, branchingFactor, &children);
-        VecAppend(*out, CreateContainerNode(children.els, children.len));
+        VecAppend(*out, CreateContainerNode(children.els, len(children)));
     }
 }
 
@@ -238,7 +238,7 @@ void TreeBuilder::BuildDeepHierarchy(uint32_t nodeCount,
                                      uint32_t branchingFactor) {
     Vec<taffy::NodeId> children;
     BuildDeepTree(nodeCount, branchingFactor, &children);
-    SetRootChildren(children.els, children.len);
+    SetRootChildren(children.els, len(children));
 }
 
 void TreeBuilder::BuildFlatHierarchy(uint32_t targetNodeCount) {
@@ -249,9 +249,9 @@ void TreeBuilder::BuildFlatHierarchy(uint32_t targetNodeCount) {
         for (int i = 0; i < count; i++) {
             VecAppend(sub, CreateLeafNode());
         }
-        VecAppend(children, CreateContainerNode(sub.els, sub.len));
+        VecAppend(children, CreateContainerNode(sub.els, len(sub)));
     }
-    SetRootChildren(children.els, children.len);
+    SetRootChildren(children.els, len(children));
 }
 
 void TreeBuilder::BuildSuperDeepHierarchy(uint32_t depth,
@@ -259,14 +259,14 @@ void TreeBuilder::BuildSuperDeepHierarchy(uint32_t depth,
     Vec<taffy::NodeId> children;
     for (uint32_t i = 0; i < depth; i++) {
         taffy::NodeId nodeWithChildren =
-            CreateContainerNode(children.els, children.len);
+            CreateContainerNode(children.els, len(children));
         children.len = 0;
         VecAppend(children, nodeWithChildren);
         for (uint32_t j = 0; j + 1 < nodesPerLevel; j++) {
             VecAppend(children, CreateLeafNode());
         }
     }
-    SetRootChildren(children.els, children.len);
+    SetRootChildren(children.els, len(children));
 }
 
 void TreeBuilder::ComputeLayout(Optf availableWidth, Optf availableHeight) {

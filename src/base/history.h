@@ -27,32 +27,32 @@ struct History {
         EnforceMaxEntries();
     }
     const T* Current() const {
-        return entries.len ? &entries[entries.len - 1] : nullptr;
+        return len(entries) ? &entries[len(entries) - 1] : nullptr;
     }
     void ReplaceCurrent(T entry) {
-        if (entries.len)
-            entries[entries.len - 1] = entry;
+        if (len(entries))
+            entries[len(entries) - 1] = entry;
         else
             Push(entry);
     }
     bool RemoveCurrent(T* out = nullptr) {
-        if (!entries.len) return false;
-        if (out) *out = entries[entries.len - 1];
+        if (!len(entries)) return false;
+        if (out) *out = entries[len(entries) - 1];
         entries.len--;
         return true;
     }
-    bool CanBack() const { return entries.len > 1; }
-    bool CanForward() const { return forwardEntries.len > 0; }
+    bool CanBack() const { return len(entries) > 1; }
+    bool CanForward() const { return len(forwardEntries) > 0; }
     bool Back(T* out = nullptr) {
         if (!CanBack()) return false;
-        VecAppend(forwardEntries, entries[entries.len - 1]);
+        VecAppend(forwardEntries, entries[len(entries) - 1]);
         entries.len--;
         if (out) *out = *Current();
         return true;
     }
     bool Forward(T* out = nullptr) {
         if (maxEntries == 0 || !CanForward()) return false;
-        VecAppend(entries, forwardEntries[forwardEntries.len - 1]);
+        VecAppend(entries, forwardEntries[len(forwardEntries) - 1]);
         forwardEntries.len--;
         EnforceMaxEntries();
         if (out) *out = *Current();
@@ -60,7 +60,7 @@ struct History {
     }
     const Vec<T>& Entries() const { return entries; }
     HistoryForwardEntries<T> ForwardEntries() const {
-        return {forwardEntries.els, forwardEntries.len};
+        return {forwardEntries.els, len(forwardEntries)};
     }
     void Retain(bool (*keep)(const T&, void*), void* user = nullptr) {
         RetainIf(entries, keep, user);
@@ -73,9 +73,9 @@ struct History {
 
   private:
     void EnforceMaxEntries() {
-        int excess = entries.len - maxEntries;
+        int excess = len(entries) - maxEntries;
         if (excess <= 0) return;
-        for (int i = excess; i < entries.len; i++)
+        for (int i = excess; i < len(entries); i++)
             entries[i - excess] = entries[i];
         entries.len -= excess;
     }

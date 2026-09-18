@@ -399,11 +399,11 @@ Subresult Flush(Tokenizer* t, State state, bool resolve) {
 
     if (resolve) {
         Vec<ResolveName> resolvers;
-        for (int32_t i = 0; i < t->resolvers.len; i++) {
+        for (int32_t i = 0; i < len(t->resolvers); i++) {
             VecAppend(resolvers, t->resolvers[i]);
         }
         t->resolvers.len = 0;
-        for (int32_t index = 0; index < resolvers.len; index++) {
+        for (int32_t index = 0; index < len(resolvers); index++) {
             Subresult result;
             if (ResolveCall(t, resolvers[index], &result)) {
                 SubresultAppend(value, result);

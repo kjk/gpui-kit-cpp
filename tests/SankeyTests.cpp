@@ -114,7 +114,7 @@ static void ALongChainStillResolves() {
     }
     Sankey s;
     SankeyGraph g;
-    utassert(SankeyTopology(&s, kCount, links.els, links.len, &g) ==
+    utassert(SankeyTopology(&s, kCount, links.els, len(links), &g) ==
              SankeyError::None);
     utassert(g.nodes[0].height == kCount - 1);
     utassert(g.nodes[kCount - 1].depth == kCount - 1);
@@ -172,10 +172,8 @@ static void RibbonsStackInsideTheNodeTheyLeave() {
     // Each target has one incoming ribbon, filling it.
     for (int i = 0; i < g.links.len; i++) {
         const SankeyNodeLayout& target = g.nodes[g.links[i].target];
-        utassert(
-            Near(g.links[i].y1 - g.links[i].targetWidth / 2.f, target.y0));
-        utassert(
-            Near(g.links[i].y1 + g.links[i].targetWidth / 2.f, target.y1));
+        utassert(Near(g.links[i].y1 - g.links[i].targetWidth / 2.f, target.y0));
+        utassert(Near(g.links[i].y1 + g.links[i].targetWidth / 2.f, target.y1));
     }
 }
 
@@ -233,8 +231,8 @@ static void TheSqrtScaleStillFillsEveryNode() {
 
     // The two leaves show the compression: their heights are in the ratio of
     // the square roots, not of the values.
-    float ratio = (g.nodes[3].y1 - g.nodes[3].y0) /
-                  (g.nodes[2].y1 - g.nodes[2].y0);
+    float ratio =
+        (g.nodes[3].y1 - g.nodes[3].y0) / (g.nodes[2].y1 - g.nodes[2].y0);
     float want = (float)sqrt(50.0 / 40.0);
     utassert((ratio - want < 0.02f) && (want - ratio < 0.02f));
 }

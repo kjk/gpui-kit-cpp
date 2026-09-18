@@ -34,7 +34,7 @@ static int ButtonChildCount(const El* root) {
 
 static const AccessibilityNode* ButtonAt(const Vec<AccessibilityNode>& nodes,
                                          int wanted) {
-    for (int i = 0; i < nodes.len; i++) {
+    for (int i = 0; i < len(nodes); i++) {
         if (nodes[i].info.role != AccessibilityRole::Button) {
             continue;
         }

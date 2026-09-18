@@ -55,7 +55,7 @@ struct HostArguments {
     Vec<HostValue*> values;
 
     void Free();
-    int Len() const { return values.len; }
+    int Len() const { return len(values); }
     const HostValue* Get(int index) const;
     bool Value(int index, const HostValue** value, HostError* error) const;
     bool String(int index, Str* value, HostError* error) const;
@@ -91,8 +91,7 @@ class HostModule {
     HostModule* Retain();
     void Release();
 
-    HostModule* Function(Str name, Func1<HostCall*> body,
-                         Func0 release = {});
+    HostModule* Function(Str name, Func1<HostCall*> body, Func0 release = {});
     HostModule* AsyncFunction(Str name, Func1<HostCall*> work,
                               Func0 release = {});
     HostModule* AsyncFunction(Str name, Func1<HostAsyncRequest*> begin,

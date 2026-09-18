@@ -800,8 +800,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     const TextSpan* docSpans = style.spans;
     int nDocSpans = style.nSpans;
     if (state->highlighter.styles && firstRow < endRow &&
-        firstRow < lineStarts.len) {
-        Selection vis = {lineStarts[firstRow], endRow < lineStarts.len
+        firstRow < len(lineStarts)) {
+        Selection vis = {lineStarts[firstRow], endRow < len(lineStarts)
                                                    ? lineStarts[endRow]
                                                    : text.len};
         TextSpan* hl = nullptr;
@@ -829,7 +829,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     for (int row = firstRow; row < endRow; row++) {
         int start = lineStarts[row];
         int lineEnd =
-            row + 1 < lineStarts.len ? lineStarts[row + 1] - 1 : text.len;
+            row + 1 < len(lineStarts) ? lineStarts[row + 1] - 1 : text.len;
         Str line = Str(text.s + start, lineEnd - start);
         // A line inside a closed fold is not built at all, which is what
         // makes the rows below it move up. Its box is zeroed rather than left
@@ -1338,7 +1338,7 @@ int InputLineStartOffset(const InputState* s, int row) {
     if (row <= 0) {
         return 0;
     }
-    if (row >= starts.len) {
+    if (row >= len(starts)) {
         return s->text.len;
     }
     return starts[row];
@@ -1346,11 +1346,11 @@ int InputLineStartOffset(const InputState* s, int row) {
 
 Str InputSliceLine(const InputState* s, int row) {
     const Vec<int>& starts = InputLineStarts(s);
-    if (row < 0 || row >= starts.len) {
+    if (row < 0 || row >= len(starts)) {
         return {};
     }
     int a = starts[row];
-    int b = row + 1 < starts.len ? starts[row + 1] - 1 : s->text.len;
+    int b = row + 1 < len(starts) ? starts[row + 1] - 1 : s->text.len;
     return Str(s->text.els + a, b - a);
 }
 
@@ -1359,7 +1359,7 @@ RopePoint InputOffsetToPoint(const InputState* s, int offset) {
     offset = RopeClipOffset(InputValue(s), offset, Bias::Left);
     // The last line whose start is at or before the offset.
     int lo = 0;
-    int hi = starts.len - 1;
+    int hi = len(starts) - 1;
     while (lo < hi) {
         int mid = lo + (hi - lo + 1) / 2;
         if (starts[mid] <= offset) {
@@ -1517,9 +1517,9 @@ bool InputUnfoldAt(InputState* s, App* app, Window* win, RopePoint position) {
     // the list being walked.
     const Vec<FoldRange>& folded = s->folds.folded;
     int* covering =
-        (int*)Alloc(GetTempArena(), (int)sizeof(int) * (folded.len + 1));
+        (int*)Alloc(GetTempArena(), (int)sizeof(int) * (len(folded) + 1));
     int nCovering = 0;
-    for (int i = 0; i < folded.len; i++) {
+    for (int i = 0; i < len(folded); i++) {
         if (line > folded[i].startLine && line < folded[i].endLine) {
             covering[nCovering++] = folded[i].startLine;
         }
@@ -1550,7 +1550,7 @@ void InputSetFoldCandidates(InputState* s, const FoldRange* ranges, int n) {
 
 // The index of the range starting at `line`, or -1.
 static int FoldFindAt(const Vec<FoldRange>& v, int line) {
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         if (v[i].startLine == line) {
             return i;
         }
@@ -3699,10 +3699,10 @@ void InputAcceptCompletion(InputState* s, App* app, Window* win) {
     }
     InputDismissCompletion(s);
     s->silentReplace = true;
-    if (edits.len == 1) {
+    if (len(edits) == 1) {
         InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
     } else {
-        InputApplyEdits(s, app, win, edits.els, edits.len);
+        InputApplyEdits(s, app, win, edits.els, len(edits));
     }
     s->silentReplace = false;
 }
@@ -3832,10 +3832,10 @@ void InputInsertCompletion(InputState* s, App* app, Window* win,
     // completion_inserting: the write is not typing, so it opens no menu and
     // asks for no suggestion.
     s->silentReplace = true;
-    if (edits.len == 1) {
+    if (len(edits) == 1) {
         InputReplaceTextInRange(s, app, win, &edits[0].range, edits[0].newText);
     } else {
-        InputApplyEdits(s, app, win, edits.els, edits.len);
+        InputApplyEdits(s, app, win, edits.els, len(edits));
     }
     s->silentReplace = false;
 }
@@ -4532,7 +4532,7 @@ void InputPerformCodeAction(InputState* s, App* app, Window* win) {
         return;
     }
     s->silentReplace = true;
-    InputApplyEdits(s, app, win, edits.els, edits.len);
+    InputApplyEdits(s, app, win, edits.els, len(edits));
     s->silentReplace = false;
     Notify(app, win);
 }
@@ -7149,7 +7149,7 @@ static CursorSelection* SelsDup(const CursorSelection* sels, int n) {
 }
 
 static void StackClear(Vec<UndoTransaction>& v) {
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         TransactionFree(&v[i]);
     }
     v.len = 0;

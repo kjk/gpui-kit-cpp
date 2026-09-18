@@ -352,7 +352,7 @@ static void MoveRadarLabel(El* e, float x, float y) {
     for (El* child = e->first; child; child = child->next) {
         pending.Append(GetTempArena(), child);
     }
-    for (int i = 0; i < pending.len; i++) {
+    for (int i = 0; i < len(pending); i++) {
         El* child = pending[i];
         child->x += dx;
         child->y += dy;
@@ -631,7 +631,7 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
     for (int side = 0; side < 2; side++) {
         float sign = side == 0 ? 1.f : -1.f;
         ArenaVec<PieLabelLayout>& items = side == 0 ? right : left;
-        int count = items.len;
+        int count = len(items);
         for (int i = 0; i < count; i++) {
             const PieLabelLayout& it = items[i];
             CanvasLine(ctx, it.arcX + cx, it.arcY + cy, it.labelX + cx,

@@ -421,20 +421,20 @@ static void DockSpliceChild(DockState* s, int node, int at) {
     }
     Vec<int> child;
     Vec<float> size;
-    for (int i = 0; i < n.child.len; i++) {
+    for (int i = 0; i < len(n.child); i++) {
         if (i != at) {
             VecAppend(child, n.child[i]);
             VecAppend(size, n.size[i]);
             continue;
         }
         const DockNode& cn = s->nodes[childNode];
-        for (int j = 0; j < cn.child.len; j++) {
+        for (int j = 0; j < len(cn.child); j++) {
             VecAppend(child, cn.child[j]);
             VecAppend(size,
                       total > 0 ? cn.size[j] * (slot / total) : cn.size[j]);
         }
     }
-    for (int j = 0; j < s->nodes[childNode].child.len; j++) {
+    for (int j = 0; j < len(s->nodes[childNode].child); j++) {
         s->nodes[s->nodes[childNode].child[j]].parent = node;
     }
     s->nodes[childNode] = DockNode{};

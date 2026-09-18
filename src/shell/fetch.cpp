@@ -229,7 +229,7 @@ bool FetchAuthorizeRedirect(const Capabilities& capabilities, Str method,
     }
     // A bearer credential may follow a same-origin redirect, never a
     // cross-origin one, even when both hosts are individually granted.
-    for (int i = 0; i < headers.len; i++) {
+    for (int i = 0; i < len(headers); i++) {
         if (StrEqI(headers[i].name, StrL("authorization")) && !sameOrigin) {
             FetchError(error, fmt("cross-origin redirect from %s to %s refused "
                                   "because the request carries Authorization",
@@ -237,7 +237,7 @@ bool FetchAuthorizeRedirect(const Capabilities& capabilities, Str method,
             return false;
         }
     }
-    if (headers.len > 0 && !sameOrigin) {
+    if (len(headers) > 0 && !sameOrigin) {
         FetchError(error,
                    fmt("cross-origin redirect from %s to %s refused because "
                        "caller-supplied request headers would be replayed",
@@ -257,7 +257,7 @@ void FetchResult::Free() {
 void FetchRequest::Free() {
     StrFree(url);
     StrFree(method);
-    for (int i = 0; i < headers.len; i++) {
+    for (int i = 0; i < len(headers); i++) {
         StrFree(headers[i].name);
         StrFree(headers[i].value);
     }
@@ -330,7 +330,7 @@ struct FetchWalk {
         StrFree(url);
         StrFree(method);
         StrFree(body);
-        for (int i = 0; i < headers.len; i++) {
+        for (int i = 0; i < len(headers); i++) {
             StrFree(headers[i].name);
             StrFree(headers[i].value);
         }
@@ -349,7 +349,7 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
     walk.body = StrDup(request.body);
     bool allocated =
         walk.url.s && walk.method.s && (walk.body.s || request.body.len == 0);
-    for (int i = 0; i < request.headers.len && allocated; i++) {
+    for (int i = 0; i < len(request.headers) && allocated; i++) {
         FetchHeader copy;
         copy.name = StrDup(request.headers[i].name);
         copy.value = StrDup(request.headers[i].value);
@@ -381,7 +381,7 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
     Vec<HttpHeader> wire;
     for (int redirects = 0;; redirects++) {
         VecReset(wire);
-        for (int i = 0; i < walk.headers.len; i++) {
+        for (int i = 0; i < len(walk.headers); i++) {
             HttpHeader h;
             h.name = walk.headers[i].name;
             h.value = walk.headers[i].value;
@@ -390,8 +390,8 @@ bool FetchSend(const FetchRequest& request, const Capabilities& capabilities,
         HttpReq req;
         req.url = walk.url;
         req.method = walk.method;
-        req.headers = wire.len > 0 ? wire.els : nullptr;
-        req.nHeaders = wire.len;
+        req.headers = len(wire) > 0 ? wire.els : nullptr;
+        req.nHeaders = len(wire);
         req.body = walk.body;
         req.noRedirect = true;
 
@@ -510,7 +510,7 @@ static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
     state->walk.body = StrDup(request.body);
     bool allocated = state->walk.url.s && state->walk.method.s &&
                      (state->walk.body.s || request.body.len == 0);
-    for (int i = 0; i < request.headers.len && allocated; i++) {
+    for (int i = 0; i < len(request.headers) && allocated; i++) {
         FetchHeader copy;
         copy.name = StrDup(request.headers[i].name);
         copy.value = StrDup(request.headers[i].value);
@@ -648,7 +648,7 @@ static void FetchAsyncTestDone(FetchAsyncState* state) {
 
 static bool FetchAsyncStart(FetchAsyncState* state) {
     VecReset(state->wire);
-    for (int i = 0; i < state->walk.headers.len; i++) {
+    for (int i = 0; i < len(state->walk.headers); i++) {
         HttpHeader header;
         header.name = state->walk.headers[i].name;
         header.value = state->walk.headers[i].value;

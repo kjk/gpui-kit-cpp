@@ -927,7 +927,7 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         Vec<Str> heads, cells;
         table->Dump(&heads, &cells);
         StrBuilder sb;
-        for (int i = 0; i < heads.len && i < 4; i++) {
+        for (int i = 0; i < len(heads) && i < 4; i++) {
             sb.Append(i ? StrL(", ") : StrL(""));
             sb.Append(heads[i]);
         }

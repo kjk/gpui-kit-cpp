@@ -416,7 +416,7 @@ static void PlotPieArcs() {
     Arena* arena = ArenaNew();
     ArenaVec<plot::ArcData> arcs;
     pie.Arcs(arena, {values, 4, sizeof(float)}, &arcs);
-    utassert(arcs.len == 2);
+    utassert(len(arcs) == 2);
     plot::ArcData resolved[2] = {};
     int resolvedCount = 0;
     for (const plot::ArcData& item : arcs) {
@@ -463,7 +463,7 @@ static void PlotStackSeries() {
     Arena* arena = ArenaNew();
     ArenaVec<plot::StackSeries> series;
     stack.Series(arena, &series);
-    utassert(series.len == 3);
+    utassert(len(series) == 3);
     Str resolvedKeys[3] = {};
     plot::StackPoint resolvedPoints[3] = {};
     int resolvedCount = 0;

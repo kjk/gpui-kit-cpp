@@ -781,7 +781,7 @@ struct ThemeRegistry {
     ~ThemeRegistry();
     static ThemeRegistry* Global(App* app);
     static const ThemeRegistry* Global(const App* app);
-    int Count() const { return themes.len; }
+    int Count() const { return len(themes); }
 };
 
 // The default themes, from the embedded `default-theme.json`. Idempotent, and

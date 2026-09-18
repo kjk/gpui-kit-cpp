@@ -100,7 +100,7 @@ static void PushAndPopKeepTheRoot() {
     utassert(f.State()->Depth() == 1);
 
     const Vec<int>& events = f.Events();
-    utassert(events.len == 3);
+    utassert(len(events) == 3);
     utassert(events[0] == (int)NavStackEvent::Pushed);
     utassert(events[1] == (int)NavStackEvent::Pushed);
     utassert(events[2] == (int)NavStackEvent::Popped);
@@ -115,7 +115,7 @@ static void PopToRootReturnsEverythingAboveIt() {
 
     Vec<EntityId> popped =
         NavStackPopToRoot(f.State(), &f.cx, NavMotion::Animated);
-    utassert(popped.len == 2);
+    utassert(len(popped) == 2);
     utassert(popped[0] == pages[1]);
     utassert(popped[1] == pages[2]);
 
@@ -152,7 +152,7 @@ static void ReplaceSwapsTheTopAndPushesIntoAnEmptyStack() {
     utassert(!f.State()->hasTransit);
 
     const Vec<int>& events = f.Events();
-    utassert(events.len == 3);
+    utassert(len(events) == 3);
     utassert(events[0] == (int)NavStackEvent::Pushed);
     utassert(events[1] == (int)NavStackEvent::Replaced);
     utassert(events[2] == (int)NavStackEvent::Cleared);
@@ -186,9 +186,9 @@ static void PoppedViewsWaitForForwardUntilTheNextPush() {
     utassert(f.State()->ForwardCount() == 0);
 
     const Vec<int>& events = f.Events();
-    utassert(events[events.len - 1] == (int)NavStackEvent::Pushed);
+    utassert(events[len(events) - 1] == (int)NavStackEvent::Pushed);
     bool forwarded = false;
-    for (int i = 0; i < events.len; i++) {
+    for (int i = 0; i < len(events); i++) {
         forwarded = forwarded || events[i] == (int)NavStackEvent::Forwarded;
     }
     utassert(forwarded);
@@ -285,7 +285,7 @@ static void TheItemRendererSeesBothPagesOfAChange() {
         ->IntoEl();
 
     // A pushed view paints over what it covers: the outgoing page first.
-    utassert(gNavSeen.len == 2);
+    utassert(len(gNavSeen) == 2);
     utassert(gNavSeen[0].view == root);
     utassert(gNavSeen[0].Phase() == PresencePhase::Exiting);
     utassert(gNavSeen[0].Index() == 0);

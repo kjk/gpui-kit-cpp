@@ -13,7 +13,7 @@ static const int kMany = 300;
 
 static void AnEmptyVecHasNothing() {
     ArenaVec<int> v{};
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
     utassert(!v.first.IsSet() && !v.last.IsSet());
     utassert(v.Flatten(nullptr) == nullptr);
     utassert(!(v.begin() != v.end()));
@@ -90,7 +90,7 @@ static void AppendsReadBackAcrossSegments() {
     ArenaVec<int> v{};
     for (int i = 0; i < kMany; i++) {
         utassert(v.Append(a, i * 3));
-        utassert(v.len == i + 1);
+        utassert(len(v) == i + 1);
     }
     // Forward. `Iter` is the way to do this; `v[i]` walks from the first
     // segment every time, which is what the rest of the tree uses it for and
@@ -138,7 +138,7 @@ static void AppendManyFillsTheSameOrder() {
     // Two runs, so the second one starts partway into a segment.
     utassert(v.AppendMany(a, src, 7));
     utassert(v.AppendMany(a, src + 7, kMany - 7));
-    utassert(v.len == kMany);
+    utassert(len(v) == kMany);
     for (int i = 0; i < kMany; i++) {
         utassert(v[i] == i);
     }
@@ -148,7 +148,7 @@ static void AppendManyFillsTheSameOrder() {
     for (int i = 0; i < kMany; i++) {
         utassert(one.Append(a, src[i]));
     }
-    utassert(one.len == v.len);
+    utassert(len(one) == len(v));
     for (int i = 0; i < kMany; i++) {
         utassert(one[i] == v[i]);
     }
@@ -166,7 +166,7 @@ static void ReserveSkipsTheClimb() {
     // One segment took all of it, so `Flatten` is free and the fast path in
     // `operator[]` is the one being read.
     utassert(v.first == v.last);
-    utassert(v.len == kMany);
+    utassert(len(v) == kMany);
     utassert(v[kMany - 1] == kMany - 1);
     ArenaDelete(a);
 }
@@ -178,34 +178,34 @@ static void PopAndTruncateGiveTheRoomBack() {
         v.Append(a, i);
     }
     v.Pop();
-    utassert(v.len == kMany - 1);
-    utassert(v[v.len - 1] == kMany - 2);
+    utassert(len(v) == kMany - 1);
+    utassert(v[len(v) - 1] == kMany - 2);
 
     // One element past the end of the first segment, so an earlier segment is
     // the active one again and the ones after it are empty.
     const int past = ArenaVec<int>::CapFor(kArenaVecCap0, kArenaVecBytes0) + 1;
     v.Truncate(past);
-    utassert(v.len == past);
+    utassert(len(v) == past);
     utassert(v[past - 1] == past - 1);
     utassert(v.first != v.last);
 
     // Truncating to nothing keeps the segments, and refilling reuses them:
     // no arena is spent on the second pass.
     v.Truncate(0);
-    utassert(v.len == 0);
+    utassert(len(v) == 0);
     uint64_t before = a->pos;
     for (int i = 0; i < kMany; i++) {
         v.Append(a, i * 2);
     }
     utassert(a->pos == before);
-    utassert(v.len == kMany);
+    utassert(len(v) == kMany);
     for (int i = 0; i < kMany; i++) {
         utassert(v[i] == i * 2);
     }
 
     // A truncate longer than the vec is not a resize.
     v.Truncate(kMany + 100);
-    utassert(v.len == kMany);
+    utassert(len(v) == kMany);
     ArenaDelete(a);
 }
 
@@ -227,7 +227,7 @@ static void PopAtASegmentBoundaryDoesNotAllocate() {
         v.Append(a, 4);
     }
     utassert(a->pos == before);
-    utassert(v.len == cap0 + 1);
+    utassert(len(v) == cap0 + 1);
     utassert(v[cap0] == 4);
     ArenaDelete(a);
 }
@@ -266,7 +266,7 @@ static void ACopyOfTheHandleSeesTheSameElements() {
     // The parser passes these around by value — a copy is a handle onto the
     // same segments, and reading through one is what the other reads.
     ArenaVec<int> copy = v;
-    utassert(copy.len == v.len);
+    utassert(len(copy) == len(v));
     for (int i = 0; i < kMany; i++) {
         utassert(copy[i] == i);
     }

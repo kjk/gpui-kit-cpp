@@ -797,7 +797,7 @@ El* NotificationList::IntoEl() {
             shown.Append(a, i);
         }
     }
-    if (shown.len == 0) {
+    if (len(shown) == 0) {
         return Div(a);
     }
 
@@ -807,7 +807,7 @@ El* NotificationList::IntoEl() {
     int groupOrder[8] = {};
     int groupCount = 0;
     bool present[8] = {};
-    for (int i = 0; i < shown.len; i++) {
+    for (int i = 0; i < len(shown); i++) {
         const Notification& item = s->items[shown[i]];
         Anchor anchor = item.hasPlacement ? item.placement : settings.placement;
         int aix = (int)anchor;
@@ -848,16 +848,16 @@ El* NotificationList::IntoEl() {
             FocusHandleContainsFocused(cx->win, s->stackFocus[aix]);
         bool expanded = s->stackHovered[aix] || s->stackFocused[aix];
 
-        float* heights = (float*)Alloc(a, (int)sizeof(float) * group.len);
-        float* collapsedOff = (float*)Alloc(a, (int)sizeof(float) * group.len);
-        float* expandedOff = (float*)Alloc(a, (int)sizeof(float) * group.len);
-        for (int i = 0; i < group.len; i++) {
+        float* heights = (float*)Alloc(a, (int)sizeof(float) * len(group));
+        float* collapsedOff = (float*)Alloc(a, (int)sizeof(float) * len(group));
+        float* expandedOff = (float*)Alloc(a, (int)sizeof(float) * len(group));
+        for (int i = 0; i < len(group); i++) {
             const Notification& item = s->items[group[i]];
             heights[i] = item.measured.h > 0 ? item.measured.h : s->itemH;
         }
         float expandedH = 0;
         float collapsedH = ToastStackGeometry(
-            heights, group.len, kToastCollapsedPeek, kToastExpandedGap, bottom,
+            heights, len(group), kToastCollapsedPeek, kToastExpandedGap, bottom,
             collapsedOff, expandedOff, &expandedH);
         Str anchorKey = StrDup(a, fmt("%d", aix));
         float stackH = SpringValue(
@@ -892,11 +892,11 @@ El* NotificationList::IntoEl() {
         }
         layer->Left(left)->Top(top);
 
-        for (int i = 0; i < group.len; i++) {
+        for (int i = 0; i < len(group); i++) {
             int itemIx = group[i];
             Notification& item = s->items[itemIx];
             const ToastEntry& entry = s->stack.entries[itemIx];
-            int rank = group.len - 1 - i;
+            int rank = len(group) - 1 - i;
             // "visibility": collapsed_visible is how many of them show at
             // all when the stack is closed, and the ones past it fade rather
             // than vanishing. A card that has finished fading is left out —

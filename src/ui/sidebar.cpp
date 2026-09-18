@@ -368,7 +368,7 @@ static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
     if (selected) {
         row->Bg(th.tokens.sidebarAccent)->Fg(th.sidebarAccentFg);
     }
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         row->Child(children[i]);
     }
     return BindClick(row, id, onClick);
@@ -442,7 +442,7 @@ El* SidebarFooter::IntoEl() {
     // which the themed outer row wraps as one child upstream.
     El* base = Div(a)->FlexRow()->Gap(8)->W(kFill);
     StyleApplyFields(&base->style, style, styleSet);
-    for (int i = 0; i < children.len; i++) {
+    for (int i = 0; i < len(children); i++) {
         base->Child(children[i]);
     }
     if (onClick.IsValid()) {

@@ -621,7 +621,7 @@ static int SemanticTokensFor(void*, Str text, Selection range,
         }
     }
     int prevLine = 0, prevCol = 0;
-    for (int i = 0; i < hits.len; i++) {
+    for (int i = 0; i < len(hits); i++) {
         int deltaLine = hits[i].line - prevLine;
         if (i < cap && out) {
             out[i].deltaLine = (uint32_t)deltaLine;
@@ -635,7 +635,7 @@ static int SemanticTokensFor(void*, Str text, Selection range,
         prevLine = hits[i].line;
         prevCol = hits[i].col;
     }
-    return hits.len;
+    return len(hits);
 }
 
 // ─── the definition provider ──────────────────────────────────────────────

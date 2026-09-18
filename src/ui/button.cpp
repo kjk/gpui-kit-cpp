@@ -1041,9 +1041,9 @@ struct ToggleGroupState {
 
     static void OnChildClick(ToggleGroupState* self, Ctx* cx, const ClickEvent*,
                              intptr_t ix) {
-        if (ix < 0 || ix >= self->checked.len) return;
+        if (ix < 0 || ix >= len(self->checked)) return;
         self->checked[(int)ix] = !self->checked[(int)ix];
-        ToggleGroupEvent event{self->checked.els, self->checked.len};
+        ToggleGroupEvent event{self->checked.els, len(self->checked)};
         ListenerCall(cx->app, cx->win, self->onClick, &event);
     }
 };
@@ -1393,7 +1393,7 @@ struct ButtonGroupState {
         if (self->disabled) return;
         Vec<int> next = self->selected;
         int at = -1;
-        for (int i = 0; i < next.len; i++) {
+        for (int i = 0; i < len(next); i++) {
             if (next[i] == (int)childIndex) {
                 at = i;
                 break;
@@ -1401,7 +1401,7 @@ struct ButtonGroupState {
         }
         if (self->multiple) {
             if (at >= 0) {
-                for (int i = at + 1; i < next.len; i++) {
+                for (int i = at + 1; i < len(next); i++) {
                     next[i - 1] = next[i];
                 }
                 next.len--;
@@ -1413,7 +1413,7 @@ struct ButtonGroupState {
             VecAppend(next, (int)childIndex);
         }
 
-        ButtonGroupEvent ev{next.els, next.len};
+        ButtonGroupEvent ev{next.els, len(next)};
         ListenerCall(cx->app, cx->win, self->onClick, &ev);
     }
 };

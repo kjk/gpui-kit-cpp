@@ -13,7 +13,7 @@ static Vec<TaskSlot> gTasks;
 static int gLiveTasks;
 
 static TaskSlot* SlotOf(TaskHandle id) {
-    if (!id.IsValid() || id.index >= gTasks.len) {
+    if (!id.IsValid() || id.index >= len(gTasks)) {
         return nullptr;
     }
     TaskSlot& s = gTasks[id.index];
@@ -49,7 +49,7 @@ static void DropSlot(TaskSlot* s) {
 
 static TaskHandle RegisterTask(std::coroutine_handle<TaskPromise> h) {
     int index = -1;
-    for (int i = 0; i < gTasks.len; i++) {
+    for (int i = 0; i < len(gTasks); i++) {
         if (!gTasks[i].used) {
             index = i;
             break;
@@ -63,7 +63,7 @@ static TaskHandle RegisterTask(std::coroutine_handle<TaskPromise> h) {
         if (!VecAppend(gTasks, fresh)) {
             return {};
         }
-        index = gTasks.len - 1;
+        index = len(gTasks) - 1;
     }
     TaskSlot& s = gTasks[index];
     if (s.gen == 0) {
@@ -156,7 +156,7 @@ int TaskCancelAll() {
     // without running it, so waiting for the continuation would wait forever
     // and leak the frame. The header says why this may only run once the pool
     // has stopped.
-    for (int i = 0; i < gTasks.len; i++) {
+    for (int i = 0; i < len(gTasks); i++) {
         if (!gTasks[i].used) {
             continue;
         }

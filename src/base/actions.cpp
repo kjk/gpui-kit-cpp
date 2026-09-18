@@ -60,7 +60,7 @@ static Vec<CancelBound> gCancelBound;
 void CancelInitKeys(const char* context) {
     uint32_t id = KeyContextOf(Str(context));
     uint32_t gen = KeymapGeneration();
-    for (int i = 0; i < gCancelBound.len; i++) {
+    for (int i = 0; i < len(gCancelBound); i++) {
         if (gCancelBound[i].context != id) {
             continue;
         }

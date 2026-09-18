@@ -155,7 +155,7 @@ struct NativeMenu {
     NativeMenu& Menu(Str label, InputAction action);
     NativeMenu& MenuWithDisabled(Str label, bool disabled, InputAction action);
     NativeMenu& Separator();
-    bool IsEmpty() const { return items.len == 0; }
+    bool IsEmpty() const { return len(items) == 0; }
 };
 
 void InputDefaultNativeMenu(const InputState* state, NativeMenu* out);

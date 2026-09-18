@@ -42,7 +42,7 @@ static void MsSetBody(DemoMessage* m, Str body, bool own) {
 }
 
 static void MsFreeList(Vec<DemoMessage>& list) {
-    for (int i = 0; i < list.len; i++) {
+    for (int i = 0; i < len(list); i++) {
         if (list[i].owned) {
             StrFree(list[i].body);
         }

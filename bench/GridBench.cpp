@@ -107,7 +107,7 @@ static void FlatSetup(GridCase* c) {
     for (int i = 0; i < cells; i++) {
         VecAppend(children, BuildRandomLeaf(&c->tree));
     }
-    c->root = c->tree.NewWithChildren(s, children.els, children.len);
+    c->root = c->tree.NewWithChildren(s, children.els, len(children));
 }
 
 // Rust's `build_deep_grid_tree`.
@@ -124,7 +124,8 @@ static void BuildDeepGridTree(GridCase* c, int levels,
         Vec<taffy::NodeId> children;
         BuildDeepGridTree(c, levels - 1, &children);
         taffy::Style s = RandomNxNGridStyle(c->arena, &c->rng, c->trackCount);
-        VecAppend(*out, c->tree.NewWithChildren(s, children.els, children.len));
+        VecAppend(*out, c->tree
+                            .NewWithChildren(s, children.els, len(children)));
     }
 }
 
@@ -133,7 +134,7 @@ static void DeepSetup(GridCase* c) {
     Vec<taffy::NodeId> children;
     BuildDeepGridTree(c, c->levels, &children);
     c->root = c->tree
-                  .NewWithChildren(taffy::Style{}, children.els, children.len);
+                  .NewWithChildren(taffy::Style{}, children.els, len(children));
 }
 
 static void GridRun(GridCase* c) {

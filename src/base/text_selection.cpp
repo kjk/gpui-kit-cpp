@@ -38,7 +38,7 @@ struct TextSelectionParticipantState {
     }
 
     ~TextSelectionParticipantState() {
-        for (int i = 0; i < runs.len; i++) {
+        for (int i = 0; i < len(runs); i++) {
             if (runs[i].layout) TextLayoutRelease(runs[i].layout);
         }
         VecReset(runs);
@@ -361,17 +361,17 @@ static void WindowSelectionPublish(Window* window) {
     if (!selection || !window->app || selection->publishing) return;
     selection->publishing = true;
     Vec<EntityId> participants;
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         VecAppend(participants, selection->participants[i]);
     }
-    for (int i = 0; i < participants.len; i++) {
+    for (int i = 0; i < len(participants); i++) {
         EntityId id = participants[i];
         TextSelectionParticipantState* state =
             (TextSelectionParticipantState*)EntityGet(window->app, id);
         if (!state || state->window != window) {
-            for (int j = 0; j < selection->participants.len; j++) {
+            for (int j = 0; j < len(selection->participants); j++) {
                 if (selection->participants[j] != id) continue;
-                for (int k = j; k < selection->participants.len - 1; k++) {
+                for (int k = j; k < len(selection->participants) - 1; k++) {
                     selection->participants[k] = selection->participants[k + 1];
                 }
                 selection->participants.len--;
@@ -586,19 +586,19 @@ TextSelectionProjection TextSelectionHandle::UpdateRuns(
     Vec<int> order;
     for (int i = 0; i < count; i++) {
         if (!out.ranges[i].selected) continue;
-        int insert = order.len;
+        int insert = len(order);
         while (insert > 0 && values[order[insert - 1]]
                                      .documentOrder > values[i].documentOrder) {
             insert--;
         }
         VecAppend(order, 0);
-        for (int j = order.len - 1; j > insert; j--) {
+        for (int j = len(order) - 1; j > insert; j--) {
             order[j] = order[j - 1];
         }
         order[insert] = i;
     }
     StrBuilder selected;
-    for (int i = 0; i < order.len; i++) {
+    for (int i = 0; i < len(order); i++) {
         int ix = order[i];
         const TextSelectionRange& range = out.ranges[ix];
         selected.Append(
@@ -729,10 +729,10 @@ void WindowSelectionClear(Window* win) {
     s->hasWindowPoints = false;
     if (win->app) {
         Vec<EntityId> participants;
-        for (int i = 0; i < s->participants.len; i++) {
+        for (int i = 0; i < len(s->participants); i++) {
             VecAppend(participants, s->participants[i]);
         }
-        for (int i = 0; i < participants.len; i++) {
+        for (int i = 0; i < len(participants); i++) {
             TextSelectionParticipantState* participant =
                 (TextSelectionParticipantState*)EntityGet(win->app,
                                                           participants[i]);
@@ -1026,20 +1026,20 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
         item.text = StrDup(participant->hasProjectedCopyText
                                ? participant->projectedCopyText
                                : participant->fallbackCopyText);
-        int insert = active.len;
+        int insert = len(active);
         while (insert > 0 && active[insert - 1]
                                      .documentOrder > item.documentOrder) {
             insert--;
         }
         VecAppend(active, {});
-        for (int j = active.len - 1; j > insert; j--) {
+        for (int j = len(active) - 1; j > insert; j--) {
             active[j] = active[j - 1];
         }
         active[insert] = item;
     }
     int written = 0;
     bool emitted = false;
-    for (int i = 0; i < active.len && written < cap - 1; i++) {
+    for (int i = 0; i < len(active) && written < cap - 1; i++) {
         const ParticipantCopyItem& item = active[i];
         if (!item.copy && !HasNonWhitespace(item.text)) {
             continue;
@@ -1055,7 +1055,7 @@ int TextSelection::SelectedText(Window* window, App* app, char* out, int cap) {
         written += n;
         emitted = true;
     }
-    for (int i = 0; i < active.len; i++) StrFree(active[i].text);
+    for (int i = 0; i < len(active); i++) StrFree(active[i].text);
     VecReset(active);
     out[written] = 0;
     if (written > 0) return written;
@@ -1147,10 +1147,10 @@ void WindowSelectionFinishFrame(Window* win) {
     // cleanup callbacks can re-enter selection code, so do not walk the live
     // participant vector while invoking them.
     Vec<EntityId> participants;
-    for (int i = 0; i < selection->participants.len; i++) {
+    for (int i = 0; i < len(selection->participants); i++) {
         VecAppend(participants, selection->participants[i]);
     }
-    for (int i = 0; i < participants.len; i++) {
+    for (int i = 0; i < len(participants); i++) {
         EntityId id = participants[i];
         TextSelectionParticipantState* participant =
             (TextSelectionParticipantState*)EntityGet(win->app, id);
@@ -1158,9 +1158,9 @@ void WindowSelectionFinishFrame(Window* win) {
             participant->registrationGeneration == selection->frameGeneration) {
             continue;
         }
-        for (int j = 0; j < selection->participants.len; j++) {
+        for (int j = 0; j < len(selection->participants); j++) {
             if (selection->participants[j] != id) continue;
-            for (int k = j; k < selection->participants.len - 1; k++) {
+            for (int k = j; k < len(selection->participants) - 1; k++) {
                 selection->participants[k] = selection->participants[k + 1];
             }
             selection->participants.len--;

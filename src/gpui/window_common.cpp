@@ -165,7 +165,7 @@ static void FrameBenchTick(Window* win, float secs) {
     if (++seen < want) {
         return;
     }
-    int n = samples.len;
+    int n = len(samples);
     for (int i = 1; i < n; i++) {
         float v = samples[i];
         int j = i - 1;
@@ -337,7 +337,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         hash =                                                                \
             AccessibilityHashBytes(hash, &hashValue, (int)sizeof(hashValue)); \
     } while (false)
-    for (int i = 0; i < nodes.len; i++) {
+    for (int i = 0; i < len(nodes); i++) {
         const AccessibilityNode& node = nodes[i];
         const AccessibilityInfo& info = node.info;
         GPUI_A11Y_HASH(node.id);
@@ -429,12 +429,12 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     {
         Vec<ScrollRect>& now = win->paint.scrolls;
         Vec<ScrollRect>& was = win->prevScrolls;
-        int len = now.len, cap = now.cap;
+        int n = len(now), cap = now.cap;
         ScrollRect* els = now.els;
-        now.len = was.len;
+        now.len = len(was);
         now.cap = was.cap;
         now.els = was.els;
-        was.len = len;
+        was.len = n;
         was.cap = cap;
         was.els = els;
     }
@@ -1890,7 +1890,7 @@ template <typename Ev, typename Pick>
 static void DispatchChain(Window* win, const Vec<int>& chain, Ev* ev, Pick pick,
                           bool stopMouseDown = false) {
     win->stopPropagation = false;
-    for (int k = chain.len - 1; k >= 0 && !win->stopPropagation; k--) {
+    for (int k = len(chain) - 1; k >= 0 && !win->stopPropagation; k--) {
         const HitRect& hr = win->paint.hits[chain[k]];
         Listener l = pick(hr, DispatchPhase::Capture);
         if (l.IsValid()) {
@@ -1899,7 +1899,7 @@ static void DispatchChain(Window* win, const Vec<int>& chain, Ev* ev, Pick pick,
             ListenerCall(win->app, win, l, ev);
         }
     }
-    for (int k = 0; k < chain.len && !win->stopPropagation; k++) {
+    for (int k = 0; k < len(chain) && !win->stopPropagation; k++) {
         const HitRect& hr = win->paint.hits[chain[k]];
         Listener l = pick(hr, DispatchPhase::Bubble);
         if (l.IsValid()) {
@@ -2032,7 +2032,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     {
         Vec<int> chain;
         HitChain(win, x, y, &chain);
-        for (int k = 0; k < chain.len; k++) {
+        for (int k = 0; k < len(chain); k++) {
             int fid = win->paint.hits[chain[k]].focusId;
             if (fid && FocusIdIsFocusable(win, fid) &&
                 FocusIdTakesPress(win, fid)) {
@@ -2070,7 +2070,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     {
         Vec<int> chain;
         HitChain(win, x, y, &chain);
-        for (int i = 0; i < chain.len; i++) {
+        for (int i = 0; i < len(chain); i++) {
             if (win->paint.hits[chain[i]].suppressTextSelection) {
                 BaseSuppressTextSelection(win->app);
                 break;
@@ -2225,7 +2225,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
             Vec<int> chain;
             HitChain(win, in.x, in.y, &chain);
             win->stopPropagation = false;
-            for (int k = 0; k < chain.len && !win->stopPropagation; k++) {
+            for (int k = 0; k < len(chain) && !win->stopPropagation; k++) {
                 const HitRect& hr = win->paint.hits[chain[k]];
                 if (!hr.listener.IsValid()) {
                     continue;
@@ -2258,7 +2258,7 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
         // wrappers are written. The first one that names an action wins.
         Vec<int> clickChain;
         HitChain(win, in.x, in.y, &clickChain);
-        for (int k = 0; k < clickChain.len; k++) {
+        for (int k = 0; k < len(clickChain); k++) {
             const HitRect& hr = win->paint.hits[clickChain[k]];
             if (!hr.clickAction) {
                 continue;
@@ -2357,7 +2357,7 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
     {
         Vec<int> chain;
         HitChain(win, in.x, in.y, &chain);
-        for (int k = 0; k < chain.len; k++) {
+        for (int k = 0; k < len(chain); k++) {
             const HitRect& hr = win->paint.hits[chain[k]];
             if (!hr.onScrollWheel.IsValid()) {
                 continue;
@@ -3242,13 +3242,13 @@ void AppQuitAll(App* app) {
     // and each entry checked against what is left — a window that closed
     // another one on its way out is not visited twice.
     Vec<Window*> windows;
-    for (int i = 0; i < app->windows.len; i++) {
+    for (int i = 0; i < len(app->windows); i++) {
         VecAppend(windows, app->windows[i]);
     }
-    for (int i = 0; i < windows.len; i++) {
+    for (int i = 0; i < len(windows); i++) {
         Window* win = windows[i];
         bool live = false;
-        for (int j = 0; j < app->windows.len; j++) {
+        for (int j = 0; j < len(app->windows); j++) {
             live = live || app->windows[j] == win;
         }
         if (live) {

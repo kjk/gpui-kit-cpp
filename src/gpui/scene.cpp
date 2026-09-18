@@ -787,7 +787,7 @@ static void SortByLayer(Vec<Prim>& v) {
     // thousands of primitives, and the pass has to be stable.
     int counts[256] = {};
     bool mixed = false;
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         counts[v[i].layer]++;
         if (i > 0 && v[i].layer < v[i - 1].layer) {
             mixed = true;
@@ -803,11 +803,11 @@ static void SortByLayer(Vec<Prim>& v) {
         at += counts[i];
     }
     Vec<Prim> out;
-    VecAppendBlanks(out, v.len);
-    for (int i = 0; i < v.len; i++) {
+    VecAppendBlanks(out, len(v));
+    for (int i = 0; i < len(v); i++) {
         out[start[v[i].layer]++] = v[i];
     }
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         v[i] = out[i];
     }
     VecReset(out);
@@ -1061,7 +1061,7 @@ static Path* PathFor(PaintCtx* ctx, const Prim& prim, bool* owned, float* dx,
 // per direction of the comparison.
 static void BagBuild(HashBag& b, const Vec<Prim>& v) {
     int cap = 16;
-    while (cap < v.len * 2) {
+    while (cap < len(v) * 2) {
         cap *= 2;
     }
     b.mask = cap - 1;
@@ -1073,7 +1073,7 @@ static void BagBuild(HashBag& b, const Vec<Prim>& v) {
         b.keys[i] = 0;
         b.counts[i] = 0;
     }
-    for (int i = 0; i < v.len; i++) {
+    for (int i = 0; i < len(v); i++) {
         uint64_t k = v[i].hash | 1; // 0 is the empty slot
         int at = (int)(k)&b.mask;
         while (b.counts[at] != 0 && b.keys[at] != k) {

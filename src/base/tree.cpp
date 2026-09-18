@@ -239,7 +239,7 @@ static void TreeExpandAncestors(TreeState* s, Ctx* cx, int item) {
     for (int p = s->items[item].parent; p >= 0; p = s->items[p].parent) {
         VecAppend(ancestors, p);
     }
-    for (int i = ancestors.len - 1; i >= 0; i--) {
+    for (int i = len(ancestors) - 1; i >= 0; i--) {
         TreeItem& ancestor = s->items[ancestors[i]];
         if (!ancestor.expanded) {
             ancestor.expanded = true;

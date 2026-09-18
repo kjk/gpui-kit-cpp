@@ -641,7 +641,7 @@ static void CompletionAndActionEditListsGrowPastThirtyTwo() {
     CompletionItem item = {};
     item.label = StrL("z");
     item.additionalEdits = additions.els;
-    item.nAdditionalEdits = additions.len;
+    item.nAdditionalEdits = len(additions);
     InputPresentCompletionItems(&completion, 0, {}, &item, 1);
     InputAcceptCompletion(&completion, nullptr, nullptr);
     utassert(InputValue(&completion).len == 41);
@@ -652,7 +652,7 @@ static void CompletionAndActionEditListsGrowPastThirtyTwo() {
     CodeActionItem codeAction = {};
     codeAction.title = StrL("many edits");
     codeAction.edits = additions.els;
-    codeAction.nEdits = additions.len;
+    codeAction.nEdits = len(additions);
     InputPresentCodeActions(&action, &codeAction, 1);
     InputPerformCodeAction(&action, nullptr, nullptr);
     utassert(InputValue(&action).len == 40);
@@ -992,7 +992,7 @@ static void SemanticTokenResponsesGrowPastTheOldBuffer() {
 
     InputState s;
     s.kind = InputKind::Editor;
-    InputSetValue(&s, Str(text.els, text.len));
+    InputSetValue(&s, Str(text.els, len(text)));
     s.semanticTokensProvider = &ManySemanticTokens;
     s.semanticTokensData = (void*)(intptr_t)total;
     s.semanticLegend = kSemanticLegend;

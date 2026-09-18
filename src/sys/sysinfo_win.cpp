@@ -109,7 +109,7 @@ static void RefreshBattery(SysState* s) {
 }
 
 static uint64_t FindPrevCpu(const Vec<ProcSample>& prev, uint32_t pid) {
-    for (int i = 0; i < prev.len; i++) {
+    for (int i = 0; i < len(prev); i++) {
         if (prev[i].pid == pid) {
             return prev[i].cpu100ns;
         }

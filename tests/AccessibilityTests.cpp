@@ -43,7 +43,7 @@ static void FreeAccessibilityFrame(AccessibilityFrame* f) {
 static const AccessibilityNode* RoleNode(const Vec<AccessibilityNode>& nodes,
                                          AccessibilityRole role,
                                          int occurrence = 0) {
-    for (int i = 0; i < nodes.len; i++) {
+    for (int i = 0; i < len(nodes); i++) {
         if (nodes[i].info.role == role && occurrence-- == 0) {
             return &nodes[i];
         }

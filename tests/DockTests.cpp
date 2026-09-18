@@ -734,7 +734,7 @@ static void DockLayoutDescribesWithoutBuildingUi() {
     utassert(tree->Root()->children[1]->activeIx == 1);
     Vec<PanelId> panels;
     tree->Panels(&panels);
-    utassert(panels.len == 3);
+    utassert(len(panels) == 3);
     VecReset(panels);
     delete tree;
     delete layout;

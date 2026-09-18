@@ -38,18 +38,18 @@ struct UndoHistory {
     void EndGrouping() { grouping = false; }
     bool IsIgnoring() const { return ignoring; }
     void SetIgnoring(bool value) { ignoring = value; }
-    bool CanUndo() const { return undos.len > 0; }
-    bool CanRedo() const { return redos.len > 0; }
+    bool CanUndo() const { return len(undos) > 0; }
+    bool CanRedo() const { return len(redos) > 0; }
     void Push(T item) {
         if (ignoring || maxUndos == 0) return;
         double now = TimeNow();
         bool group = grouping || (hasLastChangedAt && hasGroupInterval &&
                                   now - lastChangedAt <= groupInterval);
-        if (!group || !undos.len) {
+        if (!group || !len(undos)) {
             VecAppend(undos, new Vec<T>());
             EnforceMaxUndos();
         }
-        VecAppend(*undos[undos.len - 1], item);
+        VecAppend(*undos[len(undos) - 1], item);
         lastChangedAt = now;
         hasLastChangedAt = true;
         ClearStack(redos);
@@ -73,16 +73,16 @@ struct UndoHistory {
         VecClear(stack);
     }
     void EnforceMaxUndos() {
-        int excess = undos.len - maxUndos;
+        int excess = len(undos) - maxUndos;
         if (excess <= 0) return;
         for (int i = 0; i < excess; i++) delete undos[i];
-        for (int i = excess; i < undos.len; i++) undos[i - excess] = undos[i];
+        for (int i = excess; i < len(undos); i++) undos[i - excess] = undos[i];
         undos.len -= excess;
     }
     Vec<T> Move(Vec<Vec<T>*>& from, Vec<Vec<T>*>& to, bool reverse) {
         Vec<T> result;
-        if (!from.len) return result;
-        Vec<T>* transaction = from[from.len - 1];
+        if (!len(from)) return result;
+        Vec<T>* transaction = from[len(from) - 1];
         from.len--;
         for (int i = 0; i < transaction->len; i++) {
             VecAppend(result,

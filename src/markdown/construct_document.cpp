@@ -41,8 +41,8 @@ State DocumentBeforeFrontmatter(Tokenizer* t) {
 
 State DocumentContainerExistingBefore(Tokenizer* t) {
     // If there are more containers, check whether the next one continues.
-    if (t->tokenizeState.documentContinued <
-        t->tokenizeState.documentContainerStack.len) {
+    if (t->tokenizeState.documentContinued < t->tokenizeState
+                                                 .documentContainerStack.len) {
         const ContainerState& container =
             t->tokenizeState
                 .documentContainerStack[t->tokenizeState.documentContinued];
@@ -52,7 +52,8 @@ State DocumentContainerExistingBefore(Tokenizer* t) {
         } else if (container.kind == Container::ListItem) {
             name = StateName::ListItemContStart;
         }
-        TokenizerAttempt(t, StateNext(StateName::DocumentContainerExistingAfter),
+        TokenizerAttempt(t,
+                         StateNext(StateName::DocumentContainerExistingAfter),
                          StateNext(StateName::DocumentContainerNewBefore));
         return StateRetry(name);
     }
@@ -68,8 +69,8 @@ State DocumentContainerExistingAfter(Tokenizer* t) {
 State DocumentContainerNewBefore(Tokenizer* t) {
     // If we have completely continued, restore the flow's past `interrupt`
     // status.
-    if (t->tokenizeState.documentContinued ==
-        t->tokenizeState.documentContainerStack.len) {
+    if (t->tokenizeState.documentContinued == t->tokenizeState
+                                                  .documentContainerStack.len) {
         Tokenizer* child = t->tokenizeState.documentChild;
         t->interrupt = child->interrupt;
         // …and if we're in a concrete construct, new containers can't start.
@@ -122,25 +123,25 @@ State DocumentContainerNewBeforeNotList(Tokenizer* t) {
 // `Vec::swap_remove`: the last element takes the place of the removed one.
 static ContainerState SwapRemove(Vec<ContainerState>& stack, int32_t index) {
     ContainerState out = stack[index];
-    stack[index] = stack[stack.len - 1];
+    stack[index] = stack[len(stack) - 1];
     stack.len -= 1;
     return out;
 }
 
 State DocumentContainerNewBeforeNotGfmFootnoteDefinition(Tokenizer* t) {
-    SwapRemove(t->tokenizeState.documentContainerStack,
-               t->tokenizeState.documentContinued);
+    SwapRemove(t->tokenizeState.documentContainerStack, t->tokenizeState
+                                                            .documentContinued);
     return StateRetry(StateName::DocumentContainersAfter);
 }
 
 State DocumentContainerNewAfter(Tokenizer* t) {
-    ContainerState container = SwapRemove(
-        t->tokenizeState.documentContainerStack,
-        t->tokenizeState.documentContinued);
+    ContainerState container =
+        SwapRemove(t->tokenizeState.documentContainerStack,
+                   t->tokenizeState.documentContinued);
 
     // Remove from the event stack. We'll properly add exits at the end.
-    if (t->tokenizeState.documentContinued !=
-        t->tokenizeState.documentContainerStack.len) {
+    if (t->tokenizeState.documentContinued != t->tokenizeState
+                                                  .documentContainerStack.len) {
         ExitContainers(t, Phase::Prefix);
     }
 
@@ -194,7 +195,7 @@ State DocumentFlowEnd(Tokenizer* t) {
                       : StateNext(StateName::FlowStart);
     t->tokenizeState.documentChildStateSome = false;
 
-    ArenaVec<Event> emptyExits {};
+    ArenaVec<Event> emptyExits{};
     VecAppend(t->tokenizeState.documentExits, emptyExits);
 
     state = Push(child, child->point.index, child->point.vs, t->point.index,
@@ -205,7 +206,7 @@ State DocumentFlowEnd(Tokenizer* t) {
     // If we’re in a lazy line, and the previous (lazy or not) line is
     // something that can be lazily continued, then we can also continue here.
     bool documentLazyContinuationCurrent = false;
-    int32_t stackIndex = child->stack.len;
+    int32_t stackIndex = len(child->stack);
     while (!documentLazyContinuationCurrent && stackIndex > 0) {
         stackIndex -= 1;
         Name name = child->stack[stackIndex];
@@ -227,12 +228,12 @@ State DocumentFlowEnd(Tokenizer* t) {
 
     if (child->lazy && t->tokenizeState.documentLazyAcceptingBefore &&
         documentLazyContinuationCurrent) {
-        t->tokenizeState.documentContinued =
-            t->tokenizeState.documentContainerStack.len;
+        t->tokenizeState.documentContinued = t->tokenizeState
+                                                 .documentContainerStack.len;
     }
 
-    if (t->tokenizeState.documentContinued !=
-        t->tokenizeState.documentContainerStack.len) {
+    if (t->tokenizeState.documentContinued != t->tokenizeState
+                                                  .documentContainerStack.len) {
         ExitContainers(t, Phase::After);
     }
 
@@ -244,8 +245,8 @@ State DocumentFlowEnd(Tokenizer* t) {
     }
 
     t->tokenizeState.documentContinued = 0;
-    t->tokenizeState.documentLazyAcceptingBefore =
-        documentLazyContinuationCurrent;
+    t->tokenizeState
+        .documentLazyAcceptingBefore = documentLazyContinuationCurrent;
     t->interrupt = false;
     return StateRetry(StateName::DocumentContainerExistingBefore);
 }
@@ -257,8 +258,8 @@ static void ExitContainers(Tokenizer* t, Phase phase) {
          i < t->tokenizeState.documentContainerStack.len; i++) {
         VecAppend(stackClose, t->tokenizeState.documentContainerStack[i]);
     }
-    t->tokenizeState.documentContainerStack.len =
-        t->tokenizeState.documentContinued;
+    t->tokenizeState.documentContainerStack.len = t->tokenizeState
+                                                      .documentContinued;
 
     Tokenizer* child = t->tokenizeState.documentChild;
 
@@ -271,11 +272,11 @@ static void ExitContainers(Tokenizer* t, Phase phase) {
         Flush(child, state, false);
     }
 
-    if (stackClose.len > 0) {
+    if (len(stackClose) > 0) {
         int32_t index = t->tokenizeState.documentExits.len -
                         (phase == Phase::After ? 2 : 1);
-        ArenaVec<Event> exits {};
-        while (stackClose.len > 0) {
+        ArenaVec<Event> exits{};
+        while (len(stackClose) > 0) {
             ContainerState container = stackClose[--stackClose.len];
             Name name = Name::BlockQuote;
             if (container.kind == Container::GfmFootnoteDefinition) {
@@ -289,11 +290,11 @@ static void ExitContainers(Tokenizer* t, Phase phase) {
             event.point = t->point;
             exits.Append(t->parseState->scratch, event);
 
-            int32_t stackIndex = t->stack.len;
+            int32_t stackIndex = len(t->stack);
             while (stackIndex > 0) {
                 stackIndex -= 1;
                 if (t->stack[stackIndex] == name) {
-                    for (int32_t i = stackIndex; i + 1 < t->stack.len; i++) {
+                    for (int32_t i = stackIndex; i + 1 < len(t->stack); i++) {
                         t->stack[i] = t->stack[i + 1];
                     }
                     t->stack.len -= 1;
@@ -329,14 +330,14 @@ static void DocumentResolve(Tokenizer* t) {
             }
             if (line < t->tokenizeState.documentExits.len) {
                 ArenaVec<Event> exits = t->tokenizeState.documentExits[line];
-                if (exits.len > 0) {
+                if (len(exits) > 0) {
                     t->tokenizeState.documentExits[line] = ArenaVec<Event>{};
                     for (Event& exit : exits) {
                         exit.point = point;
                     }
                     EditMapAdd(child->map, injectIndex, 0,
                                exits.Flatten(t->parseState->scratch),
-                               exits.len);
+                               len(exits));
                 }
             }
             line += 1;
@@ -361,7 +362,7 @@ static void DocumentResolve(Tokenizer* t) {
     // Add the last exits, which are past everything.
     if (line < t->tokenizeState.documentExits.len) {
         ArenaVec<Event> exits = t->tokenizeState.documentExits[line];
-        if (exits.len > 0) {
+        if (len(exits) > 0) {
             t->tokenizeState.documentExits[line] = ArenaVec<Event>{};
             for (Event& exit : exits) {
                 exit.point = t->point;

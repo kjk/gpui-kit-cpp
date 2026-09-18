@@ -160,7 +160,7 @@ static bool ParseStringArray(Arena* arena, const JsonValue* value,
 
 static bool ValidatePlaceholders(const Vec<Str>& paths, Str field,
                                  ShellError* error) {
-    for (int p = 0; p < paths.len; p++) {
+    for (int p = 0; p < len(paths); p++) {
         Str value = paths[p];
         for (int i = 0; i + 2 < value.len; i++) {
             if (value.s[i] != '$' || value.s[i + 1] != '{') continue;
@@ -619,7 +619,7 @@ static bool ParseCapabilities(const JsonValue* value, PluginManifest* out,
             }
             for (int pass = 0; pass < 2; pass++) {
                 Vec<Str>& paths = pass ? parsed->pathPrefixes : parsed->paths;
-                for (int i = 0; i < paths.len; i++) {
+                for (int i = 0; i < len(paths); i++) {
                     if (!paths[i] || paths[i].s[0] != '/') {
                         SetError(error,
                                  StrL("HTTP grant paths must start with `/`"));
@@ -857,7 +857,8 @@ Capabilities PluginManifest::Grant(Str pluginDirectory,
         if (file->hasPort) grant.Port(file->port);
         for (int j = 0; j < file->methods.len; j++)
             grant.AddMethod(file->methods[j]);
-        for (int j = 0; j < file->paths.len; j++) grant.AddPath(file->paths[j]);
+        for (int j = 0; j < len(file->paths); j++)
+            grant.AddPath(file->paths[j]);
         for (int j = 0; j < file->pathPrefixes.len; j++)
             grant.AddPathPrefix(file->pathPrefixes[j]);
         result.AddHttpRequest(grant);
@@ -1034,16 +1035,16 @@ const Vec<PluginDiscovery>& PluginManager::Discover() {
             ArenaDelete(scratch);
         }
         free(entries);
-        if (directoryRoots.len > 1)
-            qsort(directoryRoots.els, (size_t)directoryRoots.len, sizeof(Str),
+        if (len(directoryRoots) > 1)
+            qsort(directoryRoots.els, (size_t)len(directoryRoots), sizeof(Str),
                   ComparePaths);
-        for (int i = 0; i < directoryRoots.len; i++) {
+        for (int i = 0; i < len(directoryRoots); i++) {
             VecAppend(roots, directoryRoots[i]);
             directoryRoots[i] = {};
         }
         VecReset(directoryRoots);
     }
-    for (int i = 0; i < roots.len; i++) {
+    for (int i = 0; i < len(roots); i++) {
         PluginDiscovery found;
         found.root = roots[i];
         roots[i] = {};

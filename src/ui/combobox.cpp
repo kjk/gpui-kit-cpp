@@ -6,10 +6,10 @@ namespace gpui {
 namespace component {
 
 static bool SameSelection(const Vec<int>& a, const Vec<int>& b) {
-    if (a.len != b.len) {
+    if (len(a) != len(b)) {
         return false;
     }
-    for (int i = 0; i < a.len; i++) {
+    for (int i = 0; i < len(a); i++) {
         if (a[i] != b[i]) {
             return false;
         }
@@ -173,7 +173,7 @@ void ComboboxState::Emit(Ctx* cx, ComboboxEventKind kind) {
     }
     Vec<Str> values;
     SelectedValues(&values);
-    ComboboxEvent event = {kind, values.els, values.len};
+    ComboboxEvent event = {kind, values.els, len(values)};
     EntityEmit(cx->app, cx->win, self, &event);
     VecReset(values);
 }

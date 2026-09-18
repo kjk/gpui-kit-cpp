@@ -231,7 +231,7 @@ void TaffyTree::EachUnreachable(NodeId root, void (*fn)(NodeId, void*),
         }
     }
     base::Free(nullptr, seen);
-    for (int i = 0; i < ids.len; i++) {
+    for (int i = 0; i < len(ids); i++) {
         fn(ids[i], user);
     }
     VecReset(ids);

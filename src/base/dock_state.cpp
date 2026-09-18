@@ -133,7 +133,7 @@ static int ParseNode(Arena* a, const JsonValue* v, DockAreaState* out) {
     // The recursion appended nodes of its own, so the reference is taken
     // after it has finished growing the pool.
     PanelStateNode& node = out->nodes[ix];
-    for (int i = 0; i < childIx.len; i++) {
+    for (int i = 0; i < len(childIx); i++) {
         VecAppend(node.children, childIx[i]);
     }
     VecReset(childIx);
@@ -361,7 +361,7 @@ static int DumpNode(const DockState* s, DockAreaState* out, int node) {
         PanelStateNode& sn = out->nodes[ix];
         sn.kind = PanelInfoKind::Stack;
         sn.axis = n.axis;
-        for (int i = 0; i < children.len; i++) {
+        for (int i = 0; i < len(children); i++) {
             VecAppend(sn.children, children[i]);
             VecAppend(sn.sizes, sizes[i]);
         }
@@ -393,8 +393,8 @@ static int DumpNode(const DockState* s, DockAreaState* out, int node) {
     }
     PanelStateNode& sn = out->nodes[ix];
     sn.kind = PanelInfoKind::Tabs;
-    sn.activeIndex = n.activeIx < children.len ? n.activeIx : 0;
-    for (int i = 0; i < children.len; i++) {
+    sn.activeIndex = n.activeIx < len(children) ? n.activeIx : 0;
+    for (int i = 0; i < len(children); i++) {
         VecAppend(sn.children, children[i]);
     }
     VecReset(children);

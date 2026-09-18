@@ -199,7 +199,7 @@ bool RetainedStore::AddCallback(EntityHandle handle, RetainedEvent event,
 void RetainedStore::Destroy(RetainedEntry* entry, Vec<CallbackId>* callbacks) {
     if (!entry) return;
     if (callbacks) {
-        for (int i = 0; i < entry->callbacks.len; i++) {
+        for (int i = 0; i < len(entry->callbacks); i++) {
             VecAppend(*callbacks, entry->callbacks[i].callback);
         }
     }

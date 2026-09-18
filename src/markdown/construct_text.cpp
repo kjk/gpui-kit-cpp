@@ -131,8 +131,8 @@ State TextBeforeData(Tokenizer* t) {
 }
 
 bool TextResolve(Tokenizer* t, Subresult*) {
-    ResolveWhitespace(
-        t, t->parseState->options->constructs.hardBreakTrailing, true);
+    ResolveWhitespace(t, t->parseState->options->constructs.hardBreakTrailing,
+                      true);
     if (t->parseState->options->constructs.gfmAutolinkLiteral) {
         GfmAutolinkLiteralResolve(t);
     }
@@ -248,8 +248,8 @@ State CharacterReferenceValue(Tokenizer* t) {
     if (t->current == ';' && t->tokenizeState.size > 0) {
         if (t->tokenizeState.marker == '&') {
             Slice slice = SliceFromIndices(
-                t->parseState->bytes,
-                t->point.index - t->tokenizeState.size, t->point.index);
+                t->parseState->bytes, t->point.index - t->tokenizeState.size,
+                t->point.index);
             if (!DecodeNamed(t->parseState->scratch, slice.bytes).s) {
                 t->tokenizeState.marker = 0;
                 t->tokenizeState.size = 0;
@@ -266,10 +266,10 @@ State CharacterReferenceValue(Tokenizer* t) {
         return StateOk();
     }
     if (t->current >= 0 &&
-        t->tokenizeState.size <
-            CharacterReferenceValueMax(t->tokenizeState.marker) &&
-        CharacterReferenceValueTest(t->tokenizeState.marker,
-                                    (uint8_t)t->current)) {
+        t->tokenizeState
+                .size < CharacterReferenceValueMax(t->tokenizeState.marker) &&
+        CharacterReferenceValueTest(t->tokenizeState.marker, (uint8_t)t
+                                                                 ->current)) {
         t->tokenizeState.size += 1;
         Consume(t);
         return StateNext(StateName::CharacterReferenceValue);
@@ -407,8 +407,8 @@ State AutolinkSchemeInsideOrEmailAtext(Tokenizer* t) {
         t->tokenizeState.size = 0;
         return StateNext(StateName::AutolinkUrlInside);
     }
-    if (IsSchemeByte(t->current) &&
-        t->tokenizeState.size < kAutolinkSchemeSizeMax) {
+    if (IsSchemeByte(t->current) && t->tokenizeState
+                                            .size < kAutolinkSchemeSizeMax) {
         Consume(t);
         t->tokenizeState.size += 1;
         return StateNext(StateName::AutolinkSchemeInsideOrEmailAtext);
@@ -500,7 +500,7 @@ State AutolinkEmailValue(Tokenizer* t) {
 // parse's scratch arena, and is only ever read.
 struct Sequence {
     uint8_t marker = 0;
-    ArenaVec<int32_t> stack {};
+    ArenaVec<int32_t> stack{};
     int32_t index = 0;
     Point startPoint = {};
     Point endPoint = {};
@@ -512,8 +512,8 @@ struct Sequence {
 State AttentionStart(Tokenizer* t) {
     bool emphasis = t->parseState->options->constructs.attention &&
                     (t->current == '*' || t->current == '_');
-    bool strikethrough =
-        t->parseState->options->constructs.gfmStrikethrough && t->current == '~';
+    bool strikethrough = t->parseState->options->constructs.gfmStrikethrough &&
+                         t->current == '~';
     if (emphasis || strikethrough) {
         t->tokenizeState.marker = (uint8_t)t->current;
         Enter(t, Name::AttentionSequence);
@@ -534,7 +534,7 @@ State AttentionInside(Tokenizer* t) {
 }
 
 static bool StackEq(const ArenaVec<int32_t>& a, const ArenaVec<int32_t>& b) {
-    if (a.len != b.len) {
+    if (len(a) != len(b)) {
         return false;
     }
     // Two walks in step, which is what the pair of cursors is for: `a[i]`
@@ -552,14 +552,14 @@ static bool StackEq(const ArenaVec<int32_t>& a, const ArenaVec<int32_t>& b) {
 static void GetSequences(Tokenizer* t, Vec<Sequence>& sequences) {
     Arena* a = t->parseState->scratch;
     int32_t index = 0;
-    ArenaVec<int32_t> stack {};
+    ArenaVec<int32_t> stack{};
     while (index < t->events.len) {
         const Event& enter = t->events[index];
         if (enter.name == Name::AttentionSequence) {
             if (enter.kind == Kind::Enter) {
                 const Event& exit = t->events[index + 1];
-                uint8_t marker =
-                    (uint8_t)t->parseState->bytes.s[enter.point.index];
+                uint8_t marker = (uint8_t)t->parseState->bytes
+                                     .s[enter.point.index];
                 int32_t beforeChar =
                     CharBeforeIndex(t->parseState->bytes, enter.point.index);
                 CharKind before = Classify(beforeChar);
@@ -569,14 +569,16 @@ static void GetSequences(Tokenizer* t, Vec<Sequence>& sequences) {
                 bool gfm = t->parseState->options->constructs.gfmStrikethrough;
                 bool open =
                     after == CharKind::Other ||
-                    (after == CharKind::Punctuation && before != CharKind::Other) ||
+                    (after == CharKind::Punctuation &&
+                     before != CharKind::Other) ||
                     (marker != '~' && (afterChar == '*' || afterChar == '_')) ||
                     (marker != '~' && gfm && afterChar == '~');
-                bool close =
-                    before == CharKind::Other ||
-                    (before == CharKind::Punctuation && after != CharKind::Other) ||
-                    (marker != '~' && (beforeChar == '*' || beforeChar == '_')) ||
-                    (marker != '~' && gfm && beforeChar == '~');
+                bool close = before == CharKind::Other ||
+                             (before == CharKind::Punctuation &&
+                              after != CharKind::Other) ||
+                             (marker != '~' &&
+                              (beforeChar == '*' || beforeChar == '_')) ||
+                             (marker != '~' && gfm && beforeChar == '~');
 
                 Sequence sequence;
                 sequence.index = index;
@@ -587,18 +589,20 @@ static void GetSequences(Tokenizer* t, Vec<Sequence>& sequences) {
                 sequence.startPoint = enter.point;
                 sequence.endPoint = exit.point;
                 sequence.size = exit.point.index - enter.point.index;
-                sequence.open = marker == '_'
-                                    ? (open && (before != CharKind::Other || !close))
-                                    : open;
-                sequence.close = marker == '_'
-                                     ? (close && (after != CharKind::Other || !open))
-                                     : close;
+                sequence.open =
+                    marker == '_'
+                        ? (open && (before != CharKind::Other || !close))
+                        : open;
+                sequence.close =
+                    marker == '_'
+                        ? (close && (after != CharKind::Other || !open))
+                        : close;
                 sequence.marker = marker;
                 VecAppend(sequences, sequence);
             }
         } else if (enter.kind == Kind::Enter) {
             stack.Append(a, index);
-        } else if (stack.len > 0) {
+        } else if (len(stack) > 0) {
             stack.Pop();
         }
         index += 1;
@@ -606,7 +610,7 @@ static void GetSequences(Tokenizer* t, Vec<Sequence>& sequences) {
 }
 
 static void SequencesRemove(Vec<Sequence>& sequences, int32_t index) {
-    for (int32_t i = index; i + 1 < sequences.len; i++) {
+    for (int32_t i = index; i + 1 < len(sequences); i++) {
         sequences[i] = sequences[i + 1];
     }
     sequences.len -= 1;
@@ -703,7 +707,7 @@ bool AttentionResolve(Tokenizer* t, Subresult*) {
     GetSequences(t, sequences);
 
     int32_t close = 0;
-    while (close < sequences.len) {
+    while (close < len(sequences)) {
         int32_t nextIndex = close + 1;
         if (sequences[close].close) {
             int32_t open = close;
@@ -736,7 +740,7 @@ bool AttentionResolve(Tokenizer* t, Subresult*) {
     }
 
     // Mark remaining sequences as data.
-    for (int32_t index = 0; index < sequences.len; index++) {
+    for (int32_t index = 0; index < len(sequences); index++) {
         t->events[sequences[index].index].name = Name::Data;
         t->events[sequences[index].index + 1].name = Name::Data;
     }

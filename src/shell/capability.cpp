@@ -64,7 +64,7 @@ static void FreeStrings(Vec<Str>* values) {
 }
 
 static void CopyStrings(Vec<Str>* into, const Vec<Str>& values) {
-    for (int i = 0; i < values.len; i++) {
+    for (int i = 0; i < len(values); i++) {
         VecAppend(*into, StrDup(values[i]));
     }
 }
@@ -431,7 +431,7 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
         Str part(path.s + at, end - at);
         if (part.len == 0 || StrEq(part, StrL("."))) {
         } else if (StrEq(part, StrL(".."))) {
-            if (parts.len == 0) {
+            if (len(parts) == 0) {
                 if (escaped) *escaped = true;
             } else {
                 parts.len--;
@@ -442,7 +442,7 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
         at = end + 1;
     }
     bool rootSlash = out.len > 0 && out.els[out.len - 1] == '/';
-    for (int i = 0; i < parts.len; i++) {
+    for (int i = 0; i < len(parts); i++) {
         if (out.len > 0 && !(rootSlash && out.len == 1) &&
             out.els[out.len - 1] != '/')
             out.AppendChar('/');
@@ -481,7 +481,7 @@ bool Capabilities::ResolvePath(Str path, CapabilityAccess access,
     if (error) CapabilityErrorFree(error);
     const Vec<Str>& roots =
         access == CapabilityAccess::Read ? readRoots : writeRoots;
-    if (roots.len == 0) {
+    if (len(roots) == 0) {
         if (error) {
             error->kind = CapabilityErrorKind::NotGranted;
             error->access = access;
@@ -493,7 +493,7 @@ bool Capabilities::ResolvePath(Str path, CapabilityAccess access,
     bool absolute = IsAbsolute(path);
     bool escaped = false;
     Str normalizedPath = NormalizePath(arena, path, &escaped);
-    for (int i = 0; i < roots.len; i++) {
+    for (int i = 0; i < len(roots); i++) {
         bool rootEscaped = false;
         Str root = NormalizePath(arena, roots[i], &rootEscaped);
         if (rootEscaped) continue;

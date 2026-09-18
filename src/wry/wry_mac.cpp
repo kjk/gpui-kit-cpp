@@ -602,10 +602,10 @@ static void HandleSchemeTask(WebView* wv, int index, id<WKURLSchemeTask> task) {
     Request req;
     req.method = FromNSTemp(request.HTTPMethod ? request.HTTPMethod : @"GET");
     req.uri = FromNSTemp(url.absoluteString);
-    req.headers = headerStore.len > 0 ? &headerStore[0] : nullptr;
-    req.headerCount = headerStore.len;
-    req.body = bodyStore.len > 0 ? &bodyStore[0] : nullptr;
-    req.bodyLen = bodyStore.len;
+    req.headers = len(headerStore) > 0 ? &headerStore[0] : nullptr;
+    req.headerCount = len(headerStore);
+    req.body = len(bodyStore) > 0 ? &bodyStore[0] : nullptr;
+    req.bodyLen = len(bodyStore);
 
     RequestResponder* responder = new RequestResponder();
     responder->liveTasks = wv->liveTasks;

@@ -152,7 +152,7 @@ Str GitDependencyRemoteKey(Str git) {
     if (git.len > 0)
         memcpy(VecAppendBlanks(input, git.len), git.s, (size_t)git.len);
     uint8_t digest[32];
-    Sha256(Str((const char*)input.els, input.len), digest);
+    Sha256(Str((const char*)input.els, len(input)), digest);
     VecReset(input);
     TempStr hex = AllocStrTemp(64);
     static const char* digits = "0123456789abcdef";
@@ -728,7 +728,7 @@ bool GitDependencyStore::LinkForEditor(
         if (replaced && linked) (*linked)++;
     }
     if (ok) Prune(modules, declared);
-    for (int i = 0; i < declared.len; i++) StrFree(declared[i]);
+    for (int i = 0; i < len(declared); i++) StrFree(declared[i]);
     VecReset(declared);
     StrFree(modules);
     return ok;
@@ -745,8 +745,8 @@ void GitDependencyStore::Prune(Str modules, const Vec<Str>& declared) {
     Vec<Pending> pending;
     VecAppend(pending, Pending{StrDup(modules), 0});
     DirEntry* entries = AllocArray<DirEntry>(kEditorPruneMaxEntries);
-    while (pending.len > 0) {
-        Pending directory = pending[pending.len - 1];
+    while (len(pending) > 0) {
+        Pending directory = pending[len(pending) - 1];
         pending.len--;
         int count = entries ? PlatListDir(directory.path.s, entries,
                                           kEditorPruneMaxEntries)
@@ -757,7 +757,7 @@ void GitDependencyStore::Prune(Str modules, const Vec<Str>& declared) {
             if (StrEq(name, StrL(".")) || StrEq(name, StrL(".."))) continue;
             Str path = JoinPath(directory.path, name);
             bool isDeclared = false;
-            for (int d = 0; d < declared.len; d++)
+            for (int d = 0; d < len(declared); d++)
                 if (PathEq(declared[d], path)) isDeclared = true;
             if (isDeclared) {
                 StrFree(path);

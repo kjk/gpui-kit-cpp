@@ -95,11 +95,11 @@ SemanticShadowTokens SemanticShadowElevations(Rgba color) {
 }
 
 const BoxShadow* ShadowFirst(const Vec<BoxShadow>& level) {
-    return level.len > 0 ? &level[0] : nullptr;
+    return len(level) > 0 ? &level[0] : nullptr;
 }
 
 BoxShadow* ShadowFirst(Vec<BoxShadow>& level) {
-    return level.len > 0 ? &level[0] : nullptr;
+    return len(level) > 0 ? &level[0] : nullptr;
 }
 
 } // namespace gpui

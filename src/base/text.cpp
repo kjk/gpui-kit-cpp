@@ -2259,7 +2259,7 @@ El* TextView::CodeBlock(MdNode* n) {
 // themselves and every element in them is the same mono face at the same
 // size, which keeps the lines from setting their own leading.
 El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
-    const int count = spans.len;
+    const int count = len(spans);
     El* col = Div(a)->FlexCol()->W(kFill);
     float lineH = codeFont * kLineHeight;
     El* row = Div(a)->FlexRow()->H(lineH);

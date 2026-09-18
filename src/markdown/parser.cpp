@@ -65,9 +65,9 @@ void DivideEvents(EditMap& map, const Vec<Event>& events, int32_t linkIndex,
     Vec<DivideSlice> slices;
     int32_t sliceStart = 0;
     int32_t oldPrev = -1;
-    int32_t len = childEvents.len;
+    int32_t childLen = len(childEvents);
 
-    while (childIndex < len) {
+    while (childIndex < childLen) {
         const Point& current = childEvents[childIndex].point;
         const Point& end = events[linkIndex + 1].point;
 
@@ -81,48 +81,48 @@ void DivideEvents(EditMap& map, const Vec<Event>& events, int32_t linkIndex,
         }
 
         // Fix sublinks.
-        if (childEvents[childIndex].hasLink &&
-            childEvents[childIndex].link.previous != -1) {
+        if (childEvents[childIndex].hasLink && childEvents[childIndex]
+                                                       .link.previous != -1) {
             Event& prevEvent = childEvents[oldPrev];
-            int32_t newLink = slices.len == 0
+            int32_t newLink = len(slices) == 0
                                   ? oldPrev + linkIndex + 2
-                                  : oldPrev + linkIndex - (slices.len - 1) * 2;
+                                  : oldPrev + linkIndex - (len(slices) - 1) * 2;
             prevEvent.link.next = newLink + *accB - *accA;
         }
 
         // Correct the next links.
-        if (childEvents[childIndex].hasLink &&
-            childEvents[childIndex].link.next != -1) {
+        if (childEvents[childIndex].hasLink && childEvents[childIndex]
+                                                       .link.next != -1) {
             int32_t next = childEvents[childIndex].link.next;
             oldPrev = childEvents[next].link.previous;
             if (childEvents[next].link.previous != -1) {
                 childEvents[next].link.previous =
                     childEvents[next].link.previous + linkIndex -
-                    (slices.len * 2) + *accB - *accA;
+                    (len(slices) * 2) + *accB - *accA;
             }
         }
 
         childIndex += 1;
     }
 
-    if (childEvents.len > 0) {
+    if (len(childEvents) > 0) {
         DivideSlice slice = {linkIndex, sliceStart};
         VecAppend(slices, slice);
     }
 
     // Splice the child events into the parent, back to front so the indices
     // stay right.
-    int32_t index = slices.len;
+    int32_t index = len(slices);
     while (index > 0) {
         index -= 1;
         int32_t from = slices[index].sliceStart;
         EditMapAdd(map, slices[index].linkIndex, 2, childEvents.els + from,
-                   childEvents.len - from);
+                   len(childEvents) - from);
         childEvents.len = from;
     }
 
-    *accA = *accA + slices.len * 2;
-    *accB = *accB + len;
+    *accA = *accA + len(slices) * 2;
+    *accB = *accB + childLen;
 }
 
 Subresult Subtokenize(Vec<Event>& events, ParseState* parseState,
@@ -135,12 +135,13 @@ Subresult Subtokenize(Vec<Event>& events, ParseState* parseState,
     int32_t accA = 0;
     int32_t accB = 0;
 
-    while (index < events.len) {
+    while (index < len(events)) {
         if (events[index].hasLink && events[index].link.previous == -1 &&
             (!hasFilter || events[index].link.content == filter)) {
             const Link& link = events[index].link;
             int32_t linkIndex = index;
-            Tokenizer* tokenizer = TokenizerNew(events[index].point, parseState);
+            Tokenizer* tokenizer =
+                TokenizerNew(events[index].point, parseState);
 
             StateName startName = StateName::TextStart;
             if (link.content == ContentKind::Content) {
@@ -215,7 +216,7 @@ Vec<Event> Parse(ParseState* parseState) {
 
     Vec<Event> events;
     events.els = tokenizer->events.els;
-    events.len = tokenizer->events.len;
+    events.len = len(tokenizer->events);
     events.cap = tokenizer->events.cap;
     tokenizer->events.els = nullptr;
     tokenizer->events.len = 0;

@@ -103,10 +103,11 @@ void BenchCase(const char* group, const char* name, const char* unit,
         VecAppend(times, elapsed);
     }
 
-    SortTimes(times.els, times.len);
-    double med = times.len & 1
-                     ? times[times.len / 2]
-                     : (times[times.len / 2 - 1] + times[times.len / 2]) / 2.0;
+    SortTimes(times.els, len(times));
+    double med =
+        len(times) & 1
+            ? times[len(times) / 2]
+            : (times[len(times) / 2 - 1] + times[len(times) / 2]) / 2.0;
 
     TempStr medText = FormatMsTemp(med);
     TempStr minText = FormatMsTemp(times[0]);

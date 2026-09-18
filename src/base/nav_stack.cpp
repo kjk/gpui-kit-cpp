@@ -100,13 +100,13 @@ Vec<EntityId> NavStackPopToRoot(NavStackState* s, Ctx* cx, NavMotion motion) {
         }
         VecAppend(popped, view);
     }
-    if (popped.len <= 0) {
+    if (len(popped) <= 0) {
         return popped;
     }
     NavFinish(s, cx, hasOutgoing, outgoing, index, NavOperation::Pop, motion,
               NavStackEvent::Popped);
     // Rust reverses the vector before returning it: root-side first.
-    for (int i = 0, j = popped.len - 1; i < j; i++, j--) {
+    for (int i = 0, j = len(popped) - 1; i < j; i++, j--) {
         EntityId tmp = popped[i];
         popped[i] = popped[j];
         popped[j] = tmp;

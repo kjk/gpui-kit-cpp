@@ -47,8 +47,8 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
 
     SourceTreeStamp found;
     bool ok = true;
-    while (pending.len > 0 && ok) {
-        PendingDirectory dir = pending[pending.len - 1];
+    while (len(pending) > 0 && ok) {
+        PendingDirectory dir = pending[len(pending) - 1];
         pending.len--;
         int count = PlatListDir(dir.path, entries, kMaxEntriesPerDirectory);
         if (count >= kMaxEntriesPerDirectory) {
@@ -66,7 +66,7 @@ bool ScanSourceTree(Str directory, SourceTreeStamp* stamp, ShellError* error,
                     SkipDirectory(Str(item.name))) {
                     continue;
                 }
-                if (pending.len >= kSourceWatchMaxFiles) {
+                if (len(pending) >= kSourceWatchMaxFiles) {
                     ShellErrorSet(error, fmt("source watch for `%s` exceeds "
                                              "the %d-directory limit",
                                              directory, kSourceWatchMaxFiles));

@@ -384,7 +384,7 @@ void DecorationCollections::AdjustForEdit(Selection editedRange,
     for (int i = 0; i < state->entries.len; i++) {
         Vec<TextDecoration>& ds = state->entries[i]->decorations;
         int write = 0;
-        for (int j = 0; j < ds.len; j++) {
+        for (int j = 0; j < len(ds); j++) {
             TextDecoration d = ds[j];
             d.range = AdjustDecorationRange(d.range, editedRange, insertedLen);
             if (!d.range.IsEmpty()) {
@@ -417,17 +417,17 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
     Vec<TextSpan> accepted;
     for (int i = 0; i < state->entries.len; i++) {
         const Vec<TextDecoration>& ds = state->entries[i]->decorations;
-        for (int j = 0; j < ds.len; j++) {
+        for (int j = 0; j < len(ds); j++) {
             Vec<Selection> pieces;
             VecAppend(pieces, ds[j].range);
-            for (int k = 0; k < accepted.len && pieces.len > 0; k++) {
+            for (int k = 0; k < len(accepted) && len(pieces) > 0; k++) {
                 Selection occupied = {accepted[k].lo, accepted[k].hi};
-                for (int p = pieces.len - 1; p >= 0; p--) {
+                for (int p = len(pieces) - 1; p >= 0; p--) {
                     Selection piece = pieces[p];
                     if (!SelectionOverlaps(piece, occupied)) {
                         continue;
                     }
-                    pieces[p] = pieces[pieces.len - 1];
+                    pieces[p] = pieces[len(pieces) - 1];
                     pieces.len--;
                     if (piece.start < occupied.start) {
                         VecAppend(
@@ -440,7 +440,7 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
                     }
                 }
             }
-            for (int p = 0; p < pieces.len; p++) {
+            for (int p = 0; p < len(pieces); p++) {
                 TextSpan span = ds[j].style;
                 span.lo = pieces[p].start;
                 span.hi = pieces[p].end;
@@ -448,16 +448,16 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
             }
         }
     }
-    if (accepted.len > 1) {
-        std::sort(accepted.els, accepted.els + accepted.len,
+    if (len(accepted) > 1) {
+        std::sort(accepted.els, accepted.els + len(accepted),
                   [](const TextSpan& a, const TextSpan& b) {
                       return a.lo < b.lo || (a.lo == b.lo && a.hi < b.hi);
                   });
     }
-    for (int i = 0; out && i < accepted.len && i < cap; i++) {
+    for (int i = 0; out && i < len(accepted) && i < cap; i++) {
         out[i] = accepted[i];
     }
-    return accepted.len;
+    return len(accepted);
 }
 
 static DiagnosticRelatedInformation* CloneRelated(

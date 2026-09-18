@@ -927,7 +927,7 @@ static void EndFormatting(Builder* b, Str name) {
     }
     Node* parent = NodeParent(b->a, b->open[at]);
     b->open.Truncate(at);
-    for (int i = 0; i < reopen.len; i++) {
+    for (int i = 0; i < len(reopen); i++) {
         Node* old = reopen[i];
         Node* node =
             Element(b, NodeName(b->a, old), NodeAttrs(b->a, old), old->ns);
