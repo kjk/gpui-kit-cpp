@@ -14,10 +14,12 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `d604a2ace1c6d8629b94e0498a9158c4a713defa`
-(2026-09-16, setting: Fix delegate number step and clamp to InputState
-(#3099)). The current update target is
-`d604a2ace1c6d8629b94e0498a9158c4a713defa`.
+Processed through `967f8fb713caf7560ea73bf477d15d0ee9080e59`
+(2026-09-17, website: Skip the system font probe while no font is installed
+(#3106)). Theme::change still skips the system-font probe while no font is
+installed; this tree never ran that probe, and the paint path does not panic
+on an empty font database. The current update target is
+`7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
