@@ -1184,12 +1184,14 @@ static TempStr ReadModuleFileTemp(Str path, ShellError* error) {
 
 static bool IsBuiltin(Str name) {
     return (StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-kit"))) ||
-           StrEq(name, StrL("gpui-base")) || StrEq(name, StrL("gpui-shell")) ||
-           StrEq(name, StrL("gpui-fps")) || StrEq(name, StrL("buffer")) ||
-           StrEq(name, StrL("console")) || StrEq(name, StrL("crypto")) ||
-           StrEq(name, StrL("fs/promises")) || StrEq(name, StrL("os")) ||
-           StrEq(name, StrL("path")) || StrEq(name, StrL("process")) ||
-           StrEq(name, StrL("url")) || StrEq(name, StrL("zlib"));
+           StrEq(name, StrL("gpui-base")) ||
+           StrEq(name, StrL("gpui-component")) ||
+           StrEq(name, StrL("gpui-shell")) || StrEq(name, StrL("gpui-fps")) ||
+           StrEq(name, StrL("buffer")) || StrEq(name, StrL("console")) ||
+           StrEq(name, StrL("crypto")) || StrEq(name, StrL("fs/promises")) ||
+           StrEq(name, StrL("os")) || StrEq(name, StrL("path")) ||
+           StrEq(name, StrL("process")) || StrEq(name, StrL("url")) ||
+           StrEq(name, StrL("zlib"));
 }
 
 static const char* const kGpuiExports[] = {
@@ -1209,10 +1211,16 @@ static const char* const kBaseExports[] = {
     "Slider", "SliderTrack", "SliderIndicator", "SliderThumb", "OtpState",
     "OtpInput", "Avatar", "AvatarImage", "AvatarFallback", "Pagination",
     "pagination_items", "CalendarState", "Accordion", "AccordionItem",
-    "AccordionHeader", "AccordionPanel", "AccordionTrigger",
+    "AccordionHeader", "AccordionPanel", "AccordionTrigger", "InputGroup",
+    "InputGroupAddon", "InputGroupButton", "InputGroupInput",
+    "InputGroupTextarea", "InputGroupText",
     // Dock. The area is the state and `dock_area` is one description of it,
     // which is the split `v_virtual_list` already has.
     "DockArea", "dock_area", "dock_content", "set_theme"};
+static const char* const kComponentExports[] = {
+    "InputGroup",      "InputGroupAddon",    "InputGroupButton",
+    "InputGroupInput", "InputGroupTextarea", "InputGroupText",
+    "InputState",      "TextareaState",      "Button"};
 static const char* const kFpsExports[] = {"fps_monitor", "show_fps_monitor",
                                           "hide_fps_monitor",
                                           "fps_monitor_visible"};
@@ -1245,6 +1253,10 @@ static void ModuleExports(Str name, const char* const** values, int* count) {
     } else if (StrEq(name, StrL("gpui-base"))) {
         *values = kBaseExports;
         *count = (int)(sizeof(kBaseExports) / sizeof(kBaseExports[0]));
+    } else if (StrEq(name, StrL("gpui-component"))) {
+        *values = kComponentExports;
+        *count =
+            (int)(sizeof(kComponentExports) / sizeof(kComponentExports[0]));
     } else if (StrEq(name, StrL("gpui-fps"))) {
         *values = kFpsExports;
         *count = (int)(sizeof(kFpsExports) / sizeof(kFpsExports[0]));
@@ -1280,8 +1292,8 @@ static void ModuleExports(Str name, const char* const** values, int* count) {
 
 static const char* BuiltinObject(Str name) {
     if ((StrEq(name, StrL("gpui")) || StrEq(name, StrL("gpui-kit"))) ||
-        StrEq(name, StrL("gpui-base")) || StrEq(name, StrL("gpui-shell")) ||
-        StrEq(name, StrL("gpui-fps")))
+        StrEq(name, StrL("gpui-base")) || StrEq(name, StrL("gpui-component")) ||
+        StrEq(name, StrL("gpui-shell")) || StrEq(name, StrL("gpui-fps")))
         return "__gpui";
     if (StrEq(name, StrL("buffer"))) return "__shell_buffer";
     if (StrEq(name, StrL("console"))) return "console";
@@ -1697,6 +1709,12 @@ static shell::ComponentKind ComponentKindOf(Str name) {
         {"AccordionHeader", shell::ComponentKind::AccordionHeader},
         {"AccordionPanel", shell::ComponentKind::AccordionPanel},
         {"AccordionTrigger", shell::ComponentKind::AccordionTrigger},
+        {"InputGroup", shell::ComponentKind::InputGroup},
+        {"InputGroupAddon", shell::ComponentKind::InputGroupAddon},
+        {"InputGroupButton", shell::ComponentKind::InputGroupButton},
+        {"InputGroupInput", shell::ComponentKind::InputGroupInput},
+        {"InputGroupTextarea", shell::ComponentKind::InputGroupTextarea},
+        {"InputGroupText", shell::ComponentKind::InputGroupText},
         {"Pagination", shell::ComponentKind::Pagination},
         {"Avatar", shell::ComponentKind::Avatar},
         {"AvatarImage", shell::ComponentKind::AvatarImage},
@@ -2056,7 +2074,10 @@ static bool IsBehavior(Str name) {
         "open_delay\0close_delay\0transition\0spring\0selectable\0"
         "scrollable\0"
         "with_item_to_measure_index\0close\0"
-        "key_context\0aria_level\0keep_mounted\0";
+        "key_context\0aria_level\0keep_mounted\0"
+        "readonly\0invalid\0focus_ring\0aria_label\0masked\0placeholder\0"
+        "content_type\0align\0label\0icon\0variant\0loading\0outline\0"
+        "accessibility_id\0rows\0auto_grow\0";
     for (const char* at = names; *at; at += strlen(at) + 1) {
         if (StrEq(name, at)) return true;
     }
@@ -4087,7 +4108,8 @@ static JSValue NativeRetainedComponent(JSContext* ctx, JSValueConst, int argc,
     component.kind = ComponentKindOf(name);
     component.handle = handle;
     shell::RetainedKind expected = shell::RetainedKind::Input;
-    if (component.kind == shell::ComponentKind::Textarea)
+    if (component.kind == shell::ComponentKind::Textarea ||
+        component.kind == shell::ComponentKind::InputGroupTextarea)
         expected = shell::RetainedKind::Textarea;
     else if (component.kind == shell::ComponentKind::Slider ||
              component.kind == shell::ComponentKind::SliderTrack ||
@@ -6616,7 +6638,7 @@ globalThis.__gpui = (() => {
   // An avatar's two — base renders the image, or the fallback when there is
   // no image, and never both — and an accordion item's two, which are read
   // back for their own type rather than rendered.
-  for (const name of ["content", "trigger", "input", "decrement_button", "increment_button",
+  for (const name of ["content", "trigger", "input", "addon", "decrement_button", "increment_button",
                       "image", "fallback", "header", "panel"]) {
     explicit[name] = function (value) { __slot(this.__id, name, childId(value)); return this; };
   }
@@ -7751,6 +7773,12 @@ globalThis.__gpui = (() => {
     AvatarFallback: plain("AvatarFallback"),
     Accordion: named("Accordion"),
     AccordionItem: plain("AccordionItem"),
+    InputGroup: named("InputGroup"),
+    InputGroupAddon: named("InputGroupAddon"),
+    InputGroupButton: named("InputGroupButton"),
+    InputGroupInput: retained("InputGroupInput"),
+    InputGroupTextarea: retained("InputGroupTextarea"),
+    InputGroupText: plain("InputGroupText"),
     // AccordionHeader.new takes the trigger, exactly as Popup.new takes its
     // own: a heading whose button arrived later would be a heading that
     // announced nothing for a frame.

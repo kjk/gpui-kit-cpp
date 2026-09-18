@@ -31,6 +31,7 @@
 #include "base/text.h"
 #include "base/toggle.h"
 #include "base/toggle_group.h"
+#include "ui/input.h"
 #include "fps/fps.h"
 #include "shell/a11y.h"
 #include "shell/action.h"
@@ -306,7 +307,8 @@ static void ResolveBehavior(const shell::SpecNode* node,
         }
         if (StrEq(op.name, StrL("id")))
             out->key = AsString(op, 0);
-        else if (StrEq(op.name, StrL("accessibility_label")))
+        else if (StrEq(op.name, StrL("accessibility_label")) ||
+                 StrEq(op.name, StrL("aria_label")))
             out->accessibilityLabel = AsString(op, 0);
         else if (StrEq(op.name, StrL("href")))
             out->href = AsString(op, 0);
@@ -717,6 +719,15 @@ static bool ApplyParam(El* e, const shell::SpecOp& op) {
     else if (StrEq(op.name, StrL("size")) && length.valid) {
         e->style.width = e->style
                              .height = length.automatic ? kAuto : length.pixels;
+    } else if (StrEq(op.name, StrL("size"))) {
+        // InputGroup and InputGroupButton take a semantic size; a pixel
+        // size is handled above. Ignore the named sizes here so they are
+        // not reported as invalid style calls.
+        Str name = AsString(op, 0);
+        if (!StrEq(name, StrL("xsmall")) && !StrEq(name, StrL("small")) &&
+            !StrEq(name, StrL("medium")) && !StrEq(name, StrL("large"))) {
+            return false;
+        }
     } else if (StrEq(op.name, StrL("min_w")) && length.valid)
         e->style.minW = length.automatic ? kAuto : length.pixels;
     else if (StrEq(op.name, StrL("min_h")) && length.valid)
@@ -1279,6 +1290,17 @@ static Str MotionIdentity(Ctx* cx, const shell::SpecNode* node,
         case shell::ComponentKind::OtpInput:
             return StrDup(cx->a,
                           fmt("gpui-shell-otp-input:%llu", component.handle));
+        case shell::ComponentKind::InputGroup:
+        case shell::ComponentKind::InputGroupAddon:
+        case shell::ComponentKind::InputGroupButton:
+            if (component.text) return component.text;
+            break;
+        case shell::ComponentKind::InputGroupInput:
+            return StrDup(cx->a, fmt("gpui-shell-input-group-input:%llu",
+                                     component.handle));
+        case shell::ComponentKind::InputGroupTextarea:
+            return StrDup(cx->a, fmt("gpui-shell-input-group-textarea:%llu",
+                                     component.handle));
         default:
             break;
     }
@@ -1352,6 +1374,145 @@ static shell::SpecId SlotId(const shell::SpecNode* node, const char* name) {
     }
     return 0;
 }
+
+static shell::SpecId LastSlotId(const shell::SpecNode* node, const char* name) {
+    shell::SpecId found = 0;
+    if (!node) return found;
+    for (const shell::SpecOp& op : node->ops) {
+        if (op.kind == shell::SpecOpKind::Slot && StrEq(op.name, name))
+            found = op.node;
+    }
+    return found;
+}
+
+static El* FindElById(El* root, Str id) {
+    if (!root || !id) return nullptr;
+    if (StrEq(root->id, id)) return root;
+    for (El* child = root->first; child; child = child->next) {
+        if (El* found = FindElById(child, id)) return found;
+    }
+    return nullptr;
+}
+
+static Str LastNamedString(const shell::SpecNode* node, const char* name) {
+    Str found = {};
+    if (!node) return found;
+    for (const shell::SpecOp& op : node->ops) {
+        if ((op.kind == shell::SpecOpKind::Method ||
+             op.kind == shell::SpecOpKind::ParamStyle) &&
+            StrEq(op.name, name)) {
+            Str value = AsString(op, 0);
+            if (value) found = value;
+        }
+    }
+    return found;
+}
+
+static bool LastNamedBool(const shell::SpecNode* node, const char* name,
+                          bool fallback, bool* present = nullptr) {
+    bool found = fallback;
+    bool set = false;
+    if (node) {
+        for (const shell::SpecOp& op : node->ops) {
+            if (op.kind == shell::SpecOpKind::Method && StrEq(op.name, name)) {
+                found = AsBool(op, 0, true);
+                set = true;
+            }
+        }
+    }
+    if (present) *present = set;
+    return found;
+}
+
+static bool LastNamedNumbers(const shell::SpecNode* node, const char* name,
+                             float* first, float* second) {
+    bool found = false;
+    if (!node) return found;
+    for (const shell::SpecOp& op : node->ops) {
+        if (op.kind != shell::SpecOpKind::Method || !StrEq(op.name, name))
+            continue;
+        if (first) *first = AsNumber(op, 0);
+        if (second) *second = AsNumber(op, 1);
+        found = true;
+    }
+    return found;
+}
+
+static UiSize UiSizeOfNode(const shell::SpecNode* node, UiSize fallback) {
+    Str name = LastNamedString(node, "size");
+    if (!name) return fallback;
+    if (StrEq(name, StrL("xsmall")) || StrEq(name, StrL("small")) ||
+        StrEq(name, StrL("medium")) || StrEq(name, StrL("large"))) {
+        return UiSizeFromStr(name);
+    }
+    return fallback;
+}
+
+static component::ButtonVariant ButtonVariantOfName(Str name) {
+    if (StrEq(name, StrL("primary"))) return component::ButtonVariant::Primary;
+    if (StrEq(name, StrL("secondary")))
+        return component::ButtonVariant::Secondary;
+    if (StrEq(name, StrL("danger"))) return component::ButtonVariant::Danger;
+    if (StrEq(name, StrL("warning"))) return component::ButtonVariant::Warning;
+    if (StrEq(name, StrL("success"))) return component::ButtonVariant::Success;
+    if (StrEq(name, StrL("info"))) return component::ButtonVariant::Info;
+    if (StrEq(name, StrL("ghost"))) return component::ButtonVariant::Ghost;
+    if (StrEq(name, StrL("link"))) return component::ButtonVariant::Link;
+    if (StrEq(name, StrL("text"))) return component::ButtonVariant::Text;
+    return component::ButtonVariant::Default;
+}
+
+static component::InputGroupAddonAlignment AddonAlignOfName(Str name) {
+    if (StrEq(name, StrL("inline-end")))
+        return component::InputGroupAddonAlignment::InlineEnd;
+    if (StrEq(name, StrL("block-start")))
+        return component::InputGroupAddonAlignment::BlockStart;
+    if (StrEq(name, StrL("block-end")))
+        return component::InputGroupAddonAlignment::BlockEnd;
+    return component::InputGroupAddonAlignment::InlineStart;
+}
+
+static bool ContentTypeOfName(Str name, component::InputContentType* out) {
+    static const char names[] =
+        "name\0name_prefix\0given_name\0middle_name\0family_name\0"
+        "name_suffix\0nickname\0job_title\0organization_name\0location\0"
+        "full_street_address\0street_address_line1\0street_address_line2\0"
+        "address_city\0address_state\0address_city_and_state\0sublocality\0"
+        "country_name\0postal_code\0telephone_number\0email_address\0url\0"
+        "credit_card_number\0credit_card_name\0credit_card_given_name\0"
+        "credit_card_middle_name\0credit_card_family_name\0"
+        "credit_card_security_code\0credit_card_expiration\0"
+        "credit_card_expiration_month\0credit_card_expiration_year\0"
+        "credit_card_type\0username\0password\0new_password\0one_time_code\0"
+        "shipment_tracking_number\0flight_number\0date_time\0birthdate\0"
+        "birthdate_day\0birthdate_month\0birthdate_year\0cellular_eid\0"
+        "cellular_imei\0";
+    int ix = SeqStrIndex(names, name);
+    if (ix < 0) return false;
+    *out = (component::InputContentType)ix;
+    return true;
+}
+
+struct InputGroupScopeState {
+    bool active = false;
+    bool disabled = false;
+};
+static InputGroupScopeState gInputGroup;
+
+struct InputGroupScope {
+    bool active;
+    bool disabled;
+    InputGroupScope(bool isDisabled) {
+        active = gInputGroup.active;
+        disabled = gInputGroup.disabled;
+        gInputGroup.active = true;
+        gInputGroup.disabled = isDisabled;
+    }
+    ~InputGroupScope() {
+        gInputGroup.active = active;
+        gInputGroup.disabled = disabled;
+    }
+};
 
 static El* NumberStepButton(Ctx* cx, ShellRuntime* runtime,
                             const shell::SpecArena* specs,
@@ -2184,9 +2345,88 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
         case shell::ComponentKind::AccordionItem:
         case shell::ComponentKind::DockArea:
         case shell::ComponentKind::DockContent:
+        case shell::ComponentKind::InputGroup:
+        case shell::ComponentKind::InputGroupAddon:
+        case shell::ComponentKind::InputGroupButton:
+        case shell::ComponentKind::InputGroupInput:
+        case shell::ComponentKind::InputGroupTextarea:
+        case shell::ComponentKind::InputGroupText:
             return Div(cx->a);
     }
     return Div(cx->a);
+}
+
+static void BindInputGroupControl(Ctx* cx, const shell::SpecNode* node,
+                                  InputState* state,
+                                  shell::EntityHandle handle) {
+    if (!state) return;
+    MaterialBehavior behavior = {};
+    ResolveBehavior(node, &behavior);
+    state->disabled = behavior.disabled;
+    Str value = LastNamedString(node, "value");
+    if (value && !StrEq(InputValue(state), value)) InputSetValue(state, value);
+    Str placeholder = LastNamedString(node, "placeholder");
+    if (placeholder && !StrEq(state->placeholder, placeholder)) {
+        InputSetPlaceholder(state, placeholder);
+    }
+    bool hasMasked = false;
+    bool masked = LastNamedBool(node, "masked", false, &hasMasked);
+    if (hasMasked) state->masked = masked;
+    float minRows = 0, maxRows = 0;
+    if (LastNamedNumbers(node, "auto_grow", &minRows, &maxRows) &&
+        minRows >= 1 && maxRows >= minRows) {
+        state->mode.kind = LayoutModeKind::AutoGrow;
+        state->mode.minRows = (int)minRows;
+        state->mode.maxRows = (int)maxRows;
+        LayoutModeSetRows(&state->mode, (int)minRows);
+    }
+    float rows = 0;
+    if (LastNamedNumbers(node, "rows", &rows, nullptr) && rows >= 1) {
+        state->mode.kind = LayoutModeKind::PlainText;
+        LayoutModeSetRows(&state->mode, (int)rows);
+    }
+    ShellInputGroupBinding* binding = ArenaNew<ShellInputGroupBinding>(cx->a);
+    binding->handle = handle;
+    binding->onChange = behavior.onChange;
+    binding->state = state;
+    state->onChange =
+        Listen(cx, &ScriptView::OnInputGroupEvent, (intptr_t)binding);
+}
+
+static void ApplyInputGroupControl(component::Input* input,
+                                   const shell::SpecNode* node,
+                                   const MaterialBehavior& behavior) {
+    if (!input) return;
+    input->Disabled(behavior.disabled)
+        ->Readonly(LastNamedBool(node, "readonly", false));
+    if (behavior.accessibilityLabel)
+        input->AriaLabel(behavior.accessibilityLabel);
+    Str accessibilityId = LastNamedString(node, "accessibility_id");
+    if (accessibilityId) input->AccessibilityId(accessibilityId);
+    component::InputContentType contentType = {};
+    Str content = LastNamedString(node, "content_type");
+    if (content && ContentTypeOfName(content, &contentType)) {
+        input->ContentType(contentType);
+    }
+    bool hasMasked = false;
+    bool masked = LastNamedBool(node, "masked", false, &hasMasked);
+    if (hasMasked) input->Masked(masked);
+}
+
+static void ApplyInputGroupTextarea(component::Textarea* textarea,
+                                    const shell::SpecNode* node,
+                                    const MaterialBehavior& behavior) {
+    if (!textarea) return;
+    textarea->Disabled(behavior.disabled)
+        ->Readonly(LastNamedBool(node, "readonly", false));
+    if (behavior.accessibilityLabel)
+        textarea->AriaLabel(behavior.accessibilityLabel);
+    Str accessibilityId = LastNamedString(node, "accessibility_id");
+    if (accessibilityId) textarea->AccessibilityId(accessibilityId);
+    float rows = 0;
+    if (LastNamedNumbers(node, "rows", &rows, nullptr) && rows >= 1) {
+        textarea->Rows((int)rows);
+    }
 }
 
 static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
@@ -2519,6 +2759,182 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             card->Content(content);
         }
         element = card->IntoEl();
+    } else if (node->component.kind == shell::ComponentKind::InputGroupButton) {
+        bool disabled =
+            behavior.disabled || (gInputGroup.active && gInputGroup.disabled);
+        component::InputGroupButton* button =
+            component::InputGroupButton::New(cx, node->component.text)
+                ->Disabled(disabled)
+                ->WithSize(UiSizeOfNode(node, UiSize::XSmall));
+        Str label = LastNamedString(node, "label");
+        if (label) button->Label(label);
+        Str icon = LastNamedString(node, "icon");
+        if (icon) button->Icon(icon);
+        Str variant = LastNamedString(node, "variant");
+        if (variant) button->WithVariant(ButtonVariantOfName(variant));
+        if (LastNamedBool(node, "loading", false)) button->Loading(true);
+        if (LastNamedBool(node, "outline", false)) button->Outline();
+        if (behavior.tooltip) button->Tooltip(behavior.tooltip);
+        if (behavior.accessibilityLabel)
+            button->AriaLabel(behavior.accessibilityLabel);
+        if (!disabled && behavior.onClick)
+            button->OnClick(ClickListener(cx, behavior.onClick));
+        for (shell::SpecId child : node->children)
+            button->Child(MaterializeNode(cx, runtime, specs, child, error));
+        element = button->IntoEl();
+        childrenConsumed = true;
+    } else if (node->component.kind == shell::ComponentKind::InputGroupText) {
+        component::InputGroupText* text = component::InputGroupText::New(cx);
+        for (shell::SpecId child : node->children)
+            text->Child(MaterializeNode(cx, runtime, specs, child, error));
+        element = text->IntoEl();
+        childrenConsumed = true;
+    } else if (node->component.kind == shell::ComponentKind::InputGroupAddon) {
+        component::InputGroupAddon* addon =
+            component::InputGroupAddon::New(cx, node->component.text)
+                ->Align(AddonAlignOfName(LastNamedString(node, "align")));
+        for (shell::SpecId child : node->children)
+            addon->Child(MaterializeNode(cx, runtime, specs, child, error));
+        element = addon->IntoEl();
+        childrenConsumed = true;
+    } else if (node->component.kind == shell::ComponentKind::InputGroupInput ||
+               node->component
+                       .kind == shell::ComponentKind::InputGroupTextarea) {
+        shell::RetainedEntry* retained =
+            runtime ? runtime->Retained(node->component.handle) : nullptr;
+        bool textarea = node->component
+                            .kind == shell::ComponentKind::InputGroupTextarea;
+        InputState* state =
+            retained &&
+                    retained->kind == (textarea ? shell::RetainedKind::Textarea
+                                                : shell::RetainedKind::Input)
+                ? retained->input
+                : nullptr;
+        if (!state) {
+            element = Div(cx->a);
+        } else {
+            BindInputGroupControl(cx, node, state, retained->id);
+            Str nativeId =
+                StrDup(cx->a, fmt("gpui-shell-input-group-%s-%u",
+                                  textarea ? StrL("textarea") : StrL("input"),
+                                  retained->id));
+            if (textarea) {
+                component::Textarea* control =
+                    component::Textarea::New(cx, nativeId, state);
+                ApplyInputGroupTextarea(control, node, behavior);
+                element = control->IntoEl();
+            } else {
+                component::Input* control =
+                    component::Input::New(cx, nativeId, state);
+                ApplyInputGroupControl(control, node, behavior);
+                element = control->IntoEl();
+            }
+        }
+        childrenConsumed = true;
+    } else if (node->component.kind == shell::ComponentKind::InputGroup) {
+        if (node->children.len > 0) {
+            logf(
+                "shell: InputGroup does not accept ordinary children; "
+                "use input(...) and addon(...)\n");
+        }
+        component::InputGroup* group =
+            component::InputGroup::New(cx, node->component.text)
+                ->Disabled(behavior.disabled)
+                ->Readonly(LastNamedBool(node, "readonly", false))
+                ->Invalid(LastNamedBool(node, "invalid", false))
+                ->FocusRing(LastNamedBool(node, "focus_ring", true))
+                ->WithSize(UiSizeOfNode(node, UiSize::Medium));
+        if (behavior.accessibilityLabel)
+            group->AriaLabel(behavior.accessibilityLabel);
+        InputGroupScope scope(behavior.disabled);
+        const shell::SpecNode* controlNode = nullptr;
+        shell::SpecId inputSlot = LastSlotId(node, "input");
+        if (inputSlot) {
+            controlNode = specs->Node(inputSlot);
+            if (!controlNode ||
+                (controlNode->component
+                         .kind != shell::ComponentKind::InputGroupInput &&
+                 controlNode->component
+                         .kind != shell::ComponentKind::InputGroupTextarea)) {
+                logf(
+                    "shell: InputGroup.input expects InputGroupInput or "
+                    "InputGroupTextarea\n");
+                controlNode = nullptr;
+            }
+        }
+        if (controlNode) {
+            shell::RetainedEntry* retained =
+                runtime ? runtime->Retained(controlNode->component.handle)
+                        : nullptr;
+            bool textarea = controlNode->component.kind ==
+                            shell::ComponentKind::InputGroupTextarea;
+            InputState* state =
+                retained && retained->kind ==
+                                (textarea ? shell::RetainedKind::Textarea
+                                          : shell::RetainedKind::Input)
+                    ? retained->input
+                    : nullptr;
+            if (state) {
+                BindInputGroupControl(cx, controlNode, state, retained->id);
+                MaterialBehavior controlBehavior = {};
+                ResolveBehavior(controlNode, &controlBehavior);
+                Str nativeId = StrDup(
+                    cx->a, fmt("gpui-shell-input-group-%s-%u",
+                               textarea ? StrL("textarea") : StrL("input"),
+                               retained->id));
+                if (textarea) {
+                    component::Textarea* control =
+                        component::Textarea::New(cx, nativeId, state);
+                    ApplyInputGroupTextarea(control, controlNode,
+                                            controlBehavior);
+                    group->Input(control);
+                } else {
+                    component::Input* control =
+                        component::Input::New(cx, nativeId, state);
+                    ApplyInputGroupControl(control, controlNode,
+                                           controlBehavior);
+                    group->Input(control);
+                }
+            }
+        }
+        for (const shell::SpecOp& op : node->ops) {
+            if (op.kind != shell::SpecOpKind::Slot ||
+                !StrEq(op.name, StrL("addon")))
+                continue;
+            const shell::SpecNode* addonNode = specs->Node(op.node);
+            if (!addonNode || addonNode->component.kind !=
+                                  shell::ComponentKind::InputGroupAddon) {
+                logf("shell: InputGroup.addon expects InputGroupAddon\n");
+                continue;
+            }
+            component::InputGroupAddon* addon =
+                component::InputGroupAddon::New(cx, addonNode->component.text)
+                    ->Align(
+                        AddonAlignOfName(LastNamedString(addonNode, "align")));
+            for (shell::SpecId child : addonNode->children)
+                addon->Child(MaterializeNode(cx, runtime, specs, child, error));
+            group->Addon(addon);
+        }
+        element = group->IntoEl();
+        if (controlNode && group->controlEl) {
+            uint32_t fields = 0;
+            ApplyStyleNode(cx->a, controlNode, group->controlEl, &fields,
+                           error);
+            ApplyStateStyles(cx, specs, controlNode, group->controlEl, error);
+        }
+        for (const shell::SpecOp& op : node->ops) {
+            if (op.kind != shell::SpecOpKind::Slot ||
+                !StrEq(op.name, StrL("addon")))
+                continue;
+            const shell::SpecNode* addonNode = specs->Node(op.node);
+            if (!addonNode || !addonNode->component.text) continue;
+            if (El* addonEl = FindElById(element, addonNode->component.text)) {
+                uint32_t fields = 0;
+                ApplyStyleNode(cx->a, addonNode, addonEl, &fields, error);
+                ApplyStateStyles(cx, specs, addonNode, addonEl, error);
+            }
+        }
+        childrenConsumed = true;
     }
     if (!element) element = Construct(cx, runtime, node->component, behavior);
 

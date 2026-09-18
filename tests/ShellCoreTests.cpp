@@ -1249,6 +1249,85 @@ static void ShellMaterializesStateTemplatesInputsAndPaths() {
     AppGlobalClear(&app);
 }
 
+static void ShellHostsInputGroupPartsAndAddonActions() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    Str source = StrL(
+        "import { View, div } from 'gpui';\n"
+        "import { InputGroup, InputGroupInput, InputGroupTextarea, "
+        "InputGroupAddon, InputGroupButton, InputGroupText, InputState, "
+        "TextareaState, Button } from 'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() {\n"
+        "    this.input = InputState.new({ value: '' });\n"
+        "    this.textarea = TextareaState.new();\n"
+        "    this.clicks = 0;\n"
+        "  }\n"
+        "  render() {\n"
+        "    return div().w(400).h(200)\n"
+        "      .child(InputGroup.new('search-group').w(400)\n"
+        "        .input(InputGroupInput.new(this.input).value('').aria_label("
+        "'Search').px(16)\n"
+        "          .on_change((value) => { this.value = value; }))\n"
+        "        .addon(InputGroupAddon.new('leading').w(64)\n"
+        "          .child(InputGroupText.new().child('Find')))\n"
+        "        .addon(InputGroupAddon.new('actions').align('inline-end')\n"
+        "          .child(InputGroupButton.new('replace').w(80).label("
+        "'Replace').size('small')\n"
+        "            .on_click((_event, cx) => { this.clicks += 1; "
+        "cx.notify(); }))\n"
+        "          .child(Button.new('between-actions').w(24).child('/')"
+        ".disabled(true))\n"
+        "          .child(InputGroupButton.new('last-action').label('Last')"
+        ".icon('icons/check.svg'))))\n"
+        "      .child(InputGroup.new('message-group').w(400)\n"
+        "        .input(InputGroupTextarea.new(this.textarea).placeholder("
+        "'Message').auto_grow(1, 4).aria_label('Message'))\n"
+        "        .addon(InputGroupAddon.new('header').align('block-start')"
+        ".child('Message header'))\n"
+        "        .addon(InputGroupAddon.new('footer').align('block-end')"
+        ".child('Message footer')));\n"
+        "  }\n"
+        "}\n");
+    ViewType* type =
+        runtime ? runtime->LoadSource(StrL("input-group.js"), source, &error)
+                : nullptr;
+    Entity<ScriptView> view =
+        type ? ScriptView::New(&app, runtime, type) : Entity<ScriptView>{};
+    ViewTypeRelease(type);
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    El* root =
+        view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
+    utassert(root != nullptr && !error.IsSet());
+    utassert(FindShellText(root, StrL("Find")) != nullptr);
+    utassert(FindShellText(root, StrL("Replace")) != nullptr);
+    utassert(FindShellText(root, StrL("Last")) != nullptr);
+    utassert(FindShellText(root, StrL("Message header")) != nullptr);
+    utassert(FindShellText(root, StrL("Message footer")) != nullptr);
+    utassert(FindShellText(root, StrL("Replace")) != nullptr);
+    struct Walk {
+        static bool Click(El* el) {
+            if (!el) return false;
+            if (el->listener.IsValid() || el->onClick.IsValid()) return true;
+            for (El* child = el->first; child; child = child->next) {
+                if (Click(child)) return true;
+            }
+            return false;
+        }
+    };
+    utassert(Walk::Click(root));
+    EntityDrop(&app, view.id);
+    ArenaDelete(frame);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
 static void ShellRootHostsDialogsSheetsAndToasts() {
     App app;
     Window window;
@@ -4152,6 +4231,7 @@ void TestShellCore() {
     PublishedSnapshotsMaterializeToNativeElements();
     ShellHostsHtmlAndMarkdownTextViews();
     ShellMaterializesStateTemplatesInputsAndPaths();
+    ShellHostsInputGroupPartsAndAddonActions();
     ShellRootHostsDialogsSheetsAndToasts();
     ScriptViewsReuseSnapshotsUntilNotified();
     RetainedScriptStateSurvivesFramesAndDispatchesEvents();

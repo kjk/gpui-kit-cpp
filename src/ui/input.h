@@ -390,11 +390,16 @@ struct InputGroupButton {
     static InputGroupButton* New(Ctx* cx, Str id);
     InputGroupButton* Label(Str s);
     InputGroupButton* Icon(IconName n);
+    InputGroupButton* Icon(Str path);
     InputGroupButton* Tooltip(Str s);
+    InputGroupButton* AriaLabel(Str s);
     InputGroupButton* WithSize(UiSize s);
     InputGroupButton* WithVariant(ButtonVariant v);
     InputGroupButton* Disabled(bool v);
+    InputGroupButton* Loading(bool v);
+    InputGroupButton* Outline();
     InputGroupButton* OnClick(Listener fn);
+    InputGroupButton* Child(El* el);
     El* IntoEl();
 };
 
@@ -448,6 +453,9 @@ struct InputGroup {
     bool invalid = false;
     bool focusRing = true;
     Str ariaLabel = {};
+    // Filled by IntoEl so a host can apply the control's own style ops
+    // after the group has stripped appearance and the focus ring.
+    El* controlEl = nullptr;
 
     static InputGroup* New(Ctx* cx, Str id);
     InputGroup* Input(Input* control);

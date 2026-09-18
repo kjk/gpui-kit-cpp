@@ -1586,9 +1586,23 @@ InputGroupButton* InputGroupButton::Icon(IconName n) {
     return this;
 }
 
+InputGroupButton* InputGroupButton::Icon(Str path) {
+    if (button && path) {
+        button->Icon(ButtonIcon::New(cx, Icon::Empty(cx)->Path(path)));
+    }
+    return this;
+}
+
 InputGroupButton* InputGroupButton::Tooltip(Str s) {
     if (button) {
         button->Tooltip(s);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::AriaLabel(Str s) {
+    if (button) {
+        button->AccessibilityLabel(s);
     }
     return this;
 }
@@ -1612,9 +1626,30 @@ InputGroupButton* InputGroupButton::Disabled(bool v) {
     return this;
 }
 
+InputGroupButton* InputGroupButton::Loading(bool v) {
+    if (button) {
+        button->Loading(v);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::Outline() {
+    if (button) {
+        button->Outline();
+    }
+    return this;
+}
+
 InputGroupButton* InputGroupButton::OnClick(Listener fn) {
     if (button) {
         button->OnClick(fn);
+    }
+    return this;
+}
+
+InputGroupButton* InputGroupButton::Child(El* el) {
+    if (button && el) {
+        button->Child(el);
     }
     return this;
 }
@@ -1623,7 +1658,8 @@ El* InputGroupButton::IntoEl() {
     if (!button) {
         return Div(a);
     }
-    bool iconOnly = !button->label.s && button->icon != IconName::None;
+    bool iconOnly = !button->label.s &&
+                    (button->icon != IconName::None || button->buttonIcon);
     if (size == UiSize::XSmall || size == UiSize::Small) {
         button->WithSize(UiSize::Medium);
         if (iconOnly) {
@@ -1889,11 +1925,12 @@ El* InputGroup::IntoEl() {
         }
     }
     if (input) {
-        row->Child(input->IntoEl()->Flex1());
+        controlEl = input->IntoEl()->Flex1();
+        row->Child(controlEl);
     } else if (textarea) {
-        El* t = textarea->IntoEl();
-        t->Flex1()->MinH(64);
-        row->Child(t);
+        controlEl = textarea->IntoEl();
+        controlEl->Flex1()->MinH(64);
+        row->Child(controlEl);
     }
     for (InputGroupAddon* addon : addons) {
         if (addon->alignment == InputGroupAddonAlignment::InlineEnd) {

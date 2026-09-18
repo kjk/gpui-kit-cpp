@@ -26,7 +26,8 @@ static TempStr JoinPathTemp(Str directory, Str name) {
 }
 
 static bool SourceImportsBuiltins(Str source) {
-    static const char* specifiers[] = {"gpui-kit", "gpui", "gpui-base",
+    static const char* specifiers[] = {"gpui-kit",   "gpui",
+                                       "gpui-base",  "gpui-component",
                                        "gpui-shell", "gpui-fps"};
     for (int i = 0; i < (int)(sizeof(specifiers) / sizeof(specifiers[0]));
          i++) {
@@ -114,6 +115,25 @@ void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules) {
     // expose the same types, just as the runtime exposes the same values.
     out->Append(StrL(
         "\ndeclare module \"gpui-kit\" {\n  export * from \"gpui\";\n}\n"));
+    out->Append(StrL(R"TS(
+declare module "gpui-base" {
+  export const InputGroup: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupAddon: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupButton: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupInput: { new: (state: InputState) => import("gpui-kit").NativeElement };
+  export const InputGroupTextarea: { new: (state: TextareaState) => import("gpui-kit").NativeElement };
+  export const InputGroupText: { new: () => import("gpui-kit").NativeElement };
+}
+declare module "gpui-component" {
+  export const InputGroup: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupAddon: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupButton: { new: (id: string) => import("gpui-kit").NativeElement };
+  export const InputGroupInput: { new: (state: import("gpui-base").InputState) => import("gpui-kit").NativeElement };
+  export const InputGroupTextarea: { new: (state: import("gpui-base").TextareaState) => import("gpui-kit").NativeElement };
+  export const InputGroupText: { new: () => import("gpui-kit").NativeElement };
+  export { InputState, TextareaState, Button } from "gpui-base";
+}
+)TS"));
     for (int i = 0; i < HostModulesCount(modules); i++) {
         HostModule* module = HostModulesAt(modules, i);
         if (!module) continue;

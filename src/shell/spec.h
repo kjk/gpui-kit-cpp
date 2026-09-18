@@ -158,6 +158,14 @@ enum class ComponentKind : uint8_t {
     // virtual list axes are.
     List,
     UniformList,
+    // A shared frame around one Input or Textarea and its addons. The
+    // control is the `input` slot; addons accumulate as `addon` slots.
+    InputGroup,
+    InputGroupAddon,
+    InputGroupButton,
+    InputGroupInput,
+    InputGroupTextarea,
+    InputGroupText,
 };
 
 enum class TextViewFormat : uint8_t {

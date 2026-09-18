@@ -61,10 +61,6 @@ are not. The current update target is
   persisted dock layouts still use it, so its sources remain but the story is
   no longer registered (`src/ui/tiles.cpp`, `examples/story/tiles.cpp`).
 
-- **Shell InputGroup bindings are not registered.** The native widget and
-  story are ported; crates/component-shell's InputGroup host and TypeScript
-  surface are not yet in `src/shell/` (`src/ui/input.cpp`).
-
 - **Chart story still uses the previous fixture set.** Hover, pie lift, and
   the gallery's off-canvas sidebar are ported; the SaaS datasets, computed
   footers, legends and width-wise bar ramps from #3112 are not yet

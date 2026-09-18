@@ -310,6 +310,21 @@ void ScriptView::OnInputEvent(ScriptView* self, Ctx* cx,
                                       cx->win, cx->app);
 }
 
+void ScriptView::OnInputGroupEvent(ScriptView* self, Ctx* cx,
+                                   const InputEvent* event, intptr_t binding) {
+    ShellInputGroupBinding* value = (ShellInputGroupBinding*)binding;
+    if (!self || !self->runtime || !event || !value) return;
+    if (value->handle) {
+        self->runtime
+            ->DispatchInputEvent(value->handle, *event, cx->win, cx->app);
+    }
+    if (event->kind == InputEventKind::Change && value->onChange &&
+        value->state) {
+        self->runtime->DispatchString(value->onChange, InputValue(value->state),
+                                      cx->win, cx->app);
+    }
+}
+
 void ScriptView::OnSliderEvent(ScriptView* self, Ctx* cx,
                                const SliderEvent* event, intptr_t handle) {
     if (!self || !self->runtime || !event) return;
