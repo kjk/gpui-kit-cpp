@@ -33,7 +33,9 @@ struct PieChart {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     ArenaVec<PieSlice> slices;
-    float outerRadius = 100;
+    // 0 until OuterRadius is set: the ring is then 40% of the laid-out
+    // height (resolve_outer_radius).
+    float outerRadius = 0;
     float innerRadius = 0;
     float padAngle = 0;
     // label(): a name outside the ring, on a leader line from the slice's own
@@ -58,6 +60,9 @@ struct PieChart {
     // PieChart::id / name: a chart with a name takes the pointer and shows a
     // tooltip for the hovered slice.
     PieChart* Tooltip(Str name);
+    // The outer radius the ring is laid out with: the set one, or 40% of
+    // `height`.
+    float ResolveOuterRadius(float height) const;
     El* IntoEl();
 };
 

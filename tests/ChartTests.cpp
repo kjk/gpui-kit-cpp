@@ -217,6 +217,23 @@ static void UnchangedSankeyLabelsKeepTheScene() {
 #endif
 }
 
+static void PieSliceRadiusFallsBackToTheRing() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    PieChart* unset = PieChart::New(&cx)
+                          ->Slice(1, RgbaHex(0xff0000))
+                          ->Slice(3, RgbaHex(0x00ff00));
+    utassertnear(unset->ResolveOuterRadius(200.f), 80.f);
+    PieChart* set = PieChart::New(&cx)->OuterRadius(50.f);
+    utassertnear(set->ResolveOuterRadius(200.f), 50.f);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -225,4 +242,5 @@ void TestChart() {
     PlotPathCachesFollowShapeKeysAndSlots();
     UnchangedPlotLabelsKeepTheScene();
     UnchangedSankeyLabelsKeepTheScene();
+    PieSliceRadiusFallsBackToTheRing();
 }

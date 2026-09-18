@@ -564,6 +564,10 @@ PieChart* PieChart::Tooltip(Str name) {
     return this;
 }
 
+float PieChart::ResolveOuterRadius(float height) const {
+    return outerRadius > 0 ? outerRadius : height * 0.4f;
+}
+
 // plot/label.rs: the names outside a pie are ten-point text on a two-pixel
 // leading, which is what decides how far apart two of them have to be.
 static const float kPieTextSize = 10.f;
@@ -627,13 +631,14 @@ static void PieSpreadLabels(ArenaVec<PieLabelLayout>* items, float top,
 }
 
 static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
-                           float total, int hoverIndex, float focus) {
+                           float total, float ring, int hoverIndex,
+                           float focus) {
     if (!p->hasLabels || total <= 0) {
         return;
     }
     const Theme& th = ThemeNow(ctx->app);
     Rgba color = p->hasLabelColor ? p->labelColor : th.foreground;
-    float labelR = p->outerRadius + p->labelGap;
+    float labelR = ring + p->labelGap;
     ArenaVec<PieLabelLayout> right{};
     ArenaVec<PieLabelLayout> left{};
     float angle = -kPi * 0.5f;
@@ -651,7 +656,7 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
         // lifted slice never paints over its own leader line. The label
         // anchor stays put, so the line may not start past it.
         float lift = PieSliceLift(p, i, hoverIndex, focus);
-        float edgeR = p->outerRadius - s.outerInset + kPieHoverLift * lift;
+        float edgeR = ring - s.outerInset + kPieHoverLift * lift;
         if (edgeR > labelR) {
             edgeR = labelR;
         }
@@ -709,13 +714,14 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     if (total <= 0) {
         return;
     }
+    float ring = p->ResolveOuterRadius(e->h);
     const float kHoverDim = 0.35f;
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
     if (p->tooltip && p->cx) {
         plot::Arc hit = plot::Arc::New();
-        hit.InnerRadius(p->innerRadius)->OuterRadius(p->outerRadius);
+        hit.InnerRadius(p->innerRadius)->OuterRadius(ring);
         Bounds bounds = {e->x, e->y, e->w, e->h};
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
         // Hit-test in pie angles using the same start/end as Arc::Contains.
@@ -729,7 +735,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             ad.endAngle = pieAngle + sweep;
             ad.padAngle = p->padAngle;
             if (hit.Contains(ad, local, bounds, p->innerRadius,
-                             p->outerRadius - p->slices[i].outerInset)) {
+                             ring - p->slices[i].outerInset)) {
                 hoverIndex = i;
             }
             pieAngle += sweep;
@@ -762,7 +768,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             continue;
         }
         float lift = PieSliceLift(p, i, hoverIndex, focus);
-        float ro = p->outerRadius - s.outerInset + kPieHoverLift * lift;
+        float ro = ring - s.outerInset + kPieHoverLift * lift;
         float ri = p->innerRadius;
         float a0 = angle, a1 = angle + sweep;
         Rgba color = s.color;
@@ -784,7 +790,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         }
         angle += 2.f * kPi * (s.value / total);
     }
-    PaintPieLabels(ctx, p, cx, cy, total, hoverIndex, focus);
+    PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus);
     if (p->tooltip && hoverIndex >= 0 && focus > 0.f && p->cx) {
         const PieSlice& s = p->slices[hoverIndex];
         float share = s.value / total * 100.f;
@@ -812,8 +818,13 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
 }
 
 El* PieChart::IntoEl() {
-    float d = outerRadius * 2;
-    El* e = Div(a)->W(d)->H(d);
+    El* e = Div(a);
+    if (outerRadius > 0) {
+        float d = outerRadius * 2;
+        e->W(d)->H(d);
+    } else {
+        e->W(kFill)->H(kFill);
+    }
     e->customPaint = PaintPie;
     e->customUser = this;
     return e;
