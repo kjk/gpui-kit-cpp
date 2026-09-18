@@ -103,6 +103,7 @@ void TestNativeMenu();
 void TestAppMenu();
 void TestI18n();
 void TestLayoutReuse();
+void TestImageCache();
 void TestRoot();
 void TestSankey();
 void TestJson();

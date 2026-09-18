@@ -1445,6 +1445,11 @@ El* El::WithFallback(El* fallback) {
     return this;
 }
 
+El* El::WithImageCache(EntityId cache) {
+    imageCache = cache;
+    return this;
+}
+
 El* El::ScrollMode(ScrollbarMode m) {
     scrollModeSet = true;
     scrollMode = m;
@@ -3067,13 +3072,13 @@ static void MoveEl(El* c, float cx, float cy) {
 // or a vector's viewBox. Zero when there is nothing to measure — a fetch
 // still running, a missing asset, a format the platform does not read.
 static Size ImageNaturalSize(PaintCtx* ctx, El* e) {
-    RenderImage* img = ImageForSource(ctx ? ctx->pa : nullptr, e->imageSource);
+    ImageLookup lookup = ImageLookup::Of(ctx, e ? e->imageCache : EntityId{});
+    RenderImage* img = ImageForSource(lookup, e->imageSource);
     if (img) {
         return RenderImageSizePx(img);
     }
     int opsLen = 0;
-    const uint8_t* ops =
-        ImageVectorForSource(ctx ? ctx->pa : nullptr, e->imageSource, &opsLen);
+    const uint8_t* ops = ImageVectorForSource(lookup, e->imageSource, &opsLen);
     Size vb = {};
     if (ops && DrawOpsViewBox(ops, opsLen, &vb)) {
         return vb;
@@ -3446,7 +3451,7 @@ static void ResolveImageStyle(PaintCtx* ctx, El* e) {
 
 static void ResolveImageReplacement(PaintCtx* ctx, El* e) {
     double loadingSeconds = 0;
-    e->imageLoadState = ImageSourceState(ctx ? ctx->pa : nullptr,
+    e->imageLoadState = ImageSourceState(ImageLookup::Of(ctx, e->imageCache),
                                          e->imageSource, &loadingSeconds);
     if (e->imageLoadState == ImageLoadState::Loading) {
         // GPUI waits 200 ms before showing the loading element, avoiding a
@@ -3566,8 +3571,16 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
         ResolveImageStyle(ctx, e);
     }
 
+    bool pushed = e->kind != ElKind::Image && e->imageCache.IsValid() && ctx &&
+                  ctx->window;
+    if (pushed) {
+        VecAppend(ctx->window->imageCacheStack, e->imageCache);
+    }
     for (El* c = e->first; c; c = c->next) {
         PrepareEl(ctx, c, font, fg);
+    }
+    if (pushed) {
+        ctx->window->imageCacheStack.len--;
     }
 }
 
@@ -6275,11 +6288,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // data: URI, or the body a worker thread fetched. PrepareEl has
         // already selected a delayed loading view or a failed-load fallback;
         // only the ready image reaches this branch.
-        RenderImage* img = ImageForSource(ctx->pa, e->imageSource);
+        ImageLookup lookup = ImageLookup::Of(ctx, e->imageCache);
+        RenderImage* img = ImageForSource(lookup, e->imageSource);
         int opsLen = 0;
         const uint8_t* ops =
             img ? nullptr
-                : ImageVectorForSource(ctx->pa, e->imageSource, &opsLen);
+                : ImageVectorForSource(lookup, e->imageSource, &opsLen);
         Bounds bounds = e->Bounds();
         bool drewSvg = false;
         if (img) {
@@ -6362,8 +6376,16 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
 
     ctx->paintDepth++;
+    bool pushed =
+        e->kind != ElKind::Image && e->imageCache.IsValid() && ctx->window;
+    if (pushed) {
+        VecAppend(ctx->window->imageCacheStack, e->imageCache);
+    }
     for (El* c = e->first; c; c = c->next) {
         PaintElNode(ctx, c, skipOverlay);
+    }
+    if (pushed) {
+        ctx->window->imageCacheStack.len--;
     }
     ctx->hitMask = previousHitMask;
     ctx->hasHitMask = previousHasHitMask;

@@ -145,7 +145,7 @@ static void PathPlacementRemainsPartOfTheFrameHash() {
 }
 
 // Rust's Arc<RenderImage> keeps decoded pixels alive independently of the
-// loading cache. Exercise that contract across cache eviction and two scenes.
+// loading cache. Exercise that contract across cache clear and two scenes.
 static void RecordedImagesSurviveCacheEviction() {
 #if !GPUI_OS_WASM
     TestSuite("scene image ownership");

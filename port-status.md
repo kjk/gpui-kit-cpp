@@ -60,14 +60,12 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   Sparkles / AtSign onto File / Star / User
   (`examples/story/input_tokens.cpp`).
 
-- **Image loading uses bounded process caches.** `src/gpui/image.cpp` keeps
-  32 resources and 16 encoded `Image` values rather than Rust's configurable
-  App/entity caches. Decoded
-  `RenderImage` data uses explicit main-thread retain/release rather than
-  `Arc`; recorded scenes retain their images through replay. Desktop local
-  reads and decoding are synchronous and use platform decoders. Windows WIC,
-  macOS AppKit and the browser retain and schedule animated GIF/WebP frames;
-  Linux remains PNG-only because cairo is its only image decoder.
+- **Decoded `RenderImage` data uses explicit main-thread retain/release**
+  rather than `Arc`; recorded scenes retain their images through replay.
+  Desktop local reads and decoding are synchronous and use platform
+  decoders. Windows WIC, macOS AppKit and the browser retain and schedule
+  animated GIF/WebP frames; Linux remains PNG-only because cairo is its
+  only image decoder (`src/gpui/image.cpp`).
 
 - **No language server.** Every seam in `input/editor/lsp` is ported —
   completion, resolve, ghost text, hover, code actions, document colours,

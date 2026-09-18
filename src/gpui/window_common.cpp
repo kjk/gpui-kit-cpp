@@ -3007,7 +3007,10 @@ App* AppNew() {
         delete app;
         return nullptr;
     }
+    app->images = ImageStoreNew();
     if (!PlatInit(app)) {
+        ImageStoreFree(app->images);
+        app->images = nullptr;
         PaintAppFree(app->paint);
         delete app;
         return nullptr;
@@ -3046,11 +3049,14 @@ void AppFree(App* app) {
         WindowSelectionFree(w);
         PaintTargetFree(&w->paint);
         VecReset(w->timers);
+        VecReset(w->imageCacheStack);
         WindowKeyedFree(w);
         WindowMotionFree(w);
         delete w;
     }
     VecReset(app->windows);
+    ImageStoreFree(app->images);
+    app->images = nullptr;
     LayoutScratchFree();
     ScrollFadeClear();
     StyleOverrideClearAll();

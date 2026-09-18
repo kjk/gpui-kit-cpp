@@ -243,6 +243,10 @@ static SrcBytes BytesForSrc(Str src, Vec<uint8_t>* owned,
 // written; a failure is remembered too, or a document full of pictures that
 // will not decode would retry every one of them every frame. A fetch that has
 // not landed is the one thing not remembered — that answer is not final.
+//
+// GPUI keeps this table on the App (`fetch_asset`) and, when a tree names
+// one, on an entity ImageCache. There is no process-wide cap: a slot lives
+// until remove/clear/drop. Tests that only have a PaintApp use gFallback.
 
 struct ImageCacheSlot {
     Str src = {};
@@ -255,12 +259,6 @@ struct ImageCacheSlot {
     bool tried = false;
 };
 
-// A page shows a handful; past that the oldest slot is reused.
-constexpr int kImageCacheSlots = 32;
-
-static ImageCacheSlot gImageCache[kImageCacheSlots];
-static int gImageCacheNext = 0;
-
 struct EncodedImageSlot {
     uint64_t hash = 0;
     int bytesLen = 0;
@@ -270,9 +268,12 @@ struct EncodedImageSlot {
     bool tried = false;
 };
 
-constexpr int kEncodedImageSlots = 16;
-static EncodedImageSlot gEncodedImages[kEncodedImageSlots];
-static int gEncodedImageNext = 0;
+struct ImageStore {
+    Vec<ImageCacheSlot> resources;
+    Vec<EncodedImageSlot> encoded;
+};
+
+static ImageStore gFallback;
 
 struct ImageClock {
     uint64_t key = 0;
@@ -311,15 +312,102 @@ static void EncodedSlotFree(EncodedImageSlot* s) {
     *s = {};
 }
 
+static void ImageStoreClear(ImageStore* s) {
+    if (!s) {
+        return;
+    }
+    for (int i = 0; i < s->resources.len; i++) {
+        ImageSlotFree(&s->resources[i]);
+    }
+    VecClear(s->resources);
+    for (int i = 0; i < s->encoded.len; i++) {
+        EncodedSlotFree(&s->encoded[i]);
+    }
+    VecClear(s->encoded);
+}
+
+ImageStore* ImageStoreNew() {
+    return new ImageStore();
+}
+
+void ImageStoreFree(ImageStore* s) {
+    if (!s) {
+        return;
+    }
+    ImageStoreClear(s);
+    VecReset(s->resources);
+    VecReset(s->encoded);
+    delete s;
+}
+
+static ImageStore* StoreOf(App* app) {
+    if (app) {
+        if (!app->images) {
+            app->images = ImageStoreNew();
+        }
+        return app->images;
+    }
+    return &gFallback;
+}
+
+static ImageCache* EntityCacheOf(const ImageLookup& cx) {
+    if (!cx.app) {
+        return nullptr;
+    }
+    EntityId id = cx.cache;
+    if (!id.IsValid() && cx.win && cx.win->imageCacheStack.len > 0) {
+        id = cx.win->imageCacheStack[cx.win->imageCacheStack.len - 1];
+    }
+    if (!id.IsValid()) {
+        return nullptr;
+    }
+    return Entity<ImageCache>{id}.Get(cx.app);
+}
+
+static Vec<ImageCacheSlot>* ResourceSlots(const ImageLookup& cx) {
+    if (ImageCache* cache = EntityCacheOf(cx)) {
+        if (!cache->store) {
+            cache->store = ImageStoreNew();
+        }
+        return &cache->store->resources;
+    }
+    return &StoreOf(cx.app)->resources;
+}
+
+ImageCache::ImageCache() {
+    store = ImageStoreNew();
+}
+
+ImageCache::~ImageCache() {
+    ImageStoreFree(store);
+    store = nullptr;
+}
+
+void ImageCache::Clear() {
+    ImageStoreClear(store);
+}
+
+void ImageCache::Remove(Str src) {
+    if (!store) {
+        return;
+    }
+    for (int i = 0; i < store->resources.len; i++) {
+        if (store->resources[i].tried &&
+            base::StrEq(store->resources[i].src, src)) {
+            ImageSlotFree(&store->resources[i]);
+            store->resources[i] = store->resources[store->resources.len - 1];
+            store->resources.len--;
+            return;
+        }
+    }
+}
+
+int ImageCache::Len() const {
+    return store ? store->resources.len : 0;
+}
+
 void ImageCacheClear() {
-    for (int i = 0; i < kImageCacheSlots; i++) {
-        ImageSlotFree(&gImageCache[i]);
-    }
-    for (int i = 0; i < kEncodedImageSlots; i++) {
-        EncodedSlotFree(&gEncodedImages[i]);
-    }
-    gImageCacheNext = 0;
-    gEncodedImageNext = 0;
+    ImageStoreClear(&gFallback);
     for (int i = 0; i < kImageClockSlots; i++) {
         gLoadingClocks[i] = {};
         gAnimationClocks[i] = {};
@@ -327,6 +415,22 @@ void ImageCacheClear() {
     AssetResolveClear();
     SvgCacheClear();
     HttpFetchClear();
+}
+
+void ImageCacheClear(App* app) {
+    if (app && app->images) {
+        ImageStoreClear(app->images);
+    }
+}
+
+int ImageCacheResourceCount(App* app) {
+    ImageStore* s = StoreOf(app);
+    return s ? s->resources.len : 0;
+}
+
+int ImageCacheEncodedCount(App* app) {
+    ImageStore* s = StoreOf(app);
+    return s ? s->encoded.len : 0;
 }
 
 static uint64_t ImageBytesHash(const uint8_t* bytes, int len) {
@@ -362,41 +466,47 @@ static void DecodeImageBytes(PaintApp* pa, const uint8_t* bytes, int len,
     }
 }
 
-static ImageCacheSlot* ImageSlotFind(Str src) {
-    for (int i = 0; i < kImageCacheSlots; i++) {
-        if (gImageCache[i].tried && base::StrEq(gImageCache[i].src, src)) {
-            return &gImageCache[i];
+static int ImageSlotFind(Vec<ImageCacheSlot>* slots, Str src) {
+    if (!slots) {
+        return -1;
+    }
+    for (int i = 0; i < slots->len; i++) {
+        if ((*slots)[i].tried && base::StrEq((*slots)[i].src, src)) {
+            return i;
         }
     }
-    return nullptr;
+    return -1;
 }
 
 // Decodes `src` once and remembers the answer, whichever of the two it is.
 // Null while a fetch is still running: nothing is written down then.
-static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
+static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
     if (!src.s || len(src) <= 0) {
         return nullptr;
     }
-    ImageCacheSlot* hit = ImageSlotFind(src);
-    if (hit && !hit->pending) {
-        return hit;
+    Vec<ImageCacheSlot>* slots = ResourceSlots(cx);
+    int hitIx = ImageSlotFind(slots, src);
+    if (hitIx >= 0 && !(*slots)[hitIx].pending) {
+        return &(*slots)[hitIx];
     }
 
     Vec<uint8_t> owned;
     const uint8_t* borrowed = nullptr;
     int borrowedLen = 0;
     SrcBytes got = BytesForSrc(src, &owned, &borrowed, &borrowedLen);
+    slots = ResourceSlots(cx);
+    hitIx = ImageSlotFind(slots, src);
     if (got == SrcBytes::Pending) {
-        if (!hit) {
-            hit = &gImageCache[gImageCacheNext];
-            gImageCacheNext = (gImageCacheNext + 1) % kImageCacheSlots;
-            ImageSlotFree(hit);
-            hit->src = StrDup(src);
-            hit->tried = true;
-            hit->pending = true;
-            hit->loadingAt = TimeNow();
+        if (hitIx < 0) {
+            ImageCacheSlot fresh = {};
+            fresh.src = StrDup(src);
+            fresh.tried = true;
+            fresh.pending = true;
+            fresh.loadingAt = TimeNow();
+            VecAppend(*slots, fresh);
+            hitIx = slots->len - 1;
         }
-        return hit;
+        return &(*slots)[hitIx];
     }
     const uint8_t* bytes = len(owned) > 0 ? owned.els : borrowed;
     int n = len(owned) > 0 ? len(owned) : borrowedLen;
@@ -405,7 +515,7 @@ static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
     uint8_t* ops = nullptr;
     int opsLen = 0;
     if (got == SrcBytes::Yes && bytes && n > 0) {
-        if (!pa && !LooksLikeSvg(bytes, n)) {
+        if (!cx.pa && !LooksLikeSvg(bytes, n)) {
             // ImageVectorForSrc probes a one-dimension image before layout so
             // an SVG can supply its aspect ratio. A bitmap is not a failed
             // vector decode: leave it uncached so ImageForSrc can hand the
@@ -415,17 +525,19 @@ static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
             VecReset(owned);
             return nullptr;
         }
-        DecodeImageBytes(pa, bytes, n, &img, &ops, &opsLen);
+        DecodeImageBytes(cx.pa, bytes, n, &img, &ops, &opsLen);
     }
 
-    ImageCacheSlot* slot = hit;
-    if (!slot) {
-        slot = &gImageCache[gImageCacheNext];
-        gImageCacheNext = (gImageCacheNext + 1) % kImageCacheSlots;
-        ImageSlotFree(slot);
-        slot->src = StrDup(src);
-        slot->tried = true;
+    slots = ResourceSlots(cx);
+    hitIx = ImageSlotFind(slots, src);
+    if (hitIx < 0) {
+        ImageCacheSlot fresh = {};
+        fresh.src = StrDup(src);
+        fresh.tried = true;
+        VecAppend(*slots, fresh);
+        hitIx = slots->len - 1;
     }
+    ImageCacheSlot* slot = &(*slots)[hitIx];
     slot->img = img;
     slot->ops = ops;
     slot->opsLen = opsLen;
@@ -440,31 +552,31 @@ static ImageCacheSlot* ImageSlotFor(PaintApp* pa, Str src) {
     return slot;
 }
 
-static EncodedImageSlot* EncodedSlotFor(PaintApp* pa,
+static EncodedImageSlot* EncodedSlotFor(const ImageLookup& cx,
                                         const ImageSource& source) {
     if (!source.bytes || source.bytesLen <= 0) {
         return nullptr;
     }
+    ImageStore* store = StoreOf(cx.app);
     uint64_t hash = ImageBytesHash(source.bytes, source.bytesLen);
-    for (int i = 0; i < kEncodedImageSlots; i++) {
-        EncodedImageSlot* slot = &gEncodedImages[i];
+    for (int i = 0; i < store->encoded.len; i++) {
+        EncodedImageSlot* slot = &store->encoded[i];
         if (slot->tried && slot->hash == hash &&
             slot->bytesLen == source.bytesLen) {
             return slot;
         }
     }
-    if (!pa && !LooksLikeSvg(source.bytes, source.bytesLen)) {
+    if (!cx.pa && !LooksLikeSvg(source.bytes, source.bytesLen)) {
         return nullptr;
     }
-    EncodedImageSlot* slot = &gEncodedImages[gEncodedImageNext];
-    gEncodedImageNext = (gEncodedImageNext + 1) % kEncodedImageSlots;
-    EncodedSlotFree(slot);
-    slot->hash = hash;
-    slot->bytesLen = source.bytesLen;
-    slot->tried = true;
-    DecodeImageBytes(pa, source.bytes, source.bytesLen, &slot->img, &slot->ops,
-                     &slot->opsLen);
-    return slot;
+    EncodedImageSlot fresh = {};
+    fresh.hash = hash;
+    fresh.bytesLen = source.bytesLen;
+    fresh.tried = true;
+    DecodeImageBytes(cx.pa, source.bytes, source.bytesLen, &fresh.img,
+                     &fresh.ops, &fresh.opsLen);
+    VecAppend(store->encoded, fresh);
+    return &store->encoded[store->encoded.len - 1];
 }
 
 static uint64_t ImageSourceKey(const ImageSource& source) {
@@ -504,14 +616,15 @@ static ImageClock* ClockFor(ImageClock* clocks, uint64_t key) {
     return &clocks[at];
 }
 
-ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
+ImageLoadState ImageSrcState(const ImageLookup& cx, Str src,
+                             double* loadingSeconds) {
     if (loadingSeconds) {
         *loadingSeconds = 0;
     }
     if (!src.s || len(src) <= 0) {
         return ImageLoadState::Failed;
     }
-    ImageCacheSlot* s = ImageSlotFor(pa, src);
+    ImageCacheSlot* s = ImageSlotFor(cx, src);
     if (!s || s->pending) {
         if (s && loadingSeconds && s->loadingAt > 0) {
             *loadingSeconds = TimeNow() - s->loadingAt;
@@ -540,7 +653,12 @@ ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
     return ImageLoadState::Ready;
 }
 
-ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
+ImageLoadState ImageSrcState(PaintApp* pa, Str src, double* loadingSeconds) {
+    return ImageSrcState(ImageLookup::Of(pa), src, loadingSeconds);
+}
+
+ImageLoadState ImageSourceState(const ImageLookup& cx,
+                                const ImageSource& source,
                                 double* loadingSeconds) {
     if (loadingSeconds) {
         *loadingSeconds = 0;
@@ -548,7 +666,7 @@ ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
     ImageLoadState state = ImageLoadState::Failed;
     switch (source.kind) {
         case ImageSourceKind::Resource:
-            state = ImageSrcState(pa, source.resource, nullptr);
+            state = ImageSrcState(cx, source.resource, nullptr);
             break;
         case ImageSourceKind::Render:
             if (source.render) {
@@ -561,7 +679,7 @@ ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
             }
             break;
         case ImageSourceKind::Image: {
-            EncodedImageSlot* slot = EncodedSlotFor(pa, source);
+            EncodedImageSlot* slot = EncodedSlotFor(cx, source);
             if (slot && slot->ops) {
                 state = ImageLoadState::Ready;
             } else if (slot && slot->img) {
@@ -577,7 +695,7 @@ ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
         case ImageSourceKind::Custom: {
             RenderImage* image = nullptr;
             if (source.loader) {
-                state = source.loader(pa, source.user, &image);
+                state = source.loader(cx.pa, source.user, &image);
                 if (state == ImageLoadState::Ready && !image) {
                     state = ImageLoadState::Failed;
                 }
@@ -599,6 +717,11 @@ ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
         *clock = {};
     }
     return state;
+}
+
+ImageLoadState ImageSourceState(PaintApp* pa, const ImageSource& source,
+                                double* loadingSeconds) {
+    return ImageSourceState(ImageLookup::Of(pa), source, loadingSeconds);
 }
 
 int ImageFrameIndex(RenderImage* image, bool reducedMotion,
@@ -641,11 +764,11 @@ int ImageFrameIndex(RenderImage* image, bool reducedMotion,
     return clock->frameIndex;
 }
 
-RenderImage* ImageForSrc(PaintApp* pa, Str src) {
-    if (!pa) {
+RenderImage* ImageForSrc(const ImageLookup& cx, Str src) {
+    if (!cx.pa) {
         return nullptr;
     }
-    ImageCacheSlot* s = ImageSlotFor(pa, src);
+    ImageCacheSlot* s = ImageSlotFor(cx, src);
     if (!s || !s->img) {
         return nullptr;
     }
@@ -658,21 +781,26 @@ RenderImage* ImageForSrc(PaintApp* pa, Str src) {
     return status == RenderImageStatus::Ready ? s->img : nullptr;
 }
 
-RenderImage* ImageForSource(PaintApp* pa, const ImageSource& source) {
-    if (!pa) {
+RenderImage* ImageForSrc(PaintApp* pa, Str src) {
+    return ImageForSrc(ImageLookup::Of(pa), src);
+}
+
+RenderImage* ImageForSource(const ImageLookup& cx, const ImageSource& source) {
+    if (!cx.pa) {
         return nullptr;
     }
     if (source.kind == ImageSourceKind::Resource) {
-        return ImageForSrc(pa, source.resource);
+        return ImageForSrc(cx, source.resource);
     }
     RenderImage* image = nullptr;
     if (source.kind == ImageSourceKind::Render) {
         image = source.render;
     } else if (source.kind == ImageSourceKind::Image) {
-        EncodedImageSlot* slot = EncodedSlotFor(pa, source);
+        EncodedImageSlot* slot = EncodedSlotFor(cx, source);
         image = slot ? slot->img : nullptr;
     } else if (source.kind == ImageSourceKind::Custom && source.loader) {
-        if (source.loader(pa, source.user, &image) != ImageLoadState::Ready) {
+        if (source
+                .loader(cx.pa, source.user, &image) != ImageLoadState::Ready) {
             image = nullptr;
         }
     }
@@ -681,7 +809,11 @@ RenderImage* ImageForSource(PaintApp* pa, const ImageSource& source) {
                : nullptr;
 }
 
-const uint8_t* ImageVectorForSrc(Str src, int* lenOut) {
+RenderImage* ImageForSource(PaintApp* pa, const ImageSource& source) {
+    return ImageForSource(ImageLookup::Of(pa), source);
+}
+
+const uint8_t* ImageVectorForSrc(const ImageLookup& cx, Str src, int* lenOut) {
     if (lenOut) {
         *lenOut = 0;
     }
@@ -693,7 +825,7 @@ const uint8_t* ImageVectorForSrc(Str src, int* lenOut) {
         StrEqI(Str(asset.s + len(asset) - 4, 4), ".svg")) {
         return SvgDrawOpsFor(asset, lenOut);
     }
-    ImageCacheSlot* s = ImageSlotFor(nullptr, src);
+    ImageCacheSlot* s = ImageSlotFor(cx, src);
     if (!s || !s->ops) {
         return nullptr;
     }
@@ -703,18 +835,22 @@ const uint8_t* ImageVectorForSrc(Str src, int* lenOut) {
     return s->ops;
 }
 
-const uint8_t* ImageVectorForSource(PaintApp* pa, const ImageSource& source,
-                                    int* lenOut) {
+const uint8_t* ImageVectorForSrc(Str src, int* lenOut) {
+    return ImageVectorForSrc(ImageLookup{}, src, lenOut);
+}
+
+const uint8_t* ImageVectorForSource(const ImageLookup& cx,
+                                    const ImageSource& source, int* lenOut) {
     if (lenOut) {
         *lenOut = 0;
     }
     if (source.kind == ImageSourceKind::Resource) {
-        return ImageVectorForSrc(source.resource, lenOut);
+        return ImageVectorForSrc(cx, source.resource, lenOut);
     }
     if (source.kind != ImageSourceKind::Image) {
         return nullptr;
     }
-    EncodedImageSlot* slot = EncodedSlotFor(pa, source);
+    EncodedImageSlot* slot = EncodedSlotFor(cx, source);
     if (!slot || !slot->ops) {
         return nullptr;
     }
@@ -722,6 +858,11 @@ const uint8_t* ImageVectorForSource(PaintApp* pa, const ImageSource& source,
         *lenOut = slot->opsLen;
     }
     return slot->ops;
+}
+
+const uint8_t* ImageVectorForSource(PaintApp* pa, const ImageSource& source,
+                                    int* lenOut) {
+    return ImageVectorForSource(ImageLookup::Of(pa), source, lenOut);
 }
 
 } // namespace gpui

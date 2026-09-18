@@ -852,6 +852,7 @@ enum class ImageLoadState : uint8_t {
 
 struct PaintApp;
 struct RenderImage;
+struct ImageStore;
 
 enum class ImageSourceKind : uint8_t {
     Resource,
@@ -1992,6 +1993,9 @@ struct El {
     // ElKind::Image: resource, decoded render image, encoded Image bytes, or
     // a custom loader, matching gpui::ImageSource.
     ImageSource imageSource;
+    // img.image_cache(entity), or on a container the window stack
+    // `image_cache(entity)` pushes for descendants.
+    EntityId imageCache = {};
     Func0 onClick;
 
     // Keep every entity Listener together. El is copied and walked as
@@ -2335,6 +2339,7 @@ struct El {
     El* ObjectFitMode(gpui::ObjectFit fit);
     El* WithLoading(El* loading);
     El* WithFallback(El* fallback);
+    El* WithImageCache(EntityId cache);
     El* H(float v);
     El* SizeFull();
     El* MinH(float v);
@@ -2608,7 +2613,7 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1840,
+static_assert(sizeof(El) <= 1848,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {
@@ -5306,6 +5311,10 @@ struct App {
     Vec<AppGlobalSlot> globals;
     int nextSubId = 1;
     int exitCode = 0;
+    // App asset table for img resources and encoded Image values. Unbounded,
+    // like GPUI's loading_assets HashMap; an entity ImageCache on the window
+    // stack intercepts Resource lookups.
+    ImageStore* images = nullptr;
 
     App() = default;
 };
@@ -5335,6 +5344,9 @@ struct Window {
     // built — GPUI's `Window::dirty_views`, and what makes `Notify` name a
     // window rather than every window. Rebuilt each frame.
     Vec<EntityId> rendered;
+    // Window::image_cache_stack. `image_cache(entity)` / El::WithImageCache
+    // on a container pushes for the layout and paint of its descendants.
+    Vec<EntityId> imageCacheStack;
     // The scroll boxes the frame before this one painted, swapped out of
     // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
     // answers with the box the last layout gave it. Virtual lists bind rows
