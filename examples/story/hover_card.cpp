@@ -99,8 +99,8 @@ El* HoverCardStory::Render(HoverCardStory*, Ctx* cx) {
         info->Child(StoryTxt(cx, StrL("Jason Lee"), 16, th.foreground)
                         ->Semibold());
         info->Child(StoryTxt(cx, StrL("@huacnlee"), 14, th.primary));
-        info->Child(Div(a)->PadT(4)->Child(StoryTxt(
-            cx, StrL("The author of GPUI Kit."), 16, th.foreground)));
+        info->Child(Div(a)->PadT(4)->Child(
+            StoryTxt(cx, StrL("The author of GPUI Kit."), 16, th.foreground)));
         profile->Child(info);
     }
     richRow->Child(component::HoverCard::New(cx)

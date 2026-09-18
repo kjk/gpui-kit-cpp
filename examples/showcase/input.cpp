@@ -16,10 +16,10 @@ El* ShowcaseInput(ShowcaseApp* app, Ctx* cx) {
         ->W(224)
         ->Gap(4)
         ->ItemsStart()
-        ->Child(Div(a)->H(16)->ItemsCenter()->Child(
-            TextEl(a, StrL("Project name"))
-                ->Font(12)
-                ->Fg(ExampleRgb(0x171717))))
+        ->Child(
+            Div(a)->H(16)->ItemsCenter()->Child(TextEl(a, StrL("Project name"))
+                                                    ->Font(12)
+                                                    ->Fg(ExampleRgb(0x171717))))
         ->Child(InputBase::New(cx, StrL("example-input"), true)
                     ->OnClick(Listen(cx, &OnInput))
                     ->W(224)

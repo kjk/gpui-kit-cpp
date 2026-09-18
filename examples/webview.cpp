@@ -71,8 +71,7 @@ int GpuiMain(int argc, char** argv) {
 
     Entity<Example> view = EntityNew<Example>(app);
     Example* self = view.Get(app);
-    InputSetValue(&self->address,
-                  StrL("https://gpui-kit.com"));
+    InputSetValue(&self->address, StrL("https://gpui-kit.com"));
 
     if (!wry::WebViewAvailable()) {
         // Rust has no equivalent — `build_as_child` panics. Saying it out

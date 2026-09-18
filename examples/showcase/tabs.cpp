@@ -32,8 +32,7 @@ El* ShowcaseTabs(ShowcaseApp* app, Ctx* cx) {
                 ->ItemsCenter()
                 ->BorderB(2, on ? ExampleRgb(0x171717) : ExampleRgb(0xffffff))
                 ->HoverBg(ExampleRgb(0xf5f5f5));
-        El* lab =
-            TextEl(a, Str(labels[i]))->Font(12)->Fg(ExampleRgb(0x171717));
+        El* lab = TextEl(a, Str(labels[i]))->Font(12)->Fg(ExampleRgb(0x171717));
         if (on) {
             lab->Semibold();
         }

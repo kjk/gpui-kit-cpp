@@ -175,13 +175,11 @@ El* BubbleStory::Render(BubbleStory* self, Ctx* cx) {
                     ->Gap(8)
                     ->Child(BubbleText(
                         cx, "The implementation guide is available online."))
-                    ->Child(
-                        component::Link::New(cx,
-                                             StrL("bubble-documentation-link"))
-                            ->Href(StrL(
-                                "https://gpui-kit.com/"))
-                            ->Text(StrL("Open the component documentation"))
-                            ->IntoEl())))
+                    ->Child(component::Link::New(
+                                cx, StrL("bubble-documentation-link"))
+                                ->Href(StrL("https://gpui-kit.com/"))
+                                ->Text(StrL("Open the component documentation"))
+                                ->IntoEl())))
             ->IntoEl());
     StorySectionAdd(
         links,

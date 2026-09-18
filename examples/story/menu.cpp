@@ -123,8 +123,7 @@ static void OnPopupItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 
 static component::PopupMenu* LinksMenu(MenuStory*, Ctx* cx) {
     return component::PopupMenu::New(cx, StrL("popup-menu-links"))
-        ->Link(StrL("GPUI Kit"),
-               StrL("https://github.com/longbridge/gpui-kit"),
+        ->Link(StrL("GPUI Kit"), StrL("https://github.com/longbridge/gpui-kit"),
                IconName::Github)
         ->Separator()
         ->Link(StrL("GPUI"), StrL("https://gpui.rs"))
@@ -361,8 +360,7 @@ static void OnOtherContextItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 static component::PopupMenu* OtherContextMenu(MenuStory*, Ctx* cx, int area) {
     component::PopupMenu* menu = component::PopupMenu::New(
         cx, StoryFmt(cx, "context-other-menu-%d", area));
-    menu->Link(StrL("About"),
-               StrL("https://github.com/longbridge/gpui-kit"))
+    menu->Link(StrL("About"), StrL("https://github.com/longbridge/gpui-kit"))
         ->Separator()
         ->Menu(StrL("Item 1"));
     PopupMenuState* state = menu->state.Get(cx);

@@ -160,4 +160,3 @@ inline Rgba ExampleCanvas() {
 }
 
 #endif // GPUI_EXAMPLES_SHOWCASE_PALETTE_H_
-
