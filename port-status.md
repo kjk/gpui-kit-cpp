@@ -14,11 +14,10 @@ work left is depth, not breadth.
 
 ## Upstream revision
 
-Processed through `e338aeb895b2946e3f6555072a8b62d6f0a9f9d9`
-(2026-09-17, list, table: Drop the outline from the selected item, row and
-cell (#3108)). A selected list item, table row or table cell is a tinted
-block with no outline. The current update target is
-`7f6d92327936fbab7994a35c86328d793acc060d`.
+Processed through `c7af5ecca1cdfad0d954b07b688f1ea8792ebca3`
+(2026-09-17, docs: Certify AI-facing consumer recipes (#3109)). Website,
+skills and the Rust ai_recipes crate are not ported. The current update
+target is `7f6d92327936fbab7994a35c86328d793acc060d`.
 
 ## Known gaps vs Rust
 
