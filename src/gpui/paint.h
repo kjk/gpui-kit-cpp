@@ -277,11 +277,12 @@ void PathRealize(PaintCtx* ctx, Path* p);
 // ─── images ───────────────────────────────────────────────────────────────
 //
 // A decoded bitmap. GPUI hands an `img(..)` element's source to its asset
-// system, which decodes with the `image` crate; there is no such crate here
-// and no room for one, so the decode is the platform's own: WIC on Windows,
-// NSBitmapImageRep on macOS, and cairo's PNG loader on Linux — which is why
-// Linux reads PNG and nothing else. gpui/image.h caches what comes back and
-// is what the element tree talks to.
+// system, which decodes with the `image` crate on a background executor.
+// There is no such crate here, so the decode is the platform's own: WIC on
+// Windows, ImageIO on macOS, gdk-pixbuf on Linux (PNG, JPEG, GIF, WebP),
+// and the browser's Image on wasm. gpui/image.h caches what comes back,
+// spawns the decode off the UI thread, and is what the element tree talks
+// to. Retain/Release is the explicit counterpart of Arc<RenderImage>.
 
 struct RenderImage;
 
@@ -296,10 +297,15 @@ enum class RenderImageStatus : uint8_t {
 };
 
 // Decode `bytes`. Null when the format is not one this platform reads, which
-// the caller shows as the image's alt text.
+// the caller shows as the image's alt text. Safe on a worker thread: the
+// image cache decodes off the UI thread the way GPUI's ImageAssetLoader does.
 RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len);
-// Decode returns one owning reference. Retain/Release are main-thread only,
-// the explicit counterpart of Rust's Arc<RenderImage>. GPU storage is separate.
+// A handle that is Loading until RenderImageComplete runs on the main thread
+// with the worker's decoded result, or null for Failed.
+RenderImage* RenderImageNewLoading();
+void RenderImageComplete(RenderImage* img, RenderImage* decoded);
+// Decode returns one owning reference. Retain/Release are the explicit
+// counterpart of Rust's Arc<RenderImage>. GPU storage is separate.
 void RenderImageRetain(RenderImage* img);
 void RenderImageRelease(RenderImage* img);
 // Monotonic identity assigned when the resource is made. Unlike its address,

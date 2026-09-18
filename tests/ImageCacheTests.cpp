@@ -73,7 +73,7 @@ static void AnAppStoreIsNotTheProcessFallback() {
     ImageLookup lookup;
     lookup.app = app;
     lookup.pa = app->paint;
-    utassert(ImageForSrc(lookup, TaggedPng(1)));
+    utassert(ImageForSrcReady(lookup, TaggedPng(1)));
     utassert(ImageCacheResourceCount(app) == 1);
     utassert(ImageCacheResourceCount(nullptr) == 0);
     ImageCacheClear(app);
@@ -93,12 +93,12 @@ static void AnEntityCacheIsNotTheAppStore() {
     ImageLookup appLookup;
     appLookup.app = app;
     appLookup.pa = app->paint;
-    utassert(ImageForSrc(appLookup, TaggedPng(2)));
+    utassert(ImageForSrcReady(appLookup, TaggedPng(2)));
     utassert(ImageCacheResourceCount(app) == 1);
 
     ImageLookup entityLookup = appLookup;
     entityLookup.cache = cache.id;
-    utassert(ImageForSrc(entityLookup, TaggedPng(3)));
+    utassert(ImageForSrcReady(entityLookup, TaggedPng(3)));
     utassert(cache.Get(app)->Len() == 1);
     utassert(ImageCacheResourceCount(app) == 1);
 
@@ -107,7 +107,7 @@ static void AnEntityCacheIsNotTheAppStore() {
     VecAppend(win.imageCacheStack, cache.id);
     ImageLookup stacked = appLookup;
     stacked.win = &win;
-    utassert(ImageForSrc(stacked, TaggedPng(4)));
+    utassert(ImageForSrcReady(stacked, TaggedPng(4)));
     utassert(cache.Get(app)->Len() == 2);
     utassert(ImageCacheResourceCount(app) == 1);
     cache.Get(app)->Remove(TaggedPng(3));

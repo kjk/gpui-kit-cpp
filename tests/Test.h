@@ -33,6 +33,36 @@ bool TestNear(float a, float b);
 
 #define utassertnear(a, b) utassert(TestNear((a), (b)))
 
+// Desktop decode runs on a worker the way GPUI's ImageAssetLoader does.
+// PaintApp-only tests stay synchronous (no executor). AppNew tests pump.
+inline RenderImage* ImageForSrcReady(PaintApp* pa, Str src) {
+    RenderImage* img = ImageForSrc(pa, src);
+    if (img || ImageSrcState(pa, src) != ImageLoadState::Loading) {
+        return img;
+    }
+    ExecWaitIdle(8000);
+    return ImageForSrc(pa, src);
+}
+
+inline RenderImage* ImageForSrcReady(const ImageLookup& cx, Str src) {
+    RenderImage* img = ImageForSrc(cx, src);
+    if (img || ImageSrcState(cx, src) != ImageLoadState::Loading) {
+        return img;
+    }
+    ExecWaitIdle(8000);
+    return ImageForSrc(cx, src);
+}
+
+inline RenderImage* ImageForSourceReady(PaintApp* pa,
+                                        const ImageSource& source) {
+    RenderImage* img = ImageForSource(pa, source);
+    if (img || ImageSourceState(pa, source) != ImageLoadState::Loading) {
+        return img;
+    }
+    ExecWaitIdle(8000);
+    return ImageForSource(pa, source);
+}
+
 void TestBackground();
 void TestIndexPath();
 void TestAutoScroll();

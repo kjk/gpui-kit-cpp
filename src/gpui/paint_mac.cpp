@@ -9,6 +9,7 @@
 
 #import <AppKit/AppKit.h>
 #import <CoreText/CoreText.h>
+#import <ImageIO/ImageIO.h>
 
 #include <math.h>
 
@@ -594,49 +595,125 @@ struct MacImageFrame {
 struct RenderImage {
     int refs = 1;
     uint64_t generation = 0;
+    RenderImageStatus status = RenderImageStatus::Ready;
     Vec<MacImageFrame> frames;
 };
+
+static double CfSeconds(CFDictionaryRef dict, CFStringRef key) {
+    if (!dict || !key) {
+        return 0;
+    }
+    CFNumberRef n = (CFNumberRef)CFDictionaryGetValue(dict, key);
+    double v = 0;
+    if (n) {
+        CFNumberGetValue(n, kCFNumberDoubleType, &v);
+    }
+    return v;
+}
+
+static int ImageIOFrameDurationMs(CGImageSourceRef src, size_t index) {
+    CFDictionaryRef props =
+        CGImageSourceCopyPropertiesAtIndex(src, index, nullptr);
+    if (!props) {
+        return 100;
+    }
+    CFDictionaryRef gif = (CFDictionaryRef)CFDictionaryGetValue(
+        props, kCGImagePropertyGIFDictionary);
+    double sec = CfSeconds(gif, kCGImagePropertyGIFUnclampedDelayTime);
+    if (sec <= 0) {
+        sec = CfSeconds(gif, kCGImagePropertyGIFDelayTime);
+    }
+    if (sec <= 0) {
+        CFDictionaryRef png = (CFDictionaryRef)CFDictionaryGetValue(
+            props, kCGImagePropertyPNGDictionary);
+        sec = CfSeconds(png, kCGImagePropertyAPNGUnclampedDelayTime);
+        if (sec <= 0) {
+            sec = CfSeconds(png, kCGImagePropertyAPNGDelayTime);
+        }
+    }
+    CFRelease(props);
+    if (sec <= 0) {
+        return 100;
+    }
+    int ms = (int)(sec * 1000.0 + 0.5);
+    return ms < 10 ? 100 : ms;
+}
 
 RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     (void)pa;
     if (!bytes || len <= 0) {
         return nullptr;
     }
-    NSData* data = [NSData dataWithBytes:bytes length:(NSUInteger)len];
-    NSBitmapImageRep* rep = [NSBitmapImageRep imageRepWithData:data];
-    if (!rep) {
+    CFDataRef data = CFDataCreate(kCFAllocatorDefault, bytes, (CFIndex)len);
+    if (!data) {
         return nullptr;
     }
+    CGImageSourceRef src = CGImageSourceCreateWithData(data, nullptr);
+    CFRelease(data);
+    if (!src) {
+        return nullptr;
+    }
+    size_t count = CGImageSourceGetCount(src);
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();
-    NSInteger count = [[rep valueForProperty:NSImageFrameCount] integerValue];
-    if (count < 1) {
-        count = 1;
-    }
-    for (NSInteger i = 0; i < count; i++) {
-        if (count > 1) {
-            [rep setProperty:NSImageCurrentFrame
-                   withValue:[NSNumber numberWithInteger:i]];
-        }
-        CGImageRef cg = [rep CGImage];
+    for (size_t i = 0; i < count; i++) {
+        CGImageRef cg = CGImageSourceCreateImageAtIndex(src, i, nullptr);
         if (!cg) {
             continue;
         }
         MacImageFrame frame = {};
-        frame.image = CGImageRetain(cg);
+        frame.image = cg;
         frame.w = (int)CGImageGetWidth(cg);
         frame.h = (int)CGImageGetHeight(cg);
-        NSNumber* duration = [rep valueForProperty:NSImageCurrentFrameDuration];
-        if (duration && [duration doubleValue] > 0) {
-            frame.durationMs = (int)([duration doubleValue] * 1000.0);
-        }
+        frame.durationMs = ImageIOFrameDurationMs(src, i);
         VecAppend(img->frames, frame);
     }
+    CFRelease(src);
     if (img->frames.len == 0) {
         delete img;
         return nullptr;
     }
     return img;
+}
+
+RenderImage* RenderImageNewLoading() {
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    img->status = RenderImageStatus::Loading;
+    return img;
+}
+
+void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
+    if (!img) {
+        if (decoded) {
+            RenderImageRelease(decoded);
+        }
+        return;
+    }
+    if (decoded && decoded->frames.len > 0) {
+        for (int i = 0; i < img->frames.len; i++) {
+            MacImageFrame& frame = img->frames[i];
+            if (frame.image) {
+                CGImageRelease(frame.image);
+            }
+            if (frame.grayImage) {
+                CGImageRelease(frame.grayImage);
+            }
+        }
+        VecReset(img->frames);
+        img->frames.els = decoded->frames.els;
+        img->frames.len = decoded->frames.len;
+        img->frames.cap = decoded->frames.cap;
+        decoded->frames.els = nullptr;
+        decoded->frames.len = 0;
+        decoded->frames.cap = 0;
+        img->status = RenderImageStatus::Ready;
+    } else {
+        img->status = RenderImageStatus::Failed;
+    }
+    if (decoded) {
+        RenderImageRelease(decoded);
+    }
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -667,7 +744,7 @@ uint64_t RenderImageGeneration(const RenderImage* img) {
 }
 
 RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? RenderImageStatus::Ready : RenderImageStatus::Failed;
+    return img ? img->status : RenderImageStatus::Failed;
 }
 
 Size RenderImageSizePx(const RenderImage* img, int frameIndex) {

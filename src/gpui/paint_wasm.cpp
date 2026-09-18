@@ -1259,6 +1259,7 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
 struct RenderImage {
     int refs = 1;
     uint64_t generation = 0;
+    RenderImageStatus status = RenderImageStatus::Ready;
     int js = 0;
 };
 
@@ -1275,6 +1276,35 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     img->generation = PaintResourceGenerationNew();
     img->js = id;
     return img;
+}
+
+RenderImage* RenderImageNewLoading() {
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    img->status = RenderImageStatus::Loading;
+    return img;
+}
+
+void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
+    if (!img) {
+        if (decoded) {
+            RenderImageRelease(decoded);
+        }
+        return;
+    }
+    if (decoded && decoded->js) {
+        if (img->js) {
+            GpJsImageFree(img->js);
+        }
+        img->js = decoded->js;
+        decoded->js = 0;
+        img->status = RenderImageStatus::Ready;
+    } else {
+        img->status = RenderImageStatus::Failed;
+    }
+    if (decoded) {
+        RenderImageRelease(decoded);
+    }
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -1298,8 +1328,11 @@ uint64_t RenderImageGeneration(const RenderImage* img) {
 }
 
 RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    if (!img || !img->js) {
+    if (!img) {
         return RenderImageStatus::Failed;
+    }
+    if (!img->js) {
+        return img->status;
     }
     int status = GpJsImageStatus(img->js);
     return status == 0   ? RenderImageStatus::Loading

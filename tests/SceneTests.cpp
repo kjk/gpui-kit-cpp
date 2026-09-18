@@ -248,6 +248,7 @@ static void FailedImagesLayOutTheirFallback() {
     utassert(image->first == fallback && image->last == fallback);
     utassert(image->w == 30 && image->h == 40);
     ArenaDelete(arena);
+    ImageCacheClear(&owner);
     ImageCacheClear();
     PaintAppFree(app);
 #endif
@@ -300,7 +301,7 @@ static void Direct2dImagesSurviveTargetRecreation() {
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAA"
         "H/iZk9HQAAAABJRU5ErkJggg==";
     RenderImage* image =
-        ImageForSrc(app, fmt("data:image/png;base64,%s", Str(png)));
+        ImageForSrcReady(app, fmt("data:image/png;base64,%s", Str(png)));
     utassert(image);
     if (image) {
         uint8_t first[4] = {};
@@ -342,7 +343,7 @@ static void WindowsDecodePreservesSourceDimensions() {
         "iVBORw0KGgoAAAANSUhEUgAAB4EAAAABCAYAAADQK9gLAAAAIElEQVR42u3DAQkAAAwE"
         "oetf+tdjKFhtqqqqqqqqqv54kiLz0TdbQJkAAAAASUVORK5CYII=";
     RenderImage* image =
-        ImageForSrc(app, fmt("data:image/png;base64,%s", Str(png)));
+        ImageForSrcReady(app, fmt("data:image/png;base64,%s", Str(png)));
     utassert(image);
     if (image) {
         utassert(RenderImageStatusGet(image) == RenderImageStatus::Ready);
@@ -353,9 +354,9 @@ static void WindowsDecodePreservesSourceDimensions() {
 #endif
 }
 
-static void WindowsDecodesAnimatedGifFrames() {
-#if GPUI_OS_WINDOWS
-    TestSuite("Windows animated GIF decode");
+static void DecodesAnimatedGifFrames() {
+#if !GPUI_OS_WASM
+    TestSuite("animated GIF decode");
     App* owner = AppNew();
     PaintApp* app = owner ? owner->paint : nullptr;
     utassert(app);
@@ -368,7 +369,7 @@ static void WindowsDecodesAnimatedGifFrames() {
         "CgAAACwAAAAAAgABAAAIBQABAAgIACH5BAEUAAEALAAAAAACAAEAgQAA/wAAAAAA"
         "AAAAAAgFAAEACAgAOw==";
     RenderImage* image =
-        ImageForSrc(app, fmt("data:image/gif;base64,%s", Str(gif)));
+        ImageForSrcReady(app, fmt("data:image/gif;base64,%s", Str(gif)));
     utassert(image);
     if (image) {
         utassert(RenderImageFrameCount(image) == 2);
@@ -415,7 +416,7 @@ static void D3d12ImageDescriptorsAreReusable() {
     paint.opacity = 1;
     utassert(PaintTargetBeginOffscreen(&paint, 140, 1));
     for (int i = 0; i < 140; i++) {
-        RenderImage* image = ImageForSrc(
+        RenderImage* image = ImageForSrcReady(
             app, fmt("data:image/png;descriptor=%d;base64,%s", i, Str(png)));
         utassert(image);
         if (!image) {
@@ -588,7 +589,7 @@ void TestScene() {
     RecordedImagesSurviveCacheEviction();
     Direct2dImagesSurviveTargetRecreation();
     WindowsDecodePreservesSourceDimensions();
-    WindowsDecodesAnimatedGifFrames();
+    DecodesAnimatedGifFrames();
     D3d12ImageDescriptorsAreReusable();
     GpuImagesEvictAtFinalRelease();
     FrameComparisonBelongsToOnePaintContext();

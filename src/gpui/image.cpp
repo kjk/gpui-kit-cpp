@@ -4,6 +4,7 @@
 #include "gpui/paint.h"
 #include "gpui/svg.h"
 #include "sys/http.h"
+#include "sys/executor.h"
 
 namespace gpui {
 
@@ -406,7 +407,10 @@ int ImageCache::Len() const {
     return store ? store->resources.len : 0;
 }
 
+static uint64_t gImageDecodeEpoch = 1;
+
 void ImageCacheClear() {
+    gImageDecodeEpoch++;
     ImageStoreClear(&gFallback);
     for (int i = 0; i < kImageClockSlots; i++) {
         gLoadingClocks[i] = {};
@@ -418,6 +422,7 @@ void ImageCacheClear() {
 }
 
 void ImageCacheClear(App* app) {
+    gImageDecodeEpoch++;
     if (app && app->images) {
         ImageStoreClear(app->images);
     }
@@ -442,8 +447,39 @@ static uint64_t ImageBytesHash(const uint8_t* bytes, int len) {
     return hash ? hash : 1;
 }
 
-static void DecodeImageBytes(PaintApp* pa, const uint8_t* bytes, int len,
-                             RenderImage** imgOut, uint8_t** opsOut,
+struct ImageDecodeJob {
+    uint8_t* bytes = nullptr;
+    int len = 0;
+    RenderImage* placeholder = nullptr;
+    RenderImage* decoded = nullptr;
+    uint64_t epoch = 0;
+};
+
+static void ImageDecodeWork(ImageDecodeJob* job) {
+    job->decoded = RenderImageDecode(nullptr, job->bytes, job->len);
+}
+
+static void ImageDecodeDone(ImageDecodeJob* job) {
+    if (job->epoch == gImageDecodeEpoch && job->placeholder) {
+        RenderImageComplete(job->placeholder, job->decoded);
+        job->decoded = nullptr;
+    }
+    if (job->decoded) {
+        RenderImageRelease(job->decoded);
+    }
+    if (job->placeholder) {
+        RenderImageRelease(job->placeholder);
+    }
+    Free(nullptr, job->bytes);
+    delete job;
+}
+
+static bool ImageDecodeAsync(const ImageLookup& cx) {
+    return cx.app && cx.app->paint && ExecOnMainThread() && ExecHasThreads();
+}
+
+static void DecodeImageBytes(const ImageLookup& cx, const uint8_t* bytes,
+                             int len, RenderImage** imgOut, uint8_t** opsOut,
                              int* opsLenOut) {
     *imgOut = nullptr;
     *opsOut = nullptr;
@@ -461,8 +497,38 @@ static void DecodeImageBytes(PaintApp* pa, const uint8_t* bytes, int len,
                 *opsLenOut = builder.data.len;
             }
         }
-    } else if (pa) {
-        *imgOut = RenderImageDecode(pa, bytes, len);
+    } else if (cx.pa) {
+        if (ImageDecodeAsync(cx)) {
+            RenderImage* loading = RenderImageNewLoading();
+            auto* job = new ImageDecodeJob();
+            job->bytes = AllocArray<uint8_t>(len);
+            if (!loading || !job->bytes) {
+                Free(nullptr, job->bytes);
+                delete job;
+                if (loading) {
+                    RenderImageRelease(loading);
+                }
+                *imgOut = RenderImageDecode(cx.pa, bytes, len);
+                return;
+            }
+            memcpy(job->bytes, bytes, (size_t)len);
+            job->len = len;
+            job->placeholder = loading;
+            job->epoch = gImageDecodeEpoch;
+            RenderImageRetain(loading);
+            if (!ExecSpawn(MkFunc0(ImageDecodeWork, job),
+                           MkFunc0(ImageDecodeDone, job))) {
+                RenderImageRelease(loading);
+                RenderImageRelease(loading);
+                Free(nullptr, job->bytes);
+                delete job;
+                *imgOut = RenderImageDecode(cx.pa, bytes, len);
+                return;
+            }
+            *imgOut = loading;
+        } else {
+            *imgOut = RenderImageDecode(cx.pa, bytes, len);
+        }
     }
 }
 
@@ -525,7 +591,7 @@ static ImageCacheSlot* ImageSlotFor(const ImageLookup& cx, Str src) {
             VecReset(owned);
             return nullptr;
         }
-        DecodeImageBytes(cx.pa, bytes, n, &img, &ops, &opsLen);
+        DecodeImageBytes(cx, bytes, n, &img, &ops, &opsLen);
     }
 
     slots = ResourceSlots(cx);
@@ -573,8 +639,8 @@ static EncodedImageSlot* EncodedSlotFor(const ImageLookup& cx,
     fresh.hash = hash;
     fresh.bytesLen = source.bytesLen;
     fresh.tried = true;
-    DecodeImageBytes(cx.pa, source.bytes, source.bytesLen, &fresh.img,
-                     &fresh.ops, &fresh.opsLen);
+    DecodeImageBytes(cx, source.bytes, source.bytesLen, &fresh.img, &fresh.ops,
+                     &fresh.opsLen);
     VecAppend(store->encoded, fresh);
     return &store->encoded[store->encoded.len - 1];
 }

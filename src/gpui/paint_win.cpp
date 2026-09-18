@@ -1455,6 +1455,7 @@ struct WinImageFrame {
 struct RenderImage {
     int refs = 1;
     uint64_t generation = 0;
+    RenderImageStatus status = RenderImageStatus::Ready;
     Vec<WinImageFrame> frames;
 };
 
@@ -1567,6 +1568,43 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     return img;
 }
 
+RenderImage* RenderImageNewLoading() {
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    img->status = RenderImageStatus::Loading;
+    return img;
+}
+
+void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
+    if (!img) {
+        if (decoded) {
+            RenderImageRelease(decoded);
+        }
+        return;
+    }
+    if (decoded && decoded->frames.len > 0) {
+        for (int i = 0; i < img->frames.len; i++) {
+            WinImageFrame& frame = img->frames[i];
+            Rel(&frame.bmp);
+            Rel(&frame.grayBmp);
+            Free(nullptr, frame.bgra);
+        }
+        VecReset(img->frames);
+        img->frames.els = decoded->frames.els;
+        img->frames.len = decoded->frames.len;
+        img->frames.cap = decoded->frames.cap;
+        decoded->frames.els = nullptr;
+        decoded->frames.len = 0;
+        decoded->frames.cap = 0;
+        img->status = RenderImageStatus::Ready;
+    } else {
+        img->status = RenderImageStatus::Failed;
+    }
+    if (decoded) {
+        RenderImageRelease(decoded);
+    }
+}
+
 void RenderImageRetain(RenderImage* img) {
     if (img) {
         img->refs++;
@@ -1593,7 +1631,7 @@ uint64_t RenderImageGeneration(const RenderImage* img) {
 }
 
 RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? RenderImageStatus::Ready : RenderImageStatus::Failed;
+    return img ? img->status : RenderImageStatus::Failed;
 }
 
 // The GPU backend makes its own texture out of the same pixels rather than a

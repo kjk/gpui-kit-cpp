@@ -14,12 +14,13 @@
      - a `data:` URI, base64 or percent-encoded
      - an http(s) URL, fetched asynchronously by sys/http.h
 
-   Fetching is asynchronous; desktop decode and local file reads run on the
-   main thread. A fetch that has not landed yet is Loading, a final miss or
-   decode error is Failed, and the image element chooses its distinct loading
-   or fallback replacement from that state. The window keeps repainting while
-   `HttpFetchPending` is non-zero, so the picture appears when it arrives
-   rather than the frame freezing until it does. */
+   Fetching is asynchronous. Bitmap decode runs on a worker the way GPUI's
+   ImageAssetLoader does, so a handle may be Loading until the worker
+   finishes. A fetch or decode that has not landed yet is Loading, a final
+   miss or decode error is Failed, and the image element chooses its distinct
+   loading or fallback replacement from that state. The window keeps
+   repainting while a load is in flight, so the picture appears when it
+   arrives rather than the frame freezing until it does. */
 
 #include "gpui/gpui.h"
 

@@ -8,6 +8,8 @@
 #include <math.h>
 #include <cairo/cairo.h>
 #include <pango/pangocairo.h>
+#define GLIB_DISABLE_DEPRECATION_WARNINGS
+#include <gdk-pixbuf/gdk-pixbuf.h>
 
 namespace gpui {
 
@@ -579,37 +581,118 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
 
 // ─── images ───────────────────────────────────────────────────────────────
 //
-// cairo reads PNG and nothing else, and the tree takes no library that reads
-// the rest (hard rule 3: X11, cairo and Pango are the system libraries the
-// Linux build has). So on Linux a JPEG in a document comes out as its alt
-// text, where Windows and macOS decode it — a difference the caller cannot
-// see beyond RenderImageDecode returning null.
+// gdk-pixbuf is the system decoder (PNG, JPEG, GIF, WebP when the loader is
+// installed), the way WIC is on Windows and ImageIO on macOS. cairo still
+// paints the pixels. Animation walks GdkPixbufAnimationIter once, copying
+// each frame because the iterator reuses its pixbuf.
 
-struct RenderImage {
-    int refs = 1;
-    uint64_t generation = 0;
+struct LinuxImageFrame {
     cairo_surface_t* surface = nullptr;
     cairo_surface_t* graySurface = nullptr;
     int w = 0;
     int h = 0;
+    int durationMs = 100;
 };
 
-// cairo reads through a callback rather than from a pointer.
-struct PngRead {
-    const uint8_t* bytes;
-    int len;
-    int at;
+struct RenderImage {
+    int refs = 1;
+    uint64_t generation = 0;
+    RenderImageStatus status = RenderImageStatus::Ready;
+    Vec<LinuxImageFrame> frames;
 };
 
-static cairo_status_t PngReadFn(void* closure, unsigned char* out,
-                                unsigned int len) {
-    auto* r = (PngRead*)closure;
-    if (r->at + (int)len > r->len) {
-        return CAIRO_STATUS_READ_ERROR;
+static cairo_surface_t* SurfaceFromPixbuf(GdkPixbuf* pix) {
+    if (!pix) {
+        return nullptr;
     }
-    memcpy(out, r->bytes + r->at, len);
-    r->at += (int)len;
-    return CAIRO_STATUS_SUCCESS;
+    int w = gdk_pixbuf_get_width(pix);
+    int h = gdk_pixbuf_get_height(pix);
+    if (w <= 0 || h <= 0) {
+        return nullptr;
+    }
+    cairo_surface_t* surface =
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    if (!surface || cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        if (surface) {
+            cairo_surface_destroy(surface);
+        }
+        return nullptr;
+    }
+    unsigned char* dst = cairo_image_surface_get_data(surface);
+    int dstStride = cairo_image_surface_get_stride(surface);
+    const guint8* src = gdk_pixbuf_get_pixels(pix);
+    int srcStride = gdk_pixbuf_get_rowstride(pix);
+    int nch = gdk_pixbuf_get_n_channels(pix);
+    bool alpha = gdk_pixbuf_get_has_alpha(pix) ? true : false;
+    for (int y = 0; y < h; y++) {
+        const guint8* srow = src + y * srcStride;
+        unsigned char* drow = dst + y * dstStride;
+        for (int x = 0; x < w; x++) {
+            const guint8* s = srow + x * nch;
+            uint8_t r = s[0];
+            uint8_t g = nch > 1 ? s[1] : r;
+            uint8_t b = nch > 2 ? s[2] : r;
+            uint8_t a = alpha && nch > 3 ? s[3] : 255;
+            // cairo ARGB32 is native-endian premultiplied; little-endian BGRA.
+            uint32_t pr = ((uint32_t)r * a + 127) / 255;
+            uint32_t pg = ((uint32_t)g * a + 127) / 255;
+            uint32_t pb = ((uint32_t)b * a + 127) / 255;
+            drow[x * 4 + 0] = (unsigned char)pb;
+            drow[x * 4 + 1] = (unsigned char)pg;
+            drow[x * 4 + 2] = (unsigned char)pr;
+            drow[x * 4 + 3] = a;
+        }
+    }
+    cairo_surface_mark_dirty(surface);
+    return surface;
+}
+
+static uint64_t HashPixbuf(GdkPixbuf* pix) {
+    if (!pix) {
+        return 0;
+    }
+    int w = gdk_pixbuf_get_width(pix);
+    int h = gdk_pixbuf_get_height(pix);
+    int stride = gdk_pixbuf_get_rowstride(pix);
+    const guint8* src = gdk_pixbuf_get_pixels(pix);
+    uint64_t hash = 1469598103934665603ull;
+    hash ^= (uint64_t)w;
+    hash *= 1099511628211ull;
+    hash ^= (uint64_t)h;
+    hash *= 1099511628211ull;
+    int n = stride * h;
+    for (int i = 0; i < n; i++) {
+        hash ^= src[i];
+        hash *= 1099511628211ull;
+    }
+    return hash ? hash : 1;
+}
+
+static bool AppendPixbufFrame(RenderImage* img, GdkPixbuf* pix, int delayMs) {
+    cairo_surface_t* surface = SurfaceFromPixbuf(pix);
+    if (!surface) {
+        return false;
+    }
+    LinuxImageFrame frame = {};
+    frame.surface = surface;
+    frame.w = cairo_image_surface_get_width(surface);
+    frame.h = cairo_image_surface_get_height(surface);
+    frame.durationMs = delayMs > 0 ? delayMs : 100;
+    VecAppend(img->frames, frame);
+    return true;
+}
+
+static void LinuxFrameFree(LinuxImageFrame* frame) {
+    if (!frame) {
+        return;
+    }
+    if (frame->surface) {
+        cairo_surface_destroy(frame->surface);
+    }
+    if (frame->graySurface) {
+        cairo_surface_destroy(frame->graySurface);
+    }
+    *frame = {};
 }
 
 RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
@@ -617,22 +700,99 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     if (!bytes || len <= 0) {
         return nullptr;
     }
-    PngRead r{bytes, len, 0};
-    cairo_surface_t* surface =
-        cairo_image_surface_create_from_png_stream(PngReadFn, &r);
-    if (!surface) {
+    GError* err = nullptr;
+    GdkPixbufLoader* loader = gdk_pixbuf_loader_new();
+    if (!loader) {
         return nullptr;
     }
-    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
-        cairo_surface_destroy(surface);
+    if (!gdk_pixbuf_loader_write(loader, bytes, (gsize)len, &err) ||
+        !gdk_pixbuf_loader_close(loader, &err)) {
+        if (err) {
+            g_error_free(err);
+        }
+        g_object_unref(loader);
+        return nullptr;
+    }
+    GdkPixbufAnimation* anim = gdk_pixbuf_loader_get_animation(loader);
+    if (!anim) {
+        g_object_unref(loader);
         return nullptr;
     }
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();
-    img->surface = surface;
-    img->w = cairo_image_surface_get_width(surface);
-    img->h = cairo_image_surface_get_height(surface);
+    if (gdk_pixbuf_animation_is_static_image(anim)) {
+        AppendPixbufFrame(img, gdk_pixbuf_animation_get_static_image(anim), 0);
+    } else {
+        GTimeVal time = {};
+        GdkPixbufAnimationIter* iter =
+            gdk_pixbuf_animation_get_iter(anim, &time);
+        uint64_t firstHash = 0;
+        for (int n = 0; iter && n < 256; n++) {
+            GdkPixbuf* pix = gdk_pixbuf_animation_iter_get_pixbuf(iter);
+            uint64_t hash = HashPixbuf(pix);
+            if (n == 0) {
+                firstHash = hash;
+            } else if (hash == firstHash) {
+                break;
+            }
+            int delay = gdk_pixbuf_animation_iter_get_delay_time(iter);
+            GdkPixbuf* copy = pix ? gdk_pixbuf_copy(pix) : nullptr;
+            AppendPixbufFrame(img, copy ? copy : pix, delay);
+            if (copy) {
+                g_object_unref(copy);
+            }
+            if (delay < 0) {
+                break;
+            }
+            g_time_val_add(&time, delay * 1000);
+            if (!gdk_pixbuf_animation_iter_advance(iter, &time)) {
+                break;
+            }
+        }
+        if (iter) {
+            g_object_unref(iter);
+        }
+    }
+    g_object_unref(loader);
+    if (img->frames.len == 0) {
+        delete img;
+        return nullptr;
+    }
     return img;
+}
+
+RenderImage* RenderImageNewLoading() {
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    img->status = RenderImageStatus::Loading;
+    return img;
+}
+
+void RenderImageComplete(RenderImage* img, RenderImage* decoded) {
+    if (!img) {
+        if (decoded) {
+            RenderImageRelease(decoded);
+        }
+        return;
+    }
+    if (decoded && decoded->frames.len > 0) {
+        for (int i = 0; i < img->frames.len; i++) {
+            LinuxFrameFree(&img->frames[i]);
+        }
+        VecReset(img->frames);
+        img->frames.els = decoded->frames.els;
+        img->frames.len = decoded->frames.len;
+        img->frames.cap = decoded->frames.cap;
+        decoded->frames.els = nullptr;
+        decoded->frames.len = 0;
+        decoded->frames.cap = 0;
+        img->status = RenderImageStatus::Ready;
+    } else {
+        img->status = RenderImageStatus::Failed;
+    }
+    if (decoded) {
+        RenderImageRelease(decoded);
+    }
 }
 
 void RenderImageRetain(RenderImage* img) {
@@ -645,12 +805,10 @@ void RenderImageRelease(RenderImage* img) {
     if (!img || --img->refs != 0) {
         return;
     }
-    if (img->surface) {
-        cairo_surface_destroy(img->surface);
+    for (int i = 0; i < img->frames.len; i++) {
+        LinuxFrameFree(&img->frames[i]);
     }
-    if (img->graySurface) {
-        cairo_surface_destroy(img->graySurface);
-    }
+    VecReset(img->frames);
     delete img;
 }
 
@@ -659,44 +817,53 @@ uint64_t RenderImageGeneration(const RenderImage* img) {
 }
 
 RenderImageStatus RenderImageStatusGet(const RenderImage* img) {
-    return img ? RenderImageStatus::Ready : RenderImageStatus::Failed;
+    return img ? img->status : RenderImageStatus::Failed;
 }
 
 Size RenderImageSizePx(const RenderImage* img, int frameIndex) {
-    (void)frameIndex;
-    if (!img) {
+    if (!img || img->frames.len <= 0) {
         return {};
     }
-    return {(float)img->w, (float)img->h};
+    if (frameIndex < 0 || frameIndex >= img->frames.len) {
+        frameIndex = 0;
+    }
+    return {(float)img->frames[frameIndex].w, (float)img->frames[frameIndex].h};
 }
 
 int RenderImageFrameCount(const RenderImage* img) {
-    return img ? 1 : 0;
+    return img ? img->frames.len : 0;
 }
 
 int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
-    (void)img;
-    (void)frameIndex;
-    return 0;
+    if (!img || img->frames.len <= 0) {
+        return 0;
+    }
+    if (frameIndex < 0 || frameIndex >= img->frames.len) {
+        frameIndex = 0;
+    }
+    return img->frames[frameIndex].durationMs;
 }
 
-static cairo_surface_t* ImageSurface(RenderImage* img, bool grayscale) {
-    if (!grayscale || img->graySurface) {
-        return grayscale ? img->graySurface : img->surface;
+static cairo_surface_t* ImageSurface(LinuxImageFrame* frame, bool grayscale) {
+    if (!frame || !frame->surface) {
+        return nullptr;
     }
-    cairo_surface_flush(img->surface);
-    unsigned char* src = cairo_image_surface_get_data(img->surface);
-    int srcStride = cairo_image_surface_get_stride(img->surface);
+    if (!grayscale || frame->graySurface) {
+        return grayscale ? frame->graySurface : frame->surface;
+    }
+    cairo_surface_flush(frame->surface);
+    unsigned char* src = cairo_image_surface_get_data(frame->surface);
+    int srcStride = cairo_image_surface_get_stride(frame->surface);
     cairo_surface_t* gray =
-        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, img->w, img->h);
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, frame->w, frame->h);
     if (!src || cairo_surface_status(gray) != CAIRO_STATUS_SUCCESS) {
         cairo_surface_destroy(gray);
         return nullptr;
     }
     unsigned char* dst = cairo_image_surface_get_data(gray);
     int dstStride = cairo_image_surface_get_stride(gray);
-    for (int y = 0; y < img->h; y++) {
-        for (int x = 0; x < img->w; x++) {
+    for (int y = 0; y < frame->h; y++) {
+        for (int x = 0; x < frame->w; x++) {
             unsigned char* s = src + y * srcStride + x * 4;
             unsigned char* d = dst + y * dstStride + x * 4;
             uint8_t v = (uint8_t)(((uint32_t)s[2] * 54 + (uint32_t)s[1] * 183 +
@@ -709,22 +876,24 @@ static cairo_surface_t* ImageSurface(RenderImage* img, bool grayscale) {
         }
     }
     cairo_surface_mark_dirty(gray);
-    img->graySurface = gray;
+    frame->graySurface = gray;
     return gray;
 }
 
 void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                      Bounds imageBounds, int frameIndex, float radius,
                      bool grayscale) {
-    (void)frameIndex;
     cairo_t* cr = Cr(ctx);
-    if (!cr || !img || !img->surface || img->w <= 0 || img->h <= 0 ||
-        bounds.w <= 0 || bounds.h <= 0 || imageBounds.w <= 0 ||
-        imageBounds.h <= 0) {
+    if (!cr || !img || img->frames.len <= 0 || bounds.w <= 0 || bounds.h <= 0 ||
+        imageBounds.w <= 0 || imageBounds.h <= 0) {
         return;
     }
-    cairo_surface_t* surface = ImageSurface(img, grayscale);
-    if (!surface) {
+    if (frameIndex < 0 || frameIndex >= img->frames.len) {
+        frameIndex = 0;
+    }
+    LinuxImageFrame* frame = &img->frames[frameIndex];
+    cairo_surface_t* surface = ImageSurface(frame, grayscale);
+    if (!surface || frame->w <= 0 || frame->h <= 0) {
         return;
     }
     cairo_save(cr);
@@ -746,11 +915,11 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
         cairo_clip(cr);
     }
     cairo_translate(cr, imageBounds.x, imageBounds.y);
-    cairo_scale(cr, imageBounds.w / (double)img->w,
-                imageBounds.h / (double)img->h);
+    cairo_scale(cr, imageBounds.w / (double)frame->w,
+                imageBounds.h / (double)frame->h);
     cairo_set_source_surface(cr, surface, 0, 0);
     cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
-    cairo_rectangle(cr, 0, 0, img->w, img->h);
+    cairo_rectangle(cr, 0, 0, frame->w, frame->h);
     cairo_clip(cr);
     cairo_paint_with_alpha(cr, ctx->opacity < 0 ? 0 : ctx->opacity);
     cairo_restore(cr);

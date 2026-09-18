@@ -60,10 +60,10 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    of them needs from the tree belongs in `base`, or it does not belong to them.
 3. **Six targets, no third-party C++ libraries.** Windows: MSVC `cl.exe`,
    static CRT (`/MT`, `/MTd`) — no redistributable DLLs — plus WinHTTP. Linux:
-   g++/clang++ with system X11, cairo and Pango via `pkg-config`, and libcurl
-   the same way when installed (the one soft dependency; without it the tree
-   builds and only loses remote images). macOS: clang++ with Cocoa, Core
-   Graphics, Core Text, IOKit, NSURLSession. iOS: the Xcode iPhoneOS SDK and a
+   g++/clang++ with system X11, cairo, Pango and gdk-pixbuf via `pkg-config`,
+   and libcurl the same way when installed (the one soft dependency; without
+   it the tree builds and only loses remote images). macOS: clang++ with
+   Cocoa, Core Graphics, ImageIO, Core Text, IOKit, NSURLSession. iOS: the Xcode iPhoneOS SDK and a
    UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
    24 or newer, and an app-owned native host. Mobile builds are static
    libraries: the application owns lifecycle and embeds the GPUI surface. No

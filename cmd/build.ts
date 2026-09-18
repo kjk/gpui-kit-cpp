@@ -1013,10 +1013,10 @@ function winLibs(f: BuildFlags): string[] {
 // Cocoa pulls in AppKit, Foundation and CoreGraphics; CoreText shapes the
 // glyphs and IOKit answers the battery question. WebKit is
 // src/wry/wry_mac.cpp — the webview.
-const macFrameworks = ["Cocoa", "CoreText", "CoreGraphics", "IOKit", "WebKit"];
+const macFrameworks = ["Cocoa", "CoreText", "CoreGraphics", "ImageIO", "IOKit", "WebKit"];
 
 // x11 for the window, cairo + pangocairo for everything drawn in it.
-const linuxPkgs = ["x11", "cairo", "pangocairo"];
+const linuxPkgs = ["x11", "cairo", "pangocairo", "gdk-pixbuf-2.0"];
 
 function pkgConfig(names: string[], kind: "--cflags" | "--libs", fail: (msg: string) => never): string[] {
   const r = Bun.spawnSync(["pkg-config", kind, ...names], { stdout: "pipe", stderr: "pipe" });

@@ -11,6 +11,7 @@
 #   gdb, lldb, valgrind                      — debuggers
 #   libx11-dev, libxext-dev                  — the X11 window
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
+#   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
 #   fonts-dejavu-core, fonts-noto-cjk        — the Sans / Monospace families
 #   git, curl, unzip                         — fetching the Rust spec tree
@@ -64,6 +65,7 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   libxext-dev \
   libcairo2-dev \
   libpango1.0-dev \
+  libgdk-pixbuf-2.0-dev \
   libglib2.0-dev \
   libcurl4-openssl-dev \
   fonts-dejavu-core \
