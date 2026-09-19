@@ -887,7 +887,14 @@ void ThemeSetColors(Theme* t, const Theme& colors) {
     if (!t) {
         return;
     }
-    memcpy(t, &colors, offsetof(Theme, radius));
+    // The palette is the contiguous prefix before the metric fields. Copy
+    // its bytes explicitly: GCC warns when memcpy targets part of Theme,
+    // which also has non-trivial default initialization.
+    uint8_t* dst = (uint8_t*)t;
+    const uint8_t* src = (const uint8_t*)&colors;
+    for (size_t i = 0; i < offsetof(Theme, radius); i++) {
+        dst[i] = src[i];
+    }
 }
 
 static void ThemeTokensReconcile(Theme* t, const Theme* colorsBefore,

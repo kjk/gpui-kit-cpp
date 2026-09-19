@@ -13,6 +13,7 @@
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
 #   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
+#   xvfb, xauth                              — a display for headless UI tests
 #   fonts-dejavu-core, fonts-noto-cjk        — the Sans / Monospace families
 #   git, curl, unzip                         — fetching the Rust spec tree
 #   bun                                      — runs cmd/*.ts
@@ -68,6 +69,8 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   libgdk-pixbuf-2.0-dev \
   libglib2.0-dev \
   libcurl4-openssl-dev \
+  xvfb \
+  xauth \
   fonts-dejavu-core \
   fontconfig \
   ca-certificates \

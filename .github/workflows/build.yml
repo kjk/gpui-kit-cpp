@@ -91,10 +91,14 @@ jobs:
         if: matrix.name == 'linux' || matrix.name == 'macos'
         run: bun cmd/build.ts -rel -all
 
-      # macOS runners have no login session, so only the tests can run there;
-      # they draw nothing and need no window.
-      - name: Test (Linux / macOS)
-        if: matrix.name == 'linux' || matrix.name == 'macos'
+      # Linux AppNew opens X11 even for tests that never create a window.
+      - name: Test (Linux)
+        if: matrix.name == 'linux'
+        run: xvfb-run -a bun cmd/test.ts -rel
+
+      # macOS runners have no login session; the tests draw no window.
+      - name: Test (macOS)
+        if: matrix.name == 'macos'
         run: bun cmd/test.ts -rel
 
       # Amalgamation can hide missing includes, declarations and duplicate
@@ -165,4 +169,4 @@ jobs:
         if: matrix.name == 'linux-clang-mini'
         run: |
           bun cmd/build.ts -clang -rel -markdown=mini -html=mini -all
-          bun cmd/test.ts -clang -rel -markdown=full -html=full
+          xvfb-run -a bun cmd/test.ts -clang -rel -markdown=full -html=full

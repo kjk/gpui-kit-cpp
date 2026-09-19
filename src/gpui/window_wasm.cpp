@@ -112,7 +112,7 @@ EM_JS(void, GpJsCanvasOrigin, (float* outX, float* outY), {
 // story-web's run(story, dark): the standalone page may name one embedded
 // story and its initial theme. Existing command-line arguments still win.
 EM_JS(int, GpJsPageOptions, (char* slug, int cap), {
-    const q = new URLSearchParams(globalThis.location.search);
+    const q = new URLSearchParams(globalThis.location?.search || "");
     const name = q.get("story") || "";
     const bytes = new TextEncoder().encode(name);
     const n = Math.min(bytes.length, cap - 1);
