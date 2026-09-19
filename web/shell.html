@@ -3,11 +3,9 @@
   The page a gpui example is served in. emcc substitutes {{{ SCRIPT }}} with
   the tag that loads the module; everything else here is ours.
 
-  There is one job: put a canvas called `gpui-canvas` at the top left of the
-  viewport and leave it there. src/gpui/window_wasm.cpp reads a mouse event's
-  clientX/clientY as a window coordinate, which is only true while the canvas
-  and the viewport share an origin, and it sizes the window from the canvas's
-  bounding box on every resize.
+  The standalone page fills the viewport. An embedding page may position the
+  canvas elsewhere; window_wasm.cpp maps pointer coordinates through its
+  bounding box and watches its size.
 -->
 <html lang="en">
   <head>
@@ -90,14 +88,6 @@
           });
         },
       };
-      // A canvas only gets keystrokes while it has the focus, and a click
-      // anywhere on the page should put it back.
-      window.addEventListener("pointerdown", function () {
-        var c = document.getElementById("gpui-canvas");
-        if (c) {
-          c.focus({ preventScroll: true });
-        }
-      });
     </script>
     {{{ SCRIPT }}}
   </body>

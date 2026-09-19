@@ -246,9 +246,10 @@ without the variable it is inert.
 <example>` builds, serves and opens it — a wasm module must come off a server.
 Emscripten is found through `$EMCC`, `$EMSDK`, `PATH` or a sibling `.emsdk`, and
 only when the target is wasm; the browser half draws through Canvas2D and takes
-no library. `web/shell.html` puts a canvas called `gpui-canvas` at the top left
-of the viewport and does nothing else, which is what lets `window_wasm.cpp`
-read a `clientX` as a window coordinate. Assets preload into MEMFS at
+no library. `web/shell.html` fills the viewport with a canvas called
+`gpui-canvas`; an embedding page may position that canvas elsewhere, and
+`window_wasm.cpp` translates viewport pointer coordinates through its bounding
+box. Assets preload into MEMFS at
 `/assets`, so `gpui/assets.cpp` walks them with the same `fopen`.
 
 The whole platform layer is `EM_JS` over one `globalThis.__gpui` object handed

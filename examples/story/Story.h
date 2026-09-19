@@ -92,6 +92,7 @@ struct StoryApp {
     static El* Render(StoryApp* self, Ctx* cx);
 
     int story = StoryWelcome;
+    bool embedded = false;
     float scrollY = 0;
     float sideScrollY = 0;
     bool collapsed = false;

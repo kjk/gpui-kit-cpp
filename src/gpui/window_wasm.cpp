@@ -4,17 +4,16 @@
    WindowCommon.cpp.
 
    Like the cairo target, the canvas runs at 96 dpi, so one DIP is one CSS
-   pixel and no coordinate here is scaled — Paint_wasm.cpp puts the device
-   pixel ratio on the context so the glyphs are still drawn at the display's
-   own resolution.
+   pixel. Pointer positions are translated from viewport to canvas coordinates
+   so an embedding page may place the canvas away from the origin.
 
    Where a page is not a desktop:
 
    - One window. A tab has one canvas, and a second WindowOpen answers null
      rather than pretending. Every example in this tree opens one.
-   - The window is the viewport. There is no frame to minimize, and the
-     maximize control asks for fullscreen; a drag on the caption is the
-     browser's, not ours.
+   - A standalone window fills the viewport; an embedded one uses the host's
+     canvas bounds. There is no frame to minimize, and the maximize control
+     asks for fullscreen; a drag on the caption cannot move a browser tab.
    - The clipboard is asynchronous. ClipboardSetText writes through
      navigator.clipboard, which works because every path to it here is inside
      a keystroke; ClipboardGetText answers a mirror that the DOM `paste` event
@@ -35,7 +34,7 @@
 namespace gpui {
 
 struct PlatWindow {
-    // The viewport, in CSS pixels, which are DIPs here.
+    // The canvas box, in CSS pixels, which are DIPs here.
     int cssW = 0;
     int cssH = 0;
     bool dirty = true;
@@ -65,8 +64,8 @@ double TimeNow() {
 
 // clang-format off
 
-// Find or make the canvas, hand it to the paint backend, and answer the
-// viewport size. The shell page normally supplies the element; making one
+// Find or make the canvas, hand it to the paint backend, and answer its CSS
+// size. The shell page normally supplies the element; making one
 // here means a bare page still runs.
 EM_JS(void, GpJsAttach, (int* outW, int* outH), {
     let c = document.getElementById("gpui-canvas");
@@ -85,16 +84,37 @@ EM_JS(void, GpJsAttach, (int* outW, int* outH), {
         c.setAttribute("tabindex", "0");
     }
     c.style.outline = "none";
-    c.focus();
     const G = globalThis.__gpui;
     G.canvas = c;
     G.ctx = c.getContext("2d");
-    // Every mouse coordinate below is a clientX/clientY, so the canvas has to
-    // sit at the top left of the viewport. The shell page's CSS says so; this
-    // is here for the page that has none.
+    if (!G.resizeObserver && typeof ResizeObserver !== "undefined") {
+        G.resizeObserver = new ResizeObserver(function() {
+            _gpui_wasm_resize();
+        });
+        G.resizeObserver.observe(c);
+    }
     const r = c.getBoundingClientRect();
     HEAP32[outW >> 2] = Math.max(1, Math.round(r.width));
     HEAP32[outH >> 2] = Math.max(1, Math.round(r.height));
+});
+
+EM_JS(void, GpJsCanvasOrigin, (float* outX, float* outY), {
+    const r = globalThis.__gpui.canvas.getBoundingClientRect();
+    HEAPF32[outX >> 2] = r.left;
+    HEAPF32[outY >> 2] = r.top;
+});
+
+// story-web's run(story, dark): the standalone page may name one embedded
+// story and its initial theme. Existing command-line arguments still win.
+EM_JS(int, GpJsPageOptions, (char* slug, int cap), {
+    const q = new URLSearchParams(globalThis.location.search);
+    const name = q.get("story") || "";
+    const bytes = new TextEncoder().encode(name);
+    const n = Math.min(bytes.length, cap - 1);
+    HEAPU8.set(bytes.subarray(0, n), slug);
+    HEAPU8[slug + n] = 0;
+    const dark = q.get("dark");
+    return (n > 0 ? 1 : 0) | (dark === "1" || dark === "true" ? 2 : 0);
 });
 
 EM_JS(void, GpJsViewport, (int* outW, int* outH), {
@@ -168,7 +188,7 @@ EM_JS(void, GpJsToggleFullscreen, (), {
 EM_JS(void, GpJsInstallClipboard, (), {
     globalThis.__gpuiClip = globalThis.__gpuiClip || "";
     document.addEventListener("paste", function(e) {
-        if (!e.clipboardData) {
+        if (!e.clipboardData || document.activeElement !== globalThis.__gpui.canvas) {
             return;
         }
         globalThis.__gpuiClip = e.clipboardData.getData("text/plain") || "";
@@ -279,19 +299,32 @@ static uint32_t CharOf(const EmscriptenKeyboardEvent* e) {
     return cp;
 }
 
-// Whether the browser should be left to do whatever it would have done. Its
-// own chords — reload, the address bar, the developer tools — stay the
-// browser's; everything else belongs to the element tree, which is what a
-// desktop window would get.
+// Browser chords such as reload, the address bar and developer tools stay in
+// the browser. Editing chords go to the focused canvas and are consumed there.
+static bool EditingChord(int vk) {
+    return vk == KeyA || vk == KeyC || vk == KeyX || vk == KeyZ ||
+           vk == KeyY;
+}
+
+static bool AltGraphText(const EmscriptenKeyboardEvent* e) {
+    return e->ctrlKey && e->altKey && CharOf(e) >= 32;
+}
+
 static bool BrowserKeepsIt(const EmscriptenKeyboardEvent* e, int vk) {
-    if (e->metaKey) {
+    if (AltGraphText(e)) {
+        return false;
+    }
+    // Ctrl/Cmd+Shift+C opens the browser's inspector.
+    if (e->shiftKey && vk == KeyC && (e->ctrlKey || e->metaKey)) {
         return true;
+    }
+    if (e->metaKey) {
+        return !EditingChord(vk);
     }
     if (e->ctrlKey) {
         // The editing chords the tree binds, and nothing else. V is not one
         // of them: it is let through so the DOM paste event fires.
-        return !(vk == KeyA || vk == KeyC || vk == KeyX || vk == KeyZ ||
-                 vk == KeyY);
+        return !EditingChord(vk);
     }
     // F1..F12 and the function-key row.
     return vk >= 112 && vk <= 123;
@@ -304,26 +337,34 @@ static EM_BOOL OnKeyDown(int, const EmscriptenKeyboardEvent* e, void*) {
     }
     int vk = KeyFor(e);
     bool keep = BrowserKeepsIt(e, vk);
+    if (keep) {
+        return EM_FALSE;
+    }
+    // GPUI_OS_WASM uses the ctrl bindings. macOS browsers send meta for the
+    // same editing chords, so translate those before dispatching to the tree.
+    bool altGraph = AltGraphText(e);
+    bool ctrl = (e->ctrlKey && !altGraph) ||
+                (e->metaKey && EditingChord(vk));
     if (vk) {
-        WindowKeyDown(win, vk, e->shiftKey != 0, e->ctrlKey != 0,
-                      e->altKey != 0, e->metaKey != 0);
+        WindowKeyDown(win, vk, e->shiftKey != 0, ctrl,
+                      e->altKey && !altGraph, false);
     }
     // Backspace arrives as WM_CHAR 8 on Windows and the bound InputState
     // edits on that; the DOM only reports the key, so raise it here the way
     // the X11 window does.
     if (vk == KeyBack) {
-        WindowChar(win, 8, e->ctrlKey != 0, e->altKey != 0);
-        return keep ? EM_FALSE : EM_TRUE;
+        WindowChar(win, 8, ctrl, e->altKey != 0);
+        return EM_TRUE;
     }
-    if (e->ctrlKey || e->metaKey || e->altKey || vk == KeyReturn ||
+    if (ctrl || e->metaKey || (e->altKey && !altGraph) || vk == KeyReturn ||
         vk == KeyTab || vk == KeyEscape) {
-        return keep ? EM_FALSE : EM_TRUE;
+        return EM_TRUE;
     }
     uint32_t cp = CharOf(e);
     if (cp >= 32 && cp != 127) {
         WindowChar(win, cp, false, false);
     }
-    return keep ? EM_FALSE : EM_TRUE;
+    return EM_TRUE;
 }
 
 static EM_BOOL OnKeyUp(int, const EmscriptenKeyboardEvent* e, void*) {
@@ -332,18 +373,27 @@ static EM_BOOL OnKeyUp(int, const EmscriptenKeyboardEvent* e, void*) {
         return EM_FALSE;
     }
     int vk = KeyFor(e);
-    if (vk) {
-        WindowKeyUp(win, vk, e->shiftKey != 0, e->ctrlKey != 0, e->altKey != 0,
-                    e->metaKey != 0);
+    if (BrowserKeepsIt(e, vk)) {
+        return EM_FALSE;
     }
-    return BrowserKeepsIt(e, vk) ? EM_FALSE : EM_TRUE;
+    bool altGraph = AltGraphText(e);
+    if (vk) {
+        WindowKeyUp(win, vk, e->shiftKey != 0,
+                    (e->ctrlKey && !altGraph) ||
+                        (e->metaKey && EditingChord(vk)),
+                    e->altKey && !altGraph, false);
+    }
+    return EM_TRUE;
 }
 
 // ─── the mouse ────────────────────────────────────────────────────────────
 //
-// The canvas fills the viewport and sits at its top left, so a clientX is
-// already a window coordinate and nothing has to ask for a bounding box on
-// the way through.
+// DOM client coordinates belong to the viewport; GPUI's belong to the canvas.
+static Point CanvasPoint(float clientX, float clientY) {
+    float left = 0, top = 0;
+    GpJsCanvasOrigin(&left, &top);
+    return {clientX - left, clientY - top};
+}
 
 static Modifiers ModsOf(const EmscriptenMouseEvent* e) {
     Modifiers m;
@@ -398,8 +448,9 @@ static EM_BOOL OnMouseDown(int, const EmscriptenMouseEvent* e, void*) {
     if (!win || !win->plat || !win->plat->open) {
         return EM_FALSE;
     }
-    float x = (float)e->clientX;
-    float y = (float)e->clientY;
+    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
+    float x = p.x;
+    float y = p.y;
     MouseButton button = MouseButton::Left;
     if (!ButtonOf(e->button, &button)) {
         return EM_FALSE;
@@ -445,9 +496,9 @@ static EM_BOOL OnMouseUp(int, const EmscriptenMouseEvent* e, void*) {
     if (!ButtonOf(e->button, &button)) {
         return EM_FALSE;
     }
-    PlatformInput in =
-        InputMouseUp(button, (float)e->clientX, (float)e->clientY, ModsOf(e),
-                     WindowCurrentClickCount(win));
+    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
+    PlatformInput in = InputMouseUp(button, p.x, p.y, ModsOf(e),
+                                    WindowCurrentClickCount(win));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
@@ -459,8 +510,8 @@ static EM_BOOL OnMouseMove(int, const EmscriptenMouseEvent* e, void*) {
     }
     MouseButton held = MouseButton::Left;
     bool any = HeldButton(e->buttons, &held);
-    PlatformInput in = InputMouseMove((float)e->clientX, (float)e->clientY, any,
-                                      held, ModsOf(e));
+    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
+    PlatformInput in = InputMouseMove(p.x, p.y, any, held, ModsOf(e));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
@@ -472,8 +523,8 @@ static EM_BOOL OnMouseLeave(int, const EmscriptenMouseEvent* e, void*) {
     }
     MouseButton held = MouseButton::Left;
     bool any = HeldButton(e->buttons, &held);
-    PlatformInput in = InputMouseExited((float)e->clientX, (float)e->clientY,
-                                        any, held, ModsOf(e));
+    Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
+    PlatformInput in = InputMouseExited(p.x, p.y, any, held, ModsOf(e));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
@@ -493,8 +544,9 @@ static EM_BOOL OnWheel(int, const EmscriptenWheelEvent* e, void*) {
     } else if (e->deltaMode == DOM_DELTA_PAGE) {
         scale = (float)win->plat->cssH;
     }
+    Point p = CanvasPoint((float)e->mouse.clientX, (float)e->mouse.clientY);
     PlatformInput in = InputScrollWheel(
-        (float)e->mouse.clientX, (float)e->mouse.clientY,
+        p.x, p.y,
         -(float)e->deltaX * scale, -(float)e->deltaY * scale,
         e->deltaMode == DOM_DELTA_PIXEL, ModsOf(&e->mouse), TouchPhase::Moved);
     WindowDispatchInput(win, &in);
@@ -514,6 +566,10 @@ static EM_BOOL OnResize(int, const EmscriptenUiEvent*, void*) {
         win->plat->dirty = true;
     }
     return EM_TRUE;
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_resize(void) {
+    OnResize(0, nullptr, nullptr);
 }
 
 static EM_BOOL OnFocus(int type, const EmscriptenFocusEvent*, void*) {
@@ -757,8 +813,8 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     win->plat = pw;
     gWin = win;
 
-    // The requested size is the desktop's business. A page is as big as its
-    // viewport, which is where the window's size comes from instead.
+    // The requested desktop size is ignored. The host page owns the canvas
+    // box and may resize it independently of the viewport.
     int w = 0, h = 0;
     GpJsAttach(&w, &h);
     pw->cssW = w;
@@ -777,15 +833,15 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
                                       EM_FALSE, OnMouseMove);
     emscripten_set_mouseleave_callback(canvas, nullptr, EM_FALSE, OnMouseLeave);
     emscripten_set_wheel_callback(canvas, nullptr, EM_FALSE, OnWheel);
-    emscripten_set_keydown_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+    emscripten_set_keydown_callback(canvas, nullptr,
                                     EM_FALSE, OnKeyDown);
-    emscripten_set_keyup_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+    emscripten_set_keyup_callback(canvas, nullptr,
                                   EM_FALSE, OnKeyUp);
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                    EM_FALSE, OnResize);
-    emscripten_set_focus_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+    emscripten_set_focus_callback(canvas, nullptr,
                                   EM_FALSE, OnFocus);
-    emscripten_set_blur_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
+    emscripten_set_blur_callback(canvas, nullptr,
                                  EM_FALSE, OnFocus);
 
     PlatSetTimer(win, WindowTimerMs(win));
@@ -844,5 +900,18 @@ int main(int argc, char** argv) {
     // Strip the -gpui-* flags here too, so an example parses the same argv on
     // every platform.
     argc = gpui::GpuiTakeRuntimeArgs(argc, argv);
-    return GpuiMain(argc, argv);
+    char slug[128] = {};
+    int options = gpui::GpJsPageOptions(slug, sizeof(slug));
+    char* args[128] = {};
+    int count = argc < 125 ? argc : 125;
+    for (int i = 0; i < count; i++) {
+        args[i] = argv[i];
+    }
+    if (options & 1) {
+        args[count++] = slug;
+    }
+    if (options & 2) {
+        args[count++] = (char*)"--dark";
+    }
+    return GpuiMain(count, args);
 }

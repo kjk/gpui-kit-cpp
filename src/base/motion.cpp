@@ -375,7 +375,6 @@ float MotionSample(const Motion& m, float progress) {
     return m.easing.Sample(progress);
 }
 
-static bool gReducedAsked = false;
 static bool gReduced = false;
 static bool gHasApplied = false;
 static bool gApplied = false;
@@ -386,12 +385,10 @@ bool MotionReduced() {
 }
 
 void MotionSetReduced(bool on) {
-    gReducedAsked = true;
     gReduced = on;
 }
 
 void MotionResetReduceForTest() {
-    gReducedAsked = false;
     gReduced = false;
     gHasApplied = false;
     gApplied = false;
@@ -402,7 +399,6 @@ void ApplyReduceMotionPreference(bool reduce) {
     if (gReduced != applied) {
         return;
     }
-    gReducedAsked = true;
     gReduced = reduce;
     gHasApplied = true;
     gApplied = reduce;

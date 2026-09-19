@@ -1051,7 +1051,7 @@ static Str StoryWindowTitle() {
 
 static void StoryInitKeys();
 
-static Window* StoryOpenWindow(App* app, int story) {
+static Window* StoryOpenWindow(App* app, int story, bool embedded = false) {
     StoryInitKeys();
     Entity<StoryApp> view = EntityNew<StoryApp>(app);
     StoryApp* self = view.Get(app);
@@ -1059,6 +1059,7 @@ static Window* StoryOpenWindow(App* app, int story) {
         return nullptr;
     }
     self->story = story;
+    self->embedded = embedded;
     const char* envFps = getenv("GPUI_FPS");
     if (envFps && envFps[0] && envFps[0] != '0') {
         self->fpsMonitor = true;
@@ -1069,15 +1070,15 @@ static Window* StoryOpenWindow(App* app, int story) {
     // platform. macOS keeps the traffic lights over a transparent one,
     // Windows and X11 have none, so component::TitleBar draws the minimize /
     // maximize / close controls there itself.
-    opts.clientTitleBar = true;
+    opts.clientTitleBar = !embedded;
     // `story_window_background()`: upstream stopped advertising an alpha
     // surface on Linux, because a compositor was showing the desktop through
     // a light theme even though every story is designed against an opaque
     // canvas. There is nothing to change here — `window_linux.cpp` asks X11
     // for an ordinary opaque visual and never sets an ARGB one — so this is
     // where that decision would live if the seam existed.
-    Window* win =
-        WindowOpenView(app, StoryWindowTitle(), 1600, 1200, view.id, opts);
+    Window* win = WindowOpenView(app, embedded ? Str{} : StoryWindowTitle(),
+                                 1600, 1200, view.id, opts);
     if (!win) {
         return nullptr;
     }
@@ -1729,6 +1730,23 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
     if (!app->seeded) {
         app->seeded = true;
     }
+    // story-web's Gallery::embedded_view and StoryRoot::embedded: a page that
+    // names one story supplies its own surrounding UI. Keep our Root layers
+    // for dialogs and notifications, but no gallery chrome or window frame.
+    if (app->embedded) {
+        El* scroller = Div(frame)
+                           ->FlexCol()
+                           ->SizeFull()
+                           ->ClipY()
+                           ->ScrollY(app->scrollY)
+                           ->ScrollId(PageScrollId())
+                           ->OnScroll(Listen(cx, &OnPaneScroll));
+        scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
+            StoryRenderRegistered(app, cx)));
+        return component::Root::New(cx)
+            ->Child(scroller)
+            ->IntoEl();
+    }
     // The window's outermost view is a Root, which is what Rust puts under
     // every window: the page, and over it the layers the window owns.
     El* root = Div(frame)->FlexCol()->SizeFull();
@@ -1842,7 +1860,12 @@ static void OnKey(StoryApp* app, Ctx* cx, const KeyEvent* ev) {
 
 // The story to open, if one was named on the command line.
 static Str ParseSlug(int argc, char** argv) {
-    return argc >= 2 && argv[1] ? Str(argv[1]) : Str{};
+    for (int i = 1; i < argc; i++) {
+        if (argv[i] && argv[i][0] != '-') {
+            return Str(argv[i]);
+        }
+    }
+    return {};
 }
 
 int GpuiMain(int argc, char** argv) {
@@ -1853,7 +1876,11 @@ int GpuiMain(int argc, char** argv) {
     // with it; the other backends do not have one to name yet.
     SysNotifySetAppIdentity(StrL("com.longbridge.gpui-kit.story"),
                             StrL("GPUI Kit"));
-    ThemeSet(app, ThemeMode::Light);
+    bool dark = false;
+    for (int i = 1; i < argc; i++) {
+        dark |= argv[i] && base::StrEq(Str(argv[i]), StrL("--dark"));
+    }
+    ThemeSet(app, dark ? ThemeMode::Dark : ThemeMode::Light);
     AssetsClear();
     AssetsAddDefaultRoots(Str{});
     AssetsAddRoot(StrL("assets"));
@@ -1870,7 +1897,8 @@ int GpuiMain(int argc, char** argv) {
     }
 
     Str slug = ParseSlug(argc, argv);
-    Window* win = StoryOpenWindow(app, StoryFromSlug(slug.s));
+    Window* win = StoryOpenWindow(app, StoryFromSlug(slug.s),
+                                  GPUI_OS_WASM && len(slug) > 0);
     if (!win) {
         AppFree(app);
         return 1;
