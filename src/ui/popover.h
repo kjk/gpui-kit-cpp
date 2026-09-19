@@ -13,13 +13,10 @@ namespace component {
 // completion popovers — so they cannot drift apart into three radii and two
 // shadows the way upstream's had.
 //
-// What is here and what is not: upstream draws **no border** on a popup. Its
-// edge is a 1px translucent ring spent as a shadow layer, so the shadow shows
-// through it and the edge reads as one grounded surface rather than an outline
-// with a detached shadow under it. An element here carries no box shadow at
-// all — only the window border draws one — so the surface keeps the 1px border
-// it has always had, and the ring, the two blurred layers and the σ-against-CSS
-// blur correction wait for the day paint.h grows shadows.
+// Upstream draws **no border** on a popup. Its edge is a 1px translucent
+// ring spent as a shadow layer, so the shadow shows through it. The two
+// blurred layers use Tailwind's radii halved (CSS blur is 2σ; PaintBoxShadow
+// takes σ), matching styled.rs popover_shadow.
 El* PopoverSurface(Ctx* cx, El* e);
 
 // popover.rs: how long a dropdown takes to settle into place after it opens,

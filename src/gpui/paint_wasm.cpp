@@ -23,6 +23,7 @@
      Pango and DirectWrite on everything Latin. */
 
 #include "gpui/paint.h"
+#include "gpui/scene.h"
 
 #include <emscripten/emscripten.h>
 #include <math.h>
@@ -30,6 +31,20 @@
 namespace gpui {
 
 static uint64_t gNextPaintResourceGeneration = 1;
+static bool gOffscreenWasRecording = false;
+static bool gNoSceneBegin = false;
+
+static bool SceneFinish(PaintCtx* ctx) {
+    if (!SceneOn() || !scene::Recording()) {
+        return true;
+    }
+    Bounds damage = {};
+    bool draw = scene::FrameEnd(ctx, &damage);
+    if (draw) {
+        scene::Replay(ctx, &damage);
+    }
+    return draw;
+}
 
 static uint64_t PaintResourceGenerationNew() {
     uint64_t id = gNextPaintResourceGeneration++;
@@ -994,32 +1009,43 @@ bool PaintTargetBegin(PaintCtx* ctx, void* native, int pxW, int pxH) {
         return false;
     }
     ctx->rt = new PaintTarget();
+    if (SceneOn() && !gNoSceneBegin) {
+        scene::FrameBegin(ctx);
+    }
     return true;
 }
 
 bool PaintTargetBeginOffscreen(PaintCtx* ctx, int pxW, int pxH) {
+    gOffscreenWasRecording = scene::SuspendBegin();
     if (!ctx || !ctx->pa) {
+        scene::SuspendEnd(gOffscreenWasRecording);
         return false;
     }
     PaintTargetFree(ctx);
     if (!GpJsTargetBeginOffscreen(pxW, pxH)) {
+        scene::SuspendEnd(gOffscreenWasRecording);
         return false;
     }
+    gNoSceneBegin = true;
     ctx->rt = new PaintTarget();
     ctx->rt->offscreen = true;
+    gNoSceneBegin = false;
     return true;
 }
 
 bool PaintTargetEndOffscreen(PaintCtx* ctx, uint8_t* outBgra) {
     if (!ctx || !ctx->rt || !ctx->rt->offscreen) {
+        scene::SuspendEnd(gOffscreenWasRecording);
         return false;
     }
     bool ok = GpJsTargetEndOffscreen(outBgra) != 0;
     PaintTargetFree(ctx);
+    scene::SuspendEnd(gOffscreenWasRecording);
     return ok;
 }
 
 bool PaintTargetEnd(PaintCtx* ctx) {
+    SceneFinish(ctx);
     if (!ctx || !ctx->rt) {
         return false;
     }
@@ -1031,6 +1057,10 @@ bool PaintTargetEnd(PaintCtx* ctx) {
 // ─── canvas ───────────────────────────────────────────────────────────────
 
 void CanvasClear(PaintCtx* ctx, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecClear(ctx, c);
+        return;
+    }
     if (!ctx || !ctx->rt) {
         return;
     }
@@ -1038,6 +1068,10 @@ void CanvasClear(PaintCtx* ctx, Rgba c) {
 }
 
 void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecFillRect(ctx, x, y, w, h, c);
+        return;
+    }
     if (!ctx || !ctx->rt || w <= 0 || h <= 0 || c.a == 0) {
         return;
     }
@@ -1046,6 +1080,10 @@ void CanvasFillRect(PaintCtx* ctx, float x, float y, float w, float h, Rgba c) {
 
 void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
                      Rgba c) {
+    if (scene::Recording()) {
+        scene::RecFillRound(ctx, x, y, w, h, r, c);
+        return;
+    }
     if (!ctx || !ctx->rt || w <= 0 || h <= 0 || c.a == 0) {
         return;
     }
@@ -1055,6 +1093,10 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
 
 void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
                        float r, float stroke, Rgba c, const float* dash) {
+    if (scene::Recording()) {
+        scene::RecStrokeRound(ctx, x, y, w, h, r, stroke, c, dash);
+        return;
+    }
     if (!ctx || !ctx->rt || stroke <= 0 || w <= 0 || h <= 0) {
         return;
     }
@@ -1067,6 +1109,10 @@ void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
 
 void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
                 float stroke, Rgba c, const float* dash) {
+    if (scene::Recording()) {
+        scene::RecLine(ctx, x1, y1, x2, y2, stroke, c, dash);
+        return;
+    }
     if (!ctx || !ctx->rt) {
         return;
     }
@@ -1077,6 +1123,10 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
 
 void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
                    float stroke, Rgba c) {
+    if (scene::Recording()) {
+        scene::RecEllipse(ctx, cx, cy, rx, ry, stroke, c);
+        return;
+    }
     if (!ctx || !ctx->rt || rx <= 0 || ry <= 0) {
         return;
     }
@@ -1089,12 +1139,20 @@ void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
 }
 
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h) {
+    if (scene::Recording()) {
+        scene::RecPushClip(ctx, x, y, w, h);
+        return;
+    }
     if (ctx && ctx->rt) {
         GpJsPushClip(x, y, w, h);
     }
 }
 
 void CanvasPopClip(PaintCtx* ctx) {
+    if (scene::Recording()) {
+        scene::RecPopClip(ctx);
+        return;
+    }
     if (ctx && ctx->rt) {
         GpJsPopClip();
     }
@@ -1139,6 +1197,9 @@ static void Push(Path* p, float cmd, float a = 0, float b = 0, float c = 0,
 }
 
 Path* PathNew(PaintCtx* ctx, bool winding) {
+    if (scene::Recording()) {
+        return scene::RecPathNew(ctx, winding);
+    }
     if (!ctx) {
         return nullptr;
     }
@@ -1148,6 +1209,10 @@ Path* PathNew(PaintCtx* ctx, bool winding) {
 }
 
 void PathFree(Path* p) {
+    if (scene::Recording()) {
+        scene::RecPathFree(p);
+        return;
+    }
     if (!p) {
         return;
     }
@@ -1158,6 +1223,10 @@ void PathFree(Path* p) {
 }
 
 void PathMoveTo(Path* p, float x, float y) {
+    if (scene::Recording()) {
+        scene::RecPathMoveTo(p, x, y);
+        return;
+    }
     if (!p) {
         return;
     }
@@ -1166,6 +1235,10 @@ void PathMoveTo(Path* p, float x, float y) {
 }
 
 void PathLineTo(Path* p, float x, float y) {
+    if (scene::Recording()) {
+        scene::RecPathLineTo(p, x, y);
+        return;
+    }
     if (!p) {
         return;
     }
@@ -1178,6 +1251,10 @@ void PathLineTo(Path* p, float x, float y) {
 
 void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
                  float y) {
+    if (scene::Recording()) {
+        scene::RecPathCubicTo(p, x1, y1, x2, y2, x, y);
+        return;
+    }
     if (!p) {
         return;
     }
@@ -1190,6 +1267,10 @@ void PathCubicTo(Path* p, float x1, float y1, float x2, float y2, float x,
 
 void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
                bool clockwise) {
+    if (scene::Recording()) {
+        scene::RecPathArcTo(p, cx, cy, r, a0, a1, clockwise);
+        return;
+    }
     if (!p) {
         return;
     }
@@ -1198,6 +1279,10 @@ void PathArcTo(Path* p, float cx, float cy, float r, float a0, float a1,
 }
 
 void PathClose(Path* p) {
+    if (scene::Recording()) {
+        scene::RecPathClose(p);
+        return;
+    }
     if (!p || !p->fig) {
         return;
     }
@@ -1223,6 +1308,10 @@ void PathRealize(PaintCtx* ctx, Path* p) {
 }
 
 void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathFill(ctx, p, c);
+        return;
+    }
     int id = JsPath(p);
     if (!id || !ctx || !ctx->rt) {
         return;
@@ -1237,6 +1326,10 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
 
 void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
+        return;
+    }
     int id = JsPath(p);
     if (!id || !ctx || !ctx->rt) {
         return;
@@ -1247,6 +1340,10 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
 
 void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
                 float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
+        return;
+    }
     int id = JsPath(p);
     if (!id || !ctx || !ctx->rt) {
         return;
@@ -1366,6 +1463,11 @@ int RenderImageFrameDurationMs(const RenderImage* img, int frameIndex) {
 void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                      Bounds imageBounds, int frameIndex, float radius,
                      bool grayscale) {
+    if (scene::Recording()) {
+        scene::RecImageDraw(ctx, img, bounds, imageBounds, frameIndex, radius,
+                            grayscale);
+        return;
+    }
     (void)frameIndex;
     if (!ctx || !ctx->rt || !img || !img->js || bounds.w <= 0 ||
         bounds.h <= 0 || imageBounds.w <= 0 || imageBounds.h <= 0) {
@@ -1443,13 +1545,27 @@ uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
 }
 
-bool PaintTextLayoutSpans(PaintCtx*, TextLayout*, Str, float, float, Rgba,
-                          const TextSpan*, int) {
+bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
+                          float y, Rgba base, const TextSpan* spans, int n) {
+    if (scene::Recording()) {
+        return scene::RecTextDrawSpans(ctx, tl, text, x, y, base, spans, n);
+    }
+    (void)tl;
+    (void)text;
+    (void)x;
+    (void)y;
+    (void)base;
+    (void)spans;
+    (void)n;
     return false;
 }
 
 void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
                     bool clip, float clipW) {
+    if (scene::Recording()) {
+        scene::RecTextDraw(ctx, tl, x, y, c, clip, clipW);
+        return;
+    }
     // No ellipsis here yet: Canvas2D has no trimming, so it would have to be
     // measured and appended by hand. A truncated run is cut at the box edge.
     (void)clipW;

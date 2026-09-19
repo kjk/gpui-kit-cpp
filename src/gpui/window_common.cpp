@@ -3430,6 +3430,9 @@ int GpuiTakeRuntimeArgs(int argc, char** argv) {
             continue;
         }
 #endif
+        if (i > 0 && argument && SceneTakeArg(argument)) {
+            continue;
+        }
         if (i > 0 && argument && LayoutReuseTakeArg(argument)) {
             continue;
         }

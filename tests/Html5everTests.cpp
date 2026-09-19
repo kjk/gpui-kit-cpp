@@ -40,6 +40,17 @@ static Node* DocumentBody(Arena* a, Node* doc) {
     return ElementChild(a, html, StrL("body"));
 }
 
+static void TestNamedCharacterReferences(Arena* a) {
+    Node* doc = ParseFragment(a, StrL("<p>&eacute;&nbsp;&frac12;</p>"));
+    Node* p = ElementChild(a, doc, StrL("p"));
+    utassert(p != nullptr);
+    Node* text = NodeFirst(a, p);
+    utassert(text && text->kind == NodeKind::Text);
+    Str data = NodeData(a, text);
+    utassert(base::StrContains(data, StrL("é")));
+    utassert(base::StrContains(data, StrL("½")));
+}
+
 static void TestDocumentAndImpliedEnds(Arena* a) {
     Node* doc = ParseDocument(a, StrL("<!doctype html><p>one<p>two"));
     utassert(NodeFirst(a, doc) && NodeFirst(a, doc)->kind == NodeKind::Doctype);
@@ -123,6 +134,7 @@ void TestHtml5ever() {
     TestSharedSurface(a);
     TestIncrementalAndScriptPause(a);
 #if GPUI_HTML5EVER_FULL
+    TestNamedCharacterReferences(a);
     TestDocumentAndImpliedEnds(a);
     TestTableModes(a);
     TestForeignContent(a);

@@ -114,24 +114,7 @@ static ArenaStr LowerCopy(Arena* a, Str value) {
     return result;
 }
 
-// The frequently occurring named references. Numeric references cover the
-// rest of the compact implementation; the full markdown build already owns
-// the generated 2,125-name database used by TextView's HTML projection.
-// Keeping this tokenizer's standalone table as SeqStrings avoids a pointer
-// relocation per spelling and per value.
-static const char kEntityNames[] =
-    "AMP\0AElig\0COPY\0CounterClockwiseContourIntegral\0GT\0LT\0QUOT\0REG\0"
-    "amp\0apos\0cent\0copy\0euro\0gt\0hellip\0laquo\0ldquo\0lsquo\0lt\0"
-    "mdash\0middot\0nbsp\0ndash\0pound\0quot\0raquo\0rdquo\0reg\0rsquo\0"
-    "trade\0yen\0";
-static const char kEntityValues[] =
-    "&\0Æ\0©\0∳\0>\0<\0\"\0®\0&\0'\0¢\0©\0€\0>\0…\0«\0“\0‘\0<\0—\0"
-    "·\0 \0–\0£\0\"\0»\0”\0®\0’\0™\0¥\0";
-
-static Str NamedEntity(Str name) {
-    int ix = SeqStrIndex(kEntityNames, name);
-    return ix < 0 ? Str{} : SeqStrByIndex(kEntityValues, ix);
-}
+Str NamedEntity(Str name);
 
 static uint32_t NumericEntity(Str value, int radix) {
     uint32_t cp = 0;
@@ -249,8 +232,10 @@ static ArenaStr Decode(Arena* a, Str value, bool attribute) {
             continue;
         }
         int end = i;
-        while (end < len(value) && IsAlpha(value.s[end]) && end - i < 31) end++;
-        if (end < len(value) && IsDigit(value.s[end])) end++;
+        while (end < len(value) && end - i < 31 &&
+               (IsAlpha(value.s[end]) || IsDigit(value.s[end]))) {
+            end++;
+        }
         int matched = -1;
         Str decoded = {};
         for (int n = end - i; n > 0; n--) {

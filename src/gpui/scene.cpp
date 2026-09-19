@@ -4,15 +4,16 @@
    backend cannot tell the difference. See scene.h for what it is for and what
    it is short of.
 
-   Only the Windows entry points dispatch into the recorder today; hooking a
-   second platform up is the same one line at the top of each Paint.h entry
-   point that paint_win.cpp has. */
+   Each paint backend dispatches into the recorder with the same one line at
+   the top of each Paint.h entry point. */
 
 #include "gpui/scene.h"
 
 #include <string.h>
 
 namespace gpui {
+
+static int gSceneLevel = kSceneSkip;
 
 int SceneLevelOn() {
 #if GPUI_OS_WINDOWS
@@ -23,9 +24,28 @@ int SceneLevelOn() {
     static_assert((int)WinSceneMode::Damage == kSceneDamage);
     return (int)WinPaintOptionsGet().scene;
 #else
-    // Only the Windows paint front end records a scene today.
-    return kSceneSkip;
+    return gSceneLevel;
 #endif
+}
+
+bool SceneTakeArg(Str arg) {
+    const Str prefix = StrL("__scene=");
+    if (!base::StrStartsWith(arg, prefix)) {
+        return false;
+    }
+    Str value(arg.s + len(prefix), len(arg) - len(prefix));
+    if (base::StrEqI(value, "off")) {
+        gSceneLevel = kSceneOff;
+    } else if (base::StrEqI(value, "replay")) {
+        gSceneLevel = kSceneReplay;
+    } else if (base::StrEqI(value, "cache")) {
+        gSceneLevel = kSceneCache;
+    } else if (base::StrEqI(value, "skip")) {
+        gSceneLevel = kSceneSkip;
+    } else if (base::StrEqI(value, "damage")) {
+        gSceneLevel = kSceneDamage;
+    }
+    return true;
 }
 
 namespace scene {

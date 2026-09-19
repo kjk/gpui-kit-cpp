@@ -10,7 +10,20 @@ El* PopoverSurface(Ctx* cx, El* e) {
         return e;
     }
     const Theme& th = ThemeNow(cx->app);
-    return e->Bg(th.tokens.popover)->Border(1, th.border)->Radius(th.radius);
+    // styled.rs popover_shadow: a 1px translucent ring spent as a shadow
+    // layer, plus two blurred layers. No border — an opaque border would
+    // composite over the fill instead of letting the shadow show through.
+    Rgba ring = RgbaOpacity(th.foreground, 0.1f);
+    Rgba ink = Rgba8(0, 0, 0, 26);
+    BoxShadow shadows[3] = {
+        {0, 0, 0, 1.f, ring, false},
+        {0, 4.f, 3.f, -1.f, ink, false},
+        {0, 2.f, 2.f, -2.f, ink, false},
+    };
+    return e->Bg(th.tokens.popover)
+        ->Fg(th.popoverFg)
+        ->Shadows(shadows, 3)
+        ->Radius(th.radius);
 }
 
 El* DropdownOpen(Ctx* cx, El* surface, uint32_t key) {

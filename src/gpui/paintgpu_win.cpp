@@ -33,8 +33,8 @@
    MSAA is a prototype's version of the same answer, and having it as a knob
    is what makes its cost visible.
 
-   The remaining visible gap, and why this is not the default: dashes are
-   expanded on the CPU for lines and ignored on rounded rects. Text uses
+   Dashes are expanded on the CPU for lines and for rounded-rect outlines.
+   Text uses
    DirectWrite's RGB masks, display gamma/contrast and third-pixel phases. The
    four shaders are checked-in FXC bytecode generated from paintgpu_win.hlsl by
    cmd/update-win-shaders.ts. */
@@ -2338,16 +2338,108 @@ void CanvasFillRound(PaintCtx* ctx, float x, float y, float w, float h, float r,
     Quad(ctx, kQuadRect, x, y, w, h, c, r);
 }
 
+static void StrokeSegment(PaintCtx* ctx, float x1, float y1, float x2, float y2,
+                          float wdt, Rgba c);
+
+// Walk a polyline with the same on/off pattern CanvasLine uses. `phase`
+// is how far into the current dash the previous segment ended, so corners
+// of a rounded rect keep one pattern.
+static void DashFeed(PaintCtx* ctx, float x1, float y1, float x2, float y2,
+                     float stroke, Rgba c, float on, float off, float* phase) {
+    float dx = x2 - x1;
+    float dy = y2 - y1;
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 1e-6f) {
+        return;
+    }
+    dx /= len;
+    dy /= len;
+    float at = 0;
+    float p = *phase;
+    while (at < len) {
+        bool drawing = p < on;
+        float slot = drawing ? on - p : off - (p - on);
+        if (slot < 1e-6f) {
+            p = drawing ? on : 0;
+            continue;
+        }
+        float take = slot;
+        if (take > len - at) {
+            take = len - at;
+        }
+        if (drawing) {
+            StrokeSegment(ctx, x1 + dx * at, y1 + dy * at,
+                          x1 + dx * (at + take), y1 + dy * (at + take), stroke,
+                          c);
+        }
+        at += take;
+        p += take;
+        float period = on + off;
+        if (period > 0 && p >= period) {
+            p -= period;
+        }
+    }
+    *phase = p;
+}
+
 void CanvasStrokeRound(PaintCtx* ctx, float x, float y, float w, float h,
                        float r, float stroke, Rgba c, const float* dash) {
-    // Dashes on a rounded rect would need the outline walked and cut, which
-    // is more than a prototype needs: the tree's dashed rects are focus rings
-    // and chart frames, and a solid one shows the same box in the same place.
-    (void)dash;
     if (stroke <= 0 || w <= 0 || h <= 0) {
         return;
     }
-    Quad(ctx, kQuadBorder, x, y, w, h, c, r, stroke);
+    if (!dash) {
+        Quad(ctx, kQuadBorder, x, y, w, h, c, r, stroke);
+        return;
+    }
+    c = PaintFade(ctx, c);
+    if (c.a == 0) {
+        return;
+    }
+    float on = dash[0] * stroke;
+    float off = dash[1] * stroke;
+    if (on <= 0 || off <= 0) {
+        Quad(ctx, kQuadBorder, x, y, w, h, c, r, stroke);
+        return;
+    }
+    // Inset by half the stroke, matching D2D's centred outline.
+    float half = stroke * 0.5f;
+    x += half;
+    y += half;
+    w -= stroke;
+    h -= stroke;
+    if (w <= 0 || h <= 0) {
+        return;
+    }
+    float rmax = (w < h ? w : h) * 0.5f;
+    if (r > rmax) {
+        r = rmax;
+    }
+    float phase = 0;
+    if (r <= 0) {
+        DashFeed(ctx, x, y, x + w, y, stroke, c, on, off, &phase);
+        DashFeed(ctx, x + w, y, x + w, y + h, stroke, c, on, off, &phase);
+        DashFeed(ctx, x + w, y + h, x, y + h, stroke, c, on, off, &phase);
+        DashFeed(ctx, x, y + h, x, y, stroke, c, on, off, &phase);
+        return;
+    }
+    const int kSeg = 8;
+    auto arc = [&](float cx, float cy, float a0, float a1) {
+        for (int i = 0; i < kSeg; i++) {
+            float t0 = a0 + (a1 - a0) * (float)i / kSeg;
+            float t1 = a0 + (a1 - a0) * (float)(i + 1) / kSeg;
+            DashFeed(ctx, cx + cosf(t0) * r, cy + sinf(t0) * r,
+                     cx + cosf(t1) * r, cy + sinf(t1) * r, stroke, c, on, off,
+                     &phase);
+        }
+    };
+    DashFeed(ctx, x + r, y, x + w - r, y, stroke, c, on, off, &phase);
+    arc(x + w - r, y + r, -kPi / 2, 0);
+    DashFeed(ctx, x + w, y + r, x + w, y + h - r, stroke, c, on, off, &phase);
+    arc(x + w - r, y + h - r, 0, kPi / 2);
+    DashFeed(ctx, x + w - r, y + h, x + r, y + h, stroke, c, on, off, &phase);
+    arc(x + r, y + h - r, kPi / 2, kPi);
+    DashFeed(ctx, x, y + h - r, x, y + r, stroke, c, on, off, &phase);
+    arc(x + r, y + r, kPi, 3 * kPi / 2);
 }
 
 // A segment as a quad, which is what the triangle pipeline is for: the quad

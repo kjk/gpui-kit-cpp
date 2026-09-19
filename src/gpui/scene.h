@@ -46,10 +46,8 @@
    wants, and what to reach for if a frame ever comes out stale: this is the
    only thing in the tree that can decide not to draw.
 
-   Only paint_win.cpp dispatches into the recorder. The other three backends
-   draw the way they always did, so the default differs by platform until
-   they get the same line at the top of each entry point. Nothing here is
-   Windows: the divergence is in the dispatch, not in the scene. */
+   Each paint backend dispatches into the recorder with the same Rec* hook
+   at the top of each Paint.h entry point. Nothing here names an OS. */
 
 #include "gpui/paint.h"
 
@@ -71,6 +69,9 @@ int SceneLevelOn();
 inline bool SceneOn() {
     return SceneLevelOn() > kSceneOff;
 }
+// Consumes `__scene=off|replay|cache|skip|damage`. Invalid values are still
+// consumed and leave the current/default selection unchanged.
+bool SceneTakeArg(Str arg);
 
 namespace scene {
 
@@ -287,9 +288,6 @@ const SceneStats& Stats(PaintCtx* ctx);
 //   the GPU backend still stencils and covers every frame and the D2D one
 //   still fills a realization. A mask cache keyed by the same hash is the
 //   next thing worth measuring.
-// - **Only Windows records.** scene.cpp names no OS and no GPU type, but the
-//   dispatch into it is the one line at the top of each entry point that
-//   paint_win.cpp has, and the other three backends do not have it yet.
 
 } // namespace gpui
 #endif // GPUI_GPUI_SCENE_H_

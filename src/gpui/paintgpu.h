@@ -4,7 +4,7 @@
    renderer does. A default build contains Direct2D only; define
    WIN_BACKEND_D3D11 or WIN_BACKEND_D3D12 to compile one of these instead, or
    WIN_BACKEND_ALL to compile all three and retain the runtime selector. See
-   the note at the end for what they are worth and the remaining dash gap.
+   the note at the end for what they are worth.
 
    The default Windows backend is already on the GPU: Direct2D on a D3D11
    device, presenting through a DXGI flip-model swap chain. What it is not is

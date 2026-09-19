@@ -285,6 +285,7 @@ static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
                    ->H(ctx.lineHeight)
                    ->Child(TextEl(a, span.token.label));
     }
+    chip->Shrink0();
     if (state->disabled) {
         return chip;
     }
@@ -314,10 +315,11 @@ static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
     return false;
 }
 
-static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
-                             const InputEditorStyle& style, float font,
-                             float lineMult, Str slice, int docStart,
-                             const Selection& sel, bool caret, int cursor) {
+static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
+                               const InputEditorStyle& style, float font,
+                               float lineMult, Str slice, int docStart,
+                               const Selection& sel, bool caret, int cursor,
+                               bool wrap) {
     if (!row || len(slice) == 0) {
         return;
     }
@@ -328,6 +330,12 @@ static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
                     ->BindInput(state);
     if (style.mono) {
         piece->Mono();
+    }
+    if (wrap) {
+        // A text gap may wrap; a chip does not. MinW(0) lets this piece
+        // shrink onto the remainder of a line instead of taking the chip
+        // with it to the next one.
+        piece->Wrap()->MinW(0);
     }
     int lo = sel.start - docStart;
     int hi = sel.end - docStart;
@@ -346,12 +354,49 @@ static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
     row->Child(piece);
 }
 
+static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
+                             const InputEditorStyle& style, float font,
+                             float lineMult, Str slice, int docStart,
+                             const Selection& sel, bool caret, int cursor,
+                             bool wrap) {
+    if (!row || len(slice) == 0) {
+        return;
+    }
+    if (!wrap) {
+        EmitTokenTextPiece(row, a, state, style, font, lineMult, slice,
+                           docStart, sel, caret, cursor, false);
+        return;
+    }
+    // Split on whitespace so wrapping can break around a chip at a word
+    // boundary, the way display-map LineFragment::text does. A chip is a
+    // separate Shrink0 item.
+    int at = 0;
+    while (at < len(slice)) {
+        int start = at;
+        unsigned char c = (unsigned char)slice.s[at];
+        bool space = c == ' ' || c == '\t';
+        at++;
+        while (at < len(slice)) {
+            unsigned char n = (unsigned char)slice.s[at];
+            bool nspace = n == ' ' || n == '\t';
+            if (nspace != space) {
+                break;
+            }
+            at++;
+        }
+        EmitTokenTextPiece(row, a, state, style, font, lineMult,
+                           Str(slice.s + start, at - start), docStart + start,
+                           sel, caret, cursor, true);
+    }
+}
+
 // Split a document range into text runs and chips. Tokens cannot contain
 // newlines, so a logical line is a complete set of pieces.
 static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                               const InputEditorStyle& style, float font,
                               float lineMult, float lineH, Str run, int start,
-                              const Selection& sel, bool caret, int cursor) {
+                              const Selection& sel, bool caret, int cursor,
+                              bool wrap) {
     if (!row) {
         return;
     }
@@ -370,7 +415,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
             if (span.start > at) {
                 EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
                                  Str(run.s + (at - start), span.start - at), at,
-                                 sel, caret, cursor);
+                                 sel, caret, cursor, wrap);
             }
             row->Child(TokenChip(cx, state, span, sel, lineH));
             at = span.end;
@@ -379,7 +424,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
     if (at < end) {
         EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
                          Str(run.s + (at - start), end - at), at, sel, caret,
-                         cursor);
+                         cursor, wrap);
     }
 }
 
@@ -453,7 +498,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     }
     if (InputTokensVisible(state) && !masked) {
         AppendTokenPieces(row, cx, state, style, font, lineMult, kInputLineH,
-                          run, 0, sel, caret, cursor);
+                          run, 0, sel, caret, cursor, false);
         return row;
     }
     El* el = TextEl(a, run)
@@ -1020,10 +1065,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (tokenLine) {
             // Overlay chips instead of the raw token text, matching
             // Input::New. A logical line is a flex row of text runs and
-            // chips; wrap is flex-wrap so a chip stays atomic. Rust uses
-            // display-map inline metrics so wrapping can break around a
-            // chip mid-line; this is the same picture as long as a gap
-            // does not itself need to wrap.
+            // chips. Text gaps split on whitespace and Wrap so wrapping can
+            // break around a chip, the way display-map LineFragment::text /
+            // element does. A chip is Shrink0 and stays atomic.
             el = Div(a)->FlexRow()->ItemsCenter();
             if (wrap) {
                 el->FlexWrap()->W(kFill);
@@ -1034,7 +1078,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 el->H(lineH);
             }
             AppendTokenPieces(el, cx, state, style, font, lineMult, lineH, line,
-                              start, sel, caret, cursor);
+                              start, sel, caret, cursor, wrap);
         } else {
             el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
                 style.foreground);
