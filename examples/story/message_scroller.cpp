@@ -157,6 +157,24 @@ static component::MessageScrollerState* MsState(
     return e.Get(cx->app);
 }
 
+// VirtualList places rows using the size array before their boxes are laid
+// out. A long message must therefore supply its wrapped height up front;
+// reading the constrained row box back only repeats the old estimate and
+// lets the next message paint over it. The demo's transcript has fixed-width
+// chat frames, so text shaping gives the sizes for this page.
+static void MsSizeRows(Ctx* cx, Entity<component::MessageScrollerState> e,
+                       const Vec<DemoMessage>& messages, int unread = -1) {
+    auto* state = MsState(cx, e);
+    if (!state) return;
+    for (int i = 0; i < len(messages) && i < len(state->heights); i++) {
+        const DemoMessage& message = messages[i];
+        float textW = message.sent ? 246.f : 315.f;
+        Size text = MeasureText(&cx->win->paint, message.body, 14.f, textW, true);
+        state->heights[i] = text.h + (message.sent ? 56.f : 40.f) +
+                            (i == unread ? 30.f : 0.f);
+    }
+}
+
 // create_scroller(count, cx).
 static Entity<component::MessageScrollerState> MsCreateScroller(App* app,
                                                                 int count) {
@@ -540,6 +558,12 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     MsSeed(self, cx);
+    MsSizeRows(cx, self->scroller, self->messages, self->unreadIndex);
+    MsSizeRows(cx, self->streamScroller, self->streamMessages);
+    MsSizeRows(cx, self->historyScroller, self->historyMessages);
+    MsSizeRows(cx, self->navigationScroller, self->previewMessages);
+    MsSizeRows(cx, self->customScroller, self->previewMessages);
+    MsSizeRows(cx, self->applicationScroller, self->previewMessages);
     Listener navigate = Listen(cx, &MsNavigate);
 
     component::MessageScrollerState* main = MsState(cx, self->scroller);

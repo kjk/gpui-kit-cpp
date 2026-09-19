@@ -45,7 +45,7 @@ struct InputSeed {
 
 // content_type_inputs, plus every other field the Rust story creates.
 static const InputSeed kSeeds[] = {
-    {InText, "Hello 世界，this is GPUI Kit, this is a long text.", ""},
+    {InText, "Hello 世界，this is GPUI component, this is a long text.", ""},
     {InEmail, "", "Enter text here..."},
     {InDisabled, "This is disabled input", ""},
     {InReadonly, "This is read-only input", ""},

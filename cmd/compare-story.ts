@@ -38,33 +38,43 @@ const slugs = [
   "accordion",
   "alert",
   "alert-dialog",
+  "attachment",
   "avatar",
   "badge",
   "breadcrumb",
+  "bubble",
   "button",
   "calendar",
+  "carousel",
   "chart",
   "checkbox",
   "clipboard",
   "collapsible",
   "color-picker",
   "combobox",
+  "command",
   "data-table",
   "date-picker",
   "description-list",
   "dialog",
+  "dock",
   "dropdown-button",
   "editor",
+  "empty",
   "form",
   "group-box",
   "hover-card",
   "icon",
   "image",
   "input",
+  "input-group",
   "kbd",
   "label",
   "list",
+  "marker",
   "menu",
+  "message",
+  "message-scroller",
   "native-menu",
   "notification",
   "number-input",
@@ -80,6 +90,7 @@ const slugs = [
   "separator",
   "settings",
   "sheet",
+  "shimmer",
   "sidebar",
   "skeleton",
   "slider",
@@ -308,6 +319,9 @@ for (let i = 0; i < pages.length; i++) {
   setForegroundWindow(rustHwnd);
   setForegroundWindow(cppHwnd);
   await sleep(500);
+  // Virtual rows need their first measured-height feedback frame before a
+  // screenshot can say whether they overlap.
+  if (slug === "message-scroller") await sleep(1200);
   const rustPng = join(outDir, `${slug}-rust.png`);
   const cppPng = join(outDir, `${slug}-cpp.png`);
   await captureSettled(rustHwnd, rustPng);

@@ -50,6 +50,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import {
   captureWindowToPng,
+  captureWindowSurfaceToPng,
   clickClient,
   clientToScreen,
   getClientRect,
@@ -418,6 +419,14 @@ async function drive(hwnd: number, tag: "rust" | "cpp"): Promise<void> {
       setForegroundWindow(hwnd);
       bringToTopAndRedraw(hwnd);
       await sleep(400);
+    }
+    // PrintWindow can return a black GPU surface even while the window is
+    // visible. In that case read the compositor's visible client pixels.
+    if (statSync(p).size <= 20000) {
+      setForegroundWindow(hwnd);
+      bringToTopAndRedraw(hwnd);
+      await sleep(250);
+      captureWindowSurfaceToPng(hwnd, p);
     }
     console.log(`  ${p}`);
   };

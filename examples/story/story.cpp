@@ -79,7 +79,7 @@ static const StoryInfo kMeta[StoryCount] = {
     {"button", "Button",
      "Displays a button or a component that looks like a button."},
     {"carousel", "Carousel",
-     "A composable carousel with keyboard navigation and pagination."},
+     "A carousel for browsing a set of related items with keyboard and pointer navigation."},
     {"calendar", "Calendar", "A calendar to select a date or date range."},
     {"chart", "Chart", "Beautiful Charts & Graphs."},
     {"checkbox", "Checkbox", "Select one or more independent options."},
@@ -109,7 +109,7 @@ static const StoryInfo kMeta[StoryCount] = {
      "Code editor with theme-aware syntax highlighting and "
      "folding."},
     {"empty", "Empty",
-     "Present an empty state with media, description, and actions."},
+     "Compose empty states with icons, avatars, actions, and custom content."},
     {"form", "Form", "Form to collect multiple inputs."},
     {"group-box", "GroupBox",
      "A styled container element that with an optional title to groups "
@@ -750,16 +750,8 @@ static El* SearchBox(StoryApp* app, Ctx* cx) {
     return box;
 }
 
-// gallery.rs wraps the sidebar in
-//   resizable_panel().size(px(255.)).size_range(px(200.)..px(320.))
-// GPUI turns that 255 into a fraction of the group at first layout, and the
-// story window opens at 1600 wide (crates/story/src/lib.rs), so the sidebar
-// tracks 255/1600 of the window width, clamped to the size_range. It is 200 at
-// half a 1920 screen and 221 at 1400, which is what the Rust app draws.
+// gallery.rs: Sidebar::new().w(px(255.)).collapsible(Offcanvas).
 static float SidebarWidth(Ctx*) {
-    // gallery.rs: Sidebar::new().w(px(255.)).collapsible(Offcanvas). The
-    // resizable wrapper is gone; the sidebar is a fixed 255 DIP column that
-    // slides out of the layout when collapsed.
     return 255.f;
 }
 
@@ -787,7 +779,7 @@ static El* Sidebar(StoryApp* app, Ctx* cx) {
     brand->Child(logo);
     if (!app->collapsed) {
         El* names = Div(a)->FlexCol();
-        names->Child(StoryTxt(cx, StrL("GPUI Kit"), 14, th.sidebarFg)
+        names->Child(StoryTxt(cx, StrL("GPUI Component"), 14, th.sidebarFg)
                          ->Semibold());
         names->Child(StoryTxt(cx, StrL("Component showcase"), 12, th.mutedFg));
         brand->Child(names);
@@ -883,6 +875,7 @@ static int StoryNotificationCount(Ctx* cx) {
 
 STORY_ACTION(ActAbout, "story::About")
 STORY_ACTION(ActOpen, "story::Open")
+STORY_ACTION(ActOpenCommandPalette, "story::OpenCommandPalette")
 STORY_ACTION(ActQuit, "story::Quit")
 STORY_ACTION(ActNewWindow, "story::NewWindow")
 STORY_ACTION(ActCloseWindow, "story::CloseWindow")
@@ -1046,7 +1039,7 @@ static void OnKey(StoryApp* app, Ctx* cx, const KeyEvent* ev);
 // under, and so the name the title bar shows when the menus are not in it —
 // Rust hands the same string to `create_new_window` and to `AppTitleBar`.
 static Str StoryWindowTitle() {
-    return StrL("GPUI Kit C++");
+    return StrL("GPUI Component");
 }
 
 static void StoryInitKeys();
@@ -1190,9 +1183,7 @@ static void OnToggleSidebar(StoryApp* app, Ctx* cx, const ClickEvent*) {
 // the one an element registered for that action, which is also where the
 // keystroke on its own would have arrived.
 //
-// One menu Rust has is not here: `Language` wants rust_i18n. One it does not
-// is: `Window`, because `App` has held a window list and ended its loop with
-// the last one for a while, and nothing else opens a second one.
+// The title bar and native menu use the same rows.
 
 static void OnAboutAction(StoryApp*, Ctx* cx, const ActionEvent*) {
     // window.open_dialog(cx, ..): the window takes the entity and Root draws
@@ -1207,6 +1198,14 @@ static void OnOpenAction(StoryApp*, Ctx*, const ActionEvent*) {
     // `on_action_open` in the markdown example — this tree has the dialog for
     // it (PromptForPathTemp), and it is that example that wants it, not this
     // menu.
+}
+
+static void OnOpenCommandPaletteAction(StoryApp* app, Ctx* cx,
+                                       const ActionEvent*) {
+    // The sidebar search is the story navigator's command entry point.
+    app->search.focused = true;
+    cx->win->input = &app->search;
+    Notify(cx);
 }
 
 // `cx.on_action(|_: &Quit, cx| cx.quit())`: every window, not the one the row
@@ -1259,6 +1258,7 @@ static void StoryInitKeys() {
     KeyBinding bindings[] = {
         // cmd-o on macOS, ctrl-o elsewhere, which is what `secondary-` is.
         {"secondary-o", ActOpen(), nullptr},
+        {"ctrl-shift-p", ActOpenCommandPalette(), nullptr},
 #if GPUI_OS_MAC
         {"cmd-q", ActQuit(), nullptr},
         // Not upstream's, because upstream has no such rows: on a Mac these
@@ -1352,6 +1352,8 @@ static void OnSelectLocaleAction(StoryApp*, Ctx* cx, const ActionEvent* ev) {
 static El* StoryBindMenuActions(El* root, Ctx* cx) {
     return root->OnAction(ActAbout(), Listen(cx, &OnAboutAction))
         ->OnAction(ActOpen(), Listen(cx, &OnOpenAction))
+        ->OnAction(ActOpenCommandPalette(),
+                   Listen(cx, &OnOpenCommandPaletteAction))
         ->OnAction(ActQuit(), Listen(cx, &OnQuitAction))
         ->OnAction(ActNewWindow(), Listen(cx, &OnNewWindowAction))
         ->OnAction(ActCloseWindow(), Listen(cx, &OnCloseWindowAction))
@@ -1421,8 +1423,8 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
         languages[i].checked = base::StrEq(Str(kStoryLocales[i].code), locale);
     }
 
-    MenuRow* appRows = StoryRows(cx, 9);
-    appRows[0].label = StrL("About GPUI Kit");
+    MenuRow* appRows = StoryRows(cx, 8);
+    appRows[0].label = StrL("About");
     appRows[0].action = ActAbout();
     appRows[1].separator = true;
     appRows[2].label = StrL("Open...");
@@ -1431,22 +1433,15 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
     appRows[4].label = StrL("Appearance");
     appRows[4].submenu = appearance;
     appRows[4].submenuN = 2;
-    appRows[5].label = StrL("Theme");
-    appRows[5].submenu = themes;
-    appRows[5].submenuN = nThemes;
-    // A submenu with nothing under it is a row that would report nothing;
-    // disabled says so, and is what a themes directory that is not there
-    // leaves behind.
-    appRows[5].disabled = nThemes == 0;
-    appRows[6].label = StrL("Language");
-    appRows[6].submenu = languages;
-    appRows[6].submenuN = kStoryLocaleCount;
-    appRows[7].separator = true;
-    appRows[8].label = StrL("Quit");
-    appRows[8].action = ActQuit();
-    out[0].name = StrL("GPUI Kit");
+    appRows[5].label = StrL("Language");
+    appRows[5].submenu = languages;
+    appRows[5].submenuN = kStoryLocaleCount;
+    appRows[6].separator = true;
+    appRows[7].label = StrL("Quit");
+    appRows[7].action = ActQuit();
+    out[0].name = StrL("GPUI Component");
     out[0].items = appRows;
-    out[0].n = 9;
+    out[0].n = 8;
 
     // Every row of the Edit menu names one of the input's actions and carries
     // no handler of its own: choosing it dispatches the action to whatever
@@ -1487,23 +1482,29 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
     out[1].items = editRows;
     out[1].n = nEdit;
 
-    MenuRow* windowRows = StoryRows(cx, 2);
-    windowRows[0].label = StrL("New Window");
-    windowRows[0].action = ActNewWindow();
-    windowRows[1].label = StrL("Close Window");
-    windowRows[1].action = ActCloseWindow();
-    out[2].name = StrL("Window");
-    out[2].items = windowRows;
+    MenuRow* goRows = StoryRows(cx, 2);
+    goRows[0].label = StrL("Go to...");
+    goRows[0].action = ActOpenCommandPalette();
+    goRows[1].label = StrL("Themes...");
+    // Rust opens palette dialogs; the port routes navigation to sidebar
+    // search and lists installed themes here until those dialogs are ported.
+    goRows[1].submenu = themes;
+    goRows[1].submenuN = nThemes;
+    goRows[1].disabled = nThemes == 0;
+    out[2].name = StrL("Go");
+    out[2].items = goRows;
     out[2].n = 2;
 
-    MenuRow* helpRows = StoryRows(cx, 2);
+    MenuRow* helpRows = StoryRows(cx, 3);
     helpRows[0].label = StrL("Documentation");
-    helpRows[0].action = ActDocumentation();
-    helpRows[1].label = StrL("About GPUI Kit");
-    helpRows[1].action = ActAbout();
+    helpRows[0].action = ActOpen();
+    helpRows[0].disabled = true;
+    helpRows[1].separator = true;
+    helpRows[2].label = StrL("Open Website");
+    helpRows[2].action = ActOpen();
     out[3].name = StrL("Help");
     out[3].items = helpRows;
-    out[3].n = 2;
+    out[3].n = 3;
     return kStoryMenus;
 }
 
@@ -1707,14 +1708,14 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                     ->Child(StoryTxt(
                         cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
                         th.mutedFg))
-                    ->Child(StoryTxt(cx, StrL("v0.5.1"), 12, th.mutedFg))
+                    ->Child(StoryTxt(cx, StrL("v0.6.4"), 12, th.mutedFg))
                     // gallery.rs puts the repository link last in the bar's
                     // right group, as a ghost icon button.
                     ->Child(component::Button::New(cx, StrL("assistant"))
                                 ->Ghost()
                                 ->WithSize(UiSize::XSmall)
                                 ->Icon(IconName::Github)
-                                ->Tooltip(StrL("GPUI Kit GitHub repository"))
+                                ->Tooltip(StrL("GPUI Component GitHub repository"))
                                 ->OnClick(Listen(cx, &OnGithub))
                                 ->IntoEl()
                                 ->Cursor(CursorKind::Pointer)));
