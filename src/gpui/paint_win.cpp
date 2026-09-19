@@ -1568,6 +1568,25 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     return img;
 }
 
+RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
+                                 int h) {
+    (void)pa;
+    if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    WinImageFrame frame = {};
+    frame.w = w;
+    frame.h = h;
+    frame.bgra = (uint8_t*)Alloc(nullptr, w * h * 4);
+    if (!frame.bgra) {
+        delete img;
+        return nullptr;
+    }
+    memcpy(frame.bgra, bgra, (size_t)w * (size_t)h * 4);
+    VecAppend(img->frames, frame);
+    return img;
+}
+
 RenderImage* RenderImageNewLoading() {
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();

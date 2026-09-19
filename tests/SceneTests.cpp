@@ -144,6 +144,83 @@ static void PathPlacementRemainsPartOfTheFrameHash() {
     scene::Free(&paint);
 }
 
+static void StackingContextKeepsItsDescendantsTogether() {
+    TestSuite("scene stacking contexts");
+    PaintCtx paint = {};
+    paint.viewW = paint.viewH = 40;
+    scene::FrameBegin(&paint);
+    // Record the higher sibling first. Its lower-z neighbour has a child at
+    // z=100; that child must stay below the entire higher sibling.
+    int parent = scene::ContextPush(&paint, 1);
+    scene::RecFillRect(&paint, 0, 0, 30, 30, Rgba8(0, 0, 255, 255));
+    HitRect high = {};
+    high.id = 20;
+    high.bounds = {0, 0, 30, 30};
+    high.sceneContext = scene::CurrentContext(&paint);
+    VecAppend(paint.hits, high);
+    scene::ContextPop(&paint, parent);
+
+    parent = scene::ContextPush(&paint, 0);
+    scene::RecFillRect(&paint, 0, 0, 30, 30, Rgba8(255, 0, 0, 255));
+    HitRect low = high;
+    low.id = 10;
+    low.sceneContext = scene::CurrentContext(&paint);
+    VecAppend(paint.hits, low);
+    int childParent = scene::ContextPush(&paint, 100);
+    scene::RecFillRect(&paint, 0, 0, 30, 30, Rgba8(0, 255, 0, 255));
+    HitRect child = high;
+    child.id = 11;
+    child.parent = 1;
+    child.sceneContext = scene::CurrentContext(&paint);
+    VecAppend(paint.hits, child);
+    scene::ContextPop(&paint, childParent);
+    scene::ContextPop(&paint, parent);
+    Bounds damage = {};
+    utassert(scene::FrameEnd(&paint, &damage));
+    utassert(scene::Stats(&paint).contexts == 4);
+    utassert(paint.hits[0].id == 10 && paint.hits[1].id == 11 &&
+             paint.hits[2].id == 20);
+    utassert(paint.hits[1].parent == 0);
+    utassert(HitTest(&paint, 15, 15) == 20);
+    scene::Free(&paint);
+    VecReset(paint.hits);
+}
+
+static void OffscreenPathMaskIsReused() {
+#if !GPUI_OS_WASM
+    TestSuite("scene offscreen mask cache");
+    PaintCtx paint = {};
+    paint.pa = PaintAppNew();
+    paint.viewW = paint.viewH = 48;
+    paint.opacity = 1;
+    uint8_t pixels[48 * 48 * 4] = {};
+    utassert(paint.pa && PaintTargetBeginOffscreen(&paint, 48, 48));
+    if (!paint.pa || !paint.rt) {
+        PaintAppFree(paint.pa);
+        return;
+    }
+    scene::FrameBegin(&paint);
+    Path* path = scene::RecPathNew(&paint, true);
+    scene::RecPathMoveTo(path, 10, 10);
+    scene::RecPathLineTo(path, 38, 10);
+    scene::RecPathLineTo(path, 24, 38);
+    scene::RecPathClose(path);
+    scene::RecPathFill(&paint, path, Rgba8(220, 40, 20, 255));
+    scene::RecPathFill(&paint, path, Rgba8(220, 40, 20, 255));
+    Bounds damage = {};
+    scene::FrameEnd(&paint, &damage);
+    scene::Replay(&paint, nullptr);
+    utassert(scene::Stats(&paint).maskCacheMisses == 1);
+    utassert(scene::Stats(&paint).maskCacheHits == 1);
+    utassert(scene::Stats(&paint).maskCacheLive == 1);
+    utassert(PaintTargetEndOffscreen(&paint, pixels));
+    utassert(pixels[(20 * 48 + 24) * 4 + 3] > 240);
+    utassert(pixels[(5 * 48 + 5) * 4 + 3] == 0);
+    scene::Free(&paint);
+    PaintAppFree(paint.pa);
+#endif
+}
+
 // Rust's Arc<RenderImage> keeps decoded pixels alive independently of the
 // loading cache. Exercise that contract across cache clear and two scenes.
 static void RecordedImagesSurviveCacheEviction() {
@@ -596,4 +673,6 @@ void TestScene() {
     TextLayoutsHaveStableGenerations();
     RecordedTextOwnsItsLayout();
     PathPlacementRemainsPartOfTheFrameHash();
+    StackingContextKeepsItsDescendantsTogether();
+    OffscreenPathMaskIsReused();
 }

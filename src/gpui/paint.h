@@ -300,6 +300,10 @@ enum class RenderImageStatus : uint8_t {
 // the caller shows as the image's alt text. Safe on a worker thread: the
 // image cache decodes off the UI thread the way GPUI's ImageAssetLoader does.
 RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len);
+// A ready image from premultiplied BGRA pixels, copied before return. The
+// scene uses this for cached offscreen path masks.
+RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
+                                 int h);
 // A handle that is Loading until RenderImageComplete runs on the main thread
 // with the worker's decoded result, or null for Failed.
 RenderImage* RenderImageNewLoading();

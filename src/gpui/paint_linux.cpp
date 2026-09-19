@@ -864,6 +864,33 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     return img;
 }
 
+RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
+                                 int h) {
+    (void)pa;
+    if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
+    cairo_surface_t* surface =
+        cairo_image_surface_create(CAIRO_FORMAT_ARGB32, w, h);
+    if (!surface || cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        if (surface) cairo_surface_destroy(surface);
+        return nullptr;
+    }
+    uint8_t* dst = cairo_image_surface_get_data(surface);
+    int stride = cairo_image_surface_get_stride(surface);
+    for (int y = 0; y < h; y++) {
+        memcpy(dst + (size_t)y * stride, bgra + (size_t)y * w * 4,
+               (size_t)w * 4);
+    }
+    cairo_surface_mark_dirty(surface);
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    LinuxImageFrame frame = {};
+    frame.surface = surface;
+    frame.w = w;
+    frame.h = h;
+    VecAppend(img->frames, frame);
+    return img;
+}
+
 RenderImage* RenderImageNewLoading() {
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();

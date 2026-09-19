@@ -773,6 +773,44 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     return img;
 }
 
+static void ReleaseRawImageData(void*, const void* data, size_t) {
+    Free(nullptr, (void*)data);
+}
+
+RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
+                                 int h) {
+    (void)pa;
+    if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
+    size_t bytes = (size_t)w * (size_t)h * 4;
+    uint8_t* copy = (uint8_t*)Alloc(nullptr, (int)bytes);
+    if (!copy) return nullptr;
+    memcpy(copy, bgra, bytes);
+    CGDataProviderRef provider = CGDataProviderCreateWithData(
+        nullptr, copy, bytes, ReleaseRawImageData);
+    if (!provider) {
+        Free(nullptr, copy);
+        return nullptr;
+    }
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGImageRef cg = space
+        ? CGImageCreate(w, h, 8, 32, (size_t)w * 4, space,
+                        kCGImageAlphaPremultipliedFirst |
+                            kCGBitmapByteOrder32Little,
+                        provider, nullptr, false, kCGRenderingIntentDefault)
+        : nullptr;
+    if (space) CGColorSpaceRelease(space);
+    CGDataProviderRelease(provider);
+    if (!cg) return nullptr;
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    MacImageFrame frame = {};
+    frame.image = cg;
+    frame.w = w;
+    frame.h = h;
+    VecAppend(img->frames, frame);
+    return img;
+}
+
 RenderImage* RenderImageNewLoading() {
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();

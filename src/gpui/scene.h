@@ -1,9 +1,8 @@
 #ifndef GPUI_GPUI_SCENE_H_
 #define GPUI_GPUI_SCENE_H_
-/* A scene between the element tree and Paint.h, the shape GPUI's own scene
-   is: a frame's drawing collected as a flat list of primitives, each one
-   carrying its own content mask and its layer, rather than issued to a
-   backend as the tree walks.
+/* A scene between the element tree and Paint.h. Each painted element has a
+   stacking context; sibling contexts are sorted by z-index, then flattened
+   into a frame's primitives. Every primitive carries its content mask.
 
    It is on, at the `skip` level, and __scene is how to turn it down or
    off. It earns that on the scenes this tree draws — see the note at the end
@@ -28,16 +27,15 @@
      nowhere, and a frame that differs in ten primitives out of six thousand
      names the rectangle those ten cover. The swap chain is FLIP_SEQUENTIAL
      with three buffers precisely so a partial redraw comes out whole.
-   - **Path geometry outlives the frame that built it.** A path is recorded as
-     verbs and points, not as a backend object, so it hashes; and a hash is
-     what lets the tessellation — the single most expensive thing the D2D
-     backend does per frame — be built once and drawn many times.
+   - **Path rendering outlives the frame that built it.** A path is recorded as
+     verbs and points, not as a backend object. Small solid paths can reuse an
+     offscreen coverage bitmap; the rest reuse backend geometry by hash.
 
    The levels, from __scene, each one including the ones before it:
 
      off      the element tree draws straight to the backend, as it used to
      replay   collect and replay; measures what the scene itself costs
-     cache    + path geometry kept across frames, keyed by its hash
+     cache    + path geometry and small offscreen masks kept across frames
      skip     + a frame identical to the last one is not drawn at all  (default)
      damage   + a frame that differs in part is drawn in part
 
@@ -85,6 +83,11 @@ void Free(PaintCtx* ctx);
 // them reach a backend. False during the replay, which is what lets the
 // replay use the ordinary entry points.
 bool Recording();
+// A context keeps its descendants together when siblings are ordered by z.
+// The return value restores the parent after the element has painted.
+int ContextPush(PaintCtx* ctx, int z);
+void ContextPop(PaintCtx* ctx, int parent);
+int CurrentContext(PaintCtx* ctx);
 
 // Open the frame's recording. The real target is already begun, because the
 // replay at the end of the frame draws into it.
@@ -168,6 +171,7 @@ void RecTextDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
 struct SceneStats {
     // This frame.
     int prims = 0;
+    int contexts = 0;
     int layers = 0;
     // How many times the replay had to change the clip, which is the number
     // of PushAxisAlignedClip calls a D2D replay makes. The tree issued far
@@ -193,6 +197,9 @@ struct SceneStats {
     int framePathCacheMisses = 0;
     float framePathBuildMs = 0;
     int pathCacheLive = 0;
+    int maskCacheHits = 0;
+    int maskCacheMisses = 0;
+    int maskCacheLive = 0;
     // Across the run, so a bench line can report a rate.
     int frames = 0;
     int framesUnchanged = 0;
@@ -210,8 +217,9 @@ const SceneStats& Stats(PaintCtx* ctx);
 
 } // namespace scene
 
-// ─── what it is worth ────────────────────────────────────────────────────
+// ─── original geometry-only baseline ─────────────────────────────────────
 //
+// These numbers predate stacking contexts and the offscreen mask cache.
 // GPUI_FRAME_BENCH, release, 600 frames after 30 warm-up, one machine. The
 // paint phase only — build and layout are the same code at every level. Each
 // number is the median of three runs; the D2D ones repeat to within 3%, the
@@ -279,15 +287,9 @@ const SceneStats& Stats(PaintCtx* ctx);
 //   things that would show it working, a hover and a chart tick, both need
 //   input or a timer that GPUI_FRAME_BENCH's own 1 ms timer displaces. What
 //   is measured is the mechanism, not the payoff.
-// - **Layers are a field, not a tree.** `El::deferred` and `El::fixed` still
-//   paint in a second walk, and the scene records the layer that walk is in.
-//   GPUI has a stacking context per element with a z-index; giving the scene
-//   one would mean the walk stops being two passes.
-// - **No offscreen mask cache.** Blade renders a path to an antialiased mask
-//   and caches it; the cache here is of geometry, one level below that, so
-//   the GPU backend still stencils and covers every frame and the D2D one
-//   still fills a realization. A mask cache keyed by the same hash is the
-//   next thing worth measuring.
+// - **Mask cache coverage is bounded.** A small solid fill or round-cap
+//   stroke is rasterized once into a colourized coverage image. Large paths,
+//   gradients and other strokes retain the geometry path; see port-status.md.
 
 } // namespace gpui
 #endif // GPUI_GPUI_SCENE_H_

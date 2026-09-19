@@ -1581,6 +1581,9 @@ struct Style {
     Justify justify = Justify::Start;
     Overflow overflowY = Overflow::Visible;
     Overflow overflowX = Overflow::Visible;
+    // Paint order among siblings. A child remains inside its parent's
+    // stacking context even when its own z-index is larger.
+    int zIndex = 0;
     // Rust sorts deferred elements by priority. Zero is the normal popup
     // layer; TooltipOverlay asks for the dedicated layer above it.
     uint8_t deferredLayer = 0;
@@ -2549,6 +2552,7 @@ struct El {
     El* Fixed();
     El* Deferred();
     El* DeferredLayer(int layer);
+    El* ZIndex(int z);
     El* AnchorBelow(float gap = 0);
     // `Positioner::side`: flip to the other side rather than clamping when
     // the anchored side has no room. Dropdowns say this; a popup placed at a
@@ -2710,6 +2714,8 @@ struct HitRect {
     // PaintCtx::paintLayer when this box was recorded. A popup painted over
     // the page must not pick up the I-beam of selectable text behind it.
     int paintLayer = 0;
+    // The scene sorts whole contexts and remaps hit parents to match.
+    int sceneContext = 0;
 };
 
 // One laid-out semantic element. `parent` is the nearest semantic ancestor,
@@ -3017,11 +3023,8 @@ struct PaintCtx {
     // pick prefers on: an overlay layer painted last is not the element under
     // the pointer just because it went down after everything else.
     int paintDepth = 0;
-    // Which stacking layer the tree is painting in — the `kPaintLayer*`
-    // constants below. GPUI's primitives carry the order of the stacking
-    // context they were built in and the scene sorts on it; here the paint
-    // walks already run in that order, and the field is what lets
-    // src/gpui/scene.cpp record it rather than infer it.
+    // Which root stacking layer the tree is painting in. The scene nests
+    // per-element contexts beneath it and sorts siblings by z-index.
     int paintLayer = 0;
     // How good a candidate the pick so far was: 2 for an element with an id,
     // 1 for one that draws something, so an unnamed label inside a button
@@ -3029,6 +3032,8 @@ struct PaintCtx {
     int pickTier = 0;
     InspectorPick pick = {};
     Vec<HitRect> hits;
+    // Deferred/fixed roots gathered during the normal paint walk.
+    Vec<El*> deferredPaint;
     Vec<ScrollRect> scrolls;
     Vec<TextHit> texts;
     // The fields this frame painted, outermost box first, so a press can find

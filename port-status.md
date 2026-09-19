@@ -47,9 +47,11 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   upstream's own showcase highlighter does.
 - **Process CPU %** is a Win32/procfs times delta, not `sysinfo`. First sample
   is 0; values are in the same ballpark, not bit-identical.
-- **The scene graph is half of GPUI's.** `src/gpui/scene.h` collects and culls;
-  there is no stacking context per element (layers are a field, not a tree)
-  and there is no offscreen mask cache. Every paint backend records.
+- **The scene graph is still smaller than GPUI's.** `src/gpui/scene.h`
+  collects, orders and culls through per-element stacking contexts. It caches
+  offscreen coverage bitmaps for solid fills and round-cap strokes up to 160
+  device pixels per side; gradients, other strokes and larger paths keep the
+  retained geometry path. Every paint backend records.
 - **A repaint rebuilds the whole element tree.** `Notify` picks the right
   windows (see AGENTS.md), but an `El` is arena-allocated per frame, so hover,
   focus and animation are resolved while the tree is built. Layout _is_ kept

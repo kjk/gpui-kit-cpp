@@ -549,6 +549,30 @@ EM_JS(void, GpJsPathFree, (int id), {
 
 // ─── images ───────────────────────────────────────────────────────────────
 
+EM_JS(int, GpJsImageFromBgra, (const uint8_t* bgra, int w, int h), {
+    const G = globalThis.__gpui;
+    const canvas = typeof OffscreenCanvas !== "undefined"
+        ? new OffscreenCanvas(w, h) : document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const c = canvas.getContext("2d");
+    if (!c) return 0;
+    const data = c.createImageData(w, h);
+    for (let i = 0; i < w * h; i++) {
+        const at = bgra + i * 4;
+        const a = HEAPU8[at + 3];
+        const out = i * 4;
+        data.data[out] = a ? Math.min(255, Math.round(HEAPU8[at + 2] * 255 / a)) : 0;
+        data.data[out + 1] = a ? Math.min(255, Math.round(HEAPU8[at + 1] * 255 / a)) : 0;
+        data.data[out + 2] = a ? Math.min(255, Math.round(HEAPU8[at] * 255 / a)) : 0;
+        data.data[out + 3] = a;
+    }
+    c.putImageData(data, 0, 0);
+    return G.alloc(G.images, G.imageFree,
+                   {img: canvas, w: w, h: h, status: 1, url: null,
+                    animated: false});
+});
+
 EM_JS(int, GpJsImageDecode, (const uint8_t* bytes, int len), {
     const G = globalThis.__gpui;
     // The bytes have to be copied: HEAPU8 is a view on memory that moves when
@@ -1369,6 +1393,18 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
     if (!id) {
         return nullptr;
     }
+    auto* img = new RenderImage();
+    img->generation = PaintResourceGenerationNew();
+    img->js = id;
+    return img;
+}
+
+RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
+                                 int h) {
+    (void)pa;
+    if (!bgra || w <= 0 || h <= 0 || w > 0x7fffffff / 4 / h) return nullptr;
+    int id = GpJsImageFromBgra(bgra, w, h);
+    if (!id) return nullptr;
     auto* img = new RenderImage();
     img->generation = PaintResourceGenerationNew();
     img->js = id;

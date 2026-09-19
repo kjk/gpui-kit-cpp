@@ -4,6 +4,7 @@
 #include "base/scrollbar.h"
 #include "gpui/image.h"
 #include "gpui/paint.h"
+#include "gpui/scene.h"
 #include "gpui/platform.h"
 #include "base/positioner.h"
 #include "base/text_boundary.h"
@@ -2016,6 +2017,10 @@ El* El::Deferred() {
 El* El::DeferredLayer(int layer) {
     style.deferred = true;
     style.deferredLayer = (uint8_t)(layer > 0 ? layer : 0);
+    return this;
+}
+El* El::ZIndex(int z) {
+    style.zIndex = z;
     return this;
 }
 El* El::AnchorBelow(float gap) {
@@ -5698,24 +5703,6 @@ static bool IsOverlay(El* e) {
 // an open dropdown covers the page instead of being covered by the siblings
 // that follow it. Painting last also hit-tests first: HitTestRect walks the
 // rects backwards.
-static void PaintOverlays(PaintCtx* ctx, El* e) {
-    if (!e) {
-        return;
-    }
-    if (IsOverlay(e)) {
-        int previousLayer = ctx->paintLayer;
-        if (e->style.deferredLayer) {
-            ctx->paintLayer = e->style.deferredLayer;
-        }
-        PaintElNode(ctx, e, false);
-        ctx->paintLayer = previousLayer;
-        return;
-    }
-    for (El* c = e->first; c; c = c->next) {
-        PaintOverlays(ctx, c);
-    }
-}
-
 // InputElement's cursor_bounds: where the caret sits inside the run this
 // element painted. Rust measures it in prepaint from the shaped line and
 // paints a quad there; the shaped line is already in hand here, so the two
@@ -5792,12 +5779,37 @@ static void PaintCaret(PaintCtx* ctx, El* e, float font) {
 }
 
 void PaintEl(PaintCtx* ctx, El* e) {
+    VecClear(ctx->deferredPaint);
     PaintElNode(ctx, e, true);
-    // The overlays are the tree's second stacking layer, and saying so is
-    // what lets a scene keep them apart from the tree without knowing that
-    // there were two walks. See PaintCtx::paintLayer.
-    ctx->paintLayer = kPaintLayerPopup;
-    PaintOverlays(ctx, e);
+    Vec<El*>& overlays = ctx->deferredPaint;
+    // Paint and hit records follow the same layer/z order with scene on or
+    // off. The scene keeps each overlay as one context under the root.
+    for (int i = 1; i < overlays.len; i++) {
+        El* item = overlays[i];
+        int layer = item->style.deferredLayer
+                        ? item->style.deferredLayer : kPaintLayerPopup;
+        int at = i;
+        while (at > 0) {
+            El* prev = overlays[at - 1];
+            int prevLayer = prev->style.deferredLayer
+                                ? prev->style.deferredLayer : kPaintLayerPopup;
+            if (prevLayer < layer ||
+                (prevLayer == layer && prev->style.zIndex <= item->style.zIndex))
+                break;
+            overlays[at] = prev;
+            at--;
+        }
+        overlays[at] = item;
+    }
+    for (El* overlay : overlays) {
+        ctx->paintLayer = overlay->style.deferredLayer
+                              ? overlay->style.deferredLayer
+                              : kPaintLayerPopup;
+        int parent = scene::ContextPush(ctx, ctx->paintLayer);
+        PaintElNode(ctx, overlay, false);
+        scene::ContextPop(ctx, parent);
+    }
+    VecClear(overlays);
     ctx->paintLayer = kPaintLayerTree;
 }
 
@@ -5810,6 +5822,13 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (!e || !ctx) {
         return;
     }
+    if (skipOverlay && IsOverlay(e)) {
+        VecAppend(ctx->deferredPaint, e);
+        return;
+    }
+    int z = e->style.zIndex;
+    if (scene::CurrentContext(ctx) == 0 && z == 0) z = ctx->paintLayer;
+    int parentContext = scene::ContextPush(ctx, z);
     // `group("")`: what a descendant's group_hover asks about is the pointer
     // being in this box, which is not the same question as `hoverId` — the
     // close button drawn over a card takes the hover away from the card, and
@@ -5828,13 +5847,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->opacity = prev;
     }
     ctx->groupHovered = prevGroup;
+    scene::ContextPop(ctx, parentContext);
 }
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (!e || !ctx->rt) {
-        return;
-    }
-    if (skipOverlay && IsOverlay(e)) {
         return;
     }
     // `.invisible()` until the group is hovered. The box was laid out either
@@ -5937,6 +5954,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.stopMouseDown = e->stopMouseDown;
         hr.suppressTextSelection = e->suppressTextSelection;
         hr.paintLayer = ctx->paintLayer;
+        hr.sceneContext = scene::CurrentContext(ctx);
         VecAppend(ctx->hits, hr);
         // Everything under this element names it as the ancestor its events
         // pass through, which is the chain the two phases walk.
@@ -6375,8 +6393,27 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (pushed) {
         VecAppend(ctx->window->imageCacheStack, e->imageCache);
     }
+    bool sorted = false;
     for (El* c = e->first; c; c = c->next) {
-        PaintElNode(ctx, c, skipOverlay);
+        if (c->style.zIndex != 0) { sorted = true; break; }
+    }
+    if (sorted) {
+        Vec<El*> children;
+        for (El* c = e->first; c; c = c->next) VecAppend(children, c);
+        for (int i = 1; i < children.len; i++) {
+            El* c = children[i];
+            int at = i;
+            while (at > 0 && children[at - 1]->style.zIndex > c->style.zIndex) {
+                children[at] = children[at - 1];
+                at--;
+            }
+            children[at] = c;
+        }
+        for (El* c : children) PaintElNode(ctx, c, skipOverlay);
+        VecReset(children);
+    } else {
+        for (El* c = e->first; c; c = c->next)
+            PaintElNode(ctx, c, skipOverlay);
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;

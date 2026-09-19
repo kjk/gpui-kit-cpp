@@ -154,6 +154,16 @@ struct CacheEntry {
 
 static const int kCacheSlots = 2048;
 
+struct MaskEntry {
+    uint64_t hash = 0;
+    RenderImage* image = nullptr;
+    Bounds bounds = {};
+    int bytes = 0;
+    int lastFrame = 0;
+};
+static const int kMaskSlots = 128;
+static const int kMaskBudget = 8 * 1024 * 1024;
+
 struct HashBag {
     Vec<uint64_t> keys;
     Vec<int> counts;
@@ -169,9 +179,28 @@ struct TextRec {
     uint64_t hash = 0;
 };
 
+// Each context owns an ordered stream of its own primitives and child
+// contexts. Sorting those child entries never lets a grandchild escape its
+// parent, unlike sorting all primitives by one flat layer byte.
+struct StackContext {
+    int parent = -1;
+    int first = -1;
+    int last = -1;
+    int rank = 0;
+};
+struct StackEntry {
+    int next = -1;
+    int context = -1;
+    int prim = -1;
+    int z = 0;
+};
+
 struct State {
     Vec<Prim> cur;
     Vec<Prim> prev;
+    Vec<StackContext> contexts;
+    Vec<StackEntry> entries;
+    int currentContext = 0;
     Vec<PathRec> paths;
     Vec<uint8_t> verbs;
     Vec<float> pts;
@@ -193,6 +222,8 @@ struct State {
     CacheEntry cache[kCacheSlots] = {};
     CacheEntry sweepBuf[kCacheSlots] = {};
     int cacheLive = 0;
+    MaskEntry masks[kMaskSlots] = {};
+    int maskBytes = 0;
     HashBag bagA;
     HashBag bagB;
 };
@@ -205,6 +236,8 @@ static State* gActive = nullptr;
 
 #define gCur (gActive->cur)
 #define gPrev (gActive->prev)
+#define gContexts (gActive->contexts)
+#define gEntries (gActive->entries)
 #define gPaths (gActive->paths)
 #define gVerbs (gActive->verbs)
 #define gPts (gActive->pts)
@@ -224,6 +257,8 @@ static State* gActive = nullptr;
 #define gCache (gActive->cache)
 #define gSweepBuf (gActive->sweepBuf)
 #define gCacheLive (gActive->cacheLive)
+#define gMasks (gActive->masks)
+#define gMaskBytes (gActive->maskBytes)
 #define gBagA (gActive->bagA)
 #define gBagB (gActive->bagB)
 
@@ -239,6 +274,44 @@ static State* StateFor(PaintCtx* ctx, bool create) {
 
 bool Recording() {
     return gActive && gActive->recording;
+}
+static void AppendEntry(int parent, StackEntry entry) {
+    int ix = gEntries.len;
+    VecAppend(gEntries, entry);
+    StackContext& c = gContexts[parent];
+    if (c.last >= 0) {
+        gEntries[c.last].next = ix;
+    } else {
+        c.first = ix;
+    }
+    c.last = ix;
+}
+
+int ContextPush(PaintCtx* ctx, int z) {
+    if (!Recording() || !ctx || ctx->sceneState != gActive) return -1;
+    int parent = gActive->currentContext;
+    int child = gContexts.len;
+    StackContext c;
+    c.parent = parent;
+    VecAppend(gContexts, c);
+    StackEntry e;
+    e.context = child;
+    e.z = z;
+    AppendEntry(parent, e);
+    gActive->currentContext = child;
+    return parent;
+}
+
+void ContextPop(PaintCtx* ctx, int parent) {
+    if (parent >= 0 && Recording() && ctx && ctx->sceneState == gActive) {
+        gActive->currentContext = parent;
+    }
+}
+
+int CurrentContext(PaintCtx* ctx) {
+    return Recording() && ctx && ctx->sceneState == gActive
+               ? gActive->currentContext
+               : 0;
 }
 bool SuspendBegin() {
     bool prev = Recording();
@@ -403,6 +476,10 @@ static Prim* Emit(PaintCtx* ctx, uint8_t kind, Bounds bbox) {
     p.mask = gClip;
     p.bbox = Intersect(bbox, gClip);
     VecAppend(gCur, p);
+    StackEntry entry;
+    entry.prim = gCur.len - 1;
+    entry.z = gActive->currentContext == 0 && ctx ? ctx->paintLayer : 0;
+    AppendEntry(gActive->currentContext, entry);
     return &gCur[gCur.len - 1];
 }
 
@@ -429,6 +506,10 @@ void FrameBegin(PaintCtx* ctx) {
     if (gActive->textArena) gActive->textArena->Reset();
     VecClear(gActive->texts);
     VecClear(gCur);
+    VecClear(gContexts);
+    VecClear(gEntries);
+    VecAppend(gContexts, StackContext{});
+    gActive->currentContext = 0;
     VecClear(gPaths);
     VecClear(gVerbs);
     VecClear(gPts);
@@ -444,6 +525,8 @@ void FrameBegin(PaintCtx* ctx) {
     gStats.framePathCacheHits = 0;
     gStats.framePathCacheMisses = 0;
     gStats.framePathBuildMs = 0;
+    gStats.maskCacheHits = 0;
+    gStats.maskCacheMisses = 0;
 }
 
 void RecClear(PaintCtx* ctx, Rgba c) {
@@ -795,42 +878,86 @@ bool RecTextDrawSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x, float y,
 
 // ─── ordering ────────────────────────────────────────────────────────────
 //
-// GPUI sorts its primitives by their order, which is the stacking context
-// they were painted in; the position in the list breaks a tie. The tree here
-// already paints its layers in two passes, so this is a stable sort that
-// almost never moves anything — it is here because the layer is the thing
-// that decides what covers what, and having it as a field rather than as the
-// order of two walks is half of what a scene is.
+// A context's entries are sorted stably; then its children are flattened
+// recursively. The parent stays atomic relative to its siblings, even if one
+// of its grandchildren has a much larger z value.
+static void FlattenContext(int context, Vec<Prim>& out, int* nextRank);
 
-static void SortByLayer(Vec<Prim>& v) {
-    // Counting sort over the layer byte: a frame has a handful of layers and
-    // thousands of primitives, and the pass has to be stable.
-    int counts[256] = {};
+static void FlattenEntry(int index, Vec<Prim>& out, int* nextRank) {
+    const StackEntry& e = gEntries[index];
+    if (e.prim >= 0) VecAppend(out, gCur[e.prim]);
+    else if (e.context >= 0) FlattenContext(e.context, out, nextRank);
+}
+
+static void FlattenContext(int context, Vec<Prim>& out, int* nextRank) {
+    gContexts[context].rank = (*nextRank)++;
     bool mixed = false;
-    for (int i = 0; i < len(v); i++) {
-        counts[v[i].layer]++;
-        if (i > 0 && v[i].layer < v[i - 1].layer) {
-            mixed = true;
-        }
+    int lastZ = 0;
+    bool first = true;
+    for (int e = gContexts[context].first; e >= 0; e = gEntries[e].next) {
+        if (!first && gEntries[e].z < lastZ) { mixed = true; break; }
+        first = false;
+        lastZ = gEntries[e].z;
     }
     if (!mixed) {
+        for (int e = gContexts[context].first; e >= 0; e = gEntries[e].next)
+            FlattenEntry(e, out, nextRank);
         return;
     }
-    int at = 0;
-    int start[256] = {};
-    for (int i = 0; i < 256; i++) {
-        start[i] = at;
-        at += counts[i];
+    Vec<int> order;
+    for (int e = gContexts[context].first; e >= 0; e = gEntries[e].next) {
+        int at = order.len;
+        VecAppend(order, e);
+        while (at > 0 && gEntries[order[at - 1]].z > gEntries[e].z) {
+            order[at] = order[at - 1];
+            at--;
+        }
+        order[at] = e;
     }
-    Vec<Prim> out;
-    VecAppendBlanks(out, len(v));
-    for (int i = 0; i < len(v); i++) {
-        out[start[v[i].layer]++] = v[i];
+    for (int i = 0; i < order.len; i++) {
+        FlattenEntry(order[i], out, nextRank);
     }
-    for (int i = 0; i < len(v); i++) {
-        v[i] = out[i];
+    VecReset(order);
+}
+
+static void OrderHits(PaintCtx* ctx) {
+    if (!ctx || ctx->hits.len < 2) return;
+    bool mixed = false;
+    for (int i = 1; i < ctx->hits.len; i++) {
+        if (gContexts[ctx->hits[i].sceneContext].rank <
+            gContexts[ctx->hits[i - 1].sceneContext].rank) {
+            mixed = true;
+            break;
+        }
     }
-    VecReset(out);
+    if (!mixed) return;
+    Vec<int> order, inverse;
+    for (int i = 0; i < ctx->hits.len; i++) {
+        int rank = gContexts[ctx->hits[i].sceneContext].rank;
+        int at = order.len;
+        VecAppend(order, i);
+        while (at > 0 &&
+               gContexts[ctx->hits[order[at - 1]].sceneContext].rank > rank) {
+            order[at] = order[at - 1];
+            at--;
+        }
+        order[at] = i;
+    }
+    VecAppendBlanks(inverse, ctx->hits.len);
+    for (int i = 0; i < order.len; i++) inverse[order[i]] = i;
+    Vec<HitRect> sorted;
+    for (int i = 0; i < order.len; i++) {
+        HitRect h = ctx->hits[order[i]];
+        if (h.parent >= 0) h.parent = inverse[h.parent];
+        VecAppend(sorted, h);
+    }
+    for (int i = 0; i < sorted.len; i++) ctx->hits[i] = sorted[i];
+    for (ScrollRect& scroll : ctx->scrolls) {
+        if (scroll.maskHit >= 0) scroll.maskHit = inverse[scroll.maskHit];
+    }
+    VecReset(sorted);
+    VecReset(order);
+    VecReset(inverse);
 }
 
 // ─── the path cache ──────────────────────────────────────────────────────
@@ -867,6 +994,11 @@ static void CacheClear() {
         gCache[i] = CacheEntry{};
     }
     gCacheLive = 0;
+    for (int i = 0; i < kMaskSlots; i++) {
+        if (gMasks[i].image) RenderImageRelease(gMasks[i].image);
+        gMasks[i] = MaskEntry{};
+    }
+    gMaskBytes = 0;
 }
 
 // Everything not asked for in the last `kCacheAge` frames goes. A rehash of
@@ -955,6 +1087,8 @@ void Free(PaintCtx* ctx) {
     ArenaDelete(s->textArena);
     VecReset(s->cur);
     VecReset(s->prev);
+    VecReset(s->contexts);
+    VecReset(s->entries);
     VecReset(s->paths);
     VecReset(s->verbs);
     VecReset(s->pts);
@@ -1066,6 +1200,210 @@ static Path* PathFor(PaintCtx* ctx, const Prim& prim, bool* owned, float* dx,
     return p;
 }
 
+// A small path is rasterized once into an offscreen coverage bitmap. The
+// bitmap has its final premultiplied colour so every backend can replay it
+// through RenderImageDraw without another shader or a target readback. Larger
+// paths and gradients keep using the geometry cache above.
+struct MaskEdge {
+    float x0, y0, x1, y1;
+};
+static const float kMaskPi = 3.14159265358979323846f;
+
+static void MaskLine(Vec<MaskEdge>& edges, float x0, float y0, float x1,
+                     float y1) {
+    if (x0 != x1 || y0 != y1) VecAppend(edges, MaskEdge{x0, y0, x1, y1});
+}
+
+static void MaskEdges(const PathRec& pr, bool closeOpen,
+                      Vec<MaskEdge>& edges) {
+    int vi = pr.verbFirst, pi = pr.ptFirst;
+    float x = 0, y = 0, sx = 0, sy = 0;
+    bool open = false;
+    for (int i = 0; i < pr.verbCount; i++) {
+        uint8_t v = gVerbs[vi++];
+        if ((v & 0x7f) == kVMove) {
+            if (open && closeOpen) MaskLine(edges, x, y, sx, sy);
+            x = sx = gPts[pi++];
+            y = sy = gPts[pi++];
+            open = true;
+        } else if ((v & 0x7f) == kVLine) {
+            float nx = gPts[pi++], ny = gPts[pi++];
+            if (open) MaskLine(edges, x, y, nx, ny);
+            else { sx = nx; sy = ny; open = true; }
+            x = nx; y = ny;
+        } else if ((v & 0x7f) == kVCubic) {
+            float ax = gPts[pi++], ay = gPts[pi++];
+            float bx = gPts[pi++], by = gPts[pi++];
+            float nx = gPts[pi++], ny = gPts[pi++];
+            if (!open) { x = sx = nx; y = sy = ny; open = true; continue; }
+            float extent = fabsf(ax - x) + fabsf(ay - y) +
+                           fabsf(bx - ax) + fabsf(by - ay) +
+                           fabsf(nx - bx) + fabsf(ny - by);
+            int steps = (int)(extent / 2.f) + 4;
+            if (steps > 64) steps = 64;
+            float ox = x, oy = y;
+            for (int j = 1; j <= steps; j++) {
+                float t = (float)j / steps, u = 1.f - t;
+                float px = u * u * u * x + 3.f * u * u * t * ax +
+                           3.f * u * t * t * bx + t * t * t * nx;
+                float py = u * u * u * y + 3.f * u * u * t * ay +
+                           3.f * u * t * t * by + t * t * t * ny;
+                MaskLine(edges, ox, oy, px, py);
+                ox = px; oy = py;
+            }
+            x = nx; y = ny;
+        } else if ((v & 0x7f) == kVArc) {
+            float cx = gPts[pi++], cy = gPts[pi++], r = gPts[pi++];
+            float a0 = gPts[pi++], a1 = gPts[pi++];
+            float sweep = a1 - a0;
+            if ((v & 0x80) && sweep < 0) sweep += 2.f * kMaskPi;
+            if (!(v & 0x80) && sweep > 0) sweep -= 2.f * kMaskPi;
+            int steps = (int)(fabsf(sweep) / (kMaskPi / 30.f)) + 2;
+            if (steps > 256) steps = 256;
+            float ax = cx + cosf(a0) * r, ay = cy + sinf(a0) * r;
+            if (open) MaskLine(edges, x, y, ax, ay);
+            else { sx = ax; sy = ay; open = true; }
+            x = ax; y = ay;
+            for (int j = 1; j <= steps; j++) {
+                float a = a0 + sweep * ((float)j / steps);
+                float nx = cx + cosf(a) * r, ny = cy + sinf(a) * r;
+                MaskLine(edges, x, y, nx, ny);
+                x = nx; y = ny;
+            }
+        } else if ((v & 0x7f) == kVClose && open) {
+            MaskLine(edges, x, y, sx, sy);
+            x = sx; y = sy;
+            open = false;
+        }
+    }
+    if (open && closeOpen) MaskLine(edges, x, y, sx, sy);
+}
+
+static bool MaskContains(const Vec<MaskEdge>& edges, float x, float y,
+                         bool winding) {
+    int crossings = 0;
+    for (const MaskEdge& e : edges) {
+        bool up = e.y0 <= y && e.y1 > y;
+        bool down = e.y1 <= y && e.y0 > y;
+        if (!up && !down) continue;
+        float hit = e.x0 + (y - e.y0) * (e.x1 - e.x0) / (e.y1 - e.y0);
+        if (hit > x) crossings += winding ? (up ? 1 : -1) : 1;
+    }
+    return winding ? crossings != 0 : (crossings & 1) != 0;
+}
+
+static bool MaskStrokeContains(const Vec<MaskEdge>& edges, float x, float y,
+                               float radius) {
+    float limit = radius * radius;
+    for (const MaskEdge& e : edges) {
+        float dx = e.x1 - e.x0, dy = e.y1 - e.y0;
+        float d = dx * dx + dy * dy;
+        float t = d > 0 ? ((x - e.x0) * dx + (y - e.y0) * dy) / d : 0;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        float px = x - (e.x0 + t * dx), py = y - (e.y0 + t * dy);
+        if (px * px + py * py <= limit) return true;
+    }
+    return false;
+}
+
+static void MaskDrop(int slot) {
+    MaskEntry& e = gMasks[slot];
+    if (!e.image) return;
+    RenderImageRelease(e.image);
+    gMaskBytes -= e.bytes;
+    e = MaskEntry{};
+}
+
+static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
+    if (SceneLevelOn() < kSceneCache || !ctx || !ctx->pa ||
+        prim.path < 0 || prim.path >= gPaths.len ||
+        (prim.kind != kPPathFill &&
+         !(prim.kind == kPPathStroke && (prim.flags & kFRoundCaps)))) {
+        return nullptr;
+    }
+    const PathRec& pr = gPaths[prim.path];
+    float scale = ctx->dpi / 96.f;
+    if (scale <= 0 || scale > 4.f || !pr.any) return nullptr;
+    float grow = prim.kind == kPPathStroke ? prim.e1 : 1.f;
+    Bounds box = PathBox(&pr, grow);
+    int x0 = (int)floorf(box.x * scale) - 1;
+    int y0 = (int)floorf(box.y * scale) - 1;
+    int x1 = (int)ceilf(box.Right() * scale) + 1;
+    int y1 = (int)ceilf(box.Bottom() * scale) + 1;
+    int w = x1 - x0, h = y1 - y0;
+    if (w <= 0 || h <= 0 || w > 160 || h > 160) return nullptr;
+    uint64_t key = HashBytes(kHashSeed, &prim.hash, (int)sizeof(prim.hash));
+    key = HashBytes(key, &scale, (int)sizeof(scale));
+    if (!key) key = 1;
+    int slot = -1, oldest = 0;
+    for (int i = 0; i < kMaskSlots; i++) {
+        if (gMasks[i].image && gMasks[i].hash == key) {
+            gMasks[i].lastFrame = gFrameNo;
+            gStats.maskCacheHits++;
+            return &gMasks[i];
+        }
+        if (!gMasks[i].image && slot < 0) slot = i;
+        if (gMasks[i].lastFrame < gMasks[oldest].lastFrame) oldest = i;
+    }
+    Vec<MaskEdge> edges;
+    MaskEdges(pr, prim.kind == kPPathFill, edges);
+    // Bound the first-frame software work as well as retained bitmap size.
+    if (edges.len == 0 || (int64_t)w * h * 16 * edges.len > 4000000) {
+        VecReset(edges);
+        return nullptr;
+    }
+    gStats.maskCacheMisses++;
+    int bytes = w * h * 4;
+    uint8_t* pixels = (uint8_t*)Alloc(nullptr, bytes);
+    if (!pixels) { VecReset(edges); return nullptr; }
+    for (int py = 0; py < h; py++) {
+        for (int px = 0; px < w; px++) {
+            int cover = 0;
+            for (int sy = 0; sy < 4; sy++) {
+                for (int sx = 0; sx < 4; sx++) {
+                    float fx = (x0 + px + (sx + .5f) / 4.f) / scale;
+                    float fy = (y0 + py + (sy + .5f) / 4.f) / scale;
+                    cover += prim.kind == kPPathFill
+                        ? MaskContains(edges, fx, fy, pr.winding)
+                        : MaskStrokeContains(edges, fx, fy, prim.e1 * .5f);
+                }
+            }
+            int a = (prim.color.a * cover + 8) / 16;
+            int at = (py * w + px) * 4;
+            pixels[at] = (uint8_t)((prim.color.b * a + 127) / 255);
+            pixels[at + 1] = (uint8_t)((prim.color.g * a + 127) / 255);
+            pixels[at + 2] = (uint8_t)((prim.color.r * a + 127) / 255);
+            pixels[at + 3] = (uint8_t)a;
+        }
+    }
+    VecReset(edges);
+    RenderImage* image = RenderImageFromBgra(ctx->pa, pixels, w, h);
+    base::Free(nullptr, pixels);
+    if (!image) return nullptr;
+    while (gMaskBytes + bytes > kMaskBudget) {
+        int victim = -1;
+        for (int i = 0; i < kMaskSlots; i++) {
+            if (gMasks[i].image && (victim < 0 ||
+                gMasks[i].lastFrame < gMasks[victim].lastFrame)) victim = i;
+        }
+        if (victim < 0) break;
+        MaskDrop(victim);
+        if (victim == slot) slot = -1;
+    }
+    if (slot < 0) slot = oldest;
+    MaskDrop(slot);
+    MaskEntry& entry = gMasks[slot];
+    entry.hash = key;
+    entry.image = image;
+    entry.bounds = Bounds{(float)x0 / scale, (float)y0 / scale,
+                          (float)w / scale, (float)h / scale};
+    entry.bytes = bytes;
+    entry.lastFrame = gFrameNo;
+    gMaskBytes += bytes;
+    return &entry;
+}
+
 // ─── diffing ─────────────────────────────────────────────────────────────
 //
 // Not position for position. Almost nothing that changes on screen leaves the
@@ -1129,7 +1467,12 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     gActive = s;
     gRecording = false;
     gFrameNo++;
-    SortByLayer(gCur);
+    Vec<Prim> ordered;
+    int rank = 0;
+    FlattenContext(0, ordered, &rank);
+    for (int i = 0; i < gCur.len; i++) gCur[i] = ordered[i];
+    VecReset(ordered);
+    OrderHits(ctx);
 
     uint64_t frameHash = kHashSeed;
     for (int i = 0; i < gCur.len; i++) {
@@ -1147,6 +1490,7 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
         }
     }
     gStats.prims = gCur.len;
+    gStats.contexts = gContexts.len;
     gStats.layers = nLayers;
     gStats.pathPrims = 0;
     gStats.pathVerbs = gVerbs.len;
@@ -1342,6 +1686,11 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
             case kPPathFill:
             case kPPathGradient:
             case kPPathStroke: {
+                MaskEntry* mask = MaskFor(ctx, p);
+                if (mask) {
+                    RenderImageDraw(ctx, mask->image, mask->bounds);
+                    break;
+                }
                 bool owned = false;
                 float dx = 0, dy = 0;
                 Path* path = PathFor(ctx, p, &owned, &dx, &dy);
@@ -1372,6 +1721,10 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
     if (partial) {
         CanvasPopClip(ctx);
     }
+    gStats.maskCacheLive = 0;
+    for (int i = 0; i < kMaskSlots; i++) {
+        if (gMasks[i].image) gStats.maskCacheLive++;
+    }
     ctx->opacity = saved;
 }
 
@@ -1382,6 +1735,8 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
 // Keep the short aliases above private to this implementation.
 #undef gCur
 #undef gPrev
+#undef gContexts
+#undef gEntries
 #undef gPaths
 #undef gVerbs
 #undef gPts
@@ -1401,5 +1756,7 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
 #undef gCache
 #undef gSweepBuf
 #undef gCacheLive
+#undef gMasks
+#undef gMaskBytes
 #undef gBagA
 #undef gBagB
