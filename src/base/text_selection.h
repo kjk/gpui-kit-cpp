@@ -289,7 +289,17 @@ struct WindowSelection {
     // state and the document does the copying; the copy here is the window's,
     // so the format is too, and `TextView::SelFormat` sets it as it renders.
     SelectionFormat format = SelectionFormat::Plain;
+    // The selection a long press left: handles and an edit menu. Cleared
+    // when the selection is moved by anything other than the gesture.
+    bool touchMenuOpen = false;
+    TouchEdgeDrag touchEdgeDrag = {};
+    bool hasTouchEdgeDrag = false;
 };
+
+// The live touch selection, for handles and the edit menu. False when there
+// is no touch selection (pointer selection, or nothing selected).
+bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out);
+void WindowSelectionCloseEditMenu(Window* win);
 
 // The window's selection, made on first use.
 WindowSelection* WindowSelectionOf(Window* win);

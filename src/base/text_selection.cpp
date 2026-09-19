@@ -727,6 +727,8 @@ void WindowSelectionClear(Window* win) {
     s->cursor = -1;
     s->scope = 0;
     s->hasWindowPoints = false;
+    s->touchMenuOpen = false;
+    s->hasTouchEdgeDrag = false;
     if (win->app) {
         Vec<EntityId> participants;
         for (int i = 0; i < len(s->participants); i++) {
@@ -850,7 +852,34 @@ bool WindowSelectionLongPressStart(Window* win, float x, float y) {
     if (!selection || !WindowSelectionHas(win)) return false;
     selection->gesture.selecting = true;
     selection->gesture.didHitText = true;
+    selection->touchMenuOpen = false;
+    selection->hasTouchEdgeDrag = false;
     return true;
+}
+
+bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out) {
+    if (!out || !WindowSelectionHas(win) || !win->sel) {
+        return false;
+    }
+    WindowSelection* s = win->sel;
+    if (!s->hasWindowPoints) {
+        return false;
+    }
+    const float lineH = 16.f;
+    Bounds start = TouchCaretLineBox(s->anchorPoint, lineH);
+    Bounds end = TouchCaretLineBox(s->cursorPoint, lineH);
+    *out = TouchSelectionSnapshot::New(start, end);
+    if (s->hasTouchEdgeDrag) {
+        *out = out->WithDragging(s->touchEdgeDrag.edge);
+    }
+    *out = out->WithMenuOpen(s->touchMenuOpen && !s->hasTouchEdgeDrag);
+    return true;
+}
+
+void WindowSelectionCloseEditMenu(Window* win) {
+    if (win && win->sel) {
+        win->sel->touchMenuOpen = false;
+    }
 }
 
 void WindowSelectionDrag(Window* win, float x, float y) {

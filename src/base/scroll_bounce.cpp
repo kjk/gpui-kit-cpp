@@ -1,4 +1,5 @@
 #include "base/scroll_bounce.h"
+#include "gpui/platform.h"
 
 #include <math.h>
 
@@ -84,13 +85,122 @@ ScrollBounce* ScrollBounce::OnScroll(Listener listener) {
     return this;
 }
 
+struct ScrollBounceState {
+    ScrollBouncePhysics physics;
+    OngoingScroll wheelLock;
+    double sampledAt = 0;
+    Listener onScroll = {};
+
+    static void OnWheel(ScrollBounceState* self, Ctx* cx,
+                        const ScrollWheelEvent* ev) {
+        if (!self || !ev || !cx || !cx->win) {
+            return;
+        }
+        Point delta = {ev->deltaX, ev->deltaY};
+        if (ev->precise) {
+            self->wheelLock.Filter(&delta, ev->phase);
+        }
+        if (delta.x != 0 && delta.y != 0) {
+            if (fabsf(delta.x) > fabsf(delta.y)) {
+                return;
+            }
+            delta.x = 0;
+        }
+        if (fabsf(delta.x) > fabsf(delta.y)) {
+            return;
+        }
+        bool ended = ev->phase == TouchPhase::Ended ||
+                     ev->phase == TouchPhase::Cancelled;
+        Window* win = cx->win;
+        ScrollRect* box = nullptr;
+        for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+            ScrollRect& s = win->paint.scrolls[i];
+            if (s.onScroll.IsValid() && s.bounds.Contains({ev->x, ev->y}) &&
+                s.contentH > s.bounds.h + 1.f) {
+                box = &s;
+                break;
+            }
+        }
+        float viewH = box ? box->bounds.h : 1.f;
+        if (ev->phase == TouchPhase::Started) {
+            self->physics.Begin(viewH);
+        }
+        if (self->physics.suppressMomentum) {
+            const_cast<ScrollWheelEvent*>(ev)->propagate = false;
+            return;
+        }
+        bool changed = false;
+        bool scrolled = false;
+        if (self->physics.Offset() != 0) {
+            float remainder = self->physics.Pull(delta.y);
+            if (remainder != 0 &&
+                WindowScrollApply(win, ev->x, ev->y, 0, remainder)) {
+                scrolled = true;
+            }
+            if (ended) {
+                self->physics.Release();
+            }
+            changed = true;
+            const_cast<ScrollWheelEvent*>(ev)->propagate = false;
+        } else if (box && ev->precise) {
+            float maxOff = box->contentH - box->bounds.h;
+            if (maxOff < 0) {
+                maxOff = 0;
+            }
+            bool atTop = box->scrollY <= 0 && delta.y > 0;
+            bool atBot = box->scrollY >= maxOff && delta.y < 0;
+            if (atTop || atBot) {
+                if (!self->physics.dragging) {
+                    self->physics.Begin(viewH);
+                }
+                self->physics.Pull(delta.y);
+                if (ended) {
+                    self->physics.Release();
+                }
+                changed = true;
+                const_cast<ScrollWheelEvent*>(ev)->propagate = false;
+            }
+        }
+        if (ended && !changed) {
+            self->physics.Release();
+        }
+        self->sampledAt = TimeNow();
+        if (changed && cx->win) {
+            AppInvalidate(cx->win);
+        }
+        if (scrolled && self->onScroll.IsValid()) {
+            ListenerCall(cx->app, cx->win, self->onScroll, ev);
+        }
+    }
+};
+
 El* ScrollBounce::IntoEl() {
-    // The native mobile hosts are compile-only today and do not publish the
-    // Started/Moved/Ended wheel stream this wrapper needs. Keep child layout
-    // exact; ScrollBouncePhysics is the ready host-side policy rather than
-    // guessing a release from desktop wheel momentum.
-    return child ? Div(cx->a)->PathClick(id)->Child(child)
-                 : Div(cx->a)->PathClick(id);
+    if (!child) {
+        return Div(cx->a)->PathClick(id);
+    }
+    if (!enabled || PlatReduceMotion()) {
+        return Div(cx->a)->PathClick(id)->Child(child);
+    }
+    Entity<ScrollBounceState> st =
+        ElementStateEntity<ScrollBounceState>(cx, id, StrL("ScrollBounce"));
+    ScrollBounceState* s = st.Get(cx);
+    float offset = 0;
+    if (s) {
+        s->physics.motion = motion;
+        s->onScroll = onScroll;
+        double now = TimeNow();
+        float dt = s->sampledAt > 0 ? (float)(now - s->sampledAt) : 0;
+        s->sampledAt = now;
+        if (s->physics.Step(dt) && cx->win) {
+            AppRequestAnim(cx->win, true);
+        }
+        offset = s->physics.Offset();
+    }
+    El* wrap = Div(cx->a)->PathClick(id)->ClipY()->PaintOffset(0, offset);
+    if (s) {
+        wrap->OnScrollWheel(ListenTo(st, &ScrollBounceState::OnWheel));
+    }
+    return wrap->Child(child);
 }
 
 } // namespace gpui

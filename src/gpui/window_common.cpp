@@ -2540,6 +2540,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                 win->scrollDragId = 0;
                 win->scrollDragGrab = 0;
                 win->scrollDragInput = nullptr;
+                if (win->sel) {
+                    win->sel->hasTouchEdgeDrag = false;
+                }
                 bool horizontal = false;
                 ScrollRect* bar =
                     ScrollbarAt(&win->paint, touch.startPosition.x,
@@ -2553,6 +2556,29 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                      touch.position.y != touch.startPosition.y)) {
                     (void)ScrollbarDrag(win, touch.position.x, touch.position.y,
                                         true);
+                }
+                if (!win->touchScrollbarDrag) {
+                    TouchSelectionSnapshot snap = {};
+                    if (WindowSelectionTouchSnapshot(win, &snap)) {
+                        for (int edge = 0; edge < 2; edge++) {
+                            SelectionEdge which = edge == 0
+                                                      ? SelectionEdge::Start
+                                                      : SelectionEdge::End;
+                            if (!snap.IsEdgeVisible(which)) {
+                                continue;
+                            }
+                            Bounds hit =
+                                TouchHandle::HitBounds(which, snap.Edge(which));
+                            if (!hit.Contains(touch.position)) {
+                                continue;
+                            }
+                            win->sel->hasTouchEdgeDrag = true;
+                            win->sel->touchEdgeDrag = TouchEdgeDrag::Begin(
+                                which, snap.Edge(which), touch.position);
+                            win->sel->touchMenuOpen = false;
+                            break;
+                        }
+                    }
                 }
             } else if (win->touchScrollbarDrag) {
                 if (touch.phase == TouchPhase::Moved ||
@@ -2568,12 +2594,31 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                     win->scrollDragGrab = 0;
                     win->scrollDragInput = nullptr;
                 }
+            } else if (win->sel && win->sel->hasTouchEdgeDrag) {
+                if (touch.phase == TouchPhase::Moved) {
+                    Point at = win->sel->touchEdgeDrag
+                                   .TextPosition(touch.position);
+                    WindowSelectionDrag(win, at.x, at.y);
+                }
+                if (touch.phase == TouchPhase::Ended ||
+                    touch.phase == TouchPhase::Cancelled) {
+                    WindowSelectionRelease(win);
+                    win->sel->hasTouchEdgeDrag = false;
+                    if (touch.phase == TouchPhase::Ended) {
+                        win->sel->touchMenuOpen = WindowSelectionHas(win);
+                    }
+                }
+                AppInvalidate(win);
             }
             break;
         }
         case PlatformInputKind::LongPress: {
             const LongPressEvent& touch = input->longPress;
             if (touch.phase == TouchPhase::Started) {
+                if (win->sel) {
+                    win->sel->touchMenuOpen = false;
+                    win->sel->hasTouchEdgeDrag = false;
+                }
                 win->longPressSelection = WindowSelectionLongPressStart(
                     win, touch.startPosition.x, touch.startPosition.y);
             } else if (win->longPressSelection) {
@@ -2585,6 +2630,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                     touch.phase == TouchPhase::Cancelled) {
                     WindowSelectionRelease(win);
                     win->longPressSelection = false;
+                    if (touch.phase == TouchPhase::Ended && win->sel) {
+                        win->sel->touchMenuOpen = WindowSelectionHas(win);
+                    }
                 }
             }
             AppInvalidate(win);
@@ -2674,6 +2722,188 @@ PlatformInput InputLongPress(TouchPhase phase, Point start, Point position) {
     in.longPress.startPosition = start;
     in.longPress.position = position;
     return in;
+}
+
+static const float kTouchSlopPx = 10.f;
+static const double kTouchLongPressS = 0.5;
+
+static float TouchDist2(Point a, Point b) {
+    float dx = a.x - b.x;
+    float dy = a.y - b.y;
+    return dx * dx + dy * dy;
+}
+
+static void TouchHostReset(Window* win) {
+    win->touchHost = TouchHostKind::None;
+    win->touchHostStart = {};
+    win->touchHostLast = {};
+    win->touchHostStartAt = 0;
+}
+
+static bool TouchHostHitHandle(Window* win, Point at) {
+    TouchSelectionSnapshot snap = {};
+    if (!WindowSelectionTouchSnapshot(win, &snap)) {
+        return false;
+    }
+    for (int edge = 0; edge < 2; edge++) {
+        SelectionEdge which =
+            edge == 0 ? SelectionEdge::Start : SelectionEdge::End;
+        if (!snap.IsEdgeVisible(which)) {
+            continue;
+        }
+        if (TouchHandle::HitBounds(which, snap.Edge(which)).Contains(at)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool TouchHostIsDrag(TouchHostKind kind) {
+    return kind == TouchHostKind::BarDrag || kind == TouchHostKind::HandleDrag;
+}
+
+static void TouchHostEmitScroll(Window* win, TouchPhase phase, Point last,
+                                Point now) {
+    PlatformInput in = InputScrollWheel(now.x, now.y, now.x - last.x,
+                                        now.y - last.y, true, {}, phase);
+    WindowDispatchInput(win, &in);
+}
+
+static void TouchHostEmitDrag(Window* win, TouchPhase phase, Point now) {
+    PlatformInput in = InputTouchDrag(phase, win->touchHostStart, now);
+    WindowDispatchInput(win, &in);
+}
+
+bool WindowScrollApply(Window* win, float x, float y, float dx, float dy) {
+    if (!win) {
+        return false;
+    }
+    for (int i = win->paint.scrolls.len - 1; i >= 0; i--) {
+        ScrollRect& s = win->paint.scrolls[i];
+        if (!s.onScroll.IsValid() || !s.bounds.Contains({x, y})) {
+            continue;
+        }
+        bool canY = s.contentH > s.bounds.h + 1.f;
+        bool canX = s.contentW > s.bounds.w + 1.f;
+        if (!canY && !canX) {
+            continue;
+        }
+        float offY = canY ? ClampScroll(s.scrollY - dy, s.contentH, s.bounds.h)
+                          : s.scrollY;
+        float offX = canX ? ClampScroll(s.scrollX - dx, s.contentW, s.bounds.w)
+                          : s.scrollX;
+        if (offX == s.scrollX && offY == s.scrollY) {
+            return false;
+        }
+        ScrollbarEmit(win, &s, offX, offY);
+        return true;
+    }
+    return false;
+}
+
+void WindowTouchBegin(Window* win, float x, float y) {
+    if (!win) {
+        return;
+    }
+    win->touchPressPending = true;
+    Point at = {x, y};
+    win->touchHostStart = at;
+    win->touchHostLast = at;
+    win->touchHostStartAt = TimeNow();
+    if (TouchHostHitHandle(win, at)) {
+        win->touchHost = TouchHostKind::HandleDrag;
+        TouchHostEmitDrag(win, TouchPhase::Started, at);
+        return;
+    }
+    win->touchHost = TouchHostKind::Pending;
+    PlatSetTimer(win, WindowTimerMs(win));
+}
+
+void WindowTouchPoll(Window* win, double now) {
+    if (!win || win->touchHost != TouchHostKind::Pending) {
+        return;
+    }
+    if (now - win->touchHostStartAt < kTouchLongPressS) {
+        return;
+    }
+    win->touchHost = TouchHostKind::LongPress;
+    PlatformInput in = InputLongPress(TouchPhase::Started, win->touchHostStart,
+                                      win->touchHostLast);
+    WindowDispatchInput(win, &in);
+}
+
+void WindowTouchMove(Window* win, float x, float y) {
+    if (!win || win->touchHost == TouchHostKind::None) {
+        return;
+    }
+    Point now = {x, y};
+    WindowTouchPoll(win, TimeNow());
+    if (win->touchHost == TouchHostKind::Pending) {
+        if (TouchDist2(now, win->touchHostStart) <
+            kTouchSlopPx * kTouchSlopPx) {
+            win->touchHostLast = now;
+            return;
+        }
+        bool horizontal = false;
+        ScrollRect* bar = ScrollbarAt(&win->paint, win->touchHostStart.x,
+                                      win->touchHostStart.y, &horizontal);
+        if (bar) {
+            win->touchHost = TouchHostKind::BarDrag;
+            TouchHostEmitDrag(win, TouchPhase::Started, win->touchHostStart);
+            TouchHostEmitDrag(win, TouchPhase::Moved, now);
+        } else {
+            win->touchHost = TouchHostKind::Scroll;
+            TouchHostEmitScroll(win, TouchPhase::Started, win->touchHostStart,
+                                now);
+        }
+        win->touchHostLast = now;
+        return;
+    }
+    if (win->touchHost == TouchHostKind::LongPress) {
+        PlatformInput in =
+            InputLongPress(TouchPhase::Moved, win->touchHostStart, now);
+        WindowDispatchInput(win, &in);
+    } else if (win->touchHost == TouchHostKind::Scroll) {
+        TouchHostEmitScroll(win, TouchPhase::Moved, win->touchHostLast, now);
+    } else if (TouchHostIsDrag(win->touchHost)) {
+        TouchHostEmitDrag(win, TouchPhase::Moved, now);
+    }
+    win->touchHostLast = now;
+}
+
+void WindowTouchEnd(Window* win, float x, float y) {
+    if (!win || win->touchHost == TouchHostKind::None) {
+        return;
+    }
+    Point now = {x, y};
+    WindowTouchPoll(win, TimeNow());
+    if (win->touchHost == TouchHostKind::LongPress) {
+        PlatformInput in =
+            InputLongPress(TouchPhase::Ended, win->touchHostStart, now);
+        WindowDispatchInput(win, &in);
+    } else if (win->touchHost == TouchHostKind::Scroll) {
+        TouchHostEmitScroll(win, TouchPhase::Ended, win->touchHostLast, now);
+    } else if (TouchHostIsDrag(win->touchHost)) {
+        TouchHostEmitDrag(win, TouchPhase::Ended, now);
+    }
+    TouchHostReset(win);
+}
+
+void WindowTouchCancel(Window* win) {
+    if (!win || win->touchHost == TouchHostKind::None) {
+        return;
+    }
+    Point now = win->touchHostLast;
+    if (win->touchHost == TouchHostKind::LongPress) {
+        PlatformInput in =
+            InputLongPress(TouchPhase::Cancelled, win->touchHostStart, now);
+        WindowDispatchInput(win, &in);
+    } else if (win->touchHost == TouchHostKind::Scroll) {
+        TouchHostEmitScroll(win, TouchPhase::Cancelled, now, now);
+    } else if (TouchHostIsDrag(win->touchHost)) {
+        TouchHostEmitDrag(win, TouchPhase::Cancelled, now);
+    }
+    TouchHostReset(win);
 }
 
 // blink_cursor.rs: INTERVAL and PAUSE_DELAY.
@@ -2794,6 +3024,7 @@ void WindowTimerTick(Window* win) {
         return;
     }
     double now = TimeNow();
+    WindowTouchPoll(win, now);
 
     if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
         win->scrollDragNotifyDue <= now) {
@@ -2897,6 +3128,12 @@ int WindowTimerMs(Window* win) {
     if (win->scrollDragNotifyPending && win->scrollDragNotifyDue > 0 &&
         (soonest < 0 || win->scrollDragNotifyDue < soonest)) {
         soonest = win->scrollDragNotifyDue;
+    }
+    if (win->touchHost == TouchHostKind::Pending) {
+        double due = win->touchHostStartAt + kTouchLongPressS;
+        if (soonest < 0 || due < soonest) {
+            soonest = due;
+        }
     }
     if (soonest < 0) {
         return 0;

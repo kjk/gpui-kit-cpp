@@ -179,6 +179,79 @@ static void ALongPressTakesAWordAndKeepsDragging() {
     n = WindowSelectionText(&win, buf.s, len(buf) + 1);
     utassert(n > 5 && StrStartsWith(Str(buf.s, n), StrL("quick")));
     utassert(!win.longPressSelection);
+    TouchSelectionSnapshot snap = {};
+    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
+    WindowSelectionCloseEditMenu(&win);
+    utassert(WindowSelectionTouchSnapshot(&win, &snap) && !snap.menuOpen);
+    WindowSelectionFree(&win);
+}
+
+struct TouchHostWheel {
+    int n = 0;
+    TouchPhase last = TouchPhase::Moved;
+    static void OnWheel(TouchHostWheel* self, Ctx*,
+                        const ScrollWheelEvent* ev) {
+        if (!ev) {
+            return;
+        }
+        self->n++;
+        self->last = ev->phase;
+    }
+};
+
+static void AHostFingerSwipeEmitsPhasedScroll() {
+    App app;
+    Window win;
+    win.app = &app;
+    Entity<TouchHostWheel> probe = EntityNewState<TouchHostWheel>(&app);
+    WindowOnScrollWheel(&win, ListenTo(probe, &TouchHostWheel::OnWheel));
+    WindowTouchBegin(&win, 40, 10);
+    utassert(win.touchHost == TouchHostKind::Pending);
+    WindowTouchMove(&win, 40, 40);
+    utassert(win.touchHost == TouchHostKind::Scroll);
+    TouchHostWheel* p = probe.Get(&app);
+    utassert(p && p->n >= 1);
+    WindowTouchEnd(&win, 40, 50);
+    utassert(p->last == TouchPhase::Ended);
+    utassert(win.touchHost == TouchHostKind::None);
+    EntityDrop(&app, probe.id);
+}
+
+static void AHostLongPressTimerSelectsAWord() {
+    Window win;
+    AddRun(&win, 0, "quick select value", 0);
+    WindowTouchBegin(&win, 25, 5);
+    WindowTouchPoll(&win, TimeNow() + 1);
+    utassert(win.touchHost == TouchHostKind::LongPress);
+    utassert(win.longPressSelection);
+    TempStr buf = AllocStrTemp(31);
+    int n = WindowSelectionText(&win, buf.s, len(buf) + 1);
+    utassert(StrEq(Str(buf.s, n), StrL("quick")));
+    WindowTouchEnd(&win, 25, 5);
+    TouchSelectionSnapshot snap = {};
+    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
+    WindowSelectionFree(&win);
+}
+
+static void AHostHandleDragStartsOnTheSelectionHandle() {
+    Window win;
+    AddRun(&win, 0, "quick select value", 0);
+    WindowTouchBegin(&win, 25, 5);
+    WindowTouchPoll(&win, TimeNow() + 1);
+    WindowTouchEnd(&win, 25, 5);
+    TouchSelectionSnapshot snap = {};
+    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
+
+    WindowTouchBegin(&win, 25, 5);
+    utassert(win.touchHost == TouchHostKind::HandleDrag);
+    utassert(win.sel && win.sel->hasTouchEdgeDrag);
+    utassert(win.sel && !win.sel->touchMenuOpen);
+
+    WindowTouchMove(&win, 80, 5);
+    WindowTouchEnd(&win, 80, 5);
+    utassert(win.touchHost == TouchHostKind::None);
+    utassert(win.sel && !win.sel->hasTouchEdgeDrag);
+    utassert(WindowSelectionTouchSnapshot(&win, &snap) && snap.menuOpen);
     WindowSelectionFree(&win);
 }
 
@@ -633,6 +706,9 @@ void TestTextSelection() {
     ShiftClickExtendsFromTheAnchor();
     TwoClicksTakeTheWordAndThreeTheLine();
     ALongPressTakesAWordAndKeepsDragging();
+    AHostFingerSwipeEmitsPhasedScroll();
+    AHostLongPressTimerSelectsAWord();
+    AHostHandleDragStartsOnTheSelectionHandle();
     ADoubleTapOnReadOnlyTextSelectsNothing();
     AMultiClickOffTextTakesNothing();
     AControlPressSuppressesWindowSelection();

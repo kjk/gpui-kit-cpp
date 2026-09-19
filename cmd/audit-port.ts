@@ -47,7 +47,7 @@ table tag text theme touch_selection tooltip tree
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set(["input", "reduce_motion", "scroll_bounce", "text", "touch_selection"]);
+const partialBase = new Set(["input", "reduce_motion", "text"]);
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support"]);
 const partialUi = new Set(["touch_selection"]);
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
@@ -58,11 +58,9 @@ const partialReasons: Record<string, string> = {
     "language-aware pairs and smart indentation are ported without Rust regex objects or generated-pair history",
   "base/reduce_motion":
     "startup follows the platform preference; live Linux portal changes and an app-level override are not exposed",
-  "base/scroll_bounce":
-    "the source-shaped wrapper and motion settings are present, but desktop platform input has no touch-phase overscroll stream",
+
   "base/text": "inline native elements use portable element callbacks rather than Rust AnyElement entities",
-  "base/touch_selection":
-    "selection-edge and handle geometry are ported; mobile long-press, drag, and edit-menu integration have no platform event seam",
+
   "ui/touch_selection":
     "the themed layer uses Base's geometry, but the mobile overlay and native edit menu have no supported platform target",
 };
@@ -240,7 +238,7 @@ const testTargets: Record<string, string[]> = {
   "base/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/resizable": ["tests/ResizableTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
-  "base/scroll_bounce": ["tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
+  "base/scroll_bounce": ["tests/ScrollBounceTests.cpp", "tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
   "base/select": ["tests/SelectTests.cpp"],
   "base/sheet": ["tests/SheetTests.cpp"],
   "base/slider": ["tests/SliderTests.cpp", "tests/AccessibilityTests.cpp"],

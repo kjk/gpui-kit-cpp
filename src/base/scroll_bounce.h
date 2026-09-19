@@ -27,9 +27,9 @@ struct ScrollBouncePrepaintState {
     float velocity = 0;
 };
 
-// The source element's rubber-band and critically damped return, kept public
-// so a native host can drive it while the portable element seam remains a
-// pass-through. Pull returns displacement which crossed back into content.
+// The source element's rubber-band and critically damped return. IntoEl
+// consumes a TouchPhase ScrollWheel stream and paints the displacement.
+// Pull returns displacement which crossed back into content.
 struct ScrollBouncePhysics {
     float position = 0;
     float velocity = 0;

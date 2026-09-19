@@ -429,6 +429,18 @@ enum class TouchPhase : uint8_t {
     Cancelled
 };
 
+// What WindowTouchBegin/Move/End classified the finger as. Pending until
+// the long-press timer fires or the finger travels past the slop. A press
+// that starts on a selection handle is HandleDrag from the first sample.
+enum class TouchHostKind : uint8_t {
+    None,
+    Pending,
+    LongPress,
+    Scroll,
+    BarDrag,
+    HandleDrag
+};
+
 // gpui::OngoingScroll. Precise scrolling is a gesture rather than a series of
 // unrelated wheel notches, so the axis chosen by its first delta stays chosen
 // while a trackpad wobbles. A strong turn (twice as much motion on the other
@@ -5481,6 +5493,11 @@ struct Window {
     Listener scrollDragNotifyListener = {};
     ScrollEvent scrollDragNotifyEvent = {};
     bool longPressSelection = false;
+    // WindowTouch*: a host-owned iOS/Android view feeds raw touches here.
+    TouchHostKind touchHost = TouchHostKind::None;
+    Point touchHostStart = {};
+    Point touchHostLast = {};
+    double touchHostStartAt = 0;
     InputState* input = nullptr;
     // This window's one TooltipOverlay. Created on first use, the way a
     // field's blink cursor is.

@@ -54,10 +54,26 @@ static void SpringTrajectoryDoesNotDependOnRefreshRate() {
     utassertnear(QuarterSecondAt(60), QuarterSecondAt(120));
 }
 
+static void APhasedWheelAtTheEdgeStretches() {
+    ScrollBouncePhysics scroll;
+    scroll.Begin(200);
+    utassertnear(scroll.Pull(80), 0);
+    utassert(scroll.Offset() > 0);
+    scroll.Release();
+    utassert(scroll.Offset() > 0);
+    utassert(scroll.suppressMomentum);
+    scroll.Step(.5f);
+    utassert(scroll.Offset() >= 0);
+    // A new finger-down ends suppression, matching the iOS momentum rule.
+    scroll.Begin(200);
+    utassert(!scroll.suppressMomentum);
+}
+
 void TestScrollBounce() {
     TestSuite("scroll_bounce");
     ResistanceAndReversePreserveUnconsumedDistance();
     ResponseScalesTheReturnAndZeroSnaps();
     RegrabbingTheSpringDoesNotJump();
     SpringTrajectoryDoesNotDependOnRefreshRate();
+    APhasedWheelAtTheEdgeStretches();
 }

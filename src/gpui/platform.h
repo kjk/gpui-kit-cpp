@@ -65,6 +65,22 @@ PlatformInput InputScrollWheel(float x, float y, float deltaX, float deltaY,
 PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position);
 PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
 
+// A host-owned iOS/Android view forwards each finger as these. They
+// classify the gesture and emit LongPress, TouchDrag (scrollbar or
+// selection-handle), or a TouchPhase ScrollWheel stream — the events
+// WindowDispatchInput already understands. `Poll` is the clock:
+// WindowTimerTick calls it; tests pass a later `now` to fire the
+// long-press timer without sleeping.
+void WindowTouchBegin(Window* win, float x, float y);
+void WindowTouchMove(Window* win, float x, float y);
+void WindowTouchEnd(Window* win, float x, float y);
+void WindowTouchCancel(Window* win);
+void WindowTouchPoll(Window* win, double now);
+
+// Apply a wheel-shaped delta to the scrolled box under (x, y). True when
+// the offset moved. ScrollBounce uses this for the reverse-drag remainder.
+bool WindowScrollApply(Window* win, float x, float y, float dx, float dy);
+
 // Count this press against the run before it and answer 1, 2, 3… Called once
 // per press, before the platform decides what the press means — the title bar
 // has to tell a drag from a zoom, and only the count separates them. Windows
