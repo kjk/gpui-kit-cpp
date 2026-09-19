@@ -431,6 +431,12 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
             e->scrollY = offset;
     }
     const float* sizes = layout.sizes.len ? layout.sizes.els : nullptr;
+    bool hadPending = o.handle && o.handle->pending;
+    int pendingIx = hadPending ? o.handle->pendingIx : 0;
+    int pendingOffset = hadPending ? o.handle->pendingOffset : 0;
+    ScrollStrategy pendingStrategy = hadPending
+                                         ? o.handle->pendingStrategy
+                                         : ScrollStrategy::Top;
     if (o.handle) {
         o.handle->axis = axis;
         VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
@@ -439,6 +445,58 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
             e->scrollX = offset;
         else
             e->scrollY = offset;
+    }
+    if (o.needsMeasure && o.sizes && o.row && o.count > 0) {
+        // GPUI's ListState measures a row as it enters the overdraw range.
+        // Start with the provisional extents to find that range, then rebuild
+        // origins and the pending scroll request from the actual row boxes.
+        // The handle request was consumed above; a following-tail request
+        // needs the newly measured content size before it resolves.
+        Ctx rowCx = {};
+        rowCx.app = paint->app;
+        rowCx.win = paint->win;
+        rowCx.a = paint->a;
+        // A newly measured group can shrink enough to expose more rows.
+        // Continue until the entire visible range has measured extents.
+        for (int pass = 0; pass < o.count; pass++) {
+            VirtualRange range = VirtualListVisibleRangeFromLayout(
+                layout.origins.els, layout.sizes.els, o.count,
+                offset > o.overdraw ? offset - o.overdraw : 0,
+                viewport + o.overdraw * 2);
+            int anchor = VirtualListVisibleRangeFromLayout(
+                layout.origins.els, layout.sizes.els, o.count, offset, 0).first;
+            float anchorOrigin = anchor < layout.origins.len
+                                     ? layout.origins[anchor] : 0;
+            bool changed = false;
+            for (int ix = range.first; ix < range.end; ix++) {
+                if (!o.needsMeasure[ix]) continue;
+                El* row = o.row(o.user, &rowCx, ix);
+                if (!row) continue;
+                Size measured = MeasureElAtWidth(ctx, row, cross);
+                if (measured.h <= 0) continue;
+                const_cast<float*>(o.sizes)[ix] = measured.h;
+                o.needsMeasure[ix] = 0;
+                changed = true;
+            }
+            if (!changed) break;
+            ItemSizeLayoutBuild(&layout, axis, o.sizes, o.count, o.rowH,
+                                o.gap, cross);
+            if (o.handle) {
+                if (!hadPending && anchor < layout.origins.len)
+                    o.handle->offset += layout.origins[anchor] - anchorOrigin;
+                if (hadPending) {
+                    o.handle->pending = true;
+                    o.handle->pendingIx = pendingIx;
+                    o.handle->pendingOffset = pendingOffset;
+                    o.handle->pendingStrategy = pendingStrategy;
+                }
+                VirtualListHandleLayout(o.handle, layout.sizes.els, o.count,
+                                        0, viewport);
+                offset = o.handle->offset;
+                if (axis == Axis::Horizontal) e->scrollX = offset;
+                else e->scrollY = offset;
+            }
+        }
     }
     float content =
         axis == Axis::Horizontal ? layout.contentSize.w : layout.contentSize.h;
@@ -469,7 +527,7 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
         offset =
             VirtualListPixelFromLogical(o.sizes, o.count, o.topItem, o.topInto);
     }
-    if (o.handle && viewport > 0) {
+    if (o.handle && viewport > 0 && !o.needsMeasure) {
         o.handle->axis = o.layoutAxis;
         ItemSizeLayout layout;
         float cross = o.layoutAxis == Axis::Horizontal ? o.viewH : o.viewW;

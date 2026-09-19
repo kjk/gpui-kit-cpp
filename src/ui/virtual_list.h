@@ -22,6 +22,7 @@ struct VirtualList {
     // The item sizes, for a list whose rows are not all one height. Null is
     // the uniform list, which is `rowH` per row.
     const float* sizes = nullptr;
+    uint8_t* needsMeasure = nullptr;
     // The handle the caller holds: where the list has scrolled to, and where
     // it has been asked to scroll. A list with one reads its offset from the
     // handle rather than from `scrollY`.
@@ -57,6 +58,7 @@ struct VirtualList {
     VirtualList* ScrollY(float v);
     VirtualList* ScrollX(float v);
     VirtualList* Sizes(const float* v);
+    VirtualList* MeasureRows(uint8_t* flags);
     VirtualList* Handle(VirtualListScrollHandle* h);
     VirtualList* Scroll(int id, Listener onScroll);
     VirtualList* Axis(ScrollAxis v);

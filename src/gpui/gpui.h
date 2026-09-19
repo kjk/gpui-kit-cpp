@@ -5123,6 +5123,8 @@ void LayoutEl(PaintCtx* ctx, El* e, float x, float y, float availW,
 // frame does not disturb the window's.
 Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont = 0,
                Rgba inheritFg = {});
+// Measure a row at the width its virtual-list viewport will give it.
+Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width);
 void PaintEl(PaintCtx* ctx, El* e);
 int HitTest(PaintCtx* ctx, float x, float y);
 const HitRect* HitTestRect(PaintCtx* ctx, float x, float y);

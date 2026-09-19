@@ -179,6 +179,9 @@ struct VirtualListOpts {
     // horizontal. 0 fills the parent.
     float viewW = 0;
     const float* sizes = nullptr;
+    // Rows flagged here are measured at the viewport width before placement.
+    // The size array supplies a provisional extent only to find the range.
+    uint8_t* needsMeasure = nullptr;
     // The offsets, for a list without a handle. A list with one reads its
     // offset from the handle instead — `track_scroll(&handle)`.
     float scrollY = 0;

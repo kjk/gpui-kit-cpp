@@ -36,6 +36,10 @@ VirtualList* VirtualList::Sizes(const float* v) {
     sizes = v;
     return this;
 }
+VirtualList* VirtualList::MeasureRows(uint8_t* flags) {
+    needsMeasure = flags;
+    return this;
+}
 VirtualList* VirtualList::Handle(VirtualListScrollHandle* h) {
     handle = h;
     return this;
@@ -98,6 +102,8 @@ El* VirtualList::IntoEl() {
     o.rowH = rowH;
     o.viewH = viewH;
     o.sizes = sizes;
+    o.needsMeasure = needsMeasure;
+    o.overdraw = needsMeasure ? 400.f : 0.f;
     o.scrollY = scrollY;
     o.scrollX = scrollX;
     o.handle = handle;

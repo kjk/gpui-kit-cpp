@@ -17,10 +17,8 @@ struct Button;
 const float kMessageScrollerOverdraw = 400.f;
 const float kMessageScrollerJumpTransitionMs = 200.f;
 const float kMessageScrollerBottomFadeTransitionMs = 200.f;
-// What a row that has not been laid out yet is assumed to be tall. GPUI's
-// `list` measures a row the first time it is scrolled near; nothing here can
-// measure while the tree is being built, so a row starts at this height and
-// is corrected from the box layout gave it on the next frame.
+// Provisional extent used only to locate rows before the layout-time
+// measurement of the visible range.
 const float kMessageScrollerEstimatedRowHeight = 64.f;
 
 // The entity-owned scrolling state for a MessageScroller.
@@ -28,20 +26,11 @@ const float kMessageScrollerEstimatedRowHeight = 64.f;
 // The state owns only the virtual-list bookkeeping; message data stays with
 // the caller and is read by the row renderer passed to MessageScroller::New.
 //
-// Where this differs from `ListState`: GPUI measures a row during layout and
-// caches its height by item. This tree has no measure-during-layout seam, so
-// the state keeps the box the previous frame gave each row — reported through
-// El::BoundsOut, one frame late, the way every other measured thing here is —
-// and a row nothing has laid out yet stands in at the estimate above. The
-// consequences are that the first frame of a list is laid out from estimates,
-// and that a row whose content grows is right on the frame after it grew.
 struct MessageScrollerState {
     VirtualListScrollHandle handle;
-    // The height of each row, or 0 for one that has not been laid out.
+    // The measured height of each row, or a provisional extent until measured.
     Vec<float> heights;
-    // Where the last frame put each row. The scroller hands the row wrapper
-    // a pointer into this, so it must not move while a frame is being built.
-    Vec<Bounds> probes;
+    Vec<uint8_t> needsMeasure;
     // FollowMode::Tail: the list sticks to the newest row until the reader
     // scrolls away from it.
     bool followTail = true;

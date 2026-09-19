@@ -8,7 +8,7 @@ namespace component {
 
 MessageScrollerState::~MessageScrollerState() {
     VecReset(heights);
-    VecReset(probes);
+    VecReset(needsMeasure);
 }
 
 void MessageScrollerState::Init(MessageScrollerState* self, int itemCount) {
@@ -16,10 +16,10 @@ void MessageScrollerState::Init(MessageScrollerState* self, int itemCount) {
         return;
     }
     VecClear(self->heights);
-    VecClear(self->probes);
+    VecClear(self->needsMeasure);
     for (int i = 0; i < itemCount; i++) {
         VecAppend(self->heights, kMessageScrollerEstimatedRowHeight);
-        VecAppend(self->probes, Bounds{});
+        VecAppend(self->needsMeasure, (uint8_t)1);
     }
     self->handle = VirtualListScrollHandle{};
     self->handle.itemsCount = itemCount;
@@ -61,20 +61,24 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
     if (!ValidRange(start, end) || count < 0) {
         return false;
     }
+    if (!followTail && start == 0 && handle.offset > 0) {
+        float removed = 0;
+        for (int i = start; i < end; i++) removed += heights[i];
+        handle.offset += count * kMessageScrollerEstimatedRowHeight - removed;
+        if (handle.offset < 0) handle.offset = 0;
+    }
     if (end > start) {
         VecRemoveAtN(heights, start, end - start);
-        VecRemoveAtN(probes, start, end - start);
+        VecRemoveAtN(needsMeasure, start, end - start);
     }
     if (count > 0) {
         float* rows = VecInsertSpace(heights, start, count);
-        Bounds* boxes = VecInsertSpace(probes, start, count);
+        uint8_t* flags = VecInsertSpace(needsMeasure, start, count);
         for (int i = 0; i < count; i++) {
             if (rows) {
                 rows[i] = kMessageScrollerEstimatedRowHeight;
             }
-            if (boxes) {
-                boxes[i] = Bounds{};
-            }
+            if (flags) flags[i] = 1;
         }
     }
     handle.itemsCount = heights.len;
@@ -85,9 +89,11 @@ bool MessageScrollerState::Splice(Ctx* cx, int start, int end, int count) {
     int last = heights.len - 1;
     if (last >= 0) {
         heights[last] = kMessageScrollerEstimatedRowHeight;
+        needsMeasure[last] = 1;
         int neighbor = start - 1;
         if (neighbor >= 0 && neighbor != last) {
             heights[neighbor] = kMessageScrollerEstimatedRowHeight;
+            needsMeasure[neighbor] = 1;
         }
     }
     if (cx) {
@@ -108,6 +114,7 @@ bool MessageScrollerState::Prepend(Ctx* cx, int count) {
 void MessageScrollerState::Remeasure(Ctx* cx) {
     for (int i = 0; i < heights.len; i++) {
         heights[i] = kMessageScrollerEstimatedRowHeight;
+        needsMeasure[i] = 1;
     }
     if (cx) {
         Notify(cx);
@@ -120,6 +127,7 @@ bool MessageScrollerState::RemeasureItems(Ctx* cx, int start, int end) {
     }
     for (int i = start; i < end; i++) {
         heights[i] = kMessageScrollerEstimatedRowHeight;
+        needsMeasure[i] = 1;
     }
     if (cx) {
         Notify(cx);
@@ -246,7 +254,6 @@ MessageScroller* MessageScroller::Refine(const Style& s, uint32_t fields) {
 // pointer the way every other row builder here carries its environment.
 struct MessageScrollerRowCtx {
     MessageScroller* scroller = nullptr;
-    MessageScrollerState* st = nullptr;
     int count = 0;
     float insetL = 0;
     float insetR = 0;
@@ -282,9 +289,6 @@ static El* MessageScrollerRow(void* user, Ctx* cx, int index) {
     if (rc->scroller->renderer) {
         row->Child(rc->scroller->renderer(rc->scroller->user, cx, index));
     }
-    if (rc->st && index >= 0 && index < rc->st->probes.len) {
-        row->BoundsOut(&rc->st->probes[index]);
-    }
     return row;
 }
 
@@ -293,21 +297,6 @@ El* MessageScroller::IntoEl() {
     MessageScrollerState* st = state.Get(cx->app);
     if (!st) {
         return Div(a);
-    }
-
-    // Last frame's boxes become this frame's row heights. Nothing here can
-    // measure a row while the tree is being built, so a row that changed
-    // height asks for one more frame and is right on it.
-    bool moved = false;
-    for (int i = 0; i < st->heights.len && i < st->probes.len; i++) {
-        float measured = st->probes[i].h;
-        if (measured > 0 && measured != st->heights[i]) {
-            st->heights[i] = measured;
-            moved = true;
-        }
-    }
-    if (moved && cx->win) {
-        WindowRequestAnimationFrame(cx->win);
     }
 
     int count = st->heights.len;
@@ -332,7 +321,6 @@ El* MessageScroller::IntoEl() {
 
     MessageScrollerRowCtx* rc = ArenaNew<MessageScrollerRowCtx>(a);
     rc->scroller = this;
-    rc->st = st;
     rc->count = count;
     rc->insetL = insetL;
     rc->insetR = insetR;
@@ -342,6 +330,7 @@ El* MessageScroller::IntoEl() {
     El* list = VirtualList::New(cx, count)
                    ->Id(id)
                    ->Sizes(st->heights.els)
+                   ->MeasureRows(st->needsMeasure.els)
                    ->ViewH(viewH)
                    ->Handle(&st->handle)
                    ->Axis(ScrollAxis::Vertical)

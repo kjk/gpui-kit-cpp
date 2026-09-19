@@ -326,6 +326,42 @@ static void PrePaintUsesTheLaidOutBoxNotViewH() {
     ArenaDelete(arena);
 }
 
+static El* MeasuredVirtualRow(void*, Ctx* cx, int ix) {
+    return Div(cx->a)->W(kFill)->H(ix == 1 ? 40.f : 20.f);
+}
+
+static void VisibleRowsUseTheirRenderedHeights() {
+    App app;
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    float sizes[] = {64, 64, 64};
+    uint8_t dirty[] = {1, 1, 1};
+    VirtualListScrollHandle handle;
+    handle.itemsCount = 3;
+    VirtualListScrollToBottomDeferred(&handle);
+    VirtualListOpts opts;
+    opts.count = 3;
+    opts.sizes = sizes;
+    opts.needsMeasure = dirty;
+    opts.handle = &handle;
+    opts.row = &MeasuredVirtualRow;
+    opts.overdraw = 400;
+    El* root = v_virtual_list(&cx, StrL("measured"), opts);
+    root->w = 100;
+    root->h = 50;
+    InvokePrePaint(root, &app, win);
+    utassertnear(sizes[0], 20.f);
+    utassertnear(sizes[1], 40.f);
+    utassertnear(sizes[2], 20.f);
+    utassert(dirty[0] == 0 && dirty[1] == 0 && dirty[2] == 0);
+    utassertnear(handle.contentSize, 80.f);
+    utassertnear(handle.offset, 30.f);
+    delete win;
+    ArenaDelete(arena);
+}
+
 static void LogicalOffsetIgnoresUnmeasuredItems() {
     const float sizes[] = {20, 30, 0, 40};
     utassertnear(VirtualListPixelFromLogical(sizes, 4, 2, 0), 50.f);
@@ -360,5 +396,6 @@ void TestVirtualList() {
     ItemSizeLayoutCarriesOriginsGapsAndCrossSize();
     HorizontalConstructorUsesXAxisEndToEnd();
     PrePaintUsesTheLaidOutBoxNotViewH();
+    VisibleRowsUseTheirRenderedHeights();
     LogicalOffsetIgnoresUnmeasuredItems();
 }

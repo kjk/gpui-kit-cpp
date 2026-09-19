@@ -21,16 +21,6 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust
 
-- **The MessageScroller story seeds row heights from text measurements.**
-  Rust measures rendered rows through its virtual list; the C++ story uses
-  fixed bubble padding around `MeasureText` until row measurement feeds back
-  into the list state (`examples/story/message_scroller.cpp`).
-- **Shell script rows are a few pixels taller than Rust's at the default
-  theme.** The identical `quotes/ui.js` is rendered through the portable shell
-  element materializer and DirectWrite text metrics; the ten-row scripted
-  panel is about 38 DIP taller at the comparison window size
-  (`src/shell/materialize.cpp`, `assets/story/quotes/ui.js`).
-
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.

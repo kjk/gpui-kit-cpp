@@ -3556,6 +3556,15 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
             c->style.fontMedium = e->style.fontMedium;
         }
     }
+    // GPUI's line_height is inherited by text inside a styled div. Shell's
+    // quote labels set it on the div around the text leaf; losing it at that
+    // boundary makes each scripted row use the taller default line box.
+    if (e->style.lineHeight > 0) {
+        for (El* c = e->first; c; c = c->next) {
+            if (c->style.lineHeight <= 0)
+                c->style.lineHeight = e->style.lineHeight;
+        }
+    }
     e->laidFont = font;
     if (e->kind == ElKind::Icon && e->style.width == kAuto &&
         e->style.height == kAuto) {
@@ -4415,6 +4424,13 @@ Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
     LayoutCacheReset(&gMeasureCache);
     LayoutElIn(&gMeasureCache, ctx, e, 0, 0, 0, 0, true, inheritFont,
                inheritFg);
+    return Size{e->w, e->h};
+}
+
+Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width) {
+    if (!e) return Size{0, 0};
+    LayoutCacheReset(&gMeasureCache);
+    LayoutElIn(&gMeasureCache, ctx, e, 0, 0, width, 0, false, 0, {});
     return Size{e->w, e->h};
 }
 
