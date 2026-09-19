@@ -26,9 +26,113 @@ struct ChartStory {
     }
 };
 
-// chart_container(): a 400px card with the title, the range, the chart and
-// two lines of commentary.
-static El* ChartCard(Ctx* cx, const char* title, El* chart, bool center) {
+static float ChangePercent(float latest, float previous) {
+    if (previous < 0.0001f && previous > -0.0001f) {
+        return 0;
+    }
+    return (latest - previous) / (previous < 0 ? -previous : previous) * 100.f;
+}
+
+static float LatestChange(const float* values, int n) {
+    if (n < 2) {
+        return 0;
+    }
+    return ChangePercent(values[n - 1], values[n - 2]);
+}
+
+static float SumF(const float* values, int n) {
+    float s = 0;
+    for (int i = 0; i < n; i++) {
+        s += values[i];
+    }
+    return s;
+}
+
+static const char* Compact(Ctx* cx, float value) {
+    float mag = value < 0 ? -value : value;
+    if (mag >= 1000000.f) {
+        return StoryFmt(cx, "%.1fM", (double)(value / 1000000.f)).s;
+    }
+    if (mag >= 10000.f) {
+        return StoryFmt(cx, "%.0fK", (double)(value / 1000.f)).s;
+    }
+    if (mag >= 1000.f) {
+        return StoryFmt(cx, "%.1fK", (double)(value / 1000.f)).s;
+    }
+    return StoryFmt(cx, "%.0f", (double)value).s;
+}
+
+static const char* Money(Ctx* cx, float value) {
+    if (value < 0) {
+        return StoryFmt(cx, "-$%s", Compact(cx, -value)).s;
+    }
+    return StoryFmt(cx, "$%s", Compact(cx, value)).s;
+}
+
+static const char* TrendLine(Ctx* cx, float percent, const char* period) {
+    const char* dir = percent >= 0 ? "up" : "down";
+    float mag = percent < 0 ? -percent : percent;
+    return StoryFmt(cx, "Trending %s by %.1f%% %s", dir, (double)mag, period).s;
+}
+
+static int ColorIndex(const char* name) {
+    if (StrEq(Str(name), StrL("Direct")) || StrEq(Str(name), StrL("Chrome")) ||
+        StrEq(Str(name), StrL("Free")) ||
+        StrEq(Str(name), StrL("N. America"))) {
+        return 0;
+    }
+    if (StrEq(Str(name), StrL("Organic Search")) ||
+        StrEq(Str(name), StrL("Safari")) || StrEq(Str(name), StrL("Starter")) ||
+        StrEq(Str(name), StrL("Europe"))) {
+        return 1;
+    }
+    if (StrEq(Str(name), StrL("Social")) || StrEq(Str(name), StrL("Edge")) ||
+        StrEq(Str(name), StrL("Pro")) || StrEq(Str(name), StrL("APAC"))) {
+        return 2;
+    }
+    if (StrEq(Str(name), StrL("Referral")) ||
+        StrEq(Str(name), StrL("Firefox")) ||
+        StrEq(Str(name), StrL("Enterprise")) ||
+        StrEq(Str(name), StrL("LatAm"))) {
+        return 3;
+    }
+    return 4;
+}
+
+static Rgba Shade(Rgba base, int index) {
+    float a = 1.f - 0.14f * (float)index;
+    if (a < 0.3f) {
+        a = 0.3f;
+    }
+    return RgbaOpacity(base, a);
+}
+
+struct ChartLegend {
+    Rgba color;
+    const char* label;
+};
+
+static El* LegendRow(Ctx* cx, const ChartLegend* legend, int n, bool center) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    El* row = Div(a)->FlexRow()->FlexWrap()->Gap(12)->Shrink0();
+    if (center) {
+        row->JustifyCenter();
+    }
+    for (int i = 0; i < n; i++) {
+        El* item = Div(a)->FlexRow()->Gap(6)->ItemsCenter();
+        item->Child(Div(a)->W(8)->H(8)->Radius(2)->Bg(legend[i].color));
+        item->Child(StoryTxt(cx, Str(legend[i].label), 12, th.mutedFg));
+        row->Child(item);
+    }
+    return row;
+}
+
+// A 400px card: heading, optional legend, the chart and a footer that reads
+// the data — chart_story.rs Card.
+static El* ChartCard(Ctx* cx, const char* title, const char* period, El* chart,
+                     bool center, const char* headline, const char* note,
+                     const ChartLegend* legend = nullptr, int nLegend = 0) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* card = Div(a)
@@ -39,28 +143,33 @@ static El* ChartCard(Ctx* cx, const char* title, El* chart, bool center) {
                    ->Pad(16)
                    ->Radius(th.radiusLg)
                    ->Border(1, th.border);
-    El* head = StoryTxt(cx, Str(title), 16, th.foreground)->Semibold();
-    El* sub = StoryTxt(cx, StrL("January-June 2025"), 14, th.mutedFg);
-    El* foot1 =
-        StoryTxt(cx, StrL("Trending up by 5.2% this month"), 14, th.foreground)
-            ->Semibold();
-    El* foot2 = StoryTxt(cx,
-                         StrL("Showing total visitors for the last 6 "
-                              "months"),
-                         14, th.mutedFg);
+    El* titles = Div(a)->FlexCol();
     if (center) {
-        card->Child(Div(a)->W(kFill)->FlexRow()->JustifyCenter()->Child(head));
-        card->Child(Div(a)->W(kFill)->FlexRow()->JustifyCenter()->Child(sub));
-    } else {
-        card->Child(head);
-        card->Child(sub);
+        titles->ItemsCenter();
     }
-    El* body = Div(a)->Flex1()->W(kFill)->PadY(16)->FlexRow();
+    titles->Child(StoryTxt(cx, Str(title), 16, th.foreground)->Semibold());
+    titles->Child(StoryTxt(cx, Str(period), 14, th.mutedFg));
+    El* head = Div(a)->FlexRow()->ItemsStart()->JustifyBetween();
     if (center) {
-        body->ItemsCenter()->JustifyCenter();
+        head->JustifyCenter();
+    }
+    head->Child(titles);
+    if (legend && nLegend > 0 && !center) {
+        head->Child(LegendRow(cx, legend, nLegend, false));
+    }
+    card->Child(head);
+    if (legend && nLegend > 0 && center) {
+        card->Child(
+            Div(a)->PadT(8)->Child(LegendRow(cx, legend, nLegend, true)));
+    }
+    El* body = Div(a)->Flex1()->MinH(0)->W(kFill)->PadY(16);
+    if (center) {
+        body->FlexRow()->ItemsCenter()->JustifyCenter();
     }
     body->Child(chart);
     card->Child(body);
+    El* foot1 = StoryTxt(cx, Str(headline), 14, th.foreground)->Semibold();
+    El* foot2 = StoryTxt(cx, Str(note), 14, th.mutedFg);
     if (center) {
         card->Child(Div(a)->W(kFill)->FlexRow()->JustifyCenter()->Child(foot1));
         card->Child(Div(a)->W(kFill)->FlexRow()->JustifyCenter()->Child(foot2));
@@ -71,65 +180,147 @@ static El* ChartCard(Ctx* cx, const char* title, El* chart, bool center) {
     return card;
 }
 
+static El* ChartCard(Ctx* cx, const char* title, El* chart, bool center) {
+    return ChartCard(cx, title, "2025", chart, center,
+                     "Trending up by 5.2% this month",
+                     "Showing total visitors for the last 6 months");
+}
+
 static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     Rgba color = th.chart3;
     switch (index) {
-        case 1:
-        case 2:
-        case 3:
-        case 4: {
-            const char* titles[] = {"Pie Chart", "Pie Chart - Donut",
-                                    "Pie Chart - Pad Angle",
-                                    "Pie Chart - Label"};
-            auto* pie = component::PieChart::New(cx)
-                            ->Tooltip(StrL("Desktop"))
-                            ->OuterRadius(index == 4 ? 80.f : 100.f);
-            if (index > 1) pie->InnerRadius(index == 4 ? 50.f : 60.f);
-            if (index == 3) pie->PadAngle(4.f / 100.f);
-            for (int i = 0; i < kMonthlyDeviceCount; i++) {
-                pie->Slice(kMonthlyDesktop[i],
-                           RgbaOpacity(color, kMonthlyAlpha[i]),
-                           index == 2 ? (float)i * 4.f : 0);
-                if (index == 4) pie->Label(Str(kMonthlyMonth[i]));
+        case 1: {
+            float total = SumF(kTrafficVisitors, kTrafficCount);
+            int top = 0;
+            for (int i = 1; i < kTrafficCount; i++) {
+                if (kTrafficVisitors[i] > kTrafficVisitors[top]) {
+                    top = i;
+                }
             }
-            return ChartCard(cx, titles[index - 1], pie->IntoEl(), true);
+            auto* pie = component::PieChart::New(cx)
+                            ->Tooltip(StrL("Visitors"))
+                            ->OuterRadius(90.f);
+            ChartLegend legend[kTrafficCount];
+            for (int i = 0; i < kTrafficCount; i++) {
+                Rgba c = Shade(color, ColorIndex(kTrafficSource[i]));
+                pie->Slice(kTrafficVisitors[i], c);
+                legend[i] = {c, kTrafficSource[i]};
+            }
+            return ChartCard(
+                cx, "Traffic Sources", "June 2025", pie->IntoEl(), true,
+                StoryFmt(cx, "%s brings %.0f%% of traffic", kTrafficSource[top],
+                         (double)(kTrafficVisitors[top] / total * 100.f))
+                    .s,
+                StoryFmt(cx, "%s visitors across five channels",
+                         Compact(cx, total))
+                    .s,
+                legend, kTrafficCount);
+        }
+        case 2: {
+            auto* pie = component::PieChart::New(cx)
+                            ->Tooltip(StrL("Share"))
+                            ->InnerRadius(58.f)
+                            ->OuterRadius(90.f);
+            ChartLegend legend[kBrowserCount];
+            for (int i = 0; i < kBrowserCount; i++) {
+                Rgba c = Shade(color, ColorIndex(kBrowserName[i]));
+                pie->Slice(kBrowserShare[i], c);
+                legend[i] = {c, kBrowserName[i]};
+            }
+            return ChartCard(
+                cx, "Browser Share", "June 2025", pie->IntoEl(), true,
+                StoryFmt(cx, "%s leads by %.0f points", kBrowserName[0],
+                         (double)(kBrowserShare[0] - kBrowserShare[1]))
+                    .s,
+                "Share of sessions by browser family", legend, kBrowserCount);
+        }
+        case 3: {
+            float total = SumF(kPlanAccounts, kPlanCount);
+            float paid = total - kPlanAccounts[0];
+            auto* pie = component::PieChart::New(cx)
+                            ->Tooltip(StrL("Accounts"))
+                            ->InnerRadius(56.f)
+                            ->OuterRadius(90.f)
+                            ->PadAngle(4.f / 100.f);
+            ChartLegend legend[kPlanCount];
+            for (int i = 0; i < kPlanCount; i++) {
+                Rgba c = Shade(color, ColorIndex(kPlanName[i]));
+                pie->Slice(kPlanAccounts[i], c);
+                legend[i] = {c, kPlanName[i]};
+            }
+            return ChartCard(
+                cx, "Plan Mix", "June 2025", pie->IntoEl(), true,
+                StoryFmt(cx, "%.0f%% of accounts are on a paid plan",
+                         (double)(paid / total * 100.f))
+                    .s,
+                StoryFmt(cx, "%s accounts in total", Compact(cx, total)).s,
+                legend, kPlanCount);
+        }
+        case 4: {
+            float total = SumF(kRegionRevenue, kRegionCount);
+            auto* pie = component::PieChart::New(cx)
+                            ->Tooltip(StrL("Revenue"))
+                            ->InnerRadius(48.f)
+                            ->OuterRadius(76.f);
+            for (int i = 0; i < kRegionCount; i++) {
+                pie->Slice(kRegionRevenue[i],
+                           Shade(color, ColorIndex(kRegionName[i])));
+                pie->Label(Str(kRegionName[i]));
+            }
+            return ChartCard(
+                cx, "Revenue by Region", "Q2 2025", pie->IntoEl(), true,
+                StoryFmt(cx, "%s of %s comes from the two largest regions",
+                         Money(cx, kRegionRevenue[0] + kRegionRevenue[1]),
+                         Money(cx, total))
+                    .s,
+                "Recognized revenue, in US dollars");
         }
         case 0: {
-            // Area Chart - Stacked: one chart with two series, desktop and
-            // mobile, both from daily-devices.json —
-            // `.y(..).stroke(..).fill(..).name(..)` twice over one set of axes,
-            // which is what the Rust story writes.
+            ChartLegend legend[] = {{th.chart2, "Desktop"},
+                                    {th.chart4, "Mobile"}};
             El* areaBox =
                 component::AreaChart::New(cx, kDailyDesktop, kDailyDeviceCount)
                     ->Tooltip(StrL("Desktop"))
-                    ->Stroke(th.chart1)
-                    ->Fill(RgbaOpacity(th.chart1, 0.4f),
-                           RgbaOpacity(th.background, 0.3f))
-                    ->Y(kDailyMobile)
                     ->Stroke(th.chart2)
-                    ->Fill(RgbaOpacity(th.chart2, 0.4f),
-                           RgbaOpacity(th.background, 0.3f))
+                    ->Fill(RgbaOpacity(th.chart2, 0.45f),
+                           RgbaOpacity(th.chart2, 0.f))
+                    ->Y(kDailyMobile)
+                    ->Stroke(th.chart4)
+                    ->Fill(RgbaOpacity(th.chart4, 0.45f),
+                           RgbaOpacity(th.chart4, 0.f))
                     ->Tooltip(StrL("Mobile"))
                     ->Labels(kDailyDate)
                     ->TickMargin(8)
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill);
-            return ChartCard(cx, "Area Chart - Stacked", areaBox, false);
+            float visitors = 0;
+            for (int i = 0; i < kDailyDeviceCount; i++) {
+                visitors += kDailyDesktop[i] + kDailyMobile[i];
+            }
+            return ChartCard(
+                cx, "Visitors", "April – June 2025", areaBox, false,
+                TrendLine(cx, LatestChange(kDailyDesktop, 7), "this week"),
+                StoryFmt(cx, "%s visitors over the last three months",
+                         Compact(cx, visitors))
+                    .s,
+                legend, 2);
         }
 
         case 5: {
-            // The radars, off radar-devices.json.
+            float average = SumF(kScoreAlpha, kScoreCount) / (float)kScoreCount;
             return ChartCard(
-                cx, "Radar Chart",
-                component::RadarChart::New(cx, kRadarDesktop, kRadarDeviceCount)
-                    ->Labels(kRadarMonth)
+                cx, "Product Score", "Alpha, Q2 review",
+                component::RadarChart::New(cx, kScoreAlpha, kScoreCount)
+                    ->Labels(kScoreDim)
+                    ->Domain(0, 100)
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill),
-                true);
+                true, StoryFmt(cx, "Scores %.0f on average", (double)average).s,
+                "Six review dimensions, scored out of 100");
         }
 
         case 6: {
@@ -211,18 +402,23 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
         }
 
         case 9: {
-            // The bars, off monthly-devices.json.
-            return ChartCard(cx, "Bar Chart",
-                             component::BarChart::New(cx, kMonthlyDesktop,
-                                                      kMonthlyDeviceCount)
-                                 ->Fill(th.chart1)
-                                 ->Labels(kMonthlyMonth)
-                                 ->Tooltip(StrL("Desktop"))
-                                 ->TickMargin(1)
-                                 ->IntoEl()
-                                 ->W(kFill)
-                                 ->H(kFill),
-                             false);
+            return ChartCard(
+                cx, "Monthly Revenue", "2025",
+                component::BarChart::New(cx, kMetricRevenue, kMetricCount)
+                    ->Fill(th.chart2)
+                    ->Labels(kMetricMonth)
+                    ->Tooltip(StrL("Revenue"))
+                    ->Radius(6)
+                    ->TickMargin(1)
+                    ->IntoEl()
+                    ->W(kFill)
+                    ->H(kFill),
+                false,
+                TrendLine(cx, LatestChange(kMetricRevenue, kMetricCount),
+                          "this month"),
+                StoryFmt(cx, "%s recognized this year",
+                         Money(cx, SumF(kMetricRevenue, kMetricCount)))
+                    .s);
         }
 
         case 17: {

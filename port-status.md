@@ -31,21 +31,6 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 
-- **Language configuration is callback-based.** Configured bracket pairs,
-  closer skipping, pair deletion and smart Enter indentation are ported.
-  Rust regexes are dependency-free function pointers here, and generated-pair
-  history is not retained (`src/base/input_editor.cpp`).
-
-- **Reduced motion is sampled at startup.** The platform preference updates
-  all motion, but the Linux portal's live-change subscription and a separate
-  application override are not exposed (`src/base/lib.cpp`).
-
-- **Chart story still uses the previous fixture set.** Hover, pie lift, and
-  the gallery's off-canvas sidebar are ported; the SaaS datasets, computed
-  footers, legends and width-wise bar ramps from #3112 are not yet
-  transcribed (`examples/story/chart.cpp`, `ChartFixtures.h`). Sankey node
-  hit-testing and tooltip are not painted (`src/ui/chart.cpp`).
-
 - **Textarea token wrap is flex-wrap, not display-map inline metrics.** A
   chip stays atomic; a text gap does not reflow character-by-character
   around it (`src/base/input.cpp`). Composer token icons map Image /

@@ -1057,9 +1057,44 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         colors[i] = node.hasColor ? node.color : palette[i % 5];
     }
 
+    const float kHoverDim = 0.7f;
+    int hoverIndex = -1;
+    float focus = 0.f;
+    Point lingerCursor = {};
+    if (c->cx) {
+        Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
+        for (int i = 0; i < g.nodes.len; i++) {
+            const SankeyNodeLayout& node = g.nodes[i];
+            float y1 = node.y1 > node.y0 + 1 ? node.y1 : node.y0 + 1;
+            if (local.x >= node.x0 && local.x <= node.x1 &&
+                local.y >= node.y0 && local.y <= y1) {
+                hoverIndex = node.index;
+            }
+        }
+        plot::TooltipState live = {};
+        const plot::TooltipState* livePtr = nullptr;
+        Point cursor = local;
+        if (hoverIndex >= 0) {
+            live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
+            livePtr = &live;
+        }
+        plot::PlotHover hover = {};
+        Point linger = cursor;
+        if (plot::TrackHover(c->cx, livePtr,
+                             hoverIndex >= 0 ? &cursor : nullptr, &hover,
+                             &linger)) {
+            focus = hover.Focus();
+            hoverIndex = hover.State().index;
+            lingerCursor = linger;
+        } else {
+            hoverIndex = -1;
+        }
+    }
+
     // The ribbons first, under the nodes: a horizontal cubic through the
     // midpoint, thickened to each end's own width, and filled from the colour
-    // it leaves to the colour it arrives at.
+    // it leaves to the colour it arrives at. Links not attached to the
+    // hovered node fade behind it.
     for (int i = 0; i < g.links.len; i++) {
         const SankeyLinkLayout& link = g.links[i];
         if (link.value <= 0) {
@@ -1089,9 +1124,15 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         PathCubicTo(p, mx, ty + targetHalf, mx, sy + sourceHalf, sx,
                     sy + sourceHalf);
         PathClose(p);
+        float opacity = c->linkOpacity;
+        bool attached = hoverIndex >= 0 && (link.source == hoverIndex ||
+                                            link.target == hoverIndex);
+        if (hoverIndex >= 0 && !attached) {
+            opacity *= 1.f - kHoverDim * focus;
+        }
         PathFillGradient(ctx, p, sx, sy, tx, ty,
-                         RgbaOpacity(colors[link.source], c->linkOpacity),
-                         RgbaOpacity(colors[link.target], c->linkOpacity));
+                         RgbaOpacity(colors[link.source], opacity),
+                         RgbaOpacity(colors[link.target], opacity));
         PathFree(p);
     }
 
@@ -1103,7 +1144,31 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
                   y1 - node.y0, c->nodeRadius, colors[node.index]);
     }
 
+    auto paintTooltip = [&]() {
+        if (hoverIndex < 0 || focus <= 0.f || !c->cx) {
+            return;
+        }
+        const SankeyChartNode& node = c->nodes[hoverIndex];
+        Str title = node.label;
+        Str value = values[hoverIndex].s ? values[hoverIndex]
+                                         : fmt("%.0f", raw[hoverIndex]);
+        Size titleSz = MeasureText(ctx, title, 11, 200);
+        Size valueSz = MeasureText(ctx, value, 11, 200);
+        float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
+        float boxH = titleSz.h + valueSz.h + 12.f;
+        Point at =
+            PlotTooltipPlace(lingerCursor, {e->w, e->h}, {boxW, boxH}, 8.f);
+        FillRound(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f,
+                  RgbaOpacity(th.background, focus));
+        DrawRoundStroke(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f, 1.f,
+                        RgbaOpacity(th.border, focus));
+        DrawTextAt(ctx, title, e->x + at.x + 8, e->y + at.y + 4, boxW,
+                   titleSz.h, 11, RgbaOpacity(th.foreground, focus), false);
+        DrawTextAt(ctx, value, e->x + at.x + 8, e->y + at.y + 6 + titleSz.h,
+                   boxW, valueSz.h, 11, RgbaOpacity(th.mutedFg, focus), false);
+    };
     if (!hasLabels) {
+        paintTooltip();
         return;
     }
     for (int i = 0; i < g.nodes.len; i++) {
@@ -1162,6 +1227,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
             y += line.LineHeight();
         }
     }
+    paintTooltip();
 }
 
 SankeyChart* SankeyChart::New(Ctx* cx) {

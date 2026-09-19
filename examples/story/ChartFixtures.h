@@ -82,6 +82,84 @@ static const float kStockHigh[] = {112.f, 112.f, 118.f, 120.f, 118.f, 125.f};
 static const float kStockLow[] = {95.f, 108.f, 110.f, 108.f, 105.f, 113.f};
 static const float kStockClose[] = {110.f, 111.f, 116.f, 110.f, 115.f, 123.f};
 
+// monthly-metrics.json: one SaaS year, 2025.
+static const int kMetricCount = 12;
+static const char* const kMetricMonth[] = {"Jan", "Feb", "Mar", "Apr",
+                                           "May", "Jun", "Jul", "Aug",
+                                           "Sep", "Oct", "Nov", "Dec"};
+static const float kMetricRevenue[] = {38400, 40100, 43600, 46000,
+                                       47200, 47200, 45700, 47900,
+                                       52200, 54800, 57700, 61500};
+static const float kMetricLastYear[] = {31900, 32800, 33600, 34900,
+                                        35200, 34100, 33500, 34400,
+                                        36100, 37800, 39200, 41000};
+static const float kMetricExpenses[] = {29400, 35700, 35300, 41900,
+                                        41700, 48100, 36700, 48500,
+                                        44900, 42400, 43800, 45500};
+static const float kMetricMrr[] = {39206, 40124, 41932, 43389, 44912, 46249,
+                                   47094, 48372, 49234, 50233, 51547, 53464};
+static const float kMetricSignups[] = {437, 384, 409, 456, 493, 394,
+                                       438, 411, 462, 439, 524, 443};
+static const float kMetricOrders[] = {1479, 1672, 1585, 1760, 1812, 1703,
+                                      1461, 1670, 1883, 1703, 2014, 1787};
+static const float kMetricRefunds[] = {49, 73, 44, 69, 49, 68,
+                                       56, 54, 76, 55, 73, 43};
+static const float kMetricConversion[] = {2.33f, 2.56f, 2.74f, 2.65f,
+                                          3.0f,  3.01f, 2.84f, 2.89f,
+                                          3.3f,  3.25f, 3.42f, 3.31f};
+static const float kMetricSubscriptions[] = {
+    1208, 1270, 1306, 1360, 1392, 1438, 1499, 1542, 1584, 1625, 1679, 1707};
+static const float kMetricActiveUsers[] = {8921,  9264,  9385,  9581,
+                                           9824,  10127, 10530, 10676,
+                                           11009, 11212, 11627, 11779};
+static const float kMetricSessions[] = {29237, 37784, 30855, 36687,
+                                        34461, 39670, 40487, 37920,
+                                        43989, 41273, 41381, 38768};
+static const float kMetricStorage[] = {2.1f, 2.5f, 2.5f, 2.5f, 2.5f, 2.9f,
+                                       3.3f, 3.3f, 3.6f, 3.6f, 4.0f, 4.0f};
+static const float kMetricDeploys[] = {19, 19, 29, 23, 42, 36,
+                                       27, 30, 39, 31, 30, 35};
+static const float kMetricDownloads[] = {2051, 1819, 2401, 2082, 2595, 1872,
+                                         2364, 2401, 2638, 2434, 2084, 2360};
+
+// traffic-sources.json / browsers.json / plans.json / regions.json /
+// products.json / pages.json / product-scores.json.
+static const int kTrafficCount = 5;
+static const char* const kTrafficSource[] = {"Direct", "Organic Search",
+                                             "Social", "Referral", "Email"};
+static const float kTrafficVisitors[] = {4820, 6930, 2140, 1580, 960};
+
+static const int kBrowserCount = 5;
+static const char* const kBrowserName[] = {"Chrome", "Safari", "Edge",
+                                           "Firefox", "Other"};
+static const float kBrowserShare[] = {63.4f, 19.8f, 7.6f, 5.9f, 3.3f};
+
+static const int kPlanCount = 4;
+static const char* const kPlanName[] = {"Free", "Starter", "Pro", "Enterprise"};
+static const float kPlanAccounts[] = {6420, 1830, 940, 120};
+
+static const int kRegionCount = 5;
+static const char* const kRegionName[] = {"N. America", "Europe", "APAC",
+                                          "LatAm", "Middle East"};
+static const float kRegionRevenue[] = {128400, 96200, 71500, 23800, 14100};
+
+static const int kProductCount = 6;
+static const char* const kProductName[] = {"Pro plan",         "Team plan",
+                                           "Starter plan",     "Add-on storage",
+                                           "Priority support", "Training"};
+static const float kProductSales[] = {3240, 2410, 1980, 1120, 640, 310};
+
+static const int kPageCount = 5;
+static const char* const kPageName[] = {"/pricing", "/docs", "/blog",
+                                        "/changelog", "/about"};
+static const float kPageViews[] = {18400, 15200, 9800, 6100, 2900};
+
+static const int kScoreCount = 6;
+static const char* const kScoreDim[] = {
+    "Performance", "Reliability", "Security", "Usability", "Docs", "Support"};
+static const float kScoreAlpha[] = {88, 81, 76, 92, 70, 64};
+static const float kScoreBeta[] = {72, 90, 84, 68, 79, 86};
+
 // A node whose fixture row had no growth figure.
 static const float kTslaNoGrowth = 1e30f;
 

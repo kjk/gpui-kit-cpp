@@ -447,8 +447,13 @@ float MotionSample(const Motion& m, float progress);
 // adopts its target on the next frame rather than finishing the curve.
 bool MotionReduced();
 // For a caller that wants to decide for itself — the story's settings menu,
-// and the tests.
+// and the tests. Once this is called, ApplySystemReduceMotion leaves the
+// flag alone until apply_system_reduce_motion is asked to follow the system
+// again.
 void MotionSetReduced(bool on);
+// Restores Base's initial false and clears the last applied reading, so a
+// test can drive ApplyReduceMotionPreference from a clean flag.
+void MotionResetReduceForTest();
 
 // Where a value has got to. Rust keeps `from`, `target`, `started_at`, a
 // `reversing_factor` and the `duration` the current run was given; `init`

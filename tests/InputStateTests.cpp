@@ -3464,6 +3464,34 @@ static void LanguagePairsAndSmartIndent() {
     utassert(ValueIs(s, "{\n"));
 }
 
+static void GeneratedPairsAreTrackedThroughEditsAndHistory() {
+    InputState s;
+    MakeEditor(&s, "");
+    Type(&s, "(");
+    utassert(ValueIs(s, "()"));
+    Type(&s, "a");
+    utassert(ValueIs(s, "(a)"));
+    Type(&s, ")");
+    utassert(ValueIs(s, "(a)"));
+    utassert(RangeIs(s, 3, 3));
+    InputMoveTo(&s, nullptr, nullptr, 2);
+    Act(&s, InputAction::Backspace);
+    utassert(ValueIs(s, "()"));
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::Backspace);
+    utassert(ValueIs(s, ""));
+
+    Type(&s, "(");
+    utassert(ValueIs(s, "()"));
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, ""));
+    Act(&s, InputAction::Redo);
+    utassert(ValueIs(s, "()"));
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    Act(&s, InputAction::Backspace);
+    utassert(ValueIs(s, ""));
+}
+
 static bool ConsumeImagePaste(void* data, const ClipboardItem& item, App*,
                               Window*) {
     int* calls = (int*)data;
@@ -3649,6 +3677,7 @@ void TestInputState() {
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
     LanguagePairsAndSmartIndent();
+    GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();

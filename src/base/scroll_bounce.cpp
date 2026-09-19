@@ -178,7 +178,7 @@ El* ScrollBounce::IntoEl() {
     if (!child) {
         return Div(cx->a)->PathClick(id);
     }
-    if (!enabled || PlatReduceMotion()) {
+    if (!enabled || MotionReduced()) {
         return Div(cx->a)->PathClick(id)->Child(child);
     }
     Entity<ScrollBounceState> st =

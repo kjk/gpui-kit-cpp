@@ -1768,6 +1768,17 @@ bool PlatReduceMotion() {
             : false;
 }
 
+bool PlatReduceMotionKnown(bool* out) {
+    if (out) {
+        *out = PlatReduceMotion();
+    }
+    return true;
+}
+
+void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
+    (void)onChange;
+}
+
 void OpenUrl(Str url) {
     if (!url.s || len(url) <= 0) {
         return;

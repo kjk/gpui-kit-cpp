@@ -1200,6 +1200,44 @@ static void AReducedMotionSpinnerIsStaticAndAsksForNoFrame() {
     ArenaDelete(arena);
 }
 
+static void ASystemPreferenceForReducedMotionSetsTheFlag() {
+    MotionResetReduceForTest();
+    ApplyReduceMotionPreference(true);
+    utassert(MotionReduced());
+    MotionResetReduceForTest();
+}
+
+static void AnUnknownSystemPreferenceLeavesTheFlagAlone() {
+    MotionResetReduceForTest();
+    utassert(!MotionReduced());
+    MotionSetReduced(true);
+    // A missing reading does not call ApplyReduceMotionPreference.
+    utassert(MotionReduced());
+    MotionResetReduceForTest();
+}
+
+static void TheSystemDrivesTheFlagUntilTheApplicationSetsIt() {
+    MotionResetReduceForTest();
+    ApplyReduceMotionPreference(true);
+    ApplyReduceMotionPreference(false);
+    utassert(!MotionReduced());
+    ApplyReduceMotionPreference(true);
+    utassert(MotionReduced());
+
+    MotionSetReduced(false);
+    ApplyReduceMotionPreference(true);
+    utassert(!MotionReduced());
+    MotionResetReduceForTest();
+}
+
+static void AFlagTheApplicationSetBeforeTheFirstReadingIsKept() {
+    MotionResetReduceForTest();
+    MotionSetReduced(true);
+    ApplyReduceMotionPreference(false);
+    utassert(MotionReduced());
+    MotionResetReduceForTest();
+}
+
 void TestMotion() {
     TestSuite("motion");
     TheEasingsAreTheCurvesRustNames();
@@ -1244,4 +1282,8 @@ void TestMotion() {
     TheMotionCoreIsReachableFromTheBaseFacade();
     TheThemeCarriesOneSemanticMotionScale();
     AReducedMotionSpinnerIsStaticAndAsksForNoFrame();
+    ASystemPreferenceForReducedMotionSetsTheFlag();
+    AnUnknownSystemPreferenceLeavesTheFlagAlone();
+    TheSystemDrivesTheFlagUntilTheApplicationSetsIt();
+    AFlagTheApplicationSetBeforeTheFirstReadingIsKept();
 }

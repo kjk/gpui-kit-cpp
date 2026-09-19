@@ -926,10 +926,148 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
 // cx.open_url. xdg-open is the desktop's own answer to "what opens this";
 // the fork keeps a browser that takes its time from holding up the frame, and
 // the child replaces itself so nothing here waits on it.
-// X11 has nothing to ask. GNOME keeps `gtk-enable-animations` in its own
-// settings daemon, which is not something this window talks to.
+// The XDG desktop portal answers reduced-motion asynchronously over D-Bus
+// (org.freedesktop.appearance). The synchronous read has nothing to say.
 bool PlatReduceMotion() {
     return false;
+}
+
+bool PlatReduceMotionKnown(bool* out) {
+    (void)out;
+    return false;
+}
+
+#include <gio/gio.h>
+#include <pthread.h>
+
+using ReduceMotionFn = void (*)(bool);
+static ReduceMotionFn gReduceMotionOnChange = nullptr;
+
+struct ReduceMotionMsg {
+    bool reduce = false;
+    void (*onChange)(bool) = nullptr;
+};
+
+static void ReduceMotionApplyPosted(ReduceMotionMsg* msg) {
+    if (msg && msg->onChange) {
+        msg->onChange(msg->reduce);
+    }
+    free(msg);
+}
+
+static bool ReduceMotionFromVariant(GVariant* value, bool* out) {
+    if (!value || !out) {
+        return false;
+    }
+    GVariant* inner = value;
+    while (g_variant_is_of_type(inner, G_VARIANT_TYPE_VARIANT)) {
+        inner = g_variant_get_variant(inner);
+    }
+    if (g_variant_is_of_type(inner, G_VARIANT_TYPE_UINT32)) {
+        *out = g_variant_get_uint32(inner) == 1;
+        return true;
+    }
+    return false;
+}
+
+static void ReduceMotionPost(bool reduce) {
+    if (!gReduceMotionOnChange) {
+        return;
+    }
+    auto* msg = (ReduceMotionMsg*)malloc(sizeof(ReduceMotionMsg));
+    if (!msg) {
+        return;
+    }
+    msg->reduce = reduce;
+    msg->onChange = gReduceMotionOnChange;
+    ExecPost(MkFunc0(&ReduceMotionApplyPosted, msg));
+}
+
+static void OnPortalSettingChanged(GDBusConnection*, const gchar*, const gchar*,
+                                   const gchar*, const gchar*, GVariant* params,
+                                   gpointer) {
+    const gchar* ns = nullptr;
+    const gchar* key = nullptr;
+    GVariant* value = nullptr;
+    g_variant_get(params, "(&s&sv)", &ns, &key, &value);
+    if (ns && key && strcmp(ns, "org.freedesktop.appearance") == 0 &&
+        strcmp(key, "reduced-motion") == 0) {
+        bool reduce = false;
+        if (ReduceMotionFromVariant(value, &reduce)) {
+            ReduceMotionPost(reduce);
+        }
+    }
+    if (value) {
+        g_variant_unref(value);
+    }
+}
+
+static void* ReduceMotionFollowThread(void*) {
+    GError* err = nullptr;
+    GDBusProxy* proxy = g_dbus_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, nullptr,
+        "org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+        "org.freedesktop.portal.Settings", nullptr, &err);
+    if (!proxy) {
+        if (err) {
+            g_error_free(err);
+        }
+        return nullptr;
+    }
+    GVariant* result = g_dbus_proxy_call_sync(
+        proxy, "ReadOne",
+        g_variant_new("(ss)", "org.freedesktop.appearance", "reduced-motion"),
+        G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &err);
+    if (!result) {
+        if (err) {
+            g_error_free(err);
+            err = nullptr;
+        }
+        result = g_dbus_proxy_call_sync(
+            proxy, "Read",
+            g_variant_new("(ss)", "org.freedesktop.appearance",
+                          "reduced-motion"),
+            G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &err);
+        if (err) {
+            g_error_free(err);
+            err = nullptr;
+        }
+    }
+    if (result) {
+        GVariant* value = nullptr;
+        g_variant_get(result, "(v)", &value);
+        bool reduce = false;
+        if (ReduceMotionFromVariant(value, &reduce)) {
+            ReduceMotionPost(reduce);
+        }
+        if (value) {
+            g_variant_unref(value);
+        }
+        g_variant_unref(result);
+    }
+    GDBusConnection* conn = g_dbus_proxy_get_connection(proxy);
+    g_dbus_connection_signal_subscribe(
+        conn, "org.freedesktop.portal.Desktop",
+        "org.freedesktop.portal.Settings", "SettingChanged",
+        "/org/freedesktop/portal/desktop", nullptr, G_DBUS_SIGNAL_FLAGS_NONE,
+        OnPortalSettingChanged, nullptr, nullptr);
+    GMainLoop* loop = g_main_loop_new(nullptr, FALSE);
+    g_main_loop_run(loop);
+    g_main_loop_unref(loop);
+    g_object_unref(proxy);
+    return nullptr;
+}
+
+void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
+    if (!onChange || gReduceMotionOnChange) {
+        return;
+    }
+    gReduceMotionOnChange = onChange;
+    pthread_t thread = {};
+    if (pthread_create(&thread, nullptr, ReduceMotionFollowThread, nullptr) ==
+        0) {
+        pthread_detach(thread);
+    }
 }
 
 void OpenUrl(Str url) {

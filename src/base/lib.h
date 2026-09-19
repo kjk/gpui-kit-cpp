@@ -87,6 +87,9 @@ constexpr bool IsMobile() {
 
 // Re-read the operating system preference and make it the motion default.
 void ApplySystemReduceMotion();
+// Writes one system reading into the flag unless the application has taken
+// the flag over since the reading Base last applied.
+void ApplyReduceMotionPreference(bool reduce);
 
 // crates/base/src/lib.rs::init. Safe to call more than once; every key module
 // binds once per keymap generation and every App global is ensured once.

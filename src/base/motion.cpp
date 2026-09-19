@@ -377,18 +377,46 @@ float MotionSample(const Motion& m, float progress) {
 
 static bool gReducedAsked = false;
 static bool gReduced = false;
+static bool gHasApplied = false;
+static bool gApplied = false;
+static bool gFollowing = false;
 
 bool MotionReduced() {
-    if (!gReducedAsked) {
-        gReducedAsked = true;
-        gReduced = PlatReduceMotion();
-    }
     return gReduced;
 }
 
 void MotionSetReduced(bool on) {
     gReducedAsked = true;
     gReduced = on;
+}
+
+void MotionResetReduceForTest() {
+    gReducedAsked = false;
+    gReduced = false;
+    gHasApplied = false;
+    gApplied = false;
+}
+
+void ApplyReduceMotionPreference(bool reduce) {
+    bool applied = gHasApplied ? gApplied : false;
+    if (gReduced != applied) {
+        return;
+    }
+    gReducedAsked = true;
+    gReduced = reduce;
+    gHasApplied = true;
+    gApplied = reduce;
+}
+
+void ApplySystemReduceMotion() {
+    bool reduce = false;
+    if (PlatReduceMotionKnown(&reduce)) {
+        ApplyReduceMotionPreference(reduce);
+    }
+    if (!gFollowing) {
+        gFollowing = true;
+        PlatReduceMotionFollow(&ApplyReduceMotionPreference);
+    }
 }
 
 // The clock a loop or a one-shot runs on: when it started, and nothing else —

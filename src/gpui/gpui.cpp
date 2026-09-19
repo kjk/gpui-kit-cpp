@@ -1,5 +1,6 @@
 #include "gpui/gpui.h"
 #include "gpui/keymap.h"
+#include "base/motion.h"
 #include "base/scrollbar.h"
 #include "gpui/image.h"
 #include "gpui/paint.h"
@@ -1133,14 +1134,7 @@ ScrollbarMotion ScrollbarMotionFor(ScrollbarMode mode) {
     m.thumbHoverEntrance = mode == ScrollbarMode::Hover
                                ? ScrollbarEntrance::SlideAndFade
                                : ScrollbarEntrance::Fade;
-    // Asked once. SPI_GETCLIENTAREAANIMATION is a system call, and this runs
-    // per scrollable box per frame; src/base/motion.cpp caches it the same
-    // way for the same reason.
-    static int reduced = -1;
-    if (reduced < 0) {
-        reduced = PlatReduceMotion() ? 1 : 0;
-    }
-    if (reduced == 1) {
+    if (MotionReduced()) {
         // A motionless policy adopts its target outright, which is what a
         // zero duration means to every transition below.
         m.enter = 0;
@@ -6299,7 +6293,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (img) {
             bool wantsAnimation = false;
             int frameIndex =
-                ImageFrameIndex(img, PlatReduceMotion(), &wantsAnimation);
+                ImageFrameIndex(img, MotionReduced(), &wantsAnimation);
             if (wantsAnimation) {
                 ctx->wantsAnimFrame = true;
             }

@@ -1577,6 +1577,7 @@ InputState::~InputState() {
     }
     StrFree(placeholder);
     MaskPatternFree(&maskPattern);
+    VecReset(autoClosed);
     InlineTokenStoreFree(tokens);
     tokens = nullptr;
     if (highlighter.drop) {
@@ -3156,6 +3157,86 @@ static SyntaxContext InputEditingContext(InputState* s, App* app, int at) {
     return provider.ContextAt(InputValue(s), at);
 }
 
+static bool AutoClosedContains(const Vec<AutoClosedPairRange>& pairs,
+                               int openStart, int openEnd, int closeStart,
+                               int closeEnd) {
+    for (int i = 0; i < pairs.len; i++) {
+        const AutoClosedPairRange& p = pairs[i];
+        if (p.openStart == openStart && p.openEnd == openEnd &&
+            p.closeStart == closeStart && p.closeEnd == closeEnd) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool AutoClosedContainsCloser(const Vec<AutoClosedPairRange>& pairs,
+                                     int cursor, int index, int closeLen) {
+    for (int i = 0; i < pairs.len; i++) {
+        const AutoClosedPairRange& p = pairs[i];
+        if (p.closeStart + index == cursor &&
+            p.closeEnd - p.closeStart == closeLen) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void AutoClosedAdjust(Vec<AutoClosedPairRange>& pairs, int editStart,
+                             int editEnd, int newLen) {
+    int delta = newLen - (editEnd - editStart);
+    int keep = 0;
+    for (int i = 0; i < pairs.len; i++) {
+        AutoClosedPairRange p = pairs[i];
+        if (editEnd <= p.openStart) {
+            p.openStart += delta;
+            p.openEnd += delta;
+            p.closeStart += delta;
+            p.closeEnd += delta;
+            pairs[keep++] = p;
+        } else if (editStart >= p.openEnd && editEnd <= p.closeStart) {
+            p.closeStart += delta;
+            p.closeEnd += delta;
+            pairs[keep++] = p;
+        } else if (editStart < p.closeEnd) {
+            continue;
+        } else {
+            pairs[keep++] = p;
+        }
+    }
+    pairs.len = keep;
+}
+
+static AutoClosedPairRange* AutoClosedDup(const Vec<AutoClosedPairRange>& pairs,
+                                          int* n) {
+    *n = pairs.len;
+    if (pairs.len <= 0) {
+        return nullptr;
+    }
+    auto* out = (AutoClosedPairRange*)malloc((size_t)pairs.len *
+                                             sizeof(AutoClosedPairRange));
+    if (!out) {
+        *n = 0;
+        return nullptr;
+    }
+    memcpy(out, pairs.els, (size_t)pairs.len * sizeof(AutoClosedPairRange));
+    return out;
+}
+
+static void AutoClosedRestore(Vec<AutoClosedPairRange>& pairs,
+                              const AutoClosedPairRange* src, int n) {
+    VecClear(pairs);
+    for (int i = 0; i < n; i++) {
+        VecAppend(pairs, src[i]);
+    }
+}
+
+static void UndoRecordAutoClosedPairs(UndoManager* m,
+                                      const AutoClosedPairRange* before,
+                                      int nBefore,
+                                      const AutoClosedPairRange* after,
+                                      int nAfter);
+
 static bool InputTrySkipCloser(InputState* s, App* app, Window* win, Str typed,
                                const LanguageConfig& config) {
     if (!InputOneCodepoint(typed) || !s->selectedRange.IsEmpty()) {
@@ -3178,7 +3259,9 @@ static bool InputTrySkipCloser(InputState* s, App* app, Window* win, Str typed,
                 continue;
             }
             SyntaxContext context = InputEditingContext(s, app, cursor);
-            if (InputPairBlocked(pair, context) &&
+            bool generated = AutoClosedContainsCloser(s->autoClosed, cursor, i,
+                                                      pair.close.len);
+            if (!generated && InputPairBlocked(pair, context) &&
                 !(context == SyntaxContext::String &&
                   StrEq(pair.open, pair.close))) {
                 continue;
@@ -3195,9 +3278,11 @@ static bool InputTrySkipCloser(InputState* s, App* app, Window* win, Str typed,
 }
 
 static Str InputAutoCloseText(InputState* s, App* app, Arena* a, Str typed,
-                              const LanguageConfig& config, int at,
-                              int* caret) {
+                              const LanguageConfig& config, int at, int* caret,
+                              int* openLen, int* closeLen) {
     *caret = -1;
+    *openLen = 0;
+    *closeLen = 0;
     if (!InputOneCodepoint(typed) ||
         !InputAutoCloseBefore(config, InputValue(s), at)) {
         return typed;
@@ -3241,6 +3326,8 @@ static Str InputAutoCloseText(InputState* s, App* app, Arena* a, Str typed,
         memcpy(joined + len(typed), pair.close.s, (size_t)pair.close.len);
         joined[len(typed) + pair.close.len] = 0;
         *caret = at + len(typed);
+        *openLen = pair.open.len;
+        *closeLen = pair.close.len;
         return Str(joined, len(typed) + pair.close.len);
     }
     return typed;
@@ -3260,7 +3347,12 @@ static bool InputAutoCloseDeletion(InputState* s, App* app, Selection* out) {
         int start = cursor - pair.open.len;
         if (!pair.open || !pair.close || !InputSliceEq(all, start, pair.open) ||
             !InputSliceEq(all, cursor, pair.close) ||
-            InputEscapedAt(all, start) ||
+            InputEscapedAt(all, start)) {
+            continue;
+        }
+        bool generated = AutoClosedContains(s->autoClosed, start, cursor,
+                                            cursor, cursor + pair.close.len);
+        if (!generated &&
             InputPairBlocked(pair, InputEditingContext(s, app, start))) {
             continue;
         }
@@ -3318,6 +3410,8 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         r.end = r.start;
     }
     int pairedCaret = -1;
+    int pairedOpenLen = 0;
+    int pairedCloseLen = 0;
     LanguageConfig language = LanguageConfig::Default();
     bool languageEdit = s->kind == InputKind::Editor && s->autoClose &&
                         !range && !s->imeMarking && r.IsEmpty() &&
@@ -3327,8 +3421,9 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         if (InputTrySkipCloser(s, app, win, text, language)) {
             return true;
         }
-        text = InputAutoCloseText(s, app, tmp, text, language, r.start,
-                                  &pairedCaret);
+        text =
+            InputAutoCloseText(s, app, tmp, text, language, r.start,
+                               &pairedCaret, &pairedOpenLen, &pairedCloseLen);
     }
     // The document as it was, which push_history indexes and an invalid edit
     // is rolled back to.
@@ -3352,6 +3447,12 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              added - removed);
     }
 
+    int nPairsBefore = 0;
+    AutoClosedPairRange* pairsBefore = nullptr;
+    if (!UndoIsIgnoring(&s->undo)) {
+        pairsBefore = AutoClosedDup(s->autoClosed, &nPairsBefore);
+    }
+
     TextSplice(s, r.start, r.end, text);
     int newOffset = r.start + len(text);
     if (newOffset > len(s->text)) {
@@ -3366,6 +3467,10 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         // their way out of it.
         if (!IsValidInput(s, pending) && IsValidInput(s, oldAll)) {
             TextSet(s, oldAll);
+            if (pairsBefore) {
+                AutoClosedRestore(s->autoClosed, pairsBefore, nPairsBefore);
+                free(pairsBefore);
+            }
             return false;
         }
         if (!MaskIsNone(s->maskPattern)) {
@@ -3383,6 +3488,18 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         }
     }
 
+    if (!UndoIsIgnoring(&s->undo)) {
+        AutoClosedAdjust(s->autoClosed, r.start, r.end, len(text));
+        if (pairedCaret >= 0 && pairedOpenLen > 0 && pairedCloseLen > 0) {
+            AutoClosedPairRange rec;
+            rec.openStart = pairedCaret - pairedOpenLen;
+            rec.openEnd = pairedCaret;
+            rec.closeStart = pairedCaret;
+            rec.closeEnd = pairedCaret + pairedCloseLen;
+            VecAppend(s->autoClosed, rec);
+        }
+    }
+
     if (maskChanged) {
         // Masking rewrites the whole document, so a segment-based entry no
         // longer matches it — record a whole-document change instead, and
@@ -3396,6 +3513,11 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         PushHistory(s, oldAll, r, text, hasIntent, requested, selBefore,
                     pairedCaret >= 0 ? &after : nullptr);
     }
+    if (!UndoIsIgnoring(&s->undo)) {
+        UndoRecordAutoClosedPairs(&s->undo, pairsBefore, nPairsBefore,
+                                  s->autoClosed.els, s->autoClosed.len);
+    }
+    free(pairsBefore);
 
     s->cursorLineEndAffinity = false;
     s->selectedRange = SelectionAt(newOffset);
@@ -3766,6 +3888,7 @@ void InputSetValue(InputState* s, Str value) {
     ReplaceText(s, app, win, value);
     UndoSetIgnoring(&s->undo, false);
     s->emitEvents = true;
+    VecClear(s->autoClosed);
     ResetSelection(s);
     UndoClear(&s->undo);
     Notify(app, win);
@@ -5567,6 +5690,7 @@ static void DoUndo(InputState* s, App* app, Window* win) {
         if (s->tokens) {
             s->tokens->replaying = false;
         }
+        AutoClosedRestore(s->autoClosed, t->pairsBefore, t->nPairsBefore);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -5598,6 +5722,7 @@ static void DoRedo(InputState* s, App* app, Window* win) {
         if (s->tokens) {
             s->tokens->replaying = false;
         }
+        AutoClosedRestore(s->autoClosed, t->pairsAfter, t->nPairsAfter);
     }
     UndoSetIgnoring(&s->undo, false);
 }
@@ -7544,6 +7669,8 @@ static void TransactionFree(UndoTransaction* t) {
     free(t->changes);
     free(t->selsBefore);
     free(t->selsAfter);
+    free(t->pairsBefore);
+    free(t->pairsAfter);
     *t = {};
 }
 
@@ -7706,6 +7833,19 @@ static void PushBatch(UndoManager* m, UndoTransaction batch,
             batch.selsAfter = nullptr;
             batch.nSelsAfter = 0;
         }
+        if (batch.pairsBefore && !prev.pairsBefore) {
+            prev.pairsBefore = batch.pairsBefore;
+            prev.nPairsBefore = batch.nPairsBefore;
+            batch.pairsBefore = nullptr;
+            batch.nPairsBefore = 0;
+        }
+        if (batch.pairsAfter) {
+            free(prev.pairsAfter);
+            prev.pairsAfter = batch.pairsAfter;
+            prev.nPairsAfter = batch.nPairsAfter;
+            batch.pairsAfter = nullptr;
+            batch.nPairsAfter = 0;
+        }
         // The changes moved; only the array and what was not taken remain.
         batch.len = 0;
         TransactionFree(&batch);
@@ -7783,6 +7923,51 @@ static void CommitAllTransactions(UndoManager* m) {
     }
     m->transactionDepth = 1;
     UndoCommitTransaction(m);
+}
+
+static AutoClosedPairRange* PairsDup(const AutoClosedPairRange* src, int n) {
+    if (!src || n <= 0) {
+        return nullptr;
+    }
+    auto* out =
+        (AutoClosedPairRange*)malloc((size_t)n * sizeof(AutoClosedPairRange));
+    if (!out) {
+        return nullptr;
+    }
+    memcpy(out, src, (size_t)n * sizeof(AutoClosedPairRange));
+    return out;
+}
+
+static void UndoRecordAutoClosedPairs(UndoManager* m,
+                                      const AutoClosedPairRange* before,
+                                      int nBefore,
+                                      const AutoClosedPairRange* after,
+                                      int nAfter) {
+    if (m->ignoring) {
+        return;
+    }
+    UndoTransaction* t = nullptr;
+    if (m->transactionDepth > 0) {
+        t = &m->pending;
+    } else if (m->undos.len > 0) {
+        t = &m->undos[m->undos.len - 1];
+    }
+    if (!t) {
+        return;
+    }
+    if (before && nBefore > 0 && !t->pairsBefore) {
+        t->pairsBefore = PairsDup(before, nBefore);
+        t->nPairsBefore = t->pairsBefore ? nBefore : 0;
+    }
+    if (after) {
+        free(t->pairsAfter);
+        t->pairsAfter = PairsDup(after, nAfter);
+        t->nPairsAfter = t->pairsAfter ? nAfter : 0;
+    } else if (nAfter == 0) {
+        free(t->pairsAfter);
+        t->pairsAfter = nullptr;
+        t->nPairsAfter = 0;
+    }
 }
 
 void UndoRecordSelections(UndoManager* m, const CursorSelection* before,

@@ -3228,6 +3228,14 @@ enum class EditIntent : uint8_t {
 // transaction that holds them frees.
 struct TokenDelta;
 
+// A pair the editor inserted, as UTF-8 ranges. auto_close.rs AutoClosedPairs.
+struct AutoClosedPairRange {
+    int openStart = 0;
+    int openEnd = 0;
+    int closeStart = 0;
+    int closeEnd = 0;
+};
+
 struct Change {
     Selection oldRange = {};
     Str oldText = {};
@@ -3257,6 +3265,12 @@ struct UndoTransaction {
     int nSelsBefore = 0;
     CursorSelection* selsAfter = nullptr;
     int nSelsAfter = 0;
+    // AutoClosedPairs snapshots. Rust stores them on the transaction so
+    // undo/redo restore which closers the editor inserted.
+    AutoClosedPairRange* pairsBefore = nullptr;
+    int nPairsBefore = 0;
+    AutoClosedPairRange* pairsAfter = nullptr;
+    int nPairsAfter = 0;
 };
 
 // undo_manager.rs UndoManager. Every edit makes a transaction; adjacent
@@ -4182,6 +4196,8 @@ struct InputState {
     // changes; the active LanguageConfig is resolved at each edit.
     bool autoClose = true;
     bool smartIndent = true;
+    // Delimiters this editor inserted, retained across edits and undo.
+    Vec<AutoClosedPairRange> autoClosed;
     // searchable / replaceable: whether the built-in search panel and its
     // shortcut are enabled. Off by default, on for the code editor. This only
     // concerns the panel — an input that is not searchable still answers

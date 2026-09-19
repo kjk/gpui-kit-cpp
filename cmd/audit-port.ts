@@ -47,7 +47,7 @@ table tag text theme touch_selection tooltip tree
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set(["input", "reduce_motion", "text"]);
+const partialBase = new Set(["input", "text"]);
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support"]);
 const partialUi = new Set(["touch_selection"]);
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
@@ -55,9 +55,7 @@ const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "st
 const partialReasons: Record<string, string> = {
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
   "base/input":
-    "language-aware pairs and smart indentation are ported without Rust regex objects or generated-pair history",
-  "base/reduce_motion":
-    "startup follows the platform preference; live Linux portal changes and an app-level override are not exposed",
+    "language-aware pairs, generated-pair history and smart indentation are ported; indentation patterns are function pointers rather than Rust regex objects",
 
   "base/text": "inline native elements use portable element callbacks rather than Rust AnyElement entities",
 

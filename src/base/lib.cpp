@@ -1,11 +1,6 @@
 #include "base/lib.h"
-#include "gpui/platform.h"
 
 namespace gpui {
-
-void ApplySystemReduceMotion() {
-    MotionSetReduced(PlatReduceMotion());
-}
 
 void BaseInit(App* app) {
     if (!app) {

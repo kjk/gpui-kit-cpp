@@ -19,9 +19,26 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                      float dipH);
 
 // cx.reduce_motion(): whether the desktop has asked for less animation.
-// Windows and macOS each have a switch to read; X11 has no such setting, so
-// it answers false.
+// Windows and macOS each have a switch to read; Linux answers through the
+// XDG desktop portal asynchronously (PlatReduceMotionKnown is then false).
 bool PlatReduceMotion();
+// True when the platform has a synchronous reading, written into `out`.
+// Subscribe to live changes. `onChange` is posted to the main thread.
+// Safe to call more than once; only the first starts the listener.
+#if GPUI_OS_IOS || GPUI_OS_ANDROID
+inline bool PlatReduceMotionKnown(bool* out) {
+    if (out) {
+        *out = PlatReduceMotion();
+    }
+    return true;
+}
+inline void PlatReduceMotionFollow(void (*onChange)(bool reduce)) {
+    (void)onChange;
+}
+#else
+bool PlatReduceMotionKnown(bool* out);
+void PlatReduceMotionFollow(void (*onChange)(bool reduce));
+#endif
 
 // `key` is one of the Key* codes in Gpui.h.
 // `platform` is Command on macOS and the Windows/Super key elsewhere. It
