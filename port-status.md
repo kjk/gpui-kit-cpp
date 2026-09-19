@@ -5,8 +5,8 @@ it terse: one bullet per gap, the reason, and the file that owns it. When you
 decide not to port something, add the bullet here instead of leaving the next
 session to rediscover it. This is not a changelog — do not log what was done.
 
-The shared story gallery pages in `crates/story` are ported except for
-`ShellStory`, noted below. Everything in `crates/base`, `crates/component`,
+The shared story gallery pages in `crates/story` are ported. Everything in
+`crates/base`, `crates/component`,
 `crates/base/examples/showcase`, `crates/fps`, `crates/webview`,
 `crates/shell` and `examples/` is ported and builds on Windows, Linux, macOS
 and wasm. The portable library also cross-compiles for iOS and Android; their
@@ -21,27 +21,15 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
 
 ## Known gaps vs Rust
 
-- **The story gallery omits `ShellStory`.** The pinned Rust gallery has 74
-  components including Shell; the C++ gallery has 74 because it also exposes
-  `SearchableList`, which Rust does not list separately. The quote board's
-  Rust and scripted halves still need a story page (`examples/story/story.cpp`,
-  `crates/story/src/stories/shell_story.rs` upstream).
-- **The story's Go menu uses the sidebar search and installed-theme submenu.**
-  Rust opens command and theme palette dialogs. The menu labels now match,
-  but the dialog interaction and the `Ctrl+K` theme shortcut are pending
-  (`examples/story/story.cpp`).
-- **The story chart gallery still differs in its card grid and fixtures.**
-  At the comparison window width, Rust shows four narrow pie cards in its
-  second row while the port shows two wider cards; the trend percentage also
-  differs (`examples/story/chart.cpp`, `examples/story/ChartFixtures.h`).
-- **The story introduction renders extra README HTML in the port.** Both
-  galleries read the same pinned README, but the header image and badges are
-  visible only in the C++ text view (`examples/story/welcome.cpp`,
-  `src/base/text.cpp`).
 - **The MessageScroller story seeds row heights from text measurements.**
   Rust measures rendered rows through its virtual list; the C++ story uses
   fixed bubble padding around `MeasureText` until row measurement feeds back
   into the list state (`examples/story/message_scroller.cpp`).
+- **Shell script rows are a few pixels taller than Rust's at the default
+  theme.** The identical `quotes/ui.js` is rendered through the portable shell
+  element materializer and DirectWrite text metrics; the ten-row scripted
+  panel is about 38 DIP taller at the comparison window size
+  (`src/shell/materialize.cpp`, `assets/story/quotes/ui.js`).
 
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.

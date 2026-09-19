@@ -158,8 +158,6 @@ static const StoryInfo kMeta[StoryCount] = {
     {"rating", "Rating", "A simple interactive star rating component."},
     {"resizable", "Resizable", "The resizable panels."},
     {"scrollbar", "Scrollbar", "Add scrollbar to a scrollable element."},
-    {"searchable-list", "SearchableList",
-     "The searchable, sectioned list behind a Select and a ComboBox."},
     {"select", "Select",
      "Displays a list of options for the user to pick "
      "from—triggered by a button."},
@@ -168,6 +166,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"settings", "Settings",
      "A collection of settings groups and items for the "
      "application."},
+    {"shell", "Shell",
+     "Run a ticking JavaScript quote board beside a Rust one, sharing state through a native module."},
     {"sheet", "Sheet", "Sheet for open a popup in the edge of the window"},
     {"shimmer", "Shimmer",
      "Reusable, theme-aware text loading effects with composable timing "
@@ -876,16 +876,16 @@ static int StoryNotificationCount(Ctx* cx) {
 STORY_ACTION(ActAbout, "story::About")
 STORY_ACTION(ActOpen, "story::Open")
 STORY_ACTION(ActOpenCommandPalette, "story::OpenCommandPalette")
+STORY_ACTION(ActOpenThemePalette, "story::OpenThemePalette")
 STORY_ACTION(ActQuit, "story::Quit")
 STORY_ACTION(ActNewWindow, "story::NewWindow")
 STORY_ACTION(ActCloseWindow, "story::CloseWindow")
 STORY_ACTION(ActDocumentation, "story::Documentation")
 // The payload rides on the action, which is what `SwitchThemeMode(mode)`,
-// `SelectTheme(name)`, `SelectFont(px)`, `SelectRadius(px)` and
+// `SelectFont(px)`, `SelectRadius(px)` and
 // `SelectScrollbarMode(mode)` carry in Rust: the mode as 0 or 1, a theme as
 // its place in the registry, and the other three as the value itself.
 STORY_ACTION(ActSwitchThemeMode, "story::SwitchThemeMode")
-STORY_ACTION(ActSelectTheme, "story::SelectTheme")
 STORY_ACTION(ActSelectLocale, "story::SelectLocale")
 STORY_ACTION(ActSelectFont, "story::SelectFont")
 STORY_ACTION(ActSelectRadius, "story::SelectRadius")
@@ -1200,12 +1200,121 @@ static void OnOpenAction(StoryApp*, Ctx*, const ActionEvent*) {
     // menu.
 }
 
-static void OnOpenCommandPaletteAction(StoryApp* app, Ctx* cx,
+struct StoryPalette {
+    Entity<StoryApp> owner = {};
+    Entity<component::CommandState> command = {};
+    App* app = nullptr;
+    bool themes = false;
+    bool focused = false;
+    bool confirmed = false;
+    ThemeMode beforeMode = ThemeMode::Light;
+    Str beforeTheme = {};
+    Vec<component::CommandItem> items;
+
+    ~StoryPalette() {
+        StrFree(beforeTheme);
+        if (command.id.IsValid()) EntityDrop(app, command.id);
+    }
+
+    static void Preview(StoryPalette* self, Ctx* cx,
+                        const component::CommandEvent* ev) {
+        if (!self->themes) return;
+        const ThemeConfig* cfg = ThemeRegistryAt(cx->app, (int)ev->data);
+        if (cfg && ThemeRegistryApply(cx->app, cfg)) {
+            ThemeSet(cx->app, cfg->mode);
+            AppRefreshWindows(cx->app);
+        }
+    }
+
+    static void Confirm(StoryPalette* self, Ctx* cx,
+                        const component::CommandEvent* ev) {
+        int ix = (int)ev->data;
+        if (self->themes) {
+            Preview(self, cx, ev);
+            self->confirmed = true;
+        } else if (ix >= 0 && ix < StoryCount) {
+            StoryApp* owner = self->owner.Get(cx);
+            if (owner) {
+                owner->story = ix;
+                owner->scrollY = 0;
+                InputSetValue(&owner->search, Str(StoryMeta(ix)->title));
+            }
+        }
+        WindowCloseDialog(cx);
+        AppRefreshWindows(cx->app);
+    }
+
+    static void Cancel(StoryPalette* self, Ctx* cx,
+                       const component::CommandEvent*) {
+        if (self->themes && !self->confirmed) {
+            ThemeRegistryApply(cx->app, self->beforeTheme);
+            ThemeSet(cx->app, self->beforeMode);
+        }
+        WindowCloseDialog(cx);
+        AppRefreshWindows(cx->app);
+    }
+
+    static El* Render(StoryPalette* self, Ctx* cx) {
+        if (!self->command.id.IsValid())
+            self->command = EntityNewState<component::CommandState>(cx->app);
+        int count = self->themes ? ThemeRegistryCount(cx->app) : StoryCount;
+        if (!VecResize(self->items, count)) return Div(cx->a);
+        for (int i = 0; i < count; i++) {
+            self->items[i] = {};
+            self->items[i].label = self->themes
+                ? ThemeRegistryAt(cx->app, i)->name
+                : Str(StoryMeta(i)->title);
+            self->items[i].data = i;
+            if (self->themes)
+                self->items[i].checked = base::StrEq(
+                    self->items[i].label,
+                    ThemeRegistryActive(cx->app, ThemeGet(cx->app)));
+        }
+        component::CommandState* state = self->command.Get(cx);
+        if (!self->focused && state) {
+            self->focused = true;
+            InputFocus(&state->query, cx);
+        }
+        El* command = component::Command::New(
+            cx, self->themes ? StrL("story-themes") : StrL("story-components"),
+            self->command)
+            ->Items(self->items.els, count)
+            ->Bordered(false)
+            ->Placeholder(self->themes ? StrL("Search themes...")
+                                       : StrL("Search components..."))
+            ->MaxH(400)
+            ->OnSelect(Listen(cx, &StoryPalette::Preview))
+            ->OnConfirm(Listen(cx, &StoryPalette::Confirm))
+            ->OnCancel(Listen(cx, &StoryPalette::Cancel))
+            ->IntoEl();
+        return component::Dialog::New(cx)->Open(true)->W(500)
+            ->CloseButton(false)->OverlayClosable(false)
+            ->Surface(command)->IntoEl(WindowSize(cx->win));
+    }
+};
+
+static void StoryOpenPalette(Ctx* cx, bool themes) {
+    Entity<StoryPalette> palette = EntityNew<StoryPalette>(cx->app);
+    StoryPalette* state = palette.Get(cx);
+    state->owner = Entity<StoryApp>{cx->self};
+    state->app = cx->app;
+    state->themes = themes;
+    if (themes) {
+        state->beforeMode = ThemeGet(cx->app);
+        state->beforeTheme = StrDup(
+            ThemeRegistryActive(cx->app, state->beforeMode));
+    }
+    WindowOpenDialog(cx, palette);
+}
+
+static void OnOpenCommandPaletteAction(StoryApp*, Ctx* cx,
                                        const ActionEvent*) {
-    // The sidebar search is the story navigator's command entry point.
-    app->search.focused = true;
-    cx->win->input = &app->search;
-    Notify(cx);
+    StoryOpenPalette(cx, false);
+}
+
+static void OnOpenThemePaletteAction(StoryApp*, Ctx* cx,
+                                     const ActionEvent*) {
+    StoryOpenPalette(cx, true);
 }
 
 // `cx.on_action(|_: &Quit, cx| cx.quit())`: every window, not the one the row
@@ -1233,17 +1342,6 @@ static void OnSwitchThemeModeAction(StoryApp*, Ctx* cx, const ActionEvent* ev) {
     Notify(cx);
 }
 
-// SelectTheme(name): the registry resolves the file into the palette for its
-// own mode, and switching to that mode is what puts it on screen.
-static void OnSelectThemeAction(StoryApp*, Ctx* cx, const ActionEvent* ev) {
-    const ThemeConfig* cfg = ThemeRegistryAt(cx->app, (int)ev->arg);
-    if (!cfg || !ThemeRegistryApply(cx->app, cfg)) {
-        return;
-    }
-    ThemeSet(cx->app, cfg->mode);
-    Notify(cx);
-}
-
 // cx.bind_keys([..]) in the story's init. A menu row shows the chord bound to
 // its action and nothing else — there is no shortcut field on a row, here or
 // in Rust — so an application that wants ⌘Q beside Quit binds ⌘Q to Quit.
@@ -1259,6 +1357,7 @@ static void StoryInitKeys() {
         // cmd-o on macOS, ctrl-o elsewhere, which is what `secondary-` is.
         {"secondary-o", ActOpen(), nullptr},
         {"ctrl-shift-p", ActOpenCommandPalette(), nullptr},
+        {"secondary-k", ActOpenThemePalette(), nullptr},
 #if GPUI_OS_MAC
         {"cmd-q", ActQuit(), nullptr},
         // Not upstream's, because upstream has no such rows: on a Mac these
@@ -1354,12 +1453,13 @@ static El* StoryBindMenuActions(El* root, Ctx* cx) {
         ->OnAction(ActOpen(), Listen(cx, &OnOpenAction))
         ->OnAction(ActOpenCommandPalette(),
                    Listen(cx, &OnOpenCommandPaletteAction))
+        ->OnAction(ActOpenThemePalette(),
+                   Listen(cx, &OnOpenThemePaletteAction))
         ->OnAction(ActQuit(), Listen(cx, &OnQuitAction))
         ->OnAction(ActNewWindow(), Listen(cx, &OnNewWindowAction))
         ->OnAction(ActCloseWindow(), Listen(cx, &OnCloseWindowAction))
         ->OnAction(ActDocumentation(), Listen(cx, &OnDocumentationAction))
         ->OnAction(ActSwitchThemeMode(), Listen(cx, &OnSwitchThemeModeAction))
-        ->OnAction(ActSelectTheme(), Listen(cx, &OnSelectThemeAction))
         ->OnAction(ActSelectLocale(), Listen(cx, &OnSelectLocaleAction))
         ->OnAction(ActSelectFont(), Listen(cx, &OnSelectFontAction))
         ->OnAction(ActSelectRadius(), Listen(cx, &OnSelectRadiusAction))
@@ -1383,14 +1483,12 @@ static MenuRow* StoryRows(Ctx* cx, int n) {
         ->Push((uint64_t)n * sizeof(MenuRow), alignof(MenuRow), true);
 }
 
-// build_menus(): the four menus as they stand right now — the mode that is
-// checked, the theme in use, whatever `themes/` holds.
+// build_menus(): the four Rust story menus, with the current mode checked.
 static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
     if (!out || cap < kStoryMenus) {
         return 0;
     }
-    // The same `themes/` directory the Theme Colors page reads, so the menu
-    // lists whatever that page lists whichever of the two is opened first.
+    // The theme palette reads this same registry when its action opens.
     ThemeRegistryLoadDir(cx->app, StrL("themes"));
     bool dark = ThemeGet(cx->app) == ThemeMode::Dark;
 
@@ -1402,17 +1500,6 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
     appearance[1].action = ActSwitchThemeMode();
     appearance[1].arg = 1;
     appearance[1].checked = dark;
-
-    Str active = ThemeRegistryActive(cx->app, ThemeGet(cx->app));
-    int nThemes = ThemeRegistryCount(cx->app);
-    MenuRow* themes = StoryRows(cx, nThemes > 0 ? nThemes : 1);
-    for (int i = 0; i < nThemes; i++) {
-        const ThemeConfig* cfg = ThemeRegistryAt(cx->app, i);
-        themes[i].label = cfg->name;
-        themes[i].action = ActSelectTheme();
-        themes[i].arg = i;
-        themes[i].checked = base::StrEq(cfg->name, active);
-    }
 
     Str locale = component::LocaleNow();
     MenuRow* languages = StoryRows(cx, kStoryLocaleCount);
@@ -1486,11 +1573,7 @@ static int StoryBuildMenus(Ctx* cx, MenuDef* out, int cap) {
     goRows[0].label = StrL("Go to...");
     goRows[0].action = ActOpenCommandPalette();
     goRows[1].label = StrL("Themes...");
-    // Rust opens palette dialogs; the port routes navigation to sidebar
-    // search and lists installed themes here until those dialogs are ported.
-    goRows[1].submenu = themes;
-    goRows[1].submenuN = nThemes;
-    goRows[1].disabled = nThemes == 0;
+    goRows[1].action = ActOpenThemePalette();
     out[2].name = StrL("Go");
     out[2].items = goRows;
     out[2].n = 2;

@@ -40,6 +40,19 @@ static float LatestChange(const float* values, int n) {
     return ChangePercent(values[n - 1], values[n - 2]);
 }
 
+// chart_story.rs::windowed_change: compare the last seven combined daily
+// visitor totals with the seven before them, not just the last two desktops.
+static float VisitorWeekChange() {
+    const int window = 7;
+    double latest = 0, previous = 0;
+    for (int i = kDailyDeviceCount - window; i < kDailyDeviceCount; i++)
+        latest += (double)kDailyDesktop[i] + kDailyMobile[i];
+    for (int i = kDailyDeviceCount - window * 2;
+         i < kDailyDeviceCount - window; i++)
+        previous += (double)kDailyDesktop[i] + kDailyMobile[i];
+    return previous == 0 ? 0 : (float)((latest - previous) / previous * 100.);
+}
+
 static float SumF(const float* values, int n) {
     float s = 0;
     for (int i = 0; i < n; i++) {
@@ -169,6 +182,16 @@ static El* ChartCard(Ctx* cx, const char* title, const char* period, El* chart,
     body->Child(chart);
     card->Child(body);
     El* foot1 = StoryTxt(cx, Str(headline), 14, th.foreground)->Semibold();
+    if (StrStartsWith(Str(headline), "Trending ")) {
+        bool down = StrStartsWith(Str(headline), "Trending down");
+        Str arrow = down
+            ? StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 17h6v-6\"/><path d=\"m22 17-8.5-8.5-5 5L2 7\"/></svg>")
+            : StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 7-8.5 8.5-5-5L2 17\"/><path d=\"M16 7h6v6\"/></svg>");
+        foot1 = Div(a)->FlexRow()->ItemsCenter()->Gap(6)
+            ->Child(foot1)
+            ->Child(component::Icon::Empty(cx)->Data(arrow)->Size(16)
+                        ->Color(down ? th.red : th.green)->IntoEl());
+    }
     El* foot2 = StoryTxt(cx, Str(note), 14, th.mutedFg);
     if (center) {
         card->Child(Div(a)->W(kFill)->FlexRow()->JustifyCenter()->Child(foot1));
@@ -229,8 +252,16 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 pie->Slice(kBrowserShare[i], c);
                 legend[i] = {c, kBrowserName[i]};
             }
+            El* donut = Div(a)->W(180)->H(180)
+                ->Child(pie->IntoEl());
+            donut->Child(Div(a)->Absolute()->Left(0)->Top(0)
+                ->W(180)->H(180)->FlexCol()->ItemsCenter()->JustifyCenter()
+                ->Child(StoryTxt(cx, StoryFmt(cx, "%.0f%%",
+                                    (double)kBrowserShare[0]), 24,
+                                 th.foreground)->Semibold())
+                ->Child(StoryTxt(cx, Str(kBrowserName[0]), 12, th.mutedFg)));
             return ChartCard(
-                cx, "Browser Share", "June 2025", pie->IntoEl(), true,
+                cx, "Browser Share", "June 2025", donut, true,
                 StoryFmt(cx, "%s leads by %.0f points", kBrowserName[0],
                          (double)(kBrowserShare[0] - kBrowserShare[1]))
                     .s,
@@ -302,7 +333,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             }
             return ChartCard(
                 cx, "Visitors", "April – June 2025", areaBox, false,
-                TrendLine(cx, LatestChange(kDailyDesktop, 7), "this week"),
+                TrendLine(cx, VisitorWeekChange(), "this week"),
                 StoryFmt(cx, "%s visitors over the last three months",
                          Compact(cx, visitors))
                     .s,

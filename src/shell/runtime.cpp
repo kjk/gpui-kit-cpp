@@ -6084,7 +6084,7 @@ static bool HostArgumentsFromJs(JSContext* ctx, JSValueConst array,
         JS_ThrowRangeError(ctx, "host calls accept at most 10000 arguments");
         return false;
     }
-    if (!VecReserve(arguments->values, (int)count)) {
+    if (count > 0 && !VecReserve(arguments->values, (int)count)) {
         JS_ThrowOutOfMemory(ctx);
         return false;
     }

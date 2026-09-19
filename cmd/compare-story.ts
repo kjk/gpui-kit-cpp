@@ -89,6 +89,7 @@ const slugs = [
   "select",
   "separator",
   "settings",
+  "shell",
   "sheet",
   "shimmer",
   "sidebar",

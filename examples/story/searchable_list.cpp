@@ -126,4 +126,5 @@ El* SearchableListStory::Render(SearchableListStory* self, Ctx* cx) {
     return page;
 }
 
-STORY_PAGE(StorySearchableList, SearchableListStory);
+// The searchable list remains available as a standalone implementation; the
+// pinned Rust gallery does not expose it as a separate story page.

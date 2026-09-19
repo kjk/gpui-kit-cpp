@@ -259,10 +259,11 @@ static El* MessageScrollerRow(void* user, Ctx* cx, int index) {
     Arena* a = cx->a;
     El* row = Div(a)->W(kFill)->MinW(0)->PadX(12);
     if (rc->insetL > 0) {
-        row->PadL(12 + rc->insetL);
+        // Rust's .pl(left) overrides .px_3 rather than adding to it.
+        row->PadL(rc->insetL);
     }
     if (rc->insetR > 0) {
-        row->PadR(12 + rc->insetR);
+        row->PadR(rc->insetR);
     }
     // Spacing between rows only, like a CSS gap: the list's own bottom
     // padding owns the gap after the last row.

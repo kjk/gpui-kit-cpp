@@ -765,6 +765,10 @@ static void HostDouble(HostCall* call) {
     call->result.SetNumber(value * 2);
 }
 
+static void HostZero(HostCall* call) {
+    call->result.SetNumber(call->arguments ? call->arguments->Len() : -1);
+}
+
 static bool ShellFixtureFs(FsOperation operation, Str root, Str relative,
                            Str input = {}, bool recursive = false);
 
@@ -791,10 +795,12 @@ static void ShellHostModulesBridgePlainDataAndPromises() {
         HostModule::New(StrL("calculator"))
             ->Function(StrL("increment"), MkFunc1Void(HostIncrement))
             ->Function(StrL("echo"), MkFunc1Void(HostEcho))
+            ->Function(StrL("zero"), MkFunc1Void(HostZero))
             ->AsyncFunction(StrL("double"), MkFunc1Void(HostDouble))
             ->Declarations(StrL(
                 "export function increment(value: number): number;\n"
                 "export function echo(value: unknown): unknown;\n"
+                "export function zero(): number;\n"
                 "export function double(value: number): Promise<number>;\n"));
     utassert(ShellExportModule(module, &hostError));
     utassert(!hostError.IsSet());
@@ -810,10 +816,10 @@ static void ShellHostModulesBridgePlainDataAndPromises() {
     ShellRuntime* runtime = ShellRuntime::New(&app, &error);
     Str source = StrL(
         "import { View, div } from 'gpui';\n"
-        "import { increment, echo, double } from 'calculator';\n"
+        "import { increment, echo, double, zero } from 'calculator';\n"
         "globalThis.hostAsync = 'pending';\n"
         "globalThis.hostSync = JSON.stringify(echo({answer:[increment(41), "
-        "true, 'ok']}));\n"
+        "true, 'ok', zero()]}));\n"
         "export default class Main extends View {\n"
         "  init(props, cx) { cx.spawn(async cx => { hostAsync = String(await "
         "double(21)); cx.notify(); }); }\n"
@@ -834,7 +840,7 @@ static void ShellHostModulesBridgePlainDataAndPromises() {
     utassert(!error.IsSet());
     utassert(
         runtime &&
-        runtime->Eval(StrL("if (hostSync !== '{\"answer\":[42,true,\"ok\"]}') "
+        runtime->Eval(StrL("if (hostSync !== '{\"answer\":[42,true,\"ok\",0]}') "
                            "throw new Error(hostSync)"),
                       StrL("host-sync-check.js"), &error));
     utassert(ShellSettle(runtime, 5000));

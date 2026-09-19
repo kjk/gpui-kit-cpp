@@ -12,7 +12,7 @@ static const float kMsPreviewH = 304;
 // told how tall its viewport is rather than filling a flexible box.
 static const float kMsFrameW = 384;
 static const float kMsFrameH = 560;
-static const float kMsFrameListH = 340;
+static const float kMsFrameListH = 360;
 
 static const int kMsInitialStreamMessageCount = 7;
 
@@ -170,7 +170,9 @@ static void MsSizeRows(Ctx* cx, Entity<component::MessageScrollerState> e,
         const DemoMessage& message = messages[i];
         float textW = message.sent ? 246.f : 315.f;
         Size text = MeasureText(&cx->win->paint, message.body, 14.f, textW, true);
-        state->heights[i] = text.h + (message.sent ? 56.f : 40.f) +
+        // The row owns a 32 DIP inter-item gap; muted bubbles add 16 DIP
+        // vertical padding. List top/bottom padding is applied separately.
+        state->heights[i] = text.h + (message.sent ? 48.f : 32.f) +
                             (i == unread ? 30.f : 0.f);
     }
 }
@@ -525,7 +527,8 @@ static void MsCustomJumpButton(component::Button* button) {
 
 static El* MsSection(Ctx* cx, const char* title, const char* desc, float gap) {
     El* section = StorySection(cx, title, desc);
-    StorySectionBody(section)->FlexCol()->Gap(gap)->MaxW(kMsSectionMaxW);
+    StorySectionBody(section)->FlexCol()->Gap(gap)->PadT(6)
+        ->MaxW(kMsSectionMaxW);
     return section;
 }
 
