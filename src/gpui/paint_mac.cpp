@@ -792,10 +792,12 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
         return nullptr;
     }
     CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGBitmapInfo bitmapInfo =
+        (CGBitmapInfo)((uint32_t)kCGImageAlphaPremultipliedFirst |
+                       (uint32_t)kCGBitmapByteOrder32Little);
     CGImageRef cg = space
         ? CGImageCreate(w, h, 8, 32, (size_t)w * 4, space,
-                        kCGImageAlphaPremultipliedFirst |
-                            kCGBitmapByteOrder32Little,
+                        bitmapInfo,
                         provider, nullptr, false, kCGRenderingIntentDefault)
         : nullptr;
     if (space) CGColorSpaceRelease(space);
