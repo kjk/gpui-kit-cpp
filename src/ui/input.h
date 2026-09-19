@@ -462,7 +462,9 @@ struct InputGroup {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
-    Input* input = nullptr;
+    // Qualify the type: this builder also declares Input(), which GCC
+    // otherwise treats as changing the meaning of Input in the class.
+    ::gpui::component::Input* input = nullptr;
     Textarea* textarea = nullptr;
     ArenaVec<InputGroupAddon*> addons;
     UiSize size = UiSize::Medium;
@@ -476,7 +478,7 @@ struct InputGroup {
     El* controlEl = nullptr;
 
     static InputGroup* New(Ctx* cx, Str id);
-    InputGroup* Input(Input* control);
+    InputGroup* Input(::gpui::component::Input* control);
     InputGroup* Input(Textarea* control);
     InputGroup* Addon(InputGroupAddon* addon);
     InputGroup* Disabled(bool v);

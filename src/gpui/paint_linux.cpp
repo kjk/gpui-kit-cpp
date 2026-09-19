@@ -812,6 +812,9 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
         g_object_unref(loader);
         return nullptr;
     }
+    // GdkPixbuf's animation API still takes GTimeVal and is deprecated in
+    // newer headers without a compatible replacement for frame iteration.
+    G_GNUC_BEGIN_IGNORE_DEPRECATIONS
     GdkPixbufAnimation* anim = gdk_pixbuf_loader_get_animation(loader);
     if (!anim) {
         g_object_unref(loader);
@@ -852,6 +855,7 @@ RenderImage* RenderImageDecode(PaintApp* pa, const uint8_t* bytes, int len) {
             g_object_unref(iter);
         }
     }
+    G_GNUC_END_IGNORE_DEPRECATIONS
     g_object_unref(loader);
     if (img->frames.len == 0) {
         delete img;

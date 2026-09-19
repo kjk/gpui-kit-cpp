@@ -2299,8 +2299,7 @@ static void SearchShortcutPropagatesWhenTheEditorIsNotSearchable() {
     InputState editor;
     editor.kind = InputKind::Editor;
     editor.searchable = false;
-    utassert(InputActionForKey(&editor, KeyF, false, true, false) ==
-             InputAction::Search);
+    utassert(Sec(&editor, KeyF, false) == InputAction::Search);
     utassert(!InputPerform(&editor, &app, win, InputAction::Search, false));
     utassert(!editor.search.open);
     utassert(!SearchSessionIsActive(&editor.search));
