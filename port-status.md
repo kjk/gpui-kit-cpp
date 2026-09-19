@@ -31,8 +31,10 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 
-- **Composer token icons map Image / Sparkles / AtSign onto File / Star /
-  User** (`examples/story/input_tokens.cpp`).
+- **Textarea tokens still use flex wrapping instead of display-map inline
+  metrics.** Text gaps can break at UTF-8 characters around atomic chips, but
+  shaping, selection geometry and hit testing do not yet share Rust's fragment
+  map (`src/base/input.cpp`).
 - **No language server.** Every seam in `input/editor/lsp` is ported —
   completion, resolve, ghost text, hover, code actions, document colours,
   semantic tokens, go-to-definition — but there is no JSON-RPC, no child

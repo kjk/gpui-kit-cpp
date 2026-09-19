@@ -32,8 +32,7 @@ EntityId TokenExampleNew(App* app, bool multiline) {
     return entity.id;
 }
 
-// crates/story/src/stories/input_tokens.rs. IconName has no Image / Sparkles
-// / AtSign; File, Star and User stand in for those three.
+// crates/story/src/stories/input_tokens.rs.
 
 enum {
     RefCommand = 0,
@@ -56,11 +55,11 @@ static const TokenSample kSamples[RefCount] = {
     {"command:commit-pr", "/commit-pr", "/commit-pr", "insert-command",
      "Insert command", IconName::SquareTerminal},
     {"image:1", "[Image 1]", "Image 1", "insert-image", "Attach image",
-     IconName::File},
+     IconName::Image},
     {"skill:gpui-kit", "$gpui-kit", "gpui-kit", "insert-skill", "Insert skill",
-     IconName::Star},
+     IconName::Sparkles},
     {"person:alice", "@alice", "Alice", "insert-person", "Mention someone",
-     IconName::User},
+     IconName::AtSign},
 };
 
 static InlineToken SampleToken(int kind) {
@@ -138,11 +137,11 @@ static El* RenderToken(Ctx* cx, const InlineTokenContext* ctx, void*) {
     if (StrStartsWith(t.id, StrL("command:"))) {
         token->Icon(IconName::SquareTerminal);
     } else if (StrStartsWith(t.id, StrL("image:"))) {
-        token->Icon(IconName::File);
+        token->Icon(IconName::Image);
     } else if (StrStartsWith(t.id, StrL("skill:"))) {
-        token->Icon(IconName::Star);
+        token->Icon(IconName::Sparkles);
     } else if (StrStartsWith(t.id, StrL("person:"))) {
-        token->Icon(IconName::User);
+        token->Icon(IconName::AtSign);
     }
     return token->IntoEl();
 }

@@ -1618,6 +1618,8 @@ Str IconNamePath(IconName name) {
             return StrL("icons/arrow-down.svg");
         case IconName::Asterisk:
             return StrL("icons/asterisk.svg");
+        case IconName::AtSign:
+            return StrL("icons/at-sign.svg");
         case IconName::Bell:
             return StrL("icons/bell.svg");
         case IconName::Building2:
@@ -1654,6 +1656,8 @@ Str IconNamePath(IconName name) {
             return StrL("icons/external-link.svg");
         case IconName::Inbox:
             return StrL("icons/inbox.svg");
+        case IconName::Image:
+            return StrL("icons/image.svg");
         case IconName::Bot:
             return StrL("icons/bot.svg");
         case IconName::Cpu:
@@ -1740,6 +1744,8 @@ Str IconNamePath(IconName name) {
             return StrL("icons/chevrons-up-down.svg");
         case IconName::SquareTerminal:
             return StrL("icons/square-terminal.svg");
+        case IconName::Sparkles:
+            return StrL("icons/sparkles.svg");
         case IconName::BookOpen:
             return StrL("icons/book-open.svg");
         case IconName::Settings2:

@@ -142,6 +142,12 @@ static void ADataIconKeepsItsBytesSizeColourAndTransform() {
 }
 
 static void PinnedIconAdditionsHaveExactAssetPaths() {
+    utassert(base::StrEq(IconNamePath(IconName::AtSign),
+                         StrL("icons/at-sign.svg")));
+    utassert(base::StrEq(IconNamePath(IconName::Image),
+                         StrL("icons/image.svg")));
+    utassert(base::StrEq(IconNamePath(IconName::Sparkles),
+                         StrL("icons/sparkles.svg")));
     utassert(base::StrEq(IconNamePath(IconName::ALargeSmall),
                          StrL("icons/a-large-small.svg")));
     utassert(base::StrEq(IconNamePath(IconName::BatteryWarning),

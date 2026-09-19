@@ -1210,6 +1210,9 @@ enum class IconName : uint8_t {
     // asset `Close`; keeping X avoids forcing applications to migrate in one
     // release while both names remain backed by their exact SVGs.
     X,
+    AtSign,
+    Image,
+    Sparkles,
 };
 
 struct PaintCtx;

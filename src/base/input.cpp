@@ -332,10 +332,9 @@ static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
         piece->Mono();
     }
     if (wrap) {
-        // A text gap may wrap; a chip does not. MinW(0) lets this piece
-        // shrink onto the remainder of a line instead of taking the chip
-        // with it to the next one.
-        piece->Wrap()->MinW(0);
+        // Each piece is one UTF-8 character. Let the row break between
+        // pieces while the token chip remains one atomic flex item.
+        piece->Shrink0();
     }
     int lo = sel.start - docStart;
     int hi = sel.end - docStart;
@@ -367,23 +366,16 @@ static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
                            docStart, sel, caret, cursor, false);
         return;
     }
-    // Split on whitespace so wrapping can break around a chip at a word
-    // boundary, the way display-map LineFragment::text does. A chip is a
-    // separate Shrink0 item.
+    // Flex layout only breaks between children. Give text a break after each
+    // UTF-8 character, so the remaining width beside a chip can be used.
+    // Rust instead shapes the gap as one fragment and uses inline metrics in
+    // its display map; this is the portable element-tree approximation.
     int at = 0;
     while (at < len(slice)) {
         int start = at;
-        unsigned char c = (unsigned char)slice.s[at];
-        bool space = c == ' ' || c == '\t';
-        at++;
-        while (at < len(slice)) {
-            unsigned char n = (unsigned char)slice.s[at];
-            bool nspace = n == ' ' || n == '\t';
-            if (nspace != space) {
-                break;
-            }
-            at++;
-        }
+        uint32_t codepoint = 0;
+        int bytes = Utf8At(slice, at, &codepoint);
+        at += bytes > 0 ? bytes : 1;
         EmitTokenTextPiece(row, a, state, style, font, lineMult,
                            Str(slice.s + start, at - start), docStart + start,
                            sel, caret, cursor, true);
@@ -1064,10 +1056,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         El* el = nullptr;
         if (tokenLine) {
             // Overlay chips instead of the raw token text, matching
-            // Input::New. A logical line is a flex row of text runs and
-            // chips. Text gaps split on whitespace and Wrap so wrapping can
-            // break around a chip, the way display-map LineFragment::text /
-            // element does. A chip is Shrink0 and stays atomic.
+            // Input::New. A logical line is a flex row. Each text character
+            // can move to the next flex line; each chip remains atomic.
             el = Div(a)->FlexRow()->ItemsCenter();
             if (wrap) {
                 el->FlexWrap()->W(kFill);

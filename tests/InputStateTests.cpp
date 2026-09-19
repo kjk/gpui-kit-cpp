@@ -3688,11 +3688,63 @@ static void InlineTokensRespectModeAndContent() {
     VecReset(content.tokens);
 }
 
+static El* FindWrappedTokenRow(El* el) {
+    if (!el) {
+        return nullptr;
+    }
+    if (el->style.flexWrap) {
+        return el;
+    }
+    for (El* child = el->first; child; child = child->next) {
+        if (El* found = FindWrappedTokenRow(child)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+static void TextareaTokenGapsBreakAtUtf8Characters() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState state;
+    state.kind = InputKind::Textarea;
+    state.softWrap = true;
+    InputContent content = InputContent::New(StrL("ab@a🙂cd"));
+    utassert(content.WithToken(2, 4,
+                               InlineToken::New(StrL("person:a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    InputSetValue(&state, content);
+    El* row = FindWrappedTokenRow(Textarea::New(&cx, &state));
+    utassert(row);
+    const char* expected[] = {"a", "b", nullptr, "🙂", "c", "d"};
+    El* child = row->first;
+    for (int i = 0; i < 6; i++) {
+        utassert(child);
+        if (expected[i]) {
+            utassert(child->kind == ElKind::Text);
+            utassert(StrEq(child->text, Str(expected[i])));
+            utassert(child->style.flexShrink == 0);
+        } else {
+            utassert(child->kind == ElKind::Div);
+            utassert(child->style.flexShrink == 0);
+        }
+        child = child->next;
+    }
+    utassert(!child);
+    VecReset(content.tokens);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestInputState() {
     TestSuite("input_state");
     InlineTokenContentValidatesRanges();
     InlineTokensAreAtomicForCaretAndHistory();
     InlineTokensRespectModeAndContent();
+    TextareaTokenGapsBreakAtUtf8Characters();
     AnAltClickAddsACursorAndTypingWritesAtEach();
     DeletesAtEveryCursorAreOneUndoStep();
     TypingAtEveryCursorUndoesToEveryCursor();
