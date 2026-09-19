@@ -2,6 +2,7 @@
 #include "gpui/platform.h"
 #include "ui/window_border.h"
 #include "ui/global_state.h"
+#include "ui/touch_selection.h"
 
 namespace gpui {
 
@@ -139,6 +140,11 @@ El* Root::IntoEl() {
     // is what keeps a stack of dialogs from tinting the page twice.
     for (El* dialog : dialogs) {
         e->Child(dialog->Deferred());
+    }
+    // After the content, so the edit menu floats above whatever was
+    // selected. Handles are painted by the owning text.
+    if (El* overlay = WindowTouchSelectionOverlay(cx)) {
+        e->Child(overlay);
     }
 
     if (!bordered) {

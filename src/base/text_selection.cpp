@@ -882,6 +882,21 @@ void WindowSelectionCloseEditMenu(Window* win) {
     }
 }
 
+void WindowSelectionRegisterTouchUi(Window* win, Bounds bounds) {
+    WindowSelection* s = WindowSelectionOf(win);
+    if (!s) {
+        return;
+    }
+    s->touchUi = bounds;
+    s->hasTouchUi = true;
+    s->touchUiThisFrame = true;
+}
+
+bool WindowSelectionTouchUiContains(const Window* win, Point at) {
+    const WindowSelection* s = win ? win->sel : nullptr;
+    return s && s->hasTouchUi && s->touchUi.Contains(at);
+}
+
 void WindowSelectionDrag(Window* win, float x, float y) {
     WindowSelection* s = win ? win->sel : nullptr;
     if (!s || !s->gesture.selecting) {
@@ -1003,6 +1018,37 @@ void WindowSelectionSelectAll(Window* win, EntityId owner) {
     TextSelectionBegin(&selection->gesture, true);
     TextSelectionEnd(&selection->gesture);
     WindowSelectionPublish(win);
+}
+
+void WindowSelectionSelectAllTouched(Window* win) {
+    if (!win || !WindowSelectionHas(win) || !win->sel) {
+        return;
+    }
+    WindowSelection* s = win->sel;
+    EntityId owner = {};
+    int lo = s->anchor < s->cursor ? s->anchor : s->cursor;
+    int hi = s->anchor < s->cursor ? s->cursor : s->anchor;
+    for (int i = 0; i < win->paint.texts.len; i++) {
+        const TextHit& hit = win->paint.texts[i];
+        if (s->scope && hit.scope != s->scope) {
+            continue;
+        }
+        int hitEnd = hit.docOff + (hit.atom ? 1 : len(hit.text));
+        if (hitEnd <= lo || hit.docOff >= hi) {
+            continue;
+        }
+        if (hit.owner.IsValid()) {
+            owner = hit.owner;
+            break;
+        }
+    }
+    if (!owner.IsValid() && s->participants.len > 0) {
+        owner = s->participants[0];
+    }
+    WindowSelectionSelectAll(win, owner);
+    if (win->sel) {
+        win->sel->touchMenuOpen = true;
+    }
 }
 
 static bool HasNonWhitespace(Str text) {
@@ -1171,6 +1217,12 @@ void WindowSelectionApply(Window* win) {
 
 void WindowSelectionFinishFrame(Window* win) {
     WindowSelection* selection = win ? win->sel : nullptr;
+    if (selection) {
+        if (!selection->touchUiThisFrame) {
+            selection->hasTouchUi = false;
+        }
+        selection->touchUiThisFrame = false;
+    }
     if (!selection || !win->app) return;
     // Rust collects stale ids before clearing their entities. Event and
     // cleanup callbacks can re-enter selection code, so do not walk the live

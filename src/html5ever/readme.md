@@ -25,7 +25,7 @@ ArenaDelete(a);
 | --- | --- |
 | `tokenizer/interface.rs`, `tokenizer/*` | `Token`, `TokenSink`, `Tokenize` in `html5ever.h/.cpp` |
 | `tree_builder/interface.rs`, `tree_builder/*` | arena DOM plus `ParseDocument` / `ParseFragment` |
-| `driver.rs` | the two parse entry points and `ParseOptions` |
+| `driver.rs` | `ParseDocument` / `ParseFragment`, plus incremental `Parser` |
 | `serialize/mod.rs` | `Serialize` |
 | generated tag atoms and sets | `SeqStrings` runs |
 
@@ -37,12 +37,14 @@ reference replacement, HTML/SVG/MathML namespaces and document/fragment
 parsing.
 
 The Rust-only generic `TreeSink`/`Tracer` ownership machinery is represented by
-the concrete arena DOM. Incremental tendril feeding and parser suspension for
-an executing script are omitted: this tree parses complete UTF-8 `Str` values
-and never executes HTML scripts. Exact-error mode reports tokenizer errors as
-tokens rather than preserving html5ever's Rust log strings. The named-reference
-table is limited to reader-mode spellings plus the long reference covered by
-the upstream projection tests; numeric references are complete.
+the concrete arena DOM. Incremental tendril feeding is `ParserProcess` /
+`ParserFinish`; when `scriptingEnabled` the parser pauses after `</script>` so
+the caller can run the script (or not) and `ParserResumeAfterCurrentScript`
+continues. This tree never executes HTML scripts itself. Exact-error mode
+reports tokenizer errors as tokens rather than preserving html5ever's Rust log
+strings. The named-reference table is limited to reader-mode spellings plus the
+long reference covered by the upstream projection tests; numeric references are
+complete.
 
 ## Mini and standalone builds
 

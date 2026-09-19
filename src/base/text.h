@@ -598,7 +598,8 @@ struct TextViewState {
 };
 
 // text_view.rs RequestLayoutState. Layout and prepaint are fused into El in
-// this runtime, so `element` is the requested subtree rather than AnyElement.
+// this runtime, so `element` is the requested subtree rather than AnyElement
+// — the complete C++ mapping of that GPUI type.
 struct TextViewLayoutState {
     Entity<TextViewState> state = {};
     El* element = nullptr;

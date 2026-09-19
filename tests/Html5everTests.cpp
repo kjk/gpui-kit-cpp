@@ -82,10 +82,46 @@ static void TestForeignContent(Arena* a) {
 
 #endif
 
+static void TestIncrementalAndScriptPause(Arena* a) {
+    Parser* parser = ParserNew(a);
+    ParserProcess(parser, StrL("<p>hel"));
+    utassert(!ParserIsPaused(parser));
+    ParserProcess(parser, StrL("lo</p>"));
+    Node* doc = ParserFinish(parser);
+    utassert(doc != nullptr);
+    Str serialized = Serialize(a, doc);
+    utassert(base::StrContains(serialized, StrL("hello")));
+
+    Parser* split = ParserNew(a);
+    ParserProcess(split, StrL("<p"));
+    ParserProcess(split, StrL(">x</p>"));
+    Node* splitDoc = ParserFinish(split);
+    utassert(splitDoc != nullptr);
+    utassert(base::StrContains(Serialize(a, splitDoc), StrL("x")));
+
+    ParseOptions opt;
+    opt.scriptingEnabled = true;
+    Parser* scripts = ParserNew(a, opt);
+    ParserProcess(scripts, StrL("<script>x=1</script><p>after</p>"));
+    utassert(ParserIsPaused(scripts));
+    ParserResumeAfterCurrentScript(scripts);
+    Node* withScript = ParserFinish(scripts);
+    utassert(withScript != nullptr);
+    utassert(base::StrContains(Serialize(a, withScript), StrL("after")));
+
+    ParseOptions off;
+    off.scriptingEnabled = false;
+    Parser* noPause = ParserNew(a, off);
+    ParserProcess(noPause, StrL("<script>x=1</script><p>after</p>"));
+    utassert(!ParserIsPaused(noPause));
+    utassert(ParserFinish(noPause) != nullptr);
+}
+
 void TestHtml5ever() {
     TestSuite("html5ever");
     Arena* a = ArenaNew();
     TestSharedSurface(a);
+    TestIncrementalAndScriptPause(a);
 #if GPUI_HTML5EVER_FULL
     TestDocumentAndImpliedEnds(a);
     TestTableModes(a);

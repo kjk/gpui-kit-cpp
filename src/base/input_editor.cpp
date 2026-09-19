@@ -30,6 +30,222 @@ LanguageConfig LanguageConfig::Default() {
     return out;
 }
 
+static bool IndentClassMatch(Str cls, uint32_t c) {
+    for (int i = 0; i < len(cls);) {
+        if (cls.s[i] == '\\' && i + 1 < len(cls)) {
+            i++;
+        }
+        uint32_t got = (uint8_t)cls.s[i];
+        if (got == c) {
+            return true;
+        }
+        i++;
+    }
+    return false;
+}
+
+static bool IndentAtom(Str pat, int* pi, Str text, int* ti);
+
+// Walk one atom in the pattern without looking at the text, so a following
+// quantifier can be seen even when the atom matches zero times.
+static bool IndentSkipAtom(Str pat, int* pi) {
+    if (*pi >= len(pat)) {
+        return false;
+    }
+    char c = pat.s[*pi];
+    if (c == '^' || c == '$' || c == '*' || c == '+' || c == '?') {
+        return false;
+    }
+    if (c == '.') {
+        (*pi)++;
+        return true;
+    }
+    if (c == '\\' && *pi + 1 < len(pat)) {
+        *pi += 2;
+        return true;
+    }
+    if (c == '[') {
+        int end = *pi + 1;
+        while (end < len(pat) && pat.s[end] != ']') {
+            if (pat.s[end] == '\\' && end + 1 < len(pat)) {
+                end += 2;
+            } else {
+                end++;
+            }
+        }
+        if (end >= len(pat)) {
+            return false;
+        }
+        *pi = end + 1;
+        return true;
+    }
+    (*pi)++;
+    return true;
+}
+
+static bool IndentHere(Str pat, int pi, Str text, int ti) {
+    for (;;) {
+        if (pi >= len(pat)) {
+            return ti >= len(text);
+        }
+        if (pat.s[pi] == '$') {
+            return ti >= len(text) && IndentHere(pat, pi + 1, text, ti);
+        }
+        if (pat.s[pi] == '^') {
+            if (ti != 0) {
+                return false;
+            }
+            pi++;
+            continue;
+        }
+        int atomPi = pi;
+        if (!IndentSkipAtom(pat, &pi)) {
+            return false;
+        }
+        char quant = 0;
+        if (pi < len(pat) &&
+            (pat.s[pi] == '*' || pat.s[pi] == '+' || pat.s[pi] == '?')) {
+            quant = pat.s[pi++];
+        }
+        int afterAtom = pi;
+        if (!quant) {
+            int tryPi = atomPi;
+            if (!IndentAtom(pat, &tryPi, text, &ti)) {
+                return false;
+            }
+            continue;
+        }
+        int minN = quant == '+' ? 1 : 0;
+        int maxN = quant == '?' ? 1 : 1024;
+        int n = 0;
+        int t = ti;
+        while (n < maxN) {
+            int tryT = t;
+            int tryP = atomPi;
+            if (!IndentAtom(pat, &tryP, text, &tryT)) {
+                break;
+            }
+            t = tryT;
+            n++;
+        }
+        while (n >= minN) {
+            if (IndentHere(pat, afterAtom, text, t)) {
+                return true;
+            }
+            if (n == minN) {
+                break;
+            }
+            n--;
+            t = ti;
+            for (int k = 0; k < n; k++) {
+                int tryP = atomPi;
+                if (!IndentAtom(pat, &tryP, text, &t)) {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+}
+
+static bool IndentEscape(char e, uint32_t c) {
+    switch (e) {
+        case 's':
+            return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+        case 'S':
+            return !(c == ' ' || c == '\t' || c == '\n' || c == '\r');
+        case 'd':
+            return c >= '0' && c <= '9';
+        case 'w':
+            return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                   (c >= '0' && c <= '9') || c == '_';
+        default:
+            return (uint32_t)(uint8_t)e == c;
+    }
+}
+
+static bool IndentAtom(Str pat, int* pi, Str text, int* ti) {
+    if (*pi >= len(pat)) {
+        return false;
+    }
+    char c = pat.s[*pi];
+    if (c == '^' || c == '$' || c == '*' || c == '+' || c == '?') {
+        return false;
+    }
+    if (c == '.') {
+        (*pi)++;
+        if (*ti >= len(text)) {
+            return false;
+        }
+        (*ti)++;
+        return true;
+    }
+    if (c == '\\' && *pi + 1 < len(pat)) {
+        (*pi) += 2;
+        if (*ti >= len(text)) {
+            return false;
+        }
+        bool ok = IndentEscape(pat.s[*pi - 1], (uint8_t)text.s[*ti]);
+        if (ok) {
+            (*ti)++;
+        }
+        return ok;
+    }
+    if (c == '[') {
+        int start = *pi + 1;
+        int end = start;
+        while (end < len(pat) && pat.s[end] != ']') {
+            if (pat.s[end] == '\\' && end + 1 < len(pat)) {
+                end += 2;
+            } else {
+                end++;
+            }
+        }
+        if (end >= len(pat)) {
+            return false;
+        }
+        *pi = end + 1;
+        if (*ti >= len(text)) {
+            return false;
+        }
+        bool ok = IndentClassMatch(Str(pat.s + start, end - start),
+                                   (uint8_t)text.s[*ti]);
+        if (ok) {
+            (*ti)++;
+        }
+        return ok;
+    }
+    (*pi)++;
+    if (*ti >= len(text) || text.s[*ti] != c) {
+        return false;
+    }
+    (*ti)++;
+    return true;
+}
+
+bool IndentPatternMatch(Str pattern, Str text) {
+    if (!pattern.s) {
+        return false;
+    }
+    // Rust Regex::is_match is unanchored unless the pattern starts with `^`.
+    if (len(pattern) > 0 && pattern.s[0] == '^') {
+        return IndentHere(pattern, 0, text, 0);
+    }
+    for (int i = 0; i <= len(text); i++) {
+        if (IndentHere(pattern, 0, text, i)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+IndentationRules IndentationRules::FromPatterns(Str increase, Str decrease) {
+    IndentationRules out;
+    out.increasePattern = increase;
+    out.decreasePattern = decrease;
+    return out;
+}
+
 struct RegisteredLanguageConfig {
     Str name = {};
     LanguageConfig config = {};
@@ -66,6 +282,10 @@ static LanguageConfig LanguageConfigCopy(Arena* a,
                                          const LanguageConfig& source) {
     LanguageConfig out = source;
     out.autoCloseBefore = StrDup(a, source.autoCloseBefore);
+    out.indentation
+        .increasePattern = StrDup(a, source.indentation.increasePattern);
+    out.indentation
+        .decreasePattern = StrDup(a, source.indentation.decreasePattern);
     if (source.nBrackets > 0 && source.brackets) {
         BracketPair* pairs =
             (BracketPair*)Alloc(a, (int)sizeof(BracketPair) * source.nBrackets);

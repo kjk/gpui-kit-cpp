@@ -2113,7 +2113,9 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     // Bubble handlers and built-in controls have now had the same chance to
     // suppress that Rust gives them. A press anywhere else starts or clears
     // the window-owned selection.
-    WindowSelectionPress(win, x, y, in.clickCount, in.modifiers.shift);
+    if (!WindowSelectionTouchUiContains(win, {x, y})) {
+        WindowSelectionPress(win, x, y, in.clickCount, in.modifiers.shift);
+    }
     // The click itself is not here: GPUI holds the press and fires on_click
     // from the release, on the element that took both. DispatchMouseUp does
     // that; what the press leaves behind is pressedId and the count.

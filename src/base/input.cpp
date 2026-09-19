@@ -6000,6 +6000,10 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
         if (config.hasIndentationRules && config.indentation.increaseIndent) {
             increase = config.indentation
                            .increaseIndent(config.indentation.data, before);
+        } else if (config.hasIndentationRules && config.indentation
+                                                     .increasePattern.s) {
+            increase =
+                IndentPatternMatch(config.indentation.increasePattern, before);
         } else {
             for (int i = 0; i < config.nBrackets; i++) {
                 Str open = config.brackets[i].open;
@@ -6012,6 +6016,37 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
         }
     }
     Str tab = TabIndent(s);
+    if (!increase && !split && s->smartIndent && code) {
+        int lineEnd = cursor;
+        while (lineEnd < len(all) && all.s[lineEnd] != '\n' &&
+               all.s[lineEnd] != '\r') {
+            lineEnd++;
+        }
+        Str after(all.s + cursor, lineEnd - cursor);
+        bool decrease = false;
+        if (config.hasIndentationRules && config.indentation.decreaseIndent) {
+            decrease = config.indentation
+                           .decreaseIndent(config.indentation.data, after);
+        } else if (config.hasIndentationRules && config.indentation
+                                                     .decreasePattern.s) {
+            decrease =
+                IndentPatternMatch(config.indentation.decreasePattern, after);
+        }
+        if (decrease && len(indent) > 0) {
+            if (indent.s[len(indent) - 1] == '\t') {
+                indent = Str(indent.s, len(indent) - 1);
+            } else {
+                int tabN = len(tab);
+                int end = len(indent);
+                int n = 0;
+                while (n < tabN && end > 0 && indent.s[end - 1] == ' ') {
+                    end--;
+                    n++;
+                }
+                indent = Str(indent.s, end);
+            }
+        }
+    }
     int innerLen = len(indent) + (increase || split ? len(tab) : 0);
     int total = 1 + innerLen + (split ? 1 + len(indent) : 0);
     char* out = (char*)Alloc(a, total + 1);

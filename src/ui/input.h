@@ -18,6 +18,10 @@ namespace input_syntax {
 struct Tree {};
 } // namespace input_syntax
 
+// crates/ui/src/input/language_config.rs::init: text/json/python editing
+// defaults. Unknown languages keep LanguageConfig::Default().
+void InputLanguageInit(App* app);
+
 enum class AnyInputKind : uint8_t {
     None,
     Input,

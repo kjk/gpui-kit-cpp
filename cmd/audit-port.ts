@@ -47,20 +47,13 @@ table tag text theme touch_selection tooltip tree
   .trim()
   .split(/\s+/);
 
-const partialBase = new Set(["input", "text"]);
-const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support"]);
-const partialUi = new Set(["touch_selection"]);
+const partialBase = new Set<string>();
+const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support", "text"]);
+const partialUi = new Set<string>();
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
-  "base/input":
-    "language-aware pairs, generated-pair history and smart indentation are ported; indentation patterns are function pointers rather than Rust regex objects",
-
-  "base/text": "inline native elements use portable element callbacks rather than Rust AnyElement entities",
-
-  "ui/touch_selection":
-    "the themed layer uses Base's geometry, but the mobile overlay and native edit menu have no supported platform target",
 };
 
 const adapterReasons: Record<string, string> = {
@@ -72,6 +65,8 @@ const adapterReasons: Record<string, string> = {
     "Rust's test-only observation extension maps to the runtime hit-test and accessibility inspection seams",
   "base/test_support":
     "the repository deliberately tests the native runtime directly instead of carrying gpui::TestAppContext",
+  "base/text":
+    "inline native elements are El* rather than GPUI AnyElement; layout and prepaint are fused into the element tree",
   "ui/component_traits": "the UI faÃƒÂ§ade re-exports Base's C++ trait conventions",
   "ui/element_ext": "extension traits are methods on El plus forwarding helpers",
   "ui/highlighter": "tree-sitter/syntect are excluded; a dependency-free scanner is used",
@@ -141,7 +136,7 @@ const uiOverrides: Record<string, string[]> = {
   // The UI side of text is the faÃƒÂ§ade over Base's: text/mod.rs, compat.rs,
   // style.rs and window_selection.rs.
   text: ["src/ui/text.h", "src/ui/text.cpp"],
-  touch_selection: ["src/base/touch_selection.h", "src/base/touch_selection.cpp", "src/base/text_selection.h"],
+  touch_selection: ["src/ui/touch_selection.h", "src/ui/touch_selection.cpp"],
   scroll: ["src/ui/scroll.h", "src/ui/scroll.cpp", "src/base/scrollable_mask.h"],
   table: [
     "src/ui/table.h",

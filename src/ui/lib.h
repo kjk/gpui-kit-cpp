@@ -76,6 +76,7 @@
 #include "ui/theme.h"
 #include "ui/title_bar.h"
 #include "ui/tooltip.h"
+#include "ui/touch_selection.h"
 #include "ui/tree.h"
 #include "ui/virtual_list.h"
 #include "ui/window_border.h"

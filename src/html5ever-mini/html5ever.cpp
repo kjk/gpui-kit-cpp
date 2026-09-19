@@ -462,4 +462,83 @@ Str Serialize(Arena* a, const Node* node, SerializeOptions options) {
     return out.TakeStr();
 }
 
+struct MiniParser {
+    char* buf = nullptr;
+    int len = 0;
+    int cap = 0;
+    bool paused = false;
+    bool sawScriptEnd = false;
+    bool fragment = false;
+    Str context = {};
+};
+
+Parser* ParserNew(Arena* a, ParseOptions options) {
+    if (!a) return nullptr;
+    Parser* parser = ArenaNew<Parser>(a);
+    parser->a = a;
+    parser->options = options;
+    parser->impl = ArenaNew<MiniParser>(a);
+    return parser;
+}
+
+Parser* ParserNewFragment(Arena* a, Str context, ParseOptions options) {
+    Parser* parser = ParserNew(a, options);
+    MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
+    if (impl) {
+        impl->fragment = true;
+        impl->context =
+            context.s ? ArenaStrGet(a, ArenaStrDup(a, context)) : Str{};
+    }
+    return parser;
+}
+
+void ParserProcess(Parser* parser, Str chunk) {
+    MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
+    if (!impl || !parser->a) return;
+    int n = len(chunk);
+    if (n > 0) {
+        int need = impl->len + n;
+        if (need > impl->cap) {
+            int cap = impl->cap > 0 ? impl->cap * 2 : 256;
+            while (cap < need) cap *= 2;
+            char* fresh = (char*)parser->a->Push((uint64_t)cap, 1, false);
+            if (impl->len > 0 && impl->buf) {
+                memcpy(fresh, impl->buf, (size_t)impl->len);
+            }
+            impl->buf = fresh;
+            impl->cap = cap;
+        }
+        memcpy(impl->buf + impl->len, chunk.s, (size_t)n);
+        impl->len += n;
+    }
+    if (parser->options.scriptingEnabled && !impl->sawScriptEnd) {
+        Str all = Str(impl->buf, impl->len);
+        if (StrContainsI(all, StrL("</script>"))) {
+            impl->sawScriptEnd = true;
+            impl->paused = true;
+        }
+    }
+}
+
+bool ParserIsPaused(const Parser* parser) {
+    MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
+    return impl && impl->paused;
+}
+
+void ParserResumeAfterCurrentScript(Parser* parser) {
+    MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
+    if (impl) impl->paused = false;
+}
+
+Node* ParserFinish(Parser* parser) {
+    MiniParser* impl = parser ? (MiniParser*)parser->impl : nullptr;
+    if (!impl) return nullptr;
+    impl->paused = false;
+    Str source = Str(impl->buf, impl->len);
+    if (impl->fragment) {
+        return ParseFragment(parser->a, source, impl->context, parser->options);
+    }
+    return ParseDocument(parser->a, source, parser->options);
+}
+
 } // namespace html5ever

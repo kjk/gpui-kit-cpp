@@ -3464,6 +3464,35 @@ static void LanguagePairsAndSmartIndent() {
     utassert(ValueIs(s, "{\n"));
 }
 
+static Str PythonLanguage(void*) {
+    return StrL("python");
+}
+
+static void IndentationPatternsMatchPythonRules() {
+    Str increase = StrL("[\\{\\(\\[:]\\s*$");
+    Str decrease = StrL("^\\s*[\\}\\)\\]]");
+    utassert(IndentPatternMatch(increase, StrL("if enabled:")));
+    utassert(IndentPatternMatch(increase, StrL("if enabled:  ")));
+    utassert(IndentPatternMatch(increase, StrL("items = [")));
+    utassert(!IndentPatternMatch(increase, StrL("x = 1")));
+    utassert(IndentPatternMatch(decrease, StrL("}")));
+    utassert(IndentPatternMatch(decrease, StrL("  ]")));
+    utassert(!IndentPatternMatch(decrease, StrL("x}")));
+
+    App app;
+    LanguageConfig python = LanguageConfig::Default();
+    python.indentation = IndentationRules::FromPatterns(increase, decrease);
+    python.hasIndentationRules = true;
+    InputSetLanguageConfig(&app, StrL("python"), python);
+
+    InputState s;
+    MakeEditor(&s, "if enabled:");
+    s.highlighter.language = PythonLanguage;
+    InputMoveTo(&s, &app, nullptr, 11);
+    InputPerform(&s, &app, nullptr, InputAction::Enter, false);
+    utassert(ValueIs(s, "if enabled:\n    "));
+}
+
 static void GeneratedPairsAreTrackedThroughEditsAndHistory() {
     InputState s;
     MakeEditor(&s, "");
@@ -3677,6 +3706,7 @@ void TestInputState() {
     IndentMovesEveryCursorsLine();
     RangesAreReplacedHighestFirst();
     LanguagePairsAndSmartIndent();
+    IndentationPatternsMatchPythonRules();
     GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();

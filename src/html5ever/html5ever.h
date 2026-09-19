@@ -109,6 +109,23 @@ Node* ParseFragment(Arena* a, Str source, Str context = Str{},
                     ParseOptions options = {});
 Str Serialize(Arena* a, const Node* node, SerializeOptions options = {});
 
+// Incremental tendril feed. Process appends a chunk and tokenizes every
+// complete token; Finish emits EOF and returns the document. When
+// scriptingEnabled, the parser pauses after a </script> so the caller can
+// run the script (or not) and ResumeAfterCurrentScript continues.
+struct Parser {
+    Arena* a = nullptr;
+    ParseOptions options = {};
+    void* impl = nullptr;
+};
+
+Parser* ParserNew(Arena* a, ParseOptions options = {});
+Parser* ParserNewFragment(Arena* a, Str context, ParseOptions options = {});
+void ParserProcess(Parser* parser, Str chunk);
+bool ParserIsPaused(const Parser* parser);
+void ParserResumeAfterCurrentScript(Parser* parser);
+Node* ParserFinish(Parser* parser);
+
 inline Str AttributeName(Arena* a, const Attribute* attr) {
     return attr ? ArenaStrGet(a, attr->name) : Str{};
 }

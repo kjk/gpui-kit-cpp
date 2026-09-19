@@ -3,10 +3,47 @@
 #include "ui/button.h"
 #include "ui/highlighter.h"
 #include "ui/native_menu.h"
+#include "base/input.h"
 
 namespace gpui {
 
 namespace component {
+
+static const SyntaxContext kLanguageNotIn[] = {SyntaxContext::String,
+                                               SyntaxContext::Comment};
+static const BracketPair kJsonBrackets[] = {
+    {StrL("{"), StrL("}")},
+    {StrL("["), StrL("]")},
+};
+static const AutoClosingPair kJsonPairs[] = {
+    {StrL("{"), StrL("}"), kLanguageNotIn, 2},
+    {StrL("["), StrL("]"), kLanguageNotIn, 2},
+    {StrL("\""), StrL("\""), kLanguageNotIn, 2},
+};
+
+void InputLanguageInit(App* app) {
+    LanguageConfig text = LanguageConfig::Default();
+    text.brackets = nullptr;
+    text.nBrackets = 0;
+    text.autoClosingPairs = nullptr;
+    text.nAutoClosingPairs = 0;
+    text.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(app, StrL("text"), text);
+
+    LanguageConfig json = LanguageConfig::Default();
+    json.brackets = kJsonBrackets;
+    json.nBrackets = 2;
+    json.autoClosingPairs = kJsonPairs;
+    json.nAutoClosingPairs = 3;
+    json.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(app, StrL("json"), json);
+
+    LanguageConfig python = LanguageConfig::Default();
+    python.indentation = IndentationRules::FromPatterns(
+        StrL("[\\{\\(\\[:]\\s*$"), StrL("^\\s*[\\}\\)\\]]"));
+    python.hasIndentationRules = true;
+    InputSetLanguageConfig(app, StrL("python"), python);
+}
 
 InputToken* InputToken::New(Ctx* cx, const InlineTokenContext& context) {
     InputToken* t = ArenaNew<InputToken>(cx->a);

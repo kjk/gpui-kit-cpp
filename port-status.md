@@ -47,11 +47,12 @@ current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
   what position alone settles. Nothing that needs a tree (rename, semantic
   scope) can be asked of it. Folding is brace-pair scanning, which is what
   upstream's own showcase highlighter does.
-- **HTML parsing is complete-input, not browser-hosted.** `src/html5ever`
-  builds its arena DOM from one UTF-8 `Str`; it has no incremental tendril
-  feed or script-execution pause, and its named-reference table is the reader
-  set rather than all generated spellings. `src/html5ever/readme.md` names the
-  boundary; numeric references and the tree rules TextView consumes are on.
+- **HTML named-character references are the reader set.** `src/html5ever`
+  feeds incrementally (`ParserProcess` / `ParserFinish`) and pauses after
+  `</script>` when scripting is enabled; its named-reference table is the
+  reader set rather than all generated spellings. Numeric references and the
+  tree rules TextView consumes are on. `src/html5ever/readme.md` names the
+  boundary.
 - **Process CPU %** is a Win32/procfs times delta, not `sysinfo`. First sample
   is 0; values are in the same ballpark, not bit-identical.
 - **The scene graph is half of GPUI's.** `src/gpui/scene.h` collects and culls;

@@ -294,12 +294,17 @@ struct WindowSelection {
     bool touchMenuOpen = false;
     TouchEdgeDrag touchEdgeDrag = {};
     bool hasTouchEdgeDrag = false;
+    Bounds touchUi = {};
+    bool hasTouchUi = false;
+    bool touchUiThisFrame = false;
 };
 
 // The live touch selection, for handles and the edit menu. False when there
 // is no touch selection (pointer selection, or nothing selected).
 bool WindowSelectionTouchSnapshot(Window* win, TouchSelectionSnapshot* out);
 void WindowSelectionCloseEditMenu(Window* win);
+void WindowSelectionRegisterTouchUi(Window* win, Bounds bounds);
+bool WindowSelectionTouchUiContains(const Window* win, Point at);
 
 // The window's selection, made on first use.
 WindowSelection* WindowSelectionOf(Window* win);
@@ -330,6 +335,9 @@ int WindowSelectionTextForEntity(Window* win, EntityId owner, char* out,
                                  int cap, SelectionFormat fmt);
 bool WindowSelectionHasEntity(const Window* win, EntityId owner);
 void WindowSelectionSelectAll(Window* win, EntityId owner);
+// TextSelection::select_all for the touch edit menu: the participant the
+// gesture started in, keeping the handles and the menu over the result.
+void WindowSelectionSelectAllTouched(Window* win);
 // TextView::selection_format, on the window that does the copying.
 void WindowSelectionSetFormat(Window* win, SelectionFormat fmt);
 SelectionFormat WindowSelectionFormat(Window* win);

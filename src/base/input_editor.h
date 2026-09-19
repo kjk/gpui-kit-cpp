@@ -219,10 +219,19 @@ struct AutoClosingPair {
 };
 
 struct IndentationRules {
+    // Rust stores Arc<Regex>. The patterns are compiled by the caller there;
+    // here they are either a function pointer or a regex subset matched by
+    // IndentPatternMatch (`^$.*+?[]\s\S\d\w` and escapes).
+    Str increasePattern = {};
+    Str decreasePattern = {};
     void* data = nullptr;
     bool (*increaseIndent)(void* data, Str text) = nullptr;
     bool (*decreaseIndent)(void* data, Str text) = nullptr;
+
+    static IndentationRules FromPatterns(Str increase, Str decrease);
 };
+
+bool IndentPatternMatch(Str pattern, Str text);
 
 struct LanguageConfig {
     const BracketPair* brackets = nullptr;

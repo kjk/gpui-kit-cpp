@@ -286,10 +286,22 @@ struct Scanner {
     TokenizerOptions options = {};
     Str rawName = {};
     bool rcdata = false;
+    bool finishing = true;
+    bool needMore = false;
+    bool* paused = nullptr;
 };
 
 static void Emit(Scanner* s, const Token& token) {
     if (s->sink) s->sink(s->user, &token);
+}
+
+static bool NeedMore(Scanner* s, int tokenStart) {
+    if (s->finishing) {
+        return false;
+    }
+    s->at = tokenStart;
+    s->needMore = true;
+    return true;
 }
 
 static void Error(Scanner* s, const char* message) {
@@ -406,14 +418,20 @@ static int FindRawClose(const Scanner* s) {
 }
 
 static void TokenizeRun(Scanner* s) {
-    if (s->options.discardBom && len(s->source) >= 3 &&
+    if (s->at == 0 && s->options.discardBom && len(s->source) >= 3 &&
         (uint8_t)s->source.s[0] == 0xef && (uint8_t)s->source.s[1] == 0xbb &&
         (uint8_t)s->source.s[2] == 0xbf) {
         s->at = 3;
     }
+    s->needMore = false;
     while (s->at < len(s->source)) {
+        int tokenStart = s->at;
         if (s->rawName.s) {
             int end = FindRawClose(s);
+            if (end >= len(s->source) && !s->finishing) {
+                s->needMore = true;
+                return;
+            }
             if (end > s->at) {
                 Token text;
                 text.kind = TokenKind::Character;
@@ -426,6 +444,7 @@ static void TokenizeRun(Scanner* s) {
                 }
                 s->at = end;
                 Emit(s, text);
+                if (s->paused && *s->paused) return;
                 continue;
             }
             s->rawName = {};
@@ -436,13 +455,22 @@ static void TokenizeRun(Scanner* s) {
             while (s->at < len(s->source) && s->source.s[s->at] != '<') {
                 if (s->source.s[s->at++] == '\n') s->line++;
             }
+            if (s->at >= len(s->source) && !s->finishing &&
+                start < len(s->source) &&
+                s->source.s[len(s->source) - 1] == '&') {
+                if (NeedMore(s, start)) return;
+            }
             Token text;
             text.kind = TokenKind::Character;
             text.data =
                 Decode(s->a, Str(s->source.s + start, s->at - start), false);
             text.line = s->line;
             Emit(s, text);
+            if (s->paused && *s->paused) return;
             continue;
+        }
+        if (!s->finishing && s->at + 1 >= len(s->source)) {
+            if (NeedMore(s, tokenStart)) return;
         }
         int tokenLine = s->line;
         if (s->at + 3 < len(s->source) &&
@@ -460,12 +488,20 @@ static void TokenizeRun(Scanner* s) {
             comment.data =
                 ArenaStrDup(s->a, Str(s->source.s + start, s->at - start));
             comment.line = tokenLine;
+            if (s->at + 2 >= len(s->source) && !s->finishing) {
+                if (NeedMore(s, tokenStart)) return;
+            }
             if (s->at + 2 < len(s->source))
                 s->at += 3;
             else
                 Error(s, "eof in comment");
             Emit(s, comment);
+            if (s->paused && *s->paused) return;
             continue;
+        }
+        if (!s->finishing && s->at + 3 >= len(s->source) &&
+            s->source.s[s->at] == '<' && s->source.s[s->at + 1] == '!') {
+            if (NeedMore(s, tokenStart)) return;
         }
         if (s->at + 2 < len(s->source) && s->source.s[s->at + 1] == '!') {
             int start = s->at + 2;
@@ -490,6 +526,7 @@ static void TokenizeRun(Scanner* s) {
                 token.data = ArenaStrDup(s->a, body);
             }
             Emit(s, token);
+            if (s->paused && *s->paused) return;
             continue;
         }
         if (s->at + 1 < len(s->source) && s->source.s[s->at + 1] == '/') {
@@ -500,8 +537,12 @@ static void TokenizeRun(Scanner* s) {
             token.name = ScanName(s);
             token.line = tokenLine;
             while (s->at < len(s->source) && s->source.s[s->at] != '>') s->at++;
+            if (s->at >= len(s->source) && !s->finishing) {
+                if (NeedMore(s, tokenStart)) return;
+            }
             if (s->at < len(s->source)) s->at++;
             Emit(s, token);
+            if (s->paused && *s->paused) return;
             continue;
         }
         if (s->at + 1 < len(s->source) && IsAlpha(s->source.s[s->at + 1])) {
@@ -511,7 +552,11 @@ static void TokenizeRun(Scanner* s) {
             token.name = ScanName(s);
             token.line = tokenLine;
             token.attrs = ArenaPtrOf(s->a, ScanAttrs(s, &token.selfClosing));
+            if (s->at >= len(s->source) && !s->finishing) {
+                if (NeedMore(s, tokenStart)) return;
+            }
             Emit(s, token);
+            if (s->paused && *s->paused) return;
             Str name = TokenName(s->a, &token);
             if (!token.selfClosing &&
                 (SeqStrContainsI(kRawElements, name) ||
@@ -527,6 +572,10 @@ static void TokenizeRun(Scanner* s) {
         text.line = tokenLine;
         s->at++;
         Emit(s, text);
+        if (s->paused && *s->paused) return;
+    }
+    if (!s->finishing) {
+        return;
     }
     Token eof;
     eof.kind = TokenKind::Eof;
@@ -606,6 +655,8 @@ struct Builder {
     ArenaVec<Node*> open{};
     bool fragment = false;
     Str context = {};
+    bool paused = false;
+    bool pauseOnScript = false;
 };
 
 static Node* Current(Builder* b) {
@@ -955,6 +1006,10 @@ static void EndTag(Builder* b, const Token* token) {
     }
     int at = OpenIndex(b, name);
     if (at >= 0) b->open.Truncate(at);
+    if (b->pauseOnScript && b->options.scriptingEnabled &&
+        StrEq(name, StrL("script"))) {
+        b->paused = true;
+    }
 }
 
 static void BuildToken(void* user, const Token* token) {
@@ -1115,6 +1170,153 @@ Str Serialize(Arena* a, const Node* node, SerializeOptions options) {
     StrBuilder out(a);
     WriteNode(a, out, node, options.includeNode);
     return out.TakeStr();
+}
+
+struct ParserImpl {
+    Builder builder = {};
+    Scanner scanner = {};
+    char* buf = nullptr;
+    int bufLen = 0;
+    int bufCap = 0;
+    bool fragment = false;
+    Str context = {};
+    bool started = false;
+};
+
+static void ParserBufAppend(ParserImpl* impl, Arena* a, Str chunk) {
+    int n = len(chunk);
+    if (n <= 0) {
+        return;
+    }
+    int need = impl->bufLen + n;
+    if (need > impl->bufCap) {
+        int cap = impl->bufCap > 0 ? impl->bufCap * 2 : 256;
+        while (cap < need) {
+            cap *= 2;
+        }
+        char* fresh = (char*)a->Push((uint64_t)cap, 1, false);
+        if (impl->bufLen > 0 && impl->buf) {
+            memcpy(fresh, impl->buf, (size_t)impl->bufLen);
+        }
+        impl->buf = fresh;
+        impl->bufCap = cap;
+    }
+    memcpy(impl->buf + impl->bufLen, chunk.s, (size_t)n);
+    impl->bufLen += n;
+}
+
+static ParserImpl* ImplOf(Parser* parser) {
+    return parser ? (ParserImpl*)parser->impl : nullptr;
+}
+
+static void ParserEnsure(Parser* parser) {
+    ParserImpl* impl = ImplOf(parser);
+    if (!impl || impl->started) {
+        return;
+    }
+    impl->started = true;
+    impl->builder.a = parser->a;
+    impl->builder.options = parser->options;
+    impl->builder.fragment = impl->fragment;
+    impl->builder.context = impl->context;
+    impl->builder.pauseOnScript = true;
+    impl->builder.doc = NewNode(parser->a, NodeKind::Document);
+    if (impl->fragment) {
+        impl->builder.doc->name = impl->context.s
+                                      ? LowerCopy(parser->a, impl->context)
+                                      : ArenaStrDup(parser->a, StrL("body"));
+        impl->builder.doc
+            ->ns = StrEqI(impl->context, StrL("svg"))    ? Namespace::Svg
+                   : StrEqI(impl->context, StrL("math")) ? Namespace::MathMl
+                                                         : Namespace::Html;
+    }
+    impl->scanner.a = parser->a;
+    impl->scanner.sink = BuildToken;
+    impl->scanner.user = &impl->builder;
+    impl->scanner.options = parser->options.tokenizer;
+    impl->scanner.options.exactErrors =
+        impl->scanner.options.exactErrors || parser->options.exactErrors;
+    impl->scanner.finishing = false;
+    impl->scanner.paused = &impl->builder.paused;
+    if (impl->fragment && (SeqStrContainsI(kRawElements, impl->context) ||
+                           SeqStrContainsI(kRcdataElements, impl->context))) {
+        impl->scanner.rawName = impl->context;
+        impl->scanner.rcdata = SeqStrContainsI(kRcdataElements, impl->context);
+    }
+}
+
+static void ParserPump(Parser* parser, bool finishing) {
+    ParserImpl* impl = ImplOf(parser);
+    if (!impl) {
+        return;
+    }
+    ParserEnsure(parser);
+    impl->scanner.source = Str(impl->buf, impl->bufLen);
+    impl->scanner.finishing = finishing;
+    TokenizeRun(&impl->scanner);
+}
+
+Parser* ParserNew(Arena* a, ParseOptions options) {
+    if (!a) {
+        return nullptr;
+    }
+    Parser* parser = ArenaNew<Parser>(a);
+    parser->a = a;
+    parser->options = options;
+    ParserImpl* impl = ArenaNew<ParserImpl>(a);
+    parser->impl = impl;
+    return parser;
+}
+
+Parser* ParserNewFragment(Arena* a, Str context, ParseOptions options) {
+    Parser* parser = ParserNew(a, options);
+    if (!parser) {
+        return nullptr;
+    }
+    ParserImpl* impl = ImplOf(parser);
+    impl->fragment = true;
+    impl->context = context.s ? ArenaStrGet(a, ArenaStrDup(a, context)) : Str{};
+    return parser;
+}
+
+void ParserProcess(Parser* parser, Str chunk) {
+    ParserImpl* impl = ImplOf(parser);
+    if (!impl || !parser->a) {
+        return;
+    }
+    ParserBufAppend(impl, parser->a, chunk);
+    if (impl->builder.paused) {
+        return;
+    }
+    ParserPump(parser, false);
+}
+
+bool ParserIsPaused(const Parser* parser) {
+    ParserImpl* impl = parser ? (ParserImpl*)parser->impl : nullptr;
+    return impl && impl->builder.paused;
+}
+
+void ParserResumeAfterCurrentScript(Parser* parser) {
+    ParserImpl* impl = ImplOf(parser);
+    if (!impl) {
+        return;
+    }
+    impl->builder.paused = false;
+    ParserPump(parser, false);
+}
+
+Node* ParserFinish(Parser* parser) {
+    ParserImpl* impl = ImplOf(parser);
+    if (!impl) {
+        return nullptr;
+    }
+    impl->builder.pauseOnScript = false;
+    impl->builder.paused = false;
+    ParserPump(parser, true);
+    if (!impl->fragment) {
+        Body(&impl->builder);
+    }
+    return impl->builder.doc;
 }
 
 } // namespace html5ever

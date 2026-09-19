@@ -15,6 +15,8 @@ omits HTML5 insertion modes, implied document elements, foster parenting,
 formatting-element reconstruction, foreign-content rules and the complete
 named-reference table.
 
-Unsupported malformed markup is kept readable. The standalone
+Unsupported malformed markup is kept readable. Incremental `ParserProcess`
+concatenates chunks and pauses after `</script>` when scripting is enabled;
+`ParserFinish` parses the whole buffer. The standalone
 `extras/html5ever-mini` distribution includes `base` and must not be linked
 beside `gpui.cpp`.
