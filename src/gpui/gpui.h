@@ -5329,6 +5329,9 @@ bool AppGlobalRemove(App* app) {
 struct App {
     PaintApp* paint = nullptr;
     Vec<Window*> windows;
+    // An embedding host may request a theme mode while the app is running.
+    // The app layer carries the callback; a platform never names src/ui.
+    void (*hostThemeHandler)(App*, bool dark) = nullptr;
     // Entity store; see Entity.h. Slots are recycled, so a handle carries a
     // generation and goes stale instead of dangling.
     Vec<EntitySlot> entities;
@@ -6278,6 +6281,10 @@ void AppInvalidate(Window* win);
 // cx.refresh_windows(): every window this app owns repaints. What a change
 // with no one view behind it — the theme, the font size — asks for.
 void AppRefreshWindows(App* app);
+// The embedding host asks for an appearance change on the UI thread. Apps
+// choose how to apply it; the browser platform has no theme dependency.
+void AppSetHostThemeHandler(App* app, void (*handler)(App*, bool dark));
+void AppHostSetTheme(App* app, bool dark);
 // A teardown belonging to a layer above this one, run by AppFree once the
 // windows are gone. The theme registry's arena is what asked for it: it lives
 // in src/ui, which gpui cannot name, and a process-wide table has to be given

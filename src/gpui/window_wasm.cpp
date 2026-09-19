@@ -87,6 +87,11 @@ EM_JS(void, GpJsAttach, (int* outW, int* outH), {
     const G = globalThis.__gpui;
     G.canvas = c;
     G.ctx = c.getContext("2d");
+    // The embeddable host API corresponding to story-web::set_theme. The
+    // exported C entry point handles lifetime and dispatches to the app.
+    Module.set_theme = function(dark) {
+        Module._gpui_wasm_set_theme(dark ? 1 : 0);
+    };
     if (!G.resizeObserver && typeof ResizeObserver !== "undefined") {
         G.resizeObserver = new ResizeObserver(function() {
             _gpui_wasm_resize();
@@ -217,6 +222,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_paste(void) {
     // `cmd-v` on macOS and `ctrl-v` elsewhere, and GPUI_OS_MAC is 0 for a
     // wasm build, so this is the chord the keymap is holding.
     WindowKeyDown(gWin, KeyV, false, true, false, false);
+}
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_set_theme(int dark) {
+    if (gWin && gWin->plat && gWin->plat->open) {
+        AppHostSetTheme(gWin->app, dark != 0);
+    }
 }
 
 void AppInvalidate(Window* win) {

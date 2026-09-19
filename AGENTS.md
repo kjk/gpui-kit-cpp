@@ -251,6 +251,8 @@ no library. `web/shell.html` fills the viewport with a canvas called
 `window_wasm.cpp` translates viewport pointer coordinates through its bounding
 box. Assets preload into MEMFS at
 `/assets`, so `gpui/assets.cpp` walks them with the same `fopen`.
+An embedding page can call `Module.set_theme(true|false)` after the story opens
+to switch its theme without reloading.
 
 The whole platform layer is `EM_JS` over one `globalThis.__gpui` object handed
 to C++ as integer ids. **An `EM_JS` body is stringified by the preprocessor**,

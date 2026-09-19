@@ -3355,6 +3355,18 @@ void AppRefreshWindows(App* app) {
     }
 }
 
+void AppSetHostThemeHandler(App* app, void (*handler)(App*, bool dark)) {
+    if (app) {
+        app->hostThemeHandler = handler;
+    }
+}
+
+void AppHostSetTheme(App* app, bool dark) {
+    if (app && app->hostThemeHandler) {
+        app->hostThemeHandler(app, dark);
+    }
+}
+
 void AppRequestAnim(Window* win, bool on) {
     if (!win) {
         return;

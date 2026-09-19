@@ -1868,9 +1868,16 @@ static Str ParseSlug(int argc, char** argv) {
     return {};
 }
 
+static void StoryHostSetTheme(App* app, bool dark) {
+    // story-web::set_theme applies the new mode and refreshes the gallery.
+    // ThemeSet also invalidates every window through ThemeDidChange.
+    ThemeSet(app, dark ? ThemeMode::Dark : ThemeMode::Light);
+}
+
 int GpuiMain(int argc, char** argv) {
     App* app = AppNew();
     component::Init(app);
+    AppSetHostThemeHandler(app, &StoryHostSetTheme);
     // cx.set_app_identity(..): what the platform calls the application when it
     // shows one of its notifications. Windows names the notification area icon
     // with it; the other backends do not have one to name yet.
