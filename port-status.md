@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d565fd575618e4fdc016edd064eb4f14d0472480` (2026-09-25,
-docs: deepen GPUI manual and add release guides (#3232)). Upstream deepened
-the GPUI manual, added release guides, rewrote the app_assets example README
-and extended the kit UI test; none of it is code this tree ports. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `eabcb02bad68e045562371953c093669b2655a5f` (2026-09-25,
+base: Bundle IBM Plex Sans so the web examples resolve `.SystemUIFont`
+(#3235)). The Rust web examples bundle IBM Plex Sans so gpui-pre-web resolves
+.SystemUIFont; the wasm build here draws text with the browser's own font
+stack and bundles no font. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
