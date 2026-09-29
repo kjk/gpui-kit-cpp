@@ -5621,34 +5621,60 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             }
         }
         if (show && focus > 0.f && ys && index >= 0 && index < n) {
+            bool bandHover =
+                c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick;
+            const component::plot::TooltipState& held = hover.State();
             float targetX = lineX;
-            float targetY = Yat(ys[index]);
-            if (hover.State().dotCount > 0 && hover.State().dots) {
-                targetX = x + hover.State().dots[0].x;
-                targetY = y + hover.State().dots[0].y;
+            if (held.dotCount > 0 && held.dots) {
+                targetX = x + held.dots[0].x;
+            }
+            // The datum's dots, one per series in the order the hover state
+            // recorded them, with the colour of the series each marks.
+            Point dotAt[5] = {};
+            Rgba dotInk[5] = {};
+            int nDotAt = 0;
+            dotInk[nDotAt] = c.stroke;
+            dotAt[nDotAt++] = {targetX, Yat(ys[index])};
+            for (int k = 0; k < c.nMore && nDotAt < 5; k++) {
+                if (c.more[k].ys) {
+                    dotInk[nDotAt] = c.more[k].stroke;
+                    dotAt[nDotAt++] = {targetX, Yat(c.more[k].ys[index])};
+                }
+            }
+            for (int k = 0; held.dots && k < held.dotCount && k < nDotAt; k++) {
+                dotAt[k] = {x + held.dots[k].x, y + held.dots[k].y};
             }
             float drawX = targetX;
-            float drawY = targetY;
             if (ctx->window && ctx->app) {
+                // Tooltip::glide: on the pointer spring, adopting the datum on
+                // the frame the cursor lands rather than travelling from where
+                // the last hover ended. A crosshair glides along the axis it
+                // marks only, so it keeps up with a cursor it also follows;
+                // each dot glides on both axes. A bar's highlighted band is
+                // PlotHover::glide, the one position it springs.
                 Spring policy = component::ChartPointerSpring(ctx->app)
                                     .WithTravel(!hover.IsEntering());
-                uint32_t tag = HashClickId(c.name.s ? c.name : StrL("chart"));
                 drawX = motion::spring(
                     &hoverCx,
-                    motion::TransitionId(MotionId(StrL("chart"), StrL("x")) ^
-                                         tag),
+                    motion::TransitionId(StrL("__plot-hover"),
+                                         bandHover ? StrL("band") : StrL("x")),
                     targetX, policy);
-                drawY = motion::spring(
-                    &hoverCx,
-                    motion::TransitionId(MotionId(StrL("chart"), StrL("y")) ^
-                                         tag),
-                    targetY, policy);
+                for (int k = 0; !bandHover && k < nDotAt; k++) {
+                    dotAt[k].x = motion::spring(
+                        &hoverCx,
+                        motion::TransitionId(StrL("__plot-hover-dot-x"),
+                                             Str(fmt("%d", k))),
+                        dotAt[k].x, policy);
+                    dotAt[k].y = motion::spring(
+                        &hoverCx,
+                        motion::TransitionId(StrL("__plot-hover-dot-y"),
+                                             Str(fmt("%d", k))),
+                        dotAt[k].y, policy);
+                }
             }
             const float kCrossDash[2] = {4.f, 3.f};
             Rgba hair =
                 RgbaOpacity(RgbaMixHsl(th.border, th.foreground, 0.8f), focus);
-            bool bandHover =
-                c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick;
             if (bandHover) {
                 const float range[2] = {0.f, w};
                 component::ScaleBand band =
@@ -5662,27 +5688,20 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             } else {
                 CanvasLine(ctx, drawX, y, drawX, y + plotH, 1.f, hair,
                            kCrossDash);
-                float halo = component::ChartHoverHaloSize(focus);
+                // The ring grows out of the first dot as the hover fades in.
+                float halo = component::kChartHoverHaloSize * focus;
                 if (halo > 0) {
-                    FillRound(ctx, drawX - halo * 0.5f, drawY - halo * 0.5f,
-                              halo, halo, halo * 0.5f,
+                    FillRound(ctx, dotAt[0].x - halo * 0.5f,
+                              dotAt[0].y - halo * 0.5f, halo, halo, halo * 0.5f,
                               RgbaOpacity(c.stroke, 0.2f * focus));
                 }
                 float ds = component::kChartHoverDotSize;
-                FillRound(ctx, drawX - ds * 0.5f, drawY - ds * 0.5f, ds, ds,
-                          ds * 0.5f, c.stroke);
-                DrawRoundStroke(ctx, drawX - ds * 0.5f, drawY - ds * 0.5f, ds,
-                                ds, ds * 0.5f, 1.f, th.background);
-                for (int k = 0; k < c.nMore; k++) {
-                    const ChartSeriesExtra& more = c.more[k];
-                    if (!more.ys) {
-                        continue;
-                    }
-                    float my = Yat(more.ys[index]);
-                    FillRound(ctx, drawX - ds * 0.5f, my - ds * 0.5f, ds, ds,
-                              ds * 0.5f, more.stroke);
-                    DrawRoundStroke(ctx, drawX - ds * 0.5f, my - ds * 0.5f, ds,
-                                    ds, ds * 0.5f, 1.f, th.background);
+                for (int k = 0; k < nDotAt; k++) {
+                    float dx = dotAt[k].x - ds * 0.5f;
+                    float dy = dotAt[k].y - ds * 0.5f;
+                    FillRound(ctx, dx, dy, ds, ds, ds * 0.5f, dotInk[k]);
+                    DrawRoundStroke(ctx, dx, dy, ds, ds, ds * 0.5f, 1.f,
+                                    th.background);
                 }
             }
 

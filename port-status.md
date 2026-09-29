@@ -15,15 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8ed5dd506f011974b78fac32099223ebcfed7e68` (2026-09-24,
-chart: Label the value axis, lay out the grid and mark reference lines in
-line, area and bar charts (#3220)). Line, area and bar charts gain one axis
-vocabulary: y_axis / value-axis tick labels in a measured gutter or inside the
-plot with a tick format, y_tick_count, grid_columns, grid_dashed,
-reference_line, y_padding, x_tick_count / band_tick_count spread from the
-first item to the last, and band_count laying bars out for a fixed number of
-bands. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `477a8d90bb318cfbf0bbdc0f29517d437ad003e1` (2026-09-24,
+plot: Glide the tooltip's crosshair and dots in `Tooltip` itself (#3222)).
+Tooltip itself glides its crosshair (along the axis it marks) and dots (on
+both axes) on the pointer spring, adopting the datum on the entering frame,
+and grows a dot's halo with the hover's focus; charts drop their own copies of
+the glide, and PlotHover::glide serves a bar's band. The current update target
+is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

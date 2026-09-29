@@ -1662,6 +1662,8 @@ struct HoverMemory {
     Point storedDots[8] = {};
     Point cursor = {};
     float focus = 1.f;
+    // The first frame the cursor is on a datum; see PlotHover::IsEntering.
+    bool entering = false;
 };
 
 bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
@@ -1699,6 +1701,7 @@ bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
         memory->hasState = true;
     }
     memory->focus = focus;
+    memory->entering = hovered && focus == 0.f;
     if (!hovered && focus <= 0.f) {
         memory->hasState = false;
     }
@@ -1775,16 +1778,56 @@ Tooltip* Tooltip::Focus(float value) {
     return this;
 }
 
+Tooltip* Tooltip::Glide(bool value) {
+    glide = value;
+    return this;
+}
+
+float PlotHover::Glide(Ctx* cx, motion::TransitionId id, float target) const {
+    Spring policy = ChartPointerSpring(cx->app).WithTravel(!IsEntering());
+    return motion::spring(cx, id, target, policy);
+}
+
 El* Tooltip::IntoEl() {
     const Theme& theme = ThemeNow(cx->app);
     float overlay = focus;
-    if (overlay < 0 && cx && cx->win) {
+    bool entering = false;
+    if (cx && cx->win) {
         HoverMemory* memory =
             ElementState<HoverMemory>(cx, StrL("__plot-hover"), StrL("memory"));
-        overlay = memory ? memory->focus : 1.f;
+        if (overlay < 0) {
+            overlay = memory ? memory->focus : 1.f;
+        }
+        entering = memory && memory->entering;
     }
     if (overlay < 0) {
         overlay = 1.f;
+    }
+    // Glide the crosshair along the axis it marks and each dot on both, on
+    // the pointer spring, adopting the datum on the entering frame.
+    if (glide && cx && cx->win) {
+        Spring policy = ChartPointerSpring(cx->app).WithTravel(!entering);
+        if (hasCrossLine) {
+            if (crossLine.ShowVertical()) {
+                crossLine.point.x = motion::spring(
+                    cx, motion::TransitionId(StrL("__plot-hover"), StrL("x")),
+                    crossLine.point.x, policy);
+            }
+            if (crossLine.ShowHorizontal()) {
+                crossLine.point.y = motion::spring(
+                    cx, motion::TransitionId(StrL("__plot-hover"), StrL("y")),
+                    crossLine.point.y, policy);
+            }
+        }
+        for (int i = 0; i < dots.len; i++) {
+            Str ix = StrDup(a, fmt("%d", i));
+            dots[i].point.x = motion::spring(
+                cx, motion::TransitionId(StrL("__plot-hover-dot-x"), ix),
+                dots[i].point.x, policy);
+            dots[i].point.y = motion::spring(
+                cx, motion::TransitionId(StrL("__plot-hover-dot-y"), ix),
+                dots[i].point.y, policy);
+        }
     }
     El* root =
         Div(a)->SizeFull()->Absolute()->Top(0)->Left(0)->Opacity(overlay);
@@ -1792,7 +1835,10 @@ El* Tooltip::IntoEl() {
         root->Child(crossLine.IntoEl(cx));
     }
     for (const Dot& dot : dots) {
-        root->Child(dot.IntoEl(cx));
+        // The ring grows out of the dot as the hover fades in.
+        Dot shown = dot;
+        shown.halo = dot.halo * overlay;
+        root->Child(shown.IntoEl(cx));
     }
     // v_flex().gap_y_1(): the row rhythm the structured content lays out
     // with, so a tooltip built from freeform children keeps it too. And one

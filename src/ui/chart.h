@@ -15,9 +15,9 @@ namespace component {
 Spring ChartPointerSpring(const App* app);
 // The size of the dot marking the hovered data point.
 const float kChartHoverDotSize = 8;
-// The ring behind a hovered dot, growing out of the dot as the hover fades
-// in. Full focus is 20 DIPs.
-float ChartHoverHaloSize(float focus);
+// HOVER_HALO_SIZE: the ring behind the hovered dot at full focus; the hover
+// grows it out of the dot as it fades in.
+const float kChartHoverHaloSize = 20;
 
 // chart/mod.rs caller_id: the ElementId a chart carries when the caller names
 // none — the source location it was constructed at (Rust's

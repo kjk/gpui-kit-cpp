@@ -587,6 +587,11 @@ struct PlotHover {
     float Focus() const { return focus; }
     bool IsHovered() const { return hovered; }
     bool IsEntering() const { return hovered && focus == 0.f; }
+    // PlotHover::glide: follow `target` the way a Tooltip glides its
+    // crosshair and dots — on the pointer spring, adopting the target on the
+    // entering frame. For a position a plot also paints with, such as the
+    // centre of a highlighted band; the tooltip's own glide is then off.
+    float Glide(Ctx* cx, motion::TransitionId id, float target) const;
 };
 
 // Resolve the datum a plot shows this frame from the live state the cursor
@@ -620,6 +625,8 @@ struct Tooltip {
     // Opacity of the whole overlay when set; see Focus. Negative means
     // follow the plot's tracked hover fade.
     float focus = -1.f;
+    // Tooltip::glide: whether the crosshair and dots glide between data.
+    bool glide = true;
 
     static Tooltip* New(Ctx* cx, Point cursor, Size within);
     Tooltip* Title(Str value);
@@ -630,6 +637,11 @@ struct Tooltip {
     Tooltip* Appearance(bool value);
     Tooltip* Child(El* value);
     Tooltip* Focus(float value);
+    // Glide the crosshair and dots between data on the pointer spring, or
+    // snap them to each datum. A crosshair glides along the axis it marks
+    // only. Turn this off for positions the plot springs itself
+    // (PlotHover::Glide). Default true.
+    Tooltip* Glide(bool value);
     El* IntoEl();
 };
 

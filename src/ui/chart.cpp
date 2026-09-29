@@ -18,10 +18,6 @@ uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     return IdFoldName(site, fmt("%d", line));
 }
 
-float ChartHoverHaloSize(float focus) {
-    return 20.f * focus;
-}
-
 AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
                           int line) {
     Arena* a = cx->a;
