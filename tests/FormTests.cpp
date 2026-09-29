@@ -121,10 +121,52 @@ static void FormConventionsExposeLabelLayoutAndFooter() {
     AppGlobalClear(&app);
 }
 
+// form/tests.rs form_applies_styled_refinements (#3091): a caller's
+// padding and row gap reach the form. Rust's Form records Styled
+// refinements and now applies them to its root; here the form hands back
+// that root, and styling it is the refinement.
+static void FormAppliesStyledRefinements() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+
+    El* controls[2][2] = {};
+    for (int styled = 0; styled < 2; styled++) {
+        controls[styled][0] = Div(arena)->W(kFill)->H(20);
+        controls[styled][1] = Div(arena)->W(kFill)->H(20);
+        Form* form = v_form(&cx);
+        form->Child(field(controls[styled][0]))
+            ->Child(field(controls[styled][1]));
+        El* root = form->IntoEl();
+        if (styled) {
+            root->Pad(20)->GapY(30);
+        }
+        El* page = Div(arena)->W(400)->Child(root);
+        LayoutEl(nullptr, page, 0, 0, 400, 400, 14, Rgba{});
+    }
+    El** plain = controls[0];
+    El** styled = controls[1];
+    // Padding applied: top and left shifted by 20px.
+    utassertnear(styled[0]->x - plain[0]->x, 20.f);
+    utassertnear(styled[0]->y - plain[0]->y, 20.f);
+    // The gap between fields grows by 30 - 8, the default.
+    float plainGap = plain[1]->y - (plain[0]->y + plain[0]->h);
+    float styledGap = styled[1]->y - (styled[0]->y + styled[0]->h);
+    utassertnear(styledGap - plainGap, 22.f);
+
+    delete win;
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestForm() {
     TestSuite("form");
     FieldBuilderAndStandaloneFieldKeepSourceState();
     FormAxesUseSourceSpacingAndLabelWidths();
     HorizontalLabelIndentExistsWithoutLabel();
     FormConventionsExposeLabelLayoutAndFooter();
+    FormAppliesStyledRefinements();
 }

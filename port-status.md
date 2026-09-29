@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fd18012194486e15fef47b4cf709b7d94ce296be` (2026-09-26,
-text: Avoid quadratic table highlight remapping (#3247)). Range-highlight
-remapping finds a table cell's row end from an index built once rather than
-rescanning the table per cell; this tree already records it per cell leaf, and
-a test pins the whole-row behaviour on long and wide tables. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `87bead3417c72fc7651315f3330e5e347058a448` (2026-09-26,
+form: Apply Styled refinements to Form (#3248)). Form applies a caller's
+Styled refinements to its root; here the form hands back that root, so a test
+pins padding and gap reaching it. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

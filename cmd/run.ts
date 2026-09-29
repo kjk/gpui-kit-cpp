@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "fd18012194486e15fef47b4cf709b7d94ce296be",
+  sha: "87bead3417c72fc7651315f3330e5e347058a448",
   date: "2026-09-26",
-  subject: "text: Avoid quadratic table highlight remapping (#3247)",
+  subject: "form: Apply Styled refinements to Form (#3248)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
