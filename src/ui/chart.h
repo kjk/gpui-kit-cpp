@@ -19,6 +19,16 @@ const float kChartHoverDotSize = 8;
 // in. Full focus is 20 DIPs.
 float ChartHoverHaloSize(float focus);
 
+// chart/mod.rs caller_id: the ElementId a chart carries when the caller names
+// none — the source location it was constructed at (Rust's
+// ElementId::CodeLocation through #[track_caller]; here the call site's
+// __builtin_FILE / __builtin_LINE), folded onto the id stack it was built
+// under, which is what a GlobalElementId is. The hover state and the tooltip
+// key on it, so a chart built at a site written out once is interactive
+// without being handed an id; one site building several sibling charts has
+// them share one, which is what Id is for.
+uint32_t ChartCallerId(const Ctx* cx, const char* file, int line);
+
 // A pie or donut: each slice is a value and a color, drawn clockwise from
 // twelve o'clock (crates/ui/src/chart/pie_chart.rs).
 struct PieSlice {
@@ -47,9 +57,12 @@ struct PieChart {
     bool hasLabelColor = false;
     Rgba labelColor = {};
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
 
-    static PieChart* New(Ctx* cx);
+    static PieChart* New(Ctx* cx, const char* file = __builtin_FILE(),
+                         int line = __builtin_LINE());
     PieChart* Slice(float value, Rgba color, float outerInset = 0);
     PieChart* Label(Str text);
     PieChart* OuterRadius(float r);
@@ -57,9 +70,12 @@ struct PieChart {
     PieChart* PadAngle(float radians);
     PieChart* LabelGap(float gap);
     PieChart* LabelColor(Rgba c);
-    // PieChart::id / name: a chart with a name takes the pointer and shows a
-    // tooltip for the hovered slice.
+    // name(..): what the tooltip calls the hovered slice's series.
     PieChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    PieChart* Id(Str name);
     // The outer radius the ring is laid out with: the set one, or 40% of
     // `height`.
     float ResolveOuterRadius(float height) const;
@@ -69,7 +85,9 @@ struct PieChart {
 struct AreaChart {
     Arena* a = nullptr;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -86,13 +104,18 @@ struct AreaChart {
     // The series after the first, in the order `Y()` named them.
     ArenaVec<ChartSeriesExtra> more;
 
-    static AreaChart* New(Ctx* cx, const float* ys, int n);
+    static AreaChart* New(Ctx* cx, const float* ys, int n,
+                          const char* file = __builtin_FILE(),
+                          int line = __builtin_LINE());
     // `.y(..)`: another series over the same axes. The `Stroke`, `Fill` and
     // `Tooltip` after it belong to that series, the way Rust's chain does.
     AreaChart* Y(const float* ys);
-    // AreaChart::id: a chart with a name takes the pointer and shows a
-    // crosshair and a tooltip for whatever it is over.
+    // name(..): what the tooltip calls the series.
     AreaChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    AreaChart* Id(Str name);
     AreaChart* Stroke(Rgba c);
     AreaChart* Fill(Rgba c);
     // fill(linear_gradient(0., stop(bottom, 0.), stop(top, 1.))).
@@ -111,7 +134,9 @@ struct AreaChart {
 struct LineChart {
     Arena* a = nullptr;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -123,10 +148,15 @@ struct LineChart {
     ChartStroke strokeStyle = ChartStroke::Natural;
     bool dot = false;
 
-    static LineChart* New(Ctx* cx, const float* ys, int n);
-    // AreaChart::id: a chart with a name takes the pointer and shows a
-    // crosshair and a tooltip for whatever it is over.
+    static LineChart* New(Ctx* cx, const float* ys, int n,
+                          const char* file = __builtin_FILE(),
+                          int line = __builtin_LINE());
+    // name(..): what the tooltip calls the series.
     LineChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    LineChart* Id(Str name);
     LineChart* Stroke(Rgba c);
     LineChart* Labels(const char* const* l);
     LineChart* TickMargin(int n);
@@ -141,7 +171,9 @@ struct LineChart {
 struct BarChart {
     Arena* a = nullptr;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -172,10 +204,15 @@ struct BarChart {
     Rgba gradientFrom = {};
     Rgba gradientTo = {};
 
-    static BarChart* New(Ctx* cx, const float* ys, int n);
-    // AreaChart::id: a chart with a name takes the pointer and shows a
-    // crosshair and a tooltip for whatever it is over.
+    static BarChart* New(Ctx* cx, const float* ys, int n,
+                         const char* file = __builtin_FILE(),
+                         int line = __builtin_LINE());
+    // name(..): what the tooltip calls the series.
     BarChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    BarChart* Id(Str name);
     BarChart* Fill(Rgba c);
     BarChart* Labels(const char* const* l);
     BarChart* TickMargin(int n);
@@ -220,12 +257,20 @@ struct CandlestickChart {
     float padding = 0.3f;
     float bodyWidthRatio = 0.8f;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
 
     static CandlestickChart* New(Ctx* cx, const float* opens,
                                  const float* highs, const float* lows,
-                                 const float* closes, int n);
+                                 const float* closes, int n,
+                                 const char* file = __builtin_FILE(),
+                                 int line = __builtin_LINE());
     CandlestickChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    CandlestickChart* Id(Str name);
     CandlestickChart* Colors(Rgba up, Rgba down);
     CandlestickChart* Labels(const char* const* l);
     CandlestickChart* TickMargin(int n);
@@ -273,10 +318,18 @@ struct RadarChart {
     Rgba labelColor = {};
     bool hasLabelColor = false;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
 
-    static RadarChart* New(Ctx* cx, const float* values, int n);
+    static RadarChart* New(Ctx* cx, const float* values, int n,
+                           const char* file = __builtin_FILE(),
+                           int line = __builtin_LINE());
     RadarChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    RadarChart* Id(Str name);
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
     RadarChart* Labels(const char* const* l);
@@ -357,10 +410,17 @@ struct SankeyChart {
     // Rust's value_label.
     bool showValues = false;
     Str tooltipName = {};
-    bool tooltip = false;
+    // The chart's ElementId, folded onto the id stack it was built under: its
+    // construction site unless Id renamed it (chart/mod.rs caller_id).
+    uint32_t id = 0;
 
-    static SankeyChart* New(Ctx* cx);
+    static SankeyChart* New(Ctx* cx, const char* file = __builtin_FILE(),
+                            int line = __builtin_LINE());
     SankeyChart* Tooltip(Str name);
+    // id(..): rename the chart's ElementId, replacing the construction site.
+    // Needed where one site builds several of these as siblings, which would
+    // otherwise share one hover state. Unique among those siblings.
+    SankeyChart* Id(Str name);
     // A node, by the order they are added — a link names them by index.
     SankeyChart* Node(Str label);
     SankeyChart* NodeColored(Str label, Rgba color);

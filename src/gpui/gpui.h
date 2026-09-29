@@ -1347,9 +1347,13 @@ struct ChartSeries {
     // RadarChart::outer_radius / grid_levels, and its own dot flag.
     float radarRadius = 0;
     int gridLevels = 4;
-    // AreaChart::id in Rust: a chart with one takes the pointer, and shows a
-    // crosshair and a tooltip for whatever it is over.
+    // Plot::id returning Some: the chart takes the pointer, and shows a
+    // crosshair and a tooltip for whatever it is over. Every themed chart
+    // sets it; a hand-built ChartEl is a plot with no id and stays still.
     bool tooltip = false;
+    // That id, folded onto the id stack (component::ChartCallerId): what the
+    // hover state and its springs key on.
+    uint32_t id = 0;
     // The name the tooltip's row goes by.
     Str name = {};
 };

@@ -234,6 +234,49 @@ static void PieSliceRadiusFallsBackToTheRing() {
     ArenaDelete(a);
 }
 
+// chart/mod.rs tests: a_chart_is_interactive_without_being_given_an_id,
+// charts_built_at_different_sites_get_different_ids,
+// charts_built_at_one_site_share_an_id, a_named_id_replaces_the_default; and
+// radar_chart.rs's builder assertion that `id` names the chart.
+static PieChart* PieAtOneSite(Ctx* cx) {
+    return PieChart::New(cx)->Slice(1, RgbaHex(0xff0000));
+}
+
+static void AChartsIdDefaultsToItsConstructionSite() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    // Interactive without being given an id: every themed chart has one and
+    // hands the pointer layer to its element.
+    float ys[3] = {1, 2, 3};
+    utassert(PieAtOneSite(&cx)->id != 0);
+    El* line = LineChart::New(&cx, ys, 3)->IntoEl();
+    utassert(line->Chart()->tooltip && line->Chart()->id != 0);
+
+    uint32_t first = PieChart::New(&cx)->id;
+    uint32_t second = PieChart::New(&cx)->id;
+    utassert(first != second);
+    utassert(PieAtOneSite(&cx)->id == PieAtOneSite(&cx)->id);
+
+    utassert(PieAtOneSite(&cx)->Id(StrL("pie"))->id ==
+             IdFoldName(cx.path, StrL("pie")));
+    utassert(RadarChart::New(&cx, ys, 3)->Id(StrL("radar"))->id ==
+             IdFoldName(cx.path, StrL("radar")));
+
+    // The site is on the id stack: the same site under another parent is
+    // another chart.
+    uint32_t outside = PieAtOneSite(&cx)->id;
+    {
+        IdScope scope(&cx, StrL("row-2"));
+        utassert(PieAtOneSite(&cx)->id != outside);
+    }
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -243,4 +286,5 @@ void TestChart() {
     UnchangedPlotLabelsKeepTheScene();
     UnchangedSankeyLabelsKeepTheScene();
     PieSliceRadiusFallsBackToTheRing();
+    AChartsIdDefaultsToItsConstructionSite();
 }

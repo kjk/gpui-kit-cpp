@@ -15,9 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `194ceb392a24671878c77239a2d5560a751943c0` (2026-09-22,
-bubble: Do not clip the children of a `Ghost` bubble (#3172)). A Ghost bubble
-no longer clips its children. The current update target is
+Processed through `a2d15b561d6bd716866de7f43891301c88798826` (2026-09-22,
+chart: Default a chart's id to its construction site (#3173)). A chart's id
+defaults to its construction site, so every themed chart takes the pointer and
+shows its tooltip; Id renames it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "194ceb392a24671878c77239a2d5560a751943c0",
+  sha: "a2d15b561d6bd716866de7f43891301c88798826",
   date: "2026-09-22",
-  subject: "bubble: Do not clip the children of a `Ghost` bubble (#3172)",
+  subject: "chart: Default a chart's id to its construction site (#3173)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

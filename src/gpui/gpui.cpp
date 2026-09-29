@@ -5447,6 +5447,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         Ctx hoverCx = {};
         hoverCx.app = ctx->app;
         hoverCx.win = ctx->window;
+        // The chart's id on the stack, so its hover state is its own.
+        hoverCx.path = c.id;
         if (ctx->window && ctx->app) {
             show = component::plot::TrackHover(&hoverCx, livePtr,
                                                overPlot ? &cursor : nullptr,

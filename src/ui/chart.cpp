@@ -12,15 +12,23 @@ Spring ChartPointerSpring(const App* app) {
     return Spring::New(ms).WithEpsilon(0.1f);
 }
 
+uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
+    uint32_t site =
+        IdFoldName(cx ? cx->path : 0, Str((char*)(file ? file : "")));
+    return IdFoldName(site, fmt("%d", line));
+}
+
 float ChartHoverHaloSize(float focus) {
     return 20.f * focus;
 }
 
-AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n) {
+AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
+                          int line) {
     Arena* a = cx->a;
     AreaChart* c = ArenaNew<AreaChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
     c->stroke = ThemeNow(cx->app).blue;
@@ -84,7 +92,10 @@ AreaChart* AreaChart::Tooltip(Str name) {
     } else {
         tooltipName = name;
     }
-    tooltip = true;
+    return this;
+}
+AreaChart* AreaChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 AreaChart* AreaChart::Linear() {
@@ -101,7 +112,10 @@ El* AreaChart::IntoEl() {
     chart->labels = labels;
     chart->strokeStyle = strokeStyle;
     chart->overlay = overlay;
-    chart->tooltip = tooltip;
+    // Every chart takes the pointer now that its id defaults (upstream
+    // a2d15b56); only a hand-built ChartEl stays a still picture.
+    chart->tooltip = true;
+    chart->id = id;
     chart->name = tooltipName;
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
@@ -110,11 +124,13 @@ El* AreaChart::IntoEl() {
     return e;
 }
 
-LineChart* LineChart::New(Ctx* cx, const float* ys, int n) {
+LineChart* LineChart::New(Ctx* cx, const float* ys, int n, const char* file,
+                          int line) {
     Arena* a = cx->a;
     LineChart* c = ArenaNew<LineChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
     c->stroke = ThemeNow(cx->app).blue;
@@ -139,7 +155,10 @@ LineChart* LineChart::Domain(float lo, float hi) {
 }
 LineChart* LineChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+LineChart* LineChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 LineChart* LineChart::Linear() {
@@ -164,16 +183,21 @@ El* LineChart::IntoEl() {
     chart->dot = dot;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
-    chart->tooltip = tooltip;
+    // Every chart takes the pointer now that its id defaults (upstream
+    // a2d15b56); only a hand-built ChartEl stays a still picture.
+    chart->tooltip = true;
+    chart->id = id;
     chart->name = tooltipName;
     return e;
 }
 
-BarChart* BarChart::New(Ctx* cx, const float* ys, int n) {
+BarChart* BarChart::New(Ctx* cx, const float* ys, int n, const char* file,
+                        int line) {
     Arena* a = cx->a;
     BarChart* c = ArenaNew<BarChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
     c->fill = ThemeNow(cx->app).primary;
@@ -206,7 +230,10 @@ BarChart* BarChart::Domain(float lo, float hi) {
 }
 BarChart* BarChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+BarChart* BarChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 BarChart* BarChart::Alignment(BarAlign v) {
@@ -265,7 +292,10 @@ El* BarChart::IntoEl() {
     chart->barRadius = radius;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
-    chart->tooltip = tooltip;
+    // Every chart takes the pointer now that its id defaults (upstream
+    // a2d15b56); only a hand-built ChartEl stays a still picture.
+    chart->tooltip = true;
+    chart->id = id;
     chart->name = tooltipName;
     return e;
 }
@@ -282,11 +312,13 @@ BarChart* BarChart::ValueTickCount(int count) {
 
 CandlestickChart* CandlestickChart::New(Ctx* cx, const float* opens,
                                         const float* highs, const float* lows,
-                                        const float* closes, int n) {
+                                        const float* closes, int n,
+                                        const char* file, int line) {
     Arena* a = cx->a;
     CandlestickChart* c = ArenaNew<CandlestickChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     c->opens = opens;
     c->highs = highs;
     c->lows = lows;
@@ -298,7 +330,10 @@ CandlestickChart* CandlestickChart::New(Ctx* cx, const float* opens,
 }
 CandlestickChart* CandlestickChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+CandlestickChart* CandlestickChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 CandlestickChart* CandlestickChart::Colors(Rgba u, Rgba d) {
@@ -336,7 +371,10 @@ El* CandlestickChart::IntoEl() {
     chart->down = down;
     chart->bandPadding = padding;
     chart->bodyWidthRatio = bodyWidthRatio;
-    chart->tooltip = tooltip;
+    // Every chart takes the pointer now that its id defaults (upstream
+    // a2d15b56); only a hand-built ChartEl stays a still picture.
+    chart->tooltip = true;
+    chart->id = id;
     chart->name = tooltipName;
     return e;
 }
@@ -421,11 +459,13 @@ static void PaintRadarLabels(PaintCtx* ctx, El* e, void* user) {
     }
 }
 
-RadarChart* RadarChart::New(Ctx* cx, const float* values, int n) {
+RadarChart* RadarChart::New(Ctx* cx, const float* values, int n,
+                            const char* file, int line) {
     Arena* a = cx->a;
     RadarChart* c = ArenaNew<RadarChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     c->values = values;
     c->n = n;
     c->stroke = ThemeNow(cx->app).blue;
@@ -488,7 +528,10 @@ RadarChart* RadarChart::GridLevels(int v) {
 }
 RadarChart* RadarChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+RadarChart* RadarChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 El* RadarChart::IntoEl() {
@@ -502,7 +545,10 @@ El* RadarChart::IntoEl() {
     chart->gridLevels = gridLevels;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
-    chart->tooltip = tooltip;
+    // Every chart takes the pointer now that its id defaults (upstream
+    // a2d15b56); only a hand-built ChartEl stays a still picture.
+    chart->tooltip = true;
+    chart->id = id;
     chart->name = tooltipName;
     if (labels) {
         e->customPaint = PaintRadarLabels;
@@ -517,11 +563,12 @@ El* RadarChart::IntoEl() {
     return e;
 }
 
-PieChart* PieChart::New(Ctx* cx) {
+PieChart* PieChart::New(Ctx* cx, const char* file, int line) {
     Arena* a = cx->a;
     PieChart* p = ArenaNew<PieChart>(a);
     p->a = a;
     p->cx = cx;
+    p->id = ChartCallerId(cx, file, line);
     return p;
 }
 PieChart* PieChart::Slice(float value, Rgba color, float outerInset) {
@@ -560,7 +607,10 @@ PieChart* PieChart::PadAngle(float radians) {
 }
 PieChart* PieChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+PieChart* PieChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 
@@ -574,11 +624,20 @@ static const float kPieTextSize = 10.f;
 static const float kPieTextHeight = 12.f;
 static const float kPieHoverLift = 6.f;
 
+// The chart's own id on the stack, which is what its hover state and springs
+// key on: Rust paints a plot inside `with_element_id(plot.id())`.
+static Ctx ChartIdCtx(const Ctx* cx, uint32_t id) {
+    Ctx out = *cx;
+    out.path = id;
+    return out;
+}
+
 static float PieSliceLift(PieChart* p, int index, int hoverIndex, float focus) {
-    if (!p->tooltip || !p->cx || hoverIndex != index || focus <= 0.f) {
+    if (!p->cx || hoverIndex != index || focus <= 0.f) {
         return 0;
     }
-    return motion::spring(p->cx,
+    Ctx idCx = ChartIdCtx(p->cx, p->id);
+    return motion::spring(&idCx,
                           motion::TransitionId(fmt("pie-slice-%d", index)), 1.f,
                           ThemeNow(p->cx->app).motion.springControl);
 }
@@ -719,7 +778,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
-    if (p->tooltip && p->cx) {
+    if (p->cx) {
         plot::Arc hit = plot::Arc::New();
         hit.InnerRadius(p->innerRadius)->OuterRadius(ring);
         Bounds bounds = {e->x, e->y, e->w, e->h};
@@ -749,7 +808,8 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         }
         plot::PlotHover hover = {};
         Point linger = cursor;
-        if (plot::TrackHover(p->cx, livePtr,
+        Ctx idCx = ChartIdCtx(p->cx, p->id);
+        if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
             focus = hover.Focus();
@@ -772,7 +832,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         float ri = p->innerRadius;
         float a0 = angle, a1 = angle + sweep;
         Rgba color = s.color;
-        if (p->tooltip && hoverIndex >= 0 && i != hoverIndex) {
+        if (hoverIndex >= 0 && i != hoverIndex) {
             color = RgbaOpacity(color, 1.f - kHoverDim * focus);
         }
         Path* wedge = PathNew(ctx, true);
@@ -791,7 +851,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         angle += 2.f * kPi * (s.value / total);
     }
     PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus);
-    if (p->tooltip && hoverIndex >= 0 && focus > 0.f && p->cx) {
+    if (hoverIndex >= 0 && focus > 0.f && p->cx) {
         const PieSlice& s = p->slices[hoverIndex];
         float share = s.value / total * 100.f;
         Str title = s.label.s ? s.label : fmt("%d", hoverIndex);
@@ -1080,7 +1140,8 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         }
         plot::PlotHover hover = {};
         Point linger = cursor;
-        if (plot::TrackHover(c->cx, livePtr,
+        Ctx idCx = ChartIdCtx(c->cx, c->id);
+        if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
             focus = hover.Focus();
@@ -1230,11 +1291,12 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     paintTooltip();
 }
 
-SankeyChart* SankeyChart::New(Ctx* cx) {
+SankeyChart* SankeyChart::New(Ctx* cx, const char* file, int line) {
     Arena* a = cx->a;
     SankeyChart* c = ArenaNew<SankeyChart>(a);
     c->a = a;
     c->cx = cx;
+    c->id = ChartCallerId(cx, file, line);
     return c;
 }
 SankeyChart* SankeyChart::Node(Str label) {
@@ -1333,7 +1395,10 @@ SankeyChart* SankeyChart::ShowValues(bool v) {
 }
 SankeyChart* SankeyChart::Tooltip(Str name) {
     tooltipName = name;
-    tooltip = true;
+    return this;
+}
+SankeyChart* SankeyChart::Id(Str name) {
+    id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
 El* SankeyChart::IntoEl() {
