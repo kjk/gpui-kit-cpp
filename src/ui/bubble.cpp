@@ -33,14 +33,17 @@ El* BubbleContent::IntoEl() {
     El* surface = Div(a)
                       ->MinW(0)
                       ->MaxW(kFill)
-                      ->ClipX()
-                      ->ClipY()
                       ->Radius(ThemeRadius2xl(th))
                       ->Border(1, th.transparent)
                       ->PadX(12)
                       ->PadY(8)
                       ->Font(14)
                       ->LineHeight(1.625f);
+    // A ghost bubble has no surface to clip against; clipping would only cut
+    // the shadows and overhanging controls of rich content.
+    if (variant != BubbleVariant::Ghost) {
+        surface->ClipX()->ClipY();
+    }
     if (hasAlignment) {
         if (alignment == MessageAlignment::Start) {
             surface->SelfStart();
