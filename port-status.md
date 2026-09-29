@@ -15,10 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `94892cacaec86762d9b686405433250b21fdbb83` (2026-09-27,
-perf(form): skip rendering hidden fields (#3269)). Upstream stops rendering
-form fields marked visible(false); they were already left out here. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `9a2264a83b46d685a30b7207e563c02a9667ca8b` (2026-09-27,
+perf(rating): skip redundant hover repaints (#3270)). Upstream's Rating
+notifies only when the hovered star changes; ours already did. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
