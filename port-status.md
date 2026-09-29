@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a06974abfdd79c8393dcd817787ed0e80f59e36d` (2026-09-27,
-perf(command): skip remeasuring unchanged rows (#3268)). Upstream's command
-palette keeps its measured rows when a re-render reinstalls an unchanged
-model; rows here have fixed heights and are never measured. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `f180d29d913ede7c294ad5e3dbdee21751f6208f` (2026-09-27,
+perf(menu): fix DropdownMenu memory leak (#3267)). A closed window now
+releases the entities its keyed state holds, so an open popover or dropdown
+menu no longer outlives it or keeps its deferred-popover registration. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

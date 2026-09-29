@@ -364,6 +364,39 @@ static void RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar() {
     utassert(!right.propagate && menu.openSubmenu == 0);
 }
 
+// dropdown_menu.rs `open_without_dismiss_releases_the_menu`: a menu left
+// open when its window goes away must go with the window, and so must the
+// popover's deferred-popover registration, or every later right-click menu
+// steps aside as if a popup were still showing. Rust breaks a strong-handle
+// cycle; here the window's keyed state is what owned both entities, so
+// closing the window is what has to let them go.
+static void OpenWithoutDismissReleasesTheMenu() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, nullptr, {}};
+    BaseGlobalStateInit(&app);
+
+    Entity<PopupMenuState> menu = PopupMenuStateFor(&cx, StrL("menu"));
+    Entity<PopoverState> popover = ElementStateEntity<PopoverState>(
+        &cx, StrL("popover"), StrL("gpui::PopoverState"));
+    menu.Get(&app)->open = true;
+    PopoverSetOpen(&cx, popover, true);
+    utassert(menu.Get(&app) != nullptr);
+    utassert(BaseIsInDeferredContext(&app));
+
+    // Close the window without dismissing the menu.
+    WindowClosed(win);
+    utassert(menu.Get(&app) == nullptr);
+    utassert(popover.Get(&app) == nullptr);
+    utassert(!BaseIsInDeferredContext(&app));
+
+    WindowKeyedFree(win);
+    delete win;
+    AppGlobalClear(&app);
+    EntityDropAll(&app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -378,4 +411,5 @@ void TestPopupMenu() {
     EachContextMenuTriggerKeepsItsOwnState();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
+    OpenWithoutDismissReleasesTheMenu();
 }

@@ -3263,6 +3263,19 @@ void WindowClosed(Window* win) {
     }
     win->input = nullptr;
     win->prevInput = nullptr;
+    // Rust's element state goes with its window, and with it every keyed
+    // entity only the window's elements held: an open popover's state, the
+    // dropdown's PopupMenu. Here the app owns those entities, so the window
+    // lets them go by hand. Left alive, an open popover of a closed window
+    // kept its deferred-popover registration, and every later right-click
+    // menu stepped aside as if a popup were still showing (upstream
+    // f180d29d, `open_without_dismiss_releases_the_menu`).
+    for (int i = 0; i < win->keyed.len; i++) {
+        if (win->keyed[i].entity.IsValid()) {
+            EntityDrop(win->app, win->keyed[i].entity);
+            win->keyed[i].entity = {};
+        }
+    }
     PaintTargetFree(&win->paint);
     win->plat = nullptr;
     win->running = false;
