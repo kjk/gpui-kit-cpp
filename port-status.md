@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `23e259f2ea2c4448ee99d903ee2671f5460efde5` (2026-09-26,
-shell: Enforce script network policy for TextView images (#3230)). A shell
-TextView loads its document images under the describing script's network
-grant, re-authorizing every redirect; TextView gains an image-source override
-for that. The current update target is
+Processed through `331e3afe363c2afd3f7677387ca1f17af115d1dc` (2026-09-25,
+website: Fall back to `primary.background` for themes without
+`selection.background` (#3242)). Upstream made the website's theme catalogue
+fall back to primary.background for themes without selection.background;
+nothing in the tree ports it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
