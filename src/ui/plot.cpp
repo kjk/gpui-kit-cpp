@@ -167,6 +167,13 @@ bool ScalePoint::Tick(float value, float* out) const {
     if (index < 0) {
         return false;
     }
+    return TickAt(index, out);
+}
+
+bool ScalePoint::TickAt(int index, float* out) const {
+    if (index < 0 || index >= domainLen) {
+        return false;
+    }
     // A single point has no spacing to step by, so it sits in the middle.
     *out = domainLen == 1 ? rangeStart + rangeTick * 0.5f
                           : rangeStart + (float)index * rangeTick;

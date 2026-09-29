@@ -92,6 +92,10 @@ struct ScalePoint {
                           int rangeN);
     // False when `value` is not in the domain.
     bool Tick(float value, float* out) const;
+    // tick_at: the position of the domain value at `index`, without searching
+    // the domain — Tick on domain[index] for a domain of unique values. False
+    // past the end.
+    bool TickAt(int index, float* out) const;
     // The domain index nearest `tick`.
     int LeastIndex(float tick) const;
 };

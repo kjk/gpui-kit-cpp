@@ -147,6 +147,26 @@ static void ScalePointSingle() {
     utassert(s.Tick(1, &t) && TestNear(t, 50.f));
 }
 
+// point.rs test_tick_at_matches_tick (#3262).
+static void ScalePointTickAtMatchesTick() {
+    const float d1[] = {1};
+    const float d3[] = {1, 2, 3};
+    const float d5[] = {1, 2, 3, 4, 5};
+    const float* domains[] = {nullptr, d1, d3, d5};
+    const int lens[] = {0, 1, 3, 5};
+    const float range[] = {40, 80};
+    for (int k = 0; k < 4; k++) {
+        ScalePoint s = ScalePoint::New(domains[k], lens[k], range, 2);
+        for (int i = 0; i < lens[k]; i++) {
+            float a = 0, b = 0;
+            utassert(s.TickAt(i, &a) && s.Tick(domains[k][i], &b));
+            utassert(TestNear(a, b));
+        }
+        float t = 0;
+        utassert(!s.TickAt(lens[k], &t));
+    }
+}
+
 static void ScalePointLeastIndexBasic() {
     const float domain[] = {1, 2, 3};
     const float range[] = {0, 100};
@@ -633,6 +653,7 @@ void TestScale() {
     ScalePointRange();
     ScalePointEmpty();
     ScalePointSingle();
+    ScalePointTickAtMatchesTick();
     ScalePointLeastIndexBasic();
     ScalePointLeastIndexWithOffset();
     ScalePointLeastIndexDegenerate();

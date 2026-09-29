@@ -5547,7 +5547,12 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             float low = c.lows ? c.lows[i] : (open < close ? open : close);
             Rgba color = close >= open ? c.up : c.down;
             float mid = bx + bw * 0.5f;
-            DrawLine(ctx, mid, Yat(high), mid, Yat(low), 1.f, color);
+            // The wick is a 1px quad, not a stroke: the same pixels with
+            // nothing to tessellate (candlestick_chart.rs, #3262).
+            float wickTop = Yat(high) < Yat(low) ? Yat(high) : Yat(low);
+            float wickBot = Yat(high) < Yat(low) ? Yat(low) : Yat(high);
+            CanvasFillRect(ctx, mid - 0.5f, wickTop, 1.f, wickBot - wickTop,
+                           color);
             float top = Yat(open > close ? open : close);
             float bot = Yat(open > close ? close : open);
             float bh = bot - top;

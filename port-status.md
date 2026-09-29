@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2769e6567eea0f9eb9917f91845041f3f2fad9a5` (2026-09-27,
-perf(input): reduce redundant work in the code editor (#3260)). Upstream's
-code-editor perf pass: a closed search no longer rescans on every edit, typing
-runs coalesce into one undo change, the fold projection is kept as hidden
-runs, and search highlights start from a binary search. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `11d693924ebe5ff00d3da64e8f65598283605654` (2026-09-27,
+perf(chart): speed up painting and hover (#3262)). Upstream sped up chart
+paint and hover: point charts project x by index (ScalePoint::tick_at), candle
+wicks are 1px quads, sankey ribbons are cached, and plot hover notifies only
+its view. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
