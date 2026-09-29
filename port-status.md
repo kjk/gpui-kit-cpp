@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ca9ab0eb3bfe29534b862adf3d4d0b81a0953e20` (2026-09-23,
-input: Let Textarea take a size, like Input (#3191)). Textarea takes a size
-like Input, which sets the wrapped field's padding and text size; the story's
-toolbar drives it. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `308af7c90463f31118bac524930bc0b7eec35f76` (2026-09-23,
+highlighter: Remove deprecated usize import (#3186)). Rust-only cleanup: a
+deprecated usize import dropped from the highlighter. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
