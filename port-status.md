@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9a8c196587602c380b1ddb676d9d4e82ee59259a` (2026-09-20,
-input: Clear the blink state when the cursor stops (#3139)). BlinkCursor::stop
-clears the pause and the visible flag and drops its timer, so a blur inside
-the pause window no longer leaves the next focus without a blink; the C++
-BlinkStop already did all three, and the new tests are ported. The current
+Processed through `becbcf2f265c4b0c139f384b7781e118c776a73c` (2026-09-20,
+input: Do not start the blink cursor on an unfocused input (#3140)). Pausing a
+caret that is not blinking is a no-op, so a programmatic set_value on an
+unfocused input no longer starts a blink loop; BlinkPause already returned
+early on a cursor with no timer, and the two new tests are ported. The current
 update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

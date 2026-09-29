@@ -3768,6 +3768,33 @@ struct BlinkFixture {
 };
 } // namespace
 
+// pausing_a_cursor_that_is_not_blinking_does_not_start_it
+static void PausingACursorThatIsNotBlinkingDoesNotStartIt() {
+    BlinkFixture f;
+    // Never focused, so nothing started it: what a programmatic write to an
+    // unfocused input does.
+    BlinkPause(&f.app, f.win, &f.handle);
+    utassert(!BlinkVisible(&f.app, f.handle));
+    utassert(len(f.win->timers) == 0);
+}
+
+// test_set_value_on_unfocused_input_stays_quiet: seeding a field that does
+// not have the keyboard arms no caret timer, so nothing repaints after it.
+static void SetValueOnUnfocusedInputStaysQuiet() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    {
+        InputState s;
+        InputReplaceAll(&s, &app, win, StrL("seeded"));
+        utassert(StrEq(InputValue(&s), "seeded"));
+        utassert(len(win->timers) == 0);
+        utassert(!BlinkVisible(&app, s.blink));
+    }
+    delete win;
+    EntityDropAll(&app);
+}
+
 // blurring_a_paused_cursor_leaves_the_next_focus_blinking
 static void BlurringAPausedCursorLeavesTheNextFocusBlinking() {
     BlinkFixture f;
@@ -3811,6 +3838,8 @@ static void StoppingABlinkingCursorEndsTheBlinkLoop() {
 
 void TestInputState() {
     TestSuite("input_state");
+    PausingACursorThatIsNotBlinkingDoesNotStartIt();
+    SetValueOnUnfocusedInputStaysQuiet();
     BlurringAPausedCursorLeavesTheNextFocusBlinking();
     StoppingAPausedCursorEndsTheBlinkLoop();
     StoppingABlinkingCursorEndsTheBlinkLoop();
