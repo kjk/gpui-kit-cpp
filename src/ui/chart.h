@@ -102,6 +102,26 @@ struct PieChart {
     El* IntoEl();
 };
 
+// chart/mod.rs PointAxes: the grid, value-axis labels and reference lines a
+// point chart (LineChart, AreaChart) draws, which both builders forward to.
+// ChartSeries carries them to the paint.
+struct PointAxes {
+    bool yAxis = false;
+    AxisLabelPlacement placement = AxisLabelPlacement::Outside;
+    int yTickCount = 5;
+    ChartTickFormatFn tickFormat = nullptr;
+    void* tickFormatUser = nullptr;
+    // -1 is None: every TickMargin-th point is labelled.
+    int xTickCount = -1;
+    int gridColumns = 0;
+    bool gridDashed = true;
+    float yPaddingTop = 10;
+    float yPaddingBottom = 0;
+    ArenaVec<double> referenceLines;
+
+    void ApplyTo(Arena* a, ChartSeries* chart) const;
+};
+
 struct AreaChart {
     Arena* a = nullptr;
     Str tooltipName = {};
@@ -130,6 +150,7 @@ struct AreaChart {
     float yDomainMin = 0;
     float yDomainMax = 0;
     int pointCount = 0;
+    PointAxes axes;
 
     static AreaChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -170,6 +191,36 @@ struct AreaChart {
     // points in order and the rest stay empty, as an intraday chart does
     // before the close. A count below the data's length has no effect.
     AreaChart* PointCount(int count);
+    // y_axis: show the y axis's tick labels, one at each of the y ticks.
+    // Default false.
+    AreaChart* YAxis(bool v = true);
+    // y_axis_label_placement: in a gutter left of the plot (Outside, the
+    // default), or inside it beside their grid lines.
+    AreaChart* YAxisLabelPlacement(AxisLabelPlacement placement);
+    // y_tick_count: how many ticks the y axis carries, evenly spaced from the
+    // baseline to the top edge with both ends included. They place the
+    // horizontal grid lines and the labels, each reading the value the scale
+    // puts at its height. At least 2; default 5.
+    AreaChart* YTickCount(int count);
+    // y_tick_format: the text of each y-axis tick label from its value.
+    AreaChart* YTickFormat(ChartTickFormatFn format, void* user = nullptr);
+    // x_tick_count: label `count` of the x values, spread evenly from the
+    // first to the last, instead of every TickMargin-th. With PointCount they
+    // spread over every point the axis is laid out for, so they keep their
+    // places as the data grows.
+    AreaChart* XTickCount(int count);
+    // grid_columns: divide the plot into `count` columns with vertical grid
+    // lines, the first on its left edge. Default 0.
+    AreaChart* GridColumns(int count);
+    // grid_dashed: default true.
+    AreaChart* GridDashed(bool dashed);
+    // reference_line: a dashed line across the plot at `value`, such as a
+    // previous close. Call again for more; one outside the y axis is not
+    // drawn.
+    AreaChart* ReferenceLine(double value);
+    // y_padding: the space kept clear above the highest value and below the
+    // lowest. Default 10 above, none below.
+    AreaChart* YPadding(float top, float bottom);
     El* IntoEl();
 };
 
@@ -194,6 +245,7 @@ struct LineChart {
     float yDomainMin = 0;
     float yDomainMax = 0;
     int pointCount = 0;
+    PointAxes axes;
     ChartStroke strokeStyle = ChartStroke::Natural;
     bool dot = false;
 
@@ -226,6 +278,36 @@ struct LineChart {
     // points in order and the rest stay empty, as an intraday chart does
     // before the close. A count below the data's length has no effect.
     LineChart* PointCount(int count);
+    // y_axis: show the y axis's tick labels, one at each of the y ticks.
+    // Default false.
+    LineChart* YAxis(bool v = true);
+    // y_axis_label_placement: in a gutter left of the plot (Outside, the
+    // default), or inside it beside their grid lines.
+    LineChart* YAxisLabelPlacement(AxisLabelPlacement placement);
+    // y_tick_count: how many ticks the y axis carries, evenly spaced from the
+    // baseline to the top edge with both ends included. They place the
+    // horizontal grid lines and the labels, each reading the value the scale
+    // puts at its height. At least 2; default 5.
+    LineChart* YTickCount(int count);
+    // y_tick_format: the text of each y-axis tick label from its value.
+    LineChart* YTickFormat(ChartTickFormatFn format, void* user = nullptr);
+    // x_tick_count: label `count` of the x values, spread evenly from the
+    // first to the last, instead of every TickMargin-th. With PointCount they
+    // spread over every point the axis is laid out for, so they keep their
+    // places as the data grows.
+    LineChart* XTickCount(int count);
+    // grid_columns: divide the plot into `count` columns with vertical grid
+    // lines, the first on its left edge. Default 0.
+    LineChart* GridColumns(int count);
+    // grid_dashed: default true.
+    LineChart* GridDashed(bool dashed);
+    // reference_line: a dashed line across the plot at `value`, such as a
+    // previous close. Call again for more; one outside the y axis is not
+    // drawn.
+    LineChart* ReferenceLine(double value);
+    // y_padding: the space kept clear above the highest value and below the
+    // lowest. Default 10 above, none below.
+    LineChart* YPadding(float top, float bottom);
     LineChart* Linear();
     LineChart* StepAfter();
     LineChart* Dot(bool v = true);
@@ -267,6 +349,12 @@ struct BarChart {
     // many ticks they are placed on.
     bool valueAxis = false;
     int valueTickCount = 5;
+    AxisLabelPlacement valueAxisLabelPlacement = AxisLabelPlacement::Outside;
+    ChartTickFormatFn valueTickFormat = nullptr;
+    void* valueTickFormatUser = nullptr;
+    int bandCount = 0;
+    int bandTickCount = -1;
+    bool gridDashed = true;
     // fill(|d, ..|): one colour per bar. The array is the caller's and has to
     // outlive the frame.
     const Rgba* fills = nullptr;
@@ -304,6 +392,22 @@ struct BarChart {
     // the band categories, this counts the ticks themselves. Values below 2
     // are raised to 2. Default 5.
     BarChart* ValueTickCount(int count);
+    // value_axis_label_placement: in a gutter beside the bars (Outside, the
+    // default), or inside the plot beside their grid lines, which keeps the
+    // bars' room.
+    BarChart* ValueAxisLabelPlacement(AxisLabelPlacement placement);
+    // value_tick_format: the text of each value-axis tick label from its
+    // value. Default is whole numbers bare and the rest to one decimal.
+    BarChart* ValueTickFormat(ChartTickFormatFn format, void* user = nullptr);
+    // band_count: lay the band axis out for `count` bands instead of the
+    // data's own length; the data takes the leading ones, so each bar keeps
+    // its width and place as the data grows.
+    BarChart* BandCount(int count);
+    // band_tick_count: label `count` of the bands, spread evenly from the
+    // first to the last, instead of every TickMargin-th.
+    BarChart* BandTickCount(int count);
+    // grid_dashed: default true.
+    BarChart* GridDashed(bool dashed);
     // Set the gap between neighbouring bars, as a share of each band.
     // Default 0.4.
     BarChart* PaddingInner(float v);

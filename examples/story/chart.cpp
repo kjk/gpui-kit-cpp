@@ -82,6 +82,23 @@ static const char* Money(Ctx* cx, float value) {
     return StoryFmt(cx, "$%s", Compact(cx, value)).s;
 }
 
+// money, as a chart's tick format: compact with a dollar sign, the sign in
+// front of it.
+static Str MoneyTick(Arena* a, double value, void*) {
+    double mag = value < 0 ? -value : value;
+    Str sign = value < 0 ? StrL("-") : StrL("");
+    if (mag >= 1000000.0) {
+        return StrDup(a, fmt("%s$%.1fM", sign, mag / 1000000.0));
+    }
+    if (mag >= 10000.0) {
+        return StrDup(a, fmt("%s$%.0fK", sign, mag / 1000.0));
+    }
+    if (mag >= 1000.0) {
+        return StrDup(a, fmt("%s$%.1fK", sign, mag / 1000.0));
+    }
+    return StrDup(a, fmt("%s$%.0f", sign, mag));
+}
+
 static const char* TrendLine(Ctx* cx, float percent, const char* period) {
     const char* dir = percent >= 0 ? "up" : "down";
     float mag = percent < 0 ? -percent : percent;
@@ -474,6 +491,11 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     ->Tooltip(StrL("Revenue"))
                     ->Radius(6)
                     ->TickMargin(1)
+                    ->ValueAxis()
+                    ->ValueTickCount(3)
+                    ->ValueTickFormat(&MoneyTick)
+                    ->GridDashed(false)
+                    ->BandTickCount(6)
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill),
@@ -657,11 +679,15 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             };
             const GradCard& gc = kGrads[index - 18];
             {
+                component::BarChart* bar = component::BarChart::New(
+                    cx, kMonthlyDesktop, kMonthlyDeviceCount);
+                // Rust's Downloads card labels four of its bands.
+                if (index == 18) {
+                    bar->BandTickCount(4);
+                }
                 return ChartCard(
                     cx, gc.title,
-                    component::BarChart::New(cx, kMonthlyDesktop,
-                                             kMonthlyDeviceCount)
-                        ->Labels(kMonthlyMonth)
+                    bar->Labels(kMonthlyMonth)
                         ->TickMargin(1)
                         ->Alignment(gc.align)
                         ->LabelValues()
@@ -696,6 +722,9 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  ->Labels(kMonthlyMonth)
                                  ->Tooltip(StrL("Desktop"))
                                  ->TickMargin(1)
+                                 ->YAxis()
+                                 ->YTickFormat(&MoneyTick)
+                                 ->XTickCount(4)
                                  ->IntoEl()
                                  ->W(kFill)
                                  ->H(kFill),
@@ -746,8 +775,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
 
         case 28:
         case 29:
-        case 30:
-        case 31: {
+        case 30: {
             // The four single-series area charts, which differ only in how the
             // run of points is joined and what is under it.
             struct AreaCard {
@@ -756,9 +784,10 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 bool gradient;
             };
             static const AreaCard kAreas[] = {
+                // Rust's Storage Used step-after card is gone (upstream
+                // 8ed5dd50).
                 {"Area Chart", 0, false},
                 {"Area Chart - Linear", 1, false},
-                {"Area Chart - Step After", 2, false},
                 {"Area Chart - Linear Gradient", 0, true},
             };
             const AreaCard& ac = kAreas[index - 28];
@@ -785,42 +814,41 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             }
         }
 
-        case 32: {
-            // Closing Price: the first 26 of the 40 sessions, on a y axis
-            // pinned to their own range and an x axis laid out for all 40,
-            // so the room for the sessions still to come stays empty.
-            const int kSessions = 26;
-            float low = kStockClose[0];
-            float high = kStockClose[0];
-            for (int i = 1; i < kSessions; i++) {
-                low = std::min(low, kStockClose[i]);
-                high = std::max(high, kStockClose[i]);
+        case 31: {
+            // Intraday Price: the first four fifths of a trading day's minute
+            // prices, on an axis laid out for the whole session and a y axis
+            // pinned a quarter of the range below the low.
+            const int kMinutes = kIntradayCount * 4 / 5;
+            float low = kIntradayPrice[0];
+            float high = kIntradayPrice[0];
+            for (int i = 1; i < kMinutes; i++) {
+                low = std::min(low, kIntradayPrice[i]);
+                high = std::max(high, kIntradayPrice[i]);
             }
-            float last = kStockClose[kSessions - 1];
+            float open = kIntradayPrice[0];
+            float last = kIntradayPrice[kMinutes - 1];
             return ChartCard(
-                cx, "Closing Price", "Jun - Jul, in progress",
-                component::AreaChart::New(cx, kStockClose, kSessions)
-                    ->Labels(kStockDate)
+                cx, "Intraday Price", "Today, in progress",
+                component::AreaChart::New(cx, kIntradayPrice, kMinutes)
+                    ->Labels(kIntradayTime)
                     ->Stroke(th.chart2)
                     ->Fill(RgbaOpacity(th.chart2, 0.45f),
                            RgbaOpacity(th.chart2, 0.f))
                     ->Linear()
-                    ->YDomain(low, high)
-                    ->PointCount(kStockPriceCount)
-                    ->TickMargin(5)
-                    ->Tooltip(StrL("Close"))
+                    ->YDomain(low - (high - low) / 4.f, high)
+                    ->PointCount(kIntradayCount)
+                    ->XTickCount(4)
+                    ->Tooltip(StrL("Price"))
                     ->Id(StrL("area-chart-in-progress"))
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill),
                 false,
-                StoryFmt(cx, "$%.2f at the last close, within $%.2f - $%.2f",
-                         (double)last, (double)low, (double)high)
-                    .s,
-                "A pinned y axis, and room for the sessions still to come");
+                TrendLine(cx, ChangePercent(last, open), "since the open"),
+                "A pinned y axis, and room for the minutes still to come");
         }
 
-        case 33: {
+        case 32: {
             // The candlesticks, off stock-prices.json. Forty sessions do not
             // fit forty labels, so every card thins them.
             return ChartCard(cx, "Candlestick Chart",
@@ -837,9 +865,9 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                              false);
         }
 
+        case 33:
         case 34:
-        case 35:
-        case 36: {
+        case 35: {
             // body_width_ratio: half a band, then the whole of it.
             struct CandleCard {
                 const char* title;
@@ -851,7 +879,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 {"Candlestick Chart - Wide", 1.0f, 5},
                 {"Candlestick Chart - Tick Margin", 0.8f, 10},
             };
-            const CandleCard& cc = kCandles[index - 34];
+            const CandleCard& cc = kCandles[index - 33];
             {
                 return ChartCard(cx, cc.title,
                                  component::CandlestickChart::New(
@@ -869,8 +897,8 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             }
         }
 
-        case 37:
-        case 38: {
+        case 36:
+        case 37: {
             // The two TSLA income statements, each a sankey of its own. A sqrt
             // value scale keeps the revenue flow from dwarfing the small profit
             // and expense ones, and the nodes carry the fixture's own colours.
@@ -878,7 +906,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                                                kTsla1Nodes};
             const TslaLink* kTslaLinks[kTslaStatementCount] = {kTsla0Links,
                                                                kTsla1Links};
-            int st = index - 37;
+            int st = index - 36;
             {
                 component::SankeyChart* sk =
                     component::SankeyChart::New(cx)
@@ -948,8 +976,8 @@ El* ChartStory::Render(ChartStory* self, Ctx* cx) {
         int count;
     };
     // Eight fixed fixture sections; separators are rows in the same list.
-    const int sectionCounts[] = {1, 4, 4, 15, 4, 5, 4, kTslaStatementCount};
-    constexpr int kMaxRows = 37 + kTslaStatementCount + 6;
+    const int sectionCounts[] = {1, 4, 4, 15, 4, 4, 4, kTslaStatementCount};
+    constexpr int kMaxRows = 36 + kTslaStatementCount + 6;
     Row rows[kMaxRows];
     float sizes[kMaxRows];
     int count = 0;

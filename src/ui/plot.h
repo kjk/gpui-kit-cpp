@@ -126,6 +126,10 @@ struct ScaleBand {
     // The distance between the starts of two adjacent bands: the band width
     // plus the inner padding. The whole range for a single band.
     float Step() const;
+    // band_count: lay the range out for `count` bands, the domain taking the
+    // leading ones in order and the rest staying empty. A count below the
+    // domain's length has no effect.
+    ScaleBand BandCount(int count) const;
     // The range position of the band at `index`, or false when it is not one
     // of them. A one-band domain sits in the middle of the range.
     bool Tick(int index, float* out) const;
@@ -177,6 +181,7 @@ using ::gpui::component::ScaleOrdinal;
 using ::gpui::component::ScalePoint;
 
 using StrokeStyle = ChartStroke;
+using ::gpui::AxisLabelPlacement;
 
 inline Point OriginPoint(float x, float y, Point origin) {
     return Point{x + origin.x, y + origin.y};
@@ -636,15 +641,63 @@ struct Tooltip {
 int ChartAxisPointCount(int pointCount, int dataLen);
 
 // chart/mod.rs point_range: the x range a point scale spreads `dataLen`
-// points over, when the axis is laid out for `pointCount` of them. The data
-// takes the leading points, so each keeps its place as the data grows.
-void ChartPointRange(float width, int dataLen, int pointCount, float out[2]);
+// points over, when the axis is laid out for `pointCount` of them across
+// `width` from `start`. The data takes the leading points, so each keeps its
+// place as the data grows.
+void ChartPointRange(float start, float width, int dataLen, int pointCount,
+                     float out[2]);
 
-// chart/mod.rs point_value_scale: the y scale of a point chart, from `height`
-// up to 10 DIPs below the top. A pinned domain (y_domain) maps its ends onto
-// that range; otherwise the scale fits every series from zero. Rust takes the
-// values as an iterator; here they are the ChartSeries the chart built.
-ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height);
+// chart/mod.rs ValueExtent: the value range a y scale spans and the pixel
+// range it maps onto, in double so a tick label can read the value at any
+// height of the plot.
+struct ChartValueExtent {
+    double lo = 0;
+    double hi = 0;
+    float bottom = 0;
+    float top = 0;
+
+    // The value the scale puts at pixel `y`.
+    double ValueAt(float y) const;
+    // The pixel the scale puts `value` at; false for a scale with no extent.
+    bool PositionOf(double value, float* out) const;
+};
+
+// chart/mod.rs point_value_scale: the y scale of a point chart, from
+// `height` less the bottom y_padding up to the top one. A pinned domain
+// (y_domain) maps its ends onto that range; otherwise the scale fits every
+// series from zero. Rust takes the values as an iterator; here they are the
+// ChartSeries the chart built. The extent is written when asked for.
+ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height,
+                                 ChartValueExtent* extent = nullptr);
+
+// VALUE_AXIS_GAP: the least space kept beside the plot for value-axis tick
+// labels drawn outside it; wider labels widen it (value_axis_gap).
+const float kChartValueAxisGap = 32;
+
+// format_tick: whole numbers bare, the rest to one decimal. In `a`.
+Str ChartFormatTick(Arena* a, double value);
+// The chart's own format for a tick value: its tick format, or format_tick.
+Str ChartTickLabel(Arena* a, const ChartSeries& chart, double value);
+
+// labeled_items: which of `len` items carry a category label — `labelCount`
+// of them spread evenly from the first to the last, or every `tickMargin`-th
+// when it is -1 (None). Writes `len` flags.
+void ChartLabeledItems(int len, int labelCount, int tickMargin, bool* out);
+
+// PointAxes::tick_positions: `count` (at least 2) y ticks evenly spaced in
+// pixels from the top edge (0) to the baseline (`height`), both included.
+// Writes at most `cap`; returns how many there are.
+int ChartTickPositions(int count, float height, float* out, int cap);
+
+// BarChart::value_tick_labels: the value-axis tick label text, from the
+// domain maximum at the far end down to the minimum at the baseline.
+int ChartBarValueTickLabels(Arena* a, const ChartSeries& chart, Str* out,
+                            int cap);
+
+// BarChart::value_axis_gap: the gutter the value-axis labels take along the
+// band axis — none unless they are shown outside the plot, a line of text
+// below horizontal bars, and `measured` (value_axis_gap) beside vertical ones.
+float ChartBarValueAxisGap(const ChartSeries& chart, float measured);
 
 // build_point_x_labels' alignment: a label on the first point is
 // left-aligned, one on the axis's last point right-aligned, and the rest —

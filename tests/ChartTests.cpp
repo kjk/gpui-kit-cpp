@@ -323,13 +323,13 @@ static void AChartTurnedOffHasNoIdToKeyAnythingOn() {
 static void PointCountFillsTheLeadingPart() {
     const float xs[3] = {0, 1, 2};
     float range[2] = {};
-    ChartPointRange(100.f, 3, ChartAxisPointCount(5, 3), range);
+    ChartPointRange(0.f, 100.f, 3, ChartAxisPointCount(5, 3), range);
     ScalePoint x = ScalePoint::New(xs, 3, range, 2);
     float at = -1;
     utassert(x.Tick(0, &at) && at == 0.f);
     utassert(x.Tick(2, &at) && at == 50.f);
 
-    ChartPointRange(100.f, 3, ChartAxisPointCount(2, 3), range);
+    ChartPointRange(0.f, 100.f, 3, ChartAxisPointCount(2, 3), range);
     x = ScalePoint::New(xs, 3, range, 2);
     utassert(x.Tick(2, &at) && at == 100.f);
 }
@@ -403,6 +403,129 @@ static void MinLengthExtendsAwayFromZero() {
     utassert(BarExtendToMinLength(40, 100, false, BarAlign::Bottom, 2) == 40);
 }
 
+// chart/mod.rs: the_default_ticks_keep_the_grid_in_place. Five ticks put the
+// grid where it always was: four lines splitting the plot, the baseline left
+// to the x axis.
+static void TheDefaultTicksKeepTheGridInPlace() {
+    float rows[8] = {};
+    int n = ChartTickPositions(ChartSeries{}.yTickCount, 100.f, rows, 8);
+    utassert(n == 5);
+    utassert(rows[0] == 0.f && rows[1] == 25.f && rows[2] == 50.f &&
+             rows[3] == 75.f);
+}
+
+static int Shown(int len, int count, int margin, int* out) {
+    bool labeled[16] = {};
+    ChartLabeledItems(len, count, margin, labeled);
+    int n = 0;
+    for (int i = 0; i < len; i++) {
+        if (labeled[i]) {
+            out[n++] = i;
+        }
+    }
+    return n;
+}
+
+// chart/mod.rs: a_label_count_spreads_labels_from_the_first_item_to_the_last.
+static void ALabelCountSpreadsLabelsFromTheFirstItemToTheLast() {
+    int ix[16] = {};
+    utassert(Shown(11, 3, 1, ix) == 3 && ix[0] == 0 && ix[1] == 5 &&
+             ix[2] == 10);
+    utassert(Shown(10, 2, 1, ix) == 2 && ix[0] == 0 && ix[1] == 9);
+    utassert(Shown(3, 5, 1, ix) == 3 && ix[0] == 0 && ix[2] == 2);
+    utassert(Shown(4, 1, 1, ix) == 1 && ix[0] == 0);
+    utassert(Shown(4, 0, 1, ix) == 0);
+    // Without a count the stride still decides.
+    utassert(Shown(4, -1, 2, ix) == 2 && ix[0] == 1 && ix[1] == 3);
+}
+
+// chart/mod.rs: a_tick_reads_the_value_at_its_height. The top tick reads past
+// the highest value by the padding above it.
+static void ATickReadsTheValueAtItsHeight() {
+    float ys[2] = {10, 20};
+    ChartSeries fitted = {};
+    fitted.ys = ys;
+    fitted.n = 2;
+    ChartValueExtent extent = {};
+    ChartPointValueScale(fitted, 110.f, &extent);
+    utassert(extent.ValueAt(110.f) == 0.0);
+    utassert(extent.ValueAt(10.f) == 20.0);
+    utassert(fabs(extent.ValueAt(0.f) - 22.0) < 1e-4);
+    float at = 0;
+    utassert(extent.PositionOf(20.0, &at) && at == 10.f);
+
+    float zero[1] = {0};
+    ChartSeries pinned = {};
+    pinned.ys = zero;
+    pinned.n = 1;
+    pinned.pinnedDomain = true;
+    pinned.domainMin = 100;
+    pinned.domainMax = 200;
+    pinned.yPaddingTop = 0;
+    ChartPointValueScale(pinned, 100.f, &extent);
+    utassert(extent.ValueAt(0.f) == 200.0);
+    utassert(extent.PositionOf(150.0, &at) && at == 50.f);
+}
+
+static Str DollarTick(Arena* a, double value, void*) {
+    return StrDup(a, fmt("$%.0f", value));
+}
+
+// bar_chart.rs: value_tick_labels_walk_the_domain_from_the_far_end.
+static void ValueTickLabelsWalkTheDomainFromTheFarEnd() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    float ys[2] = {10, 20};
+    El* bar = BarChart::New(&cx, ys, 2)->ValueTickCount(3)->IntoEl();
+    Str labels[4] = {};
+    utassert(ChartBarValueTickLabels(a, *bar->Chart(), labels, 4) == 3);
+    utassert(base::StrEq(labels[0], StrL("20")) &&
+             base::StrEq(labels[1], StrL("10")) &&
+             base::StrEq(labels[2], StrL("0")));
+    El* money = BarChart::New(&cx, ys, 2)
+                    ->ValueTickCount(3)
+                    ->ValueTickFormat(&DollarTick)
+                    ->IntoEl();
+    ChartBarValueTickLabels(a, *money->Chart(), labels, 4);
+    utassert(base::StrEq(labels[0], StrL("$20")) &&
+             base::StrEq(labels[2], StrL("$0")));
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
+// bar_chart.rs: a_band_count_keeps_each_bar_in_its_band, through the band
+// scale the bars are laid out on, and the value-axis gutter: labels inside
+// the plot leave the bars their full width.
+static void ABandCountKeepsEachBarInItsBand() {
+    const float range[2] = {0.f, 40.f};
+    ScaleBand wide = ScaleBand::New(2, range, 2).BandCount(2);
+    ScaleBand narrow = ScaleBand::New(2, range, 2).BandCount(4);
+    wide.paddingInner = narrow.paddingInner = 0.4f;
+    wide.paddingOuter = narrow.paddingOuter = 0.2f;
+    utassertnear(narrow.BandWidth() * 2.f, wide.BandWidth());
+    float t = 0;
+    utassert(narrow.Tick(1, &t) && t < 20.f);
+    ScaleBand grown = ScaleBand::New(3, range, 2).BandCount(4);
+    grown.paddingInner = 0.4f;
+    grown.paddingOuter = 0.2f;
+    float g = 0;
+    utassert(grown.Tick(1, &g) && g == t);
+    utassertnear(grown.BandWidth(), narrow.BandWidth());
+
+    ChartSeries outside = {};
+    outside.kind = ChartKind::Bar;
+    outside.valueAxis = true;
+    ChartSeries inside = outside;
+    inside.axisLabelPlacement = AxisLabelPlacement::Inside;
+    utassert(ChartBarValueAxisGap(outside, kChartValueAxisGap) ==
+             kChartValueAxisGap);
+    utassert(ChartBarValueAxisGap(inside, kChartValueAxisGap) == 0.f);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -419,4 +542,9 @@ void TestChart() {
     OnlyTheLastPointRightAlignsItsLabel();
     ValueTickPositionsCountTicks();
     MinLengthExtendsAwayFromZero();
+    TheDefaultTicksKeepTheGridInPlace();
+    ALabelCountSpreadsLabelsFromTheFirstItemToTheLast();
+    ATickReadsTheValueAtItsHeight();
+    ValueTickLabelsWalkTheDomainFromTheFarEnd();
+    ABandCountKeepsEachBarInItsBand();
 }

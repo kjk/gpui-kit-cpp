@@ -116,6 +116,45 @@ AreaChart* AreaChart::PointCount(int count) {
     pointCount = count;
     return this;
 }
+AreaChart* AreaChart::YAxis(bool v) {
+    axes.yAxis = v;
+    return this;
+}
+AreaChart* AreaChart::YAxisLabelPlacement(AxisLabelPlacement placement) {
+    axes.placement = placement;
+    return this;
+}
+AreaChart* AreaChart::YTickCount(int count) {
+    axes.yTickCount = count > 2 ? count : 2;
+    return this;
+}
+AreaChart* AreaChart::YTickFormat(ChartTickFormatFn format, void* user) {
+    axes.tickFormat = format;
+    axes.tickFormatUser = user;
+    return this;
+}
+AreaChart* AreaChart::XTickCount(int count) {
+    axes.xTickCount = count < 0 ? 0 : count;
+    return this;
+}
+AreaChart* AreaChart::GridColumns(int count) {
+    axes.gridColumns = count < 0 ? 0 : count;
+    return this;
+}
+AreaChart* AreaChart::GridDashed(bool dashed) {
+    axes.gridDashed = dashed;
+    return this;
+}
+AreaChart* AreaChart::ReferenceLine(double value) {
+    axes.referenceLines.Append(a, value);
+    return this;
+}
+AreaChart* AreaChart::YPadding(float top, float bottom) {
+    axes.yPaddingTop = top;
+    axes.yPaddingBottom = bottom;
+    return this;
+}
+
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
@@ -126,6 +165,7 @@ El* AreaChart::IntoEl() {
     chart->domainMin = yDomainMin;
     chart->domainMax = yDomainMax;
     chart->pointCount = pointCount;
+    axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
@@ -172,6 +212,59 @@ LineChart* LineChart::PointCount(int count) {
     pointCount = count;
     return this;
 }
+LineChart* LineChart::YAxis(bool v) {
+    axes.yAxis = v;
+    return this;
+}
+LineChart* LineChart::YAxisLabelPlacement(AxisLabelPlacement placement) {
+    axes.placement = placement;
+    return this;
+}
+LineChart* LineChart::YTickCount(int count) {
+    axes.yTickCount = count > 2 ? count : 2;
+    return this;
+}
+LineChart* LineChart::YTickFormat(ChartTickFormatFn format, void* user) {
+    axes.tickFormat = format;
+    axes.tickFormatUser = user;
+    return this;
+}
+LineChart* LineChart::XTickCount(int count) {
+    axes.xTickCount = count < 0 ? 0 : count;
+    return this;
+}
+LineChart* LineChart::GridColumns(int count) {
+    axes.gridColumns = count < 0 ? 0 : count;
+    return this;
+}
+LineChart* LineChart::GridDashed(bool dashed) {
+    axes.gridDashed = dashed;
+    return this;
+}
+LineChart* LineChart::ReferenceLine(double value) {
+    axes.referenceLines.Append(a, value);
+    return this;
+}
+LineChart* LineChart::YPadding(float top, float bottom) {
+    axes.yPaddingTop = top;
+    axes.yPaddingBottom = bottom;
+    return this;
+}
+
+void PointAxes::ApplyTo(Arena* arena, ChartSeries* chart) const {
+    chart->yAxis = yAxis;
+    chart->axisLabelPlacement = placement;
+    chart->yTickCount = yTickCount;
+    chart->tickFormat = tickFormat;
+    chart->tickFormatUser = tickFormatUser;
+    chart->xTickCount = xTickCount;
+    chart->gridColumns = gridColumns;
+    chart->gridDashed = gridDashed;
+    chart->yPaddingTop = yPaddingTop;
+    chart->yPaddingBottom = yPaddingBottom;
+    chart->referenceLines = referenceLines.Flatten(arena);
+    chart->nReferenceLines = referenceLines.len;
+}
 LineChart* LineChart::Tooltip(Str name) {
     tooltipName = name;
     return this;
@@ -204,6 +297,7 @@ El* LineChart::IntoEl() {
     chart->domainMin = yDomainMin;
     chart->domainMax = yDomainMax;
     chart->pointCount = pointCount;
+    axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
@@ -315,6 +409,12 @@ El* BarChart::IntoEl() {
     chart->barLabels = labelValues;
     chart->valueAxis = valueAxis;
     chart->valueTickCount = valueTickCount;
+    chart->axisLabelPlacement = valueAxisLabelPlacement;
+    chart->tickFormat = valueTickFormat;
+    chart->tickFormatUser = valueTickFormatUser;
+    chart->bandCount = bandCount;
+    chart->xTickCount = bandTickCount;
+    chart->gridDashed = gridDashed;
     chart->barFills = fills;
     chart->barGradient = gradient;
     chart->barGradientPerBar = gradientPerBar;
@@ -338,6 +438,32 @@ El* BarChart::IntoEl() {
 
 BarChart* BarChart::ValueAxis(bool on) {
     valueAxis = on;
+    return this;
+}
+
+BarChart* BarChart::ValueAxisLabelPlacement(AxisLabelPlacement placement) {
+    valueAxisLabelPlacement = placement;
+    return this;
+}
+
+BarChart* BarChart::ValueTickFormat(ChartTickFormatFn format, void* user) {
+    valueTickFormat = format;
+    valueTickFormatUser = user;
+    return this;
+}
+
+BarChart* BarChart::BandCount(int count) {
+    bandCount = count < 0 ? 0 : count;
+    return this;
+}
+
+BarChart* BarChart::BandTickCount(int count) {
+    bandTickCount = count < 0 ? 0 : count;
+    return this;
+}
+
+BarChart* BarChart::GridDashed(bool dashed) {
+    gridDashed = dashed;
     return this;
 }
 

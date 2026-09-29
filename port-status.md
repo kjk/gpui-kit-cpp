@@ -15,12 +15,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f97b9eb3928f8f20d92481c2e51e97b95a215d24` (2026-09-24,
-date_picker: Support editing the time of day with `TimeField` (#3206)).
-DatePicker edits the time of day with a new TimeField (Base TimeFieldState and
-its keyboard model, a styled TimeField), on a 24- or 12-hour clock at minute
-or second precision; the value becomes a DateTime and Enter now also closes an
-open picker. The current update target is
+Processed through `8ed5dd506f011974b78fac32099223ebcfed7e68` (2026-09-24,
+chart: Label the value axis, lay out the grid and mark reference lines in
+line, area and bar charts (#3220)). Line, area and bar charts gain one axis
+vocabulary: y_axis / value-axis tick labels in a measured gutter or inside the
+plot with a tick format, y_tick_count, grid_columns, grid_dashed,
+reference_line, y_padding, x_tick_count / band_tick_count spread from the
+first item to the last, and band_count laying bars out for a fixed number of
+bands. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

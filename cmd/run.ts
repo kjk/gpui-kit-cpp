@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f97b9eb3928f8f20d92481c2e51e97b95a215d24",
+  sha: "8ed5dd506f011974b78fac32099223ebcfed7e68",
   date: "2026-09-24",
-  subject: "date_picker: Support editing the time of day with `TimeField` (#3206)",
+  subject: "chart: Label the value axis, lay out the grid and mark reference lines in line, area and bar charts (#3220)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

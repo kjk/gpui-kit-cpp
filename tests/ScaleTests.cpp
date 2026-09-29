@@ -324,6 +324,32 @@ static void ScaleBandLeastIndex() {
     utassert(b.LeastIndex(400.f) == 2);
 }
 
+// test_scale_band_count: a domain laid out for more bands takes the leading
+// ones, each placed as if all were full.
+static void ScaleBandCount() {
+    const float range[2] = {0.f, 100.f};
+    auto scale = [&](int domain) {
+        ScaleBand b = ScaleBand::New(domain, range, 2).BandCount(4);
+        b.paddingInner = 0.4f;
+        b.paddingOuter = 0.2f;
+        return b;
+    };
+    ScaleBand shortBand = scale(2);
+    ScaleBand full = scale(4);
+    float a = 0, b = 0;
+    utassert(shortBand.Tick(1, &a) && full.Tick(1, &b) && a == b);
+    utassertnear(shortBand.BandWidth(), full.BandWidth());
+    utassertnear(shortBand.Step(), full.Step());
+    // An empty band resolves past the domain rather than to its last value.
+    utassert(full.Tick(3, &b) && shortBand.LeastIndex(b) == 3);
+    // A single value sits in the first band instead of the center.
+    utassert(scale(1).Tick(0, &a) && full.Tick(0, &b) && a == b);
+    // A count below the domain's length has no effect.
+    const float wide[2] = {0.f, 90.f};
+    utassert(ScaleBand::New(3, wide, 2).BandCount(2).Tick(2, &a) &&
+             TestNear(a, 60.f));
+}
+
 static void ScaleBandStep() {
     const float range[2] = {0.f, 90.f};
     ScaleBand b = ScaleBand::New(3, range, 2);
@@ -623,6 +649,7 @@ void TestScale() {
     ScaleBandSingle();
     ScaleBandDedup();
     ScaleBandLeastIndex();
+    ScaleBandCount();
     ScaleBandStep();
 
     TestSuite("plot/tooltip");

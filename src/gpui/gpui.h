@@ -1284,6 +1284,19 @@ struct ChartSeriesExtra {
     Str name = {};
 };
 
+// plot::AxisLabelPlacement: where a chart draws the tick labels of its value
+// axis — in a gutter beside the plot, which the plot shrinks to make room
+// for (the default), or over the plot's edge beside the grid line each label
+// reads, so the plot keeps its full size.
+enum class AxisLabelPlacement : uint8_t {
+    Outside,
+    Inside
+};
+
+// y_tick_format / value_tick_format: a caller's tick label text for a value.
+// The text lives in `a`, the frame's scratch arena.
+using ChartTickFormatFn = Str (*)(Arena* a, double value, void* user);
+
 struct ChartSeries {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
@@ -1312,6 +1325,35 @@ struct ChartSeries {
     // many points and the data fills the leading ones. 0 is the data's own
     // length; a count below it has no effect.
     int pointCount = 0;
+    // The point charts' PointAxes and BarChart's value-axis options.
+    // y_axis: tick labels at each of the yTickCount y ticks.
+    bool yAxis = false;
+    // y_axis_label_placement / value_axis_label_placement.
+    AxisLabelPlacement axisLabelPlacement = AxisLabelPlacement::Outside;
+    // y_tick_count: the y ticks, both ends included, which place the
+    // horizontal grid lines and the labels. At least 2.
+    int yTickCount = 5;
+    // y_tick_format / value_tick_format; null is whole numbers bare and the
+    // rest to one decimal.
+    ChartTickFormatFn tickFormat = nullptr;
+    void* tickFormatUser = nullptr;
+    // x_tick_count / band_tick_count: label that many items spread from the
+    // first to the last instead of every tickMargin-th. -1 is None.
+    int xTickCount = -1;
+    // grid_columns: vertical grid lines, the first on the left edge.
+    int gridColumns = 0;
+    // grid_dashed.
+    bool gridDashed = true;
+    // y_padding: the space kept above the highest value and below the
+    // lowest.
+    float yPaddingTop = 10;
+    float yPaddingBottom = 0;
+    // reference_line: dashed lines across the plot at these values.
+    const double* referenceLines = nullptr;
+    int nReferenceLines = 0;
+    // BarChart::band_count: the band axis laid out for this many bands, the
+    // data on the leading ones. 0 is the data's own length.
+    int bandCount = 0;
     // Candlestick: the other three values per point, and the two colors a
     // candle takes depending on which way it closed.
     const float* opens = nullptr;
@@ -2749,6 +2791,11 @@ El* IconEl(Arena* a, IconName name, float size);
 El* ImageEl(Arena* a, Str src, Str alt = {});
 El* ImageEl(Arena* a, ImageSource source, Str alt = {});
 El* ProgressEl(Arena* a, float value01to100, float barW, float barH);
+// The value domain a chart's y axis is scaled to: what the caller named, or
+// the extent of the data with zero in it for a bar or a radar, and the
+// extent with a little air for a candle.
+void ChartValueDomain(const ChartSeries& c, float* outMin, float* outMax);
+
 El* ChartEl(Arena* a, const float* ys, int n, Rgba stroke, Rgba fillTop,
             Rgba fillBot, int tickMargin);
 

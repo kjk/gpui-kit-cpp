@@ -209,6 +209,15 @@ ScaleBand ScaleBand::New(int domainN, const float* range, int rangeN) {
     return b;
 }
 
+ScaleBand ScaleBand::BandCount(int count) const {
+    ScaleBand out = *this;
+    if (count > out.domainLen) {
+        out.domainLen = count;
+        out.avgWidth = out.rangeDiff / (float)count;
+    }
+    return out;
+}
+
 float ScaleBand::BandWidth() const {
     float w = avgWidth * (1.f - paddingInner);
     return w < 30.f ? w : 30.f;
@@ -1848,35 +1857,147 @@ int ChartAxisPointCount(int pointCount, int dataLen) {
     return count > dataLen ? count : dataLen;
 }
 
-void ChartPointRange(float width, int dataLen, int pointCount, float out[2]) {
+void ChartPointRange(float start, float width, int dataLen, int pointCount,
+                     float out[2]) {
     float end = width;
     if (pointCount > 1) {
         int before = dataLen > 1 ? dataLen - 1 : 0;
         end = width * (float)before / (float)(pointCount - 1);
     }
-    out[0] = 0;
-    out[1] = end;
+    out[0] = start;
+    out[1] = start + end;
 }
 
-ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height) {
-    const float range[2] = {height, 10.f};
-    if (chart.pinnedDomain) {
-        const float domain[2] = {chart.domainMin, chart.domainMax};
-        return ScaleLinear::New(domain, 2, range, 2);
+double ChartValueExtent::ValueAt(float y) const {
+    if (bottom == top) {
+        return lo;
     }
-    // Every series from zero: the extent of the values with a zero chained
-    // on, which is all a ScaleLinear keeps of its domain.
+    return lo + (hi - lo) * (double)((bottom - y) / (bottom - top));
+}
+
+bool ChartValueExtent::PositionOf(double value, float* out) const {
+    if (hi == lo) {
+        return false;
+    }
+    *out = bottom - (float)((value - lo) / (hi - lo)) * (bottom - top);
+    return true;
+}
+
+ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height,
+                                 ChartValueExtent* extent) {
+    const float range[2] = {height - chart.yPaddingBottom, chart.yPaddingTop};
     float lo = 0;
     float hi = 0;
-    for (int k = -1; k < chart.nMore; k++) {
-        const float* ys = k < 0 ? chart.ys : chart.more[k].ys;
-        for (int i = 0; ys && i < chart.n; i++) {
-            lo = ys[i] < lo ? ys[i] : lo;
-            hi = ys[i] > hi ? ys[i] : hi;
+    if (chart.pinnedDomain) {
+        lo = chart.domainMin < chart.domainMax ? chart.domainMin
+                                               : chart.domainMax;
+        hi = chart.domainMin < chart.domainMax ? chart.domainMax
+                                               : chart.domainMin;
+    } else {
+        // Every series from zero: the extent of the values with a zero
+        // chained on, which is all a ScaleLinear keeps of its domain.
+        for (int k = -1; k < chart.nMore; k++) {
+            const float* ys = k < 0 ? chart.ys : chart.more[k].ys;
+            for (int i = 0; ys && i < chart.n; i++) {
+                lo = ys[i] < lo ? ys[i] : lo;
+                hi = ys[i] > hi ? ys[i] : hi;
+            }
         }
+    }
+    if (extent) {
+        extent->lo = lo;
+        extent->hi = hi;
+        extent->bottom = range[0];
+        extent->top = range[1];
     }
     const float domain[2] = {lo, hi};
     return ScaleLinear::New(domain, 2, range, 2);
+}
+
+Str ChartFormatTick(Arena* a, double value) {
+    double rounded = (double)llround(value);
+    double d = value - rounded;
+    if ((d < 0 ? -d : d) < 0.001) {
+        return StrDup(a, fmt("%.0f", value));
+    }
+    return StrDup(a, fmt("%.1f", value));
+}
+
+Str ChartTickLabel(Arena* a, const ChartSeries& chart, double value) {
+    if (chart.tickFormat) {
+        return chart.tickFormat(a, value, chart.tickFormatUser);
+    }
+    return ChartFormatTick(a, value);
+}
+
+void ChartLabeledItems(int len, int labelCount, int tickMargin, bool* out) {
+    for (int i = 0; i < len; i++) {
+        out[i] = false;
+    }
+    if (labelCount < 0) {
+        int margin = tickMargin > 0 ? tickMargin : 1;
+        for (int i = 0; i < len; i++) {
+            out[i] = (i + 1) % margin == 0;
+        }
+        return;
+    }
+    if (labelCount == 0 || len == 0) {
+        return;
+    }
+    if (labelCount == 1) {
+        out[0] = true;
+        return;
+    }
+    if (labelCount >= len) {
+        for (int i = 0; i < len; i++) {
+            out[i] = true;
+        }
+        return;
+    }
+    for (int k = 0; k < labelCount; k++) {
+        int ix =
+            (int)lroundf((float)k * (float)(len - 1) / (float)(labelCount - 1));
+        out[ix] = true;
+    }
+}
+
+int ChartTickPositions(int count, float height, float* out, int cap) {
+    if (count < 2) {
+        count = 2;
+    }
+    int n = 0;
+    for (int i = 0; i < count && n < cap; i++) {
+        out[n++] = height * (float)i / (float)(count - 1);
+    }
+    return n;
+}
+
+int ChartBarValueTickLabels(Arena* a, const ChartSeries& chart, Str* out,
+                            int cap) {
+    // The data plus zero, as the value scale spans, from the far end down.
+    float lo = 0;
+    float hi = 0;
+    ChartValueDomain(chart, &lo, &hi);
+    int count = chart.valueTickCount > 2 ? chart.valueTickCount : 2;
+    float steps = (float)(count - 1);
+    int n = 0;
+    for (int i = 0; i < count && n < cap; i++) {
+        double value = (double)(hi - (hi - lo) * (float)i / steps);
+        out[n++] = ChartTickLabel(a, chart, value);
+    }
+    return n;
+}
+
+float ChartBarValueAxisGap(const ChartSeries& chart, float measured) {
+    if (!chart.valueAxis ||
+        chart.axisLabelPlacement != AxisLabelPlacement::Outside) {
+        return 0;
+    }
+    if (chart.barAlign == BarAlign::Left || chart.barAlign == BarAlign::Right) {
+        // Below the plot, where the gap is a line of text tall.
+        return kChartValueAxisGap;
+    }
+    return measured;
 }
 
 plot::PlotTextAlign ChartPointLabelAlign(int index, int pointCount) {

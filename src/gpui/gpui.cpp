@@ -4755,7 +4755,7 @@ void DrawTextBaseline(PaintCtx* ctx, Str s, float x, float baselineY,
 
 // The value domain a chart's y axis is scaled to: what the caller named, or
 // the extent of the data — which is what a ScaleLinear over it comes to.
-static void ChartDomain(const ChartSeries& c, float* outMin, float* outMax) {
+void ChartValueDomain(const ChartSeries& c, float* outMin, float* outMax) {
     if (c.domainMin != 0 || c.domainMax != 0) {
         *outMin = c.domainMin;
         *outMax = c.domainMax;
@@ -4798,17 +4798,6 @@ static void ChartDomain(const ChartSeries& c, float* outMin, float* outMax) {
     }
     *outMin = lo > 0 ? 0 : lo;
     *outMax = hi;
-}
-
-// A value-axis tick label: whole numbers plain, anything else to one place,
-// which is what a chart's own labels do upstream.
-static Str ChartValueLabel(float v) {
-    float rounded = (float)lroundf(v);
-    float d = v - rounded;
-    if ((d < 0 ? -d : d) < 0.05f) {
-        return fmt("%d", (int)rounded);
-    }
-    return fmt("%.1f", (double)v);
 }
 
 // StrokeStyle, as the run of segments after the opening move_to. Natural is
@@ -5093,22 +5082,70 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         return;
     }
     const ChartSeries& c = *chart;
-    // VALUE_AXIS_GAP: what the value-axis tick labels take out of the band
-    // axis — left of vertical bars, and below horizontal ones, where they sit
-    // past the end of the band axis and so need none of it. Like the axis gap
-    // above it this is a fixed budget rather than a measured one, because the
-    // same scale is rebuilt while hit-testing, where no text can be shaped.
-    const float kValueAxisGap = 32.f;
-    bool valueAxis = c.kind == ChartKind::Bar && c.valueAxis;
-    bool valueAxisSide = valueAxis && c.barAlign != BarAlign::Left &&
-                         c.barAlign != BarAlign::Right;
-    if (valueAxisSide) {
-        x += kValueAxisGap;
-        w -= kValueAxisGap;
+    Arena* scratch = GetTempArena();
+    // The box before any value-axis gutter comes off it: the labels drawn
+    // outside the plot go in the part of it the plot gives up.
+    float boxX = x;
+    bool pointChart = c.kind == ChartKind::Area || c.kind == ChartKind::Line;
+    // value_axis_gap: the gutter value-axis labels drawn outside the plot
+    // need — the widest label and the gap before the plot, and never less
+    // than VALUE_AXIS_GAP. Rust measures it in prepaint so hit-testing and
+    // paint share it; both happen here, so it is measured here.
+    auto measuredGap = [&](const Str* labels, int count) {
+        float gap = component::kChartValueAxisGap;
+        for (int i = 0; i < count; i++) {
+            float lw = MeasureText(ctx, labels[i], 10, 0, false, 0, 0).w + 4.f;
+            gap = lw > gap ? lw : gap;
+        }
+        return gap;
+    };
+    // PointAxes: the y ticks, and the extent their labels and the reference
+    // lines read values off.
+    component::ChartValueExtent pointExtent = {};
+    if (pointChart) {
+        component::ChartPointValueScale(c, plotH, &pointExtent);
+    }
+    float yTicks[64];
+    int nYTicks =
+        component::ChartTickPositions(c.yTickCount, plotH, yTicks, 64);
+    Str yLabels[64];
+    bool yLabelsOn = pointChart && c.yAxis;
+    for (int i = 0; yLabelsOn && i < nYTicks; i++) {
+        yLabels[i] = component::ChartTickLabel(scratch, c,
+                                               pointExtent.ValueAt(yTicks[i]));
+    }
+    // plot_left: a point chart's plot starts past the gutter its y labels
+    // take outside it.
+    float yLabelGap = 0;
+    if (yLabelsOn && c.axisLabelPlacement == AxisLabelPlacement::Outside) {
+        yLabelGap = measuredGap(yLabels, nYTicks);
+        x += yLabelGap;
+        w -= yLabelGap;
         if (w < 8) {
             return;
         }
     }
+    bool valueAxis = c.kind == ChartKind::Bar && c.valueAxis;
+    bool valueAxisSide = valueAxis && c.barAlign != BarAlign::Left &&
+                         c.barAlign != BarAlign::Right;
+    Str valueLabels[64];
+    int nValueLabels = 0;
+    if (valueAxis) {
+        nValueLabels =
+            component::ChartBarValueTickLabels(scratch, c, valueLabels, 64);
+    }
+    float valueGap = 0;
+    if (valueAxisSide) {
+        valueGap = component::ChartBarValueAxisGap(
+            c, measuredGap(valueLabels, nValueLabels));
+        x += valueGap;
+        w -= valueGap;
+        if (w < 8) {
+            return;
+        }
+    }
+    bool valueLabelsInside =
+        valueAxis && c.axisLabelPlacement == AxisLabelPlacement::Inside;
     int n = c.n;
     const float* ys = c.ys;
 
@@ -5120,7 +5157,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         }
         float lo = 0;
         float hi = 0;
-        ChartDomain(c, &lo, &hi);
+        ChartValueDomain(c, &lo, &hi);
         float cx = x + w * 0.5f;
         float cy = y + h * 0.5f;
         // resolve_outer_radius: two fifths of the box's height, and the
@@ -5235,52 +5272,80 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     bool barRow = c.kind == ChartKind::Bar && (c.barAlign == BarAlign::Left ||
                                                c.barAlign == BarAlign::Right);
 
+    // The value-axis labels a bar chart draws, at the fractions of the plot
+    // its ticks sit at. Inside the plot they go on after the bars, so no bar
+    // covers them.
+    const float kGridDash[2] = {4.f, 2.f};
+    const float* gridDash = c.gridDashed ? kGridDash : nullptr;
+    int intervals = (c.valueTickCount > 2 ? c.valueTickCount : 2) - 1;
+    auto drawValueLabels = [&]() {
+        float fractions[64];
+        int ticks = component::ChartValueTickPositions(0.f, 1.f, intervals + 1,
+                                                       fractions, 64);
+        for (int i = 0; i < ticks && i < nValueLabels; i++) {
+            float f = fractions[i];
+            Str label = valueLabels[i];
+            float tw = MeasureText(ctx, label, 10, 0, false, 0, 0).w;
+            if (valueLabelsInside) {
+                if (barRow) {
+                    // Along the bottom edge, centred on its line.
+                    DrawTextAt(ctx, label, x + w * f - tw * 0.5f, y + h - 12.f,
+                               tw, 12, 10, th.mutedForeground, false);
+                } else {
+                    // Above its line, but for the topmost, which would leave
+                    // the plot.
+                    float tick = plotH * f;
+                    float top = tick < 12.f ? tick + 2.f : tick - 12.f;
+                    DrawTextAt(ctx, label, x + 2.f, y + top, tw, 12, 10,
+                               th.mutedForeground, false);
+                }
+            } else if (valueAxisSide) {
+                float ty = y + plotH * f - 6.f;
+                DrawTextAt(ctx, label, x - 4.f - tw, ty, tw, 12, 10,
+                           th.mutedForeground, false);
+            } else {
+                // A row chart's value axis runs along the bottom, so its
+                // labels go under the plot rather than beside it.
+                float tx = x + w * f - tw * 0.5f;
+                DrawTextAt(ctx, label, tx, y + plotH + 2.f, tw, 12, 10,
+                           th.mutedForeground, false);
+            }
+        }
+    };
+
     // An overlay series draws over the grid and axis the first one drew.
     if (!c.overlay) {
-        const float kGridDash[2] = {4.f, 2.f};
-        // `value_tick_count` ticks, both ends included, so one interval
-        // fewer than that.
-        int intervals = (c.valueTickCount > 2 ? c.valueTickCount : 2) - 1;
         if (barRow) {
+            // `value_tick_count` ticks, both ends included, so one interval
+            // fewer than that.
             for (int i = 1; i <= intervals; i++) {
                 float gx = x + w * ((float)i / (float)intervals);
-                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border,
-                           kGridDash);
+                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border, gridDash);
             }
+        } else if (pointChart) {
+            // PointAxes::paint_grid: a line at every y tick but the
+            // baseline, which the x axis draws, and grid_columns evenly
+            // spaced vertical lines from the left edge.
+            for (int i = 0; i + 1 < nYTicks; i++) {
+                float gy = y + yTicks[i];
+                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, gridDash);
+            }
+            for (int i = 0; i < c.gridColumns; i++) {
+                float gx = x + w * (float)i / (float)c.gridColumns;
+                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border, gridDash);
+            }
+            DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         } else {
             // Evenly over the whole range, which is what the value-axis labels
             // are placed on as well; the baseline gets the solid axis line.
             for (int i = 0; i < intervals; i++) {
                 float gy = y + plotH * ((float)i / (float)intervals);
-                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, kGridDash);
+                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, gridDash);
             }
             DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         }
-        if (valueAxis) {
-            // One label per tick, reading the value the line stands for.
-            float lo = 0;
-            float hi = 0;
-            ChartDomain(c, &lo, &hi);
-            float fractions[64];
-            int ticks = component::ChartValueTickPositions(
-                0.f, 1.f, intervals + 1, fractions, 64);
-            for (int i = 0; i < ticks; i++) {
-                float f = fractions[i];
-                float v = hi - (hi - lo) * f;
-                Str label = ChartValueLabel(v);
-                float tw = MeasureText(ctx, label, 10, 0, false, 0, 0).w;
-                float ty = y + plotH * f - 6.f;
-                if (valueAxisSide) {
-                    DrawTextAt(ctx, label, x - 4.f - tw, ty, tw, 12, 10,
-                               th.mutedForeground, false);
-                } else {
-                    // A row chart's value axis runs along the bottom, so its
-                    // labels go under the plot rather than beside it.
-                    float tx = x + w * f - tw * 0.5f;
-                    DrawTextAt(ctx, label, tx, y + plotH + 2.f, tw, 12, 10,
-                               th.mutedForeground, false);
-                }
-            }
+        if (valueAxis && !valueLabelsInside) {
+            drawValueLabels();
         }
     }
 
@@ -5289,15 +5354,14 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     }
     float lo = 0;
     float hi = 0;
-    ChartDomain(c, &lo, &hi);
+    ChartValueDomain(c, &lo, &hi);
 
     // A line and an area are point charts: the x axis is laid out for
     // point_count points with the data on the leading ones, and the y axis is
     // point_value_scale — from zero, or pinned by y_domain.
-    bool pointChart = c.kind == ChartKind::Area || c.kind == ChartKind::Line;
     int pointCount = component::ChartAxisPointCount(c.pointCount, n);
     float pointRange[2] = {0.f, w};
-    component::ChartPointRange(w, n, pointCount, pointRange);
+    component::ChartPointRange(0.f, w, n, pointCount, pointRange);
     component::ScaleLinear pointY = component::ChartPointValueScale(c, plotH);
     // A pinned domain with no extent draws nothing, as Rust's scale answers
     // None for every value.
@@ -5331,7 +5395,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         // ScaleBand: every point takes a band of the width, with the padding
         // between them coming off each one.
         const float range[2] = {0.f, w};
-        component::ScaleBand band = component::ScaleBand::New(n, range, 2);
+        component::ScaleBand band = component::ScaleBand::New(n, range, 2)
+                                        .BandCount(c.bandCount);
         band.paddingInner = c.bandPadding;
         band.paddingOuter = c.bandPaddingOuter;
         float bw = band.BandWidth();
@@ -5431,6 +5496,42 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         if (c.pinnedDomain) {
             CanvasPopClip(ctx);
         }
+        if (!c.overlay) {
+            // PointAxes::paint_reference_lines: dashed and darker than the
+            // grid, so one reads apart from a dashed grid line.
+            for (int i = 0; i < c.nReferenceLines; i++) {
+                float ry = 0;
+                if (!pointExtent.PositionOf(c.referenceLines[i], &ry) ||
+                    ry < 0.f || ry > plotH) {
+                    continue;
+                }
+                CanvasLine(ctx, x, y + ry, x + w, y + ry, 1.f,
+                           th.mutedForeground, kGridDash);
+            }
+            // PointAxes::paint_y_labels: a label at every y tick, reading
+            // the value the scale puts there.
+            for (int i = 0; yLabelsOn && i < nYTicks; i++) {
+                Str label = yLabels[i];
+                float tw = MeasureText(ctx, label, 10, 0, false, 0, 0).w;
+                float tick = yTicks[i];
+                if (c.axisLabelPlacement == AxisLabelPlacement::Inside) {
+                    // Beside its grid line, above it but for the top one,
+                    // which would leave the plot.
+                    float top = tick < 12.f ? tick + 2.f : tick - 12.f;
+                    DrawTextAt(ctx, label, x + 2.f, y + top, tw, 12, 10,
+                               th.mutedForeground, false);
+                } else {
+                    float most = plotH - 10.f > 0 ? plotH - 10.f : 0.f;
+                    float top = tick - 5.f;
+                    top = top < 0 ? 0 : (top > most ? most : top);
+                    DrawTextAt(ctx, label, boxX + yLabelGap - 4.f - tw, y + top,
+                               tw, 12, 10, th.mutedForeground, false);
+                }
+            }
+        }
+    }
+    if (valueAxis && valueLabelsInside && !c.overlay) {
+        drawValueLabels();
     }
 
     // The crosshair and the tooltip: a chart that asked for them shows what
@@ -5445,12 +5546,18 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
                 const float range[2] = {0.f, w};
                 component::ScaleBand band =
-                    component::ScaleBand::New(n, range, 2);
+                    component::ScaleBand::New(n, range, 2)
+                        .BandCount(c.bandCount);
                 band.paddingInner = c.bandPadding;
                 band.paddingOuter = c.bandPaddingOuter;
                 index = band.LeastIndex(ctx->mouseX - x);
                 float bx = 0;
-                if (band.Tick(index, &bx)) {
+                if (index >= n) {
+                    // An empty band, laid out by band_count, has no datum
+                    // and so no tooltip.
+                    overPlot = false;
+                    index = 0;
+                } else if (band.Tick(index, &bx)) {
                     lineX = x + bx + band.BandWidth() * 0.5f;
                 }
             } else {
@@ -5545,7 +5652,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             if (bandHover) {
                 const float range[2] = {0.f, w};
                 component::ScaleBand band =
-                    component::ScaleBand::New(n, range, 2);
+                    component::ScaleBand::New(n, range, 2)
+                        .BandCount(c.bandCount);
                 band.paddingInner = c.bandPadding;
                 band.paddingOuter = c.bandPaddingOuter;
                 float bw = band.BandWidth();
@@ -5626,12 +5734,21 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     if (c.overlay) {
         return;
     }
-    // build_point_x_labels keeps the point whose one-based index divides by
-    // the margin, so a margin of eight names the eighth point and not the
-    // first. The name is centred on its tick, except at the two ends, where
-    // it is pulled inside the plot rather than hung over the edge.
+    // labeled_items: x_tick_count (band_tick_count) of the items, spread
+    // from the first slot to the last — over every point or band the axis is
+    // laid out for — or else the point whose one-based index divides by the
+    // margin, so a margin of eight names the eighth point and not the first.
+    // The name is centred on its tick, except at the two ends, where it is
+    // pulled inside the plot rather than hung over the edge.
+    int slots = pointChart                 ? pointCount
+                : c.kind == ChartKind::Bar ? (c.bandCount > n ? c.bandCount : n)
+                                           : n;
+    bool* labeled = (bool*)Alloc(scratch, slots > 0 ? slots : 1);
+    component::ChartLabeledItems(
+        slots, c.kind == ChartKind::Candlestick ? -1 : c.xTickCount, step,
+        labeled);
     for (int i = 0; i < n; i++) {
-        if (step > 1 && ((i + 1) % step) != 0) {
+        if (!labeled[i]) {
             continue;
         }
         float lx = Xat(i) - 16;
@@ -5642,7 +5759,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // A band's name sits under the band, not under a point — or in
             // the gutter beside it, when the bands run down the side.
             const float range[2] = {0.f, w};
-            component::ScaleBand band = component::ScaleBand::New(n, range, 2);
+            component::ScaleBand band = component::ScaleBand::New(n, range, 2)
+                                            .BandCount(c.bandCount);
             band.paddingInner = c.bandPadding;
             band.paddingOuter = c.bandPaddingOuter;
             float bx = 0;
