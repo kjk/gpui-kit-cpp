@@ -248,6 +248,73 @@ static void TestHtmlNestingHasNoPortLimit(Arena* a) {
     StrFree(html);
 }
 
+static bool PrefixIs(Arena* a, int ix, int start, bool ordered, int depth,
+                     const char* want) {
+    return base::StrEq(ListItemPrefix(a, ix, start, ordered, depth), Str(want));
+}
+
+// text/utils.rs: test_list_item_prefix. A start of 1 is Rust's Some(1) and
+// what an unordered list's None comes to here.
+static void TestListItemPrefix(Arena* a) {
+    utassert(PrefixIs(a, 0, 1, true, 0, "1. "));
+    utassert(PrefixIs(a, 1, 1, true, 0, "2. "));
+    utassert(PrefixIs(a, 2, 1, true, 0, "3. "));
+    utassert(PrefixIs(a, 10, 1, true, 0, "11. "));
+    utassert(PrefixIs(a, 0, 3, true, 0, "3. "));
+    utassert(PrefixIs(a, 1, 3, true, 0, "4. "));
+    utassert(PrefixIs(a, 0, 1, true, 1, "A. "));
+    utassert(PrefixIs(a, 1, 1, true, 1, "B. "));
+    utassert(PrefixIs(a, 0, 4, true, 1, "D. "));
+    utassert(PrefixIs(a, 1, 4, true, 1, "E. "));
+    utassert(PrefixIs(a, 0, 1, true, 2, "a. "));
+    utassert(PrefixIs(a, 1, 1, true, 2, "b. "));
+    utassert(PrefixIs(a, 6, 1, true, 2, "g. "));
+    utassert(PrefixIs(a, 0, 0, true, 1, "0. "));
+    utassert(PrefixIs(a, 1, 0, true, 1, "1. "));
+    utassert(PrefixIs(a, 0, 1, false, 0, "\xE2\x80\xA2 "));
+    utassert(PrefixIs(a, 0, 1, false, 1, "\xE2\x97\xA6 "));
+    utassert(PrefixIs(a, 0, 1, false, 2, "\xE2\x96\xAA "));
+    utassert(PrefixIs(a, 0, 1, false, 3, "\xE2\x80\xA3 "));
+    utassert(PrefixIs(a, 0, 1, false, 4, "\xE2\x81\x83 "));
+}
+
+// text_view.rs: ordered_markdown_list_start_reaches_layout_marker, from the
+// parsed start to the marker an item is drawn with (the list's depth is the
+// one Blocks hands ListItemPrefix). state.rs:
+// streamed_ordered_list_continuation_preserves_start — an append reparses
+// the whole text here, so the continued list keeps its start. node.rs:
+// ordered_list_selected_source_preserves_start — the Source marker is the
+// ordinal whatever the depth.
+static void TestOrderedListStarts(Arena* a) {
+    MdNode* one = Child(MdParse(a, StrL("1. one\n2. two")), 0);
+    utassert(one->ordered && one->start == 1);
+    utassert(PrefixIs(a, 1, one->start, true, 0, "2. "));
+    MdNode* html =
+        Child(HtmlParse(a, StrL("<ol><li>one</li><li>two</li></ol>")), 0);
+    utassert(html->ordered && html->start == 1);
+
+    MdNode* three = Child(MdParse(a, StrL("3. hello\n4. world")), 0);
+    utassert(three->start == 3 && Children(three) == 2);
+    utassert(PrefixIs(a, 0, three->start, true, 0, "3. "));
+    utassert(PrefixIs(a, 1, three->start, true, 0, "4. "));
+
+    MdNode* outer =
+        Child(MdParse(a, StrL("1. outer\n\n   4. nested\n   5. again")), 0);
+    MdNode* nested = Child(Child(outer, 0), 1);
+    utassert(nested && nested->kind == MdKind::List && nested->start == 4);
+    utassert(PrefixIs(a, 0, nested->start, true, 1, "D. "));
+    utassert(PrefixIs(a, 1, nested->start, true, 1, "E. "));
+    utassert(OrderedListOrdinal(nested->start, 1) == 5);
+
+    MdNode* zero = Child(
+        Child(Child(MdParse(a, StrL("1. outer\n\n   0. zero")), 0), 0), 1);
+    utassert(zero && zero->start == 0);
+    utassert(PrefixIs(a, 0, zero->start, true, 1, "0. "));
+
+    MdNode* streamed = Child(MdParse(a, StrL("3. three\n4. four")), 0);
+    utassert(streamed->start == 3 && Children(streamed) == 2);
+}
+
 static void TestHtmlList(Arena* a) {
     MdNode* doc =
         HtmlParse(a, StrL("<ol start=\"3\"><li>one</li><li>two</li></ol>"));
@@ -2244,6 +2311,8 @@ void TestTextView() {
     TestHtmlEntities(a);
     TestHtmlNestingHasNoPortLimit(a);
     TestHtmlList(a);
+    TestListItemPrefix(a);
+    TestOrderedListStarts(a);
     TestHtmlPre(a);
     TestHtmlTable(a);
     TestHtmlImageAlt(a);

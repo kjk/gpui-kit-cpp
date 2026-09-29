@@ -2357,14 +2357,20 @@ static Str Bullet(int depth) {
     }
 }
 
-// text/utils.rs list_item_prefix: 1. at depth 0, A. at depth 1, a. below.
-static Str OrderedMarker(Arena* a, int n, int depth) {
-    if (depth == 0) {
-        return StrDup(a, fmt("%d. ", n));
+int OrderedListOrdinal(int start, int ix) {
+    return start + ix;
+}
+
+Str ListItemPrefix(Arena* a, int ix, int start, bool ordered, int depth) {
+    if (!ordered) {
+        return Bullet(depth);
     }
-    // `0.` is a legal CommonMark start, so index from 0 rather than n - 1.
-    int ix = n > 0 ? (n - 1) % 26 : 0;
-    return StrDup(a, fmt("%c. ", (depth == 1 ? 'A' : 'a') + ix));
+    int ordinal = OrderedListOrdinal(start, ix);
+    if (depth == 0 || start == 0) {
+        return StrDup(a, fmt("%d. ", ordinal));
+    }
+    int alpha = (ordinal > 0 ? ordinal - 1 : 0) % 26;
+    return StrDup(a, fmt("%c. ", (depth == 1 ? 'A' : 'a') + alpha));
 }
 
 // âââ SelectionFormat::Source âââ
@@ -3856,17 +3862,18 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         }
         case MdKind::List: {
             El* list = Div(a)->FlexCol()->W(kFill)->MinW(0)->PadB(mb);
-            int ix = n->start;
+            int ix = 0;
             for (MdNode* c = n->first; c; c = c->next) {
                 if (c->kind != MdKind::Item) {
                     continue;
                 }
-                Str marker =
-                    n->ordered ? OrderedMarker(a, ix, depth) : Bullet(depth);
+                Str marker = ListItemPrefix(a, ix, n->start, n->ordered, depth);
                 // list_selected_source restores the Markdown marker rather
                 // than the bullet glyph the item is drawn with, and puts the
                 // task list's checkbox after it.
-                Str src = n->ordered ? OrderedMarker(a, ix, 0) : StrL("- ");
+                Str src = n->ordered ? StrDup(a, fmt("%d. ", OrderedListOrdinal(
+                                                                 n->start, ix)))
+                                     : StrL("- ");
                 srcItemPad = src;
                 if (c->hasCheck) {
                     // The checkbox stands where the prefix would: `when(!todo

@@ -651,6 +651,18 @@ struct TextViewLayoutState {
 // pipe inside one does not end the row. What `TableData::markdown` holds.
 Str MdTableToMarkdown(Arena* a, MdNode* table);
 
+// text/utils.rs ordered_list_ordinal: the ordinal of an ordered list's item
+// `ix`, counted from the list's `start` (MdNode::start, 1 when the source
+// named none — Rust's `None`).
+int OrderedListOrdinal(int start, int ix);
+
+// text/utils.rs list_item_prefix: an ordered item's marker is its ordinal at
+// depth 0, a letter at depth 1 (A.) and below (a.) indexed from the ordinal,
+// and the ordinal again for a nested list starting at 0, which no letter
+// stands for; an unordered one takes the depth's bullet. The string is in
+// `a`, or static.
+Str ListItemPrefix(Arena* a, int ix, int start, bool ordered, int depth);
+
 // The payload OnLinkWithContext supplies to its listener. It is owned by the
 // current frame arena and valid only for that call.
 struct TextViewLinkBinding {
