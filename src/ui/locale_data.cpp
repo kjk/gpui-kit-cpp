@@ -11,10 +11,14 @@ namespace gpui {
 
 namespace component {
 
-extern const char* const kLocaleNames[] = {"en",    "zh-CN", "zh-HK",
-                                           "zh-TW", "it",    "fr"};
+extern const char* const kLocaleNames[] = {
+    "en", "zh-CN", "zh-HK", "zh-TW", "it", "fr"};
 extern const int kLocaleCount = 6;
 
+static const char* const kV_Attachment_Remove[] = {
+    "Remove", "移除", "移除", "移除", nullptr, nullptr};
+static const char* const kV_Attachment_Retry[] = {
+    "Retry", "重试", "重試", "重試", nullptr, nullptr};
 static const char* const kV_Calendar_month_April[] = {
     "April", "四月", "四月", "四月", "Aprile", "Avril"};
 static const char* const kV_Calendar_month_August[] = {
@@ -27,170 +31,132 @@ static const char* const kV_Calendar_month_January[] = {
     "January", "一月", "一月", "一月", "Gennaio", "Janvier"};
 static const char* const kV_Calendar_month_July[] = {
     "July", "七月", "七月", "七月", "Luglio", "Juillet"};
-static const char* const kV_Calendar_month_June[] = {"June", "六月",   "六月",
-                                                     "六月", "Giugno", "Juin"};
-static const char* const kV_Calendar_month_March[] = {"March", "三月",  "三月",
-                                                      "三月",  "Marzo", "Mars"};
-static const char* const kV_Calendar_month_May[] = {"May",  "五月",   "五月",
-                                                    "五月", "Maggio", "Mai"};
+static const char* const kV_Calendar_month_June[] = {
+    "June", "六月", "六月", "六月", "Giugno", "Juin"};
+static const char* const kV_Calendar_month_March[] = {
+    "March", "三月", "三月", "三月", "Marzo", "Mars"};
+static const char* const kV_Calendar_month_May[] = {
+    "May", "五月", "五月", "五月", "Maggio", "Mai"};
 static const char* const kV_Calendar_month_November[] = {
     "November", "十一月", "十一月", "十一月", "Novembre", "Novembre"};
 static const char* const kV_Calendar_month_October[] = {
     "October", "十月", "十月", "十月", "Ottobre", "Octobre"};
 static const char* const kV_Calendar_month_September[] = {
     "September", "九月", "九月", "九月", "Settembre", "Septembre"};
-static const char* const kV_Calendar_week_0[] = {"Su", "日", "日",
-                                                 "日", "Do", "Di"};
-static const char* const kV_Calendar_week_1[] = {"Mo", "一", "一",
-                                                 "一", "Lu", "Lu"};
-static const char* const kV_Calendar_week_2[] = {"Tu", "二", "二",
-                                                 "二", "Ma", "Ma"};
-static const char* const kV_Calendar_week_3[] = {"We", "三", "三",
-                                                 "三", "Me", "Me"};
-static const char* const kV_Calendar_week_4[] = {"Th", "四", "四",
-                                                 "四", "Gi", "Je"};
-static const char* const kV_Calendar_week_5[] = {"Fr", "五", "五",
-                                                 "五", "Ve", "Ve"};
-static const char* const kV_Calendar_week_6[] = {"Sa", "六", "六",
-                                                 "六", "Sa", "Sa"};
-static const char* const kV_Carousel_go_to_slide[] = {"Go to slide %{current}",
-                                                      "前往第 %{current} 张",
-                                                      "前往第 %{current} 張",
-                                                      "前往第 %{current} 張",
-                                                      nullptr,
-                                                      nullptr};
-static const char* const kV_Carousel_label[] = {"Carousel", "轮播",  "輪播",
-                                                "輪播",     nullptr, nullptr};
-static const char* const kV_Carousel_next[] = {"Next slide", "下一张", "下一張",
-                                               "下一張",     nullptr,  nullptr};
-static const char* const kV_Carousel_pagination[] = {"Carousel pagination",
-                                                     "轮播分页",
-                                                     "輪播分頁",
-                                                     "輪播分頁",
-                                                     nullptr,
-                                                     nullptr};
+static const char* const kV_Calendar_week_0[] = {
+    "Su", "日", "日", "日", "Do", "Di"};
+static const char* const kV_Calendar_week_1[] = {
+    "Mo", "一", "一", "一", "Lu", "Lu"};
+static const char* const kV_Calendar_week_2[] = {
+    "Tu", "二", "二", "二", "Ma", "Ma"};
+static const char* const kV_Calendar_week_3[] = {
+    "We", "三", "三", "三", "Me", "Me"};
+static const char* const kV_Calendar_week_4[] = {
+    "Th", "四", "四", "四", "Gi", "Je"};
+static const char* const kV_Calendar_week_5[] = {
+    "Fr", "五", "五", "五", "Ve", "Ve"};
+static const char* const kV_Calendar_week_6[] = {
+    "Sa", "六", "六", "六", "Sa", "Sa"};
+static const char* const kV_Carousel_go_to_slide[] = {
+    "Go to slide %{current}", "前往第 %{current} 张", "前往第 %{current} 張", "前往第 %{current} 張", nullptr, nullptr};
+static const char* const kV_Carousel_label[] = {
+    "Carousel", "轮播", "輪播", "輪播", nullptr, nullptr};
+static const char* const kV_Carousel_next[] = {
+    "Next slide", "下一张", "下一張", "下一張", nullptr, nullptr};
+static const char* const kV_Carousel_pagination[] = {
+    "Carousel pagination", "轮播分页", "輪播分頁", "輪播分頁", nullptr, nullptr};
 static const char* const kV_Carousel_previous[] = {
     "Previous slide", "上一张", "上一張", "上一張", nullptr, nullptr};
 static const char* const kV_Carousel_slide[] = {
-    "Slide %{current} of %{total}",
-    "第 %{current} 张，共 %{total} 张",
-    "第 %{current} 張，共 %{total} 張",
-    "第 %{current} 張，共 %{total} 張",
-    nullptr,
-    nullptr};
-static const char* const kV_Chart_close[] = {"Close", "收盘",  "收市",
-                                             "收盤",  nullptr, nullptr};
-static const char* const kV_Chart_high[] = {"High", "最高",  "最高",
-                                            "最高", nullptr, nullptr};
-static const char* const kV_Chart_low[] = {"Low",  "最低",  "最低",
-                                           "最低", nullptr, nullptr};
-static const char* const kV_Chart_open[] = {"Open", "开盘",  "開市",
-                                            "開盤", nullptr, nullptr};
-static const char* const kV_ColorPicker_Alpha[] = {"Alpha",  "透明度", "透明度",
-                                                   "透明度", "Alfa",   nullptr};
-static const char* const kV_ColorPicker_HSLA[] = {"HSLA", "HSLA", "HSLA",
-                                                  "HSLA", "HSLA", nullptr};
-static const char* const kV_ColorPicker_Hue[] = {"Hue",  "色相",     "色相",
-                                                 "色相", "Tonalità", nullptr};
+    "Slide %{current} of %{total}", "第 %{current} 张，共 %{total} 张", "第 %{current} 張，共 %{total} 張", "第 %{current} 張，共 %{total} 張", nullptr, nullptr};
+static const char* const kV_Chart_close[] = {
+    "Close", "收盘", "收市", "收盤", nullptr, nullptr};
+static const char* const kV_Chart_high[] = {
+    "High", "最高", "最高", "最高", nullptr, nullptr};
+static const char* const kV_Chart_low[] = {
+    "Low", "最低", "最低", "最低", nullptr, nullptr};
+static const char* const kV_Chart_open[] = {
+    "Open", "开盘", "開市", "開盤", nullptr, nullptr};
+static const char* const kV_ColorPicker_Alpha[] = {
+    "Alpha", "透明度", "透明度", "透明度", "Alfa", nullptr};
+static const char* const kV_ColorPicker_HSLA[] = {
+    "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", nullptr};
+static const char* const kV_ColorPicker_Hue[] = {
+    "Hue", "色相", "色相", "色相", "Tonalità", nullptr};
 static const char* const kV_ColorPicker_Lightness[] = {
     "Lightness", "亮度", "亮度", "亮度", "Luminosità", nullptr};
 static const char* const kV_ColorPicker_Palette[] = {
     "Palette", "调色板", "調色板", "調色盤", "Tavolozza", nullptr};
 static const char* const kV_ColorPicker_Saturation[] = {
     "Saturation", "饱和度", "飽和度", "飽和度", "Saturazione", nullptr};
-static const char* const kV_ComboBox_empty[] = {"No results",       "暂无数据",
-                                                "暫無數據",         "沒有結果",
-                                                "Nessun risultato", nullptr};
+static const char* const kV_ComboBox_empty[] = {
+    "No results", "暂无数据", "暫無數據", "沒有結果", "Nessun risultato", nullptr};
 static const char* const kV_ComboBox_placeholder[] = {
     "Please select", "请选择", "請選擇", "請選擇", "Seleziona", nullptr};
 static const char* const kV_ComboBox_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Cerca...", nullptr};
 static const char* const kV_Command_empty[] = {
-    "No results found.",         "未找到结果。", "未找到結果。", "未找到結果。",
-    "Nessun risultato trovato.", nullptr};
+    "No results found.", "未找到结果。", "未找到結果。", "未找到結果。", "Nessun risultato trovato.", nullptr};
 static const char* const kV_Command_placeholder[] = {
-    "Type a command or search...",
-    "输入命令或搜索...",
-    "輸入命令或搜尋...",
-    "輸入命令或搜尋...",
-    "Digita un comando o cerca...",
-    nullptr};
+    "Type a command or search...", "输入命令或搜索...", "輸入命令或搜尋...", "輸入命令或搜尋...", "Digita un comando o cerca...", nullptr};
 static const char* const kV_DatePicker_placeholder[] = {
-    "Select date", "选择日期",       "選擇日期",
-    "選取日期",    "Seleziona data", "Sélectionner une date"};
-static const char* const kV_DatePicker_time[] = {"Time",  "时间",  "時間",
-                                                 nullptr, nullptr, nullptr};
-static const char* const kV_Dialog_cancel[] = {"Cancel", "取消",    "取消",
-                                               "取消",   "Annulla", nullptr};
-static const char* const kV_Dialog_ok[] = {"OK",   "确定", "確定",
-                                           "確定", "OK",   nullptr};
-static const char* const kV_Dock_Close[] = {"Close", "关闭",   "關閉",
-                                            "關閉",  "Chiudi", nullptr};
-static const char* const kV_Dock_Collapse[] = {"Collapse", "隐藏",     "隱藏",
-                                               "收合",     "Nascondi", nullptr};
-static const char* const kV_Dock_Expand[] = {"Expand", "展开",    "展開",
-                                             "展開",   "Espandi", nullptr};
-static const char* const kV_Dock_Unnamed[] = {"Unnamed", "未命名",     "未命名",
-                                              "未命名",  "Senza nome", nullptr};
-static const char* const kV_Dock_Zoom_In[] = {"Zoom In", "放大",    "放大",
-                                              "放大",    "Zoom In", nullptr};
-static const char* const kV_Dock_Zoom_Out[] = {"Zoom Out", "缩小",     "縮小",
-                                               "縮小",     "Zoom Out", nullptr};
-static const char* const kV_Input_Copy[] = {"Copy", "复制",  "複製",
-                                            "複製", nullptr, nullptr};
-static const char* const kV_Input_Cut[] = {"Cut",  "剪切",  "剪切",
-                                           "剪下", nullptr, nullptr};
-static const char* const kV_Input_Decrement[] = {"Decrement", "减少",  "減少",
-                                                 "減少",      nullptr, nullptr};
+    "Select date", "选择日期", "選擇日期", "選取日期", "Seleziona data", "Sélectionner une date"};
+static const char* const kV_DatePicker_time[] = {
+    "Time", "时间", "時間", nullptr, nullptr, nullptr};
+static const char* const kV_Dialog_cancel[] = {
+    "Cancel", "取消", "取消", "取消", "Annulla", nullptr};
+static const char* const kV_Dialog_ok[] = {
+    "OK", "确定", "確定", "確定", "OK", nullptr};
+static const char* const kV_Dock_Close[] = {
+    "Close", "关闭", "關閉", "關閉", "Chiudi", nullptr};
+static const char* const kV_Dock_Collapse[] = {
+    "Collapse", "隐藏", "隱藏", "收合", "Nascondi", nullptr};
+static const char* const kV_Dock_Expand[] = {
+    "Expand", "展开", "展開", "展開", "Espandi", nullptr};
+static const char* const kV_Dock_Unnamed[] = {
+    "Unnamed", "未命名", "未命名", "未命名", "Senza nome", nullptr};
+static const char* const kV_Dock_Zoom_In[] = {
+    "Zoom In", "放大", "放大", "放大", "Zoom In", nullptr};
+static const char* const kV_Dock_Zoom_Out[] = {
+    "Zoom Out", "缩小", "縮小", "縮小", "Zoom Out", nullptr};
+static const char* const kV_Input_Copy[] = {
+    "Copy", "复制", "複製", "複製", nullptr, nullptr};
+static const char* const kV_Input_Cut[] = {
+    "Cut", "剪切", "剪切", "剪下", nullptr, nullptr};
+static const char* const kV_Input_Decrement[] = {
+    "Decrement", "减少", "減少", "減少", nullptr, nullptr};
 static const char* const kV_Input_Go_to_Definition[] = {
-    "Go to Definition", "跳转到定义", "跳轉到定義",
-    "前往定義",         nullptr,      nullptr};
-static const char* const kV_Input_Increment[] = {"Increment", "增加",  "增加",
-                                                 "增加",      nullptr, nullptr};
-static const char* const kV_Input_Paste[] = {"Paste", "粘贴",  "貼上",
-                                             "貼上",  nullptr, nullptr};
-static const char* const kV_Input_Replace[] = {"Replace", "替换",  "替換",
-                                               "取代",    nullptr, nullptr};
+    "Go to Definition", "跳转到定义", "跳轉到定義", "前往定義", nullptr, nullptr};
+static const char* const kV_Input_Increment[] = {
+    "Increment", "增加", "增加", "增加", nullptr, nullptr};
+static const char* const kV_Input_Paste[] = {
+    "Paste", "粘贴", "貼上", "貼上", nullptr, nullptr};
+static const char* const kV_Input_Replace[] = {
+    "Replace", "替换", "替換", "取代", nullptr, nullptr};
 static const char* const kV_Input_Replace_All[] = {
     "Replace All", "全部替换", "全部替換", "全部取代", nullptr, nullptr};
 static const char* const kV_Input_Select_All[] = {
     "Select All", "全选", "全選", "全選", nullptr, nullptr};
 static const char* const kV_Input_Show_Code_Actions[] = {
-    "Show Code Actions", "显示代码操作", "顯示代碼操作",
-    "顯示程式碼動作",    nullptr,        nullptr};
+    "Show Code Actions", "显示代码操作", "顯示代碼操作", "顯示程式碼動作", nullptr, nullptr};
 static const char* const kV_List_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
-static const char* const kV_Pagination_next[] = {"Next",   "下一页", "下一頁",
-                                                 "下一頁", nullptr,  nullptr};
+static const char* const kV_Pagination_next[] = {
+    "Next", "下一页", "下一頁", "下一頁", nullptr, nullptr};
 static const char* const kV_Pagination_previous[] = {
     "Previous", "上一页", "上一頁", "上一頁", nullptr, nullptr};
 static const char* const kV_Questionnaire_error_optional[] = {
-    "Choose an answer or skip this question.",
-    "请选择一个答案，或跳过此题。",
-    "請選擇一個答案，或跳過此題。",
-    "請選擇一個答案，或跳過此題。",
-    nullptr,
-    nullptr};
+    "Choose an answer or skip this question.", "请选择一个答案，或跳过此题。", "請選擇一個答案，或跳過此題。", "請選擇一個答案，或跳過此題。", nullptr, nullptr};
 static const char* const kV_Questionnaire_error_required[] = {
-    "Choose an answer to continue.",
-    "请选择一个答案后继续。",
-    "請選擇一個答案後繼續。",
-    "請選擇一個答案後繼續。",
-    nullptr,
-    nullptr};
+    "Choose an answer to continue.", "请选择一个答案后继续。", "請選擇一個答案後繼續。", "請選擇一個答案後繼續。", nullptr, nullptr};
 static const char* const kV_Questionnaire_next[] = {
     "Next", "下一题", "下一題", "下一題", nullptr, nullptr};
 static const char* const kV_Questionnaire_previous[] = {
     "Previous", "上一题", "上一題", "上一題", nullptr, nullptr};
 static const char* const kV_Questionnaire_progress[] = {
-    "Question %{current} of %{total}",
-    "第 %{current} 题，共 %{total} 题",
-    "第 %{current} 題，共 %{total} 題",
-    "第 %{current} 題，共 %{total} 題",
-    nullptr,
-    nullptr};
-static const char* const kV_Questionnaire_skip[] = {"Skip", "跳过",  "跳過",
-                                                    "跳過", nullptr, nullptr};
+    "Question %{current} of %{total}", "第 %{current} 题，共 %{total} 题", "第 %{current} 題，共 %{total} 題", "第 %{current} 題，共 %{total} 題", nullptr, nullptr};
+static const char* const kV_Questionnaire_skip[] = {
+    "Skip", "跳过", "跳過", "跳過", nullptr, nullptr};
 static const char* const kV_Questionnaire_submit[] = {
     "Submit", "提交", "提交", "提交", nullptr, nullptr};
 static const char* const kV_Select_placeholder[] = {
@@ -201,6 +167,8 @@ static const char* const kV_Settings_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
 
 extern const LocaleRow kLocaleRows[] = {
+    {"Attachment.Remove", kV_Attachment_Remove},
+    {"Attachment.Retry", kV_Attachment_Retry},
     {"Calendar.month.April", kV_Calendar_month_April},
     {"Calendar.month.August", kV_Calendar_month_August},
     {"Calendar.month.December", kV_Calendar_month_December},
@@ -275,7 +243,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Settings.Reset All", kV_Settings_Reset_All},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
 };
-extern const int kLocaleRowCount = 73;
+extern const int kLocaleRowCount = 75;
 
 } // namespace component
 } // namespace gpui

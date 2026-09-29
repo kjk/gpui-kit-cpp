@@ -15,11 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `233a8a53c58953f055eac03fe015e130227ddd51` (2026-09-25,
-dock: Drag a bottom dock shut and back open in one continuous motion (#3229)).
-A collapsible bottom dock follows its resize drag below the minimum down to
-the closed strip and settles on release to whichever end is nearer. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `3403e25d5ca805490ae70f6059f4b4dd580b607b` (2026-09-25,
+attachment: Adopt the composer design with built-in remove, retry and progress
+(#3195)). Attachment adopts the composer design: fixed per-size chip geometry,
+status drawn by the media slot (spinner, progress ring, scrim, alert and ban
+glyphs), built-in remove, retry, progress bar and tooltip, and AttachmentGroup
+edge fades. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
