@@ -15,13 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e774d9c3c0e6fdb62b815c82a08ba61a42defa6b` (2026-09-27,
-plot: Move plot primitives to gpui-base (#3258)). Plot primitives (scales,
-shapes, axes, grids, labels, hover tracking) moved from src/ui/plot to
-src/base/plot, with PlotMotion projected onto the Base theme; ScaleBand no
-longer caps bands, the bar and candlestick charts do (max_band_width 30), axis
-labels are placed at paint time, and StrokeStyle is Curve. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `bcc20cfaa8bff875b3412df0097bdc8ed0a14855` (2026-09-28,
+release: Skip Kit compatibility checks when publishing GPUI (#3282)). Upstream
+changed only its GPUI release workflow. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
