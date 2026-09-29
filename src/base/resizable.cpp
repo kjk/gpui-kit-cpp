@@ -493,22 +493,15 @@ El* ResizeHandle::IntoEl() {
     if (stored) {
         stored->nextDrag = onDrag;
     }
-    ResizeHandleContext context = {axis, now};
+    ResizeHandleContext context = {axis, now, edge, hasEdge};
     El* line = nullptr;
     if (appearance) {
         // The renderer's transitions are keyed under the handle's own name.
+        // What it paints stays in tree order, under the container's own
+        // mask: a divider is part of the panel it edges, and anything the
+        // application floats over that panel has to cover it.
         IdScope scope(cx, id);
         line = appearance(appearanceUser, &context, cx);
-        // A hugging handle's hairline is its container's outermost pixel, so
-        // anything a renderer centres on it overhangs the container, and the
-        // container clips. Deferring the appearance keeps its layout here and
-        // paints it after the tree, under the window's own mask, so the
-        // overhang survives. It carries no hit rect. Rust's deferred() has the
-        // lowest priority; z -1 puts it under every other popup-layer overlay
-        // (dialogs, popups, tooltips), which still paint over it.
-        if (line && hasEdge) {
-            line->Deferred()->ZIndex(-1);
-        }
     }
     if (!line) {
         line = Div(cx->a)

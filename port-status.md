@@ -15,13 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5be17f3bc1e8f3aeed26843c85905700bed3fbdc` (2026-09-24,
-chart: Color a bar chart's labels per bar, set its band padding, and keep
-empty bars visible (#3217)). BarChart gains label_color (a colour per bar's
-label, foreground otherwise), padding_inner / padding_outer (default 0.4 /
-0.2) and min_length, and a vertical chart with labels keeps a line of text
-clear above its tallest bar. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `ac7684890ab47103f3337bca0eb29f9c8b239660` (2026-09-24,
+resizable: Stop a dock handle's hairline from painting over popovers (#3221)).
+A hugging resize handle's appearance paints in tree order under its
+container's clip again, so a dock divider no longer cuts through a popover
+deferred from a neighbouring panel; ResizeHandleContext::Edge tells the
+renderer which edge it hugs, and the styled renderer defers only the pill. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

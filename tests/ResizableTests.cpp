@@ -117,6 +117,8 @@ struct ResizeAppearanceProbe {
     int calls = 0;
     Axis axis = Axis::Vertical;
     bool active = true;
+    bool hasEdge = false;
+    HandleEdge edge = HandleEdge::Leading;
     El* rendered = nullptr;
 };
 
@@ -126,6 +128,7 @@ static El* RenderResizeAppearance(void* user,
     probe->calls++;
     probe->axis = context->AxisValue();
     probe->active = context->IsActive();
+    probe->hasEdge = context->Edge(&probe->edge);
     probe->rendered = Div(cx->a)->W(3)->H(3);
     return probe->rendered;
 }
@@ -179,13 +182,17 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     utassert(probe.axis == Axis::Horizontal && !probe.active);
     utassert(handleEl->cursor == CursorKind::ColResize);
     // Hugging its trailing edge: the whole band inside, border-box, padded
-    // on the inner side only, and the renderer's element deferred.
+    // on the inner side only. The renderer's element stays in tree order,
+    // under the container's clip (a_hugging_handle_paints_beneath_a_popover_
+    // deferred_before_it): a deferred one would paint over a popover the
+    // application deferred from a panel drawn before it.
     utassertnear(handleEl->style.absRight, 0.f);
     utassertnear(handleEl->style.width,
                  kResizeHandleSize + kResizeHandlePadding);
     utassertnear(handleEl->style.pad.left, kResizeHandlePadding);
     utassertnear(handleEl->style.pad.right, 0.f);
-    utassert(probe.rendered && probe.rendered->style.deferred);
+    utassert(probe.rendered && !probe.rendered->style.deferred);
+    utassert(probe.hasEdge && probe.edge == HandleEdge::Trailing);
 
     ResizeAppearanceProbe groupProbe;
     ResizablePanelGroup* appeared =
@@ -269,10 +276,11 @@ static El* RenderSeamLine(void* user, const ResizeHandleContext* context,
 // resize_handle.rs a_hugging_handle_draws_its_line_on_the_seam: a 200px
 // dock between two 100px neighbours, clipped to itself the way dock_frame
 // is; the hairline of a handle hugging either edge is the pixel against the
-// seam. a_hugging_handle_paints_its_indicator_unclipped is the renderer's
-// element being deferred, asserted above; mod.rs a_covered_handle_stays_idle
-// holds by construction here, since the handle's listeners belong to its
-// hit rect and an occluding overlay in front of it takes the pointer.
+// seam. a_hugging_handle_paints_beneath_a_popover_deferred_before_it is the
+// renderer's element staying out of the deferred layer, asserted above;
+// mod.rs a_covered_handle_stays_idle holds by construction here, since the
+// handle's listeners belong to its hit rect and an occluding overlay in
+// front of it takes the pointer.
 static void AHuggingHandleDrawsItsLineOnTheSeam() {
     App app = {};
     Arena* arena = ArenaNew();
@@ -398,6 +406,53 @@ static void AHandleReportsThePressAndTheDragToItsRenderer() {
     ArenaDelete(arena);
 }
 
+// resize_handle.rs a_renderer_is_told_the_edge_a_handle_hugs, for both axes
+// and both edges, and none for a handle straddling its boundary.
+// resizable.rs: the styled renderer defers only the pill, and only for a
+// hugging handle, so the pill's overhanging pixel survives the dock's clip
+// while the hairline stays beneath a popover.
+static void ARendererIsToldTheEdgeAHandleHugs() {
+    App app = {};
+    component::Init(&app);
+    Arena* arena = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    Axis axes[2] = {Axis::Horizontal, Axis::Vertical};
+    HandleEdge edges[2] = {HandleEdge::Leading, HandleEdge::Trailing};
+    for (Axis axis : axes) {
+        for (HandleEdge edge : edges) {
+            ResizeAppearanceProbe probe;
+            resize_handle(&cx, StrL("told"), axis)
+                ->Inside(edge)
+                ->WithAppearance(&probe, RenderResizeAppearance)
+                ->IntoEl();
+            utassert(probe.hasEdge && probe.edge == edge);
+        }
+        ResizeAppearanceProbe straddling;
+        resize_handle(&cx, StrL("straddling"), axis)
+            ->WithAppearance(&straddling, RenderResizeAppearance)
+            ->IntoEl();
+        utassert(straddling.calls == 1 && !straddling.hasEdge);
+    }
+
+    for (int hugging = 0; hugging < 2; hugging++) {
+        ResizeHandleContext context = {Axis::Horizontal,
+                                       ResizeHandleState::Dragging,
+                                       HandleEdge::Trailing, hugging == 1};
+        IdScope scope(&cx, hugging ? StrL("hugging") : StrL("straddle"));
+        El* line = component::RenderResizeHandle(nullptr, &context, &cx);
+        El* pill = line ? line->first : nullptr;
+        utassert(line && !line->style.deferred);
+        utassert(pill && (pill->style.deferred != 0) == (hugging == 1));
+    }
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestResizable() {
     TestSuite("resizable");
     ResizingOnePanelTakesFromTheNext();
@@ -412,4 +467,5 @@ void TestResizable() {
     AHandleStateReportsOnlyRealChanges();
     AHandleReportsThePressAndTheDragToItsRenderer();
     AHuggingHandleDrawsItsLineOnTheSeam();
+    ARendererIsToldTheEdgeAHandleHugs();
 }

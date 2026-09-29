@@ -68,6 +68,18 @@ El* RenderResizeHandle(void*, const ResizeHandleContext* handle, Ctx* cx) {
         } else {
             pill->H(kResizeIndicatorThickness)->W(length)->MarginT(overhang);
         }
+        // A hugging handle's hairline is its container's outermost pixel, so
+        // the pill's outer pixel lies past the boundary, where a dock's clip
+        // would take it off. Deferring the pill -- and only the pill, only
+        // while it is up -- paints it after the tree under the window's mask,
+        // so it keeps that pixel; z -1 keeps it under every other popup-layer
+        // overlay. The hairline stays in tree order: a deferred element paints
+        // over the application's own deferred content, and a divider cutting
+        // through a popover opened from the neighbouring panel is what that
+        // looked like.
+        if (handle->Edge(nullptr)) {
+            pill->Deferred()->ZIndex(-1);
+        }
         line->Child(pill);
     }
     return line;

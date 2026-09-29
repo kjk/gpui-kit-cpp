@@ -65,8 +65,12 @@ inline bool ResizeHandleStateIsActive(ResizeHandleState s) {
 // one named an edge sits wholly inside. Its hairline stays on the boundary
 // itself -- the container's outermost pixel, the one the neighbour's content
 // butts up against -- and what a renderer centres on it overhangs the
-// boundary, so the renderer's element is painted deferred, out of the
-// container's clip.
+// boundary, where the container's clip takes the outer half off it unless the
+// renderer defers that part. Only that part: a deferred element paints after
+// the whole tree, and nothing puts it beneath the application's own deferred
+// content, so a deferred line would cut straight through a popover opened
+// from a panel drawn before this container. A renderer learns which edge it
+// draws for from ResizeHandleContext::Edge.
 enum class HandleEdge : uint8_t {
     // Where the axis starts: the left edge for a horizontal handle, the top
     // for a vertical one.
@@ -129,8 +133,20 @@ void ResizeHandleBindState(El* handle, Entity<SharedHandleState> state);
 struct ResizeHandleContext {
     Axis axis = Axis::Horizontal;
     ResizeHandleState state = ResizeHandleState::Idle;
+    HandleEdge edge = HandleEdge::Leading;
+    bool hasEdge = false;
 
     Axis AxisValue() const { return axis; }
+    // The edge of its container this handle hugs, or false for a handle
+    // straddling the boundary it resizes (Rust's None). A hugging handle's
+    // line is the container's outermost pixel, so anything a renderer
+    // centres on it crosses the boundary.
+    bool Edge(HandleEdge* out) const {
+        if (hasEdge && out) {
+            *out = edge;
+        }
+        return hasEdge;
+    }
     // Whether the pointer currently owns this handle.
     bool IsActive() const { return ResizeHandleStateIsActive(state); }
     // How far the pointer has gone with this handle.

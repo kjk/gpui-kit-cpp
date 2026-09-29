@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5be17f3bc1e8f3aeed26843c85905700bed3fbdc",
+  sha: "ac7684890ab47103f3337bca0eb29f9c8b239660",
   date: "2026-09-24",
-  subject: "chart: Color a bar chart's labels per bar, set its band padding, and keep empty bars visible (#3217)",
+  subject: "resizable: Stop a dock handle's hairline from painting over popovers (#3221)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
