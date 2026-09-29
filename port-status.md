@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9b4989399aa2cebc2c0e70ebd09afd4032ec94e5` (2026-09-21,
-list: Restore the outline on the right-clicked item (#3155)). ListItem
-outlines a right-clicked item in `selection` again, keeps the selected fill
-under it, and drops the hover background while an item is active; the Tree row
-follows. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `0b3e53d37fb9077aefde38502ff78ea062e57dd0` (2026-09-21,
+notification: Fix center notification stacks reliably on web (#3149)).
+Centered notification stacks position by half-width offset rather than auto
+margins; this tree already centers the stack from the window width. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
