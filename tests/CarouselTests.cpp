@@ -452,10 +452,40 @@ static void CarouselFocusRingIsConfigurable() {
     EntityDropAll(&app);
 }
 
+// carousel.rs CarouselGeometry::read (#3266): geometry is kept relative to
+// the content frame, so an ancestor scroll that moves the whole carousel in
+// the window is no layout change and bumps no revision (which is part of the
+// snap spring's key); a real change still does. Upstream added no test.
+static void AncestorScrollIsNoLayoutChange() {
+    Harness h(3);
+    CarouselState* s = h.s;
+    auto report = [&](float dy, float itemW) {
+        s->pendingFrame = Box(20, 100 + dy, 300, 200);
+        s->pendingViewport = Box(20, 100 + dy, 300, 200);
+        VecClear(s->pendingItems);
+        for (int i = 0; i < 3; i++) {
+            VecAppend(s->pendingItems,
+                      Box(20 + (float)i * itemW, 100 + dy, itemW, 200));
+        }
+        s->IngestPendingGeometry(&h.cx);
+    };
+    report(0, 300);
+    int revision = s->geometryRevision;
+    utassert(TestNear(s->viewport.x, 0) && TestNear(s->viewport.y, 0));
+    utassert(TestNear(s->items[1].x, 300));
+    for (int step = 1; step <= 5; step++) {
+        report(-7.3f * (float)step, 300);
+    }
+    utassert(s->geometryRevision == revision);
+    report(-40, 250);
+    utassert(s->geometryRevision == revision + 1);
+}
+
 void TestCarousel() {
     TestSuite("carousel");
     ConstructorsAndProgrammaticSettersClampWithoutEvents();
     GeometryProducesAxisSpecificSnapPoints();
+    AncestorScrollIsNoLayoutChange();
     NearestIndexKeepsTheFirstTrailingDuplicateAsCanonical();
     GeometryNavigationSkipsDuplicateSnapPoints();
     NonLoopingNavigationStopsAtBothBoundaries();

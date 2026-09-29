@@ -825,26 +825,40 @@ bool CarouselState::HandleWheelStep(Axis value, float delta, Ctx* cx) {
     return stepped;
 }
 
+// same_bounds: a sub-pixel tolerance, so float noise from the frame-relative
+// subtraction below does not register as a layout change.
+static bool SameBounds(Bounds a, Bounds b) {
+    const float kTolerance = 0.01f;
+    return fabsf(a.x - b.x) <= kTolerance && fabsf(a.y - b.y) <= kTolerance &&
+           fabsf(a.w - b.w) <= kTolerance && fabsf(a.h - b.h) <= kTolerance;
+}
+
 void CarouselState::IngestPendingGeometry(Ctx* cx) {
     // boundsOut is window space after the track's scroll; snap geometry is
     // kept in the unscrolled content space ScrollHandle uses.
+    //
+    // CarouselGeometry::read: everything is relative to the content frame's
+    // origin. Window-space bounds move whenever an ancestor scrolls or shifts
+    // the carousel, while every snap and loop calculation uses only
+    // differences and sizes, so an ancestor scroll is no layout change — no
+    // new geometry revision, which would restart a running snap.
+    float ox = pendingFrame.x;
+    float oy = pendingFrame.y;
     for (int i = 0; i < len(pendingItems); i++) {
-        pendingItems[i].x -= offset.x;
-        pendingItems[i].y -= offset.y;
+        pendingItems[i].x -= offset.x + ox;
+        pendingItems[i].y -= offset.y + oy;
     }
+    pendingViewport.x -= ox;
+    pendingViewport.y -= oy;
+    pendingFrame.x = 0;
+    pendingFrame.y = 0;
     bool same =
         hasViewport && hasFrame && pendingHasRunway == geometryHasRunway &&
-        pendingViewport.x == viewport.x && pendingViewport.y == viewport.y &&
-        pendingViewport.w == viewport.w && pendingViewport.h == viewport.h &&
-        pendingFrame.x == frame.x && pendingFrame.y == frame.y &&
-        pendingFrame.w == frame.w && pendingFrame.h == frame.h &&
-        len(pendingItems) == len(items);
+        SameBounds(pendingViewport, viewport) &&
+        SameBounds(pendingFrame, frame) && len(pendingItems) == len(items);
     if (same) {
         for (int i = 0; i < len(items); i++) {
-            if (pendingItems[i].x != items[i].x ||
-                pendingItems[i].y != items[i].y ||
-                pendingItems[i].w != items[i].w ||
-                pendingItems[i].h != items[i].h) {
+            if (!SameBounds(pendingItems[i], items[i])) {
                 same = false;
                 break;
             }
