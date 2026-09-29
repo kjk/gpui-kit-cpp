@@ -299,10 +299,16 @@ struct DockSide {
     void SetSize(float value) { size = std::max(value, kDockPanelMinSize); }
     bool IsResizing() const { return resizing; }
     void SetResizing(bool value) { resizing = value; }
+    // live_size: a size below kDockPanelMinSize that a drag in progress is
+    // showing, or -1 (Rust's None). It is never persisted: the drag's release
+    // settles it into either a closed dock or one at the minimum.
+    float LiveSize() const { return liveSize; }
+    void SetLiveSize(float value) { liveSize = value; }
 
     // Source Dock retains this on each side. DockState also keeps the active
     // placement because its compatibility renderer has one shared listener.
     bool resizing = false;
+    float liveSize = -1;
 };
 
 using Dock = DockSide;
@@ -491,6 +497,9 @@ float DockTabScrollTo(float scrollX, Bounds strip, Bounds tab);
 // Dock::toggle_open, and the size a drag on its edge asks for.
 void DockToggleSide(DockState* s, Ctx* cx, DockPlacement p);
 void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y);
+// end_dock_resize: settle a drag that ended below the minimum -- nearer the
+// closed strip it closes, nearer the minimum it opens at the minimum.
+void DockEndSideResize(DockState* s, Ctx* cx, DockPlacement p);
 // DockArea::set_dock_size: the programmatic size, clamped the way the Dock
 // clamps it. Only an effective change is persisted — a size that lands where
 // it already was neither redraws nor emits LayoutChanged.

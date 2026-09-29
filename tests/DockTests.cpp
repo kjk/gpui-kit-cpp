@@ -1004,6 +1004,63 @@ static void ADockSizeChangeEmitsOneLayoutEvent() {
     EntityDropAll(&app);
 }
 
+// dock.rs:
+// dragging_the_bottom_handle_below_the_minimum_snaps_to_the_nearer_end. Rust
+// drives the skin's handle with simulated mouse events; the drag is base's
+// here, so this walks the same pointer positions through it.
+static void DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    int dockNode = DockNewTabs(s);
+    DockTabsAdd(s, dockNode, 0);
+    s->bottom.node = dockNode;
+    s->bottom.SetSize(200);
+    s->bounds = {0, 0, 800, 600};
+
+    auto drag = [&](const float* ys, int n) {
+        s->resizing = true;
+        s->resizingSide = DockPlacement::Bottom;
+        for (int i = 0; i < n; i++) {
+            DockResizeSide(s, &cx, DockPlacement::Bottom, 400.f, ys[i]);
+        }
+        DockState::OnResizeEnd(s, &cx, nullptr);
+    };
+
+    // From the 200px dock's handle, through the closed strip and back,
+    // released 60px tall: nearer the strip than the minimum, so it closes.
+    const float shut[] = {406.f, 580.f, 540.f};
+    s->resizing = true;
+    s->resizingSide = DockPlacement::Bottom;
+    DockResizeSide(s, &cx, DockPlacement::Bottom, 400.f, 406.f);
+    utassert(s->bottom.IsOpen() && s->bottom.LiveSize() < 0);
+    DockResizeSide(s, &cx, DockPlacement::Bottom, 400.f, 580.f);
+    // Below the strip it shows closed, at the strip.
+    utassert(!s->bottom.IsOpen());
+    utassertnear(s->bottom.LiveSize(), kClosedBottomStrip);
+    drag(shut, 3);
+    utassert(!s->bottom.IsOpen() && s->bottom.LiveSize() < 0);
+
+    // From the closed strip's handle, released 80px tall: nearer the
+    // minimum, so it opens at the minimum.
+    const float open[] = {565.f, 520.f};
+    drag(open, 2);
+    utassert(s->bottom.IsOpen());
+    utassertnear(s->bottom.GetSize(), kDockPanelMinSize);
+    utassert(s->bottom.LiveSize() < 0);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void SelectingAPanelByIdentityDoesNotMoveIt() {
     App app;
     Window win;
@@ -1146,6 +1203,7 @@ void TestDock() {
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
     RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();
+    DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd();
     SelectingAPanelByIdentityDoesNotMoveIt();
     TheFiveDropZones();
     ThePlaceholderCoversEachZone();

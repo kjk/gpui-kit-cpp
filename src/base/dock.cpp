@@ -932,9 +932,6 @@ void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y) {
     if (!side) {
         return;
     }
-    if (!side->open) {
-        side->open = true;
-    }
     Bounds b = s->bounds;
     float leftSize =
         (p != DockPlacement::Left && s->left.node >= 0 && s->left.open)
@@ -947,7 +944,38 @@ void DockResizeSide(DockState* s, Ctx* cx, DockPlacement p, float x, float y) {
     float opposite = p == DockPlacement::Left ? rightSize : leftSize;
     DockSizing sizing =
         DockSizing::New(p).WithAreaBounds(b).WithOppositeDockSize(opposite);
-    side->SetSize(sizing.Clamp(sizing.SizeFromPointer({x, y})));
+    // A collapsible bottom dock follows the pointer below the minimum down to
+    // its closed strip, so closing it by drag is one continuous motion. That
+    // size is only shown, and DockEndSideResize settles it on release. A
+    // drag that started on a closed dock opens it the same way.
+    float size =
+        std::min(sizing.SizeFromPointer({x, y}), sizing.Clamp(3.402823e38f));
+    if (p == DockPlacement::Bottom && side->collapsible &&
+        size < kDockPanelMinSize) {
+        side->open = size > kClosedBottomStrip;
+        side->liveSize = std::max(size, kClosedBottomStrip);
+    } else {
+        side->open = true;
+        side->liveSize = -1;
+        side->SetSize(size);
+    }
+    Notify(cx);
+}
+
+void DockEndSideResize(DockState* s, Ctx* cx, DockPlacement p) {
+    DockSide* side = DockSideOf(s, p);
+    if (!side || side->liveSize < 0) {
+        return;
+    }
+    float size = side->liveSize;
+    side->liveSize = -1;
+    // Nearer the closed strip it closes, nearer the minimum it opens at the
+    // minimum.
+    bool open = size >= (kClosedBottomStrip + kDockPanelMinSize) / 2.f;
+    if (open) {
+        side->SetSize(kDockPanelMinSize);
+    }
+    side->open = open;
     Notify(cx);
 }
 
@@ -1176,6 +1204,11 @@ void DockState::OnResizeEnd(DockState* self, Ctx* cx, const MouseUpEvent*) {
         return;
     }
     self->resizing = false;
+    // DockContext::end_resize: the skin's handle hands the release to base,
+    // which here owns the drag itself.
+    if (self->resizingSide != DockPlacement::Center) {
+        DockEndSideResize(self, cx, self->resizingSide);
+    }
     self->left.SetResizing(false);
     self->right.SetResizing(false);
     self->bottom.SetResizing(false);

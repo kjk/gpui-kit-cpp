@@ -578,7 +578,7 @@ El* RenderDock(const AreaCtx& ac, DockPlacement p, const DockSide& side) {
     d.state = ac.state;
     d.id = ac.id;
     d.placement = p;
-    d.size = side.size;
+    d.size = side.liveSize >= 0 ? side.liveSize : side.size;
     d.open = side.open;
     d.collapsible = side.collapsible;
 

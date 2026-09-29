@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `42301890be6c906e9af5428b849f1d0623ec30a7` (2026-09-25,
-chart: Customize series chart tooltips (#3228)). The series charts take
-tooltip_title, tooltip_value and tooltip_value_color, their painted tooltip
-lays out Rust's title and swatched rows (a candlestick's open, high, low and
-close, a bar's own colour), and plot::Tooltip gains plain_row and value_color.
-The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `233a8a53c58953f055eac03fe015e130227ddd51` (2026-09-25,
+dock: Drag a bottom dock shut and back open in one continuous motion (#3229)).
+A collapsible bottom dock follows its resize drag below the minimum down to
+the closed strip and settles on release to whichever end is nearer. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
