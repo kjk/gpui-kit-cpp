@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cb835e4afd2b0c33b3f7c73f503e261fe5182fcf` (2026-09-20,
-label: Skip highlights while masked (#3142)). A masked Label skips highlight
-measurement, so bullets never carry secondary or match styling built from
-source offsets, and the Label story's Highlighting section gained a Mask
-toggle. The current update target is
+Processed through `cc05eb7f74ee0fa3526c583c41bf45a0cd8a03e3` (2026-09-20,
+setting: Add optional footers outside group surfaces (#3133)). GroupBox and
+SettingGroup take an optional footer drawn below and outside the group's
+surface in small muted text, aligned with the title, and the GroupBox and
+Settings stories show it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

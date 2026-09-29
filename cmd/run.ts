@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cb835e4afd2b0c33b3f7c73f503e261fe5182fcf",
+  sha: "cc05eb7f74ee0fa3526c583c41bf45a0cd8a03e3",
   date: "2026-09-20",
-  subject: "label: Skip highlights while masked (#3142)",
+  subject: "setting: Add optional footers outside group surfaces (#3133)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

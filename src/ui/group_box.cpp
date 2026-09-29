@@ -56,6 +56,11 @@ GroupBox* GroupBox::Child(El* e) {
     return this;
 }
 
+GroupBox* GroupBox::Footer(El* e) {
+    footer = e;
+    return this;
+}
+
 GroupBox* GroupBox::WithVariant(GroupBoxVariant value) {
     variant = value;
     return this;
@@ -177,7 +182,13 @@ El* GroupBox::IntoEl() {
     for (El* child : children) {
         content->Child(child);
     }
-    box->Child(content);
+    // The footer sits inside the surface's slot so its 8 px gap is
+    // independent of the root gap between the title and the surface.
+    El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(content);
+    if (footer) {
+        slot->Child(Div(a)->Font(14)->Fg(th.mutedFg)->Child(footer));
+    }
+    box->Child(slot);
     return box;
 }
 

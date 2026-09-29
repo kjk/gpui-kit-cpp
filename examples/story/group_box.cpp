@@ -81,7 +81,9 @@ El* GroupBoxStory::Render(GroupBoxStory* self, Ctx* cx) {
     component::GroupBox* activity =
         component::GroupBox::New(cx, StrL("Contributions & activity"))
             ->Id(StrL("activity"))
-            ->Fill();
+            ->Fill()
+            ->Footer(TextEl(a, StrL("Private contributions never reveal "
+                                    "repository names.")));
     activity
         ->Child(SwitchRow(cx, StrL("Make profile private and hide activity"),
                           StrL("profile-private"), self->profilePrivate,

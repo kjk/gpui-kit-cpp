@@ -445,6 +445,65 @@ static void SearchRenderKeepsOriginalItemIndexes() {
     delete win;
 }
 
+static El* FindChild(El* root, const El* wanted) {
+    if (!root) {
+        return nullptr;
+    }
+    if (root == wanted) {
+        return root;
+    }
+    for (El* child = root->first; child; child = child->next) {
+        if (El* found = FindChild(child, wanted)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// footer_follows_group_search_visibility: the footer goes with its group and
+// never makes the group match on its own.
+static void FooterFollowsGroupSearchVisibility() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    auto render = [&](El** footer) {
+        *footer = TextEl(arena, StrL("Changes apply to this device only."));
+        Settings* s = SearchTestSettings(&cx, state);
+        // The Fonts group, which is groups[2] on the Appearance page.
+        s->pages[1].groups[2].footer = *footer;
+        return s->IntoEl();
+    };
+    El* footer = nullptr;
+    render(&footer);
+    SettingsState* settings = state.Get(&app);
+
+    InputSetValue(&settings->search, StrL("font"));
+    El* root = render(&footer);
+    utassert(FindSettingElement(root, "1-2-1"));
+    utassert(FindChild(root, footer));
+
+    // Footer copy does not independently make a group match the query.
+    InputSetValue(&settings->search, StrL("colors"));
+    root = render(&footer);
+    utassert(FindSettingElement(root, "1-1-0"));
+    utassert(!FindChild(root, footer));
+
+    InputSetValue(&settings->search, StrL("font"));
+    root = render(&footer);
+    utassert(FindChild(root, footer));
+    utassert(settings->page == 1 && settings->group == -1);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 static void ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged() {
     App app;
     component::Init(&app);
@@ -493,5 +552,6 @@ void TestSetting() {
     SearchPreservesGroupIdentityUntilTheGroupDisappears();
     ResettingSearchResultsLeavesHiddenSettingsUnchanged();
     SearchRenderKeepsOriginalItemIndexes();
+    FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
 }

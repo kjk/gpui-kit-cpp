@@ -248,6 +248,9 @@ struct SettingGroup {
     Str title = {};
     Str description = {};
     ArenaVec<SettingItem> items;
+    // SettingGroup::footer. Rust takes a closure it calls while rendering;
+    // the builder is already per frame here, so it is the element.
+    El* footer = nullptr;
 };
 
 struct SettingPage {
@@ -366,6 +369,10 @@ struct Settings {
     Settings* Page(Str title, IconName icon = IconName::None,
                    Str description = {});
     Settings* Group(Str title, Str description = {});
+    // SettingGroup::footer, on the group last added: below and outside its
+    // surface, in small muted text. It follows the group's search visibility
+    // and matches no query of its own.
+    Settings* GroupFooter(El* footer);
     Settings* Item(Str title, Str description, El* control = nullptr);
     Settings* FieldElement(SettingFieldElement element);
     // The typed fields, each filling in the control of the item last added.

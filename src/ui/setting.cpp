@@ -306,6 +306,17 @@ Settings* Settings::Group(Str title, Str description) {
     return this;
 }
 
+Settings* Settings::GroupFooter(El* footer) {
+    if (pages.len == 0) {
+        return this;
+    }
+    SettingPage& p = pages[pages.len - 1];
+    if (p.groups.len > 0) {
+        p.groups[p.groups.len - 1].footer = footer;
+    }
+    return this;
+}
+
 static SettingItem* LastItem(Settings* s);
 
 Settings* Settings::Item(Str title, Str description, El* control) {
@@ -874,6 +885,11 @@ El* Settings::IntoEl() {
                 shown++;
             }
             body->Child(card);
+            // group_box.rs: the footer is 8 px under the surface, outside it.
+            if (grp.footer) {
+                body->Child(
+                    Div(a)->Font(14)->Fg(th.mutedFg)->Child(grp.footer));
+            }
         }
 
         // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and

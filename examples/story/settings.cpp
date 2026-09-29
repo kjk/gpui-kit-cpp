@@ -93,6 +93,8 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
     s->DropdownField(self->groupSize, kGroupSizes, 3)->FieldWidth(140);
 
     s->Group(StrL("Font"));
+    s->GroupFooter(
+        TextEl(cx->a, StrL("Font preferences apply to this story only.")));
     s->Item(StrL("Font Family"), StrL("Select the font family for the story."));
     s->DropdownField(self->fontFamily, kFontFamilies, 3)->FieldWidth(140);
     s->Keywords(StrL("typeface"));

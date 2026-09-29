@@ -27,6 +27,8 @@ struct GroupBox {
     El* titleEl = nullptr;
     bool hasTitle = false;
     ArenaVec<El*> children;
+    // GroupBox::footer: supporting content below, and outside, the surface.
+    El* footer = nullptr;
     GroupBoxVariant variant = GroupBoxVariant::Normal;
 
     // StyleRefinement is a Style plus the fields it actually names in the
@@ -54,6 +56,9 @@ struct GroupBox {
     GroupBox* Id(Str value);
     GroupBox* Title(El* e);
     GroupBox* Child(El* e);
+    // Shares the title's leading edge, sits 8 px under the surface and reads
+    // as small muted text, like a description.
+    GroupBox* Footer(El* e);
     GroupBox* WithVariant(GroupBoxVariant value);
     GroupBox* Normal();
     GroupBox* Fill();

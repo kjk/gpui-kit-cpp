@@ -41,7 +41,9 @@ static void VariantBuildersAndChildrenMatchTheSourceTree() {
     utassert(group->children.len == 40);
     El* root = group->IntoEl();
     El* title = root->first;
-    El* content = title ? title->next : nullptr;
+    // title, then the slot holding the surface and any footer.
+    El* slot = title ? title->next : nullptr;
+    El* content = slot ? slot->first : nullptr;
     utassert(base::StrEq(root->id, StrL("group-box")));
     utassert(title != nullptr);
     utassert(title && title->first &&
@@ -64,7 +66,8 @@ static void VariantBuildersAndChildrenMatchTheSourceTree() {
                              ->Id(StrL("outlined"))
                              ->WithVariant(GroupBoxVariant::Outline);
     El* outlinedRoot = outlined->IntoEl();
-    El* outlinedContent = outlinedRoot->first;
+    El* outlinedContent =
+        outlinedRoot->first ? outlinedRoot->first->first : nullptr;
     utassert(base::StrEq(outlinedRoot->id, StrL("outlined")));
     utassert(outlinedContent && outlinedContent->style.border == 1);
     utassert(!outlinedContent || !outlinedContent->style.hasBg);
@@ -104,7 +107,9 @@ static void ElementTitlesAndThreeRefinementsAreRetained() {
                    ->IntoEl();
 
     El* title = root->first;
-    El* content = title ? title->next : nullptr;
+    // title, then the slot holding the surface and any footer.
+    El* slot = title ? title->next : nullptr;
+    El* content = slot ? slot->first : nullptr;
     utassert(root->StyleStates()->refineSet == StyleFieldOpacity);
     utassertnear(root->StyleStates()->refine.opacity, 0.5f);
     utassert(title && title->first == customTitle);
@@ -117,9 +122,47 @@ static void ElementTitlesAndThreeRefinementsAreRetained() {
     ArenaDelete(a);
 }
 
+// GroupBox::footer: below the surface, 8 px under it inside the surface's
+// slot, and small muted text — outside the fill, not one of its children.
+static void AFooterSitsOutsideTheSurface() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    const Theme& th = ThemeNow(&app);
+
+    El* footer = TextEl(a, StrL("Supporting text"));
+    El* root = GroupBox::New(&cx, StrL("Title"))
+                   ->Fill()
+                   ->Child(Div(a))
+                   ->Footer(footer)
+                   ->IntoEl();
+    El* title = root->first;
+    El* slot = title ? title->next : nullptr;
+    El* surface = slot ? slot->first : nullptr;
+    El* footerBox = surface ? surface->next : nullptr;
+    utassert(slot && slot->style.gapY == 8);
+    utassert(surface && surface->style.hasBg);
+    utassert(footerBox && footerBox->first == footer);
+    utassert(footerBox && footerBox->style.fontSize == 14);
+    utassert(footerBox && GroupBoxColorEq(footerBox->style.color, th.mutedFg));
+    utassert(footerBox && !footerBox->style.hasBg);
+
+    // Without one, the slot holds the surface alone.
+    El* plain = GroupBox::New(&cx, StrL("Title"))->IntoEl();
+    utassert(plain->first && plain->first->next && plain->first->next->first &&
+             plain->first->next->first->next == nullptr);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestGroupBox() {
     TestSuite("group_box");
     VariantsRoundTripPinnedNames();
     VariantBuildersAndChildrenMatchTheSourceTree();
     ElementTitlesAndThreeRefinementsAreRetained();
+    AFooterSitsOutsideTheSurface();
 }
