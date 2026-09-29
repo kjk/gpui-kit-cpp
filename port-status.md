@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `66a9faa9462e688b7c0be789ab65776122af87d8` (2026-09-27,
-input: Refresh an open code action menu on a new request (#3274)). Upstream's
-code-action request refreshes a menu that is already open, bumping its
-revision so the overlay rebuilds; here the chord no longer toggles the menu
-closed. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `a06974abfdd79c8393dcd817787ed0e80f59e36d` (2026-09-27,
+perf(command): skip remeasuring unchanged rows (#3268)). Upstream's command
+palette keeps its measured rows when a re-render reinstalls an unchanged
+model; rows here have fixed heights and are never measured. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

@@ -260,10 +260,53 @@ static void AQueryIsTrimmedBeforeItIsMatched() {
     utassert(CommandMatchedCount(&s) == 1);
 }
 
+static El* CustomRow(Ctx*, const CommandItem*) {
+    return nullptr;
+}
+
+// state.rs reinstalling_an_unchanged_model_keeps_the_measured_rows (#3268):
+// a host re-render hands the palette an equal model, and its rows and their
+// sizes stay as they were; a custom row keeps the height its item states.
+// Rust also asserts when rows are measured again;
+// rows are never measured here (contentH is the custom row's height), so
+// what is left to check is the answer.
+static void ReinstallingAnUnchangedModelKeepsItsRows() {
+    CommandEntry entries[2] = {CommandEntryOf(kSuggestionsGroup),
+                               CommandEntryOf(kSettingsGroup)};
+    CommandState s;
+    Install(&s, entries, 2, nullptr);
+    utassert(CommandMatchedCount(&s) == 5);
+    float sizes[8] = {};
+    int nSizes = s.rowSizes.len;
+    utassert(nSizes == 7);
+    for (int i = 0; i < nSizes && i < 8; i++) {
+        sizes[i] = s.rowSizes[i];
+    }
+
+    CommandEntry again[2] = {CommandEntryOf(kSuggestionsGroup),
+                             CommandEntryOf(kSettingsGroup)};
+    Install(&s, again, 2, nullptr);
+    utassert(CommandMatchedCount(&s) == 5);
+    utassert(s.rowSizes.len == nSizes);
+    for (int i = 0; i < nSizes && i < 8; i++) {
+        utassertnear(s.rowSizes[i], sizes[i]);
+    }
+
+    CommandItem custom = {StrL("Custom")};
+    custom.content = &CustomRow;
+    custom.contentH = 44;
+    CommandEntry one[1] = {CommandEntryOf(custom)};
+    Install(&s, one, 1, nullptr);
+    utassert(CommandMatchedCount(&s) == 1);
+    utassert(s.rowSizes.len == 1);
+    utassertnear(s.rowSizes[0], 44.f);
+}
+
 void TestCommand() {
     TestSuite("command");
     TheQueryIsACaseInsensitiveSubstringOfTheLabelOrAKeyword();
     GroupsFlattenIntoHeadingsAndItems();
+    ReinstallingAnUnchangedModelKeepsItsRows();
     AHeadingIsHiddenWhileItsGroupIsFilteredOut();
     UngroupedItemsKeepTheirGivenRow();
     AnUngroupedSectionComesBeforeTheGroups();
