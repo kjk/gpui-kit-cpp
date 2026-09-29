@@ -206,6 +206,8 @@ static const StoryInfo kMeta[StoryCount] = {
      "A color theme viewer to explore colors organized by "
      "categories."},
     {"toggle", "Toggle", "Turn an option on or off, alone or in a group."},
+    {"toolbar", "Toolbar",
+     "Groups commands and controls into one keyboard-navigable row."},
     {"tooltip", "Tooltip", "Describe a control on hover."},
     // TreeStory has no description() in Rust, so its page has no line under
     // the title.
@@ -356,7 +358,7 @@ static const char* StorySizeName(UiSize s) {
 // would make the row two pixels taller than every one of upstream's. It goes
 // on as the `ListActiveOverlay` ring does: an absolute child filling the
 // group, drawing the stroke and costing no layout.
-static El* ToolbarGroup(Ctx* cx) {
+static El* StoryToolbarFrame(Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     return Div(a)
@@ -552,7 +554,7 @@ El* StoryToolbarCore(Ctx* cx, StoryToolbarState* st,
                      bool withSize) {
     Arena* a = cx->a;
     El* row = Div(a)->FlexRow()->W(kFill)->JustifyEnd()->ItemsStart();
-    El* group = ToolbarGroup(cx);
+    El* group = StoryToolbarFrame(cx);
     row->Child(group);
 
     if (withSize) {
@@ -593,7 +595,7 @@ El* StoryToolbarCore(Ctx* cx, StoryToolbarState* st,
 }
 
 El* StoryToolbarGroup(Ctx* cx) {
-    return ToolbarGroup(cx);
+    return StoryToolbarFrame(cx);
 }
 
 El* StoryToolbarDivider(Ctx* cx) {

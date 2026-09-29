@@ -30,8 +30,8 @@ static const char* kSlugs[CompCount] = {
     "radio-group", "resizable",      "scrollbar",    "select",
     "sheet",       "slider",         "switch",       "table",
     "tabs",        "text-selection", "text-view",    "textarea",
-    "toast",       "toggle",         "toggle-group", "tooltip",
-    "tree",        "virtual-list",
+    "toast",       "toggle",         "toggle-group", "toolbar",
+    "tooltip",     "tree",           "virtual-list",
 };
 
 const char* CompSlug(int i) {

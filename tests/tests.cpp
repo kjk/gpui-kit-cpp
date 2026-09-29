@@ -155,6 +155,7 @@ int GpuiMain(int argc, char** argv) {
     TestIcon();
     TestKeyedState();
     TestWindowExt();
+    TestToolbar();
     TestDescriptionList();
     TestLabel();
     TestGroupBox();

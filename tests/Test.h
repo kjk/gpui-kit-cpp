@@ -175,6 +175,7 @@ void TestButtonGroup();
 void TestIcon();
 void TestKeyedState();
 void TestWindowExt();
+void TestToolbar();
 void TestDescriptionList();
 void TestLabel();
 void TestGroupBox();

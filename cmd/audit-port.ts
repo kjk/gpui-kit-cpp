@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "c03c97f274b3c5d465b5697ef0ad29d77c3a62fd";
+const pinnedGpuiComponent = "486687b7238672fdc0a0fb3b056abadc6aa41061";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -27,7 +27,7 @@ history hover_card index_path input link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input pagination popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
-text text_boundary text_selection theme theme_tokens toast touch_selection
+text text_boundary text_selection theme theme_tokens toast toolbar touch_selection
 toggle toggle_group tooltip tree undo_history virtual_list
 `
   .trim()
@@ -42,7 +42,7 @@ empty form group_box highlighter history hover_card input kbd label link list ma
 menu message message_scroller native_menu notification pagination plot popover
 progress questionnaire radio rating resizable scroll searchable_list select separator setting
 sheet shimmer sidebar skeleton slider spinner status_bar stepper switch tab
-table tag text theme touch_selection tooltip tree
+table tag text theme toolbar touch_selection tooltip tree
 `
   .trim()
   .split(/\s+/);
@@ -232,6 +232,7 @@ const testTargets: Record<string, string[]> = {
   "base/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/resizable": ["tests/ResizableTests.cpp"],
   "base/root": ["tests/RootTests.cpp"],
+  "base/toolbar": ["tests/ToolbarTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
   "base/scroll_bounce": ["tests/ScrollBounceTests.cpp", "tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
   "base/select": ["tests/SelectTests.cpp"],
@@ -309,6 +310,7 @@ const testTargets: Record<string, string[]> = {
   "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/window_border": ["tests/WindowBorderTests.cpp"],
+  "ui/toolbar": ["tests/ToolbarTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
   "ui/select": ["tests/SelectTests.cpp"],
   "ui/setting": ["tests/SettingTests.cpp"],
@@ -576,14 +578,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 478, sha256: "708698ca483488cd224030e9b12be6255617e724d53b4ccf8e72bbbc02699a3d" },
-    "pub-use": { count: 144, sha256: "f81a861ba2260c34cb5f9f89418015d0806d6f5d89dbd37f3b75657701643db3" },
-    test: { count: 1038, sha256: "20ebb55279f645d2ca7845042c4964ae1bbb2e6193081a7ad211bb6b97e66265" },
+    declaration: { count: 480, sha256: "d0ed40cbb6cb4dced6bed7b7d6626ff70bd58b1f8e739ceb1cc4bdef5a41978b" },
+    "pub-use": { count: 145, sha256: "43473ff2e05faf7520e3c33df15f4a1bfd865cb03fa2c55e2242d60f2f2d4f19" },
+    test: { count: 1045, sha256: "9e75076765f0eba88ad662d5c5b6a15a3394ea138bb9f9e6e49541c736b9cdc7" },
   },
   ui: {
-    declaration: { count: 476, sha256: "724de8eddea6a3c28b3c98071263bd5011fee8c3bc44189e17292a720484ce38" },
+    declaration: { count: 479, sha256: "172113a51564ec8adb5ec65c41181473777d9cf9418db2ac41b73587cf389f15" },
     "pub-use": { count: 168, sha256: "a481ca64eab530461111cb0cd3e46be18187c59243d9304901c225113aea31e5" },
-    test: { count: 607, sha256: "6692c52eac72050b325b505824d526af91728cdd9f5d6dbf8fc00115d27f48bd" },
+    test: { count: 613, sha256: "c1ae00ff0e4e84df9929f277a3983f1ccf34228dbc82f959dc5f6aaf8c3ff239" },
   },
 };
 

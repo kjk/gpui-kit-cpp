@@ -46,6 +46,7 @@ enum {
     CompToast,
     CompToggle,
     CompToggleGroup,
+    CompToolbar,
     CompTooltip,
     CompTree,
     CompVirtualList,
@@ -145,6 +146,11 @@ struct ShowcaseApp {
     bool switchOn = true;
     bool toggleOn = true;
     uint8_t toggleGroup = 0;
+    // The toolbar page: the last command pressed (-1 for none) and the
+    // trailing search field.
+    int toolbarAction = -1;
+    InputState toolbarSearch;
+    bool toolbarSeeded = false;
     int tab = 0;
     bool selectOpen = false;
     int selectIx = 0;
@@ -235,6 +241,7 @@ El* ShowcaseTextarea(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToast(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToggle(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToggleGroup(ShowcaseApp* app, Ctx* cx);
+El* ShowcaseToolbar(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseTooltip(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseTree(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseVirtualList(ShowcaseApp* app, Ctx* cx);

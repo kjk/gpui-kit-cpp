@@ -76,6 +76,7 @@
 #include "base/toast.h"
 #include "base/toggle.h"
 #include "base/toggle_group.h"
+#include "base/toolbar.h"
 #include "base/tooltip.h"
 #include "base/tree.h"
 #include "base/virtual_list.h"

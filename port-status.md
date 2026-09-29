@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c03c97f274b3c5d465b5697ef0ad29d77c3a62fd` (2026-09-22,
-website: Add docs for GPUI action, event (#3179)). Website documentation for
-GPUI actions and events; only the README the story's Introduction page renders
-is copied. The current update target is
+Processed through `486687b7238672fdc0a0fb3b056abadc6aa41061` (2026-09-22,
+toolbar: Add Toolbar and ToolbarGroup components (#3128)). Toolbar and
+ToolbarGroup: Base owns the toolbar role and roving Left/Right focus,
+Component the density that reaches every hosted control, with a story page and
+a Base showcase page. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -45,6 +46,11 @@ is copied. The current update target is
   only by standalone handles (`src/ui/dock.cpp` SkinDock,
   `src/base/dock_area.cpp` DockBindResizeStrip). Splits inside a dock do use
   the indicator.
+- **A toolbar's items are the tab stops inside its box.** Rust constrains
+  roving Left/Right focus to the toolbar's subtree through its focus handle;
+  a handle here knows containment only through a focus trap, which would
+  also keep Tab inside, so the toolbar records its laid-out bounds and roves
+  among the tab stops whose centre lies within them (`src/base/toolbar.cpp`).
 - **Linux centres a new window on the whole X display.** GPUI's
   `Bounds::centered` uses the display's visible bounds; Windows and macOS read
   the work area, the X11 path does not read `_NET_WORKAREA`
@@ -88,7 +94,7 @@ is copied. The current update target is
   with its border, or with the ring `PopoverSurface` draws, instead of reading
   `appearance` (`src/ui/popover.cpp`).
 - **`crates/component-shell` registrations are not ported.** The C++ shell
-  materializes the base components; the styled Carousel, Chart and
+  materializes the base components; the styled Carousel, Chart, Toolbar and
   Questionnaire registrations and `examples/js_story` have no counterpart
   (`src/shell/runtime.cpp`).
 
