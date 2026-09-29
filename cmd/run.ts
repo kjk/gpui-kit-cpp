@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3f43c8092d09760ba42b5421012514668b4b10ad",
+  sha: "d56539adb823651654ace4d1db53e26b6cb2192e",
   date: "2026-09-21",
-  subject: "kit: Update GPUI to gpui-pre 0.3.6 (#3147)",
+  subject: "marker: Add `alignment` for centered and trailing rows (#3151)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

@@ -72,6 +72,54 @@ El* MarkerStory::Render(MarkerStory*, Ctx* cx) {
                         ->IntoEl());
     page->Child(variants);
 
+    El* alignment = MarkerSection(cx, "Alignment",
+                                  "Center a system notice or trail a delivery "
+                                  "state; Separator centers by default.",
+                                  12);
+    StorySectionAdd(alignment,
+                    component::Marker::New(cx)
+                        ->Content(MarkerTextOf(cx, "Leading by default"))
+                        ->IntoEl());
+    StorySectionAdd(
+        alignment,
+        component::Marker::New(cx)
+            ->Alignment(component::MarkerAlignment::Center)
+            ->Icon(MarkerIconOf(cx, IconName::Info))
+            ->Content(MarkerTextOf(cx, "Messages are end-to-end encrypted"))
+            ->IntoEl());
+    StorySectionAdd(
+        alignment,
+        component::Marker::New(cx)
+            ->Alignment(component::MarkerAlignment::Center)
+            ->Content(component::MarkerContent::New(cx)->Child(
+                TextEl(a, StrL("The answer was stopped before it finished. "
+                               "Edit the question or ask again, and a long "
+                               "notice wraps around its center."))
+                    ->Wrap()))
+            ->IntoEl());
+    StorySectionAdd(
+        alignment,
+        component::Marker::New(cx)
+            ->Alignment(component::MarkerAlignment::Center)
+            ->Content(MarkerTextOf(cx, "The message could not be sent."))
+            ->Child(component::Button::New(cx, StrL("marker-retry-send"))
+                        ->Text()
+                        ->WithSize(UiSize::Small)
+                        ->Label(StrL("Retry"))
+                        ->IntoEl())
+            ->IntoEl());
+    StorySectionAdd(alignment, component::Marker::New(cx)
+                                   ->Alignment(component::MarkerAlignment::End)
+                                   ->Content(MarkerTextOf(cx, "Delivered"))
+                                   ->IntoEl());
+    StorySectionAdd(alignment,
+                    component::Marker::New(cx)
+                        ->WithVariant(component::MarkerVariant::Separator)
+                        ->Alignment(component::MarkerAlignment::End)
+                        ->Content(MarkerTextOf(cx, "Today"))
+                        ->IntoEl());
+    page->Child(alignment);
+
     El* status = MarkerSection(
         cx, "Status",
         "Compose icons, spinners, and labels without a fixed status model.",

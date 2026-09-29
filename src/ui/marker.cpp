@@ -89,10 +89,23 @@ El* MarkerContent::IntoEl() {
 
     El* content = Div(a)->MinW(0);
     if (separator) {
-        // `.flex_none().text_center()`. There is no text alignment on an El
-        // here, so the centering is the flex box's rather than the run's,
-        // which comes to the same thing for the one run a separator holds.
-        content->FlexNone()->Flex()->JustifyCenter();
+        // Between separator lines the label keeps its own width so the lines
+        // take the rest; elsewhere it may shrink and wrap. text_left /
+        // text_center / text_right: there is no text alignment on an El here,
+        // so a separator's single run is placed by the flex box instead, and
+        // a wrapped label elsewhere keeps its lines at the leading edge.
+        content->FlexNone()->Flex();
+        switch (alignment) {
+            case MarkerAlignment::Start:
+                content->JustifyStart();
+                break;
+            case MarkerAlignment::Center:
+                content->JustifyCenter();
+                break;
+            case MarkerAlignment::End:
+                content->JustifyEnd();
+                break;
+        }
     }
     if (styleSet) {
         content->Refine(style, styleSet);
@@ -150,6 +163,20 @@ Marker* Marker::Role(RoleOverride value) {
 Marker* Marker::WithVariant(MarkerVariant value) {
     variant = value;
     return this;
+}
+
+Marker* Marker::Alignment(MarkerAlignment value) {
+    alignment = value;
+    hasAlignment = true;
+    return this;
+}
+
+MarkerAlignment Marker::ResolvedAlignment() const {
+    if (hasAlignment) {
+        return alignment;
+    }
+    return variant == MarkerVariant::Separator ? MarkerAlignment::Center
+                                               : MarkerAlignment::Start;
 }
 
 Marker* Marker::Loading(bool value) {
@@ -229,13 +256,23 @@ El* Marker::IntoEl() {
                   ->Font(14)
                   ->LineHeight(1.5f)
                   ->Fg(th.mutedFg);
-    if (variant == MarkerVariant::Separator) {
-        row->JustifyCenter();
+    MarkerAlignment align = ResolvedAlignment();
+    switch (align) {
+        case MarkerAlignment::Start:
+            row->JustifyStart();
+            break;
+        case MarkerAlignment::Center:
+            row->JustifyCenter();
+            break;
+        case MarkerAlignment::End:
+            row->JustifyEnd();
+            break;
     }
     if (variant == MarkerVariant::Border) {
         row->BorderB(1, th.border)->PadB(8);
     }
-    if (variant == MarkerVariant::Separator) {
+    if (variant == MarkerVariant::Separator &&
+        align != MarkerAlignment::Start) {
         El* rule = Div(a)->Flex1()->MinW(0)->H(1)->MarginR(4)->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);
@@ -257,6 +294,7 @@ El* Marker::IntoEl() {
                 loading && loadingStyle == MarkerLoadingStyle::Shimmer;
             child.content->shimmerStyle = shimmerStyle;
             child.content->separator = variant == MarkerVariant::Separator;
+            child.content->alignment = align;
             child.content->fg = fg;
             child.content->hasFg = true;
             row->Child(child.content->IntoEl());
@@ -264,7 +302,7 @@ El* Marker::IntoEl() {
             row->Child(child.element);
         }
     }
-    if (variant == MarkerVariant::Separator) {
+    if (variant == MarkerVariant::Separator && align != MarkerAlignment::End) {
         El* rule = Div(a)->Flex1()->MinW(0)->H(1)->MarginL(4)->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);

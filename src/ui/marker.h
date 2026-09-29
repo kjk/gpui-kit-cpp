@@ -28,6 +28,16 @@ enum class MarkerLoadingStyle : uint8_t {
     Shimmer
 };
 
+// Horizontal placement of a Marker's children inside its full-width row.
+enum class MarkerAlignment : uint8_t {
+    // Keep the children at the leading edge.
+    Start,
+    // Center the children, like a system notice in a transcript.
+    Center,
+    // Keep the children at the trailing edge.
+    End
+};
+
 // A compact decorative icon slot inside a Marker.
 struct MarkerIcon {
     Arena* a = nullptr;
@@ -59,6 +69,7 @@ struct MarkerContent {
     bool shimmer = false;
     ShimmerStyle shimmerStyle = {};
     bool separator = false;
+    MarkerAlignment alignment = MarkerAlignment::Start;
     // The colour the shimmer composites over, which the row hands down.
     Rgba fg = {};
     bool hasFg = false;
@@ -96,6 +107,9 @@ struct Marker {
     Style separatorStyle = {};
     uint32_t separatorStyleSet = 0;
     MarkerVariant variant = MarkerVariant::Plain;
+    // Option<MarkerAlignment>: unset until Alignment is called.
+    MarkerAlignment alignment = MarkerAlignment::Start;
+    bool hasAlignment = false;
     bool loading = false;
     MarkerLoadingStyle loadingStyle = MarkerLoadingStyle::Spinner;
     ShimmerStyle shimmerStyle = {};
@@ -110,6 +124,14 @@ struct Marker {
     // takes effect only together with Id.
     Marker* Role(RoleOverride value);
     Marker* WithVariant(MarkerVariant value);
+    // Set where the row places its children.
+    //
+    // Unset, a Separator centers its label between the two lines and every
+    // other variant starts at the leading edge. An explicit alignment applies
+    // to any variant. A separator keeps only the line on the far side of its
+    // label, so Start draws the trailing line and End the leading one.
+    Marker* Alignment(MarkerAlignment value);
+    MarkerAlignment ResolvedAlignment() const;
     Marker* Loading(bool value);
     Marker* WithLoadingStyle(MarkerLoadingStyle value);
     Marker* WithShimmerStyle(const ShimmerStyle& value);

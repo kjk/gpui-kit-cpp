@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3f43c8092d09760ba42b5421012514668b4b10ad` (2026-09-21, kit:
-Update GPUI to gpui-pre 0.3.6 (#3147)). gpui-kit moves to gpui-pre 0.3.6 (Zed
-`bcf6582ce350`), and the inspector builds its DivInspector per window, which
-the window-keyed C++ editor state already does. The current update target is
+Processed through `d56539adb823651654ace4d1db53e26b6cb2192e` (2026-09-21,
+marker: Add `alignment` for centered and trailing rows (#3151)). Marker gains
+`alignment` (Start, Center, End) for its row, with a separator keeping only
+the line on the far side of its label, and the story adds an Alignment
+section. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -48,6 +49,10 @@ the window-keyed C++ editor state already does. The current update target is
   Escape, an outside click, the trigger and a confirm close it, so the blur leg
   of `select_emits_one_dismiss_event_for_each_open_to_closed_transition` is
   not ported (`src/ui/select.cpp`).
+- **No text alignment on an element.** `text_center()` / `text_right()` have
+  no counterpart, so a wrapped centered or trailing Marker label keeps its
+  lines at the leading edge; a single run is placed by the flex box instead
+  (`src/ui/marker.cpp`).
 - **The styled Popover takes its surface from the caller.** It has no
   `appearance`, `popover_style().p_3()` or child list; `Content` is the whole
   styled surface. So `arrow` fills with that surface's background and outlines

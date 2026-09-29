@@ -1,4 +1,5 @@
-/* Ported from the tests in crates/ui/src/marker.rs: test_marker_builder. */
+/* Ported from the tests in crates/ui/src/marker.rs: test_marker_builder and
+ * test_marker_resolved_alignment. */
 
 #include "Test.h"
 
@@ -28,6 +29,11 @@ static void TheBuilderCarriesVariantLoadingAndSlots() {
     utassert(Marker::New(&cx)->variant == MarkerVariant::Plain);
     utassert(!Marker::New(&cx)->loading);
     utassert(Marker::New(&cx)->loadingStyle == MarkerLoadingStyle::Spinner);
+    utassert(!Marker::New(&cx)->hasAlignment);
+
+    Marker* centered = Marker::New(&cx)->Alignment(MarkerAlignment::Center);
+    utassert(centered->hasAlignment &&
+             centered->alignment == MarkerAlignment::Center);
 
     Marker* contentFirst =
         Marker::New(&cx)
@@ -148,8 +154,66 @@ static void TheVariantsDrawTheirOwnDecoration() {
     ArenaDelete(a);
 }
 
+// test_marker_resolved_alignment.
+static void TheResolvedAlignmentFollowsTheVariantUnlessSet() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+
+    // Unset: only the separator centers its label.
+    utassert(Marker::New(&cx)->ResolvedAlignment() == MarkerAlignment::Start);
+    utassert(Marker::New(&cx)
+                 ->WithVariant(MarkerVariant::Border)
+                 ->ResolvedAlignment() == MarkerAlignment::Start);
+    utassert(Marker::New(&cx)
+                 ->WithVariant(MarkerVariant::Separator)
+                 ->ResolvedAlignment() == MarkerAlignment::Center);
+
+    // Explicit alignment wins over the variant default, in either order.
+    utassert(Marker::New(&cx)
+                 ->Alignment(MarkerAlignment::End)
+                 ->WithVariant(MarkerVariant::Separator)
+                 ->ResolvedAlignment() == MarkerAlignment::End);
+    utassert(Marker::New(&cx)
+                 ->WithVariant(MarkerVariant::Plain)
+                 ->Alignment(MarkerAlignment::Center)
+                 ->ResolvedAlignment() == MarkerAlignment::Center);
+
+    // A separator keeps only the line on the far side of its label, and the
+    // row places its children where the alignment says.
+    const MarkerAlignment aligns[] = {MarkerAlignment::Start,
+                                      MarkerAlignment::End};
+    for (MarkerAlignment align : aligns) {
+        El* row =
+            Marker::New(&cx)
+                ->WithVariant(MarkerVariant::Separator)
+                ->Alignment(align)
+                ->Content(MarkerContent::New(&cx)->Child(TextEl(a, StrL("x"))))
+                ->IntoEl();
+        utassert(
+            row->style.justify ==
+            (align == MarkerAlignment::Start ? Justify::Start : Justify::End));
+        int rules = 0;
+        for (El* child = row->first; child; child = child->next) {
+            if (child->style.height == 1) {
+                rules++;
+            }
+        }
+        utassert(rules == 1);
+        bool ruleFirst = row->first->style.height == 1;
+        utassert(ruleFirst == (align == MarkerAlignment::End));
+    }
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestMarker() {
     TestSuite("marker");
     TheBuilderCarriesVariantLoadingAndSlots();
     TheVariantsDrawTheirOwnDecoration();
+    TheResolvedAlignmentFollowsTheVariantUnlessSet();
 }
