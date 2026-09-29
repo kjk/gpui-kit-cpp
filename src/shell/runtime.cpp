@@ -1796,6 +1796,8 @@ static JSValue NativeComponent(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, id);
 }
 
+static Policy* CurrentPolicy(bool* release);
+
 static JSValue NativeTextView(JSContext* ctx, JSValueConst, int argc,
                               JSValueConst* argv) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
@@ -1823,7 +1825,12 @@ static JSValue NativeTextView(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowTypeError(ctx,
                                  "TextView format must be html or markdown");
     }
+    // scope::policy(): the script's own, or the default one outside a scope.
+    // Push takes the spec's reference; this one is only for the call.
+    bool release = false;
+    component.policy = CurrentPolicy(&release);
     shell::SpecId id = impl->scratch->Push(component);
+    if (release) PolicyRelease(component.policy);
     ArenaDelete(arena);
     return JS_NewUint32(ctx, id);
 }

@@ -838,11 +838,11 @@ static void ShellHostModulesBridgePlainDataAndPromises() {
     utassert(view.IsValid() &&
              EntityRender(&app, &window, frame, view.id) != nullptr);
     utassert(!error.IsSet());
-    utassert(
-        runtime &&
-        runtime->Eval(StrL("if (hostSync !== '{\"answer\":[42,true,\"ok\",0]}') "
-                           "throw new Error(hostSync)"),
-                      StrL("host-sync-check.js"), &error));
+    utassert(runtime &&
+             runtime->Eval(
+                 StrL("if (hostSync !== '{\"answer\":[42,true,\"ok\",0]}') "
+                      "throw new Error(hostSync)"),
+                 StrL("host-sync-check.js"), &error));
     utassert(ShellSettle(runtime, 5000));
     utassert(runtime &&
              runtime->Eval(
@@ -1175,6 +1175,478 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
     if (runtime) runtime->Release();
     ShellErrorClear(&error);
     AppGlobalClear(&app);
+}
+
+// materialize/text_view/tests.rs. The transport is the fetch test hook, which
+// the image walk goes through; every request it sees is recorded, and it
+// asserts the redirect-free transport the Rust tests pin with
+// RedirectPolicy::NoFollow.
+static const uint8_t kTextViewPng[] = {
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00,
+    0x0d, 0x49, 0x48, 0x44, 0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00,
+    0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0xf4, 0x22, 0x7f, 0x8a,
+    0x00, 0x00, 0x00, 0x11, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63,
+    0x14, 0x32, 0x09, 0xfb, 0xcf, 0xc0, 0xc0, 0xc0, 0x00, 0x00, 0x09,
+    0x0d, 0x01, 0x9d, 0xf7, 0x66, 0xcd, 0x15, 0x00, 0x00, 0x00, 0x00,
+    0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+};
+
+enum class TvReply : uint8_t {
+    Png,
+    // A 302 to gTvRedirect from every URL.
+    Redirect,
+    // A 302 from /image.png to /final.png, the PNG from anywhere else.
+    RedirectToFinal,
+    // gTvStatus with a gTvBodyLen-byte body.
+    Status,
+};
+
+static TvReply gTvReply = TvReply::Png;
+static const char* gTvRedirect = nullptr;
+static int gTvRedirectStatus = 302;
+static int gTvStatus = 200;
+static int gTvBodyLen = 0;
+static Vec<Str> gTvRequests;
+static bool gTvFollowed = false;
+
+static void TvRequestsClear() {
+    for (int i = 0; i < gTvRequests.len; i++) StrFree(gTvRequests[i]);
+    VecClear(gTvRequests);
+}
+
+static void TvPng(HttpRsp* out) {
+    out->status = 200;
+    memcpy(VecAppendBlanks(out->body, (int)sizeof(kTextViewPng)), kTextViewPng,
+           sizeof(kTextViewPng));
+}
+
+static bool TvTransport(const HttpReq& req, HttpRsp* out) {
+    if (!req.noRedirect ||
+        (len(req.method) > 0 && !StrEq(req.method, StrL("GET")))) {
+        gTvFollowed = true;
+    }
+    VecAppend(gTvRequests, StrDup(req.url));
+    switch (gTvReply) {
+        case TvReply::Png:
+            TvPng(out);
+            return true;
+        case TvReply::Redirect:
+            out->status = gTvRedirectStatus;
+            out->redirectUrl = gTvRedirect ? StrDup(Str(gTvRedirect)) : Str{};
+            return true;
+        case TvReply::RedirectToFinal:
+            if (StrEndsWith(req.url, StrL("/image.png"))) {
+                out->status = gTvRedirectStatus;
+                out->redirectUrl =
+                    StrDup(StrL("https://images.example/final.png"));
+            } else {
+                TvPng(out);
+            }
+            return true;
+        case TvReply::Status:
+            out->status = gTvStatus;
+            if (gTvBodyLen > 0) {
+                memset(VecAppendBlanks(out->body, gTvBodyLen), 0,
+                       (size_t)gTvBodyLen);
+            }
+            return true;
+    }
+    return false;
+}
+
+static Capabilities TvGetGrant(const char* path, const char* second = nullptr) {
+    HttpRequestGrant grant(StrL("images.example"));
+    grant.AddMethod(StrL("GET")).AddPath(Str(path));
+    if (second) grant.AddPath(Str(second));
+    Capabilities capabilities;
+    capabilities.AddHttpRequest(grant);
+    return capabilities;
+}
+
+struct TvFetch {
+    bool called = false;
+    bool ok = false;
+    int bytesLen = 0;
+    bool png = false;
+};
+
+static void TvFetched(TvFetch* fetch, TextViewImageResponse response) {
+    fetch->called = true;
+    fetch->ok = response.ok;
+    fetch->bytesLen = len(response.bytes);
+    fetch->png =
+        len(response.bytes) == (int)sizeof(kTextViewPng) &&
+        memcmp(response.bytes.s, kTextViewPng, sizeof(kTextViewPng)) == 0;
+}
+
+// request_image over the recording transport: false when it never started
+// (image_url refused it), else whether it answered bytes.
+static bool TvFetchOnce(const Capabilities& capabilities, Str url,
+                        TvFetch* fetch) {
+    *fetch = {};
+    if (!TextViewImageRequest(capabilities, url, MkFunc1(TvFetched, fetch))) {
+        return false;
+    }
+    utassert(ExecWaitIdle(5000));
+    utassert(fetch->called);
+    return fetch->ok;
+}
+
+// document_image_urls_obey_get_grants.
+static void TextViewDocumentImageUrlsObeyGetGrants() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Png;
+    Capabilities exact = TvGetGrant("/image.png");
+    Capabilities none;
+    struct {
+        const char* url;
+        bool allowed;
+    } cases[] = {
+        {"https://images.example/image.png", true},
+        {"https://images.example:443/image.png?size=small#preview", true},
+        {"https://images.example/other.png", false},
+        {"https://other.example/image.png", false},
+        {"https://images.example:8443/image.png", false},
+        {"http://images.example/image.png", false},
+        {"data:image/png;base64,AAAA", false},
+        {"file:///image.png", false},
+        {"custom:image.png", false},
+        {"//images.example/image.png", false},
+        {"/image.png", false},
+        {"image.png", false},
+        {"https://", false},
+        {"https://user:password@images.example/image.png", false},
+    };
+    for (const auto& c : cases) {
+        Str url = Str(c.url);
+        utassert(TextViewImageUrl(exact, url) == c.allowed);
+        utassert(!TextViewImageUrl(none, url));
+        TvRequestsClear();
+        TvFetch fetch;
+        utassert(TvFetchOnce(exact, url, &fetch) == c.allowed);
+        utassert(gTvRequests.len == (c.allowed ? 1 : 0));
+        if (c.allowed) {
+            utassert(fetch.png);
+            // The fragment stays with the document.
+            utassert(!StrContains(gTvRequests[0], StrL("#")));
+        }
+    }
+    HttpRequestGrant postGrant(StrL("images.example"));
+    postGrant.AddMethod(StrL("POST")).AddPath(StrL("/image.png"));
+    Capabilities postOnly;
+    postOnly.AddHttpRequest(postGrant);
+    utassert(
+        !TextViewImageUrl(postOnly, StrL("https://images.example/image.png")));
+    TvRequestsClear();
+    TvFetch fetch;
+    utassert(!TvFetchOnce(postOnly, StrL("https://images.example/image.png"),
+                          &fetch));
+    utassert(gTvRequests.len == 0);
+    utassert(!gTvFollowed);
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// document_image_redirects_reauthorize_each_hop.
+static void TextViewDocumentImageRedirectsReauthorizeEachHop() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Redirect;
+    gTvRedirectStatus = 302;
+    for (const char* target : {
+             "https://other.example/image.png",
+             "https://images.example/not-granted.png",
+             "https://images.example:8443/image.png",
+             "file:///image.png",
+             "data:image/png;base64,AAAA",
+             "custom:image.png",
+             "https://user:password@images.example/image.png",
+         }) {
+        gTvRedirect = target;
+        TvRequestsClear();
+        TvFetch fetch;
+        utassert(!TvFetchOnce(TvGetGrant("/image.png"),
+                              StrL("https://images.example/image.png"),
+                              &fetch));
+        utassert(gTvRequests.len == 1);
+    }
+    // Even a legacy grant to both protocols must not allow HTTPS downgrade.
+    gTvRedirect = "http://images.example/image.png";
+    Capabilities legacy;
+    legacy.AddNetworkHost(StrL("images.example"));
+    TvRequestsClear();
+    TvFetch fetch;
+    utassert(
+        !TvFetchOnce(legacy, StrL("https://images.example/image.png"), &fetch));
+    utassert(gTvRequests.len == 1);
+    gTvRedirect = nullptr;
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// document_image_redirects_preserve_authorized_get. The decode half is the
+// image cache's (ImageCacheTests); what is pinned here is that the bytes
+// arrive intact and the walk stays a GET.
+static void TextViewDocumentImageRedirectsPreserveAuthorizedGet() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::RedirectToFinal;
+    for (int status : {301, 302, 303, 307, 308}) {
+        gTvRedirectStatus = status;
+        gTvFollowed = false;
+        TvRequestsClear();
+        TvFetch fetch;
+        utassert(TvFetchOnce(TvGetGrant("/image.png", "/final.png"),
+                             StrL("https://images.example/image.png"), &fetch));
+        utassert(fetch.png && !gTvFollowed);
+        utassert(
+            gTvRequests.len == 2 &&
+            StrEq(gTvRequests[0], StrL("https://images.example/image.png")) &&
+            StrEq(gTvRequests[1], StrL("https://images.example/final.png")));
+    }
+    gTvRedirectStatus = 302;
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// document_image_requests_bound_bodies_and_redirects.
+static void TextViewDocumentImageRequestsBoundBodiesAndRedirects() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Status;
+    struct {
+        int status;
+        int body;
+        bool allowed;
+    } cases[] = {
+        {200, kFetchMaxBody, true},
+        {200, kFetchMaxBody + 1, false},
+        {404, 0, false},
+        // A missing Location must not trigger a fallback.
+        {302, 0, false},
+    };
+    for (const auto& c : cases) {
+        gTvStatus = c.status;
+        gTvBodyLen = c.body;
+        TvRequestsClear();
+        TvFetch fetch;
+        utassert(TvFetchOnce(TvGetGrant("/image.png"),
+                             StrL("https://images.example/image.png"),
+                             &fetch) == c.allowed);
+        utassert(gTvRequests.len == 1);
+    }
+    gTvBodyLen = 0;
+    gTvReply = TvReply::Redirect;
+    gTvRedirect = "https://images.example/image.png";
+    TvRequestsClear();
+    TvFetch fetch;
+    utassert(!TvFetchOnce(TvGetGrant("/image.png"),
+                          StrL("https://images.example/image.png"), &fetch));
+    utassert(gTvRequests.len == kFetchMaxRedirects + 1);
+    gTvRedirect = nullptr;
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// document_svg_images_cannot_read_local_files.
+static void TextViewDocumentSvgImagesCannotReadLocalFiles() {
+    utassert(TextViewSvgReferencesFile(
+        StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" "
+             "height=\"1\"><image href=\"/tmp/gpui-shell-svg.png\" "
+             "width=\"2\" height=\"1\"/></svg>")));
+    utassert(TextViewSvgReferencesFile(
+        StrL("<svg><image width='2' xlink:href='C:\\image.png'/></svg>")));
+    // An SVG that references no file still decodes.
+    utassert(!TextViewSvgReferencesFile(
+        StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"2\" "
+             "height=\"1\"><rect width=\"2\" height=\"1\"/></svg>")));
+    utassert(!TextViewSvgReferencesFile(
+        StrL("<svg><image href=\"data:image/png;base64,AAAA\"/></svg>")));
+}
+
+static void TvCollectImages(El* element, Vec<El*>* out) {
+    if (!element) return;
+    if (element->kind == ElKind::Image) VecAppend(*out, element);
+    for (El* child = element->first; child; child = child->next) {
+        TvCollectImages(child, out);
+    }
+}
+
+// Renders `document` as a script TextView under `capabilities` twice over,
+// letting the loads land in between, and answers the images of the last
+// frame.
+struct TvMounted {
+    App app;
+    Window window;
+    ShellRuntime* runtime = nullptr;
+    Vec<Entity<ScriptView>> views;
+    Arena* frame = nullptr;
+};
+
+static void TvMount(TvMounted* m, const char* format, const char* document,
+                    bool scrollable, const Capabilities* capabilities,
+                    int count) {
+    m->window.app = &m->app;
+    component::Init(&m->app);
+    ShellError error = {};
+    m->runtime = ShellRuntime::New(&m->app, &error);
+    Str source = StrDup(
+        fmt("import { View } from 'gpui-kit';\n"
+            "import { TextView } from 'gpui-base';\n"
+            "export default class Document extends View { render() {\n"
+            "  return TextView.%s('document', %s).scrollable(%s); } }\n",
+            Str(format), Str(document), Str(scrollable ? "true" : "false")));
+    ViewType* type =
+        m->runtime
+            ? m->runtime->LoadSource(StrL("document-images.js"), source, &error)
+            : nullptr;
+    utassert(type != nullptr);
+    for (int i = 0; type && i < count; i++) {
+        Policy* policy = PolicyNew(capabilities[i]);
+        VecAppend(m->views, ScriptView::New(&m->app, m->runtime, type, policy));
+        PolicyRelease(policy);
+    }
+    ViewTypeRelease(type);
+    StrFree(source);
+    ShellErrorClear(&error);
+}
+
+static void TvDraw(TvMounted* m, Vec<El*>* images) {
+    for (int pass = 0; pass < 4; pass++) {
+        if (m->frame) ArenaDelete(m->frame);
+        m->frame = ArenaNew();
+        m->window.frameArena = m->frame;
+        VecClear(*images);
+        for (int i = 0; i < m->views.len; i++) {
+            El* root =
+                EntityRender(&m->app, &m->window, m->frame, m->views[i].id);
+            TvCollectImages(root, images);
+        }
+        utassert(ExecWaitIdle(5000));
+    }
+}
+
+static void TvUnmount(TvMounted* m) {
+    for (int i = 0; i < m->views.len; i++) EntityDrop(&m->app, m->views[i].id);
+    WindowKeyedFree(&m->window);
+    if (m->frame) ArenaDelete(m->frame);
+    if (m->runtime) m->runtime->Release();
+    AppGlobalClear(&m->app);
+}
+
+// text_view_document_images_require_policy.
+static void TextViewDocumentImagesRequirePolicy() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Png;
+    const char* documents[][2] = {
+        {"markdown", "'![image](https://images.example/image.png)'"},
+        {"markdown",
+         "'Before ![image](https://images.example/image.png) after'"},
+        {"markdown",
+         "'| Image |\\n| --- |\\n| ![image](https://images.example/image.png) "
+         "|'"},
+        {"html", "'<img src=\"https://images.example/image.png\">'"},
+        {"html",
+         "'<p>Before <img width=\"2\" height=\"1\" "
+         "src=\"https://images.example/image.png\"> after</p>'"},
+        {"html",
+         "'<table><tr><td><img "
+         "src=\"https://images.example/image.png\"></td></tr></table>'"},
+    };
+    for (const auto& document : documents) {
+        for (bool scrollable : {false, true}) {
+            for (bool allowed : {false, true}) {
+                Capabilities capabilities =
+                    allowed ? TvGetGrant("/image.png") : Capabilities();
+                TvRequestsClear();
+                TvMounted* m = new TvMounted();
+                TvMount(m, document[0], document[1], scrollable, &capabilities,
+                        1);
+                Vec<El*> images;
+                TvDraw(m, &images);
+                utassert(gTvRequests.len == (allowed ? 1 : 0));
+                utassert(images.len == 1);
+                if (images.len == 1) {
+                    // The fetched bytes once granted; never the URL itself.
+                    ImageSourceKind kind = images[0]->imageSource.kind;
+                    utassert(kind == (allowed ? ImageSourceKind::Image
+                                              : ImageSourceKind::Custom));
+                }
+                // Repainting must use this document's cache, not refetch or
+                // fall back.
+                TvDraw(m, &images);
+                utassert(gTvRequests.len == (allowed ? 1 : 0));
+                TvUnmount(m);
+                delete m;
+            }
+        }
+    }
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// text_view_data_images_cannot_bypass_policy.
+static void TextViewDataImagesCannotBypassPolicy() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    const char* data =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAYAAAD0In+"
+        "KAAAAEUlEQVR4nGMUMgn7z8DAwAAACQ0BnfdmzRUAAAAASUVORK5CYII=";
+    Str markdown = StrDup(fmt("'Before ![image](%s) after'", Str(data)));
+    Str html = StrDup(fmt("'<img src=\"%s\">'", Str(data)));
+    const char* documents[][2] = {{"markdown", markdown.s}, {"html", html.s}};
+    for (const auto& document : documents) {
+        Capabilities none;
+        TvRequestsClear();
+        TvMounted* m = new TvMounted();
+        TvMount(m, document[0], document[1], false, &none, 1);
+        Vec<El*> images;
+        TvDraw(m, &images);
+        utassert(gTvRequests.len == 0);
+        // Not handed to the image cache as a resource it would decode.
+        utassert(images.len == 1 &&
+                 images[0]->imageSource.kind == ImageSourceKind::Custom);
+        TvUnmount(m);
+        delete m;
+    }
+    StrFree(markdown);
+    StrFree(html);
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// text_view_document_images_keep_policies_separate.
+static void TextViewDocumentImagesKeepPoliciesSeparate() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::RedirectToFinal;
+    gTvRedirectStatus = 302;
+    Capabilities grants[3] = {TvGetGrant("/image.png", "/final.png"),
+                              TvGetGrant("/image.png"), Capabilities()};
+    TvRequestsClear();
+    TvMounted* m = new TvMounted();
+    TvMount(m, "markdown", "'![image](https://images.example/image.png)'",
+            false, grants, 3);
+    Vec<El*> images;
+    TvDraw(m, &images);
+    // Only the first document may follow the redirect; none may borrow
+    // another's cache.
+    int finals = 0;
+    int starts = 0;
+    for (int i = 0; i < gTvRequests.len; i++) {
+        if (StrEq(gTvRequests[i], StrL("https://images.example/final.png"))) {
+            finals++;
+        } else if (StrEq(gTvRequests[i],
+                         StrL("https://images.example/image.png"))) {
+            starts++;
+        }
+    }
+    utassert(gTvRequests.len == 3 && finals == 1 && starts == 2);
+    TvUnmount(m);
+    delete m;
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
 }
 
 static void ShellMaterializesStateTemplatesInputsAndPaths() {
@@ -4344,6 +4816,14 @@ void TestShellCore() {
     ShellTypeDeclarationsMatchRuntimeAndRefreshImportDirectories();
     PublishedSnapshotsMaterializeToNativeElements();
     ShellHostsHtmlAndMarkdownTextViews();
+    TextViewDocumentImageUrlsObeyGetGrants();
+    TextViewDocumentImageRedirectsReauthorizeEachHop();
+    TextViewDocumentImageRedirectsPreserveAuthorizedGet();
+    TextViewDocumentImageRequestsBoundBodiesAndRedirects();
+    TextViewDocumentSvgImagesCannotReadLocalFiles();
+    TextViewDocumentImagesRequirePolicy();
+    TextViewDataImagesCannotBypassPolicy();
+    TextViewDocumentImagesKeepPoliciesSeparate();
     ShellMaterializesStateTemplatesInputsAndPaths();
     ShellHostsInputGroupPartsAndAddonActions();
     ShellHostsInlineTokenOperationsAndRenderers();

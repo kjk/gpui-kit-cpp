@@ -2678,7 +2678,12 @@ static const Rgba kMarkFg = {0x0a, 0x0a, 0x0a, 0xff};
 // unless the document gave one, never wider than the space it has, and — for
 // an image inside a link — the hand and the click the link's words get.
 El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
-    El* e = ImageEl(a, r->imgSrc, r->text)->Font(font)->Fg(color);
+    // node.rs NodeContext::image_source: the view's override when it has
+    // one, the document's own URL otherwise.
+    gpui::ImageSource imgSource =
+        imageSource ? imageSource(r->imgSrc, imageSourceData)
+                    : gpui::ImageSource::FromResource(r->imgSrc);
+    El* e = ImageEl(a, imgSource, r->text)->Font(font)->Fg(color);
     float w = r->imgW;
     float h = r->imgH;
     // inline_flow.rs image_size: a picture in a run of words that names
@@ -2696,7 +2701,8 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     if ((w > 0) != (h > 0)) {
         Size vb = {};
         int opsLen = 0;
-        const uint8_t* ops = ImageVectorForSrc(r->imgSrc, &opsLen);
+        const uint8_t* ops =
+            ImageVectorForSource(ImageLookup{}, imgSource, &opsLen);
         if (ops && DrawOpsViewBox(ops, opsLen, &vb) && vb.w > 0 && vb.h > 0) {
             if (w > 0) {
                 h = w * (vb.h / vb.w);
@@ -5125,6 +5131,12 @@ TextView* TextView::New(Ctx* cx, Entity<TextViewState> managed) {
 TextView* TextView::TableActions(TableActionsFn fn, void* data) {
     tableActions = fn;
     tableActionsData = data;
+    return this;
+}
+
+TextView* TextView::ImageSource(ImageSourceFn fn, void* data) {
+    imageSource = fn;
+    imageSourceData = data;
     return this;
 }
 

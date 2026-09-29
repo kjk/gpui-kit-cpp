@@ -15,10 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `978eb671298ac446aebbbf80fe43350dff77034a` (2026-09-26,
-website: fix text selection theme token (#3241)). Upstream fixed the theme
-token the website's text selection reads; nothing in the tree ports it. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `23e259f2ea2c4448ee99d903ee2671f5460efde5` (2026-09-26,
+shell: Enforce script network policy for TextView images (#3230)). A shell
+TextView loads its document images under the describing script's network
+grant, re-authorizing every redirect; TextView gains an image-source override
+for that. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -139,6 +141,12 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   materializes the base components; the styled Carousel, Chart, Toolbar,
   Questionnaire and TimeField registrations and `examples/js_story` have no
   counterpart (`src/shell/runtime.cpp`).
+- **A script TextView's images outlive the view.** They load under the
+  script's network grant as upstream's do, but the per-view owner is window
+  keyed state and the decoded pixels sit in the app's encoded-image cache, so
+  both go with the window rather than with the view; and the time limit is
+  the transport's per request rather than one 30-second deadline over every
+  redirect (`src/shell/materialize.cpp`).
 - **No OpenType font features.** Text has no `font_features`, so the
   TimeField and a time-editing DatePicker's trigger do not switch to tabular
   figures (`tnum`) and their digits may shift width while typed

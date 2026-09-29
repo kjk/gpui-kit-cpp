@@ -402,6 +402,10 @@ struct TableData {
 // a copy or a download button, say. Answers null to add nothing.
 using TableActionsFn = El* (*)(Ctx * cx, void* data, const TableData* table);
 
+// text_view.rs ImageSourceFn: the source every document image is drawn and
+// measured from, given the URL the document wrote.
+using ImageSourceFn = gpui::ImageSource (*)(Str uri, void* data);
+
 // text/style.rs `with_heading`: the refinement a heading of `level` (1-6)
 // takes over its built-in size, weight and spacing. Writes the style and
 // answers the StyleField mask it names; naming nothing leaves the heading as
@@ -958,6 +962,9 @@ struct TextView {
     TableActionsFn tableActions = nullptr;
     void* tableActionsData = nullptr;
     void* codeActionsData = nullptr;
+    // text_view.rs image_source.
+    ImageSourceFn imageSource = nullptr;
+    void* imageSourceData = nullptr;
     // Rust stores plugins in a Vec and offers them in registration order.
     ArenaVec<MdPlugin> plugins{};
     // node.rs min_w_16: the floor a table column shrinks to. Above the floor
@@ -1060,6 +1067,12 @@ struct TextView {
     // Rendered below every Markdown table, both layouts, with a small gap so
     // the buttons' hover backgrounds stay clear of the table border.
     TextView* TableActions(TableActionsFn fn, void* data = nullptr);
+    // `.image_source(..)`: overrides the source of every document image,
+    // embedded data URLs included, for drawing and for intrinsic-size
+    // measurement alike. The answer is authoritative: a load that is pending
+    // or failed never falls back to the document's URL. Without it an image
+    // takes the ordinary URI, asset and data-URL path.
+    TextView* ImageSource(ImageSourceFn fn, void* data = nullptr);
     // `.plugin(..)`: a parser and a renderer for blocks this view knows how
     // to draw and markdown does not. They are offered every block in the
     // order they were added, and the first that claims one renders it.

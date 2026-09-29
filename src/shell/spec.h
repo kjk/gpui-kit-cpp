@@ -3,6 +3,10 @@
 
 #include "shell/value.h"
 
+namespace gpui {
+struct Policy;
+}
+
 namespace gpui::shell {
 
 using SpecId = uint32_t;
@@ -202,6 +206,11 @@ struct Component {
     // TextView keeps its stable element id in `text` and its document here.
     Str value;
     TextViewFormat textViewFormat = TextViewFormat::Markdown;
+    // spec.rs TextViewSpec::policy: a document keeps the authority of the
+    // script that described it, because its images load in later native
+    // phases, after the script's scope has ended. The arena that records
+    // the component holds a reference for as long as it holds the node.
+    Policy* policy = nullptr;
     uint64_t handle = 0;
     uint32_t index = 0;
     BackgroundSpec background;
@@ -401,11 +410,14 @@ class SpecArena {
     Vec<uint8_t> parented;
     Vec<uint8_t> claimed;
     Vec<uint64_t> mountedViews;
+    // The references CopyComponent took on its components' policies.
+    Vec<Policy*> policies;
     uint64_t virtualItems = 0;
     // The shape of everything recorded so far. See StructureFingerprint.
     uint64_t structure = 0;
 
     bool CheckLive(SpecId id, SpecError* error) const;
+    void ReleasePolicies();
     Component CopyComponent(const Component& component);
     SpecOp CopyOp(const SpecOp& op);
     void WriteTree(StrBuilder* out, SpecId id, int depth) const;

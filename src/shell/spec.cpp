@@ -1,4 +1,5 @@
 #include "shell/spec.h"
+#include "shell/policy.h"
 
 namespace gpui::shell {
 
@@ -266,10 +267,17 @@ SpecArena::SpecArena(Arena* borrowed) {
 }
 
 SpecArena::~SpecArena() {
+    ReleasePolicies();
     if (ownsArena) ArenaDelete(arena);
 }
 
+void SpecArena::ReleasePolicies() {
+    for (int i = 0; i < policies.len; i++) PolicyRelease(policies[i]);
+    VecClear(policies);
+}
+
 void SpecArena::Reset() {
+    ReleasePolicies();
     VecClear(nodes);
     VecClear(parented);
     VecClear(claimed);
@@ -281,6 +289,13 @@ void SpecArena::Reset() {
 
 Component SpecArena::CopyComponent(const Component& source) {
     Component out = source;
+    if (source.policy) {
+        if (VecAppend(policies, source.policy)) {
+            PolicyRetain(source.policy);
+        } else {
+            out.policy = nullptr;
+        }
+    }
     out.text = StrDup(arena, source.text);
     out.value = StrDup(arena, source.value);
     out.background.color = StrDup(arena, source.background.color);

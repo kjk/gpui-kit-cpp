@@ -36,6 +36,8 @@
 #include "shell/a11y.h"
 #include "shell/action.h"
 #include "shell/dock.h"
+#include "shell/fetch.h"
+#include "shell/policy.h"
 #include "shell/view.h"
 
 #include <math.h>
@@ -1948,6 +1950,248 @@ struct AccordionItemScope {
     }
 };
 
+// ─── materialize/text_view.rs — document images under the script's policy ──
+//
+// A script's TextView fetches its images with the grant of the script that
+// described it, not with the host's unrestricted image loader. Every document
+// image resolves to a source this file answers: a URL the policy does not
+// grant a GET to — relative, scheme-less, data:, file:, a custom scheme, one
+// carrying credentials — fails without a request, and a granted one is
+// fetched here, re-authorizing every redirect hop, and handed to the image
+// cache as the fetched bytes, so the cache never sees the URL and never
+// starts a second, ungated request of its own. A load that is pending or has
+// failed never falls back to the document's URL.
+//
+// Rust keys the owner by the view's element id and the policy's identity, so
+// two documents under different grants never share a load; the keyed state
+// here is the same key. What differs: Rust's asset cache drops a document's
+// decoded images when the view goes; this tree's keyed state lives with the
+// window and the decoded pixels in the app's encoded-image cache, keyed by
+// the bytes, so they are released with the window instead. And the 30-second
+// limit is the transport's per-request one (sys/http kHttpTimeoutMs, 15s)
+// rather than one deadline over every hop.
+
+namespace shell {
+
+bool TextViewImageUrl(const Capabilities& capabilities, Str url) {
+    // is_openable_url, then the GET grant. FetchAuthorize already refuses
+    // anything but an absolute http(s) URL, a missing host and userinfo, so
+    // document-supplied credentials never become HTTP credentials.
+    return IsOpenableUrl(url) &&
+           FetchAuthorize(url, StrL("GET"), capabilities, nullptr);
+}
+
+struct TextViewImageFetch {
+    Func1<TextViewImageResponse> done;
+};
+
+static void TextViewImageFetched(TextViewImageFetch* fetch,
+                                 FetchAsyncResult landed) {
+    TextViewImageResponse response;
+    FetchResult* result = landed.result;
+    // A redirect with no Location, one too many, one the grant does not
+    // cover and an HTTPS downgrade all end the walk as a failure; so does
+    // anything but a success status, and a body over the limit.
+    if (landed.ok && result && result->status >= 200 && result->status < 300 &&
+        len(result->body) <= kFetchMaxBody) {
+        response.ok = true;
+        response.bytes = result->body;
+    }
+    fetch->done.Call(response);
+    delete fetch;
+}
+
+bool TextViewImageRequest(const Capabilities& capabilities, Str url,
+                          Func1<TextViewImageResponse> done) {
+    if (!TextViewImageUrl(capabilities, url)) return false;
+    FetchRequest request;
+    // url.set_fragment(None): the fragment is the document's, not the
+    // server's.
+    int end = 0;
+    while (end < len(url) && url.s[end] != '#') end++;
+    request.url = StrDup(Str(url.s, end));
+    request.method = StrDup(StrL("GET"));
+    TextViewImageFetch* fetch = new TextViewImageFetch();
+    fetch->done = done;
+    // FetchSendAsync asks the transport not to follow redirects and walks
+    // them itself, authorizing each Location against the same grant, at most
+    // kFetchMaxRedirects of them, and never from HTTPS onto HTTP.
+    bool started = request.url.s && request.method.s &&
+                   FetchSendAsync(request, capabilities,
+                                  MkFunc1(TextViewImageFetched, fetch));
+    request.Free();
+    if (!started) delete fetch;
+    return started;
+}
+
+static bool SvgAttrIsHref(Str name) {
+    return StrEqI(name, StrL("href")) || StrEqI(name, StrL("xlink:href"));
+}
+
+bool TextViewSvgReferencesFile(Str bytes) {
+    // refuse_svg_file_references: GPUI draws an SVG `<image>` whose href is
+    // not a data URL from the file it names. This tree's SVG renderer draws
+    // no `<image>` at all, but a document image that asks for one is refused
+    // the same, so a script sees the same answer on both.
+    const char* s = bytes.s;
+    int n = len(bytes);
+    for (int i = 0; s && i + 6 < n; i++) {
+        if (s[i] != '<' ||
+            !StrStartsWithI(Str(s + i + 1, n - i - 1), StrL("image"))) {
+            continue;
+        }
+        char after = s[i + 6];
+        if (after != ' ' && after != '\t' && after != '\r' && after != '\n' &&
+            after != '/' && after != '>') {
+            continue;
+        }
+        int j = i + 6;
+        while (j < n && s[j] != '>') {
+            while (j < n && (s[j] == ' ' || s[j] == '\t' || s[j] == '\r' ||
+                             s[j] == '\n' || s[j] == '/')) {
+                j++;
+            }
+            int nameStart = j;
+            while (j < n && s[j] != '=' && s[j] != '>' && s[j] != ' ' &&
+                   s[j] != '\t' && s[j] != '\r' && s[j] != '\n' &&
+                   s[j] != '/') {
+                j++;
+            }
+            Str name(s + nameStart, j - nameStart);
+            if (j >= n || s[j] != '=') {
+                if (j == nameStart && j < n && s[j] != '>') j++;
+                continue;
+            }
+            j++;
+            char quote = j < n ? s[j] : 0;
+            if (quote != '"' && quote != '\'') continue;
+            int valueStart = ++j;
+            while (j < n && s[j] != quote) j++;
+            Str value(s + valueStart, j - valueStart);
+            if (j < n) j++;
+            if (SvgAttrIsHref(name) && !StrStartsWithI(value, StrL("data:"))) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+} // namespace shell
+
+// The owner's handle on one URL's load. The fetch callback holds a reference
+// too, so a view released mid-load only orphans it.
+struct DocumentImages;
+
+struct DocumentImage {
+    Str uri = {};
+    Str bytes = {};
+    ImageLoadState state = ImageLoadState::Loading;
+    DocumentImages* owner = nullptr;
+    int refs = 1;
+};
+
+static void DocumentImageRelease(DocumentImage* image) {
+    if (!image || --image->refs > 0) return;
+    StrFree(image->uri);
+    StrFree(image->bytes);
+    delete image;
+}
+
+struct DocumentImages {
+    // Retaining the immutable policy also keeps its identity, which is half
+    // the key, from being reused.
+    Policy* policy = nullptr;
+    App* app = nullptr;
+    Vec<DocumentImage*> used;
+
+    ~DocumentImages() {
+        for (int i = 0; i < used.len; i++) {
+            used[i]->owner = nullptr;
+            DocumentImageRelease(used[i]);
+        }
+        if (policy) PolicyRelease(policy);
+    }
+};
+
+static void DocumentImageLanded(DocumentImage* image,
+                                shell::TextViewImageResponse response) {
+    DocumentImages* owner = image->owner;
+    if (owner) {
+        bool ok =
+            response.ok && !shell::TextViewSvgReferencesFile(response.bytes);
+        if (ok) image->bytes = StrDup(response.bytes);
+        image->state = ok && image->bytes.s ? ImageLoadState::Ready
+                                            : ImageLoadState::Failed;
+        if (owner->app) NotifyApp(owner->app);
+    }
+    DocumentImageRelease(image);
+}
+
+// ImageSource::Custom's answer while there is nothing to draw: loading, or
+// failed for good.
+static ImageLoadState DocumentImageState(PaintApp*, void* user,
+                                         RenderImage** image) {
+    *image = nullptr;
+    DocumentImage* entry = (DocumentImage*)user;
+    return entry ? entry->state : ImageLoadState::Failed;
+}
+
+static ImageLoadState DocumentImageDenied(PaintApp*, void*,
+                                          RenderImage** image) {
+    *image = nullptr;
+    return ImageLoadState::Failed;
+}
+
+static DocumentImage* DocumentImageFor(DocumentImages* images, Str uri) {
+    for (int i = 0; i < images->used.len; i++) {
+        if (StrEq(images->used[i]->uri, uri)) return images->used[i];
+    }
+    DocumentImage* image = new DocumentImage();
+    image->uri = StrDup(uri);
+    image->owner = images;
+    if (!image->uri.s || !VecAppend(images->used, image)) {
+        DocumentImageRelease(image);
+        return nullptr;
+    }
+    image->refs++;
+    if (!shell::TextViewImageRequest(PolicyCapabilities(images->policy), uri,
+                                     MkFunc1(DocumentImageLanded, image))) {
+        image->refs--;
+        image->state = ImageLoadState::Failed;
+    }
+    return image;
+}
+
+static ImageSource DocumentImageSource(Str uri, void* data) {
+    DocumentImages* images = (DocumentImages*)data;
+    DocumentImage* image = images ? DocumentImageFor(images, uri) : nullptr;
+    if (!image) return ImageSource::FromCustom(DocumentImageDenied, nullptr);
+    if (image->state == ImageLoadState::Ready) {
+        // The fetched bytes, never the URL: decoding them cannot start a
+        // request of its own.
+        return ImageSource::FromImage((const uint8_t*)image->bytes.s,
+                                      len(image->bytes));
+    }
+    return ImageSource::FromCustom(DocumentImageState, image);
+}
+
+// image_sources: the owner is keyed by the view's id (already on the id
+// stack) and the policy's identity. Without a window — a check that only
+// constructs elements — there is no owner and nothing loads.
+static DocumentImages* DocumentImagesFor(Ctx* cx, Policy* policy) {
+    if (!cx || !cx->win || !policy) return nullptr;
+    char name[48];
+    snprintf(name, sizeof(name), "shell-images/%p", (void*)policy);
+    DocumentImages* images =
+        ElementState<DocumentImages>(cx, Str(name), StrL("DocumentImages"));
+    if (images && !images->policy) {
+        images->policy = PolicyRetain(policy);
+        images->app = cx->app;
+    }
+    return images;
+}
+
 static El* Construct(Ctx* cx, ShellRuntime* runtime,
                      const shell::Component& component,
                      const MaterialBehavior& behavior) {
@@ -1973,6 +2217,10 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 view->Scrollable(behavior.textScrollable);
             view->OnLinkWithContext(Listen(cx, &ScriptView::OnTextLink),
                                     (intptr_t)behavior.onLinkClick);
+            // text_view::with_policy: every document image, embedded data
+            // URLs included, loads under the describing script's grant.
+            view->ImageSource(DocumentImageSource,
+                              DocumentImagesFor(cx, component.policy));
             return view->IntoEl();
         }
         case shell::ComponentKind::Button:
