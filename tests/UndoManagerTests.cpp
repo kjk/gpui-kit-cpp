@@ -25,9 +25,34 @@ static void AdjacentTypingTransactionsCoalesce() {
     UndoRecordTransaction(&m, TypingChange(0, "a"), EditIntent::Typing);
     UndoRecordTransaction(&m, TypingChange(1, "b"), EditIntent::Typing);
 
+    // The run is kept as one insertion, so undo replays a single change
+    // (#3260).
     const UndoTransaction* t = UndoPopUndo(&m);
-    utassert(t && t->len == 2);
+    utassert(t && t->len == 1);
+    utassert(t && StrEq(t->changes[0].newText, StrL("ab")));
+    utassert(t && t->changes[0].oldRange.IsEmpty() &&
+             t->changes[0].oldRange.start == 0);
+    utassert(t && t->changes[0].newRange.start == 0 &&
+             t->changes[0].newRange.end == 2);
+    utassert(t && t->changes[0].selAfter.start == 2);
     utassert(UndoPopUndo(&m) == nullptr);
+}
+
+static bool IsRunOfA(const UndoTransaction* t, int offset, int n) {
+    if (!t || t->len != 1) {
+        return false;
+    }
+    const Change& c = t->changes[0];
+    if (len(c.newText) != n || c.newRange.start != offset ||
+        c.newRange.end != offset + n) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (c.newText.s[i] != 'a') {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void ExplicitTransactionCollectsMultipleChanges() {
@@ -66,11 +91,13 @@ static void SplitsACoalescedTransactionBeforeItGrowsTooLarge() {
                               EditIntent::Typing);
     }
     // MAX_CHANGES_PER_TRANSACTION is 1000: the run splits at 1000, and the
-    // remaining 100 make the second transaction, popped first.
+    // remaining 100 make the second transaction, popped first. Each run is
+    // merged into one insertion, but the split still happens after the same
+    // number of keystrokes.
     const UndoTransaction* t = UndoPopUndo(&m);
-    utassert(t && t->len == 100);
+    utassert(IsRunOfA(t, 1000, 100));
     t = UndoPopUndo(&m);
-    utassert(t && t->len == 1000);
+    utassert(IsRunOfA(t, 0, 1000));
     utassert(UndoPopUndo(&m) == nullptr);
 }
 

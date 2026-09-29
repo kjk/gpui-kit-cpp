@@ -3463,6 +3463,10 @@ struct UndoTransaction {
     // last_batch_len: how many of `changes` the latest batch added, which is
     // the set a following batch has to line up with to coalesce.
     int lastBatchLen = 0;
+    // recorded_changes: how many changes were recorded into this step. A run
+    // of single-cursor keystrokes is merged into one change, so this, not
+    // `len`, decides when the step is full.
+    int recordedChanges = 0;
     // selections_before / selections_after: every cursor around the step,
     // recorded by a multi-cursor edit so an undo puts all of them back. Owned
     // arrays; null when the step was made with one cursor and the Change's
@@ -3757,8 +3761,16 @@ struct FoldRange {
     int endLine = 0;
 };
 
+// fold_map.rs HiddenRows: a run of lines hidden by folding, and how many
+// lines the runs before it hide.
+struct FoldHiddenRows {
+    int start = 0;
+    int end = 0;
+    int hiddenBefore = 0;
+};
+
 // fold_map.rs FoldMap. `candidates` is what could be folded and `folded` is
-// what is; the two index vectors are the projection built from them, rebuilt
+// what is; the hidden runs are the projection built from them, rebuilt
 // lazily because a keystroke changes the text far more often than it changes
 // which lines are hidden.
 struct FoldMap {
@@ -3766,10 +3778,13 @@ struct FoldMap {
     Vec<FoldRange> candidates;
     // A subset of `candidates`, sorted the same way.
     Vec<FoldRange> folded;
-    // display row -> line (fold_map's `visible_wrap_rows`).
-    Vec<int> visibleLines;
-    // line -> display row, -1 for a line inside a closed fold.
-    Vec<int> lineToDisplayRow;
+    // The lines hidden by folding: sorted, disjoint and non-adjacent runs.
+    // Kept as runs rather than a table per line, so rebuilding after an edit
+    // costs the number of folds, not the length of the document, and both
+    // directions are a binary search.
+    Vec<FoldHiddenRows> hidden;
+    // How many lines `hidden` hides in total.
+    int totalHidden = 0;
     bool needsRebuild = true;
     // The line count the projection was last built against, so a rebuild can
     // be skipped when neither the text nor the folds have moved.
@@ -3795,6 +3810,10 @@ void FoldMapAdjustForEdit(FoldMap* m, int editStartLine, int editEndLine,
 // rebuild: the projection, against a document of `lineCount` lines. A no-op
 // unless something moved.
 void FoldMapRebuild(FoldMap* m, int lineCount);
+// set_hidden_rows: the projection for `lineCount` lines with `ranges` (line
+// ranges, end exclusive) hidden. What FoldMapRebuild does with the folds;
+// sorts `ranges` in place.
+void FoldMapSetHiddenRows(FoldMap* m, int lineCount, Selection* ranges, int n);
 // How many rows are on screen — the line count when nothing is folded.
 int FoldMapDisplayRowCount(const FoldMap* m);
 // wrap_row_to_display_row / display_row_to_wrap_row, on lines. -1 for a line

@@ -1280,10 +1280,19 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
                 spanAt++;
             }
-            while (matchAt < style.nMatches && style.matches[matchAt]
-                                                       .end <= start) {
-                matchAt++;
+            // layout_search_matches: partition_point over the sorted,
+            // non-overlapping matches, so a document with thousands of them
+            // does not walk every one above the viewport each frame.
+            int lo = matchAt, hi = style.nMatches;
+            while (lo < hi) {
+                int mid = lo + (hi - lo) / 2;
+                if (style.matches[mid].end <= start) {
+                    lo = mid + 1;
+                } else {
+                    hi = mid;
+                }
             }
+            matchAt = lo;
         }
         bool tokenLine = LineHasVisibleTokens(state, start, start + len(line));
         El* el = nullptr;
@@ -2177,57 +2186,110 @@ void FoldMapRebuild(FoldMap* m, int lineCount) {
     if (!m->needsRebuild && lineCount == m->cachedLineCount) {
         return;
     }
-    m->cachedLineCount = lineCount;
     m->needsRebuild = false;
-    VecClear(m->visibleLines);
-    VecClear(m->lineToDisplayRow);
-    // With nothing folded the projection is the identity, and the two vectors
-    // are left empty rather than filled with it — every reader below answers
-    // from `cachedLineCount` in that case, which is the whole point of the
-    // fast path in Rust's rebuild.
+    // With nothing folded the projection is the identity and there are no
+    // runs; every reader below answers from `cachedLineCount` in that case.
     if (m->folded.len == 0) {
+        m->cachedLineCount = lineCount;
+        VecClear(m->hidden);
+        m->totalHidden = 0;
         return;
-    }
-    if (int* rows = VecAppendBlanks(m->lineToDisplayRow, lineCount)) {
-        for (int i = 0; i < lineCount; i++) {
-            rows[i] = -1;
-        }
     }
     // Which lines a closed fold hides: the ones *between* its ends. Both the
     // line the fold starts on and the one it ends on stay on screen, so a
     // folded block reads as its opening line and its closing brace.
-    for (int line = 0; line < lineCount; line++) {
-        bool hidden = false;
-        for (int i = 0; i < m->folded.len; i++) {
-            const FoldRange& f = m->folded[i];
-            if (line > f.startLine && line < f.endLine) {
-                hidden = true;
-                break;
-            }
+    int n = m->folded.len;
+    auto* ranges =
+        (Selection*)Alloc(GetTempArena(), n * (int)sizeof(Selection));
+    if (!ranges) {
+        return;
+    }
+    for (int i = 0; i < n; i++) {
+        ranges[i] = Selection{m->folded[i].startLine + 1, m->folded[i].endLine};
+    }
+    FoldMapSetHiddenRows(m, lineCount, ranges, n);
+}
+
+// set_hidden_rows: install the projection for `lineCount` lines with
+// `ranges` hidden, merging overlapping and adjacent ranges.
+void FoldMapSetHiddenRows(FoldMap* m, int lineCount, Selection* ranges, int n) {
+    // Sorted by start; the folds arrive that way already, so this is a walk.
+    for (int i = 1; i < n; i++) {
+        Selection r = ranges[i];
+        int j = i;
+        while (j > 0 && ranges[j - 1].start > r.start) {
+            ranges[j] = ranges[j - 1];
+            j--;
         }
-        if (hidden) {
+        ranges[j] = r;
+    }
+    m->cachedLineCount = lineCount;
+    VecClear(m->hidden);
+    m->totalHidden = 0;
+    for (int i = 0; i < n; i++) {
+        int start = ranges[i].start < 0 ? 0 : ranges[i].start;
+        int end = ranges[i].end < lineCount ? ranges[i].end : lineCount;
+        if (end <= start) {
             continue;
         }
-        m->lineToDisplayRow[line] = m->visibleLines.len;
-        VecAppend(m->visibleLines, line);
+        if (m->hidden.len > 0) {
+            FoldHiddenRows& last = m->hidden[m->hidden.len - 1];
+            if (start <= last.end) {
+                if (end > last.end) {
+                    m->totalHidden += end - last.end;
+                    last.end = end;
+                }
+                continue;
+            }
+        }
+        FoldHiddenRows run;
+        run.start = start;
+        run.end = end;
+        run.hiddenBefore = m->totalHidden;
+        VecAppend(m->hidden, run);
+        m->totalHidden += end - start;
     }
+}
+
+// partition_point(|run| run.end <= line): the first run that ends after it.
+static int FoldRunAfter(const FoldMap* m, int line) {
+    int lo = 0, hi = m->hidden.len;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        if (m->hidden[mid].end <= line) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+// hidden_before: how many lines the runs before `index` hide.
+static int FoldHiddenBefore(const FoldMap* m, int index) {
+    return index < m->hidden.len ? m->hidden[index].hiddenBefore
+                                 : m->totalHidden;
 }
 
 int FoldMapDisplayRowCount(const FoldMap* m) {
     if (!m || m->folded.len == 0) {
         return m ? m->cachedLineCount : 0;
     }
-    return m->visibleLines.len;
+    return m->cachedLineCount - m->totalHidden;
 }
 
 int FoldMapDisplayRow(const FoldMap* m, int line) {
     if (!m || m->folded.len == 0) {
         return (m && line >= 0 && line < m->cachedLineCount) ? line : -1;
     }
-    if (line < 0 || line >= m->lineToDisplayRow.len) {
+    if (line < 0 || line >= m->cachedLineCount) {
         return -1;
     }
-    return m->lineToDisplayRow[line];
+    int ix = FoldRunAfter(m, line);
+    if (ix < m->hidden.len && m->hidden[ix].start <= line) {
+        return -1;
+    }
+    return line - FoldHiddenBefore(m, ix);
 }
 
 int FoldMapLineAt(const FoldMap* m, int displayRow) {
@@ -2236,10 +2298,21 @@ int FoldMapLineAt(const FoldMap* m, int displayRow) {
                    ? displayRow
                    : -1;
     }
-    if (displayRow < 0 || displayRow >= m->visibleLines.len) {
+    if (displayRow < 0 || displayRow >= FoldMapDisplayRowCount(m)) {
         return -1;
     }
-    return m->visibleLines[displayRow];
+    // partition_point(|run| run.display_start() <= display_row)
+    int lo = 0, hi = m->hidden.len;
+    while (lo < hi) {
+        int mid = lo + (hi - lo) / 2;
+        const FoldHiddenRows& run = m->hidden[mid];
+        if (run.start - run.hiddenBefore <= displayRow) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return displayRow + FoldHiddenBefore(m, lo);
 }
 
 bool FoldMapLineHidden(const FoldMap* m, int line) {
@@ -2250,14 +2323,22 @@ int FoldMapNearestVisibleLine(const FoldMap* m, int line) {
     if (!FoldMapLineHidden(m, line)) {
         return line;
     }
+    if (line < 0) {
+        return 0;
+    }
     // Hidden means something above it is folded, so the line the fold starts
-    // on is both visible and the row the hidden text now reads as.
-    for (int i = line - 1; i >= 0; i--) {
-        if (!FoldMapLineHidden(m, i)) {
-            return i;
+    // on is both visible and the row the hidden text now reads as: the last
+    // visible line before the run, or before the end for a line past it.
+    int at = line;
+    if (at >= m->cachedLineCount) {
+        at = m->cachedLineCount - 1;
+        if (!FoldMapLineHidden(m, at)) {
+            return at < 0 ? 0 : at;
         }
     }
-    return 0;
+    int ix = FoldRunAfter(m, at);
+    int before = ix < m->hidden.len ? m->hidden[ix].start - 1 : at;
+    return before < 0 ? 0 : before;
 }
 
 bool InputIsMultiLine(const InputState* s) {
@@ -6871,10 +6952,21 @@ bool InputIsReplaceable(const InputState* s) {
     return s && s->replaceable && InputIsEditable(s);
 }
 
+// sync_search_matcher: recompute the matches if the text changed since the
+// last scan.
+static void SyncSearchMatcher(InputState* s) {
+    SearchMatcherUpdate(&s->search.matcher, InputValue(s));
+}
+
+// update_search: keep the matches in step with an edit. A closed search
+// skips the scan — it copies and searches the whole document, and nothing
+// reads the matches until the search is resumed or navigated, which sync
+// first.
 void InputUpdateSearch(InputState* s) {
-    if (s) {
-        SearchMatcherUpdate(&s->search.matcher, InputValue(s));
+    if (!s || !s->search.active) {
+        return;
     }
+    SyncSearchMatcher(s);
 }
 
 // last_layout.visible_range_offset.start. Rust knows which rows it laid out;
@@ -6965,6 +7057,7 @@ bool InputSearchNext(InputState* s, App* app, Window* win, Selection* out) {
     if (!s) {
         return false;
     }
+    SyncSearchMatcher(s);
     Selection r = {};
     if (!SearchMatcherNext(&s->search.matcher, &r)) {
         return false;
@@ -6984,6 +7077,7 @@ bool InputSearchPrev(InputState* s, App* app, Window* win, Selection* out) {
     if (!s) {
         return false;
     }
+    SyncSearchMatcher(s);
     Selection r = {};
     if (!SearchMatcherPrev(&s->search.matcher, &r)) {
         return false;
@@ -7002,6 +7096,7 @@ bool InputSearchReplaceOne(InputState* s, App* app, Window* win, Str with) {
     if (!InputIsReplaceable(s)) {
         return false;
     }
+    SyncSearchMatcher(s);
     SearchMatcher* m = &s->search.matcher;
     Selection r = {};
     if (!SearchMatcherCurrent(m, &r)) {
@@ -7030,6 +7125,7 @@ int InputSearchReplaceAll(InputState* s, App* app, Window* win, Str with) {
     if (!InputIsReplaceable(s)) {
         return 0;
     }
+    SyncSearchMatcher(s);
     SearchMatcher* m = &s->search.matcher;
     int count = SearchMatcherLen(m);
     if (count == 0) {
@@ -8214,14 +8310,33 @@ static void PushBatch(UndoManager* m, UndoTransaction batch,
         UndoTransaction& prev = m->undos[m->undos.len - 1];
         canCoalesce =
             prev.intent == intent && prev.lastBatchLen == batch.len &&
-            prev.len + batch.len <= kMaxChangesPerTransaction &&
+            prev.recordedChanges + batch.len <= kMaxChangesPerTransaction &&
             IsAdjacentBatch(intent, prev.changes + prev.len - prev.lastBatchLen,
                             batch.changes, batch.len);
     }
     if (canCoalesce) {
         UndoTransaction& prev = m->undos[m->undos.len - 1];
-        for (int i = 0; i < batch.len; i++) {
-            TransactionPush(&prev, batch.changes[i]);
+        prev.recordedChanges += batch.len;
+        // "Adjacent single-cursor keystrokes form one contiguous insertion.
+        // Keep it as one change so undo and redo replay it as a single edit
+        // rather than once per keystroke." A change carrying a token delta
+        // stays its own, since the delta describes that change alone.
+        Change* last = prev.len > 0 ? &prev.changes[prev.len - 1] : nullptr;
+        if (intent == EditIntent::Typing && batch.len == 1 && last &&
+            !last->tokenDelta && !batch.changes[0].tokenDelta) {
+            Change* c = &batch.changes[0];
+            StrBuilder sb;
+            sb.Append(last->newText);
+            sb.Append(c->newText);
+            StrFree(last->newText);
+            last->newText = sb.TakeStr();
+            last->newRange.end = c->newRange.end;
+            last->selAfter = c->selAfter;
+            ChangeFree(c);
+        } else {
+            for (int i = 0; i < batch.len; i++) {
+                TransactionPush(&prev, batch.changes[i]);
+            }
         }
         prev.lastBatchLen = batch.len;
         // The run keeps the cursors it began with and takes the latest after.
@@ -8264,6 +8379,7 @@ static void PushBatch(UndoManager* m, UndoTransaction batch,
     }
     batch.intent = intent;
     batch.lastBatchLen = batch.len;
+    batch.recordedChanges = batch.len;
     VecAppend(m->undos, batch);
     m->coalescingBoundary = intent == EditIntent::Atomic;
 }

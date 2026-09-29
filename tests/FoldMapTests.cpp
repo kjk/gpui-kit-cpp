@@ -59,7 +59,7 @@ static void NoFoldsIsTheIdentity() {
     FoldMapRebuild(&m, 6);
 
     utassert(FoldMapDisplayRowCount(&m) == 6);
-    utassert(m.visibleLines.len == 0);
+    utassert(m.hidden.len == 0);
     for (int i = 0; i < 6; i++) {
         utassert(FoldMapDisplayRow(&m, i) == i);
         utassert(FoldMapLineAt(&m, i) == i);
@@ -244,6 +244,73 @@ static void DisplayMapWrapsUtf8AndReservesContinuationIndent() {
     utassert(indented.WrapRowCount() == 3);
 }
 
+// fold_map.rs hidden_runs_match_the_dense_projection (#3260): the runs
+// answer all four queries exactly as the per-line tables they replaced, for
+// hidden ranges at the start, middle and end, adjacent, overlapping, past
+// the last line, and everything hidden.
+static void HiddenRunsMatchTheDenseProjection() {
+    const int lines = 10;
+    struct Case {
+        Selection ranges[3];
+        int n;
+    };
+    const Case cases[] = {
+        {{}, 0},
+        {{{0, 3}}, 1},
+        {{{2, 5}}, 1},
+        {{{7, 10}}, 1},
+        {{{2, 4}, {4, 6}}, 2},
+        {{{1, 5}, {3, 8}}, 2},
+        {{{6, 9}, {1, 3}}, 2},
+        {{{0, 2}, {3, 4}, {8, 20}}, 3},
+        {{{0, 10}}, 1},
+    };
+    for (const Case& c : cases) {
+        FoldMap m;
+        // Only a folded map consults the runs.
+        VecAppend(m.folded, FoldRange{0, 1});
+        Selection ranges[3];
+        for (int i = 0; i < c.n; i++) {
+            ranges[i] = c.ranges[i];
+        }
+        FoldMapSetHiddenRows(&m, lines, ranges, c.n);
+        // dense_projection
+        int visible[lines];
+        int displayRows[lines];
+        int nVisible = 0;
+        for (int line = 0; line < lines; line++) {
+            bool hidden = false;
+            for (int i = 0; i < c.n; i++) {
+                hidden |= line >= c.ranges[i].start && line < c.ranges[i].end;
+            }
+            displayRows[line] = hidden ? -1 : nVisible;
+            if (!hidden) {
+                visible[nVisible++] = line;
+            }
+        }
+        utassert(FoldMapDisplayRowCount(&m) == nVisible);
+        for (int line = 0; line < lines + 2; line++) {
+            int want = line < lines ? displayRows[line] : -1;
+            utassert(FoldMapDisplayRow(&m, line) == want);
+            // nearest_visible_display_row, answered here as the line.
+            int nearest = 0;
+            for (int i = 0; i < nVisible; i++) {
+                if (visible[i] <= line) {
+                    nearest = visible[i];
+                }
+            }
+            if (nVisible > 0 && visible[0] > line) {
+                nearest = visible[0] == line ? line : 0;
+            }
+            utassert(FoldMapNearestVisibleLine(&m, line) == nearest);
+        }
+        for (int row = 0; row < lines + 2; row++) {
+            int want = row < nVisible ? visible[row] : -1;
+            utassert(FoldMapLineAt(&m, row) == want);
+        }
+    }
+}
+
 void TestFoldMap() {
     CandidatesAreSortedAndOnePerStartLine();
     OnlyACandidateFolds();
@@ -255,6 +322,7 @@ void TestFoldMap() {
     AnEditDropsWhatItRanThroughAndShiftsTheRest();
     AnEditOnOneLineMovesNothing();
     RebuildIsSkippedWhenNothingMoved();
+    HiddenRunsMatchTheDenseProjection();
     DisplayMapComposesWrappingAndFolding();
     DisplayMapWrapsUtf8AndReservesContinuationIndent();
 }

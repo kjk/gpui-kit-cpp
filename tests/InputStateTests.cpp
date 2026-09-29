@@ -4375,6 +4375,48 @@ static void ACancelledPreeditSeparatesTyping() {
     utassert(ValueIs(s, ""));
 }
 
+// state.rs test_closed_search_resyncs_matches_after_edits (#3260): a closed
+// search does not rescan on each edit, and navigating it rescans first.
+static void ClosedSearchResyncsMatchesAfterEdits() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    InputSetValue(&s, StrL("foo bar foo"));
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("foo"), true);
+    InputCloseSearch(&s, nullptr, nullptr);
+
+    InputReplaceAll(&s, nullptr, nullptr, StrL("bar foo"));
+    // The edit left the closed search's matches alone.
+    utassert(SearchMatcherLen(&s.search.matcher) == 2);
+    Selection range = {};
+    utassert(InputSearchNext(&s, nullptr, nullptr, &range));
+    utassert(range.start == 4 && range.end == 7);
+
+    InputReplaceAll(&s, nullptr, nullptr, StrL("foo foo foo"));
+    InputSetSearchQuery(&s, nullptr, nullptr, StrL("foo"), true);
+    utassert(SearchMatcherLen(&s.search.matcher) == 3);
+}
+
+// state.rs test_replace_text_in_ranges_drives_the_highlighter_once (#3260):
+// a multi-cursor keystroke reaches the highlighter as one update. Upstream
+// batches the per-edit envelopes into update_batch; the highlighter is driven
+// once per frame here, from the envelope the text funnel leaves, and more
+// than one splice collapses it to one whole-document update.
+static void MultiCursorTypingLeavesOneHighlighterUpdate() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    InputSetValue(&s, StrL("ab\nab"));
+    s.hasPendingEdit = false;
+    InputSetSelectedRange(&s, nullptr, nullptr, 1, 1);
+    InputAddCursorAt(&s, nullptr, nullptr, 4);
+    uint64_t version = s.docVersion;
+    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, StrL("x"));
+    utassert(ValueIs(s, "axb\naxb"));
+    utassert(s.docVersion > version);
+    utassert(s.hasPendingEdit);
+    utassert(s.pendingEdit.oldEndByte == -1 &&
+             s.pendingEdit.newEndByte == len(InputValue(&s)));
+}
+
 void TestInputState() {
     TestSuite("input_state");
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
@@ -4451,6 +4493,8 @@ void TestInputState() {
     EditsAndEscapeDropStaleProviderResponses();
     AHandledConfirmClosesTheMenus();
     ACancelledPreeditSeparatesTyping();
+    ClosedSearchResyncsMatchesAfterEdits();
+    MultiCursorTypingLeavesOneHighlighterUpdate();
     TheHostSeesTheDocumentFirst();
     DefinitionResponsesGrowPastTheOldBuffer();
     BoundariesStepCharacters();
