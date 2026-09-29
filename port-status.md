@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4d745da8b8fab5c0dfcdc3a2353b7e546b5117e9` (2026-09-25,
-docs: expand GPUI core guides and improve documentation UI (#3225)). Upstream
-expanded the GPUI guides and documentation site; the README's license section,
-which the story's Introduction page renders, now names CC BY 4.0 for
-documentation prose. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `42301890be6c906e9af5428b849f1d0623ec30a7` (2026-09-25,
+chart: Customize series chart tooltips (#3228)). The series charts take
+tooltip_title, tooltip_value and tooltip_value_color, their painted tooltip
+lays out Rust's title and swatched rows (a candlestick's open, high, low and
+close, a bar's own colour), and plot::Tooltip gains plain_row and value_color.
+The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -106,6 +106,17 @@ documentation prose. The current update target is
   tree). `select_all` is the selection `SelectAll` made, for as long as the
   window still holds it. Under `-markdown=mini` the parser keeps no
   positions, so the answer is always None (`src/base/text.cpp`).
+- **A series chart paints its hover tooltip.** Line, area, bar and
+  candlestick charts are one custom-painted element, so their tooltip is
+  drawn in the paint pass (`PaintChartSeriesTooltip` in `src/gpui/gpui.cpp`)
+  with the rows `TooltipContent::apply` would build, not built as a
+  `plot::Tooltip`. `tooltip_content`, which hands back an element, has no
+  place to go there and is not ported; the story's "Revenue vs Last Year"
+  card keeps the default rows. The tooltip closures receive the datum's
+  index rather than the datum. The radar paints no hover at all — no dots,
+  no tooltip — so it has none of the tooltip builders, and the stacked bar
+  story is four overlaid BarCharts rather than a custom `Plot`, so it has no
+  `plain_row` total.
 - **No text alignment on an element.** `text_center()` / `text_right()` have
   no counterpart, so a wrapped centered or trailing Marker label keeps its
   lines at the leading edge; a single run is placed by the flex box instead

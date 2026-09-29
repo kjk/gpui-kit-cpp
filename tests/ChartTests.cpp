@@ -526,6 +526,150 @@ static void ABandCountKeepsEachBarInItsBand() {
     utassert(ChartBarValueAxisGap(inside, kChartValueAxisGap) == 0.f);
 }
 
+// plot/tooltip.rs: a_value_color_colors_only_the_row_added_last.
+static void AValueColorColorsOnlyTheRowAddedLast() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    Rgba blue = Rgb(0, 0, 255);
+    Rgba red = Rgb(255, 0, 0);
+    Rgba green = Rgb(0, 255, 0);
+    plot::Tooltip* tooltip = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+                                 ->ValueColor(red)
+                                 ->Row(blue, StrL("Open"), StrL("1"))
+                                 ->Row(blue, StrL("Close"), StrL("2"))
+                                 ->ValueColor(green);
+    utassert(tooltip->rows.len == 2);
+    utassert(!tooltip->rows[0].hasValueColor);
+    utassert(tooltip->rows[1].hasValueColor &&
+             ChartColorEq(tooltip->rows[1].valueColor, green));
+    ArenaDelete(a);
+}
+
+// plot/tooltip.rs: a_plain_row_has_no_swatch_and_takes_a_value_color and
+// plain_rows_keep_a_swatch_slot_only_beside_series_rows.
+static void APlainRowHasNoSwatchAndTakesAValueColor() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    Rgba blue = Rgb(0, 0, 255);
+    Rgba red = Rgb(255, 0, 0);
+    plot::Tooltip* mixed = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+                               ->Row(blue, StrL("Call"), StrL("1"))
+                               ->PlainRow(StrL("Total"), StrL("3"))
+                               ->ValueColor(red);
+    utassert(mixed->rows[0].hasColor &&
+             ChartColorEq(mixed->rows[0].color, blue));
+    utassert(!mixed->rows[0].hasValueColor);
+    utassert(!mixed->rows[1].hasColor && mixed->rows[1].hasValueColor &&
+             ChartColorEq(mixed->rows[1].valueColor, red));
+    plot::Tooltip* plain = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+                               ->PlainRow(StrL("Total"), StrL("3"))
+                               ->PlainRow(StrL("Ratio"), StrL("0.5"));
+    utassert(plot::TooltipHasSwatches(mixed->rows));
+    utassert(!plot::TooltipHasSwatches(plain->rows));
+    ArenaDelete(a);
+}
+
+static Str DayTitle(Arena* a, int index, void*) {
+    return StrDup(a, fmt("Day %d", index));
+}
+
+static Str DollarValue(Arena* a, int, int, double value, void*) {
+    return StrDup(a, fmt("$%.2f", value));
+}
+
+static Str SignedValue(Arena* a, int, int row, double value, void*) {
+    return StrDup(a, fmt("%d: %+g", row, value));
+}
+
+static Rgba GreenOrRed(int, int, double value, void*) {
+    return value >= 0 ? Rgb(0, 255, 0) : Rgb(255, 0, 0);
+}
+
+// chart/mod.rs: tooltip_text_falls_back_to_the_chart_own.
+static void TooltipTextFallsBackToTheChartOwn() {
+    Arena* a = ArenaNew();
+    ChartTooltipContent content;
+    Str title = {};
+    utassert(content.TitleText(a, 1, StrL("Jan"), true, &title) &&
+             StrEq(title, StrL("Jan")));
+    utassert(!content.TitleText(a, 1, {}, false, &title));
+    utassert(StrEq(content.ValueText(a, 1, 0, 1234.5), StrL("1234.5")));
+
+    content.title = &DayTitle;
+    content.value = &DollarValue;
+    utassert(content.TitleText(a, 3, {}, false, &title) &&
+             StrEq(title, StrL("Day 3")));
+    utassert(StrEq(content.ValueText(a, 3, 0, 1234.5), StrL("$1234.50")));
+    // The raw number is the float's own, not its binary expansion.
+    utassert(StrEq(ChartFormatValue(a, (double)0.1f), StrL("0.1")));
+    utassert(StrEq(ChartFormatValue(a, 3), StrL("3")));
+    ArenaDelete(a);
+}
+
+// chart/mod.rs: tooltip_fill_writes_each_row_with_the_value_color and
+// tooltip_fill_leaves_the_title_off_without_one.
+// tooltip_fill_renders_the_caller_content_without_building_rows has no
+// counterpart: tooltip_content is not ported (port-status.md).
+static void TooltipFillWritesEachRowWithTheValueColor() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    Rgba blue = Rgb(0, 0, 255);
+    ChartTooltipContent content;
+    content.value = &SignedValue;
+    content.valueColor = &GreenOrRed;
+    ChartTooltipSeriesRow rows[2] = {{blue, StrL("Open"), 2.},
+                                     {blue, StrL("Close"), -1.}};
+    plot::Tooltip* tooltip =
+        ChartTooltipApply(content, plot::Tooltip::New(&cx, {0, 0}, {100, 100}),
+                          1, StrL("Jan"), true, rows, 2);
+    utassert(tooltip->hasTitle && StrEq(tooltip->title, StrL("Jan")));
+    utassert(tooltip->rows.len == 2);
+    utassert(StrEq(tooltip->rows[0].value, StrL("0: +2")) &&
+             ChartColorEq(tooltip->rows[0].valueColor, Rgb(0, 255, 0)));
+    utassert(StrEq(tooltip->rows[1].value, StrL("1: -1")) &&
+             ChartColorEq(tooltip->rows[1].valueColor, Rgb(255, 0, 0)));
+
+    ChartTooltipContent plain;
+    ChartTooltipSeriesRow alpha[1] = {{blue, StrL("Alpha"), 80.}};
+    plot::Tooltip* untitled =
+        ChartTooltipApply(plain, plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
+                          {}, false, alpha, 1);
+    utassert(!untitled->hasTitle);
+    utassert(StrEq(untitled->rows[0].value, StrL("80")) && !untitled->rows[0]
+                                                                .hasValueColor);
+    ArenaDelete(a);
+}
+
+// bar_chart.rs: the_tooltip_swatch_follows_the_bar_color. A solid fill as is,
+// a fill_gradient by its first stop, and the default fill for a ramp across
+// the plot. the_tooltip_reads_the_painted_bar_frame checks Rust's frame
+// arithmetic, which the colour here does not need.
+static void TheTooltipSwatchFollowsTheBarColor() {
+    Rgba chart2 = Rgb(1, 2, 3);
+    Rgba gain = Rgb(0, 255, 0);
+    Rgba loss = Rgb(255, 0, 0);
+    ChartSeries bars;
+    bars.kind = ChartKind::Bar;
+    bars.stroke = chart2;
+    utassert(ChartColorEq(ChartBarTooltipColor(bars, 0), chart2));
+    Rgba fills[2] = {gain, loss};
+    ChartSeries solid = bars;
+    solid.barFills = fills;
+    utassert(ChartColorEq(ChartBarTooltipColor(solid, 1), loss));
+    ChartSeries diagonal = bars;
+    diagonal.barGradient = true;
+    diagonal.barGradientDiagonal = true;
+    diagonal.barFillFrom = gain;
+    diagonal.barFillTo = loss;
+    utassert(ChartColorEq(ChartBarTooltipColor(diagonal, 0), chart2));
+    ChartSeries stops = diagonal;
+    stops.barGradientDiagonal = false;
+    utassert(ChartColorEq(ChartBarTooltipColor(stops, 0), gain));
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -547,4 +691,9 @@ void TestChart() {
     ATickReadsTheValueAtItsHeight();
     ValueTickLabelsWalkTheDomainFromTheFarEnd();
     ABandCountKeepsEachBarInItsBand();
+    AValueColorColorsOnlyTheRowAddedLast();
+    APlainRowHasNoSwatchAndTakesAValueColor();
+    TooltipTextFallsBackToTheChartOwn();
+    TooltipFillWritesEachRowWithTheValueColor();
+    TheTooltipSwatchFollowsTheBarColor();
 }

@@ -1297,6 +1297,53 @@ enum class AxisLabelPlacement : uint8_t {
 // The text lives in `a`, the frame's scratch arena.
 using ChartTickFormatFn = Str (*)(Arena* a, double value, void* user);
 
+// chart/mod.rs TooltipContent's closures. Rust's receive the datum; the
+// charts here hold arrays, so they receive its index. `row` is the tooltip
+// row — a series, in the order the chart added them, or open, high, low and
+// close — and `value` the number it reads. Text lives in `a`, the frame's
+// scratch arena.
+using ChartTooltipTitleFn = Str (*)(Arena* a, int index, void* user);
+using ChartTooltipValueFn = Str (*)(Arena* a, int index, int row, double value,
+                                    void* user);
+using ChartTooltipValueColorFn = Rgba (*)(int index, int row, double value,
+                                          void* user);
+
+// chart/mod.rs TooltipContent: what a series chart (LineChart, AreaChart,
+// BarChart, CandlestickChart) writes in its hover tooltip, and what the
+// charts' tooltip_title / tooltip_value / tooltip_value_color builders set.
+// Rust's `tooltip_content` closure returns an element; see port-status.md.
+struct ChartTooltipContent {
+    ChartTooltipTitleFn title = nullptr;
+    void* titleUser = nullptr;
+    ChartTooltipValueFn value = nullptr;
+    void* valueUser = nullptr;
+    ChartTooltipValueColorFn valueColor = nullptr;
+    void* valueColorUser = nullptr;
+
+    // title_text: the caller's title for datum `index`, or `fallback`, the
+    // chart's own, which a chart may not have (`hasFallback` false). False
+    // when there is none.
+    bool TitleText(Arena* a, int index, Str fallback, bool hasFallback,
+                   Str* out) const;
+    // value_text: the caller's text for row `row`, or the raw number.
+    Str ValueText(Arena* a, int index, int row, double value) const;
+    // The caller's colour for row `row`'s value; false for the tooltip's
+    // text colour.
+    bool ValueColor(int index, int row, double value, Rgba* out) const;
+};
+
+// `format!("{}", value)` for the chart's numbers: the fewest decimals that
+// read back as the same float, never in exponent form. The data here is
+// float, so this is Rust's f32 Display rather than f64's, which would spell
+// out the float's binary expansion. In `a`.
+Str ChartFormatValue(Arena* a, double value);
+
+struct ChartSeries;
+// bar_chart.rs bar_color: the colour a bar chart's tooltip row shows for bar
+// `index` — its own fill, a fill_gradient by its first stop, and the
+// chart's default fill for a ramp across the plot, which has no one colour.
+Rgba ChartBarTooltipColor(const ChartSeries& c, int index);
+
 struct ChartSeries {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
@@ -1417,6 +1464,8 @@ struct ChartSeries {
     uint32_t id = 0;
     // The name the tooltip's row goes by.
     Str name = {};
+    // tooltip_title / tooltip_value / tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
 };
 
 // Corners<Pixels>: a radius per corner, which is what `rounded_tl(..)` and its

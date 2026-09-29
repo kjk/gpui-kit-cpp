@@ -99,6 +99,28 @@ static Str MoneyTick(Arena* a, double value, void*) {
     return StrDup(a, fmt("%s$%.0f", sign, mag));
 }
 
+// tooltip_value(|_, value| money(value)): a tooltip row's value in money.
+static Str MoneyValue(Arena* a, int, int, double value, void*) {
+    return MoneyTick(a, value, nullptr);
+}
+
+// tooltip_value(|_, _, value| format!("${value:.2}")): a price to the cent.
+static Str PriceValue(Arena* a, int, int, double value, void*) {
+    return StrDup(a, fmt("$%.2f", value));
+}
+
+// tooltip_title(|d| format!("{} 2025", d.month)).
+static Str MonthOf2025(Arena* a, int index, void*) {
+    return StrDup(a, fmt("%s 2025", Str(kMonthlyMonth[index])));
+}
+
+// tooltip_value_color: the bullish colour for a gain, the bearish one for a
+// loss; `user` is the pair.
+static Rgba SignColor(int, int, double value, void* user) {
+    const Rgba* colors = (const Rgba*)user;
+    return value >= 0 ? colors[0] : colors[1];
+}
+
 static const char* TrendLine(Ctx* cx, float percent, const char* period) {
     const char* dir = percent >= 0 ? "up" : "down";
     float mag = percent < 0 ? -percent : percent;
@@ -515,6 +537,9 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             // its sign.
             const float* variations = self->variations;
             Rgba* signs = (Rgba*)Alloc(a, sizeof(Rgba) * kMonthlyDeviceCount);
+            Rgba* signColors = (Rgba*)Alloc(a, sizeof(Rgba) * 2);
+            signColors[0] = th.chartBullish;
+            signColors[1] = th.chartBearish;
             for (int i = 0; i < kMonthlyDeviceCount; i++) {
                 signs[i] =
                     variations[i] >= 0 ? th.chartBullish : th.chartBearish;
@@ -526,6 +551,9 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     ->LabelColors(signs)
                     ->Labels(kMonthlyMonth)
                     ->Tooltip(StrL("Variation"))
+                    ->TooltipTitle(&MonthOf2025)
+                    ->TooltipValue(&MoneyValue)
+                    ->TooltipValueColor(&SignColor, signColors)
                     ->TickMargin(1)
                     ->LabelValues()
                     ->ValueAxis()
@@ -725,6 +753,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  ->YAxis()
                                  ->YTickFormat(&MoneyTick)
                                  ->XTickCount(4)
+                                 ->TooltipValue(&MoneyValue)
                                  ->IntoEl()
                                  ->W(kFill)
                                  ->H(kFill),
@@ -856,6 +885,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  cx, kStockOpen, kStockHigh, kStockLow,
                                  kStockClose, kStockPriceCount)
                                  ->Tooltip(StrL("Price"))
+                                 ->TooltipValue(&PriceValue)
                                  ->Colors(th.chartBullish, th.chartBearish)
                                  ->Labels(kStockDate)
                                  ->TickMargin(5)
@@ -886,6 +916,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                      cx, kStockOpen, kStockHigh, kStockLow,
                                      kStockClose, kStockPriceCount)
                                      ->Tooltip(StrL("Price"))
+                                     ->TooltipValue(&PriceValue)
                                      ->Colors(th.chartBullish, th.chartBearish)
                                      ->Labels(kStockDate)
                                      ->TickMargin(cc.tickMargin)

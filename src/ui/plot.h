@@ -602,11 +602,21 @@ struct PlotHover {
 bool TrackHover(Ctx* cx, const TooltipState* live, const Point* cursor,
                 PlotHover* outHover, Point* outCursor);
 
+// A single labelled row in a Tooltip: an optional coloured swatch, a muted
+// label, and a value, which reads in `valueColor` when it has one.
 struct TooltipRow {
     Rgba color = {};
     Str label = {};
     Str value = {};
+    Rgba valueColor = {};
+    bool hasColor = false;
+    bool hasValueColor = false;
 };
+
+// tooltip.rs has_swatches: whether the rows keep a swatch slot — when any
+// has a swatch, so a plain row's label lines up with the series labels, and
+// not when every row is plain.
+bool TooltipHasSwatches(const ArenaVec<TooltipRow>& rows);
 
 struct Tooltip {
     Arena* a = nullptr;
@@ -631,6 +641,14 @@ struct Tooltip {
     static Tooltip* New(Ctx* cx, Point cursor, Size within);
     Tooltip* Title(Str value);
     Tooltip* Row(Rgba color, Str label, Str value);
+    // plain_row: a row without a swatch, for a figure no series on the plot
+    // draws, such as a total or a ratio. Among series rows its label lines
+    // up with theirs; without any, the labels sit at the start.
+    Tooltip* PlainRow(Str label, Str value);
+    // value_color: colour the value of the row added last — by Row or
+    // PlainRow — such as green or red by its sign. Before any row it does
+    // nothing.
+    Tooltip* ValueColor(Rgba color);
     Tooltip* Gap(float value);
     Tooltip* Cross(const CrossLine& value);
     Tooltip* Dots(const Dot* values, int count);

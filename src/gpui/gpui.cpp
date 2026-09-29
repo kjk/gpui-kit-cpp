@@ -5066,6 +5066,130 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
     TextLayoutRelease(layout);
 }
 
+// plot/tooltip.rs, as a series chart paints it over its plot: the title
+// (semibold), then one row per series — a swatch, the name in the muted
+// colour, the value at the far end in the row's value colour — in a
+// popover box at the compact text size, at least 150 wide, padded 8. The
+// rows and the title are TooltipContent::apply's: the caller's text where
+// tooltip_title / tooltip_value / tooltip_value_color set it, the chart's
+// own otherwise.
+Rgba ChartBarTooltipColor(const ChartSeries& c, int index) {
+    if (c.barGradient) {
+        return c.barGradientDiagonal ? c.stroke : c.barFillFrom;
+    }
+    return c.barFills ? c.barFills[index] : c.stroke;
+}
+
+struct ChartTooltipRow {
+    Rgba swatch = {};
+    Str label = {};
+    Str value = {};
+    Rgba valueColor = {};
+    bool hasValueColor = false;
+};
+
+static void PaintChartSeriesTooltip(PaintCtx* ctx, const ChartSeries& c,
+                                    const RuntimeStyle& th, int index, float x,
+                                    float y, float w, float plotH, Point cursor,
+                                    float focus) {
+    Arena* a = GetTempArena();
+    const ChartTooltipContent& content = c.tooltipContent;
+    const float kFont = 12.f;
+    const float kPad = 8.f;
+    const float kSwatch = 8.f;
+    const float kRowGap = 4.f;
+    ChartTooltipRow rows[5] = {};
+    int nRows = 0;
+    auto addRow = [&](Rgba swatch, Str label, double value) {
+        if (nRows >= 5) {
+            return;
+        }
+        ChartTooltipRow& row = rows[nRows];
+        row.swatch = swatch;
+        row.label = label;
+        row.value = content.ValueText(a, index, nRows, value);
+        row.hasValueColor =
+            content.ValueColor(index, nRows, value, &row.valueColor);
+        nRows++;
+    };
+    if (c.kind == ChartKind::Candlestick) {
+        double open = c.opens ? c.opens[index] : c.ys[index];
+        double close = c.ys[index];
+        Rgba color = close > open ? c.up : c.down;
+        addRow(color, component::Tr("Chart.open"), open);
+        addRow(color, component::Tr("Chart.high"),
+               c.highs ? c.highs[index] : close);
+        addRow(color, component::Tr("Chart.low"),
+               c.lows ? c.lows[index] : close);
+        addRow(color, component::Tr("Chart.close"), close);
+    } else if (c.kind == ChartKind::Bar) {
+        addRow(ChartBarTooltipColor(c, index), c.name, c.ys[index]);
+    } else {
+        addRow(c.stroke, c.name, c.ys[index]);
+        for (int k = 0; k < c.nMore; k++) {
+            if (c.more[k].ys) {
+                addRow(c.more[k].stroke, c.more[k].name, c.more[k].ys[index]);
+            }
+        }
+    }
+    Str title = {};
+    Str own = c.labels ? Str(c.labels[index]) : Str(fmt("%d", index));
+    bool hasTitle = content.TitleText(a, index, own, true, &title);
+
+    Size titleSz = hasTitle ? MeasureText(ctx, title, kFont, 240) : Size{};
+    float innerW = titleSz.w;
+    float innerH = hasTitle ? titleSz.h : 0.f;
+    float rowH[5] = {};
+    float labelW[5] = {};
+    float valueW[5] = {};
+    for (int k = 0; k < nRows; k++) {
+        Size label = rows[k].label.s
+                         ? MeasureText(ctx, rows[k].label, kFont, 240)
+                         : Size{};
+        Size value = MeasureText(ctx, rows[k].value, kFont, 240);
+        labelW[k] = label.w;
+        valueW[k] = value.w;
+        rowH[k] = label.h > value.h ? label.h : value.h;
+        float rowW = kSwatch + 6.f + label.w + 12.f + value.w;
+        innerW = rowW > innerW ? rowW : innerW;
+        innerH += (innerH > 0 ? kRowGap : 0.f) + rowH[k];
+    }
+    float boxW = innerW + kPad * 2;
+    if (boxW < 150.f) {
+        boxW = 150.f;
+    }
+    innerW = boxW - kPad * 2;
+    float boxH = innerH + kPad * 2;
+    Point at =
+        component::PlotTooltipPlace(cursor, {w, plotH}, {boxW, boxH}, 8.f);
+    float bx = x + at.x;
+    float by = y + at.y;
+    FillRound(ctx, bx, by, boxW, boxH, 6.f, RgbaOpacity(th.background, focus));
+    DrawRoundStroke(ctx, bx, by, boxW, boxH, 6.f, 1.f,
+                    RgbaOpacity(th.border, focus));
+    float rowY = by + kPad;
+    if (hasTitle) {
+        DrawTextAt(ctx, title, bx + kPad, rowY, innerW, titleSz.h, kFont,
+                   RgbaOpacity(th.foreground, focus), false, false, -1.f,
+                   kFontWeightSemibold);
+        rowY += titleSz.h + kRowGap;
+    }
+    for (int k = 0; k < nRows; k++) {
+        const ChartTooltipRow& row = rows[k];
+        FillRound(ctx, bx + kPad, rowY + (rowH[k] - kSwatch) * 0.5f, kSwatch,
+                  kSwatch, th.radius * .5f, RgbaOpacity(row.swatch, focus));
+        if (row.label.s) {
+            DrawTextAt(ctx, row.label, bx + kPad + kSwatch + 6.f, rowY,
+                       labelW[k], rowH[k], kFont,
+                       RgbaOpacity(th.mutedForeground, focus), false);
+        }
+        Rgba ink = row.hasValueColor ? row.valueColor : th.foreground;
+        DrawTextAt(ctx, row.value, bx + boxW - kPad - valueW[k], rowY,
+                   valueW[k], rowH[k], kFont, RgbaOpacity(ink, focus), false);
+        rowY += rowH[k] + kRowGap;
+    }
+}
+
 static void DrawChart(PaintCtx* ctx, El* e) {
     const RuntimeStyle& th = RuntimeStyleNow(ctx->app);
     float x = e->x;
@@ -5705,43 +5829,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 }
             }
 
-            Str title = c.labels ? Str(c.labels[index]) : fmt("%d", index);
-            Str value = c.name.s ? fmt("%s  %.1f", c.name, (double)ys[index])
-                                 : fmt("%.1f", (double)ys[index]);
-            Size titleSz = MeasureText(ctx, title, 11, 200);
-            Size valueSz = MeasureText(ctx, value, 11, 200);
-            float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
-            float boxH = titleSz.h + valueSz.h + 12.f;
-            Str extra[4] = {};
-            int nExtra = c.nMore < 4 ? c.nMore : 4;
-            for (int k = 0; k < nExtra; k++) {
-                const ChartSeriesExtra& more = c.more[k];
-                extra[k] = more.name.s ? fmt("%s  %.1f", more.name,
-                                             (double)more.ys[index])
-                                       : fmt("%.1f", (double)more.ys[index]);
-                Size sz = MeasureText(ctx, extra[k], 11, 200);
-                if (sz.w + 16.f > boxW) {
-                    boxW = sz.w + 16.f;
-                }
-                boxH += sz.h;
-            }
-            Point at = component::PlotTooltipPlace(lingerCursor, {w, plotH},
-                                                   {boxW, boxH}, 8.f);
-            FillRound(ctx, x + at.x, y + at.y, boxW, boxH, 6.f,
-                      RgbaOpacity(th.background, focus));
-            DrawRoundStroke(ctx, x + at.x, y + at.y, boxW, boxH, 6.f, 1.f,
-                            RgbaOpacity(th.border, focus));
-            DrawTextAt(ctx, title, x + at.x + 8, y + at.y + 4, boxW, titleSz.h,
-                       11, RgbaOpacity(th.foreground, focus), false);
-            DrawTextAt(ctx, value, x + at.x + 8, y + at.y + 6 + titleSz.h, boxW,
-                       valueSz.h, 11, RgbaOpacity(th.mutedForeground, focus),
-                       false);
-            float textY = y + at.y + 6 + titleSz.h + valueSz.h;
-            for (int k = 0; k < nExtra; k++) {
-                DrawTextAt(ctx, extra[k], x + at.x + 8, textY, boxW, valueSz.h,
-                           11, RgbaOpacity(th.mutedForeground, focus), false);
-                textY += valueSz.h;
-            }
+            PaintChartSeriesTooltip(ctx, c, th, index, x, y, w, plotH,
+                                    lingerCursor, focus);
         }
     }
 

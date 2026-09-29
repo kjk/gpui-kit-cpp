@@ -9,6 +9,27 @@ namespace gpui {
 
 namespace component {
 
+namespace plot {
+struct Tooltip;
+}
+
+// One row a series chart's tooltip shows: its swatch, its name and the
+// number it reads, before TooltipContent writes the number out.
+struct ChartTooltipSeriesRow {
+    Rgba swatch = {};
+    Str name = {};
+    double value = 0;
+};
+
+// chart/mod.rs TooltipContent::apply: write `tooltip` for datum `index` —
+// the chart's title, when it has one (`hasTitle`) or the caller gave one,
+// and one row per series with the caller's value text and colour. The
+// painted series tooltip (gpui.cpp) lays out the same content.
+plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
+                                 plot::Tooltip* tooltip, int index, Str title,
+                                 bool hasTitle,
+                                 const ChartTooltipSeriesRow* rows, int count);
+
 // The spring a chart's pointer — the crosshair, highlight band or hover
 // dot — follows the hovered datum with. A critically damped fast-tier
 // response, matching ECharts' 200 ms exponential-out axis pointer.
@@ -125,6 +146,9 @@ struct PointAxes {
 struct AreaChart {
     Arena* a = nullptr;
     Str tooltipName = {};
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
@@ -160,6 +184,16 @@ struct AreaChart {
     AreaChart* Y(const float* ys);
     // name(..): what the tooltip calls the series.
     AreaChart* Tooltip(Str name);
+    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // label.
+    AreaChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is the series' index in the order `Y` added them.
+    AreaChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
+    // tooltip_value_color: each row's value colour, such as green or red by
+    // its sign; the tooltip's text colour by default.
+    AreaChart* TooltipValueColor(ChartTooltipValueColorFn fn,
+                                 void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -229,6 +263,9 @@ struct AreaChart {
 struct LineChart {
     Arena* a = nullptr;
     Str tooltipName = {};
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
@@ -254,6 +291,16 @@ struct LineChart {
                           int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
     LineChart* Tooltip(Str name);
+    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // label.
+    LineChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is always 0; Rust's closure takes no row index for the one series.
+    LineChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
+    // tooltip_value_color: each row's value colour, such as green or red by
+    // its sign; the tooltip's text colour by default.
+    LineChart* TooltipValueColor(ChartTooltipValueColorFn fn,
+                                 void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -318,6 +365,9 @@ struct LineChart {
 struct BarChart {
     Arena* a = nullptr;
     Str tooltipName = {};
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
@@ -369,6 +419,16 @@ struct BarChart {
                          int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
     BarChart* Tooltip(Str name);
+    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // label.
+    BarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is always 0; Rust's closure takes no row index for the one bar.
+    BarChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
+    // tooltip_value_color: each row's value colour, such as green or red by
+    // its sign; the tooltip's text colour by default.
+    BarChart* TooltipValueColor(ChartTooltipValueColorFn fn,
+                                void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -457,6 +517,9 @@ struct CandlestickChart {
     float padding = 0.3f;
     float bodyWidthRatio = 0.8f;
     Str tooltipName = {};
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color.
+    ChartTooltipContent tooltipContent = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
@@ -470,6 +533,18 @@ struct CandlestickChart {
                                  const char* file = __builtin_FILE(),
                                  int line = __builtin_LINE());
     CandlestickChart* Tooltip(Str name);
+    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // label.
+    CandlestickChart* TooltipTitle(ChartTooltipTitleFn fn,
+                                   void* user = nullptr);
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is 0 to 3 for open, high, low and close.
+    CandlestickChart* TooltipValue(ChartTooltipValueFn fn,
+                                   void* user = nullptr);
+    // tooltip_value_color: each row's value colour, such as green or red by
+    // its sign; the tooltip's text colour by default.
+    CandlestickChart* TooltipValueColor(ChartTooltipValueColorFn fn,
+                                        void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.

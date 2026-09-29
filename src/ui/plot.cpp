@@ -1732,8 +1732,38 @@ Tooltip* Tooltip::Title(Str value) {
     return this;
 }
 
+bool TooltipHasSwatches(const ArenaVec<TooltipRow>& rows) {
+    for (const TooltipRow& row : rows) {
+        if (row.hasColor) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Tooltip* Tooltip::PlainRow(Str label, Str value) {
+    TooltipRow row;
+    row.label = label;
+    row.value = value;
+    rows.Append(a, row);
+    return this;
+}
+
+Tooltip* Tooltip::ValueColor(Rgba color) {
+    if (rows.len > 0) {
+        rows[rows.len - 1].valueColor = color;
+        rows[rows.len - 1].hasValueColor = true;
+    }
+    return this;
+}
+
 Tooltip* Tooltip::Row(Rgba color, Str label, Str value) {
-    rows.Append(a, TooltipRow{color, label, value});
+    TooltipRow row;
+    row.color = color;
+    row.hasColor = true;
+    row.label = label;
+    row.value = value;
+    rows.Append(a, row);
     return this;
 }
 
@@ -1849,24 +1879,28 @@ El* Tooltip::IntoEl() {
         if (hasTitle) {
             content->Child(TextEl(a, title)->Semibold());
         }
+        bool swatched = TooltipHasSwatches(rows);
         for (const TooltipRow& row : rows) {
-            El* left = Div(a)
-                           ->FlexRow()
-                           ->ItemsCenter()
-                           ->Gap(6)
-                           ->Child(Div(a)
-                                       ->W(8)
-                                       ->H(8)
-                                       ->Radius(theme.radius * .5f)
-                                       ->Bg(row.color))
-                           ->Child(TextEl(a, row.label)->Fg(theme.mutedFg));
+            El* left = Div(a)->FlexRow()->ItemsCenter()->Gap(6);
+            if (swatched) {
+                El* swatch = Div(a)->W(8)->H(8)->Radius(theme.radius * .5f);
+                if (row.hasColor) {
+                    swatch->Bg(row.color);
+                }
+                left->Child(swatch);
+            }
+            left->Child(TextEl(a, row.label)->Fg(theme.mutedFg));
+            El* value = TextEl(a, row.value);
+            if (row.hasValueColor) {
+                value->Fg(row.valueColor);
+            }
             content->Child(Div(a)
                                ->FlexRow()
                                ->ItemsCenter()
                                ->JustifyBetween()
                                ->Gap(12)
                                ->Child(left)
-                               ->Child(TextEl(a, row.value)));
+                               ->Child(value));
         }
     } else {
         for (El* child : children) {

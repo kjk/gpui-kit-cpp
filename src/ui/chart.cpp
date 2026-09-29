@@ -5,7 +5,65 @@
 
 namespace gpui {
 
+bool ChartTooltipContent::TitleText(Arena* a, int index, Str fallback,
+                                    bool hasFallback, Str* out) const {
+    if (title) {
+        *out = title(a, index, titleUser);
+        return true;
+    }
+    *out = fallback;
+    return hasFallback;
+}
+
+Str ChartTooltipContent::ValueText(Arena* a, int index, int row,
+                                   double number) const {
+    if (value) {
+        return value(a, index, row, number, valueUser);
+    }
+    return ChartFormatValue(a, number);
+}
+
+bool ChartTooltipContent::ValueColor(int index, int row, double number,
+                                     Rgba* out) const {
+    if (!valueColor) {
+        return false;
+    }
+    *out = valueColor(index, row, number, valueColorUser);
+    return true;
+}
+
+Str ChartFormatValue(Arena* a, double value) {
+    char buf[64];
+    float want = (float)value;
+    for (int decimals = 0; decimals <= 9; decimals++) {
+        snprintf(buf, sizeof(buf), "%.*f", decimals, value);
+        if ((float)strtod(buf, nullptr) == want) {
+            break;
+        }
+    }
+    return StrDup(a, Str(buf));
+}
+
 namespace component {
+
+plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
+                                 plot::Tooltip* tooltip, int index, Str title,
+                                 bool hasTitle,
+                                 const ChartTooltipSeriesRow* rows, int count) {
+    Str text = {};
+    if (content.TitleText(tooltip->a, index, title, hasTitle, &text)) {
+        tooltip->Title(text);
+    }
+    for (int i = 0; i < count; i++) {
+        tooltip->Row(rows[i].swatch, rows[i].name,
+                     content.ValueText(tooltip->a, index, i, rows[i].value));
+        Rgba color = {};
+        if (content.ValueColor(index, i, rows[i].value, &color)) {
+            tooltip->ValueColor(color);
+        }
+    }
+    return tooltip;
+}
 
 Spring ChartPointerSpring(const App* app) {
     float ms = ThemeNow(app).motion.durationFastMs;
@@ -151,6 +209,23 @@ AreaChart* AreaChart::YPadding(float top, float bottom) {
     return this;
 }
 
+AreaChart* AreaChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
+    tooltipContent.title = fn;
+    tooltipContent.titleUser = user;
+    return this;
+}
+AreaChart* AreaChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
+    tooltipContent.value = fn;
+    tooltipContent.valueUser = user;
+    return this;
+}
+AreaChart* AreaChart::TooltipValueColor(ChartTooltipValueColorFn fn,
+                                        void* user) {
+    tooltipContent.valueColor = fn;
+    tooltipContent.valueColorUser = user;
+    return this;
+}
+
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
@@ -167,6 +242,7 @@ El* AreaChart::IntoEl() {
     chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
+    chart->tooltipContent = tooltipContent;
     // The builder is on the frame arena, so the element can point at its
     // array rather than copying it.
     chart->more = more.Flatten(a);
@@ -281,6 +357,23 @@ LineChart* LineChart::Dot(bool v) {
     dot = v;
     return this;
 }
+LineChart* LineChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
+    tooltipContent.title = fn;
+    tooltipContent.titleUser = user;
+    return this;
+}
+LineChart* LineChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
+    tooltipContent.value = fn;
+    tooltipContent.valueUser = user;
+    return this;
+}
+LineChart* LineChart::TooltipValueColor(ChartTooltipValueColorFn fn,
+                                        void* user) {
+    tooltipContent.valueColor = fn;
+    tooltipContent.valueColorUser = user;
+    return this;
+}
+
 El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, stroke, none, none, tickMargin);
@@ -299,6 +392,7 @@ El* LineChart::IntoEl() {
     chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
+    chart->tooltipContent = tooltipContent;
     return e;
 }
 
@@ -393,6 +487,22 @@ BarChart* BarChart::FillGradientDiagonal(Rgba from, Rgba to) {
     gradientDiagonal = true;
     return this;
 }
+BarChart* BarChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
+    tooltipContent.title = fn;
+    tooltipContent.titleUser = user;
+    return this;
+}
+BarChart* BarChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
+    tooltipContent.value = fn;
+    tooltipContent.valueUser = user;
+    return this;
+}
+BarChart* BarChart::TooltipValueColor(ChartTooltipValueColorFn fn, void* user) {
+    tooltipContent.valueColor = fn;
+    tooltipContent.valueColorUser = user;
+    return this;
+}
+
 El* BarChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, fill, none, none, tickMargin);
@@ -429,6 +539,7 @@ El* BarChart::IntoEl() {
     chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
+    chart->tooltipContent = tooltipContent;
     return e;
 }
 
@@ -515,6 +626,25 @@ CandlestickChart* CandlestickChart::BodyWidthRatio(float v) {
     bodyWidthRatio = v;
     return this;
 }
+CandlestickChart* CandlestickChart::TooltipTitle(ChartTooltipTitleFn fn,
+                                                 void* user) {
+    tooltipContent.title = fn;
+    tooltipContent.titleUser = user;
+    return this;
+}
+CandlestickChart* CandlestickChart::TooltipValue(ChartTooltipValueFn fn,
+                                                 void* user) {
+    tooltipContent.value = fn;
+    tooltipContent.valueUser = user;
+    return this;
+}
+CandlestickChart* CandlestickChart::TooltipValueColor(
+    ChartTooltipValueColorFn fn, void* user) {
+    tooltipContent.valueColor = fn;
+    tooltipContent.valueColorUser = user;
+    return this;
+}
+
 El* CandlestickChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     // The closes are the series; the other three ride along beside them.
@@ -535,6 +665,7 @@ El* CandlestickChart::IntoEl() {
     chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
+    chart->tooltipContent = tooltipContent;
     return e;
 }
 
@@ -832,7 +963,8 @@ static void PaintChartTooltip(PaintCtx* ctx, El* e, const Theme& th,
     float rowY = y + kPad;
     if (title.s) {
         DrawTextAt(ctx, title, x + kPad, rowY, innerW, titleSz.h, kFont,
-                   RgbaOpacity(th.foreground, focus), false, false, -1.f, 600);
+                   RgbaOpacity(th.foreground, focus), false, false, -1.f,
+                   kFontWeightSemibold);
         rowY += titleSz.h + 4.f;
     }
     FillRound(ctx, x + kPad, rowY + (rowH - kSwatch) * 0.5f, kSwatch, kSwatch,
