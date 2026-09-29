@@ -15,11 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `86f9c0fb5907549d9a5b0aff53b4b6865933a8e8` (2026-09-23,
-dialog: Reclaim top space for oversized content (#3188)). Dialogs are placed
-through the viewport-aware corner positioner, so an oversized one gives up its
-top offset for the edge margin; Positioner gains position(..). The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `0ad00c0ab25af757038f0d951185b8226c12919d` (2026-09-23,
+text_selection: Keep a participant whose cached view replayed its frame
+(#3193)). A text selection participant is now tied to its element's retained
+state so a cached view's replayed frame keeps it; this runtime has no
+cached-view replay, so every drawn participant already re-registers each
+frame. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

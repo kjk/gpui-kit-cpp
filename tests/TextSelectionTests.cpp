@@ -524,6 +524,10 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
     EntityDropAll(&app);
 }
 
+// window_selection.rs selection_inside_a_cached_view_survives_replayed_frames
+// has no counterpart: it needs Entity::cached frame replay, which this runtime
+// does not have (see WindowSelectionFinishFrame). The sweep below is the
+// behaviour a non-cached participant gets in both trees.
 static void FrameSweepDropsOnlyRegistrationsNotRenewed() {
     App app = {};
     Window win;

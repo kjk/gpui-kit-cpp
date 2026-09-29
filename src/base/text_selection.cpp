@@ -1215,6 +1215,11 @@ void WindowSelectionApply(Window* win) {
     win->paint.selScope = publishes ? s->scope : -1;
 }
 
+// Rust keeps a participant that missed the generation while its element's
+// retained state (TextSelectionRegistration::with_rendered_element) is alive,
+// because Entity::cached replays a frame without painting it. This runtime has
+// no cached-view replay: every element on screen paints, and re-registers,
+// each frame, so a missed generation always means the element is gone.
 void WindowSelectionFinishFrame(Window* win) {
     WindowSelection* selection = win ? win->sel : nullptr;
     if (selection) {
