@@ -2905,6 +2905,24 @@ static void GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime() {
     utassert(!second.IsValid() && second.GetRanges(nullptr, 0) == 0);
 }
 
+// element.rs line_number_column_stays_at_three_digits_then_grows_up_to_seven
+// and displayed_line_number_stays_within_seven_digits.
+// editor_line_number_gutter_resizes_with_document_lines draws a window; the
+// width it compares is 7px per InputLineNumberLen column here.
+static void LineNumberColumnStaysAtThreeDigitsThenGrowsUpToSeven() {
+    utassert(InputLineNumberLen(1) == 3);
+    utassert(InputLineNumberLen(9) == 3);
+    utassert(InputLineNumberLen(10) == 3);
+    utassert(InputLineNumberLen(999) == 3);
+    utassert(InputLineNumberLen(1000) == 4);
+    utassert(InputLineNumberLen(999999) == 6);
+    utassert(InputLineNumberLen(9999999) == 7);
+    utassert(InputLineNumberLen(10000000) == 7);
+    utassert(InputDisplayedLineNumber(42) == 42);
+    utassert(InputDisplayedLineNumber(9999999) == 9999999);
+    utassert(InputDisplayedLineNumber(10000000) == 9999999);
+}
+
 static void DiagnosticSetOwnsMetadataAndAnswersRanges() {
     DiagnosticSet set(
         StrL("Hello, 你好warld!\nThis is a test.\nGoodbye, world!"));
@@ -4285,6 +4303,7 @@ void TestInputState() {
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
     DecorationsAreIndependentClippedAndTrackEdits();
+    LineNumberColumnStaysAtThreeDigitsThenGrowsUpToSeven();
     GeometricCollectionsShareUtf8NormalizationAndEditAffinity();
     VisibleQueryPreservesLayersAndSkipsFoldedSpans();
     IntervalIndexCullsLargeCollectionsEvenWithASpanningRange();

@@ -4533,6 +4533,11 @@ void InputScrollToCaretWithPadding(InputState* s, float caretX, float caretY,
 // what turns the overrides.
 float InputEmptyBottomHeight(bool isCodeEditor, int overrideRows,
                              float viewportH, float lineH);
+// line_number_len: the gutter reserves three digits for a small document,
+// then follows the line count up to seven. displayed_line_number: a number
+// past seven digits shows as 9,999,999 rather than widening the gutter.
+int InputLineNumberLen(int totalLines);
+int InputDisplayedLineNumber(int number);
 float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
                                     int visibleLines, float lineH);
 // A negative `caretX` leaves the sideways offset alone, which is what

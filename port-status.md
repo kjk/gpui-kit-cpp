@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a587ccc38ea74bba18162c3247612db03a86afed` (2026-09-23,
-input: Add collection-owned geometric range decorations (#3040)). Editors gain
-collection-owned, edit-tracked geometric range decorations (fill or one-pixel
-frame) behind an interval index, painted from the rows' shaped runs below the
-selection. The current update target is
+Processed through `f23b45529b950f781dff63513e48cba1af03bc77` (2026-09-23,
+editor: Size line-number gutter between three and seven digits (#3205)). The
+editor's line-number gutter reserves three digits and grows with the line
+count up to seven, with a 6px right margin, and a code editor's left padding
+is at most 6px. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

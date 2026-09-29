@@ -519,6 +519,8 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
 // element.rs FOLD_ICON_WIDTH / FOLD_ICON_HITBOX_WIDTH.
 static const float kFoldIcon = 14.f;
 static const float kFoldIconHitbox = 18.f;
+// element.rs LINE_NUMBER_RIGHT_MARGIN.
+static const float kLineNumberRightMargin = 6.f;
 
 // Whether the pointer is over the gutter, which is what decides if the
 // chevrons show. Rust inserts one hitbox over the whole line-number column
@@ -925,14 +927,10 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
     float numW = 0;
     if (lineNumbers) {
-        // layout_line_numbers: digit count of the last line, 7px per digit
-        // at font-1, 12px for the extra column Rust's ilog10()+2 leaves as
-        // a left gap.
-        int digits = 1;
-        for (int n = rows < 1 ? 1 : rows; n >= 10; n /= 10) {
-            digits++;
-        }
-        numW = 12.f + 7.f * (float)digits;
+        // layout_line_numbers: line_number_len columns, 7px per digit at
+        // font-1 -- three for a small document, then the line count's own
+        // digits up to seven.
+        numW = 7.f * (float)InputLineNumberLen(rows);
     }
     // The fold gutter. Rust widens the line-number column by the hitbox and
     // lays the icons into the space it made; the column here is a flex row,
@@ -1593,7 +1591,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             col->Child(only);
             continue;
         }
-        El* band = Div(a)->FlexRow()->W(kFill)->Gap(8);
+        // LINE_NUMBER_RIGHT_MARGIN: what separates the numbers from the text.
+        El* band = Div(a)->FlexRow()->W(kFill)->Gap(kLineNumberRightMargin);
         if (wrap) {
             // A wrapped row is as tall as its own text, and its line number
             // sits at the top of it rather than in the middle.
@@ -1608,10 +1607,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (row == caretRow && style.activeLine.a != 0) {
             band->Bg(style.activeLine);
         }
-        El* num = TextEl(a, StrDup(a, fmt("%d", row + 1)))
-                      ->Font(font - 1)
-                      ->LineHeight(lineMult)
-                      ->Fg(style.mutedForeground);
+        El* num =
+            TextEl(a, StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
+                ->Font(font - 1)
+                ->LineHeight(lineMult)
+                ->Fg(style.mutedForeground);
         if (style.mono) {
             num->Mono();
         }
@@ -1672,7 +1672,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // gutter and the fold strip are not part of it.
         float textLeft = 0;
         if (lineNumbers) {
-            textLeft = numW + 8.f + (folding ? foldW + 8.f : 0.f);
+            textLeft =
+                numW + kLineNumberRightMargin + (folding ? foldW + 8.f : 0.f);
         }
         // Where the caret was last painted, in the column's own coordinates.
         float gx = state->caretWinX - state->contentBox.x;
@@ -2516,6 +2517,26 @@ static const float kInputRightMargin = 5.f;
 // BOTTOM_MARGIN_ROWS: the default trailing space and the default
 // cursor-surrounding clearance, in line-heights.
 static const int kBottomMarginRows = 3;
+
+// element.rs MIN_LINE_NUMBER_DIGITS / MAX_LINE_NUMBER_DIGITS /
+// MAX_DISPLAYED_LINE_NUMBER.
+const int kMinLineNumberDigits = 3;
+const int kMaxLineNumberDigits = 7;
+const int kMaxDisplayedLineNumber = 9999999;
+
+int InputLineNumberLen(int totalLines) {
+    int digits = 1;
+    for (int n = totalLines < 1 ? 1 : totalLines; n >= 10; n /= 10) {
+        digits++;
+    }
+    return digits < kMinLineNumberDigits   ? kMinLineNumberDigits
+           : digits > kMaxLineNumberDigits ? kMaxLineNumberDigits
+                                           : digits;
+}
+
+int InputDisplayedLineNumber(int number) {
+    return number > kMaxDisplayedLineNumber ? kMaxDisplayedLineNumber : number;
+}
 
 float InputEmptyBottomHeight(bool isCodeEditor, int overrideRows,
                              float viewportH, float lineH) {

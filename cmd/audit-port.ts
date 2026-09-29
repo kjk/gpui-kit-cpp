@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "a587ccc38ea74bba18162c3247612db03a86afed";
+const pinnedGpuiComponent = "f23b45529b950f781dff63513e48cba1af03bc77";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -580,7 +580,7 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   base: {
     declaration: { count: 483, sha256: "60b36bf9ddb02715b4160ae37d8eb1a9149166af42ab1ac4ecb515b3f332d67d" },
     "pub-use": { count: 145, sha256: "eb8f9ab037686dd3cd9964e31b3fe8a215a35e7b794f52f2305021a4bf71aac2" },
-    test: { count: 1069, sha256: "18bdc3afba02962fecdfa4d872ec2222c35f62f7f5ec757d4c4491038687146c" },
+    test: { count: 1072, sha256: "0ca4bda661e369fc4b8acf04208d357c7e044a70d0d9625a80386dde8913fd21" },
   },
   ui: {
     declaration: { count: 479, sha256: "172113a51564ec8adb5ec65c41181473777d9cf9418db2ac41b73587cf389f15" },
