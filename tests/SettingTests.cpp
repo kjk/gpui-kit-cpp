@@ -540,6 +540,59 @@ static void ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged() {
     delete win;
 }
 
+static El* FindParentOf(El* root, const El* wanted) {
+    if (!root) {
+        return nullptr;
+    }
+    for (El* child = root->first; child; child = child->next) {
+        if (child == wanted) {
+            return root;
+        }
+        if (El* found = FindParentOf(child, wanted)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// group_variant_overrides_the_settings_default: with a bordered (Outline)
+// default, a group that says Normal presents its items directly -- no border
+// and no padding on its surface -- while the group beside it keeps the card.
+static void GroupVariantOverridesTheSettingsDefault() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    El* root = Settings::New(&cx, StrL("variant-test"), state)
+                   ->Bordered(true)
+                   ->Page(StrL("General"))
+                   ->Group(StrL("First"))
+                   ->GroupVariant(GroupBoxVariant::Normal)
+                   ->Item(StrL("plain"), StrL("A plain item"))
+                   ->Group(StrL("Second"))
+                   ->Item(StrL("outlined"), StrL("An outlined item"))
+                   ->IntoEl();
+    El* plain = FindSettingElement(root, "0-0-0");
+    El* outlined = FindSettingElement(root, "0-1-0");
+    El* plainCard = FindParentOf(root, plain);
+    El* outlinedCard = FindParentOf(root, outlined);
+    utassert(plainCard && outlinedCard);
+    if (plainCard && outlinedCard) {
+        utassertnear(plainCard->style.border, 0.f);
+        utassertnear(plainCard->style.pad.top, 0.f);
+        utassertnear(outlinedCard->style.border, 1.f);
+        utassertnear(outlinedCard->style.pad.top, 16.f);
+    }
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestSetting() {
     TestSuite("setting");
     TheQueryMatchesTitleDescriptionAndKeywords();
@@ -554,4 +607,5 @@ void TestSetting() {
     SearchRenderKeepsOriginalItemIndexes();
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
+    GroupVariantOverridesTheSettingsDefault();
 }

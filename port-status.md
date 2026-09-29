@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `06a560683f1c95476b2bd432771dc840f38b66e2` (2026-09-23,
-a11y: accessible names for SidebarMenuItem, ListItem and SidebarToggleButton
-(#3160)). SidebarMenuItem rows are named, selectable tree items, and ListItem
-and SidebarToggleButton take an accessibility label. The current update target
-is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `500852f449c05dc01920ec82f3ae2656a61d0387` (2026-09-23,
+setting: let SettingGroup override the settings-level group variant (#3203)).
+A SettingGroup can override the settings-level group surface variant. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

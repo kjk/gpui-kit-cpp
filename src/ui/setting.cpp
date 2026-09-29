@@ -306,6 +306,18 @@ Settings* Settings::Group(Str title, Str description) {
     return this;
 }
 
+Settings* Settings::GroupVariant(GroupBoxVariant variant) {
+    if (pages.len == 0) {
+        return this;
+    }
+    SettingPage& p = pages[pages.len - 1];
+    if (p.groups.len > 0) {
+        p.groups[p.groups.len - 1].variant = variant;
+        p.groups[p.groups.len - 1].hasVariant = true;
+    }
+    return this;
+}
+
 Settings* Settings::GroupFooter(El* footer) {
     if (pages.len == 0) {
         return this;
@@ -866,10 +878,18 @@ El* Settings::IntoEl() {
                     TextEl(a, grp.title)->Font(16)->Fg(th.mutedFg)->PadY(4));
             }
             // GroupBox's content pane: `p_4` and `gap_4`, `rounded(radius)`,
-            // bordered only for the Outline variant.
+            // bordered for the Outline variant and filled for Fill.
+            // `self.variant.unwrap_or(options.group_variant())`: a group's
+            // own variant wins over the settings-level one.
+            GroupBoxVariant variant =
+                grp.hasVariant ? grp.variant
+                               : (bordered ? GroupBoxVariant::Outline
+                                           : GroupBoxVariant::Normal);
             El* card = Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius);
-            if (bordered) {
+            if (variant == GroupBoxVariant::Outline) {
                 card->Pad(16)->Border(1, th.border);
+            } else if (variant == GroupBoxVariant::Fill) {
+                card->Pad(16)->Bg(th.groupBox);
             }
             int shown = 0;
             int itemIx = -1;

@@ -251,6 +251,10 @@ struct SettingGroup {
     // SettingGroup::footer. Rust takes a closure it calls while rendering;
     // the builder is already per frame here, so it is the element.
     El* footer = nullptr;
+    // SettingGroup::variant: this group's surface, overriding the
+    // settings-level one; unset follows it.
+    GroupBoxVariant variant = GroupBoxVariant::Normal;
+    bool hasVariant = false;
 };
 
 struct SettingPage {
@@ -373,6 +377,9 @@ struct Settings {
     // surface, in small muted text. It follows the group's search visibility
     // and matches no query of its own.
     Settings* GroupFooter(El* footer);
+    // SettingGroup::variant, on the group last added: GroupBoxVariant::Normal
+    // presents its items directly, without the card a bordered default draws.
+    Settings* GroupVariant(GroupBoxVariant variant);
     Settings* Item(Str title, Str description, El* control = nullptr);
     Settings* FieldElement(SettingFieldElement element);
     // The typed fields, each filling in the control of the item last added.

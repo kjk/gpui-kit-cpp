@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "06a560683f1c95476b2bd432771dc840f38b66e2",
+  sha: "500852f449c05dc01920ec82f3ae2656a61d0387",
   date: "2026-09-23",
-  subject: "a11y: accessible names for SidebarMenuItem, ListItem and SidebarToggleButton (#3160)",
+  subject: "setting: let SettingGroup override the settings-level group variant (#3203)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
