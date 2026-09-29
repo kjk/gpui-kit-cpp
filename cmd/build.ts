@@ -1140,14 +1140,14 @@ function cflagsFor(tc: Toolchain, f: BuildFlags, fail: (msg: string) => never): 
         "-Wno-unused-command-line-argument",
       );
     } else {
-      flags.push("/MP", "/FS", "/Zi");
+      // The amalgam has more COFF sections than the original object format
+      // can encode (/Gy gives every function its own), and ASan's
+      // instrumentation adds more. clang-cl uses the extended format
+      // automatically; cl.exe needs it requested explicitly.
+      flags.push("/MP", "/FS", "/Zi", "/bigobj");
     }
     if (f.asan) {
       flags.push("/fsanitize=address");
-      // Instrumenting the amalgam creates more COFF sections than the
-      // original object format can encode. clang-cl uses the extended format
-      // automatically; cl.exe needs it requested explicitly.
-      if (!f.clang) flags.push("/bigobj");
     }
     return flags;
   }
