@@ -66,6 +66,18 @@ void DockSkin::SetToggleButtonVisible(App* app, Window* win, bool visible) {
     }
 }
 
+bool DockSkin::IsCloseButtonVisible(App* app) const {
+    DockState* value = state.Get(app);
+    return value ? value->closeButtonVisible : false;
+}
+
+void DockSkin::SetCloseButtonVisible(App* app, Window* win, bool visible) {
+    if (DockState* value = state.Get(app)) {
+        value->closeButtonVisible = visible;
+        NotifyEntity(app, state.id, win);
+    }
+}
+
 El* DockInvalidPanelRender(Ctx* cx, void* data) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -418,15 +430,32 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
                 ->Child(
                     PanelTitle(cx, def, labelColor)->Font(14)->LineHeight(1.f));
         }
-        if (def->closable && !DockIsLastPanel(s, g->node) &&
-            !DockNodeLocked(s, g->node)) {
-            tab->Child(DockBindClose(
-                g, i,
-                Div(a)
-                    ->Pad(2)
-                    ->Radius(th.radius * 0.5f)
-                    ->HoverBg(th.tokens.secondary)
-                    ->Child(IconEl(a, IconName::X, 12)->Fg(th.mutedFg))));
+        // Per-tab close (X) button. The gate mirrors TabGroup::close_panel,
+        // plus !collapsed, since a collapsed strip is a way back in, not a
+        // place to close. DockBindClose stops the click so it closes by
+        // index without also selecting the tab.
+        if (!g->collapsed && s->closeButtonVisible &&
+            DockGroupIsPanelClosable(g, i)) {
+            // The regular ghost hover matches the inactive tab bar background
+            // in the default theme. Use a stronger theme surface while keeping
+            // a transparent idle background and no border.
+            ButtonCustomVariant closeStyle = ButtonCustomVariant::New(cx->app)
+                                                 .Foreground(th.secondaryFg)
+                                                 .Hover(th.secondaryHover)
+                                                 .Active(th.secondaryActive);
+            El* close = component::Button::New(
+                            cx, StrDup(a, fmt("close-tab-%d-%d", g->node, i)))
+                            ->Icon(IconName::Close)
+                            ->WithSize(UiSize::XSmall)
+                            ->Custom(closeStyle)
+                            ->TabStop(false)
+                            ->IntoEl();
+            // The 20px XS button has a 12px icon: 4px inside plus 8px outside
+            // matches the label's 12px leading padding. Offset the label's
+            // own 12px right padding and the tab's 4px gap so the
+            // text-to-icon distance is also 12px.
+            close->MarginL(-8)->MarginR(8);
+            tab->Child(DockBindClose(g, i, close));
         }
         strip->Child(tab);
     }

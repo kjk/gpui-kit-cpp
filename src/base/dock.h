@@ -352,6 +352,10 @@ struct DockState {
     // DockArea::toggle_button_visible: whether the three dock toggles are
     // drawn at all.
     bool toggleButtonVisible = true;
+    // SkinShared::close_button_visible: whether the themed skin draws a close
+    // button on closable tabs. Off by default. Rust keeps it on the skin; the
+    // skin's shared state is this entity here, as for the toggle above.
+    bool closeButtonVisible = false;
     // DockArea::version, kept so a layout that was loaded writes back the
     // version it came with.
     bool hasVersion = false;
@@ -677,6 +681,12 @@ El* DockBindTitleDrag(const DockTabGroup* g, int ix, El* e);
 El* DockBindToggle(const DockTabGroup* g, DockPlacement p, El* e);
 El* DockBindZoom(const DockTabGroup* g, int panelIx, El* e);
 El* DockBindClose(const DockTabGroup* g, int ix, El* e);
+// TabGroupContext::is_panel_closable: whether the panel at tab ix can be
+// closed from this group -- the constraints TabGroup::close_panel applies
+// (the group is in a split, not locked or zoomed, not the last panel) and the
+// panel's own `closable`. Rust names the panel by PanelId; the skin here
+// walks the group by tab index, so the index names it.
+bool DockGroupIsPanelClosable(const DockTabGroup* g, int ix);
 // The strip on a Dock's inner edge that resizes it. Rust's showcase skin
 // stashes the DockContext on mouse down and follows the pointer from the area
 // frame; the drag is base's here, so the strip only has to say it is one.

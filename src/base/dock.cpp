@@ -1057,9 +1057,17 @@ void DockState::OnTabDragEnd(DockState* self, Ctx* cx, const MouseUpEvent*) {
     Notify(cx);
 }
 
+// DockArea::move_panel's `self.panel(panel).is_none()`: a panel this area
+// does not own -- dropped from a nested DockArea -- has no backing entity
+// here, and moving by its index would move one of ours instead. A drag names
+// the state it came from as its data.
+static bool DockOwnsDrag(const DockState* self, const DragPayload& drag) {
+    return base::StrEq(drag.kind, kDockPanelDrag) && drag.data == self;
+}
+
 void DockState::OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
                             intptr_t node) {
-    if (!base::StrEq(ev->drag.kind, kDockPanelDrag)) {
+    if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
     DockDrop at = DockDropAt(ev->el, ev->x, ev->y);
@@ -1069,7 +1077,7 @@ void DockState::OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
 
 void DockState::OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
                           intptr_t nodeAndIx) {
-    if (!base::StrEq(ev->drag.kind, kDockPanelDrag)) {
+    if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
     // `will_split_placement = None`: a drop on a tab is always a move into
@@ -1081,7 +1089,7 @@ void DockState::OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
 
 void DockState::OnDropTabBar(DockState* self, Ctx* cx, const DropEvent* ev,
                              intptr_t node) {
-    if (!base::StrEq(ev->drag.kind, kDockPanelDrag)) {
+    if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
     self->dropNode = -1;

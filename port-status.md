@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `361e6bc6d8feee89cbd44ce7b5057886bbdc3f09` (2026-09-23,
-website: add JSON-backed theme command palette (#3198)). Website and story-web
-only: a JSON-backed theme command palette. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `d7415bd02c61bb21d1e72a43fa81c999ce68cb7e` (2026-09-23,
+dock: fix nested moves and add opt-in tab close controls (#3197)). A nested
+dock ignores a panel it does not own, and the themed skin draws opt-in tab
+close buttons gated by TabGroupContext::is_panel_closable. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

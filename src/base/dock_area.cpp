@@ -123,7 +123,10 @@ El* DockBindTab(const DockTabGroup* g, int ix, El* tab) {
         // on_drag(DragPanel::new(..)): the tab is what a press picks up, and
         // the moves that follow say where it would land.
         if (DockNodeDraggable(s, g->node)) {
-            tab->OnDrag(kDockPanelDrag, panelIx);
+            // The owning state rides along as the payload's data, so a
+            // nested DockArea's drop targets can tell a panel of theirs from
+            // one of another area's (DockOwnsDrag).
+            tab->OnDrag(kDockPanelDrag, panelIx, s);
             tab->OnDragMove(ListenTo(g->state, &DockState::OnTabDragMove));
             tab->OnMouseUpOut(ListenTo(g->state, &DockState::OnTabDragEnd));
             tab->OnMouseUp(ListenTo(g->state, &DockState::OnTabDragEnd));
@@ -197,7 +200,7 @@ El* DockBindTitleDrag(const DockTabGroup* g, int ix, El* e) {
         return e;
     }
     e->Id(DockElId(g->cx, "title", g->node, ix))
-        ->OnDrag(kDockPanelDrag, n.panel[ix])
+        ->OnDrag(kDockPanelDrag, n.panel[ix], s)
         ->OnDragMove(ListenTo(g->state, &DockState::OnTabDragMove))
         ->OnMouseUpOut(ListenTo(g->state, &DockState::OnTabDragEnd))
         ->OnMouseUp(ListenTo(g->state, &DockState::OnTabDragEnd));
@@ -237,6 +240,15 @@ El* DockBindClose(const DockTabGroup* g, int ix, El* e) {
     // that a click bubbles: closing a panel must not also select it first.
     e->TabStop(false)->StopClick();
     return e;
+}
+
+bool DockGroupIsPanelClosable(const DockTabGroup* g, int ix) {
+    DockState* s = GroupState(g);
+    if (!s || !DockNodeDraggable(s, g->node)) {
+        return false;
+    }
+    const DockNode& n = s->nodes[g->node];
+    return ix >= 0 && ix < n.panel.len && s->panels[n.panel[ix]].closable;
 }
 
 El* DockBindResizeStrip(const DockCtx* d, El* e) {
@@ -536,7 +548,7 @@ El* RenderDragPreview(const AreaCtx& ac) {
     Ctx* cx = ac.cx;
     const DragPayload* drag = WindowActiveDrag(cx);
     if (!drag || !base::StrEq(drag->kind, kDockPanelDrag) ||
-        !ac.r->dragPreview) {
+        drag->data != ac.s || !ac.r->dragPreview) {
         return nullptr;
     }
     int panelIx = drag->ix;

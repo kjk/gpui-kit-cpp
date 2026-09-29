@@ -40,6 +40,8 @@ struct DockStory {
     // What the last DockEvent said, shown under the area.
     Str message = {};
     bool locked = false;
+    // The Options menu's "Tab close buttons", off by default.
+    bool closeButtonVisible = false;
 
     // The layout as JSON, which is what DockArea::dump answers with — the
     // story keeps it in hand rather than on disk.
@@ -49,6 +51,8 @@ struct DockStory {
     static El* Render(DockStory* self, Ctx* cx);
     static void OnDockEvent(DockStory* self, Ctx* cx, const DockEvent* ev);
     static void OnToggleLock(DockStory* self, Ctx* cx, const ClickEvent* ev);
+    static void OnToggleCloseButtons(DockStory* self, Ctx* cx,
+                                     const ClickEvent* ev, intptr_t checked);
     static void OnSaveLayout(DockStory* self, Ctx* cx, const ClickEvent* ev);
     static void OnLoadLayout(DockStory* self, Ctx* cx, const ClickEvent* ev);
     static void OnLoadStale(DockStory* self, Ctx* cx, const ClickEvent* ev);
@@ -95,6 +99,16 @@ void DockStory::OnToggleLock(DockStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
+// DockSkin::set_close_button_visible, which the Rust story offers under
+// Options as a checked "Tab close buttons" item.
+void DockStory::OnToggleCloseButtons(DockStory* self, Ctx* cx,
+                                     const ClickEvent*, intptr_t checked) {
+    self->closeButtonVisible = checked != 0;
+    component::DockSkin::New(self->dock)
+        .SetCloseButtonVisible(cx->app, cx->win, self->closeButtonVisible);
+    Notify(cx);
+}
+
 // DockArea::add_panel: the layout the story opens with.
 static void Seed(DockStory* self, Ctx* cx) {
     self->dock = EntityNewState<DockState>(cx->app);
@@ -113,8 +127,11 @@ static void Seed(DockStory* self, Ctx* cx) {
         // Zoom In in the ⋯ menu and nowhere else. The editor asks for Both,
         // which is what puts the maximise icon on its bar; the Rust example
         // does the same for one of its panels.
+        // The Rust story's Editor is also the one panel that is not
+        // closable, which shows the close buttons' gate is real.
         if (i == 2) {
             def.zoomable = DockPanelControl::Both;
+            def.closable = false;
         }
         def.data = &kPanels[i];
         panel[i] = DockAddPanelDef(s, def);
@@ -255,6 +272,11 @@ El* DockStory::Render(DockStory* self, Ctx* cx) {
             ->Compact()
             ->OnClick(Listen(cx, &DockStory::OnToggleLock))
             ->IntoEl());
+    row->Child(component::Checkbox::New(cx, StrL("dock-close-buttons"))
+                   ->Checked(self->closeButtonVisible)
+                   ->Label(StrL("Tab close buttons"))
+                   ->OnClick(Listen(cx, &DockStory::OnToggleCloseButtons))
+                   ->IntoEl());
     row->Child(component::Button::New(cx, StrL("dock-save"))
                    ->Label(StrL("Save layout"))
                    ->Compact()

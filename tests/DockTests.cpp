@@ -1027,7 +1027,122 @@ static void SelectingAPanelByIdentityDoesNotMoveIt() {
     ArenaDelete(arena);
 }
 
+// dock_area.rs a_move_of_an_unowned_panel_is_ignored: a panel this area does
+// not own is not moved. Rust names it by a PanelId from nowhere; here a panel
+// index out of range is the same question, and a drop whose drag came from
+// another area -- the nested-dock case the check is for -- is the one that
+// used to move one of this area's panels by that area's index.
+static void AMoveOfAnUnownedPanelIsIgnored() {
+    App app;
+    Window win;
+    win.app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, &win, arena, {}};
+    DockState s;
+    DockState other;
+    int a = 0, b = 0;
+    Seed(&s, &a, &b);
+    Seed(&other, &a, &b);
+
+    utassert(!DockMovePanelTo(&s, 9999999, a, DockDrop::Center));
+    utassert(s.nodes[a].panel.len == 2 && s.nodes[b].panel.len == 1);
+
+    DropEvent drop;
+    drop.drag.kind = kDockPanelDrag;
+    drop.drag.ix = 1;
+    drop.drag.data = &other;
+    drop.el = s.nodes[b].bounds;
+    drop.x = 450;
+    drop.y = 200;
+    DockState::OnDropPanel(&s, &cx, &drop, b);
+    DockState::OnDropTab(&s, &cx, &drop, DockPack(b, 0));
+    DockState::OnDropTabBar(&s, &cx, &drop, b);
+    utassert(s.nodes[a].panel.len == 2 && s.nodes[b].panel.len == 1);
+
+    // The same drop from this area's own tab moves it.
+    drop.drag.data = &s;
+    DockState::OnDropPanel(&s, &cx, &drop, b);
+    utassert(s.nodes[a].panel.len == 1 && s.nodes[b].panel.len == 2);
+    ArenaDelete(arena);
+}
+
+// tab_panel.rs close-button tests, through the themed skin's tab bar:
+// a_closable_panel_gets_a_close_button,
+// a_non_closable_panel_gets_no_close_button, close_buttons_are_off_by_default,
+// close_button_visibility_updates_after_the_skin_setting_changes,
+// clicking_a_close_button_removes_only_that_tab and
+// a_collapsed_group_draws_no_close_button.
+static El* DockCloseButton(Ctx* cx, const DockRenderer* r,
+                           const DockTabGroup* g, int ix) {
+    El* bar = r->tabBar(cx, r->data, g);
+    IdsCollect(bar);
+    char name[32];
+    snprintf(name, sizeof(name), "close-%d-%d", g->node, ix);
+    return FindNamedDk(bar, name);
+}
+
+static void TabCloseButtonsFollowTheSkinAndThePanel() {
+    App app;
+    Window win;
+    win.app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, &win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&app);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    // Panel 1, in group a at tab 1, is the one under test; panel 0 at tab 0
+    // is a non-closable filler that never draws one.
+    s->panels[0].closable = false;
+
+    component::DockSkin skin = component::DockSkin::New(state);
+    const DockRenderer* r = skin.Renderer();
+    DockTabGroup g;
+    g.cx = &cx;
+    g.state = state;
+    g.node = a;
+
+    // Off by default.
+    utassert(!skin.IsCloseButtonVisible(&app));
+    utassert(DockCloseButton(&cx, r, &g, 1) == nullptr);
+    utassert(DockGroupIsPanelClosable(&g, 1));
+    utassert(!DockGroupIsPanelClosable(&g, 0));
+
+    // Visibility follows the skin setting both ways.
+    bool expected[3] = {true, false, true};
+    for (bool visible : expected) {
+        skin.SetCloseButtonVisible(&app, nullptr, visible);
+        utassert(skin.IsCloseButtonVisible(&app) == visible);
+        utassert((DockCloseButton(&cx, r, &g, 1) != nullptr) == visible);
+        // A non-closable panel's tab never draws one.
+        utassert(DockCloseButton(&cx, r, &g, 0) == nullptr);
+    }
+
+    // A collapsed group offers none.
+    g.collapsed = true;
+    utassert(DockCloseButton(&cx, r, &g, 1) == nullptr);
+    g.collapsed = false;
+
+    // The click closes exactly that tab and does not select it: the button
+    // stops the click the tab also listens for.
+    El* close = DockCloseButton(&cx, r, &g, 1);
+    utassert(close && close->stopClick && close->listener.IsValid());
+    utassert(s->nodes[a].activeIx == 0);
+    PanelId filler = s->panels[0].id;
+    ClickEvent click;
+    ListenerCall(&app, &win, close->listener, &click);
+    utassert(s->nodes[a].panel.len == 1 && s->nodes[a].panel[0] == 0);
+    utassert(s->panels[s->nodes[a].panel[0]].id.value == filler.value);
+    utassert(s->nodes[a].activeIx == 0);
+
+    WindowKeyedFree(&win);
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
+
 void TestDock() {
+    AMoveOfAnUnownedPanelIsIgnored();
+    TabCloseButtonsFollowTheSkinAndThePanel();
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
     RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();

@@ -62,6 +62,11 @@ struct DockSkin {
     void SetPanelStyle(App* app, Window* win, PanelStyle style);
     bool IsToggleButtonVisible(App* app) const;
     void SetToggleButtonVisible(App* app, Window* win, bool visible);
+    // set_close_button_visible: show close buttons on closable tabs. Hidden
+    // by default; a panel's own close constraints still decide whether its
+    // button appears.
+    bool IsCloseButtonVisible(App* app) const;
+    void SetCloseButtonVisible(App* app, Window* win, bool visible);
     const DockRenderer* Renderer() const;
 };
 
