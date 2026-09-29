@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7afd1708335e5772f692416911384e5c7e61affb` (2026-09-26,
-input: Revert #3246 to restore reverse tab traversal (#3253)). Upstream
-reverted #3246 to restore reverse Tab traversal and added input
-focus-traversal tests; the accessibility rechecks go again here, and Tab now
-counts a focus handle once so those tests pass. The current update target is
+Processed through `bcb6a0f3a6fd9e7ac9688ad653023b34f2f16bb6` (2026-09-26,
+input: Restore guarded accessibility actions without changing tab order
+(#3254)). Input again answers the accessibility Focus action only while
+enabled and rechecks editability before SetValue writes; the story-gallery
+host test now renders one surface per frame. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

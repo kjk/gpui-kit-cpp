@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7afd1708335e5772f692416911384e5c7e61affb",
+  sha: "bcb6a0f3a6fd9e7ac9688ad653023b34f2f16bb6",
   date: "2026-09-26",
-  subject: "input: Revert #3246 to restore reverse tab traversal (#3253)",
+  subject: "input: Restore guarded accessibility actions without changing tab order (#3254)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

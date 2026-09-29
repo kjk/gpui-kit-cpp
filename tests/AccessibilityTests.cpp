@@ -536,6 +536,47 @@ static void EditableTextOffersSetValueAndReadOnlyTextDoesNot() {
         utassert(base::StrEq(InputValue(&editable), StrL("new value")));
     }
 
+    // input.rs editable_input_offers_accessibility_write_action (#3246,
+    // restored by #3254): the action rechecks the field when it runs, so one
+    // made read-only or disabled after its node was collected is neither
+    // written nor focused. SetValue keeps a non-ASCII value whole, is one undo
+    // step, and writes a masked field too.
+    IdsCollect(input);
+    AccessibilityCollect(input, &f.win->accessibility);
+    node = RoleNode(f.win->accessibility, AccessibilityRole::TextInput);
+    utassert(node && (node->actions & AccessibilityActionFocus));
+    if (node) {
+        uint32_t id = node->id;
+        int focusId = node->focusId;
+        utassert(
+            WindowAccessibilityPerform(f.win, id, AccessibilityAction::Focus));
+        utassert(focusId != 0 && f.win->focusId == focusId);
+        f.win->focusId = 0;
+        utassert(WindowAccessibilityPerform(
+            f.win, id, AccessibilityAction::SetValue, StrL("updated🦀")));
+        utassert(base::StrEq(InputValue(&editable), StrL("updated🦀")));
+        for (bool disabled : {false, true}) {
+            editable.disabled = disabled;
+            editable.readonly = !disabled;
+            utassert(WindowAccessibilityPerform(
+                         f.win, id, AccessibilityAction::Focus) == !disabled);
+            utassert((f.win->focusId == focusId) == !disabled);
+            f.win->focusId = 0;
+            utassert(!WindowAccessibilityPerform(
+                f.win, id, AccessibilityAction::SetValue, StrL("rejected")));
+            utassert(base::StrEq(InputValue(&editable), StrL("updated🦀")));
+        }
+        editable.disabled = false;
+        editable.readonly = false;
+        InputPerform(&editable, nullptr, nullptr, InputAction::Undo, false);
+        utassert(base::StrEq(InputValue(&editable), StrL("new value")));
+        editable.masked = true;
+        utassert(WindowAccessibilityPerform(
+            f.win, id, AccessibilityAction::SetValue, StrL("updated🦀")));
+        utassert(base::StrEq(InputValue(&editable), StrL("updated🦀")));
+        editable.masked = false;
+    }
+
     InputState readOnly;
     readOnly.readonly = true;
     El* locked = InputBase::New(&f.cx, StrL("locked"), true)
@@ -544,6 +585,37 @@ static void EditableTextOffersSetValueAndReadOnlyTextDoesNot() {
     node = RoleNode(f.win->accessibility, AccessibilityRole::TextInput);
     utassert(node && !(node->actions & AccessibilityActionSetValue));
     FreeAccessibilityFrame(&f);
+}
+
+static const AccessibilityNode* SetValueNode(
+    const Vec<AccessibilityNode>& nodes) {
+    for (int i = 0; i < nodes.len; i++) {
+        if (nodes[i].actions & AccessibilityActionSetValue) return &nodes[i];
+    }
+    return nullptr;
+}
+
+// input.rs accessibility_set_value_preserves_exact_editor_text: SetValue is
+// the programmatic replace, not typing, so a Rust editor given "(" keeps
+// exactly "(" rather than auto-closing it.
+static void SetValuePreservesExactEditorText() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    InputState state;
+    El* editor = component::Editor::New(&f.cx, StrL("editor"), &state)
+                     ->Language(StrL("rust"))
+                     ->IntoEl();
+    IdsCollect(editor);
+    AccessibilityCollect(editor, &f.win->accessibility);
+    const AccessibilityNode* node = SetValueNode(f.win->accessibility);
+    utassert(node != nullptr);
+    if (node) {
+        utassert(WindowAccessibilityPerform(
+            f.win, node->id, AccessibilityAction::SetValue, StrL("(")));
+        utassert(base::StrEq(InputValue(&state), StrL("(")));
+    }
+    FreeAccessibilityFrame(&f);
+    AppGlobalClear(&f.app);
 }
 
 static void SelectionContainersExposeTheirSelectedItems() {
@@ -626,6 +698,7 @@ void TestAccessibility() {
     TablesKeepCountsAndOneBasedIndices();
     SliderActionsUseTheSlidersOwnStep();
     EditableTextOffersSetValueAndReadOnlyTextDoesNot();
+    SetValuePreservesExactEditorText();
     SelectionContainersExposeTheirSelectedItems();
     ExplicitSemanticListenersAreInvoked();
     ConditionalAndCompositeRolesMatchUpstream();

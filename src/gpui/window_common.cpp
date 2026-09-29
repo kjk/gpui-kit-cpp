@@ -1146,6 +1146,11 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
     ev.el = node.bounds;
     ev.keyboard = true;
     if (action == AccessibilityAction::Focus) {
+        // input.rs handle_accessibility_focus: the node was collected on an
+        // earlier frame, so an input disabled since then is asked again.
+        if (node.input && node.input->disabled) {
+            return false;
+        }
         WindowSetFocusId(win, node.focusId);
         AppInvalidate(win);
         return true;
@@ -1173,6 +1178,13 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
         return true;
     }
     if (action == AccessibilityAction::SetValue) {
+        // handle_accessibility_set_value rechecks editability when the action
+        // runs: InputReplaceAll is the programmatic path and lifts the edit
+        // restrictions, so a field made read-only or disabled since the node
+        // was collected must not be written through it.
+        if (!node.input || !InputIsEditable(node.input)) {
+            return false;
+        }
         InputReplaceAll(node.input, win->app, win, value);
         AppInvalidate(win);
         return true;
