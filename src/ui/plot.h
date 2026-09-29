@@ -651,6 +651,12 @@ ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height);
 // including the last datum of data laid out for more points — centered.
 plot::PlotTextAlign ChartPointLabelAlign(int index, int pointCount);
 
+// bar_chart.rs extend_to_min_length: push a bar's value end (`tick`, in
+// pixels) away from `zero` until the bar is `min` long, in the direction its
+// value grows for `alignment` — toward the origin for Bottom and Right.
+float BarExtendToMinLength(float tick, float zero, bool negative,
+                           BarAlign alignment, float min);
+
 // bar_chart.rs value_tick_positions: `count` (at least 2) evenly spaced tick
 // positions from `far` through `baseline`, both included. Writes at most
 // `cap` and returns how many there are.

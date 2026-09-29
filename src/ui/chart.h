@@ -248,8 +248,12 @@ struct BarChart {
     const char* const* labels = nullptr;
     int tickMargin = 1;
     Rgba fill = {};
-    // ScaleBand's inner padding: how much of a band the gap beside it takes.
-    float padding = 0.2f;
+    // padding_inner / padding_outer: ScaleBand's gaps — between neighbouring
+    // bars as a share of a band, and before the first and after the last.
+    float paddingInner = 0.4f;
+    float paddingOuter = 0.2f;
+    float minLength = 0;
+    const Rgba* labelColors = nullptr;
     float radius = 4;
     float domainMin = 0;
     float domainMax = 0;
@@ -300,7 +304,17 @@ struct BarChart {
     // the band categories, this counts the ticks themselves. Values below 2
     // are raised to 2. Default 5.
     BarChart* ValueTickCount(int count);
-    BarChart* Padding(float v);
+    // Set the gap between neighbouring bars, as a share of each band.
+    // Default 0.4.
+    BarChart* PaddingInner(float v);
+    // Set the gap before the first bar and after the last, as a share of a
+    // band. Default 0.2.
+    BarChart* PaddingOuter(float v);
+    // Draw every bar at least `length` DIPs long, so a zero or tiny value
+    // still shows a stub instead of disappearing into the baseline. The stub
+    // grows away from the zero line: to the negative side for a negative
+    // value, to the positive side for zero. Default 0.
+    BarChart* MinLength(float length);
     BarChart* Radius(float v);
     BarChart* Domain(float lo, float hi);
     BarChart* Alignment(BarAlign v);
@@ -308,6 +322,10 @@ struct BarChart {
     BarChart* Overlay(bool v = true);
     // BarChart::label(|d| d.desktop.to_string()).
     BarChart* LabelValues(bool v = true);
+    // label_color(|d| ..): one colour per bar's label, instead of the
+    // theme's foreground for all of them. The array is the caller's and has
+    // to outlive the frame.
+    BarChart* LabelColors(const Rgba* colors);
     BarChart* Fills(const Rgba* colors);
     // fill_gradient: `perBar` runs the whole ramp inside every bar rather
     // than across the chart's range.

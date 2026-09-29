@@ -236,8 +236,20 @@ BarChart* BarChart::TickMargin(int t) {
     tickMargin = t;
     return this;
 }
-BarChart* BarChart::Padding(float v) {
-    padding = v;
+BarChart* BarChart::PaddingInner(float v) {
+    paddingInner = v;
+    return this;
+}
+BarChart* BarChart::PaddingOuter(float v) {
+    paddingOuter = v;
+    return this;
+}
+BarChart* BarChart::MinLength(float length) {
+    minLength = length;
+    return this;
+}
+BarChart* BarChart::LabelColors(const Rgba* colors) {
+    labelColors = colors;
     return this;
 }
 BarChart* BarChart::Radius(float v) {
@@ -309,7 +321,10 @@ El* BarChart::IntoEl() {
     chart->barGradientDiagonal = gradientDiagonal;
     chart->barFillFrom = gradientFrom;
     chart->barFillTo = gradientTo;
-    chart->bandPadding = padding;
+    chart->bandPadding = paddingInner;
+    chart->bandPaddingOuter = paddingOuter;
+    chart->barMinLength = minLength;
+    chart->barLabelColors = labelColors;
     chart->barRadius = radius;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
@@ -391,6 +406,7 @@ El* CandlestickChart::IntoEl() {
     chart->up = up;
     chart->down = down;
     chart->bandPadding = padding;
+    chart->bandPaddingOuter = padding * 0.5f;
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.

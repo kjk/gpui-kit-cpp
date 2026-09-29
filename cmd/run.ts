@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "be422fba16634543a04f96d8ce66cc392a2a61aa",
+  sha: "5be17f3bc1e8f3aeed26843c85905700bed3fbdc",
   date: "2026-09-24",
-  subject: "setting: Scroll to a group selected from another page (#3219)",
+  subject: "chart: Color a bar chart's labels per bar, set its band padding, and keep empty bars visible (#3217)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

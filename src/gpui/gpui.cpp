@@ -4874,6 +4874,24 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
         t0 = hi > lo ? (c.bases[i] - lo) / (hi - lo) : 0.f;
         t0 = t0 < 0 ? 0 : (t0 > 1 ? 1 : t0);
     }
+    bool horizontal =
+        c.barAlign == BarAlign::Left || c.barAlign == BarAlign::Right;
+    // Vertical bars keep a line of text (TEXT_HEIGHT) clear past the tallest
+    // bar when they carry value labels, so the label above it stays inside
+    // the chart.
+    float farGap = c.barLabels ? 12.f : 10.f;
+    // min_length: a bar shorter than that grows away from where it starts,
+    // the way its value would. Measured along the value axis from the far
+    // edge's side, where growing is always toward a larger fraction.
+    float valueSpan =
+        horizontal ? w - kBarRowBandGap - kBarRowValueGap : plotH - farGap;
+    if (c.barMinLength > 0 && valueSpan > 0) {
+        float base = c.bases ? c.bases[i] : 0.f;
+        t = component::BarExtendToMinLength(t * valueSpan, t0 * valueSpan,
+                                            c.ys[i] < base, BarAlign::Top,
+                                            c.barMinLength) /
+            valueSpan;
+    }
     // A bar that runs the other way is drawn from the smaller end, so the two
     // swap rather than the length going negative.
     bool below = t < t0;
@@ -4882,8 +4900,6 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
         t = t0;
         t0 = swap;
     }
-    bool horizontal =
-        c.barAlign == BarAlign::Left || c.barAlign == BarAlign::Right;
     // The band runs across the plot for a column chart and down it for a row
     // one, so the two sides of the box swap with the alignment.
     float rx = 0, ry = 0, rw = 0, rh = 0;
@@ -4899,24 +4915,18 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
             aw = 1;
         }
         float len = aw * (t - t0);
-        if (len < 1) {
-            len = 1;
-        }
         rx = c.barAlign == BarAlign::Left ? ax + aw * t0
                                           : ax + aw - aw * t0 - len;
         ry = bandY;
         rw = len;
         rh = bandH < 1 ? 1 : bandH;
     } else {
-        float span = plotH - 10.f;
+        float span = plotH - farGap;
         float len = span * (t - t0);
-        if (len < 1) {
-            len = 1;
-        }
         rx = bx;
         rw = bw;
         rh = len;
-        ry = c.barAlign == BarAlign::Top ? y + 10.f + span * t0
+        ry = c.barAlign == BarAlign::Top ? y + farGap + span * t0
                                          : y + plotH - span * t0 - len;
     }
     Rgba fill = c.barFills ? c.barFills[i] : c.stroke;
@@ -4972,16 +4982,17 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
     if (!c.barLabels) {
         return;
     }
-    // label(..): the value at the end the bar grew to, just inside it.
+    // label(..): the value at the end the bar grew to, just inside it, in
+    // the foreground unless label_color gave each bar its own.
     Str text = fmt("%.0f", (double)c.ys[i]);
+    Rgba ink = c.barLabelColors ? c.barLabelColors[i] : th.foreground;
     if (horizontal) {
         float tx = c.barAlign == BarAlign::Left ? rx + rw + 4 : rx - 34;
-        DrawTextAt(ctx, text, tx, ry + rh * 0.5f - 7.f, 30, 14, 10,
-                   th.mutedForeground, c.barAlign != BarAlign::Left);
+        DrawTextAt(ctx, text, tx, ry + rh * 0.5f - 7.f, 30, 14, 10, ink,
+                   c.barAlign != BarAlign::Left);
     } else {
         float ty = c.barAlign == BarAlign::Top ? ry + rh + 2 : ry - 14.f;
-        DrawTextAt(ctx, text, rx + rw * 0.5f - 20.f, ty, 40, 14, 10,
-                   th.mutedForeground, true);
+        DrawTextAt(ctx, text, rx + rw * 0.5f - 20.f, ty, 40, 14, 10, ink, true);
     }
 }
 
@@ -5322,7 +5333,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         const float range[2] = {0.f, w};
         component::ScaleBand band = component::ScaleBand::New(n, range, 2);
         band.paddingInner = c.bandPadding;
-        band.paddingOuter = c.bandPadding * 0.5f;
+        band.paddingOuter = c.bandPaddingOuter;
         float bw = band.BandWidth();
         if (bw < 1) {
             bw = 1;
@@ -5436,7 +5447,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 component::ScaleBand band =
                     component::ScaleBand::New(n, range, 2);
                 band.paddingInner = c.bandPadding;
-                band.paddingOuter = c.bandPadding * 0.5f;
+                band.paddingOuter = c.bandPaddingOuter;
                 index = band.LeastIndex(ctx->mouseX - x);
                 float bx = 0;
                 if (band.Tick(index, &bx)) {
@@ -5536,7 +5547,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 component::ScaleBand band =
                     component::ScaleBand::New(n, range, 2);
                 band.paddingInner = c.bandPadding;
-                band.paddingOuter = c.bandPadding * 0.5f;
+                band.paddingOuter = c.bandPaddingOuter;
                 float bw = band.BandWidth();
                 CanvasFillRect(ctx, drawX - bw * 0.5f, y, bw, plotH,
                                RgbaOpacity(th.foreground, 0.08f * focus));
@@ -5633,7 +5644,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             const float range[2] = {0.f, w};
             component::ScaleBand band = component::ScaleBand::New(n, range, 2);
             band.paddingInner = c.bandPadding;
-            band.paddingOuter = c.bandPadding * 0.5f;
+            band.paddingOuter = c.bandPaddingOuter;
             float bx = 0;
             if (band.Tick(i, &bx)) {
                 if (barRow) {

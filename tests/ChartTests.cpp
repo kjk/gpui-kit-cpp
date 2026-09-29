@@ -390,6 +390,19 @@ static void ValueTickPositionsCountTicks() {
     utassert(out[0] == 0.f && out[1] == 50.f);
 }
 
+// bar_chart.rs: test_min_length_extends_away_from_zero.
+static void MinLengthExtendsAwayFromZero() {
+    // A zero or tiny bar grows the way a positive one would.
+    utassert(BarExtendToMinLength(100, 100, false, BarAlign::Bottom, 2) == 98);
+    utassert(BarExtendToMinLength(10, 10, false, BarAlign::Top, 2) == 12);
+    utassert(BarExtendToMinLength(10, 10, false, BarAlign::Left, 2) == 12);
+    utassert(BarExtendToMinLength(90, 90, false, BarAlign::Right, 2) == 88);
+    // A small negative bar grows to the other side of the zero line.
+    utassert(BarExtendToMinLength(50.5f, 50, true, BarAlign::Bottom, 2) == 52);
+    // A bar already long enough is left alone.
+    utassert(BarExtendToMinLength(40, 100, false, BarAlign::Bottom, 2) == 40);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -405,4 +418,5 @@ void TestChart() {
     YDomainReplacesTheFitFromZero();
     OnlyTheLastPointRightAlignsItsLabel();
     ValueTickPositionsCountTicks();
+    MinLengthExtendsAwayFromZero();
 }

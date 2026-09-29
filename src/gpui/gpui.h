@@ -1319,8 +1319,10 @@ struct ChartSeries {
     const float* lows = nullptr;
     Rgba up = {};
     Rgba down = {};
-    // Bar: ScaleBand's inner padding, and how round the top of a bar is.
+    // Bar: ScaleBand's inner and outer padding, and how round the top of a
+    // bar is.
     float bandPadding = 0.2f;
+    float bandPaddingOuter = 0.1f;
     float barRadius = 4;
     BarAlign barAlign = BarAlign::Bottom;
     // Stack: where each bar starts, so a series drawn over another one sits
@@ -1328,6 +1330,12 @@ struct ChartSeries {
     const float* bases = nullptr;
     // BarChart::label: the value written at the bar's growing end.
     bool barLabels = false;
+    // BarChart::label_color: one colour per bar's label; foreground when
+    // null. The array is the caller's and has to outlive the frame.
+    const Rgba* barLabelColors = nullptr;
+    // BarChart::min_length: every bar at least this many DIPs long, grown
+    // away from the zero line the way its value would.
+    float barMinLength = 0;
     // BarChart::value_axis: tick labels down the value axis, which reserve
     // kValueAxisGap along the band axis for themselves.
     bool valueAxis = false;

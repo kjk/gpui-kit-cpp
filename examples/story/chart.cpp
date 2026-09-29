@@ -489,11 +489,19 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             // Bar Chart - Negative values: the monthly figures recentred on
             // their mean, so the bars have a mix of signs to draw around the
             // zero line, and the value axis switched on beside them.
+            // Each bar, and its label, in the bullish or bearish colour of
+            // its sign.
             const float* variations = self->variations;
+            Rgba* signs = (Rgba*)Alloc(a, sizeof(Rgba) * kMonthlyDeviceCount);
+            for (int i = 0; i < kMonthlyDeviceCount; i++) {
+                signs[i] =
+                    variations[i] >= 0 ? th.chartBullish : th.chartBearish;
+            }
             return ChartCard(
                 cx, "Bar Chart - Negative values",
                 component::BarChart::New(cx, variations, kMonthlyDeviceCount)
-                    ->Fill(th.chart1)
+                    ->Fills(signs)
+                    ->LabelColors(signs)
                     ->Labels(kMonthlyMonth)
                     ->Tooltip(StrL("Variation"))
                     ->TickMargin(1)
@@ -517,6 +525,8 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  ->Fills(mixed)
                                  ->Labels(kMonthlyMonth)
                                  ->TickMargin(1)
+                                 ->PaddingInner(0.6f)
+                                 ->PaddingOuter(0.1f)
                                  ->IntoEl()
                                  ->W(kFill)
                                  ->H(kFill),
@@ -548,7 +558,8 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     component::BarChart::New(cx, tops, kStackDays)
                         ->Fill(kStackColors[k])
                         ->Base(base)
-                        ->Padding(0.4f)
+                        ->PaddingInner(0.4f)
+                        ->PaddingOuter(0.2f)
                         ->Radius(0)
                         ->TickMargin(1)
                         ->Labels(kDailyDate);

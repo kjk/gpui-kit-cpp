@@ -1890,6 +1890,17 @@ plot::PlotTextAlign ChartPointLabelAlign(int index, int pointCount) {
     return plot::PlotTextAlign::Center;
 }
 
+float BarExtendToMinLength(float tick, float zero, bool negative,
+                           BarAlign alignment, float min) {
+    float d = tick - zero;
+    if ((d < 0 ? -d : d) >= min) {
+        return tick;
+    }
+    bool towardOrigin =
+        alignment == BarAlign::Bottom || alignment == BarAlign::Right;
+    return towardOrigin != negative ? zero - min : zero + min;
+}
+
 int ChartValueTickPositions(float farEdge, float baseline, int count,
                             float* out, int cap) {
     if (count < 2) {
