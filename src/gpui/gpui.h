@@ -1468,8 +1468,13 @@ struct ChartSeries {
     // sets it; a hand-built ChartEl is a plot with no id and stays still.
     bool tooltip = false;
     // That id, folded onto the id stack (component::ChartCallerId): what the
-    // hover state and its springs key on.
+    // hover state, its springs and the appear key on.
     uint32_t id = 0;
+    // Plot::appear_generation: whether the data draws in the first time the
+    // chart is painted (plot::TrackAppear under `id`), and the generation
+    // that replays it. A hand-built ChartEl does not appear.
+    bool appear = false;
+    uint64_t appearGeneration = 0;
     // The name the tooltip's row goes by.
     Str name = {};
     // tooltip_title / tooltip_value / tooltip_value_color.

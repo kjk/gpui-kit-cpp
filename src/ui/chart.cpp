@@ -65,6 +65,15 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
     return tooltip;
 }
 
+void ChartAppear::SetKey(Str key) {
+    uint64_t h = 14695981039346656037ull;
+    for (int i = 0; i < len(key); i++) {
+        h ^= (uint8_t)key.s[i];
+        h *= 1099511628211ull;
+    }
+    generation = h;
+}
+
 uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     uint32_t site =
         IdFoldName(cx ? cx->path : 0, Str((char*)(file ? file : "")));
@@ -236,6 +245,7 @@ El* AreaChart::IntoEl() {
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
     chart->id = id;
+    chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
     chart->tooltipContent = tooltipContent;
     // The builder is on the frame arena, so the element can point at its
@@ -386,6 +396,7 @@ El* LineChart::IntoEl() {
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
     chart->id = id;
+    chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
     chart->tooltipContent = tooltipContent;
     return e;
@@ -538,6 +549,7 @@ El* BarChart::IntoEl() {
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
     chart->id = id;
+    chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
     chart->tooltipContent = tooltipContent;
     return e;
@@ -669,6 +681,7 @@ El* CandlestickChart::IntoEl() {
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
     chart->id = id;
+    chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
     chart->tooltipContent = tooltipContent;
     return e;
@@ -844,6 +857,7 @@ El* RadarChart::IntoEl() {
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
     chart->id = id;
+    chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
     if (labels) {
         e->customPaint = PaintRadarLabels;
@@ -930,6 +944,9 @@ float PieChart::ResolveOuterRadius(float height) const {
 static const float kPieTextSize = 10.f;
 static const float kPieTextHeight = 12.f;
 static const float kPieHoverLift = 6.f;
+// LABEL_APPEAR_START: how far into the appear the leader-line labels start
+// fading in.
+static const float kPieLabelAppearStart = 0.7f;
 
 // The chart's own id on the stack, which is what its hover state and springs
 // key on: Rust paints a plot inside `with_element_id(plot.id())`.
@@ -939,6 +956,19 @@ static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id) {
     out.win = ctx->window;
     out.path = id;
     return out;
+}
+
+// PlotElement's half of the appear for the charts painted here: sample it
+// under the chart's id when the chart has a generation, and treat it as
+// complete otherwise.
+template <typename C>
+static plot::PlotAppear ChartTrackAppear(const PaintCtx* ctx, const C* chart) {
+    uint64_t generation = 0;
+    if (!ctx->window || !ctx->app || !chart->AppearGeneration(&generation)) {
+        return plot::PlotAppear::Complete();
+    }
+    Ctx idCx = ChartIdCtx(ctx, chart->id);
+    return plot::TrackAppear(&idCx, generation);
 }
 
 // plot/tooltip.rs: an optional title over one row — a swatch, the name in
@@ -1041,13 +1071,22 @@ static void PieSpreadLabels(ArenaVec<PieLabelLayout>* items, float top,
 }
 
 static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
-                           float total, float ring, int hoverIndex,
-                           float focus) {
+                           float total, float ring, int hoverIndex, float focus,
+                           float appear) {
     if (!p->hasLabels || total <= 0) {
         return;
     }
+    // Labels fade in over the end of the sweep, once their slices are mostly
+    // drawn.
+    float labelOpacity =
+        (appear - kPieLabelAppearStart) / (1.f - kPieLabelAppearStart);
+    if (labelOpacity <= 0.f) {
+        return;
+    }
     const Theme& th = ThemeNow(ctx->app);
-    Rgba color = p->hasLabelColor ? p->labelColor : th.foreground;
+    Rgba color = RgbaOpacity(p->hasLabelColor ? p->labelColor : th.foreground,
+                             labelOpacity);
+    Rgba lineColor = RgbaOpacity(th.border, labelOpacity);
     float labelR = ring + p->labelGap;
     ArenaVec<PieLabelLayout> right{};
     ArenaVec<PieLabelLayout> left{};
@@ -1097,9 +1136,9 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
         for (int i = 0; i < count; i++) {
             const PieLabelLayout& it = items[i];
             CanvasLine(ctx, it.arcX + cx, it.arcY + cy, it.labelX + cx,
-                       it.y + cy, 1.f, th.border);
+                       it.y + cy, 1.f, lineColor);
             CanvasLine(ctx, it.labelX + cx, it.y + cy, sign * labelR + cx,
-                       it.y + cy, 1.f, th.border);
+                       it.y + cy, 1.f, lineColor);
             Size ts = MeasureText(ctx, it.text, kPieTextSize, 0, false, 0, 0);
             float tx = sign > 0 ? sign * (labelR + 4.f) + cx
                                 : sign * (labelR + 4.f) + cx - ts.w;
@@ -1129,6 +1168,8 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
+    plot::PlotAppear appear = ChartTrackAppear(ctx, p);
+    float appearProgress = appear.Progress();
     // interactive(false): no hitbox, so nothing is hovered or lifted.
     if (ctx->window && ctx->app && p->interactive) {
         Bounds bounds = {e->x, e->y, e->w, e->h};
@@ -1153,6 +1194,10 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         plot::TooltipState live = {};
         const plot::TooltipState* livePtr = nullptr;
         Point cursor = local;
+        // No tooltip while the ring sweeps in.
+        if (appear.IsAppearing()) {
+            hoverIndex = -1;
+        }
         if (hoverIndex >= 0) {
             live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
             livePtr = &live;
@@ -1170,12 +1215,15 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             hoverIndex = -1;
         }
     }
+    // The ring sweeps clockwise from its first slice as the chart appears:
+    // each slice's angles are scaled toward the ring's start.
     float angle = -kPi * 0.5f;
     for (int i = 0; i < p->slices.len; i++) {
         const PieSlice& s = p->slices[i];
-        float sweep = 2.f * kPi * (s.value / total) - p->padAngle;
+        float full = 2.f * kPi * (s.value / total) * appearProgress;
+        float sweep = full - p->padAngle;
         if (sweep <= 0) {
-            angle += 2.f * kPi * (s.value / total);
+            angle += full;
             continue;
         }
         float lift = PieSliceLift(ctx, p, i, hoverIndex, focus);
@@ -1199,9 +1247,10 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             PathFill(ctx, wedge, color);
             PathFree(wedge);
         }
-        angle += 2.f * kPi * (s.value / total);
+        angle += full;
     }
-    PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus);
+    PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus,
+                   appearProgress);
     if (hoverIndex >= 0 && focus > 0.f && ctx->app) {
         // One number per slice fits one row, so there is no title: `label`
         // is the ring's leader-line text, as often a percentage as a name.
@@ -1461,6 +1510,8 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
+    plot::PlotAppear appear = ChartTrackAppear(ctx, c);
+    float appearProgress = appear.Progress();
     // interactive(false): no hitbox, so no node is hovered.
     if (ctx->window && ctx->app && c->interactive) {
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
@@ -1475,6 +1526,10 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         plot::TooltipState live = {};
         const plot::TooltipState* livePtr = nullptr;
         Point cursor = local;
+        // No tooltip while the links draw in.
+        if (appear.IsAppearing()) {
+            hoverIndex = -1;
+        }
         if (hoverIndex >= 0) {
             live = plot::TooltipState::New(hoverIndex, cursor, nullptr, 0);
             livePtr = &live;
@@ -1497,6 +1552,18 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     // midpoint, thickened to each end's own width, and filled from the colour
     // it leaves to the colour it arrives at. Links not attached to the
     // hovered node fade behind it.
+    //
+    // Links and nodes draw in from the left under a mask as the chart
+    // appears (reveal_mask with no left inset); the labels fade in.
+    bool revealed = false;
+    if (appearProgress < 1.f) {
+        float bleed = kChartHoverDotSize / 2.f;
+        float start = e->x - bleed;
+        float end = start + (e->x + e->w + bleed - start) * appearProgress;
+        CanvasPushClip(ctx, start, e->y - bleed, end - start,
+                       e->h + bleed * 2.f);
+        revealed = true;
+    }
     for (int i = 0; i < g.links.len; i++) {
         const SankeyLinkLayout& link = g.links[i];
         if (link.value <= 0) {
@@ -1544,6 +1611,9 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         float y1 = node.y1 > node.y0 + 1 ? node.y1 : node.y0 + 1;
         FillRound(ctx, e->x + node.x0, e->y + node.y0, node.x1 - node.x0,
                   y1 - node.y0, c->nodeRadius, colors[node.index]);
+    }
+    if (revealed) {
+        CanvasPopClip(ctx);
     }
 
     auto paintTooltip = [&]() {
@@ -1615,7 +1685,8 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         for (int k = 0; k < lineCount; k++) {
             SankeyLabel line = SankeyNodeLine(chartNode, value, k, th);
             float fontSize = line.fontSize > 0 ? line.fontSize : kPlotTextSize;
-            Rgba lineColor = line.hasColor ? line.color : th.foreground;
+            Rgba lineColor = RgbaOpacity(
+                line.hasColor ? line.color : th.foreground, appearProgress);
             SankeyLabelLine(ctx, line.text, e->x + x, e->y + y, maxW, fontSize,
                             lineColor, align);
             y += line.LineHeight();
@@ -1785,6 +1856,97 @@ RadarChart* RadarChart::Interactive(bool v) {
 
 SankeyChart* SankeyChart::Interactive(bool v) {
     interactive = v;
+    return this;
+}
+
+PieChart* PieChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+PieChart* PieChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+PieChart* PieChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+AreaChart* AreaChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+AreaChart* AreaChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+AreaChart* AreaChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+LineChart* LineChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+LineChart* LineChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+LineChart* LineChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+BarChart* BarChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+BarChart* BarChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+BarChart* BarChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+CandlestickChart* CandlestickChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+CandlestickChart* CandlestickChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+CandlestickChart* CandlestickChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+RadarChart* RadarChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+RadarChart* RadarChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+RadarChart* RadarChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
+    return this;
+}
+
+SankeyChart* SankeyChart::Appear(bool v) {
+    appear.SetEnabled(v);
+    return this;
+}
+SankeyChart* SankeyChart::AppearKey(Str key) {
+    appear.SetKey(key);
+    return this;
+}
+SankeyChart* SankeyChart::AppearKey(uint64_t key) {
+    appear.SetKey(key);
     return this;
 }
 

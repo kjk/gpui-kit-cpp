@@ -4847,7 +4847,7 @@ const float kBarRowValueGap = 36.f;
 // written at its growing end.
 static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
                     float bw, float x, float y, float w, float plotH, float lo,
-                    float hi, const RuntimeStyle& th) {
+                    float hi, const RuntimeStyle& th, float appear) {
     float t = hi > lo ? (c.ys[i] - lo) / (hi - lo) : 0.f;
     t = t < 0 ? 0 : (t > 1 ? 1 : t);
     // Where zero sits along the value axis. Bars grow from here rather than
@@ -4880,6 +4880,13 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
                                             c.ys[i] < base, BarAlign::Top,
                                             c.barMinLength) /
             valueSpan;
+    }
+    // Every bar grows out of the zero line together as the chart appears,
+    // the way Chart.js draws bars in. A stacked segment's base rides the
+    // same scale, so the stack grows as one.
+    if (appear < 1.f) {
+        t = zero + (t - zero) * appear;
+        t0 = zero + (t0 - zero) * appear;
     }
     // A bar that runs the other way is drawn from the smaller end, so the two
     // swap rather than the length going negative.
@@ -4975,6 +4982,8 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
     // the foreground unless label_color gave each bar its own.
     Str text = fmt("%.0f", (double)c.ys[i]);
     Rgba ink = c.barLabelColors ? c.barLabelColors[i] : th.foreground;
+    // A value label rides the end of its bar and fades in with it.
+    ink = RgbaOpacity(ink, appear);
     if (horizontal) {
         float tx = c.barAlign == BarAlign::Left ? rx + rw + 4 : rx - 34;
         DrawTextAt(ctx, text, tx, ry + rh * 0.5f - 7.f, 30, 14, 10, ink,
@@ -5207,6 +5216,37 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     }
     const ChartSeries& c = *chart;
     Arena* scratch = GetTempArena();
+    // The chart's id on the stack, so its appear and hover state are its own.
+    Ctx idCx = {};
+    idCx.app = ctx->app;
+    idCx.win = ctx->window;
+    idCx.path = c.id;
+    // PlotElement: the appear is sampled before hover and paint, for a plot
+    // with an appear generation; the axes and grid are whole from the first
+    // frame and only the data draws in.
+    plot::PlotAppear appear = plot::PlotAppear::Complete();
+    if (c.appear && ctx->window && ctx->app) {
+        appear = plot::TrackAppear(&idCx, c.appearGeneration);
+    }
+    float appearProgress = appear.Progress();
+    // reveal_mask: while a chart that draws in from the left appears, its
+    // series paint under a clip covering everything left of `progress` of
+    // the way across the plot, which starts `left` into the chart's box. It
+    // bleeds by half a hover dot, so a dot on the first point shows whole as
+    // soon as the reveal passes it, and there is no clip once the appear is
+    // done.
+    float revealBleed = component::kChartHoverDotSize / 2.f;
+    auto pushReveal = [&](float left) {
+        if (appearProgress >= 1.f) {
+            return false;
+        }
+        float start = e->x + left - revealBleed;
+        float end = start + (e->x + e->w + revealBleed - start) *
+                                (appearProgress > 0.f ? appearProgress : 0.f);
+        CanvasPushClip(ctx, e->x - revealBleed, e->y - revealBleed,
+                       end - (e->x - revealBleed), e->h + revealBleed * 2.f);
+        return true;
+    };
     // The box before any value-axis gutter comes off it: the labels drawn
     // outside the plot go in the part of it the plot gives up.
     float boxX = x;
@@ -5329,7 +5369,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             DrawLine(ctx, cx, cy, cx + radius * cosf(a), cy + radius * sinf(a),
                      1.f, th.chartGrid);
         }
-        // The values themselves, as one closed shape.
+        // The values themselves, as one closed shape. The series grow out
+        // of the center as the chart appears.
         Path* shape = PathNew(ctx, true);
         if (shape) {
             for (int i = 0; i < n; i++) {
@@ -5340,6 +5381,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 if (t > 1) {
                     t = 1;
                 }
+                t *= appearProgress;
                 float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
                 float px = cx + radius * t * cosf(a);
                 float py = cy + radius * t * sinf(a);
@@ -5358,7 +5400,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         if (c.dot) {
             for (int i = 0; i < n; i++) {
                 float t = hi > lo ? (ys[i] - lo) / (hi - lo) : 0.f;
-                t = t < 0 ? 0 : (t > 1 ? 1 : t);
+                t = (t < 0 ? 0 : (t > 1 ? 1 : t)) * appearProgress;
                 float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
                 float px = cx + radius * t * cosf(a);
                 float py = cy + radius * t * sinf(a);
@@ -5530,6 +5572,9 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         if (bw < 1) {
             bw = 1;
         }
+        // The candles draw in from the left under a mask.
+        bool revealCandles =
+            c.kind == ChartKind::Candlestick && pushReveal(0.f);
         for (int i = 0; i < n; i++) {
             float bx = 0;
             if (!band.Tick(i, &bx)) {
@@ -5537,7 +5582,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             }
             bx += x;
             if (c.kind == ChartKind::Bar) {
-                DrawBar(ctx, c, i, bx, bw, x, y, w, plotH, lo, hi, th);
+                DrawBar(ctx, c, i, bx, bw, x, y, w, plotH, lo, hi, th,
+                        appearProgress);
                 continue;
             }
             // A candle: the wick from low to high, and the body between open
@@ -5568,6 +5614,9 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 bodyW = 1;
             }
             FillRound(ctx, mid - bodyW * 0.5f, top, bodyW, bh, 1.f, color);
+        }
+        if (revealCandles) {
+            CanvasPopClip(ctx);
         }
     } else {
         // Area and line are the same run of points; only the area fills what
@@ -5620,10 +5669,16 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             CanvasPushClip(ctx, x - bleed, y - bleed, w + bleed * 2.f,
                            plotH + bleed * 2.f);
         }
+        // The series draw in from the left under a mask, so their shapes
+        // stay the same on every frame of the appear.
+        bool revealed = pushReveal(x - e->x);
         Band(ys, c.stroke, c.fillTop, c.fillBot);
         for (int k = 0; k < c.nMore; k++) {
             const ChartSeriesExtra& more = c.more[k];
             Band(more.ys, more.stroke, more.fillTop, more.fillBot);
+        }
+        if (revealed) {
+            CanvasPopClip(ctx);
         }
         if (c.pinnedDomain) {
             CanvasPopClip(ctx);
@@ -5670,8 +5725,11 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     // the pointer is over. PlotHover lingers after the cursor leaves so the
     // overlay can fade out over the last datum.
     if (c.tooltip) {
-        bool overPlot = ctx->mouseX >= x && ctx->mouseX <= x + w &&
-                        ctx->mouseY >= y && ctx->mouseY <= y + plotH;
+        // No tooltip while the marks draw in: its dots would land on data
+        // not painted yet.
+        bool overPlot = !appear.IsAppearing() && ctx->mouseX >= x &&
+                        ctx->mouseX <= x + w && ctx->mouseY >= y &&
+                        ctx->mouseY <= y + plotH;
         int index = 0;
         float lineX = ctx->mouseX;
         if (overPlot) {
@@ -5729,11 +5787,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         Point lingerCursor = cursor;
         bool show = overPlot;
         float focus = 1.f;
-        Ctx hoverCx = {};
-        hoverCx.app = ctx->app;
-        hoverCx.win = ctx->window;
-        // The chart's id on the stack, so its hover state is its own.
-        hoverCx.path = c.id;
+        Ctx& hoverCx = idCx;
         if (ctx->window && ctx->app) {
             show = component::plot::TrackHover(&hoverCx, livePtr,
                                                overPlot ? &cursor : nullptr,

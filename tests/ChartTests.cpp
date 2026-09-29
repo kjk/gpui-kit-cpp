@@ -277,24 +277,28 @@ static void AChartsIdDefaultsToItsConstructionSite() {
     ArenaDelete(a);
 }
 
-// chart/mod.rs: a_chart_turned_off_has_no_id_to_key_anything_on. pie_chart.rs:
+// chart/mod.rs: a_chart_turned_off_keeps_its_id_but_not_its_hitbox — a
+// chart turned off has no hitbox, so nothing above it has to fight it for
+// the cursor, but it keeps its id for its appear. pie_chart.rs:
 // test_tooltip_name_does_not_turn_on_leader_lines. sankey_chart.rs:
 // test_tooltip_text_is_settable_without_drawing_labels.
-static void AChartTurnedOffHasNoIdToKeyAnythingOn() {
+static void AChartTurnedOffKeepsItsIdButNotItsHitbox() {
     App app = {};
     component::Init(&app);
     Arena* a = ArenaNew();
     Ctx cx = {};
     cx.a = a;
     cx.app = &app;
-    utassert(PieAtOneSite(&cx)->Interactive(false)->PlotId() == 0);
+    PieChart* off = PieAtOneSite(&cx)->Interactive(false);
+    utassert(!off->PlotInteractive());
+    utassert(off->PlotId() != 0);
     utassert(PieAtOneSite(&cx)->Id(StrL("pie"))->Interactive(false)->PlotId() ==
-             0);
-    utassert(PieAtOneSite(&cx)->PlotId() != 0);
+             IdFoldName(cx.path, StrL("pie")));
+    utassert(PieAtOneSite(&cx)->PlotInteractive());
     // Standing down takes the hitbox, and with it the crosshair and tooltip.
     float ys[3] = {1, 2, 3};
     El* line = LineChart::New(&cx, ys, 3)->Interactive(false)->IntoEl();
-    utassert(!line->Chart()->tooltip);
+    utassert(!line->Chart()->tooltip && line->Chart()->id != 0);
 
     // The row's name is the slice's own, and reaching it does not put labels
     // on the ring: `Label` is what draws the leader lines.
@@ -313,6 +317,40 @@ static void AChartTurnedOffHasNoIdToKeyAnythingOn() {
     utassert(StrEq(sankey->nodes[0].tooltipName, StrL("Revenue")));
     utassert(StrEq(sankey->nodes[0].tooltipValue, StrL("12M")));
     utassert(!sankey->nodes[0].value.s && !sankey->showValues);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
+// chart/mod.rs an_appear_key_replays_the_appear: without a key a chart
+// appears once; a key names the generation that replays it.
+static void AnAppearKeyReplaysTheAppear() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    uint64_t generation = 1;
+    utassert(PieAtOneSite(&cx)->AppearGeneration(&generation) &&
+             generation == 0);
+    utassert(!PieAtOneSite(&cx)->Appear(false)->AppearGeneration(&generation));
+    uint64_t aapl = 0;
+    uint64_t tsla = 0;
+    uint64_t again = 0;
+    utassert(
+        PieAtOneSite(&cx)->AppearKey(StrL("AAPL.US"))->AppearGeneration(&aapl));
+    utassert(
+        PieAtOneSite(&cx)->AppearKey(StrL("TSLA.US"))->AppearGeneration(&tsla));
+    utassert(PieAtOneSite(&cx)
+                 ->AppearKey(StrL("AAPL.US"))
+                 ->AppearGeneration(&again));
+    utassert(aapl != tsla && aapl == again);
+    // The runtime-painted charts carry it to the paint.
+    float ys[3] = {1, 2, 3};
+    El* line = LineChart::New(&cx, ys, 3)->AppearKey(StrL("AAPL.US"))->IntoEl();
+    utassert(line->Chart()->appear && line->Chart()->appearGeneration == aapl);
+    El* still = BarChart::New(&cx, ys, 3)->Appear(false)->IntoEl();
+    utassert(!still->Chart()->appear);
     AppGlobalClear(&app);
     ArenaDelete(a);
 }
@@ -683,7 +721,8 @@ void TestChart() {
     UnchangedSankeyLabelsKeepTheScene();
     PieSliceRadiusFallsBackToTheRing();
     AChartsIdDefaultsToItsConstructionSite();
-    AChartTurnedOffHasNoIdToKeyAnythingOn();
+    AChartTurnedOffKeepsItsIdButNotItsHitbox();
+    AnAppearKeyReplaysTheAppear();
     PointCountFillsTheLeadingPart();
     YDomainReplacesTheFitFromZero();
     OnlyTheLastPointRightAlignsItsLabel();

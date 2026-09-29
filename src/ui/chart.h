@@ -50,6 +50,29 @@ const float kChartHoverHaloSize = 20;
 // them share one, which is what Id is for.
 uint32_t ChartCallerId(const Ctx* cx, const char* file, int line);
 
+// chart/mod.rs ChartAppear: whether a chart's data draws in the first time it
+// is painted, and the key that replays it. Rust also holds this frame's
+// PlotAppear here; the charts here are painted by the runtime after they are
+// built, so the paint samples it (plot::TrackAppear) and nothing holds it.
+struct ChartAppear {
+    bool enabled = true;
+    uint64_t generation = 0;
+
+    void SetEnabled(bool v) { enabled = v; }
+    // set_key: Rust hashes any `impl Hash`; a string key hashes its bytes
+    // (FNV-1a) and a number is its own generation.
+    void SetKey(Str key);
+    void SetKey(uint64_t key) { generation = key; }
+    // The generation a chart hands Plot::appear_generation, or false when it
+    // opted out, so no appear is tracked and no frames are asked for.
+    bool Generation(uint64_t* out) const {
+        if (enabled && out) {
+            *out = generation;
+        }
+        return enabled;
+    }
+};
+
 // A pie or donut: each slice is a value and a color, drawn clockwise from
 // twelve o'clock (crates/ui/src/chart/pie_chart.rs).
 struct PieSlice {
@@ -88,6 +111,9 @@ struct PieChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
 
     static PieChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                          int line = __builtin_LINE());
@@ -115,8 +141,25 @@ struct PieChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     PieChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    PieChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    PieChart* AppearKey(Str key);
+    PieChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     // The outer radius the ring is laid out with: the set one, or 40% of
     // `height`.
     float ResolveOuterRadius(float height) const;
@@ -155,6 +198,9 @@ struct AreaChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -202,8 +248,25 @@ struct AreaChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     AreaChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    AreaChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    AreaChart* AppearKey(Str key);
+    AreaChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     AreaChart* Stroke(Rgba c);
     AreaChart* Fill(Rgba c);
     // fill(linear_gradient(0., stop(bottom, 0.), stop(top, 1.))).
@@ -272,6 +335,9 @@ struct LineChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -309,8 +375,25 @@ struct LineChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     LineChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    LineChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    LineChart* AppearKey(Str key);
+    LineChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     LineChart* Stroke(Rgba c);
     LineChart* Labels(const char* const* l);
     LineChart* TickMargin(int n);
@@ -374,6 +457,9 @@ struct BarChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -440,8 +526,25 @@ struct BarChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     BarChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    BarChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    BarChart* AppearKey(Str key);
+    BarChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     BarChart* Fill(Rgba c);
     BarChart* Labels(const char* const* l);
     BarChart* TickMargin(int n);
@@ -534,6 +637,9 @@ struct CandlestickChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
 
     static CandlestickChart* New(Ctx* cx, const float* opens,
                                  const float* highs, const float* lows,
@@ -561,8 +667,25 @@ struct CandlestickChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     CandlestickChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    CandlestickChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    CandlestickChart* AppearKey(Str key);
+    CandlestickChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     CandlestickChart* Colors(Rgba up, Rgba down);
     CandlestickChart* Labels(const char* const* l);
     CandlestickChart* TickMargin(int n);
@@ -618,6 +741,9 @@ struct RadarChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
 
     static RadarChart* New(Ctx* cx, const float* values, int n,
                            const char* file = __builtin_FILE(),
@@ -631,8 +757,25 @@ struct RadarChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     RadarChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    RadarChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    RadarChart* AppearKey(Str key);
+    RadarChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
     RadarChart* Labels(const char* const* l);
@@ -723,6 +866,9 @@ struct SankeyChart {
     // interactive(..): the hitbox under the cursor and what it drives -- the
     // hover emphasis and the tooltip. On by default.
     bool interactive = true;
+    // appear(..) / appear_key(..): whether the data draws in the first time
+    // the chart is painted, and the key that replays it.
+    ChartAppear appear = {};
 
     static SankeyChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                             int line = __builtin_LINE());
@@ -740,8 +886,25 @@ struct SankeyChart {
     // neither answers the mouse nor takes the hover from an element drawn
     // over it -- a loading skeleton, an empty-state ring.
     SankeyChart* Interactive(bool v);
-    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
-    uint32_t PlotId() const { return interactive ? id : 0; }
+    // appear(..): draw the data in the first time this chart is painted. On
+    // by default; the theme sets how long it takes and reduced motion skips
+    // it. Turn it off for a chart painted again and again as it scrolls in
+    // and out of view, such as one in each row of a long list.
+    SankeyChart* Appear(bool v);
+    // appear_key(..): draw the data in again whenever `key` changes, such as
+    // the symbol or period a chart shows. Without one the data draws in
+    // once, and later data paints in place.
+    SankeyChart* AppearKey(Str key);
+    SankeyChart* AppearKey(uint64_t key);
+    // Plot::id: the id the chart keeps its state under, its appear and, when
+    // interactive, its hover.
+    uint32_t PlotId() const { return id; }
+    // Plot::interactive: whether it tracks hover and shows its tooltip.
+    bool PlotInteractive() const { return interactive; }
+    // Plot::appear_generation: false when the chart opted out.
+    bool AppearGeneration(uint64_t* out) const {
+        return appear.Generation(out);
+    }
     // A node, by the order they are added — a link names them by index.
     SankeyChart* Node(Str label);
     SankeyChart* NodeColored(Str label, Rgba color);

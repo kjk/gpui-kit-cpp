@@ -10,7 +10,14 @@ struct ChartStory {
     bool seeded = false;
     Size viewport = {800, 600};
     float scrollY = 0;
+    // Bumped by the replay button. The gallery is keyed on it, so every
+    // chart gets fresh element state and draws in again.
+    uint64_t appearGeneration = 0;
     static El* Render(ChartStory* self, Ctx* cx);
+    static void OnReplay(ChartStory* self, Ctx* cx, const ClickEvent*) {
+        self->appearGeneration++;
+        Notify(cx);
+    }
     static void OnScroll(ChartStory* self, Ctx* cx, const ScrollEvent* ev) {
         self->scrollY = ev->offsetY;
         Notify(cx);
@@ -1026,14 +1033,18 @@ El* ChartStory::Render(ChartStory* self, Ctx* cx) {
         card += sectionCounts[section];
     }
     sizes[count - 1] -= 16;
-    float total = 32 + VirtualListContentSize(sizes, count);
+    // The list's bottom inset only: the toolbar above holds the top gap.
+    float total = 16 + VirtualListContentSize(sizes, count);
     self->scrollY =
         std::max(0.f, std::min(self->scrollY, total - self->viewport.h));
     // One card's height of overscan on both sides, as upstream ListState.
     VirtualRange visible = VirtualListVisibleRange(
-        sizes, count, self->scrollY - 16 - 400, self->viewport.h + 800);
+        sizes, count, self->scrollY - 400, self->viewport.h + 800);
     El* content = Div(cx->a)->W(kFill)->H(total)->Shrink0();
-    float y = 16 + VirtualListItemOrigin(sizes, count, visible.first);
+    float y = VirtualListItemOrigin(sizes, count, visible.first);
+    // ElementId::NamedInteger("chart-gallery", appear_generation).
+    IdScope gallery(cx, StoryFmt(cx, "chart-gallery-%llu",
+                                 (unsigned long long)self->appearGeneration));
     for (int i = visible.first; i < visible.end; i++) {
         El* row = Div(cx->a)
                       ->Absolute()
@@ -1057,8 +1068,9 @@ El* ChartStory::Render(ChartStory* self, Ctx* cx) {
         content->Child(row);
         y += sizes[i];
     }
-    El* root = Div(cx->a)
-                   ->SizeFull()
+    El* list = Div(cx->a)
+                   ->Flex1()
+                   ->W(kFill)
                    ->MinH(0)
                    ->ClipY()
                    ->ScrollY(self->scrollY)
@@ -1067,9 +1079,17 @@ El* ChartStory::Render(ChartStory* self, Ctx* cx) {
                    ->Child(content);
     auto* owner = ArenaNew<Entity<ChartStory>>(cx->a);
     owner->id = cx->self;
-    root->customPaint = &ChartStory::Measure;
-    root->customUser = owner;
-    return root;
+    list->customPaint = &ChartStory::Measure;
+    list->customUser = owner;
+    // The toolbar stays put while the gallery scrolls under it, so the gap
+    // below it belongs to the toolbar, not to the list's padding.
+    El* group = StoryToolbarGroup(cx);
+    group->Child(StoryToolbarButton(cx, StrL("chart-replay"),
+                                    IconName::RotateCw, StrL("Replay"),
+                                    Listen(cx, &ChartStory::OnReplay)));
+    El* toolbar = Div(cx->a)->W(kFill)->PadX(16)->PadT(16)->PadB(16)->Child(
+        Div(cx->a)->FlexRow()->W(kFill)->JustifyEnd()->Child(group));
+    return Div(cx->a)->FlexCol()->SizeFull()->Child(toolbar)->Child(list);
 }
 
 STORY_PAGE(StoryChart, ChartStory);

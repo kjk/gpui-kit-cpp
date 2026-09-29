@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "db8c62b435af0137975b0bb58c03e833e7471140",
+  sha: "c06d46325c7d1c1c0f6e9817a4802f9e34b8e11f",
   date: "2026-09-28",
-  subject: "button: Show keyboard focus on borderless variants when `focus_ring` is off (#3299)",
+  subject: "chart: Add appear motion to `Plot` and every chart (#3296)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

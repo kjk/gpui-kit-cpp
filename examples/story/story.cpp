@@ -605,6 +605,28 @@ El* StoryToolbarDivider(Ctx* cx) {
     return ToolbarSep(cx);
 }
 
+El* StoryToolbarButton(Ctx* cx, Str id, IconName icon, Str label,
+                       Listener onClick) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    // StoryToolbar::child: the same outline().small() button a dropdown
+    // trigger is, with its icon before the label.
+    El* button = Div(a)
+                     ->H(24)
+                     ->PadX(8)
+                     ->FlexRow()
+                     ->Gap(4)
+                     ->ItemsCenter()
+                     ->JustifyCenter()
+                     ->HoverBg(th.tokens.muted);
+    if (icon != IconName::None) {
+        button->Child(IconEl(a, icon, 14)->Fg(th.foreground));
+    }
+    button->Child(StoryTxt(cx, label, 14, th.foreground));
+    button->Click(HashClickId(id))->OnClick(onClick);
+    return button;
+}
+
 El* StoryToolbarDropdown(Ctx* cx, Str id, Str label, bool open, Listener onOpen,
                          const StoryToolbarOpt* rows, int nrows,
                          Listener onAct) {

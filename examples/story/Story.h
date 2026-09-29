@@ -219,6 +219,10 @@ El* StoryToolbarDropdown(Ctx* cx, Str id, Str label, bool open, Listener onOpen,
                          const StoryToolbarOpt* rows, int nrows,
                          Listener onAct);
 El* StoryToolbarDivider(Ctx* cx);
+// StoryToolbar::child(button): a plain button in the group, an optional
+// icon before its label.
+El* StoryToolbarButton(Ctx* cx, Str id, IconName icon, Str label,
+                       Listener onClick);
 
 void StoryToolbarApply(StoryToolbarState* st, StoryAccordionOptions* opts,
                        int act);

@@ -1468,6 +1468,52 @@ TooltipState TooltipState::New(int value, Point cross, const Point* dotValues,
     return out;
 }
 
+// ─── plot/appear.rs ──────────────────────────────────────────────────────
+
+float PlotAppear::Progress() const {
+    if (time >= 1.f) {
+        return 1.f;
+    }
+    return easing.Sample(time);
+}
+
+float PlotAppear::Staggered(int index, int count, float spread) const {
+    if (count <= 1 || time >= 1.f) {
+        return Progress();
+    }
+    spread = spread < 0.f ? 0.f : (spread > 0.95f ? 0.95f : spread);
+    int ix = index < count - 1 ? index : count - 1;
+    float start = spread * (float)ix / (float)(count - 1);
+    float t = (time - start) / (1.f - spread);
+    t = t < 0.f ? 0.f : (t > 1.f ? 1.f : t);
+    return easing.Sample(t);
+}
+
+PlotAppear TrackAppear(Ctx* cx, uint64_t generation) {
+    if (!cx || !cx->win || !cx->app) {
+        return PlotAppear::Complete();
+    }
+    // try_global: borrowed rather than cloned, since every plot asks on
+    // every frame; without a theme there is no appear.
+    const BaseTheme* theme = BaseThemeGlobal((const App*)cx->app);
+    if (!theme) {
+        return PlotAppear::Complete();
+    }
+    const motion::Transition& policy = theme->plot.Motion().Appear();
+    // APPEAR, under ElementId::Integer(generation), within the plot's scope.
+    uint32_t key = KeyedName(cx, StrL("__plot-appear")) * 31u +
+                   (uint32_t)(generation ^ (generation >> 32));
+    // Presence keeps the linear time so the marks can each ease over their
+    // own slice of it; see PlotAppear::Staggered.
+    PresenceSample sample = Presence::New(key, true)
+                                .Transition(policy.Ease(Easing::Linear()))
+                                .Sample(cx);
+    PlotAppear out;
+    out.time = sample.progress;
+    out.easing = policy.easing;
+    return out;
+}
+
 // The last datum the cursor resolved to, where the cursor was and how far the
 // hover has faded in, kept in element state so the hover can fade out over it
 // after the cursor leaves and so an overlay can read the fade without being

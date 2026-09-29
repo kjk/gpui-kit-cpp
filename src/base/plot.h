@@ -615,15 +615,18 @@ struct PlotHover {
     float Glide(Ctx* cx, motion::TransitionId id, float target) const;
 };
 
-// mod.rs PlotMotion: the timing of a plot's hover — how its progress fades
-// in and out, and the spring a pointer follows the hovered datum with. Base
-// installs no motion of its own: every duration defaults to zero, so the
-// hover appears, fades and glides at once. Product timing belongs to the
-// styled layer, which projects it through the Base theme's PlotTheme.
+// mod.rs PlotMotion: the timing of a plot's motion — how its data marks
+// appear when it is first painted, how its hover progress fades in and out,
+// and the spring a pointer follows the hovered datum with. Base installs no
+// motion of its own: every duration defaults to zero, so the data is whole
+// at once and the hover appears, fades and glides at once. Product timing
+// belongs to the styled layer, which projects it through the Base theme's
+// PlotTheme.
 struct PlotMotion {
     Spring pointer = Spring::New(0);
     motion::Transition enter = motion::Transition::New(0);
     motion::Transition exit = motion::Transition::New(0);
+    motion::Transition appear = motion::Transition::New(0);
 
     PlotMotion WithPointer(Spring value) const {
         PlotMotion copy = *this;
@@ -640,10 +643,52 @@ struct PlotMotion {
         copy.exit = value;
         return copy;
     }
+    // How a plot's data marks appear the first time it is painted; see
+    // PlotAppear.
+    PlotMotion WithAppear(motion::Transition value) const {
+        PlotMotion copy = *this;
+        copy.appear = value;
+        return copy;
+    }
     Spring Pointer() const { return pointer; }
     const motion::Transition& Enter() const { return enter; }
     const motion::Transition& Exit() const { return exit; }
+    const motion::Transition& Appear() const { return appear; }
 };
+
+// plot/appear.rs PlotAppear: how far a plot's data marks have appeared this
+// frame. The appear starts on the first frame a plot's id is painted and
+// runs over the active PlotMotion's appear. Base's default duration is zero,
+// and reduced motion skips it, so a plot is then complete from its first
+// frame.
+struct PlotAppear {
+    // Linear time through the appear, from 0 to 1.
+    float time = 1.f;
+    Easing easing = Easing::Linear();
+
+    // A finished appear: every mark is complete.
+    static PlotAppear Complete() { return {}; }
+    // How far the whole plot has appeared, from 0 to 1, eased. A finished
+    // appear skips sampling the curve, since charts read this per mark on
+    // every frame long after the appear is done.
+    float Progress() const;
+    // Whether the appear is still running.
+    bool IsAppearing() const { return time < 1.f; }
+    // How far mark `index` of `count` has appeared, from 0 to 1, eased. The
+    // marks start one after another across the first `spread` of the appear
+    // (0..1) and each runs for the rest of it, so the last mark still
+    // finishes with the appear however many marks there are. A `spread` of 0
+    // moves every mark together.
+    float Staggered(int index, int count, float spread) const;
+};
+
+// track_appear: sample the appear of the plot painting under `cx`'s id
+// scope; a new `generation` starts it over. Rust's PlotElement calls it for
+// a plot whose appear_generation is Some; the charts here paint themselves
+// and call it under their own id scope, as they do TrackHover. The state is
+// keyed on that scope and the generation and dropped with the plot, so a
+// remounted plot appears again.
+PlotAppear TrackAppear(Ctx* cx, uint64_t generation);
 
 // pointer_spring: the spring a hover pointer — the crosshair, highlight band
 // or hover dot — follows the hovered datum with: the active PlotMotion's

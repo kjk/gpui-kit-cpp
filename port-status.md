@@ -15,12 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `db8c62b435af0137975b0bb58c03e833e7471140` (2026-09-28,
-button: Show keyboard focus on borderless variants when `focus_ring` is off
-(#3299)). With the theme's outer focus ring off, a focused control that has no
-border to tint now draws a 1px ring-coloured line just inside its edge, so
-ghost, text, link and filled buttons still show keyboard focus. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `c06d46325c7d1c1c0f6e9817a4802f9e34b8e11f` (2026-09-28,
+chart: Add appear motion to `Plot` and every chart (#3296)). Charts draw their
+data in the first time they are painted, over 1000 ms on easeOutQuart: lines,
+areas, candles and sankeys revealed from the left, bars grown from zero, pies
+swept clockwise and radars grown from the centre, with an opt-out, a replay
+key and a Replay button in the chart story. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -137,8 +138,11 @@ update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   no counterpart, and a range is a pointer and count read as its first two
   entries. `PlotAxis` and `Grid` lines and a line's dots take a
   `Background`, but the runtime draws lines and ellipses with one color, so
-  a gradient paints its first stop. There is no `PlotElement`: charts track
-  hover with `TrackHover` under their own id scope (`src/base/plot.cpp`).
+  a gradient paints its first stop. There is no `PlotElement` or `Plot`
+  trait: charts track hover with `TrackHover` and their appear with
+  `TrackAppear` under their own id scope (`src/base/plot.cpp`), and
+  `Plot::interactive` / `appear_generation` are `PlotInteractive` /
+  `AppearGeneration` on each chart.
 - **No text alignment on an element.** `text_center()` / `text_right()` have
   no counterpart, so a wrapped centered or trailing Marker label keeps its
   lines at the leading edge; a single run is placed by the flex box instead

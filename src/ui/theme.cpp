@@ -1293,6 +1293,21 @@ void ThemeApplySemanticTokens(Theme* t, const SemanticThemeTokens& tokens) {
     // need the complete resolved snapshot retain SemanticThemeTokens.
 }
 
+// PLOT_APPEAR: how long a chart's data takes to draw in the first time it is
+// painted. The mainstream chart libraries agree on about a second: ECharts,
+// Chart.js and Highcharts all default to 1000 ms, ApexCharts to 800 ms and
+// Recharts to 1500 ms.
+static const float kPlotAppearMs = 1000.f;
+
+// plot_appear_easing: Chart.js' default easeOutQuart. Not the design
+// system's enter curve, which is an exponential ease-out built for a popover
+// and makes a second of drawing in read as a flash; the quartic still leads
+// with most of the motion but leaves the data a visible glide into place.
+static float PlotAppearEasing(float t) {
+    float u = 1.f - t;
+    return 1.f - u * u * u * u;
+}
+
 void ThemeSyncBase(App* app) {
     if (!app) {
         return;
@@ -1311,7 +1326,8 @@ void ThemeSyncBase(App* app) {
     // ease-out, which is most of the way there in the first third. The fast
     // tier as a critically damped response lands in the same place, and the
     // tolerance is sub-pixel so the spring rests once nothing visible moves.
-    // The hover fades on the same tier.
+    // The hover fades on the same tier. The data draws in over kPlotAppearMs
+    // on PlotAppearEasing.
     base.plot = base_theme::PlotTheme::New().WithMotion(
         plot::PlotMotion{}
             .WithPointer(Spring::New(ui.motion.durationFastMs)
@@ -1319,7 +1335,9 @@ void ThemeSyncBase(App* app) {
             .WithEnter(motion::Transition::New(ui.motion.durationFastMs)
                            .Ease(ui.motion.easingEnter))
             .WithExit(motion::Transition::New(ui.motion.durationFastMs)
-                          .Ease(ui.motion.easingExit)));
+                          .Ease(ui.motion.easingExit))
+            .WithAppear(motion::Transition::New(kPlotAppearMs)
+                            .Ease(PlotAppearEasing)));
 
     ScrollbarStyles& styles = base.scrollbar.styles;
     styles.track.background = Background(ui.scrollbarBg);

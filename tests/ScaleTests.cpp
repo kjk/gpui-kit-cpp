@@ -719,6 +719,130 @@ static void PlotBarAndAxisContracts() {
              cross.horizontalLength == 50);
 }
 
+// ─── plot/appear.rs ──────────────────────────────────────────────────────
+
+static gpui::plot::PlotAppear AppearAt(float time) {
+    gpui::plot::PlotAppear appear;
+    appear.time = time;
+    appear.easing = Easing::Linear();
+    return appear;
+}
+
+// test_complete_appear
+static void PlotCompleteAppear() {
+    gpui::plot::PlotAppear appear = gpui::plot::PlotAppear::Complete();
+    utassert(!appear.IsAppearing());
+    utassert(appear.Progress() == 1.f);
+    utassert(appear.Staggered(3, 10, 0.5f) == 1.f);
+}
+
+// test_staggered_marks_share_the_appear
+static void PlotStaggeredMarksShareTheAppear() {
+    // The first mark starts at once, the last once the spread has passed.
+    utassertnear(AppearAt(0.f).Staggered(0, 5, 0.5f), 0.f);
+    utassertnear(AppearAt(0.25f).Staggered(0, 5, 0.5f), 0.5f);
+    utassertnear(AppearAt(0.5f).Staggered(4, 5, 0.5f), 0.f);
+    utassertnear(AppearAt(0.75f).Staggered(4, 5, 0.5f), 0.5f);
+    // Every mark finishes with the appear.
+    for (int index = 0; index < 5; index++) {
+        utassert(AppearAt(1.f).Staggered(index, 5, 0.5f) == 1.f);
+    }
+}
+
+// test_staggered_without_spread_moves_together
+static void PlotStaggeredWithoutSpreadMovesTogether() {
+    utassertnear(AppearAt(0.4f).Staggered(0, 3, 0.f), 0.4f);
+    utassertnear(AppearAt(0.4f).Staggered(2, 3, 0.f), 0.4f);
+    // A lone mark ignores the spread.
+    utassertnear(AppearAt(0.4f).Staggered(0, 1, 0.5f), 0.4f);
+}
+
+// The window the appear tests sample in: a 100 ms linear appear in the Base
+// theme, a plot id on the stack, and the frame clock the test drives. Rust's
+// tests open a window whose Recorder plot receives the appear each frame;
+// TrackAppear is the call PlotElement makes for it, so the tests make it
+// frame by frame instead.
+struct AppearHarness {
+    App app;
+    Window* win = nullptr;
+    Arena* arena = nullptr;
+    Ctx cx = {};
+
+    AppearHarness() {
+        win = new Window();
+        win->app = &app;
+        arena = ArenaNew();
+        cx = {&app, win, arena, {}};
+        cx.path = HashClickId(StrL("recorder"));
+        BaseTheme base;
+        base.plot = base_theme::PlotTheme::New().WithMotion(
+            gpui::plot::PlotMotion{}.WithAppear(motion::Transition::New(100)
+                                                    .Ease(Easing::Linear())));
+        BaseThemeSet(&app, base);
+        MotionSetReduced(false);
+    }
+    ~AppearHarness() {
+        MotionSetReduced(false);
+        ArenaDelete(arena);
+        delete win;
+        AppGlobalClear(&app);
+    }
+    // One frame at `now` seconds: whether the plot asked for another.
+    float Frame(double now, uint64_t generation, bool* wantsFrame) {
+        win->frameNow = now;
+        win->animFrame = false;
+        float progress = gpui::plot::TrackAppear(&cx, generation).Progress();
+        if (wantsFrame) {
+            *wantsFrame = win->animFrame;
+        }
+        return progress;
+    }
+};
+
+// test_plot_appears_once_over_the_theme_duration
+static void PlotAppearsOnceOverTheThemeDuration() {
+    AppearHarness h;
+    bool wants = false;
+    utassertnear(h.Frame(1.0, 0, &wants), 0.f);
+    utassert(wants);
+    utassertnear(h.Frame(1.05, 0, &wants), 0.5f);
+    utassertnear(h.Frame(1.1, 0, &wants), 1.f);
+    // Once whole, the plot stops asking for frames and stays whole.
+    utassertnear(h.Frame(1.2, 0, &wants), 1.f);
+    utassert(!wants);
+}
+
+// test_reduced_motion_skips_the_appear
+static void PlotReducedMotionSkipsTheAppear() {
+    AppearHarness h;
+    MotionSetReduced(true);
+    bool wants = true;
+    utassert(h.Frame(1.0, 0, &wants) == 1.f);
+    utassert(!wants);
+}
+
+// test_plot_without_a_generation_does_not_appear: a plot that does not opt
+// in is whole at once and asks for no frames, even with an appear duration
+// in the theme. The generation is the plot's to hand over: a hand-built
+// ChartEl carries none, so its paint never calls TrackAppear, keeps no state
+// and draws with the complete appear.
+static void PlotWithoutAGenerationDoesNotAppear() {
+    AppearHarness h;
+    ChartSeries plain;
+    utassert(!plain.appear);
+    gpui::plot::PlotAppear appear = gpui::plot::PlotAppear::Complete();
+    utassert(appear.Progress() == 1.f && !h.win->animFrame);
+    utassert(h.win->motionSlots.len == 0);
+}
+
+// test_new_generation_replays_the_appear
+static void PlotNewGenerationReplaysTheAppear() {
+    AppearHarness h;
+    h.Frame(1.0, 0, nullptr);
+    utassertnear(h.Frame(1.1, 0, nullptr), 1.f);
+    utassertnear(h.Frame(1.2, 1, nullptr), 0.f);
+}
+
 void TestScale() {
     TestSuite("scale/linear");
     ScaleLinearBasics();
@@ -767,4 +891,13 @@ void TestScale() {
     PlotAxisBuilderOrderDoesNotMoveLabels();
     PlotAxisGutterFitsDefaultLabels();
     PlotBarAndAxisContracts();
+
+    TestSuite("plot/appear");
+    PlotCompleteAppear();
+    PlotStaggeredMarksShareTheAppear();
+    PlotStaggeredWithoutSpreadMovesTogether();
+    PlotAppearsOnceOverTheThemeDuration();
+    PlotReducedMotionSkipsTheAppear();
+    PlotWithoutAGenerationDoesNotAppear();
+    PlotNewGenerationReplaysTheAppear();
 }
