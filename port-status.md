@@ -15,10 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `12d278ad02095a90a40538045297f1eabdaa440d` (2026-09-28,
-popover: Apply trigger_style to the trigger container (#3245)).
-Popover::TriggerStyle styles the trigger container, the element laid out in
-the parent and measured to anchor the popup. The current update target is
+Processed through `501cdbaafb363c882c0a9102fa4a2d110655609a` (2026-09-28, kit:
+Update GPUI to gpui-pre 0.3.7 (#3283)). gpui-kit moved every gpui-pre package
+to 0.3.7; the GPUI reference is Zed 1a28cff4b409. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
