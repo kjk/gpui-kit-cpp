@@ -15,9 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d25a1f273f922f6836ba92ba46376cdc675a4b68` (2026-09-21,
-Version 0.6.5). The workspace crates move to 0.6.5; the story's title bar
-shows the new version. The current update target is
+Processed through `e02e645fdba665327856344c475f37ae8c447941` (2026-09-21,
+website: Publish versioned website builds (#3159)). Website and CI only:
+versioned website builds. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
