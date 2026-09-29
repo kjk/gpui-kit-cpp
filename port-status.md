@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `80230b652dbc573b5811f46258c36cd184887177` (2026-09-25,
-text_view: Add `TextViewState::reveal_range` (#3216)).
-TextViewState::reveal_range scrolls the line a rendered-text range starts on
-into view, following the content like range highlights, and
-TextView::on_reveal hands the line to a container that scrolls itself; the
-markdown example steps through its matches. The current update target is
+Processed through `db527f50a0b1c5b829a18b151e2b4d3dbac3ffdb` (2026-09-25,
+highlighter: Read tree-sitter input as bytes to avoid aborting inside
+multi-byte chars (#3238)). The Rust highlighter reads tree-sitter input as
+bytes so a stale tree asking for an offset inside a multi-byte character no
+longer aborts; this tree's highlighter is a scanner with no tree-sitter read
+callbacks. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
