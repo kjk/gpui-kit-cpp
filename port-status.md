@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8a7e0ec317ac209979b0ea7a2def8156bb885bb8` (2026-09-26,
-input: Fix accessibility focus and SetValue (#3246)). An input's accessibility
-Focus and SetValue recheck the field when they run: Focus is refused while
-disabled, SetValue unless editable. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `fd18012194486e15fef47b4cf709b7d94ce296be` (2026-09-26,
+text: Avoid quadratic table highlight remapping (#3247)). Range-highlight
+remapping finds a table cell's row end from an index built once rather than
+rescanning the table per cell; this tree already records it per cell leaf, and
+a test pins the whole-row behaviour on long and wide tables. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

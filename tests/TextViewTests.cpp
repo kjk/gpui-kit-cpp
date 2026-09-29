@@ -2805,6 +2805,81 @@ static void DeletingATableRowDropsHighlightsInTheRowsItMoves() {
     }
 }
 
+// range_highlight.rs long_and_wide_tables_remap_highlights_by_whole_rows
+// (#3247). Every cell highlighted, then the last cell of the first data row
+// edited: even the unchanged cells earlier in that row lose their highlights,
+// as do the rows after it, and only the header keeps its own. Rust's fix
+// collects each row's source end once instead of rescanning the table per
+// cell; here the rendered index already records it on every cell leaf as the
+// row is built, and a leaf is found by binary search, so the remap is linear
+// either way. The row-index tests (table_row_index_keeps_empty_cells_in_
+// their_row, table_row_index_finds_nested_tables_without_crossing_between_
+// them, append_remapping_does_not_build_a_table_row_index) are about that
+// Rust structure, which this tree does not have.
+static void LongAndWideTablesRemapHighlightsByWholeRows() {
+    const int shapes[][2] = {{4096, 1}, {2, 1024}, {64, 16}};
+    Rgba color = HslaToRgba(HslaNew(0.15f, 1.f, 0.5f, 0.4f));
+    for (const auto& shape : shapes) {
+        int rows = shape[0];
+        int columns = shape[1];
+        StrBuilder row;
+        StrBuilder separator;
+        row.Append(StrL("|"));
+        separator.Append(StrL("|"));
+        for (int c = 0; c < columns; c++) {
+            row.Append(StrL(" x |"));
+            separator.Append(StrL("---|"));
+        }
+        row.AppendChar('\n');
+        separator.AppendChar('\n');
+        Str rowText = row.TakeStr();
+        Str separatorText = separator.TakeStr();
+        StrBuilder source;
+        source.Append(rowText);
+        source.Append(separatorText);
+        for (int r = 0; r < rows; r++) {
+            source.Append(rowText);
+        }
+        Str old = source.TakeStr();
+        RhView v;
+        RhOpen(&v, old.s);
+        Str text = RhState(&v)->RenderedText().AsStr();
+        Vec<RangeHighlight> highlights;
+        for (int i = 0; i < len(text); i++) {
+            if (text.s[i] == 'x') {
+                VecAppend(highlights,
+                          RangeHighlight::New(Span{i, i + 1}, color));
+            }
+        }
+        utassert(len(highlights) == (rows + 1) * columns);
+        utassert(RhState(&v)
+                     ->SetRangeHighlights(highlights.els, len(highlights),
+                                          &v.app, v.win)
+                     .IsOk());
+        utassert(len(RhState(&v)->rangeHighlights->leaves) ==
+                 (rows + 1) * columns);
+        Str changed = StrDup(old);
+        int edit = len(rowText) + len(separatorText) + len(rowText) - 1;
+        while (changed.s[edit] != 'x') {
+            edit--;
+        }
+        ((char*)changed.s)[edit] = 'y';
+        RhState(&v)->SetText(changed, &v.app, v.win);
+        RhRender(&v);
+        const gpui::RangeHighlightFrame* kept = RhState(&v)->rangeHighlights;
+        utassert(kept && len(kept->leaves) == columns);
+        Span one = {0, 1};
+        for (int c = 0; c < columns; c++) {
+            utassert(RhPainted(&v, TextLeafKey::TableCell(0, c), &one, 1));
+        }
+        StrFree(changed);
+        StrFree(old);
+        StrFree(rowText);
+        StrFree(separatorText);
+        RhClose(&v);
+    }
+}
+
 // streaming_table_rows_keeps_the_highlights_of_earlier_rows.
 static void StreamingTableRowsKeepsTheHighlightsOfEarlierRows() {
     RhView v;
@@ -3287,6 +3362,7 @@ void TestTextView() {
     AppendingACopyOfTheLastBlockKeepsTheHighlightOnIt();
     DeletingATableRowDropsHighlightsInTheRowsItMoves();
     StreamingTableRowsKeepsTheHighlightsOfEarlierRows();
+    LongAndWideTablesRemapHighlightsByWholeRows();
     AnEditInAnEarlierBlockKeepsLaterHighlights();
     StreamingThroughSetTextKeepsHighlights();
     AnAppendComparesEveryBlock();
