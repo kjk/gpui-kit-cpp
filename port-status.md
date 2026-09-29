@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6c5d2e75e22afbeb757847d9ad6d8da6d9385d15` (2026-09-24,
-select: Stop the popup from overhanging the trigger on the right (#3218)). The
-Select and Combobox popup takes the trigger's own width instead of 2px more,
-so it no longer overhangs the trigger on the right now that the popover ring
-is drawn outside the surface. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `be422fba16634543a04f96d8ce66cc392a2a61aa` (2026-09-24,
+setting: Scroll to a group selected from another page (#3219)). A settings
+group selected from the sidebar scrolls to the top of its page by index, so
+jumping to a group on another page no longer lands at the top; here the page
+body now scrolls and resolves the jump from the group's laid-out position. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

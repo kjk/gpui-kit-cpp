@@ -321,6 +321,18 @@ struct SettingsState {
     int page = 0;
     int group = -1;
     bool selectionInitialized = false;
+    // deferred_scroll_group_ix: the group a sidebar click asked the page to
+    // bring to the top. -1 is None.
+    int deferredScrollGroup = -1;
+    // page.rs's PageState, which Rust keys per page and drops once the page
+    // stops rendering: the page and query its scroll offset belongs to, the
+    // offset itself, and the group still to be scrolled to once the page has
+    // been laid out and the group's place is known — ListState::scroll_to by
+    // item index, resolved here from the group's own measured position.
+    int listPage = -1;
+    uint32_t listQuery = 0;
+    float scrollY = 0;
+    int pendingScrollGroup = -1;
     // `SettingsState { search_input: cx.new(|cx| InputState::new(window, cx)
     // .placeholder(t!("Settings.search_placeholder"))), .. }`: the pane's own
     // field, made with the state rather than asked of the application. Every
@@ -335,6 +347,9 @@ struct SettingsState {
                             intptr_t page);
     static void OnGroupClick(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                              intptr_t packed);
+    // The page's own scrolling: the wheel and the scrollbar.
+    static void OnPageScroll(SettingsState* self, Ctx* cx,
+                             const ScrollEvent* ev);
     // A typed field's own handlers. `ix` is into `fields`.
     static void OnFieldClick(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                              intptr_t ix);

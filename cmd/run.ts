@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6c5d2e75e22afbeb757847d9ad6d8da6d9385d15",
+  sha: "be422fba16634543a04f96d8ce66cc392a2a61aa",
   date: "2026-09-24",
-  subject: "select: Stop the popup from overhanging the trigger on the right (#3218)",
+  subject: "setting: Scroll to a group selected from another page (#3219)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

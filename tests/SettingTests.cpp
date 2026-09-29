@@ -593,6 +593,73 @@ static void GroupVariantOverridesTheSettingsDefault() {
     delete win;
 }
 
+// The search fixture with Colors made 900 tall, which pushes Fonts below a
+// 700-high pane.
+static Settings* TallColorsSettings(Ctx* cx, Entity<SettingsState> state) {
+    return Settings::New(cx, StrL("scroll-test"), state)
+        ->H(700)
+        ->Page(StrL("General"))
+        ->Group({})
+        ->Item(StrL("Language"), {})
+        ->Page(StrL("Appearance"))
+        ->Group({})
+        ->Item(StrL("Unrelated"), {})
+        ->Group(StrL("Colors"))
+        ->Item(StrL("theme colors"), {}, Div(cx->a)->W(40)->H(900))
+        ->Group(StrL("Fonts"))
+        ->Item(StrL("Unrelated"), {})
+        ->Item(StrL("Font"), {})
+        ->DefaultSelectedIndex({1, -1});
+}
+
+// Build, lay out and paint the page's scroll hook, which is where a jump to a
+// group resolves once its place is known.
+static El* DrawTallColors(Ctx* cx, Window* win, Entity<SettingsState> state) {
+    El* root = TallColorsSettings(cx, state)->IntoEl();
+    const RuntimeStyle& th = RuntimeStyleNow(cx->app);
+    LayoutEl(&win->paint, root, 0, 0, 900, 700, th.fontSize, th.foreground);
+    El* body = FindSettingElement(root, "page-body");
+    if (body && body->customPaint) {
+        body->customPaint(&win->paint, body, body->customUser);
+    }
+    return root;
+}
+
+// tests.rs: selecting_a_group_from_another_page_scrolls_to_it. Leaving the
+// page drops its scroll state; the jump back must not land at the top.
+static void SelectingAGroupFromAnotherPageScrollsToIt() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    DrawTallColors(&cx, win, state);
+    SettingsState* settings = state.Get(&app);
+    utassert(settings && settings->page == 1);
+
+    SettingsState::OnPageClick(settings, &cx, nullptr, 0);
+    DrawTallColors(&cx, win, state);
+    SettingsState::OnGroupClick(settings, &cx, nullptr, 1 * 64 + 2);
+    DrawTallColors(&cx, win, state);
+    utassert(settings->scrollY > 0);
+    El* root = DrawTallColors(&cx, win, state);
+    El* target = FindSettingElement(root, "1-2-1");
+    utassert(target);
+    if (target) {
+        utassert(target->y >= 0 && target->y + target->h <= 700);
+    }
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestSetting() {
     TestSuite("setting");
     TheQueryMatchesTitleDescriptionAndKeywords();
@@ -608,4 +675,5 @@ void TestSetting() {
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
     GroupVariantOverridesTheSettingsDefault();
+    SelectingAGroupFromAnotherPageScrollsToIt();
 }

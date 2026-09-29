@@ -179,6 +179,7 @@ void SettingsState::OnPageClick(SettingsState* self, Ctx* cx, const ClickEvent*,
                                 intptr_t page) {
     self->page = (int)page;
     self->group = -1;
+    self->deferredScrollGroup = -1;
     Notify(cx);
 }
 
@@ -186,7 +187,40 @@ void SettingsState::OnGroupClick(SettingsState* self, Ctx* cx,
                                  const ClickEvent*, intptr_t packed) {
     self->page = (int)(packed / 64);
     self->group = (int)(packed % 64);
+    self->deferredScrollGroup = self->group;
     Notify(cx);
+}
+
+void SettingsState::OnPageScroll(SettingsState* self, Ctx* cx,
+                                 const ScrollEvent* ev) {
+    self->scrollY = ev->offsetY;
+    Notify(cx);
+}
+
+// What the page's scroll hangs on at paint: its state, and the element the
+// group being scrolled to starts with.
+struct SettingsPageScroll {
+    Entity<SettingsState> state = {};
+    El* target = nullptr;
+};
+
+// ListState::scroll_to(ListOffset { item_ix, offset_in_item: 0 }): the group
+// at the top of the page, clamped at the end. Scrolling by the group's own
+// laid-out position rather than a measured list is what keeps a page that was
+// just switched to from resolving to the top.
+static void SettingsPageScrollPaint(PaintCtx* ctx, El* e, void* user) {
+    auto* m = (SettingsPageScroll*)user;
+    SettingsState* st = m ? m->state.Get(ctx->app) : nullptr;
+    if (!st || st->pendingScrollGroup < 0 || !m->target) {
+        return;
+    }
+    float top = m->target->y - (e->y - e->scrollY) - e->style.pad.top;
+    float most = e->contentH - e->h;
+    most = most > 0 ? most : 0;
+    st->scrollY = top < 0 ? 0 : (top > most ? most : top);
+    st->pendingScrollGroup = -1;
+    Ctx cx = {ctx->app, ctx->window, nullptr, m->state.id};
+    Notify(&cx);
 }
 
 // The one selected index, or -1. A setting dropdown is single-select, which
@@ -748,6 +782,7 @@ El* Settings::IntoEl() {
             selectedIx.groupIx != previous.groupIx) {
             st->page = selectedIx.pageIx;
             st->group = selectedIx.groupIx;
+            st->deferredScrollGroup = -1;
         }
         VecClear(st->fields);
     }
@@ -866,7 +901,40 @@ El* Settings::IntoEl() {
         // The body first: whether the page offers Reset All is whether
         // anything on it came out dirty, which only the fields know.
         bool anyDirty = false;
-        El* body = Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(8);
+        // The page's list state is its own and starts over whenever the page
+        // or the groups the query leaves on it change; the group to scroll
+        // to is the one a click deferred, or on such a change the selected
+        // one.
+        int scrollGroup = -1;
+        SettingsPageScroll* scroll = ArenaNew<SettingsPageScroll>(a);
+        scroll->state = state;
+        if (st) {
+            uint32_t queryKey = IdFoldName(0, query);
+            bool changed =
+                st->listPage != selected || st->listQuery != queryKey;
+            if (changed) {
+                st->listPage = selected;
+                st->listQuery = queryKey;
+                st->scrollY = 0;
+            }
+            scrollGroup = st->deferredScrollGroup >= 0
+                              ? st->deferredScrollGroup
+                              : (changed ? st->group : -1);
+            st->deferredScrollGroup = -1;
+        }
+        El* body =
+            Div(a)
+                ->Id(StrL("page-body"))
+                ->FlexCol()
+                ->W(kFill)
+                ->Flex1()
+                ->MinH(0)
+                ->Pad(16)
+                ->Gap(8)
+                ->ClipY()
+                ->ScrollY(st ? st->scrollY : 0)
+                ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
+                ->OnScroll(ListenTo(state, &SettingsState::OnPageScroll));
         int g = -1;
         for (const SettingGroup& grp : p.groups) {
             g++;
@@ -874,8 +942,12 @@ El* Settings::IntoEl() {
                 continue;
             }
             if (grp.title.s) {
-                body->Child(
-                    TextEl(a, grp.title)->Font(16)->Fg(th.mutedFg)->PadY(4));
+                El* title =
+                    TextEl(a, grp.title)->Font(16)->Fg(th.mutedFg)->PadY(4);
+                if (g == scrollGroup) {
+                    scroll->target = title;
+                }
+                body->Child(title);
             }
             // GroupBox's content pane: `p_4` and `gap_4`, `rounded(radius)`,
             // bordered for the Outline variant and filled for Fill.
@@ -903,6 +975,9 @@ El* Settings::IntoEl() {
                     StrDup(a, fmt("%d-%d-%d", selected, g, itemIx)), selected,
                     g, itemIx, shown == 0, p.resettable, &anyDirty));
                 shown++;
+            }
+            if (g == scrollGroup && !scroll->target) {
+                scroll->target = card;
             }
             body->Child(card);
             // group_box.rs: the footer is 8 px under the surface, outside it.
@@ -944,6 +1019,11 @@ El* Settings::IntoEl() {
             head->Child(
                 TextEl(a, p.description)->Font(14)->Fg(th.mutedFg)->Wrap());
         }
+        if (st && scroll->target) {
+            st->pendingScrollGroup = scrollGroup;
+        }
+        body->customPaint = &SettingsPageScrollPaint;
+        body->customUser = scroll;
         pane->Child(head);
         pane->Child(body);
     }
