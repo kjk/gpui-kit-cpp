@@ -15,13 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `56dc9648c4049abab97045d925ef3983214d97e3` (2026-09-28,
-text: Keep inline flow lines within the wrap width for CJK punctuation
-(#3293)). The inline flow re-checks each wrapped line against in-context
-shaped widths so CJK full-width punctuation cannot push a line past the wrap
-width; the port's inline flow measures and paints each word as the same shaped
-run, so it had no such gap. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `db8c62b435af0137975b0bb58c03e833e7471140` (2026-09-28,
+button: Show keyboard focus on borderless variants when `focus_ring` is off
+(#3299)). With the theme's outer focus ring off, a focused control that has no
+border to tint now draws a 1px ring-coloured line just inside its edge, so
+ghost, text, link and filled buttons still show keyboard focus. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

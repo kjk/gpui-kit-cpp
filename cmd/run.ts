@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "56dc9648c4049abab97045d925ef3983214d97e3",
+  sha: "db8c62b435af0137975b0bb58c03e833e7471140",
   date: "2026-09-28",
-  subject: "text: Keep inline flow lines within the wrap width for CJK punctuation (#3293)",
+  subject: "button: Show keyboard focus on borderless variants when `focus_ring` is off (#3299)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

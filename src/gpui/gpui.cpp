@@ -7006,6 +7006,24 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                        ScrollbarThumbBg(e, barTheme, state, barAlpha));
     }
 
+    bool hasBorder = e->style.border > 0 || e->style.borderT > 0 ||
+                     e->style.borderB > 0 || e->style.borderL > 0 ||
+                     e->style.borderR > 0;
+    if (focused && !RuntimeStyleNow(ctx->app).focusRing && !hasBorder) {
+        // inset_focus_ring: with the outer ring off, an element with no
+        // border to tint (a ghost, text, link or filled button) draws a 1px
+        // ring-coloured line just inside its edge instead, with its own
+        // corner radii. Rust hangs it off the element as its last absolute
+        // child, so it paints over the content, as it does here.
+        Rgba ring = RuntimeStyleNow(ctx->app).ring;
+        if (e->style.hasCorners) {
+            StrokeCorners(ctx, e->x, e->y, e->w, e->h, e->style.corners, 1.f,
+                          ring);
+        } else {
+            DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius, 1.f,
+                            ring);
+        }
+    }
     if (focused && RuntimeStyleNow(ctx->app).focusRing) {
         // The other half of focus_ring_style: FOCUS_RING_WIDTH of the ring
         // colour at FOCUS_RING_OPACITY, in the three DIPs immediately outside
