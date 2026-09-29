@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "bb45f5dce83a09463f660ab99c66f6011cb92d0e",
+  sha: "f73e3ea69bc60957e767dd09fc6a417e95bbae9d",
   date: "2026-09-22",
-  subject: "switch: Preserve track width with long labels (#3154)",
+  subject: "website: add GPUI core concept guides (#3181)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

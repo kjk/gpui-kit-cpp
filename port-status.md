@@ -15,10 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bb45f5dce83a09463f660ab99c66f6011cb92d0e` (2026-09-22,
-switch: Preserve track width with long labels (#3154)). A switch's track no
-longer shrinks beside a long label, which wraps in what the row has left; the
-story gains a Long labels card. The current update target is
+Processed through `f73e3ea69bc60957e767dd09fc6a417e95bbae9d` (2026-09-22,
+website: add GPUI core concept guides (#3181)). Website guides for GPUI core
+concepts, CI and CLAUDE.md only; nothing to port. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
