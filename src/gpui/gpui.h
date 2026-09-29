@@ -5788,6 +5788,9 @@ concept EmitsEvent = requires {
     sizeof(EventEmitter<T, E>);
 };
 
+// gpui's DismissEvent: what a popup-owning entity emits when it closes.
+struct DismissEvent {};
+
 template <typename E>
 const void* EntityEventType() {
     static const uint8_t key = 0;

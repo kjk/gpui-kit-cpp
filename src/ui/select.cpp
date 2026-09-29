@@ -192,8 +192,13 @@ void SelectState::ClearQueryAndRestore(Ctx* cx) {
     }
 }
 
+// Rust's set_open emits DismissEvent on an open-to-closed transition. Every
+// close but a confirming row click goes through SelectToggleOpen, which calls
+// this; the confirm path emits from OnListChange.
 void SelectState::OnListClose(SelectState* self, Ctx* cx, const TickEvent*) {
     self->ClearQueryAndRestore(cx);
+    DismissEvent dismiss;
+    EntityEmit(cx->app, cx->win, self->self, &dismiss);
 }
 
 void SelectState::Clean(Ctx* cx) {
@@ -217,6 +222,12 @@ void SelectState::OnListChange(SelectState* self, Ctx* cx,
     self->ClearQueryAndRestore(cx);
     self->Focus(cx->win);
     EntityEmit(cx->app, cx->win, self->self, &ev);
+    // OnRowClick closes the list before it reports the confirm; when that
+    // shut an open list, this pick dismissed it.
+    if (self->state.closedByConfirm) {
+        DismissEvent dismiss;
+        EntityEmit(cx->app, cx->win, self->self, &dismiss);
+    }
 }
 
 void SelectState::OnMouseDownOut(SelectState* self, Ctx* cx,

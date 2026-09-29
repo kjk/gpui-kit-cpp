@@ -190,6 +190,9 @@ struct SearchableListState {
     // multi-select one can have all of it picked.
     Vec<int> selected;
     bool open = false;
+    // Set while onChange hears a confirm that just closed an open list, so a
+    // Select can emit DismissEvent after its SelectEvent.
+    bool closedByConfirm = false;
     // close_on_select: a single-select list closes when something is picked.
     bool closeOnSelect = true;
     // Which items the query left — the matches the rows are built from,

@@ -570,7 +570,9 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
     // The changes the mode came to are applied here, since the list is what
     // holds both the selection and the items. What the caller hears is what
     // was picked, once it has been.
+    bool wasOpen = self->open;
     if (SearchableListClick(self, index)) {
+        self->closedByConfirm = wasOpen;
         self->open = false;
         if (self->previousFocus.IsValid() &&
             FocusHandleContainsFocused(cx->win, self->contentFocus)) {
@@ -584,6 +586,7 @@ void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
     if (self->onChange.IsValid()) {
         ListenerCall(cx->app, cx->win, self->onChange, &ev);
     }
+    self->closedByConfirm = false;
     if (self->hasDelegate && !self->suppressDelegateConfirm) {
         self->delegate.OnConfirm(self, SearchablePath(self, index), false);
     }

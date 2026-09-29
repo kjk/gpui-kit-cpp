@@ -419,6 +419,12 @@ static component::Select* Sel(SelectStory* self, Ctx* cx, int which,
         ->OnClear(ListenerArg(clear, which));
 }
 
+// cx.subscribe(&country_select, |_, _, _: &DismissEvent, _| println!(..)):
+// the country select logs each time its open menu closes.
+static void OnCountryDismissed(SelectStory*, Ctx*, const DismissEvent*) {
+    logf("Country select dismissed\n");
+}
+
 El* SelectStory::Render(SelectStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -432,6 +438,7 @@ El* SelectStory::Render(SelectStory* self, Ctx* cx) {
             self->sel[i] = component::SelectState::New(cx->app);
         }
         BuildCountries();
+        Subscribe(cx, self->sel[SelCountry], &OnCountryDismissed);
         BuildItems(SelFruit, kFruits, (int)(sizeof(kFruits) / sizeof(char*)));
         BuildItems(SelUi1, kUi, (int)(sizeof(kUi) / sizeof(char*)));
         BuildItems(SelMenuH, kUi, (int)(sizeof(kUi) / sizeof(char*)));

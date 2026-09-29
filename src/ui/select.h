@@ -190,6 +190,10 @@ void SelectClear(SelectState* s, Ctx* cx);
 
 template <>
 struct EventEmitter<component::SelectState, component::SelectEvent> {};
+// Emitted once whenever an open menu closes, including after a selection is
+// confirmed (SelectEvent first, then this).
+template <>
+struct EventEmitter<component::SelectState, DismissEvent> {};
 
 } // namespace gpui
 #endif // GPUI_SRC_UI_SELECT_H_

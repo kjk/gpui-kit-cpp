@@ -236,6 +236,84 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
     EntityDropAll(&app);
 }
 
+// crates/kit/tests/controls.rs:
+// select_emits_one_dismiss_event_for_each_open_to_closed_transition. Opening
+// emits nothing, each way of closing an open menu emits one DismissEvent
+// (after the SelectEvent when a row is confirmed), and an Escape or a close
+// on an already-closed menu adds none. Rust's "blur" leg is not here: this
+// select does not close when focus leaves it.
+struct DismissEventSink {
+    char log[16] = {};
+    int n = 0;
+
+    static void OnConfirm(DismissEventSink* self, Ctx*,
+                          const component::SelectEvent*) {
+        if (self->n < 15) {
+            self->log[self->n++] = 'c';
+        }
+    }
+    static void OnDismiss(DismissEventSink* self, Ctx*, const DismissEvent*) {
+        if (self->n < 15) {
+            self->log[self->n++] = 'd';
+        }
+    }
+};
+
+static void SelectEmitsOneDismissEventForEachOpenToClosedTransition() {
+    using namespace gpui::component;
+    for (bool searchable : {false, true}) {
+        App app;
+        Window* win = new Window();
+        win->app = &app;
+        Ctx cx = {&app, win, nullptr, {}};
+        Entity<SelectState> state = SelectState::New(&app);
+        SelectState* s = state.Get(&app);
+        SearchableItem items[] = {
+            {StrL("Rust"), StrL("rust")},
+            {StrL("Go"), StrL("go")},
+        };
+        s->Searchable(searchable);
+        s->SetItems(items, 2);
+        s->SetSelectedValue(StrL("rust"), &cx);
+        Entity<DismissEventSink> sink = EntityNewState<DismissEventSink>(&app);
+        SubscribeTo(&app, state, sink, &DismissEventSink::OnConfirm);
+        SubscribeTo(&app, state, sink, &DismissEventSink::OnDismiss);
+        DismissEventSink* heard = sink.Get(&app);
+
+        ActionEvent escape = {};
+        escape.action = action::Cancel();
+        ActionEvent enter = {};
+        enter.action = action::Confirm();
+        const char* closes[] = {"escape", "outside", "confirm"};
+        for (const char* close : closes) {
+            heard->n = 0;
+            heard->log[0] = 0;
+            s->ToggleMenu(&cx);
+            utassert(s->state.open);
+            utassert(heard->n == 0); // opening must not dismiss
+
+            if (base::StrEq(Str(close), StrL("escape"))) {
+                SearchableListState::OnAction(s->List(), &cx, &escape);
+            } else if (base::StrEq(Str(close), StrL("outside"))) {
+                SelectState::OnMouseDownOut(s, &cx, nullptr);
+            } else {
+                SearchableListState::OnAction(s->List(), &cx, &enter);
+            }
+            utassert(!s->state.open);
+            // Follow-up Escape and close notifications must not dismiss twice.
+            SearchableListState::OnAction(s->List(), &cx, &escape);
+            s->SetOpen(false, &cx);
+            SelectState::OnMouseDownOut(s, &cx, nullptr);
+            heard->log[heard->n] = 0;
+            const char* expected =
+                base::StrEq(Str(close), StrL("confirm")) ? "cd" : "d";
+            utassert(base::StrEq(Str(heard->log), Str(expected)));
+        }
+        delete win;
+        EntityDropAll(&app);
+    }
+}
+
 static void SourceSelectBuilderWritesItsOwnState() {
     using namespace gpui::component;
     App app;
@@ -500,6 +578,7 @@ void TestSelect() {
     CaretKeepsTheSourceSizeScale();
     SelectStateOwnsCommittedSelectionAndEvents();
     ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor();
+    SelectEmitsOneDismissEventForEachOpenToClosedTransition();
     SourceSelectBuilderWritesItsOwnState();
     ComboboxOwnsStateEventsAndTriggerContext();
 }
