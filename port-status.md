@@ -15,11 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5cee478fa285f2397919cae8c2ef9cc888c5bf0f` (2026-09-23,
-resizable: Draw a hugging handle's hairline on the seam (#3200)). A hugging
-resize handle's hairline is the container's outermost pixel again, and the
-renderer's element is painted deferred so an indicator centred on it survives
-the container's clip. The current update target is
+Processed through `361e6bc6d8feee89cbd44ce7b5057886bbdc3f09` (2026-09-23,
+website: add JSON-backed theme command palette (#3198)). Website and story-web
+only: a JSON-backed theme command palette. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
