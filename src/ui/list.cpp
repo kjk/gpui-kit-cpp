@@ -51,8 +51,12 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
                   ->ItemsCenter()
                   ->JustifyBetween()
                   ->Radius(th.radius);
-    if (!disabled) {
-        row->HoverBg(th.tokens.accent);
+    // list_item.rs registers `hover` for every selectable item and leaves
+    // the style empty while the item is active (confirmed, selected or right
+    // clicked): an active item takes no hover background.
+    bool isActive = confirmed || selected || secondarySelected;
+    if (!disabled && !isActive) {
+        row->HoverBg(th.tokens.listHover);
     }
     // refine_style(&self.style), here rather than through `ElRefine`: a
     // refinement put on the element lands at layout time and would win over
@@ -61,23 +65,27 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     if (style.set) {
         StyleApplyFields(&row->style, style.style, style.set);
     }
-    if (selected || secondarySelected) {
+    if (!disabled && selected) {
         // list_item.rs: the selection takes the active highlight when the
         // setting is on — the list.active tint — and plain `accent` when it
-        // is off. A row a right press marked is not filled, so it is not
-        // mistaken for the selection.
+        // is off.
         ListActiveStyle st =
             ListActiveStyleOf(ListSettingsNow(cx->app), th.tokens.listActive,
-                              th.listActiveBorder, th.tokens.accent, selected);
-        if (!secondarySelected) {
-            row->Bg(st.bg);
-        }
+                              th.listActiveBorder, th.tokens.accent, true);
+        row->Bg(st.bg);
     }
     if (child) {
         row->Child(child);
     }
     if (confirmed) {
         row->Child(IconEl(a, IconName::Check, 16)->Fg(th.foreground));
+    }
+    if (!disabled && secondarySelected) {
+        // list_item.rs: a right-clicked item is outlined in `selection`, the
+        // token Table uses for its right-clicked row, on top of whatever
+        // background it has. The outline is an absolute child, so it repeats
+        // the item's own radius.
+        row->Child(ListActiveOverlay(a, th.selection, row->style.radius));
     }
     if (!disabled) {
         BindClick(row, id, onClick);

@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4729ef78378e404e2f668fc5f37fbf67529f4b53` (2026-09-21,
-text: Stagger `stream_fade` by word, dropping it for oversized chunks
-(#3153)). TextView's `stream_fade(true)` now fades over 280 ms with a 10 ms
-word stagger, and a stagger that would outlast one fade is dropped so an
-oversized update fades as one chunk. The current update target is
+Processed through `9b4989399aa2cebc2c0e70ebd09afd4032ec94e5` (2026-09-21,
+list: Restore the outline on the right-clicked item (#3155)). ListItem
+outlines a right-clicked item in `selection` again, keeps the selected fill
+under it, and drops the hover background while an item is active; the Tree row
+follows. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

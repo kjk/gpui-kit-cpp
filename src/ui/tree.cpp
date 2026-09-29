@@ -1,4 +1,5 @@
 #include "ui/tree.h"
+#include "base/list_settings.h"
 
 namespace gpui {
 
@@ -48,13 +49,18 @@ static El* TreeRow(void* user, Ctx* cx, int, const TreeEntry& entry,
                   ->Gap(8)
                   ->ItemsCenter()
                   ->Radius(th.radius);
-    if (!it->disabled) {
-        row->HoverBg(th.tokens.muted);
+    // The story's row is a ListItem: no hover background while it is
+    // selected or right-clicked, the selection filled, and a right-clicked
+    // row outlined in `selection` over whatever fill it has (upstream #3155).
+    bool active = entryState.IsSelected() || entryState.IsRightClicked();
+    if (!it->disabled && !active) {
+        row->HoverBg(th.tokens.listHover);
     }
     if (entryState.IsSelected()) {
         row->Bg(th.tokens.accent);
-    } else if (entryState.IsRightClicked()) {
-        row->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
+    }
+    if (!it->disabled && entryState.IsRightClicked()) {
+        row->Child(ListActiveOverlay(a, th.selection, th.radius));
     }
     if (self->icons) {
         IconName ic = !it->folder    ? IconName::File
