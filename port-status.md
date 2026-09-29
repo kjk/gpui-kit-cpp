@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3c30b286e540770786e4f4948c1b9ff668a8a2e7` (2026-09-27,
-perf(carousel): stop relayout on ancestor scroll (#3266)). Upstream keeps
-carousel geometry relative to its content frame and compares it with a 0.01px
-tolerance, so an ancestor scroll is no layout change. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `6b7a07c00d0106bc07194b92247a45fe5ce0e703` (2026-09-27,
+perf(highlighter): reuse injection trees (#3263)). Upstream reuses tree-sitter
+injection trees across edits and caches the syntax-context parse by rope; this
+tree has no tree-sitter. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
