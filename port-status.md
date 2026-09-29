@@ -15,13 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cfc37e6ff13f70a4bc368740625e351cc5c2db21` (2026-09-20,
-popover: Add offset and optional anchor-aligned arrows (#3145)). Popup places
-a popover's named anchor on the trigger's opposite edge with an outward
-`offset` and reports its geometry through `on_position`; the styled Popover
-adds `offset` (0.25rem default) and an anchor-aligned `arrow`, and the story's
-Anchor section shows all eight anchors with an Arrow checkbox. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `9a48b0d2544d36a9873002edcd020b5a4836a207` (2026-09-21,
+gpui-pre: Inject staged crates as git dependencies in the kit check (#3146)).
+The gpui-pre release tooling injects the staged crates as git dependencies in
+its kit check; nothing in the ported trees changed. The current update target
+is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

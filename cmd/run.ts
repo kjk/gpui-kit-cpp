@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cfc37e6ff13f70a4bc368740625e351cc5c2db21",
-  date: "2026-09-20",
-  subject: "popover: Add offset and optional anchor-aligned arrows (#3145)",
+  sha: "9a48b0d2544d36a9873002edcd020b5a4836a207",
+  date: "2026-09-21",
+  subject: "gpui-pre: Inject staged crates as git dependencies in the kit check (#3146)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",
