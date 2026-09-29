@@ -329,11 +329,36 @@ static void OversizedDialogsAreClampedToTheViewport() {
                    ->Layer(1)
                    ->IntoEl(WinSize{400, 300});
     El* popup = host ? host->last : nullptr;
-    El* panel = popup ? popup->first : nullptr;
+    // The panel sits in the viewport-aware corner positioner.
+    El* placed = popup ? popup->first : nullptr;
+    El* panel = placed ? placed->first : nullptr;
     utassert(panel);
-    // 16 DIP on both sides, and 30 + 16 DIP from the top for layer one.
+    // 16 DIP on both sides; the height keeps the 16 DIP margin top and
+    // bottom plus layer one's 16 DIP step, not the tenth-of-the-viewport
+    // offset, which an oversized dialog gives up.
     utassertnear(panel->style.width, 368.f);
-    utassertnear(panel->style.maxH, 238.f);
+    utassertnear(panel->style.maxH, 252.f);
+    utassert(placed->style.positionerCorner);
+    utassertnear(placed->style.anchorMargin, 16.f);
+
+    // a_dialog_larger_than_the_window_stays_inside_it: laid out, the
+    // oversized surface is moved up to the edge margin.
+    win->paint.app = &app;
+    win->paint.window = win;
+    arena->Reset();
+    El* top = component::Dialog::New(&cx)->Open(true)->W(800)->H(1000)->IntoEl(
+        WinSize{400, 300});
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    LayoutEl(&win->paint, top, 0, 0, 400, 300, th.fontSize, th.foreground);
+    El* topPanel = top && top->last && top->last->first
+                       ? top->last->first->first
+                       : nullptr;
+    utassert(topPanel);
+    if (topPanel) {
+        utassertnear(topPanel->y, 16.f);
+        utassert(topPanel->y + topPanel->h <= 300.f - 16.f + 0.5f);
+    }
+    WindowKeyedFree(win);
 
     EntityDropAll(&app);
     AppGlobalClear(&app);

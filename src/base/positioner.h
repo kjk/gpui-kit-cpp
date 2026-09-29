@@ -69,6 +69,10 @@ struct Positioner {
 
     static Positioner* Side(Ctx* cx, Bounds trigger);
     static Positioner* Corner(Ctx* cx, Anchor anchor, Point point);
+    // position(..): move a corner-positioned popup's requested point, which
+    // is how an animation moves one already composed. No effect on a
+    // side-positioned popup.
+    Positioner* Position(Point value);
     Positioner* Placement(gpui::Placement value);
     Positioner* Align(gpui::Align value);
     Positioner* Offset(float value);

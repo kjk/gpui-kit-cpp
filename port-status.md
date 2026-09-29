@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ae6285411f0e73a5a04c8242abffb2188f5948d2` (2026-09-23,
-website: isolate versioned documentation snapshots (#3189)). Versioned website
-documentation snapshots and CI only; nothing to port. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `86f9c0fb5907549d9a5b0aff53b4b6865933a8e8` (2026-09-23,
+dialog: Reclaim top space for oversized content (#3188)). Dialogs are placed
+through the viewport-aware corner positioner, so an oversized one gives up its
+top offset for the edge margin; Positioner gains position(..). The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

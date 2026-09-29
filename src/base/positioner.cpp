@@ -57,6 +57,13 @@ Positioner* Positioner::Corner(Ctx* cx, Anchor anchor, Point point) {
     return p;
 }
 
+Positioner* Positioner::Position(Point value) {
+    if (strategy == Strategy::Corner) {
+        point = value;
+    }
+    return this;
+}
+
 Positioner* Positioner::Placement(gpui::Placement value) {
     if (strategy == Strategy::Side) {
         placement = value;

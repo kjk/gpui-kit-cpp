@@ -175,6 +175,22 @@ static void PublicCornerPositionerUsesTheMeasuredGroupCorner() {
     ArenaDelete(a);
 }
 
+// positioner.rs: corner_position_can_be_updated_without_rebuilding_the_
+// positioner. A side-positioned popup ignores it.
+static void CornerPositionCanBeUpdatedWithoutRebuildingThePositioner() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    Positioner* corner = Positioner::Corner(&cx, Anchor::TopLeft, {10, 20})
+                             ->Position({30, 40});
+    utassertnear(corner->point.x, 30.f);
+    utassertnear(corner->point.y, 40.f);
+    Positioner* side = Positioner::Side(&cx, Bounds{0, 0, 10, 10})
+                           ->Position({30, 40});
+    utassertnear(side->point.x, 0.f);
+    ArenaDelete(a);
+}
+
 static void PublicPositionerChildrenHaveNoPortOnlyCapacity() {
     Arena* a = ArenaNew();
     Ctx cx = {};
@@ -338,6 +354,7 @@ void TestPositioner() {
     FlipsToTheOppositeSideWhenThePreferredSideDoesNotFit();
     ClampsIntoTheViewportWhileKeepingTheFlippedSide();
     AlignmentSelectsTheLeadingCenterOrTrailingEdge();
+    CornerPositionCanBeUpdatedWithoutRebuildingThePositioner();
     SideOffsetAddsAGapBetweenTriggerAndPopup();
     CornerPositioningPlacesTheNamedCornerAndNeverReportsASide();
     CornerPositioningSupportsGpuisWholeAnchorVocabulary();

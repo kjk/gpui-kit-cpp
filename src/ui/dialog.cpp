@@ -511,10 +511,17 @@ El* Dialog::IntoEl(WinSize size) {
     Edges windowPadding = WindowPaddings(cx->win);
     float viewW = size.dipW - windowPadding.left - windowPadding.right;
     float viewH = size.dipH - windowPadding.top - windowPadding.bottom;
+    // The dialog keeps this much of the viewport clear around its edges, so a
+    // small window shrinks the surface instead of letting it run off. A
+    // dialog that fits keeps its tenth-of-the-viewport top offset; one that
+    // does not is moved up to this margin by the positioner, so the offset
+    // does not waste height its content could use.
     const float viewportMargin = 16.f;
-    float y = viewH * 0.1f + (float)layerIx * 16.f;
+    float layerOffset = (float)layerIx * 16.f;
+    float y = viewH * 0.1f + layerOffset;
     float panelW = std::min(width, std::max(0.f, viewW - viewportMargin * 2));
-    float panelMaxH = std::max(0.f, viewH - y - viewportMargin);
+    float panelX = (viewW - panelW) * 0.5f;
+    float panelMaxH = std::max(0.f, viewH - viewportMargin * 2 - layerOffset);
     // The parts carry the padding, so a footer that tints or rules itself
     // reaches the panel's edges (AlertDialog::p_0 in the Rust story).
     El* panel = Div(a)
@@ -573,17 +580,24 @@ El* Dialog::IntoEl(WinSize size) {
             ->OnClickAction(action::Cancel());
     }
     // DialogProps::margin_top: a tenth of the viewport down from the top,
-    // not centered in it.
+    // not centered in it — through the viewport-aware corner positioner,
+    // which keeps an oversized panel inside the window. "slide-down" moves
+    // the requested corner.
+    El* placed =
+        Positioner::Corner(cx, Anchor::TopLeft,
+                           {windowPadding.left + panelX, windowPadding.top + y})
+            ->Margin(viewportMargin)
+            ->Position(
+                {windowPadding.left + panelX, windowPadding.top + y * delta})
+            ->Child(panel)
+            ->IntoEl();
     El* popup = DialogPopup::New(cx)
                     ->Fixed()
                     ->Top(windowPadding.top)
                     ->Left(windowPadding.left)
                     ->W(viewW)
                     ->H(viewH)
-                    ->FlexCol()
-                    ->ItemsCenter()
-                    ->PadT(y * delta)
-                    ->Child(panel);
+                    ->Child(placed);
     Str trap = StrDup(a, fmt("dialog-%d", layerIx));
     // The escape and enter bindings, on the popup that traps the focus. They
     // run the same two handlers the Cancel and OK buttons carry, which is
