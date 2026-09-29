@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "500852f449c05dc01920ec82f3ae2656a61d0387",
+  sha: "82cad82533aa9f62813ed01301c26d9fca53b5ba",
   date: "2026-09-23",
-  subject: "setting: let SettingGroup override the settings-level group variant (#3203)",
+  subject: "mobile: stop reverse fling after short ScrollBounce catch (#3207)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

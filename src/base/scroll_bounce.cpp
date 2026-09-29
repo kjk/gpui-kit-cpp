@@ -85,8 +85,27 @@ ScrollBounce* ScrollBounce::OnScroll(Listener listener) {
     return this;
 }
 
+bool ScrollBounceCatch::Observe(TouchPhase phase, float deltaY) {
+    if (phase == TouchPhase::Started) {
+        tracking = deltaY == 0;
+        distance = 0;
+    } else if (tracking) {
+        distance += fabsf(deltaY);
+        if (distance > kCatchDragSlop) {
+            tracking = false;
+        }
+    }
+    if (phase != TouchPhase::Ended && phase != TouchPhase::Cancelled) {
+        return false;
+    }
+    bool shortCatch = tracking;
+    tracking = false;
+    return shortCatch && phase == TouchPhase::Ended;
+}
+
 struct ScrollBounceState {
     ScrollBouncePhysics physics;
+    ScrollBounceCatch shortDrag;
     OngoingScroll wheelLock;
     double sampledAt = 0;
     Listener onScroll = {};
@@ -125,6 +144,11 @@ struct ScrollBounceState {
         if (ev->phase == TouchPhase::Started) {
             self->physics.Begin(viewH);
         }
+        // A short catch suppresses the momentum after it. The Ended packet
+        // itself may still cross an edge, so the suppression is set once this
+        // packet is handled; only momentum packets after it are dropped.
+        bool suppressShortDragMomentum = self->shortDrag
+                                             .Observe(ev->phase, delta.y);
         if (self->physics.suppressMomentum) {
             const_cast<ScrollWheelEvent*>(ev)->propagate = false;
             return;
@@ -163,6 +187,9 @@ struct ScrollBounceState {
         }
         if (ended && !changed) {
             self->physics.Release();
+        }
+        if (suppressShortDragMomentum) {
+            self->physics.suppressMomentum = true;
         }
         self->sampledAt = TimeNow();
         if (changed && cx->win) {
