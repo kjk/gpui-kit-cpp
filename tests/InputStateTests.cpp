@@ -3712,8 +3712,8 @@ static void TextareaTokenGapsBreakAtUtf8Characters() {
     state.kind = InputKind::Textarea;
     state.softWrap = true;
     InputContent content = InputContent::New(StrL("ab@a🙂cd"));
-    utassert(content.WithToken(2, 4,
-                               InlineToken::New(StrL("person:a"), StrL("@a"))) ==
+    utassert(content.WithToken(
+                 2, 4, InlineToken::New(StrL("person:a"), StrL("@a"))) ==
              InlineTokenError::Ok);
     InputSetValue(&state, content);
     El* row = FindWrappedTokenRow(Textarea::New(&cx, &state));
@@ -3738,8 +3738,82 @@ static void TextareaTokenGapsBreakAtUtf8Characters() {
     delete win;
 }
 
+// blink_cursor.rs. The clock is the window's timer list here: a flip is the
+// armed interval firing, and a loop that has ended is one with nothing armed.
+namespace {
+struct BlinkFixture {
+    App app;
+    Window* win = nullptr;
+    EntityId handle = {};
+
+    BlinkFixture() {
+        win = new Window();
+        win->app = &app;
+    }
+    ~BlinkFixture() {
+        delete win;
+        EntityDropAll(&app);
+    }
+    BlinkCursor* Cursor() {
+        Entity<BlinkCursor> e;
+        e.id = handle;
+        return e.Get(&app);
+    }
+    // One INTERVAL of the clock: the armed interval fires.
+    void Flip() {
+        Ctx cx = {&app, win, nullptr, handle};
+        TickEvent tick = {};
+        BlinkCursor::OnFlip(Cursor(), &cx, &tick);
+    }
+};
+} // namespace
+
+// blurring_a_paused_cursor_leaves_the_next_focus_blinking
+static void BlurringAPausedCursorLeavesTheNextFocusBlinking() {
+    BlinkFixture f;
+    BlinkStart(&f.app, f.win, &f.handle);
+    // Typing pauses the blink, then the input is blurred before the pause
+    // elapses: tabbing away right after a keystroke does exactly this.
+    BlinkPause(&f.app, f.win, &f.handle);
+    BlinkStop(&f.app, f.win, &f.handle);
+    utassert(!BlinkVisible(&f.app, f.handle));
+
+    // Focusing again shows the cursor and blinks it, rather than leaving a
+    // stale pause to swallow the start.
+    BlinkStart(&f.app, f.win, &f.handle);
+    utassert(BlinkVisible(&f.app, f.handle));
+    f.Flip();
+    utassert(!BlinkVisible(&f.app, f.handle));
+}
+
+// stopping_a_paused_cursor_ends_the_blink_loop
+static void StoppingAPausedCursorEndsTheBlinkLoop() {
+    BlinkFixture f;
+    BlinkStart(&f.app, f.win, &f.handle);
+    BlinkPause(&f.app, f.win, &f.handle);
+    BlinkStop(&f.app, f.win, &f.handle);
+    // A stopped cursor keeps nothing armed that could blink it.
+    utassert(f.Cursor()->timer == 0 && len(f.win->timers) == 0);
+    utassert(!BlinkVisible(&f.app, f.handle));
+
+    BlinkStart(&f.app, f.win, &f.handle);
+    utassert(BlinkVisible(&f.app, f.handle));
+}
+
+// stopping_a_blinking_cursor_ends_the_blink_loop
+static void StoppingABlinkingCursorEndsTheBlinkLoop() {
+    BlinkFixture f;
+    BlinkStart(&f.app, f.win, &f.handle);
+    BlinkStop(&f.app, f.win, &f.handle);
+    utassert(f.Cursor()->timer == 0 && len(f.win->timers) == 0);
+    utassert(!BlinkVisible(&f.app, f.handle));
+}
+
 void TestInputState() {
     TestSuite("input_state");
+    BlurringAPausedCursorLeavesTheNextFocusBlinking();
+    StoppingAPausedCursorEndsTheBlinkLoop();
+    StoppingABlinkingCursorEndsTheBlinkLoop();
     InlineTokenContentValidatesRanges();
     InlineTokensAreAtomicForCaretAndHistory();
     InlineTokensRespectModeAndContent();

@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0e63ea799766c486022a0cecfda6e48c5183a2d7` (2026-09-19,
-menu: Draw a context menu only from the trigger that was pressed (#3135)). A
-context menu is drawn only by the trigger that was pressed, so id-less rows no
-longer stack copies of one menu; a C++ trigger always names itself, and a test
-pins that each keeps its own state. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `9a8c196587602c380b1ddb676d9d4e82ee59259a` (2026-09-20,
+input: Clear the blink state when the cursor stops (#3139)). BlinkCursor::stop
+clears the pause and the visible flag and drops its timer, so a blur inside
+the pause window no longer leaves the next focus without a blink; the C++
+BlinkStop already did all three, and the new tests are ported. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
