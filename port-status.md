@@ -15,9 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2f2bab9a6cea994531527bd382bfdafc463b0d0b` (2026-09-21,
-website: Load shared WASM examples from root (#3165)). Website and CI only:
-shared WASM examples load from the site root. The current update target is
+Processed through `82b4195bda7f364b0f4736db7515499e099990d9` (2026-09-22,
+message: Add `id` and `role`, stop setting the row's typography (#3171)).
+Message takes an id and a role, like Marker, and no longer sets the row's text
+size and line height. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

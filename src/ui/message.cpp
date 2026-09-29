@@ -251,6 +251,17 @@ Message* Message::New(Ctx* cx) {
     return s;
 }
 
+Message* Message::Id(Str value) {
+    id = value;
+    hasId = true;
+    return this;
+}
+
+Message* Message::Role(RoleOverride value) {
+    role = value;
+    return this;
+}
+
 Message* Message::Alignment(MessageAlignment value) {
     alignment = value;
     return this;
@@ -297,14 +308,14 @@ El* Message::IntoEl() {
     bool hasAvatar = avatar != nullptr;
     bool hasGhostBubble = content && content->hasGhostBubble;
 
+    // No text size or line height here: the header and footer set their own,
+    // and content typography belongs to the bubble or the caller.
     El* root = Div(a)
                    ->FlexCol()
                    ->W(kFill)
                    ->MinW(0)
                    // gap(rems(0.625)) at the 16px root.
-                   ->Gap(10)
-                   ->Font(14)
-                   ->LineHeight(1.25f);
+                   ->Gap(10);
     root->ItemsStart();
     if (alignment == MessageAlignment::End) {
         root->ItemsEnd();
@@ -351,6 +362,15 @@ El* Message::IntoEl() {
             el->MarginR(40);
         }
         root->Child(el);
+    }
+
+    // `role` lives on the stateful element: an accessibility node needs the
+    // stable identity only an element id provides.
+    if (hasId) {
+        root->PathId(id);
+        if (role.kind == RoleOverrideKind::Role) {
+            root->Role(role.role);
+        }
     }
     return root;
 }

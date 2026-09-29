@@ -38,6 +38,16 @@ static void TheBuilderCarriesAlignmentAndEverySlot() {
                                                       ->contentInset);
     utassert(message->footer->hasContentInset && !message->footer
                                                       ->contentInset);
+    // id and role: unset until named, and the role a plain override.
+    utassert(!message->hasId);
+    utassert(message->role.kind == RoleOverrideKind::Implicit);
+    Message* row =
+        Message::New(&cx)
+            ->Id(StrL("message-1"))
+            ->Role(RoleOverride::Explicit(AccessibilityRole::ListItem));
+    utassert(row->hasId && base::StrEq(row->id, StrL("message-1")));
+    utassert(row->role.kind == RoleOverrideKind::Role &&
+             row->role.role == AccessibilityRole::ListItem);
 
     MessageGroup* group = MessageGroup::New(&cx)
                               ->Child(TextEl(a, StrL("First")))

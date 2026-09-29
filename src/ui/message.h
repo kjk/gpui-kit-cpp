@@ -3,6 +3,7 @@
 /* Themed chat message — crates/ui/src/message.rs */
 
 #include "ui/sizing.h"
+#include "base/styled.h"
 
 namespace gpui {
 
@@ -112,6 +113,10 @@ struct MessageFooter {
 struct Message {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
+    // Option<ElementId>.
+    Str id = {};
+    bool hasId = false;
+    RoleOverride role = {};
     Style style = {};
     uint32_t styleSet = 0;
     Style stackStyle = {};
@@ -123,6 +128,13 @@ struct Message {
     MessageFooter* footer = nullptr;
 
     static Message* New(Ctx* cx);
+    // A stable identity, so the message can appear in the accessibility tree
+    // and keep element state across frames.
+    Message* Id(Str value);
+    // The role announced for this message, e.g. ListItem for the rows of a
+    // transcript. A message is presentational by default; an accessibility
+    // node needs a stable identity, so the role takes effect only with Id.
+    Message* Role(RoleOverride value);
     Message* Alignment(MessageAlignment value);
     Message* WithStackStyle(const Style& s, uint32_t fields);
     // An avatar or other sender identity element, wrapped in a default slot.
