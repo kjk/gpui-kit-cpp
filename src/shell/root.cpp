@@ -221,7 +221,14 @@ struct ShellDialogLayer {
         El* backdrop = nullptr;
         if (topmost) {
             backdrop =
+                // `div().absolute().inset_0()`: out of the host's flow, which
+                // centers what is in it, and over the whole window.
                 DialogBackdrop::New(cx)
+                    ->Absolute()
+                    ->Top(0)
+                    ->Left(0)
+                    ->Right(0)
+                    ->Bottom(0)
                     ->Bg(Rgba8(0, 0, 0, 128))
                     ->OnMouseDown(Listen(cx, &ShellDialogLayer::OnBackdrop));
         }
@@ -229,15 +236,19 @@ struct ShellDialogLayer {
             self->content.IsValid()
                 ? EntityRender(cx->app, cx->win, cx->a, self->content.id)
                 : nullptr;
+        // `v_flex().occlude()`: the surface keeps presses off the backdrop;
+        // the full-window wrapper around it is a plain div, not DialogPopup,
+        // whose occlusion would swallow every press meant for the backdrop.
         El* surface = Div(cx->a)
                           ->FlexCol()
+                          ->StopMouseDown()
                           ->Bg(theme.popover)
                           ->Fg(theme.popoverFg)
                           ->Border(1, theme.border)
                           ->Radius(theme.radiusLg)
                           ->Pad(16)
                           ->Child(child ? child : Div(cx->a));
-        El* popup = DialogPopup::New(cx)
+        El* popup = Div(cx->a)
                         ->Absolute()
                         ->Top(0)
                         ->Left(0)

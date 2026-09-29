@@ -36,8 +36,10 @@ El* ShowcaseDialog(ShowcaseApp* app, Ctx* cx) {
     if (!app->dialogOpen) {
         return root;
     }
-    El* panel =
-        Div(a)
+    // The popup is the panel itself: the dialog host centers it, and it keeps
+    // presses on itself from reaching the backdrop.
+    El* popup =
+        DialogPopup::New(cx)
             ->W(288)
             ->Pad(12)
             ->FlexCol()
@@ -107,15 +109,6 @@ El* ShowcaseDialog(ShowcaseApp* app, Ctx* cx) {
                        ->Bg(Rgba8(0, 0, 0, 51))
                        ->Click(HashClickId(StrL("dialog-backdrop")))
                        ->OnClick(Listen(cx, &CloseDlg));
-    El* popup = DialogPopup::New(cx)
-                    ->Absolute()
-                    ->Top(0)
-                    ->Left(0)
-                    ->W(kFill)
-                    ->H(kFill)
-                    ->ItemsCenter()
-                    ->JustifyCenter()
-                    ->Child(panel);
     root->Child(Dialog::New(cx)->Backdrop(backdrop)->Popup(popup)->IntoEl());
     return root;
 }

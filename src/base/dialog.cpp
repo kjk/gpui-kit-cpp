@@ -181,7 +181,10 @@ El* DialogBackdrop::New(Ctx* cx) {
 }
 El* DialogPopup::New(Ctx* cx) {
     Arena* a = cx->a;
-    return UiRoot(a, StrL("dialog-popup"), 0);
+    // The popup sits over the backdrop, whose press dismisses the dialog, so
+    // it keeps presses on itself from falling through: gpui's occlude(), which
+    // is StopMouseDown here.
+    return UiRoot(a, StrL("dialog-popup"), 0)->StopMouseDown();
 }
 El* DialogTitle::New(Ctx* cx) {
     Arena* a = cx->a;
@@ -227,7 +230,13 @@ Dialog* Dialog::New(Ctx* cx) {
                   ->Top(0)
                   ->Left(0)
                   ->W(kFill)
-                  ->H(kFill);
+                  ->H(kFill)
+                  // A popup in normal flow lands centered; the caller lays
+                  // the host out differently by styling `root`, which is
+                  // Rust's refine_style on the host.
+                  ->Flex()
+                  ->ItemsCenter()
+                  ->JustifyCenter();
     return d;
 }
 

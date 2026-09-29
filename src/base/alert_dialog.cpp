@@ -10,7 +10,8 @@ El* AlertDialogBackdrop::New(Ctx* cx) {
 }
 El* AlertDialogPopup::New(Ctx* cx) {
     Arena* a = cx->a;
-    return UiRoot(a, StrL("alert-dialog-popup"), 0);
+    // Presses on the popup stay off the backdrop behind it (occlude()).
+    return UiRoot(a, StrL("alert-dialog-popup"), 0)->StopMouseDown();
 }
 El* AlertDialogTitle::New(Ctx* cx) {
     Arena* a = cx->a;
@@ -55,7 +56,11 @@ AlertDialog* AlertDialog::New(Ctx* cx) {
                   ->Left(0)
                   ->W(kFill)
                   ->H(kFill)
-                  ->FlexCol();
+                  // Rust's AlertDialog is a Dialog, so its host centers the
+                  // popup the same way, and styling `root` replaces that.
+                  ->Flex()
+                  ->ItemsCenter()
+                  ->JustifyCenter();
     return d;
 }
 

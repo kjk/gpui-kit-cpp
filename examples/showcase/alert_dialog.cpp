@@ -30,8 +30,9 @@ El* ShowcaseAlertDialog(ShowcaseApp* app, Ctx* cx) {
         return root;
     }
 
-    El* panel =
-        Div(a)
+    // The popup is the panel itself, centered by the dialog host.
+    El* popup =
+        AlertDialogPopup::New(cx)
             ->W(288)
             ->Pad(12)
             ->FlexCol()
@@ -83,14 +84,6 @@ El* ShowcaseAlertDialog(ShowcaseApp* app, Ctx* cx) {
                        ->H(kFill)
                        ->Bg(Rgba8(0, 0, 0, 46))
                        ->Click(HashClickId(StrL("alert-backdrop")));
-    // Rust AlertDialogPopup is flex items/justify center with no inset_0,
-    // so it sits at the top of the viewport host (not vertically centered).
-    El* popup = AlertDialogPopup::New(cx)
-                    ->W(kFill)
-                    ->FlexRow()
-                    ->ItemsCenter()
-                    ->JustifyCenter()
-                    ->Child(panel);
     // dialog.rs handles the alert's keyboard too — an alert has no bindings
     // of its own, it rides the Dialog context — and the two buttons dispatch
     // Cancel and Confirm rather than carrying a handler each, so this is the

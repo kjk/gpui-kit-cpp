@@ -287,7 +287,9 @@ static void TheBackdropFillsTheHost() {
 
     const float viewW = 1920;
     const float viewH = 1080;
-    El* backdrop = Div(arena)->W(kFill)->H(kFill);
+    // `div().absolute().size_full()`, as the Rust test hands it over: the
+    // host now lays its flow children out centered, and a backdrop is not one.
+    El* backdrop = Div(arena)->Absolute()->W(kFill)->H(kFill);
     El* host = gpui::Dialog::New(&cx)
                    ->Open(true)
                    ->Backdrop(backdrop)
@@ -306,6 +308,57 @@ static void TheBackdropFillsTheHost() {
     utassertnear(host->h, viewH);
     utassertnear(backdrop->w, viewW);
     utassertnear(backdrop->h, viewH);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
+// Lays `host` out the way Root does, inside a page of the viewport's size.
+static void LayoutDialogHost(App* app, Window* win, Arena* arena, El* host,
+                             float viewW, float viewH) {
+    El* page = Div(arena)->FlexCol()->W(viewW)->H(viewH)->Child(host);
+    const RuntimeStyle& th = RuntimeStyleNow(app);
+    LayoutEl(&win->paint, page, 0, 0, viewW, viewH, th.fontSize, th.foreground);
+}
+
+// dialog.rs the_popup_is_centered_by_default, and alert_dialog.rs
+// host_style_positions_the_popup: the host centers a popup in normal flow,
+// and styling the host (Rust's refine_style, `root` here) replaces that.
+// pressing_the_popup_does_not_dismiss: the popup occludes, so a press on it
+// never reaches the backdrop under it — StopMouseDown is gpui's occlude().
+static void ThePopupIsCenteredAndKeepsPressesOffTheBackdrop() {
+    App app = {};
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    const float viewW = 1920;
+    const float viewH = 1080;
+
+    El* popup = Div(arena)->W(100)->H(100);
+    El* host = gpui::Dialog::New(&cx)->Open(true)->Popup(popup)->IntoEl();
+    LayoutDialogHost(&app, win, arena, host, viewW, viewH);
+    utassertnear(popup->x + popup->w / 2, viewW / 2);
+    utassertnear(popup->y + popup->h / 2, viewH / 2);
+
+    El* topLeft = Div(arena)->W(100)->H(100);
+    AlertDialog* alert = AlertDialog::New(&cx)->Open(true);
+    alert->root->ItemsStart()->JustifyStart();
+    El* alertHost = alert->Popup(topLeft)->IntoEl();
+    LayoutDialogHost(&app, win, arena, alertHost, viewW, viewH);
+    utassertnear(topLeft->x, 0.f);
+    utassertnear(topLeft->y, 0.f);
+
+    utassert(DialogPopup::New(&cx)->stopMouseDown);
+    utassert(AlertDialogPopup::New(&cx)->stopMouseDown);
+    // The backdrop itself does not occlude: its press is the dismissal.
+    utassert(!DialogBackdrop::New(&cx)->stopMouseDown);
 
     WindowKeyedFree(win);
     EntityDropAll(&app);
@@ -499,6 +552,7 @@ void TestDialog() {
     CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce();
     OversizedDialogsAreClampedToTheViewport();
     TheBackdropFillsTheHost();
+    ThePopupIsCenteredAndKeepsPressesOffTheBackdrop();
     EscapeCancelsAndEnterConfirms();
     TheActionsRunTheSameHandlersTheButtonsDo();
     DialogControlsRouteFromTheirOwnDialogWhenFocusWasStolen();
