@@ -141,19 +141,14 @@ El* WindowBorder::IntoEl() {
         cx->win->tiling = effectiveTiling;
         cx->win->resizeHitSize = resizeHitSize;
     }
-    // Decorations::Server: the platform owns the frame, border and shadow.
-    // Keep the transparent wrapper because WindowBorder remains the Root's
-    // structural child in both decoration modes.
+    // uses_client_border: a server-decorated window's platform owns the
+    // frame, border and shadow, and the content passes through unchanged.
     if (!clientDecorated) {
         if (cx->win) {
             cx->win->paint.clientInset = 0;
             cx->win->clientInset = 0;
         }
-        El* server = Div(a)->SizeFull();
-        if (child) {
-            server->Child(child);
-        }
-        return server;
+        return child ? child : Div(a)->SizeFull();
     }
     // A window tiled on every side keeps its platform inset but draws no
     // shadow: there is nothing for one to fall on.

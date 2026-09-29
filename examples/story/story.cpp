@@ -1075,8 +1075,10 @@ static Window* StoryOpenWindow(App* app, int story, bool embedded = false) {
     // canvas. There is nothing to change here — `window_linux.cpp` asks X11
     // for an ordinary opaque visual and never sets an ARGB one — so this is
     // where that decision would live if the seam existed.
-    Window* win = WindowOpenView(app, embedded ? Str{} : StoryWindowTitle(),
-                                 1600, 1200, view.id, opts);
+    // gpui_kit::open_window: the window's root is a Base Root around the
+    // story, which is what draws the dialogs, sheet and notifications over it.
+    Window* win = KitOpenWindow(app, embedded ? Str{} : StoryWindowTitle(),
+                                1600, 1200, view.id, opts);
     if (!win) {
         return nullptr;
     }
@@ -1824,8 +1826,8 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
         app->seeded = true;
     }
     // story-web's Gallery::embedded_view and StoryRoot::embedded: a page that
-    // names one story supplies its own surrounding UI. Keep our Root layers
-    // for dialogs and notifications, but no gallery chrome or window frame.
+    // names one story supplies its own surrounding UI. The window's Root
+    // still draws the dialogs and notifications; there is no gallery chrome.
     if (app->embedded) {
         El* scroller = Div(frame)
                            ->FlexCol()
@@ -1836,10 +1838,8 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
                            ->OnScroll(Listen(cx, &OnPaneScroll));
         scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
             StoryRenderRegistered(app, cx)));
-        return component::Root::New(cx)->Child(scroller)->IntoEl();
+        return scroller;
     }
-    // The window's outermost view is a Root, which is what Rust puts under
-    // every window: the page, and over it the layers the window owns.
     El* root = Div(frame)->FlexCol()->SizeFull();
     // build_menus() once: the OS menu bar is installed from it when something
     // in it has moved, the title bar draws it, and the root answers for every
@@ -1901,12 +1901,7 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
                         ->Right(0)
                         ->Child(FpsMonitorEl(cx)));
     }
-    // Bordered only where the window is client-decorated; a system frame
-    // draws its own, and Rust's window_border is the Linux CSD wrapper.
-    return component::Root::New(cx)
-        ->Bordered(cx->win->opts.clientTitleBar)
-        ->Child(root)
-        ->IntoEl();
+    return root;
 }
 
 static void OnUnhandledClick(StoryApp* app, Ctx* cx, const ClickEvent* ev) {
@@ -2004,11 +1999,14 @@ int GpuiMain(int argc, char** argv) {
     // Rust Gallery::set_active_story puts the launch name in the sidebar
     // search box so the list filters to matching titles.
     if (slug) {
+        const Root* root = Root::Read(win);
         Entity<StoryApp> view;
-        view.id = win->root;
+        view.id = root ? root->View() : EntityId{};
         StoryApp* self = view.Get(app);
-        const StoryInfo* m = StoryMeta(self->story);
-        InputSetValue(&self->search, Str(m->title));
+        if (self) {
+            const StoryInfo* m = StoryMeta(self->story);
+            InputSetValue(&self->search, Str(m->title));
+        }
     }
     int rc = AppRun(app);
     AppFree(app);

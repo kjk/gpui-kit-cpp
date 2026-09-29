@@ -205,8 +205,8 @@ int GpuiMain(int argc, char** argv) {
         component::TextViewState::Markdown(app, Str(kLongMarkdown));
     self->shortText =
         component::TextViewState::Markdown(app, Str(kShortMarkdown));
-    Window* win = WindowOpenView(app, StrL("Text max lines"), 720, 680, view.id,
-                                 WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("Text max lines"), 720, 680, view.id,
+                                WinOpts{});
     (void)win;
     int rc = AppRun(app);
     AppFree(app);

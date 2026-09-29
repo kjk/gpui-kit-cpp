@@ -258,8 +258,8 @@ int GpuiMain(int argc, char** argv) {
     TempStr md = AssetsLoadTextTemp(StrL("test.md"));
     self->source = StrDup(md);
     self->doc.Append(StrL("# Streaming Markdown Parse\n\n"));
-    Window* win = WindowOpenView(app, StrL("Stream Markdown"), 600, 800,
-                                 view.id, WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("Stream Markdown"), 600, 800, view.id,
+                                WinOpts{});
     (void)win;
     int rc = AppRun(app);
     // The window is going; a worker still cutting chunks has to hear about it

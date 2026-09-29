@@ -1,4 +1,9 @@
-/* Ported from crates/ui/src/root.rs.
+/* Ported from crates/component/src/root.rs and crates/base/src/root.rs.
+ *
+ * Base's Root captures the registered plugins once per window, so
+ * registering the same plugin twice mounts it once and each window gets an
+ * instance of its own; its surface puts every plugin's overlay above the
+ * content and lets the plugins decorate it.
  *
  * Root's own rules about the layers over the page: `render_dialog_layer`
  * walks the open dialogs and lets the last one that wants an overlay show it,
@@ -8,6 +13,74 @@
 #include "Test.h"
 
 using namespace gpui::component;
+
+namespace {
+int gLayersBuilt = 0;
+struct LayerState {
+    int id = 0;
+};
+void* BuildLayer(Window*, App*) {
+    LayerState* s = new LayerState();
+    s->id = ++gLayersBuilt;
+    return s;
+}
+void DropLayer(void* p) {
+    delete (LayerState*)p;
+}
+El* RenderLayer(void*, Ctx* cx) {
+    return Div(cx->a)->Id(StrL("layer"));
+}
+El* DecorateLayer(void*, El* surface, const gpui::Root*, Ctx* cx) {
+    return Div(cx->a)->Id(StrL("decoration"))->Child(surface);
+}
+const RootPlugin kLayer = {&BuildLayer, &DropLayer,     nullptr,
+                           nullptr,     &DecorateLayer, &RenderLayer};
+
+struct Content {
+    static El* Render(Content*, Ctx* cx) {
+        return Div(cx->a)->Id(StrL("content"));
+    }
+};
+} // namespace
+
+// base root.rs: plugin_registration_is_idempotent_and_state_is_per_window.
+static void PluginRegistrationIsIdempotentAndStateIsPerWindow() {
+    App app;
+    gpui::Root::RegisterPlugin(&app, &kLayer);
+    gpui::Root::RegisterPlugin(&app, &kLayer);
+    Window* wins[2] = {};
+    void* states[2] = {};
+    for (int i = 0; i < 2; i++) {
+        wins[i] = new Window();
+        wins[i]->app = &app;
+        Entity<Content> content = EntityNew<Content>(&app);
+        Entity<gpui::Root> root = gpui::Root::New(&app, wins[i], content.id);
+        wins[i]->root = root.id;
+        int n = 0;
+        RootPlugins(wins[i], &n);
+        utassert(n == 1);
+        states[i] = gpui::Root::Plugin(wins[i], &kLayer);
+        utassert(states[i] != nullptr);
+        const gpui::Root* read = gpui::Root::Read(wins[i]);
+        utassert(read && read->View() == content.id);
+    }
+    utassert(states[0] != states[1]);
+    utassert(((LayerState*)states[0])->id != ((LayerState*)states[1])->id);
+
+    // The surface: content first, the plugin's overlay above it, and the
+    // plugin's decoration around the lot.
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, wins[0], arena, {}};
+    El* surface = gpui::Root::Render(gpui::Root::Read(wins[0]), &cx);
+    utassert(surface && base::StrEq(surface->id, StrL("decoration")));
+
+    for (int i = 0; i < 2; i++) {
+        WindowKeyedFree(wins[i]);
+        delete wins[i];
+    }
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
 
 static void TheLastDialogThatWantsAnOverlayShowsIt() {
     const bool three[] = {true, false, true};
@@ -44,6 +117,7 @@ static void AnOpenSheetPushesTheNotificationsIn() {
 
 void TestRoot() {
     TestSuite("root");
+    PluginRegistrationIsIdempotentAndStateIsPerWindow();
     TheLastDialogThatWantsAnOverlayShowsIt();
     AnOpenSheetPushesTheNotificationsIn();
 }

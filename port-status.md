@@ -15,10 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b50db9eb51654001a0d2af87ab747b753b7c3b5f` (2026-09-22,
-story: Keep a chart card's legend inside the card (#3174)). The chart story's
-legend shrinks and wraps beside the heading instead of running out past the
-card. The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `5bc71a469f11cffef3123a32045e2f6bd78851fd` (2026-09-22,
+root: Add Base window hosting and a single Kit startup entry point (#3152)).
+Root moves into Base as an entity with RootPlugin function tables; Component
+registers its window layers as a plugin, and KitOpenWindow mounts the Root for
+every example. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -27,6 +29,16 @@ card. The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
   The GPUI reference is `gpui-pre` 0.3.6 (Zed `bcf6582ce350`); the five ported
   dependency versions are unchanged.
+- **Base Root keeps its plugins on the window.** Rust's `Root` entity owns
+  each plugin's entity and observes it; here `RootPlugin` is a function table
+  whose per-window state lives in the window's keyed state, so a view that is
+  its own window root (the shell's `ShellRoot`) renders the same surface
+  through `RootSurface`. Root's Tab / shift-Tab / copy actions are the
+  runtime's for every window (`FocusNext`, `WindowSelectionCopy`); the
+  surface carries no `id("root")`, which would re-key every element's state;
+  WindowState's `prepare` sets no rem size and its tooltip and fallback-menu
+  overlays are the window's own; and WindowExt's layers still open in a
+  window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
 - **Linux centres a new window on the whole X display.** GPUI's
   `Bounds::centered` uses the display's visible bounds; Windows and macOS read
   the work area, the X11 path does not read `_NET_WORKAREA`

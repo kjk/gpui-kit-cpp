@@ -61,6 +61,6 @@ int GpuiMain(int argc, char** argv) {
     WinOpts opts = {};
     // TitleBar::window_options(): the example draws its own title bar.
     opts.clientTitleBar = true;
-    return AppRunView(StrL("Window Title C++"), 800, 600,
+    return KitRunView(StrL("Window Title C++"), 800, 600,
                       EntityNew<Example>(app).id, app, opts);
 }

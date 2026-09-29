@@ -150,10 +150,13 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
     const BaseTheme* base = BaseThemeGlobal(cx->app);
     float baseSize =
         base ? base->tokens.typography.md.size : TypographyTokens{}.md.size;
-    component::Root* root = component::Root::New(cx)->Bordered(false)->Child(
-        content ? content : Div(cx->a)->SizeFull());
-    if (hud) root->Child(hud);
-    return root->IntoEl()->Font(baseSize);
+    // component-shell mounts the runtime's view in a Base Root, whose
+    // plugins draw the dialog, sheet and notification layers over it and the
+    // window border around it. This view is the window's root itself, so it
+    // renders that same surface around its content.
+    El* body = content ? content : Div(cx->a)->SizeFull();
+    if (hud) body = Div(cx->a)->FlexCol()->SizeFull()->Child(body)->Child(hud);
+    return RootSurface(cx, nullptr, body)->Font(baseSize);
 }
 
 ShellRoot* ShellRootOf(Window* window, App* app) {

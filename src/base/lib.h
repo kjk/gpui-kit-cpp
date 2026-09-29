@@ -53,6 +53,7 @@
 #include "base/radio.h"
 #include "base/radio_group.h"
 #include "base/resizable.h"
+#include "base/root.h"
 #include "base/scrollable_mask.h"
 #include "base/scrollbar.h"
 #include "base/scroll_bounce.h"

@@ -408,8 +408,8 @@ int GpuiMain(int argc, char** argv) {
     WinOpts opts = {};
     // TitleBar::window_options(): the example draws its own title bar.
     opts.clientTitleBar = true;
-    Window* win = WindowOpenView(app, StrL("System Monitor C++"), 680, 600,
-                                 view.id, opts);
+    Window* win =
+        KitOpenWindow(app, StrL("System Monitor C++"), 680, 600, view.id, opts);
     WindowOnScrollWheel(win, ListenTo(view, &OnWheel));
     WindowSetInterval(win, 500, ListenTo(view, &OnTick));
     int rc = AppRun(app);

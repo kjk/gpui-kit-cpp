@@ -25,7 +25,10 @@ struct Example {
 
 int GpuiMain(int argc, char** argv) {
     App* app = AppNew();
-    return AppRunView(StrL("Hello World"), 800, 600,
+    component::Init(app);
+    // gpui_kit::open_window: the window's root is a Root around the view, so
+    // dialogs, sheets and notifications work in it.
+    return KitRunView(StrL("Hello World"), 800, 600,
                       EntityNew<Example>(app).id, app, WinOpts{});
 }
 ```

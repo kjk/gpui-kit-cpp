@@ -392,8 +392,8 @@ int GpuiMain(int argc, char** argv) {
     AssetsClear();
     AssetsAddDefaultRoots(StrL("dock"));
     Entity<DockApp> view = EntityNew<DockApp>(app);
-    Window* win = WindowOpenView(app, StrL("Dock Example"), 1280, 860, view.id,
-                                 WinOpts{});
+    Window* win =
+        KitOpenWindow(app, StrL("Dock Example"), 1280, 860, view.id, WinOpts{});
     (void)win;
     int rc = AppRun(app);
     // cx.on_app_quit: the layout as it stands when the window goes, so a run

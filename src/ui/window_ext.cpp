@@ -251,24 +251,4 @@ bool WindowHasFocusedInput(Ctx* cx) {
     return WindowFocusedInput(cx) != nullptr;
 }
 
-int WindowSelectedText(Ctx* cx, char* out, int cap) {
-    return cx && cx->win ? WindowSelectionText(cx->win, out, cap) : 0;
-}
-
-bool WindowHasTextSelection(Ctx* cx) {
-    return cx && cx->win && WindowSelectionHas(cx->win);
-}
-
-void WindowClearTextSelection(Ctx* cx) {
-    if (cx && cx->win) {
-        WindowSelectionClear(cx->win);
-    }
-}
-
-void WindowEndTextSelection(Ctx* cx) {
-    if (cx && cx->win) {
-        WindowSelectionRelease(cx->win);
-    }
-}
-
 } // namespace gpui

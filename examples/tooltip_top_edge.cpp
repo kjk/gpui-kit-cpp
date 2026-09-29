@@ -51,6 +51,6 @@ int GpuiMain(int argc, char** argv) {
     ThemeSet(app, ThemeMode::Light);
     WinOpts opts = {};
     opts.clientTitleBar = true;
-    return AppRunView(StrL("Tooltip Top Edge C++"), 520, 260,
+    return KitRunView(StrL("Tooltip Top Edge C++"), 520, 260,
                       EntityNew<Example>(app).id, app, opts);
 }

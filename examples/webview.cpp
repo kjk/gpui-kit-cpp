@@ -81,5 +81,5 @@ int GpuiMain(int argc, char** argv) {
             "stay "
             "empty\n");
     }
-    return AppRunView(StrL("WebView"), 1024, 768, view.id, app, WinOpts{});
+    return KitRunView(StrL("WebView"), 1024, 768, view.id, app, WinOpts{});
 }

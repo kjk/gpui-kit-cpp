@@ -268,8 +268,8 @@ int GpuiMain(int argc, char** argv) {
     Entity<DialogApp> view = EntityNew<DialogApp>(app);
     ThemeSet(app, ThemeMode::Light);
     WinOpts opts = {};
-    Window* win = WindowOpenView(app, StrL("Dialog Overlay C++"), 800, 600,
-                                 view.id, opts);
+    Window* win =
+        KitOpenWindow(app, StrL("Dialog Overlay C++"), 800, 600, view.id, opts);
     WindowOnMouseDown(win, ListenTo(view, &OnMouseDown));
     int rc = AppRun(app);
     AppFree(app);

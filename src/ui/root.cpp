@@ -1,5 +1,4 @@
 #include "ui/root.h"
-#include "gpui/platform.h"
 #include "ui/window_border.h"
 #include "ui/global_state.h"
 #include "ui/touch_selection.h"
@@ -41,119 +40,93 @@ Edges RootNotificationInsets(bool hasSheet, SheetPlacement placement,
     return e;
 }
 
-Root* Root::New(Ctx* cx) {
+El* WindowStateLayers(Ctx* cx) {
+    gpui::WindowLayers* wl = WindowLayersOf(cx->win);
+    if (!wl) {
+        return nullptr;
+    }
     Arena* a = cx->a;
-    Root* r = ArenaNew<Root>(a);
-    r->a = a;
-    r->cx = cx;
-    // Root::new does this on macOS: the window forwards accessibility hit
-    // tests to the view, so what the page drew is reachable. The window only
-    // takes it once, however many frames build a Root.
-    PlatInstallAccessibilityHitTest(cx->win);
-    return r;
-}
-Root* Root::Bordered(bool v) {
-    bordered = v;
-    return this;
-}
-Root* Root::ShadowSize(float v) {
-    shadowSize = v;
-    return this;
-}
-Root* Root::Child(El* e) {
-    child = e;
-    return this;
-}
-Root* Root::Notifications(El* e) {
-    notifications = e;
-    return this;
-}
-Root* Root::Sheet(El* e, SheetPlacement placement, float size) {
-    sheet = e;
-    hasSheet = e != nullptr;
-    sheetPlacement = placement;
-    sheetSize = size;
-    return this;
-}
-Root* Root::Dialog(El* e, bool overlay) {
-    if (e) {
-        dialogs.Append(a, e);
-        dialogOverlay.Append(a, overlay);
-    }
-    return this;
-}
-
-Root* Root::UseWindowLayers(bool v) {
-    windowLayers = v;
-    return this;
-}
-
-El* Root::IntoEl() {
-    UiSelectionFrameBegin(cx->app);
-    const Theme& th = ThemeNow(cx->app);
-    El* e = Div(a)->FlexCol()->SizeFull()->Bg(th.tokens.background);
-    if (child) {
-        e->Child(child);
-    }
-
-    // What `window.open_dialog` / `open_sheet` / `push_notification` left on
-    // the window, rendered alongside whatever the page passed in. Rust's Root
-    // owns these outright; here they join the page's, so a tree that built
-    // its own layers keeps working and one that opens a dialog from a handler
-    // with no view of its own also does.
-    if (windowLayers) {
-        if (gpui::WindowLayers* wl = WindowLayersOf(cx->win)) {
-            if (!notifications && wl->notifications.IsValid()) {
-                notifications = NotificationList::New(cx, wl->notifications)
-                                    ->IntoEl();
-            }
-            if (!sheet && wl->hasSheet) {
-                if (El* s = EntityRender(cx->app, cx->win, a, wl->sheet.view)) {
-                    Sheet(s, wl->sheet.placement, wl->sheet.size);
-                }
-            }
-            for (int i = 0; i < wl->dialogs.len; i++) {
-                Dialog(EntityRender(cx->app, cx->win, a, wl->dialogs[i].view),
-                       wl->dialogs[i].overlay);
-            }
+    El* layers = nullptr;
+    auto add = [&](El* e) {
+        if (!e) {
+            return;
         }
-    }
-
+        if (!layers) {
+            layers = Div(a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+        }
+        layers->Child(e);
+    };
     // The notification layer covers the window, less the room the sheet takes
     // on its own edge.
-    if (notifications) {
-        Edges in = RootNotificationInsets(hasSheet, sheetPlacement, sheetSize);
+    if (wl->notifications.IsValid()) {
+        El* list = NotificationList::New(cx, wl->notifications)->IntoEl();
+        Edges in = RootNotificationInsets(wl->hasSheet, wl->sheet.placement,
+                                          wl->sheet.size);
         El* layer = Div(a)
                         ->Absolute()
                         ->Left(in.left)
                         ->Top(in.top)
                         ->Right(in.right)
                         ->Bottom(in.bottom)
-                        ->Child(notifications);
-        e->Child(layer->Deferred());
+                        ->Child(list);
+        add(layer->Deferred());
     }
-    if (sheet) {
-        e->Child(sheet->Deferred());
+    if (wl->hasSheet) {
+        if (El* s = EntityRender(cx->app, cx->win, a, wl->sheet.view)) {
+            add(s->Deferred());
+        }
     }
-    // The dialogs draw over the sheet, in the order they were opened; the one
-    // overlay there is belongs to the last of them that asked for one, which
-    // is what keeps a stack of dialogs from tinting the page twice.
-    for (El* dialog : dialogs) {
-        e->Child(dialog->Deferred());
+    // The dialogs draw over the sheet, in the order they were opened.
+    for (int i = 0; i < wl->dialogs.len; i++) {
+        if (El* d = EntityRender(cx->app, cx->win, a, wl->dialogs[i].view)) {
+            add(d->Deferred());
+        }
     }
-    // After the content, so the edit menu floats above whatever was
-    // selected. Handles are painted by the owning text.
-    if (El* overlay = WindowTouchSelectionOverlay(cx)) {
-        e->Child(overlay);
-    }
+    return layers;
+}
 
-    if (!bordered) {
-        return e;
+static void* WindowStateBuild(Window* window, App*) {
+    return WindowLayersOf(window);
+}
+
+// prepare: the active text-selection scope. Rust also sets the window's rem
+// size from the theme; the runtime reads the theme's font size itself.
+static void WindowStatePrepare(void*, Ctx* cx) {
+    UiSelectionFrameBegin(cx->app);
+}
+
+static void WindowStateStyle(void*, El* surface, Ctx* cx) {
+    const Theme& th = ThemeNow(cx->app);
+    surface->Bg(th.tokens.background)->Fg(th.foreground);
+}
+
+static El* WindowStateDecorate(void*, El* surface, const Root*, Ctx* cx) {
+    return WindowBorder::New(cx)->Child(surface)->IntoEl();
+}
+
+static El* WindowStateRender(void*, Ctx* cx) {
+    El* layers = WindowStateLayers(cx);
+    // After the layers, so the edit menu floats above whatever was selected.
+    // Handles are painted by the owning text. The tooltip and fallback menu
+    // overlays Rust mounts here are the window's own (win->tooltip).
+    El* touch = WindowTouchSelectionOverlay(cx);
+    if (!touch) {
+        return layers;
     }
-    // Root::bordered(true) wraps the view in the window border: the shadow
-    // padding a client-decorated window keeps, and the frame inside it that
-    // dims while another window has the focus.
-    return WindowBorder::New(cx)->ShadowSize(shadowSize)->Child(e)->IntoEl();
+    if (!layers) {
+        layers = Div(cx->a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
+    }
+    return layers->Child(touch);
+}
+
+const RootPlugin kWindowStatePlugin = {
+    &WindowStateBuild,    nullptr,
+    &WindowStatePrepare,  &WindowStateStyle,
+    &WindowStateDecorate, &WindowStateRender,
+};
+
+void RootInit(App* app) {
+    Root::RegisterPlugin(app, &kWindowStatePlugin);
 }
 
 } // namespace component

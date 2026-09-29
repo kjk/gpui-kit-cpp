@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "b50db9eb51654001a0d2af87ab747b753b7c3b5f";
+const pinnedGpuiComponent = "5bc71a469f11cffef3123a32045e2f6bd78851fd";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -26,7 +26,7 @@ date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input pagination popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
-reduce_motion scroll_bounce sheet slider state_style styled switch table tabs test_support
+reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
 text text_boundary text_selection theme theme_tokens toast touch_selection
 toggle toggle_group tooltip tree undo_history virtual_list
 `
@@ -231,6 +231,7 @@ const testTargets: Record<string, string[]> = {
   "base/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "base/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/resizable": ["tests/ResizableTests.cpp"],
+  "base/root": ["tests/RootTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
   "base/scroll_bounce": ["tests/ScrollBounceTests.cpp", "tests/ScrollbarTests.cpp", "tests/MotionTests.cpp"],
   "base/select": ["tests/SelectTests.cpp"],
@@ -307,7 +308,7 @@ const testTargets: Record<string, string[]> = {
   "ui/progress": ["tests/AccessibilityTests.cpp"],
   "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
-  "ui/root": ["tests/RootTests.cpp"],
+  "ui/window_border": ["tests/WindowBorderTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
   "ui/select": ["tests/SelectTests.cpp"],
   "ui/setting": ["tests/SettingTests.cpp"],
@@ -575,14 +576,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 474, sha256: "28b12eb810e4aeb8bac6bb8d9e4d903ef2911e78f28ab689d4b129af698126aa" },
-    "pub-use": { count: 143, sha256: "94a27c56ba1b03124ddff81e13c1d9203efb9c7218df3361649ff29bd0d55f90" },
-    test: { count: 1030, sha256: "53e36cc77cfc79a88211a534b9a8f0f5dc6ba9b9c3deb1170a94c52b9b253cca" },
+    declaration: { count: 476, sha256: "575ff7a20240359b152595bb24b6692d495a4bb910876336daeaca22d5f652bb" },
+    "pub-use": { count: 144, sha256: "f6846fcf99551c4de2c29849a9aa7e8c64c4ad95a30bca52eee1e864cdc2abc4" },
+    test: { count: 1031, sha256: "ed93ba16fee2e37615e70f77f9288cd01f4488301731a56fae64ad9f3e094ac2" },
   },
   ui: {
-    declaration: { count: 474, sha256: "016fbbab693ebca64163b3e018032e2902750ea2f874e6753d23a264c1975096" },
-    "pub-use": { count: 168, sha256: "640d12b85511965fcc22a5b9f638a2485cf59a128e216433531b71d8310de7de" },
-    test: { count: 608, sha256: "9ee8b50f4112bb94f336fdef6526f2eff9f026b2e27873a81a45ea4747ea0034" },
+    declaration: { count: 473, sha256: "b4f1dddd133a279d1994873c4269ba7a5b4cb15da98b3f33b952bf921589ff47" },
+    "pub-use": { count: 168, sha256: "619bdc0c275fac076fce9138e872e5c02d3a6c2e477926e904fef9bef4d0deec" },
+    test: { count: 604, sha256: "f7aef180b08c7de7d9c07ef19325679b1f52eb6bbc5b2319aa63ae0ec71cfe19" },
   },
 };
 

@@ -919,7 +919,7 @@ int GpuiMain(int argc, char** argv) {
     InputSetValue(&self->source, md);
     self->source.focused = true;
     Window* win =
-        WindowOpenView(app, StrL("Markdown"), 1200, 900, view.id, WinOpts{});
+        KitOpenWindow(app, StrL("Markdown"), 1200, 900, view.id, WinOpts{});
     // The Open chord, which upstream binds in the story app's own keymap.
     WindowOnKey(win, ListenTo(view, &OnKey));
     int rc = AppRun(app);

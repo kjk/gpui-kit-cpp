@@ -1746,12 +1746,9 @@ El* EditorApp::Render(EditorApp* self, Ctx* cx) {
                         ->Right(0)
                         ->Child(FpsMonitorEl(cx)));
     }
-    // Bordered only where the window is client-decorated; a system frame
-    // draws its own.
-    return component::Root::New(cx)
-        ->Bordered(cx->win->opts.clientTitleBar)
-        ->Child(root)
-        ->IntoEl();
+    // The window's Root draws the layers over this, and the window border
+    // where the window is client-decorated.
+    return root;
 }
 
 int GpuiMain(int argc, char** argv) {
@@ -1818,7 +1815,7 @@ int GpuiMain(int argc, char** argv) {
     // windows can be.
     WinOpts opts;
     opts.clientTitleBar = true;
-    Window* win = WindowOpenView(app, StrL("Editor"), 1200, 750, view.id, opts);
+    Window* win = KitOpenWindow(app, StrL("Editor"), 1200, 750, view.id, opts);
     (void)win;
     int rc = AppRun(app);
     AppFree(app);

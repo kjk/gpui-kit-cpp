@@ -106,8 +106,8 @@ int GpuiMain(int argc, char** argv) {
     TempStr html = AssetsLoadTextTemp(StrL("test.html"));
     InputSetValue(&self->source, html);
     self->source.focused = true;
-    Window* win = WindowOpenView(app, StrL("HTML Render (native)"), 1200, 900,
-                                 view.id, WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("HTML Render (native)"), 1200, 900,
+                                view.id, WinOpts{});
     (void)win;
     int rc = AppRun(app);
     AppFree(app);

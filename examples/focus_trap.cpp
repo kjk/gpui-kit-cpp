@@ -109,6 +109,6 @@ int GpuiMain(int argc, char** argv) {
     App* app = AppNew();
     component::Init(app);
     ThemeSet(app, ThemeMode::Light);
-    return AppRunView(StrL("Focus Trap C++"), 800, 600,
+    return KitRunView(StrL("Focus Trap C++"), 800, 600,
                       EntityNew<Example>(app).id, app, WinOpts{});
 }

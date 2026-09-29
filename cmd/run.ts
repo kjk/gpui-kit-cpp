@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "b50db9eb51654001a0d2af87ab747b753b7c3b5f",
+  sha: "5bc71a469f11cffef3123a32045e2f6bd78851fd",
   date: "2026-09-22",
-  subject: "story: Keep a chart card's legend inside the card (#3174)",
+  subject: "root: Add Base window hosting and a single Kit startup entry point (#3152)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
@@ -796,7 +796,6 @@ const rustExamplePkgs = new Set([
   "hello_world",
   "input",
   "markdown_table",
-  "root_borderless",
   "sidebar",
   "system_monitor",
   "table_in_scrollable",

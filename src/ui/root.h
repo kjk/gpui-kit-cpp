@@ -1,14 +1,16 @@
 #ifndef GPUI_SRC_UI_ROOT_H_
 #define GPUI_SRC_UI_ROOT_H_
-/* Themed Root — crates/ui/src/root.rs
+/* Component window state — crates/component/src/root.rs
 
-   Root is the window's outermost view: the page, and over it the layers the
-   window owns — the notifications, the sheet, and the stack of dialogs. Rust
-   holds each of those as an entity on the Root and renders it from there; the
-   layers here are the caller's elements, and what Root carries is the rules
-   about them: which dialog's overlay shows, and how far the notifications are
-   pushed in by an open sheet. */
+   The window's root is Base's (`base/root.h`); `component::Root` is that
+   type re-exported. What stays here is Component's per-window presentation,
+   registered by component::Init as a Root plugin: the notifications, the
+   sheet and the stack of dialogs over the page, the touch-selection menu,
+   the theme's defaults for the root surface, and the window border around
+   it. The layers themselves are kept on the window (`WindowLayersOf`), which
+   is where WindowExt's operations put them. */
 
+#include "base/root.h"
 #include "ui/sizing.h"
 #include "ui/sheet.h"
 #include "ui/window_border.h"
@@ -18,56 +20,31 @@ namespace gpui {
 
 namespace component {
 
+// pub use gpui_base::Root.
+using Root = gpui::Root;
+
 // Which dialog shows the overlay: the last one that asked for one, so a stack
 // of dialogs tints the page once, under the topmost of them. -1 when none of
 // them wants one.
 int RootDialogOverlayIndex(const bool* wantsOverlay, int n);
 
-// render_notification_layer: the notifications fill the window, less the room
-// an open sheet takes on its own edge — so a sheet on the right pushes them
+// notification_layer: the notifications fill the window, less the room an
+// open sheet takes on its own edge — so a sheet on the right pushes them
 // left rather than covering them.
 Edges RootNotificationInsets(bool hasSheet, SheetPlacement placement,
                              float size);
 
-struct Root {
-    Arena* a = nullptr;
-    Ctx* cx = nullptr;
-    El* child = nullptr;
-    bool bordered = true;
-    // window_shadow_size: the padding a client-decorated window keeps around
-    // its frame.
-    float shadowSize = kWindowShadowSize;
+// WindowState's RootPlugin table. Its per-window state is the window's
+// WindowLayers.
+extern const RootPlugin kWindowStatePlugin;
 
-    // The layers, in the order they draw over the page.
-    El* notifications = nullptr;
-    El* sheet = nullptr;
-    bool hasSheet = false;
-    SheetPlacement sheetPlacement = SheetPlacement::Right;
-    float sheetSize = 0;
-    // As many as the caller opens, which is Rust's Vec. They grow into the
-    // frame arena the builder is on.
-    ArenaVec<El*> dialogs;
-    ArenaVec<bool> dialogOverlay;
+// root::init: register WindowState as a Root plugin.
+void RootInit(App* app);
 
-    // WindowExt's layers are drawn as well as the ones the page passed in,
-    // which is what lets a handler with no view of its own raise a dialog.
-    // A page that wants only its own turns this off.
-    bool windowLayers = true;
-
-    static Root* New(Ctx* cx);
-    Root* Bordered(bool v);
-    Root* ShadowSize(float v);
-    Root* Child(El* e);
-    // The notification list, which the sheet pushes in.
-    Root* Notifications(El* e);
-    // The one open sheet, and where it sits.
-    Root* Sheet(El* e, SheetPlacement placement, float size);
-    // open_dialog: one call per dialog, in the order they were opened.
-    // `overlay` is the dialog's own has_overlay.
-    Root* Dialog(El* e, bool overlay = true);
-    Root* UseWindowLayers(bool v);
-    El* IntoEl();
-};
+// WindowStateLayers: the sheet, dialog and notification layers the window
+// holds, for a host that renders its own root surface. Null when none is
+// open.
+El* WindowStateLayers(Ctx* cx);
 
 } // namespace component
 } // namespace gpui

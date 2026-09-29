@@ -309,8 +309,8 @@ int GpuiMain(int argc, char** argv) {
     AssetsClear();
     AssetsAddDefaultRoots(StrL("brush"));
     Entity<BrushApp> view = EntityNew<BrushApp>(app);
-    Window* win = WindowOpenView(app, StrL("Brush Example"), 1100, 860, view.id,
-                                 WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("Brush Example"), 1100, 860, view.id,
+                                WinOpts{});
     // A move is the window's here rather than an element's — GPUI hangs
     // `on_mouse_move` off the div, and this tree reports moves to the window
     // and lets the handler decide, which is what the drawing flag is for.

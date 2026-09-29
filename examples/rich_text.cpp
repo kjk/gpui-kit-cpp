@@ -164,8 +164,8 @@ int GpuiMain(int argc, char** argv) {
     AssetsAddDefaultRoots(StrL("rich_text"));
     AssetsAddRoot(StrL("assets/rich_text"));
     Entity<RichApp> view = EntityNew<RichApp>(app);
-    Window* win = WindowOpenView(app, StrL("Rich Text C++"), 820, 760, view.id,
-                                 WinOpts{});
+    Window* win =
+        KitOpenWindow(app, StrL("Rich Text C++"), 820, 760, view.id, WinOpts{});
     WindowOnScrollWheel(win, ListenTo(view, &OnWheel));
     int rc = AppRun(app);
     AppFree(app);

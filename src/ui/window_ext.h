@@ -7,11 +7,10 @@
    `window.open_dialog(cx, ..)` pushes onto them, so any handler anywhere can
    raise a dialog without the view rendering the page knowing about it.
 
-   Here the layers were the *page's*: `component::Root` is a builder a page
-   fills in each frame, so only the page that rendered a dialog could open
-   one. This is the other half — a per-window store, reached the way Rust
-   reaches its Root, and `Root::IntoEl` renders what it holds alongside
-   whatever the page passed in.
+   Here they are a per-window store, reached the way Rust reaches its
+   WindowState plugin, and Component's Root plugin (`ui/root.h`) renders
+   what it holds over the page. The text-selection forwarding methods are
+   gone, as they are in Rust: `TextSelection` in base answers for them.
 
    A layer is an entity, as it is in Rust: `WindowOpenDialog` takes the entity
    whose `Render` builds the dialog, and closing it lets the entity go. That
@@ -144,13 +143,6 @@ inline void WindowRemoveNotification1(Ctx* cx, Str key) {
 // that field under the name Rust gives it.
 InputState* WindowFocusedInput(Ctx* cx);
 bool WindowHasFocusedInput(Ctx* cx);
-
-// The deprecated WindowExt forwarding methods remain source-compatible with
-// the names Rust publishes; Base owns the actual per-window selection.
-int WindowSelectedText(Ctx* cx, char* out, int cap);
-bool WindowHasTextSelection(Ctx* cx);
-void WindowClearTextSelection(Ctx* cx);
-void WindowEndTextSelection(Ctx* cx);
 
 } // namespace gpui
 #endif // GPUI_SRC_UI_WINDOW_EXT_H_

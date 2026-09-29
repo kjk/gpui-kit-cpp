@@ -12,6 +12,7 @@ void Init(App* app) {
     BaseInit(app);
     ThemeSyncBase(app);
     InputLanguageInit(app);
+    RootInit(app);
 
     DatePickerInitKeys();
     CarouselInitKeys();

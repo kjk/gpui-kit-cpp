@@ -1473,7 +1473,9 @@ static void ShellRootHostsDialogsSheetsAndToasts() {
     El* root = shellRoot.IsValid()
                    ? EntityRender(&app, &window, frame, shellRoot.id)
                    : nullptr;
-    El* script = root ? root->first : nullptr;
+    // Base Root's surface: the window text-selection layer, then the
+    // content, then the plugins' overlays.
+    El* script = root && root->first ? root->first->next : nullptr;
     El* openDialog = script ? script->first : nullptr;
     El* closeDialog = openDialog ? openDialog->next : nullptr;
     El* openSheet = closeDialog ? closeDialog->next : nullptr;
@@ -1490,8 +1492,9 @@ static void ShellRootHostsDialogsSheetsAndToasts() {
     utassert(runtime && runtime->LiveNestedViews() == 0);
     frame->Reset();
     root = EntityRender(&app, &window, frame, shellRoot.id);
-    utassert(root && root->first && root->first->next);
-    script = root ? root->first : nullptr;
+    utassert(root && root->first && root->first->next &&
+             root->first->next->next);
+    script = root && root->first ? root->first->next : nullptr;
     openDialog = script ? script->first : nullptr;
     closeDialog = openDialog ? openDialog->next : nullptr;
     openSheet = closeDialog ? closeDialog->next : nullptr;

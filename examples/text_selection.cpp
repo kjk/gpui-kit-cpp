@@ -141,8 +141,8 @@ int GpuiMain(int argc, char** argv) {
     self->selFrom = -1;
     self->selTo = -1;
     WinOpts opts = {};
-    Window* win = WindowOpenView(app, StrL("Text Selection C++"), 800, 600,
-                                 view.id, opts);
+    Window* win =
+        KitOpenWindow(app, StrL("Text Selection C++"), 800, 600, view.id, opts);
     WindowOnKey(win, ListenTo(view, &OnKey));
     win->input = &self->in;
     int rc = AppRun(app);

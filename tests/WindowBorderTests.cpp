@@ -221,6 +221,21 @@ static void BuilderCarriesTheExactTwoSourceShadows() {
     delete window;
 }
 
+// window_border.rs: only_client_decorated_windows_use_the_client_border. A
+// server-decorated window's content passes through unchanged.
+static void OnlyClientDecoratedWindowsUseTheClientBorder() {
+    App app;
+    Window* window = new Window();
+    window->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, window, arena, {}};
+    utassert(!WindowClientDecorated(window));
+    El* child = Div(arena);
+    utassert(WindowBorder::New(&cx)->Child(child)->IntoEl() == child);
+    ArenaDelete(arena);
+    delete window;
+}
+
 void TestWindowBorder() {
     TestSuite("window_border");
     TilingTakesTheShadowOffThatSide();
@@ -231,4 +246,5 @@ void TestWindowBorder() {
     ContentInsetsAddTheFrameBorderToThePaddings();
     BuilderPublishesPlatformResizeSettings();
     BuilderCarriesTheExactTwoSourceShadows();
+    OnlyClientDecoratedWindowsUseTheClientBorder();
 }

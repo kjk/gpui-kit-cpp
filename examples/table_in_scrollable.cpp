@@ -214,8 +214,8 @@ int GpuiMain(int argc, char** argv) {
     (void)self;
     ThemeSet(app, ThemeMode::Light);
     WinOpts opts = {};
-    Window* win = WindowOpenView(app, StrL("Table in Scrollable C++"), 700, 700,
-                                 view.id, opts);
+    Window* win = KitOpenWindow(app, StrL("Table in Scrollable C++"), 700, 700,
+                                view.id, opts);
     WindowOnScrollWheel(win, ListenTo(view, &OnWheel));
     int rc = AppRun(app);
     AppFree(app);

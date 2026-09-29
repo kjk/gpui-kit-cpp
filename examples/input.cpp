@@ -50,5 +50,5 @@ int GpuiMain(int argc, char** argv) {
     Example* self = view.Get(app);
     InputSetPlaceholder(&self->inputState, StrL("Enter your name"));
 
-    return AppRunView(StrL("Input C++"), 800, 600, view.id, app, WinOpts{});
+    return KitRunView(StrL("Input C++"), 800, 600, view.id, app, WinOpts{});
 }

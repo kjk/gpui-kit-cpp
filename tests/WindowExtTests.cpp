@@ -105,10 +105,13 @@ static void TypedRemovalAndForwardingMethodsUseWindowState() {
 
     TempStr selected = AllocStrTemp(7);
     selected.s[0] = 0;
-    utassert(WindowSelectedText(&cx, selected.s, len(selected) + 1) == 0);
-    utassert(!WindowHasTextSelection(&cx));
-    WindowClearTextSelection(&cx);
-    WindowEndTextSelection(&cx);
+    // The WindowExt selection forwarders are gone; Base's TextSelection is
+    // what a caller asks.
+    utassert(TextSelection::SelectedText(window, &app, selected.s,
+                                         len(selected) + 1) == 0);
+    utassert(!TextSelection::HasSelection(window, &app));
+    TextSelection::Clear(window, &app);
+    TextSelection::End(window, &app);
 
     WindowClearNotifications(&cx);
     WindowKeyedFree(window);

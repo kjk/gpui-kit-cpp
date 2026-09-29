@@ -179,8 +179,8 @@ int GpuiMain(int argc, char** argv) {
     InputSetValue(&self->editor, text);
     StrFree(text);
     self->editor.focused = true;
-    Window* win = WindowOpenView(app, StrL("Large Text Editor"), 1000, 800,
-                                 view.id, WinOpts{});
+    Window* win = KitOpenWindow(app, StrL("Large Text Editor"), 1000, 800,
+                                view.id, WinOpts{});
     (void)win;
     int rc = AppRun(app);
     AppFree(app);

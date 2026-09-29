@@ -187,7 +187,6 @@ export function hostPlatform(): Platform | null {
 export const simpleExamples = [
   "hello_world",
   "window_title",
-  "root_borderless",
   "dialog_overlay",
   "focus_trap",
   "fps_monitor",
