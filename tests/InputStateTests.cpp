@@ -2082,12 +2082,15 @@ static void TheCodeActionMenuRewritesWhatIsSelected() {
     utassert(s.codeActions.open && s.codeActions.items.len == 2);
     utassert(s.codeActions.selected == 0);
 
-    // The chord again puts it away, which is what a toggle is.
+    // The chord again asks again and replaces the menu that is up
+    // (handle_code_action_trigger), rather than putting it away.
+    uint64_t revision = s.codeActions.revision;
     Act(&s, InputAction::ToggleCodeActions);
-    utassert(!s.codeActions.open);
+    utassert(asked == 2);
+    utassert(s.codeActions.open && s.codeActions.items.len == 2);
+    utassert(s.codeActions.revision != revision);
 
     // Down walks it and enter performs the one it is on.
-    Act(&s, InputAction::ToggleCodeActions);
     utassert(Menu2(&s, InputAction::MoveDown));
     utassert(s.codeActions.selected == 1);
     utassert(Menu2(&s, InputAction::MoveUp));
@@ -4417,6 +4420,54 @@ static void MultiCursorTypingLeavesOneHighlighterUpdate() {
              s.pendingEdit.newEndByte == len(InputValue(&s)));
 }
 
+// Offers one action named after the range it was asked about.
+static int RangeActions(void* data, Arena* a, Str text, Selection sel,
+                        CodeActionItem* out, int cap) {
+    (void)data;
+    (void)text;
+    if (cap > 0 && out) {
+        out[0].title = StrDup(a, fmt("%d..%d", sel.start, sel.end));
+    }
+    return 1;
+}
+
+static char gPerformedTitle[32] = {};
+
+static bool PerformRange(void* data, InputState* s, App* app, Window* win,
+                         const CodeActionItem* item) {
+    (void)data;
+    (void)s;
+    (void)app;
+    (void)win;
+    int n = len(item->title) < 31 ? len(item->title) : 31;
+    memcpy(gPerformedTitle, item->title.s, (size_t)n);
+    gPerformedTitle[n] = 0;
+    return true;
+}
+
+// completions.rs requesting_code_actions_again_replaces_the_open_menu
+// (#3274): asking again with the menu up, after widening the selection,
+// replaces the menu with the answer for the new range.
+static void RequestingCodeActionsAgainReplacesTheOpenMenu() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    InputAddCodeActionProvider(&s, &RangeActions, nullptr, &PerformRange);
+    Type(&s, "value");
+    Act(&s, InputAction::SelectLeft);
+    Act(&s, InputAction::ToggleCodeActions);
+    utassert(s.codeActions.open && s.codeActions.items.len == 1);
+    utassert(StrEq(s.codeActions.items[0].title, StrL("4..5")));
+    // Widen the selection with the menu still open and ask again.
+    utassert(
+        InputPerform(&s, nullptr, nullptr, InputAction::SelectLeft, false));
+    utassert(s.codeActions.open);
+    Act(&s, InputAction::ToggleCodeActions);
+    gPerformedTitle[0] = 0;
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Enter, false));
+    utassert(StrEq(Str(gPerformedTitle), StrL("3..5")));
+    utassert(ValueIs(s, "value"));
+}
+
 void TestInputState() {
     TestSuite("input_state");
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
@@ -4495,6 +4546,7 @@ void TestInputState() {
     ACancelledPreeditSeparatesTyping();
     ClosedSearchResyncsMatchesAfterEdits();
     MultiCursorTypingLeavesOneHighlighterUpdate();
+    RequestingCodeActionsAgainReplacesTheOpenMenu();
     TheHostSeesTheDocumentFirst();
     DefinitionResponsesGrowPastTheOldBuffer();
     BoundariesStepCharacters();

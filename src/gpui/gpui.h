@@ -4992,7 +4992,8 @@ void InputFollowDefinition(InputState* s, App* app, Window* win,
                            const DefinitionLink& link);
 
 // ToggleCodeActions: ask the provider about what is selected and open the
-// menu on what it offers. Nothing offered leaves the menu down.
+// menu on what it offers, replacing one already up. Nothing offered leaves the
+// menu down.
 void InputToggleCodeActions(InputState* s, App* app, Window* win);
 void InputDismissCodeActions(InputState* s);
 void InputHideContextMenu(InputState* s);

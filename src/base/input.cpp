@@ -5338,12 +5338,9 @@ void InputToggleCodeActions(InputState* s, App* app, Window* win) {
     if (!s || CodeActionProviderCount(s) == 0) {
         return;
     }
-    // A menu that is up goes down, which is what a toggle is.
-    if (s->codeActions.open) {
-        InputDismissCodeActions(s);
-        Notify(app, win);
-        return;
-    }
+    // handle_code_action_trigger: the action always asks again, for the
+    // selection as it is now, and a menu that is already up is replaced by
+    // the answer — with a new revision, which is what rebuilds the overlay.
     if (!s->codeActions.arena) {
         s->codeActions.arena = ArenaNew();
     } else {
