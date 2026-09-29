@@ -203,6 +203,38 @@ static void SelectingHiddenItemExpandsItsAncestors() {
     utassert(s.selected == -1);
 }
 
+// revealing_item_under_later_root_keeps_other_subtrees (#3265): revealing an
+// item under the second root opens only its ancestors, and the first root's
+// open subtree keeps its rows and its own closed folder.
+static void RevealingUnderALaterRootKeepsOtherSubtrees() {
+    TreeState s;
+    int docs = TreeAddItem(&s, StrL("docs"), StrL("docs"), -1);
+    int guide = TreeAddItem(&s, StrL("docs/guide"), StrL("guide"), docs);
+    TreeAddItem(&s, StrL("docs/guide/a"), StrL("a"), guide);
+    int src = TreeAddItem(&s, StrL("src"), StrL("src"), -1);
+    int ui = TreeAddItem(&s, StrL("src/ui"), StrL("ui"), src);
+    TreeAddItem(&s, StrL("src/ui/tree.rs"), StrL("tree.rs"), ui);
+    s.items[docs].expanded = true;
+    TreeRebuild(&s);
+    utassert(s.entries.len == 3);
+
+    utassert(TreeRevealItem(&s, StrL("src/ui/tree.rs")) == 4);
+    const char* ids[] = {"docs", "docs/guide", "src", "src/ui",
+                         "src/ui/tree.rs"};
+    const int depths[] = {0, 1, 0, 1, 2};
+    utassert(s.entries.len == 5);
+    for (int i = 0; i < 5 && i < s.entries.len; i++) {
+        TreeEntry e = TreeEntryAt(&s, i);
+        utassert(e.item && StrEq(e.item->id, Str(ids[i])));
+        utassert(e.depth == depths[i]);
+    }
+    utassert(TreeEntryAt(&s, 0).IsFolder());
+    utassert(!s.items[guide].expanded);
+
+    utassert(TreeToggleExpandAt(&s, 1, nullptr));
+    utassert(TreeIndexOf(&s, StrL("docs/guide/a")) == 2);
+}
+
 void TestTree() {
     TestSuite("tree");
     TheKeyTable();
@@ -213,6 +245,7 @@ void TestTree() {
     OnlyOpenFoldersPutTheirChildrenOnScreen();
     ALeafDoesNotToggle();
     RevealOpensEveryFolderAboveIt();
+    RevealingUnderALaterRootKeepsOtherSubtrees();
     CollapsingPastTheSelectionPullsItBack();
     EntriesExposeItemDepthAndInteractionState();
     ReplacingItemsResetsBothInteractionIndices();

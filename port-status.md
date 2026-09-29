@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6b7a07c00d0106bc07194b92247a45fe5ce0e703` (2026-09-27,
-perf(highlighter): reuse injection trees (#3263)). Upstream reuses tree-sitter
-injection trees across edits and caches the syntax-context parse by rope; this
-tree has no tree-sitter. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `89cab22c84966f44f91429b0e3ed89ebe941d29e` (2026-09-27,
+perf(tree): avoid cloning subtrees (#3265)). Upstream's tree stops
+deep-cloning subtrees when flattening entries, revealing an item and rendering
+rows; entries here already point into one item array. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
