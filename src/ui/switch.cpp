@@ -112,6 +112,9 @@ El* Switch::IntoEl() {
                                  disabled, &trackStyles)
                     ->W(trackW)
                     ->H(trackH)
+                    // A long label in a narrow row must not squeeze the track
+                    // into a circle.
+                    ->Shrink0()
                     // The thumb inset is a 1px border plus 1px padding, not a
                     // 2px border: the focus ring tints the border solid, and
                     // that 1px line is what keeps the ring visible on an
@@ -177,8 +180,15 @@ El* Switch::IntoEl() {
         // mutes the label along with the track it names.
         float labelFont =
             (size == UiSize::XSmall || size == UiSize::Small) ? 14.f : 16.f;
-        root->Child(TextEl(a, label)->Font(labelFont)->Fg(
-            disabled ? th.mutedFg : th.foreground));
+        // min_w_0: the label shrinks to what the row has left and wraps
+        // there, rather than pushing past the container.
+        root->Child(TextEl(a, label)
+                        ->Font(labelFont)
+                        // line_height(bg_height): one line is the track tall.
+                        ->LineHeight(trackH / labelFont)
+                        ->MinW(0)
+                        ->Wrap()
+                        ->Fg(disabled ? th.mutedFg : th.foreground));
     }
     return root;
 }

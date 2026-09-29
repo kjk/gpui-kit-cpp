@@ -2,6 +2,7 @@
 
 struct SwitchStory {
     bool switches[8] = {true, false, true, true, false};
+    bool longLabelChecked = false;
     StoryToolbarState toolbar;
 
     static El* Render(SwitchStory* self, Ctx* cx);
@@ -18,6 +19,11 @@ static void SetSw3(SwitchStory* self, Ctx*, const ClickEvent*, intptr_t v) {
 }
 static void SetSw4(SwitchStory* self, Ctx*, const ClickEvent*, intptr_t v) {
     self->switches[4] = v;
+}
+static void SetLongLabel(SwitchStory* self, Ctx* cx, const ClickEvent*,
+                         intptr_t v) {
+    self->longLabelChecked = v;
+    Notify(cx);
 }
 
 // h_flex().w_full().items_center().justify_between().gap_6().p_4(), holding
@@ -66,6 +72,32 @@ El* SwitchStory::Render(SwitchStory* self, Ctx* cx) {
                           Listen(cx, &SetSw1)));
     StorySectionAdd(def, list);
     page->Child(def);
+
+    // A 320px settings card: long setting names wrap while the track keeps
+    // its size.
+    El* longLabels =
+        StorySection(cx, "Long labels",
+                     "Long setting names wrap while the track keeps its size.");
+    El* card =
+        Div(a)->FlexCol()->W(320)->Border(1, th.border)->Radius(th.radiusLg);
+    card->Child(
+        component::Switch::New(cx, StrL("long-label"))
+            ->WithSize(self->toolbar.size)
+            ->Label(StrL("Automatically transcribe downloaded episodes"))
+            ->Checked(self->longLabelChecked)
+            ->OnChange(Listen(cx, &SetLongLabel))
+            ->IntoEl()
+            ->Pad(16));
+    card->Child(component::Separator::Horizontal(cx)->IntoEl());
+    card->Child(component::Switch::New(cx, StrL("long-label-disabled"))
+                    ->WithSize(self->toolbar.size)
+                    ->Label(StrL("Automatically download new episodes"))
+                    ->Checked(true)
+                    ->Disabled(true)
+                    ->IntoEl()
+                    ->Pad(16));
+    StorySectionAdd(longLabels, card);
+    page->Child(longLabels);
 
     // section(..).w_128(): the two switches are the section's own children,
     // so its h_flex wraps and centres them.

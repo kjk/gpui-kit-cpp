@@ -174,6 +174,56 @@ static void SwitchActivationProducesTheControlledNextValue() {
     ArenaDelete(a);
 }
 
+// switch.rs: long_labels_preserve_track_size_in_narrow_containers. In a
+// 160px row a long label shrinks and wraps; the track keeps its size, and the
+// label stays between the track and the container's edge.
+static void LongLabelsPreserveTrackSizeInNarrowContainers() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    struct Case {
+        UiSize size;
+        float w, h;
+    };
+    const Case cases[] = {{UiSize::Small, 28, 16}, {UiSize::Medium, 36, 20}};
+    for (const Case& c : cases) {
+        for (int checked = 0; checked < 2; checked++) {
+            for (int disabled = 0; disabled < 2; disabled++) {
+                El* sw = component::Switch::New(&cx, StrL("switch"))
+                             ->WithSize(c.size)
+                             ->Checked(checked != 0)
+                             ->Disabled(disabled != 0)
+                             ->Label(StrL("Automatically transcribe "
+                                          "downloaded episodes"))
+                             ->IntoEl();
+                El* container = Div(a)->W(160)->Child(sw);
+                LayoutEl(&win->paint, container, 0, 0, 400, 400, th.fontSize,
+                         th.foreground);
+                El* track = sw->first;
+                El* label = track ? track->next : nullptr;
+                utassert(track && label);
+                if (!track || !label) continue;
+                utassertnear(track->w, c.w);
+                utassertnear(track->h, c.h);
+                utassert(label->x >= track->x + track->w);
+                utassert(label->x + label->w <=
+                         container->x + container->w + 0.5f);
+            }
+        }
+    }
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    delete win;
+    ArenaDelete(a);
+}
+
 void TestClick() {
     TestSuite("click");
     AReleaseOnTheElementThatTookThePressIsAClick();
@@ -188,4 +238,5 @@ void TestClick() {
     AControlCanOwnThePressWithoutACallback();
     CheckboxActivationProducesTheControlledNextState();
     SwitchActivationProducesTheControlledNextValue();
+    LongLabelsPreserveTrackSizeInNarrowContainers();
 }
