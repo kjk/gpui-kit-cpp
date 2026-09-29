@@ -342,6 +342,12 @@ struct MdNode {
     // is what format/html.rs does.
     bool hasCheck = false;
     bool checked = false;
+    // The TextLeafKey of this node's text, for a paragraph, heading, code
+    // block or table cell whose block the parse placed: the owning block's
+    // source start (the table's, for a cell) and the cell ordinal. -1 when
+    // it has none, which leaves the text out of every range highlight.
+    int leafStart = -1;
+    int leafOrdinal = 0;
     MarkdownNode custom = {};
 };
 
@@ -562,6 +568,165 @@ struct TextViewMotion {
     }
 };
 
+// stream_fade.rs TextLeafKey: one run of rendered text across re-parses — the
+// source start of the block that owns it, plus the cell ordinal inside a
+// table (0 for the block's own text, the cell's index + 1 for a cell). Keys
+// order as their leaves appear in the document. MdNode::leafStart and
+// leafOrdinal carry it on the node the leaf's text is on.
+struct TextLeafKey {
+    int blockStart = 0;
+    int ordinal = 0;
+
+    static TextLeafKey Block(int start) { return TextLeafKey{start, 0}; }
+    static TextLeafKey TableCell(int start, int ordinal) {
+        return TextLeafKey{start, ordinal + 1};
+    }
+    int BlockStart() const { return blockStart; }
+    // The index of the table cell the leaf is, among all the cells of its
+    // table, or -1 when it is not a cell (Rust's `None`).
+    int CellIx() const { return ordinal - 1; }
+    // The same leaf in its block moved to start at `start`.
+    TextLeafKey MovedTo(int start) const { return TextLeafKey{start, ordinal}; }
+};
+inline bool operator==(TextLeafKey a, TextLeafKey b) {
+    return a.blockStart == b.blockStart && a.ordinal == b.ordinal;
+}
+inline bool operator<(TextLeafKey a, TextLeafKey b) {
+    return a.blockStart != b.blockStart ? a.blockStart < b.blockStart
+                                        : a.ordinal < b.ordinal;
+}
+
+// range_highlight.rs RangeHighlight: a background painted behind one range
+// of a RenderedText. It is painted under the text and under the selection,
+// and never changes layout. Where highlights overlap, the later one paints
+// over the earlier. Colours are Rgba in this tree, where Rust takes
+// `impl Into<Hsla>`.
+struct RangeHighlight {
+    Span range = {};
+    Rgba background = {0, 0, 0, 0};
+
+    // A highlight over `range`, in byte offsets of a RenderedText.
+    static RangeHighlight New(Span range, Rgba background) {
+        RangeHighlight out;
+        out.range = range;
+        out.background = background;
+        return out;
+    }
+    static RangeHighlight New(Span range, Hsla background) {
+        return New(range, HslaToRgba(background));
+    }
+    Span Range() const { return range; }
+    Rgba Background() const { return background; }
+};
+
+// range_highlight.rs RangeHighlightError, with `None` standing for Rust's
+// `Ok(())`: SetRangeHighlights answers one of these rather than a Result.
+enum class RangeHighlightErrorKind : uint8_t {
+    None,
+    // The view renders HTML, which records no source positions to address
+    // its text by.
+    Unsupported,
+    // The highlight at `index` is reversed, out of bounds, or not on a
+    // character boundary.
+    InvalidRange,
+};
+
+// Why setting range highlights was rejected. Existing highlights stay
+// unchanged.
+struct RangeHighlightError {
+    RangeHighlightErrorKind kind = RangeHighlightErrorKind::None;
+    int index = 0;
+
+    static RangeHighlightError Unsupported() {
+        return RangeHighlightError{RangeHighlightErrorKind::Unsupported, 0};
+    }
+    static RangeHighlightError InvalidRange(int index) {
+        return RangeHighlightError{RangeHighlightErrorKind::InvalidRange,
+                                   index};
+    }
+    bool IsOk() const { return kind == RangeHighlightErrorKind::None; }
+    // `impl Display`, in `a`.
+    Str Display(Arena* a) const;
+};
+inline bool operator==(RangeHighlightError a, RangeHighlightError b) {
+    return a.kind == b.kind && a.index == b.index;
+}
+
+// range_highlight.rs RenderedText: a snapshot of the text a TextViewState
+// renders, as of one parse of its content. Offsets into it are UTF-8 byte
+// offsets. It is the string plain copy produces: `hello **world**` renders
+// as `hello world`, escapes are resolved, and heading and list markers are
+// left out. Blocks end with a newline and table cells are joined with a
+// space; those separators belong to no block, so no highlight paints them.
+//
+// Two snapshots are equal when they come from the same view and the same
+// parse, which tells an observer whether the content changed. Rust's
+// snapshot holds the parsed document and builds its text on first read; the
+// text here is the view's own copy, built when the parse lands, so `text`
+// is only good until the view's content is parsed again — compare snapshots
+// after that, but read the text of a fresh one.
+struct RenderedText {
+    EntityId owner = {};
+    uint64_t revision = 0;
+    Str text = {};
+
+    Str AsStr() const { return text; }
+    int Len() const { return len(text); }
+    bool IsEmpty() const { return len(text) == 0; }
+};
+inline bool operator==(const RenderedText& a, const RenderedText& b) {
+    return a.owner == b.owner && a.revision == b.revision;
+}
+inline bool operator!=(const RenderedText& a, const RenderedText& b) {
+    return !(a == b);
+}
+
+// One background of a leaf, in the leaf's rendered byte space.
+struct RangeBackground {
+    Span range = {};
+    Rgba color = {0, 0, 0, 0};
+};
+
+// range_highlight.rs RangeHighlightFrame: the highlights each leaf paints,
+// resolved once when they change so rendering only looks up its leaf.
+struct RangeHighlightFrame {
+    struct Leaf {
+        TextLeafKey key = {};
+        int first = 0;
+        int count = 0;
+    };
+    // Sorted by key. A leaf's backgrounds keep the order the application
+    // gave them in, so a later one paints over an earlier one.
+    Vec<Leaf> leaves;
+    Vec<RangeBackground> backgrounds;
+
+    // The backgrounds of leaf `key`, in its rendered byte space.
+    const RangeBackground* Backgrounds(TextLeafKey key, int* count) const;
+};
+
+// range_highlight.rs RenderedIndex: the rendered text of one parse and where
+// each text leaf sits in it. Opaque; text.cpp builds it.
+struct RenderedIndex;
+
+// The rendered text of `doc` and its leaves, as RenderedIndex::new builds
+// them from a parsed document; `source` is what `doc` was parsed from. The
+// caller frees it with RenderedIndexFree.
+RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source);
+void RenderedIndexFree(RenderedIndex* index);
+Str RenderedIndexText(const RenderedIndex* index);
+// RangeHighlightFrame::new: validates `highlights` against `index` and
+// resolves them to leaves. `*out` is null when they paint nothing.
+RangeHighlightError RangeHighlightFrameNew(const RenderedIndex* index,
+                                           const RangeHighlight* highlights,
+                                           int count,
+                                           RangeHighlightFrame** out);
+// RangeHighlightFrame::remap: the highlights that still describe `next`, the
+// parse after `prev`. Null when none do.
+RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
+                                              const RenderedIndex* prev,
+                                              const RenderedIndex* next);
+void RangeHighlightFrameFree(RangeHighlightFrame* frame);
+
 // state.rs TextViewState. Parsing remains synchronous behind the existing
 // per-window LRU because this runtime has no cancellable Task<T>; ownership,
 // mutation revisions, selection and managed-view identity are retained.
@@ -599,6 +764,17 @@ struct TextViewState {
     bool streamFadeReplace = false;
     int streamFadeFrom = -1;
     double streamFadeStartedAt = 0;
+    // state.rs rendered_index / committed_revision / range_highlights. The
+    // parse lands when the view renders — this runtime parses synchronously
+    // inside TextView::IntoEl — so that is where ReconcileRangeHighlights
+    // builds the index. `renderedRevision` counts the parses that landed
+    // with a different result; `indexedRevision` and `indexedExtensions`
+    // are the `revision` and parser fingerprint last checked against.
+    RenderedIndex* renderedIndex = nullptr;
+    uint64_t renderedRevision = 0;
+    uint64_t indexedRevision = ~(uint64_t)0;
+    uint64_t indexedExtensions = 0;
+    RangeHighlightFrame* rangeHighlights = nullptr;
 
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
@@ -627,6 +803,28 @@ struct TextViewState {
     bool HasSelection(const Window* window) const;
     void ClearSelection(Window* window, App* app);
     void SelectAll(Window* window, App* app);
+    // state.rs rendered_text: the text this view renders, which RangeHighlight
+    // ranges index — the string plain copy produces, as of the last parse
+    // that landed. Text set since then is not in it until the view renders.
+    gpui::RenderedText RenderedText() const;
+    // state.rs set_range_highlights: replace the range highlights, whose
+    // ranges index the current rendered text. Compute them from the current
+    // RenderedText() and set them in the same update. A range crossing blocks
+    // paints in both, skipping their separator; text outside every block
+    // (separators, custom blocks, HTML blocks, inline objects) is left
+    // unpainted. Any invalid range rejects the set. Highlights follow
+    // unchanged text through updates; after a table edit, cells in and after
+    // the edited row lose theirs because cells are known by position.
+    RangeHighlightError SetRangeHighlights(const RangeHighlight* highlights,
+                                           int count, App* app,
+                                           Window* window = nullptr);
+    // state.rs clear_range_highlights.
+    void ClearRangeHighlights(App* app, Window* window = nullptr);
+    // state.rs reconcile_range_highlights: `doc`, parsed from the current
+    // text with parser fingerprint `extensions`, has landed. Rebuilds the
+    // rendered index when the parse is a new one and carries the highlights
+    // over to it. Called by TextView::IntoEl.
+    void ReconcileRangeHighlights(const MdNode* doc, uint64_t extensions);
     static void OnAction(TextViewState* self, Ctx* cx,
                          const ActionEvent* event);
     static void OnScroll(TextViewState* self, Ctx* cx,
@@ -745,6 +943,9 @@ struct TextView {
     int streamRenderedOffset = 0;
     int streamFadeFrom = -1;
     float streamFadeOpacity = 1;
+    // NodeContext::range_highlights: the view state's resolved highlights,
+    // for this frame. Null when there are none.
+    const RangeHighlightFrame* rangeHighlights = nullptr;
 
     // text_view.rs TextView::markdown / TextView::html.
     static TextView* New(Ctx* cx, Str source);
@@ -891,7 +1092,8 @@ struct TextView {
     // The highlighted form of a code block: the installed highlighter says
     // which stretches take which colour and this paints them.
     El* CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
-                  const SourceSegment* segments, int segmentCount);
+                  const SourceSegment* segments, int segmentCount,
+                  const MdNode* leaf = nullptr);
     // An image run: node.rs putting an img() element in the middle of the
     // inline flow.
     El* ImageRun(MdRun* r, float font, Rgba color, bool inFlow);
@@ -903,6 +1105,13 @@ struct TextView {
     // starts a new row. `weight` is 0 normal, 1 medium, 2 semibold, 3 bold.
     El* Inline(MdNode* n, float font, Rgba color, int weight,
                uint8_t align = MdAlignDefault);
+    // Inline::range_backgrounds: the backgrounds of `leaf` — a node carrying
+    // a TextLeafKey — over its bytes [lo, hi), rebased to lo, as washes on
+    // `t`. `t` is left alone when none land on it.
+    // With `markOver`, `t` is a `<mark>` word whose background moves into
+    // the washes after the highlights, so it paints over them.
+    El* RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
+                    bool markOver = false);
 };
 
 // Parses `source` into a block tree allocated from `a`. Exposed for tests.

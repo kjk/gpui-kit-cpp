@@ -2291,6 +2291,584 @@ static void TestSourceRangeSelectAllAndHtml() {
     EntityDropAll(&app);
     AppGlobalClear(&app);
 }
+
+#endif
+
+// The tree's parser is always the full one; a dist built with the mini
+// parser has no tables to highlight.
+#if !GPUI_MARKDOWN_MINI
+// ─── range highlights ─────────────────────────────────────────────────────
+//
+// range_highlight.rs and state.rs `mod range_highlights`. Rust's tests run a
+// parse through TestAppContext and read the resolved frame; the parse lands
+// here when the view renders, so each fixture renders once after every
+// change, where Rust runs until parked.
+//
+// inline.rs's glyph_boxes / range_boxes tests (rows_align_the_way_gpui_paints_
+// them, range_boxes_*, a_highlight_starting_a_wrapped_row_paints_only_that_
+// row, highlights_after_a_hard_line_break_start_on_its_row,
+// highlights_follow_centered_and_right_aligned_rows) check Rust's own paint
+// geometry. The washes here go through PaintTextRange, the painter the
+// selection uses, so they wrap and align the way the selection does.
+
+// range_highlight.rs: range_highlight_requires_a_background.
+static void RangeHighlightRequiresABackground() {
+    Hsla color = HslaNew(0.15f, 1.f, 0.5f, 0.4f);
+    RangeHighlight highlight = RangeHighlight::New(Span{2, 5}, color);
+    utassert(highlight.Range().start == 2 && highlight.Range().end == 5);
+    Rgba want = HslaToRgba(color);
+    Rgba got = highlight.Background();
+    utassert(got.r == want.r && got.g == want.g && got.b == want.b &&
+             got.a == want.a);
+}
+
+struct RhView {
+    App app;
+    Window* win = nullptr;
+    Arena* a = nullptr;
+    Ctx cx = {};
+    Entity<gpui::TextViewState> state = {};
+    const MarkdownExtensions* extensions = nullptr;
+};
+
+static void RhRender(RhView* v) {
+    gpui::TextView* view = gpui::TextView::New(&v->cx, v->state);
+    if (v->extensions) {
+        view->MarkdownExtensionsSet(*v->extensions);
+    }
+    view->IntoEl();
+}
+
+static void RhOpen(RhView* v, const char* markdown, bool html = false) {
+    v->win = new Window();
+    v->win->app = &v->app;
+    v->a = ArenaNew();
+    v->cx = Ctx{&v->app, v->win, v->a, {}};
+    v->state = html ? gpui::TextViewState::Html(&v->app, Str(markdown))
+                    : gpui::TextViewState::Markdown(&v->app, Str(markdown));
+    RhRender(v);
+}
+
+static void RhClose(RhView* v) {
+    WindowKeyedFree(v->win);
+    ArenaDelete(v->a);
+    delete v->win;
+    EntityDropAll(&v->app);
+    AppGlobalClear(&v->app);
+}
+
+static gpui::TextViewState* RhState(RhView* v) {
+    return v->state.Get(&v->app);
+}
+
+// Highlights `ranges` of the current rendered text.
+static RangeHighlightError RhSet(RhView* v, const Span* ranges, int count) {
+    RangeHighlight highlights[64];
+    for (int i = 0; i < count; i++) {
+        highlights[i] =
+            RangeHighlight::New(ranges[i], HslaNew(0.15f, 1.f, 0.5f, 0.4f));
+    }
+    return RhState(v)->SetRangeHighlights(highlights, count, &v->app, v->win);
+}
+
+// Whether leaf `key` paints exactly `want`, in its own byte space.
+static bool RhPainted(RhView* v, gpui::TextLeafKey key, const Span* want,
+                      int count) {
+    const gpui::RangeHighlightFrame* frame = RhState(v)->rangeHighlights;
+    int n = 0;
+    const gpui::RangeBackground* bgs =
+        frame ? frame->Backgrounds(key, &n) : nullptr;
+    if (n != count) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (bgs[i].range.start != want[i].start ||
+            bgs[i].range.end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool RhUnpainted(RhView* v, gpui::TextLeafKey key) {
+    return RhPainted(v, key, nullptr, 0);
+}
+
+static int RhFind(Str hay, const char* needle, bool last = false) {
+    Str n = Str(needle);
+    int found = -1;
+    for (int i = 0; i + len(n) <= len(hay); i++) {
+        if (memcmp(hay.s + i, n.s, (size_t)len(n)) == 0) {
+            found = i;
+            if (!last) break;
+        }
+    }
+    return found;
+}
+
+using gpui::TextLeafKey;
+
+// rendered_text_is_the_plain_copy_text.
+static void RenderedTextIsThePlainCopyText() {
+    RhView v;
+    RhOpen(&v,
+           "# Title\n\nhello **world** \\*\n\n- item\n\n| a | b |\n|---|---|\n"
+           "| c | d |\n\n```\nlet x\n```");
+    utassert(StrEq(RhState(&v)->RenderedText().AsStr(),
+                   StrL("Title\nhello world *\nitem\na b\nc d\n\nlet x\n")));
+    RhClose(&v);
+}
+
+// a_match_across_marks_paints_in_its_paragraph.
+static void AMatchAcrossMarksPaintsInItsParagraph() {
+    RhView v;
+    RhOpen(&v, "hello **world**");
+    Span range = {0, 11};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &range, 1));
+    RhClose(&v);
+}
+
+// repeated_text_maps_to_the_occurrence_addressed.
+static void RepeatedTextMapsToTheOccurrenceAddressed() {
+    RhView v;
+    RhOpen(&v, "foo\n\nfoo");
+    int second = RhFind(RhState(&v)->RenderedText().AsStr(), "foo", true);
+    Span range = {second, second + 3};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    utassert(RhUnpainted(&v, TextLeafKey::Block(0)));
+    Span want = {0, 3};
+    utassert(RhPainted(&v, TextLeafKey::Block(5), &want, 1));
+    RhClose(&v);
+}
+
+// a_range_across_blocks_skips_the_separator.
+static void ARangeAcrossBlocksSkipsTheSeparator() {
+    RhView v;
+    RhOpen(&v, "ab\n\ncd");
+    // "ab\ncd\n": 1..4 is "b\nc".
+    Span range = {1, 4};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    Span first = {1, 2};
+    Span second = {0, 1};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &first, 1));
+    utassert(RhPainted(&v, TextLeafKey::Block(4), &second, 1));
+    RhClose(&v);
+}
+
+// table_cells_and_code_blocks_are_leaves.
+static void TableCellsAndCodeBlocksAreLeaves() {
+    RhView v;
+    const char* source = "| a | b |\n|---|---|\n| c | d |\n\n```\nlet x\n```";
+    RhOpen(&v, source);
+    // "a b\nc d\n\nlet x\n"
+    Span ranges[] = {{0, 3}, {6, 7}, {9, 12}};
+    utassert(RhSet(&v, ranges, 3).IsOk());
+    Span one = {0, 1};
+    utassert(RhPainted(&v, TextLeafKey::TableCell(0, 0), &one, 1));
+    utassert(RhPainted(&v, TextLeafKey::TableCell(0, 1), &one, 1));
+    utassert(RhPainted(&v, TextLeafKey::TableCell(0, 3), &one, 1));
+    int codeStart = RhFind(Str(source), "```");
+    Span code = {0, 3};
+    utassert(RhPainted(&v, TextLeafKey::Block(codeStart), &code, 1));
+    RhClose(&v);
+}
+
+// invalid_ranges_reject_the_whole_set.
+static void InvalidRangesRejectTheWholeSet() {
+    RhView v;
+    // "中文\n\nab" renders "中文\nab\n".
+    RhOpen(&v, "\xE4\xB8\xAD\xE6\x96\x87\n\nab");
+    Span first = {0, 3};
+    utassert(RhSet(&v, &first, 1).IsOk());
+    Span invalid[] = {{6, 3}, {0, 1}, {0, 100}};
+    for (Span range : invalid) {
+        Span set[] = {{0, 3}, range};
+        utassert(RhSet(&v, set, 2) == RangeHighlightError::InvalidRange(1));
+    }
+    // The rejected sets left the earlier highlight in place.
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &first, 1));
+    RhClose(&v);
+}
+
+// text_outside_every_block_is_left_unpainted.
+static void TextOutsideEveryBlockIsLeftUnpainted() {
+    RhView v;
+    const char* source =
+        "foo one\n\n<div>foo two</div>\n\n| foo | x |\n|---|---|\n\nfoo three";
+    RhOpen(&v, source);
+    Str text = RhState(&v)->RenderedText().AsStr();
+    // Every "foo" and " ", an empty range, and the separator after the first
+    // block: the HTML block's text and the separators are not any block's
+    // text, so they paint nothing, but nothing fails.
+    Span ranges[64];
+    int n = 0;
+    for (int i = 0; i + 3 <= len(text); i++) {
+        if (memcmp(text.s + i, "foo", 3) == 0) ranges[n++] = Span{i, i + 3};
+    }
+    for (int i = 0; i < len(text); i++) {
+        if (text.s[i] == ' ') ranges[n++] = Span{i, i + 1};
+    }
+    ranges[n++] = Span{3, 3};
+    ranges[n++] = Span{7, 8};
+    utassert(RhSet(&v, ranges, n).IsOk());
+    Span fooSpace[] = {{0, 3}, {3, 4}};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), fooSpace, 2));
+    int table = RhFind(Str(source), "| foo");
+    utassert(RhPainted(&v, TextLeafKey::TableCell(table, 0), fooSpace, 1));
+    int last = RhFind(Str(source), "foo three");
+    utassert(RhPainted(&v, TextLeafKey::Block(last), fooSpace, 2));
+    RhClose(&v);
+}
+
+// a_later_highlight_paints_over_an_earlier_one.
+static void ALaterHighlightPaintsOverAnEarlierOne() {
+    RhView v;
+    RhOpen(&v, "abcdef");
+    Span ranges[] = {{0, 6}, {2, 3}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    utassert(RhPainted(&v, TextLeafKey::Block(0), ranges, 2));
+    RhClose(&v);
+}
+
+// html_text_is_unsupported.
+static void HtmlTextIsUnsupported() {
+    RhView v;
+    RhOpen(&v, "<p>one</p>", true);
+    Span range = {0, 3};
+    utassert(RhSet(&v, &range, 1) == RangeHighlightError::Unsupported());
+    RhClose(&v);
+}
+
+static bool ParseFormula(const markdown::Node* source,
+                         const MarkdownParseContext* context, void*,
+                         MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::InlineMath) return false;
+    *out = MarkdownNode::New(context->Copy(StrL("formula")))
+               .Text(context->Copy(
+                   context->Value(source, markdown::NodeStrKind::Value)));
+    return true;
+}
+
+// inline_objects_are_skipped.
+static void InlineObjectsAreSkipped() {
+    RhView v;
+    RhOpen(&v, "x $a$ y");
+    Arena* ext = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("formula");
+    plugin.parse = &ParseFormula;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(ext, plugin);
+    v.extensions = &extensions;
+    RhRender(&v);
+    // "x a y\n", where "a" is the formula.
+    utassert(StrEq(RhState(&v)->RenderedText().AsStr(), StrL("x a y\n")));
+    Span object = {2, 3};
+    utassert(RhSet(&v, &object, 1).IsOk());
+    utassert(RhUnpainted(&v, TextLeafKey::Block(0)));
+    Span all = {0, 5};
+    utassert(RhSet(&v, &all, 1).IsOk());
+    Span around[] = {{0, 2}, {3, 5}};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), around, 2));
+    RhClose(&v);
+    ArenaDelete(ext);
+}
+
+// push_str_keeps_earlier_blocks_and_clips_the_changed_tail.
+static void PushStrKeepsEarlierBlocksAndClipsTheChangedTail() {
+    RhView v;
+    RhOpen(&v, "first\n\na **b");
+    // "first\na **b\n"
+    Span ranges[] = {{0, 5}, {6, 11}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    // Closing the emphasis renders the tail as "a bc".
+    RhState(&v)->PushStr(StrL("c**"), &v.app, v.win);
+    RhRender(&v);
+    Span first = {0, 5};
+    Span tail = {0, 2};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &first, 1));
+    utassert(RhPainted(&v, TextLeafKey::Block(7), &tail, 1));
+    RhClose(&v);
+}
+
+// push_str_keeps_a_block_whose_text_is_unchanged.
+static void PushStrKeepsABlockWhoseTextIsUnchanged() {
+    RhView v;
+    RhOpen(&v, "first\n\nsecond");
+    Span range = {6, 12};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    // A setext underline turns the paragraph into a heading at the same
+    // source start, rendering the same text.
+    RhState(&v)->PushStr(StrL("\n==="), &v.app, v.win);
+    RhRender(&v);
+    Span want = {0, 6};
+    utassert(RhPainted(&v, TextLeafKey::Block(7), &want, 1));
+    RhClose(&v);
+}
+
+// push_str_drops_highlights_of_a_leaf_that_is_gone.
+static void PushStrDropsHighlightsOfALeafThatIsGone() {
+    RhView v;
+    RhOpen(&v, "first\n\n| a |");
+    Span ranges[] = {{0, 5}, {6, 11}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    // A delimiter row turns the paragraph into a table, whose text lives in
+    // cells instead.
+    RhState(&v)->PushStr(StrL("\n|---|"), &v.app, v.win);
+    RhRender(&v);
+    utassert(RhPainted(&v, TextLeafKey::Block(0), ranges, 1));
+    utassert(RhUnpainted(&v, TextLeafKey::Block(7)));
+    utassert(RhUnpainted(&v, TextLeafKey::TableCell(7, 0)));
+    RhClose(&v);
+}
+
+// replacing_text_drops_highlights_only_where_it_changed.
+static void ReplacingTextDropsHighlightsOnlyWhereItChanged() {
+    RhView v;
+    RhOpen(&v, "first\n\nsecond");
+    Span ranges[] = {{0, 5}, {6, 12}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    RhState(&v)->SetText(StrL("first\n\nchanged"), &v.app, v.win);
+    RhRender(&v);
+    utassert(RhPainted(&v, TextLeafKey::Block(0), ranges, 1));
+    utassert(RhUnpainted(&v, TextLeafKey::Block(7)));
+
+    // Rust replaces with MAX_SYNC_FULL_REPLACE_BYTES + 1 bytes to go through
+    // its background parse; every parse here is the same one.
+    char large[513];
+    memset(large, 'x', sizeof(large) - 1);
+    large[sizeof(large) - 1] = 0;
+    RhState(&v)->SetText(Str(large), &v.app, v.win);
+    RhRender(&v);
+    utassert(RhState(&v)->rangeHighlights == nullptr);
+    RhClose(&v);
+}
+
+// a_highlight_follows_its_block_past_an_earlier_edit.
+static void AHighlightFollowsItsBlockPastAnEarlierEdit() {
+    {
+        RhView v;
+        RhOpen(&v, "foo\n\nbar\n\nbar");
+        // "foo\nbar\nbar\n": the first "bar", in the block at source 5.
+        Span range = {4, 7};
+        utassert(RhSet(&v, &range, 1).IsOk());
+        // Deleting "foo" moves that "bar" to 0, and the second one to 5.
+        RhState(&v)->SetText(StrL("bar\n\nbar"), &v.app, v.win);
+        RhRender(&v);
+        Span want = {0, 3};
+        utassert(RhPainted(&v, TextLeafKey::Block(0), &want, 1));
+        utassert(RhUnpainted(&v, TextLeafKey::Block(5)));
+        RhClose(&v);
+    }
+    {
+        RhView v;
+        RhOpen(&v, "ERROR a\n\nERROR b\n\nERROR c");
+        Span range = {8, 15};
+        utassert(RhSet(&v, &range, 1).IsOk());
+        RhState(&v)->SetText(StrL("ERROR b\n\nERROR c"), &v.app, v.win);
+        RhRender(&v);
+        Span want = {0, 7};
+        utassert(RhPainted(&v, TextLeafKey::Block(0), &want, 1));
+        utassert(RhUnpainted(&v, TextLeafKey::Block(9)));
+        RhClose(&v);
+    }
+}
+
+// appending_a_copy_of_the_last_block_keeps_the_highlight_on_it.
+static void AppendingACopyOfTheLastBlockKeepsTheHighlightOnIt() {
+    RhView v;
+    RhOpen(&v, "a\n\nfoo");
+    // "a\nfoo\n"
+    Span range = {2, 5};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    RhState(&v)->SetText(StrL("a\n\nfoo\n\nfoo"), &v.app, v.win);
+    RhRender(&v);
+    Span want = {0, 3};
+    utassert(RhPainted(&v, TextLeafKey::Block(3), &want, 1));
+    utassert(RhUnpainted(&v, TextLeafKey::Block(8)));
+    RhClose(&v);
+}
+
+// deleting_a_table_row_drops_highlights_in_the_rows_it_moves.
+static void DeletingATableRowDropsHighlightsInTheRowsItMoves() {
+    const char* table = "| a | b |\n|---|---|\n| x | 1 |\n| x | 2 |";
+    const char* withoutMiddleRow = "| a | b |\n|---|---|\n| x | 2 |";
+    // "a b\nx 1\nx 2\n\n": the last row's cells, then the middle row's "x".
+    Span lastRow[] = {{0, 1}, {8, 9}, {10, 11}};
+    Span middle[] = {{0, 1}, {4, 5}};
+    for (int round = 0; round < 2; round++) {
+        RhView v;
+        RhOpen(&v, table);
+        utassert(round == 0 ? RhSet(&v, lastRow, 3).IsOk()
+                            : RhSet(&v, middle, 2).IsOk());
+        RhState(&v)->SetText(Str(withoutMiddleRow), &v.app, v.win);
+        RhRender(&v);
+        Span one = {0, 1};
+        utassert(RhPainted(&v, TextLeafKey::TableCell(0, 0), &one, 1));
+        for (int cell = 1; cell < 4; cell++) {
+            utassert(RhUnpainted(&v, TextLeafKey::TableCell(0, cell)));
+        }
+        RhClose(&v);
+    }
+}
+
+// streaming_table_rows_keeps_the_highlights_of_earlier_rows.
+static void StreamingTableRowsKeepsTheHighlightsOfEarlierRows() {
+    RhView v;
+    RhOpen(&v, "| a | b |\n|---|---|\n| x | 1 |");
+    // "a b\nx 1\n\n"
+    Span ranges[] = {{0, 1}, {4, 5}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    RhState(&v)->SetText(StrL("| a | b |\n|---|---|\n| x | 1 |\n| y | 2 |"),
+                         &v.app, v.win);
+    RhRender(&v);
+    Span one = {0, 1};
+    utassert(RhPainted(&v, TextLeafKey::TableCell(0, 0), &one, 1));
+    utassert(RhPainted(&v, TextLeafKey::TableCell(0, 2), &one, 1));
+    RhClose(&v);
+}
+
+// an_edit_in_an_earlier_block_keeps_later_highlights.
+static void AnEditInAnEarlierBlockKeepsLaterHighlights() {
+    RhView v;
+    RhOpen(&v, "one\n\ntwo");
+    Span ranges[] = {{0, 3}, {4, 7}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    RhState(&v)->SetText(StrL("one!\n\ntwo"), &v.app, v.win);
+    RhRender(&v);
+    Span want = {0, 3};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &want, 1));
+    utassert(RhPainted(&v, TextLeafKey::Block(6), &want, 1));
+    RhClose(&v);
+}
+
+// streaming_through_set_text_keeps_highlights.
+static void StreamingThroughSetTextKeepsHighlights() {
+    RhView v;
+    RhOpen(&v, "first\n\nsec");
+    // "first\nsec\n"
+    Span ranges[] = {{0, 5}, {6, 9}};
+    utassert(RhSet(&v, ranges, 2).IsOk());
+    RhState(&v)->SetText(StrL("first\n\nsecond"), &v.app, v.win);
+    RhRender(&v);
+    Span sec = {0, 3};
+    utassert(RhPainted(&v, TextLeafKey::Block(0), ranges, 1));
+    utassert(RhPainted(&v, TextLeafKey::Block(7), &sec, 1));
+    RhClose(&v);
+}
+
+// a_full_parse_merged_with_an_append_compares_every_block, and
+// an_append_after_a_full_update_compares_every_block: this runtime parses
+// the whole document every time, so an append compares every block too.
+static void AnAppendComparesEveryBlock() {
+    RhView v;
+    RhOpen(&v, "");
+    RhState(&v)->SetText(StrL("[foo] and some text\n\nmore"), &v.app, v.win);
+    RhRender(&v);
+    int some = RhFind(RhState(&v)->RenderedText().AsStr(), "some");
+    Span range = {some, some + 4};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    // The definition turns the earlier `[foo]` into the link text `foo`.
+    RhState(&v)->PushStr(StrL("\n\n[foo]: https://example.com"), &v.app, v.win);
+    RhRender(&v);
+    utassert(StrStartsWith(RhState(&v)->RenderedText().AsStr(),
+                           StrL("foo and some")));
+    utassert(RhUnpainted(&v, TextLeafKey::Block(0)));
+    RhClose(&v);
+}
+
+// a_full_update_before_an_append_drops_replaced_highlights.
+static void AFullUpdateBeforeAnAppendDropsReplacedHighlights() {
+    RhView v;
+    RhOpen(&v, "first");
+    Span range = {0, 5};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    RhState(&v)->SetText(StrL("xxxxxxxx"), &v.app, v.win);
+    RhState(&v)->PushStr(StrL(" tail"), &v.app, v.win);
+    RhRender(&v);
+    utassert(RhState(&v)->rangeHighlights == nullptr);
+    RhClose(&v);
+}
+
+// reparsing_unchanged_text_keeps_highlights, and the RenderedText identity
+// the markdown example compares: a parse that rendered the same source with
+// other extensions is a new snapshot, one that did not re-parse is not.
+static void ReparsingUnchangedTextKeepsHighlights() {
+    RhView v;
+    RhOpen(&v, "first");
+    Span range = {0, 5};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    gpui::RenderedText before = RhState(&v)->RenderedText();
+    RhRender(&v);
+    utassert(RhState(&v)->RenderedText() == before);
+    Arena* ext = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("formula");
+    plugin.parse = &ParseFormula;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(ext, plugin);
+    v.extensions = &extensions;
+    RhRender(&v);
+    utassert(RhState(&v)->RenderedText() != before);
+    utassert(RhPainted(&v, TextLeafKey::Block(0), &range, 1));
+    RhClose(&v);
+    ArenaDelete(ext);
+}
+
+static int RhWashedElements(El* e) {
+    if (!e) return 0;
+    int n = e->nWashes > 0 ? 1 : 0;
+    for (El* c = e->first; c; c = c->next) n += RhWashedElements(c);
+    return n;
+}
+
+// highlights_paint_across_inline_code_tables_and_code_blocks: every
+// character, part of the inline code and the whole text highlighted, and the
+// view still builds, with the washes on its text elements.
+static void HighlightsPaintAcrossInlineCodeTablesAndCodeBlocks() {
+    RhView v;
+    RhOpen(&v,
+           "wrapping text with `inline code` and a [link](https://x.y) that "
+           "wraps\n\n| a | b |\n|---|---|\n| c | d |\n\n```\nlet x = 1;\n```");
+    Str text = RhState(&v)->RenderedText().AsStr();
+    int code = RhFind(text, "code");
+    Vec<RangeHighlight> highlights;
+    Rgba color = HslaToRgba(HslaNew(0.15f, 1.f, 0.5f, 0.4f));
+    VecAppend(highlights, RangeHighlight::New(Span{code, code + 2}, color));
+    for (int i = 0; i < len(text); i++) {
+        char c = text.s[i];
+        if (c != ' ' && c != '\n') {
+            VecAppend(highlights, RangeHighlight::New(Span{i, i + 1}, color));
+        }
+    }
+    VecAppend(highlights, RangeHighlight::New(Span{0, len(text)}, color));
+    utassert(
+        RhState(&v)
+            ->SetRangeHighlights(highlights.els, len(highlights), &v.app, v.win)
+            .IsOk());
+    El* root = gpui::TextView::New(&v.cx, v.state)->Selectable()->IntoEl();
+    utassert(RhWashedElements(root) > 0);
+    int n = 0;
+    const gpui::RangeBackground* bgs =
+        RhState(&v)->rangeHighlights->Backgrounds(TextLeafKey::Block(0), &n);
+    utassert(n > 0 && bgs[0].range.start == code &&
+             bgs[0].range.end == code + 2);
+    RhClose(&v);
+}
+
+// clear_range_highlights_removes_them.
+static void ClearRangeHighlightsRemovesThem() {
+    RhView v;
+    RhOpen(&v, "first");
+    Span range = {0, 5};
+    utassert(RhSet(&v, &range, 1).IsOk());
+    RhState(&v)->ClearRangeHighlights(&v.app, v.win);
+    utassert(RhState(&v)->rangeHighlights == nullptr);
+    RhClose(&v);
+}
 #endif
 
 void TestTextView() {
@@ -2369,6 +2947,34 @@ void TestTextView() {
     TestSourceRangeAfterAppend();
     TestSourceRangeOverPaintedRuns();
     TestSourceRangeSelectAllAndHtml();
+#endif
+#if !GPUI_MARKDOWN_MINI
+    RangeHighlightRequiresABackground();
+    RenderedTextIsThePlainCopyText();
+    AMatchAcrossMarksPaintsInItsParagraph();
+    RepeatedTextMapsToTheOccurrenceAddressed();
+    ARangeAcrossBlocksSkipsTheSeparator();
+    TableCellsAndCodeBlocksAreLeaves();
+    InvalidRangesRejectTheWholeSet();
+    TextOutsideEveryBlockIsLeftUnpainted();
+    ALaterHighlightPaintsOverAnEarlierOne();
+    HtmlTextIsUnsupported();
+    InlineObjectsAreSkipped();
+    PushStrKeepsEarlierBlocksAndClipsTheChangedTail();
+    PushStrKeepsABlockWhoseTextIsUnchanged();
+    PushStrDropsHighlightsOfALeafThatIsGone();
+    ReplacingTextDropsHighlightsOnlyWhereItChanged();
+    AHighlightFollowsItsBlockPastAnEarlierEdit();
+    AppendingACopyOfTheLastBlockKeepsTheHighlightOnIt();
+    DeletingATableRowDropsHighlightsInTheRowsItMoves();
+    StreamingTableRowsKeepsTheHighlightsOfEarlierRows();
+    AnEditInAnEarlierBlockKeepsLaterHighlights();
+    StreamingThroughSetTextKeepsHighlights();
+    AnAppendComparesEveryBlock();
+    AFullUpdateBeforeAnAppendDropsReplacedHighlights();
+    ReparsingUnchangedTextKeepsHighlights();
+    HighlightsPaintAcrossInlineCodeTablesAndCodeBlocks();
+    ClearRangeHighlightsRemovesThem();
 #endif
     ArenaDelete(a);
 }

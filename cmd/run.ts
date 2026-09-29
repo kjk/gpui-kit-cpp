@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "477a8d90bb318cfbf0bbdc0f29517d437ad003e1",
+  sha: "aa2c3f77c0dadf1539a874afe560206701bc7010",
   date: "2026-09-24",
-  subject: "plot: Glide the tooltip's crosshair and dots in `Tooltip` itself (#3222)",
+  subject: "text_view: Add range highlights (#3215)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

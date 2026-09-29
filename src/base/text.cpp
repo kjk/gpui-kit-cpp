@@ -506,6 +506,8 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
 TextViewState::~TextViewState() {
     StrFree(text);
     StrFree(streamRenderedText);
+    RenderedIndexFree(renderedIndex);
+    RangeHighlightFrameFree(rangeHighlights);
 }
 
 static Entity<TextViewState> NewTextViewState(App* app, Str text,
@@ -966,6 +968,17 @@ static bool MdNodeSpan(MdBuild* b, const md::Node* n, Span* out) {
     out->start = start + b->posShift;
     out->end = end + b->posShift;
     return true;
+}
+
+// The TextLeafKey of `node`'s text: the source start of `n`, the mdast
+// block it was made from — markdown.rs's `span: new_span(val.position, cx)`
+// on the paragraph, heading or code block.
+static void MdSetLeaf(MdBuild* b, MdNode* node, const md::Node* n) {
+    Span span;
+    if (node && n && MdNodeSpan(b, n, &span)) {
+        node->leafStart = span.start;
+        node->leafOrdinal = 0;
+    }
 }
 
 // The bytes of the UTF-8 character that starts with `lead`.
@@ -1914,6 +1927,7 @@ static void MdCodeBlock(MdBuild* b, Str value, Str lang,
                         const md::Node* node = nullptr) {
     MdNode* n = Push(b, MdKind::Code);
     n->lang = lang;
+    MdSetLeaf(b, n, node);
     Vec<SourceSegment> segments;
     if (node) {
         MdCodeSourceSegments(b, node, value, segments);
@@ -1925,6 +1939,11 @@ static void MdCodeBlock(MdBuild* b, Str value, Str lang,
 static void MdTable(MdBuild* b, const md::Node* n) {
     MdNode* table = Push(b, MdKind::Table);
     (void)table;
+    // TextLeafKey::table_cell: every cell is known by the table's source
+    // start and its place among all the table's cells.
+    Span tableSpan;
+    bool hasTableSpan = MdNodeSpan(b, n, &tableSpan);
+    int ordinal = 0;
     int32_t rowIndex = 0;
     for (const md::Node* row : md::NodeKids(b->a, n)) {
         int32_t at = rowIndex++;
@@ -1941,6 +1960,11 @@ static void MdTable(MdBuild* b, const md::Node* n) {
             }
             int32_t column = cellIndex++;
             MdNode* c = Push(b, MdKind::Cell);
+            if (hasTableSpan) {
+                c->leafStart = tableSpan.start;
+                c->leafOrdinal = ordinal + 1;
+            }
+            ordinal++;
             md::ArenaAlign align = md::NodePerKind(b->a, n);
             if (column < md::ArenaAlignCount(b->a, align)) {
                 switch (md::ArenaAlignAt(b->a, align, column)) {
@@ -1991,12 +2015,13 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
     }
     switch (n->kind) {
         case md::NodeKind::Paragraph:
-            Push(b, MdKind::Paragraph);
+            MdSetLeaf(b, Push(b, MdKind::Paragraph), n);
             MdInline(b, n);
             Pop(b);
             break;
         case md::NodeKind::Heading: {
             MdNode* h = Push(b, MdKind::Heading);
+            MdSetLeaf(b, h, n);
             uint32_t depth = md::NodePerKind(b->a, n);
             h->level = depth == 0 ? 1 : (uint8_t)depth;
             MdInline(b, n);
@@ -2041,9 +2066,11 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             break;
         case md::NodeKind::Yaml:
             MdCodeBlock(b, V(b, n, md::NodeStrKind::Value), StrL("yml"));
+            MdSetLeaf(b, b->cur->last, n);
             break;
         case md::NodeKind::Toml:
             MdCodeBlock(b, V(b, n, md::NodeStrKind::Value), StrL("toml"));
+            MdSetLeaf(b, b->cur->last, n);
             break;
         case md::NodeKind::Table:
             MdTable(b, n);
@@ -2067,7 +2094,7 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
         case md::NodeKind::FootnoteDefinition: {
             // markdown.rs renders the definition as a paragraph opening with
             // an italic `[id]: `.
-            Push(b, MdKind::Paragraph);
+            MdSetLeaf(b, Push(b, MdKind::Paragraph), n);
             uint8_t saved = b->marks;
             b->marks = (uint8_t)(b->marks | MdItalic);
             AddText(b, StrL("["));
@@ -2811,6 +2838,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             SrcMark(t, 0);
             SrcMap(t, n->runFirst->segments, n->runFirst->segmentCount, 0);
         }
+        RangeWashes(t, n, 0, len(n->runFirst->text));
         if (align == MdAlignCenter || align == MdAlignRight) {
             // The text shrink-wraps so the box around it can push it over.
             return AlignRow(Div(a)->FlexRow()->W(kFill), align)
@@ -2850,6 +2878,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // word starts: what the word's source map is measured from.
     MdRun* wordRun = nullptr;
     int wordStart = 0;
+    // Where the run being walked starts in the node's text, which is the
+    // byte space its range highlights use.
+    int runOffset = 0;
+    int nextRunOffset = 0;
     auto flush = [&]() {
         if (wordLen <= 0) {
             return;
@@ -2858,6 +2890,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                      href);
         if (wordRun) {
             SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
+            RangeWashes(w, n, runOffset + wordStart,
+                        runOffset + wordStart + wordLen,
+                        (marks & MdHighlight) != 0);
         }
         row->Child(w);
         wordLen = 0;
@@ -2866,6 +2901,8 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         flush();
         marks = r->marks;
         href = r->href;
+        runOffset = nextRunOffset;
+        nextRunOffset += len(r->text);
         if (r->hasCustom) {
             const MarkdownInlineRenderer* renderer =
                 markdownExtensions.InlineRenderer(r->custom.name);
@@ -3187,7 +3224,7 @@ El* TextView::CodeBlock(MdNode* n) {
         segmentCount = n->runFirst->segmentCount;
     }
     if (spans.len > 0) {
-        box->Child(CodeLines(Str(buf, at), spans, segments, segmentCount));
+        box->Child(CodeLines(Str(buf, at), spans, segments, segmentCount, n));
     } else {
         El* t = TextEl(a, Str(buf, at))
                     ->Font(codeFont)
@@ -3198,6 +3235,7 @@ El* TextView::CodeBlock(MdNode* n) {
             SrcMark(t, 0);
             SrcMap(t, segments, segmentCount, 0);
         }
+        RangeWashes(t, n, 0, at);
         box->Child(t->ReportLineSpan(codeFont * kLineHeight));
     }
     if (codeActions) {
@@ -3223,7 +3261,8 @@ El* TextView::CodeBlock(MdNode* n) {
 // themselves and every element in them is the same mono face at the same
 // size, which keeps the lines from setting their own leading.
 El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
-                        const SourceSegment* segments, int segmentCount) {
+                        const SourceSegment* segments, int segmentCount,
+                        const MdNode* leaf) {
     const int count = len(spans);
     El* col = Div(a)->FlexCol()->W(kFill);
     float lineH = codeFont * kLineHeight;
@@ -3251,6 +3290,10 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
             SrcMark(t, 0);
             SrcMap(t, segments, segmentCount, pieceStart);
         }
+        // A carriage return is dropped from the piece, which shifts what
+        // follows it on its line by a byte; code with CRLF endings is the
+        // only kind that has one.
+        RangeWashes(t, leaf, pieceStart, pieceStart + len);
         row->Child(t);
         len = 0;
     };
@@ -3704,6 +3747,540 @@ static int StreamCommonPrefix(Str a, Str b) {
     return at;
 }
 
+// ─── range highlights ─────────────────────────────────────────────────────
+//
+// range_highlight.rs: application-supplied highlights over the text a
+// TextViewState renders. Ranges address the rendered text, the string plain
+// copy produces: an application searches RenderedText() and hands the
+// ranges it found back. Each range is split into the text leaves it covers (a
+// paragraph, a heading, a code block, a table cell), which paint it as a
+// wash behind their glyphs, so a highlight never changes layout. Text outside
+// every leaf (the separators between blocks and cells, custom blocks, HTML
+// blocks, inline objects) is left unpainted.
+
+Str RangeHighlightError::Display(Arena* a) const {
+    switch (kind) {
+        case RangeHighlightErrorKind::Unsupported:
+            return StrL("HTML views do not support range highlights");
+        case RangeHighlightErrorKind::InvalidRange:
+            return StrDup(
+                a, fmt("highlight %d is not a range of the text", index));
+        case RangeHighlightErrorKind::None:
+            break;
+    }
+    return {};
+}
+
+// LeafSpan: where one leaf's text sits in the rendered text.
+struct RenderedLeafSpan {
+    Span range = {};
+    TextLeafKey key = {};
+    // Inline objects in the leaf's text, in leaf offsets, as
+    // RenderedIndex::objects[objFirst..objFirst + objCount]. They paint as
+    // objects rather than as text, so no highlight paints them.
+    int objFirst = 0;
+    int objCount = 0;
+    // row_source_end, for a table cell: where the source of the row holding
+    // it ends, or -1 when the parser recorded none. Computed here once so
+    // remap needs only the index, not the parse it came from.
+    int rowSourceEnd = -1;
+};
+
+struct RenderedIndex {
+    Str text = {};
+    // The source the parse read, which remap compares with the next one.
+    Str source = {};
+    // In document order, so by their position in `text`.
+    Vec<RenderedLeafSpan> leaves;
+    Vec<Span> objects;
+
+    ~RenderedIndex() {
+        StrFree(text);
+        StrFree(source);
+    }
+};
+
+// paragraph_source_end: where the source of a paragraph's text ends, or -1.
+static int MdParagraphSourceEnd(const MdNode* n) {
+    int end = -1;
+    for (const MdRun* r = n->runFirst; r; r = r->next) {
+        for (int i = 0; i < r->segmentCount; i++) {
+            end = std::max(end, r->segments[i].sourceEnd);
+        }
+        if (r->hasCustom && r->custom.hasSpan) {
+            end = std::max(end, r->custom.span.end);
+        }
+    }
+    return end;
+}
+
+// IndexBuilder: builds the rendered text the way BlockNode::text does,
+// recording each leaf as it goes.
+struct RenderedIndexBuilder {
+    StrBuilder text;
+    RenderedIndex* index = nullptr;
+
+    void PushLeaf(const MdNode* n, bool withObjects, int rowSourceEnd) {
+        int start = len(text);
+        int objFirst = len(index->objects);
+        for (const MdRun* r = n->runFirst; r; r = r->next) {
+            if (withObjects && r->hasCustom) {
+                int at = len(text) - start;
+                VecAppend(index->objects, Span{at, at + len(r->text)});
+            }
+            text.Append(r->text);
+        }
+        if (n->leafStart >= 0 && len(text) > start) {
+            RenderedLeafSpan leaf;
+            leaf.range = Span{start, len(text)};
+            leaf.key = TextLeafKey{n->leafStart, n->leafOrdinal};
+            leaf.objFirst = objFirst;
+            leaf.objCount = len(index->objects) - objFirst;
+            leaf.rowSourceEnd = rowSourceEnd;
+            VecAppend(index->leaves, leaf);
+        } else {
+            index->objects.len = objFirst;
+        }
+    }
+
+    void PushTable(const MdNode* table) {
+        for (const MdNode* row = table->first; row; row = row->next) {
+            if (!row->first) {
+                continue;
+            }
+            int rowEnd = -1;
+            for (const MdNode* c = row->first; c; c = c->next) {
+                rowEnd = std::max(rowEnd, MdParagraphSourceEnd(c));
+            }
+            for (const MdNode* c = row->first; c; c = c->next) {
+                if (c != row->first) {
+                    text.AppendChar(' ');
+                }
+                PushLeaf(c, true, rowEnd);
+            }
+            text.AppendChar('\n');
+        }
+    }
+
+    void PushBlock(const MdNode* n) {
+        int start = len(text);
+        switch (n->kind) {
+            case MdKind::Doc:
+            case MdKind::Quote:
+            case MdKind::Html:
+            case MdKind::Group:
+                for (const MdNode* c = n->first; c; c = c->next) {
+                    PushBlock(c);
+                }
+                break;
+            case MdKind::List:
+            case MdKind::Item:
+                for (const MdNode* c = n->first; c; c = c->next) {
+                    PushBlock(c);
+                }
+                return;
+            case MdKind::Paragraph:
+            case MdKind::Heading:
+                PushLeaf(n, true, -1);
+                break;
+            case MdKind::Code:
+                PushLeaf(n, false, -1);
+                break;
+            case MdKind::Table:
+                PushTable(n);
+                break;
+            case MdKind::Custom:
+                text.Append(n->custom.text);
+                break;
+            case MdKind::Row:
+            case MdKind::Cell:
+            case MdKind::Rule:
+                break;
+        }
+        if (len(text) > start) {
+            text.AppendChar('\n');
+        }
+    }
+};
+
+RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source) {
+    RenderedIndex* index = new RenderedIndex();
+    RenderedIndexBuilder builder;
+    builder.index = index;
+    for (const MdNode* c = doc ? doc->first : nullptr; c; c = c->next) {
+        builder.PushBlock(c);
+    }
+    index->text = builder.text.TakeStr();
+    index->source = StrDup(source);
+    return index;
+}
+
+void RenderedIndexFree(RenderedIndex* index) {
+    delete index;
+}
+
+Str RenderedIndexText(const RenderedIndex* index) {
+    return index ? index->text : Str{};
+}
+
+static bool RenderedCharBoundary(Str s, int at) {
+    return at == len(s) || (at < len(s) && ((uint8_t)s.s[at] & 0xc0) != 0x80);
+}
+
+// One resolved piece of a highlight: a leaf and the range of it painted.
+struct RangePiece {
+    TextLeafKey key = {};
+    Span range = {};
+    Rgba color = {0, 0, 0, 0};
+};
+
+// RenderedIndex::resolve: the leaf ranges `range` paints over, which are
+// none when it covers no leaf text, or false when it is not a range of the
+// text.
+static bool RenderedIndexResolve(const RenderedIndex* index, Span range,
+                                 Rgba color, Vec<RangePiece>& pieces) {
+    Str text = RenderedIndexText(index);
+    if (range.start < 0 || range.start > range.end || range.end > len(text) ||
+        !RenderedCharBoundary(text, range.start) ||
+        !RenderedCharBoundary(text, range.end)) {
+        return false;
+    }
+    if (!index) {
+        return true;
+    }
+    int n = len(index->leaves);
+    // partition_point(|leaf| leaf.range.end <= range.start)
+    int lo = 0;
+    int hi = n;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (index->leaves[mid].range.end <= range.start) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    for (int i = lo; i < n; i++) {
+        const RenderedLeafSpan& leaf = index->leaves[i];
+        if (leaf.range.start >= range.end) {
+            break;
+        }
+        int end = std::min(range.end, leaf.range.end) - leaf.range.start;
+        int cursor = std::max(range.start, leaf.range.start) - leaf.range.start;
+        for (int j = 0; j < leaf.objCount; j++) {
+            Span object = index->objects[leaf.objFirst + j];
+            if (object.start >= end) {
+                break;
+            }
+            if (object.end <= cursor) {
+                continue;
+            }
+            if (object.start > cursor) {
+                VecAppend(
+                    pieces,
+                    RangePiece{leaf.key, Span{cursor, object.start}, color});
+            }
+            cursor = object.end;
+        }
+        if (cursor < end) {
+            VecAppend(pieces, RangePiece{leaf.key, Span{cursor, end}, color});
+        }
+    }
+    return true;
+}
+
+// Stable, so each leaf keeps the application's order. A search hands its
+// matches over in document order, which this sorts in one pass.
+static void SortPieces(Vec<RangePiece>& pieces) {
+    for (int i = 1; i < len(pieces); i++) {
+        RangePiece piece = pieces[i];
+        int j = i - 1;
+        while (j >= 0 && piece.key < pieces[j].key) {
+            pieces[j + 1] = pieces[j];
+            j--;
+        }
+        pieces[j + 1] = piece;
+    }
+}
+
+// Groups the pieces into a frame; null when there are none.
+static RangeHighlightFrame* FrameFromPieces(Vec<RangePiece>& pieces) {
+    SortPieces(pieces);
+    if (len(pieces) == 0) {
+        return nullptr;
+    }
+    RangeHighlightFrame* frame = new RangeHighlightFrame();
+    for (const RangePiece& piece : pieces) {
+        int nLeaves = len(frame->leaves);
+        if (nLeaves == 0 || !(frame->leaves[nLeaves - 1].key == piece.key)) {
+            RangeHighlightFrame::Leaf leaf;
+            leaf.key = piece.key;
+            leaf.first = len(frame->backgrounds);
+            VecAppend(frame->leaves, leaf);
+            nLeaves++;
+        }
+        frame->leaves[nLeaves - 1].count++;
+        VecAppend(frame->backgrounds,
+                  RangeBackground{piece.range, piece.color});
+    }
+    return frame;
+}
+
+RangeHighlightError RangeHighlightFrameNew(const RenderedIndex* index,
+                                           const RangeHighlight* highlights,
+                                           int count,
+                                           RangeHighlightFrame** out) {
+    *out = nullptr;
+    Vec<RangePiece> pieces;
+    for (int i = 0; i < count; i++) {
+        if (!RenderedIndexResolve(index, highlights[i].range,
+                                  highlights[i].background, pieces)) {
+            return RangeHighlightError::InvalidRange(i);
+        }
+    }
+    *out = FrameFromPieces(pieces);
+    return RangeHighlightError{};
+}
+
+const RangeBackground* RangeHighlightFrame::Backgrounds(TextLeafKey key,
+                                                        int* count) const {
+    int lo = 0;
+    int hi = len(leaves);
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (leaves[mid].key < key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo < len(leaves) && leaves[lo].key == key) {
+        *count = leaves[lo].count;
+        return backgrounds.els + leaves[lo].first;
+    }
+    *count = 0;
+    return nullptr;
+}
+
+void RangeHighlightFrameFree(RangeHighlightFrame* frame) {
+    delete frame;
+}
+
+static const RenderedLeafSpan* RenderedIndexFind(const RenderedIndex* index,
+                                                 TextLeafKey key) {
+    int lo = 0;
+    int hi = len(index->leaves);
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (index->leaves[mid].key < key) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo < len(index->leaves) && index->leaves[lo].key == key) {
+        return &index->leaves[lo];
+    }
+    return nullptr;
+}
+
+static Str LeafText(const RenderedIndex* index, const RenderedLeafSpan* leaf) {
+    return Str(index->text.s + leaf->range.start, leaf->range.end - leaf->range
+                                                                        .start);
+}
+
+// RangeHighlightFrame::remap. A block that starts before the first change of
+// the source is found at the same offset in `next`, and one after the last
+// change at an offset moved by the change in length; a block that starts
+// between them is gone. A highlight follows its block, as far as the text of
+// its leaf is unchanged, and is dropped with a leaf that is gone.
+//
+// Rust has a second mode, `tail_only`, for a parse that appended to the
+// last one and re-parsed only its last block, keeping the others without
+// comparing them. This runtime parses the whole document every time, so
+// every leaf is compared: the same answer wherever the earlier blocks' text
+// did not change, and the right one where it did (a definition appended
+// after its reference).
+RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
+                                              const RenderedIndex* prev,
+                                              const RenderedIndex* next) {
+    if (!frame || !prev || !next) {
+        return nullptr;
+    }
+    Str oldSource = prev->source;
+    Str newSource = next->source;
+    int oldLen = len(oldSource);
+    int newLen = len(newSource);
+    int shorter = std::min(oldLen, newLen);
+    int prefix = 0;
+    while (prefix < shorter && oldSource.s[prefix] == newSource.s[prefix]) {
+        prefix++;
+    }
+    // One source extending the other, as when text is appended, has no
+    // unchanged suffix.
+    int unchangedPrefix = prefix;
+    int unchangedSuffix = 0;
+    if (prefix != shorter) {
+        // Where the two overlap, as when a deleted block starts like the
+        // block after it, the end wins: the blocks after a change keep
+        // following their text rather than their offset.
+        int suffix = 0;
+        while (suffix < shorter && oldSource.s[oldLen - 1 - suffix] ==
+                                       newSource.s[newLen - 1 - suffix]) {
+            suffix++;
+        }
+        unchangedPrefix = std::min(prefix, shorter - suffix);
+        unchangedSuffix = suffix;
+    }
+
+    Vec<RangePiece> pieces;
+    for (const RangeHighlightFrame::Leaf& leaf : frame->leaves) {
+        TextLeafKey key = leaf.key;
+        int start = key.BlockStart();
+        int moved = -1;
+        if (start < unchangedPrefix) {
+            moved = start;
+        } else if (start >= oldLen - unchangedSuffix) {
+            moved = start + newLen - oldLen;
+        }
+        if (moved < 0) {
+            continue;
+        }
+        const RenderedLeafSpan* oldLeaf = RenderedIndexFind(prev, key);
+        if (!oldLeaf) {
+            continue;
+        }
+        // A table's cells are only known by their place in it, so after a
+        // change inside the table a cell is the same one only when the source
+        // of its whole row ends before that change.
+        if (key.CellIx() >= 0 && start < unchangedPrefix &&
+            (oldLeaf->rowSourceEnd < 0 ||
+             oldLeaf->rowSourceEnd > unchangedPrefix)) {
+            continue;
+        }
+        TextLeafKey newKey = key.MovedTo(moved);
+        const RenderedLeafSpan* newLeaf = RenderedIndexFind(next, newKey);
+        if (!newLeaf) {
+            continue;
+        }
+        int common = StreamCommonPrefix(LeafText(prev, oldLeaf),
+                                        LeafText(next, newLeaf));
+        for (int i = 0; i < leaf.count; i++) {
+            const RangeBackground& bg = frame->backgrounds[leaf.first + i];
+            if (bg.range.start < common) {
+                Span clipped = {bg.range.start, std::min(bg.range.end, common)};
+                VecAppend(pieces, RangePiece{newKey, clipped, bg.color});
+            }
+        }
+    }
+    // Moving keys keeps their order, but stay safe for the binary search.
+    return FrameFromPieces(pieces);
+}
+
+gpui::RenderedText TextViewState::RenderedText() const {
+    gpui::RenderedText out;
+    out.owner = self;
+    out.revision = renderedRevision;
+    out.text = RenderedIndexText(renderedIndex);
+    return out;
+}
+
+RangeHighlightError TextViewState::SetRangeHighlights(
+    const RangeHighlight* highlights, int count, App* app, Window* window) {
+    if (format != TextViewFormat::Markdown) {
+        return RangeHighlightError::Unsupported();
+    }
+    RangeHighlightFrame* frame = nullptr;
+    RangeHighlightError error =
+        RangeHighlightFrameNew(renderedIndex, highlights, count, &frame);
+    if (!error.IsOk()) {
+        return error;
+    }
+    RangeHighlightFrameFree(rangeHighlights);
+    rangeHighlights = frame;
+    if (app && self.IsValid()) NotifyEntity(app, self, window);
+    return error;
+}
+
+void TextViewState::ClearRangeHighlights(App* app, Window* window) {
+    if (!rangeHighlights) {
+        return;
+    }
+    RangeHighlightFrameFree(rangeHighlights);
+    rangeHighlights = nullptr;
+    if (app && self.IsValid()) NotifyEntity(app, self, window);
+}
+
+void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
+                                             uint64_t extensions) {
+    if (renderedIndex && indexedRevision == revision &&
+        indexedExtensions == extensions) {
+        return;
+    }
+    indexedRevision = revision;
+    // A revision that left the text alone (selectable, motion) parses
+    // nothing new.
+    if (renderedIndex && indexedExtensions == extensions &&
+        base::StrEq(renderedIndex->source, text)) {
+        return;
+    }
+    indexedExtensions = extensions;
+    RenderedIndex* next = RenderedIndexNew(doc, text);
+    if (rangeHighlights) {
+        RangeHighlightFrame* moved =
+            RangeHighlightFrameRemap(rangeHighlights, renderedIndex, next);
+        RangeHighlightFrameFree(rangeHighlights);
+        rangeHighlights = moved;
+    }
+    RenderedIndexFree(renderedIndex);
+    renderedIndex = next;
+    renderedRevision++;
+}
+
+El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
+                          bool markOver) {
+    if (!t || !rangeHighlights || !leaf || leaf->leafStart < 0 || hi <= lo) {
+        return t;
+    }
+    int count = 0;
+    const RangeBackground* bgs = rangeHighlights->Backgrounds(
+        TextLeafKey{leaf->leafStart, leaf->leafOrdinal}, &count);
+    int n = 0;
+    for (int i = 0; i < count; i++) {
+        if (bgs[i].range.start < hi && bgs[i].range.end > lo) {
+            n++;
+        }
+    }
+    if (n == 0) {
+        return t;
+    }
+    TextSpan* washes = TextArenaArray<TextSpan>(a, n + (markOver ? 1 : 0));
+    if (!washes) {
+        return t;
+    }
+    int at = 0;
+    for (int i = 0; i < count; i++) {
+        if (bgs[i].range.start < hi && bgs[i].range.end > lo) {
+            washes[at].lo = std::max(bgs[i].range.start, lo) - lo;
+            washes[at].hi = std::min(bgs[i].range.end, hi) - lo;
+            washes[at].bg = bgs[i].color;
+            at++;
+        }
+    }
+    if (markOver) {
+        // A `<mark>` background paints over a highlight; inline code's, the
+        // element's own box, paints under it. The mark's box background
+        // would go down first, so it moves into the washes after the
+        // highlights.
+        washes[at].lo = 0;
+        washes[at].hi = hi - lo;
+        washes[at].bg = t->style.bg.color;
+        t->style.hasBg = false;
+        at++;
+    }
+    return t->Washes(washes, at);
+}
+
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
     bool outer = streamBlockDepth++ == 0;
     for (MdNode* c = n->first; c; c = c->next) {
@@ -3998,6 +4575,13 @@ El* TextView::IntoEl() {
     BaseTextViewStatePush(cx->app, state.id);
     MdNode* doc = MdParseCached(cx, a, source, html,
                                 html ? nullptr : &markdownExtensions);
+    // The parse has landed: carry the range highlights over to it.
+    rangeHighlights = nullptr;
+    if (managed) {
+        managed->ReconcileRangeHighlights(
+            doc, html ? 0 : markdownExtensions.ParserFingerprint());
+        rangeHighlights = managed->rangeHighlights;
+    }
     streamBlockDepth = 0;
     streamRenderedOffset = 0;
     streamFadeFrom = -1;

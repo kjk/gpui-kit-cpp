@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `477a8d90bb318cfbf0bbdc0f29517d437ad003e1` (2026-09-24,
-plot: Glide the tooltip's crosshair and dots in `Tooltip` itself (#3222)).
-Tooltip itself glides its crosshair (along the axis it marks) and dots (on
-both axes) on the pointer spring, adopting the datum on the entering frame,
-and grows a dot's halo with the hover's focus; charts drop their own copies of
-the glide, and PlotHover::glide serves a bar's band. The current update target
+Processed through `aa2c3f77c0dadf1539a874afe560206701bc7010` (2026-09-24,
+text_view: Add range highlights (#3215)). TextViewState gains range
+highlights: RenderedText, RangeHighlight and RangeHighlightError, resolved to
+text leaves and painted as washes behind the glyphs, carried across re-parses;
+the markdown example gains a Find in preview field. The current update target
 is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -87,6 +86,18 @@ is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   character for CJK); an El has opacity only per subtree, so the block holding
   the new text fades as one unit and `stream_fade_stagger` / `StaggerStepMs`
   shape nothing on screen (`src/base/text.cpp`).
+- **TextView range highlights land with the render.** Rust parses in the
+  background and rebuilds `RenderedText` when a parse lands; the parse here
+  is synchronous inside `TextView::IntoEl`, so `RenderedText()` and the
+  validation `SetRangeHighlights` does describe the last rendered text until
+  the view renders again. `RenderedText::text` is borrowed from the view's
+  index (Rust's snapshot holds the parsed document), so read a fresh
+  snapshot's text and only compare old ones. Every parse is a full one, so
+  `remap` always compares every leaf rather than Rust's `tail_only` fast
+  path, and the Rust-only `an_append_after_a_full_update…` case collapses
+  into the append test. The washes go through the selection painter
+  (`PaintTextRange`), so inline.rs's `glyph_boxes`/`range_boxes` geometry
+  tests have no C++ counterpart (`src/base/text.cpp`).
 - **`selected_source_range` reads the window's painted runs.** Rust walks
   each inline state's selection; here the selection is the window's, so the
   view maps the runs it painted, which takes an inline image in whenever the

@@ -67,6 +67,16 @@ struct MarkdownApp {
     // screenshot wants, so this says the handler ran instead.
     char lastLink[512] = {};
     bool seeded = false;
+    // The preview's state, which the find field highlights matches in.
+    Entity<TextViewState> textView = {};
+    InputState find;
+    // The query the matches were last searched for, and the preview text
+    // they were highlighted in; Rust keeps `Option<RenderedText>`, reset
+    // when the query changes.
+    Str findQuery = {};
+    RenderedText searched = {};
+    bool hasSearched = false;
+    int matchCount = 0;
 
     static El* Render(MarkdownApp* self, Ctx* cx);
 };
@@ -800,6 +810,46 @@ static El* TableActions(Ctx* cx, void* data,
     return row;
 }
 
+// Highlight every occurrence of the find query in the preview, unless the
+// preview text it was last highlighted in is still current. Rust runs this
+// when the query changes and whenever the preview's content changes; the
+// preview parses when it renders here, so the frame calls it after that.
+static void HighlightMatches(MarkdownApp* self, Ctx* cx) {
+    TextViewState* state = self->textView.Get(cx);
+    if (!state) {
+        return;
+    }
+    Str query = InputValue(&self->find);
+    RenderedText text = state->RenderedText();
+    if (self->hasSearched && self->searched == text) {
+        return;
+    }
+    Rgba color = RgbaOpacity(ThemeNow(cx->app).warning, 0.3f);
+    Vec<RangeHighlight> highlights;
+    Str hay = text.AsStr();
+    int at = 0;
+    while (len(query) > 0) {
+        // str::match_indices: non-overlapping, left to right.
+        int found = FindFrom(hay, query, at);
+        if (found < 0) {
+            break;
+        }
+        VecAppend(highlights,
+                  RangeHighlight::New(Span{found, found + len(query)}, color));
+        at = found + len(query);
+    }
+    RangeHighlightError error = state->SetRangeHighlights(
+        highlights.els, len(highlights), cx->app, cx->win);
+    if (!error.IsOk()) {
+        logf("Could not highlight the matches: %s", error.Display(cx->a));
+        return;
+    }
+    self->matchCount = len(highlights);
+    self->searched = text;
+    self->hasSearched = true;
+    Notify(cx);
+}
+
 El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -809,7 +859,14 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
     // The editor holds the document; the preview reads it back every frame,
     // which is what makes a keystroke on the left redraw the right.
     Str text = InputValue(&self->source);
-    cx->win->input = &self->source;
+    // The editor holds focus until the find field takes it.
+    if (!cx->win->input) {
+        cx->win->input = &self->source;
+    }
+    if (!self->textView.IsValid()) {
+        self->textView = TextViewState::Markdown(cx->app, text);
+    }
+    self->textView.Get(cx)->SetText(text, cx->app, cx->win);
 
     auto* marks = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * kMaxMarkers);
     int nMarks = FindMarkers(cx, text, marks, kMaxMarkers);
@@ -823,7 +880,7 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
     ed->H(editorH)->Language(StrL("markdown"))->Decorations(marks, nMarks);
     El* left = Div(a)->FlexCol()->SizeFull()->Child(ed->IntoEl());
 
-    component::TextView* tv = component::TextView::New(cx, text);
+    component::TextView* tv = component::TextView::New(cx, self->textView);
     // .plugin(TickerPlugin::new(..)).plugin(UserCardPlugin::new())
     tv->Plugin(StrL("ticker"), &TickerParse, &TickerRender);
     tv->Plugin(StrL("user-card"), &UserCardParse, &UserCardRender);
@@ -862,7 +919,29 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
                     ->Grow(right, 200)
                     ->IntoEl();
 
+    // Search again when the query changed, or when the preview's content did.
+    Str query = InputValue(&self->find);
+    if (!StrEq(query, self->findQuery)) {
+        StrFree(self->findQuery);
+        self->findQuery = StrDup(query);
+        self->hasSearched = false;
+    }
+    HighlightMatches(self, cx);
+
     component::StatusBar* bar = component::StatusBar::New(cx);
+    El* find = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Child(
+        component::Input::New(cx, StrL("find"), &self->find)
+            ->WithSize(UiSize::XSmall)
+            ->W(200)
+            ->FocusRing(false)
+            ->IntoEl());
+    if (len(query) > 0) {
+        Str count = self->matchCount == 1
+                        ? StrL("1 match")
+                        : StrDup(a, fmt("%d matches", self->matchCount));
+        find->Child(TextEl(a, count)->Font(12)->Fg(th.mutedFg));
+    }
+    bar->Left(find);
     if (self->lastLink[0]) {
         bar->Left(Str(self->lastLink));
     }
@@ -913,6 +992,7 @@ int GpuiMain(int argc, char** argv) {
     self->source.kind = InputKind::Editor;
     self->source.mode.kind = LayoutModeKind::CodeEditor;
     InputSetPlaceholder(&self->source, StrL("Enter your Markdown here..."));
+    InputSetPlaceholder(&self->find, StrL("Find in preview"));
     self->source.mode.tabSize = 2;
     self->source.mode.lineNumber = true;
     TempStr md = AssetsLoadTextTemp(StrL("test.md"));

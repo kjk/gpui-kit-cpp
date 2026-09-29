@@ -59,6 +59,10 @@ using CodeBlockHighlighterFn = gpui::CodeBlockHighlighterFn;
 using CodeBlockActionsFn = gpui::CodeBlockActionsFn;
 using TableActionsFn = gpui::TableActionsFn;
 using TableData = gpui::TableData;
+using RangeHighlight = gpui::RangeHighlight;
+using RangeHighlightError = gpui::RangeHighlightError;
+using RangeHighlightErrorKind = gpui::RangeHighlightErrorKind;
+using RenderedText = gpui::RenderedText;
 using HeadingStyleFn = gpui::HeadingStyleFn;
 
 // compat.rs: the component style's legacy heading configuration — a base
