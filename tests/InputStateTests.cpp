@@ -1632,6 +1632,36 @@ static void ScrollToBringsTheCaretIntoView() {
     utassertnear(s.scrollY, 80.f);
 }
 
+// test_edit_reveals_far_offscreen_caret: an edit at a caret far outside the
+// viewport reveals it at once. Rust's cursor-follow in layout_cursors used to
+// step one line per changed selection; upstream 03490654 puts the caret's
+// line at the edge instead. Here an edit reveals through scroll_to directly.
+static void AnEditRevealsAFarOffscreenCaret() {
+    InputState s;
+    s.kind = InputKind::Textarea;
+    s.mode.kind = LayoutModeKind::AutoGrow;
+    s.mode.minRows = 1;
+    s.mode.maxRows = 6;
+    StrBuilder text;
+    for (int i = 1; i <= 100; i++) {
+        text.Append(StrDup(fmt(i < 100 ? "line %d\n" : "line %d", i)));
+    }
+    InputSetValue(&s, text.TakeStr());
+    s.lastLineH = 20;
+    s.viewH = 120;
+    s.viewW = 700;
+    s.contentH = 100 * 20.f;
+    s.contentW = 700;
+    int end = len(InputValue(&s));
+    s.selectedRange = SelectionAt(end);
+    // The reader scrolled back to the top.
+    s.scrollY = 0;
+    InputTypeChar(&s, nullptr, nullptr, 'X');
+    utassert(StrEndsWith(InputValue(&s), StrL("line 100X")));
+    float caretTop = 99 * 20.f - s.scrollY;
+    utassert(caretTop >= 0 && caretTop + 20.f <= s.viewH);
+}
+
 static void AVerticalWalkDoesNotFightItself() {
     InputState s;
     SeedScroll(&s);
@@ -3929,6 +3959,7 @@ void TestInputState() {
     LayoutModeRowsClamp();
     KindDoesNotFollowTheRowCount();
     ScrollToBringsTheCaretIntoView();
+    AnEditRevealsAFarOffscreenCaret();
     AVerticalWalkDoesNotFightItself();
     TheOffsetStaysInsideTheContent();
     EmptyBottomHeightMatchesRust();

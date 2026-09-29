@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fff843a6b36d7479ed5a60538dccb0d00eb70ba4` (2026-09-21,
-text_view: Add `TextViewState::selected_source_range` (#3136)).
-TextViewState::selected_source_range maps a rendered Markdown selection back
-to its source bytes: the markdown port keeps node positions in a side table,
-runs carry source segments, and painted runs carry their map. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `034906542b05108ea8cde06e97ce86ace3ccd38d` (2026-09-21,
+input: Scroll straight to a far-off caret after an edit (#3150)). An edit at a
+caret far outside a multi-line input's viewport scrolls straight to it rather
+than a line at a time. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

@@ -3590,6 +3590,13 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     if (!s->silentReplace) {
         InputScheduleInlineCompletion(s);
     }
+    // element.rs layout_cursors follows the caret on the frame an edit moved
+    // it, straight to the viewport edge (upstream 03490654) rather than a line
+    // at a time, so typing at a caret far off screen brings it back at once.
+    // Only the vertical half: the caret's x is last frame's until it paints.
+    if (InputIsMultiLine(s)) {
+        InputScrollToOffset(s, InputCursor(s), InputMoveDir::None);
+    }
     Emit(s, app, win, InputEvent{InputEventKind::Change});
     Notify(app, win);
     return true;
