@@ -15,10 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0205afea6b164eea1b02a754aa555882ad9f2e12` (2026-09-21,
-gpui-pre: Publish even when gpui-kit fails the compatibility check (#3148)).
-gpui-pre releases now publish even when gpui-kit fails the compatibility
-check; only release tooling changed. The current update target is
+Processed through `3f43c8092d09760ba42b5421012514668b4b10ad` (2026-09-21, kit:
+Update GPUI to gpui-pre 0.3.6 (#3147)). gpui-kit moves to gpui-pre 0.3.6 (Zed
+`bcf6582ce350`), and the inspector builds its DivInspector per window, which
+the window-keyed C++ editor state already does. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
