@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `aa2c3f77c0dadf1539a874afe560206701bc7010` (2026-09-24,
-text_view: Add range highlights (#3215)). TextViewState gains range
-highlights: RenderedText, RangeHighlight and RangeHighlightError, resolved to
-text leaves and painted as washes behind the glyphs, carried across re-parses;
-the markdown example gains a Find in preview field. The current update target
-is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `21622a70efd25219d26aa459164878c4da9e39f8` (2026-09-24,
+menu: Break Rc cycle that leaked PopupMenu entity on window close (#3224)).
+ContextMenu's dismiss subscription holds a Weak to its shared state, so a menu
+left open when its window closes no longer leaks; this tree has no Rc cycle to
+break. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

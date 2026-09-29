@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "aa2c3f77c0dadf1539a874afe560206701bc7010",
+  sha: "21622a70efd25219d26aa459164878c4da9e39f8",
   date: "2026-09-24",
-  subject: "text_view: Add range highlights (#3215)",
+  subject: "menu: Break Rc cycle that leaked PopupMenu entity on window close (#3224)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
