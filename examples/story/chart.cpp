@@ -775,7 +775,43 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
         }
 
         case 32: {
-            // The candlesticks, off stock-prices.json.
+            // Closing Price: the first 26 of the 40 sessions, on a y axis
+            // pinned to their own range and an x axis laid out for all 40,
+            // so the room for the sessions still to come stays empty.
+            const int kSessions = 26;
+            float low = kStockClose[0];
+            float high = kStockClose[0];
+            for (int i = 1; i < kSessions; i++) {
+                low = std::min(low, kStockClose[i]);
+                high = std::max(high, kStockClose[i]);
+            }
+            float last = kStockClose[kSessions - 1];
+            return ChartCard(
+                cx, "Closing Price", "Jun - Jul, in progress",
+                component::AreaChart::New(cx, kStockClose, kSessions)
+                    ->Labels(kStockDate)
+                    ->Stroke(th.chart2)
+                    ->Fill(RgbaOpacity(th.chart2, 0.45f),
+                           RgbaOpacity(th.chart2, 0.f))
+                    ->Linear()
+                    ->YDomain(low, high)
+                    ->PointCount(kStockPriceCount)
+                    ->TickMargin(5)
+                    ->Tooltip(StrL("Close"))
+                    ->Id(StrL("area-chart-in-progress"))
+                    ->IntoEl()
+                    ->W(kFill)
+                    ->H(kFill),
+                false,
+                StoryFmt(cx, "$%.2f at the last close, within $%.2f - $%.2f",
+                         (double)last, (double)low, (double)high)
+                    .s,
+                "A pinned y axis, and room for the sessions still to come");
+        }
+
+        case 33: {
+            // The candlesticks, off stock-prices.json. Forty sessions do not
+            // fit forty labels, so every card thins them.
             return ChartCard(cx, "Candlestick Chart",
                              component::CandlestickChart::New(
                                  cx, kStockOpen, kStockHigh, kStockLow,
@@ -783,16 +819,16 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  ->Tooltip(StrL("Price"))
                                  ->Colors(th.chartBullish, th.chartBearish)
                                  ->Labels(kStockDate)
-                                 ->TickMargin(1)
+                                 ->TickMargin(5)
                                  ->IntoEl()
                                  ->W(kFill)
                                  ->H(kFill),
                              false);
         }
 
-        case 33:
         case 34:
-        case 35: {
+        case 35:
+        case 36: {
             // body_width_ratio: half a band, then the whole of it.
             struct CandleCard {
                 const char* title;
@@ -800,11 +836,11 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 int tickMargin;
             };
             static const CandleCard kCandles[] = {
-                {"Candlestick Chart - Narrow", 0.5f, 1},
-                {"Candlestick Chart - Wide", 1.0f, 1},
-                {"Candlestick Chart - Tick Margin", 0.8f, 2},
+                {"Candlestick Chart - Narrow", 0.5f, 5},
+                {"Candlestick Chart - Wide", 1.0f, 5},
+                {"Candlestick Chart - Tick Margin", 0.8f, 10},
             };
-            const CandleCard& cc = kCandles[index - 33];
+            const CandleCard& cc = kCandles[index - 34];
             {
                 return ChartCard(cx, cc.title,
                                  component::CandlestickChart::New(
@@ -822,8 +858,8 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             }
         }
 
-        case 36:
-        case 37: {
+        case 37:
+        case 38: {
             // The two TSLA income statements, each a sankey of its own. A sqrt
             // value scale keeps the revenue flow from dwarfing the small profit
             // and expense ones, and the nodes carry the fixture's own colours.
@@ -831,7 +867,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                                                kTsla1Nodes};
             const TslaLink* kTslaLinks[kTslaStatementCount] = {kTsla0Links,
                                                                kTsla1Links};
-            int st = index - 36;
+            int st = index - 37;
             {
                 component::SankeyChart* sk =
                     component::SankeyChart::New(cx)
@@ -901,8 +937,8 @@ El* ChartStory::Render(ChartStory* self, Ctx* cx) {
         int count;
     };
     // Eight fixed fixture sections; separators are rows in the same list.
-    const int sectionCounts[] = {1, 4, 4, 15, 4, 4, 4, kTslaStatementCount};
-    constexpr int kMaxRows = 36 + kTslaStatementCount + 6;
+    const int sectionCounts[] = {1, 4, 4, 15, 4, 5, 4, kTslaStatementCount};
+    constexpr int kMaxRows = 37 + kTslaStatementCount + 6;
     Row rows[kMaxRows];
     float sizes[kMaxRows];
     int count = 0;

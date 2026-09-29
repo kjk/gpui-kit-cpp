@@ -73,14 +73,39 @@ static const char* const kRadarMonth[] = {"January", "February", "March",
 static const float kRadarDesktop[] = {186.f, 305.f, 237.f, 73.f, 209.f, 214.f};
 static const float kRadarMobile[] = {80.f, 200.f, 120.f, 190.f, 130.f, 140.f};
 
-// stock-prices.json.
-static const int kStockPriceCount = 6;
-static const char* const kStockDate[] = {"Jan", "Feb", "Mar",
-                                         "Apr", "May", "Jun"};
-static const float kStockOpen[] = {100.f, 110.f, 111.f, 116.f, 110.f, 115.f};
-static const float kStockHigh[] = {112.f, 112.f, 118.f, 120.f, 118.f, 125.f};
-static const float kStockLow[] = {95.f, 108.f, 110.f, 108.f, 105.f, 113.f};
-static const float kStockClose[] = {110.f, 111.f, 116.f, 110.f, 115.f, 123.f};
+// stock-prices.json: forty daily sessions.
+static const int kStockPriceCount = 40;
+static const char* const kStockDate[] = {
+    "Jun 2",  "Jun 3",  "Jun 4",  "Jun 5",  "Jun 6",  "Jun 9",  "Jun 10",
+    "Jun 11", "Jun 12", "Jun 13", "Jun 16", "Jun 17", "Jun 18", "Jun 19",
+    "Jun 20", "Jun 23", "Jun 24", "Jun 25", "Jun 26", "Jun 27", "Jun 30",
+    "Jul 1",  "Jul 2",  "Jul 3",  "Jul 4",  "Jul 7",  "Jul 8",  "Jul 9",
+    "Jul 10", "Jul 11", "Jul 14", "Jul 15", "Jul 16", "Jul 17", "Jul 18",
+    "Jul 21", "Jul 22", "Jul 23", "Jul 24", "Jul 25"};
+static const float kStockOpen[] = {
+    181.36f, 183.76f, 186.39f, 188.69f, 189.83f, 189.61f, 188.97f, 194.18f,
+    192.55f, 194.4f,  200.35f, 199.39f, 198.83f, 197.81f, 199.56f, 201.09f,
+    205.54f, 206.92f, 201.07f, 201.74f, 195.41f, 197.11f, 203.44f, 201.11f,
+    201.03f, 203.37f, 199.21f, 198.63f, 199.84f, 202.63f, 201.14f, 201.48f,
+    199.71f, 196.61f, 196.27f, 192.91f, 187.28f, 187.53f, 188.19f, 187.45f};
+static const float kStockHigh[] = {
+    185.18f, 185.99f, 189.65f, 189.57f, 190.63f, 189.87f, 194.8f,  195.17f,
+    194.29f, 200.89f, 201.39f, 200.36f, 201.62f, 201.33f, 200.91f, 205.92f,
+    206.72f, 206.92f, 203.05f, 204.13f, 196.93f, 203.65f, 204.39f, 202.83f,
+    204.6f,  203.38f, 199.69f, 200.45f, 203.27f, 202.87f, 201.64f, 201.71f,
+    199.88f, 196.62f, 196.35f, 193.95f, 188.43f, 188.26f, 189.71f, 188.32f};
+static const float kStockLow[] = {
+    180.87f, 183.34f, 185.92f, 187.95f, 188.5f,  188.84f, 188.68f, 190.75f,
+    192.19f, 192.71f, 199.23f, 199.22f, 194.04f, 197.5f,  199.08f, 199.92f,
+    204.1f,  200.47f, 200.06f, 193.24f, 193.93f, 195.35f, 201.68f, 200.65f,
+    199.47f, 198.83f, 197.11f, 197.58f, 198.61f, 201.25f, 200.91f, 198.61f,
+    196.35f, 194.69f, 192.88f, 186.38f, 185.3f,  185.01f, 186.16f, 185.14f};
+static const float kStockClose[] = {
+    184.1f,  185.62f, 189.59f, 189.08f, 190.42f, 188.91f, 194.49f, 192.47f,
+    193.27f, 199.59f, 200.53f, 199.4f,  196.66f, 200.23f, 200.12f, 205.16f,
+    206.22f, 201.85f, 201.99f, 194.88f, 196.39f, 202.28f, 202.29f, 200.96f,
+    204.07f, 199.83f, 197.66f, 199.64f, 202.55f, 201.28f, 201.54f, 200.12f,
+    196.47f, 195.63f, 193.04f, 187.25f, 186.55f, 187.19f, 188.27f, 185.97f};
 
 // monthly-metrics.json: one SaaS year, 2025.
 static const int kMetricCount = 12;

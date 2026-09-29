@@ -630,6 +630,33 @@ struct Tooltip {
 
 } // namespace plot
 
+// chart/mod.rs axis_point_count: how many points the x axis of a point chart
+// (LineChart, AreaChart) is laid out for — `pointCount`, or the data's own
+// length when that is unset (0) or smaller.
+int ChartAxisPointCount(int pointCount, int dataLen);
+
+// chart/mod.rs point_range: the x range a point scale spreads `dataLen`
+// points over, when the axis is laid out for `pointCount` of them. The data
+// takes the leading points, so each keeps its place as the data grows.
+void ChartPointRange(float width, int dataLen, int pointCount, float out[2]);
+
+// chart/mod.rs point_value_scale: the y scale of a point chart, from `height`
+// up to 10 DIPs below the top. A pinned domain (y_domain) maps its ends onto
+// that range; otherwise the scale fits every series from zero. Rust takes the
+// values as an iterator; here they are the ChartSeries the chart built.
+ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height);
+
+// build_point_x_labels' alignment: a label on the first point is
+// left-aligned, one on the axis's last point right-aligned, and the rest —
+// including the last datum of data laid out for more points — centered.
+plot::PlotTextAlign ChartPointLabelAlign(int index, int pointCount);
+
+// bar_chart.rs value_tick_positions: `count` (at least 2) evenly spaced tick
+// positions from `far` through `baseline`, both included. Writes at most
+// `cap` and returns how many there are.
+int ChartValueTickPositions(float farEdge, float baseline, int count,
+                            float* out, int cap);
+
 } // namespace component
 } // namespace gpui
 #endif // GPUI_UI_PLOT_H_

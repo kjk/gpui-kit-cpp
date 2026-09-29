@@ -4786,11 +4786,11 @@ static void ChartDomain(const ChartSeries& c, float* outMin, float* outMax) {
         *outMax = hi > 0 ? hi : 1;
         return;
     }
-    // A bar, an area and a radar are read against a baseline, so their domain
-    // starts at zero unless the data goes below it. A line or a candle is
-    // read against itself, so it keeps the extent of its own values with a
-    // little air either side.
-    if (c.kind == ChartKind::Line || c.kind == ChartKind::Candlestick) {
+    // A bar and a radar are read against a baseline, so their domain starts
+    // at zero unless the data goes below it. A candle is read against itself,
+    // so it keeps the extent of its own values with a little air either side.
+    // A line and an area take ChartPointValueScale instead.
+    if (c.kind == ChartKind::Candlestick) {
         float pad = (hi - lo) * 0.1f;
         *outMin = lo - pad;
         *outMax = hi + pad;
@@ -5227,31 +5227,34 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     // An overlay series draws over the grid and axis the first one drew.
     if (!c.overlay) {
         const float kGridDash[2] = {4.f, 2.f};
+        // `value_tick_count` ticks, both ends included, so one interval
+        // fewer than that.
+        int intervals = (c.valueTickCount > 2 ? c.valueTickCount : 2) - 1;
         if (barRow) {
-            for (int i = 1; i <= 4; i++) {
-                float gx = x + w * ((float)i / 4.f);
+            for (int i = 1; i <= intervals; i++) {
+                float gx = x + w * ((float)i / (float)intervals);
                 CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border,
                            kGridDash);
             }
         } else {
-            // `value_tick_count` even intervals over the whole range, which
-            // is what the value-axis labels are placed on as well.
-            int ticks = c.valueTickCount > 0 ? c.valueTickCount : 4;
-            for (int i = 0; i < ticks; i++) {
-                float gy = y + plotH * ((float)i / (float)ticks);
+            // Evenly over the whole range, which is what the value-axis labels
+            // are placed on as well; the baseline gets the solid axis line.
+            for (int i = 0; i < intervals; i++) {
+                float gy = y + plotH * ((float)i / (float)intervals);
                 CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, kGridDash);
             }
             DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         }
         if (valueAxis) {
-            // One label per grid interval, and one at the top, reading the
-            // value the line stands for.
+            // One label per tick, reading the value the line stands for.
             float lo = 0;
             float hi = 0;
             ChartDomain(c, &lo, &hi);
-            int ticks = c.valueTickCount > 0 ? c.valueTickCount : 4;
-            for (int i = 0; i <= ticks; i++) {
-                float f = (float)i / (float)ticks;
+            float fractions[64];
+            int ticks = component::ChartValueTickPositions(
+                0.f, 1.f, intervals + 1, fractions, 64);
+            for (int i = 0; i < ticks; i++) {
+                float f = fractions[i];
                 float v = hi - (hi - lo) * f;
                 Str label = ChartValueLabel(v);
                 float tw = MeasureText(ctx, label, 10, 0, false, 0, 0).w;
@@ -5277,13 +5280,32 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     float hi = 0;
     ChartDomain(c, &lo, &hi);
 
+    // A line and an area are point charts: the x axis is laid out for
+    // point_count points with the data on the leading ones, and the y axis is
+    // point_value_scale — from zero, or pinned by y_domain.
+    bool pointChart = c.kind == ChartKind::Area || c.kind == ChartKind::Line;
+    int pointCount = component::ChartAxisPointCount(c.pointCount, n);
+    float pointRange[2] = {0.f, w};
+    component::ChartPointRange(w, n, pointCount, pointRange);
+    component::ScaleLinear pointY = component::ChartPointValueScale(c, plotH);
+    // A pinned domain with no extent draws nothing, as Rust's scale answers
+    // None for every value.
+    float probe = 0;
+    if (pointChart && !pointY.Tick(0.f, &probe)) {
+        return;
+    }
     auto Xat = [&](int i) -> float {
         if (n <= 1) {
-            return x + w * 0.5f;
+            return x + pointRange[1] * 0.5f;
         }
-        return x + (w * (float)i / (float)(n - 1));
+        return x + (pointRange[1] * (float)i / (float)(n - 1));
     };
     auto Yat = [&](float v) -> float {
+        if (pointChart) {
+            float at = 0;
+            pointY.Tick(v, &at);
+            return y + at;
+        }
         float t = hi > lo ? (v - lo) / (hi - lo) : 0.f;
         if (t < 0) {
             t = 0;
@@ -5381,10 +5403,22 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 }
             }
         };
+        // pinned_plot_mask: once the y axis is pinned, a value outside the
+        // domain stops at the plot area instead of running over the x-axis
+        // labels. It bleeds by half a hover dot, keeping strokes and dots on
+        // the plot's edges whole.
+        if (c.pinnedDomain) {
+            float bleed = component::kChartHoverDotSize / 2.f;
+            CanvasPushClip(ctx, x - bleed, y - bleed, w + bleed * 2.f,
+                           plotH + bleed * 2.f);
+        }
         Band(ys, c.stroke, c.fillTop, c.fillBot);
         for (int k = 0; k < c.nMore; k++) {
             const ChartSeriesExtra& more = c.more[k];
             Band(more.ys, more.stroke, more.fillTop, more.fillBot);
+        }
+        if (c.pinnedDomain) {
+            CanvasPopClip(ctx);
         }
     }
 
@@ -5409,8 +5443,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                     lineX = x + bx + band.BandWidth() * 0.5f;
                 }
             } else {
-                float t =
-                    n > 1 ? (ctx->mouseX - x) / (w / (float)(n - 1)) : 0.f;
+                float step = pointRange[1] / (float)(n - 1);
+                float t = n > 1 && step > 0 ? (ctx->mouseX - x) / step : 0.f;
                 index = (int)lroundf(t);
                 if (index < 0) {
                     index = 0;
@@ -5628,9 +5662,12 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // width the name actually takes.
             Size ls = MeasureText(ctx, label, 10, 0, false, 0, 0);
             float tick = Xat(i);
-            lx = i == 0         ? tick
-                 : (i == n - 1) ? tick - ls.w
-                                : tick - ls.w * 0.5f;
+            component::plot::PlotTextAlign align =
+                component::ChartPointLabelAlign(i, pointCount);
+            lx = align == component::plot::PlotTextAlign::Left ? tick
+                 : align == component::plot::PlotTextAlign::Right
+                     ? tick - ls.w
+                     : tick - ls.w * 0.5f;
             lw = ls.w;
         }
         DrawTextAt(ctx, label, lx, ly, lw, 16, 10, th.mutedForeground,

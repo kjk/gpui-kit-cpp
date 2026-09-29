@@ -126,6 +126,10 @@ struct AreaChart {
     ChartStroke strokeStyle = ChartStroke::Natural;
     // The series after the first, in the order `Y()` named them.
     ArenaVec<ChartSeriesExtra> more;
+    bool hasYDomain = false;
+    float yDomainMin = 0;
+    float yDomainMax = 0;
+    int pointCount = 0;
 
     static AreaChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -155,6 +159,17 @@ struct AreaChart {
     // StrokeStyle: Natural is the default Catmull-Rom curve.
     AreaChart* Linear();
     AreaChart* StepAfter();
+    // y_domain(min, max): pin the y axis to min..max instead of fitting every
+    // series from zero, where zero is not a meaningful baseline (a price line).
+    // The range keeps the 10 DIPs above max the default leaves, and the series
+    // are clipped to the plot, so a value outside the range stops at its
+    // edge. Nothing is drawn when min equals max.
+    AreaChart* YDomain(float min, float max);
+    // point_count(count): lay the x axis out for `count` evenly spaced
+    // points instead of the data's own length. The data takes the leading
+    // points in order and the rest stay empty, as an intraday chart does
+    // before the close. A count below the data's length has no effect.
+    AreaChart* PointCount(int count);
     El* IntoEl();
 };
 
@@ -175,8 +190,10 @@ struct LineChart {
     const char* const* labels = nullptr;
     int tickMargin = 15;
     Rgba stroke = {};
-    float domainMin = 0;
-    float domainMax = 0;
+    bool hasYDomain = false;
+    float yDomainMin = 0;
+    float yDomainMax = 0;
+    int pointCount = 0;
     ChartStroke strokeStyle = ChartStroke::Natural;
     bool dot = false;
 
@@ -198,7 +215,17 @@ struct LineChart {
     LineChart* Stroke(Rgba c);
     LineChart* Labels(const char* const* l);
     LineChart* TickMargin(int n);
-    LineChart* Domain(float lo, float hi);
+    // y_domain(min, max): pin the y axis to min..max instead of fitting the
+    // line from zero, where zero is not a meaningful baseline (a price line).
+    // The range keeps the 10 DIPs above max the default leaves, and the series
+    // are clipped to the plot, so a value outside the range stops at its
+    // edge. Nothing is drawn when min equals max.
+    LineChart* YDomain(float min, float max);
+    // point_count(count): lay the x axis out for `count` evenly spaced
+    // points instead of the data's own length. The data takes the leading
+    // points in order and the rest stay empty, as an intraday chart does
+    // before the close. A count below the data's length has no effect.
+    LineChart* PointCount(int count);
     LineChart* Linear();
     LineChart* StepAfter();
     LineChart* Dot(bool v = true);
@@ -233,9 +260,9 @@ struct BarChart {
     bool overlay = false;
     bool labelValues = false;
     // value_axis / value_tick_count: the labels down the value axis, and how
-    // many intervals they are placed on.
+    // many ticks they are placed on.
     bool valueAxis = false;
-    int valueTickCount = 4;
+    int valueTickCount = 5;
     // fill(|d, ..|): one colour per bar. The array is the caller's and has to
     // outlive the frame.
     const Rgba* fills = nullptr;
@@ -267,7 +294,11 @@ struct BarChart {
     // along the band axis (left of vertical bars, below horizontal ones) for
     // them. Default false.
     BarChart* ValueAxis(bool on = true);
-    // How many even intervals the value axis is divided into. Default 4.
+    // How many ticks the value axis carries, evenly spaced from the baseline
+    // to the far edge with both ends included, which drives both the grid
+    // lines and the value-axis tick labels. Unlike TickMargin, a stride over
+    // the band categories, this counts the ticks themselves. Values below 2
+    // are raised to 2. Default 5.
     BarChart* ValueTickCount(int count);
     BarChart* Padding(float v);
     BarChart* Radius(float v);

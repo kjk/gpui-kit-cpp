@@ -317,6 +317,79 @@ static void AChartTurnedOffHasNoIdToKeyAnythingOn() {
     ArenaDelete(a);
 }
 
+// area_chart.rs: test_point_count_fills_the_leading_part. A 100-wide plot
+// laid out for five points puts three of data on the first three of them;
+// a count below the data's length changes nothing.
+static void PointCountFillsTheLeadingPart() {
+    const float xs[3] = {0, 1, 2};
+    float range[2] = {};
+    ChartPointRange(100.f, 3, ChartAxisPointCount(5, 3), range);
+    ScalePoint x = ScalePoint::New(xs, 3, range, 2);
+    float at = -1;
+    utassert(x.Tick(0, &at) && at == 0.f);
+    utassert(x.Tick(2, &at) && at == 50.f);
+
+    ChartPointRange(100.f, 3, ChartAxisPointCount(2, 3), range);
+    x = ScalePoint::New(xs, 3, range, 2);
+    utassert(x.Tick(2, &at) && at == 100.f);
+}
+
+// area_chart.rs: test_y_domain_replaces_the_fit_from_zero, on a 50-high plot
+// with no x axis.
+static void YDomainReplacesTheFitFromZero() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    float ys[2] = {10, 20};
+    El* pinned = AreaChart::New(&cx, ys, 2)->YDomain(10, 20)->IntoEl();
+    ScaleLinear y = ChartPointValueScale(*pinned->Chart(), 50.f);
+    float at = -1;
+    utassert(y.Tick(10, &at) && at == 50.f);
+    utassert(y.Tick(20, &at) && at == 10.f);
+
+    El* fitted = AreaChart::New(&cx, ys, 2)->IntoEl();
+    y = ChartPointValueScale(*fitted->Chart(), 50.f);
+    utassert(y.Tick(0, &at) && at == 50.f);
+    utassert(y.Tick(20, &at) && at == 10.f);
+
+    // LineChart pins the same way.
+    El* line = LineChart::New(&cx, ys, 2)->YDomain(10, 20)->IntoEl();
+    y = ChartPointValueScale(*line->Chart(), 50.f);
+    utassert(y.Tick(10, &at) && at == 50.f);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
+// chart/mod.rs: only_the_last_point_right_aligns_its_label. The last item of
+// data laid out for more points sits mid-axis and stays centered.
+static void OnlyTheLastPointRightAlignsItsLabel() {
+    using plot::PlotTextAlign;
+    utassert(ChartPointLabelAlign(0, 3) == PlotTextAlign::Left);
+    utassert(ChartPointLabelAlign(1, 3) == PlotTextAlign::Center);
+    utassert(ChartPointLabelAlign(2, 3) == PlotTextAlign::Right);
+    utassert(ChartPointLabelAlign(0, 5) == PlotTextAlign::Left);
+    utassert(ChartPointLabelAlign(1, 5) == PlotTextAlign::Center);
+    utassert(ChartPointLabelAlign(2, 5) == PlotTextAlign::Center);
+    utassert(ChartPointLabelAlign(0, 1) == PlotTextAlign::Center);
+}
+
+// bar_chart.rs: test_value_tick_positions. Both ends are included, so five
+// ticks mean four intervals.
+static void ValueTickPositionsCountTicks() {
+    float out[8] = {};
+    utassert(ChartValueTickPositions(10.f, 110.f, 5, out, 8) == 5);
+    utassert(out[0] == 10.f && out[1] == 35.f && out[2] == 60.f &&
+             out[3] == 85.f && out[4] == 110.f);
+    // Top-aligned charts have the baseline before the far edge.
+    utassert(ChartValueTickPositions(110.f, 10.f, 3, out, 8) == 3);
+    utassert(out[0] == 110.f && out[1] == 60.f && out[2] == 10.f);
+    utassert(ChartValueTickPositions(0.f, 50.f, 2, out, 8) == 2);
+    utassert(out[0] == 0.f && out[1] == 50.f);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -328,4 +401,8 @@ void TestChart() {
     PieSliceRadiusFallsBackToTheRing();
     AChartsIdDefaultsToItsConstructionSite();
     AChartTurnedOffHasNoIdToKeyAnythingOn();
+    PointCountFillsTheLeadingPart();
+    YDomainReplacesTheFitFromZero();
+    OnlyTheLastPointRightAlignsItsLabel();
+    ValueTickPositionsCountTicks();
 }

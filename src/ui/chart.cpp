@@ -106,12 +106,26 @@ AreaChart* AreaChart::StepAfter() {
     strokeStyle = ChartStroke::StepAfter;
     return this;
 }
+AreaChart* AreaChart::YDomain(float min, float max) {
+    hasYDomain = true;
+    yDomainMin = min;
+    yDomainMax = max;
+    return this;
+}
+AreaChart* AreaChart::PointCount(int count) {
+    pointCount = count;
+    return this;
+}
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
     chart->labels = labels;
     chart->strokeStyle = strokeStyle;
     chart->overlay = overlay;
+    chart->pinnedDomain = hasYDomain;
+    chart->domainMin = yDomainMin;
+    chart->domainMax = yDomainMax;
+    chart->pointCount = pointCount;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
@@ -148,9 +162,14 @@ LineChart* LineChart::TickMargin(int t) {
     tickMargin = t;
     return this;
 }
-LineChart* LineChart::Domain(float lo, float hi) {
-    domainMin = lo;
-    domainMax = hi;
+LineChart* LineChart::YDomain(float min, float max) {
+    hasYDomain = true;
+    yDomainMin = min;
+    yDomainMax = max;
+    return this;
+}
+LineChart* LineChart::PointCount(int count) {
+    pointCount = count;
     return this;
 }
 LineChart* LineChart::Tooltip(Str name) {
@@ -181,8 +200,10 @@ El* LineChart::IntoEl() {
     chart->labels = labels;
     chart->strokeStyle = strokeStyle;
     chart->dot = dot;
-    chart->domainMin = domainMin;
-    chart->domainMax = domainMax;
+    chart->pinnedDomain = hasYDomain;
+    chart->domainMin = yDomainMin;
+    chart->domainMax = yDomainMax;
+    chart->pointCount = pointCount;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
     chart->tooltip = interactive;
@@ -306,7 +327,7 @@ BarChart* BarChart::ValueAxis(bool on) {
 }
 
 BarChart* BarChart::ValueTickCount(int count) {
-    valueTickCount = count > 1 ? count : 1;
+    valueTickCount = count > 2 ? count : 2;
     return this;
 }
 

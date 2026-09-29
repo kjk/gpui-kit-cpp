@@ -1304,6 +1304,14 @@ struct ChartSeries {
     // system monitor's charts say 0..100 instead.
     float domainMin = 0;
     float domainMax = 0;
+    // AreaChart / LineChart::y_domain: the y axis is pinned to exactly
+    // domainMin..domainMax rather than fitted from zero, and the series are
+    // clipped to the plot so a value outside it stops at its edge.
+    bool pinnedDomain = false;
+    // AreaChart / LineChart::point_count: the x axis is laid out for this
+    // many points and the data fills the leading ones. 0 is the data's own
+    // length; a count below it has no effect.
+    int pointCount = 0;
     // Candlestick: the other three values per point, and the two colors a
     // candle takes depending on which way it closed.
     const float* opens = nullptr;
@@ -1323,10 +1331,11 @@ struct ChartSeries {
     // BarChart::value_axis: tick labels down the value axis, which reserve
     // kValueAxisGap along the band axis for themselves.
     bool valueAxis = false;
-    // BarChart::value_tick_count: how many even intervals the value axis is
-    // divided into, which drives the grid spacing and the labels alike. A
-    // count, unlike tickMargin, which is a stride over the band categories.
-    int valueTickCount = 4;
+    // BarChart::value_tick_count: how many ticks the value axis carries,
+    // both ends included (so one more than its intervals), which drives the
+    // grid spacing and the labels alike. A count, unlike tickMargin, which is
+    // a stride over the band categories. At least 2.
+    int valueTickCount = 5;
     // BarChart::fill(|d, ..|): a colour per bar rather than one for the lot.
     const Rgba* barFills = nullptr;
     // BarChart::fill_gradient: the two stops a bar is filled between. Run

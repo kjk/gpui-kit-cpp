@@ -1843,5 +1843,65 @@ El* Tooltip::IntoEl() {
 
 } // namespace plot
 
+int ChartAxisPointCount(int pointCount, int dataLen) {
+    int count = pointCount > 0 ? pointCount : dataLen;
+    return count > dataLen ? count : dataLen;
+}
+
+void ChartPointRange(float width, int dataLen, int pointCount, float out[2]) {
+    float end = width;
+    if (pointCount > 1) {
+        int before = dataLen > 1 ? dataLen - 1 : 0;
+        end = width * (float)before / (float)(pointCount - 1);
+    }
+    out[0] = 0;
+    out[1] = end;
+}
+
+ScaleLinear ChartPointValueScale(const ChartSeries& chart, float height) {
+    const float range[2] = {height, 10.f};
+    if (chart.pinnedDomain) {
+        const float domain[2] = {chart.domainMin, chart.domainMax};
+        return ScaleLinear::New(domain, 2, range, 2);
+    }
+    // Every series from zero: the extent of the values with a zero chained
+    // on, which is all a ScaleLinear keeps of its domain.
+    float lo = 0;
+    float hi = 0;
+    for (int k = -1; k < chart.nMore; k++) {
+        const float* ys = k < 0 ? chart.ys : chart.more[k].ys;
+        for (int i = 0; ys && i < chart.n; i++) {
+            lo = ys[i] < lo ? ys[i] : lo;
+            hi = ys[i] > hi ? ys[i] : hi;
+        }
+    }
+    const float domain[2] = {lo, hi};
+    return ScaleLinear::New(domain, 2, range, 2);
+}
+
+plot::PlotTextAlign ChartPointLabelAlign(int index, int pointCount) {
+    if (index == 0) {
+        return pointCount == 1 ? plot::PlotTextAlign::Center
+                               : plot::PlotTextAlign::Left;
+    }
+    if (index == pointCount - 1) {
+        return plot::PlotTextAlign::Right;
+    }
+    return plot::PlotTextAlign::Center;
+}
+
+int ChartValueTickPositions(float farEdge, float baseline, int count,
+                            float* out, int cap) {
+    if (count < 2) {
+        count = 2;
+    }
+    float steps = (float)(count - 1);
+    int written = 0;
+    for (int i = 0; i < count && written < cap; i++) {
+        out[written++] = farEdge + (baseline - farEdge) * (float)i / steps;
+    }
+    return written;
+}
+
 } // namespace component
 } // namespace gpui
