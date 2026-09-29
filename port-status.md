@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `13c716b687b47f96a677aaf46c8fa341fa7208da` (2026-09-22,
-resizable: Grow an indicator as the pointer engages a divider (#3175)). Resize
-handles report hovered, pressed and dragging, hug an edge when told to, and
-the styled layer draws an indicator pill that grows with the engagement. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `3a4a230164d1b8ec2b9b85a92fe01b32a8d329f9` (2026-09-22,
+markdown: Keep prose inside unclaimed math spans and pair inline HTML tags
+(#3178)). Unclaimed inline math whose source holds markup is re-parsed as
+prose and spliced among its siblings, and raw inline formatting tags pair with
+their closing tag among the siblings. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

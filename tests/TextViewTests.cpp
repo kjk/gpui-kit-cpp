@@ -1493,6 +1493,133 @@ static void TestMarkdownInlinePlugin() {
     AppGlobalClear(&app);
 }
 
+// The paragraph's text, and the stretches of it that carry `mark`: runs
+// next to each other that both carry it are one stretch, which is what one
+// mdast node's mark range is in markdown.rs's tests.
+static Str ParagraphText(MdNode* doc, uint8_t mark, Str* runs, int cap,
+                         int* count) {
+    MdRun* run = FirstRunOfKind(doc, MdKind::Paragraph);
+    StrBuilder text;
+    StrBuilder stretch;
+    bool open = false;
+    *count = 0;
+    for (; run; run = run->next) {
+        text.Append(run->text);
+        bool marked = (run->marks & mark) != 0;
+        if (marked) {
+            stretch.Append(run->text);
+            open = true;
+        } else if (open) {
+            if (*count < cap) runs[(*count)++] = stretch.TakeStr();
+            open = false;
+        }
+    }
+    if (open && *count < cap) runs[(*count)++] = stretch.TakeStr();
+    return text.TakeStr();
+}
+
+static void FreeRuns(Str* runs, int count) {
+    for (int i = 0; i < count; i++) StrFree(runs[i]);
+}
+
+// markdown.rs: unclaimed_inline_math_parses_its_span_as_prose. Two dollar
+// amounts pair up into an unclaimed math span; what lies between them is
+// ordinary prose, so inline HTML there still pairs with tags outside the span
+// and emphasis inside it renders.
+static void UnclaimedInlineMathParsesItsSpanAsProse() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, StrL("EPS of <strong>$1.56</strong> beat the "
+                                  "<strong>$1.50</strong> consensus, *up $2*"));
+    Str bold[4];
+    int nBold = 0;
+    Str text = ParagraphText(doc, MdBold, bold, 4, &nBold);
+    utassert(StrEq(text, StrL("EPS of $1.56 beat the $1.50 consensus, up $2")));
+    utassert(nBold == 2 && StrEq(bold[0], StrL("$1.56")) &&
+             StrEq(bold[1], StrL("$1.50")));
+    Str italic[4];
+    int nItalic = 0;
+    Str again = ParagraphText(doc, MdItalic, italic, 4, &nItalic);
+    utassert(nItalic == 1 && StrEq(italic[0], StrL("up $2")));
+    FreeRuns(bold, nBold);
+    FreeRuns(italic, nItalic);
+    StrFree(text);
+    StrFree(again);
+    ArenaDelete(a);
+}
+
+static bool ParseBracketedMath(const markdown::Node* source,
+                               const MarkdownParseContext* context, void*,
+                               MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::InlineMath) return false;
+    Str value = context->Value(source, markdown::NodeStrKind::Value);
+    StrBuilder text(context->arena);
+    text.AppendChar('[');
+    text.Append(value);
+    text.AppendChar(']');
+    *out = MarkdownNode::New(context->Copy(StrL("formula")))
+               .Text(text.TakeStr());
+    return true;
+}
+
+// markdown.rs: claimed_inline_math_survives_prose_flattening.
+static void ClaimedInlineMathSurvivesProseFlattening() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    MarkdownPlugin plugin;
+    plugin.name = StrL("formula");
+    plugin.parse = &ParseBracketedMath;
+    // An inline plugin registers with a renderer; the parse is what counts.
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(a, plugin);
+    MdNode* doc = MdParseCachedForTest(
+        &cx, a, StrL("area $x^2$ costs $5 and $10"), &extensions);
+    Str none[1];
+    int n = 0;
+    Str text = ParagraphText(doc, 0, none, 1, &n);
+    utassert(StrEq(text, StrL("area [x^2] costs [5 and ]10")));
+    StrFree(text);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// markdown.rs: inline_html_formatting_tags_pair_across_siblings. A tag with
+// no partner is dropped, as it is when Rust parses it alone.
+static void InlineHtmlFormattingTagsPairAcrossSiblings() {
+    Arena* a = ArenaNew();
+    MdNode* doc =
+        MdParse(a, StrL("a <strong>b *c* <em>d</em></strong> e <b>f</b> "
+                        "<i>g</i> <del>h</del> <br> <strong>unclosed"));
+    Str bold[4];
+    int nBold = 0;
+    Str text = ParagraphText(doc, MdBold, bold, 4, &nBold);
+    utassert(StrEq(text, StrL("a b c d e f g h \n unclosed")));
+    utassert(nBold == 2 && StrEq(bold[0], StrL("b c d")) &&
+             StrEq(bold[1], StrL("f")));
+    Str italic[4];
+    int nItalic = 0;
+    Str t2 = ParagraphText(doc, MdItalic, italic, 4, &nItalic);
+    utassert(nItalic == 3 && StrEq(italic[0], StrL("c")) &&
+             StrEq(italic[1], StrL("d")) && StrEq(italic[2], StrL("g")));
+    Str struck[2];
+    int nStruck = 0;
+    Str t3 = ParagraphText(doc, MdDel, struck, 2, &nStruck);
+    utassert(nStruck == 1 && StrEq(struck[0], StrL("h")));
+    FreeRuns(bold, nBold);
+    FreeRuns(italic, nItalic);
+    FreeRuns(struck, nStruck);
+    StrFree(text);
+    StrFree(t2);
+    StrFree(t3);
+    ArenaDelete(a);
+}
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -2031,6 +2158,9 @@ void TestTextView() {
     TestMarkdownExtensionsParserConfiguration(a);
     TestMarkdownFrontmatter();
     TestMarkdownInlinePlugin();
+    UnclaimedInlineMathParsesItsSpanAsProse();
+    ClaimedInlineMathSurvivesProseFlattening();
+    InlineHtmlFormattingTagsPairAcrossSiblings();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     TestStreamFadeStaggerStep();

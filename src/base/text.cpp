@@ -955,6 +955,10 @@ struct MdBuild {
     // Where each mdast node sits in `source`, which is what the source
     // segments below are measured against.
     const md::NodePositions* positions = nullptr;
+    // Added to every position `positions` reports: nonzero while the walk is
+    // inside an unclaimed math span re-parsed as prose, whose own parse
+    // measured from the start of the span (markdown.rs shift_positions).
+    int32_t posShift = 0;
     MdNode* cur = nullptr;
     // The marks in effect, from the enclosing inline nodes.
     uint8_t marks = 0;
@@ -975,8 +979,8 @@ static bool MdNodeSpan(MdBuild* b, const md::Node* n, Span* out) {
     if (!md::NodePosition(b->positions, n, &start, &end)) {
         return false;
     }
-    out->start = start;
-    out->end = end;
+    out->start = start + b->posShift;
+    out->end = end + b->posShift;
     return true;
 }
 
@@ -1460,6 +1464,58 @@ Str MdDecodeEntity(Arena* a, Str e) {
     return value.s ? value : e;
 }
 
+// markdown.rs inline_html_tag: whether a raw inline tag closes, and its
+// lower-cased name. False for anything that is not one plain tag, a
+// self-closing one included.
+static bool MdInlineHtmlTag(Str v, bool* closing, char* name, int cap) {
+    int s = 0;
+    int e = len(v);
+    auto space = [](char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+    };
+    while (s < e && space(v.s[s])) {
+        s++;
+    }
+    while (e > s && space(v.s[e - 1])) {
+        e--;
+    }
+    if (e - s < 2 || v.s[s] != '<' || v.s[e - 1] != '>') {
+        return false;
+    }
+    s++;
+    e--;
+    if (e > s && v.s[e - 1] == '/') {
+        return false;
+    }
+    *closing = s < e && v.s[s] == '/';
+    if (*closing) {
+        s++;
+    }
+    int n = 0;
+    while (s < e && n < cap - 1) {
+        char c = v.s[s];
+        bool alnum = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                     (c >= '0' && c <= '9');
+        if (!alnum) {
+            break;
+        }
+        name[n++] = (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
+        s++;
+    }
+    name[n] = 0;
+    return n > 0;
+}
+
+// markdown.rs inline_html_mark: the formatting tags this renderer pairs.
+static uint8_t MdInlineHtmlMark(const char* name) {
+    if (!strcmp(name, "strong") || !strcmp(name, "b")) return MdBold;
+    if (!strcmp(name, "em") || !strcmp(name, "i")) return MdItalic;
+    if (!strcmp(name, "u")) return MdUnderline;
+    if (!strcmp(name, "s") || !strcmp(name, "del") || !strcmp(name, "strike"))
+        return MdDel;
+    return 0;
+}
+
 // One inline tag inside a paragraph. The markdown parser hands `<b>` over as
 // an mdast Html node and leaves the meaning to us; Rust reaches the same tags
 // through html5ever, since markdown.rs sends the node to format::html. A raw
@@ -1468,6 +1524,15 @@ static void MdInlineHtml(MdBuild* b, Str tag) {
     if (b->cur->kind == MdKind::Html) {
         // Inside a raw HTML block every byte is source, tags included.
         AddText(b, tag);
+        return;
+    }
+    // A formatting tag with its partner among the siblings was paired by
+    // MdInlineItems and never reaches here. One without a partner is parsed
+    // alone in Rust, which yields an empty element that is dropped.
+    bool closing = false;
+    char name[16];
+    if (MdInlineHtmlTag(tag, &closing, name, (int)sizeof name) &&
+        MdInlineHtmlMark(name)) {
         return;
     }
     HtmlInlineTag t = HtmlParseInlineTag(b->a, tag);
@@ -1500,11 +1565,173 @@ static void MdInlineHtml(MdBuild* b, Str tag) {
 // ─── the mdast walk ───────────────────────────────────────────────────────
 
 static void MdInlineNode(MdBuild* b, const md::Node* n);
+static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out);
+
+// One inline sibling, and the position table its span is read from: the
+// document's, or that of an unclaimed math span re-parsed as prose.
+struct MdInlineItem {
+    const md::Node* node = nullptr;
+    const md::NodePositions* positions = nullptr;
+    int32_t shift = 0;
+};
+
+static bool MdItemTag(MdBuild* b, const MdInlineItem& item, bool* closing,
+                      char* name, int cap) {
+    return item.node->kind == md::NodeKind::Html &&
+           MdInlineHtmlTag(V(b, item.node, md::NodeStrKind::Value), closing,
+                           name, cap);
+}
+
+// markdown.rs matching_close_tag: the sibling that closes the tag opened at
+// `open`, counting nested tags of the same name. -1 when none does.
+static int MdMatchingCloseTag(MdBuild* b, const MdInlineItem* items, int count,
+                              int open, const char* name) {
+    int depth = 0;
+    for (int i = open + 1; i < count; i++) {
+        bool closing = false;
+        char tag[16];
+        if (!MdItemTag(b, items[i], &closing, tag, (int)sizeof tag) ||
+            strcmp(tag, name) != 0) {
+            continue;
+        }
+        if (!closing) {
+            depth++;
+        } else if (depth == 0) {
+            return i;
+        } else {
+            depth--;
+        }
+    }
+    return -1;
+}
+
+// markdown.rs inline_groups / parse_inline_children. CommonMark hands each
+// raw inline tag over as its own Html node, so `<strong>x</strong>` arrives
+// as three siblings; a formatting tag with its closing tag among them marks
+// what lies between, the way `**x**` does.
+static void MdInlineItems(MdBuild* b, const MdInlineItem* items, int count) {
+    const md::NodePositions* savedPositions = b->positions;
+    int32_t savedShift = b->posShift;
+    for (int i = 0; i < count; i++) {
+        b->positions = items[i].positions;
+        b->posShift = items[i].shift;
+        bool closing = false;
+        char name[16];
+        if (b->cur->kind != MdKind::Html &&
+            MdItemTag(b, items[i], &closing, name, (int)sizeof name) &&
+            !closing) {
+            uint8_t mark = MdInlineHtmlMark(name);
+            int close =
+                mark ? MdMatchingCloseTag(b, items, count, i, name) : -1;
+            if (close >= 0) {
+                uint8_t saved = b->marks;
+                b->marks = (uint8_t)(b->marks | mark);
+                MdInlineItems(b, items + i + 1, close - i - 1);
+                b->marks = saved;
+                i = close;
+                continue;
+            }
+        }
+        MdInlineNode(b, items[i].node);
+    }
+    b->positions = savedPositions;
+    b->posShift = savedShift;
+}
+
+// markdown.rs may_hold_inline_markup: a cheap gate before re-parsing. Every
+// inline construct starts with one of these bytes or is a GFM autolink
+// literal.
+static bool MdMayHoldInlineMarkup(Str literal) {
+    for (int i = 0; i < len(literal); i++) {
+        switch (literal.s[i]) {
+            case '<':
+            case '*':
+            case '_':
+            case '[':
+            case '`':
+            case '~':
+            case '\\':
+            case '!':
+            case '&':
+                return true;
+            default:
+                break;
+        }
+    }
+    return FindBytes(literal, "://", 3) >= 0 ||
+           FindBytes(literal, "www.", 4) >= 0;
+}
+
+// markdown.rs flatten_unclaimed_math / reparse_as_prose. Math parsing is on
+// by default, so prose that merely holds two dollar signs parses as inline
+// math. An unclaimed span whose source holds markup is re-parsed without the
+// math constructs, and its inline children take its place among the
+// siblings, measured from where the span starts. Plain prose keeps the
+// literal node. Answers the re-parse's position table, which the caller
+// frees, or null.
+static md::NodePositions* MdReparseAsProse(MdBuild* b, const md::Node* n,
+                                           Vec<MdInlineItem>& out) {
+    Span span;
+    Str literal;
+    if (!MdNodeSpan(b, n, &span) || !MdSourceSlice(b, span, &literal) ||
+        !MdMayHoldInlineMarkup(literal)) {
+        return nullptr;
+    }
+    md::ParseOptions options = md::ParseOptions::Gfm();
+    options.constructs.mathText = false;
+    options.constructs.mathFlow = false;
+    md::NodePositions* positions = new md::NodePositions();
+    md::Node* root = md::ToMdast(b->a, literal, options, positions);
+    const md::Node* paragraph = nullptr;
+    int blocks = 0;
+    for (const md::Node* child : md::NodeKids(b->a, root)) {
+        paragraph = child;
+        blocks++;
+    }
+    bool allText = true;
+    if (blocks == 1 && paragraph->kind == md::NodeKind::Paragraph) {
+        for (const md::Node* child : md::NodeKids(b->a, paragraph)) {
+            allText = allText && child->kind == md::NodeKind::Text;
+        }
+    }
+    if (blocks != 1 || paragraph->kind != md::NodeKind::Paragraph || allText) {
+        delete positions;
+        return nullptr;
+    }
+    for (const md::Node* child : md::NodeKids(b->a, paragraph)) {
+        MdInlineItem item;
+        item.node = child;
+        item.positions = positions;
+        item.shift = span.start;
+        VecAppend(out, item);
+    }
+    return positions;
+}
 
 static void MdInlineChildren(MdBuild* b, const md::Node* n) {
+    Vec<MdInlineItem> items;
+    Vec<md::NodePositions*> reparsed;
     for (const md::Node* child : md::NodeKids(b->a, n)) {
-        MdInlineNode(b, child);
+        MarkdownNode claimed;
+        if (child->kind == md::NodeKind::InlineMath &&
+            !MdClaimedInline(b, child, &claimed)) {
+            if (md::NodePositions* p = MdReparseAsProse(b, child, items)) {
+                VecAppend(reparsed, p);
+                continue;
+            }
+        }
+        MdInlineItem item;
+        item.node = child;
+        item.positions = b->positions;
+        item.shift = b->posShift;
+        VecAppend(items, item);
     }
+    MdInlineItems(b, items.els, items.len);
+    for (int i = 0; i < reparsed.len; i++) {
+        delete reparsed[i];
+    }
+    VecReset(reparsed);
+    VecReset(items);
 }
 
 // The children of `n` with `mark` added to whatever is already in force,
@@ -1528,20 +1755,29 @@ static Str MdDefUrl(MdBuild* b, Str identifier) {
     return {};
 }
 
-static void MdInlineNode(MdBuild* b, const md::Node* n) {
-    if (b->extensions) {
-        MarkdownParseContext context;
-        context.arena = b->a;
-        context.source = b->source;
-        context.positions = b->positions;
-        for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
-            const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
-            MarkdownNode custom;
-            if (parser.fn && parser.fn(n, &context, parser.data, &custom)) {
-                AddCustomInline(b, custom, n);
-                return;
-            }
+// Whether an inline plugin claims `n`, and what it made of it.
+static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
+    if (!b->extensions) {
+        return false;
+    }
+    MarkdownParseContext context;
+    context.arena = b->a;
+    context.source = b->source;
+    context.positions = b->positions;
+    for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
+        const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
+        if (parser.fn && parser.fn(n, &context, parser.data, out)) {
+            return true;
         }
+    }
+    return false;
+}
+
+static void MdInlineNode(MdBuild* b, const md::Node* n) {
+    MarkdownNode custom;
+    if (MdClaimedInline(b, n, &custom)) {
+        AddCustomInline(b, custom, n);
+        return;
     }
     switch (n->kind) {
         case md::NodeKind::Text: {
