@@ -1785,9 +1785,12 @@ El* Tooltip::IntoEl() {
     for (const Dot& dot : dots) {
         root->Child(dot.IntoEl(cx));
     }
-    El* content = Div(a)->FlexCol();
+    // v_flex().gap_y_1(): the row rhythm the structured content lays out
+    // with, so a tooltip built from freeform children keeps it too. And one
+    // size for every tooltip, structured or freeform, boxed or bare: the
+    // compact text_xs tier.
+    El* content = Div(a)->FlexCol()->Gap(4)->Font(12);
     if (hasTitle || rows.len > 0) {
-        content->Font(14)->Gap(4);
         if (hasTitle) {
             content->Child(TextEl(a, title)->Semibold());
         }

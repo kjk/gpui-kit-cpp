@@ -114,7 +114,7 @@ El* AreaChart::IntoEl() {
     chart->overlay = overlay;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = true;
+    chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
     // The builder is on the frame arena, so the element can point at its
@@ -185,7 +185,7 @@ El* LineChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = true;
+    chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
     return e;
@@ -294,7 +294,7 @@ El* BarChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = true;
+    chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
     return e;
@@ -373,7 +373,7 @@ El* CandlestickChart::IntoEl() {
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = true;
+    chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
     return e;
@@ -547,7 +547,7 @@ El* RadarChart::IntoEl() {
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = true;
+    chart->tooltip = interactive;
     chart->id = id;
     chart->name = tooltipName;
     if (labels) {
@@ -581,6 +581,18 @@ PieChart* PieChart::Label(Str text) {
     if (slices.len > 0) {
         slices[slices.len - 1].label = text;
         hasLabels = true;
+    }
+    return this;
+}
+PieChart* PieChart::TooltipName(Str name) {
+    if (slices.len > 0) {
+        slices[slices.len - 1].tooltipName = name;
+    }
+    return this;
+}
+PieChart* PieChart::TooltipValue(Str value) {
+    if (slices.len > 0) {
+        slices[slices.len - 1].tooltipValue = value;
     }
     return this;
 }
@@ -630,6 +642,46 @@ static Ctx ChartIdCtx(const Ctx* cx, uint32_t id) {
     Ctx out = *cx;
     out.path = id;
     return out;
+}
+
+// plot/tooltip.rs: an optional title over one row — a swatch, the name in
+// the muted colour, the value — in a popover box at the compact text size
+// every tooltip uses. Drawn rather than built, because the pie and the
+// sankey paint their hover straight onto the plot.
+static void PaintChartTooltip(PaintCtx* ctx, El* e, const Theme& th,
+                              Point cursor, float focus, Str title, Rgba swatch,
+                              Str name, Str value) {
+    const float kFont = 12.f;
+    const float kPad = 8.f;
+    const float kSwatch = 8.f;
+    Size titleSz = title.s ? MeasureText(ctx, title, kFont, 240) : Size{};
+    Size nameSz = name.s ? MeasureText(ctx, name, kFont, 240) : Size{};
+    Size valueSz = MeasureText(ctx, value, kFont, 240);
+    float rowH = valueSz.h > nameSz.h ? valueSz.h : nameSz.h;
+    float rowW = kSwatch + 6.f + nameSz.w + 12.f + valueSz.w;
+    float innerW = rowW > titleSz.w ? rowW : titleSz.w;
+    float boxW = innerW + kPad * 2;
+    float boxH = rowH + kPad * 2 + (title.s ? titleSz.h + 4.f : 0.f);
+    Point at = PlotTooltipPlace(cursor, {e->w, e->h}, {boxW, boxH}, 8.f);
+    float x = e->x + at.x;
+    float y = e->y + at.y;
+    FillRound(ctx, x, y, boxW, boxH, 6.f, RgbaOpacity(th.background, focus));
+    DrawRoundStroke(ctx, x, y, boxW, boxH, 6.f, 1.f,
+                    RgbaOpacity(th.border, focus));
+    float rowY = y + kPad;
+    if (title.s) {
+        DrawTextAt(ctx, title, x + kPad, rowY, innerW, titleSz.h, kFont,
+                   RgbaOpacity(th.foreground, focus), false, false, -1.f, 600);
+        rowY += titleSz.h + 4.f;
+    }
+    FillRound(ctx, x + kPad, rowY + (rowH - kSwatch) * 0.5f, kSwatch, kSwatch,
+              th.radius * .5f, RgbaOpacity(swatch, focus));
+    if (name.s) {
+        DrawTextAt(ctx, name, x + kPad + kSwatch + 6.f, rowY, nameSz.w, rowH,
+                   kFont, RgbaOpacity(th.mutedFg, focus), false);
+    }
+    DrawTextAt(ctx, value, x + boxW - kPad - valueSz.w, rowY, valueSz.w, rowH,
+               kFont, RgbaOpacity(th.foreground, focus), false);
 }
 
 static float PieSliceLift(PieChart* p, int index, int hoverIndex, float focus) {
@@ -778,7 +830,8 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
-    if (p->cx) {
+    // interactive(false): no hitbox, so nothing is hovered or lifted.
+    if (p->cx && p->interactive) {
         plot::Arc hit = plot::Arc::New();
         hit.InnerRadius(p->innerRadius)->OuterRadius(ring);
         Bounds bounds = {e->x, e->y, e->w, e->h};
@@ -852,28 +905,17 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     }
     PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus);
     if (hoverIndex >= 0 && focus > 0.f && p->cx) {
+        // One number per slice fits one row, so there is no title: `label`
+        // is the ring's leader-line text, as often a percentage as a name.
         const PieSlice& s = p->slices[hoverIndex];
         float share = s.value / total * 100.f;
-        Str title = s.label.s ? s.label : fmt("%d", hoverIndex);
-        Str value = p->tooltipName.s
-                        ? fmt("%s  %.1f (%.1f%%)", p->tooltipName,
-                              (double)s.value, (double)share)
-                        : fmt("%.1f (%.1f%%)", (double)s.value, (double)share);
-        Size titleSz = MeasureText(ctx, title, 11, 200);
-        Size valueSz = MeasureText(ctx, value, 11, 200);
-        float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
-        float boxH = titleSz.h + valueSz.h + 12.f;
-        Point at =
-            PlotTooltipPlace(lingerCursor, {e->w, e->h}, {boxW, boxH}, 8.f);
+        Str name = s.tooltipName.s ? s.tooltipName : p->tooltipName;
+        Str value = s.tooltipValue.s
+                        ? s.tooltipValue
+                        : fmt("%g (%.1f%%)", (double)s.value, (double)share);
         const Theme& th = ThemeNow(p->cx->app);
-        FillRound(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f,
-                  RgbaOpacity(th.background, focus));
-        DrawRoundStroke(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f, 1.f,
-                        RgbaOpacity(th.border, focus));
-        DrawTextAt(ctx, title, e->x + at.x + 8, e->y + at.y + 4, boxW,
-                   titleSz.h, 11, RgbaOpacity(th.foreground, focus), false);
-        DrawTextAt(ctx, value, e->x + at.x + 8, e->y + at.y + 6 + titleSz.h,
-                   boxW, valueSz.h, 11, RgbaOpacity(th.mutedFg, focus), false);
+        PaintChartTooltip(ctx, e, th, lingerCursor, focus, Str{}, s.color, name,
+                          value);
     }
 }
 
@@ -1121,7 +1163,8 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     int hoverIndex = -1;
     float focus = 0.f;
     Point lingerCursor = {};
-    if (c->cx) {
+    // interactive(false): no hitbox, so no node is hovered.
+    if (c->cx && c->interactive) {
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
         for (int i = 0; i < g.nodes.len; i++) {
             const SankeyNodeLayout& node = g.nodes[i];
@@ -1210,23 +1253,15 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
             return;
         }
         const SankeyChartNode& node = c->nodes[hoverIndex];
-        Str title = node.label;
-        Str value = values[hoverIndex].s ? values[hoverIndex]
-                                         : fmt("%.0f", raw[hoverIndex]);
-        Size titleSz = MeasureText(ctx, title, 11, 200);
-        Size valueSz = MeasureText(ctx, value, 11, 200);
-        float boxW = (titleSz.w > valueSz.w ? titleSz.w : valueSz.w) + 16.f;
-        float boxH = titleSz.h + valueSz.h + 12.f;
-        Point at =
-            PlotTooltipPlace(lingerCursor, {e->w, e->h}, {boxW, boxH}, 8.f);
-        FillRound(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f,
-                  RgbaOpacity(th.background, focus));
-        DrawRoundStroke(ctx, e->x + at.x, e->y + at.y, boxW, boxH, 6.f, 1.f,
-                        RgbaOpacity(th.border, focus));
-        DrawTextAt(ctx, title, e->x + at.x + 8, e->y + at.y + 4, boxW,
-                   titleSz.h, 11, RgbaOpacity(th.foreground, focus), false);
-        DrawTextAt(ctx, value, e->x + at.x + 8, e->y + at.y + 6 + titleSz.h,
-                   boxW, valueSz.h, 11, RgbaOpacity(th.mutedFg, focus), false);
+        // node_label titles the tooltip; the row takes tooltip_name (none
+        // when unset) and tooltip_value, else the value label, else the raw
+        // throughput.
+        Str title = node.hasCustomLabels ? Str{} : node.label;
+        Str value = node.tooltipValue.s    ? node.tooltipValue
+                    : values[hoverIndex].s ? values[hoverIndex]
+                                           : fmt("%g", raw[hoverIndex]);
+        PaintChartTooltip(ctx, e, th, lingerCursor, focus, title,
+                          colors[hoverIndex], node.tooltipName, value);
     };
     if (!hasLabels) {
         paintTooltip();
@@ -1397,6 +1432,18 @@ SankeyChart* SankeyChart::Tooltip(Str name) {
     tooltipName = name;
     return this;
 }
+SankeyChart* SankeyChart::TooltipName(Str name) {
+    if (nodes.len > 0) {
+        nodes[nodes.len - 1].tooltipName = name;
+    }
+    return this;
+}
+SankeyChart* SankeyChart::TooltipValue(Str value) {
+    if (nodes.len > 0) {
+        nodes[nodes.len - 1].tooltipValue = value;
+    }
+    return this;
+}
 SankeyChart* SankeyChart::Id(Str name) {
     id = IdFoldName(cx ? cx->path : 0, name);
     return this;
@@ -1406,6 +1453,41 @@ El* SankeyChart::IntoEl() {
     e->customPaint = PaintSankey;
     e->customUser = this;
     return e;
+}
+
+PieChart* PieChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+AreaChart* AreaChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+LineChart* LineChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+BarChart* BarChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+CandlestickChart* CandlestickChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+RadarChart* RadarChart::Interactive(bool v) {
+    interactive = v;
+    return this;
+}
+
+SankeyChart* SankeyChart::Interactive(bool v) {
+    interactive = v;
+    return this;
 }
 
 } // namespace component

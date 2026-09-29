@@ -277,6 +277,46 @@ static void AChartsIdDefaultsToItsConstructionSite() {
     ArenaDelete(a);
 }
 
+// chart/mod.rs: a_chart_turned_off_has_no_id_to_key_anything_on. pie_chart.rs:
+// test_tooltip_name_does_not_turn_on_leader_lines. sankey_chart.rs:
+// test_tooltip_text_is_settable_without_drawing_labels.
+static void AChartTurnedOffHasNoIdToKeyAnythingOn() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    utassert(PieAtOneSite(&cx)->Interactive(false)->PlotId() == 0);
+    utassert(PieAtOneSite(&cx)->Id(StrL("pie"))->Interactive(false)->PlotId() ==
+             0);
+    utassert(PieAtOneSite(&cx)->PlotId() != 0);
+    // Standing down takes the hitbox, and with it the crosshair and tooltip.
+    float ys[3] = {1, 2, 3};
+    El* line = LineChart::New(&cx, ys, 3)->Interactive(false)->IntoEl();
+    utassert(!line->Chart()->tooltip);
+
+    // The row's name is the slice's own, and reaching it does not put labels
+    // on the ring: `Label` is what draws the leader lines.
+    PieChart* titled = PieAtOneSite(&cx)->TooltipName(StrL("Tech"));
+    utassert(StrEq(titled->slices[0].tooltipName, StrL("Tech")));
+    utassert(!titled->hasLabels && !titled->slices[0].label.s);
+    PieChart* labelled = PieAtOneSite(&cx)->Label(StrL("Tech"));
+    utassert(!labelled->slices[0].tooltipName.s && labelled->hasLabels);
+
+    // A sankey drawing its text through CustomLabel sets neither the value
+    // label nor anything the tooltip would otherwise read.
+    SankeyChart* sankey = SankeyChart::New(&cx)
+                              ->Node(StrL("Revenue"))
+                              ->TooltipName(StrL("Revenue"))
+                              ->TooltipValue(StrL("12M"));
+    utassert(StrEq(sankey->nodes[0].tooltipName, StrL("Revenue")));
+    utassert(StrEq(sankey->nodes[0].tooltipValue, StrL("12M")));
+    utassert(!sankey->nodes[0].value.s && !sankey->showValues);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestChart() {
     TestSuite("chart labels");
     RadarLabelsRetainTextAndElements();
@@ -287,4 +327,5 @@ void TestChart() {
     UnchangedSankeyLabelsKeepTheScene();
     PieSliceRadiusFallsBackToTheRing();
     AChartsIdDefaultsToItsConstructionSite();
+    AChartTurnedOffHasNoIdToKeyAnythingOn();
 }

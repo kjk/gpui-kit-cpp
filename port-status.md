@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3a4a230164d1b8ec2b9b85a92fe01b32a8d329f9` (2026-09-22,
-markdown: Keep prose inside unclaimed math spans and pair inline HTML tags
-(#3178)). Unclaimed inline math whose source holds markup is re-parsed as
-prose and spliced among its siblings, and raw inline formatting tags pair with
-their closing tag among the siblings. The current update target is
+Processed through `89e628fa0b407e6b6f40a901377fa7295cb46189` (2026-09-22,
+chart: Let a chart stand down, and let its tooltip say what it means (#3176)).
+Every chart can stand its interactive layer down, pies and sankeys name and
+value the hovered datum's tooltip row, and every plot tooltip reads at the
+compact text size. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

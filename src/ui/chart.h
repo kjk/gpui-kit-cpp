@@ -37,6 +37,10 @@ struct PieSlice {
     // outer_radius_fn lets a slice pull in from the rim.
     float outerInset = 0;
     Str label = {};
+    // tooltip_name / tooltip_value: the hover row's name and value for this
+    // slice. Unset, the row takes the chart's name and `value (share%)`.
+    Str tooltipName = {};
+    Str tooltipValue = {};
 };
 
 struct PieChart {
@@ -60,6 +64,9 @@ struct PieChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
 
     static PieChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                          int line = __builtin_LINE());
@@ -72,10 +79,23 @@ struct PieChart {
     PieChart* LabelColor(Rgba c);
     // name(..): what the tooltip calls the hovered slice's series.
     PieChart* Tooltip(Str name);
+    // tooltip_name(..): the slice just added names itself in the hover row,
+    // without `Label` drawing leader lines around the ring.
+    PieChart* TooltipName(Str name);
+    // tooltip_value(..): the row's value text for the slice just added —
+    // for a value that is already a ratio, or one drawn from an adjusted
+    // number that should not be reported as the datum.
+    PieChart* TooltipValue(Str value);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     PieChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    PieChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     // The outer radius the ring is laid out with: the set one, or 40% of
     // `height`.
     float ResolveOuterRadius(float height) const;
@@ -88,6 +108,9 @@ struct AreaChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -116,6 +139,12 @@ struct AreaChart {
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     AreaChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    AreaChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     AreaChart* Stroke(Rgba c);
     AreaChart* Fill(Rgba c);
     // fill(linear_gradient(0., stop(bottom, 0.), stop(top, 1.))).
@@ -137,6 +166,9 @@ struct LineChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -157,6 +189,12 @@ struct LineChart {
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     LineChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    LineChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     LineChart* Stroke(Rgba c);
     LineChart* Labels(const char* const* l);
     LineChart* TickMargin(int n);
@@ -174,6 +212,9 @@ struct BarChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
     Ctx* cx = nullptr;
     const float* ys = nullptr;
     int n = 0;
@@ -213,6 +254,12 @@ struct BarChart {
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     BarChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    BarChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     BarChart* Fill(Rgba c);
     BarChart* Labels(const char* const* l);
     BarChart* TickMargin(int n);
@@ -260,6 +307,9 @@ struct CandlestickChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
 
     static CandlestickChart* New(Ctx* cx, const float* opens,
                                  const float* highs, const float* lows,
@@ -271,6 +321,12 @@ struct CandlestickChart {
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     CandlestickChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    CandlestickChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     CandlestickChart* Colors(Rgba up, Rgba down);
     CandlestickChart* Labels(const char* const* l);
     CandlestickChart* TickMargin(int n);
@@ -321,6 +377,9 @@ struct RadarChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
 
     static RadarChart* New(Ctx* cx, const float* values, int n,
                            const char* file = __builtin_FILE(),
@@ -330,6 +389,12 @@ struct RadarChart {
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     RadarChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    RadarChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
     RadarChart* Labels(const char* const* l);
@@ -388,6 +453,10 @@ struct SankeyChartNode {
     // value/note/name triple above.
     ArenaVec<SankeyLabel> labels;
     bool hasCustomLabels = false;
+    // tooltip_name / tooltip_value: the hover row's name (none when unset)
+    // and value (the drawn value label, else the raw throughput).
+    Str tooltipName = {};
+    Str tooltipValue = {};
 };
 
 struct SankeyChart {
@@ -413,14 +482,28 @@ struct SankeyChart {
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
+    // interactive(..): the hitbox under the cursor and what it drives -- the
+    // hover emphasis and the tooltip. On by default.
+    bool interactive = true;
 
     static SankeyChart* New(Ctx* cx, const char* file = __builtin_FILE(),
                             int line = __builtin_LINE());
     SankeyChart* Tooltip(Str name);
+    // tooltip_name(..) / tooltip_value(..) for the node just added: what
+    // the hover row says, for a chart drawing its text through CustomLabel,
+    // which never reaches the tooltip.
+    SankeyChart* TooltipName(Str name);
+    SankeyChart* TooltipValue(Str value);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
     SankeyChart* Id(Str name);
+    // interactive(false): stand the chart down. Without its hitbox it
+    // neither answers the mouse nor takes the hover from an element drawn
+    // over it -- a loading skeleton, an empty-state ring.
+    SankeyChart* Interactive(bool v);
+    // Plot::id: the id the hover keys on, or 0 for a chart that is off.
+    uint32_t PlotId() const { return interactive ? id : 0; }
     // A node, by the order they are added — a link names them by index.
     SankeyChart* Node(Str label);
     SankeyChart* NodeColored(Str label, Rgba color);

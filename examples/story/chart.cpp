@@ -331,6 +331,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 pie->Slice(kRegionRevenue[i],
                            Shade(color, ColorIndex(kRegionName[i])));
                 pie->Label(Str(kRegionName[i]));
+                pie->TooltipName(Str(kRegionName[i]));
             }
             return ChartCard(
                 cx, "Revenue by Region", "Q2 2025", pie->IntoEl(), true,
@@ -846,6 +847,10 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     Str value =
                         StoryFmt(cx, "$%.2fB", node.value / 1000000000.0);
                     if (st == 0) {
+                        // `labels` draws the node text but never reaches
+                        // the tooltip, so the tooltip needs its own name and
+                        // value.
+                        sk->TooltipName(Str(node.name))->TooltipValue(value);
                         sk->CustomLabel(component::SankeyLabel::New(value));
                         if (node.growth != kTslaNoGrowth) {
                             bool up = node.growth >= 0;
