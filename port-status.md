@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `33124a25e1b67cb0e2f26f9349c36eca8ce5f316` (2026-09-23,
-docs: Pace radius hierarchy animation in distinct phases (#3212)).
-Website-only: the design guides' radius hierarchy animation now runs in
-distinct phases. The current update target is
+Processed through `5fb43f1cf3a8194591f56ee0643c42eab25514b0` (2026-09-23,
+story: Show slider scales through Story composition (#3213)). The slider story
+gains two compositions: Duration, a month slider over a labeled tick scale
+that writes each snapped value back, and Color temperature, a warm-to-cool
+gradient scale above a slider. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "33124a25e1b67cb0e2f26f9349c36eca8ce5f316",
+  sha: "5fb43f1cf3a8194591f56ee0643c42eab25514b0",
   date: "2026-09-23",
-  subject: "docs: Pace radius hierarchy animation in distinct phases (#3212)",
+  subject: "story: Show slider scales through Story composition (#3213)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

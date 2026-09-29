@@ -27,6 +27,13 @@ struct SliderStory {
     SliderState volume = SliderStateNew(-255, 255, SliderSingle(75), 15);
     SliderState price = SliderStateNew(0, 100, SliderRange(12, 45), 1);
     SliderState storage = SliderStateNew(0, 10, SliderSingle(5), 1);
+    // Duration: whole months 0..12 over a tick scale the page draws itself.
+    SliderState duration = SliderStateNew(0, 12, SliderSingle(5), 1);
+    float durationMonths = 5;
+    // Color temperature: 2000..6500 K by hundreds, under a gradient scale.
+    SliderState temperature =
+        SliderStateNew(2000, 6500, SliderSingle(3600), 100);
+    float temperatureKelvin = 3600;
 
     static El* Render(SliderStory* self, Ctx* cx);
 };
@@ -36,6 +43,22 @@ struct SliderStory {
 // only asks for a repaint.
 static void OnSliderChange(SliderStory* self, Ctx* cx, const SliderEvent*) {
     (void)self;
+    Notify(cx);
+}
+
+// The duration's month, written back to the state so the thumb sits on its
+// tick while it is dragged.
+static void OnDurationChange(SliderStory* self, Ctx* cx,
+                             const SliderEvent* ev) {
+    float month = ev->value.Start();
+    SliderSetValue(&self->duration, SliderSingle(month));
+    self->durationMonths = month;
+    Notify(cx);
+}
+
+static void OnTemperatureChange(SliderStory* self, Ctx* cx,
+                                const SliderEvent* ev) {
+    self->temperatureKelvin = ev->value.Start();
     Notify(cx);
 }
 
@@ -136,6 +159,93 @@ El* SliderStory::Render(SliderStory* self, Ctx* cx) {
                        ->IntoEl());
     StorySectionAdd(rev, revCard);
     page->Child(rev);
+
+    // Duration: a regular slider composed over a labeled month scale — a
+    // tall tick and its number every second month, a short tick between.
+    El* dur = StorySection(cx, "Duration",
+                           "Compose a slider with a labeled tick scale.");
+    StorySectionBody(dur)->W(512)->ItemsCenter();
+    El* durCard = Div(a)->FlexCol()->W(360)->Gap(8);
+    El* durHead = Div(a)->FlexRow()->ItemsCenter()->JustifyBetween();
+    durHead->Child(StoryTxt(cx, StrL("Duration (months)"), 16, th.foreground)
+                       ->Medium());
+    durHead->Child(StoryTxt(cx, StoryFmt(cx, "%.0f", self->durationMonths), 14,
+                            th.mutedFg));
+    durCard->Child(durHead);
+    El* scale = Div(a)->W(kFill)->H(34);
+    for (int month = 0; month <= 12; month++) {
+        bool major = month % 2 == 0;
+        // left(relative(month / 12)).ml(-16): a fractional inset here
+        // takes its fixed part from Left, which is how the slider's own
+        // thumb is centred on its value.
+        El* tick = Div(a)
+                       ->FlexCol()
+                       ->Absolute()
+                       ->Left(-16)
+                       ->LeftRel((float)month / 12.f)
+                       ->W(32)
+                       ->ItemsCenter();
+        tick->Child(Div(a)->W(1)->H(major ? 6.f : 3.f)->Bg(th.mutedFg));
+        if (major) {
+            tick->Child(StoryTxt(cx, StoryFmt(cx, "%d", month), 14, th.mutedFg)
+                            ->MarginT(8));
+        }
+        scale->Child(tick);
+    }
+    durCard->Child(Div(a)
+                       ->FlexCol()
+                       ->PadX(16)
+                       ->Child(component::Slider::New(cx, StrL("duration"),
+                                                      &self->duration)
+                                   ->Disabled(self->disabled)
+                                   ->WFill()
+                                   ->OnChange(Listen(cx, &OnDurationChange))
+                                   ->IntoEl())
+                       ->Child(scale));
+    StorySectionAdd(dur, durCard);
+    page->Child(dur);
+
+    // Color temperature: a gradient scale above a regular slider, warm to
+    // neutral to cool, with the pill's radius on its outer corners only.
+    Rgba neutral = th.mode == ThemeMode::Dark ? th.foreground : th.background;
+    Rgba warm = RgbaBlend(neutral, RgbaOpacity(th.warning, 0.85f));
+    Rgba cool = RgbaBlend(neutral, RgbaOpacity(th.info, 0.65f));
+    float pill = th.radiusFull;
+    El* temp = StorySection(cx, "Color temperature",
+                            "Place a color scale beside a regular slider.");
+    StorySectionBody(temp)->W(512)->ItemsCenter();
+    El* tempCard = Div(a)->FlexCol()->W(360)->Gap(12);
+    El* tempHead = Div(a)->FlexRow()->ItemsCenter()->JustifyBetween();
+    tempHead->Child(StoryTxt(cx, StrL("Color temperature"), 16, th.foreground)
+                        ->Medium());
+    tempHead->Child(StoryTxt(
+        cx, StoryFmt(cx, "%.0f K", self->temperatureKelvin), 14, th.mutedFg));
+    tempCard->Child(tempHead);
+    tempCard->Child(
+        Div(a)
+            ->FlexRow()
+            ->W(kFill)
+            ->H(12)
+            ->Child(Div(a)
+                        ->Flex1()
+                        ->H(kFill)
+                        ->Corners(pill, 0, 0, pill)
+                        ->Bg(BackgroundLinear(90.f, ColorStopAt(warm, 0.f),
+                                              ColorStopAt(neutral, 1.f))))
+            ->Child(Div(a)
+                        ->Flex1()
+                        ->H(kFill)
+                        ->Corners(0, pill, pill, 0)
+                        ->Bg(BackgroundLinear(90.f, ColorStopAt(neutral, 0.f),
+                                              ColorStopAt(cool, 1.f)))));
+    tempCard->Child(
+        component::Slider::New(cx, StrL("temperature"), &self->temperature)
+            ->Disabled(self->disabled)
+            ->WFill()
+            ->OnChange(Listen(cx, &OnTemperatureChange))
+            ->IntoEl());
+    StorySectionAdd(temp, tempCard);
+    page->Child(temp);
 
     // Color Picker: four vertical channels, with the color they make in the
     // section's sub-title beside a Clipboard copy.
