@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1a5249a89a14be58705b02dd80acc73f48e9827c` (2026-09-26,
-attachment: Show retry control when failed media has no source (#3233)).
-Failed attachment media with no image shows the accessible retry button in its
-slot when a retry is offered, and the ban glyph otherwise. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `f8cd486005ab1c09fd6cf9fc00e8a4ca42a4ad17` (2026-09-26,
+website: Keep versioned docs links inside their version (#3243)). Upstream
+kept versioned website docs links inside their version (website build, CI and
+doc sources); nothing in the tree ports it. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

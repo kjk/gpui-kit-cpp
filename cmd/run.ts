@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1a5249a89a14be58705b02dd80acc73f48e9827c",
+  sha: "f8cd486005ab1c09fd6cf9fc00e8a4ca42a4ad17",
   date: "2026-09-26",
-  subject: "attachment: Show retry control when failed media has no source (#3233)",
+  subject: "website: Keep versioned docs links inside their version (#3243)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
