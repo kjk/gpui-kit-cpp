@@ -1124,21 +1124,105 @@ static bool DecodedEntity(Arena* a, Str source, Str* decoded, int* sourceLen) {
     return true;
 }
 
+// A UTF-8 character's bytes packed into one key. The lead byte fixes the
+// length, so two different characters never share a key.
+static uint32_t SourceCharKey(const char* ch, int cl) {
+    uint32_t key = 0;
+    for (int i = 0; i < cl; i++) {
+        key = (key << 8) | (uint8_t)ch[i];
+    }
+    return key;
+}
+
+static int CompareSourceCharPos(const void* x, const void* y) {
+    const SourceCharPos* a = (const SourceCharPos*)x;
+    const SourceCharPos* b = (const SourceCharPos*)y;
+    if (a->key != b->key) {
+        return a->key < b->key ? -1 : 1;
+    }
+    return a->offset < b->offset ? -1 : (a->offset > b->offset ? 1 : 0);
+}
+
+// markdown.rs source_char_offset. Successful searches advance the cursor, so
+// their scans do not overlap; a miss does not, so the first miss indexes the
+// rest of the source and every later lookup is a binary search. Rust's
+// BTreeMap<char, Vec<usize>> is one array sorted by (character, offset).
+int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
+                     SourceCharIndex* positions) {
+    uint32_t key = SourceCharKey(ch, cl);
+    if (positions->built) {
+        int lo = 0;
+        int hi = positions->pos.len;
+        while (lo < hi) {
+            int mid = lo + (hi - lo) / 2;
+            const SourceCharPos& p = positions->pos[mid];
+            if (p.key < key || (p.key == key && p.offset < rawCursor)) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        if (lo < positions->pos.len && positions->pos[lo].key == key) {
+            return positions->pos[lo].offset;
+        }
+        return -1;
+    }
+    int rel =
+        FindBytes(Str((char*)raw.s + rawCursor, len(raw) - rawCursor), ch, cl);
+    if (rel >= 0) {
+        return rawCursor + rel;
+    }
+    for (int i = rawCursor; i < len(raw);) {
+        int n = Utf8CharLen((uint8_t)raw.s[i]);
+        if (i + n > len(raw)) n = len(raw) - i;
+        SourceCharPos p;
+        p.key = SourceCharKey(raw.s + i, n);
+        p.offset = i;
+        VecAppend(positions->pos, p);
+        i += n;
+    }
+    if (positions->pos.len > 1) {
+        qsort(positions->pos.els, (size_t)positions->pos.len,
+              sizeof(SourceCharPos), CompareSourceCharPos);
+    }
+    positions->built = true;
+    return -1;
+}
+
 // markdown.rs aligned_source_segments: walk the rendered text a character at
-// a time and find each one in `raw`, the node's slice of the source.
-static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
-                                  int sourceOffset, bool decodeEntities,
-                                  Vec<SourceSegment>& out) {
+// a time and find each one in `raw`, the node's slice of the source. Every
+// lookup is linear in what it consumes: the entity at a cursor is decoded
+// once, a run of blanks is measured once, only the final line may absorb the
+// rest, and a character missing from the source indexes it for the next.
+void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
+                           bool decodeEntities, Vec<SourceSegment>& out) {
     int rawCursor = 0;
     int r = 0;
+    int whitespaceEnd = 0;
+    SourceCharIndex positions;
+    int entityCursor = -1;
+    bool entity = false;
+    Str decoded = {};
+    int entityLen = 0;
+    // Only the final LF may absorb source-only text before it. Find the
+    // preceding line boundary once instead of recounting the suffix per LF.
+    int finalLineStart = 0;
+    if (len(raw) > 0 && raw.s[len(raw) - 1] == '\n') {
+        for (int i = len(raw) - 2; i >= 0; i--) {
+            if (raw.s[i] == '\n') {
+                finalLineStart = i + 1;
+                break;
+            }
+        }
+    }
     while (r < len(rendered)) {
         Str rendRest((char*)rendered.s + r, len(rendered) - r);
         Str remainder((char*)raw.s + rawCursor, len(raw) - rawCursor);
-        Str decoded = {};
-        int entityLen = 0;
-        if (decodeEntities &&
-            DecodedEntity(a, remainder, &decoded, &entityLen) &&
-            StartsWithBytes(rendRest, decoded.s, len(decoded))) {
+        if (decodeEntities && entityCursor != rawCursor) {
+            entity = DecodedEntity(a, remainder, &decoded, &entityLen);
+            entityCursor = rawCursor;
+        }
+        if (entity && StartsWithBytes(rendRest, decoded.s, len(decoded))) {
             SourceSegment s;
             s.renderedStart = r;
             s.renderedEnd = r + len(decoded);
@@ -1155,37 +1239,28 @@ static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
         int rendEnd = r + cl;
         int relStart = -1;
         int sourceLen = 0;
-        // Rust finds the first line ending and asks whether only blanks come
-        // before it, which is the run of blanks ending at one.
-        int newline = -1;
-        if (cl == 1 && ch[0] == ' ') {
-            int i = 0;
-            while (i < len(remainder) &&
-                   (remainder.s[i] == ' ' || remainder.s[i] == '\t')) {
-                i++;
-            }
-            if (i < len(remainder) &&
-                (remainder.s[i] == '\n' || remainder.s[i] == '\r')) {
-                newline = i;
+        bool space = cl == 1 && ch[0] == ' ';
+        if (space && rawCursor >= whitespaceEnd) {
+            // Reuse this boundary while consuming a run of literal spaces.
+            // Otherwise a long horizontal-whitespace run also costs O(n^2).
+            whitespaceEnd = rawCursor;
+            while (whitespaceEnd < len(raw) && (raw.s[whitespaceEnd] == ' ' ||
+                                                raw.s[whitespaceEnd] == '\t')) {
+                whitespaceEnd++;
             }
         }
-        // Both line-break predicates stop at the first byte that decides
-        // them, so aligning a long node stays linear in its length: the one
-        // newline is the first one, and it is the last byte.
-        auto newlineOnlyAtEnd = [&]() {
-            const void* nl = memchr(remainder.s, '\n', (size_t)len(remainder));
-            return nl && (const char*)nl - remainder.s == len(remainder) - 1;
-        };
-        if (newline >= 0) {
+        if (space && whitespaceEnd < len(raw) &&
+            (raw.s[whitespaceEnd] == '\n' || raw.s[whitespaceEnd] == '\r')) {
             // A soft break rendered as a space: the line ending it stood for.
-            relStart = newline;
+            relStart = whitespaceEnd - rawCursor;
             sourceLen =
-                (newline + 1 < len(remainder) && remainder.s[newline] == '\r' &&
-                 remainder.s[newline + 1] == '\n')
+                (whitespaceEnd + 1 < len(raw) && raw.s[whitespaceEnd] == '\r' &&
+                 raw.s[whitespaceEnd + 1] == '\n')
                     ? 2
                     : 1;
         } else if (cl == 1 && ch[0] == '\n' && len(remainder) > 0 &&
-                   newlineOnlyAtEnd()) {
+                   remainder.s[len(remainder) - 1] == '\n' &&
+                   rawCursor >= finalLineStart) {
             // A hard break is the whole of its syntax.
             relStart = 0;
             sourceLen = len(remainder);
@@ -1198,15 +1273,16 @@ static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
             relStart = 0;
             sourceLen = cl;
         } else {
-            relStart = FindBytes(remainder, ch, cl);
-            sourceLen = cl;
-            if (relStart < 0) {
+            int found = SourceCharOffset(raw, rawCursor, ch, cl, &positions);
+            if (found < 0) {
                 // Decoded entities and other source-only syntax have no exact
                 // rendered-byte mapping. Leave a rendered gap for this
                 // character, but keep aligning later characters in the node.
                 r = rendEnd;
                 continue;
             }
+            relStart = found - rawCursor;
+            sourceLen = cl;
         }
         int sourceStart = rawCursor + relStart;
         int sourceEnd = sourceStart + sourceLen;

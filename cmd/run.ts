@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f180d29d913ede7c294ad5e3dbdee21751f6208f",
+  sha: "872d6c419e5e8d82f2b5136b104f56d44e421023",
   date: "2026-09-27",
-  subject: "perf(menu): fix DropdownMenu memory leak (#3267)",
+  subject: "text_view: Avoid quadratic Markdown source mapping (#3273)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

@@ -1230,6 +1230,30 @@ struct SourceRangeSelection {
 bool SourceRangeForSegments(const SourceSegment* segments, int count, int start,
                             int end, Span* out);
 
+// format/markdown.rs source_char_offset's index: every character of the
+// source from the first miss on, sorted by (character, offset). Built on the
+// first miss, so a node whose characters are all found never allocates it.
+struct SourceCharPos {
+    uint32_t key = 0;
+    int offset = 0;
+};
+struct SourceCharIndex {
+    Vec<SourceCharPos> pos;
+    bool built = false;
+};
+
+// format/markdown.rs source_char_offset: the first source offset at or past
+// `rawCursor` holding the character `ch` (`cl` bytes), or -1. Exposed so the
+// tests reach it the way Rust's do.
+int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
+                     SourceCharIndex* positions);
+
+// format/markdown.rs aligned_source_segments: map each character of
+// `rendered` back into `raw`, a node's source that starts at `sourceOffset`,
+// appending compacted segments to `out`.
+void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
+                           bool decodeEntities, Vec<SourceSegment>& out);
+
 // Paragraph::selected_source_range / CodeBlock::selected_source_range for a
 // selection [start, end) of `n`'s rendered text — its runs' text, an image
 // run contributing none. An image is taken in when the selection reaches it

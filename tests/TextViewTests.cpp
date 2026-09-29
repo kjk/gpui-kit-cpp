@@ -2151,6 +2151,148 @@ static void TestSourceSegmentsCompact() {
     ArenaDelete(a);
 }
 
+// `pre` + `unit` repeated `n` times + `post`, NUL-terminated in `a`.
+static Str Repeat(Arena* a, const char* pre, const char* unit, int n,
+                  const char* post) {
+    int lp = (int)strlen(pre), lu = (int)strlen(unit), lq = (int)strlen(post);
+    int total = lp + lu * n + lq;
+    char* buf = (char*)Alloc(a, total + 1);
+    memcpy(buf, pre, (size_t)lp);
+    for (int i = 0; i < n; i++) {
+        memcpy(buf + lp + i * lu, unit, (size_t)lu);
+    }
+    memcpy(buf + lp + lu * n, post, (size_t)lq);
+    buf[total] = 0;
+    return Str(buf, total);
+}
+
+// The segments `AlignedSourceSegments` produced, against `want` rows of
+// {renderedStart, renderedEnd, sourceStart, sourceEnd}.
+static bool SegmentsAre(const Vec<SourceSegment>& got, const int (*want)[4],
+                        int n) {
+    if (got.len != n) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        const SourceSegment& s = got[i];
+        if (s.renderedStart != want[i][0] || s.renderedEnd != want[i][1] ||
+            s.sourceStart != want[i][2] || s.sourceEnd != want[i][3]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// source_alignment_compacts_long_whitespace_runs: a long run of blanks is
+// one segment, and the compaction as it goes never holds one per character.
+static void TestSourceAlignmentCompactsLongWhitespaceRuns() {
+    Arena* a = ArenaNew();
+    Str raws[3] = {
+        Repeat(a, "", "a ", 16384, ""),
+        Repeat(a, "a", " ", 32768, "b"),
+        Repeat(a, "a", " \t", 16384, "b\n"),
+    };
+    for (Str raw : raws) {
+        Vec<SourceSegment> segments;
+        AlignedSourceSegments(a, raw, raw, 7, true, segments);
+        const int want[1][4] = {{0, len(raw), 7, 7 + len(raw)}};
+        utassert(SegmentsAre(segments, want, 1));
+        // "compaction must not retain a per-character allocation"
+        utassert(segments.cap < 64);
+    }
+    ArenaDelete(a);
+}
+
+// source_alignment_preserves_multiline_code_and_final_newline.
+static void TestSourceAlignmentPreservesMultilineCodeAndFinalNewline() {
+    Arena* a = ArenaNew();
+    Str raw = Repeat(a, "", "x\n", 16384, "");
+    Str rendered(raw.s, len(raw) - 1);
+    Vec<SourceSegment> segments;
+    AlignedSourceSegments(a, raw, rendered, 4, false, segments);
+    const int want[1][4] = {{0, len(rendered), 4, 4 + len(rendered)}};
+    utassert(SegmentsAre(segments, want, 1));
+
+    Vec<SourceSegment> quote;
+    AlignedSourceSegments(a, StrL("a\n> \n"), StrL("a\n\n"), 0, false, quote);
+    const int wantQuote[2][4] = {{0, 2, 0, 2}, {2, 3, 2, 5}};
+    utassert(SegmentsAre(quote, wantQuote, 2));
+    ArenaDelete(a);
+}
+
+// source_alignment_keeps_soft_breaks_and_entities_atomic.
+static void TestSourceAlignmentKeepsSoftBreaksAndEntitiesAtomic() {
+    Arena* a = ArenaNew();
+    Vec<SourceSegment> soft;
+    AlignedSourceSegments(a, StrL("a \r\nb"), StrL("a b"), 9, true, soft);
+    const int wantSoft[3][4] = {{0, 1, 9, 10}, {1, 2, 11, 13}, {2, 3, 13, 14}};
+    utassert(SegmentsAre(soft, wantSoft, 3));
+
+    Str entity = StrL("&NotEqualTilde;");
+    // U+2242 U+0338.
+    Str decoded = StrL("\xE2\x89\x82\xCC\xB8");
+    Vec<SourceSegment> atomic;
+    AlignedSourceSegments(a, entity, decoded, 3, true, atomic);
+    const int wantAtomic[1][4] = {{0, len(decoded), 3, 3 + len(entity)}};
+    utassert(SegmentsAre(atomic, wantAtomic, 1));
+    ArenaDelete(a);
+}
+
+// source_alignment_resumes_after_unmapped_characters.
+static void TestSourceAlignmentResumesAfterUnmappedCharacters() {
+    Arena* a = ArenaNew();
+    Str raw = Repeat(a, "", "abc", 4096, "");
+    const char* replacement = "\xEF\xBF\xBD"; // U+FFFD
+    SourceCharIndex positions;
+    utassert(SourceCharOffset(raw, 0, "b", 1, &positions) == 1);
+    // "successful scans need no index"
+    utassert(!positions.built);
+    utassert(SourceCharOffset(raw, 0, replacement, 3, &positions) == -1);
+    // "failed scans must not be repeated"
+    utassert(positions.built);
+    utassert(SourceCharOffset(raw, 2, "b", 1, &positions) == 4);
+    utassert(SourceCharOffset(raw, len(raw), "a", 1, &positions) == -1);
+
+    Str missing = Repeat(a, "", replacement, 4096, "");
+    int m = len(missing);
+    Vec<SourceSegment> resumed;
+    AlignedSourceSegments(a, raw, Repeat(a, "", replacement, 4096, "abc"), 5,
+                          true, resumed);
+    const int wantResumed[1][4] = {{m, m + 3, 5, 8}};
+    utassert(SegmentsAre(resumed, wantResumed, 1));
+
+    Vec<SourceSegment> entity;
+    AlignedSourceSegments(a, StrL("&amp;z"),
+                          Repeat(a, "", replacement, 4096, "&z"), 0, true,
+                          entity);
+    const int wantEntity[2][4] = {{m, m + 1, 0, 5}, {m + 1, m + 2, 5, 6}};
+    utassert(SegmentsAre(entity, wantEntity, 2));
+    ArenaDelete(a);
+}
+
+// source_alignment_parses_long_text_and_code_without_selection.
+static void TestSourceAlignmentParsesLongTextAndCode() {
+    Arena* a = ArenaNew();
+    Str source = Repeat(a, "", "a ", 4096, "end");
+    MdNode* doc = MdParse(a, source);
+    const MdNode* paragraph = FirstOfKind(doc, MdKind::Paragraph);
+    utassert(paragraph && paragraph->runFirst && !paragraph->runFirst->next);
+    const MdRun* r = paragraph->runFirst;
+    utassert(r && base::StrEq(r->text, source));
+    utassert(r && r->segmentCount == 1 && r->segments[0].sourceStart == 0 &&
+             r->segments[0].sourceEnd == len(source));
+    utassert(RangeIs(source.s, len(source) - 3, len(source),
+                     fmt("%d..%d", len(source) - 3, len(source)).s));
+
+    Str body = Repeat(a, "", "x\n", 4096, "");
+    Str code = Repeat(a, "```\n", "x\n", 4096, "```");
+    doc = MdParse(a, code);
+    utassert(FirstOfKind(doc, MdKind::Code) != nullptr);
+    utassert(CodeRangeIs(code.s, len(body) - 2, len(body) - 1,
+                         fmt("%d..%d", len(body) + 2, len(body) + 3).s));
+    ArenaDelete(a);
+}
+
 // selected_source_range_maps_inline_code_delimiters_and_boundaries,
 // selected_source_range_maps_footnote_reference_syntax.
 static void TestSourceRangeInlineCodeAndFootnote() {
@@ -3348,6 +3490,11 @@ void TestTextView() {
     TestMarkdownTaskList(a);
     TestSourceRangeStyled();
     TestSourceSegmentsCompact();
+    TestSourceAlignmentCompactsLongWhitespaceRuns();
+    TestSourceAlignmentPreservesMultilineCodeAndFinalNewline();
+    TestSourceAlignmentKeepsSoftBreaksAndEntitiesAtomic();
+    TestSourceAlignmentResumesAfterUnmappedCharacters();
+    TestSourceAlignmentParsesLongTextAndCode();
     TestSourceRangeInlineCodeAndFootnote();
     TestSourceRangeCodeBlocks();
     TestSourceRangeEscapes();

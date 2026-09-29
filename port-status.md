@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f180d29d913ede7c294ad5e3dbdee21751f6208f` (2026-09-27,
-perf(menu): fix DropdownMenu memory leak (#3267)). A closed window now
-releases the entities its keyed state holds, so an open popover or dropdown
-menu no longer outlives it or keeps its deferred-popover registration. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `872d6c419e5e8d82f2b5136b104f56d44e421023` (2026-09-27,
+text_view: Avoid quadratic Markdown source mapping (#3273)). Markdown source
+mapping decodes an entity once per cursor, measures a run of blanks once, and
+indexes the source after the first missing character, so aligning a long node
+stays linear. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
