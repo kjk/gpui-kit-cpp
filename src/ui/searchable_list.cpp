@@ -417,18 +417,23 @@ El* SearchableListItemElement::IntoEl() {
     if (styleSet) {
         row->Refine(style, styleSet);
     }
-    El* left = Div(a)->FlexRow()->W(kFill)->Gap(4)->ItemsCenter();
+    // The label side takes what the check leaves and clips past it, so a
+    // long option truncates instead of pushing the check out of the row.
+    El* left =
+        Div(a)->FlexRow()->Flex1()->MinW(0)->ClipX()->Gap(4)->ItemsCenter();
     for (int i = 0; i < children.len; i++) {
         left->Child(children[i]);
     }
     El* inner = Div(a)
                     ->FlexRow()
                     ->W(kFill)
+                    ->MinW(0)
                     ->Gap(4)
                     ->ItemsCenter()
                     ->JustifyBetween()
                     ->Child(left);
     El* check = IconEl(a, checkIcon, UiIconPx(UiSize::XSmall))
+                    ->Shrink0()
                     ->Fg(th.foreground);
     if (!checked) {
         check->Opacity(0);
@@ -895,11 +900,16 @@ El* SearchableList::IntoEl() {
             label->Child(IconEl(a, it.icon, UiIconPx(UiSize::Small))
                              ->Fg(th.mutedFg));
         }
+        // adapter.rs `div().min_w_0().truncate()` around the item: an
+        // overflowing title ends in an ellipsis rather than overrunning.
         label->Child(TextEl(a, it.title)
+                         ->MinW(0)
+                         ->Truncate()
                          ->Fg(enabled || checked ? th.foreground : th.mutedFg));
         El* content = Div(a)
                           ->FlexRow()
                           ->W(kFill)
+                          ->MinW(0)
                           ->Gap(4)
                           ->ItemsCenter()
                           ->JustifyBetween();

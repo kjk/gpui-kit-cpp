@@ -15,12 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5b55691e379122592d128120d94a9264a121f4ef` (2026-09-27,
-perf: reduce redundant work in six components (#3279)). Six components do less
-work: a settled closed accordion panel unmounts, the context menu builds its
-menu only in the trigger that draws it, the notification clock rests while
-only persistent notifications are shown, an ellipsis menu lists at most 100
-pages, and SearchableVec filters by index. The current update target is
+Processed through `98e566c62f6c28bca1c6949dfd998a752a049a69` (2026-09-27,
+select: Truncate overflowing option labels with an ellipsis (#3280)). A
+searchable list row truncates an overflowing option label with an ellipsis and
+keeps its check icon in the row. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
