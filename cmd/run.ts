@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d56539adb823651654ace4d1db53e26b6cb2192e",
+  sha: "4729ef78378e404e2f668fc5f37fbf67529f4b53",
   date: "2026-09-21",
-  subject: "marker: Add `alignment` for centered and trailing rows (#3151)",
+  subject: "text: Stagger `stream_fade` by word, dropping it for oversized chunks (#3153)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

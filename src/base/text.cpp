@@ -3346,8 +3346,18 @@ TextView* TextView::Motion(TextViewMotion value) {
     return this;
 }
 
+// compat.rs STREAM_FADE / STREAM_FADE_STAGGER: how long a word of streamed
+// text takes to reach full color, and how much later each further word of
+// the same chunk starts. Measured from claude.ai: ~6 words every ~100 ms,
+// transparent to solid in ~250-300 ms.
+static const float kStreamFadeMs = 280.f;
+static const float kStreamFadeStaggerMs = 10.f;
+
 TextView* TextView::StreamFade(bool value) {
-    return Motion(value ? TextViewMotion{}.WithStreamFade(350.f)
+    return Motion(value ? TextViewMotion{}
+                              .WithStreamFade(kStreamFadeMs)
+                              .WithStreamFadeStagger(kStreamFadeStaggerMs)
+                              .WithStreamFadeEasing(Easing::EaseOut())
                         : TextViewMotion{});
 }
 

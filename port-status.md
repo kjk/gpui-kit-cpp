@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d56539adb823651654ace4d1db53e26b6cb2192e` (2026-09-21,
-marker: Add `alignment` for centered and trailing rows (#3151)). Marker gains
-`alignment` (Start, Center, End) for its row, with a separator keeping only
-the line on the far side of its label, and the story adds an Alignment
-section. The current update target is
+Processed through `4729ef78378e404e2f668fc5f37fbf67529f4b53` (2026-09-21,
+text: Stagger `stream_fade` by word, dropping it for oversized chunks
+(#3153)). TextView's `stream_fade(true)` now fades over 280 ms with a 10 ms
+word stagger, and a stagger that would outlast one fade is dropped so an
+oversized update fades as one chunk. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -49,6 +49,11 @@ section. The current update target is
   Escape, an outside click, the trigger and a confirm close it, so the blur leg
   of `select_emits_one_dismiss_event_for_each_open_to_closed_transition` is
   not ported (`src/ui/select.cpp`).
+- **TextView's stream fade runs per top-level block.** Rust fades rendered
+  byte ranges inside a leaf and staggers them word by word (character by
+  character for CJK); an El has opacity only per subtree, so the block holding
+  the new text fades as one unit and `stream_fade_stagger` / `StaggerStepMs`
+  shape nothing on screen (`src/base/text.cpp`).
 - **No text alignment on an element.** `text_center()` / `text_right()` have
   no counterpart, so a wrapped centered or trailing Marker label keeps its
   lines at the leading edge; a single run is placed by the flex box instead

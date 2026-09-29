@@ -1619,7 +1619,8 @@ static void TestStreamFadeTracksRenderedAppends() {
     utassert(state->streamFadeFrom < 0);
 
     TextView* compat = TextView::New(&cx, entity)->StreamFade();
-    utassert(compat->motionSet && compat->motion.streamFadeMs == 350.f);
+    utassert(compat->motionSet && compat->motion.streamFadeMs == 280.f);
+    utassert(compat->motion.streamFadeStaggerMs == 10.f);
 
     WindowKeyedFree(win);
     ArenaDelete(a);
@@ -1627,6 +1628,24 @@ static void TestStreamFadeTracksRenderedAppends() {
     EntityDropAll(&app);
     AppGlobalClear(&app);
     MotionSetReduced(wasReduced);
+}
+
+// stream_fade.rs: stagger_holds_while_the_update_lights_up_within_one_fade
+// and an_update_too_large_to_light_up_in_one_fade_fades_as_one_chunk.
+static void TestStreamFadeStaggerStep() {
+    TextViewMotion motion =
+        TextViewMotion{}.WithStreamFade(600.f).WithStreamFadeStagger(100.f);
+    utassert(motion.StaggerStepMs(1) == 0.f);
+    utassert(motion.StaggerStepMs(3) == 100.f);
+    // The 7th word starts at 600 ms, exactly one fade in -- still the stagger
+    // as asked.
+    utassert(motion.StaggerStepMs(7) == 100.f);
+    // An 8th word would start past the fade: that is a sweep, not typing.
+    utassert(motion.StaggerStepMs(8) == 0.f);
+    utassert(motion.StaggerStepMs(200) == 0.f);
+    // Without a stagger nothing changes -- every update was already one chunk.
+    TextViewMotion plain = TextViewMotion{}.WithStreamFade(600.f);
+    utassert(plain.StaggerStepMs(200) == 0.f);
 }
 
 void TestTextView() {
@@ -1681,6 +1700,7 @@ void TestTextView() {
     TestMarkdownInlinePlugin();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
+    TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
     TestTextViewMaxLines();

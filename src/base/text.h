@@ -531,6 +531,20 @@ struct TextViewMotion {
         out.streamFadeEasing = easing;
         return out;
     }
+    // stagger_step: the start offset between consecutive words of an update
+    // `words` long — the stagger as asked, or nothing. Staggering only reads
+    // as words arriving one after another while the whole update lights up
+    // within one stream fade; once the last word would start later than
+    // that, the update was not typed, so it fades as one chunk.
+    float StaggerStepMs(int words) const {
+        if (words < 2) {
+            return 0;
+        }
+        if (streamFadeStaggerMs * (float)(words - 1) > streamFadeMs) {
+            return 0;
+        }
+        return streamFadeStaggerMs;
+    }
 };
 
 // state.rs TextViewState. Parsing remains synchronous behind the existing
@@ -715,7 +729,8 @@ struct TextView {
     TextView* MaxLines(int count);
     TextView* ParagraphGap(float px);
     TextView* Motion(TextViewMotion value);
-    // Component compat's stream_fade(true): Claude-like 350 ms ease-out.
+    // Component compat's stream_fade(true): Claude-like 280 ms ease-out with
+    // a 10 ms word stagger.
     TextView* StreamFade(bool value = true);
     // text_view::LinkClickHandlerFn. The handler's intptr_t is the link's
     // href as a NUL-terminated `const char*`; it points into the parse the
