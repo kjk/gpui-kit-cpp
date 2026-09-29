@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9a48b0d2544d36a9873002edcd020b5a4836a207` (2026-09-21,
-gpui-pre: Inject staged crates as git dependencies in the kit check (#3146)).
-The gpui-pre release tooling injects the staged crates as git dependencies in
-its kit check; nothing in the ported trees changed. The current update target
-is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `0205afea6b164eea1b02a754aa555882ad9f2e12` (2026-09-21,
+gpui-pre: Publish even when gpui-kit fails the compatibility check (#3148)).
+gpui-pre releases now publish even when gpui-kit fails the compatibility
+check; only release tooling changed. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
