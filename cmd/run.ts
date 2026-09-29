@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "74658389c5b99f0d2a9e26e424dbdbb862419ee5",
+  sha: "33124a25e1b67cb0e2f26f9349c36eca8ce5f316",
   date: "2026-09-23",
-  subject: "chart: Pin the y axis and reserve points in line and area charts, count ticks in `value_tick_count` (#3209)",
+  subject: "docs: Pace radius hierarchy animation in distinct phases (#3212)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

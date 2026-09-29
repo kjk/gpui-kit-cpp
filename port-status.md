@@ -15,13 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `74658389c5b99f0d2a9e26e424dbdbb862419ee5` (2026-09-23,
-chart: Pin the y axis and reserve points in line and area charts, count ticks
-in `value_tick_count` (#3209)). Line and area charts take y_domain, which pins
-the y axis and clips the series to the plot, and point_count, which lays the x
-axis out for more points than the data fills; value_tick_count now counts
-ticks (default 5). The story gains the Closing Price card over the 40-session
-stock fixture. The current update target is
+Processed through `33124a25e1b67cb0e2f26f9349c36eca8ce5f316` (2026-09-23,
+docs: Pace radius hierarchy animation in distinct phases (#3212)).
+Website-only: the design guides' radius hierarchy animation now runs in
+distinct phases. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
