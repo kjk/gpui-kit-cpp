@@ -86,6 +86,11 @@ Popover* Popover::OnClose(Listener fn) {
     onClose = fn;
     return this;
 }
+Popover* Popover::TriggerStyle(const Style& style, uint32_t fields) {
+    triggerStyle = style;
+    triggerStyleSet = fields;
+    return this;
+}
 Popover* Popover::OverlayClosable(bool v) {
     overlayClosable = v;
     return this;
@@ -312,6 +317,11 @@ El* Popover::IntoEl() {
                    ->Trigger(trigger)
                    ->Content(isOpen ? content : nullptr)
                    ->IntoEl();
+    // Base's Popover is Styled, and its style lands on the trigger
+    // container; the returned root is that container here.
+    if (triggerStyleSet) {
+        root->Refine(triggerStyle, triggerStyleSet);
+    }
     // popover.rs binds escape to Cancel in the "Popover" context and closes
     // on it. A controlled popover's flag is the caller's, so it says what to
     // run; an uncontrolled one closes its own state.

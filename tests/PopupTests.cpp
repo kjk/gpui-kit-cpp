@@ -487,6 +487,63 @@ static Bounds PositionedContent(PopupAnchor anchor, float offset, Point origin,
     return out;
 }
 
+// popover.rs trigger_style_is_applied_to_the_trigger_container: the style
+// lands on the container the parent lays out and the popup is anchored to,
+// so a full width stretches it across its row and the popup follows the
+// container's right edge rather than the 40px trigger's.
+static Bounds TriggerStyledContent(bool styled) {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    win->frameArena = a;
+    BaseGlobalStateInit(&app);
+    component::Init(&app);
+    Ctx cx = {&app, win, a, {}};
+    PaintCtx ctx = {};
+    ctx.viewW = 1024;
+    ctx.viewH = 768;
+    El* content = nullptr;
+    El* root = nullptr;
+    for (int frame = 0; frame < 2; frame++) {
+        content = Div(a)->W(20)->H(20);
+        component::Popover* popover =
+            component::Popover::New(&cx, StrL("trigger-style-popover"))
+                ->DefaultOpen(true)
+                ->Offset(0)
+                ->Anchor(PopupAnchor::TopRight)
+                ->Trigger(Div(a)->W(40)->H(40))
+                ->Content(content);
+        if (styled) {
+            Style full;
+            full.width = kFill;
+            popover->TriggerStyle(full, StyleFieldWidth);
+        }
+        root = Div(a)->W(1024)->H(768)->Child(
+            Div(a)->Absolute()->Left(100)->Top(100)->W(200)->FlexRow()->Child(
+                popover->IntoEl()));
+    }
+    LayoutEl(&ctx, root, 0, 0, 1024, 768, 14, Rgba{});
+    Bounds out = {content->x, content->y, content->w, content->h};
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    EntityDropAll(&app);
+    return out;
+}
+
+static void TriggerStyleIsAppliedToTheTriggerContainer() {
+    // Unstyled: the container wraps the 40px trigger, so the content's right
+    // edge meets the trigger's right edge at 140.
+    Bounds plain = TriggerStyledContent(false);
+    utassertnear(plain.x, 120.f);
+    utassertnear(plain.y, 140.f);
+    // A full width stretches the container across the 200px row, and the
+    // popup follows its right edge at 300.
+    Bounds styled = TriggerStyledContent(true);
+    utassertnear(styled.x, 280.f);
+    utassertnear(styled.y, 140.f);
+}
 // anchor_and_offset_position_the_surface_on_each_trigger_edge.
 static void AnchorAndOffsetPositionTheSurfaceOnEachTriggerEdge() {
     // Legacy TopLeft means below the trigger, including the default 0.25rem
@@ -631,6 +688,7 @@ void TestPopup() {
     TheSideAnchorsFallBackToTheOrigin();
     PopupContentUsesThePinnedCornerMarginAndDeferredLayer();
     AnchorAndOffsetPositionTheSurfaceOnEachTriggerEdge();
+    TriggerStyleIsAppliedToTheTriggerContainer();
     ArrowReservesSpaceWithoutChangingAnchorAlignment();
     AnchorDoesNotFlipWhenOffsetOrArrowIsEnabled();
     ArrowAlignmentUsesTheAnchorInsteadOfTriggerCenter();

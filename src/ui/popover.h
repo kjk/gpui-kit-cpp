@@ -98,6 +98,9 @@ struct Popover {
     bool overlayClosable = true;
     Listener onOpenChange;
     Listener onClose;
+    // trigger_style: the refinement laid onto the trigger container.
+    Style triggerStyle = {};
+    uint32_t triggerStyleSet = 0;
 
     static Popover* New(Ctx* cx);
     static Popover* New(Ctx* cx, Str id);
@@ -122,6 +125,11 @@ struct Popover {
     // caller's. Kept for source compatibility; OnOpenChange is the faithful
     // two-direction surface.
     Popover* OnClose(Listener fn);
+    // trigger_style: style the trigger container — the element laid out in
+    // the parent and measured to anchor the popup — so this is where a full
+    // width or flex_1 goes for the trigger to fill its slot. Only the fields
+    // in `fields` apply.
+    Popover* TriggerStyle(const Style& style, uint32_t fields);
     El* IntoEl();
 };
 

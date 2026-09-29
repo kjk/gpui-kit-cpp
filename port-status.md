@@ -15,9 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bcc20cfaa8bff875b3412df0097bdc8ed0a14855` (2026-09-28,
-release: Skip Kit compatibility checks when publishing GPUI (#3282)). Upstream
-changed only its GPUI release workflow. The current update target is
+Processed through `12d278ad02095a90a40538045297f1eabdaa440d` (2026-09-28,
+popover: Apply trigger_style to the trigger container (#3245)).
+Popover::TriggerStyle styles the trigger container, the element laid out in
+the parent and measured to anchor the popup. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
