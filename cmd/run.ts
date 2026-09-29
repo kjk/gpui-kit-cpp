@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "adde487a4421bd46b75e330edc86747771d5a9b0",
+  sha: "5a3892ce7fb23f056462b9391b4e523a8a5f3623",
   date: "2026-09-28",
-  subject: "website: Follow release versions and highlight diffs (#3284)",
+  subject: "base: Gate GlobalState's Instant by target to fix a wasm touch panic (#3271)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

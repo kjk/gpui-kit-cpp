@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `adde487a4421bd46b75e330edc86747771d5a9b0` (2026-09-28,
-website: Follow release versions and highlight diffs (#3284)). A website-only
-checkin: versioned install snippets and diff highlighting in release notes;
-nothing in the port changed. The current update target is
+Processed through `5a3892ce7fb23f056462b9391b4e523a8a5f3623` (2026-09-28,
+base: Gate GlobalState's Instant by target to fix a wasm touch panic (#3271)).
+GlobalState's touch clock uses web_time::Instant on wasm, fixing a panic on
+touch input there; the port has no such clock and reads time through its
+platform layer, so nothing changed. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
