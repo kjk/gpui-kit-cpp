@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `fe475586b05c776fad56c757b06be9e94f70fe2f` (2026-09-23, Fix
-historical website builds without component pages (#3196)). Website-only:
-historical snapshot builds skip redirects to component pages the snapshot
-lacks. The current update target is
+Processed through `5cee478fa285f2397919cae8c2ef9cc888c5bf0f` (2026-09-23,
+resizable: Draw a hugging handle's hairline on the seam (#3200)). A hugging
+resize handle's hairline is the container's outermost pixel again, and the
+renderer's element is painted deferred so an indicator centred on it survives
+the container's clip. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

@@ -178,14 +178,14 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     utassert(handleEl && probe.calls == 1);
     utassert(probe.axis == Axis::Horizontal && !probe.active);
     utassert(handleEl->cursor == CursorKind::ColResize);
-    // Hugging its trailing edge: the whole band inside, border-box, the
-    // hairline one pixel clear of the boundary.
+    // Hugging its trailing edge: the whole band inside, border-box, padded
+    // on the inner side only, and the renderer's element deferred.
     utassertnear(handleEl->style.absRight, 0.f);
-    utassertnear(
-        handleEl->style.width,
-        kResizeHandleSize + kResizeHandlePadding + kResizeHandleEdgeClearance);
+    utassertnear(handleEl->style.width,
+                 kResizeHandleSize + kResizeHandlePadding);
     utassertnear(handleEl->style.pad.left, kResizeHandlePadding);
-    utassertnear(handleEl->style.pad.right, kResizeHandleEdgeClearance);
+    utassertnear(handleEl->style.pad.right, 0.f);
+    utassert(probe.rendered && probe.rendered->style.deferred);
 
     ResizeAppearanceProbe groupProbe;
     ResizablePanelGroup* appeared =
@@ -253,6 +253,82 @@ static void MixedSizingSettlesAfterContainerResize() {
         ArenaDelete(a);
     }
     ExecShutdown();
+}
+
+static El* RenderSeamLine(void* user, const ResizeHandleContext* context,
+                          Ctx* cx) {
+    El** out = (El**)user;
+    *out = Div(cx->a)->FlexNone();
+    if (AxisIsHorizontal(context->AxisValue()))
+        (*out)->W(1)->H(kFill);
+    else
+        (*out)->H(1)->W(kFill);
+    return *out;
+}
+
+// resize_handle.rs a_hugging_handle_draws_its_line_on_the_seam: a 200px
+// dock between two 100px neighbours, clipped to itself the way dock_frame
+// is; the hairline of a handle hugging either edge is the pixel against the
+// seam. a_hugging_handle_paints_its_indicator_unclipped is the renderer's
+// element being deferred, asserted above; mod.rs a_covered_handle_stays_idle
+// holds by construction here, since the handle's listeners belong to its
+// hit rect and an occluding overlay in front of it takes the pointer.
+static void AHuggingHandleDrawsItsLineOnTheSeam() {
+    App app = {};
+    Arena* arena = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Ctx cx = {&app, win, arena, {}};
+    Axis axes[2] = {Axis::Horizontal, Axis::Vertical};
+    HandleEdge edges[2] = {HandleEdge::Leading, HandleEdge::Trailing};
+    for (Axis axis : axes) {
+        bool horizontal = AxisIsHorizontal(axis);
+        for (HandleEdge edge : edges) {
+            El* line = nullptr;
+            El* dock = Div(arena)->ClipX()->ClipY()->Child(
+                resize_handle(&cx, StrL("hugging"), axis)
+                    ->Inside(edge)
+                    ->WithAppearance(&line, RenderSeamLine)
+                    ->IntoEl());
+            El* root = Div(arena);
+            if (horizontal) {
+                dock->W(200)->H(kFill);
+                root->FlexRow()
+                    ->W(400)
+                    ->H(100)
+                    ->Child(Div(arena)->W(100)->H(kFill))
+                    ->Child(dock)
+                    ->Child(Div(arena)->W(100)->H(kFill));
+            } else {
+                dock->H(200)->W(kFill);
+                root->FlexCol()
+                    ->H(400)
+                    ->W(100)
+                    ->Child(Div(arena)->H(100)->W(kFill))
+                    ->Child(dock)
+                    ->Child(Div(arena)->H(100)->W(kFill));
+            }
+            LayoutEl(&win->paint, root, 0, 0, 400, 400, 16, Rgba{});
+            utassert(line != nullptr);
+            float start = horizontal ? line->x : line->y;
+            float end = start + (horizontal ? line->w : line->h);
+            float seam = edge == HandleEdge::Leading ? 100.f : 300.f;
+            if (edge == HandleEdge::Leading) {
+                utassertnear(start, seam);
+                utassertnear(end, seam + 1);
+            } else {
+                utassertnear(start, seam - 1);
+                utassertnear(end, seam);
+            }
+        }
+    }
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    delete win;
+    ArenaDelete(arena);
 }
 
 // resize_handle.rs: a_listener_writes_its_progress_back_into_the_stored_state,
@@ -335,4 +411,5 @@ void TestResizable() {
     MixedSizingSettlesAfterContainerResize();
     AHandleStateReportsOnlyRealChanges();
     AHandleReportsThePressAndTheDragToItsRenderer();
+    AHuggingHandleDrawsItsLineOnTheSeam();
 }

@@ -35,10 +35,6 @@ void ResizableAdjustToContainer(float* sizes, int n, float containerSize);
 // side of it, sitting over the boundary rather than taking room from it.
 const float kResizeHandleSize = 1.f;
 const float kResizeHandlePadding = 4.f;
-// EDGE_CLEARANCE: how far a hugging handle's hairline sits from the boundary
-// it marks, which is room for an indicator thicker than the line to overhang
-// evenly without crossing back outside the container.
-const float kResizeHandleEdgeClearance = 1.f;
 
 namespace base_theme {
 struct Theme;
@@ -66,7 +62,11 @@ inline bool ResizeHandleStateIsActive(ResizeHandleState s) {
 
 // HandleEdge: which edge of its own container a handle hugs. A handle named
 // no edge straddles the boundary it resizes, half its band on either side;
-// one named an edge sits wholly inside, one pixel clear of the boundary.
+// one named an edge sits wholly inside. Its hairline stays on the boundary
+// itself -- the container's outermost pixel, the one the neighbour's content
+// butts up against -- and what a renderer centres on it overhangs the
+// boundary, so the renderer's element is painted deferred, out of the
+// container's clip.
 enum class HandleEdge : uint8_t {
     // Where the axis starts: the left edge for a horizontal handle, the top
     // for a vertical one.

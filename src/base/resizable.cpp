@@ -444,8 +444,7 @@ ResizeHandle* ResizeHandle::Colors(Rgba rest, Rgba active) {
 // the one-pixel line.
 static void ResizeHandlePlace(El* handle, Axis axis, bool hasEdge,
                               HandleEdge edge) {
-    const float hug =
-        kResizeHandleSize + kResizeHandlePadding + kResizeHandleEdgeClearance;
+    const float hug = kResizeHandleSize + kResizeHandlePadding;
     const float straddle = kResizeHandleSize + kResizeHandlePadding * 2;
     bool horizontal = AxisIsHorizontal(axis);
     if (horizontal) {
@@ -466,30 +465,23 @@ static void ResizeHandlePlace(El* handle, Axis axis, bool hasEdge,
         }
         return;
     }
-    // Hugging an edge: the whole band is inside the container, and the
-    // hairline sits a pixel clear of the boundary.
+    // Hugging an edge: the whole band is inside the container, padded on the
+    // inner side only, so the hairline is the container's outermost pixel --
+    // the seam itself.
     bool trailing = edge == HandleEdge::Trailing;
     if (horizontal) {
         handle->W(hug);
         if (trailing) {
-            handle->Right(0)
-                ->PadL(kResizeHandlePadding)
-                ->PadR(kResizeHandleEdgeClearance);
+            handle->Right(0)->PadL(kResizeHandlePadding);
         } else {
-            handle->Left(0)
-                ->PadR(kResizeHandlePadding)
-                ->PadL(kResizeHandleEdgeClearance);
+            handle->Left(0)->PadR(kResizeHandlePadding);
         }
     } else {
         handle->H(hug);
         if (trailing) {
-            handle->Bottom(0)
-                ->PadT(kResizeHandlePadding)
-                ->PadB(kResizeHandleEdgeClearance);
+            handle->Bottom(0)->PadT(kResizeHandlePadding);
         } else {
-            handle->Top(0)
-                ->PadB(kResizeHandlePadding)
-                ->PadT(kResizeHandleEdgeClearance);
+            handle->Top(0)->PadB(kResizeHandlePadding);
         }
     }
 }
@@ -507,6 +499,16 @@ El* ResizeHandle::IntoEl() {
         // The renderer's transitions are keyed under the handle's own name.
         IdScope scope(cx, id);
         line = appearance(appearanceUser, &context, cx);
+        // A hugging handle's hairline is its container's outermost pixel, so
+        // anything a renderer centres on it overhangs the container, and the
+        // container clips. Deferring the appearance keeps its layout here and
+        // paints it after the tree, under the window's own mask, so the
+        // overhang survives. It carries no hit rect. Rust's deferred() has the
+        // lowest priority; z -1 puts it under every other popup-layer overlay
+        // (dialogs, popups, tooltips), which still paint over it.
+        if (line && hasEdge) {
+            line->Deferred()->ZIndex(-1);
+        }
     }
     if (!line) {
         line = Div(cx->a)
