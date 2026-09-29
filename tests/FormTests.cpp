@@ -162,6 +162,46 @@ static void FormAppliesStyledRefinements() {
     AppGlobalClear(&app);
 }
 
+static bool Holds(const El* root, const El* target) {
+    if (root == target) return true;
+    for (const El* c = root ? root->first : nullptr; c; c = c->next) {
+        if (Holds(c, target)) return true;
+    }
+    return false;
+}
+
+// hidden_fields_are_not_rendered (#3269): a field with visible(false) is not
+// in the form at all, and leaves no grid row behind.
+static void HiddenFieldsAreNotRendered() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+
+    El* controls[2][3] = {};
+    El* roots[2] = {};
+    for (int hide = 0; hide < 2; hide++) {
+        Form* form = v_form(&cx);
+        for (int ix = 0; ix < 3; ix++) {
+            controls[hide][ix] = Div(arena)->W(kFill)->H(20);
+            form->Child(field(controls[hide][ix]).Visible(!(hide && ix == 1)));
+        }
+        roots[hide] = form->IntoEl();
+        El* page = Div(arena)->W(400)->Child(roots[hide]);
+        LayoutEl(nullptr, page, 0, 0, 400, 400, 14, Rgba{});
+    }
+    utassert(Holds(roots[0], controls[0][1]));
+    utassert(!Holds(roots[1], controls[1][1]));
+    utassert(Holds(roots[1], controls[1][2]));
+    utassertnear(controls[1][2]->y, controls[0][1]->y);
+
+    delete win;
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestForm() {
     TestSuite("form");
     FieldBuilderAndStandaloneFieldKeepSourceState();
@@ -169,4 +209,5 @@ void TestForm() {
     HorizontalLabelIndentExistsWithoutLabel();
     FormConventionsExposeLabelLayoutAndFooter();
     FormAppliesStyledRefinements();
+    HiddenFieldsAreNotRendered();
 }

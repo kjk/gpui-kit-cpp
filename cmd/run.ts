@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "89cab22c84966f44f91429b0e3ed89ebe941d29e",
+  sha: "94892cacaec86762d9b686405433250b21fdbb83",
   date: "2026-09-27",
-  subject: "perf(tree): avoid cloning subtrees (#3265)",
+  subject: "perf(form): skip rendering hidden fields (#3269)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
