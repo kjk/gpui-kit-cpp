@@ -15,10 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `87bead3417c72fc7651315f3330e5e347058a448` (2026-09-26,
-form: Apply Styled refinements to Form (#3248)). Form applies a caller's
-Styled refinements to its root; here the form hands back that root, so a test
-pins padding and gap reaching it. The current update target is
+Processed through `668b19e860735c1a83f16c5405318c92bb9bd60a` (2026-09-26,
+list: Paint Role::List on focusable ListState container (#3249)). The List
+role moves from the outer list wrapper onto the focusable list-state element,
+so a focused list keeps its accessibility node. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

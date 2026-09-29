@@ -293,16 +293,12 @@ El* List::IntoEl() {
     }
 
     // Two elements, because Rust has two views. `List::render` is
-    // `div().id("list").role(List).refine_style(&self.style).child(state)`,
-    // and the state's own render is the `v_flex().id("list-state")` that
-    // declares the key context, tracks the focus and holds the query row and
-    // the rows. The outer one is what the caller styles: the p_8, the border
-    // and the radius here are the story's.
-    El* root = Div(a)
-                   ->PathClick(id)
-                   ->Role(AccessibilityRole::List)
-                   ->FlexCol()
-                   ->W(kFill);
+    // `div().id("list").refine_style(&self.style).child(state)`, and the
+    // state's own render is the `v_flex().id("list-state")` that declares the
+    // key context, tracks the focus, carries the List role and holds the query
+    // row and the rows. The outer one is what the caller styles: the p_8, the
+    // border and the radius here are the story's.
+    El* root = Div(a)->PathClick(id)->FlexCol()->W(kFill);
     // `v_flex().size_full().relative().overflow_hidden()`: no gap between the
     // query row and the rows under it — the row's own bottom border is what
     // separates them.
@@ -499,7 +495,11 @@ El* List::IntoEl() {
     if (!s->focus.IsValid()) {
         s->focus = FocusHandleNew(cx);
     }
+    // Role::List goes on the element that takes the focus: a focused node
+    // without a role is not painted into the accessibility tree, so focus
+    // would vanish from assistive technology.
     inner->PathClick(StrL("list-state"))
+        ->Role(AccessibilityRole::List)
         ->TrackFocus(s->focus)
         ->FocusRing(false)
         ->FocusOnPress();

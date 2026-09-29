@@ -361,6 +361,43 @@ static void MeasuresAnExistingRowWhenTheRequestedItemIsAbsent() {
     EntityDropAll(&app);
 }
 
+// list_state_has_list_role (#3182): the List role is on the focusable
+// list-state element, not on the outer wrapper the caller styles, so the
+// element focus lands on is the one that carries the role, once.
+static void ListStateHasListRole() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    win->frameArena = arena;
+    ThemeInstall(&app, ThemeMode::Light, ThemeLight());
+    Entity<ListState> state = EntityNewState<ListState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    MeasureProbe probe;
+    probe.counts[0] = 2;
+    probe.counts[1] = 0;
+    component::ListDelegate delegate;
+    delegate.data = &probe;
+    delegate.sectionsCount = &MeasureSections;
+    delegate.itemsCount = &MeasureItems;
+    delegate.renderItem = &MeasureItem;
+    El* root = component::List::New(&cx, StrL("list"), state)
+                   ->WithDelegate(delegate)
+                   ->H(300)
+                   ->IntoEl();
+    El* inner = root ? root->first : nullptr;
+    utassert(root && root->accessibility.role != AccessibilityRole::List);
+    utassert(inner && inner->accessibility.role == AccessibilityRole::List);
+    utassert(inner && inner->style.focusId == state.Get(&app)->focus.id);
+
+    WindowMotionFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
+
 static void TheDelegateTableOwnsTheWholeContract() {
     component::ListDelegate defaults;
     utassert(defaults.sectionsCount == nullptr);
@@ -487,4 +524,5 @@ void TestList() {
     AListThatHasNotMeasuredHasNoHeights();
     TheDelegateTableOwnsTheWholeContract();
     MeasuresAnExistingRowWhenTheRequestedItemIsAbsent();
+    ListStateHasListRole();
 }
