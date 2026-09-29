@@ -97,6 +97,7 @@ static void TheDefaultThemeResolvesToTheDefaultPalette() {
         TOK(chart5),
         TOK(chartBullish),
         TOK(chartBearish),
+        TOK(chartGrid),
         TOK(titleBar),
         TOK(titleBarBorder),
         TOK(tabBar),
@@ -388,7 +389,7 @@ static void ApplyConfigReadsTheChartColors() {
         "{\"themes\":[{\"name\":\"Palette\",\"mode\":\"light\","
         "\"colors\":{\"chart.1\":\"#111111\",\"chart.2\":\"not a color\","
         "\"chart.3\":\"#333333\",\"chart.bullish\":\"#00ff00\","
-        "\"chart.bearish\":\"#ff0000\"}}]}";
+        "\"chart.bearish\":\"#ff0000\",\"chart.grid\":\"#eeeeee\"}}]}";
     utassert(ThemeRegistryLoadStr(&app, Str(doc)) == 1);
     const ThemeConfig* config = ThemeRegistryFind(&app, StrL("Palette"));
     utassert(config && ThemeRegistryApply(&app, config));
@@ -407,6 +408,20 @@ static void ApplyConfigReadsTheChartColors() {
              theme.chartBullish.b == 0);
     utassert(theme.chartBearish.r == 255 && theme.chartBearish.g == 0 &&
              theme.chartBearish.b == 0);
+    utassert(theme.chartGrid.r == 0xee && theme.chartGrid.g == 0xee &&
+             theme.chartGrid.b == 0xee && theme.chartGrid.a == 0xff);
+
+    // A theme that leaves chart.grid out falls back to border at 60%.
+    const char* bare =
+        "{\"themes\":[{\"name\":\"Bare\",\"mode\":\"light\","
+        "\"colors\":{}}]}";
+    utassert(ThemeRegistryLoadStr(&app, Str(bare)) == 1);
+    const ThemeConfig* bareConfig = ThemeRegistryFind(&app, StrL("Bare"));
+    utassert(bareConfig && ThemeRegistryApply(&app, bareConfig));
+    const Theme& fallback = ThemeLight(&app);
+    Rgba grid = RgbaOpacity(fallback.border, 0.6f);
+    utassert(fallback.chartGrid.r == grid.r && fallback.chartGrid.g == grid.g &&
+             fallback.chartGrid.b == grid.b && fallback.chartGrid.a == grid.a);
     AppGlobalClear(&app);
 }
 

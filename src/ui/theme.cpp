@@ -459,6 +459,8 @@ const Theme& ThemeDefaultDark() {
         t.chart5 = Rgb(0x1e, 0x40, 0xaf);
         t.chartBullish = Rgb(0x16, 0xa3, 0x4a);
         t.chartBearish = Rgb(0xdc, 0x26, 0x26);
+        // neutral-800/60
+        t.chartGrid = RgbaOpacity(Rgb(0x26, 0x26, 0x26), 0.6f);
         t.danger = Rgb(0xf8, 0x71, 0x71);
         t.dangerFg = Rgb(0xdc, 0x26, 0x26);
         t.secondaryHover = Rgb(0x29, 0x29, 0x29);
@@ -570,6 +572,8 @@ const Theme& ThemeDefaultLight() {
         t.chart5 = Rgb(0x1e, 0x40, 0xaf);
         t.chartBullish = Rgb(0x16, 0xa3, 0x4a);
         t.chartBearish = Rgb(0xdc, 0x26, 0x26);
+        // neutral-200/60
+        t.chartGrid = RgbaOpacity(Rgb(0xe5, 0xe5, 0xe5), 0.6f);
         t.danger = Rgb(0xef, 0x44, 0x44);
         t.dangerFg = Rgb(0xfa, 0xfa, 0xfa);
         t.secondaryHover = Rgb(0xe5, 0xe5, 0xe5);
@@ -653,6 +657,7 @@ static void ThemeSyncRuntime(App* app, const AppThemeState* state) {
     style.foreground = ui.foreground;
     style.mutedForeground = ui.mutedFg;
     style.border = ui.border;
+    style.chartGrid = ui.chartGrid;
     style.ring = ui.ring;
     style.inspectorAccent = ui.blue;
     style.popover = ui.popover;
@@ -1892,6 +1897,7 @@ static const char* const kKeyAliases[][2] = {
     {"chart.5", "chart_5"},
     {"chart.bullish", "chart_bullish"},
     {"chart.bearish", "chart_bearish"},
+    {"chart.grid", "chart_grid"},
     {"drag.border", "drag_border"},
     {"progress.bar.background", "progress_bar.background"},
 };
@@ -2082,6 +2088,7 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base) {
     out->chart5 = Pick(c, "chart.5", Darken(out->blue, 0.4f));
     out->chartBullish = Pick(c, "chart.bullish", out->green);
     out->chartBearish = Pick(c, "chart.bearish", out->red);
+    out->chartGrid = Pick(c, "chart.grid", RgbaOpacity(out->border, 0.6f));
 
     SetToken(&out->danger, &out->tokens.danger,
              PickBg(c, "danger.background", out->red));

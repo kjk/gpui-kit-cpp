@@ -243,7 +243,9 @@ struct Theme {
     Rgba magentaLight;
     // chart.1..chart.5 in the theme file, and the pair a candlestick closes
     // on (`chart.bullish` / `chart.bearish`). Both themes give them the same
-    // five blues (default-theme.json).
+    // five blues (default-theme.json). chartGrid (`chart.grid`) is what a
+    // chart's grid lines paint in; axes stay on border, so the axis reads a
+    // step above the grid. A theme that leaves it out gets border at 60%.
     Rgba chart1;
     Rgba chart2;
     Rgba chart3;
@@ -251,6 +253,7 @@ struct Theme {
     Rgba chart5;
     Rgba chartBullish;
     Rgba chartBearish;
+    Rgba chartGrid;
     Rgba danger;
     Rgba dangerFg;
     // popover.background / popover.foreground: the surface something floating

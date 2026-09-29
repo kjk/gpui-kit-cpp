@@ -5321,13 +5321,13 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                     PathLineTo(p, px, py);
                 }
             }
-            PathStroke(ctx, p, 1.f, th.border);
+            PathStroke(ctx, p, 1.f, th.chartGrid);
             PathFree(p);
         }
         for (int i = 0; i < (c.overlay ? 0 : n); i++) {
             float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
             DrawLine(ctx, cx, cy, cx + radius * cosf(a), cy + radius * sinf(a),
-                     1.f, th.border);
+                     1.f, th.chartGrid);
         }
         // The values themselves, as one closed shape.
         Path* shape = PathNew(ctx, true);
@@ -5444,7 +5444,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // fewer than that.
             for (int i = 1; i <= intervals; i++) {
                 float gx = x + w * ((float)i / (float)intervals);
-                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border, gridDash);
+                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.chartGrid,
+                           gridDash);
             }
         } else if (pointChart) {
             // PointAxes::paint_grid: a line at every y tick but the
@@ -5452,11 +5453,12 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // spaced vertical lines from the left edge.
             for (int i = 0; i + 1 < nYTicks; i++) {
                 float gy = y + yTicks[i];
-                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, gridDash);
+                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.chartGrid, gridDash);
             }
             for (int i = 0; i < c.gridColumns; i++) {
                 float gx = x + w * (float)i / (float)c.gridColumns;
-                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.border, gridDash);
+                CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.chartGrid,
+                           gridDash);
             }
             DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         } else {
@@ -5464,7 +5466,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // are placed on as well; the baseline gets the solid axis line.
             for (int i = 0; i < intervals; i++) {
                 float gy = y + plotH * ((float)i / (float)intervals);
-                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.border, gridDash);
+                CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.chartGrid, gridDash);
             }
             DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         }

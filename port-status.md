@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d89cd9cca6a8c334ee498ffcf02dd3588c1402d9` (2026-09-25,
-website: Make the active sidebar item stand out (#3237)). Upstream restyled
-the website's active sidebar item; nothing in the tree ports it. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `a4dd3fd41ffcfbbb12156bddb448a4467cdfdd18` (2026-09-25,
+chart: Add `chart.grid` theme color for grid lines (#3236)). Charts paint
+their grid lines in the new `chart.grid` theme colour (neutral-200/60 light,
+neutral-800/60 dark, else border at 60% opacity) while axes stay on border.
+The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

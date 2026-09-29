@@ -283,6 +283,7 @@ El* ThemeColorsStory::Render(ThemeColorsStory* self, Ctx* cx) {
         {"Button", "Warning Foreground", "", th.buttonWarningFg},
         {"Button", "Warning Hover", "", th.tokens.buttonWarningHover},
         {"Chart", "Bearish", "chart_bearish", th.chartBearish},
+        {"Chart", "Grid", "chart_grid", th.chartGrid},
         {"Chart", "Bullish", "chart_bullish", th.chartBullish},
         {"Chart", "Color 1", "chart.1", th.chart1},
         {"Chart", "Color 2", "chart.2", th.chart2},

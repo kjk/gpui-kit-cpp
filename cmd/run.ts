@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d89cd9cca6a8c334ee498ffcf02dd3588c1402d9",
+  sha: "a4dd3fd41ffcfbbb12156bddb448a4467cdfdd18",
   date: "2026-09-25",
-  subject: "website: Make the active sidebar item stand out (#3237)",
+  subject: "chart: Add `chart.grid` theme color for grid lines (#3236)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
