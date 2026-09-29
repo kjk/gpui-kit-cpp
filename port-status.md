@@ -15,13 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `40ac007f93e0ca7397013b9a86c21b54013281c9` (2026-09-27,
-input: Cover UI workflows and fix disabled focus and vertical selection
-(#3256)). Upstream added 159 input UI workflow tests and the fixes they
-exposed: vertical selection reaches the document edges, every edit and Escape
-drop stale provider responses, a cancelled preedit separates typing in undo,
-and GoToDefinition asks the provider without a prior hover. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `452e72f24a183174551fdec3db570997b1e1fc8f` (2026-09-27,
+docs: base manual UI review checks on test coverage (#3257)). Upstream's
+CONTRIBUTING.md now bases manual UI review checks on test coverage; nothing to
+port. The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
