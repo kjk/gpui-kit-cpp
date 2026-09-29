@@ -1800,7 +1800,7 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                 ->Child(StoryTxt(
                     cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
                     th.mutedFg))
-                ->Child(StoryTxt(cx, StrL("v0.6.4"), 12, th.mutedFg))
+                ->Child(StoryTxt(cx, StrL("v0.6.5"), 12, th.mutedFg))
                 // gallery.rs puts the repository link last in the bar's
                 // right group, as a ghost icon button.
                 ->Child(component::Button::New(cx, StrL("assistant"))

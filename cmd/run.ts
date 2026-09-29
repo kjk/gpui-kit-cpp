@@ -538,17 +538,17 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "e0f95161993fdf3c394b34e70091af73a822058d",
+  sha: "d25a1f273f922f6836ba92ba46376cdc675a4b68",
   date: "2026-09-21",
-  subject: "kit: Pin gpui-pre to the exact snapshot each release is built against (#3163)",
+  subject: "Version 0.6.5",
   crates: {
-    "gpui-kit": "0.6.4",
-    "gpui-base": "0.6.4",
-    "gpui-component": "0.6.4",
-    "gpui-component-story": "0.6.4",
-    "gpui-wry": "0.6.4",
-    "gpui-shell": "0.6.4",
-    "gpui-component-shell": "0.6.4",
+    "gpui-kit": "0.6.5",
+    "gpui-base": "0.6.5",
+    "gpui-component": "0.6.5",
+    "gpui-component-story": "0.6.5",
+    "gpui-wry": "0.6.5",
+    "gpui-shell": "0.6.5",
+    "gpui-component-shell": "0.6.5",
   },
   dir: ".work/gpui-component",
 } as const;
