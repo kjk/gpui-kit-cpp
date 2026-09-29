@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1028a4ef940ed096114e2f37e0841f821e3853b1` (2026-09-25,
-docs: add an Images guide covering img, svg and HTTP caching (#3239)).
-Upstream wrote an Images guide for the website (img, svg, HTTP caching);
-nothing in the tree ports it. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `978eb671298ac446aebbbf80fe43350dff77034a` (2026-09-26,
+website: fix text selection theme token (#3241)). Upstream fixed the theme
+token the website's text selection reads; nothing in the tree ports it. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
