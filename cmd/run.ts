@@ -559,15 +559,15 @@ export const gpuiComponent = {
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "bcf6582ce3500df93a8a39366640173e6786cea6",
-  date: "2026-09-21",
-  subject: "gpui_util: Respect custom Scoop installation paths (#62473)",
+  sha: "1a28cff4b409169bac058bca40dfbfeb7621d19b",
+  date: "2026-09-27",
+  subject: "git: Stop remote operations blocking commit views (#64720)",
   crates: {
-    "gpui-pre": "0.3.6",
-    "gpui-pre-platform": "0.3.6",
-    "gpui-pre-macros": "0.3.6",
+    "gpui-pre": "0.3.7",
+    "gpui-pre-platform": "0.3.7",
+    "gpui-pre-macros": "0.3.7",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.6",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.7",
 } as const;
 
 /**

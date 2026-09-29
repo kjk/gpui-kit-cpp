@@ -26,7 +26,7 @@ the parent and measured to anchor the popup. The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.6 (Zed `bcf6582ce350`); the five ported
+  The GPUI reference is `gpui-pre` 0.3.7 (Zed `1a28cff4b409`); the five ported
   dependency versions are unchanged.
 - **Base Root keeps its plugins on the window.** Rust's `Root` entity owns
   each plugin's entity and observes it; here `RootPlugin` is a function table
