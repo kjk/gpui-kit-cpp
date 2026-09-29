@@ -163,6 +163,9 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
         "Calendar.month.December",
     };
     float cellSize = CalendarCellSize(self->size);
+    // Every item but a weekday head is text_sm, or text_xs in a Small
+    // calendar, which is what a Small date picker's popup is.
+    float itemFont = self->size == UiSize::Small ? 12.f : 14.f;
     switch (st.kind) {
         case CalendarItemKind::Previous:
         case CalendarItemKind::Next: {
@@ -191,7 +194,7 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
                 return item
                     ->Child(TextEl(a, isMonth ? Tr(months[st.value])
                                               : StrDup(a, fmt("%d", st.value)))
-                                ->Font(14)
+                                ->Font(itemFont)
                                 ->Semibold()
                                 ->Fg(th.foreground));
             }
@@ -204,7 +207,7 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
             return item
                 ->Child(TextEl(a, isMonth ? Tr(months[st.value])
                                           : StrDup(a, fmt("%d", st.value)))
-                            ->Font(14)
+                            ->Font(itemFont)
                             ->Semibold()
                             ->Fg(st.active ? th.primaryFg : th.foreground));
         }
@@ -231,8 +234,9 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
             } else if (!st.disabled) {
                 item->HoverBg(th.secondaryHover);
             }
-            return item->Child(
-                TextEl(a, StrDup(a, fmt("%d", st.value)))->Font(14)->Fg(fg));
+            return item->Child(TextEl(a, StrDup(a, fmt("%d", st.value)))
+                                   ->Font(itemFont)
+                                   ->Fg(fg));
         }
         case CalendarItemKind::Month:
             item->Radius(th.radius)->HoverBg(th.secondaryHover);
@@ -252,7 +256,7 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
             }
             return item
                 ->Child(TextEl(a, StrDup(a, fmt("%d", st.value)))
-                            ->Font(14)
+                            ->Font(itemFont)
                             ->Fg(st.active ? th.primaryFg : th.foreground));
     }
     (void)cellSize;
@@ -346,7 +350,20 @@ DateRangePresetValue DateRangePresetValue::Range(LocalDate start,
     return out;
 }
 
+DateRangePresetValue DateRangePresetValue::WithDateTime(
+    ::gpui::component::DateTime value) {
+    DateRangePresetValue out;
+    out.kind = DateRangePresetValueKind::DateTime;
+    out.dateTime = value;
+    out.start = value.startDate;
+    out.end = value.endDate;
+    return out;
+}
+
 Date DateRangePresetValue::IntoDate() const {
+    if (kind == DateRangePresetValueKind::DateTime) {
+        return dateTime.DateValue();
+    }
     return kind == DateRangePresetValueKind::Range ? Date::Range(start, end)
                                                    : Date::Single(start);
 }
@@ -370,6 +387,197 @@ DateRangePreset DateRangePreset::Range(Str label, LocalDate start,
     out.end = end;
     out.arg = arg;
     return out;
+}
+
+DateRangePreset DateRangePreset::WithDateTime(
+    Str label, ::gpui::component::DateTime value) {
+    DateRangePreset out;
+    out.label = label;
+    out.value = DateRangePresetValue::WithDateTime(value);
+    out.start = value.startDate;
+    out.end = value.endDate;
+    return out;
+}
+
+// \u2500\u2500\u2500 DateTime
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+DateTime DateTime::Single(LocalDateTime value) {
+    DateTime out;
+    out.kind = DateKind::Single;
+    out.startDate = value.date;
+    out.startTime = value.time;
+    return out;
+}
+
+DateTime DateTime::Single() {
+    return DateTime{};
+}
+
+DateTime DateTime::Range(LocalDateTime start, LocalDateTime end) {
+    DateTime out;
+    out.kind = DateKind::Range;
+    out.startDate = start.date;
+    out.startTime = start.time;
+    out.endDate = end.date;
+    out.endTime = end.time;
+    return out;
+}
+
+Date DateTime::DateValue() const {
+    return kind == DateKind::Range ? Date::Range(startDate, endDate)
+                                   : Date::Single(startDate);
+}
+
+bool DateTime::IsSome() const {
+    return DateValue().IsSome();
+}
+
+bool DateTime::IsComplete() const {
+    return DateValue().IsComplete();
+}
+
+bool DateTime::Start(LocalDateTime* out) const {
+    if (!UiDateValid(startDate)) {
+        return false;
+    }
+    if (out) {
+        *out = {startDate, startTime};
+    }
+    return true;
+}
+
+bool DateTime::End(LocalDateTime* out) const {
+    if (kind != DateKind::Range || !UiDateValid(endDate)) {
+        return false;
+    }
+    if (out) {
+        *out = {endDate, endTime};
+    }
+    return true;
+}
+
+Str DateTime::Format(Arena* a, Str pattern) const {
+    if (!IsComplete()) {
+        return {};
+    }
+    Str start = DatePickerFormatDate(a, pattern, startDate, startTime);
+    if (kind == DateKind::Single) {
+        return start;
+    }
+    Str end = DatePickerFormatDate(a, pattern, endDate, endTime);
+    return StrDup(a, fmt("%s - %s", start, end));
+}
+
+// \u2500\u2500\u2500 TimeField (styled)
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+TimeField* TimeField::New(Ctx* cx, Entity<TimeFieldState> state) {
+    TimeField* f = ArenaNew<TimeField>(cx->a);
+    f->cx = cx;
+    f->state = state;
+    f->id =
+        StrDup(cx->a, fmt("time-field-%d-%u", state.id.index, state.id.gen));
+    return f;
+}
+
+TimeField* TimeField::WithId(Str value) {
+    id = value;
+    return this;
+}
+
+TimeField* TimeField::Invalid(bool v) {
+    invalid = v;
+    return this;
+}
+
+TimeField* TimeField::WithSize(UiSize s) {
+    size = s;
+    return this;
+}
+
+TimeField* TimeField::Disabled(bool v) {
+    disabled = v;
+    return this;
+}
+
+TimeField* TimeField::Refine(const Style& value, uint32_t fields) {
+    StyleApplyFields(&style, value, fields);
+    styleSet |= fields;
+    return this;
+}
+
+// period_label: both labels in one cell, the inactive one transparent, so
+// the segment is as wide as the wider label whichever is shown. Rust stacks
+// them in a one-cell grid; here the inactive one keeps its width and gives
+// up its height.
+static El* TimePeriodLabel(Arena* a, bool pm) {
+    El* am = TextEl(a, StrL("AM"));
+    El* pmLabel = TextEl(a, StrL("PM"));
+    El* inactive = pm ? am : pmLabel;
+    inactive->Fg(RgbaTransparent());
+    El* hidden = Div(a)->H(0)->ClipY()->Child(inactive);
+    return Div(a)->FlexCol()->Child(pm ? pmLabel : am)->Child(hidden);
+}
+
+struct TimeFieldLook {
+    float segmentRadius = 0;
+    Rgba selection = {};
+};
+
+static El* ThemedTimeSegment(void* user, El* segment,
+                             const TimeFieldSegmentState* state, Ctx* cx) {
+    TimeFieldLook* look = (TimeFieldLook*)user;
+    segment->PadX(2);
+    if (state->Segment() == TimeSegment::Period) {
+        TimeFieldSegmentClearChildren(segment);
+        segment->MarginL(4)->Child(TimePeriodLabel(cx->a, state->Value() == 1));
+    }
+    segment->Radius(look->segmentRadius);
+    if (state->IsSelected()) {
+        segment->Bg(look->selection);
+    }
+    return segment;
+}
+
+El* TimeField::IntoEl() {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    TimeFieldState* st = state.Get(cx);
+    bool focused = st && FocusHandleIsFocused(cx->win, st->focus);
+    // input_style(disabled).
+    Rgba bg = disabled ? RgbaMixOklab(th.inputBorder, th.transparent, 0.8f)
+                       : th.inputBg;
+    Rgba fg = disabled ? th.mutedFg : th.foreground;
+    TimeFieldLook* look = ArenaNew<TimeFieldLook>(a);
+    look->segmentRadius = th.radius / 2.f;
+    look->selection = th.selection;
+    // Rust wraps Base's field in a styled div. Base's root is the element
+    // that owns the focus here, and the runtime paints a focus ring only on
+    // that element, so the frame's styling goes onto it instead of a wrapper
+    // around it; the layout is the same, a flex row centring the segments.
+    // Rust also sets tabular figures (OpenType tnum) so the digits keep their
+    // width while typed; text here has no font features (see port-status).
+    El* root = gpui::TimeField::New(cx, id, state)
+                   ->Disabled(disabled)
+                   ->RenderSegment(&ThemedTimeSegment, look)
+                   ->IntoEl();
+    root->FlexRow()
+        ->ItemsCenter()
+        ->FlexNone()
+        ->Bg(bg)
+        ->Fg(fg)
+        ->Border(1, invalid ? th.danger : th.inputBorder)
+        ->Radius(th.radius)
+        ->PadX(4);
+    UiInputTextSize(root, size);
+    UiInputH(root, size);
+    if (disabled) {
+        root->Opacity(0.5f);
+    }
+    root->FocusRing(focused && !disabled);
+    StyleApplyFields(&root->style, style, styleSet);
+    return root;
 }
 
 static Date PresetDate(const DateRangePreset& preset) {
@@ -428,7 +636,8 @@ static void DateIsoWeek(LocalDate date, int* year, int* week) {
     *week = (DateYearDay(thursday) - 1) / 7 + 1;
 }
 
-Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date) {
+Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
+                         LocalTime time) {
     if (!a || !UiDateValid(date)) {
         return {};
     }
@@ -550,6 +759,22 @@ Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date) {
             case 't':
                 out.AppendChar('\t');
                 break;
+            case 'H':
+            case 'k':
+            case 'I':
+            case 'l':
+            case 'M':
+            case 'S':
+            case 'p':
+            case 'P':
+            case 'R':
+            case 'T':
+            case 'X': {
+                // The time directives are Base's TimeFormat's.
+                char one[3] = {'%', directive, 0};
+                out.Append(TimeFormat(a, Str(one), time));
+                break;
+            }
             case 'n':
                 out.AppendChar('\n');
                 break;
@@ -597,11 +822,141 @@ Entity<DatePickerState> DatePickerStateNew(Ctx* cx, bool range) {
     state->self = out;
     state->focus = FocusHandleNew(cx);
     state->date = range ? Date::Range() : Date::Single();
-    state->dateFormat = StrDup(StrL("%Y/%m/%d"));
     state->calendar = CalendarStateNew(cx, state->date);
     state->calendarSubscription = SubscribeTo(cx->app, state->calendar, out,
                                               &DatePickerState::OnCalendar);
+    state->timeField = TimeFieldStateNew(cx);
+    state->timeFieldSubscription = SubscribeTo(cx->app, state->timeField, out,
+                                               &DatePickerState::OnTimeField);
     return out;
+}
+
+// edited_time_precision: the precision the popup edits times at, or false
+// when it edits dates only \u2014 no precision, or a range.
+static bool EditedTimePrecision(const DatePickerState* s, TimePrecision* out) {
+    if (!s->hasTimePrecision || !s->date.IsSingle()) {
+        return false;
+    }
+    if (out) {
+        *out = s->timePrecision;
+    }
+    return true;
+}
+
+static LocalTime TruncateTime(const DatePickerState* s, LocalTime time) {
+    return s->hasTimePrecision ? TimePrecisionTruncate(s->timePrecision, time)
+                               : time;
+}
+
+// push_time_field: the configuration and the time into the time field. User
+// edits flow the other way, through the field's event, so this runs only
+// when the picker's own time changes; pushing on every render could
+// overwrite an edit whose event has not been delivered yet.
+static void PushTimeField(DatePickerState* s, Ctx* cx) {
+    TimeFieldState* field = cx ? s->timeField.Get(cx) : nullptr;
+    if (!field) {
+        return;
+    }
+    TimePrecision precision =
+        s->hasTimePrecision ? s->timePrecision : TimePrecision::Minute;
+    TimeFieldStateSetPrecision(field, precision, cx);
+    TimeFieldStateSetHourCycle(field, s->hourCycle, cx);
+    TimeFieldStateSetTime(field, s->startTime, cx);
+    s->timeFieldPushed = true;
+}
+
+static void SetTimes(DatePickerState* s, LocalTime start, LocalTime end,
+                     Ctx* cx) {
+    s->startTime = TruncateTime(s, start);
+    s->endTime = TruncateTime(s, end);
+    PushTimeField(s, cx);
+}
+
+static void EmitChange(DatePickerState* s, Ctx* cx) {
+    if (s->date.IsComplete() && s->self.IsValid()) {
+        DatePickerEvent event = {DatePickerEventKind::Change,
+                                 DatePickerStateDateTime(s)};
+        EntityEmit(cx->app, cx->win, s->self, &event);
+    }
+    Notify(cx);
+}
+
+// set_open: closing takes the focus back to the picker when it was on the
+// picker or inside its popup (the time field).
+static void SetOpen(DatePickerState* s, bool open, Ctx* cx) {
+    if (!open && s->open && FocusHandleContainsFocused(cx->win, s->focus)) {
+        FocusHandleFocus(cx->win, s->focus);
+    }
+    s->open = open;
+    Notify(cx);
+}
+
+void DatePickerStateSetTimePrecision(DatePickerState* state,
+                                     TimePrecision precision) {
+    if (!state) {
+        return;
+    }
+    state->hasTimePrecision = true;
+    state->timePrecision = precision;
+    state->defaultTime = TimePrecisionTruncate(precision, state->defaultTime);
+    state->startTime = TimePrecisionTruncate(precision, state->startTime);
+    state->endTime = TimePrecisionTruncate(precision, state->endTime);
+    state->timeFieldPushed = false;
+}
+
+void DatePickerStateSetHourCycle(DatePickerState* state, HourCycle hourCycle) {
+    if (!state) {
+        return;
+    }
+    state->hourCycle = hourCycle;
+    state->timeFieldPushed = false;
+}
+
+void DatePickerStateSetDefaultTime(DatePickerState* state, LocalTime time) {
+    if (!state) {
+        return;
+    }
+    time = TruncateTime(state, time);
+    state->defaultTime = time;
+    state->startTime = time;
+    state->endTime = time;
+    state->timeFieldPushed = false;
+}
+
+DateTime DatePickerStateDateTime(const DatePickerState* state) {
+    if (!state) {
+        return {};
+    }
+    if (state->date.kind == DateKind::Range) {
+        return DateTime::Range({state->date.start, state->startTime},
+                               {state->date.end, state->endTime});
+    }
+    return DateTime::Single({state->date.start, state->startTime});
+}
+
+void DatePickerStateSetDateTime(DatePickerState* state, DateTime value,
+                                Ctx* cx) {
+    if (!state) {
+        return;
+    }
+    LocalDateTime start = {};
+    LocalDateTime end = {};
+    LocalTime startTime = value.Start(&start) ? start.time : state->defaultTime;
+    LocalTime endTime = value.End(&end) ? end.time : startTime;
+    SetTimes(state, startTime, endTime, cx);
+    DatePickerStateSetDate(state, value.DateValue(), cx, false);
+}
+
+Str DatePickerStateDisplayFormat(Arena* a, const DatePickerState* state) {
+    if (state->dateFormat.s) {
+        return state->dateFormat;
+    }
+    TimePrecision precision = TimePrecision::Minute;
+    if (EditedTimePrecision(state, &precision)) {
+        return StrDup(a, fmt("%%Y/%%m/%%d %s",
+                             TimePrecisionFormat(precision, state->hourCycle)));
+    }
+    return StrL("%Y/%m/%d");
 }
 
 void DatePickerStateSetDate(DatePickerState* state, Date date, Ctx* cx,
@@ -617,7 +972,8 @@ void DatePickerStateSetDate(DatePickerState* state, Date date, Ctx* cx,
     }
     state->open = false;
     if (emit && cx && state->self.IsValid()) {
-        DatePickerEvent event = {DatePickerEventKind::Change, date};
+        DatePickerEvent event = {DatePickerEventKind::Change,
+                                 DatePickerStateDateTime(state)};
         EntityEmit(cx->app, cx->win, state->self, &event);
     }
     NotifyDatePicker(state, cx);
@@ -686,6 +1042,15 @@ void DatePickerStateSetYearRange(DatePickerState* state, int minYear,
 void DatePickerStateSelectPreset(DatePickerState* state,
                                  const DateRangePreset& preset, Ctx* cx,
                                  bool emit) {
+    if (state && preset.value.kind == DateRangePresetValueKind::DateTime) {
+        DatePickerStateSetDateTime(state, preset.value.dateTime, cx);
+        if (emit && cx && state->self.IsValid()) {
+            DatePickerEvent event = {DatePickerEventKind::Change,
+                                     DatePickerStateDateTime(state)};
+            EntityEmit(cx->app, cx->win, state->self, &event);
+        }
+        return;
+    }
     DatePickerStateSetDate(state, PresetDate(preset), cx, emit);
 }
 
@@ -694,30 +1059,51 @@ void DatePickerState::OnCalendar(DatePickerState* self, Ctx* cx,
     if (!self || !ev || ev->kind != CalendarEventKind::Selected) {
         return;
     }
+    if (EditedTimePrecision(self, nullptr)) {
+        const Date& date = ev->date;
+        bool same = date.kind == self->date.kind &&
+                    date.start.year == self->date.start.year &&
+                    date.start.month == self->date.start.month &&
+                    date.start.day == self->date.start.day;
+        if (same) {
+            // Clicking the selected day again confirms it, so picking a date
+            // and closing is a double-click.
+            SetOpen(self, false, cx);
+            return;
+        }
+        // Keep the popup open so the time can be adjusted next.
+        self->date = date;
+        EmitChange(self, cx);
+        return;
+    }
     // CalendarState already owns this value; update the facade, close, emit,
     // and return focus to the input exactly once.
     self->date = ev->date;
     self->open = false;
-    DatePickerEvent event = {DatePickerEventKind::Change, ev->date};
+    DatePickerEvent event = {DatePickerEventKind::Change,
+                             DatePickerStateDateTime(self)};
     EntityEmit(cx->app, cx->win, self->self, &event);
     FocusHandleFocus(cx->win, self->focus);
     Notify(cx);
 }
 
+void DatePickerState::OnTimeField(DatePickerState* self, Ctx* cx,
+                                  const TimeFieldEvent* ev) {
+    if (!self || !ev) {
+        return;
+    }
+    self->startTime = ev->time;
+    EmitChange(self, cx);
+}
+
 void DatePickerState::OnToggle(DatePickerState* self, Ctx* cx,
                                const ClickEvent*) {
-    self->open = !self->open;
-    Notify(cx);
+    SetOpen(self, !self->open, cx);
 }
 
 void DatePickerState::OnOpenChange(DatePickerState* self, Ctx* cx,
                                    const ClickEvent*, intptr_t open) {
-    if (!open && self->open &&
-        FocusHandleContainsFocused(cx->win, self->focus)) {
-        FocusHandleFocus(cx->win, self->focus);
-    }
-    self->open = open != 0;
-    Notify(cx);
+    SetOpen(self, open != 0, cx);
 }
 
 void DatePickerState::OnDismiss(DatePickerState* self, Ctx* cx,
@@ -735,6 +1121,7 @@ void DatePickerState::OnDismiss(DatePickerState* self, Ctx* cx,
 void DatePickerState::OnClear(DatePickerState* self, Ctx* cx,
                               const ClickEvent*) {
     WindowStopPropagation(cx);
+    SetTimes(self, self->defaultTime, self->defaultTime, cx);
     Date empty =
         self->date.kind == DateKind::Range ? Date::Range() : Date::Single();
     DatePickerStateSetDate(self, empty, cx, true);
@@ -903,14 +1290,15 @@ static Str FormatDate(Arena* a, DateFormat f, int y, int m, int d) {
 
 struct DatePresetAction {
     Entity<DatePickerState> picker = {};
-    Date value = {};
+    DateRangePreset preset = {};
 
     static void OnClick(DatePresetAction* self, Ctx* cx, const ClickEvent*) {
         if (!self) {
             return;
         }
         if (DatePickerState* picker = self->picker.Get(cx)) {
-            DatePickerStateSetDate(picker, self->value, cx, true);
+            DatePickerStateSelectPreset(picker, self->preset, cx, true);
+            FocusHandleFocus(cx->win, picker->focus);
         }
     }
 };
@@ -928,10 +1316,20 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
         // a POD value here, so assignment is the entire shared update.
         calendarState->disabledMatcher = state->disabledMatcher;
     }
+    // sync_children: builders cannot reach the time field, so apply them
+    // before its first render.
+    if (!state->timeFieldPushed) {
+        PushTimeField(state, cx);
+    }
 
     bool hasDate = state->date.IsSome();
     bool complete = state->date.IsComplete();
-    Str title = DatePickerFormatValue(a, state->dateFormat, state->date);
+    TimePrecision editedPrecision = TimePrecision::Minute;
+    bool editsTime = EditedTimePrecision(state, &editedPrecision);
+    // The value updates live while its time is typed; Rust gives the trigger
+    // tabular figures for that, which text here cannot take (port-status).
+    Str title = DatePickerStateDateTime(state)
+                    .Format(a, DatePickerStateDisplayFormat(a, state));
     if (!title.s) {
         title = self->placeholder.s ? self->placeholder
                                     : Tr("DatePicker.placeholder");
@@ -1031,7 +1429,10 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                     cx, KeyedKey(key, HashClickId(StrL("DatePresetAction"))));
                 if (DatePresetAction* astate = action.Get(cx)) {
                     astate->picker = self->state;
-                    astate->value = PresetDate(preset);
+                    astate->preset = preset;
+                    // The label is the caller's frame string; the action
+                    // outlives the frame and does not read it.
+                    astate->preset.label = {};
                 }
                 list->Child(
                     Button::New(cx, StrDup(a, fmt("date-preset-%d", i)))
@@ -1049,7 +1450,29 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                                  ->NumberOfMonths(self->numberOfMonths)
                                  ->FirstDayOfWeek(state->firstDayOfWeek)
                                  ->Bare();
-        content->Child(calendar->IntoEl());
+        El* column = Div(a)->FlexCol()->Child(calendar->IntoEl());
+        if (editsTime) {
+            // render_time_field: under a rule, the label on the left and
+            // the field on the right.
+            bool compact = self->size == UiSize::Small;
+            El* row = Div(a)
+                          ->FlexRow()
+                          ->ItemsCenter()
+                          ->MarginT(compact ? 8.f : 12.f)
+                          ->PadT(compact ? 8.f : 12.f)
+                          ->Gap(12)
+                          ->JustifyBetween()
+                          ->BorderT(1, th.border);
+            row->Child(TextEl(a, Tr("DatePicker.time"))
+                           ->Font(compact ? 12.f : 14.f)
+                           ->Fg(th.mutedFg));
+            row->Child(TimeField::New(cx, state->timeField)
+                           ->WithId(StrL("time"))
+                           ->WithSize(self->size)
+                           ->IntoEl());
+            column->Child(row);
+        }
+        content->Child(column);
         popup = Div(a)
                     ->Pad(12)
                     ->Border(1, th.border)

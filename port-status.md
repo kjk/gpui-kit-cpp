@@ -15,13 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ac7684890ab47103f3337bca0eb29f9c8b239660` (2026-09-24,
-resizable: Stop a dock handle's hairline from painting over popovers (#3221)).
-A hugging resize handle's appearance paints in tree order under its
-container's clip again, so a dock divider no longer cuts through a popover
-deferred from a neighbouring panel; ResizeHandleContext::Edge tells the
-renderer which edge it hugs, and the styled renderer defers only the pill. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `f97b9eb3928f8f20d92481c2e51e97b95a215d24` (2026-09-24,
+date_picker: Support editing the time of day with `TimeField` (#3206)).
+DatePicker edits the time of day with a new TimeField (Base TimeFieldState and
+its keyboard model, a styled TimeField), on a 24- or 12-hour clock at minute
+or second precision; the value becomes a DateTime and Enter now also closes an
+open picker. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -105,9 +105,13 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   with its border, or with the ring `PopoverSurface` draws, instead of reading
   `appearance` (`src/ui/popover.cpp`).
 - **`crates/component-shell` registrations are not ported.** The C++ shell
-  materializes the base components; the styled Carousel, Chart, Toolbar and
-  Questionnaire registrations and `examples/js_story` have no counterpart
-  (`src/shell/runtime.cpp`).
+  materializes the base components; the styled Carousel, Chart, Toolbar,
+  Questionnaire and TimeField registrations and `examples/js_story` have no
+  counterpart (`src/shell/runtime.cpp`).
+- **No OpenType font features.** Text has no `font_features`, so the
+  TimeField and a time-editing DatePicker's trigger do not switch to tabular
+  figures (`tnum`) and their digits may shift width while typed
+  (`src/ui/time.cpp`).
 
 - **Textarea tokens still use flex wrapping instead of display-map inline
   metrics.** Text gaps can break at UTF-8 characters around atomic chips, but

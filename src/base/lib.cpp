@@ -15,6 +15,7 @@ void BaseInit(App* app) {
     DialogInitKeys();
     DatePickerInitKeys();
     SelectInitKeys();
+    TimeFieldInitKeys();
     InputInitKeys();
     TreeInitKeys();
 

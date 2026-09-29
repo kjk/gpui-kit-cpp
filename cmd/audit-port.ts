@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "ac7684890ab47103f3337bca0eb29f9c8b239660";
+const pinnedGpuiComponent = "f97b9eb3928f8f20d92481c2e51e97b95a215d24";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -27,7 +27,7 @@ history hover_card index_path input link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input pagination popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
-text text_boundary text_selection theme theme_tokens toast toolbar touch_selection
+text text_boundary text_selection theme theme_tokens time_field toast toolbar touch_selection
 toggle toggle_group tooltip tree undo_history virtual_list
 `
   .trim()
@@ -254,6 +254,7 @@ const testTargets: Record<string, string[]> = {
   "base/toast": ["tests/ToastTests.cpp"],
   "base/toggle": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/tooltip": ["tests/PopupTests.cpp"],
+  "base/time_field": ["tests/TimeFieldTests.cpp"],
   "base/tree": ["tests/TreeTests.cpp"],
   "base/virtual_list": ["tests/VirtualListTests.cpp"],
   "ui/accordion": ["tests/AccessibilityTests.cpp"],
@@ -441,6 +442,10 @@ const declarationMappings: Record<string, DeclarationMapping> = {
     collapse:
       "Rust's private sealed-trait gate has no C++ runtime representation; only the four concrete scale types expose the convention",
   },
+  "base/time_field.rs::struct TimeFieldSegment": {
+    collapse:
+      "the pre-wired segment is the El handed to the TimeFieldSegmentRenderer, already carrying its id, press handler and label; clear_children is TimeFieldSegmentClearChildren",
+  },
   "base/text/text_view.rs::struct TextViewPrepaintState": {
     collapse:
       "C++ fuses element prepaint into El painting: the ordinary hit-test entry and line-clamp clip bottom are resolved by the shared paint walk rather than retained in a TextView-specific state",
@@ -578,14 +583,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 483, sha256: "60b36bf9ddb02715b4160ae37d8eb1a9149166af42ab1ac4ecb515b3f332d67d" },
-    "pub-use": { count: 145, sha256: "eb8f9ab037686dd3cd9964e31b3fe8a215a35e7b794f52f2305021a4bf71aac2" },
-    test: { count: 1079, sha256: "d6d33cbfe086c62b5062fff846194061f9dc9db0245648fdc4b508dc051026df" },
+    declaration: { count: 491, sha256: "3497671b4cc1c99c96c769cfe0f1b643201aabd4cb49457aadb434d39309a4c0" },
+    "pub-use": { count: 146, sha256: "1bba2d60e4001c838473dafa43aaf1d71a378a9f2bc8bd3fa0c16d11a1b1ed8b" },
+    test: { count: 1089, sha256: "78973ee27ef36eededebe7e3c905fec0c1f35c31260e2df663675fa3da8fbe69" },
   },
   ui: {
-    declaration: { count: 479, sha256: "172113a51564ec8adb5ec65c41181473777d9cf9418db2ac41b73587cf389f15" },
-    "pub-use": { count: 168, sha256: "abac62c7bb0b6a63388f1712fa7afc12783a948b6d790419c6f4737cb15f46e7" },
-    test: { count: 628, sha256: "46b70746ba37dcac38ce6484508f021dae7e9b6515f6ffd908f4a8304440d1b4" },
+    declaration: { count: 482, sha256: "5e56ddc21265f873035bbffcf60170e7ae56aa69ba930878bc7ca5cbb911ec71" },
+    "pub-use": { count: 169, sha256: "61c72a26e88663e289498bb887eee80d2c0ef7f06a5a5b04761c252d92014c3d" },
+    test: { count: 629, sha256: "2d72227523b99162ab1aca24c9c7ee29a1f41344f0f4a1a2e29e9f2e5d781bfc" },
   },
 };
 

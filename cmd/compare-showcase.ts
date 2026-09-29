@@ -68,6 +68,7 @@ export const slugs = [
   "tabs",
   "text-selection",
   "textarea",
+  "time-field",
   "toast",
   "toggle",
   "toggle-group",

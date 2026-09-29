@@ -21,17 +21,17 @@ El* ShowcaseRenderRegistered(ShowcaseApp* app, Ctx* cx, WinSize size) {
 }
 
 static const char* kSlugs[CompCount] = {
-    "accordion",   "alert-dialog",   "avatar",       "button",
-    "calendar",    "checkbox",       "collapsible",  "color-picker",
-    "combobox",    "date-picker",    "dialog",       "dock",
-    "editor",      "hover-card",     "input",        "link",
-    "nav-stack",   "number-input",   "otp-input",    "pagination",
-    "popover",     "popup",          "progress",     "radio",
-    "radio-group", "resizable",      "scrollbar",    "select",
-    "sheet",       "slider",         "switch",       "table",
-    "tabs",        "text-selection", "text-view",    "textarea",
-    "toast",       "toggle",         "toggle-group", "toolbar",
-    "tooltip",     "tree",           "virtual-list",
+    "accordion",   "alert-dialog",   "avatar",      "button",
+    "calendar",    "checkbox",       "collapsible", "color-picker",
+    "combobox",    "date-picker",    "dialog",      "dock",
+    "editor",      "hover-card",     "input",       "link",
+    "nav-stack",   "number-input",   "otp-input",   "pagination",
+    "popover",     "popup",          "progress",    "radio",
+    "radio-group", "resizable",      "scrollbar",   "select",
+    "sheet",       "slider",         "switch",      "table",
+    "tabs",        "text-selection", "text-view",   "textarea",
+    "time-field",  "toast",          "toggle",      "toggle-group",
+    "toolbar",     "tooltip",        "tree",        "virtual-list",
 };
 
 const char* CompSlug(int i) {

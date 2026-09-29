@@ -8,8 +8,8 @@ namespace gpui {
 
 // What a keystroke asks a date picker to do. Rust binds the same Confirm and
 // Cancel actions a select does, but its handlers are not the select's: Enter
-// only opens, and does nothing at all to a picker that is already open —
-// choosing a date is the calendar's business, not the root's.
+// opens a closed picker, and closes an open one once the value shown in the
+// popup is the one the user wants.
 enum class DatePickerAction : uint8_t {
     None,
     Open,

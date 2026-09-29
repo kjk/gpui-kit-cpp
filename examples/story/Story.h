@@ -76,6 +76,7 @@ enum {
     StoryTag,
     StoryTextarea,
     StoryThemeColors,
+    StoryTimeField,
     StoryToggle,
     // Not StoryToolbar: that is the size/options row every page draws.
     StoryToolbarStory,

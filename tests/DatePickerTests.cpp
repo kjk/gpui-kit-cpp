@@ -1,7 +1,7 @@
 /* Ported from crates/base/src/date_picker.rs.
  *
  * The root binds the same Confirm and Cancel actions a select does, and its
- * two handlers are what separate the pair: Enter only ever opens, and the
+ * two handlers are what separate the pair: Enter toggles the popup, and the
  * Cancel handler does not look at `disabled` at all. */
 
 #include "Test.h"
@@ -15,11 +15,11 @@ static DatePickerAction ForChord(const char* spec, bool open, bool disabled) {
     return DatePickerActionOf(KeymapMatch(c, &ctx, 1).action, open, disabled);
 }
 
-static void EnterOnlyOpens() {
+static void EnterOpensAndCloses() {
     utassert(ForChord("enter", false, false) == DatePickerAction::Open);
-    // Already open, Enter does nothing: choosing a date is the calendar's
-    // business, not the root's. A select would confirm here.
-    utassert(ForChord("enter", true, false) == DatePickerAction::None);
+    // Already open, Enter closes it again once the value shown in the popup
+    // is the one wanted (upstream f97b9eb3; it used to do nothing).
+    utassert(ForChord("enter", true, false) == DatePickerAction::Dismiss);
 }
 
 static void EscapeOnlyCloses() {
@@ -108,11 +108,15 @@ static El* FindNamedDp(El* root, const char* name);
 struct DatePickerSink {
     int changes = 0;
     Date last = {};
+    component::DateTime values[8] = {};
 
     static void OnChange(DatePickerSink* self, Ctx*,
                          const component::DatePickerEvent* ev) {
+        if (self->changes < 8) {
+            self->values[self->changes] = ev->value;
+        }
         self->changes++;
-        self->last = ev->date;
+        self->last = ev->value.DateValue();
     }
 };
 
@@ -131,8 +135,11 @@ static void RetainedStateOwnsAndForwardsCalendar() {
     component::DatePickerState* state = picker.Get(&app);
     utassert(state && state->date.kind == DateKind::Range);
     utassert(state && state->calendar.IsValid());
-    utassert(state && state->dateFormat.s &&
-             StrEqI(state->dateFormat, "%Y/%m/%d"));
+    // date_format is None until set; the display format is then the date
+    // alone, since a range edits no times.
+    utassert(state && !state->dateFormat.s);
+    utassert(state && StrEqI(component::DatePickerStateDisplayFormat(a, state),
+                             "%Y/%m/%d"));
 
     Entity<DatePickerSink> sink = EntityNewState<DatePickerSink>(&app);
     SubscribeTo(&app, picker, sink, &DatePickerSink::OnChange);
@@ -176,6 +183,228 @@ static void RetainedStateOwnsAndForwardsCalendar() {
     utassert(SameDate(state->date.end, D(2025, 3, 7)));
     utassert(received && received->changes == 2);
 
+    EntityDropAll(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
+static LocalDate DT(int y, int m, int d) {
+    return {y, m, d};
+}
+
+static LocalTime TM(int h, int m, int s) {
+    LocalTime t;
+    t.hour = h;
+    t.minute = m;
+    t.second = s;
+    return t;
+}
+
+static bool SameTime(LocalTime a, LocalTime b) {
+    return a == b;
+}
+
+// kit/tests/date_picker.rs date_time_picker_reports_each_edit_and_stays_open,
+// through the state's own handlers rather than a window: picking a date
+// keeps the popup open and reports the value, each time edit reports it, the
+// display format follows the precision, and picking the selected date again
+// closes the popup without a report.
+static void DateTimePickerReportsEachEditAndStaysOpen() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<component::DatePickerState> picker =
+        component::DatePickerStateNew(&cx);
+    component::DatePickerState* state = picker.Get(&app);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Second);
+    component::DatePickerStateSetDateTime(
+        state, component::DateTime::Single({DT(2026, 9, 15), TM(8, 0, 0)}),
+        &cx);
+    utassert(StrEqI(component::DatePickerStateDateTime(state).Format(
+                        a, component::DatePickerStateDisplayFormat(a, state)),
+                    "2026/09/15 08:00:00"));
+    Entity<DatePickerSink> sink = EntityNewState<DatePickerSink>(&app);
+    SubscribeTo(&app, picker, sink, &DatePickerSink::OnChange);
+    state->open = true;
+
+    CalendarState* calendar = state->calendar.Get(&app);
+    utassert(calendar);
+    if (calendar) {
+        cx.self = state->calendar.id;
+        CalendarStateSelectDate(calendar, D(2026, 9, 16), &cx);
+    }
+    // Picking a date keeps the popup open so the time can be edited next.
+    utassert(state->open);
+    TimeFieldState* field = state->timeField.Get(&app);
+    utassert(field && field->editor.precision == TimePrecision::Second);
+    if (field) {
+        cx.self = state->timeField.id;
+        MouseDownEvent press = {};
+        TimeFieldState::OnSegmentDown(field, &cx, &press,
+                                      (intptr_t)TimeSegment::Minute);
+        KeyEvent key = {};
+        key.vk = '4';
+        TimeFieldState::OnKeyDown(field, &cx, &key);
+        key.vk = '5';
+        key.propagate = true;
+        TimeFieldState::OnKeyDown(field, &cx, &key);
+        // The minute is complete, so the seconds segment is selected next.
+        ActionEvent up = {};
+        up.action = TimeFieldIncrement();
+        TimeFieldState::OnAction(field, &cx, &up);
+    }
+    utassert(StrEqI(component::DatePickerStateDateTime(state).Format(
+                        a, component::DatePickerStateDisplayFormat(a, state)),
+                    "2026/09/16 08:45:01"));
+    // Clicking the selected day again confirms it and closes the popup.
+    if (calendar) {
+        cx.self = state->calendar.id;
+        CalendarStateSelectDate(calendar, D(2026, 9, 16), &cx);
+    }
+    utassert(!state->open);
+    DatePickerSink* received = sink.Get(&app);
+    utassert(received && received->changes == 4);
+    if (received && received->changes == 4) {
+        const LocalTime times[4] = {TM(8, 0, 0), TM(8, 4, 0), TM(8, 45, 0),
+                                    TM(8, 45, 1)};
+        for (int i = 0; i < 4; i++) {
+            component::LocalDateTime at = {};
+            utassert(received->values[i].Start(&at));
+            utassert(SameDate(at.date, D(2026, 9, 16)));
+            utassert(SameTime(at.time, times[i]));
+        }
+    }
+    EntityDropAll(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
+// kit/tests/date_picker.rs twelve_hour_picker_types_the_period: midnight
+// reads as 12 AM, and typing 0 9 3 0 p makes 9:30 PM.
+static void TwelveHourPickerTypesThePeriod() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<component::DatePickerState> picker =
+        component::DatePickerStateNew(&cx);
+    component::DatePickerState* state = picker.Get(&app);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Minute);
+    component::DatePickerStateSetHourCycle(state, HourCycle::H12);
+    component::DatePickerStateSetDateTime(
+        state, component::DateTime::Single({DT(2026, 9, 15), TM(0, 0, 0)}),
+        &cx);
+    utassert(StrEqI(component::DatePickerStateDateTime(state).Format(
+                        a, component::DatePickerStateDisplayFormat(a, state)),
+                    "2026/09/15 12:00 AM"));
+    TimeFieldState* field = state->timeField.Get(&app);
+    utassert(field && field->editor.hourCycle == HourCycle::H12);
+    if (field) {
+        cx.self = state->timeField.id;
+        MouseDownEvent press = {};
+        TimeFieldState::OnSegmentDown(field, &cx, &press,
+                                      (intptr_t)TimeSegment::Hour);
+        const int keys[] = {'0', '9', '3', '0', 'P'};
+        for (int k : keys) {
+            KeyEvent key = {};
+            key.vk = k;
+            TimeFieldState::OnKeyDown(field, &cx, &key);
+        }
+    }
+    utassert(StrEqI(component::DatePickerStateDateTime(state).Format(
+                        a, component::DatePickerStateDisplayFormat(a, state)),
+                    "2026/09/15 09:30 PM"));
+    component::LocalDateTime at = {};
+    utassert(component::DatePickerStateDateTime(state).Start(&at) &&
+             SameTime(at.time, TM(21, 30, 0)));
+    EntityDropAll(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
+// kit/tests/date_picker.rs range_picker_edits_dates_only: a range picker
+// with a precision shows dates only, closes on a complete range, and keeps
+// the times its owner set.
+static void RangePickerEditsDatesOnly() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<component::DatePickerState> picker =
+        component::DatePickerStateNew(&cx, true);
+    component::DatePickerState* state = picker.Get(&app);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Minute);
+    component::DatePickerStateSetDateTime(
+        state,
+        component::DateTime::Range({DT(2026, 9, 15), TM(9, 0, 0)},
+                                   {DT(2026, 9, 15), TM(18, 0, 0)}),
+        &cx);
+    utassert(StrEqI(component::DatePickerStateDateTime(state).Format(
+                        a, component::DatePickerStateDisplayFormat(a, state)),
+                    "2026/09/15 - 2026/09/15"));
+    Entity<DatePickerSink> sink = EntityNewState<DatePickerSink>(&app);
+    SubscribeTo(&app, picker, sink, &DatePickerSink::OnChange);
+    state->open = true;
+    CalendarState* calendar = state->calendar.Get(&app);
+    if (calendar) {
+        cx.self = state->calendar.id;
+        CalendarStateSelectDate(calendar, D(2026, 9, 16), &cx);
+        CalendarStateSelectDate(calendar, D(2026, 9, 18), &cx);
+    }
+    // A complete range closes the popup, as in any date-only picker.
+    utassert(!state->open);
+    DatePickerSink* received = sink.Get(&app);
+    utassert(received && received->changes == 1);
+    if (received && received->changes == 1) {
+        component::LocalDateTime start = {};
+        component::LocalDateTime end = {};
+        utassert(received->values[0].Start(&start) && received->values[0]
+                                                          .End(&end));
+        // The times set by the owner are kept.
+        utassert(SameDate(start.date, D(2026, 9, 16)) &&
+                 SameTime(start.time, TM(9, 0, 0)));
+        utassert(SameDate(end.date, D(2026, 9, 18)) &&
+                 SameTime(end.time, TM(18, 0, 0)));
+    }
+    EntityDropAll(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
+// time/time_field.rs: test_time_field_builder.
+static void TimeFieldBuilder() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<TimeFieldState> state =
+        TimeFieldStateNew(&cx, TimePrecision::Second, HourCycle::H12);
+    component::TimeField* field = component::TimeField::New(&cx, state)
+                                      ->WithId(StrL("start"))
+                                      ->WithSize(UiSize::Large)
+                                      ->Disabled(true)
+                                      ->Invalid(true);
+    utassert(StrEqI(field->id, "start"));
+    utassert(field->size == UiSize::Large);
+    utassert(field->disabled);
+    utassert(field->invalid);
     EntityDropAll(&app);
     ArenaDelete(a);
     delete win;
@@ -292,7 +521,7 @@ static void TwoPickersHaveTwoTriggers() {
 
 void TestDatePicker() {
     TestSuite("date_picker");
-    EnterOnlyOpens();
+    EnterOpensAndCloses();
     EscapeOnlyCloses();
     OnlyTheConfirmHandlerChecksDisabled();
     DeleteClearsTheDate();
@@ -301,5 +530,9 @@ void TestDatePicker() {
     RangeSelectionRestartsAndCompletes();
     RetainedStateOwnsAndForwardsCalendar();
     RetainedFacadeUsesTheStateIdentity();
+    DateTimePickerReportsEachEditAndStaysOpen();
+    TwelveHourPickerTypesThePeriod();
+    RangePickerEditsDatesOnly();
+    TimeFieldBuilder();
     TwoPickersHaveTwoTriggers();
 }

@@ -1012,6 +1012,23 @@ LocalDate DateToday() {
     return out;
 }
 
+LocalTime TimeOfDayNow() {
+    LocalTime out;
+    (void)DateToday();
+    if (gTodayPinned.year != 0) {
+        return out;
+    }
+    time_t now = time(nullptr);
+    struct tm* lt = localtime(&now);
+    if (!lt) {
+        return out;
+    }
+    out.hour = lt->tm_hour;
+    out.minute = lt->tm_min;
+    out.second = lt->tm_sec > 59 ? 59 : lt->tm_sec;
+    return out;
+}
+
 LocalDate DateAddDays(LocalDate base, int days) {
     struct tm t = {};
     t.tm_year = base.year - 1900;

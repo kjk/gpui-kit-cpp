@@ -43,6 +43,7 @@ enum {
     CompTextSelection,
     CompTextView,
     CompTextarea,
+    CompTimeField,
     CompToast,
     CompToggle,
     CompToggleGroup,
@@ -142,6 +143,9 @@ struct ShowcaseApp {
     char otp[8] = "12";
     int otpLen = 2;
     bool otpOn = false;
+    // The time-field page's state: `self.time_field`, made on the page's
+    // first frame.
+    Entity<TimeFieldState> timeField = {};
     int radioSel = 0;
     bool switchOn = true;
     bool toggleOn = true;
@@ -238,6 +242,7 @@ El* ShowcaseTabs(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseTextSelection(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseTextView(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseTextarea(ShowcaseApp* app, Ctx* cx);
+El* ShowcaseTimeField(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToast(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToggle(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseToggleGroup(ShowcaseApp* app, Ctx* cx);

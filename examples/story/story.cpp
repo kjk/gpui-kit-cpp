@@ -205,6 +205,9 @@ static const StoryInfo kMeta[StoryCount] = {
     {"theme-colors", "Theme Colors",
      "A color theme viewer to explore colors organized by "
      "categories."},
+    {"time-field", "TimeField",
+     "Edit a time of day segment by segment, on a 24-hour or 12-hour "
+     "clock."},
     {"toggle", "Toggle", "Turn an option on or off, alone or in a group."},
     {"toolbar", "Toolbar",
      "Groups commands and controls into one keyboard-navigable row."},

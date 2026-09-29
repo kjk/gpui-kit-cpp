@@ -78,6 +78,7 @@ void TestSlider();
 void TestPagination();
 void TestNumberInput();
 void TestOtpInput();
+void TestTimeField();
 void TestSelect();
 void TestDialog();
 void TestQuestionnaire();

@@ -10,19 +10,26 @@ enum {
     DpEmptyRange,
     DpBirthday,
     DpNoAppearance,
+    DpDateTime,
+    DpDateTimeSecond,
+    DpDateTime12h,
     DpCount
 };
 
 struct DatePickerStory {
     Entity<component::DatePickerState> pickers[DpCount] = {};
-    Subscription subscriptions[3] = {};
+    Subscription subscriptions[6] = {};
     // format!("Value: {:?}") of the subscribed Option<String>.
     char value[96] = "None";
+    // The same for the three date-and-time pickers.
+    char dateTimeValue[96] = "None";
     StoryToolbarState toolbar;
     bool seeded = false;
 
     static void OnChange(DatePickerStory* self, Ctx* cx,
                          const component::DatePickerEvent* ev);
+    static void OnDateTimeChange(DatePickerStory* self, Ctx* cx,
+                                 const component::DatePickerEvent* ev);
     static El* Render(DatePickerStory* self, Ctx* cx);
 };
 
@@ -33,7 +40,7 @@ static bool FirstFiveDays(LocalDate date) {
 
 void DatePickerStory::OnChange(DatePickerStory* self, Ctx* cx,
                                const component::DatePickerEvent* ev) {
-    const Date& date = ev->date;
+    Date date = ev->value.DateValue();
     if (!date.IsComplete()) {
         StrCopyZ(self->value, (int)sizeof(self->value), "None");
     } else if (date.kind == DateKind::Range) {
@@ -45,6 +52,19 @@ void DatePickerStory::OnChange(DatePickerStory* self, Ctx* cx,
         TempStr value = fmt("Some(\"%d-%02d-%02d\")", date.start.year,
                             date.start.month, date.start.day);
         StrCopyZ(self->value, (int)sizeof(self->value), value.s);
+    }
+    Notify(cx);
+}
+
+// value.format("%Y-%m-%d %H:%M:%S"), as the Option it is.
+void DatePickerStory::OnDateTimeChange(DatePickerStory* self, Ctx* cx,
+                                       const component::DatePickerEvent* ev) {
+    Str value = ev->value.Format(cx->a, StrL("%Y-%m-%d %H:%M:%S"));
+    if (!value.s) {
+        StrCopyZ(self->dateTimeValue, (int)sizeof(self->dateTimeValue), "None");
+    } else {
+        TempStr text = fmt("Some(\"%s\")", value);
+        StrCopyZ(self->dateTimeValue, (int)sizeof(self->dateTimeValue), text.s);
     }
     Notify(cx);
 }
@@ -94,6 +114,26 @@ static void InitializeStory(DatePickerStory* self, Ctx* cx) {
         Subscribe(cx, self->pickers[DpDateRange], &DatePickerStory::OnChange);
     self->subscriptions[2] =
         Subscribe(cx, self->pickers[DpEmptyRange], &DatePickerStory::OnChange);
+
+    // Date and time: the first starts at now; the other two are empty until
+    // picked and give a date 09:00 until its time is edited.
+    LocalTime nine = {9, 0, 0};
+    state = self->pickers[DpDateTime].Get(cx);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Minute);
+    component::DatePickerStateSetDateTime(
+        state, component::DateTime::Single({now, TimeOfDayNow()}), cx);
+    state = self->pickers[DpDateTimeSecond].Get(cx);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Second);
+    component::DatePickerStateSetDefaultTime(state, nine);
+    state = self->pickers[DpDateTime12h].Get(cx);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Minute);
+    component::DatePickerStateSetHourCycle(state, HourCycle::H12);
+    component::DatePickerStateSetDefaultTime(state, nine);
+    for (int i = 0; i < 3; i++) {
+        self->subscriptions[3 + i] =
+            Subscribe(cx, self->pickers[DpDateTime + i],
+                      &DatePickerStory::OnDateTimeChange);
+    }
 }
 
 static component::DatePicker* Picker(DatePickerStory* self, Ctx* cx,
@@ -142,6 +182,24 @@ El* DatePickerStory::Render(DatePickerStory* self, Ctx* cx) {
         defaults,
         StoryTxt(cx, StoryFmt(cx, "Value: %s", self->value), 14, th.mutedFg));
     page->Child(defaults);
+
+    El* dateTime = StorySection(cx, "Date and time",
+                                "Edit the time of day below the calendar; "
+                                "changes apply as you make them.");
+    StorySectionBody(dateTime)->FlexCol()->W(512)->Gap(12);
+    StorySectionAdd(dateTime, Picker(self, cx, DpDateTime)->IntoEl());
+    StorySectionAdd(dateTime, Picker(self, cx, DpDateTimeSecond)
+                                  ->Placeholder(StrL("With seconds"))
+                                  ->Cleanable()
+                                  ->IntoEl());
+    StorySectionAdd(dateTime, Picker(self, cx, DpDateTime12h)
+                                  ->Placeholder(StrL("12-hour clock"))
+                                  ->Cleanable()
+                                  ->IntoEl());
+    StorySectionAdd(dateTime,
+                    StoryTxt(cx, StoryFmt(cx, "Value: %s", self->dateTimeValue),
+                             14, th.mutedFg));
+    page->Child(dateTime);
 
     El* disabled =
         StorySection(cx, "Disabled dates",

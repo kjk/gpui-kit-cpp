@@ -58,6 +58,7 @@ int GpuiMain(int argc, char** argv) {
     TestPagination();
     TestNumberInput();
     TestOtpInput();
+    TestTimeField();
     TestSelect();
     TestDialog();
     TestQuestionnaire();

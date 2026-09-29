@@ -1090,6 +1090,25 @@ struct LocalDate {
 LocalDate DateToday();
 LocalDate DateAddDays(LocalDate base, int days);
 
+// chrono's NaiveTime, the time of day a TimeField edits: whole seconds, since
+// nothing here keeps a fraction.
+struct LocalTime {
+    int hour = 0;   // 0..23
+    int minute = 0; // 0..59
+    int second = 0; // 0..59
+};
+
+inline bool operator==(LocalTime a, LocalTime b) {
+    return a.hour == b.hour && a.minute == b.minute && a.second == b.second;
+}
+inline bool operator!=(LocalTime a, LocalTime b) {
+    return !(a == b);
+}
+
+// The local wall-clock time now: chrono::Local::now().time(). Midnight while
+// GPUI_TODAY pins the date, so a pinned screenshot keeps a pinned clock.
+LocalTime TimeOfDayNow();
+
 void StrFree(Str s);
 void StrFree(const char*) = delete;
 

@@ -118,6 +118,8 @@ static const char* const kV_Command_placeholder[] = {
 static const char* const kV_DatePicker_placeholder[] = {
     "Select date", "选择日期",       "選擇日期",
     "選取日期",    "Seleziona data", "Sélectionner une date"};
+static const char* const kV_DatePicker_time[] = {"Time",  "时间",  "時間",
+                                                 nullptr, nullptr, nullptr};
 static const char* const kV_Dialog_cancel[] = {"Cancel", "取消",    "取消",
                                                "取消",   "Annulla", nullptr};
 static const char* const kV_Dialog_ok[] = {"OK",   "确定", "確定",
@@ -240,6 +242,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Command.empty", kV_Command_empty},
     {"Command.placeholder", kV_Command_placeholder},
     {"DatePicker.placeholder", kV_DatePicker_placeholder},
+    {"DatePicker.time", kV_DatePicker_time},
     {"Dialog.cancel", kV_Dialog_cancel},
     {"Dialog.ok", kV_Dialog_ok},
     {"Dock.Close", kV_Dock_Close},
@@ -272,7 +275,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Settings.Reset All", kV_Settings_Reset_All},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
 };
-extern const int kLocaleRowCount = 72;
+extern const int kLocaleRowCount = 73;
 
 } // namespace component
 } // namespace gpui

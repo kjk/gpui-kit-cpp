@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ac7684890ab47103f3337bca0eb29f9c8b239660",
+  sha: "f97b9eb3928f8f20d92481c2e51e97b95a215d24",
   date: "2026-09-24",
-  subject: "resizable: Stop a dock handle's hairline from painting over popovers (#3221)",
+  subject: "date_picker: Support editing the time of day with `TimeField` (#3206)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

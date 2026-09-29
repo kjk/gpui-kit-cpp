@@ -83,12 +83,12 @@ void DatePickerInitKeys() {
 
 DatePickerAction DatePickerActionOf(uint32_t id, bool open, bool disabled) {
     if (id == action::Confirm()) {
-        // Rust's Confirm opens a closed picker and does nothing at all to one
-        // that is already open: choosing a date is the calendar's business.
-        if (disabled || open) {
+        // Enter opens the picker, and closes it again once the value shown
+        // in the popup is the one the user wants.
+        if (disabled) {
             return DatePickerAction::None;
         }
-        return DatePickerAction::Open;
+        return open ? DatePickerAction::Dismiss : DatePickerAction::Open;
     }
     if (id == action::Cancel()) {
         return open ? DatePickerAction::Dismiss : DatePickerAction::None;

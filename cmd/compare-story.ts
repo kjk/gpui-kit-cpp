@@ -105,6 +105,7 @@ const slugs = [
   "tag",
   "textarea",
   "theme-colors",
+  "time-field",
   "toggle",
   "tooltip",
   "tree",

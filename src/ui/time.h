@@ -1,6 +1,6 @@
 #ifndef GPUI_SRC_UI_TIME_H_
 #define GPUI_SRC_UI_TIME_H_
-/* Themed calendar and date picker — crates/ui/src/time/ */
+/* Themed calendar, date picker and time field — crates/ui/src/time/ */
 
 #include "ui/sizing.h"
 
@@ -68,28 +68,95 @@ struct Calendar {
     El* IntoEl();
 };
 
+// time/time_field.rs re-exports Base's state and its vocabulary.
+using ::gpui::HourCycle;
+using ::gpui::TimeFieldEvent;
+using ::gpui::TimeFieldState;
+using ::gpui::TimePrecision;
+using ::gpui::TimeSegment;
+
+// A segmented time editor, e.g. 09:30, 09:30:15 or 09:30 PM. The value
+// lives in TimeFieldState; see it for the keyboard model.
+struct TimeField {
+    Ctx* cx = nullptr;
+    Str id = {};
+    Entity<TimeFieldState> state = {};
+    UiSize size = UiSize::Medium;
+    Style style = {};
+    uint32_t styleSet = 0;
+    bool disabled = false;
+    bool invalid = false;
+
+    // The id defaults to ("time-field", state id).
+    static TimeField* New(Ctx* cx, Entity<TimeFieldState> state);
+    // with_id: the name a date picker gives its own field.
+    TimeField* WithId(Str id);
+    // Display the caller's validation result. This does not reject edits.
+    TimeField* Invalid(bool v = true);
+    TimeField* WithSize(UiSize s);
+    TimeField* Disabled(bool v = true);
+    TimeField* Refine(const Style& value, uint32_t fields);
+    El* IntoEl();
+};
+
+// A calendar date and its time of day: chrono's NaiveDateTime.
+struct LocalDateTime {
+    LocalDate date = {};
+    LocalTime time = {};
+};
+
+// date_picker::DateTime: the selected date or dates combined with their
+// times of day. A date of all zeros is None, as in Date. When the picker has
+// no time precision, every time is its default time, 00:00 unless set.
+struct DateTime {
+    DateKind kind = DateKind::Single;
+    LocalDate startDate = {};
+    LocalTime startTime = {};
+    LocalDate endDate = {};
+    LocalTime endTime = {};
+
+    static DateTime Single(LocalDateTime value);
+    static DateTime Single();
+    static DateTime Range(LocalDateTime start, LocalDateTime end);
+    bool IsSome() const;
+    bool IsComplete() const;
+    bool Start(LocalDateTime* out) const;
+    bool End(LocalDateTime* out) const;
+    // The date part of this value.
+    Date DateValue() const;
+    // Format a complete value, joining a range with " - ". Empty when it is
+    // not complete, which is Rust's None.
+    Str Format(Arena* a, Str pattern) const;
+};
+
 enum class DatePickerEventKind : uint8_t {
     Change
 };
 
-// DatePickerEvent::Change(Date).
+// DatePickerEvent::Change(DateTime): the user changed the value. With a time
+// precision set, this is emitted on every edit while the popup stays open.
 struct DatePickerEvent {
     DatePickerEventKind kind = DatePickerEventKind::Change;
-    Date date = {};
+    DateTime value = {};
 };
 
 enum class DateRangePresetValueKind : uint8_t {
     Single,
-    Range
+    Range,
+    DateTime
 };
 
 struct DateRangePresetValue {
     DateRangePresetValueKind kind = DateRangePresetValueKind::Single;
     LocalDate start = {};
     LocalDate end = {};
+    // DateRangePresetValue::DateTime: a date with its time, or a range of
+    // them. The times are kept as given, even by a range picker.
+    ::gpui::component::DateTime dateTime = {};
 
     static DateRangePresetValue Single(LocalDate date);
     static DateRangePresetValue Range(LocalDate start, LocalDate end);
+    static DateRangePresetValue WithDateTime(::gpui::component::DateTime value);
     Date IntoDate() const;
 };
 
@@ -105,6 +172,10 @@ struct DateRangePreset {
     static DateRangePreset Single(Str label, LocalDate date, intptr_t arg = 0);
     static DateRangePreset Range(Str label, LocalDate start, LocalDate end,
                                  intptr_t arg = 0);
+    // DateRangePreset::date_time: a preset with a date and time, or a range
+    // of them.
+    static DateRangePreset WithDateTime(Str label,
+                                        ::gpui::component::DateTime value);
 };
 
 // The two formats the story uses: %Y/%m/%d (the default) and %Y-%m-%d.
@@ -122,8 +193,21 @@ struct DatePickerState {
     Date date = {};
     bool open = false;
     Entity<CalendarState> calendar = {};
-    // Heap-owned because this state outlives every frame arena.
+    // Heap-owned because this state outlives every frame arena. Empty is
+    // Rust's None: the display format then follows the time precision.
     Str dateFormat = {};
+    // time_precision: None (false) edits dates only.
+    bool hasTimePrecision = false;
+    TimePrecision timePrecision = TimePrecision::Minute;
+    HourCycle hourCycle = HourCycle::H23;
+    LocalTime defaultTime = {};
+    LocalTime startTime = {};
+    // The time of a range's end. Only DatePickerStateSetDateTime sets it,
+    // since a range picker edits dates only.
+    LocalTime endTime = {};
+    Entity<TimeFieldState> timeField = {};
+    bool timeFieldPushed = false;
+    Subscription timeFieldSubscription = {};
     int numberOfMonths = 1;
     Matcher disabledMatcher = {};
     Subscription calendarSubscription = {};
@@ -134,6 +218,8 @@ struct DatePickerState {
 
     static void OnCalendar(DatePickerState* self, Ctx* cx,
                            const CalendarEvent* ev);
+    static void OnTimeField(DatePickerState* self, Ctx* cx,
+                            const TimeFieldEvent* ev);
     static void OnToggle(DatePickerState* self, Ctx* cx, const ClickEvent* ev);
     static void OnOpenChange(DatePickerState* self, Ctx* cx,
                              const ClickEvent* ev, intptr_t open);
@@ -161,11 +247,32 @@ void DatePickerStateSetYearRange(DatePickerState* state, int minYear,
 void DatePickerStateSelectPreset(DatePickerState* state,
                                  const DateRangePreset& preset, Ctx* cx,
                                  bool emit = true);
+// time_precision: edit the time of day as well as the date, down to
+// precision. Selecting a date then keeps the popup open, and every change to
+// the date or time is reported as it happens; clicking the selected date
+// again closes the popup. A range picker edits dates only.
+void DatePickerStateSetTimePrecision(DatePickerState* state,
+                                     TimePrecision precision);
+// hour_cycle: how the time field counts hours, default H23.
+void DatePickerStateSetHourCycle(DatePickerState* state, HourCycle hourCycle);
+// default_time: the time given to a date before the user edits it, 00:00
+// unless set.
+void DatePickerStateSetDefaultTime(DatePickerState* state, LocalTime time);
+// date_time: the value, combining the date with its time of day.
+DateTime DatePickerStateDateTime(const DatePickerState* state);
+// set_date_time: the date and the time of day. Does not emit.
+void DatePickerStateSetDateTime(DatePickerState* state, DateTime value,
+                                Ctx* cx);
+// The format the trigger shows: date_format, or %Y/%m/%d followed by the
+// time at the precision and hour cycle while the picker edits times.
+Str DatePickerStateDisplayFormat(Arena* a, const DatePickerState* state);
 
 // chrono's formatting seam, kept dependency-free. It covers the numeric,
-// name and weekday directives used by gpui-kit and copies unknown
-// directives literally instead of silently changing the requested pattern.
-Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date);
+// name and weekday directives used by gpui-kit, the time directives Base's
+// TimeFormat knows for time, and copies unknown directives literally instead
+// of silently changing the requested pattern.
+Str DatePickerFormatDate(Arena* a, Str pattern, LocalDate date,
+                         LocalTime time = {});
 Str DatePickerFormatValue(Arena* a, Str pattern, Date date);
 
 struct DatePicker {
