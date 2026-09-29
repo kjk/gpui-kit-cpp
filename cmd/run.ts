@@ -554,20 +554,20 @@ export const gpuiComponent = {
 } as const;
 
 /**
- * Zed reference snapshot recorded in gpui-pre 0.3.5's package metadata.
+ * Zed reference snapshot recorded in gpui-pre 0.3.6's package metadata.
  * Cargo.lock now resolves registry packages rather than a Zed git source.
  */
 export const zedGpui = {
   repo: "https://github.com/zed-industries/zed",
-  sha: "d89e9c2124b2786a390c7a451c7488601b4da2e1",
-  date: "2026-09-14",
-  subject: "agent: Fix elicitation tool-call IDs (#64086)",
+  sha: "bcf6582ce3500df93a8a39366640173e6786cea6",
+  date: "2026-09-21",
+  subject: "gpui_util: Respect custom Scoop installation paths (#62473)",
   crates: {
-    "gpui-pre": "0.3.5",
-    "gpui-pre-platform": "0.3.5",
-    "gpui-pre-macros": "0.3.5",
+    "gpui-pre": "0.3.6",
+    "gpui-pre-platform": "0.3.6",
+    "gpui-pre-macros": "0.3.6",
   },
-  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.5",
+  lock: "registry+https://github.com/rust-lang/crates.io-index#gpui-pre@0.3.6",
 } as const;
 
 /**

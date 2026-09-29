@@ -1974,9 +1974,10 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
             style = NSWindowStyleMaskBorderless | NSWindowStyleMaskResizable |
                     NSWindowStyleMaskMiniaturizable;
         }
-        // GPUI's primary_display().bounds() is the full display, not the
-        // work area below the menu bar and above the Dock.
-        NSRect screen = [[NSScreen mainScreen] frame];
+        // Bounds::centered clamps to the display's visible bounds: the work
+        // area below the menu bar and above the Dock. [window center] below
+        // centres in the same area.
+        NSRect screen = [[NSScreen mainScreen] visibleFrame];
         WindowClampToDisplay(&dipW, &dipH, (int)screen.size.width,
                              (int)screen.size.height);
         NSRect frame = NSMakeRect(0, 0, dipW, dipH);

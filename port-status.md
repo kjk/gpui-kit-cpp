@@ -26,8 +26,12 @@ check; only release tooling changed. The current update target is
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
-  The GPUI reference is `gpui-pre` 0.3.5 (Zed `d89e9c2124b2`); the five ported
+  The GPUI reference is `gpui-pre` 0.3.6 (Zed `bcf6582ce350`); the five ported
   dependency versions are unchanged.
+- **Linux centres a new window on the whole X display.** GPUI's
+  `Bounds::centered` uses the display's visible bounds; Windows and macOS read
+  the work area, the X11 path does not read `_NET_WORKAREA`
+  (`src/gpui/window_linux.cpp`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell

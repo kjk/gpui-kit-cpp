@@ -1474,15 +1474,21 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         style = WS_OVERLAPPEDWINDOW & ~WS_CAPTION;
         style |= WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
     }
-    int sx = GetSystemMetrics(SM_CXSCREEN);
-    int sy = GetSystemMetrics(SM_CYSCREEN);
+    // Bounds::centered: the primary display's visible bounds — the work area
+    // clear of the taskbar — is what the window is centred in and clamped
+    // to, not the whole display.
+    RECT wa = {0, 0, GetSystemMetrics(SM_CXSCREEN),
+               GetSystemMetrics(SM_CYSCREEN)};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    int sx = wa.right - wa.left;
+    int sy = wa.bottom - wa.top;
     WindowClampToDisplay(&dipW, &dipH, sx, sy);
     RECT wr = {0, 0, dipW, dipH};
     AdjustWindowRectEx(&wr, style, FALSE, 0);
     int pxW = wr.right - wr.left;
     int pxH = wr.bottom - wr.top;
-    int x = (sx - pxW) / 2;
-    int y = (sy - pxH) / 2;
+    int x = wa.left + (sx - pxW) / 2;
+    int y = wa.top + (sy - pxH) / 2;
     // -gpui-window: open where the caller asked instead of centred at the
     // caller's size. The numbers are the outer window rect, so they are the
     // same ones MoveWindow and GetWindowRect use.
