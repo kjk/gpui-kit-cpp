@@ -15,10 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f8cd486005ab1c09fd6cf9fc00e8a4ca42a4ad17` (2026-09-26,
-website: Keep versioned docs links inside their version (#3243)). Upstream
-kept versioned website docs links inside their version (website build, CI and
-doc sources); nothing in the tree ports it. The current update target is
+Processed through `5009bf08120887cdd1cc33866cf021b51e51047f` (2026-09-26,
+docs: Share repository instructions across coding agents (#3251)). Upstream
+moved its coding-agent instructions into a shared AGENTS.md and .agents/;
+nothing in the tree ports it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
