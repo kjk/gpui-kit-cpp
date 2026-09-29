@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `17b2c6a269c3de51a2f0dc97d49f87f0dd9d6571` (2026-09-28,
-color_picker: Add ColorSelect, a framed field that opens the picker (#3289)).
-ColorSelect lands: a color picker drawn as a Select-like framed field (swatch,
-hex value, caret) that opens the same popover, with a Color Select story
-section and the Form story's theme color using it; ColorPicker now applies its
-Styled refinements to its root. The current update target is
+Processed through `56dc9648c4049abab97045d925ef3983214d97e3` (2026-09-28,
+text: Keep inline flow lines within the wrap width for CJK punctuation
+(#3293)). The inline flow re-checks each wrapped line against in-context
+shaped widths so CJK full-width punctuation cannot push a line past the wrap
+width; the port's inline flow measures and paints each word as the same shaped
+run, so it had no such gap. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

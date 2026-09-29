@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "17b2c6a269c3de51a2f0dc97d49f87f0dd9d6571",
+  sha: "56dc9648c4049abab97045d925ef3983214d97e3",
   date: "2026-09-28",
-  subject: "color_picker: Add ColorSelect, a framed field that opens the picker (#3289)",
+  subject: "text: Keep inline flow lines within the wrap width for CJK punctuation (#3293)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
