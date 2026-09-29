@@ -636,7 +636,21 @@ Command* Command::OnCancel(Listener fn) {
 // window renders cannot overwrite each other's command palette.
 struct CommandRowContext {
     Entity<CommandState> state = {};
+    float itemRadius = 0;
 };
+
+// item_radius: row corner radius, concentric with the frame: the list's p_1
+// (plus the border when bordered) sits between a row and the frame's
+// corner. A borderless command keeps the theme radius, since its frame
+// belongs to the host. Command has no `.rounded(..)` here (it is not
+// Styled), so Rust's own-radius arms never apply, and rem is the fixed 16px.
+static float CommandItemRadius(const Theme& th, bool bordered) {
+    if (!bordered) {
+        return th.radius;
+    }
+    float r = th.radiusLg - 16.f * 0.25f - 1.f;
+    return r > 0 ? r : 0;
+}
 
 static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
     Arena* a = cx->a;
@@ -675,7 +689,7 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
                    ->Gap(8)
                    ->PadX(8)
                    ->PadY(6)
-                   ->Radius(th.radius);
+                   ->Radius(rowCx ? rowCx->itemRadius : th.radius);
     if (selected) {
         line->Bg(th.tokens.accent);
     }
@@ -801,6 +815,7 @@ El* Command::IntoEl() {
         }
         CommandRowContext* rowCx = ArenaNew<CommandRowContext>(a);
         rowCx->state = state;
+        rowCx->itemRadius = CommandItemRadius(th, bordered);
         El* list = VirtualList::New(cx, s->rows.len)
                        ->Id(StrL("list"))
                        ->Sizes(s->rowSizes.els)

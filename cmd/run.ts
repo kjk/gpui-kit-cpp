@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0c830f4d257e69fdd17200650533ab4ca9a40cc0",
+  sha: "71bf31aeaaa4c421a8f1e9679cc02db59b81eb3f",
   date: "2026-09-28",
-  subject: "Bump v0.7.0",
+  subject: "command: Keep item row radius concentric with the frame (#3285)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

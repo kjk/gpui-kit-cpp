@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0c830f4d257e69fdd17200650533ab4ca9a40cc0` (2026-09-28, Bump
-v0.7.0). The workspace crates move to 0.7.0; the story's title bar reads
-v0.7.0. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `71bf31aeaaa4c421a8f1e9679cc02db59b81eb3f` (2026-09-28,
+command: Keep item row radius concentric with the frame (#3285)). Command item
+rows now take a corner radius concentric with the bordered frame (radius_lg
+less the list's padding and border) instead of the theme radius. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
