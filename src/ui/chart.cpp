@@ -659,8 +659,10 @@ static const float kPieHoverLift = 6.f;
 
 // The chart's own id on the stack, which is what its hover state and springs
 // key on: Rust paints a plot inside `with_element_id(plot.id())`.
-static Ctx ChartIdCtx(const Ctx* cx, uint32_t id) {
-    Ctx out = *cx;
+static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id) {
+    Ctx out = {};
+    out.app = ctx->app;
+    out.win = ctx->window;
     out.path = id;
     return out;
 }
@@ -705,14 +707,15 @@ static void PaintChartTooltip(PaintCtx* ctx, El* e, const Theme& th,
                kFont, RgbaOpacity(th.foreground, focus), false);
 }
 
-static float PieSliceLift(PieChart* p, int index, int hoverIndex, float focus) {
-    if (!p->cx || hoverIndex != index || focus <= 0.f) {
+static float PieSliceLift(PaintCtx* ctx, PieChart* p, int index, int hoverIndex,
+                          float focus) {
+    if (!ctx->window || !ctx->app || hoverIndex != index || focus <= 0.f) {
         return 0;
     }
-    Ctx idCx = ChartIdCtx(p->cx, p->id);
+    Ctx idCx = ChartIdCtx(ctx, p->id);
     return motion::spring(&idCx,
                           motion::TransitionId(fmt("pie-slice-%d", index)), 1.f,
-                          ThemeNow(p->cx->app).motion.springControl);
+                          ThemeNow(ctx->app).motion.springControl);
 }
 
 // One name's place, before the overlap pass moves it.
@@ -787,7 +790,7 @@ static void PaintPieLabels(PaintCtx* ctx, PieChart* p, float cx, float cy,
         // Anchor the line on the edge the slice reaches this frame, so a
         // lifted slice never paints over its own leader line. The label
         // anchor stays put, so the line may not start past it.
-        float lift = PieSliceLift(p, i, hoverIndex, focus);
+        float lift = PieSliceLift(ctx, p, i, hoverIndex, focus);
         float edgeR = ring - s.outerInset + kPieHoverLift * lift;
         if (edgeR > labelR) {
             edgeR = labelR;
@@ -852,7 +855,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     float focus = 0.f;
     Point lingerCursor = {};
     // interactive(false): no hitbox, so nothing is hovered or lifted.
-    if (p->cx && p->interactive) {
+    if (ctx->window && ctx->app && p->interactive) {
         plot::Arc hit = plot::Arc::New();
         hit.InnerRadius(p->innerRadius)->OuterRadius(ring);
         Bounds bounds = {e->x, e->y, e->w, e->h};
@@ -882,7 +885,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         }
         plot::PlotHover hover = {};
         Point linger = cursor;
-        Ctx idCx = ChartIdCtx(p->cx, p->id);
+        Ctx idCx = ChartIdCtx(ctx, p->id);
         if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
@@ -901,7 +904,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
             angle += 2.f * kPi * (s.value / total);
             continue;
         }
-        float lift = PieSliceLift(p, i, hoverIndex, focus);
+        float lift = PieSliceLift(ctx, p, i, hoverIndex, focus);
         float ro = ring - s.outerInset + kPieHoverLift * lift;
         float ri = p->innerRadius;
         float a0 = angle, a1 = angle + sweep;
@@ -925,7 +928,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         angle += 2.f * kPi * (s.value / total);
     }
     PaintPieLabels(ctx, p, cx, cy, total, ring, hoverIndex, focus);
-    if (hoverIndex >= 0 && focus > 0.f && p->cx) {
+    if (hoverIndex >= 0 && focus > 0.f && ctx->app) {
         // One number per slice fits one row, so there is no title: `label`
         // is the ring's leader-line text, as often a percentage as a name.
         const PieSlice& s = p->slices[hoverIndex];
@@ -934,7 +937,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         Str value = s.tooltipValue.s
                         ? s.tooltipValue
                         : fmt("%g (%.1f%%)", (double)s.value, (double)share);
-        const Theme& th = ThemeNow(p->cx->app);
+        const Theme& th = ThemeNow(ctx->app);
         PaintChartTooltip(ctx, e, th, lingerCursor, focus, Str{}, s.color, name,
                           value);
     }
@@ -1185,7 +1188,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     float focus = 0.f;
     Point lingerCursor = {};
     // interactive(false): no hitbox, so no node is hovered.
-    if (c->cx && c->interactive) {
+    if (ctx->window && ctx->app && c->interactive) {
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
         for (int i = 0; i < g.nodes.len; i++) {
             const SankeyNodeLayout& node = g.nodes[i];
@@ -1204,7 +1207,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         }
         plot::PlotHover hover = {};
         Point linger = cursor;
-        Ctx idCx = ChartIdCtx(c->cx, c->id);
+        Ctx idCx = ChartIdCtx(ctx, c->id);
         if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
@@ -1270,7 +1273,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
     }
 
     auto paintTooltip = [&]() {
-        if (hoverIndex < 0 || focus <= 0.f || !c->cx) {
+        if (hoverIndex < 0 || focus <= 0.f || !ctx->app) {
             return;
         }
         const SankeyChartNode& node = c->nodes[hoverIndex];
