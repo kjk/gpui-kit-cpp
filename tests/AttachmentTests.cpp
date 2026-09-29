@@ -419,6 +419,54 @@ static void TheCornerControlsProgressAndTooltip() {
     ArenaDelete(a);
 }
 
+static El* FindRetryButton(El* e) {
+    if (!e) return nullptr;
+    if (e->listener.IsValid() && e->style.focusFromPath &&
+        StrEq(e->accessibility.label, Tr("Attachment.Retry"))) {
+        return e;
+    }
+    for (El* child = e->first; child; child = child->next) {
+        if (El* found = FindRetryButton(child)) return found;
+    }
+    return nullptr;
+}
+
+// retry_dispatch: failed_media_without_source_retries_by_pointer_and_keyboard
+// and failed_media_without_retry_has_no_action. Failed media with no image
+// shows the accessible retry button — a focusable, clickable control, so a
+// click and Enter reach the handler — and without a retry the disabled ban
+// glyph, which takes neither.
+static void FailedMediaWithoutSourceOffersTheRetryButton() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    Listener handler;
+    handler.SetFn(&FailedMediaWithoutSourceOffersTheRetryButton);
+
+    Attachment* retrying = Attachment::New(&cx)
+                               ->Id(StrL("failed-attachment"))
+                               ->Status(AttachmentStatus::Failed)
+                               ->Media(AttachmentMedia::New(&cx))
+                               ->OnRetry(handler);
+    El* card = retrying->IntoEl();
+    El* button = FindRetryButton(card);
+    utassert(button != nullptr);
+    utassert(button && button->listener.fn == handler.fn);
+
+    El* rejected = Attachment::New(&cx)
+                       ->Id(StrL("failed-attachment"))
+                       ->Status(AttachmentStatus::Failed)
+                       ->Media(AttachmentMedia::New(&cx))
+                       ->IntoEl();
+    utassert(FindRetryButton(rejected) == nullptr);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 // upload_bar_path: the bar hugs the inner corner arcs and stops at the
 // percentage.
 static void TheUploadBarHugsTheCorners() {
@@ -519,5 +567,6 @@ void TestAttachment() {
     TheClickLayerSitsBelowTheActions();
     TheCornerControlsProgressAndTooltip();
     TheUploadBarHugsTheCorners();
+    FailedMediaWithoutSourceOffersTheRetryButton();
     TheSizeScaleAndTheTwoAxes();
 }

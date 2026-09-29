@@ -199,11 +199,6 @@ El* AttachmentMedia::IntoEl() {
         }
         return Spinner::New(cx)->WithSize(spinnerSize)->Color(color)->IntoEl();
     };
-    // Failed: the alert glyph when a retry is offered, the ban glyph for a
-    // rejection that cannot be retried.
-    IconName failedGlyph =
-        retry.IsValid() ? IconName::CircleAlert : IconName::Ban;
-
     El* box = Div(a)
                   ->Flex()
                   ->Shrink0()
@@ -239,7 +234,10 @@ El* AttachmentMedia::IntoEl() {
     if (!hasSource && AttachmentStatusIsInProgress(status)) {
         box->Child(busy(th.primary));
     } else if (!hasSource && AttachmentStatusIsFailed(status)) {
-        box->Child(IconEl(a, failedGlyph, glyph));
+        // Failed with no picture: the retry button itself when a retry is
+        // offered, the ban glyph for a rejection that cannot be retried.
+        box->Child(retry.IsValid() && hasId ? RetryButton(cx, id, retry)
+                                            : IconEl(a, IconName::Ban, glyph));
     } else {
         for (int i = 0; i < children.len; i++) {
             box->Child(children[i]);

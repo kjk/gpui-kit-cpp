@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `331e3afe363c2afd3f7677387ca1f17af115d1dc` (2026-09-25,
-website: Fall back to `primary.background` for themes without
-`selection.background` (#3242)). Upstream made the website's theme catalogue
-fall back to primary.background for themes without selection.background;
-nothing in the tree ports it. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `1a5249a89a14be58705b02dd80acc73f48e9827c` (2026-09-26,
+attachment: Show retry control when failed media has no source (#3233)).
+Failed attachment media with no image shows the accessible retry button in its
+slot when a retry is offered, and the ban glyph otherwise. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
