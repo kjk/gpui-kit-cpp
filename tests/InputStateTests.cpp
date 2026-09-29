@@ -1099,10 +1099,6 @@ static void AHoveredSymbolIsAskedAboutOnce() {
     InputHoverDefinition(&s, 10);
     utassert(gDefCalls == 2);
     utassert(s.hoverDef.locations.len == 0);
-    // What it found is kept as the last answer, which is what the action
-    // goes by once the modifier has come up.
-    utassert(s.hoverDef.lastLocations.len == 1);
-    utassert(s.hoverDef.lastRange.start == 0 && s.hoverDef.lastRange.end == 8);
 }
 
 static void ASecondaryClickFollowsTheDefinition() {
@@ -1125,25 +1121,26 @@ static void ASecondaryClickFollowsTheDefinition() {
     utassert(RangeIs(s, 0, 8));
 }
 
-static void TheActionGoesByTheLastThingAHoverFound() {
+// definitions.rs on_action_go_to_definition (#3256): the keyboard action
+// asks the provider about the caret, with no hover before it.
+static void TheActionAsksAboutTheCaretWithoutAHover() {
     InputState s;
     s.kind = InputKind::Editor;
     InputSetValue(&s, StrL("Duration and more Duration here"));
     s.definitionProvider = &TestDefinitions;
+    gDefCalls = 0;
 
-    InputHoverDefinition(&s, 20);
-    // The modifier comes up: the underline goes, the answer is remembered.
-    InputClearHoverDefinition(&s);
-    utassert(s.hoverDef.locations.len == 0);
-
-    // The caret is nowhere near the symbol, so the action has nothing to do.
-    InputSetSelectedRange(&s, nullptr, nullptr, 12, 12);
+    // A word the provider does not define: asked, and nothing moves.
+    InputSetSelectedRange(&s, nullptr, nullptr, 14, 14);
     InputGoToDefinition(&s, nullptr, nullptr);
-    utassert(RangeIs(s, 12, 12));
+    utassert(gDefCalls == 1);
+    utassert(RangeIs(s, 14, 14));
 
-    // Inside it, it follows.
+    // Inside one it does, it follows, never having been hovered.
+    utassert(s.hoverDef.locations.len == 0);
     InputSetSelectedRange(&s, nullptr, nullptr, 20, 20);
     InputGoToDefinition(&s, nullptr, nullptr);
+    utassert(gDefCalls == 2);
     utassert(RangeIs(s, 0, 8));
 }
 
@@ -2027,17 +2024,17 @@ static void AnAcceptedItemWritesItsInsertText() {
     utassert(Menu(&s, InputAction::Enter));
     utassert(ValueIs(s, "x = core::"));
 
-    // While it is up, backspacing asks again on the shorter word, and back
-    // past the word closes it. An accepted menu is down and stays down.
+    // completions.rs deleting_prefix_invalidates_pending_completion (#3256):
+    // a deletion invalidates what the provider said, and triggers nothing,
+    // so the menu goes; typing again asks about the word as it now stands.
     InputSetValue(&s, Str{});
     TypeChars(&s, "cor");
     utassert(s.completion.items.len == 1);
     InputPerform(&s, nullptr, nullptr, InputAction::Backspace, false);
     utassert(ValueIs(s, "co"));
-    utassert(s.completion.open && s.completion.items.len == 3);
-    InputPerform(&s, nullptr, nullptr, InputAction::Backspace, false);
-    InputPerform(&s, nullptr, nullptr, InputAction::Backspace, false);
     utassert(!s.completion.open);
+    TypeChars(&s, "n");
+    utassert(s.completion.open);
 }
 
 // ─── code actions ─────────────────────────────────────────────────────────
@@ -4282,6 +4279,102 @@ static void InputFocusCyclesThroughInputsAndAddons() {
     }
 }
 
+// ─── kit/tests/input (#3256) ─────────────────────────────────────────────
+
+// textarea.rs
+// vertical_selection_reaches_document_edges_from_inside_the_only_row: with no
+// row further up or down, shift-up and shift-down still take the selection to
+// the document's start or end, and pressing again keeps it.
+static void VerticalSelectionReachesDocumentEdges() {
+    InputState s;
+    s.kind = InputKind::Textarea;
+    InputSetValue(&s, StrL("abcdef"));
+    // The field has been laid out, which is when Rust looks for the edge.
+    s.lastBounds = Bounds{0, 0, 200, 80};
+    InputSetSelectedRange(&s, nullptr, nullptr, 3, 3);
+    Act(&s, InputAction::SelectUp);
+    utassert(RangeIs(s, 0, 3) && InputCursor(&s) == 0);
+    Act(&s, InputAction::SelectUp);
+    utassert(RangeIs(s, 0, 3));
+    InputSetSelectedRange(&s, nullptr, nullptr, 3, 3);
+    Act(&s, InputAction::SelectDown);
+    utassert(RangeIs(s, 3, 6) && InputCursor(&s) == 6);
+    Act(&s, InputAction::SelectDown);
+    utassert(RangeIs(s, 3, 6));
+
+    // A row further on is where the selection goes, at the same column.
+    InputSetValue(&s, StrL("abc\ndef"));
+    InputSetSelectedRange(&s, nullptr, nullptr, 1, 1);
+    Act(&s, InputAction::SelectDown);
+    utassert(RangeIs(s, 1, 5));
+    Act(&s, InputAction::SelectDown);
+    utassert(RangeIs(s, 1, 7));
+    utassert(ValueIs(s, "abc\ndef"));
+}
+
+// completions.rs
+// escape_dismisses_inline_completion_and_tab_returns_to_indentation and
+// typing_clears_inline_suggestion_before_next_debounce: every edit drops what
+// the providers said about the old document, and escape drops a suggestion that
+// is still waiting for its debounce.
+static void EditsAndEscapeDropStaleProviderResponses() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.codeActionProvider = &WrappingAction;
+    InputSetValue(&s, StrL("hello world"));
+    InputSetSelectedRange(&s, nullptr, nullptr, 6, 11);
+    Act(&s, InputAction::ToggleCodeActions);
+    utassert(s.codeActions.open);
+    // A deletion triggers no completion, and still closes the menu.
+    Act(&s, InputAction::Backspace);
+    utassert(!s.codeActions.open);
+    utassert(ValueIs(s, "hello "));
+
+    s.inlineCompletionProvider = &TestInlineCompletion;
+    Type(&s, "x");
+    utassert(!s.inlineCompletion.asked);
+    Act(&s, InputAction::Escape);
+    utassert(s.inlineCompletion.asked);
+    s.inlineCompletion.dueAt = 0;
+    utassert(!InputUpdateInlineCompletion(&s, false));
+    utassert(!InputHasInlineCompletion(&s));
+}
+
+// handle_action_for_context_menu: a host that handles Enter or Escape for
+// its popover closes both menus.
+static void AHandledConfirmClosesTheMenus() {
+    InputState s;
+    s.kind = InputKind::Editor;
+    CompletionItem item = {};
+    item.label = StrL("unwrap");
+    InputPresentCompletionItems(&s, 0, StrL(""), &item, 1);
+    s.overlayAction = &TakeEverything;
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::MoveDown, false));
+    utassert(s.completion.open);
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::Enter, false));
+    utassert(!InputIsContextMenuOpen(&s));
+    utassert(ValueIs(s, ""));
+    s.overlayAction = nullptr;
+}
+
+// composition.rs
+// cancelling_preedit_leaves_no_undo_entry_and_does_not_swallow_later_typing: a
+// cancelled preedit still separates the typing on either side of it.
+static void ACancelledPreeditSeparatesTyping() {
+    InputState s;
+    Type(&s, "A");
+    Mark(&s, "ni");
+    Mark(&s, "");
+    utassert(ValueIs(s, "A"));
+    utassert(MarkIs(s, -1, -1));
+    Type(&s, "x");
+    utassert(ValueIs(s, "Ax"));
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, "A"));
+    Act(&s, InputAction::Undo);
+    utassert(ValueIs(s, ""));
+}
+
 void TestInputState() {
     TestSuite("input_state");
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
@@ -4353,7 +4446,11 @@ void TestInputState() {
     SemanticTokenResponsesGrowPastTheOldBuffer();
     AHoveredSymbolIsAskedAboutOnce();
     ASecondaryClickFollowsTheDefinition();
-    TheActionGoesByTheLastThingAHoverFound();
+    TheActionAsksAboutTheCaretWithoutAHover();
+    VerticalSelectionReachesDocumentEdges();
+    EditsAndEscapeDropStaleProviderResponses();
+    AHandledConfirmClosesTheMenus();
+    ACancelledPreeditSeparatesTyping();
     TheHostSeesTheDocumentFirst();
     DefinitionResponsesGrowPastTheOldBuffer();
     BoundariesStepCharacters();

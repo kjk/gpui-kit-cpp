@@ -43,8 +43,7 @@ EditorExtras EditorExtras::Of(const InputState* state) {
 }
 
 bool EditorExtras::HasDefinition() const {
-    return state &&
-           (state->definitionProvider || state->hoverDef.lastLocations.len > 0);
+    return state && state->definitionProvider;
 }
 
 bool EditorExtras::HasCodeActions() const {
@@ -65,8 +64,7 @@ InputContextMenuCapabilities InputContextMenuCapabilities::Of(
     value.codeEditor = state->kind == InputKind::Editor;
     value.selection = !state->selectedRange.IsEmpty();
     value.masked = state->masked || state->maskPatternSet;
-    value.goToDefinition = state->definitionProvider != nullptr ||
-                           state->hoverDef.lastLocations.len > 0;
+    value.goToDefinition = state->definitionProvider != nullptr;
     value.codeActions = state->codeActionProvider != nullptr ||
                         state->codeActionProviders.len > 0 ||
                         state->codeActions.items.len > 0;

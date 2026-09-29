@@ -1079,6 +1079,15 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // boxes to answer against.
     // What the document names in colour, asked for again when it changed.
     InputLspUpdate(state);
+    // set_disabled / set_readonly put the menus and any suggestion away. The
+    // flags are plain fields here, so the frame that first sees the field
+    // uneditable does it.
+    if (!InputIsEditable(state)) {
+        InputHideContextMenu(state);
+        if (InputHasInlineCompletion(state) || !state->inlineCompletion.asked) {
+            InputClearInlineCompletion(state);
+        }
+    }
     // The debounce in front of an inline suggestion. A frame is the clock, so
     // one has to keep coming while it runs.
     if (InputUpdateInlineCompletion(state, state->completion.open)) {
@@ -3666,6 +3675,11 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     if (!InputIsEditable(s)) {
         return false;
     }
+    // replace_text_in_ranges: "Every edit invalidates provider responses for
+    // the previous document, including deletion and indentation which do not
+    // trigger completion." Typing asks again once the edit is in.
+    InputHideContextMenu(s);
+    InputClearInlineCompletion(s);
     if (InputIsMultiLine(s)) {
         // A keystroke with several cursors goes to all of them. An edit that
         // names its range — the input method, an undo, a server's edit list
@@ -4051,6 +4065,9 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     Selection selBefore = s->selectedRange;
     bool startsComposition = !s->imeMarking;
     if (startsComposition) {
+        // "Even a canceled preedit separates the typing gestures on either
+        // side; its no-op transaction must not reconnect those gestures."
+        UndoBreakCoalescing(&s->undo);
         UndoBeginTransaction(&s->undo);
     }
     if (win && BlinkVisible(app, s->blink)) {
@@ -4586,6 +4603,21 @@ void InputClearDiagnosticPopover(InputState* s) {
     }
 }
 
+// hide_context_menu: closes the completion and the code-action menu alike.
+// Rust also drops the request in flight; providers answer synchronously
+// here, so there is only ever an open menu to put away.
+void InputHideContextMenu(InputState* s) {
+    if (!s) {
+        return;
+    }
+    if (s->completion.open) {
+        InputDismissCompletion(s);
+    }
+    if (s->codeActions.open) {
+        InputDismissCodeActions(s);
+    }
+}
+
 bool InputIsContextMenuOpen(const InputState* s) {
     return s && (s->completion.open || s->codeActions.open);
 }
@@ -4602,6 +4634,11 @@ bool InputRouteOverlayAction(InputState* s, App* app, Window* win,
                                     ? InputOverlayKind::Completion
                                     : InputOverlayKind::CodeAction;
         if (s->overlayAction(s->overlayActionData, kind, action)) {
+            // handle_action_for_context_menu: a handled Enter or Escape is
+            // the host confirming or dismissing, so both menus close.
+            if (action == InputAction::Enter || action == InputAction::Escape) {
+                InputHideContextMenu(s);
+            }
             AppInvalidate(win);
             return true;
         }
@@ -5012,7 +5049,6 @@ void InputUpdateSemanticTokens(InputState* s) {
 
 HoverDefinition::~HoverDefinition() {
     VecReset(locations);
-    VecReset(lastLocations);
     if (arena) {
         ArenaDelete(arena);
     }
@@ -5025,14 +5061,6 @@ bool InputCanGoToDefinition(const InputState* s) {
 void InputClearHoverDefinition(InputState* s) {
     if (!s || s->hoverDef.locations.len == 0) {
         return;
-    }
-    // What it found is kept as the last answer: the underline goes as soon as
-    // the modifier comes up, and the action still has to know where the
-    // symbol under the caret went.
-    s->hoverDef.lastRange = s->hoverDef.symbolRange;
-    VecReset(s->hoverDef.lastLocations);
-    for (int i = 0; i < s->hoverDef.locations.len; i++) {
-        VecAppend(s->hoverDef.lastLocations, s->hoverDef.locations[i]);
     }
     s->hoverDef.symbolRange = Selection{};
     VecReset(s->hoverDef.locations);
@@ -5149,14 +5177,22 @@ void InputGoToDefinition(InputState* s, App* app, Window* win) {
     if (!s) {
         return;
     }
-    // on_action_go_to_definition: the caret has to still be inside the symbol
-    // the last hover found, or the action has nothing to go on.
-    int at = InputCursor(s);
-    if (s->hoverDef.lastLocations.len == 0 ||
-        at < s->hoverDef.lastRange.start || at > s->hoverDef.lastRange.end) {
+    // on_action_go_to_definition: "A keyboard action must also work before
+    // the symbol has been hovered", so the provider is asked about the caret.
+    // Rust awaits the answer and drops it when the text, the caret or the
+    // focus moved meanwhile; the provider answers synchronously here, so
+    // nothing can move in between.
+    if (!s->definitionProvider) {
         return;
     }
-    InputFollowDefinition(s, app, win, s->hoverDef.lastLocations[0]);
+    Arena* a = GetTempArena();
+    int at = InputCursor(s);
+    DefinitionLink first = {};
+    int n = s->definitionProvider(s->definitionData, a, InputValue(s), at,
+                                  &first, 1);
+    if (n > 0) {
+        InputFollowDefinition(s, app, win, first);
+    }
 }
 
 CodeActionSession::~CodeActionSession() {
@@ -5487,6 +5523,9 @@ struct VerticalTarget {
     float preferredX = -1;
     int preferredColumn = -1;
     bool lineEndAffinity = false;
+    // The walk ran out of rows before it had moved "lines" of them: the caret
+    // is already on the first (going up) or last (going down) visual row.
+    bool noFurtherRow = false;
 };
 
 // Whether `offset` is the end of the visual row containing `relY`. The two
@@ -5551,6 +5590,9 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     int maxRow = RopeLinesLen(t) - 1;
     int row = p.row;
     float y = cy + (float)lines * lineH;
+    // Where the caret's own visual row starts, to tell whether the walk
+    // leaves it at all.
+    float fromRowTop = (float)(int)(cy / lineH) * lineH;
     while (y < 0 && row > 0) {
         row--;
         y += DisplayLineH(s, row, lineH);
@@ -5563,6 +5605,10 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     }
     if (y < 0) {
         y = 0;
+    }
+    float atY = y < h ? y : h - 1;
+    if (row == p.row && atY >= fromRowTop && atY < fromRowTop + lineH) {
+        out->noFurtherRow = true;
     }
     // Aim at the middle of the visual row rather than at its top edge: a hit
     // test exactly on the boundary between two rows could answer either.
@@ -5605,6 +5651,7 @@ static VerticalTarget VerticalTargetFor(const InputState* s, Window* win,
     if (row > maxRow) {
         row = maxRow;
     }
+    out.noFurtherRow = row == p.row;
     int lineLen = RopeLineLen(t, row);
     int want = column < lineLen ? column : lineLen;
     out.offset =
@@ -5778,9 +5825,19 @@ static void SelectVertical(InputState* s, App* app, Window* win, int lines) {
         return;
     }
     Str t = InputValue(s);
+    // vertical_selection_target: with no further visual row, plain movement
+    // keeps its column but a selection still reaches the rest of the text on
+    // the first or last row. Rust asks only once the field has a layout.
+    bool laidOut = s->lastBounds.w > 0;
     SelectAllCursorsTo(s, app, win, [&](const CursorSelection& c, bool active) {
         return WithCursor(s, c, active, [&] {
-            return TargetOf(VerticalTargetFor(s, win, lines, t, c.Cursor()));
+            VerticalTarget v = VerticalTargetFor(s, win, lines, t, c.Cursor());
+            MoveTarget m = TargetOf(v);
+            if (laidOut && v.noFurtherRow) {
+                m.offset = lines < 0 ? 0 : len(t);
+                m.lineEndAffinity = false;
+            }
+            return m;
         });
     });
     // scroll_to: the moving end of the selection takes the view with it, the
@@ -6577,13 +6634,10 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             }
             s->undo.hasPendingIntent = true;
             s->undo.pendingIntent = intent;
+            // The edit puts an open menu away (replace_text_in_ranges): a
+            // deletion is no completion trigger, so nothing asks again.
             InputReplaceTextInRange(s, app, win, nullptr, Str{});
             PauseBlink(s, app, win);
-            // The word behind the caret is one shorter: a menu that is up
-            // asks again, and closes when nothing matches any more.
-            if (s->completion.open) {
-                InputRequestCompletion(s, app, win, false);
-            }
             return true;
         }
         case InputAction::Delete: {
@@ -6692,6 +6746,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             return ApplyIndent(s, app, win, IndentDirection::Outdent, true);
 
         case InputAction::Escape:
+            // "Escape also dismisses a request whose popup has not arrived
+            // yet." An open menu took the key before it got here.
+            InputHideContextMenu(s);
             // Collapse extra cursors back to the active one first.
             if (s->extraCursors.len > 0) {
                 UndoBreakCoalescing(&s->undo);
@@ -6706,6 +6763,8 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 Notify(app, win);
                 return true;
             }
+            // A suggestion still being debounced is dropped too.
+            InputClearInlineCompletion(s);
             if (s->cleanOnEscape) {
                 InputClean(s, app, win);
                 return true;

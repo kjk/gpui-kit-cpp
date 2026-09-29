@@ -4163,15 +4163,10 @@ using DefinitionFn = int (*)(void* data, Arena* a, Str text, int offset,
 using ShowDocumentFn = bool (*)(void* data, Str uri, bool external,
                                 Selection selection);
 
-// HoverDefinition: what a secondary-hover found under the pointer, and what
-// it found last. The last pair is what the GoToDefinition action goes by:
-// the hover clears as soon as the modifier comes up, and the action still has
-// to know what the symbol under the caret was.
+// HoverDefinition: what a secondary-hover found under the pointer.
 struct HoverDefinition {
     Selection symbolRange = {};
     Vec<DefinitionLink> locations;
-    Selection lastRange = {};
-    Vec<DefinitionLink> lastLocations;
     // Where the symbol was last painted, in window coordinates — Rust inserts
     // a hitbox over exactly this, to put the hand cursor on it.
     Bounds bounds = {};
@@ -4966,9 +4961,8 @@ void InputClearHoverDefinition(InputState* s);
 // same press from also moving the caret.
 bool InputClickDefinition(InputState* s, App* app, Window* win, int offset,
                           bool secondary);
-// The GoToDefinition action, which goes by the last thing a hover found
-// rather than by what is under the pointer now — the pointer has moved on by
-// the time a menu row is picked.
+// The GoToDefinition action: asks the provider about the caret, hovered or
+// not, and follows the first location.
 void InputGoToDefinition(InputState* s, App* app, Window* win);
 // `can_go_to_definition`: whether the field has a provider at all, which is
 // what greys the menu row out.
@@ -4982,6 +4976,7 @@ void InputFollowDefinition(InputState* s, App* app, Window* win,
 // menu on what it offers. Nothing offered leaves the menu down.
 void InputToggleCodeActions(InputState* s, App* app, Window* win);
 void InputDismissCodeActions(InputState* s);
+void InputHideContextMenu(InputState* s);
 // Perform the selected action: its range is replaced by its text, as one
 // undo step, and the menu goes away.
 void InputPerformCodeAction(InputState* s, App* app, Window* win);

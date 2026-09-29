@@ -15,12 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bcb6a0f3a6fd9e7ac9688ad653023b34f2f16bb6` (2026-09-26,
-input: Restore guarded accessibility actions without changing tab order
-(#3254)). Input again answers the accessibility Focus action only while
-enabled and rechecks editability before SetValue writes; the story-gallery
-host test now renders one surface per frame. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `40ac007f93e0ca7397013b9a86c21b54013281c9` (2026-09-27,
+input: Cover UI workflows and fix disabled focus and vertical selection
+(#3256)). Upstream added 159 input UI workflow tests and the fixes they
+exposed: vertical selection reaches the document edges, every edit and Escape
+drop stale provider responses, a cancelled preedit separates typing in undo,
+and GoToDefinition asks the provider without a prior hover. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
