@@ -715,7 +715,7 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
                 end = {whole[m - 1].x + whole[m - 1].w, whole[m - 1].y, 0,
                        p->lineH};
             }
-            if (n < dimof(rects)) {
+            if (n < (int)dimof(rects)) {
                 rects[n++] = end;
             }
         }
