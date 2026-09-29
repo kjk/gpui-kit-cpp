@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f698b4bcac037b8d208b34eca86cc940081c498f` (2026-09-19,
-questionnaire: Add a Questionnaire component (#2878)). A Questionnaire
-component landed: a gpui-base state model (question/answer types, validation,
-navigation, keyboard shortcuts) and the styled crates/component parts, with
-its story and a shell registration. The current update target is
+Processed through `0e63ea799766c486022a0cecfda6e48c5183a2d7` (2026-09-19,
+menu: Draw a context menu only from the trigger that was pressed (#3135)). A
+context menu is drawn only by the trigger that was pressed, so id-less rows no
+longer stack copies of one menu; a C++ trigger always names itself, and a test
+pins that each keeps its own state. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

@@ -250,6 +250,44 @@ static void ContextMenuStateOwnsThePointerOpeningContract() {
     EntityDropAll(&app);
 }
 
+// item_click_fires_once_from_rows_without_an_id (context_menu.rs). Rust's
+// rows shared one ContextMenuState because an id-less trigger falls back to
+// its code location, and every row then drew the open menu. A trigger here
+// always names itself, so rows built from one call site keep a state each and
+// the right press opens only the menu of the row it landed on.
+static void EachContextMenuTriggerKeepsItsOwnState() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<PopupMenuState> menus[3];
+    Entity<ContextMenuState> states[3];
+    for (int i = 0; i < 3; i++) {
+        menus[i] = EntityNewState<PopupMenuState>(&app);
+        component::ContextMenu* row =
+            component::ContextMenu::New(&cx, StrDup(arena, fmt("row-%d", i)));
+        states[i] = row->state;
+    }
+    utassert(!(states[0].id == states[1].id));
+    utassert(!(states[1].id == states[2].id));
+    for (int i = 0; i < 3; i++) {
+        states[i].Get(&app)->menu = menus[i];
+    }
+
+    MouseDownEvent ev = {};
+    ev.button = MouseButton::Right;
+    ContextMenuState::OnMouseDown(states[1].Get(&app), &cx, &ev);
+    utassert(!menus[0].Get(&app)->open);
+    utassert(menus[1].Get(&app)->open);
+    utassert(!menus[2].Get(&app)->open);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static PopupMenuAction AppBarChord(AppMenuBarState* state, Ctx* cx,
                                    uint32_t actionId) {
     ActionEvent ev = {};
@@ -337,6 +375,7 @@ void TestPopupMenu() {
     TheMenuBarWrapsBothWays();
     SourceMenuItemKindsRemainDistinct();
     ContextMenuStateOwnsThePointerOpeningContract();
+    EachContextMenuTriggerKeepsItsOwnState();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
 }

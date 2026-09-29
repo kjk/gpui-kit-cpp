@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f698b4bcac037b8d208b34eca86cc940081c498f",
+  sha: "0e63ea799766c486022a0cecfda6e48c5183a2d7",
   date: "2026-09-19",
-  subject: "questionnaire: Add a Questionnaire component (#2878)",
+  subject: "menu: Draw a context menu only from the trigger that was pressed (#3135)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",
