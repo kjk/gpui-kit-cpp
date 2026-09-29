@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "8e6e9cfa329f23a13dd168bb399ddc2efab2ccb2",
+  sha: "1028a4ef940ed096114e2f37e0841f821e3853b1",
   date: "2026-09-25",
-  subject: "text: Keep a line with inline code as tall as a plain line (#3240)",
+  subject: "docs: add an Images guide covering img, svg and HTTP caching (#3239)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

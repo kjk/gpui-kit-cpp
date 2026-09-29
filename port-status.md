@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `8e6e9cfa329f23a13dd168bb399ddc2efab2ccb2` (2026-09-25,
-text: Keep a line with inline code as tall as a plain line (#3240)). A
-Markdown line with inline code keeps the plain line's height: InlineFlow
-measures text runs by their glyph box inside the body line box and no longer
-rounds its line height. The row-of-words flow here already does; a test pins
-it. The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `1028a4ef940ed096114e2f37e0841f821e3853b1` (2026-09-25,
+docs: add an Images guide covering img, svg and HTTP caching (#3239)).
+Upstream wrote an Images guide for the website (img, svg, HTTP caching);
+nothing in the tree ports it. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
