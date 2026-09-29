@@ -50,6 +50,8 @@ struct TextareaStory {
     InputState autoGrow;
     InputState both;
     InputState chat;
+    // story_toolbar(self.size): every textarea on the page takes the size.
+    StoryToolbarState toolbar;
     bool seeded = false;
     EntityId tokens;
 
@@ -81,11 +83,14 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
                                               "Shift+Enter for newline"));
     }
     El* page = Div(a)->FlexCol()->Gap(12)->W(kFill);
+    page->Child(StoryToolbar(cx, self));
+    UiSize size = self->toolbar.size;
 
     El* def = StorySection(cx, "Textarea", nullptr);
     StorySectionBody(def)->W(560);
     El* defCol = Div(a)->FlexCol()->W(560)->Gap(8);
     defCol->Child(component::Textarea::New(cx, StrL("notes"), &self->notes)
+                      ->WithSize(size)
                       ->H(320)
                       ->IntoEl());
     // The action row: two xsmall outline buttons, and the cursor position at
@@ -114,6 +119,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
     StorySectionBody(nowrap)->W(560);
     StorySectionAdd(
         nowrap, component::Textarea::New(cx, StrL("notes-nw"), &self->noWrap)
+                    ->WithSize(size)
                     ->H(200)
                     ->SoftWrap(false)
                     ->IntoEl()
@@ -125,6 +131,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
     StorySectionBody(grow)->W(560);
     StorySectionAdd(
         grow, component::Textarea::New(cx, StrL("notes-grow"), &self->autoGrow)
+                  ->WithSize(size)
                   ->Rows(5)
                   ->IntoEl()
                   ->W(560));
@@ -134,6 +141,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
     StorySectionBody(both)->W(560);
     StorySectionAdd(
         both, component::Textarea::New(cx, StrL("notes-both"), &self->both)
+                  ->WithSize(size)
                   ->Rows(1)
                   ->SoftWrap(false)
                   ->IntoEl()
@@ -144,6 +152,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
     StorySectionBody(chat)->W(560);
     StorySectionAdd(chat,
                     component::Textarea::New(cx, StrL("chat"), &self->chat)
+                        ->WithSize(size)
                         ->Rows(1)
                         ->IntoEl()
                         ->W(560));

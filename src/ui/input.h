@@ -340,6 +340,9 @@ struct Textarea {
     // the same engine as an Input's, with InputKind::Textarea.
     InputState* state = nullptr;
     int rows = 0;
+    // Sizable: the Input it wraps takes it -- input_px / input_py around the
+    // rows and input_text_size for them.
+    UiSize size = UiSize::Medium;
     // The editor box height in pixels, or kFill for Rust's h(relative(1.)).
     float height = 0;
     bool softWrap = true;
@@ -363,6 +366,7 @@ struct Textarea {
     // keeps the two-row default. An explicit height wins, as `.h(px(..))`
     // does there.
     Textarea* Rows(int n);
+    Textarea* WithSize(UiSize s);
     Textarea* H(float px);
     Textarea* SoftWrap(bool v);
     Textarea* Role(AccessibilityRole role);

@@ -497,6 +497,30 @@ static const float kInputPadY = 8;
 static const float kInputGap = 6;
 static const float kInputTextSize = 14;
 
+// input_h / input_px / input_py / input_text_size, by size.
+static void InputSizeMetrics(UiSize size, float* h, float* padX, float* padY,
+                             float* font) {
+    *h = kInputHeight;
+    *padX = kInputPadX;
+    *padY = kInputPadY;
+    *font = kInputTextSize;
+    if (size == UiSize::Large) {
+        *h = 44;
+        *padX = 12;
+        *padY = 10;
+        *font = 16;
+    } else if (size == UiSize::Small) {
+        *h = 24;
+        *padX = 8;
+        *padY = 2;
+    } else if (size == UiSize::XSmall) {
+        *h = 20;
+        *padX = 4;
+        *padY = 0;
+        *font = 12;
+    }
+}
+
 static AccessibilityRole InputAccessibilityRole(bool hasContentType,
                                                 InputContentType contentType) {
     if (!hasContentType) {
@@ -652,24 +676,8 @@ El* Input::IntoEl() {
         WindowSetTextContentType(
             cx->win, InputNativeContentType(hasContentType, contentType));
     }
-    // input_h / input_px / input_py / input_text_size, by size.
-    float h = kInputHeight, padX = kInputPadX, padY = kInputPadY,
-          font = kInputTextSize;
-    if (size == UiSize::Large) {
-        h = 44;
-        padX = 12;
-        padY = 10;
-        font = 16;
-    } else if (size == UiSize::Small) {
-        h = 24;
-        padX = 8;
-        padY = 2;
-    } else if (size == UiSize::XSmall) {
-        h = 20;
-        padX = 4;
-        padY = 0;
-        font = 12;
-    }
+    float h = 0, padX = 0, padY = 0, font = 0;
+    InputSizeMetrics(size, &h, &padX, &padY, &font);
     InputEditorStyle editor;
     editor.foreground = hasTextColor ? textColor : th.foreground;
     editor.mutedForeground = th.mutedFg;
@@ -804,6 +812,10 @@ Textarea* Textarea::Rows(int n) {
     rows = n;
     return this;
 }
+Textarea* Textarea::WithSize(UiSize s) {
+    size = s;
+    return this;
+}
 Textarea* Textarea::H(float px) {
     height = px;
     return this;
@@ -866,12 +878,16 @@ Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     bool focused = state && state->focused && !disabled;
+    // The Input a Textarea wraps: a multi-line field takes input_py above and
+    // below the rows and input_px beside them, and input_text_size for them.
+    float inputH = 0, padX = 0, padY = 0, font = 0;
+    InputSizeMetrics(size, &inputH, &padX, &padY, &font);
     InputEditorStyle editor;
     editor.foreground = th.foreground;
     editor.mutedForeground = th.mutedFg;
     editor.caret = th.caret;
     editor.selection = RgbaOpacity(th.selection, 0.4f);
-    editor.fontSize = kInputTextSize;
+    editor.fontSize = font;
     if (state) {
         bool editable =
             !disabled && !readonly && !state->disabled && !state->readonly;
@@ -893,20 +909,21 @@ El* Textarea::IntoEl() {
     // is what asks for it. Everything else is `rows` line boxes.
     float h = (height > 0 || height == kFill)
                   ? height
-                  : (float)shownRows * 20.f + 2 * 8 + 2;
+                  : (float)shownRows * 20.f + 2 * padY + 2;
     // The rows are virtualized against this, and paint only learns it after
     // the frame it measured — so the first frame of a long document would
     // build every row of it. The builder knows the box it is about to make,
     // so it says so here and paint refreshes it.
     if (state && h > 0) {
-        state->viewH = h - 2 * 8;
+        state->viewH = h - 2 * padY;
     }
     bool interactive = state && !state->disabled && !disabled;
     El* box = InputBase::New(cx, id, interactive, accessibilityRole)
                   ->BindInput(interactive ? state : nullptr)
                   ->W(kFill)
                   ->H(h)
-                  ->Pad(8)
+                  ->PadX(padX)
+                  ->PadY(padY)
                   ->ClipY()
                   // scroll_handle: the rows slide under the box as the caret
                   // moves, and the wheel moves them too.

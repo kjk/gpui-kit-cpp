@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f23b45529b950f781dff63513e48cba1af03bc77` (2026-09-23,
-editor: Size line-number gutter between three and seven digits (#3205)). The
-editor's line-number gutter reserves three digits and grows with the line
-count up to seven, with a 6px right margin, and a code editor's left padding
-is at most 6px. The current update target is
+Processed through `ca9ab0eb3bfe29534b862adf3d4d0b81a0953e20` (2026-09-23,
+input: Let Textarea take a size, like Input (#3191)). Textarea takes a size
+like Input, which sets the wrapped field's padding and text size; the story's
+toolbar drives it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
