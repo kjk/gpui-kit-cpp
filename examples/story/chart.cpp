@@ -47,8 +47,8 @@ static float VisitorWeekChange() {
     double latest = 0, previous = 0;
     for (int i = kDailyDeviceCount - window; i < kDailyDeviceCount; i++)
         latest += (double)kDailyDesktop[i] + kDailyMobile[i];
-    for (int i = kDailyDeviceCount - window * 2;
-         i < kDailyDeviceCount - window; i++)
+    for (int i = kDailyDeviceCount - window * 2; i < kDailyDeviceCount - window;
+         i++)
         previous += (double)kDailyDesktop[i] + kDailyMobile[i];
     return previous == 0 ? 0 : (float)((latest - previous) / previous * 100.);
 }
@@ -125,15 +125,21 @@ struct ChartLegend {
     const char* label;
 };
 
+// chart_story.rs legend: it shares the heading row with the title, so it
+// yields width rather than holding its own — shrinking lets the wrap fold a
+// long series list onto another line instead of running out past the card.
+// Each swatch-and-label pair keeps its width, so a wrap never parts them.
 static El* LegendRow(Ctx* cx, const ChartLegend* legend, int n, bool center) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    El* row = Div(a)->FlexRow()->FlexWrap()->Gap(12)->Shrink0();
+    El* row = Div(a)->FlexRow()->FlexWrap()->Gap(12);
     if (center) {
         row->JustifyCenter();
+    } else {
+        row->JustifyEnd();
     }
     for (int i = 0; i < n; i++) {
-        El* item = Div(a)->FlexRow()->Gap(6)->ItemsCenter();
+        El* item = Div(a)->FlexRow()->Shrink0()->Gap(6)->ItemsCenter();
         item->Child(Div(a)->W(8)->H(8)->Radius(2)->Bg(legend[i].color));
         item->Child(StoryTxt(cx, Str(legend[i].label), 12, th.mutedFg));
         row->Child(item);
@@ -156,7 +162,9 @@ static El* ChartCard(Ctx* cx, const char* title, const char* period, El* chart,
                    ->Pad(16)
                    ->Radius(th.radiusLg)
                    ->Border(1, th.border);
-    El* titles = Div(a)->FlexCol();
+    // The heading holds its width; the legend beside it is what gives way
+    // and wraps.
+    El* titles = Div(a)->FlexCol()->Shrink0();
     if (center) {
         titles->ItemsCenter();
     }
@@ -184,13 +192,27 @@ static El* ChartCard(Ctx* cx, const char* title, const char* period, El* chart,
     El* foot1 = StoryTxt(cx, Str(headline), 14, th.foreground)->Semibold();
     if (StrStartsWith(Str(headline), "Trending ")) {
         bool down = StrStartsWith(Str(headline), "Trending down");
-        Str arrow = down
-            ? StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M16 17h6v-6\"/><path d=\"m22 17-8.5-8.5-5 5L2 7\"/></svg>")
-            : StrL("<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m22 7-8.5 8.5-5-5L2 17\"/><path d=\"M16 7h6v6\"/></svg>");
-        foot1 = Div(a)->FlexRow()->ItemsCenter()->Gap(6)
-            ->Child(foot1)
-            ->Child(component::Icon::Empty(cx)->Data(arrow)->Size(16)
-                        ->Color(down ? th.red : th.green)->IntoEl());
+        Str arrow =
+            down ? StrL(
+                       "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" "
+                       "height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" "
+                       "stroke=\"currentColor\" stroke-width=\"2\" "
+                       "stroke-linecap=\"round\" "
+                       "stroke-linejoin=\"round\"><path d=\"M16 "
+                       "17h6v-6\"/><path d=\"m22 17-8.5-8.5-5 5L2 7\"/></svg>")
+                 : StrL(
+                       "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" "
+                       "height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" "
+                       "stroke=\"currentColor\" stroke-width=\"2\" "
+                       "stroke-linecap=\"round\" "
+                       "stroke-linejoin=\"round\"><path d=\"m22 7-8.5 "
+                       "8.5-5-5L2 17\"/><path d=\"M16 7h6v6\"/></svg>");
+        foot1 = Div(a)->FlexRow()->ItemsCenter()->Gap(6)->Child(foot1)->Child(
+            component::Icon::Empty(cx)
+                ->Data(arrow)
+                ->Size(16)
+                ->Color(down ? th.red : th.green)
+                ->IntoEl());
     }
     El* foot2 = StoryTxt(cx, Str(note), 14, th.mutedFg);
     if (center) {
@@ -252,14 +274,24 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 pie->Slice(kBrowserShare[i], c);
                 legend[i] = {c, kBrowserName[i]};
             }
-            El* donut = Div(a)->W(180)->H(180)
-                ->Child(pie->IntoEl());
-            donut->Child(Div(a)->Absolute()->Left(0)->Top(0)
-                ->W(180)->H(180)->FlexCol()->ItemsCenter()->JustifyCenter()
-                ->Child(StoryTxt(cx, StoryFmt(cx, "%.0f%%",
-                                    (double)kBrowserShare[0]), 24,
-                                 th.foreground)->Semibold())
-                ->Child(StoryTxt(cx, Str(kBrowserName[0]), 12, th.mutedFg)));
+            El* donut = Div(a)->W(180)->H(180)->Child(pie->IntoEl());
+            donut
+                ->Child(Div(a)
+                            ->Absolute()
+                            ->Left(0)
+                            ->Top(0)
+                            ->W(180)
+                            ->H(180)
+                            ->FlexCol()
+                            ->ItemsCenter()
+                            ->JustifyCenter()
+                            ->Child(StoryTxt(cx,
+                                             StoryFmt(cx, "%.0f%%",
+                                                      (double)kBrowserShare[0]),
+                                             24, th.foreground)
+                                        ->Semibold())
+                            ->Child(StoryTxt(cx, Str(kBrowserName[0]), 12,
+                                             th.mutedFg)));
             return ChartCard(
                 cx, "Browser Share", "June 2025", donut, true,
                 StoryFmt(cx, "%s leads by %.0f points", kBrowserName[0],
