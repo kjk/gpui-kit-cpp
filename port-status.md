@@ -15,10 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `034906542b05108ea8cde06e97ce86ace3ccd38d` (2026-09-21,
-input: Scroll straight to a far-off caret after an edit (#3150)). An edit at a
-caret far outside a multi-line input's viewport scrolls straight to it rather
-than a line at a time. The current update target is
+Processed through `2f2bab9a6cea994531527bd382bfdafc463b0d0b` (2026-09-21,
+website: Load shared WASM examples from root (#3165)). Website and CI only:
+shared WASM examples load from the site root. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
