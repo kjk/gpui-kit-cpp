@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "eeb0ff0fde1b1e7d01fc4c18205a30402c902b10",
+  sha: "ae241a0012a2edc0f75606a86b2fad941e5e53ee",
   date: "2026-09-22",
-  subject: "text: Refine heading styles by level (#3129)",
+  subject: "text_view: Lay an inline flow out once, not every frame (#3180)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

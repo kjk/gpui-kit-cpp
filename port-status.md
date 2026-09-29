@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eeb0ff0fde1b1e7d01fc4c18205a30402c902b10` (2026-09-22,
-text: Refine heading styles by level (#3129)). Markdown headings take a
-per-level style refinement from TextViewStyle::with_heading over their
-built-in size, weight and spacing; the component's legacy heading sizes map
-onto it. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `ae241a0012a2edc0f75606a86b2fad941e5e53ee` (2026-09-22,
+text_view: Lay an inline flow out once, not every frame (#3180)). An inline
+flow's layout caching in GPUI's element state; the flex-wrap flow here is
+already reused through the window's layout cache, so nothing is ported. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

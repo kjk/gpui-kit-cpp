@@ -1696,6 +1696,48 @@ static void HeadingRefinementChangesRenderedHeadingGeometry() {
     AppGlobalClear(&app);
 }
 
+// inline_flow.rs: an_unchanged_flow_is_not_laid_out_again and
+// a_flow_is_laid_out_again_when_its_text_changes. A paragraph with code spans
+// is a flex-wrap row of words here, and the window's layout cache is what
+// keeps it: a frame that changes nothing makes, restyles and remeasures no
+// node, and new text does. (Rust's at-another-width case is taffy relaying
+// out the kept nodes, which the stats do not count.)
+static El* InlineCodeAnswer(Ctx* cx, Str source) {
+    return TextView::New(cx, source)->IntoEl();
+}
+
+static void AnUnchangedFlowIsNotLaidOutAgain() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    LayoutCache* lc = LayoutCacheNew();
+    Str source = StrL("Call `parse` then `render` on the `TextView`.");
+    for (int frame = 0; frame < 3; frame++) {
+        a->Reset();
+        LayoutEl(nullptr, InlineCodeAnswer(&cx, source), 0, 0, 400, 300, 14,
+                 Rgba{}, lc);
+    }
+    LayoutCacheStats same = LayoutCacheLastStats(lc);
+    utassert(same.made == 0 && same.restyled == 0 && same.remeasured == 0);
+    a->Reset();
+    LayoutEl(nullptr,
+             InlineCodeAnswer(&cx, StrL("Call `parse` then `paint` on the "
+                                        "`TextView` twice.")),
+             0, 0, 400, 300, 14, Rgba{}, lc);
+    LayoutCacheStats changed = LayoutCacheLastStats(lc);
+    utassert(changed.made > 0 || changed.restyled > 0 ||
+             changed.remeasured > 0);
+    LayoutCacheFree(lc);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -2238,6 +2280,7 @@ void TestTextView() {
     ClaimedInlineMathSurvivesProseFlattening();
     InlineHtmlFormattingTagsPairAcrossSiblings();
     HeadingRefinementChangesRenderedHeadingGeometry();
+    AnUnchangedFlowIsNotLaidOutAgain();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     TestStreamFadeStaggerStep();
