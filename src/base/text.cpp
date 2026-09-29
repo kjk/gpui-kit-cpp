@@ -328,22 +328,9 @@ Rgba TextViewStyle::InlineCodeBackground() const {
     return codeBackground;
 }
 
-float TextViewStyle::HeadingSize(uint8_t level) const {
-    if (headingFontSize) {
-        return headingFontSize(level, headingBaseFontSize, headingFontSizeData);
-    }
-    switch (level) {
-        case 1:
-            return headingBaseFontSize * 2.f;
-        case 2:
-            return headingBaseFontSize * 1.5f;
-        case 3:
-            return headingBaseFontSize * 1.25f;
-        case 4:
-            return headingBaseFontSize * 1.125f;
-        default:
-            return headingBaseFontSize;
-    }
+uint32_t TextViewStyle::Heading(uint8_t level, gpui::Style* out) const {
+    *out = {};
+    return heading ? heading(level, out, headingData) : 0;
 }
 
 TextViewStyle& TextViewStyle::WithForeground(Rgba value) {
@@ -381,15 +368,9 @@ TextViewStyle& TextViewStyle::WithParagraphGap(float gap) {
     return *this;
 }
 
-TextViewStyle& TextViewStyle::WithHeadingBaseFontSize(float size) {
-    headingBaseFontSize = size;
-    return *this;
-}
-
-TextViewStyle& TextViewStyle::WithHeadingFontSize(HeadingFontSizeFn fn,
-                                                  void* data) {
-    headingFontSize = fn;
-    headingFontSizeData = data;
+TextViewStyle& TextViewStyle::WithHeading(HeadingStyleFn fn, void* data) {
+    heading = fn;
+    headingData = data;
     return *this;
 }
 
@@ -496,7 +477,6 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         return false;
     }
     if (paragraphGap != other.paragraphGap ||
-        headingBaseFontSize != other.headingBaseFontSize ||
         codeBlockFields != other.codeBlockFields ||
         tableFields != other.tableFields ||
         tableHeadFields != other.tableHeadFields ||
@@ -509,12 +489,16 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         !StyleFieldsEqual(inlineCode, other.inlineCode, inlineCodeFields)) {
         return false;
     }
-    if ((headingFontSize == nullptr) != (other.headingFontSize == nullptr)) {
-        return false;
-    }
-    if (!headingFontSize) return true;
+    // The callback is compared by what it answers for every level, which is
+    // Rust's fingerprint: two callbacks that agree are the same style.
     for (uint8_t level = 1; level <= 6; level++) {
-        if (HeadingSize(level) != other.HeadingSize(level)) return false;
+        gpui::Style mine;
+        gpui::Style theirs;
+        uint32_t fields = Heading(level, &mine);
+        if (fields != other.Heading(level, &theirs) ||
+            !StyleFieldsEqual(mine, theirs, fields)) {
+            return false;
+        }
     }
     return true;
 }
@@ -3818,9 +3802,16 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             return Div(a)->W(kFill)->PadB(mb)->Child(
                 Inline(n, baseFont, BlockFg(), 0));
         case MdKind::Heading: {
-            float font = textViewStyle.headingFontSize
-                             ? textViewStyle.HeadingSize(n->level)
-                             : headingFont * HeadingScale(n->level);
+            // The built-in size, then the style's refinement for the level
+            // over it. A text size it names reaches the runs; the rest
+            // refines the heading's box.
+            float font = headingFont * HeadingScale(n->level);
+            gpui::Style refine;
+            uint32_t refineFields = textViewStyle
+                                        .Heading((uint8_t)n->level, &refine);
+            if ((refineFields & StyleFieldFontSize) && refine.fontSize > 0) {
+                font = refine.fontSize;
+            }
             // node.rs prefixes the heading marker in source mode so a
             // selected heading round-trips as `## Title`.
             char hashes[8] = {};
@@ -3830,8 +3821,11 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             }
             SrcOpen(SrcCat(a, Str(hashes, nh), StrL(" ")), {});
             // Headings use their own 0.3rem bottom padding, not the gap.
-            return Div(a)->W(kFill)->PadB(5)->Child(
+            El* box = Div(a)->W(kFill)->PadB(5)->Child(
                 Inline(n, font, BlockFg(), HeadingWeight(n->level)));
+            StyleApplyFields(&box->style, refine,
+                             refineFields & ~(uint32_t)StyleFieldFontSize);
+            return box;
         }
         case MdKind::Rule:
             return Div(a)->W(kFill)->PadB(mb)->Child(
@@ -3940,9 +3934,8 @@ El* TextView::IntoEl() {
             defaults.hasStyle
                 ? defaults.style
                 : TextViewStyle::FromTheme(base_theme::Theme::Global(cx->app));
-        // Font sizes named on the builder outlive the style swap: they are
-        // the caller's, not the palette's.
-        resolved.headingBaseFontSize = textViewStyle.headingBaseFontSize;
+        // Sizes named on the builder outlive the style swap: they are the
+        // caller's, not the palette's.
         resolved.paragraphGap = textViewStyle.paragraphGap;
         textViewStyle = resolved;
     }
@@ -4217,14 +4210,12 @@ TextView* TextView::Font(float px) {
 
 TextView* TextView::HeadingFont(float px) {
     headingFont = px;
-    textViewStyle.headingBaseFontSize = px;
     return this;
 }
 
 TextView* TextView::Style(const TextViewStyle& value) {
     textViewStyle = value;
     textViewStyleSet = true;
-    headingFont = value.headingBaseFontSize;
     paragraphGap = value.paragraphGap;
     return this;
 }

@@ -255,6 +255,36 @@ MarkdownPlugin FrontmatterPlugin::New() {
     return plugin;
 }
 
+uint32_t TextViewHeadingCompatRefine(uint8_t level, Style* out, void* data) {
+    static const TextViewHeadingCompat kDefault;
+    const TextViewHeadingCompat* compat =
+        data ? (const TextViewHeadingCompat*)data : &kDefault;
+    float base = compat->headingBaseFontSize;
+    float size = base;
+    if (compat->headingFontSize) {
+        size = compat->headingFontSize(level, base, compat->data);
+    } else {
+        switch (level) {
+            case 1:
+                size = base * 2.f;
+                break;
+            case 2:
+                size = base * 1.5f;
+                break;
+            case 3:
+                size = base * 1.25f;
+                break;
+            case 4:
+                size = base * 1.125f;
+                break;
+            default:
+                break;
+        }
+    }
+    out->fontSize = size;
+    return StyleFieldFontSize;
+}
+
 TextViewStyle UiTextViewStyle(const Theme& theme) {
     // The colours first — `with_foreground`, `with_link` and the rest — from
     // the themed palette rather than from the Base one, so an application
@@ -285,6 +315,10 @@ TextViewStyle UiTextViewStyle(const Theme& theme) {
     gpui::Style inlineCode = {};
     inlineCode.bg = Background(theme.accent);
     style.WithInlineCode(inlineCode, StyleFieldBg);
+
+    // resolve_component_style: the legacy heading configuration, at its
+    // defaults here, becomes Base's per-level text-size refinement.
+    style.WithHeading(&TextViewHeadingCompatRefine);
     return style;
 }
 

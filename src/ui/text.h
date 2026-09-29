@@ -59,7 +59,22 @@ using CodeBlockHighlighterFn = gpui::CodeBlockHighlighterFn;
 using CodeBlockActionsFn = gpui::CodeBlockActionsFn;
 using TableActionsFn = gpui::TableActionsFn;
 using TableData = gpui::TableData;
-using HeadingFontSizeFn = gpui::HeadingFontSizeFn;
+using HeadingStyleFn = gpui::HeadingStyleFn;
+
+// compat.rs: the component style's legacy heading configuration — a base
+// size headings derive from (14 by default) and an optional function that
+// resolves a level's size from it. `resolve_component_style` maps it onto
+// Base's heading refinement as a text size.
+using HeadingFontSizeFn = float (*)(uint8_t level, float base, void* data);
+struct TextViewHeadingCompat {
+    float headingBaseFontSize = 14;
+    HeadingFontSizeFn headingFontSize = nullptr;
+    void* data = nullptr;
+};
+// The refinement callback for WithHeading, with a TextViewHeadingCompat* as
+// its data: h1..h6 at 2, 1.5, 1.25, 1.125 and 1 of the base, or what the
+// legacy function answers.
+uint32_t TextViewHeadingCompatRefine(uint8_t level, Style* out, void* data);
 using TextViewStyle = gpui::TextViewStyle;
 using TextViewDefaults = gpui::TextViewDefaults;
 using TextViewFormat = gpui::TextViewFormat;

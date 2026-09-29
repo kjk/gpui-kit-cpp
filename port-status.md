@@ -15,9 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f73e3ea69bc60957e767dd09fc6a417e95bbae9d` (2026-09-22,
-website: add GPUI core concept guides (#3181)). Website guides for GPUI core
-concepts, CI and CLAUDE.md only; nothing to port. The current update target is
+Processed through `eeb0ff0fde1b1e7d01fc4c18205a30402c902b10` (2026-09-22,
+text: Refine heading styles by level (#3129)). Markdown headings take a
+per-level style refinement from TextViewStyle::with_heading over their
+built-in size, weight and spacing; the component's legacy heading sizes map
+onto it. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

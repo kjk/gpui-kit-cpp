@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "f73e3ea69bc60957e767dd09fc6a417e95bbae9d";
+const pinnedGpuiComponent = "eeb0ff0fde1b1e7d01fc4c18205a30402c902b10";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -580,12 +580,12 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   base: {
     declaration: { count: 480, sha256: "d0ed40cbb6cb4dced6bed7b7d6626ff70bd58b1f8e739ceb1cc4bdef5a41978b" },
     "pub-use": { count: 145, sha256: "43473ff2e05faf7520e3c33df15f4a1bfd865cb03fa2c55e2242d60f2f2d4f19" },
-    test: { count: 1045, sha256: "9e75076765f0eba88ad662d5c5b6a15a3394ea138bb9f9e6e49541c736b9cdc7" },
+    test: { count: 1046, sha256: "c3e2e18516e62cf5d420e30ccf3d6af546b3da803f18ee20aede985c6e414b13" },
   },
   ui: {
     declaration: { count: 479, sha256: "172113a51564ec8adb5ec65c41181473777d9cf9418db2ac41b73587cf389f15" },
     "pub-use": { count: 168, sha256: "a481ca64eab530461111cb0cd3e46be18187c59243d9304901c225113aea31e5" },
-    test: { count: 614, sha256: "22aa1fdce888c7cdc9569f44aedba22e464345a3ba6d3be6cdfd6ba918a210a1" },
+    test: { count: 615, sha256: "8cf3e086c2f8982d478504089874ea0b2ae50c6c347546a8ed67c97178c670ee" },
   },
 };
 

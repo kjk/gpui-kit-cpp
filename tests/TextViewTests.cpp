@@ -864,12 +864,16 @@ static void TestTextCollectionsGrowWithTheDocument(Arena* a) {
     StrFree(tableSource);
 }
 
-static float HeadingIdentity(uint8_t, float base, void*) {
-    return base;
+// with_heading(|_| StyleRefinement::default().text_size(px(14.))), and the
+// same at 28.
+static uint32_t Heading14(uint8_t, gpui::Style* out, void*) {
+    out->fontSize = 14;
+    return StyleFieldFontSize;
 }
 
-static float HeadingDouble(uint8_t, float base, void*) {
-    return base * 2;
+static uint32_t Heading28(uint8_t, gpui::Style* out, void*) {
+    out->fontSize = 28;
+    return StyleFieldFontSize;
 }
 
 static void TestSourceShapedTextValues(Arena* a) {
@@ -899,13 +903,17 @@ static void TestSourceShapedTextValues(Arena* a) {
     TextViewStyle base = TextViewStyle::Default();
     TextViewStyle same = TextViewStyle::Default();
     utassert(base.Equals(same));
-    same.WithHeadingFontSize(&HeadingIdentity);
+    // selection_layout_fingerprint_covers_callback_table_and_theme_fields and
+    // cloning_preserves_the_same_heading_callback_fingerprint: a heading
+    // callback is compared by what it answers.
+    same.WithHeading(&Heading14);
     utassert(!base.Equals(same));
-    base.WithHeadingFontSize(&HeadingIdentity);
+    base.WithHeading(&Heading14);
     utassert(base.Equals(same));
-    same.WithHeadingFontSize(&HeadingDouble);
+    TextViewStyle copy = same;
+    utassert(copy.Equals(same));
+    same.WithHeading(&Heading28);
     utassert(!base.Equals(same));
-    utassert(same.HeadingSize(2) == 28);
 
     TextViewStyle styledA = TextViewStyle::Default();
     TextViewStyle styledB = TextViewStyle::Default();
@@ -1252,9 +1260,22 @@ static void TestManagedTextViewAndParseTimePlugins(Arena* a) {
 
 // text/style.rs: default_style_is_readable_without_an_application_theme,
 // from_theme_maps_base_semantic_tokens, inline_code_falls_back_to_the_code_
-// background and heading_font_size_resolves_through_the_installed_callback.
-static float HeadingByLevel(uint8_t level, float base, void*) {
-    return base * (7.f - (float)level);
+// background and heading_refinement_defaults_empty_and_resolves_by_level.
+static uint32_t HeadingByLevel(uint8_t level, gpui::Style* out, void*) {
+    if (level == 1) {
+        // pt(rems(1.)).pb(rems(0.5))
+        out->pad.top = 16;
+        out->pad.bottom = 8;
+    } else {
+        out->pad.bottom = 4;
+    }
+    return StyleFieldPad;
+}
+
+// component text/mod.rs: legacy_heading_configuration_maps_to_base_heading_
+// refinements.
+static float LegacyHeadingByLevel(uint8_t level, float base, void*) {
+    return base * (float)level;
 }
 
 static void TestTextViewStyleIsReadableWithoutATheme() {
@@ -1298,13 +1319,26 @@ static void TestTextViewStyleIsReadableWithoutATheme() {
     utassert(
         SameTextViewColor(fallback.InlineCodeBackground(), RgbaHex(0x654321)));
 
-    // heading_font_size resolves through the installed callback.
+    // The heading refinement is empty by default and resolves by level.
     TextViewStyle heading = TextViewStyle::Default();
-    utassert(!heading.HasHeadingFontSize());
-    heading.WithHeadingFontSize(&HeadingByLevel);
-    utassert(heading.HasHeadingFontSize());
-    utassert(heading.HeadingSize(1) == 14.f * 6.f);
-    utassert(heading.HeadingSize(6) == 14.f);
+    gpui::Style resolved;
+    utassert(heading.Heading(1, &resolved) == 0);
+    TextViewStyle byLevel = TextViewStyle::Default();
+    byLevel.WithHeading(&HeadingByLevel);
+    utassert(byLevel.Heading(1, &resolved) == StyleFieldPad);
+    utassert(resolved.pad.top == 16 && resolved.pad.bottom == 8);
+    utassert(byLevel.Heading(2, &resolved) == StyleFieldPad);
+    utassert(resolved.pad.top == 0 && resolved.pad.bottom == 4);
+    utassert(!byLevel.Equals(heading));
+
+    // The legacy base size and resolver become a text-size refinement.
+    component::TextViewHeadingCompat legacy;
+    legacy.headingBaseFontSize = 10;
+    legacy.headingFontSize = &LegacyHeadingByLevel;
+    TextViewStyle compat = TextViewStyle::Default();
+    compat.WithHeading(&component::TextViewHeadingCompatRefine, &legacy);
+    utassert(compat.Heading(2, &resolved) == StyleFieldFontSize);
+    utassert(resolved.fontSize == 20.f);
 }
 
 // text_view.rs: text_view_constructors_are_selectable_by_default and
@@ -1618,6 +1652,48 @@ static void InlineHtmlFormattingTagsPairAcrossSiblings() {
     StrFree(t2);
     StrFree(t3);
     ArenaDelete(a);
+}
+
+static uint32_t HeadingOnePadded(uint8_t level, gpui::Style* out, void*) {
+    if (level != 1) return 0;
+    out->pad.bottom = 32; // pb(rems(2.))
+    return StyleFieldPad;
+}
+
+static bool HasBottomPad(El* e, float pad) {
+    if (!e) return false;
+    if (e->style.pad.bottom == pad) return true;
+    for (El* c = e->first; c; c = c->next) {
+        if (HasBottomPad(c, pad)) return true;
+    }
+    return false;
+}
+
+// text_view.rs: heading_refinement_changes_rendered_heading_geometry. The
+// level-1 refinement reaches an h1's box, and an h2 keeps its default 0.3rem
+// bottom padding.
+static void HeadingRefinementChangesRenderedHeadingGeometry() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    TextViewStyle custom = TextViewStyle::Default();
+    custom.WithHeading(&HeadingOnePadded);
+    El* defaultH1 = TextView::New(&cx, StrL("# Heading"))->IntoEl();
+    El* customH1 =
+        TextView::New(&cx, StrL("# Heading"))->Style(custom)->IntoEl();
+    El* customH2 =
+        TextView::New(&cx, StrL("## Heading"))->Style(custom)->IntoEl();
+    utassert(!HasBottomPad(defaultH1, 32.f) && HasBottomPad(defaultH1, 5.f));
+    utassert(HasBottomPad(customH1, 32.f));
+    utassert(!HasBottomPad(customH2, 32.f) && HasBottomPad(customH2, 5.f));
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
 }
 
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
@@ -2161,6 +2237,7 @@ void TestTextView() {
     UnclaimedInlineMathParsesItsSpanAsProse();
     ClaimedInlineMathSurvivesProseFlattening();
     InlineHtmlFormattingTagsPairAcrossSiblings();
+    HeadingRefinementChangesRenderedHeadingGeometry();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     TestStreamFadeStaggerStep();

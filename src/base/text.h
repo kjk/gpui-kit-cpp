@@ -396,7 +396,12 @@ struct TableData {
 // a copy or a download button, say. Answers null to add nothing.
 using TableActionsFn = El* (*)(Ctx * cx, void* data, const TableData* table);
 
-using HeadingFontSizeFn = float (*)(uint8_t level, float base, void* data);
+// text/style.rs `with_heading`: the refinement a heading of `level` (1-6)
+// takes over its built-in size, weight and spacing. Writes the style and
+// answers the StyleField mask it names; naming nothing leaves the heading as
+// it is.
+using HeadingStyleFn = uint32_t (*)(uint8_t level, gpui::Style* style,
+                                    void* data);
 
 // text/style.rs TextViewStyle. A Style plus its named-field mask is this
 // tree's StyleRefinement representation; the five refinements therefore
@@ -420,9 +425,9 @@ struct TextViewStyle {
     // Rules, table borders and the bar down the side of a blockquote.
     Rgba border = {};
     float paragraphGap = 16;
-    float headingBaseFontSize = 14;
-    HeadingFontSizeFn headingFontSize = nullptr;
-    void* headingFontSizeData = nullptr;
+    // Unset, every level's refinement is empty.
+    HeadingStyleFn heading = nullptr;
+    void* headingData = nullptr;
     gpui::Style codeBlock = {};
     uint32_t codeBlockFields = 0;
     gpui::Style table = {};
@@ -442,10 +447,9 @@ struct TextViewStyle {
     // needs that the palette does not name mapped here once.
     static TextViewStyle FromTheme(const base_theme::Theme& theme);
     static TextViewStyle FromColors(const ColorTokens& colors, bool isDark);
-    float HeadingSize(uint8_t level) const;
-    // `heading_font_size(level)`: unset means the caller keeps whatever size
-    // it derived from headingBaseFontSize.
-    bool HasHeadingFontSize() const { return headingFontSize != nullptr; }
+    // `heading(level)`: the refinement for a heading at `level`, written to
+    // `out`; answers the fields it names (0, empty, by default).
+    uint32_t Heading(uint8_t level, gpui::Style* out) const;
     // The style inline code paints with, falling back to the code background
     // when the caller named none — `inline_code_highlight`.
     Rgba InlineCodeBackground() const;
@@ -456,9 +460,9 @@ struct TextViewStyle {
     TextViewStyle& WithCodeBackground(Rgba color);
     TextViewStyle& WithBorder(Rgba color);
     TextViewStyle& WithParagraphGap(float gap);
-    TextViewStyle& WithHeadingBaseFontSize(float size);
-    TextViewStyle& WithHeadingFontSize(HeadingFontSizeFn fn,
-                                       void* data = nullptr);
+    // with_heading: install the level-aware refinement. `data` must outlive
+    // the style.
+    TextViewStyle& WithHeading(HeadingStyleFn fn, void* data = nullptr);
     TextViewStyle& WithCodeBlock(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithTable(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithTableHead(const gpui::Style& style, uint32_t fields);
