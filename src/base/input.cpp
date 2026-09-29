@@ -1855,7 +1855,19 @@ RopePoint InputOffsetToPoint(const InputState* s, int offset) {
     return p;
 }
 
+// The one clipboard read a Paste has in flight, and what it was asked to
+// replace. A browser has one user activation at a time, so one slot is enough.
+static struct {
+    InputState* state = nullptr;
+    InputPasteTarget target;
+} gPendingPaste;
+
 InputState::~InputState() {
+    // A Paste still waiting on the clipboard must not land in freed memory;
+    // Rust's weak handle simply fails to upgrade.
+    if (gPendingPaste.state == this) {
+        gPendingPaste.state = nullptr;
+    }
     InputRangeDecorationsFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
@@ -6521,6 +6533,83 @@ static Str InputNextLineIndent(InputState* s, App* app, Arena* a,
     return Str(out, at);
 }
 
+// paste_target: where a paste would go right now — the document as edited so
+// far and the selections it would replace. Rust's document_revision is
+// docVersion here, which every splice of the text moves.
+InputPasteTarget InputPasteTargetOf(const InputState* s) {
+    InputPasteTarget t;
+    if (!s) {
+        return t;
+    }
+    t.documentRevision = s->docVersion;
+    t.active = s->selectedRange;
+    t.reversed = s->selectionReversed;
+    for (int i = 0; i < s->extraCursors.len; i++) {
+        VecAppend(t.extra, s->extraCursors[i].range);
+    }
+    return t;
+}
+
+bool InputPasteTarget::operator==(const InputPasteTarget& o) const {
+    if (documentRevision != o.documentRevision ||
+        active.start != o.active.start || active.end != o.active.end ||
+        reversed != o.reversed || extra.len != o.extra.len) {
+        return false;
+    }
+    for (int i = 0; i < extra.len; i++) {
+        if (extra[i].start != o.extra[i].start || extra[i].end != o.extra[i]
+                                                                      .end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// insert_clipboard: the text the way Paste inserts it — one atomic edit, one
+// line per cursor when the counts match on a multi-line field. A clipboard
+// without text (an image, say) is left alone rather than replacing the
+// selection with nothing.
+void InputInsertClipboard(InputState* s, App* app, Window* win,
+                          const ClipboardItem& item) {
+    if (!s) {
+        return;
+    }
+    Str text = item.text;
+    if (len(text) == 0 && item.externalPaths.len > 0) {
+        text = item.externalPaths;
+    }
+    if (len(text) == 0) {
+        return;
+    }
+    // A paste is one atomic edit, never part of a typing run.
+    s->undo.hasPendingIntent = true;
+    s->undo.pendingIntent = EditIntent::Atomic;
+    if (InputIsMultiLine(s) && s->extraCursors.len > 0 &&
+        PasteLinesToCursors(s, app, win, text)) {
+        return;
+    }
+    InputReplaceTextInRange(s, app, win, nullptr, text);
+}
+
+static void PendingPasteResolved(void*, App* app, Window* win,
+                                 const ClipboardItem& item) {
+    InputState* s = gPendingPaste.state;
+    gPendingPaste.state = nullptr;
+    if (!s) {
+        return;
+    }
+    // The read can sit behind a permission prompt for as long as the user
+    // likes. If they edited, moved the caret or left the input meanwhile,
+    // the paste would land where they no longer mean it to; drop it, as the
+    // browser's own paste event only reaches the focused input too.
+    bool focused = s->focused && s->focusWin == win;
+    if (InputIsEditable(s) && focused &&
+        InputPasteTargetOf(s) == gPendingPaste.target) {
+        InputInsertClipboard(s, app, win, item);
+        AppInvalidate(win);
+    }
+}
+
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                   bool shift) {
     if (!s) {
@@ -6864,7 +6953,7 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             InputReplaceTextInRange(s, app, win, nullptr, Str{});
             return true;
         case InputAction::Paste: {
-            if (!win) {
+            if (!win || !InputIsEditable(s)) {
                 return true;
             }
             ClipboardItem item = ClipboardGetItem(GetTempArena(), win);
@@ -6872,21 +6961,21 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 s->pasteHandler(s->pasteHandlerData, item, app, win)) {
                 return true;
             }
-            Str text = item.text;
-            if (len(text) == 0 && item.externalPaths.len > 0) {
-                text = item.externalPaths;
-            }
-            if (len(text) == 0) {
+            if (!item.IsEmpty()) {
+                InputInsertClipboard(s, app, win, item);
                 return true;
             }
-            // A paste is one atomic edit, never part of a typing run.
-            s->undo.hasPendingIntent = true;
-            s->undo.pendingIntent = EditIntent::Atomic;
-            if (InputIsMultiLine(s) && s->extraCursors.len > 0 &&
-                PasteLinesToCursors(s, app, win, text)) {
-                return true;
+            // The synchronous read is empty on platforms whose clipboard is
+            // asynchronous and permission-gated (the web), so fall back to
+            // the real read. It has to start here, still inside the user
+            // activation that dispatched Paste, or the browser refuses it.
+            // Rust's spawn_in holds the state weakly; here the one pending
+            // read names the field, and ~InputState forgets it.
+            gPendingPaste.state = s;
+            gPendingPaste.target = InputPasteTargetOf(s);
+            if (!ClipboardReadAsync(win, &PendingPasteResolved, nullptr)) {
+                gPendingPaste.state = nullptr;
             }
-            InputReplaceTextInRange(s, app, win, nullptr, text);
             return true;
         }
         case InputAction::ToggleCodeActions:

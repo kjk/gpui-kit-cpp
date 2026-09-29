@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5059de47a6560fdbe24e32cd91b45d6aa6849695` (2026-09-27,
-docs(input): context_menu(false) also turns off a custom menu (#3275)).
-Upstream only documented that context_menu(false) also turns off a custom
-right-click menu. The current update target is
+Processed through `169fe05bcf1df458ac692a7d5ea4f567a5862471` (2026-09-27,
+input: Paste from the context menu on the wasm (#3244)). A Paste whose
+synchronous clipboard read is empty falls back to an asynchronous read
+(navigator.clipboard.readText on the web) and inserts only if the field is
+still focused and unchanged. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

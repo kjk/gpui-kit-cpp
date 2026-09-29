@@ -18,7 +18,9 @@
      navigator.clipboard, which works because every path to it here is inside
      a keystroke; ClipboardGetText answers a mirror that the DOM `paste` event
      fills in, and the paste chord is driven by that event rather than by its
-     keydown so the mirror is never a keystroke behind.
+     keydown so the mirror is never a keystroke behind. Outside that event the
+     synchronous read is empty, and a Paste from a menu reads through
+     ClipboardReadAsync (navigator.clipboard.readText) instead.
    - AppRun does not return. emscripten_set_main_loop unwinds the stack and
      hands the tab back to the browser, which is the only way a C main loop
      and an event loop can share one thread. Nothing after AppRun in an
@@ -167,6 +169,39 @@ EM_JS(void, GpJsClipboardRead, (char* out, int cap), {
     HEAPU8.set(b.subarray(0, n), out);
 });
 
+// read_from_clipboard_async: navigator.clipboard.readText, started inside the
+// click that asked for it so the browser allows it. The answer lands in its
+// own slot and is handed back through gpui_wasm_clipboard_read. A page without
+// the API (an insecure origin) answers the in-page mirror instead, which holds
+// the last copy or paste this page saw.
+EM_JS(void, GpJsClipboardReadAsync, (), {
+    const done = function(t) {
+        globalThis.__gpuiClipAsync = t || "";
+        _gpui_wasm_clipboard_read();
+    };
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(done, function(e) {
+            console.warn("failed to read the clipboard for paste: " + e);
+            done("");
+        });
+    } else {
+        done(globalThis.__gpuiClip || "");
+    }
+});
+
+EM_JS(int, GpJsClipboardAsyncLen, (), {
+    const t = globalThis.__gpuiClipAsync;
+    return t ? globalThis.__gpui.u8len(t) : 0;
+});
+
+EM_JS(void, GpJsClipboardAsyncRead, (char* out, int cap), {
+    const t = globalThis.__gpuiClipAsync || "";
+    globalThis.__gpuiClipAsync = "";
+    const b = new TextEncoder().encode(t);
+    const n = Math.min(b.length, cap);
+    HEAPU8.set(b.subarray(0, n), out);
+});
+
 EM_JS(int, GpJsReduceMotion, (), {
     return globalThis.matchMedia &&
            globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -214,6 +249,12 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_wake(void) {
     }
 }
 
+// Set only while a DOM paste event's chord is dispatched: the mirror is the
+// clipboard then and at no other time, so every other synchronous read is
+// empty, as Rust's web read_from_clipboard always is, and a Paste from a menu
+// falls back to the asynchronous read.
+static bool gInPasteEvent = false;
+
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_paste(void) {
     if (!gWin || !gWin->plat) {
         return;
@@ -221,7 +262,35 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_paste(void) {
     // ctrl-V everywhere, cmd-V on a Mac keyboard: the keymap binds
     // `cmd-v` on macOS and `ctrl-v` elsewhere, and GPUI_OS_MAC is 0 for a
     // wasm build, so this is the chord the keymap is holding.
+    gInPasteEvent = true;
     WindowKeyDown(gWin, KeyV, false, true, false, false);
+    gInPasteEvent = false;
+}
+
+// The one read ClipboardReadAsync has in flight. A page has one user
+// activation at a time, so a second read replaces the first.
+static ClipboardReadFn gClipboardReadDone = nullptr;
+static void* gClipboardReadData = nullptr;
+
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_clipboard_read(void) {
+    ClipboardReadFn done = gClipboardReadDone;
+    void* data = gClipboardReadData;
+    gClipboardReadDone = nullptr;
+    gClipboardReadData = nullptr;
+    if (!done || !gWin || !gWin->plat) {
+        return;
+    }
+    ClipboardItem item;
+    int n = GpJsClipboardAsyncLen();
+    if (n > 0) {
+        Str text = AllocStrTemp(n);
+        if (text.s) {
+            GpJsClipboardAsyncRead(text.s, n);
+            item.text = text;
+        }
+    }
+    done(data, gWin->app, gWin, item);
+    gWin->plat->dirty = true;
 }
 
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_set_theme(int dark) {
@@ -313,8 +382,7 @@ static uint32_t CharOf(const EmscriptenKeyboardEvent* e) {
 // Browser chords such as reload, the address bar and developer tools stay in
 // the browser. Editing chords go to the focused canvas and are consumed there.
 static bool EditingChord(int vk) {
-    return vk == KeyA || vk == KeyC || vk == KeyX || vk == KeyZ ||
-           vk == KeyY;
+    return vk == KeyA || vk == KeyC || vk == KeyX || vk == KeyZ || vk == KeyY;
 }
 
 static bool AltGraphText(const EmscriptenKeyboardEvent* e) {
@@ -354,11 +422,10 @@ static EM_BOOL OnKeyDown(int, const EmscriptenKeyboardEvent* e, void*) {
     // GPUI_OS_WASM uses the ctrl bindings. macOS browsers send meta for the
     // same editing chords, so translate those before dispatching to the tree.
     bool altGraph = AltGraphText(e);
-    bool ctrl = (e->ctrlKey && !altGraph) ||
-                (e->metaKey && EditingChord(vk));
+    bool ctrl = (e->ctrlKey && !altGraph) || (e->metaKey && EditingChord(vk));
     if (vk) {
-        WindowKeyDown(win, vk, e->shiftKey != 0, ctrl,
-                      e->altKey && !altGraph, false);
+        WindowKeyDown(win, vk, e->shiftKey != 0, ctrl, e->altKey && !altGraph,
+                      false);
     }
     // Backspace arrives as WM_CHAR 8 on Windows and the bound InputState
     // edits on that; the DOM only reports the key, so raise it here the way
@@ -389,10 +456,10 @@ static EM_BOOL OnKeyUp(int, const EmscriptenKeyboardEvent* e, void*) {
     }
     bool altGraph = AltGraphText(e);
     if (vk) {
-        WindowKeyUp(win, vk, e->shiftKey != 0,
-                    (e->ctrlKey && !altGraph) ||
-                        (e->metaKey && EditingChord(vk)),
-                    e->altKey && !altGraph, false);
+        WindowKeyUp(
+            win, vk, e->shiftKey != 0,
+            (e->ctrlKey && !altGraph) || (e->metaKey && EditingChord(vk)),
+            e->altKey && !altGraph, false);
     }
     return EM_TRUE;
 }
@@ -508,8 +575,8 @@ static EM_BOOL OnMouseUp(int, const EmscriptenMouseEvent* e, void*) {
         return EM_FALSE;
     }
     Point p = CanvasPoint((float)e->clientX, (float)e->clientY);
-    PlatformInput in = InputMouseUp(button, p.x, p.y, ModsOf(e),
-                                    WindowCurrentClickCount(win));
+    PlatformInput in =
+        InputMouseUp(button, p.x, p.y, ModsOf(e), WindowCurrentClickCount(win));
     WindowDispatchInput(win, &in);
     return EM_TRUE;
 }
@@ -557,8 +624,7 @@ static EM_BOOL OnWheel(int, const EmscriptenWheelEvent* e, void*) {
     }
     Point p = CanvasPoint((float)e->mouse.clientX, (float)e->mouse.clientY);
     PlatformInput in = InputScrollWheel(
-        p.x, p.y,
-        -(float)e->deltaX * scale, -(float)e->deltaY * scale,
+        p.x, p.y, -(float)e->deltaX * scale, -(float)e->deltaY * scale,
         e->deltaMode == DOM_DELTA_PIXEL, ModsOf(&e->mouse), TouchPhase::Moved);
     WindowDispatchInput(win, &in);
     return EM_TRUE;
@@ -776,6 +842,9 @@ void WindowSetTextContentType(Window* win, Str value) {
 
 Str ClipboardGetText(Arena* a, Window* win) {
     (void)win;
+    if (!gInPasteEvent) {
+        return {};
+    }
     int n = GpJsClipboardLen();
     if (n <= 0) {
         return {};
@@ -792,6 +861,17 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
     return out;
+}
+
+bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
+    (void)win;
+    if (!done) {
+        return false;
+    }
+    gClipboardReadDone = done;
+    gClipboardReadData = data;
+    GpJsClipboardReadAsync();
+    return true;
 }
 
 // ─── app lifecycle ────────────────────────────────────────────────────────
@@ -844,16 +924,12 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
                                       EM_FALSE, OnMouseMove);
     emscripten_set_mouseleave_callback(canvas, nullptr, EM_FALSE, OnMouseLeave);
     emscripten_set_wheel_callback(canvas, nullptr, EM_FALSE, OnWheel);
-    emscripten_set_keydown_callback(canvas, nullptr,
-                                    EM_FALSE, OnKeyDown);
-    emscripten_set_keyup_callback(canvas, nullptr,
-                                  EM_FALSE, OnKeyUp);
+    emscripten_set_keydown_callback(canvas, nullptr, EM_FALSE, OnKeyDown);
+    emscripten_set_keyup_callback(canvas, nullptr, EM_FALSE, OnKeyUp);
     emscripten_set_resize_callback(EMSCRIPTEN_EVENT_TARGET_WINDOW, nullptr,
                                    EM_FALSE, OnResize);
-    emscripten_set_focus_callback(canvas, nullptr,
-                                  EM_FALSE, OnFocus);
-    emscripten_set_blur_callback(canvas, nullptr,
-                                 EM_FALSE, OnFocus);
+    emscripten_set_focus_callback(canvas, nullptr, EM_FALSE, OnFocus);
+    emscripten_set_blur_callback(canvas, nullptr, EM_FALSE, OnFocus);
 
     PlatSetTimer(win, WindowTimerMs(win));
     return win;

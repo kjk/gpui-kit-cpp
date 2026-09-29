@@ -3922,6 +3922,43 @@ static void TheThreeInputBuildersInstallPasteInterception() {
     delete win;
 }
 
+// state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
+// clipboard must not replace the selection with nothing. Rust drives it
+// through the Paste action and a test clipboard; the insert is the seam here,
+// since the action reads the real system clipboard.
+static void PasteWithoutTextLeavesTheSelectionAlone() {
+    InputState s;
+    InputSetValue(&s, StrL("hello world"));
+    InputSelectAll(&s, nullptr, nullptr);
+    ClipboardItem image;
+    const uint8_t png[4] = {0x89, 'P', 'N', 'G'};
+    image.imageBytes = png;
+    image.imageBytesLen = 4;
+    InputInsertClipboard(&s, nullptr, nullptr, image);
+    utassert(ValueIs(s, "hello world"));
+    utassert(RangeIs(s, 0, 11));
+}
+
+// state.rs test_paste_target_tracks_edits_and_selections.
+static void PasteTargetTracksEditsAndSelections() {
+    InputState s;
+    MakeEditor(&s, "abc");
+    InputMoveTo(&s, nullptr, nullptr, 2);
+    InputPasteTarget target = InputPasteTargetOf(&s);
+    // Nothing happened: a paste asked for then still applies.
+    utassert(InputPasteTargetOf(&s) == target);
+
+    // Moving the caret changes where the paste would go.
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    InputPasteTarget moved = InputPasteTargetOf(&s);
+    utassert(moved != target);
+
+    // Editing the text changes it too, even with the caret put back.
+    Type(&s, "x");
+    InputMoveTo(&s, nullptr, nullptr, 1);
+    utassert(InputPasteTargetOf(&s) != moved);
+}
+
 static void InlineTokenContentValidatesRanges() {
     InputContent c = InputContent::New(StrL("Ask @alice"));
     InlineToken tok = InlineToken::New(StrL("person:alice"), StrL("@alice"))
@@ -4495,6 +4532,8 @@ void TestInputState() {
     IndentationPatternsMatchPythonRules();
     GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
+    PasteWithoutTextLeavesTheSelectionAlone();
+    PasteTargetTracksEditsAndSelections();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();
     SingleLineRemovesNewlines();
     SetValueCaretAtEnd();

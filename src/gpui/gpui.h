@@ -4703,6 +4703,25 @@ Str InputSelectedValue(const InputState* s);
 bool InputIsMultiLine(const InputState* s);
 bool InputIsSingleLine(const InputState* s);
 bool InputIsEditable(const InputState* s);
+// state.rs PasteTarget: the document and selections a Paste was asked to
+// replace, taken when the action ran so a clipboard read that resolves later
+// can tell whether it still applies. Two equal targets mean an edit made for
+// one still applies to the other.
+struct InputPasteTarget {
+    uint64_t documentRevision = 0;
+    Selection active = {};
+    bool reversed = false;
+    Vec<Selection> extra;
+
+    bool operator==(const InputPasteTarget& o) const;
+    bool operator!=(const InputPasteTarget& o) const { return !(*this == o); }
+};
+// paste_target.
+InputPasteTarget InputPasteTargetOf(const InputState* s);
+// insert_clipboard: the clipboard's text inserted the way Paste does. A
+// clipboard without text leaves the selection alone.
+void InputInsertClipboard(InputState* s, App* app, Window* win,
+                          const ClipboardItem& item);
 // is_copyable: whether the selection may leave the field. A masked one may
 // not — what it shows is not what it holds, and a copy or a cut would put
 // what it holds on the clipboard.
@@ -6366,6 +6385,15 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win);
 // Take it back off. The result is arena-allocated and empty when the
 // clipboard holds no text.
 Str ClipboardGetText(Arena* a, Window* win);
+// cx.read_from_clipboard_async(): the real read, for a platform whose
+// ClipboardGetItem cannot see the system clipboard outside a paste event —
+// the web, where the read is a permission-gated promise. Starts it and
+// returns true; `done` runs later on the main thread with what was read,
+// empty when the read failed or was refused. Returns false, and never calls
+// `done`, where ClipboardGetItem is already the real read.
+using ClipboardReadFn = void (*)(void* data, App* app, Window* win,
+                                 const ClipboardItem& item);
+bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data);
 
 // macOS NSTextContent autofill metadata. The other platforms intentionally
 // accept and ignore it, matching gpui-kit's cfg-gated implementation.

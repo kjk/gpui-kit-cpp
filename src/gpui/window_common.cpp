@@ -3281,6 +3281,18 @@ void WindowClosed(Window* win) {
     win->running = false;
 }
 
+#if !GPUI_OS_WASM
+// Every desktop clipboard is read synchronously, so ClipboardGetItem is the
+// real read and there is nothing to fall back to. The web's is in
+// window_wasm.cpp.
+bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
+    (void)win;
+    (void)done;
+    (void)data;
+    return false;
+}
+#endif
+
 // A picture arrived. image.h answered nothing for it while it was on its way,
 // so every window draws once more and asks the table again. Runs on the main
 // thread: sys/http.cpp hands this to the executor as a fetch's completion.
