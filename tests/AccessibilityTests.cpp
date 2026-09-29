@@ -570,6 +570,51 @@ static void SelectionContainersExposeTheirSelectedItems() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/kit/tests/disclosure.rs:
+// accordion_preserves_disabled_items_when_the_group_is_enabled. An item's own
+// disabled flag holds inside an enabled group, and re-enabling the group after
+// disabling it leaves that item disabled. The Rust clicks the triggers; here
+// the trigger's projected disabled state and its missing click are the seam.
+struct AccordionToggleView {
+    static El* Render(AccordionToggleView*, Ctx* cx) { return Div(cx->a); }
+    static void Toggle(AccordionToggleView*, Ctx*, const ClickEvent*,
+                       intptr_t) {}
+};
+
+static void AccordionPreservesDisabledItemsWhenTheGroupIsEnabled() {
+    const bool groupDisabled[] = {false, true, false};
+    for (bool group : groupDisabled) {
+        AccessibilityFrame f = NewAccessibilityFrame();
+        component::Init(&f.app);
+        Entity<AccordionToggleView> view =
+            EntityNew<AccordionToggleView>(&f.app);
+        f.cx.self = view.id;
+        El* root = component::Accordion::New(&f.cx, StrL("sections"))
+                       ->Disabled(group)
+                       ->OnToggle(Listen(&f.cx, &AccordionToggleView::Toggle))
+                       ->Item(component::AccordionItem::New(&f.cx)
+                                  ->Title(StrL("General")))
+                       ->Item(component::AccordionItem::New(&f.cx)
+                                  ->Title(StrL("Advanced"))
+                                  ->Disabled(true))
+                       ->IntoEl();
+        AccessibilityCollect(root, &f.win->accessibility);
+        const AccessibilityNode* general =
+            RoleNode(f.win->accessibility, AccessibilityRole::Button, 0);
+        const AccessibilityNode* advanced =
+            RoleNode(f.win->accessibility, AccessibilityRole::Button, 1);
+        utassert(general && advanced);
+        if (general && advanced) {
+            utassert(advanced->info.disabled);
+            utassert((advanced->actions & AccessibilityActionDefault) == 0);
+            utassert((general->info.disabled != 0) == group);
+            utassert(((general->actions & AccessibilityActionDefault) != 0) ==
+                     !group);
+        }
+        FreeAccessibilityFrame(&f);
+    }
+}
+
 void TestAccessibility() {
     TestSuite("accessibility");
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
@@ -584,5 +629,6 @@ void TestAccessibility() {
     SelectionContainersExposeTheirSelectedItems();
     ExplicitSemanticListenersAreInvoked();
     ConditionalAndCompositeRolesMatchUpstream();
+    AccordionPreservesDisabledItemsWhenTheGroupIsEnabled();
     InputContentTypesAndSecretsProjectSafely();
 }

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "cc05eb7f74ee0fa3526c583c41bf45a0cd8a03e3",
+  sha: "1a7ada4233a54506a6b4d7199dc31b920b0675a8",
   date: "2026-09-20",
-  subject: "setting: Add optional footers outside group surfaces (#3133)",
+  subject: "accordion: Preserve disabled state of individual items (#3141)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

@@ -137,6 +137,10 @@ El* AccordionStory::Render(AccordionStory* self, Ctx* cx) {
         }
         acc->Item(it);
     }
+    acc->Item(component::AccordionItem::New(cx)
+                  ->Title(StrL("Disabled item"))
+                  ->Disabled(true)
+                  ->Child(StrL("This item cannot be expanded.")));
 
     El* def =
         StorySection(cx, "Default", "Expand one item at a time by default.");

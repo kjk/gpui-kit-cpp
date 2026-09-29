@@ -96,6 +96,11 @@ AccordionItem* AccordionItem::Open(bool v) {
     return this;
 }
 
+AccordionItem* AccordionItem::Disabled(bool v) {
+    disabled = v;
+    return this;
+}
+
 AccordionItem* AccordionItem::Child(El* c) {
     content = c;
     return this;
@@ -173,8 +178,11 @@ El* Accordion::IntoEl() {
         // spelling the group and the row out again.
         IdScope scope(cx, StrDup(a, fmt("%d", i)));
         AccordionItem* item = items[i];
+        // Either the group or the item disables it: an enabled group leaves an
+        // item's own disabled flag in force.
+        bool itemDisabled = disabled || item->disabled;
         El* trig = AccordionTrigger::New(cx, StrDup(a, fmt("trigger-%d", i)),
-                                         item->open, disabled,
+                                         item->open, itemDisabled,
                                          ListenerArg(onToggle, i));
         // AccordionTrigger: h_flex justify_between gap_3 font_medium, and the
         // open one paints its title in foreground.
@@ -204,9 +212,9 @@ El* Accordion::IntoEl() {
             left->Child(item->title);
         }
         trig->Child(left);
-        // A disabled accordion has no chevron at all — Rust skips the whole
+        // A disabled item has no chevron at all — Rust skips the whole
         // `when(!disabled)` block, the change handler with it.
-        if (!disabled) {
+        if (!itemDisabled) {
             trig->Child(
                 IconEl(a, IconName::ChevronDown, UiIconPx(UiSize::XSmall))
                     ->Shrink0()

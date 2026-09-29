@@ -27,6 +27,7 @@ struct AccordionItem {
     El* title = nullptr;
     El* content = nullptr;
     bool open = false;
+    bool disabled = false;
     IconName icon = IconName::None;
     AccordionStyle titleStyle = {};
     AccordionStyle contentStyle = {};
@@ -36,6 +37,7 @@ struct AccordionItem {
     AccordionItem* Title(Str s);
     AccordionItem* Icon(IconName i);
     AccordionItem* Open(bool v);
+    AccordionItem* Disabled(bool v);
     AccordionItem* Child(El* c);
     AccordionItem* Child(Str s);
     AccordionItem* TitleStyle(const AccordionStyle& s);
