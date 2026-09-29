@@ -38,6 +38,10 @@ using Positioned = ResolvedPosition; // compatibility with the earlier port
 // corresponding public-but-doc-hidden state is an empty structural marker.
 struct PositionerState {};
 
+// Positioner::on_position's callback: the resolved geometry, before the
+// children paint. Rust's boxed closure is a function and what it captured.
+using PositionerOnPositionFn = void (*)(void* user, ResolvedPosition position);
+
 // The standalone unstyled positioning element. It is a frame-arena builder,
 // just like Rust's RenderOnce element: children are measured as one flex row,
 // then the complete group is moved in window coordinates during the shared
@@ -59,6 +63,8 @@ struct Positioner {
     float offset = 0;
     float margin = 4;
     bool occlude = false;
+    PositionerOnPositionFn onPosition = nullptr;
+    void* onPositionUser = nullptr;
     ArenaVec<El*> children;
 
     static Positioner* Side(Ctx* cx, Bounds trigger);
@@ -74,6 +80,8 @@ struct Positioner {
     // the surface's, not the panel underneath.
     Positioner* Occlude();
     Positioner* Margin(float value);
+    // Observe resolved geometry before children paint.
+    Positioner* OnPosition(PositionerOnPositionFn fn, void* user);
     Positioner* Child(El* child);
     El* IntoEl();
 };

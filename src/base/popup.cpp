@@ -27,7 +27,7 @@ Point PopupResolvedCorner(PopupAnchor anchor, Bounds b) {
     }
 }
 
-El* PopupPlaceContent(El* content, PopupAnchor anchor, float offsetY) {
+El* PopupPlaceContent(El* content, PopupAnchor anchor, float offset) {
     if (!content) {
         return content;
     }
@@ -41,7 +41,7 @@ El* PopupPlaceContent(El* content, PopupAnchor anchor, float offsetY) {
     // dropdown menu over it and HoverCard in one place. The surface records
     // a hit rect ahead of its children, so its own content still hears the
     // pointer and the panel under it does not.
-    return content->AnchorCorner(anchor, kPopupWindowMargin, offsetY)
+    return content->AnchorCorner(anchor, kPopupWindowMargin, offset)
         ->StopMouseDown()
         ->Deferred();
 }
@@ -49,6 +49,7 @@ El* PopupPlaceContent(El* content, PopupAnchor anchor, float offsetY) {
 Popup* Popup::New(Ctx* cx, Str id, El* trigger, PopupAnchor anchor) {
     Arena* a = cx->a;
     Popup* p = ArenaNew<Popup>(a);
+    p->a = a;
     p->anchor = anchor;
     PopupAnchorState* state =
         ElementState<PopupAnchorState>(cx, id, StrL("PopupAnchorState"));
@@ -65,14 +66,38 @@ Popup* Popup::New(Ctx* cx, Str id, El* trigger, PopupAnchor anchor) {
     return p;
 }
 
-Popup* Popup::Anchor(PopupAnchor a) {
-    anchor = a;
+Popup* Popup::Anchor(PopupAnchor value) {
+    anchor = value;
     return this;
 }
 
 Popup* Popup::AnchorRight(bool on) {
     anchor = on ? PopupAnchor::TopRight : PopupAnchor::TopLeft;
     return this;
+}
+
+Popup* Popup::Offset(float v) {
+    offset = v;
+    return this;
+}
+
+Popup* Popup::OnPosition(PopupOnPositionFn fn, void* user) {
+    onPosition = fn;
+    onPositionUser = user;
+    return this;
+}
+
+struct PopupPositionHook {
+    AnchoredPlacedHook placed;
+    PopupOnPositionFn fn = nullptr;
+    void* user = nullptr;
+};
+
+static void PopupPlaced(void* user, AnchoredPosition placed, Bounds trigger) {
+    PopupPositionHook* hook = (PopupPositionHook*)user;
+    ResolvedPosition position = {};
+    position.bounds = placed.bounds;
+    hook->fn(hook->user, position, trigger);
 }
 
 Popup* Popup::Content(El* content) {
@@ -82,7 +107,17 @@ Popup* Popup::Content(El* content) {
     // Positioner::corner is out of flow and deferred; in-flow content would
     // grow its trigger's page and paint below later siblings.
     if (!content->style.absolute) {
-        PopupPlaceContent(content, anchor);
+        PopupPlaceContent(content, anchor, offset);
+    }
+    if (onPosition) {
+        // Positioner::on_position, which Rust's Popup wraps with the trigger
+        // bounds it captured; here the anchored pass knows both.
+        PopupPositionHook* hook = ArenaNew<PopupPositionHook>(a);
+        hook->fn = onPosition;
+        hook->user = onPositionUser;
+        hook->placed.fn = &PopupPlaced;
+        hook->placed.user = hook;
+        content->onPlaced = &hook->placed;
     }
     root->Child(content);
     return this;

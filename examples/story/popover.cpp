@@ -9,12 +9,6 @@ enum {
     PopRightClick,
     PopStyle,
     PopAsync,
-    PopTopLeft,
-    PopTopCenter,
-    PopTopRight,
-    PopBottomLeft,
-    PopBottomCenter,
-    PopBottomRight,
     PopCount
 };
 
@@ -30,6 +24,8 @@ struct PopoverStory {
     // that stands in for Rust's spawned task has fired.
     bool asyncLoaded = false;
     bool asyncTimer = false;
+    // The Anchor section's Arrow checkbox, unchecked by default.
+    bool arrow = false;
     bool seeded = false;
 
     static El* Render(PopoverStory* self, Ctx* cx);
@@ -77,6 +73,11 @@ static void FocusListSearch(PopoverStory* self, Ctx* cx, const ClickEvent*) {
 static void TogglePop(PopoverStory* self, Ctx* cx, const ClickEvent*,
                       intptr_t which) {
     self->open = self->open == (int)which ? -1 : (int)which;
+    Notify(cx);
+}
+static void ToggleArrow(PopoverStory* self, Ctx* cx, const ClickEvent*,
+                        intptr_t checked) {
+    self->arrow = checked != 0;
     Notify(cx);
 }
 static void SubmitForm(PopoverStory* self, Ctx* cx, const ClickEvent*) {
@@ -314,61 +315,53 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
     El* anchor = StorySection(cx, "Anchor",
                               "Position content from each edge of the "
                               "trigger.");
-    StorySectionBody(anchor)->W(kFill)->MinH(360)->FlexCol();
-    // Two absolute bands, top_0 and bottom_0 of the min_h_360 section, each
-    // an h_flex().items_center().justify_between() of three triggers. Rust
-    // pins them rather than spacing a column, so a popover that opens
-    // upward has the room above it.
-    struct AnchorRowFull {
-        int slots[3];
-        const char* labels[3];
-        const char* said[3];
+    StorySectionSubTitle(anchor,
+                         component::Checkbox::New(cx, StrL("anchor-arrow"))
+                             ->Label(StrL("Arrow"))
+                             ->Checked(self->arrow)
+                             ->OnChange(Listen(cx, &ToggleArrow))
+                             ->IntoEl());
+    // min_h(rems(14.)).v_flex().justify_between(): three rows of small
+    // outline triggers, one popover per anchor, each an uncontrolled
+    // Popover whose content is "Popover content" on the default surface.
+    StorySectionBody(anchor)->W(kFill)->MinH(224)->FlexCol()->JustifyBetween();
+    struct AnchorRow {
+        int n;
         PopupAnchor anchors[3];
+        const char* labels[3];
     };
-    AnchorRowFull rows[2] = {
-        {{PopTopLeft, PopTopCenter, PopTopRight},
-         {"TopLeft", "TopCenter", "TopRight"},
-         {"top-left", "top-center", "top-right"},
-         {PopupAnchor::TopLeft, PopupAnchor::TopCenter, PopupAnchor::TopRight}},
-        {{PopBottomLeft, PopBottomCenter, PopBottomRight},
-         {"BottomLeft", "BottomCenter", "BottomRight"},
-         {"bottom-left", "bottom-center", "bottom-right"},
+    AnchorRow rows[3] = {
+        {3,
+         {PopupAnchor::TopLeft, PopupAnchor::TopCenter, PopupAnchor::TopRight},
+         {"TopLeft", "TopCenter", "TopRight"}},
+        {2,
+         {PopupAnchor::LeftCenter, PopupAnchor::RightCenter},
+         {"LeftCenter", "RightCenter"}},
+        {3,
          {PopupAnchor::BottomLeft, PopupAnchor::BottomCenter,
-          PopupAnchor::BottomRight}},
+          PopupAnchor::BottomRight},
+         {"BottomLeft", "BottomCenter", "BottomRight"}},
     };
-    for (int r = 0; r < 2; r++) {
-        El* band = Div(a)->Absolute()->Left(0)->W(kFill)->H(40);
-        if (r == 0) {
-            band->Top(0);
-        } else {
-            band->Bottom(0);
-        }
-        El* row = Div(a)
-                      ->FlexRow()
-                      ->W(kFill)
-                      ->H(kFill)
-                      ->ItemsCenter()
-                      ->JustifyBetween();
-        for (int i = 0; i < 3; i++) {
-            // Only the three named in the Rust story carry .max_w(600):
-            // the two on the left and the top-centre one.
-            bool wide = r == 0 && i < 2;
-            El* card = PopCard(cx, wide ? 600.f : 0.f);
-            card->Child(StoryTxt(
-                cx,
-                StoryFmt(cx, "Anchored to the trigger's %s.", rows[r].said[i]),
-                16, th.foreground));
-            row->Child(component::Popover::New(cx)
-                           ->Anchor(rows[r].anchors[i])
-                           ->Trigger(PopTrigger(self, cx, rows[r].slots[i],
-                                                rows[r].labels[i],
-                                                rows[r].labels[i], toggle))
-                           ->Content(card)
-                           ->Open(self->open == rows[r].slots[i])
+    for (const AnchorRow& r : rows) {
+        El* row = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
+        for (int i = 0; i < r.n; i++) {
+            Str label = Str(r.labels[i]);
+            El* surface = component::PopoverSurface(
+                cx, Div(a)->FlexCol()->Pad(12)->Child(StoryTxt(
+                        cx, StrL("Popover content"), 14, th.popoverFg)));
+            row->Child(component::Popover::New(
+                           cx, StoryFmt(cx, "anchor-%s", r.labels[i]))
+                           ->Anchor(r.anchors[i])
+                           ->Arrow(self->arrow)
+                           ->Trigger(component::Button::New(cx, StrL("trigger"))
+                                         ->Label(label)
+                                         ->WithSize(UiSize::Small)
+                                         ->Outline()
+                                         ->IntoEl())
+                           ->Content(surface)
                            ->IntoEl());
         }
-        band->Child(row);
-        StorySectionAdd(anchor, band);
+        StorySectionAdd(anchor, row);
     }
     page->Child(anchor);
     return page;

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "99d203300c9316444ede4d7cd9d8751e9bfcc819",
+  sha: "cfc37e6ff13f70a4bc368740625e351cc5c2db21",
   date: "2026-09-20",
-  subject: "select: Emit dismissal when an open menu closes (#3144)",
+  subject: "popover: Add offset and optional anchor-aligned arrows (#3145)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

@@ -83,10 +83,18 @@ struct Popover {
     bool overlayClosable = true;
     // Popover::anchor, the gpui::Anchor Popup resolves.
     PopupAnchor anchor = PopupAnchor::TopLeft;
+    // Gap from the trigger along the anchor's outward direction, zero by
+    // default.
+    float offset = 0;
+    PopupOnPositionFn onPosition = nullptr;
+    void* onPositionUser = nullptr;
 
     static Popover* New(Ctx* cx, Str id, Entity<PopoverState> state = {},
                         MouseButton button = MouseButton::Left);
     Popover* Anchor(PopupAnchor v);
+    Popover* Offset(float offset);
+    // Observe geometry to supply presentation such as a pointer arrow.
+    Popover* OnPosition(PopupOnPositionFn fn, void* user);
     // Popover::tracked_focus_handle: what takes focus when it opens, instead
     // of the popover itself.
     Popover* TrackedFocus(FocusHandle tracked);

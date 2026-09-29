@@ -98,6 +98,15 @@ Popover* Popover::Anchor(PopupAnchor v) {
     anchor = v;
     return this;
 }
+Popover* Popover::Offset(float v) {
+    offset = v;
+    hasOffset = true;
+    return this;
+}
+Popover* Popover::Arrow(bool v) {
+    arrow = v;
+    return this;
+}
 Popover* Popover::Button(MouseButton b) {
     button = b;
     return this;
@@ -111,6 +120,142 @@ static Entity<PopoverState> PopState(Ctx* cx, Str id) {
 
 bool PopoverOpen(Ctx* cx, Str id) {
     return PopoverIsOpen(cx, PopState(cx, id));
+}
+
+PopoverArrowAnchor ArrowAnchor(PopupAnchor anchor, Bounds t) {
+    using gpui::Placement;
+    switch (anchor) {
+        case PopupAnchor::TopLeft:
+            return {Placement::Bottom, {t.x, t.Bottom()}};
+        case PopupAnchor::TopCenter:
+            return {Placement::Bottom, {t.CenterX(), t.Bottom()}};
+        case PopupAnchor::TopRight:
+            return {Placement::Bottom, {t.Right(), t.Bottom()}};
+        case PopupAnchor::BottomLeft:
+            return {Placement::Top, {t.x, t.y}};
+        case PopupAnchor::BottomCenter:
+            return {Placement::Top, {t.CenterX(), t.y}};
+        case PopupAnchor::BottomRight:
+            return {Placement::Top, {t.Right(), t.y}};
+        case PopupAnchor::LeftCenter:
+            return {Placement::Right, {t.Right(), t.CenterY()}};
+        case PopupAnchor::RightCenter:
+            return {Placement::Left, {t.x, t.CenterY()}};
+    }
+    return {Placement::Bottom, {t.x, t.Bottom()}};
+}
+
+void ArrowPoints(Bounds surface, Bounds trigger, gpui::Placement side,
+                 float depth, float radius, Point out[3]) {
+    using gpui::Placement;
+    bool horizontal = PlacementIsHorizontal(side);
+    float start = horizontal ? surface.y : surface.x;
+    float end = horizontal ? surface.Bottom() : surface.Right();
+    float target = horizontal ? trigger.CenterY() : trigger.CenterX();
+    float span = (end - start) * 0.5f;
+    float half = depth < span ? depth : span;
+    float inset = radius + half < span ? radius + half : span;
+    float center = target;
+    if (center < start + inset) {
+        center = start + inset;
+    }
+    if (center > end - inset) {
+        center = end - inset;
+    }
+    switch (side) {
+        case Placement::Bottom:
+            out[0] = {center - half, surface.y};
+            out[1] = {center, surface.y - depth};
+            out[2] = {center + half, surface.y};
+            break;
+        case Placement::Top:
+            out[0] = {center - half, surface.Bottom()};
+            out[1] = {center, surface.Bottom() + depth};
+            out[2] = {center + half, surface.Bottom()};
+            break;
+        case Placement::Right:
+            out[0] = {surface.x, center - half};
+            out[1] = {surface.x - depth, center};
+            out[2] = {surface.x, center + half};
+            break;
+        case Placement::Left:
+            out[0] = {surface.Right(), center - half};
+            out[1] = {surface.Right() + depth, center};
+            out[2] = {surface.Right(), center + half};
+            break;
+    }
+}
+
+Bounds ArrowJoinBounds(const Point points[3], gpui::Placement side,
+                       float stroke) {
+    // Bounds::from_corners of the two base corners, pushed a stroke width
+    // across the edge each way and pulled a stroke width in along it.
+    if (PlacementIsHorizontal(side)) {
+        float span = (points[2].y - points[0].y) * 0.5f;
+        float inset = stroke < span ? stroke : span;
+        float x0 = points[0].x - stroke;
+        float y0 = points[0].y + inset;
+        return {x0, y0, points[2].x + stroke - x0, points[2].y - inset - y0};
+    }
+    float span = (points[2].x - points[0].x) * 0.5f;
+    float inset = stroke < span ? stroke : span;
+    float x0 = points[0].x + inset;
+    float y0 = points[0].y - stroke;
+    return {x0, y0, points[2].x - inset - x0, points[2].y + stroke - y0};
+}
+
+// What the arrow canvas paints from: the anchor it follows and the trigger
+// bounds on_position reported for this frame.
+struct PopoverArrowState {
+    PopupAnchor anchor = PopupAnchor::TopLeft;
+    float size = 0;
+    float radius = 0;
+    Rgba background = {};
+    Rgba ring = {};
+    bool outline = false;
+    bool placed = false;
+    Bounds trigger = {};
+};
+
+static void PopoverArrowPositioned(void* user, ResolvedPosition,
+                                   Bounds trigger) {
+    PopoverArrowState* st = (PopoverArrowState*)user;
+    st->trigger = trigger;
+    st->placed = true;
+}
+
+static void PaintPopoverArrow(PaintCtx* ctx, El* e, void* user) {
+    PopoverArrowState* st = (PopoverArrowState*)user;
+    if (!st || !st->placed || !ctx->rt) {
+        return;
+    }
+    PopoverArrowAnchor at = ArrowAnchor(st->anchor, st->trigger);
+    Bounds surface = {e->x, e->y, e->w, e->h};
+    Point points[3];
+    ArrowPoints(surface, Bounds{at.target.x, at.target.y, 0, 0}, at.side,
+                st->size, st->radius, points);
+    if (Path* fill = PathNew(ctx, true)) {
+        PathMoveTo(fill, points[0].x, points[0].y);
+        PathLineTo(fill, points[1].x, points[1].y);
+        PathLineTo(fill, points[2].x, points[2].y);
+        PathClose(fill);
+        PathFill(ctx, fill, st->background);
+        PathFree(fill);
+    }
+    // The triangle ends exactly at the surface edge. Cover the ring and the
+    // antialiased base on both sides of that edge before drawing its two
+    // slopes.
+    Bounds join = ArrowJoinBounds(points, at.side, 1.f);
+    CanvasFillRect(ctx, join.x, join.y, join.w, join.h, st->background);
+    if (st->outline) {
+        if (Path* outline = PathNew(ctx, true)) {
+            PathMoveTo(outline, points[0].x, points[0].y);
+            PathLineTo(outline, points[1].x, points[1].y);
+            PathLineTo(outline, points[2].x, points[2].y);
+            PathStroke(ctx, outline, 1.f, st->ring);
+            PathFree(outline);
+        }
+    }
 }
 
 El* Popover::IntoEl() {
@@ -127,8 +272,40 @@ El* Popover::IntoEl() {
         PopoverSetOpen(cx, st, open);
     }
     bool isOpen = PopoverIsOpen(cx, st);
+    const Theme& th = ThemeNow(cx->app);
+    float arrowSize = arrow ? kPopoverArrowSize : 0.f;
+    float gap = (hasOffset ? offset : kPopoverOffset) + arrowSize;
+    PopoverArrowState* arrowState = nullptr;
+    if (isOpen && content && arrow) {
+        arrowState = ArenaNew<PopoverArrowState>(a);
+        arrowState->anchor = anchor;
+        arrowState->size = arrowSize;
+        arrowState->radius = th.radius;
+        // The surface's own background, falling back to the theme's popover
+        // colour.
+        bool solid = content->style.hasBg && !content->style.bg.gradient;
+        arrowState->background = solid ? content->style.bg.color : th.popover;
+        // Rust outlines the arrow with popover_ring when `appearance` gave
+        // the surface popover_style. The content here is styled by its
+        // caller, so the arrow follows what that surface draws: its border,
+        // or the ring PopoverSurface spends as a shadow.
+        if (content->style.border > 0) {
+            arrowState->outline = true;
+            arrowState->ring = content->style.borderColor;
+        } else if (content->style.shadowCount > 0) {
+            arrowState->outline = true;
+            arrowState->ring = RgbaOpacity(th.foreground, 0.1f);
+        }
+        El* canvas = Div(a)->Absolute()->Left(0)->Top(0)->W(kFill)->H(kFill);
+        canvas->customPaint = &PaintPopoverArrow;
+        canvas->customUser = arrowState;
+        content->Child(canvas);
+    }
     El* root = gpui::Popover::New(cx, popId, st, button)
                    ->Anchor(anchor)
+                   ->Offset(gap)
+                   ->OnPosition(arrowState ? &PopoverArrowPositioned : nullptr,
+                                arrowState)
                    ->OverlayClosable(overlayClosable)
                    ->OnOpenChange(onOpenChange)
                    ->OnDismiss(onClose)

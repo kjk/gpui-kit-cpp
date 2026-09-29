@@ -58,16 +58,18 @@ El* HoverCard::IntoEl() {
     bool isOpen = controlled ? open : HoverCardIsOpen(cx, st);
     El* card = isOpen ? content : nullptr;
     if (card) {
-        // The eight anchors are Popup's own, including its exact corner point
-        // and eight-pixel viewport clamp.
-        // render_popover_content supplies top_1/bottom_1 as a four-pixel
-        // vertical refinement around Popup's exact corner placement.
-        float offset = anchor == PopupAnchor::BottomLeft ||
-                               anchor == PopupAnchor::BottomCenter ||
-                               anchor == PopupAnchor::BottomRight
-                           ? -4.f
-                           : 4.f;
-        PopupPlaceContent(card, anchor, offset);
+        // The eight anchors are Popup's own, including its edge point and
+        // eight-pixel viewport clamp, with no offset of its own.
+        // render_popover_content adds top_1 (bottom_1 for the bottom
+        // anchors) to the surface, a four-pixel relative inset.
+        if (anchor == PopupAnchor::BottomLeft ||
+            anchor == PopupAnchor::BottomCenter ||
+            anchor == PopupAnchor::BottomRight) {
+            card->Bottom(4);
+        } else {
+            card->Top(4);
+        }
+        PopupPlaceContent(card, anchor);
     }
     return gpui::HoverCard::New(cx, cardId, st)
         ->OnOpenChange(onOpenChange)

@@ -2054,13 +2054,13 @@ El* El::AnchorCenterX() {
     return this;
 }
 
-El* El::AnchorCorner(Anchor anchor, float margin, float offsetY) {
+El* El::AnchorCorner(Anchor anchor, float margin, float offset) {
     style.absolute = true;
     style.fixed = true;
     style.anchorCorner = true;
     style.anchor = anchor;
     style.anchorMargin = margin > 0 ? margin : 0;
-    style.anchorGap = offsetY;
+    style.anchorGap = offset;
     return this;
 }
 El* El::Top(float v) {
@@ -4112,6 +4112,28 @@ AnchoredPosition AnchoredSideResolve(Bounds trigger, Size popup, Size view,
     return out;
 }
 
+Point AnchorPosition(Anchor anchor, Bounds t, float offset) {
+    switch (anchor) {
+        case Anchor::TopLeft:
+            return {t.x, t.y + t.h + offset};
+        case Anchor::TopCenter:
+            return {t.x + t.w * 0.5f, t.y + t.h + offset};
+        case Anchor::TopRight:
+            return {t.x + t.w, t.y + t.h + offset};
+        case Anchor::BottomLeft:
+            return {t.x, t.y - offset};
+        case Anchor::BottomCenter:
+            return {t.x + t.w * 0.5f, t.y - offset};
+        case Anchor::BottomRight:
+            return {t.x + t.w, t.y - offset};
+        case Anchor::LeftCenter:
+            return {t.x + t.w + offset, t.y + t.h * 0.5f};
+        case Anchor::RightCenter:
+            return {t.x - offset, t.y + t.h * 0.5f};
+    }
+    return {t.x, t.y};
+}
+
 AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
                                        Size view, float margin) {
     return AnchoredCornerResolve(anchor, at, popup, view, EdgesAll(margin));
@@ -4204,28 +4226,11 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
             ax = e->x + (e->w - c->w) * 0.5f;
         }
         if (s.anchorCorner) {
-            // popup.rs::resolved_corner followed by
-            // Bounds::from_anchor_and_size. Bottom anchors deliberately move
-            // the point one trigger height above its origin; this unusual
-            // arithmetic is pinned by upstream's own test.
-            Point at = {e->x, e->y};
-            switch (s.anchor) {
-                case Anchor::TopCenter:
-                case Anchor::BottomCenter:
-                    at.x = e->x + e->w * 0.5f;
-                    break;
-                case Anchor::TopRight:
-                case Anchor::BottomRight:
-                    at.x = e->x + e->w;
-                    break;
-                default:
-                    break;
-            }
-            if (s.anchor == Anchor::BottomLeft ||
-                s.anchor == Anchor::BottomCenter ||
-                s.anchor == Anchor::BottomRight) {
-                at.y = e->y - e->h;
-            }
+            // popup.rs anchor_position followed by
+            // Bounds::from_anchor_and_size: the popup's named anchor goes on
+            // the trigger's opposite edge, `anchorGap` further out.
+            Point at = AnchorPosition(s.anchor, Bounds{e->x, e->y, e->w, e->h},
+                                      s.anchorGap);
             ax = at.x;
             ay = at.y;
             if (s.anchor == Anchor::TopCenter ||
@@ -4244,11 +4249,18 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
                        s.anchor == Anchor::RightCenter) {
                 ay -= c->h * 0.5f;
             }
-            ay += s.anchorGap;
+            // top_1 / bottom_1 on the surface itself: a relative inset, so
+            // it moves the box from where the anchor put it.
+            if (s.absTop != kAuto) {
+                ay += s.absTop;
+            } else if (s.absBottom != kAuto) {
+                ay -= s.absBottom;
+            }
         }
         Edges margin = Edges::New(
             frame.left + s.anchorMargin, frame.right + s.anchorMargin,
             frame.top + s.anchorMargin, frame.bottom + s.anchorMargin);
+        int8_t placedSide = -1;
         if (s.explicitPositioner) {
             AnchoredPosition resolved =
                 s.positionerCorner
@@ -4261,6 +4273,7 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
                                           s.positionerAlign, s.anchorGap);
             ax = resolved.bounds.x;
             ay = resolved.bounds.y;
+            placedSide = resolved.placement;
         }
         // positioner.rs `clamp`: whatever the corner worked out, the popup is
         // then pulled back inside the viewport with WINDOW_MARGIN to spare.
@@ -4295,6 +4308,13 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
             ay = roundf(ay);
         }
         MoveEl(c, ax, ay);
+        if (c->onPlaced && anchored) {
+            Bounds trigger = s.explicitPositioner && !s.positionerCorner
+                                 ? s.positionerTrigger
+                                 : Bounds{e->x, e->y, e->w, e->h};
+            AnchoredPosition placed = {Bounds{ax, ay, c->w, c->h}, placedSide};
+            c->onPlaced->fn(c->onPlaced->user, placed, trigger);
+        }
     }
 }
 

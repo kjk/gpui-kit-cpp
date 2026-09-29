@@ -1,8 +1,8 @@
-/* Ported from crates/base/src/popup.rs resolved_corner.
+/* Ported from crates/base/src/popup.rs and crates/component/src/popover.rs.
  *
- * Which point of the trigger the content is placed against. The bottom
- * anchors use the deliberately unusual `origin.y - height` arithmetic in
- * the pinned source. */
+ * resolved_corner is still public upstream, with its deliberately unusual
+ * `origin.y - height` bottom arithmetic; placement itself now goes through
+ * anchor_position, the trigger's opposite edge. */
 
 #include "Test.h"
 
@@ -55,10 +55,11 @@ static void PopupContentUsesThePinnedCornerMarginAndDeferredLayer() {
     utassert(content->style.deferred);
     utassert(content->style.fixed);
     utassertnear(content->style.anchorMargin, kPopupWindowMargin);
-    // Trigger is (0, 100, 80, 20). resolved_corner is (80, 80), then the
-    // content's BottomRight corner lands there.
+    // Trigger is (0, 100, 80, 20). anchor_position puts BottomRight on the
+    // trigger's top-right, (80, 100), and the content's BottomRight corner
+    // lands there.
     utassertnear(content->x, 50.f);
-    utassertnear(content->y, 70.f);
+    utassertnear(content->y, 90.f);
     int priority = kPopupPriority;
     utassert(priority == 100);
     ArenaDelete(a);
@@ -438,6 +439,190 @@ static void ThePopupSurfaceBlocksThePanelItCovers() {
     EntityDropAll(&app);
 }
 
+// crates/component/src/popover.rs, mod tests: the AnchorHarness. A 40 px
+// trigger in an absolutely placed box at `origin`, a 60 px surface, and the
+// popover open by default. The first frame captures the trigger; the second
+// carries the content, which is what is measured. `offset` < 0 leaves
+// Popover::offset unset.
+static Bounds PositionedContent(PopupAnchor anchor, float offset, Point origin,
+                                bool arrow, bool* hasArrowCanvas = nullptr) {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    win->frameArena = a;
+    BaseGlobalStateInit(&app);
+    component::Init(&app);
+    Ctx cx = {&app, win, a, {}};
+    PaintCtx ctx = {};
+    ctx.viewW = 1024;
+    ctx.viewH = 768;
+    El* content = nullptr;
+    El* root = nullptr;
+    for (int frame = 0; frame < 2; frame++) {
+        content = Div(a)->W(60)->H(60);
+        component::Popover* popover =
+            component::Popover::New(&cx, StrL("positioned-popover"))
+                ->DefaultOpen(true)
+                ->Arrow(arrow)
+                ->Anchor(anchor)
+                ->Trigger(Div(a)->W(40)->H(40))
+                ->Content(content);
+        if (offset >= 0) {
+            popover->Offset(offset);
+        }
+        root = Div(a)->W(1024)->H(768)->Child(
+            Div(a)->Absolute()->Left(origin.x)->Top(origin.y)->Child(
+                popover->IntoEl()));
+    }
+    LayoutEl(&ctx, root, 0, 0, 1024, 768, 14, Rgba{});
+    Bounds out = {content->x, content->y, content->w, content->h};
+    if (hasArrowCanvas) {
+        *hasArrowCanvas = content->last && content->last->customPaint;
+    }
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    EntityDropAll(&app);
+    return out;
+}
+
+// anchor_and_offset_position_the_surface_on_each_trigger_edge.
+static void AnchorAndOffsetPositionTheSurfaceOnEachTriggerEdge() {
+    // Legacy TopLeft means below the trigger, including the default 0.25rem
+    // gap.
+    Bounds legacy =
+        PositionedContent(PopupAnchor::TopLeft, -1, {200, 200}, false);
+    utassertnear(legacy.x, 200.f);
+    utassertnear(legacy.y, 244.f);
+
+    struct {
+        PopupAnchor anchor;
+        float x, y;
+    } cases[] = {
+        {PopupAnchor::BottomLeft, 200, 128},
+        {PopupAnchor::BottomCenter, 190, 128},
+        {PopupAnchor::BottomRight, 180, 128},
+        {PopupAnchor::TopLeft, 200, 252},
+        {PopupAnchor::TopCenter, 190, 252},
+        {PopupAnchor::TopRight, 180, 252},
+        {PopupAnchor::RightCenter, 128, 190},
+        {PopupAnchor::LeftCenter, 252, 190},
+    };
+    for (auto& c : cases) {
+        Bounds b = PositionedContent(c.anchor, 12, {200, 200}, false);
+        utassertnear(b.x, c.x);
+        utassertnear(b.y, c.y);
+    }
+    // Current-frame trigger bounds are used after the owner moves.
+    Bounds moved =
+        PositionedContent(PopupAnchor::LeftCenter, 12, {260, 240}, false);
+    utassertnear(moved.x, 312.f);
+    utassertnear(moved.y, 230.f);
+}
+
+// arrow_reserves_space_without_changing_anchor_alignment.
+static void ArrowReservesSpaceWithoutChangingAnchorAlignment() {
+    bool canvas = false;
+    // Bottom edge 48 + tip gap 12 + arrow depth 6.
+    Bounds b =
+        PositionedContent(PopupAnchor::TopLeft, 12, {200, 8}, true, &canvas);
+    utassertnear(b.x, 200.f);
+    utassertnear(b.y, 66.f);
+    utassert(canvas);
+    b = PositionedContent(PopupAnchor::TopRight, 12, {200, 8}, false, &canvas);
+    utassertnear(b.x, 180.f);
+    utassertnear(b.y, 60.f);
+    utassert(!canvas);
+}
+
+// anchor_does_not_flip_when_offset_or_arrow_is_enabled.
+static void AnchorDoesNotFlipWhenOffsetOrArrowIsEnabled() {
+    // Clamp to the window margin instead of flipping below the trigger.
+    Bounds b = PositionedContent(PopupAnchor::BottomCenter, 12, {200, 8}, true);
+    utassertnear(b.y, 8.f);
+}
+
+// arrow_alignment_uses_the_anchor_instead_of_trigger_center.
+static void ArrowAlignmentUsesTheAnchorInsteadOfTriggerCenter() {
+    using gpui::Placement;
+    Bounds trigger = {120, 120, 40, 20};
+    struct {
+        PopupAnchor anchor;
+        Placement side;
+        float x, y;
+    } cases[] = {
+        {PopupAnchor::TopLeft, Placement::Bottom, 120, 140},
+        {PopupAnchor::TopCenter, Placement::Bottom, 140, 140},
+        {PopupAnchor::TopRight, Placement::Bottom, 160, 140},
+        {PopupAnchor::BottomLeft, Placement::Top, 120, 120},
+        {PopupAnchor::BottomCenter, Placement::Top, 140, 120},
+        {PopupAnchor::BottomRight, Placement::Top, 160, 120},
+        {PopupAnchor::LeftCenter, Placement::Right, 160, 130},
+        {PopupAnchor::RightCenter, Placement::Left, 120, 130},
+    };
+    for (auto& c : cases) {
+        component::PopoverArrowAnchor at =
+            component::ArrowAnchor(c.anchor, trigger);
+        utassert(at.side == c.side);
+        utassertnear(at.target.x, c.x);
+        utassertnear(at.target.y, c.y);
+    }
+}
+
+// arrows_point_toward_the_trigger_on_every_resolved_side.
+static void ArrowsPointTowardTheTriggerOnEveryResolvedSide() {
+    using gpui::Placement;
+    Bounds surface = {100, 100, 80, 60};
+    struct {
+        Placement side;
+        Bounds trigger;
+        float x, y;
+    } cases[] = {
+        {Placement::Bottom, {120, 50, 40, 20}, 140, 94},
+        {Placement::Top, {120, 180, 40, 20}, 140, 166},
+        {Placement::Right, {40, 120, 40, 20}, 94, 130},
+        {Placement::Left, {200, 120, 40, 20}, 186, 130},
+    };
+    Point points[3];
+    for (auto& c : cases) {
+        component::ArrowPoints(surface, c.trigger, c.side, 6, 4, points);
+        utassertnear(points[1].x, c.x);
+        utassertnear(points[1].y, c.y);
+    }
+    component::ArrowPoints(surface, {0, 50, 20, 20}, Placement::Bottom, 6, 4,
+                           points);
+    utassertnear(points[0].x, 104.f);
+    utassertnear(points[0].y, 100.f);
+    utassertnear(points[1].x, 110.f);
+    utassertnear(points[1].y, 94.f);
+}
+
+// arrow_join_covers_both_sides_of_the_surface_edge.
+static void ArrowJoinCoversBothSidesOfTheSurfaceEdge() {
+    using gpui::Placement;
+    Bounds surface = {100, 100, 80, 60};
+    Bounds trigger = {120, 120, 40, 20};
+    struct {
+        Placement side;
+        Bounds expected;
+    } cases[] = {
+        {Placement::Bottom, {135, 99, 10, 2}},
+        {Placement::Top, {135, 159, 10, 2}},
+        {Placement::Right, {99, 125, 2, 10}},
+        {Placement::Left, {179, 125, 2, 10}},
+    };
+    for (auto& c : cases) {
+        Point points[3];
+        component::ArrowPoints(surface, trigger, c.side, 6, 4, points);
+        Bounds join = component::ArrowJoinBounds(points, c.side, 1);
+        utassertnear(join.x, c.expected.x);
+        utassertnear(join.y, c.expected.y);
+        utassertnear(join.w, c.expected.w);
+        utassertnear(join.h, c.expected.h);
+    }
+}
+
 void TestPopup() {
     TestSuite("popup");
     ThePopupSurfaceBlocksThePanelItCovers();
@@ -445,6 +630,12 @@ void TestPopup() {
     TheBottomAnchorsMatchUpstreamsSubtractedHeight();
     TheSideAnchorsFallBackToTheOrigin();
     PopupContentUsesThePinnedCornerMarginAndDeferredLayer();
+    AnchorAndOffsetPositionTheSurfaceOnEachTriggerEdge();
+    ArrowReservesSpaceWithoutChangingAnchorAlignment();
+    AnchorDoesNotFlipWhenOffsetOrArrowIsEnabled();
+    ArrowAlignmentUsesTheAnchorInsteadOfTriggerCenter();
+    ArrowsPointTowardTheTriggerOnEveryResolvedSide();
+    ArrowJoinCoversBothSidesOfTheSurfaceEdge();
     TriggerCaptureEnablesContentOnTheNextFrame();
     PopoverOpenStateOwnsItsDeferredRegistration();
     PopoverOwnsOpenCallbacksAndOutsideDismissal();

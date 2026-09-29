@@ -48,6 +48,31 @@ El* DropdownOpen(Ctx* cx, El* surface, uint32_t key);
 // The surface is placed here, so `Popup::Content` leaves it as it is.
 El* DropdownPlaceContent(El* content, float gap = 4);
 
+// popover.rs: the default trigger-to-surface gap, 0.25rem, and how far an
+// arrow reaches past the surface, 0.375rem (the port's rem is 16 px).
+const float kPopoverOffset = 4.f;
+const float kPopoverArrowSize = 6.f;
+
+// popover.rs arrow_anchor: the side of the surface the arrow sits on and the
+// trigger point it aims at. The arrow follows the named anchor instead of
+// always aiming at the trigger's centre.
+struct PopoverArrowAnchor {
+    gpui::Placement side = gpui::Placement::Bottom;
+    Point target = {};
+};
+PopoverArrowAnchor ArrowAnchor(PopupAnchor anchor, Bounds trigger);
+
+// popover.rs arrow_points: the arrow's base corners and tip, the base clamped
+// clear of the surface's rounded corners while aiming at the trigger.
+void ArrowPoints(Bounds surface, Bounds trigger, gpui::Placement side,
+                 float depth, float radius, Point out[3]);
+
+// popover.rs arrow_join_bounds: the patch that covers the ring and the
+// antialiased base on both sides of the surface edge, inset by the stroke so
+// it stays inside the triangle's slopes.
+Bounds ArrowJoinBounds(const Point points[3], gpui::Placement side,
+                       float stroke);
+
 struct Popover {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -62,6 +87,12 @@ struct Popover {
     bool defaultOpen = false;
     // Popover::anchor, default TopLeft.
     PopupAnchor anchor = PopupAnchor::TopLeft;
+    // Popover::offset, None until set: the gap from the trigger to the
+    // surface (or the arrow tip), kPopoverOffset by default.
+    float offset = 0;
+    bool hasOffset = false;
+    // Popover::arrow: an arrow pointing toward the trigger. Default false.
+    bool arrow = false;
     // Popover::mouse_button. A right-button popover is a context menu.
     MouseButton button = MouseButton::Left;
     bool overlayClosable = true;
@@ -76,6 +107,13 @@ struct Popover {
     Popover* DefaultOpen(bool v);
     Popover* Button(MouseButton b);
     Popover* Anchor(PopupAnchor v);
+    // Gap from the trigger to the surface (or arrow tip), default 0.25rem.
+    // Preserves the anchor and does not enable automatic flipping.
+    Popover* Offset(float v);
+    // Show an arrow pointing toward the trigger. Follows the anchor, with its
+    // base inset to avoid rounded corners, and uses the surface background,
+    // falling back to the theme's popover colour.
+    Popover* Arrow(bool v);
     Popover* OverlayClosable(bool v);
     // Receives PopoverOpenChangeEvent with the new state for both opening and
     // closing, matching Rust's on_open_change surface.

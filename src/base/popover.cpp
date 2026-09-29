@@ -213,13 +213,23 @@ Popover* Popover::Anchor(PopupAnchor v) {
     return this;
 }
 
+Popover* Popover::Offset(float v) {
+    offset = v;
+    return this;
+}
+
+Popover* Popover::OnPosition(PopupOnPositionFn fn, void* user) {
+    onPosition = fn;
+    onPositionUser = user;
+    return this;
+}
+
 Popover* Popover::Content(El* e) {
     if (e) {
         // What `Popup` does with it, because Rust's Popover *is* a Popup:
         // `Popup::new(id, trigger).content(..)`. The exact requested corner
         // is deferred, so it draws over later siblings and is not clipped by
-        // an ancestor's overflow. The styled UI layer supplies its own
-        // top_1/bottom_1 visual offset.
+        // an ancestor's overflow.
         e->Role(AccessibilityRole::Dialog);
         // track_focus, not focus_ring_style: the surface takes focus and
         // does not draw a ring around itself for it.
@@ -238,7 +248,11 @@ El* Popover::IntoEl() {
     }
     // popover.rs builds Popup::new(id, trigger).anchor(anchor), rather than
     // duplicating its capture and positioning lifecycle.
-    El* root = Popup::New(cx, id, trigger, anchor)->Content(content)->IntoEl();
+    El* root = Popup::New(cx, id, trigger, anchor)
+                   ->Offset(offset)
+                   ->OnPosition(onPosition, onPositionUser)
+                   ->Content(content)
+                   ->IntoEl();
     if (state.IsValid()) {
         PopoverInitKeys();
         root->KeyContext(StrL("Popover"))

@@ -15,12 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `99d203300c9316444ede4d7cd9d8751e9bfcc819` (2026-09-20,
-select: Emit dismissal when an open menu closes (#3144)). SelectState now
-emits `DismissEvent` once whenever an open menu closes, after the
-`SelectEvent` when a row is confirmed; the story logs the country select's
-dismissals. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `cfc37e6ff13f70a4bc368740625e351cc5c2db21` (2026-09-20,
+popover: Add offset and optional anchor-aligned arrows (#3145)). Popup places
+a popover's named anchor on the trigger's opposite edge with an outward
+`offset` and reports its geometry through `on_position`; the styled Popover
+adds `offset` (0.25rem default) and an anchor-aligned `arrow`, and the story's
+Anchor section shows all eight anchors with an Arrow checkbox. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -45,6 +46,11 @@ dismissals. The current update target is
   Escape, an outside click, the trigger and a confirm close it, so the blur leg
   of `select_emits_one_dismiss_event_for_each_open_to_closed_transition` is
   not ported (`src/ui/select.cpp`).
+- **The styled Popover takes its surface from the caller.** It has no
+  `appearance`, `popover_style().p_3()` or child list; `Content` is the whole
+  styled surface. So `arrow` fills with that surface's background and outlines
+  with its border, or with the ring `PopoverSurface` draws, instead of reading
+  `appearance` (`src/ui/popover.cpp`).
 - **`crates/component-shell` registrations are not ported.** The C++ shell
   materializes the base components; the styled Carousel, Chart and
   Questionnaire registrations and `examples/js_story` have no counterpart

@@ -89,6 +89,31 @@ Positioner* Positioner::Margin(float value) {
     return this;
 }
 
+Positioner* Positioner::OnPosition(PositionerOnPositionFn fn, void* user) {
+    onPosition = fn;
+    onPositionUser = user;
+    return this;
+}
+
+struct PositionerPositionHook {
+    AnchoredPlacedHook placed;
+    PositionerOnPositionFn fn = nullptr;
+    void* user = nullptr;
+};
+
+// Positioner::prepaint calls on_position with what `resolve` returned, ahead
+// of the children; the anchored pass is where that happens here.
+static void PositionerPlaced(void* user, AnchoredPosition placed, Bounds) {
+    PositionerPositionHook* hook = (PositionerPositionHook*)user;
+    ResolvedPosition position = {};
+    position.bounds = placed.bounds;
+    position.hasPlacement = placed.placement >= 0;
+    if (position.hasPlacement) {
+        position.placement = (gpui::Placement)placed.placement;
+    }
+    hook->fn(hook->user, position);
+}
+
 Positioner* Positioner::Child(El* child) {
     if (child) {
         children.Append(a, child);
@@ -120,6 +145,14 @@ El* Positioner::IntoEl() {
     s.anchor = anchor;
     s.anchorGap = offset;
     s.anchorMargin = margin > 0 ? margin : 0;
+    if (onPosition) {
+        PositionerPositionHook* hook = ArenaNew<PositionerPositionHook>(a);
+        hook->fn = onPosition;
+        hook->user = onPositionUser;
+        hook->placed.fn = &PositionerPlaced;
+        hook->placed.user = hook;
+        group->onPlaced = &hook->placed;
+    }
     return group;
 }
 

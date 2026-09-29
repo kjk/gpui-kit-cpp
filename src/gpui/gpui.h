@@ -1413,6 +1413,22 @@ AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
                                        Size view, float margin);
 AnchoredPosition AnchoredCornerResolve(Anchor anchor, Point at, Size popup,
                                        Size view, Edges margin);
+// Positioner::on_position / Popup::on_position: the post-layout anchored
+// pass calls `fn` once an anchored element's position is final and before
+// anything paints, with that position and the trigger bounds it was placed
+// against — the ResolvedPosition Rust hands the callback during prepaint.
+// Frame-arena, like the element that points at it.
+struct AnchoredPlacedHook {
+    void (*fn)(void* user, AnchoredPosition position, Bounds trigger) = nullptr;
+    void* user = nullptr;
+};
+
+// popup.rs anchor_position: the point a popup's named anchor is put on, which
+// is the opposite edge of the measured trigger. TopLeft is the trigger's
+// bottom-left, so the popup opens below it, left-aligned; BottomRight is its
+// top-right; LeftCenter its right-centre. `offset` pushes the point outward
+// along that direction, away from the trigger.
+Point AnchorPosition(Anchor anchor, Bounds trigger, float offset);
 
 struct Style {
     // Keep pointer-aligned members together at the front, then 32-bit values,
@@ -1495,6 +1511,8 @@ struct Style {
     // with 4 on, 2 off.
     float dashOn = 2;
     float dashOff = 1;
+    // The gap from the trigger. For a corner-anchored popup this is
+    // Popup::offset, outward along the anchor's direction (AnchorPosition).
     float anchorGap = 0;
     float anchorMargin = 4;
     // Base Positioner's standalone element path. Unlike AnchorCorner and
@@ -2128,6 +2146,8 @@ struct El {
     // places items with layout_as_root. Shares customUser.
     void (*prePaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* customUser = nullptr;
+    // Positioner::on_position / Popup::on_position; see AnchoredPlacedHook.
+    AnchoredPlacedHook* onPlaced = nullptr;
     El* first = nullptr;
     El* last = nullptr;
     El* next = nullptr;
@@ -2575,7 +2595,10 @@ struct El {
     El* AnchorFlip(bool on = true);
     El* AnchorAbove(float gap = 0);
     El* AnchorCenterX();
-    El* AnchorCorner(Anchor anchor, float margin = 4, float offsetY = 0);
+    // `offset` is Popup::offset, outward from the trigger's edge. A Top() or
+    // Bottom() on the same element is the surface's own relative top_1 /
+    // bottom_1, applied on top of where the anchor put it.
+    El* AnchorCorner(Anchor anchor, float margin = 4, float offset = 0);
     El* Top(float v);
     El* Left(float v);
     El* Bottom(float v);
