@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `82cad82533aa9f62813ed01301c26d9fca53b5ba` (2026-09-23,
-mobile: stop reverse fling after short ScrollBounce catch (#3207)).
-ScrollBounce stops a short touch that catches a fling from turning into a
-reverse fling, while its release can still stretch past the edge. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `187f2367e88eca4748fefd90e401a6d860d9f31a` (2026-09-23,
+website: Refine design guides and restore custom website themes (#3211)).
+Website-only: the design guides gained a radius-hierarchy section and the
+versioned website builds restore custom themes. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
