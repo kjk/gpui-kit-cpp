@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `668b19e860735c1a83f16c5405318c92bb9bd60a` (2026-09-26,
-list: Paint Role::List on focusable ListState container (#3249)). The List
-role moves from the outer list wrapper onto the focusable list-state element,
-so a focused list keeps its accessibility node. The current update target is
+Processed through `7afd1708335e5772f692416911384e5c7e61affb` (2026-09-26,
+input: Revert #3246 to restore reverse tab traversal (#3253)). Upstream
+reverted #3246 to restore reverse Tab traversal and added input
+focus-traversal tests; the accessibility rechecks go again here, and Tab now
+counts a focus handle once so those tests pass. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -146,6 +147,10 @@ so a focused list keeps its accessibility node. The current update target is
   both go with the window rather than with the view; and the time limit is
   the transport's per request rather than one 30-second deadline over every
   redirect (`src/shell/materialize.cpp`).
+- **A focus handle is one tab stop however many elements track it.** An
+  input's field and its editor rows all track the state's handle, where
+  upstream's frame has a handle of its own; Tab traversal counts a handle
+  once, at its last element (`FocusNext`, `src/gpui/gpui.cpp`).
 - **No OpenType font features.** Text has no `font_features`, so the
   TimeField and a time-editing DatePicker's trigger do not switch to tabular
   figures (`tnum`) and their digits may shift width while typed

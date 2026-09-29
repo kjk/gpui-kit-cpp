@@ -4187,6 +4187,101 @@ static void StoppingABlinkingCursorEndsTheBlinkLoop() {
     utassert(!BlinkVisible(&f.app, f.handle));
 }
 
+// kit/tests/input_focus.rs (#3253): each input is one tab stop, so Tab and
+// Shift-Tab walk the inputs in order and wrap, a passive prefix or suffix
+// takes no stop of its own, and addon buttons take theirs in paint order.
+// Upstream reverted #3246 because its frame and editor registered the same
+// focus handle twice and Shift-Tab stuck on the focused editor. Here the
+// field and every editor row bound to the state track its handle, so the
+// traversal counts a handle once, at its last element. The Rust tests drive
+// a window and type between moves; this checks the traversal on fields that
+// hold text, which is when the most elements track one handle.
+static int InputFocusIdOf(El* e, InputState* state) {
+    if (!e) return 0;
+    if (e->input == state && e->style.focusId) return e->style.focusId;
+    for (El* child = e->first; child; child = child->next) {
+        if (int id = InputFocusIdOf(child, state)) return id;
+    }
+    return 0;
+}
+
+static int ButtonFocusIdOf(El* e, Str id) {
+    if (!e) return 0;
+    if (StrEq(e->id, id) && e->style.focusId) return e->style.focusId;
+    for (El* child = e->first; child; child = child->next) {
+        if (int found = ButtonFocusIdOf(child, id)) return found;
+    }
+    return 0;
+}
+
+static void InputFocusCyclesThroughInputsAndAddons() {
+    for (int buttons = 0; buttons < 2; buttons++) {
+        App app;
+        component::Init(&app);
+        Window* win = new Window();
+        win->app = &app;
+        Arena* arena = ArenaNew();
+        Ctx cx = {&app, win, arena, {}};
+        InputState states[3];
+        const char* ids[3] = {"first", "second", "third"};
+        El* root = Div(arena)->FlexCol()->Pad(16)->Gap(16);
+        for (int i = 0; i < 3; i++) {
+            InputSetValue(&states[i], StrL("xx"));
+            component::Input* input =
+                component::Input::New(&cx, Str(ids[i]), &states[i])->W(384);
+            if (buttons && i == 1) {
+                input
+                    ->Prefix(component::Button::New(&cx, StrL("prefix-button"))
+                                 ->Label(StrL("Prefix"))
+                                 ->IntoEl())
+                    ->Suffix(component::Button::New(&cx, StrL("suffix-button"))
+                                 ->Label(StrL("Suffix"))
+                                 ->IntoEl());
+            } else {
+                input->Prefix(TextEl(arena, StrL("Prefix")))
+                    ->Suffix(TextEl(arena, StrL("Suffix")));
+            }
+            root->Child(input->IntoEl());
+        }
+        IdsCollect(root);
+        FocusCollect(win, root);
+        int first = InputFocusIdOf(root, &states[0]);
+        int second = InputFocusIdOf(root, &states[1]);
+        int third = InputFocusIdOf(root, &states[2]);
+        utassert(first && second && third);
+        utassert(first != second && second != third && first != third);
+        int order[5] = {first, second, third};
+        int stops = 3;
+        if (buttons) {
+            // tab_cycles_keep_prefix_and_suffix_buttons_focused.
+            int prefix = ButtonFocusIdOf(root, StrL("prefix-button"));
+            int suffix = ButtonFocusIdOf(root, StrL("suffix-button"));
+            utassert(prefix && suffix);
+            int withButtons[5] = {first, prefix, second, suffix, third};
+            memcpy(order, withButtons, sizeof(order));
+            stops = 5;
+        }
+        // reverse_tab_cycles_three_inputs_with_passive_addons: start on the
+        // last one and go backwards first, wrapping, twice over; then
+        // forwards.
+        win->focusId = third;
+        for (int round = 0; round < 2; round++) {
+            for (int k = 1; k <= stops; k++) {
+                int want = order[(stops - 1 - k + stops) % stops];
+                utassert(FocusNext(win, 0, true) == want);
+            }
+        }
+        for (int round = 0; round < 2; round++) {
+            for (int k = 0; k < stops; k++) {
+                utassert(FocusNext(win, 0, false) == order[k]);
+            }
+        }
+        delete win;
+        ArenaDelete(arena);
+        AppGlobalClear(&app);
+    }
+}
+
 void TestInputState() {
     TestSuite("input_state");
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
@@ -4322,4 +4417,5 @@ void TestInputState() {
     AClickInAScrolledEditorMapsThroughScrollY();
     AClickInAWrappedScrolledEditorIgnoresStaleWindowY();
     ScrollToCursorUsesDocumentYNotStaleWindowY();
+    InputFocusCyclesThroughInputsAndAddons();
 }

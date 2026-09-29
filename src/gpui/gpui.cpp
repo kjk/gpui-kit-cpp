@@ -8356,6 +8356,31 @@ bool WindowRestoreFocus(Window* win, int id) {
     return false;
 }
 
+// A focus handle is one tab stop however many elements track it. A field
+// and the editor rows inside it all track the input's handle, the way
+// upstream's frame and editor briefly did (#3246, reverted by #3253 because
+// Shift-Tab then stuck on the focused editor). The stop sits where the
+// handle's last element does, which is the editor's place, after a prefix
+// addon painted before it; whether it is a stop at all is the outermost
+// element's say, since that is the one a caller's TabStop lands on.
+static bool FocusIsLastOfItsHandle(const Window* win, int i) {
+    for (int j = i + 1; j < win->focusEls.len; j++) {
+        if (win->focusEls[j].id == win->focusEls[i].id) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool FocusHandleIsTabStop(const Window* win, int id) {
+    for (int i = 0; i < win->focusEls.len; i++) {
+        if (win->focusEls[i].id == id) {
+            return win->focusEls[i].tabStop;
+        }
+    }
+    return false;
+}
+
 int FocusNext(Window* win, int trapId, bool backward) {
     int n = win->focusEls.len;
     if (n == 0) {
@@ -8365,14 +8390,16 @@ int FocusNext(Window* win, int trapId, bool backward) {
     for (int i = 0; i < n; i++) {
         if (win->focusEls[i].id == win->focusId) {
             cur = i;
-            break;
         }
     }
     int step = backward ? -1 : 1;
     int i = cur;
     for (int k = 0; k < n; k++) {
         i = (i + step + n) % n;
-        if (!win->focusEls[i].tabStop) {
+        if (!FocusIsLastOfItsHandle(win, i)) {
+            continue;
+        }
+        if (!FocusHandleIsTabStop(win, win->focusEls[i].id)) {
             // Focusable, but not somewhere Tab stops.
             continue;
         }
