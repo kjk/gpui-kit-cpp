@@ -134,9 +134,38 @@ static void RenderUsesOneStyledRunAndRealBullets() {
     ArenaDelete(a);
 }
 
+// masked_secondary_text_and_highlights_render: a masked label draws uniform
+// bullets — no secondary tint and no match span, whose source byte offsets
+// would land inside a bullet's three bytes.
+static void MaskedSecondaryTextAndHighlightsRender() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = LabelTestCx(&app, a);
+    const char* texts[][3] = {
+        {"Hello", "World", nullptr},
+        {"Hello", nullptr, "ell"},
+        {"é🙂", "世界", "🙂 世"},
+    };
+    for (const auto& t : texts) {
+        Label* label = Label::New(&cx, Str(t[0]))->Masked(true);
+        if (t[1]) {
+            label->Secondary(Str(t[1]));
+        }
+        if (t[2]) {
+            label->Highlights(Str(t[2]));
+        }
+        El* styled = label->IntoEl()->first;
+        utassert(styled && styled->nSpans == 0);
+    }
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestLabel() {
     TestSuite("label");
     FullMatchesAreCaseInsensitiveAndOverlap();
     PrefixAndSecondaryRangesMatchRust();
     RenderUsesOneStyledRunAndRealBullets();
+    MaskedSecondaryTextAndHighlightsRender();
 }

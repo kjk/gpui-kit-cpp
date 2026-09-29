@@ -32,6 +32,13 @@ static void FocusSearch(LabelStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
+// The Highlighting section's Mask toggle hands over the state it lands on.
+static void SetMask(LabelStory* self, Ctx* cx, const ClickEvent*,
+                    intptr_t checked) {
+    self->labelMasked = checked != 0;
+    Notify(cx);
+}
+
 static void ToggleMask(LabelStory* self, Ctx* cx, const ClickEvent*) {
     self->labelMasked = !self->labelMasked;
     Notify(cx);
@@ -72,9 +79,20 @@ El* LabelStory::Render(LabelStory* self, Ctx* cx) {
         cx->win->input = &self->search;
     }
     El* hiCol = Div(a)->FlexCol()->Gap(12)->W(320);
-    hiCol->Child(component::Input::New(cx, StrL("label-search"), &self->search)
-                     ->OnFocus(Listen(cx, &FocusSearch))
-                     ->IntoEl());
+    hiCol->Child(
+        Div(a)
+            ->FlexRow()
+            ->W(kFill)
+            ->Gap(8)
+            ->Child(Div(a)->Flex1()->Child(
+                component::Input::New(cx, StrL("label-search"), &self->search)
+                    ->OnFocus(Listen(cx, &FocusSearch))
+                    ->IntoEl()))
+            ->Child(component::Toggle::New(cx, StrL("highlight-mask"))
+                        ->Label(StrL("Mask"))
+                        ->Checked(self->labelMasked)
+                        ->OnClick(Listen(cx, &SetMask))
+                        ->IntoEl()));
     El* hiBox = Div(a)
                     ->FlexCol()
                     ->Gap(12)
@@ -85,10 +103,12 @@ El* LabelStory::Render(LabelStory* self, Ctx* cx) {
     Str needle = InputValue(&self->search);
     hiBox->Child(component::Label::New(cx, StrL("Design system documentation"))
                      ->Highlights(needle, self->prefix)
+                     ->Masked(self->labelMasked)
                      ->IntoEl());
     // Keeps the mixed ASCII/CJK matching regression visible.
     hiBox->Child(component::Label::New(cx, StrL("AAA中文BB"))
                      ->Highlights(needle, self->prefix)
+                     ->Masked(self->labelMasked)
                      ->IntoEl());
     hiCol->Child(hiBox);
     StorySectionAdd(hi, hiCol);

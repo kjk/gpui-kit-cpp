@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f1a6d118521c6059838be85c0f1708c90a16033e` (2026-09-20,
-table: Read and write the selection as one `TableSelection` value (#3143)).
-The table's selection reads and writes as one TableSelection value, and
-selected_row, selected_col and selected_cell answer only for the active mode,
-so a stale cell no longer surfaces after a row or column is picked. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `cb835e4afd2b0c33b3f7c73f503e261fe5182fcf` (2026-09-20,
+label: Skip highlights while masked (#3142)). A masked Label skips highlight
+measurement, so bullets never carry secondary or match styling built from
+source offsets, and the Label story's Highlighting section gained a Mask
+toggle. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

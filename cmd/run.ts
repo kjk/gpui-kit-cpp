@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f1a6d118521c6059838be85c0f1708c90a16033e",
+  sha: "cb835e4afd2b0c33b3f7c73f503e261fe5182fcf",
   date: "2026-09-20",
-  subject: "table: Read and write the selection as one `TableSelection` value (#3143)",
+  subject: "label: Skip highlights while masked (#3142)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

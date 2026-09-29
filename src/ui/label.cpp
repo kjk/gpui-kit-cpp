@@ -255,6 +255,12 @@ static Str LabelMasked(Arena* a, Str text) {
 
 static int LabelSpans(Label* label, Str full, Str shown, const Theme& th,
                       TextSpan* spans, int capacity) {
+    // measure_highlights: a masked label draws uniform bullets. Source byte
+    // offsets mean nothing in the bullet string, and a styled range would
+    // show the structure of what is concealed.
+    if (label->masked) {
+        return 0;
+    }
     int maxRanges = len(full) + 2;
     Selection* ranges =
         (Selection*)Alloc(label->a, (int)sizeof(Selection) * maxRanges);
