@@ -1805,6 +1805,48 @@ static void AnUnchangedFlowIsNotLaidOutAgain() {
     AppGlobalClear(&app);
 }
 
+// text_view.rs inline_code_line_is_as_tall_as_a_plain_line and
+// inline_flow.rs inline_code_line_is_as_tall_as_a_plain_line_when_glyphs_
+// overflow_it (#3162). A line with a code span is a row of words here and a
+// plain line one text run; the smaller mono run joins the row inside the
+// body's line box, so both come out the same height at every scale and
+// zoom, and a list with one code item is evenly spaced.
+static void InlineCodeLineIsAsTallAsAPlainLine() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    const float dpis[2] = {96.f * 1.6f, 96.f * 2.f};
+    const float zooms[2] = {1.f, 1.25f};
+    for (float dpi : dpis) {
+        for (float zoom : zooms) {
+            a->Reset();
+            win->paint.dpi = dpi;
+            float font = 16.f * zoom;
+            // Rust zooms with the root's rem size; the view's base font is
+            // the same knob here.
+            El* plain = TextView::New(&cx, StrL("plain body words"))
+                            ->Font(font)
+                            ->IntoEl();
+            El* code = TextView::New(&cx, StrL("plain `code` words"))
+                           ->Font(font)
+                           ->IntoEl();
+            El* root = Div(a)->W(600)->FlexCol()->Child(plain)->Child(code);
+            LayoutEl(&win->paint, root, 0, 0, 600, 400, font, Rgba{});
+            utassertnear(code->h, plain->h);
+        }
+    }
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestMarkdownExtensionsParserConfiguration(Arena* a) {
     MarkdownExtensions first;
     first.BlockParser(a, &NeverClaims);
@@ -3203,6 +3245,7 @@ void TestTextView() {
     InlineHtmlFormattingTagsPairAcrossSiblings();
     HeadingRefinementChangesRenderedHeadingGeometry();
     AnUnchangedFlowIsNotLaidOutAgain();
+    InlineCodeLineIsAsTallAsAPlainLine();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     AFadeRepaintsOnATimerUntilNothingFades();

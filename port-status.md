@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a4dd3fd41ffcfbbb12156bddb448a4467cdfdd18` (2026-09-25,
-chart: Add `chart.grid` theme color for grid lines (#3236)). Charts paint
-their grid lines in the new `chart.grid` theme colour (neutral-200/60 light,
-neutral-800/60 dark, else border at 60% opacity) while axes stay on border.
-The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `8e6e9cfa329f23a13dd168bb399ddc2efab2ccb2` (2026-09-25,
+text: Keep a line with inline code as tall as a plain line (#3240)). A
+Markdown line with inline code keeps the plain line's height: InlineFlow
+measures text runs by their glyph box inside the body line box and no longer
+rounds its line height. The row-of-words flow here already does; a test pins
+it. The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
