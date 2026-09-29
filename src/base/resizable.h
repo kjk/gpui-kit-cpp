@@ -35,45 +35,106 @@ void ResizableAdjustToContainer(float* sizes, int n, float containerSize);
 // side of it, sitting over the boundary rather than taking room from it.
 const float kResizeHandleSize = 1.f;
 const float kResizeHandlePadding = 4.f;
+// EDGE_CLEARANCE: how far a hugging handle's hairline sits from the boundary
+// it marks, which is room for an indicator thicker than the line to overhang
+// evenly without crossing back outside the container.
+const float kResizeHandleEdgeClearance = 1.f;
 
 namespace base_theme {
 struct Theme;
 }
 Rgba ResizableHandleColor(const base_theme::Theme& theme, bool active);
 
-// ResizeHandleState. Rust's resize handle is an Element of its own and keeps
-// this in `window.with_element_state`: one flag, set from the press inside
-// its bounds and cleared by any release. It is the handle's own and not the
+// ResizeHandleState: how far the pointer has gone with a resize handle. A
+// drag takes the pointer out of the handle's own band within a pixel or two,
+// so hover cannot stand in for Dragging; the handle tracks the progression.
+enum class ResizeHandleState : uint8_t {
+    // The pointer is somewhere else.
+    Idle,
+    // The pointer is over the handle's band.
+    Hovered,
+    // The pointer went down on the handle and has not moved since.
+    Pressed,
+    // The handle is being dragged.
+    Dragging,
+};
+
+// ResizeHandleState::is_active: pressed on it, or dragging it.
+inline bool ResizeHandleStateIsActive(ResizeHandleState s) {
+    return s == ResizeHandleState::Pressed || s == ResizeHandleState::Dragging;
+}
+
+// HandleEdge: which edge of its own container a handle hugs. A handle named
+// no edge straddles the boundary it resizes, half its band on either side;
+// one named an edge sits wholly inside, one pixel clear of the boundary.
+enum class HandleEdge : uint8_t {
+    // Where the axis starts: the left edge for a horizontal handle, the top
+    // for a vertical one.
+    Leading,
+    // Where the axis ends.
+    Trailing,
+};
+
+// SharedHandleState: one handle's ResizeHandleState, kept where Rust keeps it
+// (`window.with_element_state`, here an element-state entity) and shared by
+// every listener the handle registers. It is the handle's own and not the
 // group's, which is why a handle does not have to be told which of the
 // group's boundaries it is in order to know whether it is the one being
 // dragged.
-struct ResizeHandleState {
-    bool active = false;
+struct SharedHandleState {
+    ResizeHandleState state = ResizeHandleState::Idle;
     // GPUI's `window.on_mouse_event` registers a listener; the port's element
     // carries one per event, and the handle's own answer is not the only one
-    // the press has to reach. So the group's goes through here, which is what
-    // Rust's closure does anyway once it has set the flag.
+    // the event has to reach. So the group's goes through here.
     Listener nextDown;
     Listener nextUp;
+    Listener nextDrag;
 
-    static void OnDown(ResizeHandleState* self, Ctx* cx,
+    ResizeHandleState Get() const { return state; }
+    // Answers whether the state actually changed, so a listener repaints only
+    // when there is something new to paint.
+    bool Set(ResizeHandleState next) {
+        bool changed = state != next;
+        state = next;
+        return changed;
+    }
+
+    static void OnDown(SharedHandleState* self, Ctx* cx,
                        const MouseDownEvent* ev);
-    static void OnUp(ResizeHandleState* self, Ctx* cx, const MouseUpEvent* ev);
+    // The pointer entering or leaving the band.
+    static void OnHover(SharedHandleState* self, Ctx* cx, const HoverEvent* ev);
+    // A press that moves is a drag, and stays one until the button is up.
+    static void OnMove(SharedHandleState* self, Ctx* cx,
+                       const MouseMoveEvent* ev);
+    static void OnDragMove(SharedHandleState* self, Ctx* cx,
+                           const DragMoveEvent* ev);
+    // Released over the handle: it stays hovered.
+    static void OnUp(SharedHandleState* self, Ctx* cx, const MouseUpEvent* ev);
+    // Released anywhere else: idle.
+    static void OnUpOut(SharedHandleState* self, Ctx* cx,
+                        const MouseUpEvent* ev);
 };
 
 // `with_element_state` for one handle, named among the parts of whatever it
 // is being built inside.
-Entity<ResizeHandleState> ResizeHandleStateFor(Ctx* cx, Str name);
+Entity<SharedHandleState> ResizeHandleStateFor(Ctx* cx, Str name);
+
+// Wire an element as a handle band: press, hover, move, drag and release all
+// go through the handle's shared state.
+void ResizeHandleBindState(El* handle, Entity<SharedHandleState> state);
 
 // ResizeHandleContext / ResizeHandleRenderer. Rust retains an Rc closure;
 // Base uses a caller-owned payload and a function pointer. Returning null
 // keeps the built-in one-pixel line.
 struct ResizeHandleContext {
     Axis axis = Axis::Horizontal;
-    bool active = false;
+    ResizeHandleState state = ResizeHandleState::Idle;
 
     Axis AxisValue() const { return axis; }
-    bool IsActive() const { return active; }
+    // Whether the pointer currently owns this handle.
+    bool IsActive() const { return ResizeHandleStateIsActive(state); }
+    // How far the pointer has gone with this handle.
+    ResizeHandleState State() const { return state; }
 };
 
 using ResizeHandleRenderer = El* (*)(void* user,
@@ -85,8 +146,8 @@ struct ResizeHandle {
     Ctx* cx = nullptr;
     Str id = {};
     Axis axis = Axis::Horizontal;
-    Side placement = Side::Right;
-    bool hasPlacement = false;
+    HandleEdge edge = HandleEdge::Leading;
+    bool hasEdge = false;
     Listener onDrag = {};
     void* appearanceUser = nullptr;
     ResizeHandleRenderer appearance = nullptr;
@@ -94,7 +155,9 @@ struct ResizeHandle {
     Rgba activeColor = {};
 
     static ResizeHandle* New(Ctx* cx, Str id, Axis axis);
-    ResizeHandle* Placement(Side value);
+    // Keep the whole handle inside its container, hugging `edge`, instead of
+    // straddling the boundary it resizes.
+    ResizeHandle* Inside(HandleEdge value);
     ResizeHandle* OnDrag(Listener listener);
     ResizeHandle* WithAppearance(void* user, ResizeHandleRenderer renderer);
     ResizeHandle* Colors(Rgba rest, Rgba active);

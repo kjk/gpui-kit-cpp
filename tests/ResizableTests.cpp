@@ -172,15 +172,20 @@ static void SourceConstructorsAndHandleAppearanceRemainConcrete() {
     ResizeAppearanceProbe probe;
     ResizeHandle* handle =
         resize_handle(&cx, StrL("standalone-handle"), Axis::Horizontal)
-            ->Placement(Side::Left)
+            ->Inside(HandleEdge::Trailing)
             ->WithAppearance(&probe, RenderResizeAppearance);
     El* handleEl = handle->IntoEl();
     utassert(handleEl && probe.calls == 1);
     utassert(probe.axis == Axis::Horizontal && !probe.active);
     utassert(handleEl->cursor == CursorKind::ColResize);
-    utassertnear(handleEl->style.absRight, 1.f);
-    utassertnear(handleEl->style.width,
-                 kResizeHandleSize + kResizeHandlePadding);
+    // Hugging its trailing edge: the whole band inside, border-box, the
+    // hairline one pixel clear of the boundary.
+    utassertnear(handleEl->style.absRight, 0.f);
+    utassertnear(
+        handleEl->style.width,
+        kResizeHandleSize + kResizeHandlePadding + kResizeHandleEdgeClearance);
+    utassertnear(handleEl->style.pad.left, kResizeHandlePadding);
+    utassertnear(handleEl->style.pad.right, kResizeHandleEdgeClearance);
 
     ResizeAppearanceProbe groupProbe;
     ResizablePanelGroup* appeared =
@@ -250,6 +255,73 @@ static void MixedSizingSettlesAfterContainerResize() {
     ExecShutdown();
 }
 
+// resize_handle.rs: a_listener_writes_its_progress_back_into_the_stored_state,
+// setting_the_state_it_already_has_asks_for_no_repaint and
+// only_a_held_handle_is_active. The handle's state is one element-state
+// entity every listener reaches, so there is no copy for a listener to write
+// into; what remains is the change report and the activity rule.
+static void AHandleStateReportsOnlyRealChanges() {
+    SharedHandleState stored;
+    SharedHandleState* listener = &stored;
+    utassert(listener->Set(ResizeHandleState::Pressed));
+    utassert(stored.Get() == ResizeHandleState::Pressed);
+    utassert(ResizeHandleStateIsActive(stored.Get()));
+
+    SharedHandleState state;
+    utassert(state.Set(ResizeHandleState::Hovered));
+    utassert(!state.Set(ResizeHandleState::Hovered));
+
+    utassert(!ResizeHandleStateIsActive(ResizeHandleState::Idle));
+    utassert(!ResizeHandleStateIsActive(ResizeHandleState::Hovered));
+    utassert(ResizeHandleStateIsActive(ResizeHandleState::Pressed));
+    utassert(ResizeHandleStateIsActive(ResizeHandleState::Dragging));
+}
+
+// mod.rs: a_handle_reports_the_press_and_the_drag_to_its_renderer. The
+// listeners, called the way the window calls them, walk the handle through
+// hovered, pressed, dragging and back to idle.
+static void AHandleReportsThePressAndTheDragToItsRenderer() {
+    App app = {};
+    Arena* arena = ArenaNew();
+    Window* win = new Window();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+    Entity<SharedHandleState> hs =
+        ResizeHandleStateFor(&cx, StrL("handle-state"));
+    SharedHandleState* s = hs.Get(&cx);
+    utassert(s && s->Get() == ResizeHandleState::Idle);
+    ResizeHandleState seen[5] = {s->Get()};
+    HoverEvent hover;
+    hover.hovered = true;
+    SharedHandleState::OnHover(s, &cx, &hover);
+    seen[1] = s->Get();
+    MouseDownEvent down = {};
+    SharedHandleState::OnDown(s, &cx, &down);
+    seen[2] = s->Get();
+    // Out of the band already: the drag is still the handle's.
+    hover.hovered = false;
+    SharedHandleState::OnHover(s, &cx, &hover);
+    DragMoveEvent drag = {};
+    SharedHandleState::OnDragMove(s, &cx, &drag);
+    seen[3] = s->Get();
+    MouseUpEvent up = {};
+    SharedHandleState::OnUpOut(s, &cx, &up);
+    seen[4] = s->Get();
+    utassert(seen[0] == ResizeHandleState::Idle);
+    utassert(seen[1] == ResizeHandleState::Hovered);
+    utassert(seen[2] == ResizeHandleState::Pressed);
+    utassert(seen[3] == ResizeHandleState::Dragging);
+    utassert(seen[4] == ResizeHandleState::Idle);
+    // A release over the handle leaves it hovered.
+    SharedHandleState::OnDown(s, &cx, &down);
+    SharedHandleState::OnUp(s, &cx, &up);
+    utassert(s->Get() == ResizeHandleState::Hovered);
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    delete win;
+    ArenaDelete(arena);
+}
+
 void TestResizable() {
     TestSuite("resizable");
     ResizingOnePanelTakesFromTheNext();
@@ -261,4 +333,6 @@ void TestResizable() {
     ProgrammaticResizeAndDynamicPanelsUseTheSameState();
     SourceConstructorsAndHandleAppearanceRemainConcrete();
     MixedSizingSettlesAfterContainerResize();
+    AHandleStateReportsOnlyRealChanges();
+    AHandleReportsThePressAndTheDragToItsRenderer();
 }

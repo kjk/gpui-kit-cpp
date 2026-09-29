@@ -297,20 +297,21 @@ El* SplitHandle(const AreaCtx& ac, int node, int ix, Axis axis) {
     // Whether this is the handle being dragged is the handle's own state,
     // kept where Rust keeps it. The group's resize listener goes through it,
     // since the port's element carries one listener per event.
-    Entity<ResizeHandleState> hs = ResizeHandleStateFor(cx, hid);
-    ResizeHandleState* hst = hs.Get(cx);
+    Entity<SharedHandleState> hs = ResizeHandleStateFor(cx, hid);
+    SharedHandleState* hst = hs.Get(cx);
     if (hst) {
         hst->nextUp = ListenTo(ac.state, &DockState::OnResizeEnd);
+        hst->nextDrag = ListenTo(ac.state, &DockState::OnResizeDrag);
     }
     e->OnDrag(kDockResizeDrag, (int)DockPack(node, ix));
-    e->OnDragMove(ListenTo(ac.state, &DockState::OnResizeDrag));
-    e->OnMouseDown(ListenTo(hs, &ResizeHandleState::OnDown));
-    e->OnMouseUpOut(ListenTo(hs, &ResizeHandleState::OnUp));
-    e->OnMouseUp(ListenTo(hs, &ResizeHandleState::OnUp));
+    ResizeHandleBindState(e, hs);
     DockHandleCtx h;
     h.axis = axis;
-    h.active = hst && hst->active;
+    h.state = hst ? hst->Get() : ResizeHandleState::Idle;
+    h.active = ResizeHandleStateIsActive(h.state);
     if (ac.r->splitHandle) {
+        // The renderer's transitions are keyed under the handle's own name.
+        IdScope handleScope(cx, hid);
         if (El* paint = ac.r->splitHandle(cx, ac.r->data, &h)) {
             e->Child(paint);
         }

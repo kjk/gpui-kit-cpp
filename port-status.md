@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5bc71a469f11cffef3123a32045e2f6bd78851fd` (2026-09-22,
-root: Add Base window hosting and a single Kit startup entry point (#3152)).
-Root moves into Base as an entity with RootPlugin function tables; Component
-registers its window layers as a plugin, and KitOpenWindow mounts the Root for
-every example. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `13c716b687b47f96a677aaf46c8fa341fa7208da` (2026-09-22,
+resizable: Grow an indicator as the pointer engages a divider (#3175)). Resize
+handles report hovered, pressed and dragging, hug an edge when told to, and
+the styled layer draws an indicator pill that grows with the engagement. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -39,6 +38,13 @@ every example. The current update target is
   WindowState's `prepare` sets no rem size and its tooltip and fallback-menu
   overlays are the window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
+- **A dock's own edge is an in-flow strip, not a hugging resize handle.**
+  Rust's docks resize from a `resize_handle(..).inside(edge)` with the
+  indicator appearance; here the edge is the four-DIP strip beside the dock's
+  body with a hover fill, so it shows no indicator and `HandleEdge` is used
+  only by standalone handles (`src/ui/dock.cpp` SkinDock,
+  `src/base/dock_area.cpp` DockBindResizeStrip). Splits inside a dock do use
+  the indicator.
 - **Linux centres a new window on the whole X display.** GPUI's
   `Bounds::centered` uses the display's visible bounds; Windows and macOS read
   the work area, the X11 path does not read `_NET_WORKAREA`

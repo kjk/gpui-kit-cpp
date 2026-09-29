@@ -315,30 +315,93 @@ ResizablePanelGroup* ResizablePanelGroup::H(float v) {
     height = v;
     return this;
 }
-void ResizeHandleState::OnDown(ResizeHandleState* self, Ctx* cx,
+void SharedHandleState::OnDown(SharedHandleState* self, Ctx* cx,
                                const MouseDownEvent* ev) {
     // `if bounds.contains(&ev.position)`: the listener is the element's, so
     // being called is already the answer to that.
-    self->active = true;
+    bool changed = self->Set(ResizeHandleState::Pressed);
     if (self->nextDown.IsValid()) {
         ListenerCall(cx->app, cx->win, self->nextDown, ev);
     }
-    Notify(cx);
+    if (changed) {
+        Notify(cx);
+    }
 }
 
-void ResizeHandleState::OnUp(ResizeHandleState* self, Ctx* cx,
+void SharedHandleState::OnHover(SharedHandleState* self, Ctx* cx,
+                                const HoverEvent* ev) {
+    // A held handle stays held wherever the pointer is: by the second frame
+    // of a drag it is outside this nine-pixel band.
+    if (ResizeHandleStateIsActive(self->state)) {
+        return;
+    }
+    if (self->Set(ev->hovered ? ResizeHandleState::Hovered
+                              : ResizeHandleState::Idle)) {
+        Notify(cx);
+    }
+}
+
+void SharedHandleState::OnMove(SharedHandleState* self, Ctx* cx,
+                               const MouseMoveEvent*) {
+    // A press that moves is a drag, and stays one until the button is up.
+    ResizeHandleState next = ResizeHandleStateIsActive(self->state)
+                                 ? ResizeHandleState::Dragging
+                                 : ResizeHandleState::Hovered;
+    if (self->Set(next)) {
+        Notify(cx);
+    }
+}
+
+void SharedHandleState::OnDragMove(SharedHandleState* self, Ctx* cx,
+                                   const DragMoveEvent* ev) {
+    bool changed = self->Set(ResizeHandleState::Dragging);
+    if (self->nextDrag.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->nextDrag, ev);
+    }
+    if (changed) {
+        Notify(cx);
+    }
+}
+
+void SharedHandleState::OnUp(SharedHandleState* self, Ctx* cx,
                              const MouseUpEvent* ev) {
-    // Any release ends it, whether or not it landed on the handle.
-    self->active = false;
+    if (!ResizeHandleStateIsActive(self->state)) {
+        return;
+    }
+    // Releasing over the handle leaves it hovered. Going straight to idle
+    // there would drop the indicator for one frame and bring it back under a
+    // pointer that never left.
+    self->Set(ResizeHandleState::Hovered);
     if (self->nextUp.IsValid()) {
         ListenerCall(cx->app, cx->win, self->nextUp, ev);
     }
     Notify(cx);
 }
 
-Entity<ResizeHandleState> ResizeHandleStateFor(Ctx* cx, Str name) {
-    return ElementStateEntity<ResizeHandleState>(
+void SharedHandleState::OnUpOut(SharedHandleState* self, Ctx* cx,
+                                const MouseUpEvent* ev) {
+    if (!ResizeHandleStateIsActive(self->state)) {
+        return;
+    }
+    self->Set(ResizeHandleState::Idle);
+    if (self->nextUp.IsValid()) {
+        ListenerCall(cx->app, cx->win, self->nextUp, ev);
+    }
+    Notify(cx);
+}
+
+Entity<SharedHandleState> ResizeHandleStateFor(Ctx* cx, Str name) {
+    return ElementStateEntity<SharedHandleState>(
         cx, name, StrL("gpui::ResizeHandleState"));
+}
+
+void ResizeHandleBindState(El* handle, Entity<SharedHandleState> state) {
+    handle->OnMouseDown(ListenTo(state, &SharedHandleState::OnDown))
+        ->OnHover(ListenTo(state, &SharedHandleState::OnHover))
+        ->OnMouseMove(ListenTo(state, &SharedHandleState::OnMove))
+        ->OnDragMove(ListenTo(state, &SharedHandleState::OnDragMove))
+        ->OnMouseUp(ListenTo(state, &SharedHandleState::OnUp))
+        ->OnMouseUpOut(ListenTo(state, &SharedHandleState::OnUpOut));
 }
 
 ResizeHandle* ResizeHandle::New(Ctx* cx, Str id, Axis axis) {
@@ -352,9 +415,9 @@ ResizeHandle* ResizeHandle::New(Ctx* cx, Str id, Axis axis) {
     return out;
 }
 
-ResizeHandle* ResizeHandle::Placement(Side value) {
-    placement = value;
-    hasPlacement = true;
+ResizeHandle* ResizeHandle::Inside(HandleEdge value) {
+    edge = value;
+    hasEdge = true;
     return this;
 }
 
@@ -376,49 +439,90 @@ ResizeHandle* ResizeHandle::Colors(Rgba rest, Rgba active) {
     return this;
 }
 
+// The band's box and where its hairline sits in it. Sizes are border-box:
+// the extent names the whole band, padding included, so the content box is
+// the one-pixel line.
+static void ResizeHandlePlace(El* handle, Axis axis, bool hasEdge,
+                              HandleEdge edge) {
+    const float hug =
+        kResizeHandleSize + kResizeHandlePadding + kResizeHandleEdgeClearance;
+    const float straddle = kResizeHandleSize + kResizeHandlePadding * 2;
+    bool horizontal = AxisIsHorizontal(axis);
+    if (horizontal) {
+        handle->FlexRow()->Cursor(CursorKind::ColResize)->Top(0)->H(kFill);
+    } else {
+        handle->FlexCol()->Cursor(CursorKind::RowResize)->Left(0)->W(kFill);
+    }
+    if (!hasEdge) {
+        // Straddling the boundary: half the band on either side.
+        if (horizontal) {
+            handle->Left(-kResizeHandlePadding)
+                ->W(straddle)
+                ->PadX(kResizeHandlePadding);
+        } else {
+            handle->Top(-kResizeHandlePadding)
+                ->H(straddle)
+                ->PadY(kResizeHandlePadding);
+        }
+        return;
+    }
+    // Hugging an edge: the whole band is inside the container, and the
+    // hairline sits a pixel clear of the boundary.
+    bool trailing = edge == HandleEdge::Trailing;
+    if (horizontal) {
+        handle->W(hug);
+        if (trailing) {
+            handle->Right(0)
+                ->PadL(kResizeHandlePadding)
+                ->PadR(kResizeHandleEdgeClearance);
+        } else {
+            handle->Left(0)
+                ->PadR(kResizeHandlePadding)
+                ->PadL(kResizeHandleEdgeClearance);
+        }
+    } else {
+        handle->H(hug);
+        if (trailing) {
+            handle->Bottom(0)
+                ->PadT(kResizeHandlePadding)
+                ->PadB(kResizeHandleEdgeClearance);
+        } else {
+            handle->Top(0)
+                ->PadB(kResizeHandlePadding)
+                ->PadT(kResizeHandleEdgeClearance);
+        }
+    }
+}
+
 El* ResizeHandle::IntoEl() {
-    Entity<ResizeHandleState> state = ResizeHandleStateFor(cx, id);
-    ResizeHandleState* stored = state.Get(cx);
-    bool active = stored && stored->active;
-    ResizeHandleContext context = {axis, active};
-    El* line = appearance ? appearance(appearanceUser, &context, cx) : nullptr;
+    Entity<SharedHandleState> state = ResizeHandleStateFor(cx, id);
+    SharedHandleState* stored = state.Get(cx);
+    ResizeHandleState now = stored ? stored->Get() : ResizeHandleState::Idle;
+    if (stored) {
+        stored->nextDrag = onDrag;
+    }
+    ResizeHandleContext context = {axis, now};
+    El* line = nullptr;
+    if (appearance) {
+        // The renderer's transitions are keyed under the handle's own name.
+        IdScope scope(cx, id);
+        line = appearance(appearanceUser, &context, cx);
+    }
     if (!line) {
-        line = Div(cx->a)->Bg(active ? activeColor : color);
+        line = Div(cx->a)
+                   ->FlexNone()
+                   ->Bg(ResizeHandleStateIsActive(now) ? activeColor : color);
         if (AxisIsHorizontal(axis))
             line->W(kResizeHandleSize)->H(kFill);
         else
             line->H(kResizeHandleSize)->W(kFill);
     }
-    El* handle = Div(cx->a)
-                     ->Absolute()
-                     ->PathClick(id)
-                     ->OnMouseDown(ListenTo(state, &ResizeHandleState::OnDown))
-                     ->OnMouseUp(ListenTo(state, &ResizeHandleState::OnUp))
-                     ->OnMouseUpOut(ListenTo(state, &ResizeHandleState::OnUp));
+    El* handle = Div(cx->a)->Absolute()->PathClick(id);
+    ResizeHandleBindState(handle, state);
     if (onDrag.IsValid()) {
-        handle->OnDrag(kResizeDrag, 0)->OnDragMove(onDrag);
+        handle->OnDrag(kResizeDrag, 0);
     }
-    if (AxisIsHorizontal(axis)) {
-        handle->Cursor(CursorKind::ColResize)->Top(0)->H(kFill);
-        if (hasPlacement && SideIsLeft(placement)) {
-            // The left dock is the source's special one-sided hit band:
-            // right(1), w(1), pl(4). Keep its line at the outer edge.
-            handle->Right(1)
-                ->W(kResizeHandleSize + kResizeHandlePadding)
-                ->JustifyEnd();
-        } else {
-            handle->Left(-kResizeHandlePadding)
-                ->W(kResizeHandleSize + kResizeHandlePadding * 2)
-                ->JustifyCenter();
-        }
-    } else {
-        handle->Cursor(CursorKind::RowResize)
-            ->Left(0)
-            ->Top(-kResizeHandlePadding)
-            ->H(kResizeHandleSize + kResizeHandlePadding * 2)
-            ->W(kFill)
-            ->ItemsCenter();
-    }
+    ResizeHandlePlace(handle, axis, hasEdge, edge);
     return handle->Child(line);
 }
 
@@ -674,17 +778,24 @@ El* ResizablePanelGroup::IntoEl() {
             // the handle's name. The group's `dragging` is what the resize
             // arithmetic needs, which is a different question.
             Str hid = StrDup(a, fmt("resizable-handle-%d", i));
-            Entity<ResizeHandleState> hs = ResizeHandleStateFor(cx, hid);
-            ResizeHandleState* h = hs.Get(cx);
-            bool active = h && h->active;
+            Entity<SharedHandleState> hs = ResizeHandleStateFor(cx, hid);
+            SharedHandleState* h = hs.Get(cx);
+            ResizeHandleState now = h ? h->Get() : ResizeHandleState::Idle;
+            bool active = ResizeHandleStateIsActive(now);
             if (h) {
                 h->nextDown = ListenerArg(down, i);
                 h->nextUp = up;
+                h->nextDrag = drag;
             }
-            ResizeHandleContext handleContext = {s->axis, active};
-            El* line = handleAppearance ? handleAppearance(handleAppearanceUser,
-                                                           &handleContext, cx)
-                                        : nullptr;
+            ResizeHandleContext handleContext = {s->axis, now};
+            El* line = nullptr;
+            if (handleAppearance) {
+                // The renderer's transitions are keyed under the handle's
+                // own name, so two dividers of a group do not share one.
+                IdScope handleScope(cx, hid);
+                line =
+                    handleAppearance(handleAppearanceUser, &handleContext, cx);
+            }
             bool builtInLine = line == nullptr;
             if (!line) {
                 // `flex_none()`: Rust's handle is HANDLE_SIZE wide but padded
@@ -697,17 +808,13 @@ El* ResizablePanelGroup::IntoEl() {
                            ->FlexNone()
                            ->Bg(active ? handleDragColor : handleColor);
             }
-            El* handle =
-                Div(a)
-                    ->Absolute()
-                    // `resize_handle(("resizable-handle", ix), axis)`, drawn
-                    // from inside the panel it follows.
-                    ->PathClick(hid)
-                    ->OnMouseDown(ListenTo(hs, &ResizeHandleState::OnDown))
-                    ->OnDrag(kResizeDrag, i)
-                    ->OnDragMove(drag)
-                    ->OnMouseUp(ListenTo(hs, &ResizeHandleState::OnUp))
-                    ->OnMouseUpOut(ListenTo(hs, &ResizeHandleState::OnUp));
+            El* handle = Div(a)
+                             ->Absolute()
+                             // `resize_handle(("resizable-handle", ix), axis)`,
+                             // drawn from inside the panel it follows.
+                             ->PathClick(hid)
+                             ->OnDrag(kResizeDrag, i);
+            ResizeHandleBindState(handle, hs);
             // Placed by its leading edge rather than its trailing one: the
             // panel's own size is what the boundary is, and an offset from
             // the near edge is the one an absolute box takes everywhere here.

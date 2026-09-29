@@ -10,6 +10,7 @@
    naming each other by index. */
 
 #include "base/geometry.h"
+#include "base/resizable.h"
 
 namespace gpui {
 
@@ -572,13 +573,13 @@ float DockExtent(const DockCtx* dock);
 // the renderer's `dock` hook returns rather than leaving it to the skin.
 El* DockFrame(Ctx* cx, const DockCtx* dock, float size);
 
-// ResizeHandleContext: one boundary between two panels, and how it is being
-// touched. `is_active()` is the drag, and it is the whole of what Rust hands
-// the appearance callback: the pointer being over the strip is answered by
-// `group_hover` on what the callback returns, not by asking the window.
+// ResizeHandleContext: one boundary between two panels, and how far the
+// pointer has gone with it -- hovered, pressed, dragging. `active` is
+// `is_active()`, the press or the drag.
 struct DockHandleCtx {
     Axis axis = Axis::Horizontal;
     bool active = false;
+    ResizeHandleState state = ResizeHandleState::Idle;
 };
 
 // TabGroupContext: one tab group as the skin sees it.

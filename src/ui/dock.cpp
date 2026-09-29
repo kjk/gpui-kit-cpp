@@ -1,5 +1,6 @@
 #include "ui/i18n.h"
 #include "ui/dock.h"
+#include "ui/resizable.h"
 #include "ui/menu.h"
 
 namespace gpui {
@@ -475,14 +476,10 @@ static El* SkinTabContent(Ctx* cx, void*, const DockTabGroup* g) {
 // render_split_handle: base keeps the four-DIP grab, the cursor and the drag;
 // all this says is what it looks like under the pointer.
 static El* SkinSplitHandle(Ctx* cx, void*, const DockHandleCtx* h) {
-    // `div().bg(bg_color).group_hover("handle", |this| this.bg(bg_color))`:
-    // the drag colours the line, and so does the pointer being anywhere in
-    // the grab area around it -- which is the group base put on the handle.
-    El* e = Div(cx->a)->SizeFull()->GroupHoverBg(ThemeNow(cx->app).border);
-    if (h->active) {
-        e->Bg(ThemeNow(cx->app).border);
-    }
-    return e;
+    // render_resize_handle: the hairline, and the indicator that grows on it
+    // as the pointer hovers, presses and drags.
+    ResizeHandleContext handle = {h->axis, h->state};
+    return RenderResizeHandle(nullptr, &handle, cx);
 }
 
 // render_dock: the strip on one Dock's inner edge, and the rule beside it.

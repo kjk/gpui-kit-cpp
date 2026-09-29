@@ -838,7 +838,7 @@ static void TwoAreasHaveTwoSplitHandles() {
     // A handle knows whether it is the one being dragged from its own
     // element state, which is keyed the way `with_element_state` is -- so
     // the same handle in two areas is two states, and neither is the area's.
-    Entity<ResizeHandleState> hsL, hsR;
+    Entity<SharedHandleState> hsL, hsR;
     {
         IdScope area(&cx, StrL("left"));
         hsL = ResizeHandleStateFor(&cx, Str(name));
@@ -848,7 +848,7 @@ static void TwoAreasHaveTwoSplitHandles() {
         hsR = ResizeHandleStateFor(&cx, Str(name));
     }
     utassert(hsL.id != hsR.id);
-    utassert(hsL.Get(&cx) && !hsL.Get(&cx)->active);
+    utassert(hsL.Get(&cx) && !ResizeHandleStateIsActive(hsL.Get(&cx)->Get()));
 
     WindowKeyedFree(win);
     ArenaDelete(arena);
