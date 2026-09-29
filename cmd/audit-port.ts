@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "f197a197888833312a0fa8109e3c01ad6fc29913";
+const pinnedGpuiComponent = "5b55691e379122592d128120d94a9264a121f4ef";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -305,6 +305,7 @@ const testTargets: Record<string, string[]> = {
   "ui/message_scroller": ["tests/MessageScrollerTests.cpp"],
   "ui/native_menu": ["tests/NativeMenuTests.cpp"],
   "ui/notification": ["tests/NotificationTests.cpp"],
+  "ui/pagination": ["tests/PaginationTests.cpp"],
   "ui/plot": ["tests/ScaleTests.cpp", "tests/SankeyTests.cpp", "tests/ChartTests.cpp"],
   "ui/popover": ["tests/PopupTests.cpp"],
   "ui/progress": ["tests/AccessibilityTests.cpp"],
@@ -313,6 +314,7 @@ const testTargets: Record<string, string[]> = {
   "ui/window_border": ["tests/WindowBorderTests.cpp"],
   "ui/toolbar": ["tests/ToolbarTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
+  "ui/searchable_list": ["tests/SearchableListTests.cpp"],
   "ui/select": ["tests/SelectTests.cpp"],
   "ui/setting": ["tests/SettingTests.cpp"],
   "ui/shimmer": ["tests/ShimmerTests.cpp"],
@@ -590,7 +592,7 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
   ui: {
     declaration: { count: 483, sha256: "9cb1cfbad2c8dfc853919a53be8da77c2150772a3857425b9075a308f7ca64aa" },
     "pub-use": { count: 169, sha256: "da4e05c5f3fcd5304bb8a47eac0c9a17ce0822e875cbe5dc0695f3375c1a9615" },
-    test: { count: 663, sha256: "c5d702a1458df0581eab49c70078c46d1772c42e73d6168a68c2e06fcc8627c2" },
+    test: { count: 668, sha256: "e62d9acf32429366662d7ffb61f9d1d1a4a21244092ae061bbc6f4d835c4c057" },
   },
 };
 

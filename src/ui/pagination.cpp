@@ -16,6 +16,20 @@ void PaginationMenuState::OnItem(PaginationMenuState* self, Ctx* cx,
                  ListenerFill(self->onChange, self->firstPage + (int)ix), ev);
 }
 
+void PaginationEllipsisMenuPages(int hiddenStart, int hiddenEnd,
+                                 int currentPage, int* start, int* end) {
+    if (hiddenEnd - hiddenStart <= kMaxEllipsisMenuPages) {
+        *start = hiddenStart;
+        *end = hiddenEnd;
+    } else if (hiddenStart > currentPage) {
+        *start = hiddenStart;
+        *end = hiddenStart + kMaxEllipsisMenuPages;
+    } else {
+        *start = hiddenEnd - kMaxEllipsisMenuPages;
+        *end = hiddenEnd;
+    }
+}
+
 Pagination* Pagination::New(Ctx* cx, int page, int total) {
     Arena* a = cx->a;
     Pagination* p = ArenaNew<Pagination>(a);
@@ -127,14 +141,18 @@ El* Pagination::IntoEl() {
                                       ->MinW(55)
                                       ->MaxH(240)
                                       ->Scrollable();
-                for (int p = items[i].from; p <= items[i].to; p++) {
+                int first = 0;
+                int end = 0;
+                PaginationEllipsisMenuPages(items[i].from, items[i].to + 1,
+                                            page, &first, &end);
+                for (int p = first; p < end; p++) {
                     menu->MenuWithCheck(StrDup(a, fmt("%d", p)), p == page);
                 }
                 Entity<PaginationMenuState> ment =
                     ElementStateEntity<PaginationMenuState>(
                         cx, menuId, StrL("pagination-menu"));
                 if (PaginationMenuState* ms = ment.Get(cx)) {
-                    ms->firstPage = items[i].from;
+                    ms->firstPage = first;
                     ms->onChange = onChange;
                 }
                 if (PopupMenuState* ps = menu->state.Get(cx)) {

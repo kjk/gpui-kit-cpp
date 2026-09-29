@@ -165,6 +165,17 @@ SearchableGroup* SearchableGroup::Items(const SearchableListItem* values,
     return this;
 }
 
+bool SearchableGroup::MatchedRows(Str query, Vec<int>* rows) const {
+    int found = 0;
+    for (int i = 0; i < items.len; i++) {
+        if (SearchableItemMatches(&items[i], query)) {
+            VecAppend(*rows, i);
+            found++;
+        }
+    }
+    return found > 0 || StrContainsI(title, query);
+}
+
 bool SearchableGroup::Matches(Str query) const {
     if (StrContainsI(title, query)) {
         return true;
@@ -181,43 +192,150 @@ SearchableVec* SearchableVec::New(const SearchableListItem* values, int count) {
     SearchableVec* out = new SearchableVec();
     for (int i = 0; i < count; i++) {
         VecAppend(out->items, values[i]);
-        VecAppend(out->matchedItems, values[i]);
+        VecAppend(out->matched, i);
     }
     return out;
 }
 
 SearchableVec* SearchableVec::Push(const SearchableListItem& value) {
+    VecAppend(matched, items.len);
     VecAppend(items, value);
-    VecAppend(matchedItems, value);
     return this;
 }
 
 void SearchableVec::PerformSearch(Str query) {
-    VecClear(matchedItems);
+    VecClear(matched);
     for (int i = 0; i < items.len; i++) {
         if (SearchableItemMatches(&items[i], query)) {
-            VecAppend(matchedItems, items[i]);
+            VecAppend(matched, i);
         }
     }
 }
 
 int SearchableVec::ItemsCount(int section) const {
-    return section == 0 ? matchedItems.len : 0;
+    return section == 0 ? matched.len : 0;
 }
 
 const SearchableListItem* SearchableVec::Item(IndexPath path) const {
-    return path.section == 0 && path.row >= 0 && path.row < matchedItems.len
-               ? &matchedItems[path.row]
-               : nullptr;
+    if (path.section != 0 || path.row < 0 || path.row >= matched.len) {
+        return nullptr;
+    }
+    int ix = matched[path.row];
+    return ix >= 0 && ix < items.len ? &items[ix] : nullptr;
 }
 
 bool SearchableVec::Position(Str value, IndexPath* out) const {
-    for (int i = 0; i < matchedItems.len; i++) {
-        if (base::StrEq(matchedItems[i].value, value)) {
+    for (int i = 0; i < matched.len; i++) {
+        const SearchableListItem* item = Item(IndexPathNew(i));
+        if (item && base::StrEq(item->value, value)) {
             if (out) {
                 *out = IndexPathNew(i);
             }
             return true;
+        }
+    }
+    return false;
+}
+
+SearchableGroupVec* SearchableGroupVec::New(SearchableGroup* const* values,
+                                            int count) {
+    SearchableGroupVec* out = new SearchableGroupVec();
+    for (int i = 0; i < count; i++) {
+        VecAppend(out->groups, values[i]);
+        SearchableGroupMatch all;
+        all.ix = i;
+        VecAppend(out->matched, all);
+    }
+    return out;
+}
+
+SearchableGroupVec::~SearchableGroupVec() {
+    for (int i = 0; i < groups.len; i++) {
+        delete groups[i];
+    }
+    VecReset(groups);
+    VecReset(matched);
+    VecReset(rows);
+}
+
+void SearchableGroupVec::PerformSearch(Str query) {
+    VecClear(matched);
+    VecClear(rows);
+    for (int i = 0; i < groups.len; i++) {
+        if (!groups[i]) {
+            continue;
+        }
+        int start = rows.len;
+        if (!groups[i]->MatchedRows(query, &rows)) {
+            rows.len = start;
+            continue;
+        }
+        SearchableGroupMatch m;
+        m.ix = i;
+        m.rowsStart = start;
+        m.rowsLen = rows.len - start;
+        VecAppend(matched, m);
+    }
+}
+
+int SearchableGroupVec::SectionsCount() const {
+    return matched.len;
+}
+
+// matched_item: the section's entry and the group it points at.
+static const SearchableGroup* MatchedGroup(const SearchableGroupVec* v,
+                                           int section,
+                                           const SearchableGroupMatch** m) {
+    if (section < 0 || section >= v->matched.len) {
+        return nullptr;
+    }
+    *m = &v->matched[section];
+    int ix = (*m)->ix;
+    return ix >= 0 && ix < v->groups.len ? v->groups[ix] : nullptr;
+}
+
+Str SearchableGroupVec::SectionTitle(int section) const {
+    const SearchableGroupMatch* m = nullptr;
+    const SearchableGroup* g = MatchedGroup(this, section, &m);
+    return g ? g->title : Str{};
+}
+
+int SearchableGroupVec::ItemsCount(int section) const {
+    const SearchableGroupMatch* m = nullptr;
+    const SearchableGroup* g = MatchedGroup(this, section, &m);
+    if (!g) {
+        return 0;
+    }
+    return m->rowsStart < 0 ? g->items.len : m->rowsLen;
+}
+
+const SearchableListItem* SearchableGroupVec::Item(IndexPath path) const {
+    const SearchableGroupMatch* m = nullptr;
+    const SearchableGroup* g = MatchedGroup(this, path.section, &m);
+    if (!g || path.row < 0) {
+        return nullptr;
+    }
+    int row = path.row;
+    if (m->rowsStart >= 0) {
+        if (row >= m->rowsLen) {
+            return nullptr;
+        }
+        row = rows[m->rowsStart + row];
+    }
+    return row < g->items.len ? &g->items[row] : nullptr;
+}
+
+bool SearchableGroupVec::Position(Str value, IndexPath* out) const {
+    for (int s = 0; s < matched.len; s++) {
+        int n = ItemsCount(s);
+        for (int r = 0; r < n; r++) {
+            const SearchableListItem* item = Item(IndexPathNew(r).Section(s));
+            if (item && base::StrEq(item->value, value)) {
+                if (out) {
+                    *out = IndexPathNew(r).Section(s);
+                }
+                return true;
+            }
         }
     }
     return false;

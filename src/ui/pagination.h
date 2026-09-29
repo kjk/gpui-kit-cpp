@@ -20,6 +20,17 @@ struct PaginationMenuState {
                        intptr_t ix);
 };
 
+// pagination.rs MAX_ELLIPSIS_MENU_PAGES: the most pages an ellipsis menu
+// lists. The menu renders every item on each frame it is open, so listing
+// every hidden page of a large set makes each hover repaint thousands of rows.
+constexpr int kMaxEllipsisMenuPages = 100;
+
+// ellipsis_menu_pages: the pages an ellipsis menu lists — the hidden pages
+// [hiddenStart, hiddenEnd) closest to the current page, at most
+// kMaxEllipsisMenuPages of them — as [*start, *end).
+void PaginationEllipsisMenuPages(int hiddenStart, int hiddenEnd,
+                                 int currentPage, int* start, int* end);
+
 struct Pagination {
     Arena* a = nullptr;
     Ctx* cx = nullptr;

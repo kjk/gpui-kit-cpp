@@ -110,15 +110,20 @@ struct SearchableGroup {
     SearchableGroup* Item(const SearchableListItem& item);
     SearchableGroup* Items(const SearchableListItem* items, int nItems);
     bool Matches(Str query) const;
+    // vec.rs matched_rows: the rows matching `query`, appended to `rows`,
+    // or false when neither the title nor any row matches and the whole
+    // group is hidden.
+    bool MatchedRows(Str query, Vec<int>* rows) const;
     ~SearchableGroup() { VecReset(items); }
 };
 
 // SearchableVec's in-memory item specialization. Generic Rust item traits
 // become the concrete SearchableListItem value above; filtering rebuilds a
-// matched view while retaining the master item list.
+// matched view while retaining the master item list. The view is indices
+// into `items` (vec.rs `Matched`), so a search copies no items.
 struct SearchableVec {
     Vec<SearchableListItem> items;
-    Vec<SearchableListItem> matchedItems;
+    Vec<int> matched;
 
     static SearchableVec* New(const SearchableListItem* items, int nItems);
     SearchableVec* Push(const SearchableListItem& item);
@@ -128,8 +133,34 @@ struct SearchableVec {
     bool Position(Str value, IndexPath* out) const;
     ~SearchableVec() {
         VecReset(items);
-        VecReset(matchedItems);
+        VecReset(matched);
     }
+};
+
+// SearchableVec<SearchableGroup<I>>: sections that filter down to their
+// matching rows. It owns the groups it is given. A matched section is
+// vec.rs `Matched { ix, rows }`: the group's index and its matching rows,
+// kept as a run of the flat `rows` array rather than a Vec per section.
+struct SearchableGroupMatch {
+    int ix = 0;
+    // -1 keeps every row of the group (`rows: None`).
+    int rowsStart = -1;
+    int rowsLen = 0;
+};
+
+struct SearchableGroupVec {
+    Vec<SearchableGroup*> groups;
+    Vec<SearchableGroupMatch> matched;
+    Vec<int> rows;
+
+    static SearchableGroupVec* New(SearchableGroup* const* groups, int nGroups);
+    void PerformSearch(Str query);
+    int SectionsCount() const;
+    Str SectionTitle(int section) const;
+    int ItemsCount(int section) const;
+    const SearchableListItem* Item(IndexPath path) const;
+    bool Position(Str value, IndexPath* out) const;
+    ~SearchableGroupVec();
 };
 
 // A single standard row. It reserves the trailing check icon even when the

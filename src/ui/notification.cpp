@@ -565,6 +565,9 @@ void NotificationDismiss(NotificationListState* s, Ctx* cx, int id) {
             // The card animates out first; advance drops it when it is done.
             s->stack.entries[i].status = ToastStatus::Ending;
             s->stack.entries[i].elapsedMs = 0;
+            // The clock may be resting over persistent notifications; the
+            // exit needs it.
+            NotificationStartAdvancing(s, cx);
             return;
         }
     }
@@ -595,6 +598,7 @@ static void NotificationDismissIdentity(NotificationListState* s, Ctx* cx,
             if (s->stack.entries[j].id == item.id) {
                 s->stack.entries[j].status = ToastStatus::Ending;
                 s->stack.entries[j].elapsedMs = 0;
+                NotificationStartAdvancing(s, cx);
                 break;
             }
         }
@@ -630,6 +634,18 @@ void NotificationStartAdvancing(NotificationListState* s, Ctx* cx) {
     s->advanceTimer =
         WindowSetInterval(cx->win, kNotificationTickMs,
                           ListenTo(self, &NotificationListState::OnTick));
+}
+
+bool NotificationNeedsClock(const NotificationListState* s) {
+    for (int i = 0; s && i < s->stack.entries.len; i++) {
+        const ToastEntry& e = s->stack.entries[i];
+        // Rust keeps the autohide ids beside the manager; the entry's own
+        // timeout is the same fact here.
+        if (e.status != ToastStatus::Present || e.hasTimeout) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void NotificationStopAdvancing(NotificationListState* s) {
@@ -732,10 +748,10 @@ void NotificationListState::OnHover(NotificationListState* self, Ctx* cx,
 void NotificationListState::OnTick(NotificationListState* self, Ctx* cx,
                                    const TickEvent*) {
     bool changed = NotificationAdvance(self, cx, kNotificationTickMs);
-    // The loop ends itself once the manager is empty, and `push` is the only
-    // insertion point, so the clock only ever stops at an instant when
-    // nothing is mounted.
-    if (self->stack.entries.len == 0) {
+    // The loop ends itself once nothing is left to time: nothing mounted, or
+    // only persistent notifications at rest. A push or a close starts it
+    // again.
+    if (!NotificationNeedsClock(self)) {
         NotificationStopAdvancing(self);
     }
     if (changed) {

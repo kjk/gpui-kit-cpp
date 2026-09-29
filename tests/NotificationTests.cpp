@@ -397,6 +397,57 @@ static void TheLifecycleClockRunsOnlyWhileANotificationIsMounted() {
     delete win;
 }
 
+// notification.rs
+// lifecycle_clock_rests_while_only_persistent_notifications_are_shown.
+static void TheLifecycleClockRestsOverPersistentNotifications() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Entity<NotificationListState> entity =
+        EntityNewState<NotificationListState>(&app);
+    NotificationListState* s = entity.Get(&app);
+    utassert(s != nullptr);
+    if (!s) {
+        delete win;
+        return;
+    }
+    s->self = entity.id;
+    Ctx cx = {&app, win, nullptr, entity.id};
+    auto tickUntilRest = [&]() {
+        for (int i = 0; i < 100 && s->isAdvancing; i++) {
+            NotificationListState::OnTick(s, &cx, nullptr);
+        }
+    };
+
+    int first = NotificationPush(
+        s, &cx, Notification::Info(StrL("first")).Autohide(false));
+    int second = NotificationPush(
+        s, &cx, Notification::Info(StrL("second")).Autohide(false));
+    utassert(s->isAdvancing);
+
+    // Once both have entered, nothing is left to time.
+    tickUntilRest();
+    utassert(!s->isAdvancing);
+    utassert(s->items.len == 2);
+
+    // A programmatic close restarts the clock to finish the exit.
+    NotificationDismiss(s, &cx, first);
+    utassert(s->isAdvancing);
+    tickUntilRest();
+    utassert(s->items.len == 1 && NotificationIndexOf(s, second) == 0);
+    utassert(!s->isAdvancing);
+
+    // So does a dismiss requested by the notification itself.
+    NotificationListState::OnCloseClick(s, &cx, nullptr, second);
+    utassert(s->isAdvancing);
+    tickUntilRest();
+    utassert(s->items.len == 0);
+    utassert(!s->isAdvancing);
+
+    EntityDropAll(&app);
+    delete win;
+}
+
 static void SystemOnlyDeliveryShowsNoCard() {
     NotificationListState s;
     NotificationItem it = Item(0, "in-app");
@@ -559,6 +610,7 @@ void TestNotification() {
     AnInactiveWindowDoesNotPauseAutohide();
     AnExpandedStackPausesOnlyTheTimeout();
     TheLifecycleClockRunsOnlyWhileANotificationIsMounted();
+    TheLifecycleClockRestsOverPersistentNotifications();
     SystemOnlyDeliveryShowsNoCard();
     AutohideExpiryDoesNotRetractTheSystemHalf();
     MaxItemsLimitsVisibilityWithoutEvictingMountedToasts();

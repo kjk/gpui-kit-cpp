@@ -135,6 +135,69 @@ static void SearchableVecRebuildsItsMatchedView() {
     delete values;
 }
 
+static SearchableListItem SlNamed(const char* s) {
+    SearchableListItem item;
+    item.title = Str(s);
+    item.value = Str(s);
+    return item;
+}
+
+// vec.rs test_searchable_vec_maps_matched_rows_to_items.
+static void SearchableVecMapsMatchedRowsToItems() {
+    SearchableListItem langs[3] = {SlNamed("Rust"), SlNamed("Go"),
+                                   SlNamed("Ruby")};
+    SearchableVec* items = SearchableVec::New(langs, 3);
+    items->PerformSearch(StrL("ru"));
+    utassert(items->ItemsCount(0) == 2);
+    utassert(base::StrEq(items->Item(IndexPathNew(1))->value, StrL("Ruby")));
+    IndexPath path;
+    utassert(items->Position(StrL("Ruby"), &path) && path == IndexPathNew(1));
+    utassert(!items->Position(StrL("Go"), &path));
+
+    items->Push(SlNamed("Rune"));
+    utassert(base::StrEq(items->Item(IndexPathNew(2))->value, StrL("Rune")));
+
+    items->PerformSearch(Str{});
+    utassert(items->ItemsCount(0) == 4);
+    delete items;
+}
+
+// vec.rs test_searchable_group_keeps_matched_rows.
+static void SearchableGroupKeepsMatchedRows() {
+    SearchableListItem fruits[2] = {SlNamed("Apple"), SlNamed("Banana")};
+    SearchableListItem berries[2] = {SlNamed("Blueberry"),
+                                     SlNamed("Cranberry")};
+    SearchableListItem nuts[1] = {SlNamed("Almond")};
+    SearchableGroup* all[3] = {
+        SearchableGroup::New(StrL("Fruits"))->Items(fruits, 2),
+        SearchableGroup::New(StrL("Berries"))->Items(berries, 2),
+        SearchableGroup::New(StrL("Nuts"))->Items(nuts, 1),
+    };
+    SearchableGroupVec* groups = SearchableGroupVec::New(all, 3);
+    IndexPath path;
+
+    groups->PerformSearch(StrL("cran"));
+    utassert(groups->SectionsCount() == 1);
+    utassert(groups->ItemsCount(0) == 1);
+    utassert(
+        base::StrEq(groups->Item(IndexPathNew(0))->value, StrL("Cranberry")));
+    utassert(groups->Position(StrL("Cranberry"), &path) &&
+             path == IndexPathNew(0));
+    utassert(!groups->Position(StrL("Blueberry"), &path));
+
+    // A title match keeps the section, with only its matching rows.
+    groups->PerformSearch(StrL("nuts"));
+    utassert(groups->SectionsCount() == 1);
+    utassert(groups->ItemsCount(0) == 0);
+
+    groups->PerformSearch(StrL("b"));
+    utassert(groups->SectionsCount() == 2);
+    utassert(groups->ItemsCount(1) == 2);
+    utassert(groups->Position(StrL("Cranberry"), &path) &&
+             path == IndexPathNew(1).Section(1));
+    delete groups;
+}
+
 static void ItemElementReservesItsCheckAndUsesListSizing() {
     App app;
     Arena* a = ArenaNew();
@@ -297,6 +360,8 @@ void TestSearchableList() {
     ASelectionIsComparedByValue();
     SourceDelegateQueriesFlatAndGroupedItems();
     SearchableVecRebuildsItsMatchedView();
+    SearchableVecMapsMatchedRowsToItems();
+    SearchableGroupKeepsMatchedRows();
     ItemElementReservesItsCheckAndUsesListSizing();
     StateAccessorsUseGroupedIndexPaths();
     DelegateHooksDriveSearchRenderingAndSelection();

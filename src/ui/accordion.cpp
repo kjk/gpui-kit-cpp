@@ -241,9 +241,13 @@ El* Accordion::IntoEl() {
         float progress =
             SpringValue(cx, MotionName(cx, StrL("accordion")),
                         item->open ? 1.f : 0.f, th.motion.springControl);
-        if (progress > 0.001f) {
-            // The item mounts its panel while it is open or on its way shut,
-            // which is what keeps a collapse animating rather than vanishing.
+        // Mounted while the reveal moves; a settled closed panel unmounts, so
+        // its content costs no layout or paint. A settled spring returns
+        // exactly 0, and `!=` keeps a bouncy theme spring mounted while it
+        // dips below 0. Reduced motion reopens straight to full progress,
+        // which needs the reveal's height from a mounted frame.
+        // Base's panel renders while open whatever keep_mounted says.
+        if (item->open || progress != 0.f || MotionReduced()) {
             it->KeepMounted(true)->Panel(
                 MotionReveal::New(cx, StrL("content"), progress, panel));
         }

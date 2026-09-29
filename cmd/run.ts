@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f197a197888833312a0fa8109e3c01ad6fc29913",
+  sha: "5b55691e379122592d128120d94a9264a121f4ef",
   date: "2026-09-27",
-  subject: "base: Center a single-line Input in its frame by default (#3278)",
+  subject: "perf: reduce redundant work in six components (#3279)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

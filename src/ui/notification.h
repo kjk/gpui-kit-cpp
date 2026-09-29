@@ -211,6 +211,10 @@ void NotificationStartAdvancing(NotificationListState* s, Ctx* cx);
 // The other end of it: the clock stops itself at an instant when nothing is
 // mounted, so a mounted toast always has a running clock.
 void NotificationStopAdvancing(NotificationListState* s);
+// needs_clock: whether a mounted notification is in transition or counting
+// down to autohide. A paused countdown still needs its last sample kept
+// current. Persistent notifications at rest arm no timer.
+bool NotificationNeedsClock(const NotificationListState* s);
 // advance(): move every notification on by `deltaMs`, dropping the ones that
 // finished leaving. Answers whether anything changed.
 bool NotificationAdvance(NotificationListState* s, int deltaMs);

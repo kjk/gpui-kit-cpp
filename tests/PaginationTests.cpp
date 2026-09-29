@@ -196,6 +196,28 @@ static void TwoPaginationsHaveTwoEllipsisMenus() {
     EntityDropAll(&app);
 }
 
+static bool MenuPagesAre(int hiddenStart, int hiddenEnd, int current,
+                         int wantStart, int wantEnd) {
+    int start = -1;
+    int end = -1;
+    component::PaginationEllipsisMenuPages(hiddenStart, hiddenEnd, current,
+                                           &start, &end);
+    return start == wantStart && end == wantEnd;
+}
+
+// pagination.rs test_ellipsis_menu_pages.
+static void EllipsisMenuPagesStayNearTheCurrentPage() {
+    // Short gaps list every hidden page.
+    utassert(MenuPagesAre(2, 8, 1, 2, 8));
+    utassert(MenuPagesAre(2, 8, 9, 2, 8));
+
+    // Long gaps keep the pages next to the current page.
+    utassert(MenuPagesAre(4, 10000, 1, 4, 104));
+    utassert(MenuPagesAre(2, 9997, 10000, 9897, 9997));
+    utassert(MenuPagesAre(5003, 10000, 5000, 5003, 5103));
+    utassert(MenuPagesAre(2, 4998, 5000, 4898, 4998));
+}
+
 void TestPagination() {
     TestSuite("pagination");
     ClampsControlledValuesAndNavigationBoundaries();
@@ -204,4 +226,5 @@ void TestPagination() {
     EveryPageChangeRequestIsValidated();
     AScopeIsWhatMakesALocalNameItsOwn();
     TwoPaginationsHaveTwoEllipsisMenus();
+    EllipsisMenuPagesStayNearTheCurrentPage();
 }

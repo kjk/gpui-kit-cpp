@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f197a197888833312a0fa8109e3c01ad6fc29913` (2026-09-27,
-base: Center a single-line Input in its frame by default (#3278)). A
-single-line Input fills its frame and centers its line, so the frame needs no
-layout of its own; the showcase drops its frames' centering and draws its
-chevrons as paths. The current update target is
+Processed through `5b55691e379122592d128120d94a9264a121f4ef` (2026-09-27,
+perf: reduce redundant work in six components (#3279)). Six components do less
+work: a settled closed accordion panel unmounts, the context menu builds its
+menu only in the trigger that draws it, the notification clock rests while
+only persistent notifications are shown, an ellipsis menu lists at most 100
+pages, and SearchableVec filters by index. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

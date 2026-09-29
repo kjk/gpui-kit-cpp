@@ -687,6 +687,59 @@ static void AccordionPreservesDisabledItemsWhenTheGroupIsEnabled() {
     }
 }
 
+static bool TreeHolds(const El* root, const El* want) {
+    for (const El* c = root ? root->first : nullptr; c; c = c->next) {
+        if (c == want || TreeHolds(c, want)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// accordion.rs settled_closed_panel_unmounts_its_content: a closed panel
+// whose reveal has settled leaves its content out of the tree, and a closing
+// one keeps it until the spring settles. The Rust asks for the content's
+// debug bounds; here the content element is looked for in the built tree,
+// one 16 ms frame at a time.
+static void ASettledClosedPanelUnmountsItsContent() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+    MotionResetReduceForTest();
+    double now = 1000.0;
+    auto frame = [&](bool open) {
+        f.win->frameNow = now;
+        now += 0.016;
+        El* content = Div(f.cx.a)->H(60);
+        El* root = component::Accordion::New(&f.cx, StrL("accordion-toggle"))
+                       ->Item(component::AccordionItem::New(&f.cx)
+                                  ->Open(open)
+                                  ->Title(StrL("Item"))
+                                  ->Child(content))
+                       ->Item(component::AccordionItem::New(&f.cx)
+                                  ->Title(StrL("Next")))
+                       ->IntoEl();
+        return TreeHolds(root, content);
+    };
+
+    utassert(!frame(false));
+    utassert(frame(true));
+    for (int i = 0; i < 100; i++) {
+        utassert(frame(true));
+    }
+
+    // The closing reveal keeps the content until the spring settles.
+    int closingFrames = 0;
+    while (frame(false)) {
+        closingFrames++;
+        if (closingFrames >= 100) {
+            break;
+        }
+    }
+    utassert(closingFrames < 100); // "closed content stayed mounted"
+    utassert(closingFrames > 1);   // "content unmounted before the reveal ran"
+    FreeAccessibilityFrame(&f);
+}
+
 void TestAccessibility() {
     TestSuite("accessibility");
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
@@ -703,5 +756,6 @@ void TestAccessibility() {
     ExplicitSemanticListenersAreInvoked();
     ConditionalAndCompositeRolesMatchUpstream();
     AccordionPreservesDisabledItemsWhenTheGroupIsEnabled();
+    ASettledClosedPanelUnmountsItsContent();
     InputContentTypesAndSecretsProjectSafely();
 }
