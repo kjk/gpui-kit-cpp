@@ -15,13 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `c06d46325c7d1c1c0f6e9817a4802f9e34b8e11f` (2026-09-28,
-chart: Add appear motion to `Plot` and every chart (#3296)). Charts draw their
-data in the first time they are painted, over 1000 ms on easeOutQuart: lines,
-areas, candles and sankeys revealed from the left, bars grown from zero, pies
-swept clockwise and radars grown from the centre, with an opt-out, a replay
-key and a Replay button in the chart story. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `2960200f20b375689c218ec751ff221e6a55eeaa` (2026-09-28,
+text: parse prefix extensions incrementally in TextViewState::set_text (#3291)
+(#3294)). TextViewState::set_text appends Markdown that extends the current
+text the way push_str does, keeping the selection, instead of replacing it.
+The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

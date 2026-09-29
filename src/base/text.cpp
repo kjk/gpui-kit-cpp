@@ -551,9 +551,19 @@ void TextViewState::Changed(App* app, Window* window,
 
 void TextViewState::SetText(Str value, App* app, Window* window) {
     if (base::StrEq(text, value)) return;
+    // Markdown that extends the current non-empty text is appended like
+    // PushStr, keeping the selection (and fading in when a stream fade is
+    // on). HTML blocks carry no spans, so Rust parses an extension of them
+    // again, as a replacement. Rust also parses again after a failed parse;
+    // this state keeps no parse of its own to fall out of step.
+    if (format == TextViewFormat::Markdown && len(text) > 0 &&
+        StrStartsWith(value, text)) {
+        PushStr(Str(value.s + len(text), len(value) - len(text)), app, window);
+        return;
+    }
     if (motion.streamFadeMs > 0) {
         streamFadePending = true;
-        streamFadeReplace = !StrStartsWith(value, text);
+        streamFadeReplace = true;
     }
     Str replacement = StrDup(value);
     StrFree(text);

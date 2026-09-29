@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "c06d46325c7d1c1c0f6e9817a4802f9e34b8e11f",
+  sha: "2960200f20b375689c218ec751ff221e6a55eeaa",
   date: "2026-09-28",
-  subject: "chart: Add appear motion to `Plot` and every chart (#3296)",
+  subject: "text: parse prefix extensions incrementally in TextViewState::set_text (#3291) (#3294)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

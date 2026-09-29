@@ -1947,6 +1947,79 @@ static void TestStatelessMarkdownSettles() {
     AppGlobalClear(&app);
 }
 
+// state.rs set_text_extending_markdown_appends_and_keeps_selection: Markdown
+// that extends the current text is appended and keeps the selection; text
+// that is not an extension replaces it. Rust also checks its
+// full_update_revision; this state has no background parse to restart, so
+// the selection revision is the whole of it.
+static void SetTextExtendingMarkdownAppendsAndKeepsSelection() {
+    App app;
+    Entity<TextViewState> entity = TextViewState::Markdown(&app, StrL("hello"));
+    TextViewState* state = entity.Get(&app);
+    uint64_t initial = state->selectionRevision;
+
+    state->SetText(StrL("hello world"), &app);
+    utassert(base::StrEq(state->Source(), StrL("hello world")));
+    utassert(state->selectionRevision == initial);
+
+    state->SetText(StrL("hello"), &app);
+    utassert(base::StrEq(state->Source(), StrL("hello")));
+    utassert(state->selectionRevision != initial);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// state.rs set_text_streaming_markdown_matches_a_full_parse: chunks that
+// continue a heading, a paragraph, an inline code span, a list and a fenced
+// code block, past the size Rust parses synchronously, stream in as appends
+// and leave the same source a full set would. The document is parsed from
+// the source when it renders, so the same source is the same parse.
+static void SetTextStreamingMarkdownMatchesAFullParse() {
+    App app;
+    Entity<TextViewState> streamed =
+        TextViewState::Markdown(&app, StrL("# Title"));
+    TextViewState* state = streamed.Get(&app);
+    uint64_t selection = state->selectionRevision;
+    Arena* a = ArenaNew();
+    StrBuilder text(a);
+    text.Append(StrL("# Title"));
+    // MAX_SYNC_FULL_REPLACE_BYTES / 5 + 1 words.
+    StrBuilder filler(a);
+    for (int i = 0; i < 4096 / 5 + 1; i++) {
+        filler.Append(StrL("word "));
+    }
+    const Str chunks[] = {
+        StrL("\n\nfirst para"), StrL("graph with `co"),
+        StrL("de`\n\n- one\n"), StrL("- two\n\n```rust\nfn main() {"),
+        StrL("}\n```\n\n"),     Str(filler.els, filler.len),
+        StrL("\n\nlast")};
+    for (const Str& chunk : chunks) {
+        text.Append(chunk);
+        state->SetText(Str(text.els, text.len), &app);
+    }
+    utassert(state->selectionRevision == selection);
+    utassert(base::StrEq(state->Source(), Str(text.els, text.len)));
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
+// state.rs set_text_extending_html_parses_it_again: HTML blocks carry no
+// source spans, so an extension of HTML is a replacement.
+static void SetTextExtendingHtmlParsesItAgain() {
+    App app;
+    Entity<TextViewState> streamed =
+        TextViewState::Html(&app, StrL("<ul><li>a</li>"));
+    TextViewState* state = streamed.Get(&app);
+    uint64_t selection = state->selectionRevision;
+    state->SetText(StrL("<ul><li>a</li><li>b</li></ul>"), &app);
+    utassert(state->selectionRevision != selection);
+    utassert(
+        base::StrEq(state->Source(), StrL("<ul><li>a</li><li>b</li></ul>")));
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 static void TestStreamFadeTracksRenderedAppends() {
     bool wasReduced = MotionReduced();
     MotionSetReduced(false);
@@ -2040,25 +2113,27 @@ static void TestStreamFadeStaggerStep() {
         TextViewMotion{}.WithStreamFade(600.f).WithStreamFadeStagger(100.f);
     utassert(motion.StaggerStepMs(1) == 0.f);
     utassert(motion.StaggerStepMs(3) == 100.f);
-    // The 7th word starts at 600 ms, exactly one fade in -- still the stagger
-    // as asked.
+    // The 7th word starts at 600 ms, exactly one fade in -- still the
+    // stagger as asked.
     utassert(motion.StaggerStepMs(7) == 100.f);
     // An 8th word would start past the fade: that is a sweep, not typing.
     utassert(motion.StaggerStepMs(8) == 0.f);
     utassert(motion.StaggerStepMs(200) == 0.f);
-    // Without a stagger nothing changes -- every update was already one chunk.
+    // Without a stagger nothing changes -- every update was already one
+    // chunk.
     TextViewMotion plain = TextViewMotion{}.WithStreamFade(600.f);
     utassert(plain.StaggerStepMs(200) == 0.f);
 }
 
-// ─── selected_source_range ────────────────────────────────────────────────
+// ─── selected_source_range
+// ────────────────────────────────────────────────
 //
-// Ports of format/markdown.rs's selected_source_range_* and source_segments_*
-// tests and state.rs's selected_source_range_* ones. Rust sets a rendered
-// selection on the paragraph's inline state; here MdSelectedSourceRange
-// takes the same selection of the node's rendered text. The two MDX cases
-// (selected_source_range_maps_mdx_*) are not ported: MDX is not
-// (src/markdown/readme.md).
+// Ports of format/markdown.rs's selected_source_range_* and
+// source_segments_* tests and state.rs's selected_source_range_* ones. Rust
+// sets a rendered selection on the paragraph's inline state; here
+// MdSelectedSourceRange takes the same selection of the node's rendered
+// text. The two MDX cases (selected_source_range_maps_mdx_*) are not
+// ported: MDX is not (src/markdown/readme.md).
 
 #if GPUI_MARKDOWN_FULL
 // first_paragraph / first_code_block.
@@ -2728,12 +2803,13 @@ static void InvalidRangesRejectTheWholeSet() {
 static void TextOutsideEveryBlockIsLeftUnpainted() {
     RhView v;
     const char* source =
-        "foo one\n\n<div>foo two</div>\n\n| foo | x |\n|---|---|\n\nfoo three";
+        "foo one\n\n<div>foo two</div>\n\n| foo | x |\n|---|---|\n\nfoo "
+        "three";
     RhOpen(&v, source);
     Str text = RhState(&v)->RenderedText().AsStr();
-    // Every "foo" and " ", an empty range, and the separator after the first
-    // block: the HTML block's text and the separators are not any block's
-    // text, so they paint nothing, but nothing fails.
+    // Every "foo" and " ", an empty range, and the separator after the
+    // first block: the HTML block's text and the separators are not any
+    // block's text, so they paint nothing, but nothing fails.
     Span ranges[64];
     int n = 0;
     for (int i = 0; i + 3 <= len(text); i++) {
@@ -2868,8 +2944,8 @@ static void ReplacingTextDropsHighlightsOnlyWhereItChanged() {
     utassert(RhPainted(&v, TextLeafKey::Block(0), ranges, 1));
     utassert(RhUnpainted(&v, TextLeafKey::Block(7)));
 
-    // Rust replaces with MAX_SYNC_FULL_REPLACE_BYTES + 1 bytes to go through
-    // its background parse; every parse here is the same one.
+    // Rust replaces with MAX_SYNC_FULL_REPLACE_BYTES + 1 bytes to go
+    // through its background parse; every parse here is the same one.
     char large[513];
     memset(large, 'x', sizeof(large) - 1);
     large[sizeof(large) - 1] = 0;
@@ -3481,6 +3557,9 @@ void TestTextView() {
     InlineCodeLineIsAsTallAsAPlainLine();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
+    SetTextExtendingMarkdownAppendsAndKeepsSelection();
+    SetTextStreamingMarkdownMatchesAFullParse();
+    SetTextExtendingHtmlParsesItAgain();
     AFadeRepaintsOnATimerUntilNothingFades();
     TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
