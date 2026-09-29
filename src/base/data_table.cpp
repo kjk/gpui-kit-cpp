@@ -247,10 +247,69 @@ void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col) {
     TableEmit(s, cx, TableEventKind::SelectCell, row, col, ColumnSort::Default);
 }
 
+int TableSelectedRow(const TableState* s) {
+    return s->mode == TableSelectionMode::Row ? s->selectedRow : -1;
+}
+
+int TableSelectedCol(const TableState* s) {
+    return s->mode == TableSelectionMode::Column ? s->selectedCol : -1;
+}
+
+bool TableSelectedCell(const TableState* s, int* row, int* col) {
+    if (s->mode != TableSelectionMode::Cell || s->selectedCellRow < 0 ||
+        s->selectedCellCol < 0) {
+        return false;
+    }
+    if (row) {
+        *row = s->selectedCellRow;
+    }
+    if (col) {
+        *col = s->selectedCellCol;
+    }
+    return true;
+}
+
+TableSelection TableSelectionOf(const TableState* s) {
+    TableSelection out;
+    int row = TableSelectedRow(s);
+    int col = TableSelectedCol(s);
+    if (row >= 0) {
+        out.kind = TableSelectionKind::Row;
+        out.row = row;
+    } else if (col >= 0) {
+        out.kind = TableSelectionKind::Column;
+        out.col = col;
+    } else if (TableSelectedCell(s, &row, &col)) {
+        out.kind = TableSelectionKind::Cell;
+        out.row = row;
+        out.col = col;
+    }
+    return out;
+}
+
+void TableSetSelection(TableState* s, Ctx* cx, TableSelection selection) {
+    switch (selection.kind) {
+        case TableSelectionKind::None:
+            TableClearSelection(s, cx);
+            break;
+        case TableSelectionKind::Row:
+            TableSetSelectedRow(s, cx, selection.row);
+            break;
+        case TableSelectionKind::Column:
+            TableSetSelectedCol(s, cx, selection.col);
+            break;
+        case TableSelectionKind::Cell:
+            TableSetSelectedCell(s, cx, selection.row, selection.col);
+            break;
+    }
+}
+
 bool TableEscalatesToRow(const TableState* s, int row, int col,
                          bool doubleClick) {
-    bool reselect = s->mode == TableSelectionMode::Cell &&
-                    s->selectedCellRow == row && s->selectedCellCol == col;
+    int cellRow = -1;
+    int cellCol = -1;
+    bool reselect = TableSelectedCell(s, &cellRow, &cellCol) &&
+                    cellRow == row && cellCol == col;
     return !s->rowHeader && s->rowSelectable && reselect && !doubleClick;
 }
 
@@ -265,8 +324,7 @@ void TableClearSelection(TableState* s, Ctx* cx) {
 }
 
 static bool TableHasSelection(const TableState* s) {
-    return s->selectedRow >= 0 || s->selectedCol >= 0 ||
-           s->selectedCellRow >= 0;
+    return TableSelectionOf(s).kind != TableSelectionKind::None;
 }
 
 // The moves, each written the way its Rust handler is. Only up, down, left

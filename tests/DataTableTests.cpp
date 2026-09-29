@@ -535,6 +535,94 @@ static void ASecondClickOnACellTakesTheRowWhenThereIsNoRowHeader() {
     utassert(!TableEscalatesToRow(&s, 3, 1, false));
 }
 
+namespace {
+struct SelectionView {
+    TableSelection selection;
+    int row;
+    int col;
+    int cellRow;
+    int cellCol;
+};
+
+SelectionView ViewOf(const TableState* s) {
+    SelectionView v = {TableSelectionOf(s), TableSelectedRow(s),
+                       TableSelectedCol(s), -1, -1};
+    TableSelectedCell(s, &v.cellRow, &v.cellCol);
+    return v;
+}
+
+TableSelection Sel(TableSelectionKind kind, int row, int col) {
+    TableSelection out;
+    out.kind = kind;
+    out.row = row;
+    out.col = col;
+    return out;
+}
+// The four getters at once: selection(), selected_row(), selected_col()
+// and selected_cell().
+bool Is(const SelectionView& v, TableSelection selection, int row, int col,
+        int cellRow, int cellCol) {
+    return v.selection == selection && v.row == row && v.col == col &&
+           v.cellRow == cellRow && v.cellCol == cellCol;
+}
+} // namespace
+
+// table_selection_getters_follow_the_active_mode (crates/kit/tests)
+static void TableSelectionGettersFollowTheActiveMode() {
+    TableState s;
+    s.rowCount = 20;
+    s.colCount = 3;
+    s.cellSelectable = true;
+    Ctx cx = {};
+    using K = TableSelectionKind;
+    utassert(Is(ViewOf(&s), Sel(K::None, -1, -1), -1, -1, -1, -1));
+    TableSetSelectedCell(&s, &cx, 5, 1);
+    utassert(Is(ViewOf(&s), Sel(K::Cell, 5, 1), -1, -1, 5, 1));
+    TableSetSelectedRow(&s, &cx, 3);
+    utassert(Is(ViewOf(&s), Sel(K::Row, 3, -1), 3, -1, -1, -1));
+    TableSetSelectedCell(&s, &cx, 4, 0);
+    utassert(Is(ViewOf(&s), Sel(K::Cell, 4, 0), -1, -1, 4, 0));
+    TableSetSelectedCol(&s, &cx, 1);
+    utassert(Is(ViewOf(&s), Sel(K::Column, -1, 1), -1, 1, -1, -1));
+    TableSetSelectedRow(&s, &cx, 2);
+    utassert(Is(ViewOf(&s), Sel(K::Row, 2, -1), 2, -1, -1, -1));
+    TableSetSelectedCol(&s, &cx, 0);
+    utassert(Is(ViewOf(&s), Sel(K::Column, -1, 0), -1, 0, -1, -1));
+    TableSetSelectedCell(&s, &cx, 1, 1);
+    utassert(Is(ViewOf(&s), Sel(K::Cell, 1, 1), -1, -1, 1, 1));
+    TableClearSelection(&s, &cx);
+    utassert(Is(ViewOf(&s), Sel(K::None, -1, -1), -1, -1, -1, -1));
+
+    // set_selection round-trips through selection().
+    const TableSelection values[] = {
+        Sel(K::Row, 7, -1),
+        Sel(K::Column, -1, 1),
+        Sel(K::Cell, 3, 0),
+        Sel(K::None, -1, -1),
+    };
+    for (const TableSelection& value : values) {
+        TableSetSelection(&s, &cx, value);
+        utassert(TableSelectionOf(&s) == value);
+    }
+    utassert(Is(ViewOf(&s), Sel(K::None, -1, -1), -1, -1, -1, -1));
+}
+
+// table_retains_navigation_positions_when_selection_mode_changes
+static void TableRetainsNavigationPositionsWhenSelectionModeChanges() {
+    TableState s;
+    s.rowCount = 20;
+    s.colCount = 3;
+    Ctx cx = {};
+    TableSetSelectedRow(&s, &cx, 5);
+    TableSetSelectedCol(&s, &cx, 0);
+    TablePerform(&s, &cx, TableAction::SelectNext);
+    utassert(TableSelectedRow(&s) == 6);
+    utassert(TableSelectedCol(&s) == -1);
+    TablePerform(&s, &cx, TableAction::SelectNextColumn);
+    utassert(TableSelectedCol(&s) == 1);
+    utassert(TableSelectedRow(&s) == -1);
+}
+
 static void KeyboardLeavesRowsAloneWhenTheyAreNotSelectable() {
     TableState s;
     s.rowCount = 100;
@@ -705,6 +793,8 @@ void TestDataTable() {
     ARefreshGivesTheColumnsBackToTheCaller();
     ASecondClickOnACellTakesTheRowWhenThereIsNoRowHeader();
     KeyboardLeavesRowsAloneWhenTheyAreNotSelectable();
+    TableSelectionGettersFollowTheActiveMode();
+    TableRetainsNavigationPositionsWhenSelectionModeChanges();
     ARightClickMarksARowOrACellButNeverBoth();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();

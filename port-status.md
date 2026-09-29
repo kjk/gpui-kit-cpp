@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `becbcf2f265c4b0c139f384b7781e118c776a73c` (2026-09-20,
-input: Do not start the blink cursor on an unfocused input (#3140)). Pausing a
-caret that is not blinking is a no-op, so a programmatic set_value on an
-unfocused input no longer starts a blink loop; BlinkPause already returned
-early on a cursor with no timer, and the two new tests are ported. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `f1a6d118521c6059838be85c0f1708c90a16033e` (2026-09-20,
+table: Read and write the selection as one `TableSelection` value (#3143)).
+The table's selection reads and writes as one TableSelection value, and
+selected_row, selected_col and selected_cell answer only for the active mode,
+so a stale cell no longer surfaces after a row or column is picked. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

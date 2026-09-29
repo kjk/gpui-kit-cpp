@@ -970,9 +970,10 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         ->Child(TextEl(a, StoryFmt(cx, "Current · rows %d..%d · columns %d..%d",
                                    self->visRowFirst, self->visRowEnd,
                                    self->visColFirst, self->visColEnd)));
-    if (st && st->selectedCellRow >= 0) {
-        right->Child(TextEl(a, StoryFmt(cx, "· cell %d:%d", st->selectedCellRow,
-                                        st->selectedCellCol)));
+    int cellRow = -1;
+    int cellCol = -1;
+    if (st && TableSelectedCell(st, &cellRow, &cellCol)) {
+        right->Child(TextEl(a, StoryFmt(cx, "· cell %d:%d", cellRow, cellCol)));
     }
     // eof, which set_stocks writes as `stocks.len() <= 50`: the dataset is
     // small enough that there is nothing left to page in. It is not the

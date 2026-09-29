@@ -364,6 +364,43 @@ ColumnSort TableNextSort(ColumnSort s);
 ColumnSort TableSortOf(const TableState* s, int col);
 
 void TablePerformSort(TableState* s, Ctx* cx, int col);
+
+// TableSelection: the current selection as one value, mirroring the
+// SelectRow / SelectCol / SelectCell events. `row` and `col` are what the
+// kind carries and -1 where it carries none.
+enum class TableSelectionKind : uint8_t {
+    None,
+    Row,
+    Column,
+    Cell
+};
+
+struct TableSelection {
+    TableSelectionKind kind = TableSelectionKind::None;
+    int row = -1;
+    int col = -1;
+};
+
+inline bool operator==(const TableSelection& a, const TableSelection& b) {
+    return a.kind == b.kind && a.row == b.row && a.col == b.col;
+}
+inline bool operator!=(const TableSelection& a, const TableSelection& b) {
+    return !(a == b);
+}
+
+// selection(): match on it instead of combining the three getters below.
+TableSelection TableSelectionOf(const TableState* s);
+// set_selection: the matching TableSetSelected* or TableClearSelection, so
+// scrolling and events are theirs.
+void TableSetSelection(TableState* s, Ctx* cx, TableSelection selection);
+// selected_row / selected_col / selected_cell: each answers only when its own
+// kind of thing is selected — a selected cell is not a selected row. The
+// cached positions behind them stay for keyboard navigation across modes.
+// -1 / false is None.
+int TableSelectedRow(const TableState* s);
+int TableSelectedCol(const TableState* s);
+bool TableSelectedCell(const TableState* s, int* row, int* col);
+
 void TableSetSelectedRow(TableState* s, Ctx* cx, int row);
 void TableSetSelectedCol(TableState* s, Ctx* cx, int col);
 void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col);

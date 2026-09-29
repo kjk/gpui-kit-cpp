@@ -761,7 +761,9 @@ static El* RowHeaderCell(Ctx* cx, Entity<TableState> state, int row,
     if (head || !s || !s->rowSelectable) {
         return e;
     }
-    if (s->selectedRow == row && s->mode == TableSelectionMode::Row) {
+    // selected_row() is None outside row mode, so a selected cell or column
+    // never highlights its row.
+    if (TableSelectedRow(s) == row) {
         e->Bg(th.tokens.tableActive);
     }
     BindPathClick(e, StrDup(a, fmt("row-header-%d", row)),
@@ -989,7 +991,7 @@ El* DataTable::BuildEl() {
         } else if (s && s->dropGap == d + 1 && d == nColumns - 1) {
             th_->BorderR(2, th.primary);
         }
-        if (s && s->selectedCol == c && s->mode == TableSelectionMode::Column) {
+        if (s && TableSelectedCol(s) == c) {
             th_->Bg(th.tokens.accent);
         }
         // render_th: the head is the content and the resize handle beside it,
@@ -1157,8 +1159,7 @@ El* DataTable::BuildEl() {
             if (stripe && (r % 2) == 1) {
                 row->Bg(th.tokens.tableEven);
             }
-            if (s && s->selectedRow == r &&
-                s->mode == TableSelectionMode::Row) {
+            if (s && TableSelectedRow(s) == r) {
                 // state.rs paints the selected row the same way a list item
                 // does, off the table's own pair of colors.
                 ListActiveStyle sel = ListActiveStyleOf(
@@ -1190,8 +1191,7 @@ El* DataTable::BuildEl() {
             if (d > 0) {
                 td->BorderL(1, th.tableRowBorder);
             }
-            if (s && s->mode == TableSelectionMode::Column &&
-                s->selectedCol == c) {
+            if (s && TableSelectedCol(s) == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
             // The selected cell, painted the way the selected row is: the
@@ -1200,8 +1200,10 @@ El* DataTable::BuildEl() {
                 s->rightClickedCellCol == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
             }
-            if (s && s->mode == TableSelectionMode::Cell &&
-                s->selectedCellRow == r && s->selectedCellCol == c) {
+            int cellRow = -1;
+            int cellCol = -1;
+            if (s && TableSelectedCell(s, &cellRow, &cellCol) && cellRow == r &&
+                cellCol == c) {
                 ListActiveStyle sel = ListActiveStyleOf(
                     ListSettingsNow(cx->app), th.tokens.tableActive,
                     th.tableActiveBorder, th.tokens.accent, true);

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "becbcf2f265c4b0c139f384b7781e118c776a73c",
+  sha: "f1a6d118521c6059838be85c0f1708c90a16033e",
   date: "2026-09-20",
-  subject: "input: Do not start the blink cursor on an unfocused input (#3140)",
+  subject: "table: Read and write the selection as one `TableSelection` value (#3143)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",
