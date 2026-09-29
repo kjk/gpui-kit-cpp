@@ -16,12 +16,21 @@ constexpr float ANIMATION_DURATION = 250.f;
 // The source keeps the standard action row in one value and lets Dialog and
 // AlertDialog share it. Listener is this runtime's stale-safe projection of
 // the three retained Rust callbacks.
+//
+// Every field is unset until a builder sets it, and an unset field falls back
+// to its documented default when the dialog renders, so Merge — what
+// Dialog::ButtonProps does — overrides only the fields a value sets. Rust's
+// Option<T> is a `has*` flag beside the value here; a null Str and an invalid
+// Listener already say "unset".
 struct DialogButtonProps {
     Str okText = {};
     ButtonVariant okVariant = ButtonVariant::Primary;
+    bool hasOkVariant = false;
     Str cancelText = {};
     ButtonVariant cancelVariant = ButtonVariant::Default;
+    bool hasCancelVariant = false;
     bool showCancel = false;
+    bool hasShowCancel = false;
     Listener onOk = {};
     Listener onCancel = {};
     Listener onClose = {};
@@ -34,6 +43,10 @@ struct DialogButtonProps {
     DialogButtonProps* OnOk(Listener value);
     DialogButtonProps* OnCancel(Listener value);
     DialogButtonProps* OnClose(Listener value);
+    // Takes over every field `other` sets and keeps the rest.
+    void Merge(const DialogButtonProps& other);
+    // Whether the default footer renders a Cancel button. Default is false.
+    bool IsCancelShown() const;
     El* RenderOk(Ctx* cx, Str id, bool outline = false) const;
     El* RenderCancel(Ctx* cx, Str id) const;
 };
@@ -187,6 +200,7 @@ struct Dialog {
     Dialog* CancelVariant(ButtonVariant v);
     Dialog* OkVariant(ButtonVariant v, bool outline = false);
     Dialog* ShowCancel(bool v);
+    // Overrides only the fields `value` sets; the call order does not matter.
     Dialog* ButtonProps(const DialogButtonProps& value);
     // AlertDialog::confirm(): the standard OK / Cancel pair.
     Dialog* Confirm();
@@ -231,6 +245,8 @@ struct AlertDialog {
     AlertDialog* Fg(Rgba value);
     AlertDialog* Icon(IconName value, Rgba color, float size = 16);
     AlertDialog* HeaderCentered(bool value = true);
+    // Overrides only the fields `value` sets, so the Cancel button Confirm()
+    // asked for and callbacks set earlier survive, whatever the call order.
     AlertDialog* ButtonProps(const DialogButtonProps& value);
     AlertDialog* OkText(Str value);
     AlertDialog* CancelText(Str value);

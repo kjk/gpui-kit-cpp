@@ -15,9 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6b8581a1e5458eace91beb842376f833beaef2ff`
-(2026-09-19, Version 0.6.4). Workspace crates move 0.6.2 to 0.6.4. The
-current update target is `6b8581a1e5458eace91beb842376f833beaef2ff`.
+Processed through `7e2003cd51ada69fb6822bbf15a83e1666b0bfd8` (2026-09-19,
+dialog: Merge `button_props` instead of replacing them (#3126)). Dialog button
+props merge rather than replace, and AlertDialog gains direct OK/Cancel text
+and variant builders. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

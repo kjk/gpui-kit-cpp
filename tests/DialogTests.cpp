@@ -387,8 +387,90 @@ static void CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce() {
     delete win;
 }
 
+static void OkListener(void*, Ctx*, const void*) {}
+
+// alert_dialog.rs: button_props_after_confirm_keeps_the_cancel_button,
+// confirm_after_button_props_keeps_the_ok_text,
+// button_props_after_on_ok_keeps_the_callback,
+// the_direct_builders_match_button_props; dialog.rs:
+// dialog_button_props_merge_with_what_the_dialog_already_carries.
+//
+// `button_props` overrides only the fields its value sets, in any call order.
+static void ButtonPropsMergeWithWhatTheDialogAlreadyCarries() {
+    App app = {};
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    component::DialogButtonProps deleteText;
+    deleteText.OkText(StrL("Delete"));
+
+    component::AlertDialog* after =
+        component::AlertDialog::New(&cx)->Confirm()->ButtonProps(deleteText);
+    utassert(after->base->buttonProps.IsCancelShown());
+    utassert(StrEq(after->base->buttonProps.okText, StrL("Delete")));
+
+    component::AlertDialog* before =
+        component::AlertDialog::New(&cx)->ButtonProps(deleteText)->Confirm();
+    utassert(before->base->buttonProps.IsCancelShown());
+    utassert(StrEq(before->base->buttonProps.okText, StrL("Delete")));
+
+    Listener onOk = {};
+    onOk.SetFn(&OkListener);
+    component::AlertDialog* callback =
+        component::AlertDialog::New(&cx)->OnOk(onOk)->ButtonProps(deleteText);
+    utassert(callback->base->buttonProps.onOk.Fn() == onOk.Fn());
+
+    component::AlertDialog* direct =
+        component::AlertDialog::New(&cx)
+            ->Confirm()
+            ->OkText(StrL("Delete"))
+            ->OkVariant(component::ButtonVariant::Danger)
+            ->CancelText(StrL("Keep"))
+            ->CancelVariant(component::ButtonVariant::Ghost);
+    component::DialogButtonProps bundle;
+    bundle.ShowCancel(true)
+        ->OkText(StrL("Delete"))
+        ->OkVariant(component::ButtonVariant::Danger)
+        ->CancelText(StrL("Keep"))
+        ->CancelVariant(component::ButtonVariant::Ghost);
+    component::AlertDialog* bundled = component::AlertDialog::New(&cx)
+                                          ->ButtonProps(bundle);
+    const component::DialogButtonProps* both[] = {&direct->base->buttonProps,
+                                                  &bundled->base->buttonProps};
+    for (const component::DialogButtonProps* props : both) {
+        utassert(props->IsCancelShown());
+        utassert(StrEq(props->okText, StrL("Delete")));
+        utassert(props->hasOkVariant &&
+                 props->okVariant == component::ButtonVariant::Danger);
+        utassert(StrEq(props->cancelText, StrL("Keep")));
+        utassert(props->hasCancelVariant &&
+                 props->cancelVariant == component::ButtonVariant::Ghost);
+    }
+
+    component::DialogButtonProps keep, ok, danger;
+    keep.CancelText(StrL("Keep"));
+    ok.OkText(StrL("Delete"));
+    danger.OkVariant(component::ButtonVariant::Danger);
+    component::Dialog* dialog = component::Dialog::New(&cx)
+                                    ->ButtonProps(keep)
+                                    ->ButtonProps(ok)
+                                    ->ButtonProps(danger);
+    utassert(StrEq(dialog->buttonProps.okText, StrL("Delete")));
+    utassert(StrEq(dialog->buttonProps.cancelText, StrL("Keep")));
+    utassert(dialog->buttonProps.okVariant == component::ButtonVariant::Danger);
+
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestDialog() {
     TestSuite("dialog");
+    ButtonPropsMergeWithWhatTheDialogAlreadyCarries();
     CloseTriggerSuppliesAnAccessibleButtonThatActivatesOnce();
     OversizedDialogsAreClampedToTheViewport();
     TheBackdropFillsTheHost();

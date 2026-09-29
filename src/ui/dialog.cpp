@@ -60,6 +60,7 @@ DialogButtonProps* DialogButtonProps::OkText(Str value) {
 }
 DialogButtonProps* DialogButtonProps::OkVariant(ButtonVariant value) {
     okVariant = value;
+    hasOkVariant = true;
     return this;
 }
 DialogButtonProps* DialogButtonProps::CancelText(Str value) {
@@ -68,10 +69,12 @@ DialogButtonProps* DialogButtonProps::CancelText(Str value) {
 }
 DialogButtonProps* DialogButtonProps::CancelVariant(ButtonVariant value) {
     cancelVariant = value;
+    hasCancelVariant = true;
     return this;
 }
 DialogButtonProps* DialogButtonProps::ShowCancel(bool value) {
     showCancel = value;
+    hasShowCancel = true;
     return this;
 }
 DialogButtonProps* DialogButtonProps::OnOk(Listener value) {
@@ -85,6 +88,35 @@ DialogButtonProps* DialogButtonProps::OnCancel(Listener value) {
 DialogButtonProps* DialogButtonProps::OnClose(Listener value) {
     onClose = value;
     return this;
+}
+void DialogButtonProps::Merge(const DialogButtonProps& other) {
+    if (other.okText.s) {
+        okText = other.okText;
+    }
+    if (other.hasOkVariant) {
+        OkVariant(other.okVariant);
+    }
+    if (other.cancelText.s) {
+        cancelText = other.cancelText;
+    }
+    if (other.hasCancelVariant) {
+        CancelVariant(other.cancelVariant);
+    }
+    if (other.hasShowCancel) {
+        ShowCancel(other.showCancel);
+    }
+    if (other.onOk.IsValid()) {
+        onOk = other.onOk;
+    }
+    if (other.onCancel.IsValid()) {
+        onCancel = other.onCancel;
+    }
+    if (other.onClose.IsValid()) {
+        onClose = other.onClose;
+    }
+}
+bool DialogButtonProps::IsCancelShown() const {
+    return hasShowCancel && showCancel;
 }
 El* DialogButtonProps::RenderOk(Ctx* cx, Str id, bool outline) const {
     Button* button = Button::New(cx, id)
@@ -317,24 +349,24 @@ Dialog* Dialog::CancelText(Str s) {
     return this;
 }
 Dialog* Dialog::CancelVariant(ButtonVariant v) {
-    buttonProps.cancelVariant = v;
+    buttonProps.CancelVariant(v);
     return this;
 }
 Dialog* Dialog::OkVariant(ButtonVariant v, bool outline) {
-    buttonProps.okVariant = v;
+    buttonProps.OkVariant(v);
     okOutline = outline;
     return this;
 }
 Dialog* Dialog::ShowCancel(bool v) {
-    buttonProps.showCancel = v;
+    buttonProps.ShowCancel(v);
     return this;
 }
 Dialog* Dialog::ButtonProps(const DialogButtonProps& value) {
-    buttonProps = value;
+    buttonProps.Merge(value);
     return this;
 }
 Dialog* Dialog::Confirm() {
-    buttonProps.showCancel = true;
+    buttonProps.ShowCancel(true);
     return this;
 }
 Dialog* Dialog::CloseButton(bool v) {
@@ -451,7 +483,7 @@ El* Dialog::Actions() {
     // do not, and two dialogs at once shared one hover state — pointing at
     // the top one's close x lit up the one behind it too.
     El* cancel = nullptr;
-    if (buttonProps.showCancel) {
+    if (buttonProps.IsCancelShown()) {
         cancel = buttonProps.RenderCancel(cx, LayerId(StrL("dialog-cancel")));
     }
     El* ok = buttonProps.RenderOk(cx, LayerId(StrL("dialog-ok")), okOutline);
