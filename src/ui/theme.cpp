@@ -1304,6 +1304,22 @@ void ThemeSyncBase(App* app) {
     base.tokens = ThemeSemanticTokens(ui, ThemeFontSize(app));
     base.scrollbar.mode = ScrollbarModeNow(app);
     base.scrollbar.motion = ScrollbarMotionFor(base.scrollbar.mode);
+    // plot_motion: the plot hover motion this design system projects onto
+    // Base. A pointer chases the cursor across neighbouring data, so it has
+    // to arrive well within the time the cursor takes to reach the next
+    // datum: ECharts moves its axis pointer over 200 ms on an exponential
+    // ease-out, which is most of the way there in the first third. The fast
+    // tier as a critically damped response lands in the same place, and the
+    // tolerance is sub-pixel so the spring rests once nothing visible moves.
+    // The hover fades on the same tier.
+    base.plot = base_theme::PlotTheme::New().WithMotion(
+        plot::PlotMotion{}
+            .WithPointer(Spring::New(ui.motion.durationFastMs)
+                             .WithEpsilon(0.1f))
+            .WithEnter(motion::Transition::New(ui.motion.durationFastMs)
+                           .Ease(ui.motion.easingEnter))
+            .WithExit(motion::Transition::New(ui.motion.durationFastMs)
+                          .Ease(ui.motion.easingExit)));
 
     ScrollbarStyles& styles = base.scrollbar.styles;
     styles.track.background = Background(ui.scrollbarBg);

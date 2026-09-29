@@ -143,10 +143,10 @@ static void UnchangedPlotLabelsKeepTheScene() {
     paint.viewW = 320;
     paint.viewH = 200;
     paint.opacity = 1;
-    plot::PlotLabel labels = plot::PlotLabel::New(arena);
-    plot::Text label = plot::Text::New(StrL("axis label"), Point{100, 20},
-                                       Rgba8(0, 0, 0, 255));
-    label.Align(plot::PlotTextAlign::Center);
+    component::plot::PlotLabel labels = component::plot::PlotLabel::New(arena);
+    component::plot::Text label = component::plot::Text::New(
+        StrL("axis label"), Point{100, 20}, Rgba8(0, 0, 0, 255));
+    label.Align(component::plot::PlotTextAlign::Center);
     labels.Add(label);
     for (int frame = 0; frame < 4; frame++) {
         TextMeasBeginFrame(&paint);
@@ -156,7 +156,7 @@ static void UnchangedPlotLabelsKeepTheScene() {
         if (frame == 2) {
             labels.items[0].color = Rgba8(255, 0, 0, 255);
         } else if (frame == 3) {
-            labels.items[0].align = plot::PlotTextAlign::Right;
+            labels.items[0].align = component::plot::PlotTextAlign::Right;
         }
         labels.Paint(&paint, Bounds{0, 0, 320, 200});
         Bounds damage = {};
@@ -366,7 +366,7 @@ static void YDomainReplacesTheFitFromZero() {
 // chart/mod.rs: only_the_last_point_right_aligns_its_label. The last item of
 // data laid out for more points sits mid-axis and stays centered.
 static void OnlyTheLastPointRightAlignsItsLabel() {
-    using plot::PlotTextAlign;
+    using component::plot::PlotTextAlign;
     utassert(ChartPointLabelAlign(0, 3) == PlotTextAlign::Left);
     utassert(ChartPointLabelAlign(1, 3) == PlotTextAlign::Center);
     utassert(ChartPointLabelAlign(2, 3) == PlotTextAlign::Right);
@@ -534,11 +534,12 @@ static void AValueColorColorsOnlyTheRowAddedLast() {
     Rgba blue = Rgb(0, 0, 255);
     Rgba red = Rgb(255, 0, 0);
     Rgba green = Rgb(0, 255, 0);
-    plot::Tooltip* tooltip = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
-                                 ->ValueColor(red)
-                                 ->Row(blue, StrL("Open"), StrL("1"))
-                                 ->Row(blue, StrL("Close"), StrL("2"))
-                                 ->ValueColor(green);
+    component::plot::Tooltip* tooltip =
+        component::plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+            ->ValueColor(red)
+            ->Row(blue, StrL("Open"), StrL("1"))
+            ->Row(blue, StrL("Close"), StrL("2"))
+            ->ValueColor(green);
     utassert(tooltip->rows.len == 2);
     utassert(!tooltip->rows[0].hasValueColor);
     utassert(tooltip->rows[1].hasValueColor &&
@@ -554,20 +555,22 @@ static void APlainRowHasNoSwatchAndTakesAValueColor() {
     cx.a = a;
     Rgba blue = Rgb(0, 0, 255);
     Rgba red = Rgb(255, 0, 0);
-    plot::Tooltip* mixed = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
-                               ->Row(blue, StrL("Call"), StrL("1"))
-                               ->PlainRow(StrL("Total"), StrL("3"))
-                               ->ValueColor(red);
+    component::plot::Tooltip* mixed =
+        component::plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+            ->Row(blue, StrL("Call"), StrL("1"))
+            ->PlainRow(StrL("Total"), StrL("3"))
+            ->ValueColor(red);
     utassert(mixed->rows[0].hasColor &&
              ChartColorEq(mixed->rows[0].color, blue));
     utassert(!mixed->rows[0].hasValueColor);
     utassert(!mixed->rows[1].hasColor && mixed->rows[1].hasValueColor &&
              ChartColorEq(mixed->rows[1].valueColor, red));
-    plot::Tooltip* plain = plot::Tooltip::New(&cx, {0, 0}, {100, 100})
-                               ->PlainRow(StrL("Total"), StrL("3"))
-                               ->PlainRow(StrL("Ratio"), StrL("0.5"));
-    utassert(plot::TooltipHasSwatches(mixed->rows));
-    utassert(!plot::TooltipHasSwatches(plain->rows));
+    component::plot::Tooltip* plain =
+        component::plot::Tooltip::New(&cx, {0, 0}, {100, 100})
+            ->PlainRow(StrL("Total"), StrL("3"))
+            ->PlainRow(StrL("Ratio"), StrL("0.5"));
+    utassert(component::plot::TooltipHasSwatches(mixed->rows));
+    utassert(!component::plot::TooltipHasSwatches(plain->rows));
     ArenaDelete(a);
 }
 
@@ -622,9 +625,9 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
     content.valueColor = &GreenOrRed;
     ChartTooltipSeriesRow rows[2] = {{blue, StrL("Open"), 2.},
                                      {blue, StrL("Close"), -1.}};
-    plot::Tooltip* tooltip =
-        ChartTooltipApply(content, plot::Tooltip::New(&cx, {0, 0}, {100, 100}),
-                          1, StrL("Jan"), true, rows, 2);
+    component::plot::Tooltip* tooltip = ChartTooltipApply(
+        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
+        StrL("Jan"), true, rows, 2);
     utassert(tooltip->hasTitle && StrEq(tooltip->title, StrL("Jan")));
     utassert(tooltip->rows.len == 2);
     utassert(StrEq(tooltip->rows[0].value, StrL("0: +2")) &&
@@ -634,9 +637,9 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
 
     ChartTooltipContent plain;
     ChartTooltipSeriesRow alpha[1] = {{blue, StrL("Alpha"), 80.}};
-    plot::Tooltip* untitled =
-        ChartTooltipApply(plain, plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
-                          {}, false, alpha, 1);
+    component::plot::Tooltip* untitled = ChartTooltipApply(
+        plain, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1, {},
+        false, alpha, 1);
     utassert(!untitled->hasTitle);
     utassert(StrEq(untitled->rows[0].value, StrL("80")) && !untitled->rows[0]
                                                                 .hasValueColor);

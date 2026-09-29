@@ -29,34 +29,27 @@ static void ScaleLinearBasics() {
     utassert(s.Tick(3, &t) && TestNear(t, 0.f));
 }
 
-static void ScaleLinearMultipleRange() {
-    const float domain[] = {1, 2, 3};
+// test_scale_linear_unordered_domain: the domain's extent is its min and
+// max, whatever order the values come in.
+static void ScaleLinearUnorderedDomain() {
+    const float domain[] = {3, 1, 2};
+    const float range[] = {0, 100};
+    ScaleLinear s = ScaleLinear::New(domain, 3, range, 2);
     float t = 0;
-
-    // Only the ends of the range count, and only their order.
-    const float up[] = {0, 50, 100};
-    ScaleLinear s = ScaleLinear::New(domain, 3, up, 3);
     utassert(s.Tick(1, &t) && TestNear(t, 0.f));
-    utassert(s.Tick(2, &t) && TestNear(t, 50.f));
     utassert(s.Tick(3, &t) && TestNear(t, 100.f));
+}
 
-    const float down[] = {100, 50, 0};
-    s = ScaleLinear::New(domain, 3, down, 3);
-    utassert(s.Tick(1, &t) && TestNear(t, 100.f));
-    utassert(s.Tick(2, &t) && TestNear(t, 50.f));
-    utassert(s.Tick(3, &t) && TestNear(t, 0.f));
-
-    const float downUp[] = {100, 0, 100};
-    s = ScaleLinear::New(domain, 3, downUp, 3);
-    utassert(s.Tick(1, &t) && TestNear(t, 100.f));
-    utassert(s.Tick(2, &t) && TestNear(t, 50.f));
-    utassert(s.Tick(3, &t) && TestNear(t, 0.f));
-
-    const float upDown[] = {0, 100, 0};
-    s = ScaleLinear::New(domain, 3, upDown, 3);
-    utassert(s.Tick(1, &t) && TestNear(t, 0.f));
-    utassert(s.Tick(2, &t) && TestNear(t, 50.f));
-    utassert(s.Tick(3, &t) && TestNear(t, 100.f));
+// test_scale_linear_f32, and line_chart.rs test_f32_values_scale_like_f64:
+// Rust now scales f32 values like f64. The C++ domain
+// is always float, so this is the same arithmetic on the reference values.
+static void ScaleLinearF32() {
+    const float domain[] = {0, 4};
+    const float range[] = {0, 100};
+    ScaleLinear s = ScaleLinear::New(domain, 2, range, 2);
+    float t = 0;
+    utassert(s.Tick(1, &t) && TestNear(t, 25.f));
+    utassert(s.Tick(4, &t) && TestNear(t, 100.f));
 }
 
 static void ScaleLinearEmpty() {
@@ -69,32 +62,13 @@ static void ScaleLinearEmpty() {
     utassert(!s.Tick(2, &t));
     utassert(!s.Tick(3, &t));
 
-    // No range still ticks; everything lands on zero.
+    // A [0, 0] range still ticks; everything lands on zero.
     const float domain[] = {1, 2, 3};
-    s = ScaleLinear::New(domain, 3, nullptr, 0);
+    const float none[] = {0, 0};
+    s = ScaleLinear::New(domain, 3, none, 2);
     utassert(s.Tick(1, &t) && TestNear(t, 0.f));
     utassert(s.Tick(2, &t) && TestNear(t, 0.f));
     utassert(s.Tick(3, &t) && TestNear(t, 0.f));
-}
-
-static void ScaleLinearLeastIndexWithDomain() {
-    const float domain[] = {1, 2, 3};
-    const float range[] = {0, 100};
-    ScaleLinear s = ScaleLinear::New(domain, 3, range, 2);
-
-    int index = 0;
-    float tick = 0;
-    s.LeastIndexWithDomain(0, domain, 3, &index, &tick);
-    utassert(index == 0);
-    utassertnear(tick, 0.f);
-
-    s.LeastIndexWithDomain(50, domain, 3, &index, &tick);
-    utassert(index == 1);
-    utassertnear(tick, 50.f);
-
-    s.LeastIndexWithDomain(100, domain, 3, &index, &tick);
-    utassert(index == 2);
-    utassertnear(tick, 100.f);
 }
 
 // ─── ScalePoint ───────────────────────────────────────────────────────────
@@ -121,6 +95,8 @@ static void ScalePointRange() {
     utassert(s.Tick(3, &t) && TestNear(t, 80.f));
 }
 
+static const float zeroRange[2] = {0, 0};
+
 static void ScalePointEmpty() {
     float t = 0;
 
@@ -131,7 +107,7 @@ static void ScalePointEmpty() {
     utassert(!s.Tick(3, &t));
 
     const float domain[] = {1, 2, 3};
-    s = ScalePoint::New(domain, 3, nullptr, 0);
+    s = ScalePoint::New(domain, 3, zeroRange, 2);
     utassert(s.Tick(1, &t) && TestNear(t, 0.f));
     utassert(s.Tick(2, &t) && TestNear(t, 0.f));
     utassert(s.Tick(3, &t) && TestNear(t, 0.f));
@@ -167,65 +143,78 @@ static void ScalePointTickAtMatchesTick() {
     }
 }
 
-static void ScalePointLeastIndexBasic() {
+static void ScalePointNearestIndexBasic() {
     const float domain[] = {1, 2, 3};
     const float range[] = {0, 100};
     ScalePoint s = ScalePoint::New(domain, 3, range, 2);
 
-    utassert(s.LeastIndex(0) == 0);
-    utassert(s.LeastIndex(50) == 1);
-    utassert(s.LeastIndex(100) == 2);
+    utassert(s.NearestIndex(0) == 0);
+    utassert(s.NearestIndex(50) == 1);
+    utassert(s.NearestIndex(100) == 2);
 
-    utassert(s.LeastIndex(24) == 0); // closer to 0
-    utassert(s.LeastIndex(25) == 1); // equidistant, rounds up
-    utassert(s.LeastIndex(26) == 1); // closer to 50
-    utassert(s.LeastIndex(74) == 1); // closer to 50
-    utassert(s.LeastIndex(75) == 2); // equidistant, rounds up
-    utassert(s.LeastIndex(76) == 2); // closer to 100
+    utassert(s.NearestIndex(24) == 0); // closer to 0
+    utassert(s.NearestIndex(25) == 1); // equidistant, rounds up
+    utassert(s.NearestIndex(26) == 1); // closer to 50
+    utassert(s.NearestIndex(74) == 1); // closer to 50
+    utassert(s.NearestIndex(75) == 2); // equidistant, rounds up
+    utassert(s.NearestIndex(76) == 2); // closer to 100
 
-    utassert(s.LeastIndex(-10) == 0); // below the range
-    utassert(s.LeastIndex(150) == 2); // above it
+    utassert(s.NearestIndex(-10) == 0); // below the range
+    utassert(s.NearestIndex(150) == 2); // above it
 }
 
-static void ScalePointLeastIndexWithOffset() {
+static void ScalePointNearestIndexWithOffset() {
     const float domain[] = {1, 2, 3};
     const float range[] = {40, 80};
     ScalePoint s = ScalePoint::New(domain, 3, range, 2);
 
     // The points are at 40, 60, 80.
-    utassert(s.LeastIndex(40) == 0);
-    utassert(s.LeastIndex(60) == 1);
-    utassert(s.LeastIndex(80) == 2);
+    utassert(s.NearestIndex(40) == 0);
+    utassert(s.NearestIndex(60) == 1);
+    utassert(s.NearestIndex(80) == 2);
 
-    utassert(s.LeastIndex(49) == 0);
-    utassert(s.LeastIndex(50) == 1);
-    utassert(s.LeastIndex(51) == 1);
-    utassert(s.LeastIndex(69) == 1);
-    utassert(s.LeastIndex(70) == 2);
-    utassert(s.LeastIndex(71) == 2);
+    utassert(s.NearestIndex(49) == 0);
+    utassert(s.NearestIndex(50) == 1);
+    utassert(s.NearestIndex(51) == 1);
+    utassert(s.NearestIndex(69) == 1);
+    utassert(s.NearestIndex(70) == 2);
+    utassert(s.NearestIndex(71) == 2);
 
-    utassert(s.LeastIndex(30) == 0);
-    utassert(s.LeastIndex(100) == 2);
+    utassert(s.NearestIndex(30) == 0);
+    utassert(s.NearestIndex(100) == 2);
 }
 
-static void ScalePointLeastIndexDegenerate() {
+static void ScalePointNearestIndexDegenerate() {
     const float range[] = {0, 100};
     ScalePoint empty = ScalePoint::New(nullptr, 0, range, 2);
-    utassert(empty.LeastIndex(0) == 0);
-    utassert(empty.LeastIndex(50) == 0);
-    utassert(empty.LeastIndex(100) == 0);
+    utassert(empty.NearestIndex(0) == 0);
+    utassert(empty.NearestIndex(50) == 0);
+    utassert(empty.NearestIndex(100) == 0);
 
     const float one[] = {1};
     ScalePoint single = ScalePoint::New(one, 1, range, 2);
-    utassert(single.LeastIndex(0) == 0);
-    utassert(single.LeastIndex(50) == 0);
-    utassert(single.LeastIndex(100) == 0);
+    utassert(single.NearestIndex(0) == 0);
+    utassert(single.NearestIndex(50) == 0);
+    utassert(single.NearestIndex(100) == 0);
 
     const float domain[] = {1, 2, 3};
-    ScalePoint noRange = ScalePoint::New(domain, 3, nullptr, 0);
-    utassert(noRange.LeastIndex(0) == 0);
-    utassert(noRange.LeastIndex(50) == 0);
-    utassert(noRange.LeastIndex(100) == 0);
+    ScalePoint noRange = ScalePoint::New(domain, 3, zeroRange, 2);
+    utassert(noRange.NearestIndex(0) == 0);
+    utassert(noRange.NearestIndex(50) == 0);
+    utassert(noRange.NearestIndex(100) == 0);
+}
+
+// point.rs test_reversed_range: a range written high to low places the
+// domain from its first end, and the nearest index walks back with it.
+static void ScalePointReversedRange() {
+    const float domain[] = {1, 2, 3};
+    const float range[] = {100, 0};
+    ScalePoint s = ScalePoint::New(domain, 3, range, 2);
+    float t = 0;
+    utassert(s.Tick(1, &t) && TestNear(t, 100.f));
+    utassert(s.Tick(3, &t) && TestNear(t, 0.f));
+    utassert(s.NearestIndex(90) == 0);
+    utassert(s.NearestIndex(10) == 2);
 }
 
 // ─── ScaleOrdinal ─────────────────────────────────────────────────────────
@@ -283,7 +272,7 @@ static void ScaleBandEmpty() {
     utassert(!none.Tick(1, &t));
     utassertnear(none.BandWidth(), 0.f);
 
-    ScaleBand noRange = ScaleBand::New(3, nullptr, 0);
+    ScaleBand noRange = ScaleBand::New(3, zeroRange, 2);
     utassert(noRange.Tick(0, &t) && TestNear(t, 0.f));
     utassert(noRange.Tick(1, &t) && TestNear(t, 0.f));
     utassert(noRange.Tick(2, &t) && TestNear(t, 0.f));
@@ -307,10 +296,35 @@ static void ScaleBandSingle() {
     const float range[2] = {0.f, 90.f};
     ScaleBand b = ScaleBand::New(1, range, 2);
     float t = 0;
-    // One band sits in the middle: the width is capped at thirty, so it
-    // starts thirty in.
-    utassert(b.Tick(0, &t) && TestNear(t, 30.f));
-    utassert(b.LeastIndex(80.f) == 0);
+    // One band sits in the middle. Uncapped it spans the range and starts at
+    // its beginning; capped at thirty it starts thirty in.
+    utassert(b.Tick(0, &t) && TestNear(t, 0.f));
+    utassert(b.MaxBandWidth(30).Tick(0, &t) && TestNear(t, 30.f));
+    utassert(b.NearestIndex(80.f) == 0);
+}
+
+// band.rs max_band_width_caps_the_width_but_not_the_ticks.
+static void ScaleBandMaxBandWidthCapsTheWidthButNotTheTicks() {
+    const float range[2] = {0.f, 200.f};
+    ScaleBand wide = ScaleBand::New(2, range, 2);
+    ScaleBand capped = ScaleBand::New(2, range, 2).MaxBandWidth(30);
+    utassertnear(wide.BandWidth(), 100.f);
+    utassertnear(capped.BandWidth(), 30.f);
+    float a = 0, b = 0;
+    utassert(capped.Tick(1, &a) && wide.Tick(1, &b) && TestNear(a, b));
+}
+
+// band.rs test_scale_band_range_start: bands lead from the lower end of the
+// range, whichever way it is written.
+static void ScaleBandRangeStart() {
+    const float range[2] = {10.f, 100.f};
+    ScaleBand b = ScaleBand::New(3, range, 2);
+    float t = 0;
+    utassert(b.Tick(0, &t) && TestNear(t, 10.f));
+    utassert(b.Tick(1, &t) && TestNear(t, 40.f));
+    utassert(b.NearestIndex(41.f) == 1);
+    const float reversed[2] = {100.f, 10.f};
+    utassert(ScaleBand::New(3, reversed, 2).Tick(0, &t) && TestNear(t, 10.f));
 }
 
 // test_scale_band_dedup: a grouped bar chart of 2 series over 3 categories
@@ -333,15 +347,15 @@ static void ScaleBandDedup() {
     utassert(!b.Tick(3, &t));
 }
 
-static void ScaleBandLeastIndex() {
+static void ScaleBandNearestIndex() {
     const float range[2] = {0.f, 90.f};
     ScaleBand b = ScaleBand::New(3, range, 2);
-    utassert(b.LeastIndex(0.f) == 0);
-    utassert(b.LeastIndex(31.f) == 1);
-    utassert(b.LeastIndex(59.f) == 2);
+    utassert(b.NearestIndex(0.f) == 0);
+    utassert(b.NearestIndex(31.f) == 1);
+    utassert(b.NearestIndex(59.f) == 2);
     // And it never runs off either end.
-    utassert(b.LeastIndex(-40.f) == 0);
-    utassert(b.LeastIndex(400.f) == 2);
+    utassert(b.NearestIndex(-40.f) == 0);
+    utassert(b.NearestIndex(400.f) == 2);
 }
 
 // test_scale_band_count: a domain laid out for more bands takes the leading
@@ -361,7 +375,7 @@ static void ScaleBandCount() {
     utassertnear(shortBand.BandWidth(), full.BandWidth());
     utassertnear(shortBand.Step(), full.Step());
     // An empty band resolves past the domain rather than to its last value.
-    utassert(full.Tick(3, &b) && shortBand.LeastIndex(b) == 3);
+    utassert(full.Tick(3, &b) && shortBand.NearestIndex(b) == 3);
     // A single value sits in the first band instead of the center.
     utassert(scale(1).Tick(0, &a) && full.Tick(0, &b) && a == b);
     // A count below the domain's length has no effect.
@@ -434,14 +448,14 @@ static void PlotShapeGeometry() {
     utassertnear(kPlotTextSize, 10.f);
     utassertnear(kPlotTextGap, 2.f);
     utassertnear(kPlotTextHeight, 12.f);
-    Point origin = plot::OriginPoint(3, 4, {10, 20});
+    Point origin = component::plot::OriginPoint(3, 4, {10, 20});
     utassertnear(origin.x, 13.f);
     utassertnear(origin.y, 24.f);
 
     // shape/arc.rs::test_arc_builder and test_arc_centroid.
-    plot::Arc arc = plot::Arc::New();
+    component::plot::Arc arc = component::plot::Arc::New();
     arc.InnerRadius(10)->OuterRadius(20);
-    plot::ArcData arcData = {};
+    component::plot::ArcData arcData = {};
     arcData.value = 1;
     arcData.endAngle = kPi;
     Point centroid = arc.Centroid(arcData);
@@ -450,7 +464,7 @@ static void PlotShapeGeometry() {
 
     // shape/line.rs::test_line_path: accessors resolve every valid datum.
     float lineValues[] = {1, 2, 3};
-    plot::Line line = plot::Line::New();
+    component::plot::Line line = component::plot::Line::New();
     line.Data(lineValues, 3, sizeof(float))->X(PlotFloat)->Y(PlotDouble);
     Point points[3] = {};
     utassert(line.Points({0, 0, 100, 100}, points, 3) == 3);
@@ -459,7 +473,7 @@ static void PlotShapeGeometry() {
 
     // radial_line.rs: noon, three, six and nine o'clock around (50, 50).
     float radialValues[] = {1, 1, 1, 1};
-    plot::RadialLine radial = plot::RadialLine::New();
+    component::plot::RadialLine radial = component::plot::RadialLine::New();
     radial.Data(radialValues, 4, sizeof(float))
         ->Angle(RadialAngle, (void*)(intptr_t)4)
         ->Radius(PlotFloat);
@@ -474,15 +488,15 @@ static void PlotShapeGeometry() {
 
 static void PlotPieArcs() {
     float values[] = {0, 1, 0, 2};
-    plot::Pie pie = plot::Pie::New();
+    component::plot::Pie pie = component::plot::Pie::New();
     pie.Value(PlotFloat);
     Arena* arena = ArenaNew();
-    ArenaVec<plot::ArcData> arcs;
+    ArenaVec<component::plot::ArcData> arcs;
     pie.Arcs(arena, {values, 4, sizeof(float)}, &arcs);
     utassert(len(arcs) == 2);
-    plot::ArcData resolved[2] = {};
+    component::plot::ArcData resolved[2] = {};
     int resolvedCount = 0;
-    for (const plot::ArcData& item : arcs) {
+    for (const component::plot::ArcData& item : arcs) {
         if (resolvedCount < 2) resolved[resolvedCount++] = item;
     }
     if (resolvedCount >= 2) {
@@ -497,9 +511,9 @@ static void PlotPieArcs() {
 }
 
 static void PlotArcContains() {
-    plot::Arc arc = plot::Arc::New();
+    component::plot::Arc arc = component::plot::Arc::New();
     arc.InnerRadius(10.f)->OuterRadius(40.f);
-    plot::ArcData right = {};
+    component::plot::ArcData right = {};
     right.value = 1.f;
     right.startAngle = 0.f;
     right.endAngle = kPi;
@@ -508,28 +522,31 @@ static void PlotArcContains() {
     utassert(!arc.Contains(right, {20.f, 50.f}, bounds));
     utassert(!arc.Contains(right, {55.f, 50.f}, bounds));
     utassert(!arc.Contains(right, {95.f, 50.f}, bounds));
-    utassert(arc.Contains(right, {95.f, 50.f}, bounds, -1, 50.f));
+    // A wider arc reaches the same point.
+    component::plot::Arc wider = component::plot::Arc::New();
+    wider.InnerRadius(10.f)->OuterRadius(50.f);
+    utassert(wider.Contains(right, {95.f, 50.f}, bounds));
     utassert(arc.Contains(right, {50.f, 20.f}, bounds));
     utassert(!arc.Contains(right, {50.f, 80.f}, bounds));
 }
 
 static void PlotHoverReaders() {
-    plot::TooltipState state =
-        plot::TooltipState::New(2, {10.f, 20.f}, nullptr, 0);
-    plot::PlotHover hover;
+    component::plot::TooltipState state =
+        component::plot::TooltipState::New(2, {10.f, 20.f}, nullptr, 0);
+    component::plot::PlotHover hover;
     hover.state = state;
-    hover.focus = 1.f;
+    hover.progress = 1.f;
     hover.hovered = true;
     utassert(hover.State().index == 2);
     utassert(hover.IsHovered());
     utassert(!hover.IsEntering());
 
-    plot::PlotHover entering = hover;
-    entering.focus = 0.f;
+    component::plot::PlotHover entering = hover;
+    entering.progress = 0.f;
     utassert(entering.IsEntering());
 
-    plot::PlotHover lingering = hover;
-    lingering.focus = 0.4f;
+    component::plot::PlotHover lingering = hover;
+    lingering.progress = 0.4f;
     lingering.hovered = false;
     utassert(!lingering.IsHovered());
     utassert(!lingering.IsEntering());
@@ -558,18 +575,18 @@ static bool PlotSalesValue(const void* item, int, Str key, void*, float* out) {
 static void PlotStackSeries() {
     PlotSales values[] = {{10, 20, 30}, {15, 25, 35}};
     Str keys[] = {StrL("apples"), StrL("bananas"), StrL("cherries")};
-    plot::Stack stack = plot::Stack::New();
+    component::plot::Stack stack = component::plot::Stack::New();
     stack.Data(values, 2, sizeof(PlotSales))
         ->Keys(keys, 3)
         ->Value(PlotSalesValue);
     Arena* arena = ArenaNew();
-    ArenaVec<plot::StackSeries> series;
+    ArenaVec<component::plot::StackSeries> series;
     stack.Series(arena, &series);
     utassert(len(series) == 3);
     Str resolvedKeys[3] = {};
-    plot::StackPoint resolvedPoints[3] = {};
+    component::plot::StackPoint resolvedPoints[3] = {};
     int resolvedCount = 0;
-    for (const plot::StackSeries& item : series) {
+    for (const component::plot::StackSeries& item : series) {
         if (resolvedCount >= 3) break;
         resolvedKeys[resolvedCount] = item.key;
         if (item.points.len > 0) {
@@ -589,49 +606,110 @@ static void PlotStackSeries() {
     ArenaDelete(arena);
 }
 
+// axis.rs builder_order_does_not_move_labels: the labels, the line and the
+// side can be set in any order, and a side set after the labels still
+// applies to them.
+static void PlotAxisBuilderOrderDoesNotMoveLabels() {
+    Arena* arena = ArenaNew();
+    component::plot::AxisText labels[2] = {
+        component::plot::AxisText::New(StrL("a"), 10, Rgba{}),
+        component::plot::AxisText::New(StrL("b"), 20, Rgba{}),
+    };
+    labels[1].Align(component::plot::PlotTextAlign::Right);
+    using component::plot::AxisLabelSide;
+    component::plot::PlotAxis first = component::plot::PlotAxis::New(arena);
+    first.XLabel(labels, 2)
+        ->X(50)
+        ->XLabelSide(AxisLabelSide::Start)
+        ->YLabel(labels, 2)
+        ->Y(30)
+        ->YLabelSide(AxisLabelSide::Start);
+    component::plot::PlotAxis last = component::plot::PlotAxis::New(arena);
+    last.XLabelSide(AxisLabelSide::Start)
+        ->X(50)
+        ->XLabel(labels, 2)
+        ->YLabelSide(AxisLabelSide::Start)
+        ->Y(30)
+        ->YLabel(labels, 2);
+    ArenaVec<component::plot::Text> fx = first.XTexts(arena, 50);
+    ArenaVec<component::plot::Text> lx = last.XTexts(arena, 50);
+    ArenaVec<component::plot::Text> fy = first.YTexts(arena, 30);
+    ArenaVec<component::plot::Text> ly = last.YTexts(arena, 30);
+    utassert(fx.len == 2 && lx.len == 2 && fy.len == 2 && ly.len == 2);
+    for (int i = 0; i < fx.len && i < lx.len; i++) {
+        utassert(StrEqI(fx[i].text, lx[i].text));
+        utassertnear(fx[i].origin.x, lx[i].origin.x);
+        utassertnear(fx[i].origin.y, lx[i].origin.y);
+    }
+    for (int i = 0; i < fy.len && i < ly.len; i++) {
+        utassertnear(fy[i].origin.x, ly[i].origin.x);
+        utassertnear(fy[i].origin.y, ly[i].origin.y);
+    }
+    if (fx.len > 0) {
+        utassertnear(fx[0].origin.y, 50.f - component::kPlotTextGap -
+                                         component::kPlotTextHeight);
+    }
+    ArenaDelete(arena);
+}
+
+// axis.rs axis_gutter_fits_default_labels.
+static void PlotAxisGutterFitsDefaultLabels() {
+    utassertnear(gpui::plot::AxisGutter(component::kPlotTextSize), 18.f);
+}
+
 static void PlotBarAndAxisContracts() {
-    utassert(!plot::BarAlignmentIsHorizontal(plot::BarAlignment::Bottom));
-    utassert(plot::BarAlignmentIsHorizontal(plot::BarAlignment::Left));
-    utassertnear(plot::BarAlignmentGradientAngle(plot::BarAlignment::Bottom),
+    utassert(!component::plot::BarAlignmentIsHorizontal(
+        component::plot::BarAlignment::Bottom));
+    utassert(component::plot::BarAlignmentIsHorizontal(
+        component::plot::BarAlignment::Left));
+    utassertnear(component::plot::BarAlignmentGradientAngle(
+                     component::plot::BarAlignment::Bottom),
                  0.f);
-    utassertnear(plot::BarAlignmentGradientAngle(plot::BarAlignment::Top),
+    utassertnear(component::plot::BarAlignmentGradientAngle(
+                     component::plot::BarAlignment::Top),
                  180.f);
-    utassertnear(plot::BarAlignmentGradientAngle(plot::BarAlignment::Left),
+    utassertnear(component::plot::BarAlignmentGradientAngle(
+                     component::plot::BarAlignment::Left),
                  90.f);
-    utassertnear(plot::BarAlignmentGradientAngle(plot::BarAlignment::Right),
+    utassertnear(component::plot::BarAlignmentGradientAngle(
+                     component::plot::BarAlignment::Right),
                  270.f);
-    Point label =
-        plot::BarLabelOrigin(plot::BarAlignment::Bottom, 10, 100, 40, 20);
+    Point label = component::plot::BarLabelOrigin(
+        component::plot::BarAlignment::Bottom, 10, 100, 40, 20);
     utassertnear(label.x, 20.f);
     utassertnear(label.y, 28.f);
-    label = plot::BarLabelOrigin(plot::BarAlignment::Left, 10, 0, 40, 20);
+    label = component::plot::BarLabelOrigin(component::plot::BarAlignment::Left,
+                                            10, 0, 40, 20);
     utassertnear(label.x, 42.f);
     utassertnear(label.y, 15.f);
 
     Arena* arena = ArenaNew();
-    plot::PlotAxis axis = plot::PlotAxis::New(arena);
+    component::plot::PlotAxis axis = component::plot::PlotAxis::New(arena);
     utassert(axis.xAxis && !axis.yAxis);
-    plot::AxisText tick = plot::AxisText::New(StrL("x"), 20, Rgb(1, 2, 3));
-    // Rust resolves labels at builder-call time: a label before x is absent.
-    axis.XLabel(&tick, 1);
-    utassert(axis.xLabel.items.len == 0);
-    axis.X(30)->XLabel(&tick, 1);
-    utassert(axis.xLabel.items.len == 1);
-    if (axis.xLabel.items.len > 0) {
-        const plot::Text& text = axis.xLabel.items[0];
-        utassertnear(text.origin.x, 20.f);
-        utassertnear(text.origin.y, 36.f);
+    component::plot::AxisText tick =
+        component::plot::AxisText::New(StrL("x"), 20, Rgb(1, 2, 3));
+    // Labels are placed when the axis paints, so one given before x still
+    // lands against the line.
+    axis.XLabel(&tick, 1)->X(30);
+    ArenaVec<component::plot::Text> xs = axis.XTexts(arena, axis.x);
+    utassert(xs.len == 1);
+    if (xs.len > 0) {
+        utassertnear(xs[0].origin.x, 20.f);
+        utassertnear(xs[0].origin.y, 36.f);
     }
-    axis.YLabelSide(plot::AxisLabelSide::Start)->Y(12)->YLabel(&tick, 1);
-    utassert(axis.yLabel.items.len == 1);
-    if (axis.yLabel.items.len > 0) {
-        const plot::Text& text = axis.yLabel.items[0];
-        utassertnear(text.origin.x, 10.f);
-        utassertnear(text.origin.y, 15.f);
+    axis.YLabelSide(component::plot::AxisLabelSide::Start)
+        ->Y(12)
+        ->YLabel(&tick, 1);
+    ArenaVec<component::plot::Text> ys = axis.YTexts(arena, axis.y);
+    utassert(ys.len == 1);
+    if (ys.len > 0) {
+        utassertnear(ys[0].origin.x, 10.f);
+        utassertnear(ys[0].origin.y, 15.f);
     }
     ArenaDelete(arena);
 
-    plot::CrossLine cross = plot::CrossLine::New({10, 20});
+    component::plot::CrossLine cross =
+        component::plot::CrossLine::New({10, 20});
     utassert(cross.ShowVertical() && !cross.ShowHorizontal());
     cross.Both()->Span(3, 40)->HSpan(4, 50);
     utassert(cross.ShowVertical() && cross.ShowHorizontal());
@@ -644,9 +722,9 @@ static void PlotBarAndAxisContracts() {
 void TestScale() {
     TestSuite("scale/linear");
     ScaleLinearBasics();
-    ScaleLinearMultipleRange();
+    ScaleLinearUnorderedDomain();
+    ScaleLinearF32();
     ScaleLinearEmpty();
-    ScaleLinearLeastIndexWithDomain();
 
     TestSuite("scale/point");
     ScalePointBasics();
@@ -654,9 +732,10 @@ void TestScale() {
     ScalePointEmpty();
     ScalePointSingle();
     ScalePointTickAtMatchesTick();
-    ScalePointLeastIndexBasic();
-    ScalePointLeastIndexWithOffset();
-    ScalePointLeastIndexDegenerate();
+    ScalePointNearestIndexBasic();
+    ScalePointNearestIndexWithOffset();
+    ScalePointNearestIndexDegenerate();
+    ScalePointReversedRange();
 
     TestSuite("scale/ordinal");
     ScaleOrdinalCycles();
@@ -668,8 +747,10 @@ void TestScale() {
     ScaleBandEmpty();
     ScaleBandPadding();
     ScaleBandSingle();
+    ScaleBandMaxBandWidthCapsTheWidthButNotTheTicks();
+    ScaleBandRangeStart();
     ScaleBandDedup();
-    ScaleBandLeastIndex();
+    ScaleBandNearestIndex();
     ScaleBandCount();
     ScaleBandStep();
 
@@ -683,5 +764,7 @@ void TestScale() {
     PlotArcContains();
     PlotHoverReaders();
     PlotStackSeries();
+    PlotAxisBuilderOrderDoesNotMoveLabels();
+    PlotAxisGutterFitsDefaultLabels();
     PlotBarAndAxisContracts();
 }

@@ -5522,7 +5522,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         // between them coming off each one.
         const float range[2] = {0.f, w};
         component::ScaleBand band = component::ScaleBand::New(n, range, 2)
-                                        .BandCount(c.bandCount);
+                                        .BandCount(c.bandCount)
+                                        .MaxBandWidth(c.maxBandWidth);
         band.paddingInner = c.bandPadding;
         band.paddingOuter = c.bandPaddingOuter;
         float bw = band.BandWidth();
@@ -5678,10 +5679,11 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 const float range[2] = {0.f, w};
                 component::ScaleBand band =
                     component::ScaleBand::New(n, range, 2)
-                        .BandCount(c.bandCount);
+                        .BandCount(c.bandCount)
+                        .MaxBandWidth(c.maxBandWidth);
                 band.paddingInner = c.bandPadding;
                 band.paddingOuter = c.bandPaddingOuter;
-                index = band.LeastIndex(ctx->mouseX - x);
+                index = band.NearestIndex(ctx->mouseX - x);
                 float bx = 0;
                 if (index >= n) {
                     // An empty band, laid out by band_count, has no datum
@@ -5737,7 +5739,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                                                overPlot ? &cursor : nullptr,
                                                &hover, &lingerCursor);
             if (show) {
-                focus = hover.Focus();
+                focus = hover.Progress();
                 index = hover.State().index;
                 if (index < 0) {
                     index = 0;
@@ -5783,7 +5785,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 // marks only, so it keeps up with a cursor it also follows;
                 // each dot glides on both axes. A bar's highlighted band is
                 // PlotHover::glide, the one position it springs.
-                Spring policy = component::ChartPointerSpring(ctx->app)
+                Spring policy = plot::PointerSpring(ctx->app)
                                     .WithTravel(!hover.IsEntering());
                 drawX = motion::spring(
                     &hoverCx,
@@ -5810,7 +5812,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 const float range[2] = {0.f, w};
                 component::ScaleBand band =
                     component::ScaleBand::New(n, range, 2)
-                        .BandCount(c.bandCount);
+                        .BandCount(c.bandCount)
+                        .MaxBandWidth(c.maxBandWidth);
                 band.paddingInner = c.bandPadding;
                 band.paddingOuter = c.bandPaddingOuter;
                 float bw = band.BandWidth();
@@ -5875,7 +5878,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // the gutter beside it, when the bands run down the side.
             const float range[2] = {0.f, w};
             component::ScaleBand band = component::ScaleBand::New(n, range, 2)
-                                            .BandCount(c.bandCount);
+                                            .BandCount(c.bandCount)
+                                            .MaxBandWidth(c.maxBandWidth);
             band.paddingInner = c.bandPadding;
             band.paddingOuter = c.bandPaddingOuter;
             float bx = 0;

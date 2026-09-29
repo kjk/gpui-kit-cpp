@@ -8,6 +8,7 @@
 
 #include "base/theme_tokens.h"
 #include "base/scrollbar.h"
+#include "base/plot.h"
 
 namespace gpui {
 
@@ -51,11 +52,27 @@ struct ResizableTheme {
     bool hasActiveHandle = false;
 };
 
+// PlotTheme: global defaults used by base/plot. `motion` defaults to
+// motionless; styled layers project their own timing, and Base never installs
+// a fade or glide of its own.
+struct PlotTheme {
+    plot::PlotMotion motion = {};
+
+    static PlotTheme New() { return {}; }
+    PlotTheme WithMotion(const plot::PlotMotion& value) const {
+        PlotTheme copy = *this;
+        copy.motion = value;
+        return copy;
+    }
+    const plot::PlotMotion& Motion() const { return motion; }
+};
+
 struct Theme {
     ThemeAppearance appearance = ThemeAppearance::Light;
     SemanticThemeTokens tokens;
     ScrollbarTheme scrollbar = {};
     ResizableTheme resizable = {};
+    PlotTheme plot = {};
 
     // Theme::global clones the installed value or returns Default; global_mut
     // installs Default on first access and returns the application-owned one.

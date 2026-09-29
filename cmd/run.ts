@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "98e566c62f6c28bca1c6949dfd998a752a049a69",
+  sha: "e774d9c3c0e6fdb62b815c82a08ba61a42defa6b",
   date: "2026-09-27",
-  subject: "select: Truncate overflowing option labels with an ellipsis (#3280)",
+  subject: "plot: Move plot primitives to gpui-base (#3258)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

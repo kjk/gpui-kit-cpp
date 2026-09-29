@@ -30,10 +30,10 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
                                  bool hasTitle,
                                  const ChartTooltipSeriesRow* rows, int count);
 
-// The spring a chart's pointer — the crosshair, highlight band or hover
-// dot — follows the hovered datum with. A critically damped fast-tier
-// response, matching ECharts' 200 ms exponential-out axis pointer.
-Spring ChartPointerSpring(const App* app);
+// chart/mod.rs MAX_BAND_WIDTH: the widest a bar or candle is by default, in
+// pixels, however few bands share the width. Base's ScaleBand no longer caps
+// a band; the charts do.
+const float kChartMaxBandWidth = 30;
 // The size of the dot marking the hovered data point.
 const float kChartHoverDotSize = 8;
 // HOVER_HALO_SIZE: the ring behind the hovered dot at full focus; the hover
@@ -384,6 +384,9 @@ struct BarChart {
     // bars as a share of a band, and before the first and after the last.
     float paddingInner = 0.4f;
     float paddingOuter = 0.2f;
+    // max_band_width: the widest a bar is, however few bands share the
+    // width; chart/mod.rs MAX_BAND_WIDTH (30) by default.
+    float maxBandWidth = kChartMaxBandWidth;
     float minLength = 0;
     const Rgba* labelColors = nullptr;
     float radius = 4;
@@ -474,6 +477,9 @@ struct BarChart {
     // Set the gap before the first bar and after the last, as a share of a
     // band. Default 0.2.
     BarChart* PaddingOuter(float v);
+    // Keep every bar at most `width` wide, so a few bars across a wide chart
+    // stay narrow instead of filling their bands. Default 30.
+    BarChart* MaxBandWidth(float width);
     // Draw every bar at least `length` DIPs long, so a zero or tiny value
     // still shows a stub instead of disappearing into the baseline. The stub
     // grows away from the zero line: to the negative side for a negative
@@ -516,6 +522,8 @@ struct CandlestickChart {
     Rgba down = {};
     float padding = 0.3f;
     float bodyWidthRatio = 0.8f;
+    // max_band_width: 30 by default, as for BarChart.
+    float maxBandWidth = kChartMaxBandWidth;
     Str tooltipName = {};
     // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
     // tooltip_value_color.
@@ -560,6 +568,8 @@ struct CandlestickChart {
     CandlestickChart* TickMargin(int n);
     CandlestickChart* Padding(float v);
     CandlestickChart* BodyWidthRatio(float v);
+    // Keep every candle's band at most `width` wide. Default 30.
+    CandlestickChart* MaxBandWidth(float width);
     El* IntoEl();
 };
 

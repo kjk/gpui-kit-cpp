@@ -17,14 +17,14 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "98e566c62f6c28bca1c6949dfd998a752a049a69";
+const pinnedGpuiComponent = "e774d9c3c0e6fdb62b815c82a08ba61a42defa6b";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
 calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
-measure motion nav_stack number_input observe otp_input pagination popover popup positioner
+measure motion nav_stack number_input observe otp_input pagination plot popover popup positioner
 progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion root scroll_bounce sheet slider state_style styled switch table tabs test_support
 text text_boundary text_selection theme theme_tokens time_field toast toolbar touch_selection
@@ -107,6 +107,9 @@ const baseOverrides: Record<string, string[]> = {
     "src/base/input_tokens.cpp",
   ],
   observe: ["src/gpui/gpui.h", "src/gpui/gpui.cpp"],
+  // crates/base/src/plot/ is one C++ file per the naming rule; the Sankey
+  // layout (plot/shape/sankey.rs) keeps the file it already had.
+  plot: ["src/base/plot.h", "src/base/plot.cpp", "src/base/sankey.h", "src/base/sankey.cpp"],
   reduce_motion: ["src/base/lib.h", "src/base/lib.cpp", "src/base/motion.h"],
   scroll_bounce: ["src/base/scroll_bounce.h", "src/base/scroll_bounce.cpp"],
   test_support: ["src/gpui/gpui.h", "tests/AccessibilityTests.cpp"],
@@ -130,7 +133,7 @@ const uiOverrides: Record<string, string[]> = {
   highlighter: ["src/ui/highlighter.h", "src/ui/highlighter.cpp", "src/ui/syntax.h", "src/ui/syntax.cpp"],
   list: ["src/ui/list.h", "src/ui/list.cpp", "src/base/list.h", "src/base/list.cpp"],
   menu: ["src/ui/menu.h", "src/ui/menu.cpp", "src/ui/popup_menu.h", "src/base/popup_menu.h", "src/base/popup_menu.cpp"],
-  plot: ["src/ui/plot.h", "src/ui/plot.cpp", "src/ui/sankey.h", "src/base/sankey.h", "src/base/sankey.cpp"],
+  plot: ["src/ui/plot.h", "src/ui/plot.cpp", "src/ui/sankey.h", "src/base/plot.h"],
   resizable: ["src/ui/resizable.h", "src/ui/resizable.cpp", "src/base/resizable.h", "src/base/resizable.cpp"],
   sheet: ["src/ui/sheet_settings.h", "src/ui/sheet.h", "src/ui/sheet.cpp"],
   // The UI side of text is the faÃƒÂ§ade over Base's: text/mod.rs, compat.rs,
@@ -307,6 +310,7 @@ const testTargets: Record<string, string[]> = {
   "ui/notification": ["tests/NotificationTests.cpp"],
   "ui/pagination": ["tests/PaginationTests.cpp"],
   "ui/plot": ["tests/ScaleTests.cpp", "tests/SankeyTests.cpp", "tests/ChartTests.cpp"],
+  "base/plot": ["tests/ScaleTests.cpp", "tests/SankeyTests.cpp", "tests/ChartTests.cpp"],
   "ui/popover": ["tests/PopupTests.cpp"],
   "ui/progress": ["tests/AccessibilityTests.cpp"],
   "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
@@ -420,27 +424,35 @@ const declarationMappings: Record<string, DeclarationMapping> = {
   "ui/group_box.rs::trait GroupBoxVariants": {
     spellings: ["WithVariant", "Normal", "Fill", "Outline"],
   },
-  "ui/plot/axis.rs::const AXIS_GAP": {
+  "base/plot/axis.rs::const AXIS_GAP": {
     spellings: ["kPlotAxisGap"],
   },
-  "ui/plot/label.rs::const TEXT_GAP": {
+  "base/plot/label.rs::const TEXT_GAP": {
     spellings: ["kPlotTextGap"],
   },
-  "ui/plot/label.rs::const TEXT_HEIGHT": {
+  "base/plot/label.rs::const TEXT_HEIGHT": {
     spellings: ["kPlotTextHeight"],
   },
-  "ui/plot/label.rs::const TEXT_SIZE": {
+  "base/plot/label.rs::const TEXT_SIZE": {
     spellings: ["kPlotTextSize"],
   },
-  "ui/plot/mod.rs::trait Plot": {
+  "base/plot/mod.rs::trait Plot": {
     collapse:
       "C++ uses ChartSeries for the common plot contract and El::customPaint for source-shaped immediate Plot implementations; prepaint children are ordinary El children",
   },
-  "ui/plot/scale.rs::trait Scale": {
+  "base/plot/element.rs::struct PlotElement": {
     collapse:
-      "C++ ScaleLinear, ScalePoint, ScaleBand and ScaleOrdinal expose Tick and LeastIndex directly; templates need no runtime scale trait",
+      "the element behind every plot is the runtime's chart element (a ChartSeries painted by src/gpui) or an El with customPaint; hover tracking is TrackHover called under the chart's id scope",
   },
-  "ui/plot/scale/sealed.rs::trait Sealed": {
+  "base/plot/scale.rs::trait Scale": {
+    collapse:
+      "C++ ScaleLinear, ScalePoint, ScaleBand and ScaleOrdinal expose Tick and NearestIndex directly; templates need no runtime scale trait",
+  },
+  "base/plot/scale.rs::trait PlotValue": {
+    collapse:
+      "the C++ scales and charts take float values, so the sealed f32/f64/Decimal value bound has no C++ representation",
+  },
+  "base/plot/scale/sealed.rs::trait Sealed": {
     collapse:
       "Rust's private sealed-trait gate has no C++ runtime representation; only the four concrete scale types expose the convention",
   },
@@ -585,14 +597,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 494, sha256: "a6b80ba242b4e6b2cb07bbf775bb2a8b57647e1b9948f3e395c59d0293ca4a3c" },
-    "pub-use": { count: 147, sha256: "c40a952fe64c7b13b050b719ccce49d45240ee2a468708982850d02e9b6e0bc7" },
-    test: { count: 1170, sha256: "1d3bc839fd662f5d453a40361df52578b441803632b8db1e4aa7c41a1ba7599e" },
+    declaration: { count: 554, sha256: "e55100608b3731c5f7ff85be232b4ca3f14c75b13a337b8478d61e1d9c31fa07" },
+    "pub-use": { count: 168, sha256: "064346ba72e565110c5e31a2ba6438207f3be94d71cc0e323f1d6e9ef3b66777" },
+    test: { count: 1226, sha256: "30fd26ee159a13430d791678a1e5e26a669bb564033e782262944b5a0bf21e39" },
   },
   ui: {
-    declaration: { count: 483, sha256: "9cb1cfbad2c8dfc853919a53be8da77c2150772a3857425b9075a308f7ca64aa" },
-    "pub-use": { count: 169, sha256: "da4e05c5f3fcd5304bb8a47eac0c9a17ce0822e875cbe5dc0695f3375c1a9615" },
-    test: { count: 668, sha256: "e62d9acf32429366662d7ffb61f9d1d1a4a21244092ae061bbc6f4d835c4c057" },
+    declaration: { count: 431, sha256: "e1c2431662269893d495b1043e402d4a7ab716dd9f6781697f443f87da5598b6" },
+    "pub-use": { count: 155, sha256: "3667f1de7dd581f42479657a856372d4cf530636f5b541ed9cbb365091b3d8b7" },
+    test: { count: 618, sha256: "17e8fdc0b9d6bd16cd3fdb713ef34533fc15c7facc5cd945aa1f6eb741be1428" },
   },
 };
 

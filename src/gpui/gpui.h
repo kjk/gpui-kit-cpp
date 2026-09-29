@@ -1258,7 +1258,7 @@ enum class ChartKind : uint8_t {
     Radar
 };
 
-// plot::StrokeStyle. How a run of points is joined: the Catmull-Rom curve
+// plot::Curve. How a run of points is joined: the Catmull-Rom curve
 // GPUI draws by default, straight segments, or a stair that steps after each
 // point.
 enum class ChartStroke : uint8_t {
@@ -1417,6 +1417,9 @@ struct ChartSeries {
     // bar is.
     float bandPadding = 0.2f;
     float bandPaddingOuter = 0.1f;
+    // max_band_width: the widest a bar or candle is, however few bands share
+    // the width (chart/mod.rs MAX_BAND_WIDTH, 30 by default).
+    float maxBandWidth = 30.f;
     float barRadius = 4;
     BarAlign barAlign = BarAlign::Bottom;
     // Stack: where each bar starts, so a series drawn over another one sits

@@ -65,11 +65,6 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
     return tooltip;
 }
 
-Spring ChartPointerSpring(const App* app) {
-    float ms = ThemeNow(app).motion.durationFastMs;
-    return Spring::New(ms).WithEpsilon(0.1f);
-}
-
 uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     uint32_t site =
         IdFoldName(cx ? cx->path : 0, Str((char*)(file ? file : "")));
@@ -428,6 +423,10 @@ BarChart* BarChart::PaddingOuter(float v) {
     paddingOuter = v;
     return this;
 }
+BarChart* BarChart::MaxBandWidth(float width) {
+    maxBandWidth = width;
+    return this;
+}
 BarChart* BarChart::MinLength(float length) {
     minLength = length;
     return this;
@@ -529,6 +528,7 @@ El* BarChart::IntoEl() {
     chart->barFillTo = gradientTo;
     chart->bandPadding = paddingInner;
     chart->bandPaddingOuter = paddingOuter;
+    chart->maxBandWidth = maxBandWidth;
     chart->barMinLength = minLength;
     chart->barLabelColors = labelColors;
     chart->barRadius = radius;
@@ -626,6 +626,10 @@ CandlestickChart* CandlestickChart::BodyWidthRatio(float v) {
     bodyWidthRatio = v;
     return this;
 }
+CandlestickChart* CandlestickChart::MaxBandWidth(float width) {
+    maxBandWidth = width;
+    return this;
+}
 CandlestickChart* CandlestickChart::TooltipTitle(ChartTooltipTitleFn fn,
                                                  void* user) {
     tooltipContent.title = fn;
@@ -659,6 +663,7 @@ El* CandlestickChart::IntoEl() {
     chart->down = down;
     chart->bandPadding = padding;
     chart->bandPaddingOuter = padding * 0.5f;
+    chart->maxBandWidth = maxBandWidth;
     chart->bodyWidthRatio = bodyWidthRatio;
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
@@ -1126,22 +1131,21 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
     Point lingerCursor = {};
     // interactive(false): no hitbox, so nothing is hovered or lifted.
     if (ctx->window && ctx->app && p->interactive) {
-        plot::Arc hit = plot::Arc::New();
-        hit.InnerRadius(p->innerRadius)->OuterRadius(ring);
         Bounds bounds = {e->x, e->y, e->w, e->h};
         Point local = {ctx->mouseX - e->x, ctx->mouseY - e->y};
         // Hit-test in pie angles using the same start/end as Arc::Contains.
         float pieAngle = 0;
         for (int i = 0; i < p->slices.len; i++) {
-            plot::ArcData ad = {};
-            ad.index = i;
-            ad.value = p->slices[i].value;
-            ad.startAngle = pieAngle;
             float sweep = 2.f * kPi * (p->slices[i].value / total);
-            ad.endAngle = pieAngle + sweep;
+            plot::ArcData ad = plot::ArcData::New(
+                nullptr, i, p->slices[i].value, pieAngle, pieAngle + sweep);
             ad.padAngle = p->padAngle;
-            if (hit.Contains(ad, local, bounds, p->innerRadius,
-                             ring - p->slices[i].outerInset)) {
+            // Each slice is its own Arc at its own radii, as pie_chart.rs
+            // builds one per slice now that Arc takes no radius overrides.
+            plot::Arc hit = plot::Arc::New();
+            hit.InnerRadius(p->innerRadius)
+                ->OuterRadius(ring - p->slices[i].outerInset);
+            if (hit.Contains(ad, local, bounds)) {
                 hoverIndex = i;
             }
             pieAngle += sweep;
@@ -1159,7 +1163,7 @@ static void PaintPie(PaintCtx* ctx, El* e, void* user) {
         if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
-            focus = hover.Focus();
+            focus = hover.Progress();
             hoverIndex = hover.State().index;
             lingerCursor = linger;
         } else {
@@ -1481,7 +1485,7 @@ static void PaintSankey(PaintCtx* ctx, El* e, void* user) {
         if (plot::TrackHover(&idCx, livePtr,
                              hoverIndex >= 0 ? &cursor : nullptr, &hover,
                              &linger)) {
-            focus = hover.Focus();
+            focus = hover.Progress();
             hoverIndex = hover.State().index;
             lingerCursor = linger;
         } else {

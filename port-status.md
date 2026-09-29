@@ -15,11 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `98e566c62f6c28bca1c6949dfd998a752a049a69` (2026-09-27,
-select: Truncate overflowing option labels with an ellipsis (#3280)). A
-searchable list row truncates an overflowing option label with an ellipsis and
-keeps its check icon in the row. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `e774d9c3c0e6fdb62b815c82a08ba61a42defa6b` (2026-09-27,
+plot: Move plot primitives to gpui-base (#3258)). Plot primitives (scales,
+shapes, axes, grids, labels, hover tracking) moved from src/ui/plot to
+src/base/plot, with PlotMotion projected onto the Base theme; ScaleBand no
+longer caps bands, the bar and candlestick charts do (max_band_width 30), axis
+labels are placed at paint time, and StrokeStyle is Curve. The current update
+target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -131,6 +133,13 @@ keeps its check icon in the row. The current update target is
   no tooltip — so it has none of the tooltip builders, and the stacked bar
   story is four overlaid BarCharts rather than a custom `Plot`, so it has no
   `plain_row` total.
+- **Base plot values are float and gradient strokes are solid.** The scales
+  take `float` domains, so Rust's `PlotValue` bound (f32, f64, Decimal) has
+  no counterpart, and a range is a pointer and count read as its first two
+  entries. `PlotAxis` and `Grid` lines and a line's dots take a
+  `Background`, but the runtime draws lines and ellipses with one color, so
+  a gradient paints its first stop. There is no `PlotElement`: charts track
+  hover with `TrackHover` under their own id scope (`src/base/plot.cpp`).
 - **No text alignment on an element.** `text_center()` / `text_right()` have
   no counterpart, so a wrapped centered or trailing Marker label keeps its
   lines at the leading edge; a single run is placed by the flex box instead
