@@ -15,9 +15,9 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `501cdbaafb363c882c0a9102fa4a2d110655609a` (2026-09-28, kit:
-Update GPUI to gpui-pre 0.3.7 (#3283)). gpui-kit moved every gpui-pre package
-to 0.3.7; the GPUI reference is Zed 1a28cff4b409. The current update target is
+Processed through `0c830f4d257e69fdd17200650533ab4ca9a40cc0` (2026-09-28, Bump
+v0.7.0). The workspace crates move to 0.7.0; the story's title bar reads
+v0.7.0. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
