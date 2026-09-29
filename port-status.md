@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `89e628fa0b407e6b6f40a901377fa7295cb46189` (2026-09-22,
-chart: Let a chart stand down, and let its tooltip say what it means (#3176)).
-Every chart can stand its interactive layer down, pies and sankeys name and
-value the hovered datum's tooltip row, and every plot tooltip reads at the
-compact text size. The current update target is
+Processed through `c03c97f274b3c5d465b5697ef0ad29d77c3a62fd` (2026-09-22,
+website: Add docs for GPUI action, event (#3179)). Website documentation for
+GPUI actions and events; only the README the story's Introduction page renders
+is copied. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
