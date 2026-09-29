@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "872d6c419e5e8d82f2b5136b104f56d44e421023",
+  sha: "5059de47a6560fdbe24e32cd91b45d6aa6849695",
   date: "2026-09-27",
-  subject: "text_view: Avoid quadratic Markdown source mapping (#3273)",
+  subject: "docs(input): context_menu(false) also turns off a custom menu (#3275)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

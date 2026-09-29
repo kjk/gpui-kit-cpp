@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `872d6c419e5e8d82f2b5136b104f56d44e421023` (2026-09-27,
-text_view: Avoid quadratic Markdown source mapping (#3273)). Markdown source
-mapping decodes an entity once per cursor, measures a run of blanks once, and
-indexes the source after the first missing character, so aligning a long node
-stays linear. The current update target is
+Processed through `5059de47a6560fdbe24e32cd91b45d6aa6849695` (2026-09-27,
+docs(input): context_menu(false) also turns off a custom menu (#3275)).
+Upstream only documented that context_menu(false) also turns off a custom
+right-click menu. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
