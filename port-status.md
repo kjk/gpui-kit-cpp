@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ce9267130ae030db4fc3bdec263212a0ab16045c` (2026-09-23,
-markdown: Fix Markdown ordered-list starting numbers (#3204)). Ordered-list
-markers follow the list's own start through the nested letter styles, and a
-nested list starting at 0 keeps decimal markers; the start already reached
-this tree's list model. The current update target is
+Processed through `6c5d2e75e22afbeb757847d9ad6d8da6d9385d15` (2026-09-24,
+select: Stop the popup from overhanging the trigger on the right (#3218)). The
+Select and Combobox popup takes the trigger's own width instead of 2px more,
+so it no longer overhangs the trigger on the right now that the popover ring
+is drawn outside the surface. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

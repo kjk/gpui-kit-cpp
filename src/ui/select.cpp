@@ -582,7 +582,10 @@ El* Select::IntoEl() {
             SearchableList::New(cx, StrL("list"), state, query)
                 ->InSelect(true)
                 ->Items(items, nItems)
-                ->W(menuWidth > 0 ? menuWidth : (width > 0 ? width + 2 : 242))
+                // Length::Auto is the trigger's own width: the popover ring
+                // is drawn outside the surface, so the surface no longer
+                // widens by 2 to cover a border of its own.
+                ->W(menuWidth > 0 ? menuWidth : (width > 0 ? width : 240))
                 ->CheckIcon(checkIcon)
                 ->WithSize(size);
         if (sections) {
