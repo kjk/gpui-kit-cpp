@@ -20,6 +20,7 @@ struct FormStory {
     InputState email;
     // TextareaState: the same engine, told it spans more than one line.
     InputState bio;
+    Entity<ColorPickerState> color = {};
     // Rust binds both the switch and the checkbox to this one field.
     bool subscribe = false;
     bool horizontal = false;
@@ -76,6 +77,11 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
                       StrL("Hello \xe4\xb8\x96\xe7\x95\x8c\xef\xbc\x8cthis "
                            "is GPUI Kit."));
         InputSetPlaceholder(&self->email, StrL("Enter text here..."));
+        // default_value(indigo_500())
+        self->color = ColorPickerStateNew(cx);
+        if (ColorPickerState* state = self->color.Get(cx)) {
+            ColorPickerSetValue(state, 0x6366f1);
+        }
     }
     if (self->name.focused) {
         cx->win->input = &self->name;
@@ -143,11 +149,10 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
                                ->OnClick(Listen(cx, &ToggleSubscribe))
                                ->IntoEl())
             ->LabelIndent(!self->horizontal || !self->twoColumns)
-            ->Field(Str{}, component::ColorPicker::New(cx, StrL("form-color"))
-                               ->WithSize(UiSize::Small)
-                               ->Label(StrL("Theme color"))
-                               ->IntoEl())
-            ->LabelIndent(!self->horizontal || !self->twoColumns)
+            ->Field(StrL("Theme color"),
+                    component::ColorSelect::New(cx, self->color)
+                        ->WithSize(self->toolbar.size)
+                        ->IntoEl())
             ->Field(Str{}, component::Checkbox::New(cx, StrL("future-events"))
                                ->Label(StrL("Use this color for future "
                                             "events"))

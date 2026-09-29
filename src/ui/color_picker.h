@@ -31,6 +31,12 @@ struct ColorPicker {
     // subscribe to ColorPickerEvent on `state`.
     Listener onChange;
     Entity<ColorPickerState> state = {};
+    // Draws the trigger as a framed field, see ColorSelect.
+    bool field = false;
+    Str placeholder = {};
+    // Styled: the refinements land on the picker's root.
+    Style style = {};
+    uint32_t styleSet = 0;
 
     static ColorPicker* New(Ctx* cx, Str id);
     static ColorPicker* New(Ctx* cx, Entity<ColorPickerState> state);
@@ -43,6 +49,32 @@ struct ColorPicker {
     ColorPicker* WithSize(UiSize s);
     ColorPicker* FeaturedColors(const uint32_t* colors, int n);
     ColorPicker* OnChange(Listener fn);
+    ColorPicker* Refine(const Style& s, uint32_t fields);
+    // Focusable: the state's own handle.
+    FocusHandle FocusHandleOf(Ctx* cx) const;
+    El* IntoEl();
+};
+
+// A color picker drawn as a framed field, like a Select.
+//
+// The field shows a swatch of the current color and its hex value; clicking
+// anywhere on it opens the same popover as ColorPicker. Use it in forms,
+// where a control is expected to share the height and frame of the inputs
+// around it; use ColorPicker for a compact swatch in a toolbar.
+struct ColorSelect {
+    ColorPicker* picker = nullptr;
+
+    static ColorSelect* New(Ctx* cx, Entity<ColorPickerState> state);
+    // Set the featured colors shown at the top of the palette.
+    ColorSelect* FeaturedColors(const uint32_t* colors, int n);
+    // Set the text shown while no color is selected. Default is the same
+    // placeholder as Select.
+    ColorSelect* Placeholder(Str s);
+    // Set the name a screen reader announces.
+    ColorSelect* AccessibilityLabel(Str s);
+    ColorSelect* WithSize(UiSize s);
+    ColorSelect* Refine(const Style& s, uint32_t fields);
+    FocusHandle FocusHandleOf(Ctx* cx) const;
     El* IntoEl();
 };
 

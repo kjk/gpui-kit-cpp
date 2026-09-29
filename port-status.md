@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5a3892ce7fb23f056462b9391b4e523a8a5f3623` (2026-09-28,
-base: Gate GlobalState's Instant by target to fix a wasm touch panic (#3271)).
-GlobalState's touch clock uses web_time::Instant on wasm, fixing a panic on
-touch input there; the port has no such clock and reads time through its
-platform layer, so nothing changed. The current update target is
+Processed through `17b2c6a269c3de51a2f0dc97d49f87f0dd9d6571` (2026-09-28,
+color_picker: Add ColorSelect, a framed field that opens the picker (#3289)).
+ColorSelect lands: a color picker drawn as a Select-like framed field (swatch,
+hex value, caret) that opens the same popover, with a Color Select story
+section and the Form story's theme color using it; ColorPicker now applies its
+Styled refinements to its root. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

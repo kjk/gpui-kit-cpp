@@ -204,6 +204,84 @@ static void ConfirmTogglesAndCancelDismisses() {
     KeymapClear();
 }
 
+// crates/component/src/color_picker.rs test_color_select_builder: the
+// builder sets the field flag, and its size, placeholder, name and featured
+// colors reach the picker underneath.
+static void ColorSelectBuilder() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    Entity<ColorPickerState> state = ColorPickerStateNew(&cx);
+    static const uint32_t kFeatured[] = {0xff0000};
+    component::ColorSelect* select =
+        component::ColorSelect::New(&cx, state)
+            ->WithSize(UiSize::Large)
+            ->Placeholder(StrL("Pick a color"))
+            ->AccessibilityLabel(StrL("Theme color"))
+            ->FeaturedColors(kFeatured, 1);
+    utassert(select->picker->field);
+    utassert(select->picker->size == UiSize::Large);
+    utassert(StrEq(select->picker->placeholder, "Pick a color"));
+    utassert(StrEq(select->picker->accessibilityLabel, "Theme color"));
+    utassert(select->picker->nFeatured == 1);
+
+    EntityDropAll(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
+static const El* ClickTargetAt(const El* e, float x, float y) {
+    if (!e) {
+        return nullptr;
+    }
+    for (const El* c = e->first; c; c = c->next) {
+        if (const El* hit = ClickTargetAt(c, x, y)) {
+            return hit;
+        }
+    }
+    if (e->listener.IsValid() && e->Bounds().Contains({x, y})) {
+        return e;
+    }
+    return nullptr;
+}
+
+// color_picker.rs a_click_anywhere_on_the_color_select_opens_the_picker:
+// Rust clicks far from the swatch, where only the field frame can take the
+// click. There is no simulated click here, so the check is the one under
+// it: the element holding the open toggle spans the whole 400px field, and
+// the toggle it holds opens the picker.
+static void AClickAnywhereOnTheColorSelectOpensThePicker() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    Entity<ColorPickerState> state = ColorPickerStateNew(&cx);
+    El* page = Div(arena)->W(400)->Child(component::ColorSelect::New(&cx, state)
+                                             ->IntoEl());
+    LayoutEl(nullptr, page, 0, 0, 400, 400, 14, Rgba{});
+    ColorPickerState* s = state.Get(&app);
+    utassert(s && !s->open);
+
+    const El* target = ClickTargetAt(page, 300, 16);
+    utassert(target != nullptr);
+    utassertnear(target->w, 400.f);
+    utassertnear(target->h, 32.f);
+    ClickEvent click = {};
+    ColorPickerState::OnToggleOpen(s, &cx, &click);
+    utassert(s->open);
+
+    EntityDropAll(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestColorPicker() {
     TestSuite("color_picker");
     APreviewHidesTheValueWithoutReplacingIt();
@@ -215,4 +293,6 @@ void TestColorPicker() {
     NoValueAndNoPreviewShowsNothing();
     RetainedSlidersEmitTypedChanges();
     ConfirmTogglesAndCancelDismisses();
+    ColorSelectBuilder();
+    AClickAnywhereOnTheColorSelectOpensThePicker();
 }

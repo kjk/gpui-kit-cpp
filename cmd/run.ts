@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "5a3892ce7fb23f056462b9391b4e523a8a5f3623",
+  sha: "17b2c6a269c3de51a2f0dc97d49f87f0dd9d6571",
   date: "2026-09-28",
-  subject: "base: Gate GlobalState's Instant by target to fix a wasm touch panic (#3271)",
+  subject: "color_picker: Add ColorSelect, a framed field that opens the picker (#3289)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

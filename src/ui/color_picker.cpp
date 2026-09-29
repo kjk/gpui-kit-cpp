@@ -1,6 +1,7 @@
 #include "ui/i18n.h"
 #include "ui/color_picker.h"
 #include "ui/theme.h"
+#include "ui/select.h"
 
 namespace gpui {
 
@@ -56,6 +57,53 @@ ColorPicker* ColorPicker::FeaturedColors(const uint32_t* colors, int n) {
 ColorPicker* ColorPicker::OnChange(Listener fn) {
     onChange = fn;
     return this;
+}
+ColorPicker* ColorPicker::Refine(const Style& s, uint32_t fields) {
+    StyleApplyFields(&style, s, fields);
+    styleSet |= fields;
+    return this;
+}
+FocusHandle ColorPicker::FocusHandleOf(Ctx* ctx) const {
+    Entity<ColorPickerState> st =
+        state.IsValid() ? state : ColorPickerStateFor(ctx, id);
+    ColorPickerState* s = st.Get(ctx);
+    return s ? s->focus : FocusHandle{};
+}
+
+ColorSelect* ColorSelect::New(Ctx* cx, Entity<ColorPickerState> state) {
+    ColorSelect* c = ArenaNew<ColorSelect>(cx->a);
+    c->picker = ColorPicker::New(cx, state);
+    // ("color-select", state.entity_id())
+    c->picker->id =
+        StrDup(cx->a, fmt("color-select-%d-%u", state.id.index, state.id.gen));
+    c->picker->field = true;
+    return c;
+}
+ColorSelect* ColorSelect::FeaturedColors(const uint32_t* colors, int n) {
+    picker->FeaturedColors(colors, n);
+    return this;
+}
+ColorSelect* ColorSelect::Placeholder(Str s) {
+    picker->placeholder = s;
+    return this;
+}
+ColorSelect* ColorSelect::AccessibilityLabel(Str s) {
+    picker->AccessibilityLabel(s);
+    return this;
+}
+ColorSelect* ColorSelect::WithSize(UiSize s) {
+    picker->WithSize(s);
+    return this;
+}
+ColorSelect* ColorSelect::Refine(const Style& s, uint32_t fields) {
+    picker->Refine(s, fields);
+    return this;
+}
+FocusHandle ColorSelect::FocusHandleOf(Ctx* cx) const {
+    return picker->FocusHandleOf(cx);
+}
+El* ColorSelect::IntoEl() {
+    return picker->IntoEl();
 }
 
 // ─── the palette ──────────────────────────────────────────────────────────
@@ -234,6 +282,59 @@ static El* SliderPanel(Ctx* cx, Entity<ColorPickerState> st) {
     return panel;
 }
 
+// ColorPickerButton::render_field: the framed trigger of a ColorSelect — the
+// swatch, the hex value and a caret, laid out like a Select trigger. Rust
+// reads the committed value here, not the preview.
+static El* ColorFieldTrigger(Ctx* cx, const ColorPickerState* s, UiSize size,
+                             Str placeholder, bool outlineVisible) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    // input_style(false, cx)
+    El* field = Div(a)
+                    ->FlexRow()
+                    ->ItemsCenter()
+                    ->W(kFill)
+                    ->Gap(8)
+                    ->Bg(th.inputBg)
+                    ->Fg(th.foreground)
+                    ->Radius(th.radius)
+                    ->Border(1, outlineVisible ? th.ring : th.inputBorder);
+    UiInputTextSize(UiInputSize(field, size), size);
+    float sw = 16;
+    if (size == UiSize::XSmall) {
+        sw = 12;
+    } else if (size == UiSize::Small) {
+        sw = 14;
+    } else if (size == UiSize::Large) {
+        sw = 20;
+    }
+    El* swatch = Div(a)->W(sw)->H(sw)->Shrink0()->Radius(th.radius / 2.f);
+    if (s->hasValue) {
+        Rgba value = RgbaHex(s->value);
+        swatch->Bg(value)->Border(1, RgbaDarken(value, 0.3f));
+    } else {
+        swatch->Border(1, th.inputBorder);
+    }
+    field->Child(swatch);
+    // flex_1().min_w_0().overflow_hidden().whitespace_nowrap(); a TextEl
+    // does not wrap unless asked to.
+    El* text = Div(a)->Flex1()->MinW(0)->ClipX();
+    float font = UiInputFontPx(size);
+    if (s->hasValue) {
+        text->Child(TextEl(a, RgbaToHex(a, RgbaHex(s->value)))
+                        ->Font(font)
+                        ->Fg(th.foreground));
+    } else {
+        text->Child(
+            TextEl(a, placeholder.s ? placeholder : Tr("Select.placeholder"))
+                ->Font(font)
+                ->Fg(th.mutedFg));
+    }
+    field->Child(text);
+    field->Child(Caret::New(size).TextColor(th.mutedFg).IntoEl(a));
+    return field;
+}
+
 // ─── the whole thing ──────────────────────────────────────────────────────
 
 El* ColorPicker::IntoEl() {
@@ -263,8 +364,17 @@ El* ColorPicker::IntoEl() {
     } else if (size == UiSize::XSmall) {
         sq = 16;
     }
-    El* trigger = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
-    if (icon != IconName::None) {
+    bool focused =
+        s->focus.IsValid() && FocusHandleIsFocused(cx->win, s->focus);
+    El* trigger = nullptr;
+    if (field) {
+        trigger = ColorFieldTrigger(cx, s, size, placeholder, focused);
+    } else {
+        trigger = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+    }
+    if (field) {
+        // The field is the whole trigger.
+    } else if (icon != IconName::None) {
         trigger->Child(IconEl(a, icon, UiIconPx(size)));
     } else {
         trigger->Child(Div(a)
@@ -279,7 +389,7 @@ El* ColorPicker::IntoEl() {
                            ->Border(1, hasShown ? RgbaDarken(shown, 0.3f)
                                                 : th.inputBorder));
     }
-    if (label.s) {
+    if (label.s && !field) {
         trigger->Child(TextEl(a, label)->Font(16)->Fg(th.foreground));
     }
     BindClick(trigger, StrL("trigger"),
@@ -341,12 +451,26 @@ El* ColorPicker::IntoEl() {
     // is what left the popover with nothing named above it.
     // The explicit name wins over the visible label.
     Str name = accessibilityLabel.s ? accessibilityLabel : label;
+    El* popover =
+        Popup::New(cx, StrL("popover"), trigger)->Content(pop)->IntoEl();
     El* root = gpui::ColorPicker::New(
                    cx, id, s->open, false, name, AccessibilityRole::Button,
                    ListenTo(st, &ColorPickerState::OnOpenChange), s->focus)
-                   ->Child(Popup::New(cx, StrL("popover"), trigger)
-                               ->Content(pop)
-                               ->IntoEl());
+                   ->Child(popover);
+    if (field) {
+        // .when(self.field, w_full) on the picker and trigger_style(w_full)
+        // on the popover, so a click anywhere on the field opens it.
+        root->W(kFill);
+        popover->W(kFill);
+        // focus_ring_style on the field. The focus handle is tracked by the
+        // picker's root, whose bounds are the field's, so the outer ring is
+        // drawn there with the field's radius; the field takes the ring
+        // border itself above.
+        root->Radius(th.radius)->FocusRing(true);
+    }
+    if (styleSet) {
+        root->Refine(style, styleSet);
+    }
     return root;
 }
 

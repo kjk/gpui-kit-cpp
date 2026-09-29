@@ -3,6 +3,8 @@
 struct ColorPickerStory {
     // Rust owns this state entity and subscribes to ColorPickerEvent::Change.
     Entity<ColorPickerState> color = {};
+    Entity<ColorPickerState> selectColor = {};
+    Entity<ColorPickerState> emptySelectColor = {};
     Subscription subscription = {};
     uint32_t shown = 0x6366f1;
     bool seeded = false;
@@ -33,6 +35,11 @@ static void InitializeStory(ColorPickerStory* self, Ctx* cx) {
     if (ColorPickerState* state = self->color.Get(cx)) {
         ColorPickerSetValue(state, 0x6366f1);
     }
+    self->selectColor = ColorPickerStateNew(cx);
+    if (ColorPickerState* state = self->selectColor.Get(cx)) {
+        ColorPickerSetValue(state, 0x6366f1);
+    }
+    self->emptySelectColor = ColorPickerStateNew(cx);
     self->subscription =
         Subscribe(cx, self->color, &ColorPickerStory::OnChange);
 }
@@ -73,7 +80,9 @@ El* ColorPickerStory::Render(ColorPickerStory* self, Ctx* cx) {
     text->Child(StoryTxt(cx, StrL("Used for primary actions and highlights."),
                          14, th.mutedFg));
     head->Child(text);
-    head->Child(component::ColorPicker::New(cx, self->color)->IntoEl());
+    head->Child(component::ColorPicker::New(cx, self->color)
+                    ->WithSize(self->toolbar.size)
+                    ->IntoEl());
     card->Child(head);
 
     // The preview: the color over a muted footer naming its hex.
@@ -105,6 +114,21 @@ El* ColorPickerStory::Render(ColorPickerStory* self, Ctx* cx) {
 
     StorySectionAdd(sec, card);
     page->Child(sec);
+
+    El* selectSec = StorySection(cx, "Color Select",
+                                 "A framed field for forms: the whole field "
+                                 "opens the picker, like a Select.");
+    StorySectionBody(selectSec)->W(440);
+    El* selects = Div(a)->FlexCol()->W(kFill)->Gap(12);
+    selects->Child(component::ColorSelect::New(cx, self->selectColor)
+                       ->WithSize(self->toolbar.size)
+                       ->IntoEl());
+    selects->Child(component::ColorSelect::New(cx, self->emptySelectColor)
+                       ->WithSize(self->toolbar.size)
+                       ->Placeholder(StrL("Pick a color"))
+                       ->IntoEl());
+    StorySectionAdd(selectSec, selects);
+    page->Child(selectSec);
     return page;
 }
 
