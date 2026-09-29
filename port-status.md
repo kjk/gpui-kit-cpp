@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `73e421f7862bf6f83c2f242ac4f05353987d9e8b` (2026-09-27,
-base: Center the Dialog popup by default and keep presses on it (#3277)). The
-base Dialog and AlertDialog hosts center their popup by default, and the popup
-parts occlude so a press on them never reaches the backdrop. The current
-update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `f197a197888833312a0fa8109e3c01ad6fc29913` (2026-09-27,
+base: Center a single-line Input in its frame by default (#3278)). A
+single-line Input fills its frame and centers its line, so the frame needs no
+layout of its own; the showcase drops its frames' centering and draws its
+chevrons as paths. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

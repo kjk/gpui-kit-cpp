@@ -203,6 +203,7 @@ inline Str DupFmt(Ctx* cx, const char* format, const TArgs&... args) {
 El* ScTxt(Ctx* cx, Str s, float px, Rgba c);
 El* ScBtnGhost(Ctx* cx, int id, Listener onClick, Str label);
 El* ScComingSoon(Ctx* cx, const char* name);
+El* ScChevron(Ctx* cx, bool up, Rgba color);
 
 El* ShowcaseOverview(ShowcaseApp* app, Ctx* cx);
 El* ShowcaseCalendarGrid(ShowcaseApp* app, Ctx* cx);

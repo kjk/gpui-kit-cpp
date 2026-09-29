@@ -446,10 +446,15 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
 
     // The row fills its field, so a press to the right of the text still
     // lands on the editor — Rust's InputElement takes the whole content box.
+    // A single line fills the frame and sits at its vertical center, so the
+    // frame needs no layout of its own to hold it (state.rs `h_full()` and
+    // `flex().items_center()`). The minimum is the line: Rust's TextElement
+    // always asks for one, where an empty row here would collapse.
     El* row = Div(a)
                   ->FlexRow()
                   ->ItemsCenter()
-                  ->H(kInputLineH)
+                  ->H(kFill)
+                  ->MinH(kInputLineH)
                   ->Flex1()
                   ->BindInput(state);
     if (style.align == 1) {

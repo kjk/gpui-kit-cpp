@@ -27,7 +27,6 @@ static El* ToolbarCommand(ShowcaseApp*, Ctx* cx, const char* id, int ix) {
         ->OnClick(Listen(cx, &OnToolbarCommand, (intptr_t)ix))
         ->H(28)
         ->PadX(8)
-        ->ItemsCenter()
         ->Border(1, ScBorder())
         ->HoverBg(ExampleRgb(0xf5f5f5))
         ->AriaLabel(label)
@@ -67,7 +66,6 @@ El* ShowcaseToolbar(ShowcaseApp* app, Ctx* cx) {
                 ->W(160)
                 ->H(28)
                 ->PadX(8)
-                ->ItemsCenter()
                 ->Border(1, app->toolbarSearch.focused ? ScInk() : ScBorder())
                 ->Child(Input::New(cx, &app->toolbarSearch)));
     Str action =

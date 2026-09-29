@@ -72,28 +72,26 @@ El* ShowcaseColorPicker(ShowcaseApp* app, Ctx* cx) {
     if (!app->hexIn.focused) {
         WriteHex(app, shown);
     }
-    El* trigger = Div(a)
-                      ->Id(StrL("color-trigger"))
-                      ->H(28)
-                      ->PadX(8)
-                      ->ItemsCenter()
-                      ->Gap(8)
-                      ->Border(1, ExampleRgb(0x171717))
-                      ->Bg(ExampleRgb(0xffffff))
-                      ->OnClick(Listen(cx, &ToggleColor))
-                      ->FocusId(HashClickId(StrL("color-trigger")))
-                      ->Child(Div(a)
-                                  ->W(14)
-                                  ->H(14)
-                                  ->Bg(FromHex(shown))
-                                  ->Border(1, ExampleRgb(0x171717)))
-                      ->Child(TextEl(a, InputValue(&app->hexIn))
-                                  ->Font(12)
-                                  ->Fg(ExampleRgb(0x171717)))
-                      ->Child(Div(a)->Flex1())
-                      ->Child(TextEl(a, app->colorOpen ? StrL("⌃") : StrL("⌄"))
-                                  ->Font(12)
-                                  ->Fg(ExampleRgb(0x171717)));
+    El* trigger =
+        Div(a)
+            ->Id(StrL("color-trigger"))
+            ->H(28)
+            ->PadX(8)
+            ->Gap(8)
+            ->Border(1, ExampleRgb(0x171717))
+            ->Bg(ExampleRgb(0xffffff))
+            ->OnClick(Listen(cx, &ToggleColor))
+            ->FocusId(HashClickId(StrL("color-trigger")))
+            ->Child(Div(a)
+                        ->W(14)
+                        ->H(14)
+                        ->Bg(FromHex(shown))
+                        ->Border(1, ExampleRgb(0x171717)))
+            ->Child(TextEl(a, InputValue(&app->hexIn))
+                        ->Font(12)
+                        ->Fg(ExampleRgb(0x171717)))
+            ->Child(Div(a)->Flex1())
+            ->Child(ScChevron(cx, app->colorOpen, ExampleRgb(0x171717)));
     El* pop = nullptr;
     if (app->colorOpen) {
         pop = Div(a)
@@ -123,7 +121,6 @@ El* ShowcaseColorPicker(ShowcaseApp* app, Ctx* cx) {
                        ->W(204)
                        ->H(28)
                        ->PadX(8)
-                       ->ItemsCenter()
                        ->Border(1, ExampleRgb(0xd4d4d4))
                        ->Child(Input::New(cx, &app->hexIn)));
     }

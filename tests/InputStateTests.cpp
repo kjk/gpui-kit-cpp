@@ -3922,6 +3922,34 @@ static void TheThreeInputBuildersInstallPasteInterception() {
     delete win;
 }
 
+// state.rs single_line_is_centered_in_a_taller_frame: the frame is laid out
+// by the application, which should not have to center a single line in it.
+static void SingleLineIsCenteredInATallerFrame() {
+    App app = {};
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+
+    InputState state;
+    InputSetValue(&state, StrL("a"));
+    El* line = gpui::Input::New(&cx, &state);
+    El* frame = InputBase::New(&cx, StrL("frame"), true)->H(60)->Child(line);
+    El* page = Div(arena)->FlexCol()->W(400)->H(100)->Child(frame);
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    LayoutEl(&win->paint, page, 0, 0, 400, 100, th.fontSize, th.foreground);
+    utassertnear(line->y + line->h / 2, 30.f);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 // state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
 // clipboard must not replace the selection with nothing. Rust drives it
 // through the Paste action and a test clipboard; the insert is the seam here,
@@ -4532,6 +4560,7 @@ void TestInputState() {
     IndentationPatternsMatchPythonRules();
     GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
+    SingleLineIsCenteredInATallerFrame();
     PasteWithoutTextLeavesTheSelectionAlone();
     PasteTargetTracksEditsAndSelections();
     UnfoldingAtAPositionOpensExactlyWhatHidesIt();

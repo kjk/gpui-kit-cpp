@@ -25,7 +25,6 @@ El* ShowcaseInput(ShowcaseApp* app, Ctx* cx) {
                     ->W(224)
                     ->H(28)
                     ->PadX(8)
-                    ->ItemsCenter()
                     ->FocusId(0)
                     ->Border(1, app->input.focused ? ExampleRgb(0x171717)
                                                    : ExampleRgb(0xd4d4d4))

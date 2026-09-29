@@ -25,22 +25,20 @@ El* ShowcaseSelect(ShowcaseApp* app, Ctx* cx) {
     }
     // The trigger fills the select root: GPUI lays a plain div out as a block,
     // so its child spans the w_56 the root was given.
-    El* trigger = Div(a)
-                      ->Id(StrL("select-trigger"))
-                      ->Click(HashClickId(StrL("select-trigger")))
-                      ->W(kFill)
-                      ->H(28)
-                      ->PadX(8)
-                      ->ItemsCenter()
-                      ->JustifyBetween()
-                      ->Border(1, ExampleRgb(0x171717))
-                      ->OnClick(Listen(cx, &ToggleSelect))
-                      ->Child(TextEl(a, Str(kFw[sel]))
-                                  ->Font(12)
-                                  ->Fg(ExampleRgb(0x171717)))
-                      ->Child(TextEl(a, app->selectOpen ? StrL("⌃") : StrL("⌄"))
-                                  ->Font(12)
-                                  ->Fg(ExampleRgb(0x171717)));
+    El* trigger =
+        Div(a)
+            ->Id(StrL("select-trigger"))
+            ->Click(HashClickId(StrL("select-trigger")))
+            ->W(kFill)
+            ->H(28)
+            ->PadX(8)
+            ->ItemsCenter()
+            ->JustifyBetween()
+            ->Border(1, ExampleRgb(0x171717))
+            ->OnClick(Listen(cx, &ToggleSelect))
+            ->Child(
+                TextEl(a, Str(kFw[sel]))->Font(12)->Fg(ExampleRgb(0x171717)))
+            ->Child(ScChevron(cx, app->selectOpen, ExampleRgb(0x171717)));
     El* opts = nullptr;
     if (app->selectOpen) {
         opts = Div(a)
