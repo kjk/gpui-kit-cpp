@@ -79,7 +79,8 @@ static const StoryInfo kMeta[StoryCount] = {
     {"button", "Button",
      "Displays a button or a component that looks like a button."},
     {"carousel", "Carousel",
-     "A carousel for browsing a set of related items with keyboard and pointer navigation."},
+     "A carousel for browsing a set of related items with keyboard and pointer "
+     "navigation."},
     {"calendar", "Calendar", "A calendar to select a date or date range."},
     {"chart", "Chart", "Beautiful Charts & Graphs."},
     {"checkbox", "Checkbox", "Select one or more independent options."},
@@ -154,6 +155,9 @@ static const StoryInfo kMeta[StoryCount] = {
     {"popover", "Popover", "Show focused content beside a trigger."},
     {"progress", "Progress",
      "Show task completion with determinate or loading indicators."},
+    {"questionnaire", "Questionnaire",
+     "Composable multi-step questions with answers, validation, progress, "
+     "and navigation."},
     {"radio", "Radio", "Choose one option from a set."},
     {"rating", "Rating", "A simple interactive star rating component."},
     {"resizable", "Resizable", "The resizable panels."},
@@ -167,7 +171,8 @@ static const StoryInfo kMeta[StoryCount] = {
      "A collection of settings groups and items for the "
      "application."},
     {"shell", "Shell",
-     "Run a ticking JavaScript quote board beside a Rust one, sharing state through a native module."},
+     "Run a ticking JavaScript quote board beside a Rust one, sharing state "
+     "through a native module."},
     {"sheet", "Sheet", "Sheet for open a popup in the edge of the window"},
     {"shimmer", "Shimmer",
      "Reusable, theme-aware text loading effects with composable timing "
@@ -1262,8 +1267,8 @@ struct StoryPalette {
         for (int i = 0; i < count; i++) {
             self->items[i] = {};
             self->items[i].label = self->themes
-                ? ThemeRegistryAt(cx->app, i)->name
-                : Str(StoryMeta(i)->title);
+                                       ? ThemeRegistryAt(cx->app, i)->name
+                                       : Str(StoryMeta(i)->title);
             self->items[i].data = i;
             if (self->themes)
                 self->items[i].checked = base::StrEq(
@@ -1275,21 +1280,27 @@ struct StoryPalette {
             self->focused = true;
             InputFocus(&state->query, cx);
         }
-        El* command = component::Command::New(
-            cx, self->themes ? StrL("story-themes") : StrL("story-components"),
-            self->command)
-            ->Items(self->items.els, count)
-            ->Bordered(false)
-            ->Placeholder(self->themes ? StrL("Search themes...")
-                                       : StrL("Search components..."))
-            ->MaxH(400)
-            ->OnSelect(Listen(cx, &StoryPalette::Preview))
-            ->OnConfirm(Listen(cx, &StoryPalette::Confirm))
-            ->OnCancel(Listen(cx, &StoryPalette::Cancel))
-            ->IntoEl();
-        return component::Dialog::New(cx)->Open(true)->W(500)
-            ->CloseButton(false)->OverlayClosable(false)
-            ->Surface(command)->IntoEl(WindowSize(cx->win));
+        El* command =
+            component::Command::New(
+                cx,
+                self->themes ? StrL("story-themes") : StrL("story-components"),
+                self->command)
+                ->Items(self->items.els, count)
+                ->Bordered(false)
+                ->Placeholder(self->themes ? StrL("Search themes...")
+                                           : StrL("Search components..."))
+                ->MaxH(400)
+                ->OnSelect(Listen(cx, &StoryPalette::Preview))
+                ->OnConfirm(Listen(cx, &StoryPalette::Confirm))
+                ->OnCancel(Listen(cx, &StoryPalette::Cancel))
+                ->IntoEl();
+        return component::Dialog::New(cx)
+            ->Open(true)
+            ->W(500)
+            ->CloseButton(false)
+            ->OverlayClosable(false)
+            ->Surface(command)
+            ->IntoEl(WindowSize(cx->win));
     }
 };
 
@@ -1301,19 +1312,17 @@ static void StoryOpenPalette(Ctx* cx, bool themes) {
     state->themes = themes;
     if (themes) {
         state->beforeMode = ThemeGet(cx->app);
-        state->beforeTheme = StrDup(
-            ThemeRegistryActive(cx->app, state->beforeMode));
+        state->beforeTheme =
+            StrDup(ThemeRegistryActive(cx->app, state->beforeMode));
     }
     WindowOpenDialog(cx, palette);
 }
 
-static void OnOpenCommandPaletteAction(StoryApp*, Ctx* cx,
-                                       const ActionEvent*) {
+static void OnOpenCommandPaletteAction(StoryApp*, Ctx* cx, const ActionEvent*) {
     StoryOpenPalette(cx, false);
 }
 
-static void OnOpenThemePaletteAction(StoryApp*, Ctx* cx,
-                                     const ActionEvent*) {
+static void OnOpenThemePaletteAction(StoryApp*, Ctx* cx, const ActionEvent*) {
     StoryOpenPalette(cx, true);
 }
 
@@ -1453,8 +1462,7 @@ static El* StoryBindMenuActions(El* root, Ctx* cx) {
         ->OnAction(ActOpen(), Listen(cx, &OnOpenAction))
         ->OnAction(ActOpenCommandPalette(),
                    Listen(cx, &OnOpenCommandPaletteAction))
-        ->OnAction(ActOpenThemePalette(),
-                   Listen(cx, &OnOpenThemePaletteAction))
+        ->OnAction(ActOpenThemePalette(), Listen(cx, &OnOpenThemePaletteAction))
         ->OnAction(ActQuit(), Listen(cx, &OnQuitAction))
         ->OnAction(ActNewWindow(), Listen(cx, &OnNewWindowAction))
         ->OnAction(ActCloseWindow(), Listen(cx, &OnCloseWindowAction))
@@ -1781,27 +1789,28 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                                  12, th.mutedFg))
                 ->Child(Div(a)->W(1)->H(12)->Bg(th.border))
                 ->Child(StoryTxt(cx, Str(m->title), 12, th.mutedFg)))
-        ->Child(Div(a)
-                    ->FlexRow()
-                    ->Gap(12)
-                    ->ItemsCenter()
-                    // The theme in force, which is whatever the registry
-                    // last installed for this mode rather than always one of
-                    // the two defaults.
-                    ->Child(StoryTxt(
-                        cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
-                        th.mutedFg))
-                    ->Child(StoryTxt(cx, StrL("v0.6.4"), 12, th.mutedFg))
-                    // gallery.rs puts the repository link last in the bar's
-                    // right group, as a ghost icon button.
-                    ->Child(component::Button::New(cx, StrL("assistant"))
-                                ->Ghost()
-                                ->WithSize(UiSize::XSmall)
-                                ->Icon(IconName::Github)
-                                ->Tooltip(StrL("GPUI Component GitHub repository"))
-                                ->OnClick(Listen(cx, &OnGithub))
-                                ->IntoEl()
-                                ->Cursor(CursorKind::Pointer)));
+        ->Child(
+            Div(a)
+                ->FlexRow()
+                ->Gap(12)
+                ->ItemsCenter()
+                // The theme in force, which is whatever the registry
+                // last installed for this mode rather than always one of
+                // the two defaults.
+                ->Child(StoryTxt(
+                    cx, ThemeRegistryActive(cx->app, ThemeGet(cx->app)), 12,
+                    th.mutedFg))
+                ->Child(StoryTxt(cx, StrL("v0.6.4"), 12, th.mutedFg))
+                // gallery.rs puts the repository link last in the bar's
+                // right group, as a ghost icon button.
+                ->Child(component::Button::New(cx, StrL("assistant"))
+                            ->Ghost()
+                            ->WithSize(UiSize::XSmall)
+                            ->Icon(IconName::Github)
+                            ->Tooltip(StrL("GPUI Component GitHub repository"))
+                            ->OnClick(Listen(cx, &OnGithub))
+                            ->IntoEl()
+                            ->Cursor(CursorKind::Pointer)));
 }
 
 El* StoryApp::Render(StoryApp* app, Ctx* cx) {
@@ -1827,9 +1836,7 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
                            ->OnScroll(Listen(cx, &OnPaneScroll));
         scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
             StoryRenderRegistered(app, cx)));
-        return component::Root::New(cx)
-            ->Child(scroller)
-            ->IntoEl();
+        return component::Root::New(cx)->Child(scroller)->IntoEl();
     }
     // The window's outermost view is a Root, which is what Rust puts under
     // every window: the page, and over it the layers the window owns.

@@ -49,6 +49,7 @@
 #include "base/popup.h"
 #include "base/positioner.h"
 #include "base/progress.h"
+#include "base/questionnaire.h"
 #include "base/radio.h"
 #include "base/radio_group.h"
 #include "base/resizable.h"

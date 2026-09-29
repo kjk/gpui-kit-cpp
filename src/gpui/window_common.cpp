@@ -708,6 +708,18 @@ static const HitRect* HitRectById(Window* win, int id) {
     return nullptr;
 }
 
+static const HitRect* HitRectByFocusId(Window* win, int focusId) {
+    if (!win || !focusId) {
+        return nullptr;
+    }
+    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+        if (win->paint.hits[i].focusId == focusId) {
+            return &win->paint.hits[i];
+        }
+    }
+    return nullptr;
+}
+
 // `hovered` in GPUI is asked of an element — bounds containment on the top
 // layer — not of the one box the hit test names, so a wrapper with an
 // on_hover hears the pointer arrive even when a button inside it is what was
@@ -835,6 +847,27 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
         win->eatReturn = false;
         AppInvalidate(win);
         return true;
+    }
+
+    // capture_key_down: the elements around the focus, outermost first,
+    // before the focused field or the keymap. GPUI runs the key listeners'
+    // Capture phase ahead of both, and one that prevents the default ends the
+    // keystroke there.
+    if (!held) {
+        KeyEvent kc = {};
+        kc.vk = key;
+        kc.down = true;
+        kc.shift = shift;
+        kc.ctrl = ctrl;
+        kc.alt = alt;
+        kc.platform = platform;
+        kc.function = function;
+        if (WindowDispatchKeyCaptureEvent(win, &kc)) {
+            win->eatChar = true;
+            win->eatReturn = false;
+            AppInvalidate(win);
+            return true;
+        }
     }
 
     // The focused field first, which is where its own key context puts it:
@@ -986,7 +1019,12 @@ void WindowKeyUp(Window* win, int key, bool shift, bool ctrl, bool alt,
     }
     // GPUI registers the keyboard activation on the painted element, so a
     // focus with nothing on screen behind it activates nothing.
+    // An element tracking a FocusHandle is focused as the handle, not as
+    // its click id, so look for the box that registered that focus too.
     const HitRect* focused = HitRectById(win, win->focusId);
+    if (!focused) {
+        focused = HitRectByFocusId(win, win->focusId);
+    }
     if (!focused) {
         return;
     }

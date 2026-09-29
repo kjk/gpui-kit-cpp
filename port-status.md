@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `7e2003cd51ada69fb6822bbf15a83e1666b0bfd8` (2026-09-19,
-dialog: Merge `button_props` instead of replacing them (#3126)). Dialog button
-props merge rather than replace, and AlertDialog gains direct OK/Cancel text
-and variant builders. The current update target is
+Processed through `f698b4bcac037b8d208b34eca86cc940081c498f` (2026-09-19,
+questionnaire: Add a Questionnaire component (#2878)). A Questionnaire
+component landed: a gpui-base state model (question/answer types, validation,
+navigation, keyboard shortcuts) and the styled crates/component parts, with
+its story and a shell registration. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -33,6 +34,16 @@ and variant builders. The current update target is
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
+
+- **Questionnaire keys are always fresh presses.** A key down here carries no
+  held/repeat flag, no `prefer_character_input` and no IME composition state,
+  so `handle_key_down`'s guards on them have nothing to read, and
+  `aria_description` has no field in the accessibility node
+  (`src/base/questionnaire.cpp`).
+- **`crates/component-shell` registrations are not ported.** The C++ shell
+  materializes the base components; the styled Carousel, Chart and
+  Questionnaire registrations and `examples/js_story` have no counterpart
+  (`src/shell/runtime.cpp`).
 
 - **Textarea tokens still use flex wrapping instead of display-map inline
   metrics.** Text gaps can break at UTF-8 characters around atomic chips, but

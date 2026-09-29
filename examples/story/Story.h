@@ -53,6 +53,7 @@ enum {
     StoryPagination,
     StoryPopover,
     StoryProgress,
+    StoryQuestionnaire,
     StoryRadio,
     StoryRating,
     StoryResizable,

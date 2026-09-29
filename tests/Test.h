@@ -80,6 +80,7 @@ void TestNumberInput();
 void TestOtpInput();
 void TestSelect();
 void TestDialog();
+void TestQuestionnaire();
 void TestSheet();
 void TestMotion();
 void TestScrollbar();

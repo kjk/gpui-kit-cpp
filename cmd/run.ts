@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "7e2003cd51ada69fb6822bbf15a83e1666b0bfd8",
+  sha: "f698b4bcac037b8d208b34eca86cc940081c498f",
   date: "2026-09-19",
-  subject: "dialog: Merge `button_props` instead of replacing them (#3126)",
+  subject: "questionnaire: Add a Questionnaire component (#2878)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

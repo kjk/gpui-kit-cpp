@@ -162,6 +162,35 @@ static const char* const kV_Pagination_next[] = {"Next",   "下一页", "下一�
                                                  "下一頁", nullptr,  nullptr};
 static const char* const kV_Pagination_previous[] = {
     "Previous", "上一页", "上一頁", "上一頁", nullptr, nullptr};
+static const char* const kV_Questionnaire_error_optional[] = {
+    "Choose an answer or skip this question.",
+    "请选择一个答案，或跳过此题。",
+    "請選擇一個答案，或跳過此題。",
+    "請選擇一個答案，或跳過此題。",
+    nullptr,
+    nullptr};
+static const char* const kV_Questionnaire_error_required[] = {
+    "Choose an answer to continue.",
+    "请选择一个答案后继续。",
+    "請選擇一個答案後繼續。",
+    "請選擇一個答案後繼續。",
+    nullptr,
+    nullptr};
+static const char* const kV_Questionnaire_next[] = {
+    "Next", "下一题", "下一題", "下一題", nullptr, nullptr};
+static const char* const kV_Questionnaire_previous[] = {
+    "Previous", "上一题", "上一題", "上一題", nullptr, nullptr};
+static const char* const kV_Questionnaire_progress[] = {
+    "Question %{current} of %{total}",
+    "第 %{current} 题，共 %{total} 题",
+    "第 %{current} 題，共 %{total} 題",
+    "第 %{current} 題，共 %{total} 題",
+    nullptr,
+    nullptr};
+static const char* const kV_Questionnaire_skip[] = {"Skip", "跳过",  "跳過",
+                                                    "跳過", nullptr, nullptr};
+static const char* const kV_Questionnaire_submit[] = {
+    "Submit", "提交", "提交", "提交", nullptr, nullptr};
 static const char* const kV_Select_placeholder[] = {
     "Please select", "请选择", "請選擇", "請選擇", "Seleziona", nullptr};
 static const char* const kV_Settings_Reset_All[] = {
@@ -232,11 +261,18 @@ extern const LocaleRow kLocaleRows[] = {
     {"List.search_placeholder", kV_List_search_placeholder},
     {"Pagination.next", kV_Pagination_next},
     {"Pagination.previous", kV_Pagination_previous},
+    {"Questionnaire.error.optional", kV_Questionnaire_error_optional},
+    {"Questionnaire.error.required", kV_Questionnaire_error_required},
+    {"Questionnaire.next", kV_Questionnaire_next},
+    {"Questionnaire.previous", kV_Questionnaire_previous},
+    {"Questionnaire.progress", kV_Questionnaire_progress},
+    {"Questionnaire.skip", kV_Questionnaire_skip},
+    {"Questionnaire.submit", kV_Questionnaire_submit},
     {"Select.placeholder", kV_Select_placeholder},
     {"Settings.Reset All", kV_Settings_Reset_All},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
 };
-extern const int kLocaleRowCount = 65;
+extern const int kLocaleRowCount = 72;
 
 } // namespace component
 } // namespace gpui

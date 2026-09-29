@@ -50,6 +50,7 @@
 #include "ui/plot.h"
 #include "ui/popover.h"
 #include "ui/progress.h"
+#include "ui/questionnaire.h"
 #include "ui/radio.h"
 #include "ui/rating.h"
 #include "ui/resizable.h"

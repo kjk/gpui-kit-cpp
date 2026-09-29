@@ -60,6 +60,7 @@ int GpuiMain(int argc, char** argv) {
     TestOtpInput();
     TestSelect();
     TestDialog();
+    TestQuestionnaire();
     TestSheet();
     TestMotion();
     TestScrollbar();

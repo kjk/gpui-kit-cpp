@@ -1581,6 +1581,11 @@ struct Style {
     Justify justify = Justify::Start;
     Overflow overflowY = Overflow::Visible;
     Overflow overflowX = Overflow::Visible;
+    // ml_auto / mr_auto / mt_auto / mb_auto: the margin on that edge is CSS's
+    // `auto`, which takes the free space on the line and pushes the item to
+    // the far end. One bit per edge (kMarginAuto*); naming the edge with a
+    // length clears it.
+    uint8_t marginAuto = 0;
     // Paint order among siblings. A child remains inside its parent's
     // stacking context even when its own z-index is larger.
     int zIndex = 0;
@@ -1617,6 +1622,13 @@ struct Style {
     // The side is a preference: the positioner still flips and clamps when
     // space is short.
     int8_t tooltipPlacement = -1;
+};
+
+enum : uint8_t {
+    kMarginAutoL = 1,
+    kMarginAutoR = 2,
+    kMarginAutoT = 4,
+    kMarginAutoB = 8,
 };
 
 // 408 was full to the byte; tooltipPlacement opened the next 8-byte unit, so
@@ -2386,6 +2398,9 @@ struct El {
     El* MarginR(float v);
     El* MarginT(float v);
     El* MarginB(float v);
+    // ml_auto(): the left margin takes whatever the line leaves over, which
+    // pushes this item, and everything after it, to the end of its row.
+    El* MlAuto();
     El* ItemsCenter();
     El* ItemsStart();
     El* ItemsEnd();
@@ -2608,6 +2623,12 @@ struct El {
     // halves of a keystroke arrive here: the key itself, and the character it
     // produced, with `ch` set and `vk` zero.
     El* OnKeyDown(Listener fn);
+    // div().capture_key_down(..): the same keystroke in GPUI's Capture phase,
+    // offered outermost first and before the focused field edits with it —
+    // how a container keeps a keyboard contract over the controls inside it.
+    // Clearing `propagate` is `window.prevent_default()` plus the stop: the
+    // key goes no further.
+    El* CaptureKeyDown(Listener fn);
     // div().on_key_up(..): the release, on the same focus path the press
     // walked. GPUI's `InteractiveElement::on_key_up`; the KeyEvent it carries
     // has `down` false and no character half.
@@ -6272,6 +6293,10 @@ bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
 bool WindowDispatchKeyEvent(Window* win, KeyEvent* ev);
 // The `El::OnKeyUp` half of the same chain, run when the key comes back up.
 bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev);
+// The `El::CaptureKeyDown` handlers over the focused element, outermost
+// first, before the focused field or the keymap hears the key. Answers true
+// when one of them stopped propagating.
+bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev);
 // cx.on_action: a handler that belongs to the application rather than to any
 // element. Tried after the focused element's chain has passed on the action,
 // which is where Rust's App-level handlers sit too. A plain function pointer,

@@ -704,30 +704,42 @@ El* El::PadB(float v) {
 }
 El* El::Margin(float v) {
     style.margin = {v, v, v, v};
+    style.marginAuto = 0;
     return this;
 }
 El* El::MarginX(float v) {
     style.margin.left = style.margin.right = v;
+    style.marginAuto &= (uint8_t)~(kMarginAutoL | kMarginAutoR);
     return this;
 }
 El* El::MarginY(float v) {
     style.margin.top = style.margin.bottom = v;
+    style.marginAuto &= (uint8_t)~(kMarginAutoT | kMarginAutoB);
     return this;
 }
 El* El::MarginL(float v) {
     style.margin.left = v;
+    style.marginAuto &= (uint8_t)~kMarginAutoL;
     return this;
 }
 El* El::MarginR(float v) {
     style.margin.right = v;
+    style.marginAuto &= (uint8_t)~kMarginAutoR;
     return this;
 }
 El* El::MarginT(float v) {
     style.margin.top = v;
+    style.marginAuto &= (uint8_t)~kMarginAutoT;
     return this;
 }
 El* El::MarginB(float v) {
     style.margin.bottom = v;
+    style.marginAuto &= (uint8_t)~kMarginAutoB;
+    return this;
+}
+El* El::MlAuto() {
+    style.margin.left = 0;
+    style.marginAuto |= kMarginAutoL;
     return this;
 }
 El* El::ItemsCenter() {
@@ -1318,6 +1330,7 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     }
     if (fields & StyleFieldMargin) {
         into->margin = over.margin;
+        into->marginAuto = over.marginAuto;
     }
     if (fields & StyleFieldGap) {
         into->gapX = over.gapX;
@@ -2131,6 +2144,9 @@ El* El::KeyContext(Str name) {
 }
 El* El::OnKeyDown(Listener fn) {
     return OnAction(ActionOf(StrL("gpui::KeyDown")), fn);
+}
+El* El::CaptureKeyDown(Listener fn) {
+    return OnAction(ActionOf(StrL("gpui::CaptureKeyDown")), fn);
 }
 El* El::OnKeyUp(Listener fn) {
     return OnAction(ActionOf(StrL("gpui::KeyUp")), fn);
@@ -3253,10 +3269,15 @@ static taffy::Style ToTaffyStyle(const El* e) {
                  taffy::LengthPercentage::Length(s.pad.right),
                  taffy::LengthPercentage::Length(s.pad.top),
                  taffy::LengthPercentage::Length(s.pad.bottom)};
-    t.margin = {taffy::LengthPercentageAuto::Length(s.margin.left),
-                taffy::LengthPercentageAuto::Length(s.margin.right),
-                taffy::LengthPercentageAuto::Length(s.margin.top),
-                taffy::LengthPercentageAuto::Length(s.margin.bottom)};
+    // ml_auto and its siblings are CSS's `margin: auto`, which taffy has.
+    auto margin = [&](float v, uint8_t bit) {
+        return (s.marginAuto & bit) ? taffy::LengthPercentageAuto::Auto()
+                                    : taffy::LengthPercentageAuto::Length(v);
+    };
+    t.margin = {margin(s.margin.left, kMarginAutoL),
+                margin(s.margin.right, kMarginAutoR),
+                margin(s.margin.top, kMarginAutoT),
+                margin(s.margin.bottom, kMarginAutoB)};
     t.gap = {taffy::LengthPercentage::Length(s.gapX),
              taffy::LengthPercentage::Length(s.gapY)};
     // GPUI hands `Style::border_widths` straight to taffy, so a border takes
@@ -5802,15 +5823,16 @@ void PaintEl(PaintCtx* ctx, El* e) {
     // off. The scene keeps each overlay as one context under the root.
     for (int i = 1; i < overlays.len; i++) {
         El* item = overlays[i];
-        int layer = item->style.deferredLayer
-                        ? item->style.deferredLayer : kPaintLayerPopup;
+        int layer = item->style.deferredLayer ? item->style.deferredLayer
+                                              : kPaintLayerPopup;
         int at = i;
         while (at > 0) {
             El* prev = overlays[at - 1];
             int prevLayer = prev->style.deferredLayer
-                                ? prev->style.deferredLayer : kPaintLayerPopup;
-            if (prevLayer < layer ||
-                (prevLayer == layer && prev->style.zIndex <= item->style.zIndex))
+                                ? prev->style.deferredLayer
+                                : kPaintLayerPopup;
+            if (prevLayer < layer || (prevLayer == layer &&
+                                      prev->style.zIndex <= item->style.zIndex))
                 break;
             overlays[at] = prev;
             at--;
@@ -6411,7 +6433,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
     bool sorted = false;
     for (El* c = e->first; c; c = c->next) {
-        if (c->style.zIndex != 0) { sorted = true; break; }
+        if (c->style.zIndex != 0) {
+            sorted = true;
+            break;
+        }
     }
     if (sorted) {
         Vec<El*> children;
@@ -6428,8 +6453,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         for (El* c : children) PaintElNode(ctx, c, skipOverlay);
         VecReset(children);
     } else {
-        for (El* c = e->first; c; c = c->next)
-            PaintElNode(ctx, c, skipOverlay);
+        for (El* c = e->first; c; c = c->next) PaintElNode(ctx, c, skipOverlay);
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;
@@ -7317,6 +7341,12 @@ static uint32_t KeyUpAction() {
     return ActionOf(StrL("gpui::KeyUp"));
 }
 
+// The capture half of a key down. Outermost first: the Capture phase walks
+// the path from the root in.
+static uint32_t CaptureKeyDownAction() {
+    return ActionOf(StrL("gpui::CaptureKeyDown"));
+}
+
 static bool DispatchKeyChain(Window* win, KeyEvent* ev, uint32_t action) {
     int ix = DispatchAnchor(win);
     for (int i = ix - 1; i >= 0; i--) {
@@ -7346,6 +7376,27 @@ bool WindowDispatchKeyUpEvent(Window* win, KeyEvent* ev) {
         return false;
     }
     return DispatchKeyChain(win, ev, KeyUpAction());
+}
+
+bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev) {
+    if (!win || !ev) {
+        return false;
+    }
+    uint32_t action = CaptureKeyDownAction();
+    int ix = DispatchAnchor(win);
+    for (int i = 0; i < ix; i++) {
+        if (win->dispatch[i].subtreeEnd <= ix ||
+            win->dispatch[i].action != action ||
+            !win->dispatch[i].fn.IsValid()) {
+            continue;
+        }
+        ev->propagate = true;
+        ListenerCall(win->app, win, win->dispatch[i].fn, ev);
+        if (!ev->propagate) {
+            return true;
+        }
+    }
+    return false;
 }
 
 uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,

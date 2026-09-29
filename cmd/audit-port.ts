@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "7e2003cd51ada69fb6822bbf15a83e1666b0bfd8";
+const pinnedGpuiComponent = "f698b4bcac037b8d208b34eca86cc940081c498f";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -25,7 +25,7 @@ calendar checkbox collapsible color_picker combobox component_traits
 date_picker dialog dock element_ext event focus_trap geometry global_state
 history hover_card index_path input link list_settings macos_accessibility
 measure motion nav_stack number_input observe otp_input pagination popover popup positioner
-progress radio radio_group resizable scrollbar scrollable_mask select selectable_text
+progress questionnaire radio radio_group resizable scrollbar scrollable_mask select selectable_text
 reduce_motion scroll_bounce sheet slider state_style styled switch table tabs test_support
 text text_boundary text_selection theme theme_tokens toast touch_selection
 toggle toggle_group tooltip tree undo_history virtual_list
@@ -40,7 +40,7 @@ accordion alert attachment avatar badge breadcrumb bubble button chart checkbox
 carousel clipboard collapsible color_picker combobox command description_list dialog dock
 empty form group_box highlighter history hover_card input kbd label link list marker
 menu message message_scroller native_menu notification pagination plot popover
-progress radio rating resizable scroll searchable_list select separator setting
+progress questionnaire radio rating resizable scroll searchable_list select separator setting
 sheet shimmer sidebar skeleton slider spinner status_bar stepper switch tab
 table tag text theme touch_selection tooltip tree
 `
@@ -228,6 +228,7 @@ const testTargets: Record<string, string[]> = {
   "base/popup": ["tests/PopupTests.cpp"],
   "base/positioner": ["tests/PositionerTests.cpp", "tests/AnchorTests.cpp"],
   "base/progress": ["tests/AccessibilityTests.cpp"],
+  "base/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "base/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "base/resizable": ["tests/ResizableTests.cpp"],
   "base/scrollbar": ["tests/ScrollbarTests.cpp"],
@@ -304,6 +305,7 @@ const testTargets: Record<string, string[]> = {
   "ui/plot": ["tests/ScaleTests.cpp", "tests/SankeyTests.cpp"],
   "ui/popover": ["tests/PopupTests.cpp"],
   "ui/progress": ["tests/AccessibilityTests.cpp"],
+  "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
   "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
   "ui/root": ["tests/RootTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
@@ -347,6 +349,9 @@ const declarationMappings: Record<string, DeclarationMapping> = {
     targets: ["src/gpui/gpui.h"],
   },
   "base/lib.rs::fn init": { spellings: ["BaseInit"] },
+  "base/questionnaire/keyboard.rs::fn handle_key_down": {
+    spellings: ["QuestionnaireHandleKeyDown"],
+  },
   "base/input/editor/language.rs::fn set_language_config": {
     spellings: ["InputSetLanguageConfig"],
   },
@@ -570,14 +575,14 @@ function declarationSourceText(targets: string[]): string {
 // hash and forces this ledger to be reviewed with the pin update.
 const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256: string }>> = {
   base: {
-    declaration: { count: 451, sha256: "bb649448aab1222c0041fc8c7e148c1e6f9843b5de6d8f8ad478737f5c05760d" },
-    "pub-use": { count: 139, sha256: "1ee6e41738dc1d698434cdaf066710094815dc759327e67f799bf0a8fad5591b" },
-    test: { count: 982, sha256: "26cee7a42ede350805a0a92e55acd1836134613781552fda0072318313138b0b" },
+    declaration: { count: 474, sha256: "28b12eb810e4aeb8bac6bb8d9e4d903ef2911e78f28ab689d4b129af698126aa" },
+    "pub-use": { count: 143, sha256: "94a27c56ba1b03124ddff81e13c1d9203efb9c7218df3361649ff29bd0d55f90" },
+    test: { count: 988, sha256: "e4d66420be40eb24acc9758212b6adb5eadc03f52ba38b18cfd8db6821325480" },
   },
   ui: {
-    declaration: { count: 462, sha256: "6968eba4f3401bdd29331d84a7f17e2f6618dcba5d1c90b1ca06ab300858a9b8" },
-    "pub-use": { count: 166, sha256: "e41bd5c98930fa5333ec85dfd5ae747ee705d5d080f266465f46f2e5b527c628" },
-    test: { count: 584, sha256: "fec9a6cd8075b2e816cc3ab987e8094741cdd977e423cb30b5354a4fb10dd939" },
+    declaration: { count: 472, sha256: "d596feae360d5bf051dd9807a46d1c306964b6ce16685bd1f89390a2d77f4e66" },
+    "pub-use": { count: 168, sha256: "640d12b85511965fcc22a5b9f638a2485cf59a128e216433531b71d8310de7de" },
+    test: { count: 594, sha256: "30324fb8fd1e540ff9a400c8fca297ea224330398e7e88517f35d7344b907475" },
   },
 };
 

@@ -82,6 +82,7 @@ const slugs = [
   "pagination",
   "popover",
   "progress",
+  "questionnaire",
   "radio",
   "rating",
   "resizable",
