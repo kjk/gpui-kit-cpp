@@ -5758,6 +5758,56 @@ static bool ResolveLineClamp(PaintCtx* ctx, El* e, float* clipBottom) {
     return tighter;
 }
 
+// A text run's shaped layout, as the painter measured it: the width it was
+// laid out at and the font it was drawn in.
+static TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
+    if (!ctx || !e || e->kind != ElKind::Text || !e->text.s) {
+        return nullptr;
+    }
+    float font = e->laidFont > 0
+                     ? e->laidFont
+                     : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
+    return TextMeasLayout(ctx, e->text, font,
+                          e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
+                          ElTextWeight(e), e->style.lineHeight, nullptr);
+}
+
+int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
+                     int cap) {
+    if (!out || cap <= 0 || hi <= lo) {
+        return 0;
+    }
+    TextLayout* tl = ElTextLayout(ctx, e);
+    if (!tl) {
+        return 0;
+    }
+    int n = TextLayoutRangeRects(tl, e->text, lo, hi, out, cap);
+    for (int i = 0; i < n; i++) {
+        out[i].x += e->x;
+        out[i].y += e->y;
+    }
+    TextLayoutRelease(tl);
+    return n;
+}
+
+float ElTextSpaceWidth(PaintCtx* ctx, const El* e) {
+    if (!ctx || !e) {
+        return 0;
+    }
+    float font = e->laidFont > 0
+                     ? e->laidFont
+                     : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
+    TextLayout* tl =
+        TextMeasLayout(ctx, StrL(" "), font, -1.f, false, ElTextWeight(e),
+                       e->style.lineHeight, nullptr);
+    if (!tl) {
+        return 0;
+    }
+    float w = TextLayoutSize(tl).w;
+    TextLayoutRelease(tl);
+    return w;
+}
+
 static bool IsOverlay(El* e) {
     return e->style.fixed || e->style.deferred;
 }

@@ -68,6 +68,164 @@ struct DecorationCollections {
     int BuildSpans(TextSpan* out, int cap) const;
 };
 
+// RangeDecorationStyle: a geometric presentation for a range decoration.
+// Rust marks it #[non_exhaustive]; Frame is the default.
+enum class RangeDecorationStyle : uint8_t {
+    // Fill the continuous visual range.
+    Fill,
+    // Draw a continuous one-pixel frame around the visual range.
+    Frame,
+};
+
+// RangeDecoration: a geometric decoration over a half-open UTF-8 byte range.
+// `hasColor` false is Rust's `color: None`, the editor-foreground fallback
+// (12% opacity for a fill).
+struct RangeDecoration {
+    Selection range = {};
+    RangeDecorationStyle style = RangeDecorationStyle::Frame;
+    Rgba color = {};
+    bool hasColor = false;
+
+    // A frame using the editor foreground color.
+    static RangeDecoration New(Selection range);
+    Selection Range() const { return range; }
+    RangeDecorationStyle Style() const { return style; }
+    // The application-owned color override; false for the editor fallback.
+    bool Color(Rgba* out) const;
+    RangeDecoration WithStyle(RangeDecorationStyle value) const;
+    RangeDecoration WithColor(Rgba value) const;
+};
+
+// DecorationIndex: a balanced interval index over stable insertion-order
+// entries. Each midpoint stores the maximum end of its subtree, so one
+// document-spanning decoration does not force a scan of every preceding
+// decoration on each frame.
+struct DecorationIndex {
+    Vec<int> indices;
+    Vec<int> maxEnds;
+
+    void Rebuild(const RangeDecoration* decorations, int n);
+    int Build(const RangeDecoration* decorations, int lo, int hi);
+    // Appends the indices of decorations in [lo, hi) of the index that
+    // intersect `range`, and returns the number of visited nodes, which is
+    // what the complexity tests measure.
+    int Query(const RangeDecoration* decorations, int lo, int hi,
+              Selection range, Vec<int>* matches) const;
+};
+
+struct RangeDecorationEntries {
+    uint64_t id = 0;
+    Vec<RangeDecoration> decorations;
+    DecorationIndex index;
+
+    void Reindex();
+};
+
+// DecorationCollections<RangeDecoration>: the independently owned
+// collections an editor's range decorations live in, in creation order (Rust
+// keeps them in a BTreeMap keyed by a monotonically increasing id).
+struct RangeDecorationCollections {
+    uint64_t nextId = 0;
+    Vec<RangeDecorationEntries*> entries;
+
+    RangeDecorationCollections() = default;
+    RangeDecorationCollections(const RangeDecorationCollections&) = delete;
+    RangeDecorationCollections& operator=(const RangeDecorationCollections&) =
+        delete;
+    ~RangeDecorationCollections();
+
+    // Takes decorations already normalized against the text.
+    uint64_t Create(const RangeDecoration* decorations, int n);
+    bool Set(uint64_t id, const RangeDecoration* decorations, int n);
+    bool Append(uint64_t id, const RangeDecoration* decorations, int n);
+    bool Remove(uint64_t id);
+    RangeDecorationEntries* Get(uint64_t id) const;
+    void AdjustForEdit(Selection editedRange, int insertedLen);
+    void Clear();
+    // Decorations intersecting any of the visible buffer `ranges`, owner by
+    // owner and in item order within an owner, each at most once. Returns how
+    // many there are; at most `cap` are written.
+    int Intersecting(const Selection* ranges, int nRanges,
+                     const RangeDecoration** out, int cap) const;
+};
+
+// Clips each decoration to UTF-8 boundaries of `text`, dropping reversed and
+// empty ranges (normalize).
+int RangeDecorationsNormalize(Str text, const RangeDecoration* in, int n,
+                              Vec<RangeDecoration>* out);
+
+struct RangeDecorationsState;
+
+// RangeDecorationCollection: a handle for one independently owned set of
+// ranges. Copies address the same collection. Dropping a handle does not clear
+// it; Clear empties it and Dispose releases it for every copy. Operations on
+// a disposed collection or a dropped editor are harmless no-ops. Rust's
+// methods notify the editor; the view that owns the editor re-renders here.
+struct RangeDecorationCollection {
+    RangeDecorationsState* state = nullptr;
+    uint64_t id = 0;
+
+    RangeDecorationCollection() = default;
+    RangeDecorationCollection(const RangeDecorationCollection& other);
+    RangeDecorationCollection& operator=(
+        const RangeDecorationCollection& other);
+    ~RangeDecorationCollection();
+
+    // Replace only this owner's decorations, clipping ranges to UTF-8
+    // boundaries.
+    void Set(const RangeDecoration* decorations, int n);
+    // Append decorations, preserving their paint order.
+    void Append(const RangeDecoration* decorations, int n);
+    void Clear();
+    void Dispose();
+    // The tracked byte ranges in insertion order; returns how many there are.
+    int GetRanges(Selection* out, int cap) const;
+    bool IsValid() const;
+};
+
+// EditorState::create_range_decorations_collection: an independently owned
+// collection of geometric range decorations on this editor. Ranges follow
+// edits the way text decorations do: insertion at either edge does not
+// expand a range, insertion inside does, replacement clips overlapping
+// anchors and deletion drops empty ranges. Undo, redo and whole-document
+// replacement apply the same transforms; decorations are not undo history.
+// Folding changes projection, not stored ranges. Fills paint behind frames;
+// within each style later collections and items paint over earlier ones.
+RangeDecorationCollection InputCreateRangeDecorationsCollection(
+    InputState* s, const RangeDecoration* decorations, int n);
+// InputExtras::range_decorations: decorations intersecting the visible,
+// non-folded buffer spans. Empty for an input that never created one.
+int InputRangeDecorations(const InputState* s, const Selection* ranges,
+                          int nRanges, const RangeDecoration** out, int cap);
+// The editor's store, dropped with the InputState.
+void InputRangeDecorationsFree(InputState* s);
+void InputRangeDecorationsAdjustForEdit(InputState* s, Selection editedRange,
+                                        int insertedLen);
+// reset_annotations: every collection emptied, still reusable.
+void InputRangeDecorationsReset(InputState* s);
+
+// Corners<Point<Pixels>>: one visual row's box of a projected range.
+struct RangeCorners {
+    Point topLeft = {};
+    Point topRight = {};
+    Point bottomLeft = {};
+    Point bottomRight = {};
+};
+
+// element.rs frame geometry, pure so it can be tested on its own.
+// frame_outline_points: one continuous outline around rows of different
+// widths, closed on its first point.
+int FrameOutlinePoints(const RangeCorners* corners, int n, Vec<Point>* out);
+// pad_frame_corners: horizontal space between the stroke and the text.
+void PadFrameCorners(RangeCorners* corners, int n, float horizontalPadding);
+// snap_frame_outline: the stroke width in whole physical pixels, and the
+// points moved so the stroke lands on them. Returns the stroke width.
+float SnapFrameOutline(Point* points, int n, float strokeWidth,
+                       float scaleFactor);
+// clamp_frame_to_content_mask: keeps the vertical edges inside the mask.
+void ClampFrameToContentMask(Point* points, int n, float strokeWidth,
+                             Bounds contentMask);
+
 struct DiagnosticEntry {
     Selection range = {};
     Diagnostic diagnostic = {};

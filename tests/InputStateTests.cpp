@@ -2602,6 +2602,309 @@ static void DecorationsAreIndependentClippedAndTrackEdits() {
     utassert(ranges[0].start == 3 && ranges[0].end == 4);
 }
 
+// decorations.rs
+// geometric_collections_share_utf8_normalization_and_edit_affinity
+static void GeometricCollectionsShareUtf8NormalizationAndEditAffinity() {
+    RangeDecorationCollections collections;
+    Str text = StrL("h\xC3\xA9llo world");
+    RangeDecoration firstIn[3] = {RangeDecoration::New({2, 4}),
+                                  RangeDecoration::New({2, 1}),
+                                  RangeDecoration::New({100, 200})};
+    Vec<RangeDecoration> normalized;
+    RangeDecorationsNormalize(text, firstIn, 3, &normalized);
+    uint64_t first = collections.Create(normalized.els, len(normalized));
+    RangeDecoration secondIn = RangeDecoration::New({7, 12});
+    VecClear(normalized);
+    RangeDecorationsNormalize(text, &secondIn, 1, &normalized);
+    uint64_t second = collections.Create(normalized.els, len(normalized));
+    auto firstRange = [&]() { return collections.Get(first)->decorations[0]; };
+    utassert(len(collections.Get(first)->decorations) == 1);
+    utassert(firstRange().range.start == 1 && firstRange().range.end == 4);
+    collections.AdjustForEdit({1, 1}, 2);
+    utassert(firstRange().range.start == 3 && firstRange().range.end == 6);
+    collections.AdjustForEdit({6, 6}, 1);
+    utassert(firstRange().range.start == 3 && firstRange().range.end == 6);
+    collections.AdjustForEdit({4, 4}, 2);
+    utassert(firstRange().range.start == 3 && firstRange().range.end == 8);
+    collections.AdjustForEdit({3, 8}, 0);
+    utassert(len(collections.Get(first)->decorations) == 0);
+    utassert(len(collections.Get(second)->decorations) > 0);
+    utassert(collections.Remove(first));
+    uint64_t third = collections.Create(nullptr, 0);
+    utassert(third != first);
+    RangeDecoration one = RangeDecoration::New({0, 1});
+    utassert(!collections.Set(first, &one, 1));
+    utassert(collections.Get(second) != nullptr);
+}
+
+static bool IntersectingIs(const RangeDecorationCollections& collections,
+                           const Selection* query, int nQuery,
+                           const Selection* want, int nWant) {
+    const RangeDecoration* got[16] = {};
+    int n = collections.Intersecting(query, nQuery, got, 16);
+    if (n != nWant) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i]->range.start != want[i].start ||
+            got[i]->range.end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// decorations.rs visible_query_preserves_layers_and_skips_folded_spans
+static void VisibleQueryPreservesLayersAndSkipsFoldedSpans() {
+    RangeDecorationCollections collections;
+    RangeDecoration firstIn[4] = {
+        RangeDecoration::New({90, 100}), RangeDecoration::New({0, 100}),
+        RangeDecoration::New({40, 50}), // hidden in a fold
+        RangeDecoration::New({0, 5})};
+    uint64_t first = collections.Create(firstIn, 4);
+    RangeDecoration secondIn = RangeDecoration::New({2, 4});
+    collections.Create(&secondIn, 1);
+    Selection query[2] = {{0, 5}, {90, 100}};
+    Selection want1[4] = {{90, 100}, {0, 100}, {0, 5}, {2, 4}};
+    utassert(IntersectingIs(collections, query, 2, want1, 4));
+    collections.AdjustForEdit({0, 0}, 1);
+    Selection want2[4] = {{91, 101}, {1, 101}, {1, 6}, {3, 5}};
+    utassert(IntersectingIs(collections, query, 2, want2, 4));
+    RangeDecoration replaced = RangeDecoration::New({50, 60});
+    collections.Set(first, &replaced, 1);
+    Selection want3[1] = {{3, 5}};
+    utassert(IntersectingIs(collections, query, 2, want3, 1));
+}
+
+// decorations.rs
+// interval_index_culls_large_collections_even_with_a_spanning_range
+static void IntervalIndexCullsLargeCollectionsEvenWithASpanningRange() {
+    Vec<RangeDecoration> decorations;
+    for (int ix = 0; ix < 100000; ix++) {
+        VecAppend(decorations, RangeDecoration::New({ix * 10, ix * 10 + 5}));
+    }
+    VecAppend(decorations, RangeDecoration::New({0, 1000000}));
+    DecorationIndex index;
+    index.Rebuild(decorations.els, len(decorations));
+    Selection queries[4] = {
+        {0, 1}, {500000, 500020}, {999990, 1000001}, {1000000, 1000010}};
+    for (Selection query : queries) {
+        Vec<int> matches;
+        int visited =
+            index.Query(decorations.els, 0, len(decorations), query, &matches);
+        std::sort(matches.els, matches.els + len(matches));
+        Vec<int> expected;
+        for (int ix = 0; ix < len(decorations); ix++) {
+            Selection r = decorations[ix].range;
+            if (r.start < query.end && r.end > query.start) {
+                VecAppend(expected, ix);
+            }
+        }
+        bool same = len(matches) == len(expected);
+        for (int i = 0; same && i < len(matches); i++) {
+            same = matches[i] == expected[i];
+        }
+        utassert(same);
+        utassert(visited < 100);
+    }
+}
+
+// decorations.rs
+// interval_index_matches_linear_reference_for_overlaps_and_mutations
+static void IntervalIndexMatchesLinearReferenceForOverlapsAndMutations() {
+    RangeDecorationCollections collections;
+    Vec<RangeDecoration> initial;
+    for (int ix = 0; ix < 512; ix++) {
+        int start = (ix * 37) % 997;
+        VecAppend(initial, RangeDecoration::New({start, start + ix % 61 + 1}));
+    }
+    uint64_t id = collections.Create(initial.els, len(initial));
+    Selection edits[3] = {{0, 0}, {300, 450}, {900, 1100}};
+    bool allSame = true;
+    for (Selection edit : edits) {
+        collections.AdjustForEdit(edit, 3);
+        for (int start = 0; start < 1100; start += 13) {
+            Selection query = {start, start + 17};
+            const Vec<RangeDecoration>& all = collections.Get(id)->decorations;
+            Vec<Selection> expected;
+            for (int i = 0; i < len(all); i++) {
+                if (all[i].range.start < query.end &&
+                    all[i].range.end > query.start) {
+                    VecAppend(expected, all[i].range);
+                }
+            }
+            int n = collections.Intersecting(&query, 1, nullptr, 0);
+            Vec<const RangeDecoration*> got;
+            VecResize(got, n);
+            collections.Intersecting(&query, 1, got.els, n);
+            bool same = n == len(expected);
+            for (int i = 0; same && i < n; i++) {
+                same = got[i]->range.start == expected[i].start &&
+                       got[i]->range.end == expected[i].end;
+            }
+            allSame = allSame && same;
+        }
+    }
+    utassert(allSame);
+}
+
+static RangeCorners CornersAt(float l, float t, float r, float b) {
+    RangeCorners c;
+    c.topLeft = {l, t};
+    c.topRight = {r, t};
+    c.bottomLeft = {l, b};
+    c.bottomRight = {r, b};
+    return c;
+}
+
+static bool PointsAre(const Point* got, int n, const Point* want, int nWant) {
+    if (n != nWant) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (fabsf(got[i].x - want[i].x) > 1e-4f ||
+            fabsf(got[i].y - want[i].y) > 1e-4f) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// element.rs frame_outline_is_continuous_across_different_line_widths
+static void FrameOutlineIsContinuousAcrossDifferentLineWidths() {
+    RangeCorners corners[2] = {CornersAt(2, 0, 20, 10),
+                               CornersAt(0, 10, 12, 20)};
+    Vec<Point> points;
+    FrameOutlinePoints(corners, 2, &points);
+    Point want[9] = {{2, 0},  {20, 0}, {20, 10}, {12, 10}, {12, 20},
+                     {0, 20}, {0, 10}, {2, 10},  {2, 0}};
+    utassert(PointsAre(points.els, len(points), want, 9));
+}
+
+// element.rs frame_outline_keeps_horizontal_space_between_the_stroke_and_text
+static void FrameOutlineKeepsHorizontalSpaceBetweenTheStrokeAndText() {
+    RangeCorners corners[1] = {CornersAt(2, 0, 20, 10)};
+    RangeCorners padded = corners[0];
+    PadFrameCorners(&padded, 1, 1.f);
+    utassertnear(padded.topLeft.x, 1.f);
+    utassertnear(padded.topRight.x, 21.f);
+    utassertnear(padded.bottomLeft.x, 1.f);
+    utassertnear(padded.bottomRight.x, 21.f);
+    utassertnear(padded.topLeft.y, 0.f);
+    utassertnear(padded.bottomRight.y, 10.f);
+    Vec<Point> points;
+    FrameOutlinePoints(corners, 1, &points);
+    utassert(len(points) > 0 && points[0] == points[len(points) - 1]);
+}
+
+// element.rs
+// frame_outline_stroke_is_aligned_to_physical_pixels_at_each_scale_factor
+static void FrameOutlineStrokeIsAlignedToPhysicalPixelsAtEachScaleFactor() {
+    struct Case {
+        float scale;
+        float width;
+        Point want[2];
+    };
+    Case cases[3] = {
+        {1.f, 1.f, {{0.5f, 1.5f}, {10.5f, 20.5f}}},
+        {1.5f, 2.f / 3.f, {{1.f / 3.f, 5.f / 3.f}, {11.f, 61.f / 3.f}}},
+        {2.f, 1.f, {{0.f, 2.f}, {10.5f, 20.5f}}},
+    };
+    for (const Case& c : cases) {
+        Point points[2] = {{0.2f, 1.8f}, {10.7f, 20.3f}};
+        float width = SnapFrameOutline(points, 2, 1.f, c.scale);
+        utassertnear(width, c.width);
+        utassert(PointsAre(points, 2, c.want, 2));
+    }
+}
+
+// element.rs frame_outline_keeps_its_vertical_edges_inside_the_content_mask
+static void FrameOutlineKeepsItsVerticalEdgesInsideTheContentMask() {
+    Point points[5] = {{9.5f, 2.5f},
+                       {20.5f, 2.5f},
+                       {20.5f, 10.5f},
+                       {9.5f, 10.5f},
+                       {9.5f, 2.5f}};
+    ClampFrameToContentMask(points, 5, 1.f, Bounds{10, 0, 10, 20});
+    Point want[5] = {{10.5f, 2.5f},
+                     {19.5f, 2.5f},
+                     {19.5f, 10.5f},
+                     {10.5f, 10.5f},
+                     {10.5f, 2.5f}};
+    utassert(PointsAre(points, 5, want, 5));
+}
+
+static bool CollectionRangesAre(const RangeDecorationCollection& c,
+                                const Selection* want, int nWant) {
+    Selection got[8] = {};
+    int n = c.GetRanges(got, 8);
+    if (n != nWant) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i].start != want[i].start || got[i].end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// element.rs
+// geometric_decorations_track_edits_history_replacement_and_owner_lifetime. The
+// element.rs tests that lay the editor out and measure the corners (viewport
+// clipping, shaped wrap boundaries and newline cells, CRLF, folds) need a
+// window this suite does not draw; the story's Decorations tab shows them, and
+// the paint path is RangeDecorationCorners in src/base/input.cpp.
+static void GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime() {
+    InputState* s = new InputState();
+    s->kind = InputKind::Editor;
+    InputSetValue(s, StrL("abc def"));
+    RangeDecoration firstIn = RangeDecoration::New({4, 7});
+    RangeDecoration secondIn = RangeDecoration::New({0, 3});
+    RangeDecorationCollection first =
+        InputCreateRangeDecorationsCollection(s, &firstIn, 1);
+    RangeDecorationCollection second =
+        InputCreateRangeDecorationsCollection(s, &secondIn, 1);
+
+    InputSetSelectedRange(s, nullptr, nullptr, 0, 0);
+    Type(s, "\n");
+    Selection r58[1] = {{5, 8}};
+    Selection r47[1] = {{4, 7}};
+    utassert(CollectionRangesAre(first, r58, 1));
+    Act(s, InputAction::Undo);
+    utassert(CollectionRangesAre(first, r47, 1));
+    Act(s, InputAction::Redo);
+    utassert(CollectionRangesAre(first, r58, 1));
+    first.Clear();
+    Selection r14[1] = {{1, 4}};
+    utassert(CollectionRangesAre(second, r14, 1));
+    RangeDecoration again = RangeDecoration::New({5, 8});
+    first.Append(&again, 1);
+    InputReplaceAll(s, nullptr, nullptr, StrL("formatted"));
+    Selection r09[1] = {{0, 9}};
+    utassert(CollectionRangesAre(first, r09, 1));
+    Act(s, InputAction::Undo);
+    // Annotations are transformed, not snapshotted in undo history.
+    Selection r08[1] = {{0, 8}};
+    utassert(CollectionRangesAre(first, r08, 1));
+    InputSetValue(s, StrL("new"));
+    Selection r03[1] = {{0, 3}};
+    utassert(CollectionRangesAre(first, r03, 1));
+    RangeDecorationCollection clone = first;
+    first.Dispose();
+    RangeDecoration one = RangeDecoration::New({0, 1});
+    clone.Append(&one, 1);
+    utassert(clone.GetRanges(nullptr, 0) == 0);
+    utassert(CollectionRangesAre(second, r03, 1));
+    InputSetValue(s, StrL(""));
+    utassert(second.GetRanges(nullptr, 0) == 0);
+
+    // The editor dropped: every handle is a harmless no-op from then on.
+    delete s;
+    second.Append(&one, 1);
+    utassert(!second.IsValid() && second.GetRanges(nullptr, 0) == 0);
+}
+
 static void DiagnosticSetOwnsMetadataAndAnswersRanges() {
     DiagnosticSet set(
         StrL("Hello, 你好warld!\nThis is a test.\nGoodbye, world!"));
@@ -3982,6 +4285,16 @@ void TestInputState() {
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
     DecorationsAreIndependentClippedAndTrackEdits();
+    GeometricCollectionsShareUtf8NormalizationAndEditAffinity();
+    VisibleQueryPreservesLayersAndSkipsFoldedSpans();
+    IntervalIndexCullsLargeCollectionsEvenWithASpanningRange();
+    IntervalIndexMatchesLinearReferenceForOverlapsAndMutations();
+    FrameOutlineIsContinuousAcrossDifferentLineWidths();
+    FrameOutlineKeepsHorizontalSpaceBetweenTheStrokeAndText();
+    FrameOutlineStrokeIsAlignedToPhysicalPixelsAtEachScaleFactor();
+    FrameOutlineKeepsItsVerticalEdgesInsideTheContentMask();
+    GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime();
+
     DiagnosticSetOwnsMetadataAndAnswersRanges();
     HighlighterContractsAreDependencyFreeAndFunctional();
     LspFacadesInstallCapabilitiesAndExposeOverlayState();

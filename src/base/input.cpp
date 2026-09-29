@@ -644,6 +644,198 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
     return m;
 }
 
+// element.rs layout_range_decorations and its paint. Rust builds one path per
+// decoration in prepaint from the shaped lines and paints the fills, then the
+// frames, below the selection. The rows here are separate elements laid out
+// by the flex column, so the geometry is built at paint, once per frame, from
+// where the rows' runs landed; each row then paints the slice of every path
+// that falls in its own box, after its own background (the active line) and
+// before its text, which keeps Rust's order.
+struct RangeDecorationRow {
+    El* box = nullptr;  // the row's container, which paints its slice
+    El* text = nullptr; // the row's shaped run
+    int start = 0;      // the buffer offset of the line
+    int len = 0;        // the line's length, without its newline
+};
+
+struct RangeDecorationPath {
+    Point* points = nullptr;
+    int n = 0;
+    Rgba color = {};
+    float stroke = 0; // 0 fills
+};
+
+struct RangeDecorationPaint {
+    const RangeDecoration** decorations = nullptr;
+    int nDecorations = 0;
+    RangeDecorationRow* rows = nullptr;
+    int nRows = 0;
+    Rgba foreground = {};
+    float lineH = 0;
+    Arena* arena = nullptr;
+    bool built = false;
+    RangeDecorationPath* paths = nullptr;
+    int nPaths = 0;
+};
+
+struct RangeDecorationRowPaint {
+    RangeDecorationPaint* shared = nullptr;
+};
+
+// layout_range_corners: a buffer range through the visible (non-folded)
+// shaped rows. Half-open intersections give soft-wrap ends their trailing
+// affinity and keep a range on a later line from painting an earlier line's
+// first glyph. A range that runs over a line's end gives the last visual row
+// of that line a one-space newline cell; a wrap boundary gets none.
+static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
+                                  Selection range, Vec<RangeCorners>* out) {
+    int before = len(*out);
+    Bounds rects[64];
+    for (int r = 0; r < p->nRows; r++) {
+        const RangeDecorationRow& row = p->rows[r];
+        int lineEnd = row.start + row.len;
+        int startIx = std::max(range.start, row.start);
+        int endIx = std::min(range.end, lineEnd);
+        bool newline = range.start <= lineEnd && range.end > lineEnd;
+        int n = 0;
+        if (startIx < endIx) {
+            n = ElTextRangeRects(ctx, row.text, startIx - row.start,
+                                 endIx - row.start, rects, dimof(rects));
+        }
+        if (newline && n == 0) {
+            // The newline cell alone, where the line's last visual row ends.
+            Bounds end = {row.text->x, row.text->y, 0, p->lineH};
+            Bounds whole[64];
+            int m = row.len > 0 ? ElTextRangeRects(ctx, row.text, 0, row.len,
+                                                   whole, dimof(whole))
+                                : 0;
+            if (m > 0) {
+                end = {whole[m - 1].x + whole[m - 1].w, whole[m - 1].y, 0,
+                       p->lineH};
+            }
+            if (n < dimof(rects)) {
+                rects[n++] = end;
+            }
+        }
+        for (int i = 0; i < n; i++) {
+            float left = rects[i].x;
+            float right = rects[i].x + rects[i].w;
+            if (newline && i == n - 1) {
+                right += ElTextSpaceWidth(ctx, row.text);
+            }
+            float top = rects[i].y;
+            RangeCorners c;
+            c.topLeft = {left, top};
+            c.topRight = {right, top};
+            c.bottomLeft = {left, top + p->lineH};
+            c.bottomRight = {right, top + p->lineH};
+            VecAppend(*out, c);
+        }
+    }
+    return len(*out) - before;
+}
+
+static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
+                                      Bounds contentMask) {
+    p->built = true;
+    p->paths = (RangeDecorationPath*)Alloc(
+        p->arena, (int)sizeof(RangeDecorationPath) * p->nDecorations);
+    if (!p->paths) {
+        return;
+    }
+    float scale = ctx->dpi > 0 ? ctx->dpi / 96.f : 1.f;
+    // Fills first, then frames: Rust collects the two separately and paints
+    // every fill before any frame.
+    for (int pass = 0; pass < 2; pass++) {
+        RangeDecorationStyle want = pass == 0 ? RangeDecorationStyle::Fill
+                                              : RangeDecorationStyle::Frame;
+        for (int i = 0; i < p->nDecorations; i++) {
+            const RangeDecoration& d = *p->decorations[i];
+            if (d.style != want) {
+                continue;
+            }
+            Vec<RangeCorners> corners;
+            if (RangeDecorationCorners(ctx, p, d.range, &corners) == 0) {
+                continue;
+            }
+            RangeDecorationPath path;
+            Vec<Point> points;
+            if (want == RangeDecorationStyle::Fill) {
+                path.color =
+                    d.hasColor ? d.color : RgbaOpacity(p->foreground, 0.12f);
+                FrameOutlinePoints(corners.els, len(corners), &points);
+            } else {
+                path.color = d.hasColor ? d.color : p->foreground;
+                PadFrameCorners(corners.els, len(corners), 1.f);
+                FrameOutlinePoints(corners.els, len(corners), &points);
+                path.stroke =
+                    SnapFrameOutline(points.els, len(points), 1.f, scale);
+                ClampFrameToContentMask(points.els, len(points), path.stroke,
+                                        contentMask);
+            }
+            path.n = len(points);
+            path.points =
+                (Point*)Alloc(p->arena, (int)sizeof(Point) * (path.n + 1));
+            if (!path.points || path.n == 0) {
+                continue;
+            }
+            memcpy(path.points, points.els, sizeof(Point) * (size_t)path.n);
+            p->paths[p->nPaths++] = path;
+        }
+    }
+}
+
+static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user);
+
+static void AttachRangeDecorationRow(Arena* a, RangeDecorationPaint* p, El* box,
+                                     El* text, int start, int len) {
+    RangeDecorationRow& row = p->rows[p->nRows++];
+    row.box = box;
+    row.text = text;
+    row.start = start;
+    row.len = len;
+    RangeDecorationRowPaint* user = ArenaNew<RangeDecorationRowPaint>(a);
+    user->shared = p;
+    box->customPaint = &PaintRangeDecorationsRow;
+    box->customUser = user;
+}
+
+static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user) {
+    RangeDecorationRowPaint* rp = (RangeDecorationRowPaint*)user;
+    RangeDecorationPaint* p = rp ? rp->shared : nullptr;
+    if (!p) {
+        return;
+    }
+    if (!p->built) {
+        Bounds mask = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
+        BuildRangeDecorationPaths(ctx, p, mask);
+    }
+    if (p->nPaths == 0) {
+        return;
+    }
+    CanvasPushClip(ctx, e->x - 2, e->y, e->w + 4, e->h);
+    for (int i = 0; i < p->nPaths; i++) {
+        const RangeDecorationPath& path = p->paths[i];
+        Path* shape = PathNew(ctx, true);
+        if (!shape) {
+            continue;
+        }
+        PathMoveTo(shape, path.points[0].x, path.points[0].y);
+        for (int k = 1; k < path.n; k++) {
+            PathLineTo(shape, path.points[k].x, path.points[k].y);
+        }
+        PathClose(shape);
+        Rgba c = PaintFade(ctx, path.color);
+        if (path.stroke > 0) {
+            PathStroke(ctx, shape, path.stroke, c);
+        } else {
+            PathFill(ctx, shape, c);
+        }
+        PathFree(shape);
+    }
+    CanvasPopClip(ctx);
+}
+
 El* Textarea::New(Ctx* cx, InputState* state) {
     return New(cx, state, InputEditorStyle{});
 }
@@ -1025,6 +1217,40 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             nDocSpans = nHl;
         }
     }
+    // layout_range_decorations: query separate buffer spans across folds
+    // instead of scanning annotations in the hidden text between the first
+    // and last visible offsets. Each visible line's span takes its newline.
+    RangeDecorationPaint* rangePaint = nullptr;
+    if (state->rangeDecorations && firstRow < endRow) {
+        Vec<Selection> spans;
+        for (int row = firstRow; row < endRow && row < len(lineStarts); row++) {
+            if (folding && FoldMapLineHidden(&state->folds, row)) {
+                continue;
+            }
+            int offset = lineStarts[row];
+            int lineEnd =
+                row + 1 < len(lineStarts) ? lineStarts[row + 1] - 1 : len(text);
+            int end = std::min(lineEnd + 1, len(text));
+            if (len(spans) > 0 && spans[len(spans) - 1].end == offset) {
+                spans[len(spans) - 1].end = end;
+            } else if (offset < end) {
+                VecAppend(spans, Selection{offset, end});
+            }
+        }
+        int n = InputRangeDecorations(state, spans.els, len(spans), nullptr, 0);
+        if (n > 0) {
+            rangePaint = ArenaNew<RangeDecorationPaint>(a);
+            rangePaint->decorations = (const RangeDecoration**)Alloc(
+                a, (int)sizeof(const RangeDecoration*) * n);
+            rangePaint->nDecorations = InputRangeDecorations(
+                state, spans.els, len(spans), rangePaint->decorations, n);
+            rangePaint->rows = (RangeDecorationRow*)Alloc(
+                a, (int)sizeof(RangeDecorationRow) * (endRow - firstRow));
+            rangePaint->foreground = style.foreground;
+            rangePaint->lineH = lineH;
+            rangePaint->arena = a;
+        }
+    }
     for (int row = firstRow; row < endRow; row++) {
         int start = lineStarts[row];
         int lineEnd =
@@ -1342,13 +1568,24 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
             }
         }
+        // The row's slice of the range decorations paints from the row's
+        // own box, so a bare run gets a box of its own to paint from.
+        bool rangeRow = rangePaint && rangePaint->rows && !tokenLine;
         if (!lineNumbers) {
             El* only = el;
-            if (guides) {
-                only = Div(a)->W(kFill)->Child(guides)->Child(el);
+            if (guides || rangeRow) {
+                only = Div(a)->W(kFill);
+                if (guides) {
+                    only->Child(guides);
+                }
+                only->Child(el);
                 if (!wrap) {
                     only->H(lineH);
                 }
+            }
+            if (rangeRow) {
+                AttachRangeDecorationRow(a, rangePaint, only, el, start,
+                                         len(line));
             }
             if (wrap && row < state->rowBoxes.len) {
                 only->BoundsOut(&state->rowBoxes[row]);
@@ -1411,6 +1648,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             band->Child(pane);
         } else {
             band->Child(el);
+        }
+        if (rangeRow) {
+            AttachRangeDecorationRow(a, rangePaint, band, el, start, len(line));
         }
         col->Child(band);
     }
@@ -1597,6 +1837,7 @@ RopePoint InputOffsetToPoint(const InputState* s, int offset) {
 }
 
 InputState::~InputState() {
+    InputRangeDecorationsFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
     // otherwise. Rust drops that registration the next time it is read; here
@@ -3534,6 +3775,13 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         }
     }
 
+    // adjust_annotations, or reset_annotations when masking rewrote the
+    // whole document and recorded ranges no longer point at anything.
+    if (maskChanged) {
+        InputRangeDecorationsReset(s);
+    } else {
+        InputRangeDecorationsAdjustForEdit(s, r, len(text));
+    }
     if (maskChanged) {
         // Masking rewrites the whole document, so a segment-based entry no
         // longer matches it — record a whole-document change instead, and
@@ -3820,6 +4068,7 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
             return;
         }
     }
+    InputRangeDecorationsAdjustForEdit(s, r, len(text));
     s->cursorLineEndAffinity = false;
     if (len(text) == 0) {
         // An empty insert is the composition being abandoned: the caret goes

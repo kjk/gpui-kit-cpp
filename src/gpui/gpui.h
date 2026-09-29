@@ -188,6 +188,8 @@ inline bool BackgroundIsSolid(const Background& b) {
 // The text-field engine, in the input section below. El and HitRect name one
 // before it is defined, the way they name SliderState.
 struct InputState;
+// An editor's range decoration store, which base/input_editor.cpp defines.
+struct RangeDecorationsState;
 
 constexpr float kAuto = -1.f;
 constexpr float kFill = -2.f;
@@ -4380,6 +4382,10 @@ struct InputState {
     void* documentColorData = nullptr;
     Vec<DocumentColor> documentColors;
     bool documentColorsDirty = true;
+    // EditorExtras::range_decorations: the geometric range decorations
+    // (base/input_editor.h), made on the first
+    // InputCreateRangeDecorationsCollection and dropped with the state.
+    RangeDecorationsState* rangeDecorations = nullptr;
     // The code action menu, and who fills it — cmd-. / ctrl-. asks whatever
     // is selected. Rust asks every registered provider and puts the answers
     // in one list.
@@ -5204,6 +5210,15 @@ Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont = 0,
 // Measure a row at the width its virtual-list viewport will give it.
 Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width);
 void PaintEl(PaintCtx* ctx, El* e);
+// Where the bytes [lo, hi) of a laid-out text run landed, one rectangle per
+// visual line, in window coordinates — ShapedLine::x_for_index over each
+// wrapped row, for a caller that paints over a run from outside it (an
+// editor's range decorations, which span rows). Returns how many were
+// written.
+int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
+                     int cap);
+// The advance of a space in the run's font: the cell a selected newline gets.
+float ElTextSpaceWidth(PaintCtx* ctx, const El* e);
 int HitTest(PaintCtx* ctx, float x, float y);
 const HitRect* HitTestRect(PaintCtx* ctx, float x, float y);
 // The scroll box of an id as the frame before this one painted it — the

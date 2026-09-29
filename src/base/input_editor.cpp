@@ -680,6 +680,488 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
     return len(accepted);
 }
 
+// ─── range decorations (decorations.rs) ────────────────────────────────────
+
+RangeDecoration RangeDecoration::New(Selection range) {
+    RangeDecoration out;
+    out.range = range;
+    return out;
+}
+
+bool RangeDecoration::Color(Rgba* out) const {
+    if (hasColor && out) {
+        *out = color;
+    }
+    return hasColor;
+}
+
+RangeDecoration RangeDecoration::WithStyle(RangeDecorationStyle value) const {
+    RangeDecoration out = *this;
+    out.style = value;
+    return out;
+}
+
+RangeDecoration RangeDecoration::WithColor(Rgba value) const {
+    RangeDecoration out = *this;
+    out.color = value;
+    out.hasColor = true;
+    return out;
+}
+
+int DecorationIndex::Build(const RangeDecoration* decorations, int lo, int hi) {
+    if (hi <= lo) {
+        return 0;
+    }
+    int mid = lo + (hi - lo) / 2;
+    int end = decorations[indices[mid]].range.end;
+    end = std::max(end, Build(decorations, lo, mid));
+    end = std::max(end, Build(decorations, mid + 1, hi));
+    maxEnds[mid] = end;
+    return end;
+}
+
+void DecorationIndex::Rebuild(const RangeDecoration* decorations, int n) {
+    VecClear(indices);
+    VecClear(maxEnds);
+    if (n <= 0) {
+        return;
+    }
+    VecResize(indices, n);
+    VecResize(maxEnds, n);
+    for (int i = 0; i < n; i++) {
+        indices[i] = i;
+        maxEnds[i] = 0;
+    }
+    std::sort(indices.els, indices.els + n, [decorations](int a, int b) {
+        int sa = decorations[a].range.start;
+        int sb = decorations[b].range.start;
+        return sa < sb || (sa == sb && a < b);
+    });
+    Build(decorations, 0, n);
+}
+
+int DecorationIndex::Query(const RangeDecoration* decorations, int lo, int hi,
+                           Selection range, Vec<int>* matches) const {
+    if (hi <= lo || range.start >= range.end) {
+        return 0;
+    }
+    int mid = lo + (hi - lo) / 2;
+    if (maxEnds[mid] <= range.start) {
+        return 1;
+    }
+    int visited = 1 + Query(decorations, lo, mid, range, matches);
+    int ix = indices[mid];
+    Selection candidate = decorations[ix].range;
+    if (candidate.start < range.end) {
+        if (candidate.end > range.start) {
+            VecAppend(*matches, ix);
+        }
+        visited += Query(decorations, mid + 1, hi, range, matches);
+    }
+    return visited;
+}
+
+void RangeDecorationEntries::Reindex() {
+    index.Rebuild(decorations.els, len(decorations));
+}
+
+RangeDecorationCollections::~RangeDecorationCollections() {
+    for (int i = 0; i < len(entries); i++) {
+        delete entries[i];
+    }
+}
+
+uint64_t RangeDecorationCollections::Create(const RangeDecoration* decorations,
+                                            int n) {
+    RangeDecorationEntries* entry = new RangeDecorationEntries();
+    entry->id = nextId++;
+    for (int i = 0; decorations && i < n; i++) {
+        VecAppend(entry->decorations, decorations[i]);
+    }
+    entry->Reindex();
+    VecAppend(entries, entry);
+    return entry->id;
+}
+
+RangeDecorationEntries* RangeDecorationCollections::Get(uint64_t id) const {
+    for (int i = 0; i < len(entries); i++) {
+        if (entries[i]->id == id) {
+            return entries[i];
+        }
+    }
+    return nullptr;
+}
+
+bool RangeDecorationCollections::Set(uint64_t id,
+                                     const RangeDecoration* decorations,
+                                     int n) {
+    RangeDecorationEntries* entry = Get(id);
+    if (!entry) {
+        return false;
+    }
+    VecClear(entry->decorations);
+    for (int i = 0; decorations && i < n; i++) {
+        VecAppend(entry->decorations, decorations[i]);
+    }
+    entry->Reindex();
+    return true;
+}
+
+bool RangeDecorationCollections::Append(uint64_t id,
+                                        const RangeDecoration* decorations,
+                                        int n) {
+    RangeDecorationEntries* entry = Get(id);
+    if (!entry) {
+        return false;
+    }
+    for (int i = 0; decorations && i < n; i++) {
+        VecAppend(entry->decorations, decorations[i]);
+    }
+    entry->Reindex();
+    return true;
+}
+
+bool RangeDecorationCollections::Remove(uint64_t id) {
+    for (int i = 0; i < len(entries); i++) {
+        if (entries[i]->id == id) {
+            delete entries[i];
+            for (int k = i; k + 1 < len(entries); k++) {
+                entries[k] = entries[k + 1];
+            }
+            entries.len--;
+            return true;
+        }
+    }
+    return false;
+}
+
+void RangeDecorationCollections::AdjustForEdit(Selection editedRange,
+                                               int insertedLen) {
+    for (int e = 0; e < len(entries); e++) {
+        RangeDecorationEntries* entry = entries[e];
+        int n = len(entry->decorations);
+        // The root's max end: nothing ends after the edit starts, so nothing
+        // can move.
+        if (n == 0 || entry->index.maxEnds[n / 2] <= editedRange.start) {
+            continue;
+        }
+        Vec<int> remap;
+        VecResize(remap, n);
+        int retained = 0;
+        for (int i = 0; i < n; i++) {
+            RangeDecoration d = entry->decorations[i];
+            d.range = AdjustDecorationRange(d.range, editedRange, insertedLen);
+            bool keep = !d.range.IsEmpty();
+            remap[i] = keep ? retained : -1;
+            if (keep) {
+                entry->decorations[retained++] = d;
+            }
+        }
+        VecResize(entry->decorations, retained);
+        // Anchor transforms are monotone. Preserve start ordering and remap
+        // removed entries rather than sorting on every keystroke: O(n).
+        Vec<int>& indices = entry->index.indices;
+        int write = 0;
+        for (int i = 0; i < len(indices); i++) {
+            int ix = remap[indices[i]];
+            if (ix >= 0) {
+                indices[write++] = ix;
+            }
+        }
+        VecResize(indices, write);
+        VecResize(entry->index.maxEnds, retained);
+        entry->index.Build(entry->decorations.els, 0, retained);
+    }
+}
+
+void RangeDecorationCollections::Clear() {
+    for (int i = 0; i < len(entries); i++) {
+        VecClear(entries[i]->decorations);
+        entries[i]->Reindex();
+    }
+}
+
+int RangeDecorationCollections::Intersecting(const Selection* ranges,
+                                             int nRanges,
+                                             const RangeDecoration** out,
+                                             int cap) const {
+    int count = 0;
+    Vec<int> matches;
+    for (int e = 0; e < len(entries); e++) {
+        const RangeDecorationEntries* entry = entries[e];
+        VecClear(matches);
+        for (int r = 0; ranges && r < nRanges; r++) {
+            entry->index.Query(entry->decorations.els, 0,
+                               len(entry->decorations), ranges[r], &matches);
+        }
+        std::sort(matches.els, matches.els + len(matches));
+        int prev = -1;
+        for (int i = 0; i < len(matches); i++) {
+            if (matches[i] == prev) {
+                continue;
+            }
+            prev = matches[i];
+            if (out && count < cap) {
+                out[count] = &entry->decorations[matches[i]];
+            }
+            count++;
+        }
+    }
+    return count;
+}
+
+int RangeDecorationsNormalize(Str text, const RangeDecoration* in, int n,
+                              Vec<RangeDecoration>* out) {
+    int added = 0;
+    for (int i = 0; in && i < n; i++) {
+        // Reject reversed ranges before clipping, which could otherwise turn
+        // a reversed pair within a multibyte character into a nonempty range.
+        if (in[i].range.start >= in[i].range.end) {
+            continue;
+        }
+        int start = RopeClipOffset(text, in[i].range.start, Bias::Left);
+        int end = RopeClipOffset(text, in[i].range.end, Bias::Right);
+        if (end <= start) {
+            continue;
+        }
+        RangeDecoration d = in[i];
+        d.range = {start, end};
+        VecAppend(*out, d);
+        added++;
+    }
+    return added;
+}
+
+// The editor end of the collection handles: reference-counted so a handle
+// outliving its editor is a harmless no-op, as Rust's weak entity makes it.
+struct RangeDecorationsState {
+    int refs = 1;
+    bool ownerAlive = true;
+    InputState* input = nullptr;
+    RangeDecorationCollections collections;
+};
+
+static void RangeDecorationsRetain(RangeDecorationsState* state) {
+    if (state) {
+        state->refs++;
+    }
+}
+
+static void RangeDecorationsRelease(RangeDecorationsState* state) {
+    if (state && --state->refs <= 0) {
+        delete state;
+    }
+}
+
+static RangeDecorationCollections* RangeDecorationsLive(
+    RangeDecorationsState* state) {
+    return state && state->ownerAlive && state->input ? &state->collections
+                                                      : nullptr;
+}
+
+RangeDecorationCollection::RangeDecorationCollection(
+    const RangeDecorationCollection& other)
+    : state(other.state), id(other.id) {
+    RangeDecorationsRetain(state);
+}
+
+RangeDecorationCollection& RangeDecorationCollection::operator=(
+    const RangeDecorationCollection& other) {
+    if (this == &other) {
+        return *this;
+    }
+    RangeDecorationsRetain(other.state);
+    RangeDecorationsRelease(state);
+    state = other.state;
+    id = other.id;
+    return *this;
+}
+
+RangeDecorationCollection::~RangeDecorationCollection() {
+    RangeDecorationsRelease(state);
+}
+
+void RangeDecorationCollection::Set(const RangeDecoration* decorations, int n) {
+    RangeDecorationCollections* live = RangeDecorationsLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<RangeDecoration> normalized;
+    RangeDecorationsNormalize(InputValue(state->input), decorations, n,
+                              &normalized);
+    live->Set(id, normalized.els, len(normalized));
+}
+
+void RangeDecorationCollection::Append(const RangeDecoration* decorations,
+                                       int n) {
+    RangeDecorationCollections* live = RangeDecorationsLive(state);
+    if (!live) {
+        return;
+    }
+    Vec<RangeDecoration> normalized;
+    RangeDecorationsNormalize(InputValue(state->input), decorations, n,
+                              &normalized);
+    live->Append(id, normalized.els, len(normalized));
+}
+
+void RangeDecorationCollection::Clear() {
+    Set(nullptr, 0);
+}
+
+void RangeDecorationCollection::Dispose() {
+    if (RangeDecorationCollections* live = RangeDecorationsLive(state)) {
+        live->Remove(id);
+    }
+}
+
+int RangeDecorationCollection::GetRanges(Selection* out, int cap) const {
+    RangeDecorationCollections* live = RangeDecorationsLive(state);
+    RangeDecorationEntries* entry = live ? live->Get(id) : nullptr;
+    if (!entry) {
+        return 0;
+    }
+    for (int i = 0; out && i < len(entry->decorations) && i < cap; i++) {
+        out[i] = entry->decorations[i].range;
+    }
+    return len(entry->decorations);
+}
+
+bool RangeDecorationCollection::IsValid() const {
+    RangeDecorationCollections* live = RangeDecorationsLive(state);
+    return live && live->Get(id);
+}
+
+RangeDecorationCollection InputCreateRangeDecorationsCollection(
+    InputState* s, const RangeDecoration* decorations, int n) {
+    RangeDecorationCollection result;
+    if (!s) {
+        return result;
+    }
+    if (!s->rangeDecorations) {
+        s->rangeDecorations = new RangeDecorationsState();
+        s->rangeDecorations->input = s;
+    }
+    Vec<RangeDecoration> normalized;
+    RangeDecorationsNormalize(InputValue(s), decorations, n, &normalized);
+    result.state = s->rangeDecorations;
+    result.id = s->rangeDecorations->collections
+                    .Create(normalized.els, len(normalized));
+    RangeDecorationsRetain(result.state);
+    return result;
+}
+
+int InputRangeDecorations(const InputState* s, const Selection* ranges,
+                          int nRanges, const RangeDecoration** out, int cap) {
+    if (!s || !s->rangeDecorations) {
+        return 0;
+    }
+    return s->rangeDecorations->collections
+        .Intersecting(ranges, nRanges, out, cap);
+}
+
+void InputRangeDecorationsFree(InputState* s) {
+    if (!s || !s->rangeDecorations) {
+        return;
+    }
+    RangeDecorationsState* state = s->rangeDecorations;
+    state->ownerAlive = false;
+    state->input = nullptr;
+    // The collections go with the editor; a surviving handle keeps only the
+    // shell it checks.
+    while (len(state->collections.entries) > 0) {
+        state->collections.Remove(state->collections.entries[0]->id);
+    }
+    RangeDecorationsRelease(state);
+    s->rangeDecorations = nullptr;
+}
+
+void InputRangeDecorationsAdjustForEdit(InputState* s, Selection editedRange,
+                                        int insertedLen) {
+    if (s && s->rangeDecorations) {
+        s->rangeDecorations->collections
+            .AdjustForEdit(editedRange, insertedLen);
+    }
+}
+
+void InputRangeDecorationsReset(InputState* s) {
+    if (s && s->rangeDecorations) {
+        s->rangeDecorations->collections.Clear();
+    }
+}
+
+// ─── frame geometry (element.rs) ───────────────────────────────────────────
+
+int FrameOutlinePoints(const RangeCorners* corners, int n, Vec<Point>* out) {
+    if (!corners || n <= 0 || !out) {
+        return 0;
+    }
+    int base = len(*out);
+    // Each row is read as (top_left, bottom_right).
+    Point firstTl = corners[0].topLeft, firstBr = corners[0].bottomRight;
+    Point lastTl = corners[n - 1].topLeft, lastBr = corners[n - 1].bottomRight;
+    VecAppend(*out, firstTl);
+    VecAppend(*out, Point{firstBr.x, firstTl.y});
+    for (int i = 0; i + 1 < n; i++) {
+        Point curBr = corners[i].bottomRight;
+        Point nextBr = corners[i + 1].bottomRight;
+        VecAppend(*out, curBr);
+        VecAppend(*out, Point{nextBr.x, curBr.y});
+        VecAppend(*out, Point{nextBr.x, nextBr.y});
+    }
+    if ((*out)[len(*out) - 1] != lastBr) {
+        VecAppend(*out, lastBr);
+    }
+    VecAppend(*out, Point{lastTl.x, lastBr.y});
+    for (int i = n - 2; i >= 0; i--) {
+        Point curTl = corners[i + 1].topLeft;
+        Point nextTl = corners[i].topLeft;
+        VecAppend(*out, Point{curTl.x, curTl.y});
+        VecAppend(*out, Point{nextTl.x, curTl.y});
+        VecAppend(*out, Point{nextTl.x, nextTl.y});
+    }
+    if ((*out)[len(*out) - 1] != (*out)[base]) {
+        Point first = (*out)[base];
+        VecAppend(*out, first);
+    }
+    return len(*out) - base;
+}
+
+void PadFrameCorners(RangeCorners* corners, int n, float horizontalPadding) {
+    for (int i = 0; corners && i < n; i++) {
+        corners[i].topLeft.x -= horizontalPadding;
+        corners[i].topRight.x += horizontalPadding;
+        corners[i].bottomLeft.x -= horizontalPadding;
+        corners[i].bottomRight.x += horizontalPadding;
+    }
+}
+
+float SnapFrameOutline(Point* points, int n, float strokeWidth,
+                       float scaleFactor) {
+    float physical = ceilf(fabsf(strokeWidth * scaleFactor) - 0.5f);
+    if (physical < 1.f) {
+        physical = 1.f;
+    }
+    float width = physical / scaleFactor;
+    float center = fmodf(physical, 2.f) == 0.f ? 0.f : 0.5f;
+    for (int i = 0; points && i < n; i++) {
+        points[i].x =
+            (roundf(points[i].x * scaleFactor - center) + center) / scaleFactor;
+        points[i].y =
+            (roundf(points[i].y * scaleFactor - center) + center) / scaleFactor;
+    }
+    return width;
+}
+
+void ClampFrameToContentMask(Point* points, int n, float strokeWidth,
+                             Bounds contentMask) {
+    float half = strokeWidth / 2.f;
+    float minX = contentMask.x + half;
+    float maxX = std::max(contentMask.x + contentMask.w - half, minX);
+    for (int i = 0; points && i < n; i++) {
+        points[i].x = std::min(std::max(points[i].x, minX), maxX);
+    }
+}
+
 static DiagnosticRelatedInformation* CloneRelated(
     Arena* a, const DiagnosticRelatedInformation* src, int n) {
     if (!src || n <= 0) {

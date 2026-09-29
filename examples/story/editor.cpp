@@ -79,12 +79,17 @@ static const char* kEditorCode =
 // TextDecorations hung off it. Weight and slant are not among the things a
 // span can change — every run of a line shares one shaped layout — so the
 // bold and the italic Rust also asks for are not drawn; the colour, the wash
-// and the wavy rule are.
+// and the wavy rule are. The last two paragraphs carry range decorations, a
+// fill and a frame, which follow edits.
 static const char* kDecorationText =
     "Decoration styles\n"
     "Color highlights important text.\n"
     "Italic adds emphasis.\n"
-    "Underline marks a review range.";
+    "Underline marks review text.\n"
+    "\n"
+    "Fill: marks a tracked range.\n"
+    "\n"
+    "Frame: outlines a tracked range.";
 
 struct EditorStory {
     int tab = 0;
@@ -92,6 +97,10 @@ struct EditorStory {
     // One EditorState per tab, the way the Rust story keeps one per document.
     InputState code;
     InputState decorations;
+    // create_range_decorations_collection: geometry is a separate owner
+    // from text styling. Both follow edits, including newlines inserted
+    // before these ranges.
+    RangeDecorationCollection rangeDecorations;
     bool seeded = false;
 
     static El* Render(EditorStory* self, Ctx* cx);
@@ -116,6 +125,18 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
         self->decorations.kind = InputKind::Editor;
         InputSetValue(&self->code, Str(kEditorCode));
         InputSetValue(&self->decorations, Str(kDecorationText));
+        Str text = Str(kDecorationText);
+        Str fill = StrL("marks a tracked range.");
+        Str frame = StrL("outlines a tracked range.");
+        int fillStart = std::max(0, StrFind(text, fill));
+        int frameStart = std::max(0, StrFind(text, frame));
+        RangeDecoration ranges[2] = {
+            RangeDecoration::New({fillStart, fillStart + len(fill)})
+                .WithStyle(RangeDecorationStyle::Fill),
+            RangeDecoration::New({frameStart, frameStart + len(frame)}),
+        };
+        self->rangeDecorations = InputCreateRangeDecorationsCollection(
+            &self->decorations, ranges, 2);
     }
     self->code.readonly = self->readOnly;
     self->decorations.readonly = self->readOnly;

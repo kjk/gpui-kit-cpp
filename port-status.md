@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d7415bd02c61bb21d1e72a43fa81c999ce68cb7e` (2026-09-23,
-dock: fix nested moves and add opt-in tab close controls (#3197)). A nested
-dock ignores a panel it does not own, and the themed skin draws opt-in tab
-close buttons gated by TabGroupContext::is_panel_closable. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `a587ccc38ea74bba18162c3247612db03a86afed` (2026-09-23,
+input: Add collection-owned geometric range decorations (#3040)). Editors gain
+collection-owned, edit-tracked geometric range decorations (fill or one-pixel
+frame) behind an interval index, painted from the rows' shaped runs below the
+selection. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -45,6 +46,16 @@ target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   only by standalone handles (`src/ui/dock.cpp` SkinDock,
   `src/base/dock_area.cpp` DockBindResizeStrip). Splits inside a dock do use
   the indicator.
+- **Editor range decorations paint from the rows, not from one prepaint.**
+  Rust projects each decoration through the shaped lines in prepaint and
+  paints one path per decoration; the editor's rows are separate flex
+  elements here, so the corners are measured at paint from where each row's
+  run landed (`ElTextRangeRects`) and every row paints its own slice of the
+  paths after its active-line wash and before its text. The collection
+  methods do not notify the editor as Rust's do; the owning view re-renders.
+  element.rs's four window-driven geometry tests (scrolled viewport, wrap
+  boundaries and newline cells, CRLF, folds) are not ported: this suite lays
+  out no editor window (`src/base/input.cpp` RangeDecorationCorners).
 - **A toolbar's items are the tab stops inside its box.** Rust constrains
   roving Left/Right focus to the toolbar's subtree through its focus handle;
   a handle here knows containment only through a focus trap, which would
