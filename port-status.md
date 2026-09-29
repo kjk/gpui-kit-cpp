@@ -38,6 +38,10 @@ target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   WindowState's `prepare` sets no rem size and its tooltip and fallback-menu
   overlays are the window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
+- **A striped DataTable leaves the space below its last row empty.** Rust's
+  `calculate_extra_rows_needed` pads a short striped table with filler rows
+  (`floor(remaining / row_height)`) so the stripes run to the bottom; here
+  the stripes stop at the last data row (`src/ui/table.cpp`).
 - **A dock's own edge is an in-flow strip, not a hugging resize handle.**
   Rust's docks resize from a `resize_handle(..).inside(edge)` with the
   indicator appearance; here the edge is the four-DIP strip beside the dock's
