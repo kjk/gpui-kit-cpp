@@ -15,13 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `db527f50a0b1c5b829a18b151e2b4d3dbac3ffdb` (2026-09-25,
-highlighter: Read tree-sitter input as bytes to avoid aborting inside
-multi-byte chars (#3238)). The Rust highlighter reads tree-sitter input as
-bytes so a stale tree asking for an offset inside a multi-byte character no
-longer aborts; this tree's highlighter is a scanner with no tree-sitter read
-callbacks. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `d89cd9cca6a8c334ee498ffcf02dd3588c1402d9` (2026-09-25,
+website: Make the active sidebar item stand out (#3237)). Upstream restyled
+the website's active sidebar item; nothing in the tree ports it. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

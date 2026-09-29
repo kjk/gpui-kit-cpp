@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "db527f50a0b1c5b829a18b151e2b4d3dbac3ffdb",
+  sha: "d89cd9cca6a8c334ee498ffcf02dd3588c1402d9",
   date: "2026-09-25",
-  subject: "highlighter: Read tree-sitter input as bytes to avoid aborting inside multi-byte chars (#3238)",
+  subject: "website: Make the active sidebar item stand out (#3237)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
