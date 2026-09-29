@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `11d693924ebe5ff00d3da64e8f65598283605654` (2026-09-27,
-perf(chart): speed up painting and hover (#3262)). Upstream sped up chart
-paint and hover: point charts project x by index (ScalePoint::tick_at), candle
-wicks are 1px quads, sankey ribbons are cached, and plot hover notifies only
-its view. The current update target is
+Processed through `dca2c369ec900b097f5fe10c10c738255e74fc12` (2026-09-27,
+perf(text): reduce streaming, hover and selection work in TextView (#3261)).
+Upstream cut TextView streaming, hover and selection work: appended blocks
+splice into the list without a reset, paragraph and table caches survive
+clones, link hover only notifies on change, selection has exact fast paths,
+and themed code blocks share one highlighter. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

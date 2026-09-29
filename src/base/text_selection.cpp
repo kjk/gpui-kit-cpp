@@ -520,6 +520,45 @@ static bool PointInSelectionBand(Point position, float charWidth,
     return true;
 }
 
+TextSelectionBand TextSelectionBandFor(float rowsTop, float rowsBottom,
+                                       Point selectionStart,
+                                       Point selectionEnd) {
+    float bandTop = std::min(selectionStart.y, selectionEnd.y);
+    float bandBottom = std::max(selectionStart.y, selectionEnd.y);
+    if (rowsBottom <= bandTop || rowsTop > bandBottom) {
+        return TextSelectionBand::Misses;
+    }
+    if (bandTop < rowsTop && bandBottom >= rowsBottom) {
+        return TextSelectionBand::Covers;
+    }
+    return TextSelectionBand::Partial;
+}
+
+// text_rows_extent: the top of the run's first row and the bottom of its
+// last, in window coordinates, measured the way the walk below measures each
+// character. Rows go down the layout in order, so the first and the last
+// character bound all of them. False when the layout has nothing to say.
+static bool RunRowsExtent(const TextSelectionRun& run, float* top,
+                          float* bottom) {
+    int n = len(run.text);
+    uint32_t cp = 0;
+    int firstBytes = Utf8At(run.text, 0, &cp);
+    int last = n - 1;
+    while (last > 0 && ((uint8_t)run.text.s[last] & 0xC0) == 0x80) {
+        last--;
+    }
+    Bounds a, b;
+    if (TextLayoutRangeRects(run.layout, run.text, 0, firstBytes, &a, 1) < 1 ||
+        TextLayoutRangeRects(run.layout, run.text, last, n, &b, 1) < 1) {
+        return false;
+    }
+    float ah = a.h > 0 ? a.h : run.bounds.h;
+    float bh = b.h > 0 ? b.h : run.bounds.h;
+    *top = run.bounds.y + std::min(a.y, b.y);
+    *bottom = run.bounds.y + std::max(a.y + ah, b.y + bh);
+    return true;
+}
+
 static TextSelectionRange ProjectRun(const TextSelectionRun& run,
                                      const TextSelectionSnapshot& snapshot) {
     TextSelectionRange out;
@@ -530,6 +569,26 @@ static TextSelectionRange ProjectRun(const TextSelectionRun& run,
         return out;
     }
     if (!snapshot.hasWindowPoints) return out;
+    // selection_range_for_run: each character is tested with its row's top
+    // and height, so a run whose rows all miss the band, or all lie strictly
+    // inside it with no endpoint on any row, has the same answer for every
+    // character. Decide those without the walk below, which asks the layout
+    // for a rect per character: one long code block alone made every paint
+    // of a held selection cost tens of milliseconds.
+    float rowsTop = 0, rowsBottom = 0;
+    if (RunRowsExtent(run, &rowsTop, &rowsBottom)) {
+        TextSelectionBand band = TextSelectionBandFor(
+            rowsTop, rowsBottom, snapshot.windowPoints.anchor,
+            snapshot.windowPoints.cursor);
+        if (band == TextSelectionBand::Misses) {
+            return out;
+        }
+        if (band == TextSelectionBand::Covers) {
+            out.end = len(run.text);
+            out.selected = true;
+            return out;
+        }
+    }
     int at = 0;
     while (at < len(run.text)) {
         uint32_t cp = 0;

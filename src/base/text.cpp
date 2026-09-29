@@ -1169,12 +1169,12 @@ static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
                 newline = i;
             }
         }
-        auto oneNewline = [&]() {
-            int count = 0;
-            for (int i = 0; i < len(remainder) && count < 2; i++) {
-                count += remainder.s[i] == '\n';
-            }
-            return count == 1;
+        // Both line-break predicates stop at the first byte that decides
+        // them, so aligning a long node stays linear in its length: the one
+        // newline is the first one, and it is the last byte.
+        auto newlineOnlyAtEnd = [&]() {
+            const void* nl = memchr(remainder.s, '\n', (size_t)len(remainder));
+            return nl && (const char*)nl - remainder.s == len(remainder) - 1;
         };
         if (newline >= 0) {
             // A soft break rendered as a space: the line ending it stood for.
@@ -1185,7 +1185,7 @@ static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
                     ? 2
                     : 1;
         } else if (cl == 1 && ch[0] == '\n' && len(remainder) > 0 &&
-                   remainder.s[len(remainder) - 1] == '\n' && oneNewline()) {
+                   newlineOnlyAtEnd()) {
             // A hard break is the whole of its syntax.
             relStart = 0;
             sourceLen = len(remainder);

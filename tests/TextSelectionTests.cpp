@@ -691,9 +691,39 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapses() {
     EntityDropAll(&app);
 }
 
+// text_selection.rs selection_range_for_run's fast paths (#3261), and the
+// inline.rs layout_selections ones they share: a band that misses every row
+// selects nothing, one strictly around all of them with no endpoint on a row
+// selects everything, and anything else is left to the per-character walk.
+// text_rows_extent_matches_the_character_walk needs shaped text; the extent
+// here is the first and last character's rects, which bound every row.
+static void SelectionBandDecidesWholeRuns() {
+    // Rows from 100 to 140.
+    utassert(TextSelectionBandFor(100, 140, {0, 20}, {50, 60}) ==
+             TextSelectionBand::Misses);
+    utassert(TextSelectionBandFor(100, 140, {0, 150}, {50, 200}) ==
+             TextSelectionBand::Misses);
+    // Touching the bottom edge is a miss; touching the top is not.
+    utassert(TextSelectionBandFor(100, 140, {0, 140}, {50, 200}) ==
+             TextSelectionBand::Misses);
+    utassert(TextSelectionBandFor(100, 140, {0, 20}, {50, 100}) ==
+             TextSelectionBand::Partial);
+    utassert(TextSelectionBandFor(100, 140, {80, 99}, {10, 140}) ==
+             TextSelectionBand::Covers);
+    // Either order of the endpoints.
+    utassert(TextSelectionBandFor(100, 140, {10, 300}, {80, 50}) ==
+             TextSelectionBand::Covers);
+    // An endpoint on the first row is decided per character.
+    utassert(TextSelectionBandFor(100, 140, {10, 100}, {80, 300}) ==
+             TextSelectionBand::Partial);
+    utassert(TextSelectionBandFor(100, 140, {10, 120}, {80, 130}) ==
+             TextSelectionBand::Partial);
+}
+
 void TestTextSelection() {
     TestSuite("text_selection");
     WrappedSelectionPaintsFullWidthMiddleLines();
+    SelectionBandDecidesWholeRuns();
     SelectableTextJoinsTheDocumentItsHandleOwns();
     DragAutoScrollStopsWhenTheContentMaskCollapses();
     ADragThatNeverTouchesTextPublishesNothing();

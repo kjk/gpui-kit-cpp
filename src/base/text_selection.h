@@ -134,6 +134,19 @@ struct TextSelectionRange {
     bool selected = false;
 };
 
+// How a selection band between two window points relates to the rows of one
+// run, given the top of its first row and the bottom of its last: it misses
+// all of them, covers all of them with neither endpoint on any row, or has to
+// be decided character by character (selection_range_for_run's fast paths).
+enum class TextSelectionBand {
+    Misses,
+    Covers,
+    Partial
+};
+TextSelectionBand TextSelectionBandFor(float rowsTop, float rowsBottom,
+                                       Point selectionStart,
+                                       Point selectionEnd);
+
 struct TextSelectionProjection {
     Vec<TextSelectionRange> ranges;
     bool active = false;

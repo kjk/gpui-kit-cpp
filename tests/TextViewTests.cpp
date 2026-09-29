@@ -3263,6 +3263,22 @@ static void ARevealFollowsItsText() {
 
 #endif
 
+// state.rs an_append_adding_blocks_keeps_the_scroll_position (#3261):
+// streaming a new paragraph into a scrolled view leaves the scroll where it
+// was. Upstream had reset its ListState on every append; the scroll box here
+// keeps its offset on the state, and an append does not touch it.
+static void AnAppendAddingBlocksKeepsTheScrollPosition() {
+    RhView v;
+    RhOpen(&v, "one\n\ntwo\n\nthree");
+    gpui::TextViewState* s = RhState(&v);
+    RhRenderScrollable(&v);
+    s->scrollY = 120;
+    s->PushStr(StrL("\n\nfour"), &v.app, v.win);
+    RhRenderScrollable(&v);
+    utassertnear(s->scrollY, 120.f);
+    RhClose(&v);
+}
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -3357,6 +3373,7 @@ void TestTextView() {
     PushStrKeepsEarlierBlocksAndClipsTheChangedTail();
     PushStrKeepsABlockWhoseTextIsUnchanged();
     PushStrDropsHighlightsOfALeafThatIsGone();
+    AnAppendAddingBlocksKeepsTheScrollPosition();
     ReplacingTextDropsHighlightsOnlyWhereItChanged();
     AHighlightFollowsItsBlockPastAnEarlierEdit();
     AppendingACopyOfTheLastBlockKeepsTheHighlightOnIt();
