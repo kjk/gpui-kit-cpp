@@ -503,6 +503,14 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
     return true;
 }
 
+// state.rs STREAM_FADE_TICK: repaint a streamed fade at about 30 fps.
+static const int kStreamFadeTickMs = 33;
+
+void TextViewState::OnFadeTick(TextViewState* self, Ctx* cx, const TickEvent*) {
+    self->fadeTick = 0;
+    NotifyEntity(cx->app, self->self, cx->win);
+}
+
 TextViewState::~TextViewState() {
     StrFree(text);
     StrFree(streamRenderedText);
@@ -4622,7 +4630,14 @@ El* TextView::IntoEl() {
                     streamFadeFrom = managed->streamFadeFrom;
                     streamFadeOpacity = motion.streamFadeEasing
                                             .Sample(progress);
-                    WindowRequestAnimationFrame(cx->win);
+                    // A streamed fade repaints at about 30 fps on a
+                    // timer, not at the display's refresh rate; the frame
+                    // the tick paints arms the next one.
+                    if (!managed->fadeTick) {
+                        managed->fadeTick = WindowSetTimeout(
+                            cx->win, kStreamFadeTickMs,
+                            ListenTo(state, &TextViewState::OnFadeTick));
+                    }
                 }
             }
         }

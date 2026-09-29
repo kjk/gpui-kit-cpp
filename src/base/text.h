@@ -764,6 +764,9 @@ struct TextViewState {
     bool streamFadeReplace = false;
     int streamFadeFrom = -1;
     double streamFadeStartedAt = 0;
+    // state.rs fade_tick: the pending repaint of a streamed fade, a
+    // WindowSetTimeout handle, or 0.
+    int fadeTick = 0;
     // state.rs rendered_index / committed_revision / range_highlights. The
     // parse lands when the view renders — this runtime parses synchronously
     // inside TextView::IntoEl — so that is where ReconcileRangeHighlights
@@ -831,6 +834,8 @@ struct TextViewState {
                          const ScrollEvent* event);
     static void OnLineClamp(TextViewState* self, Ctx* cx,
                             const LineClampEvent* event);
+    static void OnFadeTick(TextViewState* self, Ctx* cx,
+                           const TickEvent* event);
 
   private:
     void Changed(App* app, Window* window, bool selectionCompatible);

@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `21622a70efd25219d26aa459164878c4da9e39f8` (2026-09-24,
-menu: Break Rc cycle that leaked PopupMenu entity on window close (#3224)).
-ContextMenu's dismiss subscription holds a Weak to its shared state, so a menu
-left open when its window closes no longer leaks; this tree has no Rc cycle to
-break. The current update target is
+Processed through `62966c99dffad79b6d76647d80f03f071f95349e` (2026-09-25,
+text: Throttle streamed-fade repaints to reduce CPU use (#3226)). A streamed
+fade in TextView repaints on a 33 ms timer the frame arms, about 30 fps,
+rather than every display frame. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

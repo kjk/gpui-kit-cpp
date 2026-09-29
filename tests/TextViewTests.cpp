@@ -1942,6 +1942,55 @@ static void TestStreamFadeTracksRenderedAppends() {
     MotionSetReduced(wasReduced);
 }
 
+// state.rs: a_fade_repaints_on_a_timer_until_nothing_fades. Rust advances
+// TestAppContext's clock; the tick here is the window timer the frame arms,
+// fired by hand.
+static void AFadeRepaintsOnATimerUntilNothingFades() {
+    bool wasReduced = MotionReduced();
+    MotionSetReduced(false);
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    Entity<TextViewState> entity = TextViewState::Markdown(&app, StrL("hello"));
+    TextViewState* state = entity.Get(&app);
+    state->SetMotion(TextViewMotion{}.WithStreamFade(10000.f), &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(state->fadeTick == 0 && len(win->timers) == 0);
+
+    state->PushStr(StrL(" world"), &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(state->fadeTick != 0 && len(win->timers) == 1);
+    utassert(win->timers[0].ms == 33);
+    // A frame painted before the tick arms no second one.
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(len(win->timers) == 1);
+
+    // Each tick repaints once, and that frame schedules the next tick.
+    for (int tick = 0; tick < 3; tick++) {
+        WindowCancelTimer(win, state->fadeTick);
+        TextViewState::OnFadeTick(state, &cx, nullptr);
+        utassert(state->fadeTick == 0);
+        TextView::New(&cx, entity)->IntoEl();
+        utassert(state->fadeTick != 0 && len(win->timers) == 1);
+    }
+
+    // Replacing the text drops the fade, so the ticks stop.
+    state->SetText(StrL("other"), &app, win);
+    WindowCancelTimer(win, state->fadeTick);
+    TextViewState::OnFadeTick(state, &cx, nullptr);
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(state->fadeTick == 0 && len(win->timers) == 0);
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    MotionSetReduced(wasReduced);
+}
+
 // stream_fade.rs: stagger_holds_while_the_update_lights_up_within_one_fade
 // and an_update_too_large_to_light_up_in_one_fade_fades_as_one_chunk.
 static void TestStreamFadeStaggerStep() {
@@ -2930,6 +2979,7 @@ void TestTextView() {
     AnUnchangedFlowIsNotLaidOutAgain();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
+    AFadeRepaintsOnATimerUntilNothingFades();
     TestStreamFadeStaggerStep();
     TestManagedTextViewAndParseTimePlugins(a);
     TestMarkdownTableThemeTokens();
