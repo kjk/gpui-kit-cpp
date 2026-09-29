@@ -37,6 +37,11 @@ ListItem* ListItem::Style(const StateStyle& s) {
     return this;
 }
 
+ListItem* ListItem::AccessibilityLabel(Str label) {
+    accessibilityLabel = label;
+    return this;
+}
+
 El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)
@@ -64,6 +69,9 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
     // first and lets the selection refine it.
     if (style.set) {
         StyleApplyFields(&row->style, style.style, style.set);
+    }
+    if (accessibilityLabel.s) {
+        row->AriaLabel(accessibilityLabel);
     }
     if (!disabled && selected) {
         // list_item.rs: the selection takes the active highlight when the

@@ -276,6 +276,48 @@ static void CollapsedTooltipRequiresAnIconAndContentScrolls() {
     ArenaDelete(a);
 }
 
+// 06a56068 (no Rust test): a menu item's row is a selectable tree item named
+// by its label unless given a name of its own, and the icon-only toggle and a
+// list row take the name they are given.
+static void ItemsCarryTheirAccessibleNames() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Window win;
+    win.app = &app;
+    Ctx cx = {&app, &win, a, {}};
+
+    El* item = SidebarMenuItem::New(&cx, StrL("Inbox"))
+                   ->Active(true)
+                   ->IntoEl(StrL("inbox"));
+    El* row = item ? item->first : nullptr;
+    utassert(row && row->accessibility.role == AccessibilityRole::TreeItem);
+    utassert(base::StrEq(row->accessibility.label, StrL("Inbox")));
+    utassert(row->accessibility.hasSelected && row->accessibility.selected);
+    El* named = SidebarMenuItem::New(&cx, StrL("Inbox"))
+                    ->AccessibilityLabel(StrL("Inbox, 3 unread"))
+                    ->IntoEl(StrL("named"));
+    utassert(named && named->first &&
+             base::StrEq(named->first->accessibility.label,
+                         StrL("Inbox, 3 unread")));
+
+    El* toggle = SidebarToggleButton::New(&cx)
+                     ->AccessibilityLabel(StrL("Toggle sidebar"))
+                     ->IntoEl();
+    utassert(toggle &&
+             base::StrEq(toggle->accessibility.label, StrL("Toggle sidebar")));
+
+    El* listRow = component::ListItem::New(&cx, Div(a))
+                      ->AccessibilityLabel(StrL("Row"))
+                      ->IntoEl(StrL("row"), Listener{}, Listener{});
+    utassert(listRow && base::StrEq(listRow->accessibility.label, StrL("Row")));
+
+    WindowKeyedFree(&win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestSidebar() {
     TestSuite("sidebar");
     BoolCollapsibleRemainsBackwardCompatible();
@@ -287,4 +329,5 @@ void TestSidebar() {
     SidebarItemAllowsGenericNestedContent();
     HeaderFooterAndMenuRetainTheirBuilderSurface();
     CollapsedTooltipRequiresAnIconAndContentScrolls();
+    ItemsCarryTheirAccessibleNames();
 }

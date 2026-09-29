@@ -110,6 +110,10 @@ SidebarMenuItem* SidebarMenuItem::LabelStyle(const Style& v, uint32_t fields) {
     labelStyleSet |= fields;
     return this;
 }
+SidebarMenuItem* SidebarMenuItem::AccessibilityLabel(Str v) {
+    accessibilityLabel = v;
+    return this;
+}
 SidebarMenuItem* SidebarMenuItem::Active(bool v) {
     active = v;
     return this;
@@ -178,7 +182,10 @@ El* SidebarMenuItem::IntoEl(Str id) {
                   ->ItemsCenter()
                   ->Radius(th.radius)
                   ->Font(14)
-                  ->PathId(StrL("item"));
+                  ->PathId(StrL("item"))
+                  ->Role(AccessibilityRole::TreeItem)
+                  ->AriaLabel(accessibilityLabel.s ? accessibilityLabel : label)
+                  ->AriaSelected(active);
     // refine_style(&self.style): after the row's own styling, before its
     // hover and active states, which is where Rust applies it.
     StyleApplyFields(&row->style, style, styleSet);
@@ -472,6 +479,10 @@ SidebarToggleButton* SidebarToggleButton::OnClick(Listener fn) {
     onClick = fn;
     return this;
 }
+SidebarToggleButton* SidebarToggleButton::AccessibilityLabel(Str v) {
+    accessibilityLabel = v;
+    return this;
+}
 
 El* SidebarToggleButton::IntoEl() {
     IconName icon;
@@ -482,12 +493,15 @@ El* SidebarToggleButton::IntoEl() {
         icon = SideIsLeft(side) ? IconName::PanelLeftClose
                                 : IconName::PanelRightClose;
     }
-    return Button::New(cx, StrL("collapse"))
-        ->Icon(icon)
-        ->Ghost()
-        ->WithSize(UiSize::Small)
-        ->OnClick(onClick)
-        ->IntoEl();
+    Button* btn = Button::New(cx, StrL("collapse"))
+                      ->Icon(icon)
+                      ->Ghost()
+                      ->WithSize(UiSize::Small)
+                      ->OnClick(onClick);
+    if (accessibilityLabel.s) {
+        btn->AccessibilityLabel(accessibilityLabel);
+    }
+    return btn->IntoEl();
 }
 
 Sidebar* Sidebar::New(Ctx* cx, Str id) {

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "308af7c90463f31118bac524930bc0b7eec35f76",
+  sha: "06a560683f1c95476b2bd432771dc840f38b66e2",
   date: "2026-09-23",
-  subject: "highlighter: Remove deprecated usize import (#3186)",
+  subject: "a11y: accessible names for SidebarMenuItem, ListItem and SidebarToggleButton (#3160)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",

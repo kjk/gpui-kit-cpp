@@ -94,6 +94,8 @@ struct SidebarMenuItem {
     Ctx* cx = nullptr;
     IconName icon = IconName::None;
     Str label = {};
+    // accessibility_label: the row's accessible name; the label when unset.
+    Str accessibilityLabel = {};
     Listener onClick;
     bool active = false;
     bool disabled = false;
@@ -117,6 +119,7 @@ struct SidebarMenuItem {
     SidebarMenuItem* Icon(IconName v);
     SidebarMenuItem* Refine(const Style& v, uint32_t fields);
     SidebarMenuItem* LabelStyle(const Style& v, uint32_t fields);
+    SidebarMenuItem* AccessibilityLabel(Str v);
     SidebarMenuItem* Active(bool v);
     SidebarMenuItem* Disabled(bool v);
     SidebarMenuItem* DefaultOpen(bool v);
@@ -209,11 +212,15 @@ struct SidebarToggleButton {
     bool collapsed = false;
     Side side = Side::Left;
     Listener onClick;
+    // accessibility_label: the default toggle is icon-only, so without one
+    // it has no accessible name.
+    Str accessibilityLabel = {};
 
     static SidebarToggleButton* New(Ctx* cx);
     SidebarToggleButton* Collapsed(bool v);
     SidebarToggleButton* WithSide(Side v);
     SidebarToggleButton* OnClick(Listener fn);
+    SidebarToggleButton* AccessibilityLabel(Str v);
     El* IntoEl();
 };
 

@@ -15,10 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `308af7c90463f31118bac524930bc0b7eec35f76` (2026-09-23,
-highlighter: Remove deprecated usize import (#3186)). Rust-only cleanup: a
-deprecated usize import dropped from the highlighter. The current update
-target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `06a560683f1c95476b2bd432771dc840f38b66e2` (2026-09-23,
+a11y: accessible names for SidebarMenuItem, ListItem and SidebarToggleButton
+(#3160)). SidebarMenuItem rows are named, selectable tree items, and ListItem
+and SidebarToggleButton take an accessibility label. The current update target
+is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

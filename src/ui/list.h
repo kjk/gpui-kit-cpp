@@ -28,6 +28,9 @@ struct ListItem {
     // a selected row's own fill and ring still win over what a caller
     // chained on.
     StateStyle style = {};
+    // accessibility_label: without it a row reaches assistive technology
+    // with no name -- its visible children do not become the item's name.
+    Str accessibilityLabel = {};
 
     static ListItem* New(Ctx* cx, El* child);
     ListItem* Selected(bool v);
@@ -35,6 +38,7 @@ struct ListItem {
     ListItem* Confirmed(bool v);
     ListItem* Disabled(bool v);
     ListItem* Style(const StateStyle& s);
+    ListItem* AccessibilityLabel(Str label);
     El* IntoEl(Str id, Listener onClick, Listener onMouseDown);
 };
 
