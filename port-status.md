@@ -15,12 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0ad00c0ab25af757038f0d951185b8226c12919d` (2026-09-23,
-text_selection: Keep a participant whose cached view replayed its frame
-(#3193)). A text selection participant is now tied to its element's retained
-state so a cached view's replayed frame keeps it; this runtime has no
-cached-view replay, so every drawn participant already re-registers each
-frame. The current update target is
+Processed through `fe475586b05c776fad56c757b06be9e94f70fe2f` (2026-09-23, Fix
+historical website builds without component pages (#3196)). Website-only:
+historical snapshot builds skip redirects to component pages the snapshot
+lacks. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

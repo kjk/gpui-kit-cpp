@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0ad00c0ab25af757038f0d951185b8226c12919d",
+  sha: "fe475586b05c776fad56c757b06be9e94f70fe2f",
   date: "2026-09-23",
-  subject: "text_selection: Keep a participant whose cached view replayed its frame (#3193)",
+  subject: "Fix historical website builds without component pages (#3196)",
   crates: {
     "gpui-kit": "0.6.5",
     "gpui-base": "0.6.5",
