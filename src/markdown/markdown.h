@@ -70,6 +70,31 @@ struct ParseOptions {
 // allocated from `a`; `source` is only read.
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options);
 
+// unist Position, as its two byte offsets, for a caller that wants them. A
+// Node does not carry its position (mdast.h says why); this is the side
+// table `to_mdast` fills when it is handed one, set where the crate sets
+// `position`: the start at `tail_push`, the end at `tail_pop`, a hard break
+// stretched over the line ending after it, and a task item's text moved past
+// the whitespace after its checkbox. gpui-kit's markdown.rs reads these to
+// map a rendered selection back to its source.
+struct NodeSpan {
+    const Node* node = nullptr;
+    int32_t start = 0;
+    int32_t end = 0;
+};
+
+struct NodePositions {
+    base::Vec<NodeSpan> spans;
+};
+
+Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
+              NodePositions* positions);
+
+// The span `to_mdast` recorded for `n`. False for a node it made no record
+// of: one the compile did not push, or every node when no table was kept.
+bool NodePosition(const NodePositions* positions, const Node* n, int32_t* start,
+                  int32_t* end);
+
 // lib.rs decode_named / decode_numeric, exposed the way the crate exposes
 // them. `&amp;` -> `&`. Returns a null `Str` when the name is not one of the
 // 2125 the HTML5 table holds.

@@ -24,6 +24,11 @@ ParseOptions ParseOptions::Gfm() {
 }
 
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options) {
+    return ToMdast(a, source, options, nullptr);
+}
+
+Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
+              NodePositions* positions) {
     ParseState parseState;
     parseState.a = a;
     // The parse's own working memory, thrown away whole below, so none of it
@@ -33,10 +38,44 @@ Node* ToMdast(Arena* a, Str source, const ParseOptions& options) {
     parseState.bytes = source;
 
     Vec<Event> events = Parse(&parseState);
-    Node* tree = ToMdastCompile(events, &parseState);
+    Node* tree = ToMdastCompile(events, &parseState, positions);
 
     base::ArenaDelete(parseState.scratch);
+    if (positions && positions->spans.len > 1) {
+        // Recorded in the order the nodes were pushed; sorted by node so
+        // NodePosition is a binary search rather than a walk per lookup.
+        qsort(positions->spans.els, (size_t)positions->spans.len,
+              sizeof(NodeSpan), [](const void* l, const void* r) -> int {
+                  uintptr_t a = (uintptr_t)((const NodeSpan*)l)->node;
+                  uintptr_t b = (uintptr_t)((const NodeSpan*)r)->node;
+                  return a < b ? -1 : (a > b ? 1 : 0);
+              });
+    }
     return tree;
+}
+
+bool NodePosition(const NodePositions* positions, const Node* n, int32_t* start,
+                  int32_t* end) {
+    if (!positions || !n) {
+        return false;
+    }
+    int32_t lo = 0;
+    int32_t hi = positions->spans.len;
+    while (lo < hi) {
+        int32_t mid = lo + (hi - lo) / 2;
+        const NodeSpan& span = positions->spans[mid];
+        if ((uintptr_t)span.node < (uintptr_t)n) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo >= positions->spans.len || positions->spans[lo].node != n) {
+        return false;
+    }
+    *start = positions->spans[lo].start;
+    *end = positions->spans[lo].end;
+    return true;
 }
 
 } // namespace markdown

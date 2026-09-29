@@ -1648,6 +1648,339 @@ static void TestStreamFadeStaggerStep() {
     utassert(plain.StaggerStepMs(200) == 0.f);
 }
 
+// ─── selected_source_range ────────────────────────────────────────────────
+//
+// Ports of format/markdown.rs's selected_source_range_* and source_segments_*
+// tests and state.rs's selected_source_range_* ones. Rust sets a rendered
+// selection on the paragraph's inline state; here MdSelectedSourceRange
+// takes the same selection of the node's rendered text. The two MDX cases
+// (selected_source_range_maps_mdx_*) are not ported: MDX is not
+// (src/markdown/readme.md).
+
+#if GPUI_MARKDOWN_FULL
+// first_paragraph / first_code_block.
+static const MdNode* FirstOfKind(const MdNode* n, MdKind kind) {
+    if (!n) {
+        return nullptr;
+    }
+    if (n->kind == kind ||
+        (kind == MdKind::Paragraph && n->kind == MdKind::Heading)) {
+        return n;
+    }
+    if (n->kind != MdKind::Doc && n->kind != MdKind::Quote &&
+        n->kind != MdKind::List && n->kind != MdKind::Item &&
+        n->kind != MdKind::Group) {
+        return nullptr;
+    }
+    for (const MdNode* c = n->first; c; c = c->next) {
+        if (const MdNode* found = FirstOfKind(c, kind)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// selected_rendered_range / selected_code_range: the source range behind
+// [start, end) of the first paragraph (or code block) of `source`, as
+// "start..end", or "None".
+static TempStr SourceRangeTemp(const char* source, int start, int end,
+                               MdKind kind = MdKind::Paragraph) {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, Str((char*)source));
+    const MdNode* n = FirstOfKind(doc, kind);
+    Span span;
+    TempStr out = n && MdSelectedSourceRange(n, start, end).IntoRange(&span)
+                      ? fmt("%d..%d", span.start, span.end)
+                      : TempStr("None");
+    ArenaDelete(a);
+    return out;
+}
+
+static bool RangeIs(const char* source, int start, int end, const char* want,
+                    MdKind kind = MdKind::Paragraph) {
+    return base::StrEq(SourceRangeTemp(source, start, end, kind), want);
+}
+
+static bool CodeRangeIs(const char* source, int start, int end,
+                        const char* want) {
+    return RangeIs(source, start, end, want, MdKind::Code);
+}
+
+static bool HasSegment(const MdRun* r, int rs, int re, int ss, int se) {
+    for (int i = 0; r && i < r->segmentCount; i++) {
+        const SourceSegment& s = r->segments[i];
+        if (s.renderedStart == rs && s.renderedEnd == re &&
+            s.sourceStart == ss && s.sourceEnd == se) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// selected_source_range_uses_the_selected_identical_styled_occurrence,
+// selected_source_range_maps_partial_styled_text,
+// selected_source_range_crosses_style_boundaries,
+// selected_source_range_maps_inline_code_in_merged_styled_node.
+static void TestSourceRangeStyled() {
+    utassert(RangeIs("**same** then **same**", 10, 14, "16..20"));
+    utassert(RangeIs("**same** then **same**", 11, 13, "17..19"));
+    utassert(RangeIs("left **bold** right", 2, 12, "2..16"));
+    utassert(RangeIs("**left `code` right**", 5, 9, "8..12"));
+}
+
+// source_segments_compact_contiguous_one_to_one_mappings,
+// source_segments_keep_non_linear_mappings_atomic.
+static void TestSourceSegmentsCompact() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, StrL("plain text"));
+    const MdRun* r = FirstOfKind(doc, MdKind::Paragraph)->runFirst;
+    utassert(r && r->segmentCount == 1 && HasSegment(r, 0, 10, 0, 10));
+    utassert(RangeIs("plain text", 2, 7, "2..7"));
+
+    doc = MdParse(a, StrL("a\\* &amp; b"));
+    r = FirstOfKind(doc, MdKind::Paragraph)->runFirst;
+    // "ordinary characters should be compacted into runs"
+    utassert(r && r->segmentCount < len(r->text));
+    utassert(HasSegment(r, 1, 2, 1, 3));
+    utassert(HasSegment(r, 3, 4, 4, 9));
+    utassert(RangeIs("a\\* &amp; b", 1, 2, "1..3"));
+    utassert(RangeIs("a\\* &amp; b", 3, 4, "4..9"));
+    ArenaDelete(a);
+}
+
+// selected_source_range_maps_inline_code_delimiters_and_boundaries,
+// selected_source_range_maps_footnote_reference_syntax.
+static void TestSourceRangeInlineCodeAndFootnote() {
+    utassert(RangeIs("`code` x", 0, 4, "1..5"));
+    utassert(RangeIs("`code` x", 5, 6, "7..8"));
+    utassert(RangeIs("`code` x", 3, 6, "4..8"));
+    utassert(RangeIs("`` code ` value ``", 0, 4, "3..7"));
+    utassert(RangeIs("`` code ` value ``", 5, 6, "8..9"));
+    utassert(RangeIs("`&amp;`", 0, 5, "1..6"));
+
+    const char* note = "before[^note] after\n\n[^note]: body";
+    utassert(RangeIs(note, 0, 6, "0..6"));
+    utassert(RangeIs(note, 6, 12, "6..13"));
+    utassert(RangeIs(note, 13, 18, "14..19"));
+    utassert(RangeIs(note, 4, 15, "4..16"));
+}
+
+// selected_source_range_maps_math_block_body,
+// selected_source_range_maps_fenced_code_body_after_matching_info_string,
+// selected_source_range_excludes_closing_fence_candidate,
+// selected_source_range_maps_indented_code_content,
+// selected_source_range_maps_multiline_indented_code,
+// selected_source_range_maps_fenced_code_nested_in_a_list,
+// selected_source_range_maps_fenced_code_nested_in_a_blockquote,
+// selected_source_range_maps_fenced_code_with_blank_lines_and_repeated_text.
+static void TestSourceRangeCodeBlocks() {
+    utassert(CodeRangeIs("$$\nx + y\n$$", 0, 5, "3..8"));
+    utassert(CodeRangeIs("$$\nx + y\n$$", 2, 3, "5..6"));
+    utassert(CodeRangeIs("```rust\nrust\n```", 0, 4, "8..12"));
+    utassert(CodeRangeIs("````text\n```\n````", 0, 3, "9..12"));
+    utassert(CodeRangeIs("    rust", 0, 4, "4..8"));
+    const char* indented = "    one\n    two\n    three";
+    utassert(CodeRangeIs(indented, 0, 3, "4..7"));
+    utassert(CodeRangeIs(indented, 4, 7, "12..15"));
+    utassert(CodeRangeIs(indented, 0, 13, "4..25"));
+    const char* list = "- ```rust\n  one\n  two\n  ```";
+    utassert(CodeRangeIs(list, 0, 3, "12..15"));
+    utassert(CodeRangeIs(list, 4, 7, "18..21"));
+    utassert(CodeRangeIs(list, 0, 7, "12..21"));
+    const char* quote = "> ```\n> one\n> two\n> ```";
+    utassert(CodeRangeIs(quote, 0, 3, "8..11"));
+    utassert(CodeRangeIs(quote, 4, 7, "14..17"));
+    utassert(CodeRangeIs(quote, 0, 7, "8..17"));
+    const char* blank = "```\nsame\n\nsame\n```";
+    utassert(CodeRangeIs(blank, 0, 4, "4..8"));
+    utassert(CodeRangeIs(blank, 6, 10, "10..14"));
+    utassert(CodeRangeIs(blank, 0, 10, "4..14"));
+}
+
+// selected_source_range_maps_the_whole_markdown_escape,
+// selected_source_range_maps_after_an_escaped_backslash,
+// selected_source_range_does_not_borrow_an_escape_from_the_previous_node,
+// selected_source_range_does_not_shift_a_hard_break_after_an_escape.
+static void TestSourceRangeEscapes() {
+    utassert(RangeIs("\\*", 0, 1, "0..2"));
+    utassert(RangeIs("a\\\\b", 1, 2, "1..3"));
+    utassert(RangeIs("a\\\\b", 2, 3, "3..4"));
+    utassert(RangeIs("a\\\\b", 1, 3, "1..4"));
+    utassert(RangeIs("\\\\\\\\b", 2, 3, "4..5"));
+    utassert(RangeIs("a\\\\$x$", 2, 3, "3..4"));
+    utassert(RangeIs("a\\\\$x$", 1, 3, "1..4"));
+    utassert(RangeIs("a\\\\  \nb", 2, 3, "3..6"));
+    utassert(RangeIs("a\\\\  \nb", 1, 3, "1..6"));
+}
+
+// selected_source_range_includes_a_trailing_inline_image, _a_leading_,
+// _an_enclosed_, excludes_an_unreached_inline_image and
+// includes_consecutive_inline_images. An image has no rendered text of its
+// own, so "before " is 0..7 and " after" follows it.
+static void TestSourceRangeImages() {
+    utassert(RangeIs("before ![alt](image.png)", 0, 7, "0..24"));
+    utassert(RangeIs("![alt](image.png) after", 0, 6, "0..23"));
+    const char* enclosed = "before ![alt](image.png) after";
+    utassert(RangeIs(enclosed, 0, 13, "0..30"));
+    utassert(RangeIs(enclosed, 0, 3, "0..3"));
+    // " after" selected from its third byte: "fter", after the image.
+    utassert(RangeIs(enclosed, 9, 13, "26..30"));
+    utassert(
+        RangeIs("![first](one.png)![second](two.png) after", 0, 6, "0..41"));
+}
+
+// selected_source_range_maps_decoded_entity_to_its_source_syntax,
+// selected_source_range_maps_around_named_and_numeric_entities,
+// selected_source_range_rejects_mapped_block_plus_unmappable_entity.
+static void TestSourceRangeEntities() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, StrL("A &amp; B"));
+    utassert(TextIs(a, (MdNode*)FirstOfKind(doc, MdKind::Paragraph), "A & B"));
+    utassert(RangeIs("A &amp; B", 2, 3, "2..7"));
+
+    const char* refs = "Copyright &copy; &#x1F600; &#169; 2024";
+    utassert(RangeIs(refs, 0, 9, "0..9"));
+    utassert(RangeIs(refs, 10, 12, "10..16"));
+    utassert(RangeIs(refs, 13, 17, "17..26"));
+    utassert(RangeIs(refs, 18, 20, "27..33"));
+    utassert(RangeIs(refs, 21, 25, "34..38"));
+    utassert(RangeIs(refs, 8, 22, "8..35"));
+
+    // Two paragraphs: the document's range is the merge of each one's.
+    doc = MdParse(a, StrL("mapped\n\nA &amp; B"));
+    const MdNode* mapped = Child(doc, 0);
+    const MdNode* entity = Child(doc, 1);
+    SourceRangeSelection selected = MdSelectedSourceRange(mapped, 0, 6);
+    selected.Merge(MdSelectedSourceRange(entity, 2, 2));
+    Span span;
+    utassert(selected.IntoRange(&span) && span.start == 0 && span.end == 6);
+    selected.Merge(MdSelectedSourceRange(entity, 2, 3));
+    utassert(selected.IntoRange(&span) && span.start == 0 && span.end == 15);
+    ArenaDelete(a);
+}
+
+// selected_source_range_maps_soft_breaks_with_source_prefixes,
+// selected_source_range_maps_soft_breaks_with_trailing_spaces_and_crlf.
+static void TestSourceRangeSoftBreaks() {
+    utassert(RangeIs("a\n   b", 0, 1, "0..1"));
+    utassert(RangeIs("a\n   b", 2, 3, "5..6"));
+    utassert(RangeIs("a\n   b", 0, 3, "0..6"));
+    utassert(RangeIs("> a\n> b", 0, 1, "2..3"));
+    utassert(RangeIs("> a\n> b", 2, 3, "6..7"));
+    utassert(RangeIs("> a\n> b", 0, 3, "2..7"));
+    utassert(RangeIs("- a\n  b", 0, 1, "2..3"));
+    utassert(RangeIs("- a\n  b", 2, 3, "6..7"));
+    utassert(RangeIs("- a\n  b", 0, 3, "2..7"));
+
+    utassert(RangeIs("a \nb", 0, 1, "0..1"));
+    utassert(RangeIs("a \nb", 1, 2, "2..3"));
+    utassert(RangeIs("a \nb", 2, 3, "3..4"));
+    utassert(RangeIs("a \nb", 0, 3, "0..4"));
+    utassert(RangeIs("a \r\nb", 1, 2, "2..4"));
+    utassert(RangeIs("a \r\nb", 2, 3, "4..5"));
+    utassert(RangeIs("a\r\nb", 0, 1, "0..1"));
+    utassert(RangeIs("a\r\nb", 2, 3, "3..4"));
+    utassert(RangeIs("a\r\nb", 0, 3, "0..4"));
+}
+
+// state.rs selected_source_range_keeps_global_offsets_after_incremental_
+// tail_parse. The C++ parse is always of the whole source, so the appended
+// paragraph's offsets are the document's without a tail offset to add.
+static void TestSourceRangeAfterAppend() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, StrL("first\n\nsecond\n\n**\xC3\xA9"
+                                  "cho**"));
+    utassert(Children(doc) == 3);
+    Span span;
+    utassert(MdSelectedSourceRange(Child(doc, 2), 0, 5).IntoRange(&span) &&
+             span.start == 17 && span.end == 22);
+    ArenaDelete(a);
+}
+
+// The view's own path: the runs a frame painted, each carrying the source
+// map of the run it came from, and a selection over them. A run painted as
+// two word elements maps each from its own offset into the run.
+static void TestSourceRangeOverPaintedRuns() {
+    Arena* a = ArenaNew();
+    MdNode* doc = MdParse(a, StrL("**same** then **same**"));
+    const MdNode* p = FirstOfKind(doc, MdKind::Paragraph);
+    EntityId owner = EntityId{7, 1};
+    PaintCtx ctx;
+    SelSourceMap maps[8];
+    int nMaps = 0;
+    for (const MdRun* r = p->runFirst; r; r = r->next) {
+        // " then " as two words, the way Inline splits a run.
+        int starts[2] = {0, len(r->text)};
+        int nWords = 1;
+        if (len(r->text) == 6) {
+            starts[1] = 1;
+            nWords = 2;
+        }
+        for (int w = 0; w < nWords; w++) {
+            int end = w + 1 < nWords ? starts[w + 1] : len(r->text);
+            SelSourceMap& m = maps[nMaps++];
+            m.segments = r->segments;
+            m.count = r->segmentCount;
+            m.offset = starts[w];
+            TextHit h;
+            h.text = Str((char*)r->text.s + starts[w], end - starts[w]);
+            h.docOff = ctx.textDocLen;
+            h.owner = owner;
+            h.map = &m;
+            VecAppend(ctx.texts, h);
+            ctx.textDocLen += len(h.text) + 1;
+        }
+    }
+    // Runs: "same" 0..4, " " 5..6, "then " 7..12, "same" 13..17.
+    Span span;
+    utassert(TextHitsSourceRange(&ctx, 13, 17, 0, owner).IntoRange(&span) &&
+             span.start == 16 && span.end == 20);
+    utassert(TextHitsSourceRange(&ctx, 8, 10, 0, owner).IntoRange(&span) &&
+             span.start == 10 && span.end == 12);
+    // Another view's runs have no part in it.
+    utassert(TextHitsSourceRange(&ctx, 13, 17, 0, EntityId{8, 1})
+                 .kind == SourceRangeSelection::Unselected);
+    VecReset(ctx.texts);
+    ArenaDelete(a);
+}
+
+// selected_source_range_returns_full_markdown_source_for_select_all,
+// selected_source_range_returns_none_for_html.
+static void TestSourceRangeSelectAllAndHtml() {
+    App app;
+    Entity<TextViewState> md =
+        TextViewState::Markdown(&app, StrL("**quick** value"));
+    Entity<TextViewState> html =
+        TextViewState::Html(&app, StrL("<b>quick</b>"));
+    Window window;
+    window.app = &app;
+    TextHit first;
+    first.text = StrL("quick");
+    first.owner = md.id;
+    first.bounds = {0, 0, 40, 20};
+    VecAppend(window.paint.texts, first);
+    TextHit other;
+    other.text = StrL("quick");
+    other.docOff = 6;
+    other.owner = html.id;
+    other.bounds = {0, 20, 40, 20};
+    VecAppend(window.paint.texts, other);
+    window.paint.textDocLen = 12;
+
+    Span span;
+    md.Get(&app)->SelectAll(&window, &app);
+    utassert(md.Get(&app)->SelectedSourceRange(&window, &span) &&
+             span.start == 0 && span.end == 15);
+    html.Get(&app)->SelectAll(&window, &app);
+    utassert(!html.Get(&app)->SelectedSourceRange(&window, &span));
+
+    WindowSelectionFree(&window);
+    VecReset(window.paint.texts);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+#endif
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -1706,6 +2039,17 @@ void TestTextView() {
     TestTextViewMaxLines();
 #if GPUI_MARKDOWN_FULL
     TestMarkdownTaskList(a);
+    TestSourceRangeStyled();
+    TestSourceSegmentsCompact();
+    TestSourceRangeInlineCodeAndFootnote();
+    TestSourceRangeCodeBlocks();
+    TestSourceRangeEscapes();
+    TestSourceRangeImages();
+    TestSourceRangeEntities();
+    TestSourceRangeSoftBreaks();
+    TestSourceRangeAfterAppend();
+    TestSourceRangeOverPaintedRuns();
+    TestSourceRangeSelectAllAndHtml();
 #endif
     ArenaDelete(a);
 }

@@ -103,6 +103,11 @@ Each of these is also stated in a comment at the place it applies.
   struct per kind; here it is one struct with a `kind` and the union of their
   fields, the way `ui/text.h`'s `MdNode` is. `Option<String>` is a `Str` whose
   `s` is null.
+- **Positions are a side table.** A `Node` carries no `position`; a caller
+  that wants the offsets passes `ToMdast` a `NodePositions`, filled where
+  the crate sets `position` (`tail_push`, `tail_pop`, the hard break's line
+  ending, a task item's text) and read with `NodePosition`. Only the byte
+  offsets are kept; `GetUnistPosition` gives the line and column.
 - **`Option<u8>`/`Option<usize>` are `int32_t`**, -1 for `None`: the current
   and previous byte, the link indices, the `document_data_index`.
 - **`Vec<String>` is `Vec<Str>`** into the parse's arena. A `ParseState`

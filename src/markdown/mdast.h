@@ -258,11 +258,11 @@ static_assert(sizeof(Node) == 3 * 4 + 4,
 // handed 16 and the two bytes of padding above would be six.
 static_assert(alignof(Node) == 4, "a Node holds nothing wider than a word");
 
-// Where a node came from is not kept. Rust holds a line, a column and an
-// offset at each end — 24 bytes on every node in the tree — and this port
-// held the two offsets, which was 8; nothing in the parse reads either, and
-// nothing outside it did. What is left is `GetUnistPosition`, for a caller
-// that has an offset from somewhere else.
+// Where a node came from is not kept on the node. Rust holds a line, a
+// column and an offset at each end — 24 bytes on every node in the tree —
+// and nothing in the parse reads them. A caller that does (TextView's source
+// ranges) asks `ToMdast` for a `NodePositions` side table of the two
+// offsets; `GetUnistPosition` turns an offset into a line and a column.
 
 // The one word whose meaning `kind` decides, kept as a record in the list
 // above rather than as a field. Three fields that can never be live

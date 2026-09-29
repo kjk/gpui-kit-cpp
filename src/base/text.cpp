@@ -84,6 +84,20 @@ Str MarkdownParseContext::Value(const markdown::Node* node,
     return arena && node ? markdown::NodeGetStr(arena, node, kind) : Str{};
 }
 
+Str MarkdownParseContext::NodeSource(const markdown::Node* node) const {
+    int32_t start = 0;
+    int32_t end = 0;
+    if (!markdown::NodePosition(positions, node, &start, &end)) {
+        return {};
+    }
+    start -= offset;
+    end -= offset;
+    if (start < 0 || end < start || end > len(source)) {
+        return {};
+    }
+    return Str((char*)source.s + start, end - start);
+}
+
 Str MarkdownParseContext::Copy(Str value) const {
     return arena ? StrDup(arena, value) : Str{};
 }
@@ -607,16 +621,255 @@ int TextViewState::SelectedText(Window* window, char* out, int cap) const {
                                             : selectionFormat);
 }
 
+// ─── selected_source_range ────────────────────────────────────────────────
+
+SourceRangeSelection SourceRangeSelection::MappedRange(int start, int end) {
+    SourceRangeSelection out;
+    out.kind = Mapped;
+    out.range.start = start;
+    out.range.end = end;
+    return out;
+}
+
+void SourceRangeSelection::Merge(const SourceRangeSelection& other) {
+    if (other.kind == Unselected) {
+        return;
+    }
+    if (other.kind == Unmapped) {
+        kind = Unmapped;
+        return;
+    }
+    if (kind == Unselected) {
+        *this = other;
+    } else if (kind == Mapped) {
+        range.start =
+            range.start < other.range.start ? range.start : other.range.start;
+        range.end = range.end > other.range.end ? range.end : other.range.end;
+    }
+}
+
+bool SourceRangeSelection::IntoRange(Span* out) const {
+    if (kind != Mapped) {
+        return false;
+    }
+    *out = range;
+    return true;
+}
+
+static bool SegmentIsLinear(const SourceSegment& s) {
+    return s.renderedEnd - s.renderedStart == s.sourceEnd - s.sourceStart;
+}
+
+static int MappedSourceStart(const SourceSegment& s, int renderedStart) {
+    if (!SegmentIsLinear(s)) {
+        return s.sourceStart;
+    }
+    int d = renderedStart - s.renderedStart;
+    return s.sourceStart + (d > 0 ? d : 0);
+}
+
+static int MappedSourceEnd(const SourceSegment& s, int renderedEnd) {
+    if (!SegmentIsLinear(s)) {
+        return s.sourceEnd;
+    }
+    int e = renderedEnd < s.renderedEnd ? renderedEnd : s.renderedEnd;
+    int d = e - s.renderedStart;
+    return s.sourceStart + (d > 0 ? d : 0);
+}
+
+bool SourceRangeForSegments(const SourceSegment* segments, int count, int start,
+                            int end, Span* out) {
+    if (start >= end || !segments) {
+        return false;
+    }
+    bool found = false;
+    int renderedEnd = 0;
+    int sourceStart = 0;
+    int sourceEnd = 0;
+    for (int i = 0; i < count; i++) {
+        const SourceSegment& s = segments[i];
+        if (!(s.renderedStart < end && s.renderedEnd > start)) {
+            continue;
+        }
+        if (!found) {
+            if (s.renderedStart > start) {
+                return false;
+            }
+            found = true;
+            renderedEnd = s.renderedEnd;
+            sourceStart = MappedSourceStart(s, start);
+            sourceEnd = MappedSourceEnd(s, end);
+            continue;
+        }
+        if (s.renderedStart > renderedEnd) {
+            return false;
+        }
+        renderedEnd = renderedEnd > s.renderedEnd ? renderedEnd : s.renderedEnd;
+        sourceEnd = MappedSourceEnd(s, end);
+    }
+    if (!found || renderedEnd < end) {
+        return false;
+    }
+    out->start = sourceStart;
+    out->end = sourceEnd;
+    return true;
+}
+
+// The whole of what an atomic piece covers — an image, an inline plugin node
+// — or unmapped when the parse could not place it.
+static SourceRangeSelection WholeOf(const SourceSegment* segments, int count) {
+    if (!segments || count <= 0) {
+        SourceRangeSelection out;
+        out.kind = SourceRangeSelection::Unmapped;
+        return out;
+    }
+    int start = segments[0].sourceStart;
+    int end = segments[0].sourceEnd;
+    for (int i = 1; i < count; i++) {
+        start =
+            segments[i].sourceStart < start ? segments[i].sourceStart : start;
+        end = segments[i].sourceEnd > end ? segments[i].sourceEnd : end;
+    }
+    return SourceRangeSelection::MappedRange(start, end);
+}
+
+// The rendered bytes [start, end) of one run.
+static SourceRangeSelection RunSourceRange(const SourceSegment* segments,
+                                           int count, int start, int end) {
+    Span span;
+    if (SourceRangeForSegments(segments, count, start, end, &span)) {
+        return SourceRangeSelection::MappedRange(span.start, span.end);
+    }
+    SourceRangeSelection out;
+    out.kind = SourceRangeSelection::Unmapped;
+    return out;
+}
+
+SourceRangeSelection MdSelectedSourceRange(const MdNode* n, int start,
+                                           int end) {
+    SourceRangeSelection selected;
+    if (!n || start >= end) {
+        return selected;
+    }
+    int off = 0;
+    for (const MdRun* r = n->runFirst; r; r = r->next) {
+        if (len(r->imgSrc) > 0) {
+            // Paragraph::selected_source_range takes an image in when the
+            // selection runs up to it from either side, and leaves it out
+            // when the selection stops short of it.
+            if (start <= off && end >= off) {
+                SourceRangeSelection image;
+                if (r->hasImgSpan) {
+                    image = SourceRangeSelection::MappedRange(r->imgSpan.start,
+                                                              r->imgSpan.end);
+                } else {
+                    image.kind = SourceRangeSelection::Unmapped;
+                }
+                selected.Merge(image);
+            }
+            continue;
+        }
+        int runLen = len(r->text);
+        int lo = start > off ? start : off;
+        int hi = end < off + runLen ? end : off + runLen;
+        if (lo < hi) {
+            if (r->hasCustom) {
+                SourceRangeSelection custom;
+                if (r->custom.hasSpan) {
+                    custom = SourceRangeSelection::MappedRange(
+                        r->custom.span.start, r->custom.span.end);
+                } else {
+                    custom.kind = SourceRangeSelection::Unmapped;
+                }
+                selected.Merge(custom);
+            } else {
+                selected.Merge(RunSourceRange(r->segments, r->segmentCount,
+                                              lo - off, hi - off));
+            }
+        }
+        off += runLen;
+    }
+    return selected;
+}
+
+SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
+                                         int selB, int scope, EntityId owner) {
+    SourceRangeSelection selected;
+    if (!ctx) {
+        return selected;
+    }
+    int a = selA < selB ? selA : selB;
+    int b = selA < selB ? selB : selA;
+    for (int i = 0; i < ctx->texts.len; i++) {
+        const TextHit& hit = ctx->texts[i];
+        // A run with no map is not Markdown content — a list marker, a
+        // plugin block — and has no part in the source range, which is what
+        // Rust's walk over the inline states gives it.
+        if (hit.owner != owner || hit.scope != scope || !hit.map) {
+            continue;
+        }
+        const SelSourceMap* map = hit.map;
+        if (hit.atom) {
+            if (a < hit.docOff + 1 && b > hit.docOff) {
+                selected.Merge(WholeOf(map->segments, map->count));
+            }
+            continue;
+        }
+        int n = len(hit.text);
+        int lo = a > hit.docOff ? a : hit.docOff;
+        int hi = b < hit.docOff + n ? b : hit.docOff + n;
+        if (lo >= hi) {
+            continue;
+        }
+        if (map->atomic) {
+            selected.Merge(WholeOf(map->segments, map->count));
+        } else {
+            selected.Merge(RunSourceRange(map->segments, map->count,
+                                          lo - hit.docOff + map->offset,
+                                          hi - hit.docOff + map->offset));
+        }
+    }
+    return selected;
+}
+
+bool TextViewState::SelectedSourceRange(const Window* window, Span* out) const {
+    if (format != TextViewFormat::Markdown || !out) {
+        return false;
+    }
+    if (!WindowSelectionHasEntity(window, self)) {
+        return false;
+    }
+    const WindowSelection* s = window->sel;
+    // `select_all` stands until the selection moves; the selection it made
+    // is kept so a later drag is not taken for it.
+    if (selectAllAnchor >= 0 && s->anchor == selectAllAnchor &&
+        s->cursor == selectAllCursor) {
+        out->start = 0;
+        out->end = len(text);
+        return true;
+    }
+    return TextHitsSourceRange(&window->paint, s->anchor, s->cursor, s->scope,
+                               self)
+        .IntoRange(out);
+}
+
 bool TextViewState::HasSelection(const Window* window) const {
     return WindowSelectionHasEntity(window, self);
 }
 
 void TextViewState::ClearSelection(Window* window, App*) {
     WindowSelectionClear(window);
+    selectAllAnchor = -1;
+    selectAllCursor = -1;
 }
 
 void TextViewState::SelectAll(Window* window, App*) {
     WindowSelectionSelectAll(window, self);
+    const WindowSelection* s = window ? window->sel : nullptr;
+    if (s && WindowSelectionHasEntity(window, self)) {
+        selectAllAnchor = s->anchor;
+        selectAllCursor = s->cursor;
+    }
 }
 
 void TextViewState::OnAction(TextViewState* state, Ctx* cx,
@@ -678,16 +931,373 @@ struct MdDef {
     Str url;
 };
 
+// Arena::Alloc takes an int byte count. Reject only a shape that cannot be
+// represented by that allocator; this is an overflow guard, not a content
+// limit like the old 32-column/8,192-cell tables.
+template <typename T>
+static T* TextArenaArray(Arena* a, int count) {
+    if (count <= 0 || count > 0x7fffffff / (int)sizeof(T)) {
+        return nullptr;
+    }
+    T* out = (T*)Alloc(a, count * (int)sizeof(T));
+    if (out) {
+        for (int i = 0; i < count; i++) {
+            new (out + i) T();
+        }
+    }
+    return out;
+}
+
 struct MdBuild {
     Arena* a = nullptr;
     Str source = {};
     const MarkdownExtensions* extensions = nullptr;
+    // Where each mdast node sits in `source`, which is what the source
+    // segments below are measured against.
+    const md::NodePositions* positions = nullptr;
     MdNode* cur = nullptr;
     // The marks in effect, from the enclosing inline nodes.
     uint8_t marks = 0;
     Str href = {};
     ArenaVec<MdDef> defs{};
 };
+
+// ─── source segments ──────────────────────────────────────────────────────
+//
+// markdown.rs pairs every rendered byte of a text node with the bytes of the
+// Markdown it came from, so a selection of the rendered text can be mapped
+// back to the one occurrence that was selected (selected_source_range).
+
+// A node's span in the source: markdown.rs's `node.position()` as a Span.
+static bool MdNodeSpan(MdBuild* b, const md::Node* n, Span* out) {
+    int32_t start = 0;
+    int32_t end = 0;
+    if (!md::NodePosition(b->positions, n, &start, &end)) {
+        return false;
+    }
+    out->start = start;
+    out->end = end;
+    return true;
+}
+
+// The bytes of the UTF-8 character that starts with `lead`.
+static int Utf8CharLen(uint8_t lead) {
+    if (lead < 0x80) return 1;
+    if ((lead >> 5) == 0x6) return 2;
+    if ((lead >> 4) == 0xE) return 3;
+    if ((lead >> 3) == 0x1E) return 4;
+    return 1;
+}
+
+// `str::find` for a byte string: where `needle` first starts in `hay`.
+static int FindBytes(Str hay, const char* needle, int n) {
+    for (int i = 0; i + n <= len(hay); i++) {
+        if (memcmp(hay.s + i, needle, (size_t)n) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static bool StartsWithBytes(Str s, const char* prefix, int n) {
+    return len(s) >= n && memcmp(s.s, prefix, (size_t)n) == 0;
+}
+
+// compact_source_segments, as the left fold it is: a 1:1 pair that picks up
+// where the last 1:1 pair left off, in both texts, extends it.
+static void PushSegment(Vec<SourceSegment>& out, SourceSegment s) {
+    if (out.len > 0) {
+        SourceSegment& prev = out[out.len - 1];
+        if (prev.renderedEnd == s.renderedStart &&
+            prev.sourceEnd == s.sourceStart &&
+            prev.renderedEnd - prev.renderedStart ==
+                prev.sourceEnd - prev.sourceStart &&
+            s.renderedEnd - s.renderedStart == s.sourceEnd - s.sourceStart) {
+            prev.renderedEnd = s.renderedEnd;
+            prev.sourceEnd = s.sourceEnd;
+            return;
+        }
+    }
+    VecAppend(out, s);
+}
+
+// A code point as UTF-8, or 0 bytes for one `char::from_u32` refuses.
+static int EncodeUtf8(uint32_t cp, char* out) {
+    if (cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF)) return 0;
+    if (cp < 0x80) {
+        out[0] = (char)cp;
+        return 1;
+    }
+    if (cp < 0x800) {
+        out[0] = (char)(0xC0 | (cp >> 6));
+        out[1] = (char)(0x80 | (cp & 0x3F));
+        return 2;
+    }
+    if (cp < 0x10000) {
+        out[0] = (char)(0xE0 | (cp >> 12));
+        out[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (cp & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (cp >> 18));
+    out[1] = (char)(0x80 | ((cp >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((cp >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (cp & 0x3F));
+    return 4;
+}
+
+// `u32::from_str_radix`: every byte a digit, at least one, no overflow.
+static bool ParseU32(Str s, int radix, uint32_t* out) {
+    if (len(s) <= 0) return false;
+    uint64_t v = 0;
+    for (int i = 0; i < len(s); i++) {
+        char c = s.s[i];
+        int d = -1;
+        if (c >= '0' && c <= '9') {
+            d = c - '0';
+        } else if (radix == 16 && c >= 'a' && c <= 'f') {
+            d = c - 'a' + 10;
+        } else if (radix == 16 && c >= 'A' && c <= 'F') {
+            d = c - 'A' + 10;
+        }
+        if (d < 0) return false;
+        v = v * (uint64_t)radix + (uint64_t)d;
+        if (v > 0xFFFFFFFFull) return false;
+    }
+    *out = (uint32_t)v;
+    return true;
+}
+
+// markdown.rs decoded_entity: a character reference at the start of
+// `source`, as what it decodes to and how many source bytes it takes. Rust
+// looks a named one up in html5ever's table; the markdown crate's own
+// (DecodeNamed) holds the same HTML5 names.
+static bool DecodedEntity(Arena* a, Str source, Str* decoded, int* sourceLen) {
+    if (len(source) < 1 || source.s[0] != '&') return false;
+    int end = -1;
+    for (int i = 1; i < len(source); i++) {
+        char c = source.s[i];
+        bool alnum = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') ||
+                     (c >= 'A' && c <= 'Z');
+        if (c == ';' || !(alnum || c == '#')) {
+            end = i;
+            break;
+        }
+    }
+    if (end < 0 || source.s[end] != ';') return false;
+    // The name between `&` and `;`.
+    Str name((char*)source.s + 1, end - 1);
+    if (len(name) >= 2 && name.s[0] == '#' &&
+        (name.s[1] == 'x' || name.s[1] == 'X')) {
+        uint32_t cp = 0;
+        char buf[4];
+        if (!ParseU32(Str((char*)name.s + 2, len(name) - 2), 16, &cp)) {
+            return false;
+        }
+        int n = EncodeUtf8(cp, buf);
+        if (n <= 0) return false;
+        *decoded = StrDup(a, Str(buf, n));
+    } else if (len(name) >= 1 && name.s[0] == '#') {
+        uint32_t cp = 0;
+        char buf[4];
+        if (!ParseU32(Str((char*)name.s + 1, len(name) - 1), 10, &cp)) {
+            return false;
+        }
+        int n = EncodeUtf8(cp, buf);
+        if (n <= 0) return false;
+        *decoded = StrDup(a, Str(buf, n));
+    } else {
+        Str value = md::DecodeNamed(a, name);
+        if (!value.s) return false;
+        *decoded = value;
+    }
+    *sourceLen = end + 1;
+    return true;
+}
+
+// markdown.rs aligned_source_segments: walk the rendered text a character at
+// a time and find each one in `raw`, the node's slice of the source.
+static void AlignedSourceSegments(Arena* a, Str raw, Str rendered,
+                                  int sourceOffset, bool decodeEntities,
+                                  Vec<SourceSegment>& out) {
+    int rawCursor = 0;
+    int r = 0;
+    while (r < len(rendered)) {
+        Str rendRest((char*)rendered.s + r, len(rendered) - r);
+        Str remainder((char*)raw.s + rawCursor, len(raw) - rawCursor);
+        Str decoded = {};
+        int entityLen = 0;
+        if (decodeEntities &&
+            DecodedEntity(a, remainder, &decoded, &entityLen) &&
+            StartsWithBytes(rendRest, decoded.s, len(decoded))) {
+            SourceSegment s;
+            s.renderedStart = r;
+            s.renderedEnd = r + len(decoded);
+            s.sourceStart = sourceOffset + rawCursor;
+            s.sourceEnd = sourceOffset + rawCursor + entityLen;
+            PushSegment(out, s);
+            r += len(decoded);
+            rawCursor += entityLen;
+            continue;
+        }
+        int cl = Utf8CharLen((uint8_t)rendered.s[r]);
+        if (r + cl > len(rendered)) cl = len(rendered) - r;
+        const char* ch = rendered.s + r;
+        int rendEnd = r + cl;
+        int relStart = -1;
+        int sourceLen = 0;
+        // Rust finds the first line ending and asks whether only blanks come
+        // before it, which is the run of blanks ending at one.
+        int newline = -1;
+        if (cl == 1 && ch[0] == ' ') {
+            int i = 0;
+            while (i < len(remainder) &&
+                   (remainder.s[i] == ' ' || remainder.s[i] == '\t')) {
+                i++;
+            }
+            if (i < len(remainder) &&
+                (remainder.s[i] == '\n' || remainder.s[i] == '\r')) {
+                newline = i;
+            }
+        }
+        auto oneNewline = [&]() {
+            int count = 0;
+            for (int i = 0; i < len(remainder) && count < 2; i++) {
+                count += remainder.s[i] == '\n';
+            }
+            return count == 1;
+        };
+        if (newline >= 0) {
+            // A soft break rendered as a space: the line ending it stood for.
+            relStart = newline;
+            sourceLen =
+                (newline + 1 < len(remainder) && remainder.s[newline] == '\r' &&
+                 remainder.s[newline + 1] == '\n')
+                    ? 2
+                    : 1;
+        } else if (cl == 1 && ch[0] == '\n' && len(remainder) > 0 &&
+                   remainder.s[len(remainder) - 1] == '\n' && oneNewline()) {
+            // A hard break is the whole of its syntax.
+            relStart = 0;
+            sourceLen = len(remainder);
+        } else if (len(remainder) > cl && remainder.s[0] == '\\' &&
+                   memcmp(remainder.s + 1, ch, (size_t)cl) == 0) {
+            // An escape maps whole.
+            relStart = 0;
+            sourceLen = 1 + cl;
+        } else if (StartsWithBytes(remainder, ch, cl)) {
+            relStart = 0;
+            sourceLen = cl;
+        } else {
+            relStart = FindBytes(remainder, ch, cl);
+            sourceLen = cl;
+            if (relStart < 0) {
+                // Decoded entities and other source-only syntax have no exact
+                // rendered-byte mapping. Leave a rendered gap for this
+                // character, but keep aligning later characters in the node.
+                r = rendEnd;
+                continue;
+            }
+        }
+        int sourceStart = rawCursor + relStart;
+        int sourceEnd = sourceStart + sourceLen;
+        SourceSegment s;
+        s.renderedStart = r;
+        s.renderedEnd = rendEnd;
+        s.sourceStart = sourceOffset + sourceStart;
+        s.sourceEnd = sourceOffset + sourceEnd;
+        PushSegment(out, s);
+        rawCursor = sourceEnd;
+        r = rendEnd;
+    }
+}
+
+// The node's slice of the source, when the span is inside it.
+static bool MdSourceSlice(MdBuild* b, Span span, Str* raw) {
+    if (span.start < 0 || span.end < span.start || span.end > len(b->source)) {
+        return false;
+    }
+    *raw = Str((char*)b->source.s + span.start, span.end - span.start);
+    return true;
+}
+
+// markdown.rs source_segments / mapped_inline: the segments of a text-like
+// node rendered as `rendered`. A text node's span starts after an escape's
+// backslash, which is part of what was rendered, so it is taken back in.
+static void MdSourceSegments(MdBuild* b, const md::Node* n, Str rendered,
+                             bool includePrecedingEscape,
+                             Vec<SourceSegment>& out) {
+    Span span;
+    Str raw;
+    if (!MdNodeSpan(b, n, &span) || !MdSourceSlice(b, span, &raw)) {
+        return;
+    }
+    AlignedSourceSegments(b->a, raw, rendered, span.start, true, out);
+    if (includePrecedingEscape && span.start >= 1 &&
+        b->source.s[span.start - 1] == '\\' && out.len > 0) {
+        out[0].sourceStart -= 1;
+    }
+}
+
+// markdown.rs code_source_segments: a code node's value against the body of
+// its source — past an opening fence's line, and short of a closing fence
+// that really closes it.
+static void MdCodeSourceSegments(MdBuild* b, const md::Node* n, Str code,
+                                 Vec<SourceSegment>& out) {
+    Span span;
+    Str raw;
+    if (!MdNodeSpan(b, n, &span) || !MdSourceSlice(b, span, &raw)) {
+        return;
+    }
+    int lead = 0;
+    while (lead < len(raw) && (raw.s[lead] == ' ' || raw.s[lead] == '\t' ||
+                               raw.s[lead] == '\n' || raw.s[lead] == '\r')) {
+        lead++;
+    }
+    char fence = 0;
+    int fenceLen = 0;
+    if (lead < len(raw) && (raw.s[lead] == '`' || raw.s[lead] == '~')) {
+        fence = raw.s[lead];
+        while (lead + fenceLen < len(raw) && raw.s[lead + fenceLen] == fence) {
+            fenceLen++;
+        }
+        if (fenceLen < 3) {
+            fence = 0;
+        }
+    }
+    int bodyStart = 0;
+    int bodyEnd = len(raw);
+    if (fence) {
+        int firstNewline = -1;
+        int lastNewline = -1;
+        for (int i = 0; i < len(raw); i++) {
+            if (raw.s[i] == '\n') {
+                if (firstNewline < 0) firstNewline = i;
+                lastNewline = i;
+            }
+        }
+        bodyStart = firstNewline < 0 ? len(raw) : firstNewline + 1;
+        int lastLine = lastNewline < 0 ? bodyStart : lastNewline + 1;
+        int cs = lastLine;
+        int ce = len(raw);
+        while (cs < ce && (raw.s[cs] == ' ' || raw.s[cs] == '\t' ||
+                           raw.s[cs] == '\r' || raw.s[cs] == '\n')) {
+            cs++;
+        }
+        while (ce > cs && (raw.s[ce - 1] == ' ' || raw.s[ce - 1] == '\t' ||
+                           raw.s[ce - 1] == '\r' || raw.s[ce - 1] == '\n')) {
+            ce--;
+        }
+        bool closing = ce - cs >= fenceLen;
+        for (int i = cs; closing && i < ce; i++) {
+            closing = raw.s[i] == fence;
+        }
+        bodyEnd = closing ? lastLine : len(raw);
+    }
+    AlignedSourceSegments(b->a,
+                          Str((char*)raw.s + bodyStart, bodyEnd - bodyStart),
+                          code, span.start + bodyStart, false, out);
+}
 
 // A node's strings are ArenaStr — an offset into the arena the tree was
 // parsed into, which is the builder's own. This reads one back.
@@ -720,14 +1330,38 @@ static void Pop(MdBuild* b) {
 // next byte of the source; otherwise starts a new run. Most of a paragraph is
 // one uninterrupted stretch of source, so this usually collapses to one run
 // pointing straight at the tree's text with nothing copied.
-static void AddText(MdBuild* b, Str s) {
+//
+// `segments` are the piece's source segments in its own offsets. A run that
+// grows keeps the ones it had and takes the new piece's after them, shifted
+// by what it already held — merge_children_with_mark's
+// `merged_source_segments`.
+static void AddText(MdBuild* b, Str s,
+                    const Vec<SourceSegment>* segments = nullptr) {
     if (len(s) <= 0) {
         return;
     }
+    int added = segments ? segments->len : 0;
     MdNode* n = b->cur;
     MdRun* r = n->runLast;
-    if (r && !r->imgSrc.s && r->marks == b->marks && r->href.s == b->href.s &&
-        r->text.s + len(r->text) == s.s) {
+    if (r && !r->imgSrc.s && !r->hasCustom && r->marks == b->marks &&
+        r->href.s == b->href.s && r->text.s + len(r->text) == s.s) {
+        if (added > 0) {
+            int total = r->segmentCount + added;
+            SourceSegment* merged = TextArenaArray<SourceSegment>(b->a, total);
+            if (merged) {
+                for (int i = 0; i < r->segmentCount; i++) {
+                    merged[i] = r->segments[i];
+                }
+                for (int i = 0; i < added; i++) {
+                    SourceSegment seg = (*segments)[i];
+                    seg.renderedStart += len(r->text);
+                    seg.renderedEnd += len(r->text);
+                    merged[r->segmentCount + i] = seg;
+                }
+                r->segments = merged;
+                r->segmentCount = total;
+            }
+        }
         r->text.len += len(s);
         return;
     }
@@ -735,6 +1369,16 @@ static void AddText(MdBuild* b, Str s) {
     r->text = s;
     r->marks = b->marks;
     r->href = b->href;
+    if (added > 0) {
+        SourceSegment* copy = TextArenaArray<SourceSegment>(b->a, added);
+        if (copy) {
+            for (int i = 0; i < added; i++) {
+                copy[i] = (*segments)[i];
+            }
+            r->segments = copy;
+            r->segmentCount = added;
+        }
+    }
     if (n->runLast) {
         n->runLast->next = r;
     } else {
@@ -745,12 +1389,15 @@ static void AddText(MdBuild* b, Str s) {
 
 // node.rs InlineNode::image: an image sits in the flow beside the words,
 // carrying the marks in force — an image inside a link is a link.
-static void AddImage(MdBuild* b, Str src, Str alt, float w, float h) {
+static void AddImage(MdBuild* b, Str src, Str alt, float w, float h,
+                     const md::Node* node = nullptr) {
     if (len(src) <= 0) {
         return;
     }
     MdNode* n = b->cur;
     MdRun* r = ArenaNew<MdRun>(b->a);
+    // ImageNode::span, which selected_source_range takes in whole.
+    r->hasImgSpan = node && MdNodeSpan(b, node, &r->imgSpan);
     r->imgSrc = src;
     r->text = alt;
     r->imgW = w;
@@ -765,10 +1412,13 @@ static void AddImage(MdBuild* b, Str src, Str alt, float w, float h) {
     n->runLast = r;
 }
 
-static void AddCustomInline(MdBuild* b, const MarkdownNode& custom) {
+static void AddCustomInline(MdBuild* b, const MarkdownNode& custom,
+                            const md::Node* node) {
     MdNode* n = b->cur;
     MdRun* r = ArenaNew<MdRun>(b->a);
     r->custom = custom;
+    // parse_paragraph: `custom.set_span(span)`, the claimed node's position.
+    r->custom.hasSpan = MdNodeSpan(b, node, &r->custom.span);
     r->custom.name = StrDup(b->a, custom.name);
     r->custom.text = StrDup(b->a, custom.text);
     r->custom.markdown = StrDup(b->a, custom.markdown);
@@ -883,11 +1533,12 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
         MarkdownParseContext context;
         context.arena = b->a;
         context.source = b->source;
+        context.positions = b->positions;
         for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
             const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
             MarkdownNode custom;
             if (parser.fn && parser.fn(n, &context, parser.data, &custom)) {
-                AddCustomInline(b, custom);
+                AddCustomInline(b, custom, n);
                 return;
             }
         }
@@ -903,7 +1554,9 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
                 firstBreak++;
             }
             if (firstBreak == len(value)) {
-                AddText(b, value);
+                Vec<SourceSegment> segments;
+                MdSourceSegments(b, n, value, true, segments);
+                AddText(b, value, &segments);
                 break;
             }
             StrBuilder text(b->a);
@@ -919,7 +1572,10 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
                 }
                 text.AppendChar(c);
             }
-            AddText(b, text.TakeStr());
+            Str rendered = text.TakeStr();
+            Vec<SourceSegment> segments;
+            MdSourceSegments(b, n, rendered, true, segments);
+            AddText(b, rendered, &segments);
             break;
         }
         case md::NodeKind::Emphasis:
@@ -936,25 +1592,42 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
             uint8_t saved = b->marks;
             if (n->kind == md::NodeKind::InlineCode) {
                 b->marks = (uint8_t)(b->marks | MdCode);
-                AddText(b, V(b, n, md::NodeStrKind::Value));
+                Str value = V(b, n, md::NodeStrKind::Value);
+                Vec<SourceSegment> segments;
+                MdCodeSourceSegments(b, n, value, segments);
+                AddText(b, value, &segments);
             } else {
                 // Math parsing is on by default. An unclaimed node remains
                 // literal prose rather than silently losing its delimiters
-                // or changing to inline-code styling.
-                Str value = V(b, n, md::NodeStrKind::Value);
-                StrBuilder literal(b->a);
-                literal.AppendChar('$');
-                literal.Append(value);
-                literal.AppendChar('$');
-                AddText(b, literal.TakeStr());
+                // or changing to inline-code styling: its own source, or
+                // `$value$` when the parse kept no position.
+                Span span;
+                Str literal;
+                if (!MdNodeSpan(b, n, &span) ||
+                    !MdSourceSlice(b, span, &literal)) {
+                    Str value = V(b, n, md::NodeStrKind::Value);
+                    StrBuilder built(b->a);
+                    built.AppendChar('$');
+                    built.Append(value);
+                    built.AppendChar('$');
+                    literal = built.TakeStr();
+                } else {
+                    literal = StrDup(b->a, literal);
+                }
+                Vec<SourceSegment> segments;
+                MdSourceSegments(b, n, literal, false, segments);
+                AddText(b, literal, &segments);
             }
             b->marks = saved;
             break;
         }
-        case md::NodeKind::Break:
+        case md::NodeKind::Break: {
             // CommonMark hard breaks start a new row of the inline flow.
-            AddText(b, StrL("\n"));
+            Vec<SourceSegment> segments;
+            MdSourceSegments(b, n, StrL("\n"), false, segments);
+            AddText(b, StrL("\n"), &segments);
             break;
+        }
         case md::NodeKind::Link:
         case md::NodeKind::LinkReference: {
             Str saved = b->href;
@@ -967,19 +1640,25 @@ static void MdInlineNode(MdBuild* b, const md::Node* n) {
         }
         case md::NodeKind::Image:
             AddImage(b, V(b, n, md::NodeStrKind::Url),
-                     V(b, n, md::NodeStrKind::Alt), 0, 0);
+                     V(b, n, md::NodeStrKind::Alt), 0, 0, n);
             break;
         case md::NodeKind::ImageReference:
             AddImage(b, MdDefUrl(b, V(b, n, md::NodeStrKind::Identifier)),
-                     V(b, n, md::NodeStrKind::Alt), 0, 0);
+                     V(b, n, md::NodeStrKind::Alt), 0, 0, n);
             break;
         case md::NodeKind::FootnoteReference: {
-            // markdown.rs renders the call as an italic `[id]`.
+            // markdown.rs renders the call as an italic `[id]`, mapped onto
+            // its `[^id]`.
             uint8_t saved = b->marks;
             b->marks = (uint8_t)(b->marks | MdItalic);
-            AddText(b, StrL("["));
-            AddText(b, V(b, n, md::NodeStrKind::Identifier));
-            AddText(b, StrL("]"));
+            StrBuilder call(b->a);
+            call.AppendChar('[');
+            call.Append(V(b, n, md::NodeStrKind::Identifier));
+            call.AppendChar(']');
+            Str rendered = call.TakeStr();
+            Vec<SourceSegment> segments;
+            MdSourceSegments(b, n, rendered, false, segments);
+            AddText(b, rendered, &segments);
             b->marks = saved;
             break;
         }
@@ -1007,10 +1686,19 @@ static void MdBlockChildren(MdBuild* b, const md::Node* n) {
 
 // A code block, however the source spelled it: a fence, an indent, math, or
 // the document's frontmatter.
-static void MdCodeBlock(MdBuild* b, Str value, Str lang) {
+//
+// `node` is the mdast node for a fence, an indent or math, whose body the
+// source segments are measured against; frontmatter has none (markdown.rs
+// gives its CodeBlock no segments either).
+static void MdCodeBlock(MdBuild* b, Str value, Str lang,
+                        const md::Node* node = nullptr) {
     MdNode* n = Push(b, MdKind::Code);
     n->lang = lang;
-    AddText(b, value);
+    Vec<SourceSegment> segments;
+    if (node) {
+        MdCodeSourceSegments(b, node, value, segments);
+    }
+    AddText(b, value, &segments);
     Pop(b);
 }
 
@@ -1063,6 +1751,7 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
         MarkdownParseContext context;
         context.arena = b->a;
         context.source = b->source;
+        context.positions = b->positions;
         for (int i = 0; i < b->extensions->blockParsers.len; i++) {
             const MarkdownBlockParser& parser = b->extensions->blockParsers[i];
             MarkdownNode custom;
@@ -1071,6 +1760,8 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             }
             MdNode* node = Push(b, MdKind::Custom);
             node->custom = custom;
+            // ast_to_node: `node.set_span(span)`.
+            node->custom.hasSpan = MdNodeSpan(b, n, &node->custom.span);
             node->custom.name = StrDup(b->a, custom.name);
             node->custom.text = StrDup(b->a, custom.text);
             node->custom.markdown = StrDup(b->a, custom.markdown);
@@ -1123,10 +1814,10 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
             break;
         case md::NodeKind::Code:
             MdCodeBlock(b, V(b, n, md::NodeStrKind::Value),
-                        V(b, n, md::NodeStrKind::Lang));
+                        V(b, n, md::NodeStrKind::Lang), n);
             break;
         case md::NodeKind::Math:
-            MdCodeBlock(b, V(b, n, md::NodeStrKind::Value), {});
+            MdCodeBlock(b, V(b, n, md::NodeStrKind::Value), {}, n);
             break;
         case md::NodeKind::Yaml:
             MdCodeBlock(b, V(b, n, md::NodeStrKind::Value), StrL("yml"));
@@ -1245,12 +1936,16 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     options.constructs.mathFlow = true;
     options.constructs.frontmatter = extensions && extensions
                                                        ->enableFrontmatter;
-    md::Node* root = md::ToMdast(a, source, options);
+    // The positions are what the runs' source segments are measured from;
+    // the table is the parse's own and is gone once the tree is folded.
+    md::NodePositions positions;
+    md::Node* root = md::ToMdast(a, source, options, &positions);
 
     MdBuild b;
     b.a = a;
     b.source = source;
     b.extensions = extensions;
+    b.positions = &positions;
     b.cur = doc;
     MdCollectDefs(&b, root);
     MdBlockChildren(&b, root);
@@ -1658,6 +2353,22 @@ void TextView::SrcBreak() {
     srcLineStart = true;
 }
 
+El* TextView::SrcMap(El* t, const SourceSegment* segments, int count,
+                     int offset, bool atomic) {
+    if (!selectable || !t) {
+        return t;
+    }
+    SelSourceMap* m = ArenaNew<SelSourceMap>(a);
+    if (!m) {
+        return t;
+    }
+    m->segments = segments;
+    m->count = count;
+    m->offset = offset;
+    m->atomic = atomic;
+    return t->SelMap(m);
+}
+
 // node.rs image_markdown: `![alt](url)`. Rust writes the title after the url
 // when the image carries one; MdRun keeps the url and the alt text, which is
 // what the parse fold kept.
@@ -1677,6 +2388,17 @@ El* TextView::SrcImage(El* e, MdRun* r) {
         ->SelectionOwner(BaseTextViewStateCurrent(cx->app))
         ->SelSrc(s, !srcLineStart);
     srcLineStart = false;
+    // selected_source_range takes an image in whole, as its span.
+    SourceSegment* whole = nullptr;
+    if (r->hasImgSpan) {
+        whole = ArenaNew<SourceSegment>(a);
+        if (whole) {
+            whole->renderedEnd = 1;
+            whole->sourceStart = r->imgSpan.start;
+            whole->sourceEnd = r->imgSpan.end;
+        }
+    }
+    SrcMap(e, whole, whole ? 1 : 0, 0, true);
     // Not a mark group anything can join: the words after the picture open
     // one of their own.
     srcRunLast = nullptr;
@@ -1861,6 +2583,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (selectable) {
             t->Selectable();
             SrcMark(t, 0);
+            SrcMap(t, n->runFirst->segments, n->runFirst->segmentCount, 0);
         }
         if (align == MdAlignCenter || align == MdAlignRight) {
             // The text shrink-wraps so the box around it can push it over.
@@ -1897,12 +2620,20 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     int wordLen = 0;
     uint8_t marks = 0;
     Str href = {};
+    // The run the word being gathered comes from, and where in its text the
+    // word starts: what the word's source map is measured from.
+    MdRun* wordRun = nullptr;
+    int wordStart = 0;
     auto flush = [&]() {
         if (wordLen <= 0) {
             return;
         }
-        row->Child(Word(StrDup(a, Str(word, wordLen)), font, color, marks,
-                        weight, href));
+        El* w = Word(StrDup(a, Str(word, wordLen)), font, color, marks, weight,
+                     href);
+        if (wordRun) {
+            SrcMap(w, wordRun->segments, wordRun->segmentCount, wordStart);
+        }
+        row->Child(w);
         wordLen = 0;
     };
     for (MdRun* r = n->runFirst; r; r = r->next) {
@@ -1948,8 +2679,19 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 }
                 row->Child(rendered.element);
             } else if (r->custom.text) {
-                row->Child(
-                    Word(r->custom.text, font, color, marks, weight, href));
+                El* w = Word(r->custom.text, font, color, marks, weight, href);
+                // An inline plugin node is selected as a unit, and maps to
+                // `MarkdownNode::source_range`.
+                SourceSegment* whole = nullptr;
+                if (r->custom.hasSpan) {
+                    whole = ArenaNew<SourceSegment>(a);
+                    if (whole) {
+                        whole->renderedEnd = len(r->custom.text);
+                        whole->sourceStart = r->custom.span.start;
+                        whole->sourceEnd = r->custom.span.end;
+                    }
+                }
+                row->Child(SrcMap(w, whole, whole ? 1 : 0, 0, true));
             }
             continue;
         }
@@ -1957,6 +2699,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             row->Child(SrcImage(ImageRun(r, font, color, inFlow), r));
             continue;
         }
+        wordRun = r;
         for (int i = 0; i < len(r->text); i++) {
             char c = r->text.s[i];
             if (c == '\n') {
@@ -1965,6 +2708,9 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
                 col->Child(row);
                 row = AlignRow(Div(a)->FlexRow()->FlexWrap()->W(kFill), align);
                 continue;
+            }
+            if (wordLen == 0) {
+                wordStart = i;
             }
             word[wordLen++] = c;
             if (c == ' ') {
@@ -2078,23 +2824,6 @@ static void TableDimensions(MdNode* table, int* rowsOut, int* colsOut) {
     if (colsOut) {
         *colsOut = cols;
     }
-}
-
-// Arena::Alloc takes an int byte count. Reject only a shape that cannot be
-// represented by that allocator; this is an overflow guard, not a content
-// limit like the old 32-column/8,192-cell tables.
-template <typename T>
-static T* TextArenaArray(Arena* a, int count) {
-    if (count <= 0 || count > 0x7fffffff / (int)sizeof(T)) {
-        return nullptr;
-    }
-    T* out = (T*)Alloc(a, count * (int)sizeof(T));
-    if (out) {
-        for (int i = 0; i < count; i++) {
-            new (out + i) T();
-        }
-    }
-    return out;
 }
 
 static int TableCellCount(int rows, int cols) {
@@ -2223,8 +2952,16 @@ El* TextView::CodeBlock(MdNode* n) {
             gpui::CodeBlock::FromCode(Str(buf, at), n->lang);
         highlighter(highlighterData, &block, a, &spans);
     }
+    // CodeBlock::source_segments: a fenced, indented or math block is one
+    // run, and its segments are in the code's own offsets.
+    const SourceSegment* segments = nullptr;
+    int segmentCount = 0;
+    if (n->runFirst && n->runFirst == n->runLast) {
+        segments = n->runFirst->segments;
+        segmentCount = n->runFirst->segmentCount;
+    }
     if (spans.len > 0) {
-        box->Child(CodeLines(Str(buf, at), spans));
+        box->Child(CodeLines(Str(buf, at), spans, segments, segmentCount));
     } else {
         El* t = TextEl(a, Str(buf, at))
                     ->Font(codeFont)
@@ -2233,6 +2970,7 @@ El* TextView::CodeBlock(MdNode* n) {
         if (selectable) {
             t->Selectable();
             SrcMark(t, 0);
+            SrcMap(t, segments, segmentCount, 0);
         }
         box->Child(t->ReportLineSpan(codeFont * kLineHeight));
     }
@@ -2258,7 +2996,8 @@ El* TextView::CodeBlock(MdNode* n) {
 // be several elements to be several colors — so the rows carry the line box
 // themselves and every element in them is the same mono face at the same
 // size, which keeps the lines from setting their own leading.
-El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
+El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
+                        const SourceSegment* segments, int segmentCount) {
     const int count = len(spans);
     El* col = Div(a)->FlexCol()->W(kFill);
     float lineH = codeFont * kLineHeight;
@@ -2270,6 +3009,8 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
         return col->ReportLineSpan(lineH);
     }
     int len = 0;
+    // Where the piece being gathered starts in `code`, for its source map.
+    int pieceStart = 0;
     Rgba color = textViewStyle.foreground;
     auto flush = [&]() {
         if (len <= 0) {
@@ -2282,6 +3023,7 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
         if (selectable) {
             t->Selectable();
             SrcMark(t, 0);
+            SrcMap(t, segments, segmentCount, pieceStart);
         }
         row->Child(t);
         len = 0;
@@ -2325,6 +3067,9 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans) {
                 c.b != color.b) {
                 flush();
                 color = c;
+            }
+            if (len == 0) {
+                pieceStart = i;
             }
             piece[len++] = ch;
         }

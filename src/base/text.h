@@ -96,18 +96,20 @@ struct ImageNode {
     Str Title(Arena* a) const;
 };
 
-// The markdown crate port deliberately omits the per-node unist Position
-// (see markdown/mdast.h), so NodeSource cannot recover a source slice. Value
-// exposes the mdast string fields custom parsers actually consume, and Copy
-// gives their results the same parse-arena lifetime as the document.
+// The markdown crate port keeps a node's unist Position in a side table
+// (markdown::NodePositions) rather than on the node, so NodeSource reads it
+// from there; a parse that kept none answers an empty Str. Value exposes the
+// mdast string fields custom parsers actually consume, and Copy gives their
+// results the same parse-arena lifetime as the document.
 struct MarkdownParseContext {
     Arena* arena = nullptr;
     Str source = {};
     int offset = 0;
+    const markdown::NodePositions* positions = nullptr;
 
     Str Source() const { return source; }
     int Offset() const { return offset; }
-    Str NodeSource(const markdown::Node*) const { return {}; }
+    Str NodeSource(const markdown::Node* node) const;
     Str Value(const markdown::Node* node, markdown::NodeStrKind kind) const;
     Str Copy(Str value) const;
 };
@@ -250,6 +252,15 @@ enum MdMark : uint8_t {
 // if the source will not decode (gpui/image.h says when that is).
 struct MdRun {
     Str text = {};
+    // node.rs InlineNode::source_segments: the run's rendered bytes paired
+    // with the Markdown bytes they came from, in the run's own offsets. None
+    // for a run the parse could not place (inline HTML, a footnote
+    // definition's label), which selected_source_range reads as unmapped.
+    const SourceSegment* segments = nullptr;
+    int segmentCount = 0;
+    // ImageNode::span, for an image run: the whole `![alt](url)`.
+    Span imgSpan = {};
+    bool hasImgSpan = false;
     // LinkMark::url, when marks has MdLink.
     Str href = {};
     // ImageNode::url. An image run carries no other text.
@@ -575,6 +586,11 @@ struct TextViewState {
     // tracks one entry per leaf; the port retains the same rendered-prefix
     // decision and fades the affected top-level block.
     Str streamRenderedText = {};
+    // state.rs `select_all`: the selection SelectAll made, which
+    // selected_source_range answers with the whole source for as long as the
+    // window's selection is still that one. -1 when there is none.
+    int selectAllAnchor = -1;
+    int selectAllCursor = -1;
     bool streamFadePending = false;
     bool streamFadeReplace = false;
     int streamFadeFrom = -1;
@@ -597,6 +613,13 @@ struct TextViewState {
     void SetSelectionFormat(gpui::SelectionFormat value, App* app,
                             Window* window = nullptr);
     int SelectedText(Window* window, char* out, int cap) const;
+    // state.rs selected_source_range: the byte range of the Markdown source
+    // behind the rendered selection, so identical text maps to the
+    // occurrence actually selected. One contiguous range, taking in any
+    // delimiters between its ends. False for an HTML view and for a
+    // selection with no exact mapping. A selection over the whole view (what
+    // select_all makes) is the whole source.
+    bool SelectedSourceRange(const Window* window, Span* out) const;
     bool HasSelection(const Window* window) const;
     void ClearSelection(Window* window, App* app);
     void SelectAll(Window* window, App* app);
@@ -829,6 +852,10 @@ struct TextView {
     // Hand an inline image element its `![alt](url)` — node.rs
     // image_markdown — as a run of its own with no text in it. Answers `e`.
     El* SrcImage(El* e, MdRun* r);
+    // Hangs the run's source segments on `t`, whose text starts `offset`
+    // bytes into the run.
+    El* SrcMap(El* t, const SourceSegment* segments, int count, int offset,
+               bool atomic = false);
     Listener LinkListener(Str href);
     // The text a plugin's parser sees, and the block a plugin claimed.
     Str BlockText(MdNode* n);
@@ -847,7 +874,8 @@ struct TextView {
     El* CodeBlock(MdNode* n);
     // The highlighted form of a code block: the installed highlighter says
     // which stretches take which colour and this paints them.
-    El* CodeLines(Str code, const ArenaVec<CodeHighlight>& spans);
+    El* CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
+                  const SourceSegment* segments, int segmentCount);
     // An image run: node.rs putting an img() element in the middle of the
     // inline flow.
     El* ImageRun(MdRun* r, float font, Rgba color, bool inFlow);
@@ -863,6 +891,40 @@ struct TextView {
 
 // Parses `source` into a block tree allocated from `a`. Exposed for tests.
 MdNode* MdParse(Arena* a, Str source);
+
+// node.rs SourceRangeSelection: what one piece of a selection maps to. An
+// unmapped piece poisons the whole selection, since a guessed range would be
+// worse than none.
+struct SourceRangeSelection {
+    enum Kind : uint8_t {
+        Unselected,
+        Mapped,
+        Unmapped,
+    };
+    Kind kind = Unselected;
+    Span range = {};
+
+    static SourceRangeSelection MappedRange(int start, int end);
+    void Merge(const SourceRangeSelection& other);
+    bool IntoRange(Span* out) const;
+};
+
+// node.rs source_range_for_segments: the source bytes behind the rendered
+// bytes [start, end), or false when the segments leave part of it uncovered.
+bool SourceRangeForSegments(const SourceSegment* segments, int count, int start,
+                            int end, Span* out);
+
+// Paragraph::selected_source_range / CodeBlock::selected_source_range for a
+// selection [start, end) of `n`'s rendered text — its runs' text, an image
+// run contributing none. An image is taken in when the selection reaches it
+// from either side. Exposed for tests; the view maps the painted runs with
+// TextHitsSourceRange.
+SourceRangeSelection MdSelectedSourceRange(const MdNode* n, int start, int end);
+
+// The same mapping over a frame's painted runs: every run `owner` painted
+// in `scope` that the selection [selA, selB) reaches, merged.
+SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
+                                         int selB, int scope, EntityId owner);
 
 // The window's cached parse of `source`, which is what a TextView renders
 // from. Exposed so a test can ask whether two frames of a view that rebuilt

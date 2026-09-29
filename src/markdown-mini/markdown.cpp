@@ -1043,6 +1043,17 @@ ParseOptions ParseOptions::Gfm() {
     return options;
 }
 
+// The mini parser keeps no positions, so the table stays empty and
+// TextView's source ranges answer None under -markdown=mini.
+Node* ToMdast(Arena* a, Str source, const ParseOptions& options,
+              NodePositions*) {
+    return ToMdast(a, source, options);
+}
+
+bool NodePosition(const NodePositions*, const Node*, int32_t*, int32_t*) {
+    return false;
+}
+
 Node* ToMdast(Arena* a, Str source, const ParseOptions& options) {
     if (!a) {
         return nullptr;

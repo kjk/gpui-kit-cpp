@@ -244,7 +244,9 @@ void DivideEvents(EditMap& map, const Vec<Event>& events, int32_t linkIndex,
 Vec<Event> Parse(ParseState* parseState);
 
 // to_mdast.rs `compile`.
-Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState);
+// `positions`, when not null, is filled with each pushed node's offsets.
+Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState,
+                     NodePositions* positions);
 
 } // namespace markdown
 

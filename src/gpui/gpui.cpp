@@ -2006,6 +2006,10 @@ El* El::SelSrc(const SelSource* s, bool join) {
     selJoin = join;
     return this;
 }
+El* El::SelMap(const SelSourceMap* m) {
+    selMap = m;
+    return this;
+}
 El* El::Wrap() {
     style.wrap = true;
     return this;
@@ -6203,6 +6207,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         th.docOff = ctx->textDocLen;
         th.owner = e->selectionOwner;
         th.src = e->selSrc;
+        th.map = e->selMap;
         th.join = e->selJoin;
         th.atom = true;
         th.scope = e->style.trapId;
@@ -6233,6 +6238,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             th.docOff = docOff;
             th.owner = e->selectionOwner;
             th.src = e->selSrc;
+            th.map = e->selMap;
             th.join = e->selJoin;
             // The trap this run sits in — a dialog, a sheet — which is the
             // TextSelectionScopeId a gesture inside it stays within.

@@ -15,10 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `e02e645fdba665327856344c475f37ae8c447941` (2026-09-21,
-website: Publish versioned website builds (#3159)). Website and CI only:
-versioned website builds. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `fff843a6b36d7479ed5a60538dccb0d00eb70ba4` (2026-09-21,
+text_view: Add `TextViewState::selected_source_range` (#3136)).
+TextViewState::selected_source_range maps a rendered Markdown selection back
+to its source bytes: the markdown port keeps node positions in a side table,
+runs carry source segments, and painted runs carry their map. The current
+update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
@@ -52,6 +54,14 @@ versioned website builds. The current update target is
   character for CJK); an El has opacity only per subtree, so the block holding
   the new text fades as one unit and `stream_fade_stagger` / `StaggerStepMs`
   shape nothing on screen (`src/base/text.cpp`).
+- **`selected_source_range` reads the window's painted runs.** Rust walks
+  each inline state's selection; here the selection is the window's, so the
+  view maps the runs it painted, which takes an inline image in whenever the
+  selection covers its place in the document order rather than by Rust's
+  run-boundary rule (`MdSelectedSourceRange` keeps Rust's rule for the parsed
+  tree). `select_all` is the selection `SelectAll` made, for as long as the
+  window still holds it. Under `-markdown=mini` the parser keeps no
+  positions, so the answer is always None (`src/base/text.cpp`).
 - **No text alignment on an element.** `text_center()` / `text_right()` have
   no counterpart, so a wrapped centered or trailing Marker label keeps its
   lines at the leading edge; a single run is placed by the flex box instead

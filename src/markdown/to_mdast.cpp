@@ -38,6 +38,9 @@ struct TreeFrame {
     // that indexes `children` once per level.
     ArenaVec<Node*> stack{};
     ArenaVec<int32_t> eventStack{};
+    // Beside `stack`: each open node's entry in the NodePositions table, when
+    // one is being kept.
+    ArenaVec<int32_t> spanStack{};
 };
 
 struct CompileContext {
@@ -52,6 +55,7 @@ struct CompileContext {
     bool rawFlowFenceSeen = false;
     Vec<TreeFrame> trees;
     int32_t index = 0;
+    NodePositions* positions = nullptr;
 };
 
 // `normalize_identifier(..).to_lowercase()`, which is what an identifier on
@@ -149,12 +153,34 @@ static Node* Resume(CompileContext* c) {
     return frame.tree;
 }
 
+// The table entry of a node already recorded — a recent one, so from the end.
+static int32_t SpanIndexOf(CompileContext* c, const Node* n) {
+    NodePositions* p = c->positions;
+    for (int32_t i = p->spans.len - 1; i >= 0; i--) {
+        if (p->spans[i].node == n) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void TailPush(CompileContext* c, Node* child) {
     Node* node = TailMut(c);
     NodeAddChild(c->a, node, child);
     TreeFrame& frame = TreeTail(c);
     frame.stack.Append(c->a, child);
     frame.eventStack.Append(c->a, c->index);
+    if (c->positions) {
+        // `child.position_set(Some(position_from_event(..)))`: start and end
+        // both at the entering event, the end moved on by `tail_pop`.
+        int32_t at = (*c->events)[c->index].point.index;
+        NodeSpan span;
+        span.node = child;
+        span.start = at;
+        span.end = at;
+        frame.spanStack.Append(c->a, c->positions->spans.len);
+        VecAppend(c->positions->spans, span);
+    }
 }
 
 // `tail_push` for a node that is already the tail's last child — the text run
@@ -164,12 +190,23 @@ static void TailPushAgain(CompileContext* c, Node* child) {
     TreeFrame& frame = TreeTail(c);
     frame.stack.Append(c->a, child);
     frame.eventStack.Append(c->a, c->index);
+    if (c->positions) {
+        frame.spanStack.Append(c->a, SpanIndexOf(c, child));
+    }
 }
 
 static void TailPop(CompileContext* c) {
     TreeFrame& frame = TreeTail(c);
     frame.stack.Pop();
     frame.eventStack.Pop();
+    if (c->positions && frame.spanStack.len > 0) {
+        // `pos.end = ev.point.to_unist()`.
+        int32_t ix = frame.spanStack[frame.spanStack.len - 1];
+        frame.spanStack.Pop();
+        if (ix >= 0) {
+            c->positions->spans[ix].end = (*c->events)[c->index].point.index;
+        }
+    }
 }
 
 // ─── enter ───────────────────────────────────────────────────────────────
@@ -548,6 +585,15 @@ static void OnExitLineEnding(CompileContext* c) {
         return;
     }
     if (c->hardBreakAfter) {
+        // "Line ending position after hard break is part of it."
+        if (c->positions) {
+            Node* tail = NodeLastChild(c->a, TailMut(c));
+            int32_t ix = tail ? SpanIndexOf(c, tail) : -1;
+            if (ix >= 0) {
+                c->positions->spans[ix].end = (*c->events)[c->index]
+                                                  .point.index;
+            }
+        }
         c->hardBreakAfter = false;
         return;
     }
@@ -629,6 +675,11 @@ static void OnExitListItem(CompileContext* c) {
             } else {
                 Keep(c, text, NodeStrKind::Value,
                      Str(value.s + start, len(value) - start));
+                // `text.position.start = point`, past the eol.
+                int32_t ix = c->positions ? SpanIndexOf(c, text) : -1;
+                if (ix >= 0) {
+                    c->positions->spans[ix].start += start;
+                }
             }
         }
     }
@@ -842,9 +893,11 @@ static void Exit(CompileContext* c) {
     }
 }
 
-Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState) {
+Node* ToMdastCompile(const Vec<Event>& events, ParseState* parseState,
+                     NodePositions* positions) {
     CompileContext context;
     context.a = parseState->a;
+    context.positions = positions;
     context.events = &events;
     context.bytes = parseState->bytes;
 

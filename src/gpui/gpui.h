@@ -1728,6 +1728,29 @@ struct SelSource {
     const SelBlock* block = nullptr;
 };
 
+// text/node.rs SourceSegment: a stretch of rendered UTF-8 bytes paired with
+// the exact Markdown bytes it came from. A 1:1 pair maps byte for byte; any
+// other (an escape, an entity, a soft break over its line prefix) maps whole.
+struct SourceSegment {
+    int renderedStart = 0;
+    int renderedEnd = 0;
+    int sourceStart = 0;
+    int sourceEnd = 0;
+};
+
+// Where one selectable element's text sits in the source, for
+// TextViewState::selected_source_range. `segments` are the rendered run's, in
+// the run's own byte offsets, and `offset` is where this element's text
+// starts in that run — a run is painted as several word elements. `atomic`
+// maps any selection of the element to the whole of what it covers: an image
+// or an inline plugin node, which Rust selects as a unit.
+struct SelSourceMap {
+    const SourceSegment* segments = nullptr;
+    int count = 0;
+    int offset = 0;
+    bool atomic = false;
+};
+
 struct FocusHandle {
     int id = 0;
     bool IsValid() const { return id != 0; }
@@ -2186,6 +2209,9 @@ struct El {
     // the frame arena, in practice — and is null on every run that is not
     // Markdown.
     const SelSource* selSrc = nullptr;
+    // Where the run's text came from in the Markdown source, for
+    // TextViewState::selected_source_range. Null on every other run.
+    const SelSourceMap* selMap = nullptr;
     // The taffy node this element was laid out as, this frame. A
     // `taffy::NodeId` is a u64 and is kept as one here so gpui.h does not
     // have to name the layout port's types.
@@ -2580,6 +2606,7 @@ struct El {
     // The Markdown this run came from, and whether it continues the run
     // before it rather than starting a line of its own.
     El* SelSrc(const SelSource* s, bool join);
+    El* SelMap(const SelSourceMap* m);
     El* Wrap();
     El* Dashed();
     El* DashArray(float on, float off);
@@ -2863,6 +2890,9 @@ struct TextHit {
     // El::SelSrc, for a copy in SelectionFormat::Source. Null otherwise, and
     // then the run copies as its plain text in both formats.
     const SelSource* src = nullptr;
+    // El::SelMap: the run's source segments, for a TextView's
+    // selected_source_range. Null on a run that does not map to Markdown.
+    const SelSourceMap* map = nullptr;
     // Whether this run continues the one before it on the same line. A
     // paragraph is one `InlineState.text` in Rust; here it is a row of word
     // elements, and this is what keeps a copy of it on one line — in both
