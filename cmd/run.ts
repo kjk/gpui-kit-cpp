@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0b3e53d37fb9077aefde38502ff78ea062e57dd0",
+  sha: "e0f95161993fdf3c394b34e70091af73a822058d",
   date: "2026-09-21",
-  subject: "notification: Fix center notification stacks reliably on web (#3149)",
+  subject: "kit: Pin gpui-pre to the exact snapshot each release is built against (#3163)",
   crates: {
     "gpui-kit": "0.6.4",
     "gpui-base": "0.6.4",

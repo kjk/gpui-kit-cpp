@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0b3e53d37fb9077aefde38502ff78ea062e57dd0` (2026-09-21,
-notification: Fix center notification stacks reliably on web (#3149)).
-Centered notification stacks position by half-width offset rather than auto
-margins; this tree already centers the stack from the window width. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `e0f95161993fdf3c394b34e70091af73a822058d` (2026-09-21, kit:
+Pin gpui-pre to the exact snapshot each release is built against (#3163)). The
+workspace pins every gpui-pre snapshot crate exactly; Cargo.lock is unchanged,
+so the Zed reference stays at gpui-pre 0.3.6. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
