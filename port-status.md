@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eabcb02bad68e045562371953c093669b2655a5f` (2026-09-25,
-base: Bundle IBM Plex Sans so the web examples resolve `.SystemUIFont`
-(#3235)). The Rust web examples bundle IBM Plex Sans so gpui-pre-web resolves
-.SystemUIFont; the wasm build here draws text with the browser's own font
-stack and bundles no font. The current update target is
+Processed through `80230b652dbc573b5811f46258c36cd184887177` (2026-09-25,
+text_view: Add `TextViewState::reveal_range` (#3216)).
+TextViewState::reveal_range scrolls the line a rendered-text range starts on
+into view, following the content like range highlights, and
+TextView::on_reveal hands the line to a container that scrolls itself; the
+markdown example steps through its matches. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
@@ -98,6 +99,17 @@ stack and bundles no font. The current update target is
   into the append test. The washes go through the selection painter
   (`PaintTextRange`), so inline.rs's `glyph_boxes`/`range_boxes` geometry
   tests have no C++ counterpart (`src/base/text.cpp`).
+- **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
+  enclosing `gpui::list` to autoscroll during prepaint and checks the line
+  against the content mask. Here the view marks the text the range starts in
+  (`El::RangeOut`, a whole block through `BoundsOut`), and the next frame
+  reads where it was painted: a scrollable view scrolls its own offset the
+  least that shows it, and anything else calls `OnReveal`. There is no
+  request_autoscroll, so an application list around a fit-content view does
+  not follow by itself — hand it the line through `OnReveal`, as the
+  markdown example does for its preview panel. Visibility for a fit-content
+  view is the window cut down to the scroll boxes last frame painted around
+  the view, which is what this runtime can read back of the clip.
 - **`selected_source_range` reads the window's painted runs.** Rust walks
   each inline state's selection; here the selection is the window's, so the
   view maps the runs it painted, which takes an inline image in whenever the

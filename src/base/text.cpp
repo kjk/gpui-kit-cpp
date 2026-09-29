@@ -2847,6 +2847,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             SrcMap(t, n->runFirst->segments, n->runFirst->segmentCount, 0);
         }
         RangeWashes(t, n, 0, len(n->runFirst->text));
+        int reveal = 0;
+        if (RevealIn(n, &reveal)) {
+            RevealMark(t, 0, reveal);
+        }
         if (align == MdAlignCenter || align == MdAlignRight) {
             // The text shrink-wraps so the box around it can push it over.
             return AlignRow(Div(a)->FlexRow()->W(kFill), align)
@@ -2890,6 +2894,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
     // byte space its range highlights use.
     int runOffset = 0;
     int nextRunOffset = 0;
+    int revealOffset = 0;
+    bool hasReveal = RevealIn(n, &revealOffset);
+    El* lastWord = nullptr;
+    int lastWordLo = 0;
     auto flush = [&]() {
         if (wordLen <= 0) {
             return;
@@ -2901,6 +2909,14 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
             RangeWashes(w, n, runOffset + wordStart,
                         runOffset + wordStart + wordLen,
                         (marks & MdHighlight) != 0);
+            // The word the reveal starts in, or, for a line break that lays
+            // out no word, the first word after it.
+            if (hasReveal && revealOut &&
+                runOffset + wordStart + wordLen > revealOffset) {
+                RevealMark(w, runOffset + wordStart, revealOffset);
+            }
+            lastWord = w;
+            lastWordLo = runOffset + wordStart;
         }
         row->Child(w);
         wordLen = 0;
@@ -2990,6 +3006,10 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         }
     }
     flush();
+    // A reveal past the last word: that word's line.
+    if (hasReveal && revealOut && lastWord) {
+        RevealMark(lastWord, lastWordLo, revealOffset);
+    }
     col->Child(row);
     return col->ReportLineSpan(font * kLineHeight);
 }
@@ -3244,6 +3264,10 @@ El* TextView::CodeBlock(MdNode* n) {
             SrcMap(t, segments, segmentCount, 0);
         }
         RangeWashes(t, n, 0, at);
+        int reveal = 0;
+        if (RevealIn(n, &reveal)) {
+            RevealMark(t, 0, reveal);
+        }
         box->Child(t->ReportLineSpan(codeFont * kLineHeight));
     }
     if (codeActions) {
@@ -3284,6 +3308,10 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
     int len = 0;
     // Where the piece being gathered starts in `code`, for its source map.
     int pieceStart = 0;
+    int revealOffset = 0;
+    bool hasReveal = RevealIn(leaf, &revealOffset);
+    El* lastPiece = nullptr;
+    int lastPieceLo = 0;
     Rgba color = textViewStyle.foreground;
     auto flush = [&]() {
         if (len <= 0) {
@@ -3302,6 +3330,11 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
         // follows it on its line by a byte; code with CRLF endings is the
         // only kind that has one.
         RangeWashes(t, leaf, pieceStart, pieceStart + len);
+        if (hasReveal && revealOut && pieceStart + len > revealOffset) {
+            RevealMark(t, pieceStart, revealOffset);
+        }
+        lastPiece = t;
+        lastPieceLo = pieceStart;
         row->Child(t);
         len = 0;
     };
@@ -3358,6 +3391,9 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
         at = stop;
     }
     flush();
+    if (hasReveal && revealOut && lastPiece) {
+        RevealMark(lastPiece, lastPieceLo, revealOffset);
+    }
     col->Child(row);
     return col->ReportLineSpan(lineH);
 }
@@ -3801,6 +3837,8 @@ struct RenderedIndex {
     // In document order, so by their position in `text`.
     Vec<RenderedLeafSpan> leaves;
     Vec<Span> objects;
+    // Where the text of each top-level block sits, in document order.
+    Vec<Span> blocks;
 
     ~RenderedIndex() {
         StrFree(text);
@@ -3916,7 +3954,9 @@ RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source) {
     RenderedIndexBuilder builder;
     builder.index = index;
     for (const MdNode* c = doc ? doc->first : nullptr; c; c = c->next) {
+        int start = len(builder.text);
         builder.PushBlock(c);
+        VecAppend(index->blocks, Span{start, len(builder.text)});
     }
     index->text = builder.text.TakeStr();
     index->source = StrDup(source);
@@ -4097,11 +4137,11 @@ static Str LeafText(const RenderedIndex* index, const RenderedLeafSpan* leaf) {
                                                                         .start);
 }
 
-// RangeHighlightFrame::remap. A block that starts before the first change of
-// the source is found at the same offset in `next`, and one after the last
-// change at an offset moved by the change in length; a block that starts
-// between them is gone. A highlight follows its block, as far as the text of
-// its leaf is unchanged, and is dropped with a leaf that is gone.
+// range_highlight.rs LeafRemap: where the text leaves of one parse are
+// found in the parse after it. A block that starts before the first change of
+// the source is found at the same offset, and one after the last change at an
+// offset moved by the change in length; a block that starts between them is
+// gone. A leaf keeps its text up to where it first differs from before.
 //
 // Rust has a second mode, `tail_only`, for a parse that appended to the
 // last one and re-parsed only its last block, keeping the others without
@@ -4109,41 +4149,48 @@ static Str LeafText(const RenderedIndex* index, const RenderedLeafSpan* leaf) {
 // every leaf is compared: the same answer wherever the earlier blocks' text
 // did not change, and the right one where it did (a definition appended
 // after its reference).
-RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
-                                              const RenderedIndex* prev,
-                                              const RenderedIndex* next) {
-    if (!frame || !prev || !next) {
-        return nullptr;
-    }
-    Str oldSource = prev->source;
-    Str newSource = next->source;
-    int oldLen = len(oldSource);
-    int newLen = len(newSource);
-    int shorter = std::min(oldLen, newLen);
-    int prefix = 0;
-    while (prefix < shorter && oldSource.s[prefix] == newSource.s[prefix]) {
-        prefix++;
-    }
-    // One source extending the other, as when text is appended, has no
-    // unchanged suffix.
-    int unchangedPrefix = prefix;
+struct LeafRemap {
+    const RenderedIndex* prev = nullptr;
+    const RenderedIndex* next = nullptr;
+    int oldLen = 0;
+    int newLen = 0;
+    int unchangedPrefix = 0;
     int unchangedSuffix = 0;
-    if (prefix != shorter) {
-        // Where the two overlap, as when a deleted block starts like the
-        // block after it, the end wins: the blocks after a change keep
-        // following their text rather than their offset.
-        int suffix = 0;
-        while (suffix < shorter && oldSource.s[oldLen - 1 - suffix] ==
-                                       newSource.s[newLen - 1 - suffix]) {
-            suffix++;
+
+    static LeafRemap New(const RenderedIndex* prev, const RenderedIndex* next) {
+        LeafRemap r;
+        r.prev = prev;
+        r.next = next;
+        Str oldSource = prev->source;
+        Str newSource = next->source;
+        r.oldLen = len(oldSource);
+        r.newLen = len(newSource);
+        int shorter = std::min(r.oldLen, r.newLen);
+        int prefix = 0;
+        while (prefix < shorter && oldSource.s[prefix] == newSource.s[prefix]) {
+            prefix++;
         }
-        unchangedPrefix = std::min(prefix, shorter - suffix);
-        unchangedSuffix = suffix;
+        // One source extending the other, as when text is appended, has no
+        // unchanged suffix.
+        r.unchangedPrefix = prefix;
+        if (prefix != shorter) {
+            // Where the two overlap, as when a deleted block starts like the
+            // block after it, the end wins: the blocks after a change keep
+            // following their text rather than their offset.
+            int suffix = 0;
+            while (suffix < shorter && oldSource.s[r.oldLen - 1 - suffix] ==
+                                           newSource.s[r.newLen - 1 - suffix]) {
+                suffix++;
+            }
+            r.unchangedPrefix = std::min(prefix, shorter - suffix);
+            r.unchangedSuffix = suffix;
+        }
+        return r;
     }
 
-    Vec<RangePiece> pieces;
-    for (const RangeHighlightFrame::Leaf& leaf : frame->leaves) {
-        TextLeafKey key = leaf.key;
+    // Where leaf `key` is in the new parse, and how much of its text is
+    // unchanged; false when it is gone.
+    bool Leaf(TextLeafKey key, TextLeafKey* newKey, int* unchanged) const {
         int start = key.BlockStart();
         int moved = -1;
         if (start < unchangedPrefix) {
@@ -4152,11 +4199,11 @@ RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
             moved = start + newLen - oldLen;
         }
         if (moved < 0) {
-            continue;
+            return false;
         }
         const RenderedLeafSpan* oldLeaf = RenderedIndexFind(prev, key);
         if (!oldLeaf) {
-            continue;
+            return false;
         }
         // A table's cells are only known by their place in it, so after a
         // change inside the table a cell is the same one only when the source
@@ -4164,15 +4211,36 @@ RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
         if (key.CellIx() >= 0 && start < unchangedPrefix &&
             (oldLeaf->rowSourceEnd < 0 ||
              oldLeaf->rowSourceEnd > unchangedPrefix)) {
-            continue;
+            return false;
         }
-        TextLeafKey newKey = key.MovedTo(moved);
-        const RenderedLeafSpan* newLeaf = RenderedIndexFind(next, newKey);
+        *newKey = key.MovedTo(moved);
+        const RenderedLeafSpan* newLeaf = RenderedIndexFind(next, *newKey);
         if (!newLeaf) {
+            return false;
+        }
+        *unchanged = StreamCommonPrefix(LeafText(prev, oldLeaf),
+                                        LeafText(next, newLeaf));
+        return true;
+    }
+};
+
+// RangeHighlightFrame::remap: the highlights that still describe `next`,
+// each following its leaf as far as the leaf's text is unchanged, dropped
+// with a leaf that is gone.
+RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
+                                              const RenderedIndex* prev,
+                                              const RenderedIndex* next) {
+    if (!frame || !prev || !next) {
+        return nullptr;
+    }
+    LeafRemap remap = LeafRemap::New(prev, next);
+    Vec<RangePiece> pieces;
+    for (const RangeHighlightFrame::Leaf& leaf : frame->leaves) {
+        TextLeafKey newKey = {};
+        int common = 0;
+        if (!remap.Leaf(leaf.key, &newKey, &common)) {
             continue;
         }
-        int common = StreamCommonPrefix(LeafText(prev, oldLeaf),
-                                        LeafText(next, newLeaf));
         for (int i = 0; i < leaf.count; i++) {
             const RangeBackground& bg = frame->backgrounds[leaf.first + i];
             if (bg.range.start < common) {
@@ -4183,6 +4251,119 @@ RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
     }
     // Moving keys keeps their order, but stay safe for the binary search.
     return FrameFromPieces(pieces);
+}
+
+// LeafSpan::text_offset_near: `offset` in the leaf's text, moved out of an
+// inline object onto the text after it, or before it at the end of the leaf.
+// False when the leaf has no text outside its objects.
+static bool LeafTextOffsetNear(const RenderedIndex* index,
+                               const RenderedLeafSpan* leaf, int offset,
+                               int* out) {
+    auto objectAt = [&](int at) -> const Span* {
+        for (int i = 0; i < leaf->objCount; i++) {
+            const Span& object = index->objects[leaf->objFirst + i];
+            if (object.start <= at && at < object.end) {
+                return &object;
+            }
+        }
+        return nullptr;
+    };
+    int after = offset;
+    while (const Span* object = objectAt(after)) {
+        after = object->end;
+    }
+    if (after < leaf->range.end - leaf->range.start) {
+        *out = after;
+        return true;
+    }
+    int before = offset;
+    while (const Span* object = objectAt(before)) {
+        if (object->start == 0) {
+            return false;
+        }
+        before = object->start - 1;
+    }
+    *out = before;
+    return true;
+}
+
+bool RenderedIndexLocate(const RenderedIndex* index, Span range,
+                         TextViewReveal* out) {
+    Vec<RangePiece> pieces;
+    if (!RenderedIndexResolve(index, range, Rgba{}, pieces) || !index) {
+        return false;
+    }
+    out->block = false;
+    if (len(pieces) > 0) {
+        out->key = pieces[0].key;
+        out->offset = pieces[0].range.start;
+        return true;
+    }
+    int nBlocks = len(index->blocks);
+    if (nBlocks == 0) {
+        return false;
+    }
+    // The top-level block `range` starts in, or the last one.
+    int blockIx = 0;
+    while (blockIx < nBlocks && index->blocks[blockIx].end <= range.start) {
+        blockIx++;
+    }
+    blockIx = std::min(blockIx, nBlocks - 1);
+    int blockStart = index->blocks[blockIx].start;
+    int nLeaves = len(index->leaves);
+    int ix = 0;
+    while (ix < nLeaves && index->leaves[ix].range.end <= range.start) {
+        ix++;
+    }
+    const RenderedLeafSpan* leaf = nullptr;
+    int offset = 0;
+    if (ix < nLeaves && index->leaves[ix].range.start <= range.start &&
+        range.start < index->leaves[ix].range.end) {
+        leaf = &index->leaves[ix];
+        offset = range.start - leaf->range.start;
+    } else if (ix > 0 && index->leaves[ix - 1].range.start >= blockStart) {
+        // A position after the text of a leaf, on the separators after it
+        // or at the end of the text, is on the line of the last character
+        // before it in its block.
+        leaf = &index->leaves[ix - 1];
+        Str text = LeafText(index, leaf);
+        int last = len(text) - 1;
+        while (last > 0 && ((uint8_t)text.s[last] & 0xc0) == 0x80) {
+            last--;
+        }
+        offset = std::max(last, 0);
+    }
+    int nearText = 0;
+    if (leaf && LeafTextOffsetNear(index, leaf, offset, &nearText)) {
+        out->key = leaf->key;
+        out->offset = nearText;
+        return true;
+    }
+    out->block = true;
+    out->blockIx = blockIx;
+    return true;
+}
+
+RangeHighlightError TextViewState::RevealRange(Span range, App* app,
+                                               Window* window) {
+    if (format != TextViewFormat::Markdown) {
+        return RangeHighlightError::Unsupported();
+    }
+    Str rendered = RenderedIndexText(renderedIndex);
+    if (len(rendered) == 0 && range.start == 0 && range.end == 0) {
+        // Nothing to reveal in an empty view.
+        reveal.pending = false;
+        return RangeHighlightError{};
+    }
+    TextViewReveal next;
+    if (!RenderedIndexLocate(renderedIndex, range, &next)) {
+        return RangeHighlightError::InvalidRange(0);
+    }
+    next.pending = true;
+    next.requestedAt = TimeNow();
+    reveal = next;
+    if (app && self.IsValid()) NotifyEntity(app, self, window);
+    return RangeHighlightError{};
 }
 
 gpui::RenderedText TextViewState::RenderedText() const {
@@ -4240,6 +4421,20 @@ void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
         RangeHighlightFrameFree(rangeHighlights);
         rangeHighlights = moved;
     }
+    // PendingReveal::remap: the reveal follows its line as long as the text
+    // it starts at is unchanged; a whole-block reveal does not survive.
+    if (reveal.pending) {
+        TextLeafKey key = {};
+        int unchanged = 0;
+        if (!reveal.block && renderedIndex &&
+            LeafRemap::New(renderedIndex, next)
+                .Leaf(reveal.key, &key, &unchanged) &&
+            reveal.offset < unchanged) {
+            reveal.key = key;
+        } else {
+            reveal.pending = false;
+        }
+    }
     RenderedIndexFree(renderedIndex);
     renderedIndex = next;
     renderedRevision++;
@@ -4289,11 +4484,164 @@ El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
     return t->Washes(washes, at);
 }
 
+// REVEAL_TIMEOUT and REVEAL_ATTEMPTS: how long a reveal keeps trying, and
+// how many frames whose line was painted but hidden it gets.
+static const double kRevealTimeoutSeconds = 1.0;
+static const int kRevealAttempts = 8;
+
+// The scroll box a scrollable TextView puts its document in.
+static uint32_t TextViewScrollKey(Entity<TextViewState> state) {
+    uint32_t name = (uint32_t)(state.id.index + 1) * 1000003u +
+                    (uint32_t)(state.id.gen + 1);
+    return KeyedKey(name, (uint32_t)HashClickId(StrL("TextViewScrollState")));
+}
+
+void TextView::RevealFrame(TextViewState* managed) {
+    TextViewReveal& reveal = managed->reveal;
+    if (!reveal.pending) {
+        return;
+    }
+    // Last frame's report: where the line was painted, after any scroll.
+    bool laidOut = reveal.line.w > 0 || reveal.line.h > 0;
+    if (laidOut && cx->win) {
+        const ScrollRect* viewport =
+            scrollable
+                ? WindowLastScrollRect(cx->win, (int)TextViewScrollKey(state))
+                : nullptr;
+        // A scrollable view shows what its viewport does. Anything else is
+        // judged against the window cut down to the scroll boxes last frame
+        // painted around the view: Rust asks the content mask, which this
+        // runtime keeps only while it paints.
+        WinSize winSize = WindowSize(cx->win);
+        Bounds visible = viewport ? viewport->bounds
+                                  : Bounds{0, 0, winSize.dipW, winSize.dipH};
+        const Bounds& view = reveal.view;
+        for (int i = 0; !viewport && view.w > 0 && i < cx->win->prevScrolls.len;
+             i++) {
+            const ScrollRect& scroll = cx->win->prevScrolls[i];
+            Bounds box = scroll.bounds;
+            // A box around the view spans it sideways, overlaps it, and
+            // scrolls content at least as tall as the view — which a scroll
+            // box inside the view, a table's, does not.
+            bool around = box.x <= view.x + 0.5f &&
+                          box.x + box.w >= view.x + view.w - 0.5f &&
+                          box.y < view.y + view.h && box.y + box.h > view.y &&
+                          scroll.contentH + 0.5f >= view.h;
+            if (!around) {
+                continue;
+            }
+            float left = std::max(visible.x, box.x);
+            float topEdge = std::max(visible.y, box.y);
+            float right = std::min(visible.x + visible.w, box.x + box.w);
+            float bottomEdge = std::min(visible.y + visible.h, box.y + box.h);
+            visible = {left, topEdge, std::max(right - left, 0.f),
+                       std::max(bottomEdge - topEdge, 0.f)};
+        }
+        float top = visible.y - 0.5f;
+        float bottom = visible.y + visible.h + 0.5f;
+        Bounds line = reveal.line;
+        bool shown = reveal.block
+                         // A block is shown once any of it is: a whole block
+                         // off screen is scrolled to, one in view left alone.
+                         ? !(line.y + line.h <= top || line.y >= bottom)
+                         : line.y >= top && line.y + line.h <= bottom;
+        if (shown) {
+            reveal.pending = false;
+        } else {
+            reveal.attempts++;
+            if (viewport) {
+                // The least scroll that brings the line in.
+                float y = managed->scrollY;
+                if (line.y < visible.y) {
+                    y -= visible.y - line.y;
+                } else if (line.y + line.h > visible.y + visible.h) {
+                    y += line.y + line.h - (visible.y + visible.h);
+                }
+                float maxY = std::max(viewport->contentH - visible.h, 0.f);
+                managed->scrollY = std::min(std::max(y, 0.f), maxY);
+            } else if (onReveal.IsValid()) {
+                TextViewRevealEvent ev;
+                ev.line = line;
+                ListenerCall(cx->app, cx->win, onReveal, &ev);
+            }
+            if (reveal.block) {
+                // A block has no line to wait for.
+                reveal.pending = false;
+            }
+        }
+    }
+    if (reveal.pending &&
+        (managed->maxLines >= 0 ||
+         TimeNow() - reveal.requestedAt > kRevealTimeoutSeconds ||
+         reveal.attempts >= kRevealAttempts)) {
+        reveal.pending = false;
+    }
+    if (!reveal.pending) {
+        return;
+    }
+    reveal.line = {};
+    revealTarget = &reveal;
+    revealOut = &reveal.line;
+    WindowRequestAnimationFrame(cx->win);
+}
+
+// The view reports its own box while a reveal is pending, for RevealFrame.
+static El* RevealReportView(El* element, TextViewState* managed) {
+    if (element && managed && managed->reveal.pending && !element->boundsOut) {
+        element->BoundsOut(&managed->reveal.view);
+    }
+    return element;
+}
+
+bool TextView::RevealIn(const MdNode* leaf, int* offset) const {
+    if (!revealTarget || !revealOut || revealTarget->block || !leaf ||
+        leaf->leafStart < 0 ||
+        !(TextLeafKey{leaf->leafStart, leaf->leafOrdinal} == revealTarget
+                                                                 ->key)) {
+        return false;
+    }
+    *offset = revealTarget->offset;
+    return true;
+}
+
+void TextView::RevealMark(El* t, int lo, int offset) {
+    Str text = t ? t->text : Str{};
+    if (len(text) <= 0 || !revealOut) {
+        return;
+    }
+    int at = std::min(std::max(offset - lo, 0), len(text));
+    // Text with no glyph of its own, a line break, reveals the line after
+    // it; the end of the text the last character.
+    if (at < len(text) && text.s[at] == '\n' && at + 1 < len(text)) {
+        at++;
+    }
+    if (at >= len(text)) {
+        at = len(text) - 1;
+        while (at > 0 && ((uint8_t)text.s[at] & 0xc0) == 0x80) {
+            at--;
+        }
+    }
+    int hi = at + 1;
+    while (hi < len(text) && ((uint8_t)text.s[hi] & 0xc0) == 0x80) {
+        hi++;
+    }
+    t->RangeOut(at, hi, revealOut);
+    // One element reports the line: the first to reach the offset.
+    revealOut = nullptr;
+}
+
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
     bool outer = streamBlockDepth++ == 0;
-    for (MdNode* c = n->first; c; c = c->next) {
+    int blockIx = 0;
+    for (MdNode* c = n->first; c; c = c->next, blockIx++) {
         int start = streamRenderedOffset;
         El* e = Block(c, depth, inList, c->next == nullptr);
+        if (e && outer && revealTarget && revealTarget->block && revealOut &&
+            revealTarget->blockIx == blockIx) {
+            // RevealTarget::Block: the whole top-level block reports its box.
+            e->BoundsOut(revealOut);
+            revealOut = nullptr;
+        }
         if (e) {
             int end = start + MdRenderedLen(c);
             if (outer && streamFadeFrom >= 0 && end > streamFadeFrom) {
@@ -4585,10 +4933,13 @@ El* TextView::IntoEl() {
                                 html ? nullptr : &markdownExtensions);
     // The parse has landed: carry the range highlights over to it.
     rangeHighlights = nullptr;
+    revealTarget = nullptr;
+    revealOut = nullptr;
     if (managed) {
         managed->ReconcileRangeHighlights(
             doc, html ? 0 : markdownExtensions.ParserFingerprint());
         rangeHighlights = managed->rangeHighlights;
+        RevealFrame(managed);
     }
     streamBlockDepth = 0;
     streamRenderedOffset = 0;
@@ -4670,10 +5021,7 @@ El* TextView::IntoEl() {
     }
 
     if (scrollable && cx->win && managed) {
-        uint32_t name = (uint32_t)(state.id.index + 1) * 1000003u +
-                        (uint32_t)(state.id.gen + 1);
-        uint32_t key =
-            KeyedKey(name, (uint32_t)HashClickId(StrL("TextViewScrollState")));
+        uint32_t key = TextViewScrollKey(state);
         element = Div(a)
                       ->FlexCol()
                       ->W(kFill)
@@ -4698,7 +5046,7 @@ El* TextView::IntoEl() {
             ->OnAction(input::Copy(), onAction)
             ->OnAction(input::SelectAll(), onAction);
     }
-    return element;
+    return RevealReportView(element, managed);
 }
 
 // ─── builder ──────────────────────────────────────────────────────────────
@@ -4916,6 +5264,11 @@ TextView* TextView::Plugin(const MarkdownPlugin& plugin) {
 
 TextView* TextView::Plugin(const TextViewPlugin& plugin) {
     return plugin.Setup(this);
+}
+
+TextView* TextView::OnReveal(Listener fn) {
+    onReveal = fn;
+    return this;
 }
 
 TextView* TextView::Motion(TextViewMotion value) {

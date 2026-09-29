@@ -2918,6 +2918,232 @@ static void ClearRangeHighlightsRemovesThem() {
     utassert(RhState(&v)->rangeHighlights == nullptr);
     RhClose(&v);
 }
+
+// ─── reveal_range ─────────────────────────────────────────────────────────
+//
+// state.rs `mod reveal_range` and range_highlight.rs. Rust drives a window
+// through TestAppContext and reads where lists scrolled; the frame here marks
+// the text the reveal starts in, paint reports where that text landed, and
+// the next frame reads the report. The tests hand the report in themselves.
+
+static Span RhRangeOf(RhView* v, const char* needle) {
+    Str text = RhState(v)->RenderedText().AsStr();
+    int start = RhFind(text, needle);
+    return Span{start, start + (int)strlen(needle)};
+}
+
+// The element the frame marked to report the reveal's line, or null.
+static El* RevealMarked(El* e, const Bounds* out) {
+    if (!e) return nullptr;
+    if (e->rangeOut == out || e->boundsOut == out) return e;
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = RevealMarked(c, out)) return found;
+    }
+    return nullptr;
+}
+
+static El* RhRenderScrollable(RhView* v) {
+    return gpui::TextView::New(&v->cx, v->state)->Scrollable()->IntoEl();
+}
+
+// The scroll box a scrollable view puts its document in, the way
+// text.cpp names it.
+static int RhScrollKey(RhView* v) {
+    uint32_t name = (uint32_t)(v->state.id.index + 1) * 1000003u +
+                    (uint32_t)(v->state.id.gen + 1);
+    return (int)KeyedKey(name,
+                         (uint32_t)HashClickId(StrL("TextViewScrollState")));
+}
+
+// range_highlight.rs locate, and
+// a_position_in_an_inline_object_moves_onto_text: a range starts on its first
+// leaf text; one covering none on the line of the text at or before its start
+// in its block; one in text outside every leaf on its whole block; one inside
+// an inline object on the text after it.
+static void ARevealStartsOnTheLineOfItsRange() {
+    RhView v;
+    RhOpen(&v, "hello **world**\n\n<div>html text</div>\n\nlast");
+    gpui::TextViewState* s = RhState(&v);
+    Span world = RhRangeOf(&v, "world");
+    utassert(s->RevealRange(world, &v.app, v.win).IsOk());
+    utassert(s->reveal.pending && !s->reveal.block);
+    utassert(s->reveal.key == TextLeafKey::Block(0) && s->reveal.offset == 6);
+    // The separator after the first block: the line of its last character.
+    Span after = {11, 11};
+    utassert(s->RevealRange(after, &v.app, v.win).IsOk());
+    utassert(!s->reveal.block && s->reveal.offset == 10);
+    // The HTML block's text belongs to no leaf.
+    utassert(s->RevealRange(RhRangeOf(&v, "html text"), &v.app, v.win).IsOk());
+    utassert(s->reveal.block && s->reveal.blockIx == 1);
+    RhClose(&v);
+
+    RhView objects;
+    RhOpen(&objects, "x $a$ y");
+    Arena* ext = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("formula");
+    plugin.parse = &ParseFormula;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(ext, plugin);
+    objects.extensions = &extensions;
+    RhRender(&objects);
+    // "x a y\n", where "a" is the formula: onto the text after it.
+    gpui::TextViewState* o = RhState(&objects);
+    utassert(o->RevealRange(Span{2, 2}, &objects.app, objects.win).IsOk());
+    utassert(!o->reveal.block && o->reveal.offset == 3);
+    RhClose(&objects);
+    ArenaDelete(ext);
+}
+
+// malformed_ranges_and_html_views_are_rejected and
+// an_empty_view_has_nothing_to_reveal.
+static void MalformedRangesAndHtmlViewsAreRejected() {
+    RhView v;
+    RhOpen(&v, "first\n\nsecond");
+    gpui::TextViewState* s = RhState(&v);
+    utassert(s->RevealRange(Span{5, 3}, &v.app, v.win) ==
+             RangeHighlightError::InvalidRange(0));
+    utassert(s->RevealRange(Span{0, 100}, &v.app, v.win) ==
+             RangeHighlightError::InvalidRange(0));
+    utassert(s->RevealRange(Span{0, 5}, &v.app, v.win).IsOk());
+    RhClose(&v);
+
+    RhView html;
+    RhOpen(&html, "<p>one</p>", true);
+    utassert(RhState(&html)->RevealRange(Span{0, 3}, &html.app, html.win) ==
+             RangeHighlightError::Unsupported());
+    RhClose(&html);
+
+    RhView empty;
+    RhOpen(&empty, "");
+    utassert(
+        RhState(&empty)->RevealRange(Span{0, 0}, &empty.app, empty.win).IsOk());
+    utassert(!RhState(&empty)->reveal.pending);
+    RhClose(&empty);
+}
+
+// a_scrollable_view_scrolls_to_a_line_inside_a_long_paragraph and
+// revealing_a_visible_line_does_not_scroll: the frame marks the word the
+// range starts in; a report below the viewport scrolls it just into view,
+// and one inside it ends the reveal.
+static void AScrollableViewScrollsToItsLine() {
+    RhView v;
+    RhOpen(&v, "w0 w1 w2 `c3` w4 w5");
+    gpui::TextViewState* s = RhState(&v);
+    utassert(s->RevealRange(RhRangeOf(&v, "w4"), &v.app, v.win).IsOk());
+    El* root = RhRenderScrollable(&v);
+    El* marked = RevealMarked(root, &s->reveal.line);
+    utassert(marked && StrStartsWith(marked->text, StrL("w4")));
+    utassert(marked->rangeOutLo == 0 && marked->rangeOutHi == 1);
+
+    ScrollRect viewport;
+    viewport.id = RhScrollKey(&v);
+    viewport.bounds = {0, 0, 200, 100};
+    viewport.contentH = 5000;
+    VecAppend(v.win->prevScrolls, viewport);
+    // Painted below the viewport: the least scroll that shows it.
+    s->reveal.line = {10, 2000, 20, 20};
+    RhRenderScrollable(&v);
+    utassertnear(s->scrollY, 1920.f);
+    utassert(s->reveal.pending && s->reveal.attempts == 1);
+    // Painted inside it: shown, and nothing moves.
+    s->reveal.line = {10, 80, 20, 20};
+    RhRenderScrollable(&v);
+    utassert(!s->reveal.pending);
+    utassertnear(s->scrollY, 1920.f);
+    VecReset(v.win->prevScrolls);
+    RhClose(&v);
+}
+
+static int gRevealCalls = 0;
+static Bounds gRevealLine = {};
+struct RevealProbe {
+    static void OnReveal(RevealProbe*, Ctx*,
+                         const gpui::TextViewRevealEvent* ev) {
+        gRevealCalls++;
+        gRevealLine = ev->line;
+    }
+};
+
+// on_reveal_scrolls_a_container_that_ignores_scroll_requests: a fit-content
+// view hands a hidden line to on_reveal, judged against the scroll box
+// around it.
+static void OnRevealHearsAHiddenLine() {
+    RhView v;
+    RhOpen(&v, "one\n\ntwo");
+    gpui::TextViewState* s = RhState(&v);
+    Entity<RevealProbe> probe = EntityNewState<RevealProbe>(&v.app);
+    gRevealCalls = 0;
+    utassert(s->RevealRange(RhRangeOf(&v, "two"), &v.app, v.win).IsOk());
+    gpui::TextView::New(&v.cx, v.state)
+        ->OnReveal(ListenTo(probe, &RevealProbe::OnReveal))
+        ->IntoEl();
+    ScrollRect around;
+    around.bounds = {0, 0, 300, 100};
+    around.contentH = 400;
+    VecAppend(v.win->prevScrolls, around);
+    s->reveal.view = {10, 0, 200, 400};
+    s->reveal.line = {10, 300, 20, 20};
+    gpui::TextView::New(&v.cx, v.state)
+        ->OnReveal(ListenTo(probe, &RevealProbe::OnReveal))
+        ->IntoEl();
+    utassert(gRevealCalls == 1 && gRevealLine.y == 300.f);
+    utassert(s->reveal.pending);
+    VecReset(v.win->prevScrolls);
+    RhClose(&v);
+}
+
+// a_reveal_that_cannot_be_shown_gives_up, a_reveal_not_carried_out_in_time_
+// is_dropped and a_clamped_view_does_not_reveal.
+static void ARevealGivesUp() {
+    RhView v;
+    RhOpen(&v, "one\n\ntwo");
+    gpui::TextViewState* s = RhState(&v);
+    // Hidden frame after frame, with nothing to scroll.
+    utassert(s->RevealRange(RhRangeOf(&v, "two"), &v.app, v.win).IsOk());
+    for (int i = 0; i < 10 && s->reveal.pending; i++) {
+        RhRender(&v);
+        s->reveal.line = {0, 5000, 10, 10};
+    }
+    utassert(!s->reveal.pending);
+    // Not carried out within a second.
+    utassert(s->RevealRange(RhRangeOf(&v, "two"), &v.app, v.win).IsOk());
+    s->reveal.requestedAt -= 2.0;
+    RhRender(&v);
+    utassert(!s->reveal.pending);
+    // A view clamped to its first lines does not reveal.
+    utassert(s->RevealRange(RhRangeOf(&v, "two"), &v.app, v.win).IsOk());
+    gpui::TextView::New(&v.cx, v.state)->MaxLines(1)->IntoEl();
+    utassert(!s->reveal.pending);
+    RhClose(&v);
+}
+
+// a_reveal_follows_its_text_past_an_edit_before_it and
+// a_reveal_is_dropped_when_its_text_before_it_changes.
+static void ARevealFollowsItsText() {
+    RhView v;
+    RhOpen(&v, "first words then the target\n\nlast");
+    gpui::TextViewState* s = RhState(&v);
+    // A paragraph inserted above moves it down one block.
+    utassert(s->RevealRange(RhRangeOf(&v, "target"), &v.app, v.win).IsOk());
+    s->SetText(StrL("inserted\n\nfirst words then the target\n\nlast"), &v.app,
+               v.win);
+    RhRender(&v);
+    utassert(s->reveal.pending && s->reveal.key == TextLeafKey::Block(10));
+    // Appending to its paragraph keeps it.
+    s->SetText(StrL("inserted\n\nfirst words then the target and more\n\nlast"),
+               &v.app, v.win);
+    RhRender(&v);
+    utassert(s->reveal.pending);
+    // An edit before it in its paragraph drops it.
+    s->SetText(StrL("inserted\n\nfirst WORDS then the target and more\n\nlast"),
+               &v.app, v.win);
+    RhRender(&v);
+    utassert(!s->reveal.pending);
+    RhClose(&v);
+}
+
 #endif
 
 void TestTextView() {
@@ -3025,6 +3251,12 @@ void TestTextView() {
     ReparsingUnchangedTextKeepsHighlights();
     HighlightsPaintAcrossInlineCodeTablesAndCodeBlocks();
     ClearRangeHighlightsRemovesThem();
+    ARevealStartsOnTheLineOfItsRange();
+    MalformedRangesAndHtmlViewsAreRejected();
+    AScrollableViewScrollsToItsLine();
+    OnRevealHearsAHiddenLine();
+    ARevealGivesUp();
+    ARevealFollowsItsText();
 #endif
     ArenaDelete(a);
 }

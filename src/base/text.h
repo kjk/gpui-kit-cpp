@@ -727,6 +727,42 @@ RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
                                               const RenderedIndex* next);
 void RangeHighlightFrameFree(RangeHighlightFrame* frame);
 
+// range_highlight.rs PendingReveal: a range TextViewState::RevealRange is
+// scrolling into view. The frame marks the text that lays out the start of
+// the range (or, for text outside every leaf, its whole top-level block) to
+// report where it was painted, and the next frame reads the report: done
+// once the line is visible, a scroll or an on_reveal otherwise.
+struct TextViewReveal {
+    bool pending = false;
+    // RevealTarget::Block: a whole top-level block, for text that belongs
+    // to no leaf. RevealTarget::Line otherwise.
+    bool block = false;
+    TextLeafKey key = {};
+    int offset = 0;
+    int blockIx = 0;
+    // When it was asked for, in TimeNow seconds, and how many frames its
+    // line was painted without being visible.
+    double requestedAt = 0;
+    int attempts = 0;
+    // Where the line (or block) was painted last frame, in window
+    // coordinates; empty when it was not.
+    Bounds line = {};
+    // Where the view itself was painted last frame, which picks the scroll
+    // boxes around it whose viewport a line has to be inside.
+    Bounds view = {};
+};
+
+// TextView::on_reveal's payload: the line of a pending reveal, in window
+// coordinates, after a frame in which it was painted but not visible.
+struct TextViewRevealEvent {
+    Bounds line = {};
+};
+
+// range_highlight.rs locate: where `range` starts, as a reveal target.
+// False when it is not a range of the index's text, or there is none.
+bool RenderedIndexLocate(const RenderedIndex* index, Span range,
+                         TextViewReveal* out);
+
 // state.rs TextViewState. Parsing remains synchronous behind the existing
 // per-window LRU because this runtime has no cancellable Task<T>; ownership,
 // mutation revisions, selection and managed-view identity are retained.
@@ -778,6 +814,8 @@ struct TextViewState {
     uint64_t indexedRevision = ~(uint64_t)0;
     uint64_t indexedExtensions = 0;
     RangeHighlightFrame* rangeHighlights = nullptr;
+    // state.rs pending_reveal.
+    TextViewReveal reveal = {};
 
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
@@ -823,6 +861,18 @@ struct TextViewState {
                                            Window* window = nullptr);
     // state.rs clear_range_highlights.
     void ClearRangeHighlights(App* app, Window* window = nullptr);
+    // state.rs reveal_range: scroll the line `range` starts on into view,
+    // `range` indexing the current rendered text as SetRangeHighlights'
+    // ranges do. A scrollable view scrolls itself; any other container
+    // follows through TextView::OnReveal. An empty range reveals the line of
+    // its position; a range in text outside every leaf reveals its whole
+    // block. Only the latest reveal is carried out; it follows the content as
+    // highlights do, and is dropped when its text changes, when the view
+    // clamps its lines, or when it cannot be shown within a second. Best
+    // effort: success means the request was taken, not that the view has
+    // scrolled.
+    RangeHighlightError RevealRange(Span range, App* app,
+                                    Window* window = nullptr);
     // state.rs reconcile_range_highlights: `doc`, parsed from the current
     // text with parser fingerprint `extensions`, has landed. Rebuilds the
     // rendered index when the parse is a new one and carries the highlights
@@ -951,6 +1001,12 @@ struct TextView {
     // NodeContext::range_highlights: the view state's resolved highlights,
     // for this frame. Null when there are none.
     const RangeHighlightFrame* rangeHighlights = nullptr;
+    // NodeContext::reveal: the pending reveal this frame marks, and where the
+    // marked text or block reports itself. Null when there is none.
+    const TextViewReveal* revealTarget = nullptr;
+    Bounds* revealOut = nullptr;
+    // text_view.rs reveal_handler.
+    Listener onReveal;
 
     // text_view.rs TextView::markdown / TextView::html.
     static TextView* New(Ctx* cx, Str source);
@@ -984,6 +1040,11 @@ struct TextView {
     // a link opens in the desktop's browser, which is what Rust's
     // handle_link_click falls back to (cx.open_url).
     TextView* OnLink(Listener fn);
+    // text_view.rs on_reveal: scroll a container that does not follow
+    // scroll requests to the line of TextViewState::RevealRange. After a
+    // frame in which the line was painted but not visible, the listener gets
+    // a TextViewRevealEvent with its bounds in window coordinates.
+    TextView* OnReveal(Listener fn);
     // Shell has to retain both its callback route and the href TextView
     // supplies. WithContext wraps those two values in a frame-arena pair and
     // hands its address to the listener.
@@ -1117,6 +1178,18 @@ struct TextView {
     // the washes after the highlights, so it paints over them.
     El* RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
                     bool markOver = false);
+    // TextViewState::reveal_frame and the TextView prepaint that reads the
+    // reveal's progress: settle last frame's report (done once visible; a
+    // scroll of a scrollable view or an on_reveal otherwise), drop a reveal
+    // that is clamped, expired or out of attempts, and mark this frame's.
+    void RevealFrame(TextViewState* managed);
+    // Inline::reveal: whether the pending reveal starts in `leaf`'s text,
+    // and at which offset of it.
+    bool RevealIn(const MdNode* leaf, int* offset) const;
+    // Inline::request_reveal: have `t`, the text element showing `leaf`'s
+    // bytes [lo, lo + len(t text)), report where the reveal's offset —
+    // `offset` in leaf bytes — was painted.
+    void RevealMark(El* t, int lo, int offset);
 };
 
 // Parses `source` into a block tree allocated from `a`. Exposed for tests.

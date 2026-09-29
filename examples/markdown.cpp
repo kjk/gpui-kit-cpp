@@ -71,12 +71,14 @@ struct MarkdownApp {
     Entity<TextViewState> textView = {};
     InputState find;
     // The query the matches were last searched for, and the preview text
-    // they were highlighted in; Rust keeps `Option<RenderedText>`, reset
-    // when the query changes.
+    // they were searched in; Rust keeps `Option<RenderedText>`, reset when
+    // the query changes.
     Str findQuery = {};
     RenderedText searched = {};
     bool hasSearched = false;
-    int matchCount = 0;
+    Vec<Span> matches;
+    // The index of the current match in `matches`.
+    int currentMatch = 0;
 
     static El* Render(MarkdownApp* self, Ctx* cx);
 };
@@ -810,8 +812,40 @@ static El* TableActions(Ctx* cx, void* data,
     return row;
 }
 
-// Highlight every occurrence of the find query in the preview, unless the
-// preview text it was last highlighted in is still current. Rust runs this
+// Highlight the matches, the current one stronger, and scroll to it when
+// `reveal` is set.
+static void PaintMatches(MarkdownApp* self, Ctx* cx, bool reveal) {
+    TextViewState* state = self->textView.Get(cx);
+    if (!state || !self->hasSearched) {
+        return;
+    }
+    // The matches are ranges of the text they were found in.
+    if (state->RenderedText() != self->searched) {
+        return;
+    }
+    const Theme& th = ThemeNow(cx->app);
+    Rgba color = RgbaOpacity(th.warning, 0.3f);
+    Vec<RangeHighlight> highlights;
+    for (int i = 0; i < len(self->matches); i++) {
+        VecAppend(
+            highlights,
+            RangeHighlight::New(self->matches[i],
+                                i == self->currentMatch ? th.warning : color));
+    }
+    RangeHighlightError error = state->SetRangeHighlights(
+        highlights.els, len(highlights), cx->app, cx->win);
+    if (error.IsOk() && reveal && self->currentMatch < len(self->matches)) {
+        error = state->RevealRange(self->matches[self->currentMatch], cx->app,
+                                   cx->win);
+    }
+    if (!error.IsOk()) {
+        logf("Could not highlight the matches: %s", error.Display(cx->a));
+    }
+    Notify(cx);
+}
+
+// Search the preview for the find query, unless the preview text it was last
+// searched in is still current, and highlight the matches. Rust runs this
 // when the query changes and whenever the preview's content changes; the
 // preview parses when it renders here, so the frame calls it after that.
 static void HighlightMatches(MarkdownApp* self, Ctx* cx) {
@@ -819,13 +853,12 @@ static void HighlightMatches(MarkdownApp* self, Ctx* cx) {
     if (!state) {
         return;
     }
-    Str query = InputValue(&self->find);
     RenderedText text = state->RenderedText();
     if (self->hasSearched && self->searched == text) {
         return;
     }
-    Rgba color = RgbaOpacity(ThemeNow(cx->app).warning, 0.3f);
-    Vec<RangeHighlight> highlights;
+    Str query = InputValue(&self->find);
+    VecReset(self->matches);
     Str hay = text.AsStr();
     int at = 0;
     while (len(query) > 0) {
@@ -834,19 +867,63 @@ static void HighlightMatches(MarkdownApp* self, Ctx* cx) {
         if (found < 0) {
             break;
         }
-        VecAppend(highlights,
-                  RangeHighlight::New(Span{found, found + len(query)}, color));
+        VecAppend(self->matches, Span{found, found + len(query)});
         at = found + len(query);
     }
-    RangeHighlightError error = state->SetRangeHighlights(
-        highlights.els, len(highlights), cx->app, cx->win);
-    if (!error.IsOk()) {
-        logf("Could not highlight the matches: %s", error.Display(cx->a));
-        return;
-    }
-    self->matchCount = len(highlights);
+    self->currentMatch =
+        std::min(self->currentMatch, std::max(len(self->matches) - 1, 0));
+    bool queryChanged = !self->hasSearched;
     self->searched = text;
     self->hasSearched = true;
+    // Typing a query scrolls to its first match; content changing under an
+    // unchanged query leaves the view where it is.
+    PaintMatches(self, cx, queryChanged);
+}
+
+// Step to the next match, or the previous one, and scroll to it.
+static void GoToMatch(MarkdownApp* self, Ctx* cx, bool forward) {
+    int count = len(self->matches);
+    if (count == 0) {
+        return;
+    }
+    self->currentMatch = forward ? (self->currentMatch + 1) % count
+                                 : (self->currentMatch + count - 1) % count;
+    PaintMatches(self, cx, true);
+}
+
+static void OnPreviousMatch(MarkdownApp* self, Ctx* cx, const ClickEvent*) {
+    GoToMatch(self, cx, false);
+}
+
+static void OnNextMatch(MarkdownApp* self, Ctx* cx, const ClickEvent*) {
+    GoToMatch(self, cx, true);
+}
+
+// Enter and Shift+Enter in the find field step through the matches.
+static void OnFind(MarkdownApp* self, Ctx* cx, const InputEvent* ev) {
+    if (ev && ev->kind == InputEventKind::PressEnter) {
+        GoToMatch(self, cx, !ev->shift);
+    }
+}
+
+// on_reveal: the preview scrolls inside its own panel, which follows no
+// scroll request, so a reveal hands it the line to scroll to.
+static void OnReveal(MarkdownApp* self, Ctx* cx,
+                     const TextViewRevealEvent* ev) {
+    const ScrollRect* viewport =
+        WindowLastScrollRect(cx->win, HashClickId(StrL("preview")));
+    if (!viewport || !ev) {
+        return;
+    }
+    Bounds line = ev->line;
+    Bounds view = viewport->bounds;
+    if (line.y + line.h > view.y + view.h) {
+        self->previewScroll += line.y + line.h - (view.y + view.h);
+    } else if (line.y < view.y) {
+        self->previewScroll -= view.y - line.y;
+    }
+    self->previewScroll = std::min(std::max(self->previewScroll, 0.f),
+                                   std::max(viewport->contentH - view.h, 0.f));
     Notify(cx);
 }
 
@@ -899,6 +976,7 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
                       ->Selectable()
                       ->SelFormat(self->selFormat)
                       ->OnLink(Listen(cx, &OnLink))
+                      ->OnReveal(Listen(cx, &OnReveal))
                       ->CodeBlockActions(&CodeActions, self)
                       ->TableActions(&TableActions, self)
                       ->IntoEl();
@@ -925,6 +1003,7 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
         StrFree(self->findQuery);
         self->findQuery = StrDup(query);
         self->hasSearched = false;
+        self->currentMatch = 0;
     }
     HighlightMatches(self, cx);
 
@@ -936,11 +1015,28 @@ El* MarkdownApp::Render(MarkdownApp* self, Ctx* cx) {
             ->FocusRing(false)
             ->IntoEl());
     if (len(query) > 0) {
-        Str count = self->matchCount == 1
-                        ? StrL("1 match")
-                        : StrDup(a, fmt("%d matches", self->matchCount));
+        Str count = len(self->matches) == 0
+                        ? StrL("No matches")
+                        : StrDup(a, fmt("%d of %d", self->currentMatch + 1,
+                                        len(self->matches)));
         find->Child(TextEl(a, count)->Font(12)->Fg(th.mutedFg));
     }
+    find->Child(component::Button::New(cx, StrL("previous-match"))
+                    ->Icon(IconName::ChevronUp)
+                    ->Ghost()
+                    ->WithSize(UiSize::XSmall)
+                    ->Disabled(len(self->matches) == 0)
+                    ->Tooltip(StrL("Previous Match"))
+                    ->OnClick(Listen(cx, &OnPreviousMatch))
+                    ->IntoEl());
+    find->Child(component::Button::New(cx, StrL("next-match"))
+                    ->Icon(IconName::ChevronDown)
+                    ->Ghost()
+                    ->WithSize(UiSize::XSmall)
+                    ->Disabled(len(self->matches) == 0)
+                    ->Tooltip(StrL("Next Match"))
+                    ->OnClick(Listen(cx, &OnNextMatch))
+                    ->IntoEl());
     bar->Left(find);
     if (self->lastLink[0]) {
         bar->Left(Str(self->lastLink));
@@ -985,6 +1081,7 @@ int GpuiMain(int argc, char** argv) {
     AssetsAddRoot(StrL("assets/markdown"));
     Entity<MarkdownApp> view = EntityNew<MarkdownApp>(app);
     MarkdownApp* self = view.Get(app);
+    self->find.onChange = ListenTo(view, &OnFind);
     // EditorState::new(..).language(Markdown).line_number(true).tab_size(2)
     // .searchable(true).placeholder(..).default_value(EXAMPLE)
     // EditorState is InputKind::Editor — a single-line Input drops the
