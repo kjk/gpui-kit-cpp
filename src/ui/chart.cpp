@@ -89,8 +89,11 @@ AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
     c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
-    c->stroke = ThemeNow(cx->app).blue;
-    c->fill = RgbaOpacity(ThemeNow(cx->app).blue, 0.25f);
+    // area_chart.rs: the stroke defaults to chart_2 and the fill to one
+    // flat chart_2 at 0.4.
+    c->stroke = ThemeNow(cx->app).chart2;
+    c->fill = RgbaOpacity(ThemeNow(cx->app).chart2, 0.4f);
+    c->fillBottom = c->fill;
     return c;
 }
 AreaChart* AreaChart::Stroke(Rgba c) {
@@ -278,7 +281,8 @@ LineChart* LineChart::New(Ctx* cx, const float* ys, int n, const char* file,
     c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
-    c->stroke = ThemeNow(cx->app).blue;
+    // line_chart.rs: `self.stroke.unwrap_or(cx.theme().chart_2)`.
+    c->stroke = ThemeNow(cx->app).chart2;
     return c;
 }
 LineChart* LineChart::Stroke(Rgba c) {
@@ -439,7 +443,8 @@ BarChart* BarChart::New(Ctx* cx, const float* ys, int n, const char* file,
     c->id = ChartCallerId(cx, file, line);
     c->ys = ys;
     c->n = n;
-    c->fill = ThemeNow(cx->app).primary;
+    // bar_chart.rs: `default_fill` is chart_2.
+    c->fill = ThemeNow(cx->app).chart2;
     return c;
 }
 BarChart* BarChart::Fill(Rgba c) {

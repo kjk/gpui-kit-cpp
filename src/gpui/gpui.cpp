@@ -5278,13 +5278,23 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
     Rgba ink = c.barLabelColors ? c.barLabelColors[i] : th.foreground;
     // A value label rides the end of its bar and fades in with it.
     ink = RgbaOpacity(ink, appear);
+    // bar.rs label_origin: TEXT_GAP (2) past the value end, or TEXT_HEIGHT
+    // (12) before it when the label goes above; centred on a vertical bar,
+    // Left beside a left-anchored row and Right beside a right-anchored one.
+    Size ls = MeasureText(ctx, text, 10, 0, false, 0, 0);
+    float base = c.bases ? c.bases[i] : 0.f;
+    bool flipped = c.ys[i] < base;
     if (horizontal) {
-        float tx = c.barAlign == BarAlign::Left ? rx + rw + 4 : rx - 34;
-        DrawTextAt(ctx, text, tx, ry + rh * 0.5f - 7.f, 30, 14, 10, ink,
-                   c.barAlign != BarAlign::Left);
+        float ty = ry + rh * 0.5f - 5.f;
+        bool right = (c.barAlign == BarAlign::Left) != flipped;
+        float tx = right ? rx + rw + 2.f : rx - 2.f - ls.w;
+        DrawTextAt(ctx, text, tx, ty, ls.w, 12, 10, ink, false, false, -1.f, 0,
+                   1.f);
     } else {
-        float ty = c.barAlign == BarAlign::Top ? ry + rh + 2 : ry - 14.f;
-        DrawTextAt(ctx, text, rx + rw * 0.5f - 20.f, ty, 40, 14, 10, ink, true);
+        bool past = (c.barAlign == BarAlign::Top) != flipped;
+        float ty = past ? ry + rh + 2.f : ry - 12.f;
+        DrawTextAt(ctx, text, rx + rw * 0.5f - ls.w * 0.5f, ty, ls.w, 12, 10,
+                   ink, false, false, -1.f, 0, 1.f);
     }
 }
 
@@ -5815,6 +5825,15 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     const float kGridDash[2] = {4.f, 2.f};
     const float* gridDash = c.gridDashed ? kGridDash : nullptr;
     int intervals = (c.valueTickCount > 2 ? c.valueTickCount : 2) - 1;
+    // bar_chart.rs value_tick_positions(far, baseline, ..): the ticks of a
+    // bottom-anchored column chart run from the far gap its bars keep clear
+    // (TEXT_HEIGHT with value labels, 10 without) down to the baseline, the
+    // same scale the bars grow along.
+    float barFar =
+        c.kind == ChartKind::Bar && !barRow && c.barAlign == BarAlign::Bottom
+            ? (c.barLabels ? 12.f : 10.f)
+            : 0.f;
+    auto valueTickY = [&](float f) { return barFar + (plotH - barFar) * f; };
     auto drawValueLabels = [&]() {
         float fractions[64];
         int ticks = component::ChartValueTickPositions(0.f, 1.f, intervals + 1,
@@ -5831,13 +5850,13 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 } else {
                     // Above its line, but for the topmost, which would leave
                     // the plot.
-                    float tick = plotH * f;
+                    float tick = valueTickY(f);
                     float top = tick < 12.f ? tick + 2.f : tick - 12.f;
                     DrawTextAt(ctx, label, x + 2.f, y + top, tw, 12, 10,
                                th.mutedForeground, false);
                 }
             } else if (valueAxisSide) {
-                float ty = y + plotH * f - 6.f;
+                float ty = y + valueTickY(f) - 6.f;
                 DrawTextAt(ctx, label, x - 4.f - tw, ty, tw, 12, 10,
                            th.mutedForeground, false);
             } else {
@@ -5878,7 +5897,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             // Evenly over the whole range, which is what the value-axis labels
             // are placed on as well; the baseline gets the solid axis line.
             for (int i = 0; i < intervals; i++) {
-                float gy = y + plotH * ((float)i / (float)intervals);
+                float gy = y + valueTickY((float)i / (float)intervals);
                 CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.chartGrid, gridDash);
             }
         }
@@ -6297,7 +6316,10 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             continue;
         }
         float lx = Xat(i) - 16;
-        float ly = y + plotH + 2;
+        // Under the axis line in a line box the height of the text, as
+        // PlotLabel paints it; placed to land where axis.rs x_texts puts the
+        // glyphs, which GPUI centres in that box rather than hanging them.
+        float ly = y + plotH + 1;
         float lw = 60;
         bool centered = false;
         if (c.kind == ChartKind::Bar || c.kind == ChartKind::Candlestick) {
@@ -6319,13 +6341,16 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                     ly = y +
                          (bx + band.BandWidth() * 0.5f) *
                              (plotH / (w > 0 ? w : 1)) -
-                         7.f;
+                         5.f;
                     // A left-anchored row's names end right up against the
                     // bars, so they are centred in the gutter rather than
                     // starting at its left edge.
                     centered = c.barAlign == BarAlign::Left;
                 } else {
-                    lx = x + bx + band.BandWidth() * 0.5f - 16.f;
+                    // TextAlign::Center on the band's middle.
+                    Str name = c.labels ? Str(c.labels[i]) : Str(fmt("%ds", i));
+                    lw = MeasureText(ctx, name, 10, 0, false, 0, 0).w;
+                    lx = x + bx + band.BandWidth() * 0.5f - lw * 0.5f;
                 }
             }
         }
@@ -6345,8 +6370,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                      : tick - ls.w * 0.5f;
             lw = ls.w;
         }
-        DrawTextAt(ctx, label, lx, ly, lw, 16, 10, th.mutedForeground,
-                   centered);
+        DrawTextAt(ctx, label, lx, ly, lw, 16, 10, th.mutedForeground, centered,
+                   false, -1.f, 0, 1.f);
     }
 }
 

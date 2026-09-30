@@ -205,7 +205,8 @@ struct AreaChart {
     const float* ys = nullptr;
     int n = 0;
     const char* const* labels = nullptr;
-    int tickMargin = 15;
+    // tick_margin: 1, every point named, as Rust's charts default to.
+    int tickMargin = 1;
     // A stacked chart draws its second series over the first one's grid.
     bool overlay = false;
     Rgba stroke = {};
@@ -350,7 +351,8 @@ struct LineChart {
     const float* ys = nullptr;
     int n = 0;
     const char* const* labels = nullptr;
-    int tickMargin = 15;
+    // tick_margin: 1, every point named, as Rust's charts default to.
+    int tickMargin = 1;
     Rgba stroke = {};
     bool hasYDomain = false;
     float yDomainMin = 0;
@@ -491,7 +493,8 @@ struct BarChart {
     float maxBandWidth = kChartMaxBandWidth;
     float minLength = 0;
     const Rgba* labelColors = nullptr;
-    float radius = 4;
+    // corner_radii: square unless asked, Corners::all(px(0.)).
+    float radius = 0;
     float domainMin = 0;
     float domainMax = 0;
     BarAlign align = BarAlign::Bottom;
