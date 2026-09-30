@@ -336,7 +336,7 @@ static bool NewState(shell::StateBuild* build, const ComponentArgument* args,
     }
     State* state = build->New<State>();
     state->app = build->app;
-    state->keys = (Str*)calloc((size_t)columns.count, sizeof(Str));
+    state->keys = (Str*)calloc((size_t)(uint32_t)columns.count, sizeof(Str));
     state->count = columns.count;
     for (int i = 0; i < columns.count; i++)
         state->keys[i] = StrDup(columns.items[i].string);

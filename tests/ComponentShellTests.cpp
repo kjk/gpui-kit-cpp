@@ -1,6 +1,6 @@
 /* Ports of crates/shell/src/component_registry.rs's tests and of
    crates/component-shell's: src/lib.rs, the family modules' own tests, and
-   the tests/*_host.rs files as far as each is reachable without
+   the tests/ *_host.rs files as far as each is reachable without
    TestAppContext. A host test here loads the script into a runtime built with
    the catalog and walks the element tree the first render builds. */
 
@@ -5195,7 +5195,7 @@ void RecordTreeRow(Str id, Str label, bool selected) {
 bool TreeRowsAre(const char* const* expected, int count) {
     if (gTreeRowCount != count) return false;
     for (int i = 0; i < count; i++) {
-        char row[64];
+        char row[1024];
         snprintf(row, sizeof(row), "%s|%s|%d", gTreeRows[i].id,
                  gTreeRows[i].label, gTreeRows[i].selected ? 1 : 0);
         if (strcmp(row, expected[i]) != 0) return false;
