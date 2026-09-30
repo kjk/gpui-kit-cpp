@@ -151,7 +151,9 @@ El* Alert::IntoEl() {
     }
     // mt_5 on the card's icon, so it sits on the first line rather than above
     // it — a pad here, the box has nothing to paint. The banner is centred.
-    El* iconBox = Div(a)->Shrink0()->Child(IconEl(a, icon, 16)->Fg(fg));
+    // Icon::new with no size of its own: Icon::render takes the inherited
+    // text size, which is the row's text_sm.
+    El* iconBox = Div(a)->Shrink0()->Child(IconEl(a, icon)->Fg(fg));
     if (!banner) {
         iconBox->PadT(5);
     }
