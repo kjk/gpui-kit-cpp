@@ -34,6 +34,7 @@
 #include "ui/input.h"
 #include "fps/fps.h"
 #include "shell/a11y.h"
+#include "shell/component_registry.h"
 #include "shell/action.h"
 #include "shell/dock.h"
 #include "shell/fetch.h"
@@ -2560,6 +2561,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
         case shell::ComponentKind::InputGroupInput:
         case shell::ComponentKind::InputGroupTextarea:
         case shell::ComponentKind::InputGroupText:
+        case shell::ComponentKind::Registered:
             return Div(cx->a);
     }
     return Div(cx->a);
@@ -2640,6 +2642,98 @@ static void ApplyInputGroupTextarea(component::Textarea* textarea,
     }
 }
 
+// Applies a node's own style — the style methods and the motions that move
+// them — to `target`: what a registered component's request hands its
+// materializer as Rust's refinement.
+static void ApplyOwnStyle(Ctx* cx, const shell::SpecNode* node,
+                          shell::SpecId id, const MaterialBehavior& behavior,
+                          El* target, ShellError* error) {
+    for (const shell::SpecOp& op : node->ops) {
+        if (op.kind == shell::SpecOpKind::NullaryStyle) {
+            if (!ApplyNullary(target, op.name) && error && !error->IsSet())
+                ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
+        } else if (op.kind == shell::SpecOpKind::ParamStyle) {
+            if (!ApplyParam(target, op) && error && !error->IsSet())
+                ShellErrorSet(error, fmt("invalid style call `%s`", op.name));
+        }
+    }
+    ApplyMotions(cx, node, id, behavior, target);
+}
+
+void ShellApplyNodeStyle(Ctx* cx, const shell::SpecArena* specs,
+                         shell::SpecId id, El* target, ShellError* error) {
+    const shell::SpecNode* node = specs ? specs->Node(id) : nullptr;
+    if (!node || !target) return;
+    MaterialBehavior behavior = {};
+    ResolveBehavior(node, &behavior);
+    ApplyOwnStyle(cx, node, id, behavior, target, error);
+}
+
+// materialize.rs materialize_registered_component: builds the request, hands
+// it to the descriptor's materializer, and reports what it left unread.
+static El* MaterializeRegistered(Ctx* cx, ShellRuntime* runtime,
+                                 const shell::SpecArena* specs,
+                                 shell::SpecId id, const shell::SpecNode* node,
+                                 const MaterialBehavior& behavior,
+                                 ShellError* error) {
+    const shell::FrozenComponentRegistry* components =
+        runtime ? runtime->Components() : nullptr;
+    const shell::ComponentDescriptor* descriptor =
+        components ? components->Descriptor(node->component.index) : nullptr;
+    Str name = node->component.text;
+    if (!descriptor || !descriptor->materialize) {
+        logf(
+            "shell: registered component `%s` has an unknown registry id "
+            "%u\n",
+            name, node->component.index);
+        return Div(cx->a)->Child(
+            TextEl(cx->a, StrDup(cx->a, fmt("Unknown component: %s", name))));
+    }
+    shell::MaterializeRequest request;
+    request.cx = cx;
+    request.runtime = runtime;
+    request.specs = specs;
+    request.node = node;
+    request.id = id;
+    request.descriptor = descriptor;
+    request.payload = node->component.payload;
+    request.elementId = behavior.key
+                            ? behavior.key
+                            : StrDup(cx->a, fmt("gpui-shell-spec-%u", id));
+    request.disabled = behavior.disabled;
+    request.selected = behavior.selected;
+    request.onClick = behavior.onClick;
+    request.error = error;
+    El* element = descriptor->materialize(&request);
+    if (!element) {
+        Str why = request.failure.s ? request.failure : StrL("no element");
+        logf("shell: failed to materialize `%s`: %s\n", name, why);
+        return Div(cx->a)->Child(
+            TextEl(cx->a, StrDup(cx->a, fmt("Failed to render %s", name))));
+    }
+    if (!request.styleTaken && request.HasStyle()) {
+        logf(
+            "shell: %s did not consume its style; call "
+            "MaterializeRequest::Finish or ApplyStyle\n",
+            name);
+    }
+    int unread = request.ChildrenLen();
+    if (unread != 0) {
+        logf("shell: %s did not consume %d child element(s)\n", name, unread);
+    }
+    int index = 0;
+    for (const shell::SpecOp& op : node->ops) {
+        int at = index++;
+        if (op.kind != shell::SpecOpKind::Slot) continue;
+        if (request.slotTaken && request.slotTaken[at]) continue;
+        logf(
+            "shell: %s has no `%s` slot, so the element given to it is not "
+            "rendered at all\n",
+            name, op.name);
+    }
+    return element;
+}
+
 static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
                            const shell::SpecArena* specs, shell::SpecId id,
                            ShellError* error) {
@@ -2647,6 +2741,10 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     if (!node) return Div(cx->a);
     MaterialBehavior behavior = {};
     ResolveBehavior(node, &behavior);
+    if (node->component.kind == shell::ComponentKind::Registered) {
+        return MaterializeRegistered(cx, runtime, specs, id, node, behavior,
+                                     error);
+    }
 
     El* element = nullptr;
     bool childrenConsumed = false;

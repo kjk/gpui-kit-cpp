@@ -29,6 +29,10 @@ static uint64_t StructureName(Str name) {
 // count and a ChildView's handle are all *values* as far as a template is
 // concerned.
 static uint64_t ComponentShape(const Component& component) {
+    // A registered component's shape is which descriptor it is: every one of
+    // them shares the kind.
+    if (component.kind == ComponentKind::Registered)
+        return StructureMix(59, (uint64_t)component.index);
     return StructureMix(0, (uint64_t)component.kind);
 }
 
@@ -62,6 +66,8 @@ static uint64_t OpShape(const SpecOp& op) {
         case SpecOpKind::Slot:
             return StructureMix(StructureMix(7, StructureName(op.name)),
                                 op.node);
+        case SpecOpKind::RegisteredMethod:
+            return StructureMix(3, StructureName(op.name));
     }
     return 0;
 }
@@ -215,6 +221,8 @@ const char* ComponentName(const Component& component) {
             return "InputGroupTextarea";
         case ComponentKind::InputGroupText:
             return "InputGroupText";
+        case ComponentKind::Registered:
+            return component.text.s ? component.text.s : "element";
     }
     return "element";
 }
@@ -285,6 +293,13 @@ void SpecArena::Reset() {
     virtualItems = 0;
     structure = 0;
     if (ownsArena) arena->Reset();
+}
+
+bool SpecArena::HasRegistered() const {
+    for (int i = 0; i < nodes.len; i++) {
+        if (nodes[i]->component.kind == ComponentKind::Registered) return true;
+    }
+    return false;
 }
 
 Component SpecArena::CopyComponent(const Component& source) {
@@ -415,6 +430,15 @@ bool SpecArena::Claim(SpecId id, SpecError* error) {
     }
     structure = StructureMix(structure, StructureMix(8, id));
     claimed[(int)id] = 1;
+    return true;
+}
+
+bool SpecArena::CanClaim(SpecId id, SpecError* error) const {
+    if (!CheckLive(id, error)) return false;
+    if (claimed[(int)id]) {
+        SetSpecError(error, SpecErrorKind::Claimed);
+        return false;
+    }
     return true;
 }
 
@@ -667,6 +691,10 @@ void SpecArena::WriteTree(StrBuilder* out, SpecId id, int depth) const {
             out->Append(StrL(" :"));
             out->Append(op.name);
             AppendArgs(out, op);
+        } else if (op.kind == SpecOpKind::RegisteredMethod) {
+            out->Append(StrL(" :"));
+            out->Append(op.name);
+            out->Append(StrL("(registered)"));
         } else if (op.kind == SpecOpKind::Callback) {
             out->Append(StrL(" :"));
             out->Append(op.name);

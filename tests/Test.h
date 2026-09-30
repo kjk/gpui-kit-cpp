@@ -185,6 +185,7 @@ void TestChart();
 void TestForm();
 void TestQuickJs();
 void TestShellCore();
+void TestComponentShell();
 void TestShellDependencies();
 void TestShellDock();
 void TestScene();

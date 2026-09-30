@@ -244,9 +244,10 @@ static int Check(Str root, Str entry, bool printSpec, Policy* policy) {
     App app;
     Window window;
     window.app = &app;
-    component::Init(&app);
+    component_shell::Init(&app);
     ShellError error = {};
-    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    ShellRuntime* runtime =
+        ShellRuntime::New(&app, &error, component_shell::Components());
     Arena* arena = ArenaNew();
     Str spec = runtime ? ShellCheckApplication(arena, runtime, root, &window,
                                                &app, policy, &error)
@@ -301,9 +302,10 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         ShellSetDevelopmentMode(false);
         return 1;
     }
-    component::Init(app);
+    component_shell::Init(app);
     ShellError error = {};
-    ShellRuntime* runtime = ShellRuntime::New(app, &error);
+    ShellRuntime* runtime =
+        ShellRuntime::New(app, &error, component_shell::Components());
     ViewType* type =
         runtime ? runtime->LoadApp(root, entry, policy, &error) : nullptr;
     if (!type) {

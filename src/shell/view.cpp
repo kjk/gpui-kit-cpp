@@ -1,6 +1,7 @@
 #include "shell/view.h"
 #include "shell/action.h"
 #include "shell/capability.h"
+#include "shell/component_registry.h"
 #include "shell/theme_tokens.h"
 #include "base/resizable.h"
 #include "base/select.h"
@@ -194,6 +195,14 @@ void ScriptView::OnBoundBool(ScriptView* self, Ctx* cx, const void*,
     if (!self || !self->runtime || !value || !value->callback) return;
     self->runtime
         ->DispatchChange(value->callback, value->value, cx->win, cx->app);
+}
+
+void ScriptView::OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
+                                  intptr_t binding) {
+    const shell::ComponentEventBinding* bound =
+        (const shell::ComponentEventBinding*)binding;
+    if (!self || !self->runtime || !bound || !bound->run) return;
+    bound->run(bound, self, cx, event);
 }
 
 void ScriptView::OnBoundString(ScriptView* self, Ctx* cx, const ClickEvent*,

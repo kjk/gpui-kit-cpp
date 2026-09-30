@@ -16,7 +16,8 @@ struct ShellRuntimeAccess;
 } // namespace gpui
 namespace gpui::shell {
 struct MaterializedDependencies;
-}
+class FrozenComponentRegistry;
+} // namespace gpui::shell
 namespace gpui {
 struct ShellTaskDriver;
 struct InlineTokenContext;
@@ -24,7 +25,16 @@ struct InlineTokenClickEvent;
 
 class ShellRuntime {
   public:
-    static ShellRuntime* New(App* app = nullptr, ShellError* error = nullptr);
+    // `components` is the catalog a script imports from its module (Rust's
+    // `new_isolated_with_components`); null is the bare runtime, which
+    // declares no component module at all. Borrowed for the runtime's life.
+    static ShellRuntime* New(
+        App* app = nullptr, ShellError* error = nullptr,
+        const shell::FrozenComponentRegistry* components = nullptr);
+    const shell::FrozenComponentRegistry* Components() const;
+    // Adapter-owned retained state, when `handle` is live and of `kind`.
+    void* ComponentState(uint64_t handle, const char* kind,
+                         Str* error = nullptr, Arena* a = nullptr) const;
     ShellRuntime* Retain();
     void Release();
 

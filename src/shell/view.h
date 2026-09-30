@@ -164,6 +164,11 @@ struct ScriptView {
                                     intptr_t callback);
     static void OnScriptAction(ScriptView* self, Ctx* cx,
                                const ActionEvent* event, intptr_t binding);
+    // A registered component's native event: `binding` is a
+    // shell::ComponentEventBinding, whose run reads the event and invokes
+    // the script callback it carries.
+    static void OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
+                                 intptr_t binding);
 };
 
 } // namespace gpui

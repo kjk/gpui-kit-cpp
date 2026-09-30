@@ -14,6 +14,11 @@ El* ShellMaterialize(Ctx* cx, ShellRuntime* runtime,
 El* ShellMaterializeSpec(Ctx* cx, ShellRuntime* runtime,
                          const shell::SpecArena* specs, shell::SpecId root,
                          ShellError* error = nullptr);
+// A node's own style methods and motions, applied to `target`: what a
+// registered component takes as its style.
+void ShellApplyNodeStyle(Ctx* cx, const shell::SpecArena* specs,
+                         shell::SpecId id, El* target,
+                         ShellError* error = nullptr);
 
 namespace shell {
 

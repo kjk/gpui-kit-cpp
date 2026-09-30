@@ -170,6 +170,10 @@ enum class ComponentKind : uint8_t {
     InputGroupInput,
     InputGroupTextarea,
     InputGroupText,
+    // A component a catalog registered: the descriptor is `index` in the
+    // runtime's frozen registry, `text` its name, and `payload` what its
+    // constructor recorded. See shell/component_registry.h.
+    Registered,
 };
 
 enum class TextViewFormat : uint8_t {
@@ -200,6 +204,13 @@ struct ListSpec {
     CallbackId renderItems = 0;
 };
 
+// What a registered constructor or method recorded: an arena value tagged with
+// its type. See shell/component_registry.h.
+struct ComponentPayload {
+    const void* data = nullptr;
+    const void* type = nullptr;
+};
+
 struct Component {
     ComponentKind kind = ComponentKind::Div;
     Str text;
@@ -217,6 +228,7 @@ struct Component {
     float strokeWidth = 0;
     VirtualListSpec* virtualList = nullptr;
     ListSpec* list = nullptr;
+    ComponentPayload payload;
 };
 
 const char* ComponentName(const Component& component);
@@ -232,6 +244,9 @@ enum class SpecOpKind : uint8_t {
     ActionCallback,
     StateStyle,
     Slot,
+    // A method a registered component's descriptor declared, with the
+    // payload its recorder made.
+    RegisteredMethod,
 };
 
 struct SpecOp {
@@ -242,6 +257,7 @@ struct SpecOp {
     SpecId node = 0;
     Bridged* args = nullptr;
     int argCount = 0;
+    ComponentPayload payload;
 };
 
 struct SpecNode {
@@ -369,6 +385,14 @@ class SpecArena {
     const SpecNode* Node(SpecId id) const;
     bool PushOp(SpecId id, const SpecOp& op, SpecError* error = nullptr);
     bool Claim(SpecId id, SpecError* error = nullptr);
+    // Whether Claim would succeed, without claiming: a registered call checks
+    // every element it was handed before it consumes any of them.
+    bool CanClaim(SpecId id, SpecError* error = nullptr) const;
+    // Whether a node can still take an operation: it exists and is not yet a
+    // child of anything.
+    bool IsLive(SpecId id, SpecError* error = nullptr) const {
+        return CheckLive(id, error);
+    }
     bool Attach(SpecId parent, SpecId child, SpecError* error = nullptr);
     bool ClaimVirtualItems(uint64_t count, uint64_t limit);
     Str DebugTree(Arena* into, SpecId root) const;
@@ -402,6 +426,15 @@ class SpecArena {
     // a tree, so a body that describes one is refused at definition rather
     // than at the second call.
     bool MountsAnEntity() const { return mountedViews.len > 0; }
+
+    // Whether anything here is a registered component. Its payload lives in
+    // this arena, so a template that recorded one could not be grafted into
+    // another; see Template.
+    bool HasRegistered() const;
+
+    // Where a registered constructor's or method's payload is allocated: the
+    // same arena as the node that carries it, so it lives exactly as long.
+    Arena* Storage() const { return arena; }
 
   private:
     Arena* arena = nullptr;

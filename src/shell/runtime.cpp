@@ -3,6 +3,7 @@
 #include "base/theme.h"
 #include "quickjs/quickjs.h"
 #include "shell/a11y.h"
+#include "shell/component_registry.h"
 #include "shell/action.h"
 #include "shell/dependencies.h"
 #include "shell/dock.h"
@@ -191,6 +192,21 @@ struct CallbackArena {
         return entry->id;
     }
 
+    // What a registered component's argument validation registers is rolled
+    // back when the call fails, so a rejected call leaves no handler behind.
+    int Checkpoint() const { return len(entries); }
+
+    void RollbackTo(JSContext* ctx, int checkpoint) {
+        while (len(entries) > checkpoint) {
+            CallbackEntry* entry = entries[len(entries) - 1];
+            if (ctx) JS_FreeValue(ctx, entry->function);
+            PolicyRelease(entry->policy);
+            delete entry;
+            entries.len--;
+        }
+        if (buildingStart > len(entries)) buildingStart = len(entries);
+    }
+
     void Commit() {
         if (!building) return;
         for (int i = buildingStart; i < len(entries); i++) {
@@ -354,6 +370,18 @@ struct ShellRuntimeImpl {
     double interruptStarted = 0;
     bool interruptWasScoped = false;
     uint32_t tokenFrame = 0;
+    // The component catalog this runtime was built with, or null for the
+    // bare runtime. Borrowed: a catalog is frozen static data that outlives
+    // every runtime built over it.
+    const shell::FrozenComponentRegistry* components = nullptr;
+    // What registered states a script created, and the proof that binds a
+    // state wrapper to this runtime.
+    shell::ComponentStateStore componentStates;
+    Str componentStateProof;
+    // The module source the catalog is imported as, built once.
+    Str componentModuleSource;
+    // Deprecated exports already warned about, once each.
+    Vec<const char*> warnedDeprecatedExports;
 };
 
 struct ViewType {
@@ -1408,12 +1436,18 @@ static bool WithinRoot(Str root, Str path) {
     return len(path) == len(root) || path.s[len(root)] == '/';
 }
 
+// Whether `name` is the specifier this runtime's component catalog answers to.
+static bool IsComponentModule(const ShellRuntimeImpl* impl, Str name) {
+    return impl && impl->components && impl->components->ModuleSpecifier() &&
+           StrEq(name, impl->components->ModuleSpecifier());
+}
+
 static char* ModuleNormalize(JSContext* ctx, const char* base, const char* name,
                              void* opaque) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
     Str baseName = Str(base);
     Str moduleName = Str(name);
-    if (IsBuiltin(moduleName)) {
+    if (IsBuiltin(moduleName) || IsComponentModule(impl, moduleName)) {
         char* out = (char*)js_malloc(ctx, (size_t)len(moduleName) + 1);
         if (out) memcpy(out, moduleName.s, (size_t)len(moduleName) + 1);
         return out;
@@ -1640,8 +1674,27 @@ static JSModuleDef* LoadHostModule(JSContext* ctx, Str name) {
     return definition;
 }
 
-static JSModuleDef* ModuleLoad(JSContext* ctx, const char* name, void*) {
+static JSModuleDef* ModuleLoad(JSContext* ctx, const char* name, void* opaque) {
     Str moduleName = Str(name);
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)opaque;
+    // The catalog's exports are a source module of wrappers over
+    // `__gpui_components`, generated from the descriptors the way Rust's
+    // `javascript_module_source` writes it.
+    if (IsComponentModule(impl, moduleName)) {
+        if (!impl->componentModuleSource.s) {
+            impl->componentModuleSource =
+                impl->components
+                    ->JavaScriptModuleSource(impl->componentStateProof);
+        }
+        Str source = impl->componentModuleSource;
+        JSValue value =
+            JS_Eval(ctx, source.s ? source.s : "", (size_t)len(source), name,
+                    JS_EVAL_TYPE_MODULE | JS_EVAL_FLAG_COMPILE_ONLY);
+        if (JS_IsException(value)) return nullptr;
+        JSModuleDef* module = (JSModuleDef*)JS_VALUE_GET_PTR(value);
+        JS_FreeValue(ctx, value);
+        return module;
+    }
     if (IsBuiltin(moduleName)) {
         JSModuleDef* module = JS_NewCModule(ctx, name, InitBuiltinModule);
         if (!module) return nullptr;
@@ -2362,6 +2415,15 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
             "a template cannot mount a nested view or a dock area: it is "
             "grafted once per call, and GPUI mounts one entity at one place. "
             "Put the entity where the template is called");
+    } else if (recorded->HasRegistered()) {
+        // A registered component's payload lives in the arena that recorded
+        // it; a template is grafted into other arenas, which would leave the
+        // copy pointing into this one.
+        failure = JS_ThrowTypeError(
+            ctx,
+            "a template cannot describe a registered component: its recorded "
+            "payload belongs to the description that made it. Build it where "
+            "the template is called");
     } else if (Str method = InlineHandler(recorded, discovery->slots); method) {
         failure = JS_ThrowTypeError(
             ctx,
@@ -2517,6 +2579,820 @@ static JSValue NativeTemplateInstantiate(JSContext* ctx, JSValueConst, int argc,
     return JS_NewUint32(ctx, root);
 }
 
+// ─── Registered components ─────────────────────────────────────────────────
+//
+// engine/quickjs/mod.rs: the catalog's exports, their argument validation and
+// the registered branch of `apply`. A registered component's constructor and
+// methods are validated against the schemas its descriptor declared, and what
+// the adapter's factory makes of the arguments is recorded into the
+// description as the node's payload or a RegisteredMethod op.
+
+static const int kMaxComponentArgumentDepth = 32;
+static const int kMaxComponentArgumentNodes = 10000;
+
+struct ComponentArgumentScope {
+    JSContext* ctx = nullptr;
+    ShellRuntimeImpl* impl = nullptr;
+    Arena* a = nullptr;
+    const char* api = nullptr;
+    int nodes = 0;
+    // Elements the arguments consume, checked for repeats and claimed only
+    // once every argument validated.
+    Vec<shell::SpecId> elements;
+};
+
+static void AppendSchemaName(StrBuilder* out, const shell::ArgumentSchema& s) {
+    switch (s.kind) {
+        case shell::SchemaKind::String:
+            out->Append(StrL("a string"));
+            break;
+        case shell::SchemaKind::Number:
+            out->Append(StrL("a finite number"));
+            break;
+        case shell::SchemaKind::Boolean:
+            out->Append(StrL("a boolean"));
+            break;
+        case shell::SchemaKind::Element:
+            out->Append(StrL("an Element"));
+            break;
+        case shell::SchemaKind::Entity:
+            out->Append(StrL("a "));
+            out->Append(Str(s.text));
+            out->Append(StrL(" entity"));
+            break;
+        case shell::SchemaKind::Callback:
+            out->Append(StrL("a function"));
+            break;
+        case shell::SchemaKind::Enum:
+            for (int i = 0; i < s.values.count; i++) {
+                if (i) out->Append(StrL(", "));
+                out->AppendChar('`');
+                out->Append(Str(s.values[i]));
+                out->AppendChar('`');
+            }
+            break;
+        case shell::SchemaKind::Array:
+            out->Append(StrL("an array of "));
+            if (s.item) AppendSchemaName(out, *s.item);
+            break;
+        case shell::SchemaKind::Optional:
+            out->Append(StrL("an optional "));
+            if (s.item) AppendSchemaName(out, *s.item);
+            break;
+    }
+}
+
+static bool ThrowExpects(ComponentArgumentScope* scope, const char* name,
+                         const shell::ArgumentSchema& schema) {
+    StrBuilder message;
+    message.Append(Str(scope->api));
+    message.AppendChar('(');
+    message.Append(Str(name));
+    message.Append(StrL(") expects "));
+    AppendSchemaName(&message, schema);
+    Str text = message.TakeStr();
+    JS_ThrowTypeError(scope->ctx, "%.*s", len(text), text.s);
+    StrFree(text);
+    return false;
+}
+
+static bool JsObjectNumber(JSContext* ctx, JSValueConst object, const char* key,
+                           double* out) {
+    JSValue value = JS_GetPropertyStr(ctx, object, key);
+    bool ok = JS_IsNumber(value) && JS_ToFloat64(ctx, out, value) == 0;
+    JS_FreeValue(ctx, value);
+    return ok;
+}
+
+static bool ValidateComponentValue(ComponentArgumentScope* scope,
+                                   const char* name,
+                                   const shell::ArgumentSchema& schema,
+                                   JSValueConst value, int depth,
+                                   shell::ComponentArgument* out) {
+    JSContext* ctx = scope->ctx;
+    if (depth > kMaxComponentArgumentDepth) {
+        JS_ThrowRangeError(ctx, "component arguments are nested too deeply");
+        return false;
+    }
+    if (++scope->nodes > kMaxComponentArgumentNodes) {
+        JS_ThrowRangeError(ctx,
+                           "component arguments contain too many nested "
+                           "values");
+        return false;
+    }
+    *out = {};
+    switch (schema.kind) {
+        case shell::SchemaKind::String:
+            if (!JS_IsString(value)) return ThrowExpects(scope, name, schema);
+            out->kind = shell::ComponentArgumentKind::String;
+            return JsString(ctx, value, scope->a, &out->string);
+        case shell::SchemaKind::Number: {
+            double number = 0;
+            if (!JS_IsNumber(value) || JS_ToFloat64(ctx, &number, value) < 0 ||
+                !isfinite(number))
+                return ThrowExpects(scope, name, schema);
+            out->kind = shell::ComponentArgumentKind::Number;
+            out->number = number;
+            return true;
+        }
+        case shell::SchemaKind::Boolean:
+            if (!JS_IsBool(value)) return ThrowExpects(scope, name, schema);
+            out->kind = shell::ComponentArgumentKind::Boolean;
+            out->boolean = JS_ToBool(ctx, value) != 0;
+            return true;
+        case shell::SchemaKind::Element: {
+            double id = 0;
+            if (!JS_IsObject(value) || JS_IsFunction(ctx, value) ||
+                !JsObjectNumber(ctx, value, "__id", &id) || id < 0)
+                return ThrowExpects(scope, name, schema);
+            shell::SpecError failure = {};
+            if (!scope->impl->scratch->CanClaim((shell::SpecId)id, &failure)) {
+                SpecFailure(ctx, failure);
+                return false;
+            }
+            out->kind = shell::ComponentArgumentKind::Element;
+            out->element = (shell::SpecId)id;
+            VecAppend(scope->elements, out->element);
+            return true;
+        }
+        case shell::SchemaKind::Entity: {
+            // A registered state, by the wrapper the catalog module unwrapped
+            // into its handle and this runtime's proof. A gpui-base entity
+            // (`{ __handle }`) is refused: the component states are a store
+            // of their own, and no registered kind lives in the other one.
+            double handle = 0;
+            if (!JS_IsObject(value) || JS_IsFunction(ctx, value) ||
+                !JsObjectNumber(ctx, value, "__componentStateHandle",
+                                &handle) ||
+                handle < 0)
+                return ThrowExpects(scope, name, schema);
+            JSValue proofValue =
+                JS_GetPropertyStr(ctx, value, "__componentStateProof");
+            Str proof;
+            bool haveProof = JS_IsString(proofValue) &&
+                             JsString(ctx, proofValue, scope->a, &proof);
+            JS_FreeValue(ctx, proofValue);
+            const char* kind = scope->impl->componentStates
+                                   .Kind((uint64_t)handle);
+            if (!haveProof || !StrEq(proof, scope->impl->componentStateProof) ||
+                !kind || strcmp(kind, schema.text) != 0)
+                return ThrowExpects(scope, name, schema);
+            out->kind = shell::ComponentArgumentKind::Entity;
+            out->entityKind = schema.text;
+            out->handle = (uint64_t)handle;
+            return true;
+        }
+        case shell::SchemaKind::Callback: {
+            if (!JS_IsFunction(ctx, value))
+                return ThrowExpects(scope, name, schema);
+            shell::CallbackId callback = scope->impl->callbacks.Push(
+                ctx, value, shell::ScopeCurrentView(),
+                shell::ScopeCurrentPolicy(), shell::ScopeCurrentGeneration(),
+                (AppModule*)shell::ScopeCurrentApplication());
+            if (callback == UINT64_MAX) {
+                JS_ThrowInternalError(
+                    ctx, "a callback was registered outside a snapshot build");
+                return false;
+            }
+            out->kind = shell::ComponentArgumentKind::Callback;
+            out->callback = callback;
+            return true;
+        }
+        case shell::SchemaKind::Enum: {
+            Str text;
+            if (!JS_IsString(value) || !JsString(ctx, value, scope->a, &text))
+                return ThrowExpects(scope, name, schema);
+            for (const char* literal : schema.values) {
+                if (StrEq(text, literal)) {
+                    out->kind = shell::ComponentArgumentKind::Enum;
+                    out->string = text;
+                    return true;
+                }
+            }
+            return ThrowExpects(scope, name, schema);
+        }
+        case shell::SchemaKind::Array: {
+            if (!JS_IsArray(value) || !schema.item)
+                return ThrowExpects(scope, name, schema);
+            int64_t length = 0;
+            if (JS_GetLength(ctx, value, &length) < 0) return false;
+            if (length > kMaxComponentArgumentNodes) {
+                JS_ThrowRangeError(ctx,
+                                   "component arguments contain too many "
+                                   "nested values");
+                return false;
+            }
+            shell::ComponentArgument* items =
+                length > 0
+                    ? (shell::ComponentArgument*)Alloc(
+                          scope->a, (int)(sizeof(shell::ComponentArgument) *
+                                          (size_t)length))
+                    : nullptr;
+            for (int64_t i = 0; i < length; i++) {
+                JSValue item = JS_GetPropertyUint32(ctx, value, (uint32_t)i);
+                bool ok = !JS_IsException(item) &&
+                          ValidateComponentValue(scope, name, *schema.item,
+                                                 item, depth + 1, &items[i]);
+                JS_FreeValue(ctx, item);
+                if (!ok) return false;
+            }
+            out->kind = shell::ComponentArgumentKind::Array;
+            out->items = items;
+            out->count = (int)length;
+            return true;
+        }
+        case shell::SchemaKind::Optional: {
+            out->kind = shell::ComponentArgumentKind::Optional;
+            if (JS_IsUndefined(value) || JS_IsNull(value) || !schema.item) {
+                out->count = 0;
+                return true;
+            }
+            shell::ComponentArgument* inner =
+                ArenaNew<shell::ComponentArgument>(scope->a);
+            if (!ValidateComponentValue(scope, name, *schema.item, value, depth,
+                                        inner))
+                return false;
+            out->items = inner;
+            out->count = 1;
+            return true;
+        }
+    }
+    return ThrowExpects(scope, name, schema);
+}
+
+// Validates a whole argument list — Rust's `validate_component_arguments`.
+static bool ValidateComponentArguments(
+    ComponentArgumentScope* scope,
+    shell::Slice<shell::ArgumentDescriptor> descriptors, JSValueConst array,
+    shell::ComponentArgument** out, int* count) {
+    JSContext* ctx = scope->ctx;
+    int64_t length = 0;
+    if (!JS_IsArray(array) || JS_GetLength(ctx, array, &length) < 0) {
+        JS_ThrowTypeError(ctx, "expected an argument list");
+        return false;
+    }
+    if (length > descriptors.count) {
+        JS_ThrowTypeError(ctx, "%s(...) expects at most %d argument%s",
+                          scope->api, descriptors.count,
+                          descriptors.count == 1 ? "" : "s");
+        return false;
+    }
+    shell::ComponentArgument* arguments =
+        descriptors.count > 0
+            ? (shell::ComponentArgument*)Alloc(
+                  scope->a, (int)(sizeof(shell::ComponentArgument) *
+                                  (size_t)descriptors.count))
+            : nullptr;
+    for (int i = 0; i < descriptors.count; i++) {
+        const shell::ArgumentDescriptor& descriptor = descriptors[i];
+        if (i >= length) {
+            if (descriptor.schema.kind == shell::SchemaKind::Optional) {
+                arguments[i] = {};
+                arguments[i].kind = shell::ComponentArgumentKind::Optional;
+                continue;
+            }
+            return ThrowExpects(scope, descriptor.name, descriptor.schema);
+        }
+        JSValue value = JS_GetPropertyUint32(ctx, array, (uint32_t)i);
+        bool ok =
+            !JS_IsException(value) &&
+            ValidateComponentValue(scope, descriptor.name, descriptor.schema,
+                                   value, 0, &arguments[i]);
+        JS_FreeValue(ctx, value);
+        if (!ok) return false;
+    }
+    *out = arguments;
+    *count = descriptors.count;
+    return true;
+}
+
+// Rust's `component_payload_transaction`: validate, refuse an element handed
+// over twice, run the adapter's factory, and only then consume the elements.
+// A failure anywhere rolls back the handlers the validation registered.
+static bool ComponentPayloadTransaction(
+    JSContext* ctx, ShellRuntimeImpl* impl, const char* api,
+    shell::Slice<shell::ArgumentDescriptor> descriptors, JSValueConst array,
+    shell::PayloadFactory factory, shell::ComponentPayload* payload,
+    shell::ComponentArgument** validated = nullptr,
+    int* validatedCount = nullptr) {
+    int checkpoint = impl->callbacks.Checkpoint();
+    ComponentArgumentScope scope;
+    scope.ctx = ctx;
+    scope.impl = impl;
+    scope.a = impl->scratch->Storage();
+    scope.api = api;
+    shell::ComponentArgument* arguments = nullptr;
+    int count = 0;
+    bool ok = ValidateComponentArguments(&scope, descriptors, array, &arguments,
+                                         &count);
+    for (int i = 0; ok && i < len(scope.elements); i++) {
+        for (int j = 0; j < i; j++) {
+            if (scope.elements[j] == scope.elements[i]) {
+                JS_ThrowTypeError(ctx,
+                                  "%s(...) cannot consume element %u twice",
+                                  api, (unsigned)scope.elements[i]);
+                ok = false;
+                break;
+            }
+        }
+    }
+    if (ok) {
+        shell::PayloadBuild build;
+        build.a = scope.a;
+        if (factory && !factory(&build, arguments, count)) {
+            Str message = build.error;
+            JS_ThrowTypeError(ctx, "%.*s", len(message),
+                              message.s ? message.s : "");
+            ok = false;
+        } else {
+            *payload = build.out;
+        }
+    }
+    for (int i = 0; ok && i < len(scope.elements); i++) {
+        shell::SpecError failure = {};
+        if (!impl->scratch->Claim(scope.elements[i], &failure)) {
+            SpecFailure(ctx, failure);
+            ok = false;
+        }
+    }
+    VecReset(scope.elements);
+    if (!ok) {
+        impl->callbacks.RollbackTo(ctx, checkpoint);
+        return false;
+    }
+    if (validated) *validated = arguments;
+    if (validatedCount) *validatedCount = count;
+    return true;
+}
+
+static void WarnDeprecatedExport(ShellRuntimeImpl* impl,
+                                 const shell::ConstructorDescriptor& ctor) {
+    for (int i = 0; i < len(impl->warnedDeprecatedExports); i++) {
+        if (impl->warnedDeprecatedExports[i] == ctor.exportName) return;
+    }
+    VecAppend(impl->warnedDeprecatedExports, ctor.exportName);
+    logf(
+        "shell: JavaScript component export `%s` is deprecated; use `%s`. "
+        "%s\n",
+        Str(ctor.exportName), Str(ctor.deprecationReplacement),
+        Str(ctor.deprecationMessage ? ctor.deprecationMessage : ""));
+}
+
+// `__gpui_components[export](args)`: one per constructor. `magic` is the
+// descriptor's id times 256 plus the constructor's index.
+static JSValue NativeRegisteredConstructor(JSContext* ctx, JSValueConst,
+                                           int argc, JSValueConst* argv,
+                                           int magic) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    uint32_t componentId = (uint32_t)magic >> 8;
+    int index = magic & 0xff;
+    const shell::ComponentDescriptor* descriptor =
+        impl && impl->components ? impl->components->Descriptor(componentId)
+                                 : nullptr;
+    if (!descriptor || index >= descriptor->constructors.count || argc < 1)
+        return JS_ThrowTypeError(ctx, "unknown registered component export");
+    const shell::ConstructorDescriptor& ctor = descriptor->constructors[index];
+    if (ctor.deprecationReplacement) WarnDeprecatedExport(impl, ctor);
+    shell::ComponentPayload payload = {};
+    if (!ComponentPayloadTransaction(ctx, impl, ctor.exportName, ctor.arguments,
+                                     argv[0], ctor.factory, &payload))
+        return JS_EXCEPTION;
+    shell::Component component = {};
+    component.kind = shell::ComponentKind::Registered;
+    component.index = componentId;
+    component.text = Str(descriptor->name);
+    component.payload = payload;
+    return JS_NewUint32(ctx, impl->scratch->Push(component));
+}
+
+static bool ComponentDataFromJs(JSContext* ctx, JSValueConst value, Arena* a,
+                                int depth, int* nodes,
+                                shell::ComponentDataValue* out) {
+    if (depth > kMaxComponentArgumentDepth) {
+        JS_ThrowRangeError(ctx, "component data is nested too deeply");
+        return false;
+    }
+    if (++*nodes > kMaxComponentArgumentNodes) {
+        JS_ThrowRangeError(ctx, "component data contains too many values");
+        return false;
+    }
+    *out = {};
+    if (JS_IsUndefined(value) || JS_IsNull(value)) return true;
+    if (JS_IsBool(value)) {
+        *out = shell::ComponentDataValue::Boolean(JS_ToBool(ctx, value) != 0);
+        return true;
+    }
+    if (JS_IsNumber(value)) {
+        double number = 0;
+        if (JS_ToFloat64(ctx, &number, value) < 0) return false;
+        if (!isfinite(number)) {
+            JS_ThrowTypeError(ctx, "component data numbers must be finite");
+            return false;
+        }
+        *out = shell::ComponentDataValue::Number(number);
+        return true;
+    }
+    if (JS_IsString(value)) {
+        Str text;
+        if (!JsString(ctx, value, a, &text)) return false;
+        *out = shell::ComponentDataValue::String(text);
+        return true;
+    }
+    if (JS_IsFunction(ctx, value)) {
+        JS_ThrowTypeError(ctx,
+                          "component data must be plain data, not a "
+                          "function");
+        return false;
+    }
+    if (JS_IsArray(value)) {
+        int64_t length = 0;
+        if (JS_GetLength(ctx, value, &length) < 0) return false;
+        if (length > kMaxComponentArgumentNodes) {
+            JS_ThrowRangeError(ctx, "component data contains too many values");
+            return false;
+        }
+        shell::ComponentDataValue* items =
+            length > 0
+                ? (shell::ComponentDataValue*)Alloc(
+                      a,
+                      (int)(sizeof(shell::ComponentDataValue) * (size_t)length))
+                : nullptr;
+        for (int64_t i = 0; i < length; i++) {
+            JSValue item = JS_GetPropertyUint32(ctx, value, (uint32_t)i);
+            bool ok =
+                !JS_IsException(item) &&
+                ComponentDataFromJs(ctx, item, a, depth + 1, nodes, &items[i]);
+            JS_FreeValue(ctx, item);
+            if (!ok) return false;
+        }
+        *out = shell::ComponentDataValue::Array(items, (int)length);
+        return true;
+    }
+    if (JS_IsObject(value)) {
+        JSPropertyEnum* properties = nullptr;
+        uint32_t count = 0;
+        if (JS_GetOwnPropertyNames(ctx, &properties, &count, value,
+                                   JS_GPN_STRING_MASK | JS_GPN_ENUM_ONLY) < 0)
+            return false;
+        shell::ComponentDataValue* items =
+            count > 0 ? (shell::ComponentDataValue*)Alloc(
+                            a, (int)(sizeof(shell::ComponentDataValue) * count))
+                      : nullptr;
+        Str* keys =
+            count > 0 ? (Str*)Alloc(a, (int)(sizeof(Str) * count)) : nullptr;
+        bool ok = true;
+        for (uint32_t i = 0; ok && i < count; i++) {
+            const char* key = JS_AtomToCString(ctx, properties[i].atom);
+            if (!key) {
+                ok = false;
+                break;
+            }
+            keys[i] = StrDup(a, Str(key));
+            JS_FreeCString(ctx, key);
+            JSValue item = JS_GetProperty(ctx, value, properties[i].atom);
+            ok = !JS_IsException(item) &&
+                 ComponentDataFromJs(ctx, item, a, depth + 1, nodes, &items[i]);
+            JS_FreeValue(ctx, item);
+        }
+        JS_FreePropertyEnum(ctx, properties, count);
+        if (!ok) return false;
+        out->kind = shell::DataKind::Object;
+        out->items = items;
+        out->keys = keys;
+        out->count = (int)count;
+        return true;
+    }
+    JS_ThrowTypeError(ctx,
+                      "component data must be null, a boolean, a finite "
+                      "number, a string, an array or a plain object");
+    return false;
+}
+
+static JSValue ComponentDataToJs(JSContext* ctx,
+                                 const shell::ComponentDataValue& value) {
+    switch (value.kind) {
+        case shell::DataKind::Null:
+            return JS_NULL;
+        case shell::DataKind::Boolean:
+            return JS_NewBool(ctx, value.boolean);
+        case shell::DataKind::Number:
+            return JS_NewFloat64(ctx, value.number);
+        case shell::DataKind::String:
+            return JS_NewStringLen(ctx, value.string.s ? value.string.s : "",
+                                   (size_t)len(value.string));
+        case shell::DataKind::Array: {
+            JSValue array = JS_NewArray(ctx);
+            for (int i = 0; i < value.count; i++) {
+                JS_SetPropertyUint32(ctx, array, (uint32_t)i,
+                                     ComponentDataToJs(ctx, value.items[i]));
+            }
+            return array;
+        }
+        case shell::DataKind::Object: {
+            JSValue object = JS_NewObject(ctx);
+            for (int i = 0; i < value.count; i++) {
+                TempStr key = fmt("%s", value.keys[i]);
+                JS_SetPropertyStr(ctx, object, key.s ? key.s : "",
+                                  ComponentDataToJs(ctx, value.items[i]));
+            }
+            return object;
+        }
+    }
+    return JS_NULL;
+}
+
+// `__gpui_components[StateExport](args)`: creates one retained state and
+// answers its handle. `magic` is the state descriptor's index.
+static JSValue NativeRegisteredState(JSContext* ctx, JSValueConst, int argc,
+                                     JSValueConst* argv, int magic) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    const shell::StateDescriptor* descriptor =
+        impl && impl->components ? impl->components->State(magic) : nullptr;
+    if (!descriptor || argc < 1)
+        return JS_ThrowTypeError(ctx, "unknown registered state export");
+    int checkpoint = impl->callbacks.Checkpoint();
+    Arena* a = ArenaNew();
+    ComponentArgumentScope scope;
+    scope.ctx = ctx;
+    scope.impl = impl;
+    scope.a = a;
+    scope.api = descriptor->exportName;
+    shell::ComponentArgument* arguments = nullptr;
+    int count = 0;
+    bool ok = ValidateComponentArguments(&scope, descriptor->arguments, argv[0],
+                                         &arguments, &count);
+    VecReset(scope.elements);
+    uint64_t handle = 0;
+    if (ok) {
+        shell::ScopeHostContext host = shell::ScopeCurrentHost();
+        if (!host.IsSet() || !host.GetApp()) {
+            JS_ThrowTypeError(ctx,
+                              "retained component state can only be "
+                              "created during a live Window/App call");
+            ok = false;
+        } else {
+            shell::StateBuild build;
+            build.window = host.GetWindow();
+            build.app = host.GetApp();
+            build.a = a;
+            if (!descriptor->factory ||
+                !descriptor->factory(&build, arguments, count)) {
+                Str message = build.error;
+                JS_ThrowTypeError(ctx, "%.*s", len(message),
+                                  message.s ? message.s : "");
+                if (build.value && build.destroy) build.destroy(build.value);
+                ok = false;
+            } else {
+                Str error;
+                if (!impl->componentStates.Insert(
+                        descriptor->kind, shell::ScopeCurrentApplication(),
+                        build.value, build.destroy, &handle, &error, a)) {
+                    JS_ThrowRangeError(ctx, "%.*s", len(error), error.s);
+                    ok = false;
+                }
+            }
+        }
+    }
+    ArenaDelete(a);
+    if (!ok) {
+        impl->callbacks.RollbackTo(ctx, checkpoint);
+        return JS_EXCEPTION;
+    }
+    return JS_NewFloat64(ctx, (double)handle);
+}
+
+// `__gpui_components["Export.method"](proof, handle, args)`. `magic` is the
+// state descriptor's index times 256 plus the method's.
+static JSValue NativeRegisteredStateMethod(JSContext* ctx, JSValueConst,
+                                           int argc, JSValueConst* argv,
+                                           int magic) {
+    ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    const shell::StateDescriptor* descriptor =
+        impl && impl->components ? impl->components->State(magic >> 8)
+                                 : nullptr;
+    int index = magic & 0xff;
+    if (!descriptor || index >= descriptor->methods.count || argc < 3)
+        return JS_ThrowTypeError(ctx, "unknown registered state operation");
+    const shell::StateMethodDescriptor& method = descriptor->methods[index];
+    Arena* a = ArenaNew();
+    Str proof;
+    double handle = 0;
+    if (!JS_IsString(argv[0]) || !JsString(ctx, argv[0], a, &proof) ||
+        !StrEq(proof, impl->componentStateProof) ||
+        JS_ToFloat64(ctx, &handle, argv[1]) < 0) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(ctx, "state belongs to another runtime");
+    }
+    ScopePhase phase = shell::ScopeCurrentPhase();
+    if (!method.readonly && shell::ScopeHasCurrent() &&
+        (phase == ScopePhase::Render || phase == ScopePhase::Layout)) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(ctx,
+                                 "state cannot be changed during render "
+                                 "or layout");
+    }
+    int nodes = 0;
+    shell::ComponentDataValue arguments = {};
+    if (!ComponentDataFromJs(ctx, argv[2], a, 0, &nodes, &arguments)) {
+        ArenaDelete(a);
+        return JS_EXCEPTION;
+    }
+    if (arguments.kind != shell::DataKind::Array) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(ctx,
+                                 "state operation expects an argument "
+                                 "array");
+    }
+    Str error;
+    void* state = impl->componentStates
+                      .Get((uint64_t)handle, descriptor->kind, &error, a);
+    if (!state) {
+        JSValue thrown = JS_ThrowTypeError(ctx, "%.*s", len(error), error.s);
+        ArenaDelete(a);
+        return thrown;
+    }
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    if (!host.IsSet() || !host.GetApp()) {
+        ArenaDelete(a);
+        return JS_ThrowTypeError(ctx,
+                                 "state operation requires a live host "
+                                 "call");
+    }
+    shell::StateCall call;
+    call.window = host.GetWindow();
+    call.app = host.GetApp();
+    call.a = a;
+    JSValue result = JS_UNDEFINED;
+    if (!method.call ||
+        !method.call(&call, state, arguments.items, arguments.count)) {
+        if (call.code.s) {
+            JSValue thrown = JS_NewError(ctx);
+            JS_SetPropertyStr(
+                ctx, thrown, "message",
+                JS_NewStringLen(ctx, call.error.s ? call.error.s : "",
+                                (size_t)len(call.error)));
+            JS_SetPropertyStr(
+                ctx, thrown, "code",
+                JS_NewStringLen(ctx, call.code.s, (size_t)len(call.code)));
+            JS_SetPropertyStr(ctx, thrown, "name", JS_NewString(ctx, "Error"));
+            result = JS_Throw(ctx, thrown);
+        } else {
+            result = JS_ThrowTypeError(ctx, "%.*s", len(call.error),
+                                       call.error.s ? call.error.s : "");
+        }
+    } else {
+        result = ComponentDataToJs(ctx, call.out);
+    }
+    ArenaDelete(a);
+    return result;
+}
+
+static void InstallComponentCatalog(ShellRuntimeImpl* impl) {
+    JSContext* ctx = impl->context;
+    JSValue global = JS_GetGlobalObject(ctx);
+    JSValue module = JS_NewObject(ctx);
+    const shell::FrozenComponentRegistry* components = impl->components;
+    for (int s = 0; components && s < components->StateCount(); s++) {
+        const shell::StateDescriptor* state = components->State(s);
+        for (int m = 0; m < state->methods.count; m++) {
+            TempStr name = fmt("%s.%s", Str(state->exportName),
+                               Str(state->methods[m].name));
+            JS_SetPropertyStr(
+                ctx, module, name.s,
+                JS_NewCFunctionMagic(ctx, NativeRegisteredStateMethod, name.s,
+                                     3, JS_CFUNC_generic_magic, s * 256 + m));
+        }
+        JS_SetPropertyStr(
+            ctx, module, state->exportName,
+            JS_NewCFunctionMagic(ctx, NativeRegisteredState, state->exportName,
+                                 1, JS_CFUNC_generic_magic, s));
+    }
+    for (int d = 0; components && d < components->DescriptorCount(); d++) {
+        const shell::ComponentDescriptor* descriptor =
+            components->Descriptor((uint32_t)d);
+        for (int c = 0; c < descriptor->constructors.count; c++) {
+            const char* name = descriptor->constructors[c].exportName;
+            JS_SetPropertyStr(
+                ctx, module, name,
+                JS_NewCFunctionMagic(ctx, NativeRegisteredConstructor, name, 1,
+                                     JS_CFUNC_generic_magic, d * 256 + c));
+        }
+    }
+    JS_SetPropertyStr(ctx, global, "__gpui_components", module);
+    JS_FreeValue(ctx, global);
+}
+
+static JSValue ThrowUnknownRegisteredMethod(JSContext* ctx, Str name) {
+    return JS_ThrowTypeError(
+        ctx,
+        "unknown element method `%.*s`; it is neither a style method nor one "
+        "of child, children, when, on_click, on_change, disabled, selected, "
+        "checked, overflow_scroll, overflow_x_scroll, overflow_y_scroll, "
+        "overflow_scrollbar, overflow_x_scrollbar, overflow_y_scrollbar",
+        len(name), name.s);
+}
+
+static bool IsStyleCall(Str name, int argCount) {
+    return IsParamStyle(name) || (argCount == 0 && !IsBehavior(name));
+}
+
+// The registered branch of `apply`. Answers true when it settled the call —
+// `*result` is then what NativeApply returns — and false when the call is an
+// ordinary one (a style, or a declared common behavior) that the generic path
+// records.
+static bool ApplyRegistered(JSContext* ctx, ShellRuntimeImpl* impl,
+                            shell::SpecId id, const shell::SpecNode* node,
+                            Str name, JSValueConst args, int argCount,
+                            JSValue* result) {
+    const shell::MethodDescriptor* method =
+        impl->components ? impl->components->Method(node->component.index, name)
+                         : nullptr;
+    bool commonBehavior = false;
+    for (const char* behavior : shell::kRegisteredCommonBehaviors) {
+        if (StrEq(name, behavior)) commonBehavior = true;
+    }
+    bool commonSlot = shell::IsRegisteredCommonSlot(name);
+    *result = JS_UNDEFINED;
+    if (commonBehavior && !method) {
+        *result = ThrowUnknownRegisteredMethod(ctx, name);
+        return true;
+    }
+    if (method) {
+        shell::SpecError failure = {};
+        if (!impl->scratch->IsLive(id, &failure)) {
+            *result = SpecFailure(ctx, failure);
+            return true;
+        }
+        shell::ComponentPayload payload = {};
+        shell::ComponentArgument* arguments = nullptr;
+        int count = 0;
+        if (!ComponentPayloadTransaction(
+                ctx, impl, method->name, method->arguments, args,
+                method->recorder, &payload, &arguments, &count)) {
+            *result = JS_EXCEPTION;
+            return true;
+        }
+        if (commonBehavior) {
+            if (!StrEq(name, StrL("on_click"))) return false;
+            shell::CallbackId callback = 0;
+            for (int i = 0; i < count; i++) {
+                const shell::ComponentArgument* value = arguments[i].Some();
+                if (value &&
+                    value->kind == shell::ComponentArgumentKind::Callback)
+                    callback = value->callback;
+            }
+            if (!callback) {
+                *result = JS_ThrowTypeError(ctx,
+                                            "on_click descriptor must declare "
+                                            "exactly one callback argument");
+                return true;
+            }
+            shell::SpecOp op = {};
+            op.kind = shell::SpecOpKind::Callback;
+            op.name = StrL("on_click");
+            op.callback = callback;
+            if (!impl->scratch->PushOp(id, op, &failure))
+                *result = SpecFailure(ctx, failure);
+            return true;
+        }
+        shell::SpecOp op = {};
+        op.kind = shell::SpecOpKind::RegisteredMethod;
+        op.name = Str(method->name);
+        op.payload = payload;
+        if (!impl->scratch->PushOp(id, op, &failure))
+            *result = SpecFailure(ctx, failure);
+        return true;
+    }
+    if (commonSlot) {
+        JSValue value =
+            argCount > 0 ? JS_GetPropertyUint32(ctx, args, 0) : JS_UNDEFINED;
+        double element = -1;
+        bool ok = JS_IsObject(value) &&
+                  JsObjectNumber(ctx, value, "__id", &element) && element >= 0;
+        JS_FreeValue(ctx, value);
+        if (!ok) {
+            *result = JS_ThrowTypeError(ctx, "%.*s(element) expects an element",
+                                        len(name), name.s);
+            return true;
+        }
+        shell::SpecError failure = {};
+        if (!impl->scratch->Claim((shell::SpecId)element, &failure)) {
+            *result = SpecFailure(ctx, failure);
+            return true;
+        }
+        shell::SpecOp op = {};
+        op.kind = shell::SpecOpKind::Slot;
+        op.name = name;
+        op.node = (shell::SpecId)element;
+        if (!impl->scratch->PushOp(id, op, &failure))
+            *result = SpecFailure(ctx, failure);
+        return true;
+    }
+    if (IsStyleCall(name, argCount)) return false;
+    *result = ThrowUnknownRegisteredMethod(ctx, name);
+    return true;
+}
+
 static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
                            JSValueConst* argv) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
@@ -2537,6 +3413,32 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
         return JS_ThrowRangeError(ctx, "element method has too many arguments");
     }
     int argCount = (int)argCount64;
+    const shell::SpecNode* receiver = impl->scratch->Node(id);
+    if (receiver && receiver->component
+                            .kind == shell::ComponentKind::Registered) {
+        for (int i = 0; i < argCount; i++) {
+            JSValue value = JS_GetPropertyUint32(ctx, argv[2], (uint32_t)i);
+            uint16_t ignored = 0;
+            bool sentinel = SlotIndex(ctx, value, &ignored);
+            JS_FreeValue(ctx, value);
+            if (sentinel) {
+                JSValue thrown = JS_ThrowTypeError(
+                    ctx,
+                    "`%.*s` cannot take a template argument yet; registered "
+                    "component methods are validated when their values are "
+                    "recorded",
+                    len(name), name.s);
+                ArenaDelete(arena);
+                return thrown;
+            }
+        }
+        JSValue settled = JS_UNDEFINED;
+        if (ApplyRegistered(ctx, impl, id, receiver, name, argv[2], argCount,
+                            &settled)) {
+            ArenaDelete(arena);
+            return settled;
+        }
+    }
     shell::SpecOp op = {};
     op.name = name;
     // The script's own name for an action, plus the handler, and the two
@@ -7004,13 +7906,20 @@ static void SetGlobalMagicFunction(JSContext* ctx, JSValueConst global,
 static const char kPrelude[] = R"JS(
 globalThis.__gpui = (() => {
   const explicit = Object.create(null);
-  const element = (id) => {
+  // A registered component's element answers only what every element shares
+  // — children and the declarative wrappers — from here. Everything else,
+  // slots included, goes to `__apply` with the script's own arguments, where
+  // its descriptor validates them: a component that declares `addon(element)`
+  // must not have the call turned into a built-in slot on the way.
+  const registeredExplicit = Object.create(null);
+  const element = (id, registered) => {
     let object;
     const target = { __id: id };
+    const table = registered ? registeredExplicit : explicit;
     object = new Proxy(target, {
       get(receiver, name) {
         if (name in receiver) return receiver[name];
-        if (name in explicit) return explicit[name].bind(object);
+        if (name in table) return table[name].bind(object);
         if (typeof name !== "string") return undefined;
         return (...args) => { __apply(id, name, args); return object; };
       },
@@ -7075,6 +7984,10 @@ globalThis.__gpui = (() => {
       declare(element(__state(this.__id, name)));
       return this;
     };
+  }
+  for (const name of ["child", "children", "map", "when", "hover", "active", "focus", "range_style",
+                      "cell_style", "cell_active_style", "caret_style"]) {
+    registeredExplicit[name] = explicit[name];
   }
   const finiteNonNegative = (value, name) => {
     if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw new TypeError(name + " must be a finite non-negative number");
@@ -8136,6 +9049,8 @@ globalThis.__gpui = (() => {
                                R"JS(
   const api = {
     View,
+    // The registered catalog's constructors wrap the node they recorded here.
+    __element: (id) => element(id, true),
     div: () => component("div"),
     h_flex: () => component("h_flex"),
     v_flex: () => component("v_flex"),
@@ -10102,6 +11017,10 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
     SetGlobalMagicFunction(impl->context, global, "__uniform_list",
                            NativeLazyList, 4, 1);
     JS_FreeValue(impl->context, global);
+    // Registered exports live apart from the built-in module object. Names
+    // such as `InputState` exist in both gpui-base and gpui-component; sharing
+    // `__gpui` would make the latter replace the former for every module.
+    InstallComponentCatalog(impl);
     BeginExecution(impl);
     JSValue result = JS_Eval(impl->context, kPrelude, sizeof(kPrelude) - 1,
                              "<gpui-shell prelude>", JS_EVAL_TYPE_GLOBAL);
@@ -10141,6 +11060,10 @@ ShellRuntime::~ShellRuntime() {
             VecReset(retired);
             impl->callbacks.Clear(impl->context);
         }
+        impl->componentStates.Clear();
+        StrFree(impl->componentStateProof);
+        StrFree(impl->componentModuleSource);
+        VecReset(impl->warnedDeprecatedExports);
         // Each holds a live view class, which must be released while the
         // context still exists — and the panel registry keeps a second
         // reference to every one of them in an App global that outlives this,
@@ -10193,11 +11116,33 @@ ShellRuntime::~ShellRuntime() {
     ControlRelease(control);
 }
 
-ShellRuntime* ShellRuntime::New(App*, ShellError* error) {
+// Rust's `random_component_state_proof`: what a state wrapper carries so a
+// handle minted by one runtime is refused by another.
+static Str RandomComponentStateProof() {
+    uint8_t bytes[16] = {};
+    if (!shell::SecureRandom(bytes, (int)sizeof(bytes))) {
+        uint64_t fallback =
+            (uint64_t)(TimeNow() * 1e9) ^ (uint64_t)(uintptr_t)&bytes;
+        memcpy(bytes, &fallback, sizeof(fallback));
+    }
+    StrBuilder proof;
+    proof.Append(StrL("gpui-shell-state-"));
+    static const char hex[] = "0123456789abcdef";
+    for (uint8_t byte : bytes) {
+        proof.AppendChar(hex[byte >> 4]);
+        proof.AppendChar(hex[byte & 15]);
+    }
+    return proof.TakeStr();
+}
+
+ShellRuntime* ShellRuntime::New(
+    App*, ShellError* error, const shell::FrozenComponentRegistry* components) {
     ShellErrorClear(error);
     ShellRuntime* runtime = new ShellRuntime();
     runtime->impl = new ShellRuntimeImpl();
     runtime->impl->owner = runtime;
+    runtime->impl->components = components;
+    runtime->impl->componentStateProof = RandomComponentStateProof();
     runtime->control = new ShellRuntimeControl();
     runtime->control->runtime = runtime;
     runtime->impl->scratch = new shell::SpecArena();
@@ -10745,6 +11690,7 @@ void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
     }
     VecReset(callbacks);
     impl->callbacks.RetireApplication(impl->context, application);
+    impl->componentStates.ReleaseApplication(application);
     // A template is defined once and used for the life of the module, so
     // nothing in a render would ever free one. The slot is emptied rather than
     // removed, because a template's id is its index and a closure in a
@@ -11674,6 +12620,291 @@ void ShellRuntime::DispatchTokenClick(shell::CallbackId click,
     Window* win = cx ? cx->win : nullptr;
     App* app = cx ? cx->app : nullptr;
     Dispatch(this, click, payload, win, app);
+}
+
+// ─── Registered component callbacks ────────────────────────────────────────
+//
+// engine/quickjs/mod.rs dispatch_component_event and its siblings: a handler
+// an adapter holds as a ComponentCallback, invoked from a native event (Event
+// phase) or asked for data or an element while the frame is built (Layout
+// phase).
+
+const shell::FrozenComponentRegistry* ShellRuntime::Components() const {
+    return impl ? impl->components : nullptr;
+}
+
+void* ShellRuntime::ComponentState(uint64_t handle, const char* kind,
+                                   Str* error, Arena* a) const {
+    if (!impl) return nullptr;
+    return impl->componentStates.Get(handle, kind, error, a);
+}
+
+// The entry a component callback names, when it may still run.
+static CallbackEntry* LiveComponentCallback(ShellRuntimeImpl* impl,
+                                            shell::CallbackId id, App* app,
+                                            Str* error, Arena* a) {
+    CallbackEntry* entry = impl ? impl->callbacks.Get(id) : nullptr;
+    if (!entry) {
+        if (error)
+            *error = StrDup(a, fmt("component callback %llu belongs to a "
+                                   "superseded render",
+                                   (unsigned long long)id));
+        return nullptr;
+    }
+    if (entry->view.IsValid() && (!app || !EntityGet(app, entry->view))) {
+        if (error)
+            *error = StrDup(a, fmt("component callback %llu owner has been "
+                                   "released",
+                                   (unsigned long long)id));
+        return nullptr;
+    }
+    return entry;
+}
+
+static bool CallbackValueFromJs(JSContext* ctx, JSValueConst value,
+                                shell::ComponentDataValue* out, Arena* a) {
+    if (JS_IsNull(value) || JS_IsUndefined(value)) {
+        *out = shell::ComponentDataValue::Null();
+        return true;
+    }
+    if (JS_IsBool(value)) {
+        *out = shell::ComponentDataValue::Boolean(JS_ToBool(ctx, value) != 0);
+        return true;
+    }
+    if (JS_IsNumber(value)) {
+        double number = 0;
+        if (JS_ToFloat64(ctx, &number, value) == 0 && isfinite(number)) {
+            *out = shell::ComponentDataValue::Number(number);
+            return true;
+        }
+    }
+    if (JS_IsString(value)) {
+        Str text;
+        if (!JsString(ctx, value, a, &text)) return false;
+        *out = shell::ComponentDataValue::String(text);
+        return true;
+    }
+    JS_ThrowTypeError(ctx,
+                      "component callbacks may only return null, boolean, "
+                      "finite number, or string");
+    return false;
+}
+
+static Str TakeException(ShellRuntimeImpl* impl, Arena* a) {
+    Arena* scratch = ArenaNew();
+    Str text = StrDup(a, ExceptionText(scratch, impl->context));
+    ArenaDelete(scratch);
+    return text;
+}
+
+bool shell::ComponentCallback::InvokeWith(
+    ShellRuntime* runtime, const shell::ComponentDataValue* arguments,
+    int count, Window* window, App* app, shell::ComponentDataValue* result,
+    Str* error, Arena* a) const {
+    ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
+    Arena* own = a ? nullptr : ArenaNew();
+    Arena* into = a ? a : own;
+    Str failure;
+    CallbackEntry* entry = LiveComponentCallback(impl, id, app, &failure, into);
+    bool ok = entry && window && app;
+    if (entry && !ok)
+        failure = StrDup(into, StrL("component callback needs a live window"));
+    if (ok) {
+        shell::CallScopeGuard scope =
+            shell::ScopeEnter(window, app, ScopePhase::Event, entry->view,
+                              entry->policy, runtime, entry->application);
+        BeginExecution(impl);
+        JSContext* ctx = impl->context;
+        int total = count + 1;
+        JSValue* args = (JSValue*)Alloc(into, (int)sizeof(JSValue) * total);
+        for (int i = 0; i < count; i++)
+            args[i] = ComponentDataToJs(ctx, arguments[i]);
+        args[count] = ContextObject(impl, scope.Generation());
+        JSValue value =
+            JS_Call(ctx, entry->function, JS_UNDEFINED, total, args);
+        for (int i = 0; i < total; i++) JS_FreeValue(ctx, args[i]);
+        if (JS_IsException(value)) {
+            failure = TakeException(impl, into);
+            ok = false;
+        } else {
+            shell::ComponentDataValue converted = {};
+            if (!CallbackValueFromJs(ctx, value, &converted, into)) {
+                failure = TakeException(impl, into);
+                ok = false;
+            } else if (result) {
+                *result = converted;
+            }
+            JS_FreeValue(ctx, value);
+        }
+        ShellError drained = {};
+        runtime->DrainJobs(kMaxJobBatch, &drained);
+        if (drained.IsSet()) {
+            log(drained.message);
+            ShellErrorClear(&drained);
+        }
+    }
+    if (!ok && error) *error = a ? failure : Str{};
+    if (!ok && !error && failure.s) logf("shell: %s\n", failure);
+    if (own) ArenaDelete(own);
+    return ok;
+}
+
+void shell::ComponentCallback::InvokeAndReport(
+    ShellRuntime* runtime, const char* context,
+    const shell::ComponentDataValue* arguments, int count, Window* window,
+    App* app) const {
+    Arena* a = ArenaNew();
+    Str error;
+    if (!InvokeWith(runtime, arguments, count, window, app, nullptr, &error,
+                    a)) {
+        logf("%s: %s\n", Str(context), error);
+    }
+    ArenaDelete(a);
+}
+
+// Runs `entry` in the Layout phase over a scratch description that leaves
+// the live one alone — Rust's TemporarySpecArena — and answers what it
+// returned. `batch` receives the description, owned by the caller.
+static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
+                            const shell::ComponentDataValue* arguments,
+                            int count, Ctx* cx, shell::SpecArena* batch,
+                            bool interactive) {
+    ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
+    JSContext* ctx = impl->context;
+    shell::SpecArena* outer = impl->scratch;
+    impl->scratch = batch;
+    shell::CallScopeGuard scope =
+        shell::ScopeEnter(cx->win, cx->app, ScopePhase::Layout, entry->view,
+                          entry->policy, runtime, entry->application);
+    shell::ScopeAdopt(entry->registeredIn);
+    BeginExecution(impl);
+    bool savedToken = impl->callbacks.tokenRender;
+    if (interactive) {
+        impl->callbacks.BeginTokenFrame(ctx, impl->tokenFrame);
+        impl->callbacks.tokenRender = true;
+    }
+    Arena* a = ArenaNew();
+    int total = count + 1;
+    JSValue* args = (JSValue*)Alloc(a, (int)sizeof(JSValue) * total);
+    for (int i = 0; i < count; i++)
+        args[i] = ComponentDataToJs(ctx, arguments[i]);
+    args[count] = ContextObject(impl, scope.Generation());
+    JSValue value = JS_Call(ctx, entry->function, JS_UNDEFINED, total, args);
+    for (int i = 0; i < total; i++) JS_FreeValue(ctx, args[i]);
+    ArenaDelete(a);
+    impl->callbacks.tokenRender = savedToken;
+    impl->scratch = outer;
+    return value;
+}
+
+bool shell::ComponentCallback::SnapshotWith(
+    ShellRuntime* runtime, const shell::ComponentDataValue* arguments,
+    int count, Ctx* cx, shell::ComponentDataValue* out, Arena* a,
+    Str* error) const {
+    ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
+    Str failure;
+    CallbackEntry* entry =
+        cx ? LiveComponentCallback(impl, id, cx->app, &failure, a) : nullptr;
+    if (!entry || !cx->win) {
+        if (error) *error = failure;
+        return false;
+    }
+    shell::SpecArena* batch = new shell::SpecArena();
+    JSValue value =
+        CallInLayout(runtime, entry, arguments, count, cx, batch, false);
+    bool ok = !JS_IsException(value);
+    if (ok) {
+        int nodes = 0;
+        ok = ComponentDataFromJs(impl->context, value, a, 0, &nodes, out);
+    }
+    JS_FreeValue(impl->context, value);
+    if (!ok) failure = TakeException(impl, a);
+    delete batch;
+    if (!ok && error) *error = failure;
+    return ok;
+}
+
+static El* BuildComponentElement(ShellRuntime* runtime, shell::CallbackId id,
+                                 const shell::ComponentDataValue* arguments,
+                                 int count, Ctx* cx, Str* error,
+                                 bool interactive) {
+    ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
+    Str failure;
+    CallbackEntry* entry =
+        cx ? LiveComponentCallback(impl, id, cx->app, &failure, cx->a)
+           : nullptr;
+    if (!entry || !cx->win) {
+        if (error) *error = failure;
+        return nullptr;
+    }
+    // The description's strings go into the frame arena: the elements built
+    // from it keep pointers into them and are painted after this returns.
+    shell::SpecArena* batch = new shell::SpecArena(cx->a);
+    JSValue value =
+        CallInLayout(runtime, entry, arguments, count, cx, batch, interactive);
+    El* element = nullptr;
+    bool ok = !JS_IsException(value);
+    shell::SpecId root = 0;
+    bool hasRoot = false;
+    if (ok && !JS_IsNull(value) && !JS_IsUndefined(value)) {
+        ok = ElementId(impl->context, value, &root);
+        hasRoot = ok;
+    }
+    JS_FreeValue(impl->context, value);
+    if (!ok) {
+        failure = TakeException(impl, cx->a);
+    } else if (hasRoot) {
+        ShellError materialized = {};
+        element = ShellMaterializeSpec(cx, runtime, batch, root, &materialized);
+        if (materialized.IsSet()) {
+            failure = StrDup(cx->a, materialized.message);
+            ShellErrorClear(&materialized);
+        }
+    }
+    delete batch;
+    if (error) *error = failure;
+    return element;
+}
+
+El* shell::ComponentCallback::BuildWith(
+    ShellRuntime* runtime, const shell::ComponentDataValue* arguments,
+    int count, Ctx* cx, Str* error) const {
+    return BuildComponentElement(runtime, id, arguments, count, cx, error,
+                                 false);
+}
+
+El* shell::ComponentCallback::BuildInteractiveWith(
+    ShellRuntime* runtime, const shell::ComponentDataValue* arguments,
+    int count, Ctx* cx, Str* error) const {
+    return BuildComponentElement(runtime, id, arguments, count, cx, error,
+                                 true);
+}
+
+Listener shell::ComponentListener(Ctx* cx, shell::ComponentEventRun run,
+                                  shell::ComponentCallback callback, void* user,
+                                  intptr_t value) {
+    shell::ComponentEventBinding* binding =
+        ArenaNew<shell::ComponentEventBinding>(cx->a);
+    binding->run = run;
+    binding->callback = callback;
+    binding->user = user;
+    binding->value = value;
+    return Listen(cx, &ScriptView::OnComponentEvent, (intptr_t)binding);
+}
+
+void* shell::MaterializeRequest::State(const shell::ComponentArgument& argument,
+                                       const char* kind) {
+    const shell::ComponentArgument* value = argument.Some();
+    if (!value || value->kind != shell::ComponentArgumentKind::Entity) {
+        Fail(StrL("component argument is not retained state"));
+        return nullptr;
+    }
+    Str why;
+    void* state =
+        runtime ? runtime->ComponentState(value->handle, kind, &why, cx->a)
+                : nullptr;
+    if (!state) Fail(why.s ? why : StrL("retained state is unavailable"));
+    return state;
 }
 
 ViewType* ViewTypeRetain(ViewType* type) {
