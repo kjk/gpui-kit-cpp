@@ -161,6 +161,75 @@ static void AnOpenMenuAnswersTheChordItself() {
     KeymapClear();
 }
 
+// crates/kit/tests/rendering.rs `menu_highlight_is_the_keyboard_cursor`: a
+// menu has one highlight, and it is the keyboard cursor. The pointer moves it
+// on hover and keys move it from wherever it is; a key press under a still
+// pointer ends the hover (GPUI's keyboard modality) and must not put the
+// highlight out. Rust reads pixels; this reads the selection the rows are lit
+// from, driving the window the way the platform does.
+static void MenuHighlightIsTheKeyboardCursor() {
+    KeymapClear();
+    PopupMenuInitKeys();
+
+    Arena* a = ArenaNew();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Entity<PopupMenuState> menu = EntityNewState<PopupMenuState>(&app);
+    PopupMenuState* s = menu.Get(&app);
+    s->open = true;
+    PopupMenuBeginRows(s);
+    Listener hover = ListenTo(menu, &PopupMenuState::OnItemHover, 0);
+    for (int i = 0; i < 4; i++) {
+        PopupMenuRow row;
+        row.clickable = true;
+        PopupMenuAddRow(s, row);
+        HitRect hr = {};
+        hr.id = 100 + i;
+        hr.bounds = {0, (float)i * 26, 200, 26};
+        hr.onHover = ListenerArg(hover, i);
+        VecAppend(win->paint.hits, hr);
+    }
+    El* root = Div(a)->Child(MenuLikeEl(a, menu, 7));
+    FocusCollect(win, root);
+    win->focusId = 7;
+
+    auto moveTo = [&](int row) {
+        PlatformInput in = {};
+        in.kind = PlatformInputKind::MouseMove;
+        in.mouseMove.x = 20;
+        in.mouseMove.y = (float)row * 26 + 13;
+        WindowDispatchInput(win, &in);
+    };
+
+    moveTo(1);
+    utassert(s->selected == 1 && !WindowLastInputWasKeyboard(win));
+    // `down` moves the highlight on, and the hovered row is not lit beside
+    // it: the key ended the hover.
+    WindowKeyDown(win, KeyDown, false, false, false);
+    utassert(s->selected == 2 && WindowLastInputWasKeyboard(win));
+    utassert(win->hoverId == 0);
+    // Moving the pointer brings the highlight back to the row under it.
+    moveTo(1);
+    utassert(s->selected == 1 && !WindowLastInputWasKeyboard(win));
+    // An unbound key under a still pointer keeps it there...
+    WindowKeyDown(win, KeyX, false, false, false);
+    utassert(s->selected == 1 && WindowLastInputWasKeyboard(win));
+    // ...so `down` moves on from it rather than restarting at the top.
+    WindowKeyDown(win, KeyDown, false, false, false);
+    utassert(s->selected == 2);
+    // A modifier on its own is ModifiersChanged in GPUI, not a key press.
+    moveTo(2);
+    WindowKeyDown(win, KeyShift, true, false, false);
+    utassert(!WindowLastInputWasKeyboard(win) && win->hoverId == 102);
+
+    VecReset(win->paint.hits);
+    delete win;
+    ArenaDelete(a);
+    EntityDropAll(&app);
+    KeymapClear();
+}
+
 static void TheMenuBarWrapsBothWays() {
     using namespace gpui::component;
     // on_move_right / on_move_left, over three titles.
@@ -404,6 +473,7 @@ void TestPopupMenu() {
     AMenuWithNoRows();
     ALongStoryMenuFitsWithoutTruncation();
     AnOpenMenuAnswersTheChordItself();
+    MenuHighlightIsTheKeyboardCursor();
     ATriggerTogglesTheMenuAsItWasDrawn();
     TheMenuBarWrapsBothWays();
     SourceMenuItemKindsRemainDistinct();

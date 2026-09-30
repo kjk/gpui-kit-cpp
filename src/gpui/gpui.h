@@ -5682,7 +5682,15 @@ struct Window {
     // children-invalidated event only when it changes, not on every animation
     // repaint.
     uint64_t accessibilityHash = 0;
+    // The element the pointer is over, for hover styles and on_hover. 0
+    // while the last input was a key: GPUI's Hitbox::is_hovered answers
+    // false in keyboard modality, so a key press ends the hover under a
+    // still pointer and the next move or press brings it back.
     int hoverId = 0;
+    // Window::last_input_modality == Keyboard: set by a key press, cleared by
+    // a pointer move or press. A modifier on its own is not a key press, as
+    // GPUI reads it as ModifiersChanged.
+    bool lastInputKeyboard = false;
     int focusId = 0;
     // window.focus_generation: bumped every time the focus moves, so a
     // keystroke can tell that it stayed put without holding onto the element.
@@ -6463,6 +6471,10 @@ void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
 // One more frame, rather than every frame. Safe to call from inside a render.
 void WindowRequestAnimationFrame(Window* win);
+// window.last_input_was_keyboard(): whether the last input was a key press
+// rather than the pointer. What focus_visible reads, so a control focused by
+// a click does not show the focus a Tab to it would.
+bool WindowLastInputWasKeyboard(const Window* win);
 
 // Collect focusable click targets from last paint for Tab cycling.
 void FocusCollect(Window* win, El* root);

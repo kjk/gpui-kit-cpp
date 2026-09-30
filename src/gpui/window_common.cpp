@@ -812,11 +812,8 @@ static bool SliderKeyStep(Window* win, int key, bool ctrl, bool alt);
 static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt);
 static bool PageScrollBy(Window* win, int dir);
 
-bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
-                   bool platform, bool function) {
-    if (!win) {
-        return false;
-    }
+static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
+                                  bool alt, bool platform, bool function) {
     // The focused field gets the chord first, as GPUI dispatches an action to
     // whatever has focus before anything else sees the key. The view's own
     // subscription still hears it — that is Rust's cx.propagate(), which every
@@ -985,6 +982,61 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
     win->eatReturn = false;
     AppInvalidate(win);
     return eaten || windowHandled || win->keyPressPending;
+}
+
+bool WindowLastInputWasKeyboard(const Window* win) {
+    return win && win->lastInputKeyboard;
+}
+
+// The pointer pressed without moving first: the window is back in mouse
+// modality, and the element under the pointer (x, y) is hovered again. Rust
+// recomputes the hover at the next paint; here the hover id is the hover, so
+// it is put back now, with the on_hover edges it takes.
+static void WindowPointerInput(Window* win, float x, float y) {
+    if (!win->lastInputKeyboard) {
+        return;
+    }
+    win->lastInputKeyboard = false;
+    int id = HitTest(&win->paint, x, y);
+    if (id != win->hoverId) {
+        WindowHoverChanged(win, win->hoverId, id);
+        win->hoverId = id;
+    }
+    AppInvalidate(win);
+}
+
+static bool IsModifierKey(int key) {
+    // VK_SHIFT/CONTROL/MENU, the left and right halves of each, the Windows
+    // keys and caps lock: GPUI reports these as ModifiersChanged, which does
+    // not move the modality.
+    return key == KeyShift || key == KeyControl || key == KeyAlt ||
+           key == 0x14 || key == 0x5B || key == 0x5C ||
+           (key >= 0xA0 && key <= 0xA5);
+}
+
+bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
+                   bool platform, bool function) {
+    if (!win) {
+        return false;
+    }
+    // Window::dispatch_event: a KeyDown puts the window in keyboard modality
+    // before anything handles it. `Hitbox::is_hovered` answers false from
+    // then on, so the hovered element hears on_hover(false) once the key has
+    // been handled — Rust defers it to the next paint, after the action.
+    bool wasKeyboard = win->lastInputKeyboard;
+    if (!IsModifierKey(key)) {
+        win->lastInputKeyboard = true;
+    }
+    bool handled =
+        WindowKeyDownDispatch(win, key, shift, ctrl, alt, platform, function);
+    if (!wasKeyboard && win->lastInputKeyboard) {
+        if (win->hoverId) {
+            WindowHoverChanged(win, win->hoverId, 0);
+            win->hoverId = 0;
+        }
+        AppInvalidate(win);
+    }
+    return handled;
 }
 
 void WindowKeyUp(Window* win, int key, bool shift, bool ctrl, bool alt,
@@ -1718,6 +1770,12 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
     float y = in.y;
     win->mouseX = x;
     win->mouseY = y;
+    // Back to mouse modality. The hover id is 0 since the key press, so the
+    // hit test below finds the element as newly entered, tooltip and all.
+    if (win->lastInputKeyboard) {
+        win->lastInputKeyboard = false;
+        AppInvalidate(win);
+    }
     win->mouseModifiers = in.modifiers;
     // The hand over a symbol a secondary-hover found a definition for, which
     // is the hitbox `hover_definition_hitbox` inserts. The bounds are last
@@ -2000,6 +2058,7 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     win->touchPressPending = false;
     float x = in.x;
     float y = in.y;
+    WindowPointerInput(win, x, y);
     // text_selection.rs resets this in capture phase. Controls that own the
     // press set it while the event bubbles; selection begins afterwards.
     BaseResetTextSelectionSuppression(win->app);

@@ -15,10 +15,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `cb12d200422c449fbc64004fa220aa4d4d32c60d` (2026-09-29,
-website: Keep box-drawing glyphs in the gallery font subsets (#3305)). The web
-gallery's font subsets keep the box-drawing glyphs; story-web only, nothing
-ported. The current update target is
+Processed through `cc8399120aa6888ebb2c0b4ed2d085c8fd161724` (2026-09-29,
+table, menu: Show keyboard focus on `DataTable` and keep menu highlights on
+key presses (#3307)). A keyboard-focused DataTable shows focus_ring_style,
+gated on the window's last input being a key, and a popup menu keeps its
+highlight when a key press ends the hover under a still pointer. The runtime
+gained GPUI's input modality: a key press ends hover until the pointer moves
+or presses again. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust

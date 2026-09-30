@@ -1269,7 +1269,11 @@ El* DataTable::BuildEl() {
         }
         box->TrackFocus(s->focus);
     }
-    box->FocusRing(false)->FocusOnPress();
+    // data_table.rs: `.when(focus_handle.is_focused(window) &&
+    // window.last_input_was_keyboard(), focus_ring_style)`. Clicking a row
+    // focuses the table too, so only keyboard focus shows it, as CSS
+    // `:focus-visible` does; the runtime paints it only while focused.
+    box->FocusRing(WindowLastInputWasKeyboard(cx->win))->FocusOnPress();
     TableBindKeys(cx, box, state);
     return box;
 }

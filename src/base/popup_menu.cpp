@@ -327,10 +327,13 @@ void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
     // The hovered row is the selected one; leaving it deselects, unless it is
     // a submenu row, which stays selected while the pointer travels into the
     // submenu it opened.
+    // A key press ends hover under a still pointer; keep the highlight then,
+    // so the next arrow key moves on from this item (popup_menu.rs).
     if (ev->hovered) {
         self->selected = (int)ix;
         self->openSubmenu = -1;
-    } else if (self->selected == (int)ix && self->openSubmenu != (int)ix) {
+    } else if (self->selected == (int)ix && self->openSubmenu != (int)ix &&
+               !WindowLastInputWasKeyboard(cx->win)) {
         self->selected = -1;
     }
     Notify(cx);
