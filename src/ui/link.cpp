@@ -46,15 +46,21 @@ El* Link::IntoEl() {
     if (children.len > 0) {
         // The colour and underline go on the link itself, as link.rs sets
         // them, for the children to take.
-        e->Fg(disabled ? th.mutedFg : th.blue)->Underline();
-        for (El* child : children) e->Child(child);
+        e->Fg(disabled ? th.mutedFg : th.link)->Underline();
+        // GPUI's text decoration is part of the inherited text style, so a
+        // text child of the link is underlined; an El's underline is its own,
+        // so a direct text child is given it here.
+        for (El* child : children) {
+            if (child->kind == ElKind::Text) child->Underline();
+            e->Child(child);
+        }
         return e;
     }
     // text_decoration_1(): a link is underlined at rest, not only on hover.
     e->Child(TextEl(a, text.s ? text : href)
                  ->Font(14)
                  ->Underline()
-                 ->Fg(disabled ? th.mutedFg : th.blue));
+                 ->Fg(disabled ? th.mutedFg : th.link));
     return e;
 }
 

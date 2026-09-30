@@ -2463,15 +2463,26 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         }
     }
 
+    bool borderColored = false;
     for (const shell::SpecOp& op : node->ops) {
         if (op.kind == shell::SpecOpKind::NullaryStyle) {
             if (!ApplyNullary(element, op.name) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
+            if (StrEq(op.name, "border_color")) borderColored = true;
             if (!ApplyParam(element, op, error) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("invalid style call `%s`", op.name));
         }
     }
+    // GPUI draws an unset border colour as transparent: `div().border(1)`
+    // takes up the width and paints nothing. An El's colour defaults to
+    // black, which is what the port's own widgets rely on, so a plain box the
+    // script bordered without a colour is told so here.
+    bool plainBox = node->component.kind == shell::ComponentKind::Div ||
+                    node->component.kind == shell::ComponentKind::HFlex ||
+                    node->component.kind == shell::ComponentKind::VFlex;
+    if (plainBox && !borderColored)
+        element->style.borderColor = Rgba{0, 0, 0, 0};
     ApplyMotions(cx, node, id, behavior, element);
     if (node->component.kind == shell::ComponentKind::SliderThumb) {
         shell::RetainedEntry* retained =
