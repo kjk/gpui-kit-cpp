@@ -25,6 +25,7 @@ bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDelegateCollections(shell::ComponentRegistry*,
                                  shell::RegistryError*);
 bool RegisterDelegateCombobox(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterDelegateSelect(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
@@ -59,6 +60,12 @@ void SetListRowProbe(ListRowProbe probe);
 // script callback — `confirm` false for Change — with the event's values.
 using ComboboxEventProbe = void (*)(bool confirm, const Str* values, int count);
 void SetComboboxEventProbe(ComboboxEventProbe probe);
+
+// delegate_select/mod.rs test_probe, widened into a seam: when set, it hears
+// the value of every SelectEvent::Confirm a retained Select host receives,
+// before the script callback.
+using SelectProbe = void (*)(Str value);
+void SetSelectProbe(SelectProbe probe);
 
 // display/mod.rs
 bool RegisterDisplayAlert(shell::ComponentRegistry*, shell::RegistryError*);

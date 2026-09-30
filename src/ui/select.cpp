@@ -483,6 +483,10 @@ void SelectToggleOpen(SelectState* s, Ctx* cx) {
     }
 }
 
+void SelectState::OnToggle(SelectState* self, Ctx* cx, const ClickEvent*) {
+    SelectToggleOpen(self, cx);
+}
+
 void SelectClear(SearchableListState* s, Ctx* cx) {
     if (!s) {
         return;
@@ -518,6 +522,11 @@ El* Select::IntoEl() {
     IdScope scope(cx, id);
     const Theme& th = ThemeNow(cx->app);
     SearchableListState* s = state.Get(cx);
+    // select.rs toggles its own menu from the trigger; a caller that owns the
+    // toggle (the story's one-open-at-a-time pages) still gives its own.
+    if (!onToggle.IsValid() && selectState.IsValid()) {
+        onToggle = ListenTo(selectState, &SelectState::OnToggle);
+    }
     if (SelectState* owner = selectState.Get(cx)) {
         if (query) {
             owner->activeQuery = query;

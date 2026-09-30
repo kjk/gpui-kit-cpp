@@ -65,6 +65,12 @@ struct SearchableListDelegate {
     El* (*renderItem)(void* user, Ctx* cx, IndexPath path,
                       const SearchableListItem* item, bool checked) = nullptr;
     El* (*renderSectionHeader)(void* user, Ctx* cx, int section) = nullptr;
+    // SearchableListItem::render: the content of one row inside the standard
+    // row, whose check, highlight and size stay the list's. Null, or a null
+    // answer, keeps the default content — the title with its icon and badge.
+    // `renderItem` above replaces the whole row instead.
+    El* (*renderItemContent)(void* user, Ctx* cx, IndexPath path,
+                             const SearchableListItem* item) = nullptr;
     bool (*isItemEnabled)(void* user, IndexPath path,
                           const SearchableListItem* item,
                           const App* app) = nullptr;

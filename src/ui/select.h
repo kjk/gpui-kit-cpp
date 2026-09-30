@@ -79,6 +79,9 @@ struct SelectState {
     void Clean(Ctx* cx);
     void WatchBlur(Window* win);
 
+    // Select's own trigger click: what a Select bound to this state toggles
+    // with when its caller gave it no OnToggle.
+    static void OnToggle(SelectState* self, Ctx* cx, const ClickEvent* event);
     static void OnListClose(SelectState* self, Ctx* cx, const TickEvent* event);
     static void OnListChange(SelectState* self, Ctx* cx,
                              const ListEvent* event);

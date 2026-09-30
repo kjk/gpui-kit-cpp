@@ -22,6 +22,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterControls,
     &RegisterDelegateCollections,
     &RegisterDelegateCombobox,
+    &RegisterDelegateSelect,
     &RegisterDisplay,
     &RegisterCompound,
     &RegisterTypedCompound,

@@ -4274,6 +4274,126 @@ void ComboboxRefusesWhatRustRefuses() {
         StrL("Combobox expects id, rows, on_change, and on_confirm "
              "callbacks")));
 }
+
+// ─── delegate_select/mod.rs ────────────────────────────────────────────────
+
+// delegate_select_host.rs select_catalog_exposes_native_retained_contract.
+void SelectCatalogExposesNativeRetainedContract() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateSelect);
+    utassert(catalog.ok);
+    const char* names[] = {"Select"};
+    utassert(catalog.NamesAre(names, 1));
+    utassert(catalog.Documented());
+}
+
+// mod.rs test_probe: the selected values, in order.
+char gSelected[8][32];
+int gSelectedCount = 0;
+
+void RecordSelected(Str value) {
+    if (gSelectedCount >= 8) return;
+    snprintf(gSelected[gSelectedCount++], 32, "%.*s", (int)len(value), value.s);
+}
+
+// delegate_select_host.rs select_native_click_emits_selected_stable_value: a
+// click on the trigger opens the list, whose rows the script renderer
+// draws, and a click on the first row reports its stable id. Rust clicks at
+// window coordinates; here the clicks go to the trigger's and the row's own
+// listeners.
+void SelectNativeClickEmitsSelectedStableValue() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateSelect);
+    component_shell::SetSelectProbe(&RecordSelected);
+    gSelectedCount = 0;
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { Select } from 'gpui-component';\n"
+                       "export default class App extends View {\n"
+                       "  render() {\n"
+                       "    return div().size_full().child(new "
+                       "Select('people', () => [\n"
+                       "      {id: 'alpha', label: 'Alpha'}, {id: 'beta', "
+                       "label: 'Beta'}\n"
+                       "    ], row => div().child(`Row ${row.label}`), (value, "
+                       "cx) => { this.selected = value; cx.notify(); })"
+                       ".placeholder('Choose'))\n"
+                       "      .child(`Selected:${this.selected}`);\n"
+                       "  }\n"
+                       "}\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(FindText(root, StrL("Row Alpha")) == nullptr);
+        El* trigger = ListenerAbove(root, StrL("Choose"));
+        utassert(trigger != nullptr);
+        if (!trigger) return;
+        Click(host, trigger);
+        root = Rerender(host);
+        // The rows are the script renderer's, inside the native rows.
+        El* row = ListenerAbove(root, StrL("Row Alpha"));
+        utassert(row != nullptr);
+        utassert(FindText(root, StrL("Row Beta")) != nullptr);
+        if (!row) return;
+        Click(host, row);
+        utassert(gSelectedCount == 1);
+        utassert(strcmp(gSelected[0], "alpha") == 0);
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Selected:alpha")) != nullptr);
+        // The trigger names the retained selection across the re-render.
+        utassert(FindText(root, StrL("Alpha")) != nullptr);
+        utassert(len(host.ViewError()) == 0);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+    }
+    component_shell::SetSelectProbe(nullptr);
+}
+
+// mod.rs: rows need a string id and label, and a Select takes no children.
+void SelectRefusesWhatRustRefuses() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateSelect);
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { Select } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Select('s', () => [{label:'A'}], r => "
+                       "div(), v => {}); } }\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(FindText(root, StrL("Invalid Select rows: Select row 0 "
+                                     "requires a string `id`")) != nullptr);
+    }
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { Select } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Select('s', () => ({}), r => div(), v => "
+                       "{}); } }\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(FindTextPrefix(root, StrL("Failed to snapshot Select rows: "
+                                           "component delegate snapshot")) !=
+                 nullptr);
+    }
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { Select } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Select('s', () => [], r => div(), v => {})"
+                       ".child(div()); } }\n"),
+                  &catalog.frozen);
+        host.Render();
+        utassert(StrContains(host.runtime->LastComponentFailure(),
+                             StrL("Select does not accept children")));
+    }
+    utassert(StrContains(
+        CallErrorTemp("Select",
+                      "new Select('s', () => [], r => null, v => {})"
+                      ".menu_width(-1)"),
+        StrL("Select.menu_width received an invalid value")));
+    utassert(StrContains(
+        CallErrorTemp("Select",
+                      "new Select(' ', () => [], r => null, v => {})"),
+        StrL("Select expects id, rows callback, row renderer, and selection "
+             "callback")));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -4326,6 +4446,10 @@ void TestComponentShell() {
     ComboboxCatalogExposesNativeSingleSelectContract();
     ComboboxNativeClickEmitsChangeAndConfirmForStableValue();
     ComboboxRefusesWhatRustRefuses();
+    TestSuite("delegate_select");
+    SelectCatalogExposesNativeRetainedContract();
+    SelectNativeClickEmitsSelectedStableValue();
+    SelectRefusesWhatRustRefuses();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

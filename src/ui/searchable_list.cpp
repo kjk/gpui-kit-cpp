@@ -928,6 +928,12 @@ El* SearchableList::IntoEl() {
                                            ->Fg(th.primaryFg)
                                            ->LineHeight(1.4f)));
         }
+        if (hasDelegate && delegate.renderItemContent) {
+            if (El* custom =
+                    delegate.renderItemContent(delegate.user, cx, path, &it)) {
+                content = custom;
+            }
+        }
         El* row =
             hasDelegate ? delegate.RenderItem(cx, path, &it, checked) : nullptr;
         if (!row) {
