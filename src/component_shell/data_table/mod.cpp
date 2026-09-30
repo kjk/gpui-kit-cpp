@@ -221,7 +221,8 @@ static El* Render(MaterializeRequest* request, State* state,
         style.Apply(host);
         float h = host->style.height;
         if (h > 0) {
-            float body = h - table->rowHeight;
+            // The table fills the host, its own border inside it.
+            float body = h - table->rowHeight - (table->bordered ? 2.f : 0.f);
             if (body > 0) table->H(body);
         }
     }

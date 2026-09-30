@@ -968,13 +968,22 @@ El* DataTable::BuildEl() {
 
     Listener headClick = ListenTo(state, &TableState::OnHeadClick, 0);
     Listener sortClick = ListenTo(state, &TableState::OnSortClick, 0);
+    // render_table_head: the head row is on table_head, in
+    // table_head_foreground, pinned pane and scrolling pane alike.
     El* headFixed = gpui::TableHeader::New(cx, StrL("head-fixed"))
                         ->FlexRow()
                         ->Shrink0()
                         ->H(rowHeight)
+                        ->Bg(th.tokens.tableHead)
+                        ->Fg(th.tableHeadFg)
                         ->BorderB(1, th.border);
-    El* headWrap = follow(
-        Div(a)->FlexRow()->W(kFill)->H(rowHeight)->BorderB(1, th.border));
+    El* headWrap = follow(Div(a)
+                              ->FlexRow()
+                              ->W(kFill)
+                              ->H(rowHeight)
+                              ->Bg(th.tokens.tableHead)
+                              ->Fg(th.tableHeadFg)
+                              ->BorderB(1, th.border));
     El* headScroll = hasDelegate && delegate.renderHeader
                          ? delegate.renderHeader(cx, data)
                          : nullptr;
@@ -1010,9 +1019,8 @@ El* DataTable::BuildEl() {
             // off its col_groups.
             th_->BoundsOut(&s->colBounds[d]);
         }
-        if (d > 0) {
-            th_->BorderL(1, th.border);
-        }
+        // No rule between two heads of its own: render_th draws none, and the
+        // hairline a resizable column shows is its resize handle's.
         // The gap the dragged head would drop into, drawn down the edge it
         // would land on.
         if (s && s->dropGap == d) {
@@ -1044,7 +1052,6 @@ El* DataTable::BuildEl() {
                                         ->Font(UiTableCellFontPx(size) > 0
                                                    ? UiTableCellFontPx(size)
                                                    : 14.f)
-                                        ->Fg(th.foreground)
                                         ->LineHeight(1.f));
         if (col.selectable) {
             BindPathClick(content, StrDup(a, fmt("col-header-%d", c)),
@@ -1225,9 +1232,6 @@ El* DataTable::BuildEl() {
                 td->JustifyEnd();
             } else if (columns[c].center) {
                 td->JustifyCenter();
-            }
-            if (d > 0) {
-                td->BorderL(1, th.tableRowBorder);
             }
             if (s && TableSelectedCol(s) == c) {
                 td->Bg(BackgroundOpacity(th.tokens.accent, 0.5f));
