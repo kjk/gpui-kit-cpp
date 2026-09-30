@@ -94,6 +94,7 @@ static float AvatarTextPx(UiSize s) {
 Avatar* Avatar::WithSize(UiSize s) {
     size = AvatarSizePx(s);
     textPx = AvatarTextPx(s);
+    textSemibold = s == UiSize::Large;
     return this;
 }
 Avatar* Avatar::Radius(float v) {
@@ -117,15 +118,66 @@ struct AvatarIdentityColors {
     Rgba border = {};
 };
 
-// Twelve evenly spaced OkLCH hues keep perceived brightness constant. Rust's
-// FxHash and this FNV hash may select different positions, but both select
-// from the same pinned ring.
-static AvatarIdentityColors AvatarIdentity(const Theme& th, Str initials) {
-    uint32_t h = 2166136261u;
-    for (int i = 0; i < len(initials); i++) {
-        h ^= (uint8_t)initials.s[i];
-        h *= 16777619u;
+// rustc-hash 2's multiply_mix: the two halves of the 128-bit product folded
+// together, written with 32-bit halves so it needs no 128-bit type.
+static uint64_t FxMultiplyMix(uint64_t x, uint64_t y) {
+    uint64_t xl = (uint32_t)x, xh = x >> 32, yl = (uint32_t)y, yh = y >> 32;
+    uint64_t ll = xl * yl, lh = xl * yh, hl = xh * yl, hh = xh * yh;
+    uint64_t mid = (ll >> 32) + (uint32_t)lh + (uint32_t)hl;
+    uint64_t lo = (mid << 32) | (uint32_t)ll;
+    uint64_t hi = hh + (lh >> 32) + (hl >> 32) + (mid >> 32);
+    return lo ^ hi;
+}
+
+static uint64_t FxLoad(const uint8_t* p, int n) {
+    uint64_t v = 0;
+    for (int i = n - 1; i >= 0; i--) v = (v << 8) | p[i];
+    return v;
+}
+
+// rustc-hash 2's hash_bytes.
+static uint64_t FxHashBytes(const uint8_t* b, int n) {
+    uint64_t s0 = 0x243f6a8885a308d3ull, s1 = 0x13198a2e03707344ull;
+    if (n <= 16) {
+        if (n >= 8) {
+            s0 ^= FxLoad(b, 8);
+            s1 ^= FxLoad(b + n - 8, 8);
+        } else if (n >= 4) {
+            s0 ^= FxLoad(b, 4);
+            s1 ^= FxLoad(b + n - 4, 4);
+        } else if (n > 0) {
+            s0 ^= b[0];
+            s1 ^= ((uint64_t)b[n - 1] << 8) | b[n / 2];
+        }
+    } else {
+        int at = 0;
+        while (n - 1 - at >= 16) {
+            uint64_t x = FxLoad(b + at, 8), y = FxLoad(b + at + 8, 8);
+            uint64_t t = FxMultiplyMix(s0 ^ x, 0xa4093822299f31d0ull ^ y);
+            s0 = s1;
+            s1 = t;
+            at += 16;
+        }
+        s0 ^= FxLoad(b + n - 16, 8);
+        s1 ^= FxLoad(b + n - 8, 8);
     }
+    return FxMultiplyMix(s0, s1) ^ (uint64_t)n;
+}
+
+// gpui::hash(&SharedString): FxBuildHasher over the string, which Hash
+// writes as its bytes and then 0xff.
+static uint64_t AvatarNameHash(Str s) {
+    const uint64_t k = 0xf1357aea2e62a9c5ull;
+    uint64_t h = 0;
+    h = (h + FxHashBytes((const uint8_t*)s.s, len(s))) * k;
+    h = (h + 0xff) * k;
+    return (h << 26) | (h >> 38);
+}
+
+// Twelve evenly spaced OkLCH hues keep perceived brightness constant, the
+// one for a name picked by gpui::hash of its initials, as Rust does.
+static AvatarIdentityColors AvatarIdentity(const Theme& th, Str initials) {
+    uint64_t h = AvatarNameHash(initials);
     float deg = (float)((h % 12) * 30);
     AvatarIdentityColors out;
     if (th.mode == ThemeMode::Dark) {
@@ -169,8 +221,9 @@ El* Avatar::IntoEl() {
         identityBorder = identity.border;
     }
     float txt = textPx > 0 ? textPx : size * 0.35f;
-    El* inner = named ? TextEl(a, initials)->Font(txt)->Fg(text)->Semibold()
+    El* inner = named ? TextEl(a, initials)->Font(txt)->Fg(text)
                       : IconEl(a, placeholder, size * 0.6f)->Fg(text);
+    if (named && textSemibold) inner->Semibold();
     El* fb = AvatarFallback::New(cx)
                  ->W(innerSize)
                  ->H(innerSize)

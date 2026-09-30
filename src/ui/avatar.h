@@ -27,6 +27,8 @@ struct Avatar {
     // Set by WithSize; drives the fallback text size the way avatar_text_size
     // does. -1 means the caller gave an explicit pixel size.
     float textPx = -1;
+    // avatar_text_size: only a Large avatar sets its initials semibold.
+    bool textSemibold = false;
     float radius = -1;
     float borderW = 1;
     Rgba borderC = {};
