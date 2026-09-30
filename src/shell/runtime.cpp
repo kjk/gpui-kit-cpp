@@ -10316,6 +10316,12 @@ static JSValue NativeDockAddPanel(JSContext* ctx, JSValueConst, int argc,
     int panel = DockAddPanelDef(state, def);
     int node = DockGroupFor(state, placement);
     DockTabsAdd(state, node, panel);
+    // add_panel_inner inserts into the first tab group with `activate:
+    // true`: the panel just added is the one its group shows.
+    if (node >= 0 && node < state->nodes.len && !state->nodes[node].split &&
+        state->nodes[node].panel.len > 0) {
+        state->nodes[node].activeIx = state->nodes[node].panel.len - 1;
+    }
     DockSide* side = DockSideOf(state, placement);
     if (side && size >= 0) side->size = (float)size;
     if (window) AppInvalidate(window);
