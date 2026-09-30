@@ -80,8 +80,12 @@ static El* StepperSep(Arena* a, const Theme& th, UiSize size, Axis layout,
         } else {
             // Centered steps put the indicator in the middle of the step, so
             // the line spans from this middle to the next one.
-            sep->LeftRel(0.5f)->Left(icon * 0.5f + kStepperGap);
-            sep->RightRel(-0.5f)->Right(icon * 0.5f + kStepperGap);
+            // `mx(..)` with `left(relative(0.5)).right(relative(-0.5))`:
+            // the pixels are margins, the insets pure fractions.
+            sep->MarginL(icon * 0.5f + kStepperGap)
+                ->MarginR(icon * 0.5f + kStepperGap)
+                ->LeftRel(0.5f)
+                ->RightRel(-0.5f);
         }
     } else {
         sep->W(wide)->Left((icon - wide) * 0.5f);
@@ -151,12 +155,13 @@ El* StepperItem::IntoEl() {
     } else {
         root->FlexCol();
     }
+    // flex_1() is GPUI's zero-percent basis.
     if (!isLast) {
-        root->Flex1();
+        root->Flex1Rel();
     }
     root->ItemsStart();
     if (textCenter) {
-        root->Flex1()->JustifyCenter();
+        root->Flex1Rel()->JustifyCenter();
     }
     refiner.Apply(root);
     El* trig = StepperTrigger(a, th, this);
