@@ -1273,6 +1273,15 @@ typedef void (*WhitespaceMarkFn)(void* ud, const WhitespaceMark* m);
 int WhitespaceMarksVisit(Str s, float spaceMarkW, WhitespaceRectsFn rects,
                          WhitespaceMarkFn emit, void* ud);
 
+// indent_guides (Rust layout_indent_guides): where the guides of a line
+// whose leading whitespace is `indentCount` columns go — one every
+// `tabSize` columns from column 0, at `indentWidth * offset / tabSize`,
+// where `indentWidth` is the shaped width of `tabSize` spaces in the run's
+// font (measure_indent_width) rather than a guessed column. Returns how many
+// it wrote to `out`.
+int IndentGuideXs(float indentWidth, int indentCount, int tabSize, float* out,
+                  int max);
+
 // Which of crates/ui/src/chart's charts this series is. They share the axis,
 // the grid and the labels; what differs is the shape drawn over them.
 enum class ChartKind : uint8_t {
@@ -2486,6 +2495,11 @@ struct El {
     // show_whitespaces: the colour of the mark painted over every space and
     // tab of this run. Alpha 0, the default, paints none.
     Rgba whitespaceColor = {0, 0, 0, 0};
+    // indent_guides: a hairline in this colour at each IndentGuideXs of the
+    // run's first line box, measured in its own font. Alpha 0 paints none.
+    Rgba indentGuideColor = {0, 0, 0, 0};
+    int16_t indentGuideCount = 0;
+    uint8_t indentGuideTab = 0;
     float caretW = 2;
     float laidFont = 0; // resolved font size from last LayoutEl
     float laidMaxW = 0; // MeasureText maxW used (0 = unconstrained)
@@ -2772,6 +2786,10 @@ struct El {
     // show_whitespaces: mark every space and tab of this run, measured
     // against its own shaped glyphs (see WhitespaceMarksVisit).
     El* Whitespaces(Rgba color);
+    // indent_guides: guides for `indentCount` columns of leading whitespace,
+    // one every `tabSize` columns, measured against this run's font (see
+    // IndentGuideXs). Painted under the run's washes and glyphs.
+    El* IndentGuides(Rgba color, int indentCount, int tabSize);
     El* Spans(const TextSpan* runs, int n);
     // The marked range, which is drawn underlined in the text's own colour.
     El* MarkRange(int lo, int hi);

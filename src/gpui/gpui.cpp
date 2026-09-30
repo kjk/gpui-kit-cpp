@@ -1859,6 +1859,15 @@ El* El::Whitespaces(Rgba color) {
     whitespaceColor = color;
     return this;
 }
+El* El::IndentGuides(Rgba color, int indentCount, int tabSize) {
+    if (indentCount <= 0 || tabSize <= 0) {
+        return this;
+    }
+    indentGuideColor = color;
+    indentGuideCount = (int16_t)std::min(indentCount, 32767);
+    indentGuideTab = (uint8_t)std::min(tabSize, 255);
+    return this;
+}
 El* El::Spans(const TextSpan* runs, int n) {
     spans = runs;
     nSpans = n;
@@ -2966,6 +2975,44 @@ int WhitespaceMarksVisit(Str s, float spaceMarkW, WhitespaceRectsFn rects,
         n++;
     }
     return n;
+}
+
+int IndentGuideXs(float indentWidth, int indentCount, int tabSize, float* out,
+                  int max) {
+    if (tabSize <= 0 || indentCount <= 0) {
+        return 0;
+    }
+    int n = 0;
+    for (int offset = 0; offset < indentCount && n < max; offset += tabSize) {
+        out[n++] = indentWidth * (float)offset / (float)tabSize;
+    }
+    return n;
+}
+
+// indent_guides over a painted run: a one-pixel line one line box tall at
+// each guide, Rust's PathBuilder::stroke(px(1.)) from the line's top to
+// `line_height` below it.
+static void PaintTextIndentGuides(PaintCtx* ctx, El* e, float font) {
+    int tab = e->indentGuideTab;
+    if (!ctx || !ctx->rt || tab <= 0 || e->indentGuideCount <= 0) {
+        return;
+    }
+    // measure_indent_width: `tab_size` spaces, shaped in the run's font.
+    char spaces[256];
+    memset(spaces, ' ', (size_t)tab);
+    TextLayout* layout =
+        TextMeasLayout(ctx, Str(spaces, tab), font, 0, false,
+                       (uint8_t)ElTextWeight(e), e->style.lineHeight, nullptr);
+    if (!layout) {
+        return;
+    }
+    Size sz = TextLayoutSize(layout);
+    TextLayoutRelease(layout);
+    float xs[64];
+    int n = IndentGuideXs(sz.w, e->indentGuideCount, tab, xs, 64);
+    for (int i = 0; i < n; i++) {
+        CanvasFillRect(ctx, e->x + xs[i], e->y, 1, sz.h, e->indentGuideColor);
+    }
 }
 
 struct WhitespacePaint {
@@ -6781,6 +6828,10 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // dropped the `overflow_hidden` and kept the ellipsis; the same split
         // here is a clip that still ends the run at its width but leaves a
         // line box of slack above and below for the ink to finish in.
+        // indent_guides: behind the washes and the glyphs.
+        if (e->indentGuideColor.a != 0) {
+            PaintTextIndentGuides(ctx, e, font);
+        }
         bool clipText = e->style.truncate && e->laidMaxW > 0;
         if (clipText) {
             CanvasPushClip(ctx, e->x, e->y - e->h, e->laidMaxW, e->h * 3.f);

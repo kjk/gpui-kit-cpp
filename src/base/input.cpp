@@ -968,12 +968,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool caretFolded =
         folding && caret &&
         FoldMapLineHidden(&state->folds, InputOffsetToPoint(state, cursor).row);
-    // A monospace column, for the indent guides. The glyphs are all one width
-    // in the family the editor asks for, so one measurement does.
-    float colW = 0;
-    if (style.indentGuide.a != 0 && style.indentWidth > 0) {
-        colW = font * 0.6f;
-    }
+    // layout_indent_guides' last_indents: an empty line carries the guides
+    // of the line built above it, so a blank line inside a block does not
+    // break the block's guides.
+    bool indentGuides = style.indentGuide.a != 0 && style.indentWidth > 0;
+    int lastIndent = 0;
     // Only the rows the box can show are built. Rust lays out the display
     // rows in the visible range and nothing else; without that, a document of
     // ten thousand lines is ten thousand elements a frame, which is more than
@@ -1516,27 +1515,18 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (!tokenLine && state->extraCursors.len > 0) {
             RowExtraCursors(a, el, state, style, start, len(line), caret);
         }
-        // indent_guides: a hairline every tab stop of the row's own leading
-        // whitespace, drawn behind the text.
-        El* guides = nullptr;
-        if (!tokenLine && colW > 0) {
-            int lead = 0;
-            while (lead < len(line) && line.s[lead] == ' ') {
-                lead++;
+        // indent_guides: a hairline every tab stop of the row's leading
+        // whitespace (a tab counts as a whole stop), drawn by the row's own
+        // run behind its text at the width its font gives `indentWidth`
+        // spaces — Rust's measure_indent_width, not a guessed column.
+        if (indentGuides) {
+            int indent = lastIndent;
+            if (len(line) > 0) {
+                indent = TabSize{style.indentWidth}.IndentCount(line);
+                lastIndent = indent;
             }
-            int stops = lead / style.indentWidth;
-            if (stops > 0) {
-                guides = Div(a)->Absolute()->Left(0)->Top(0)->H(kFill);
-                for (int g = 0; g < stops; g++) {
-                    guides->Child(
-                        Div(a)
-                            ->Absolute()
-                            ->Left(colW * (float)(g * style.indentWidth))
-                            ->Top(0)
-                            ->W(1)
-                            ->H(kFill)
-                            ->Bg(style.indentGuide));
-                }
+            if (!tokenLine) {
+                el->IndentGuides(style.indentGuide, indent, style.indentWidth);
             }
         }
         // show_whitespaces: the row's own run paints a mark over each space
@@ -1553,11 +1543,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         bool rangeRow = rangePaint && rangePaint->rows && !tokenLine;
         if (!lineNumbers) {
             El* only = el;
-            if (guides || rangeRow) {
+            if (rangeRow) {
                 only = Div(a)->W(kFill);
-                if (guides) {
-                    only->Child(guides);
-                }
                 only->Child(el);
                 if (!wrap) {
                     only->H(lineH);
@@ -1622,15 +1609,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             band->Child(numCell);
         }
-        if (guides) {
-            El* pane = Div(a)->Flex1()->Child(guides)->Child(el);
-            if (!wrap) {
-                pane->H(kFill);
-            }
-            band->Child(pane);
-        } else {
-            band->Child(el);
-        }
+        band->Child(el);
         if (rangeRow) {
             AttachRangeDecorationRow(a, rangePaint, band, el, start, len(line));
         }

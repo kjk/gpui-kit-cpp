@@ -4636,9 +4636,63 @@ static void WhitespaceMarksFollowTheShapedGlyphs() {
     }
 }
 
+// layout_indent_guides: a guide every tab_size columns from column 0, at
+// indent_width * offset / tab_size, where indent_width is the shaped width
+// of tab_size spaces. With a font whose space is 7.5 wide, not 0.6em.
+static void IndentGuidesStandAtTheMeasuredIndentWidth() {
+    float xs[8] = {};
+    utassert(IndentGuideXs(30.f, 8, 4, xs, 8) == 2);
+    utassertnear(xs[0], 0.f);
+    utassertnear(xs[1], 30.f);
+    // A partial stop still starts one: offsets 0 and 4 of six columns.
+    utassert(IndentGuideXs(30.f, 6, 4, xs, 8) == 2);
+    utassert(IndentGuideXs(30.f, 3, 4, xs, 8) == 1);
+    utassert(IndentGuideXs(30.f, 0, 4, xs, 8) == 0);
+}
+
+static void CollectGuideCounts(El* e, Vec<int>* out) {
+    for (; e; e = e->next) {
+        if (e->kind == ElKind::Text && e->indentGuideColor.a != 0) {
+            VecAppend(*out, (int)e->indentGuideCount);
+        }
+        CollectGuideCounts(e->first, out);
+    }
+}
+
+// Each row's own run carries its guides, counted the way indent_count
+// counts (a tab is a whole stop), and an empty line carries the guides of
+// the line above it — Rust's last_indents.
+static void EachRowCarriesItsIndentGuides() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    InputState state;
+    state.kind = InputKind::Textarea;
+    InputSetValue(&state, StrL("a\n    b\n\n\tc\n  d"));
+    InputEditorStyle style;
+    style.indentGuide = Rgba{10, 20, 30, 255};
+    style.indentWidth = 4;
+    Vec<int> counts;
+    CollectGuideCounts(Textarea::New(&cx, &state, style), &counts);
+    utassert(counts.len == 4);
+    if (counts.len == 4) {
+        utassert(counts[0] == 4);
+        utassert(counts[1] == 4);
+        utassert(counts[2] == 4);
+        utassert(counts[3] == 2);
+    }
+    VecReset(counts);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestInputState() {
     TestSuite("input_state");
     WhitespaceMarksFollowTheShapedGlyphs();
+    IndentGuidesStandAtTheMeasuredIndentWidth();
+    EachRowCarriesItsIndentGuides();
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
     SetValueOnUnfocusedInputStaysQuiet();
     BlurringAPausedCursorLeavesTheNextFocusBlinking();
