@@ -13,6 +13,9 @@ struct MonitorApp {
     SysState sys;
     float cpuHist[kMaxHist] = {};
     float memHist[kMaxHist] = {};
+    // MetricPoint::time: the tick each point was taken at, which the chart's
+    // x axis labels "{n}s".
+    int timeHist[kMaxHist] = {};
     int histN = 0;
     int timeIndex = 0;
     int tab = 0;
@@ -35,12 +38,15 @@ static void PushHist(MonitorApp* app, float cpu, float mem) {
     if (app->histN < kMaxHist) {
         app->cpuHist[app->histN] = cpu;
         app->memHist[app->histN] = mem;
+        app->timeHist[app->histN] = app->timeIndex;
         app->histN++;
     } else {
         memmove(app->cpuHist, app->cpuHist + 1, sizeof(float) * (kMaxHist - 1));
         memmove(app->memHist, app->memHist + 1, sizeof(float) * (kMaxHist - 1));
+        memmove(app->timeHist, app->timeHist + 1, sizeof(int) * (kMaxHist - 1));
         app->cpuHist[kMaxHist - 1] = cpu;
         app->memHist[kMaxHist - 1] = mem;
+        app->timeHist[kMaxHist - 1] = app->timeIndex;
     }
     app->timeIndex++;
 }
@@ -145,9 +151,13 @@ static El* TitleBar(Ctx* cx, MonitorApp* app) {
     return component::TitleBar::New(cx)->Child(tabs)->Child(memLabel)->IntoEl();
 }
 
-static El* ChartCard(Arena* a, Str title, const float* ys, int n, float current,
-                     Rgba color) {
+// render_chart: the title and the current value over an AreaChart of the
+// history, stroked in `color` and filled with it fading to the background.
+static El* ChartCard(Ctx* cx, const MonitorApp* app, Str title, const float* ys,
+                     float current, Rgba color) {
+    Arena* a = cx->a;
     const Theme& th = ThemeDark();
+    int n = app->histN;
     El* header =
         Div(a)
             ->FlexRow()
@@ -160,9 +170,21 @@ static El* ChartCard(Arena* a, Str title, const float* ys, int n, float current,
             ->Child(Div(a)->Flex1())
             ->Child(TextEl(a, FormatPctTemp(current, 1))->Font(14)->Fg(color));
 
-    Rgba fillTop = RgbaOpacity(color, 0.4f);
-    Rgba fillBot = RgbaOpacity(th.background, 0.1f);
-    El* chart = ChartEl(a, ys, n, color, fillTop, fillBot, 15);
+    // .x(|d| d.time.clone()): "{n}s", in the frame arena.
+    const char** labels = (const char**)Alloc(a, (int)sizeof(char*) * (n + 1));
+    for (int i = 0; i < n; i++) {
+        labels[i] = StrDup(a, fmt("%ds", app->timeHist[i])).s;
+    }
+    // Both cards come from this one construction site, so the chart is
+    // named after its card to keep their hover and appear apart.
+    El* chart =
+        component::AreaChart::New(cx, ys, n)
+            ->Id(title)
+            ->Labels(labels)
+            ->Stroke(color)
+            ->Fill(RgbaOpacity(color, 0.4f), RgbaOpacity(th.background, 0.1f))
+            ->TickMargin(15)
+            ->IntoEl();
 
     return Div(a)
         ->FlexCol()
@@ -174,7 +196,8 @@ static El* ChartCard(Arena* a, Str title, const float* ys, int n, float current,
         ->Child(chart);
 }
 
-static El* SystemTab(Arena* a, MonitorApp* app) {
+static El* SystemTab(Ctx* cx, MonitorApp* app) {
+    Arena* a = cx->a;
     const Theme& th = ThemeDark();
     float cpu = app->histN ? app->cpuHist[app->histN - 1] : 0;
     float mem = app->histN ? app->memHist[app->histN - 1] : 0;
@@ -183,10 +206,10 @@ static El* SystemTab(Arena* a, MonitorApp* app) {
         ->Flex1()
         ->Pad(12)
         ->Gap(16)
-        ->Child(ChartCard(a, StrL("CPU Usage"), app->cpuHist, app->histN, cpu,
-                          th.red))
-        ->Child(ChartCard(a, StrL("Memory Usage"), app->memHist, app->histN,
-                          mem, th.blue));
+        ->Child(
+            ChartCard(cx, app, StrL("CPU Usage"), app->cpuHist, cpu, th.red))
+        ->Child(ChartCard(cx, app, StrL("Memory Usage"), app->memHist, mem,
+                          th.blue));
 }
 
 static const float kColW[4] = {70, 380, 80, 100};
@@ -376,7 +399,7 @@ El* MonitorApp::Render(MonitorApp* app, Ctx* cx) {
 
     El* content = Div(frame)->FlexCol()->Flex1()->ClipY();
     if (app->tab == 0) {
-        content->Child(SystemTab(frame, app));
+        content->Child(SystemTab(cx, app));
     } else {
         content->Child(ProcessesTab(cx, app));
     }
