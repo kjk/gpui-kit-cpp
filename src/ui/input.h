@@ -184,7 +184,7 @@ struct Input {
     Input* OnClear(Listener fn);
     Input* OnToggleMask(Listener fn);
     // Rust's Input::prefix / Input::suffix: content inside the border box, on
-    // either side of the editor. A prefix brings its own left padding.
+    // either side of the editor, inside the field's own padding.
     Input* Prefix(El* el);
     Input* Suffix(El* el);
     // Rust's Input fills its parent (`size_full`); a caller that puts one in a

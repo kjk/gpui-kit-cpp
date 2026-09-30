@@ -836,9 +836,10 @@ El* Input::IntoEl() {
             field->Opacity(0.5f);
         }
     }
+    // input.rs: the prefix is one more child of the padded row, so the
+    // field's own input_px is the space to its left.
     if (prefix) {
-        // `.pl_0()`: the prefix owns the space to the left of the editor.
-        field->PadL(0)->Child(prefix);
+        field->Child(prefix);
     }
     bool hasValue = state && len(InputValue(state)) > 0;
     bool trailing = suffix || (cleanable && hasValue) || maskToggle;

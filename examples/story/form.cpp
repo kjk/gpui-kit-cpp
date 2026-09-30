@@ -120,7 +120,8 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
                         ->WithSize(self->toolbar.size)
                         ->Prefix(prefix)
                         ->OnFocus(Listen(cx, &FocusName))
-                        ->IntoEl())
+                        ->IntoEl()
+                        ->PadL(0))
             ->Field(StrL("Email"),
                     component::Input::New(cx, StrL("form-email"), &self->email)
                         ->WithSize(self->toolbar.size)

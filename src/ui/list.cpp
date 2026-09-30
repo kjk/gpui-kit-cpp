@@ -327,7 +327,9 @@ El* List::IntoEl() {
                 ->Cleanable(true)
                 ->Prefix(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg))
                 ->OnFocus(onSearchFocus)
-                ->IntoEl()));
+                ->IntoEl()
+                // `.p_0()` on the Input.
+                ->Pad(0)));
         inner->Child(searchRow);
     }
     if (!s) {

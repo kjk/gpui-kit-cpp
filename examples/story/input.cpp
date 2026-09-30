@@ -243,23 +243,21 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
     El* affix = StorySection(cx, "Prefix and suffix",
                              "Add icons or actions inside the field.");
     StorySectionBody(affix)->W(512);
-    StorySectionAdd(affix,
-                    Field(self, cx, InPrefix, focus, clear)
-                        ->Prefix(Div(a)->PadL(10)->Child(
-                            IconEl(a, IconName::Search, 16)->Fg(th.mutedFg)))
-                        ->Cleanable()
-                        ->IntoEl());
-    StorySectionAdd(affix,
-                    Field(self, cx, InBoth, focus, clear)
-                        ->Prefix(Div(a)->PadL(10)->Child(
-                            IconEl(a, IconName::Search, 16)->Fg(th.mutedFg)))
-                        ->Suffix(component::Button::New(cx, StrL("info"))
-                                     ->Text()
-                                     ->WithSize(UiSize::XSmall)
-                                     ->Icon(IconName::Info)
-                                     ->IntoEl())
-                        ->Cleanable()
-                        ->IntoEl());
+    StorySectionAdd(
+        affix, Field(self, cx, InPrefix, focus, clear)
+                   ->Prefix(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg))
+                   ->Cleanable()
+                   ->IntoEl());
+    StorySectionAdd(
+        affix, Field(self, cx, InBoth, focus, clear)
+                   ->Prefix(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg))
+                   ->Suffix(component::Button::New(cx, StrL("info"))
+                                ->Text()
+                                ->WithSize(UiSize::XSmall)
+                                ->Icon(IconName::Info)
+                                ->IntoEl())
+                   ->Cleanable()
+                   ->IntoEl());
     StorySectionAdd(affix,
                     Field(self, cx, InSuffix, focus, clear)
                         ->Suffix(component::Button::New(cx, StrL("info2"))
@@ -277,8 +275,7 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
     StorySectionAdd(
         composed,
         Field(self, cx, InComplete, focus, clear)
-            ->Prefix(Div(a)->PadL(10)->Child(IconEl(a, IconName::Search, 16)
-                                                 ->Fg(th.mutedFg)))
+            ->Prefix(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg))
             ->Suffix(component::Button::New(cx, StrL("complete-input-info"))
                          ->Text()
                          ->WithSize(UiSize::XSmall)
@@ -290,8 +287,7 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
         composed,
         Field(self, cx, InCompleteDisabled, focus, clear)
             ->Disabled(true)
-            ->Prefix(Div(a)->PadL(10)->Child(IconEl(a, IconName::Search, 16)
-                                                 ->Fg(th.mutedFg)))
+            ->Prefix(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg))
             ->Suffix(component::Button::New(cx, StrL("complete-disabled-info"))
                          ->Text()
                          ->WithSize(UiSize::XSmall)
