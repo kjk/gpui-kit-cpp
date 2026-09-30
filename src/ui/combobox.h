@@ -134,6 +134,8 @@ struct Combobox {
     bool hasDelegate = false;
     Style style = {};
     uint32_t styleSet = 0;
+    // The same refinement as an El replay (Select::TriggerRefiner).
+    ElRefiner refiner = {};
     Listener onToggle;
     Listener onClear;
 
@@ -166,6 +168,7 @@ struct Combobox {
     Combobox* RenderEmpty(void* data, El* (*fn)(Ctx* cx, void* data));
     Combobox* Delegate(const SearchableListDelegate& value);
     Combobox* Refine(const Style& value, uint32_t fields);
+    Combobox* Refiner(ElRefiner value);
     // ComboboxState::max_selected, which the Max2 delegate's on_will_change
     // comes to here.
     Combobox* MaxSelected(int n);

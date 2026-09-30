@@ -141,6 +141,10 @@ struct Select {
     Bounds* triggerBoundsOut = nullptr;
     Style triggerStyle = {};
     uint32_t triggerStyleSet = 0;
+    // `impl Styled for Select`: a style refinement replayed onto the trigger
+    // box after its appearance, where select.rs calls `refine_style`. What
+    // the shell hands a registered Select, whose style is an El replay.
+    ElRefiner triggerRefiner = {};
 
     static Select* New(Ctx* cx, Str id, Entity<SearchableListState> state);
     static Select* New(Ctx* cx, Str id, Entity<SelectState> state);
@@ -175,6 +179,7 @@ struct Select {
     Select* OnMouseDownOut(Listener fn);
     Select* TriggerBoundsOut(Bounds* bounds);
     Select* TriggerRefine(const Style& style, uint32_t fields);
+    Select* TriggerRefiner(ElRefiner value);
     El* IntoEl();
 };
 

@@ -4169,6 +4169,111 @@ void ListRefusesWhatRustRefuses() {
     utassert(StrContains(failure, StrL("List expects a non-empty id, rows "
                                        "callback, and row renderer")));
 }
+
+// ─── delegate_combobox/mod.rs ──────────────────────────────────────────────
+
+// delegate_combobox_host.rs combobox_catalog_exposes_native_single_select_
+// contract.
+void ComboboxCatalogExposesNativeSingleSelectContract() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCombobox);
+    utassert(catalog.ok);
+    const char* names[] = {"Combobox"};
+    utassert(catalog.NamesAre(names, 1));
+    utassert(catalog.Documented());
+}
+
+// mod.rs test_probe: the values of each Change and Confirm, in order.
+char gComboboxEvents[8][32];
+int gComboboxEventCount = 0;
+
+void RecordComboboxEvent(bool confirm, const Str* values, int count) {
+    if (gComboboxEventCount >= 8) return;
+    char* out = gComboboxEvents[gComboboxEventCount++];
+    snprintf(out, 32, "%s:%.*s", confirm ? "confirm" : "change",
+             count > 0 ? (int)len(values[0]) : 0, count > 0 ? values[0].s : "");
+}
+
+// delegate_combobox_host.rs combobox_native_click_emits_change_and_confirm_
+// for_stable_value: a click on the trigger opens the list, a click on the
+// first row selects it, and the host hears one Change and one Confirm, both
+// carrying the row's stable id. Rust clicks at window coordinates; here the
+// clicks go to the trigger's and the row's own listeners.
+void ComboboxNativeClickEmitsChangeAndConfirmForStableValue() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCombobox);
+    component_shell::SetComboboxEventProbe(&RecordComboboxEvent);
+    gComboboxEventCount = 0;
+    {
+        Host host(
+            StrL("import { View, div } from 'gpui-kit';\n"
+                 "import { Combobox } from 'gpui-component';\n"
+                 "export default class App extends View { render() {\n"
+                 "  return div().size_full().child(new Combobox('people', () "
+                 "=> [\n"
+                 "    {id:'alpha',label:'Alpha'}, {id:'beta',label:'Beta'}\n"
+                 "  ], value => { this.change = value; }, (value, cx) => { "
+                 "this.confirm = value; cx.notify(); })\n"
+                 "    .searchable(false).placeholder('Choose'))\n"
+                 "    .child(`Confirmed:${this.confirm}`);\n"
+                 "} }\n"),
+            &catalog.frozen);
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        El* trigger = ListenerAbove(root, StrL("Choose"));
+        utassert(trigger != nullptr);
+        if (!trigger) return;
+        Click(host, trigger);
+        root = Rerender(host);
+        El* row = ListenerAbove(root, StrL("Alpha"));
+        utassert(row != nullptr);
+        if (!row) return;
+        Click(host, row);
+        utassert(gComboboxEventCount == 2);
+        utassert(strcmp(gComboboxEvents[0], "change:alpha") == 0);
+        utassert(strcmp(gComboboxEvents[1], "confirm:alpha") == 0);
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Confirmed:alpha")) != nullptr);
+        utassert(len(host.ViewError()) == 0);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+    }
+    component_shell::SetComboboxEventProbe(nullptr);
+}
+
+// mod.rs: rows need a string id and label, and a Combobox takes no children.
+void ComboboxRefusesWhatRustRefuses() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCombobox);
+    {
+        Host host(StrL("import { View } from 'gpui-kit';\n"
+                       "import { Combobox } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Combobox('c', () => [{id:'a'}], v => {}, v "
+                       "=> {}); } }\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(FindText(root, StrL("Invalid Combobox rows: Combobox row 0 "
+                                     "requires a string `label`")) != nullptr);
+    }
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { Combobox } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Combobox('c', () => [], v => {}, v => {})"
+                       ".child(div()); } }\n"),
+                  &catalog.frozen);
+        host.Render();
+        utassert(StrContains(host.runtime->LastComponentFailure(),
+                             StrL("Combobox does not accept children")));
+    }
+    utassert(StrContains(
+        CallErrorTemp("Combobox",
+                      "new Combobox('c', () => [], v => {}, v => {})"
+                      ".menu_width(0)"),
+        StrL("Combobox.menu_width received an invalid value")));
+    utassert(StrContains(
+        CallErrorTemp("Combobox",
+                      "new Combobox('', () => [], v => {}, v => {})"),
+        StrL("Combobox expects id, rows, on_change, and on_confirm "
+             "callbacks")));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -4216,6 +4321,11 @@ void TestComponentShell() {
     DelegateCollectionCatalogExposesRetainedListContract();
     ListUsesAFreshImmutableSnapshotAndLazyRowRenderer();
     ListRefusesWhatRustRefuses();
+
+    TestSuite("delegate_combobox");
+    ComboboxCatalogExposesNativeSingleSelectContract();
+    ComboboxNativeClickEmitsChangeAndConfirmForStableValue();
+    ComboboxRefusesWhatRustRefuses();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

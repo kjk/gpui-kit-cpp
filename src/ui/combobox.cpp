@@ -430,6 +430,10 @@ Combobox* Combobox::Refine(const Style& value, uint32_t fields) {
     styleSet = fields;
     return this;
 }
+Combobox* Combobox::Refiner(ElRefiner value) {
+    refiner = value;
+    return this;
+}
 Combobox* Combobox::MaxSelected(int n) {
     if (SearchableListState* s = state.Get(cx)) {
         s->maxSelected = n;
@@ -501,6 +505,7 @@ El* Combobox::IntoEl() {
     if (styleSet) {
         sel->TriggerRefine(style, styleSet);
     }
+    sel->TriggerRefiner(refiner);
     if (renderEmpty) {
         sel->Empty(renderEmpty(cx, emptyData));
     }

@@ -24,6 +24,7 @@ bool RegisterInputGroup(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDelegateCollections(shell::ComponentRegistry*,
                                  shell::RegistryError*);
+bool RegisterDelegateCombobox(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
@@ -52,6 +53,12 @@ bool RegisterDelegateCollectionsList(shell::ComponentRegistry*,
 // List row whose renderer built an element, in the order they were built.
 using ListRowProbe = void (*)(Str id);
 void SetListRowProbe(ListRowProbe probe);
+
+// delegate_combobox/mod.rs test_probe, widened into a seam: when set, it
+// hears every ComboboxEvent a retained Combobox host receives, before the
+// script callback — `confirm` false for Change — with the event's values.
+using ComboboxEventProbe = void (*)(bool confirm, const Str* values, int count);
+void SetComboboxEventProbe(ComboboxEventProbe probe);
 
 // display/mod.rs
 bool RegisterDisplayAlert(shell::ComponentRegistry*, shell::RegistryError*);

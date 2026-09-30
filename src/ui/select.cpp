@@ -410,6 +410,10 @@ Select* Select::TriggerRefine(const Style& style, uint32_t fields) {
     triggerStyleSet = fields;
     return this;
 }
+Select* Select::TriggerRefiner(ElRefiner value) {
+    triggerRefiner = value;
+    return this;
+}
 
 Str SelectTriggerTitle(const SearchableListState* s, Str placeholder,
                        Str titlePrefix, Arena* a) {
@@ -575,6 +579,7 @@ El* Select::IntoEl() {
             box->Opacity(0.5f);
         }
     }
+    triggerRefiner.Apply(box);
     Rgba fg = disabled ? th.mutedFg : th.foreground;
     if (this->trigger) {
         // render_trigger: the caller's element is the whole of the trigger's
