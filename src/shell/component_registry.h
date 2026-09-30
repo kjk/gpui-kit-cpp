@@ -487,6 +487,8 @@ class ComponentStateStore {
 
 // ─── What a materializer is handed ────────────────────────────────────────
 
+struct ComponentWindowEffects;
+
 // ComponentCallback: a script handler an adapter may invoke from a native
 // event. The runtime is the ScriptView's; an invocation outside one (a
 // released view, a retired render) fails rather than running.
@@ -520,7 +522,132 @@ struct ComponentCallback {
     El* BuildInteractiveWith(ShellRuntime* runtime,
                              const ComponentDataValue* arguments, int count,
                              Ctx* cx, Str* error = nullptr) const;
+    // An event-scoped native-effect service owned by this callback, which is
+    // both the generation lease and the script error reporter: when an
+    // effect transaction fails it is invoked with the error message followed
+    // by the ordinary script `Context`, so adapters declare it as
+    // `(message: string, cx: Context) => void`. `a` holds the shared
+    // re-entrancy flag (Rust's Rc<Cell<bool>>), so copies made from one call
+    // share it for as long as `a` lives.
+    ComponentWindowEffects WindowEffects(ShellRuntime* runtime, Arena* a) const;
 };
+
+// ─── Native effects ───────────────────────────────────────────────────────
+//
+// component_registry.rs ComponentWindowEffects, ComponentEventEffects and
+// ComponentAppEffects. Rust's closures become a function pointer plus the
+// adapter's `user` pointer; a failure is a false return with `*error` set
+// (allocated from the `a` the call was handed), where Rust returns an
+// anyhow::Error.
+
+// One keyed effect: false with `*error` refuses.
+using ComponentEffectBody = bool (*)(void* user, Window* window, App* app,
+                                     Str* error, Arena* a);
+
+// A non-retainable event transaction. Keys are idempotent only within the
+// ComponentWindowEffects::Event call that made it.
+struct ComponentEventEffects {
+    Window* window = nullptr;
+    App* app = nullptr;
+    Arena* a = nullptr;
+    Vec<Str> completed;
+    Vec<Str> inProgress;
+
+    ComponentEventEffects() = default;
+    ComponentEventEffects(const ComponentEventEffects&) = delete;
+    ComponentEventEffects& operator=(const ComponentEventEffects&) = delete;
+    ~ComponentEventEffects();
+
+    // run_once: runs `body` unless `key` already completed in this event.
+    // `*executed` says which (Rust's ComponentEffectRun::Executed versus
+    // Duplicate). False with `*error` when the body failed, or when `key`
+    // is already running.
+    bool RunOnce(Str key, ComponentEffectBody body, void* user, bool* executed,
+                 Str* error);
+};
+
+using ComponentEventBody = bool (*)(ComponentEventEffects* effects, void* user,
+                                    Str* error);
+
+// A generation-bound capability for native effects initiated by one GPUI
+// event. Effects never run during render or layout.
+struct ComponentWindowEffects {
+    ShellRuntime* runtime = nullptr;
+    ComponentCallback reporter = {};
+    bool* active = nullptr;
+
+    bool IsActive() const { return active && *active; }
+    // Runs `body` inside the reporter's event scope. When it fails, the
+    // reporter is invoked with the message (unless the current phase forbids
+    // notifying), and the error is also answered.
+    bool Event(Window* window, App* app, ComponentEventBody body, void* user,
+               Str* error, Arena* a) const;
+};
+
+// Cleanup returned by an application effect. It runs before replacement and
+// when the owning root view is released. `drop` frees `user` whether or not
+// `run` ran — the Box drop.
+struct ComponentAppEffectCleanup {
+    void (*run)(App* app, void* user) = nullptr;
+    void (*drop)(void* user) = nullptr;
+    void* user = nullptr;
+};
+
+// The deferred install: Rust's `FnOnce(&mut App) -> Cleanup`.
+struct ComponentAppEffectInstall {
+    ComponentAppEffectCleanup (*run)(App* app, void* user) = nullptr;
+    void (*drop)(void* user) = nullptr;
+    void* user = nullptr;
+};
+
+// A generation-bound capability for replacing application-wide native state
+// after the current render effect cycle.
+struct ComponentAppEffects {
+    ShellRuntime* runtime = nullptr;
+    // The application generation (the runtime's AppModule) and the root view
+    // the effects are installed for.
+    void* application = nullptr;
+    EntityId view = {};
+
+    // Schedules `install` under `key` unless `revision` is already what is
+    // installed or pending there. The install runs deferred, after the
+    // current render; the previous install's cleanup runs first. Takes
+    // `install` in every case (dropping it when nothing is scheduled).
+    bool Replace(Str key, Str revision, Window* window, App* app,
+                 ComponentAppEffectInstall install, Str* error, Arena* a) const;
+};
+
+// The pending and installed effects of one application generation. Keys and
+// revisions are owned.
+struct PendingAppEffect {
+    Str key;
+    Str revision;
+};
+struct InstalledAppEffect {
+    Str key;
+    Str revision;
+    ComponentAppEffectCleanup cleanup = {};
+};
+struct ComponentAppEffectQueue {
+    Vec<PendingAppEffect> pending;
+    Vec<InstalledAppEffect> installed;
+
+    ComponentAppEffectQueue() = default;
+    ComponentAppEffectQueue(const ComponentAppEffectQueue&) = delete;
+    ComponentAppEffectQueue& operator=(const ComponentAppEffectQueue&) = delete;
+    // Drops every cleanup without running it.
+    ~ComponentAppEffectQueue();
+
+    const Str* Pending(Str key) const;
+    InstalledAppEffect* Installed(Str key);
+    void RemovePending(Str key);
+};
+
+// queue_component_app_effect: whether a replacement for `key` at `revision`
+// has to be scheduled. Returning to the installed revision cancels a pending
+// replacement.
+bool QueueComponentAppEffect(ComponentAppEffectQueue* queue, Str key,
+                             Str revision);
 
 // A native event bound to a script callback: what an El listener carries into
 // ScriptView::OnComponentEvent. `run` reads the event and invokes
@@ -640,6 +767,10 @@ struct MaterializeRequest {
         return (T*)State(argument, kind);
     }
     ComponentCallback OnClick() const { return {onClick}; }
+    // app_effects: an application-lifecycle effect capability for this
+    // materialization, deferred beyond render and retired with the root
+    // view. False (after Fail) outside a root application's render.
+    bool AppEffects(ComponentAppEffects* out);
 
     // Records a failure the dispatcher reports; always null so a
     // materializer can `return request->Fail(...)`.

@@ -3897,6 +3897,7 @@ void AppSetMenus(App* app, const MenuDef* menus, int n) {
         bar[i].label = StrDup(a, menus[i].name).s;
         bar[i].submenu = AppMenuToPlat(state, a, menus[i].items, menus[i].n);
         bar[i].submenuN = menus[i].n;
+        bar[i].disabled = menus[i].disabled;
     }
     // The table is built whether or not anything shows it: a platform with no
     // menu bar still has the rows, and the numbering is what the tests read.

@@ -3294,6 +3294,197 @@ void SettingsRejectStyleAndForeignChildren() {
     utassert(StrContains(message, StrL("title expects non-empty text")));
 }
 
+// ─── lifecycle/: mod.rs, tooltip.rs, menu.rs ───────────────────────────────
+
+// Registers a Host's window with its App for as long as it lives, so what is
+// posted to it (WindowPost: Rust's window.defer) runs on ExecDrain.
+struct LiveWindow {
+    Host& host;
+    explicit LiveWindow(Host& host) : host(host) {
+        VecAppend(host.app.windows, &host.window);
+    }
+    ~LiveWindow() { VecReset(host.app.windows); }
+};
+
+// The element carrying tooltip `text`, if any.
+El* FindTooltip(El* element, Str text) {
+    if (!element) return nullptr;
+    if (StrEq(element->style.tooltip, text)) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindTooltip(child, text)) return found;
+    }
+    return nullptr;
+}
+
+// lifecycle_host.rs tooltip_uses_the_native_managed_overlay_on_hover, up to
+// the hover: the Button is real and its tooltip text is managed by it rather
+// than drawn into the tree. The hover itself needs simulated pointer input
+// and an advancing clock.
+void TooltipBuildsARealButtonWithAManagedTooltip() {
+    FamilyCatalog catalog(&component_shell::RegisterLifecycle);
+    utassert(catalog.ok);
+    Host host(StrL("import { View } from 'gpui-kit';\n"
+                   "import { Tooltip } from 'gpui-component';\n"
+                   "export default class Example extends View {\n"
+                   "  render() { return new Tooltip('help', 'Help', 'Open "
+                   "documentation'); }\n"
+                   "}\n"),
+              &catalog.frozen);
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Help")) != nullptr);
+    utassert(FindText(root, StrL("Open documentation")) == nullptr);
+    utassert(FindTooltip(root, StrL("Open documentation")) != nullptr);
+}
+
+// lifecycle_host.rs menu_bar_installs_native_and_component_menu_models_after_
+// render: nothing is installed while rendering; the deferred effect installs
+// the native and component model, a repeated render with the same menus does
+// not install again, and releasing the root view restores what was there.
+void MenuBarInstallsNativeAndComponentMenuModelsAfterRender() {
+    FamilyCatalog catalog(&component_shell::RegisterLifecycle);
+    utassert(catalog.ok);
+    int count = -1;
+    {
+        Host host(StrL("import { View } from 'gpui-kit';\n"
+                       "import { MenuBar, Menu, MenuItem, MenuSeparator } "
+                       "from 'gpui-component';\n"
+                       "export default class Example extends View {\n"
+                       "  render() {\n"
+                       "    return new MenuBar('main-menu').child(\n"
+                       "      new Menu('File')\n"
+                       "        .child(new MenuItem('Open', 'file.open'))\n"
+                       "        .child(new MenuSeparator())\n"
+                       "        .child(new MenuItem('Quit', "
+                       "'app.quit').disabled(true))\n"
+                       "    );\n"
+                       "  }\n"
+                       "}\n"),
+                  &catalog.frozen);
+        LiveWindow live(host);
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(!FindTextPrefix(root, StrL("Failed to render")));
+        utassert(StrContains(DebugTreeTemp(host), StrL("MenuBar")));
+        BaseAppMenus(&host.app, &count);
+        utassert(count == 0);
+        ExecDrain();
+        const MenuDef* menus = BaseAppMenus(&host.app, &count);
+        utassert(count == 1);
+        if (count == 1) {
+            utassert(StrEq(menus[0].name, "File"));
+            utassert(menus[0].n == 3);
+            utassert(menus[0].items[0].action ==
+                     shell::ShellActionOf(StrL("file.open")));
+            utassert(menus[0].items[1].separator);
+            utassert(StrEq(menus[0].items[2].label, "Quit"));
+        }
+        // The in-window bar reads the installed model.
+        ScriptView* script = host.view.Get(&host.app);
+        if (script) script->dirty = true;
+        root = host.Render();
+        utassert(FindText(root, StrL("File")) != nullptr);
+        ExecDrain();
+        BaseAppMenus(&host.app, &count);
+        utassert(count == 1);
+        // observe_release: dropping the root view runs the cleanup.
+        EntityDrop(&host.app, host.view.id);
+        host.view = {};
+        BaseAppMenus(&host.app, &count);
+        utassert(count == 0);
+        AppMenuClear(&host.app);
+    }
+}
+
+// engine/quickjs/mod.rs returning_to_the_installed_app_effect_cancels_a_
+// pending_replacement.
+void ReturningToTheInstalledAppEffectCancelsAPendingReplacement() {
+    shell::ComponentAppEffectQueue queue;
+    shell::InstalledAppEffect installed;
+    installed.key = StrDup(StrL("menu"));
+    installed.revision = StrDup(StrL("a"));
+    VecAppend(queue.installed, installed);
+    Str key = StrL("menu");
+    utassert(shell::QueueComponentAppEffect(&queue, key, StrL("b")));
+    const Str* pending = queue.Pending(key);
+    utassert(pending && StrEq(*pending, "b"));
+    utassert(!shell::QueueComponentAppEffect(&queue, key, StrL("a")));
+    utassert(queue.Pending(key) == nullptr);
+    StrFree(queue.Installed(key)->revision);
+    queue.Installed(key)->revision = StrDup(StrL("b"));
+    utassert(shell::QueueComponentAppEffect(&queue, key, StrL("a")));
+}
+
+int gAppEffectInstalls = 0;
+int gAppEffectCleanups = 0;
+
+void CountAppEffectCleanup(App*, void*) {
+    gAppEffectCleanups++;
+}
+
+shell::ComponentAppEffectCleanup CountAppEffectInstall(App*, void*) {
+    gAppEffectInstalls++;
+    shell::ComponentAppEffectCleanup cleanup;
+    cleanup.run = &CountAppEffectCleanup;
+    return cleanup;
+}
+
+// crates/shell tests/render.rs retiring_an_application_generation_runs_its_
+// app_effect_cleanups.
+void RetiringAnApplicationGenerationRunsItsAppEffectCleanups() {
+    gAppEffectInstalls = 0;
+    gAppEffectCleanups = 0;
+    Host host(
+        StrL("export default class Effectful { render() { return "
+             "'effect'; } }\n"));
+    LiveWindow live(host);
+    utassert(host.Render() != nullptr);
+    void* application = host.runtime
+                            ->ScriptViewApplication(host.view.id, &host.app);
+    utassert(application != nullptr);
+    shell::ComponentAppEffectInstall install;
+    install.run = &CountAppEffectInstall;
+    Arena* a = ArenaNew();
+    Str error;
+    utassert(host.runtime->ScheduleComponentAppEffect(
+        application, host.view.id, StrL("menu-bar"), StrL("revision-1"),
+        &host.window, &host.app, install, &error, a));
+    ExecDrain();
+    utassert(gAppEffectInstalls == 1);
+    utassert(gAppEffectCleanups == 0);
+    ScriptView* script = host.view.Get(&host.app);
+    host.runtime->ReleaseApplicationState(script->object);
+    utassert(gAppEffectCleanups == 1);
+    ArenaDelete(a);
+}
+
+// menu.rs's refusals, which Rust states in its recorders and materializers.
+void LifecycleMenuRefusesWhatRustRefuses() {
+    Str message = CallErrorTemp("MenuItem", "new MenuItem(' ', 'open')");
+    utassert(StrContains(message,
+                         StrL("MenuItem expects non-empty label and action")));
+    message = CallErrorTemp("Tooltip", "new Tooltip('id', ' ', 'text')");
+    utassert(StrContains(
+        message, StrL("Tooltip id, label, and text must not be empty")));
+    message = CallErrorTemp("Menu", "new Menu('')");
+    utassert(StrContains(message, StrL("Menu expects a non-empty label")));
+    Host foreign(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Menu } from 'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new Menu('File').child(div()); } }\n"));
+    utassert(StrContains(RenderRefusal(foreign),
+                         StrL("Menu accepts only MenuItem or MenuSeparator "
+                              "children")));
+    Host styled(
+        StrL("import { View } from 'gpui-kit';\n"
+             "import { MenuItem } from 'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new MenuItem('Open', 'open').p(2); } }\n"));
+    utassert(StrContains(RenderRefusal(styled),
+                         StrL("MenuItem carries data rather than a box")));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -3430,4 +3621,11 @@ void TestComponentShell() {
     SettingsCatalogNamesTheRealNativeHierarchy();
     FullSettingsHierarchyRebuildsLazySlotsAcrossDraws();
     SettingsRejectStyleAndForeignChildren();
+
+    TestSuite("lifecycle");
+    TooltipBuildsARealButtonWithAManagedTooltip();
+    MenuBarInstallsNativeAndComponentMenuModelsAfterRender();
+    ReturningToTheInstalledAppEffectCancelsAPendingReplacement();
+    RetiringAnApplicationGenerationRunsItsAppEffectCleanups();
+    LifecycleMenuRefusesWhatRustRefuses();
 }

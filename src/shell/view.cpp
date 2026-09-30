@@ -12,6 +12,8 @@ namespace gpui {
 ScriptView::~ScriptView() {
     if (runtime && self.IsValid()) {
         runtime->UnregisterScriptView(self, &dirty);
+        // observe_release on the root view: its app effects' cleanups.
+        runtime->CleanupComponentAppEffects(self);
         runtime->ReleaseOwnedEntities(self);
     }
     delete snapshot;
@@ -203,6 +205,18 @@ void ScriptView::OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
         (const shell::ComponentEventBinding*)binding;
     if (!self || !self->runtime || !bound || !bound->run) return;
     bound->run(bound, self, cx, event);
+}
+
+void ScriptView::OnComponentAppEffect(ScriptView* self, Ctx* cx, const void*,
+                                      intptr_t token) {
+    if (!self || !self->runtime) return;
+    self->runtime->ApplyComponentAppEffect((uint64_t)token, cx->app);
+}
+
+void ScriptView::OnDispatchAction(ScriptView* self, Ctx* cx, const ClickEvent*,
+                                  intptr_t action) {
+    if (!self || !action) return;
+    WindowDispatchAction(cx->win, (uint32_t)action);
 }
 
 void ScriptView::OnBoundString(ScriptView* self, Ctx* cx, const ClickEvent*,

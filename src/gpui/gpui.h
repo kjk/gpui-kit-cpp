@@ -6846,6 +6846,8 @@ struct MenuDef {
     Str name = {};
     const MenuRow* items = nullptr;
     int n = 0;
+    // Menu::disabled: the whole menu greyed out in the OS menu bar.
+    bool disabled = false;
 };
 
 // Whether the menus set below reach an OS menu bar. An application asks so it

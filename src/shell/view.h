@@ -159,6 +159,16 @@ struct ScriptView {
     // the script callback it carries.
     static void OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
                                  intptr_t binding);
+    // The deferred half of a registered component's app effect
+    // (ShellRuntime::ScheduleComponentAppEffect): `window.defer`.
+    static void OnComponentAppEffect(ScriptView* self, Ctx* cx,
+                                     const void* event, intptr_t token);
+    // Dispatches the action a component filled in (ListenerFill) — a native
+    // menu row's ShellAction — from the focused element, as
+    // `window.dispatch_action` does. Bound to the view rather than to a
+    // frame, so it survives a menu that stays open across frames.
+    static void OnDispatchAction(ScriptView* self, Ctx* cx,
+                                 const ClickEvent* event, intptr_t action);
 };
 
 } // namespace gpui

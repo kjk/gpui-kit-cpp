@@ -330,6 +330,14 @@ struct TemplateDiscovery {
     shell::SpecArena* saved = nullptr;
 };
 
+struct ComponentAppEffectGeneration;
+struct DeferredAppEffect;
+
+struct ShellRuntimeImpl;
+static void RetireComponentAppEffects(ShellRuntimeImpl* impl,
+                                      void* application);
+static void ClearComponentAppEffects(ShellRuntimeImpl* impl);
+
 struct ShellRuntimeImpl {
     ShellRuntime* owner = nullptr;
     JSRuntime* jsRuntime = nullptr;
@@ -384,6 +392,31 @@ struct ShellRuntimeImpl {
     Str lastComponentFailure;
     // Deprecated exports already warned about, once each.
     Vec<const char*> warnedDeprecatedExports;
+    // component_app_effects: one generation per application that scheduled
+    // an app effect, and the installs waiting for their deferred apply.
+    Vec<ComponentAppEffectGeneration*> appEffects;
+    Vec<DeferredAppEffect> deferredAppEffects;
+    uint64_t nextAppEffectToken = 1;
+};
+
+// ComponentAppEffectGeneration: the root view the effects were installed for
+// and the App their cleanups run against. Retiring a generation runs its
+// cleanups, so a reload does not have to wait for the window to close before
+// native state is restored.
+struct ComponentAppEffectGeneration {
+    void* application = nullptr;
+    EntityId view = {};
+    App* app = nullptr;
+    shell::ComponentAppEffectQueue queue;
+};
+
+// What `window.defer` captured: the install, until the deferred apply runs.
+struct DeferredAppEffect {
+    uint64_t token = 0;
+    void* application = nullptr;
+    Str key;
+    Str revision;
+    shell::ComponentAppEffectInstall install = {};
 };
 
 struct ViewType {
@@ -11035,6 +11068,7 @@ ShellRuntime::~ShellRuntime() {
             VecReset(retired);
             impl->callbacks.Clear(impl->context);
         }
+        ClearComponentAppEffects(impl);
         impl->componentStates.Clear();
         StrFree(impl->componentStateProof);
         StrFree(impl->componentModuleSource);
@@ -11641,7 +11675,10 @@ void ShellRuntime::ReleaseOwnedEntities(EntityId view) {
 }
 
 void ShellRuntime::ReleaseApplicationState(ViewObject* object) {
-    if (!object || object->runtime != this || !object->application) return;
+    if (!object || object->runtime != this) return;
+    RetireComponentAppEffects(
+        impl, object->application ? (void*)object->application : (void*)object);
+    if (!object->application) return;
     AppModule* application = object->application;
     for (;;) {
         int nested = -1;
@@ -12932,6 +12969,295 @@ void* shell::MaterializeRequest::State(const shell::ComponentArgument& argument,
                 : nullptr;
     if (!state) Fail(why.s ? why : StrL("retained state is unavailable"));
     return state;
+}
+
+// ─── Native effects (component_registry.rs) ────────────────────────────────
+
+shell::ComponentWindowEffects shell::ComponentCallback::WindowEffects(
+    ShellRuntime* runtime, Arena* a) const {
+    shell::ComponentWindowEffects effects;
+    effects.runtime = runtime;
+    effects.reporter = *this;
+    effects.active = (bool*)Alloc(a, (int)sizeof(bool));
+    if (effects.active) *effects.active = false;
+    return effects;
+}
+
+// with_component_callback_event: the reporter's generation lease and event
+// scope around `body`.
+static bool RunComponentEffectEvent(ShellRuntime* runtime, shell::CallbackId id,
+                                    Window* window, App* app,
+                                    shell::ComponentEventBody body, void* user,
+                                    Str* error, Arena* a) {
+    if (shell::ScopeHasCurrent()) {
+        ScopePhase phase = shell::ScopeCurrentPhase();
+        if (!ScopePhaseAllowsNotify(phase)) {
+            *error = StrDup(a, fmt("component window effects are not allowed "
+                                   "during the `%s` phase",
+                                   Str(ScopePhaseName(phase))));
+            return false;
+        }
+    }
+    ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
+    CallbackEntry* entry = LiveComponentCallback(impl, id, app, error, a);
+    if (!entry) return false;
+    shell::CallScopeGuard scope =
+        shell::ScopeEnter(window, app, ScopePhase::Event, entry->view,
+                          entry->policy, runtime, entry->application);
+    shell::ComponentEventEffects effects;
+    effects.window = window;
+    effects.app = app;
+    effects.a = a;
+    return body(&effects, user, error);
+}
+
+bool shell::ComponentWindowEffects::Event(Window* window, App* app,
+                                          ComponentEventBody body, void* user,
+                                          Str* error, Arena* a) const {
+    Str failure;
+    if (!active || *active) {
+        failure = StrDup(a, StrL("component window effect event is already "
+                                 "running"));
+        if (error) *error = failure;
+        return false;
+    }
+    bool ok = false;
+    *active = true;
+    if (!runtime) {
+        failure = StrDup(a, StrL("component window effect runtime has been "
+                                 "released"));
+    } else {
+        ok = RunComponentEffectEvent(runtime, reporter.id, window, app, body,
+                                     user, &failure, a);
+    }
+    *active = false;
+    if (!ok && runtime &&
+        (!shell::ScopeHasCurrent() ||
+         ScopePhaseAllowsNotify(shell::ScopeCurrentPhase()))) {
+        shell::ComponentDataValue message =
+            shell::ComponentDataValue::String(failure);
+        Str reportError;
+        if (!reporter.InvokeWith(runtime, &message, 1, window, app, nullptr,
+                                 &reportError, a)) {
+            logf("component window effect error reporter failed: %s\n",
+                 reportError);
+        }
+    }
+    if (!ok && error) *error = failure;
+    return ok;
+}
+
+bool shell::MaterializeRequest::AppEffects(ComponentAppEffects* out) {
+    void* application = runtime && cx
+                            ? runtime->ScriptViewApplication(cx->self, cx->app)
+                            : nullptr;
+    if (!application) {
+        Fail(
+            StrL("component app effects require a root application "
+                 "snapshot"));
+        return false;
+    }
+    out->runtime = runtime;
+    out->application = application;
+    out->view = cx->self;
+    return true;
+}
+
+static void DropAppEffectInstall(const shell::ComponentAppEffectInstall& i) {
+    if (i.drop) i.drop(i.user);
+}
+
+bool shell::ComponentAppEffects::Replace(Str key, Str revision, Window* window,
+                                         App* app,
+                                         ComponentAppEffectInstall install,
+                                         Str* error, Arena* a) const {
+    if (!runtime) {
+        DropAppEffectInstall(install);
+        if (error)
+            *error = StrDup(a, StrL("component app effect runtime has been "
+                                    "released"));
+        return false;
+    }
+    return runtime->ScheduleComponentAppEffect(application, view, key, revision,
+                                               window, app, install, error, a);
+}
+
+void* ShellRuntime::ScriptViewApplication(EntityId view, App* app) const {
+    if (!view.IsValid() || !app) return nullptr;
+    for (int i = 0; i < impl->views.len; i++) {
+        if (impl->views[i].view != view) continue;
+        ScriptView* script = (ScriptView*)EntityGet(app, view);
+        if (!script || !script->object || script->object->runtime != this)
+            return nullptr;
+        // A view loaded from source rather than from an application
+        // directory has no AppModule; its object is the generation then,
+        // retired with ReleaseApplicationState like an application's.
+        return script->object->application ? (void*)script->object->application
+                                           : (void*)script->object;
+    }
+    return nullptr;
+}
+
+static ComponentAppEffectGeneration* FindAppEffectGeneration(
+    ShellRuntimeImpl* impl, void* application, int* at = nullptr) {
+    for (int i = 0; i < impl->appEffects.len; i++) {
+        if (impl->appEffects[i]->application == application) {
+            if (at) *at = i;
+            return impl->appEffects[i];
+        }
+    }
+    return nullptr;
+}
+
+// Runs every installed cleanup of `generation` against its App, then frees
+// the generation.
+static void RetireAppEffectGeneration(ComponentAppEffectGeneration* generation,
+                                      bool runCleanups) {
+    shell::ComponentAppEffectQueue& queue = generation->queue;
+    for (int i = 0; i < queue.installed.len; i++) {
+        shell::ComponentAppEffectCleanup cleanup = queue.installed[i].cleanup;
+        queue.installed[i].cleanup = {};
+        if (runCleanups && cleanup.run)
+            cleanup.run(generation->app, cleanup.user);
+        if (cleanup.drop) cleanup.drop(cleanup.user);
+    }
+    delete generation;
+}
+
+static void DropDeferredAppEffects(ShellRuntimeImpl* impl, void* application) {
+    for (int i = impl->deferredAppEffects.len - 1; i >= 0; i--) {
+        DeferredAppEffect& deferred = impl->deferredAppEffects[i];
+        if (application && deferred.application != application) continue;
+        DropAppEffectInstall(deferred.install);
+        StrFree(deferred.key);
+        StrFree(deferred.revision);
+        VecRemoveAt(impl->deferredAppEffects, i);
+    }
+}
+
+bool ShellRuntime::ScheduleComponentAppEffect(
+    void* application, EntityId view, Str key, Str revision, Window* window,
+    App* app, const shell::ComponentAppEffectInstall& install, Str* error,
+    Arena* a) {
+    if (!application || !app || !EntityGet(app, view)) {
+        DropAppEffectInstall(install);
+        if (error)
+            *error = StrDup(a, StrL("component app effects require a live root "
+                                    "view"));
+        return false;
+    }
+    ComponentAppEffectGeneration* generation =
+        FindAppEffectGeneration(impl, application);
+    if (!generation) {
+        generation = new ComponentAppEffectGeneration();
+        generation->application = application;
+        generation->view = view;
+        generation->app = app;
+        VecAppend(impl->appEffects, generation);
+    }
+    if (!shell::QueueComponentAppEffect(&generation->queue, key, revision)) {
+        DropAppEffectInstall(install);
+        return true;
+    }
+    DeferredAppEffect deferred;
+    deferred.token = impl->nextAppEffectToken++;
+    deferred.application = application;
+    deferred.key = StrDup(key);
+    deferred.revision = StrDup(revision);
+    deferred.install = install;
+    VecAppend(impl->deferredAppEffects, deferred);
+    // window.defer: after the current render, on the root view — a view that
+    // is gone by then drops the post, and its release ran the cleanups.
+    Entity<ScriptView> owner;
+    owner.id = view;
+    WindowPost(window, ListenTo(owner, &ScriptView::OnComponentAppEffect,
+                                (intptr_t)deferred.token));
+    return true;
+}
+
+void ShellRuntime::ApplyComponentAppEffect(uint64_t token, App* app) {
+    int at = -1;
+    for (int i = 0; i < impl->deferredAppEffects.len; i++) {
+        if (impl->deferredAppEffects[i].token == token) at = i;
+    }
+    if (at < 0) return;
+    DeferredAppEffect deferred = impl->deferredAppEffects[at];
+    VecRemoveAt(impl->deferredAppEffects, at);
+    ComponentAppEffectGeneration* generation =
+        FindAppEffectGeneration(impl, deferred.application);
+    const Str* pending =
+        generation ? generation->queue.Pending(deferred.key) : nullptr;
+    if (!pending || !StrEq(*pending, deferred.revision)) {
+        DropAppEffectInstall(deferred.install);
+        StrFree(deferred.key);
+        StrFree(deferred.revision);
+        return;
+    }
+    generation->queue.RemovePending(deferred.key);
+    shell::ComponentAppEffectCleanup old = {};
+    shell::ComponentAppEffectQueue& queue = generation->queue;
+    for (int i = 0; i < queue.installed.len; i++) {
+        if (!StrEq(queue.installed[i].key, deferred.key)) continue;
+        old = queue.installed[i].cleanup;
+        StrFree(queue.installed[i].key);
+        StrFree(queue.installed[i].revision);
+        VecRemoveAt(queue.installed, i);
+        break;
+    }
+    if (old.run) old.run(app, old.user);
+    if (old.drop) old.drop(old.user);
+    shell::ComponentAppEffectCleanup cleanup = {};
+    if (deferred.install.run)
+        cleanup = deferred.install.run(app, deferred.install.user);
+    DropAppEffectInstall(deferred.install);
+    generation = FindAppEffectGeneration(impl, deferred.application);
+    if (generation) {
+        shell::InstalledAppEffect installed;
+        installed.key = deferred.key;
+        installed.revision = deferred.revision;
+        installed.cleanup = cleanup;
+        VecAppend(generation->queue.installed, installed);
+        return;
+    }
+    if (cleanup.run) cleanup.run(app, cleanup.user);
+    if (cleanup.drop) cleanup.drop(cleanup.user);
+    StrFree(deferred.key);
+    StrFree(deferred.revision);
+}
+
+// retire_component_app_effects: the generation's cleanups run when it
+// retires, not when its root view is released — unless the view is already
+// gone, when the release has run them.
+static void RetireComponentAppEffects(ShellRuntimeImpl* impl,
+                                      void* application) {
+    int at = -1;
+    ComponentAppEffectGeneration* generation =
+        FindAppEffectGeneration(impl, application, &at);
+    if (!generation) return;
+    VecRemoveAt(impl->appEffects, at);
+    DropDeferredAppEffects(impl, application);
+    bool live = generation->app && EntityGet(generation->app, generation->view);
+    RetireAppEffectGeneration(generation, live);
+}
+
+// The runtime is going away: every install is dropped without running.
+static void ClearComponentAppEffects(ShellRuntimeImpl* impl) {
+    DropDeferredAppEffects(impl, nullptr);
+    for (int i = 0; i < impl->appEffects.len; i++) {
+        RetireAppEffectGeneration(impl->appEffects[i], false);
+    }
+    VecReset(impl->appEffects);
+    VecReset(impl->deferredAppEffects);
+}
+
+void ShellRuntime::CleanupComponentAppEffects(EntityId view) {
+    for (int i = impl->appEffects.len - 1; i >= 0; i--) {
+        ComponentAppEffectGeneration* generation = impl->appEffects[i];
+        if (generation->view != view) continue;
+        VecRemoveAt(impl->appEffects, i);
+        DropDeferredAppEffects(impl, generation->application);
+        RetireAppEffectGeneration(generation, true);
+    }
 }
 
 ViewType* ViewTypeRetain(ViewType* type) {

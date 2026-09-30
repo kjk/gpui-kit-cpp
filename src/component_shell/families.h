@@ -21,6 +21,7 @@ bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterLifecycle(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
@@ -53,6 +54,10 @@ bool RegisterCompoundPagination(shell::ComponentRegistry*,
                                 shell::RegistryError*);
 bool RegisterCompoundProgress(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompoundRadio(shell::ComponentRegistry*, shell::RegistryError*);
+
+// lifecycle/mod.rs
+bool RegisterLifecycleTooltip(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterLifecycleMenu(shell::ComponentRegistry*, shell::RegistryError*);
 
 // layout/mod.rs
 bool RegisterLayoutTextarea(shell::ComponentRegistry*, shell::RegistryError*);

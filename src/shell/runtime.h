@@ -17,6 +17,7 @@ struct ShellRuntimeAccess;
 namespace gpui::shell {
 struct MaterializedDependencies;
 class FrozenComponentRegistry;
+struct ComponentAppEffectInstall;
 } // namespace gpui::shell
 namespace gpui {
 struct ShellTaskDriver;
@@ -95,6 +96,20 @@ class ShellRuntime {
     void InvalidateScriptView(EntityId view);
     void ReleaseOwnedEntities(EntityId view);
     void ReleaseApplicationState(ViewObject* object);
+
+    // component_registry.rs ComponentAppEffects, the runtime's half
+    // (schedule_component_app_effect and what it defers). The application
+    // a live root ScriptView of this runtime renders, or null.
+    void* ScriptViewApplication(EntityId view, App* app) const;
+    bool ScheduleComponentAppEffect(
+        void* application, EntityId view, Str key, Str revision, Window* window,
+        App* app, const shell::ComponentAppEffectInstall& install, Str* error,
+        Arena* a);
+    // The deferred apply `token` names; what `window.defer` runs.
+    void ApplyComponentAppEffect(uint64_t token, App* app);
+    // Runs the cleanups installed for `view`'s generations: the release
+    // subscription Rust takes on the root view.
+    void CleanupComponentAppEffects(EntityId view);
 
     void DispatchClick(shell::CallbackId callback, const ClickEvent& event,
                        Window* window, App* app);

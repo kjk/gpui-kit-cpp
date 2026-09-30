@@ -1218,4 +1218,93 @@ El* MaterializeRequest::Fail(Str message) {
     return nullptr;
 }
 
+// ─── Native effects ───────────────────────────────────────────────────────
+
+static int FindKey(const Vec<Str>& keys, Str key) {
+    for (int i = 0; i < len(keys); i++) {
+        if (StrEq(keys[i], key)) return i;
+    }
+    return -1;
+}
+
+ComponentEventEffects::~ComponentEventEffects() {
+    VecReset(completed);
+    VecReset(inProgress);
+}
+
+bool ComponentEventEffects::RunOnce(Str key, ComponentEffectBody body,
+                                    void* user, bool* executed, Str* error) {
+    if (executed) *executed = false;
+    if (FindKey(completed, key) >= 0) return true;
+    if (FindKey(inProgress, key) >= 0) {
+        if (error)
+            *error = StrDup(a, fmt("component window effect `%s` is already "
+                                   "running",
+                                   key));
+        return false;
+    }
+    Str owned = StrDup(a, key);
+    VecAppend(inProgress, owned);
+    bool ok = body(user, window, app, error, a);
+    int at = FindKey(inProgress, owned);
+    if (at >= 0) VecRemoveAt(inProgress, at);
+    if (!ok) return false;
+    VecAppend(completed, owned);
+    if (executed) *executed = true;
+    return true;
+}
+
+ComponentAppEffectQueue::~ComponentAppEffectQueue() {
+    for (PendingAppEffect& p : pending) {
+        StrFree(p.key);
+        StrFree(p.revision);
+    }
+    for (InstalledAppEffect& e : installed) {
+        StrFree(e.key);
+        StrFree(e.revision);
+        if (e.cleanup.drop) e.cleanup.drop(e.cleanup.user);
+    }
+    VecReset(pending);
+    VecReset(installed);
+}
+
+const Str* ComponentAppEffectQueue::Pending(Str key) const {
+    for (int i = 0; i < len(pending); i++) {
+        if (StrEq(pending[i].key, key)) return &pending[i].revision;
+    }
+    return nullptr;
+}
+
+InstalledAppEffect* ComponentAppEffectQueue::Installed(Str key) {
+    for (int i = 0; i < len(installed); i++) {
+        if (StrEq(installed[i].key, key)) return &installed[i];
+    }
+    return nullptr;
+}
+
+void ComponentAppEffectQueue::RemovePending(Str key) {
+    for (int i = 0; i < len(pending); i++) {
+        if (StrEq(pending[i].key, key)) {
+            StrFree(pending[i].key);
+            StrFree(pending[i].revision);
+            VecRemoveAt(pending, i);
+            return;
+        }
+    }
+}
+
+bool QueueComponentAppEffect(ComponentAppEffectQueue* queue, Str key,
+                             Str revision) {
+    const Str* pending = queue->Pending(key);
+    if (pending && StrEq(*pending, revision)) return false;
+    const InstalledAppEffect* installed = queue->Installed(key);
+    if (installed && StrEq(installed->revision, revision)) {
+        queue->RemovePending(key);
+        return false;
+    }
+    queue->RemovePending(key);
+    VecAppend(queue->pending, PendingAppEffect{StrDup(key), StrDup(revision)});
+    return true;
+}
+
 } // namespace gpui::shell
