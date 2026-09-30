@@ -15,10 +15,12 @@
    grammar is `color.rs`: a hex string, or a shadcn name with an optional scale
    and an optional percentage — `neutral-200`, `white`, `red-500/40`.
 
-   What is deliberately not here: the highlight styles
-   (our colouring is a scanner, not tree-sitter), and the directory watcher —
-   Rust reloads themes when the folder changes, and nothing in this tree
-   watches a folder. */
+   `ThemeRegistryWatchDir` is `watch_dir`: the folder is read, then watched
+   through sys/dir_watch.h, and a change rebuilds the table and re-applies
+   the installed themes by name.
+
+   What is deliberately not here: the highlight styles (our colouring is a
+   scanner, not tree-sitter). */
 
 #include "base/json.h"
 #include "base/list_settings.h"
@@ -816,6 +818,8 @@ struct ThemeRegistry {
     Vec<ThemeConfig> themes;
     Vec<Str> loadedDirs;
     Str active[2] = {};
+    // The DirWatchId of the watched themes folder, 0 when none is.
+    int watch = 0;
     bool initialized = false;
 
     ~ThemeRegistry();
@@ -842,6 +846,23 @@ int ThemeRegistryLoadStr(App* app, Str json);
 // unparseable one skipped rather than fatal. Returns how many themes were
 // added. A relative path is resolved against the asset roots.
 int ThemeRegistryLoadDir(App* app, Str dir);
+
+// ThemeRegistry::watch_dir: `dir`, resolved as ThemeRegistryLoadDir resolves
+// it — or made where it is named, when it is found nowhere, as Rust makes
+// it — is watched without its subfolders, then the registry is reloaded and
+// `onLoad` runs. After that, any change in the folder reloads the registry
+// on the main thread, once per burst. Answers whether the folder is being
+// watched: false on wasm, iOS and Android, which have no watcher, and when
+// the OS refused (logged). The themes are loaded either way. A second call
+// moves the watch to the new folder.
+bool ThemeRegistryWatchDir(App* app, Str dir, Func0 onLoad = Func0{});
+
+// reload_themes plus the observer Rust's `theme::init` puts on the
+// registry: the table is rebuilt from the embedded defaults and every folder
+// read so far — a theme whose file is gone drops out, a changed one is read
+// again — and each mode's installed theme is looked up again by name and
+// re-applied. What a change in a watched folder runs. Returns the new count.
+int ThemeRegistryReload(App* app);
 
 // `Theme::apply_semantic_config_str`: a theme written in the semantic
 // vocabulary — `{"tokens": {"colors": {..}, "radius": {..}, ..}}` — resolved

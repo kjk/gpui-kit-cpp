@@ -425,6 +425,212 @@ static void ApplyConfigReadsTheChartColors() {
     AppGlobalClear(&app);
 }
 
+// \u2500\u2500\u2500 watch_dir
+// \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+
+// Rust's watcher sends into a one-slot channel with try_send, so a burst of
+// events is one reload; these stand in for the OS with DirWatchSignal.
+static int gWatchCalls = 0;
+static DirWatchId gWatchResignal = 0;
+
+static void CountWatchCall() {
+    gWatchCalls++;
+    // An event that lands while the reload runs is one more reload.
+    if (gWatchResignal) {
+        DirWatchId id = gWatchResignal;
+        gWatchResignal = 0;
+        DirWatchSignal(id);
+        DirWatchSignal(id);
+    }
+}
+
+static void ABurstOfChangesIsOneReload() {
+    // A stack App does not go through AppNew, which is what names the main
+    // thread; nothing is delivered until something has.
+    ExecInit();
+    ExecDrain();
+    gWatchCalls = 0;
+    int before = DirWatchCount();
+    DirWatchId id = DirWatchAdd(MkFunc0Void(CountWatchCall));
+    utassert(id != 0 && DirWatchCount() == before + 1);
+
+    // Delivered on the main thread, when the queue is drained, and once.
+    DirWatchSignal(id);
+    DirWatchSignal(id);
+    DirWatchSignal(id);
+    utassert(gWatchCalls == 0);
+    utassert(ExecQueued() == 1);
+    ExecDrain();
+    utassert(gWatchCalls == 1);
+
+    // The slot is empty again once the call has started.
+    gWatchResignal = id;
+    DirWatchSignal(id);
+    ExecDrain();
+    utassert(gWatchCalls == 2);
+    utassert(ExecQueued() == 1);
+    ExecDrain();
+    utassert(gWatchCalls == 3);
+
+    // A stop drops a call already queued, and later signals go nowhere.
+    DirWatchSignal(id);
+    DirWatchStop(id);
+    ExecDrain();
+    utassert(gWatchCalls == 3);
+    DirWatchSignal(id);
+    utassert(ExecQueued() == 0);
+    utassert(DirWatchCount() == before);
+    // 0 and unknown handles are ignored.
+    DirWatchStop(0);
+    DirWatchStop(id);
+    DirWatchSignal(0);
+    utassert(ExecQueued() == 0);
+}
+
+// A folder of its own under the system temp directory. It is made by the
+// watch (Rust's create_dir_all) and left there, empty, afterwards: base has
+// no portable rmdir.
+static const char kWatchSep = GPUI_OS_WINDOWS ? '\\' : '/';
+
+static Str WatchTempDir(const char* leaf) {
+    const char* names[] = {"TMPDIR", "TEMP", "TMP"};
+    for (int i = 0; i < 3; i++) {
+        const char* value = getenv(names[i]);
+        if (value && *value) {
+            return StrDup(fmt("%s%c%s", Str(value), kWatchSep, Str(leaf)));
+        }
+    }
+    return StrDup(fmt("/tmp/%s", Str(leaf)));
+}
+
+static bool WriteTheme(Str dir, const char* file, const char* json) {
+    TempStr path = fmt("%s%c%s", dir, kWatchSep, Str(file));
+    FILE* f = fopen(path.s, "wb");
+    if (!f) {
+        return false;
+    }
+    size_t n = strlen(json);
+    bool ok = fwrite(json, 1, n, f) == n;
+    return fclose(f) == 0 && ok;
+}
+
+static void RemoveTheme(Str dir, const char* file) {
+    TempStr path = fmt("%s%c%s", dir, kWatchSep, Str(file));
+    remove(path.s);
+}
+
+static const char* WatchedLight(const char* bg) {
+    return fmt("{\"themes\":[{\"name\":\"Watched Light\",\"mode\":\"light\","
+               "\"colors\":{\"background\":\"%s\"}}]}",
+               Str(bg))
+        .s;
+}
+
+static const char* WatchedDark(const char* bg) {
+    return fmt("{\"themes\":[{\"name\":\"Watched Dark\",\"mode\":\"dark\","
+               "\"colors\":{\"background\":\"%s\"}}]}",
+               Str(bg))
+        .s;
+}
+
+static int gOnLoadCalls = 0;
+static void CountOnLoad() {
+    gOnLoadCalls++;
+}
+
+// reload_themes and the registry observer, driven directly: a file edited in
+// the folder is read again and the installed theme is re-applied by name in
+// both modes; a file that is gone drops out of the table and leaves the
+// palette it had.
+static void AReloadReappliesTheInstalledThemes() {
+    App app;
+    Str dir = WatchTempDir("gpui-theme-reload-test");
+    // What an interrupted earlier run left behind.
+    RemoveTheme(dir, "light.json");
+    RemoveTheme(dir, "dark.json");
+    gOnLoadCalls = 0;
+    // The folder is made by the watch where there is one; elsewhere there is
+    // no folder to write into, and nothing more to check here.
+    bool watched = ThemeRegistryWatchDir(&app, dir, MkFunc0Void(CountOnLoad));
+    utassert(gOnLoadCalls == 1);
+    utassert(watched ==
+             (bool)(GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC));
+    if (!watched) {
+        StrFree(dir);
+        AppGlobalClear(&app);
+        return;
+    }
+    utassert(WriteTheme(dir, "light.json", WatchedLight("#112233")));
+    utassert(WriteTheme(dir, "dark.json", WatchedDark("#223344")));
+    int defaults = ThemeRegistryCount(&app);
+    utassert(ThemeRegistryReload(&app) == defaults + 2);
+
+    utassert(ThemeRegistryApply(&app, StrL("Watched Dark")));
+    utassert(ThemeRegistryApply(&app, StrL("Watched Light")));
+    ThemeSet(&app, ThemeMode::Light);
+    utassert(Is(ThemeLight(&app).background, 0x112233));
+    utassert(Is(ThemeDark(&app).background, 0x223344));
+
+    utassert(WriteTheme(dir, "light.json", WatchedLight("#445566")));
+    utassert(WriteTheme(dir, "dark.json", WatchedDark("#556677")));
+    utassert(ThemeRegistryReload(&app) == defaults + 2);
+    utassert(ThemeGet(&app) == ThemeMode::Light);
+    utassert(Is(ThemeNow(&app).background, 0x445566));
+    // The mode not showing is re-resolved too, so switching shows the edit.
+    utassert(Is(ThemeDark(&app).background, 0x556677));
+    utassert(StrEq(ThemeRegistryActive(&app, ThemeMode::Light),
+                   StrL("Watched Light")));
+
+    RemoveTheme(dir, "light.json");
+    RemoveTheme(dir, "dark.json");
+    utassert(ThemeRegistryReload(&app) == defaults);
+    utassert(!ThemeRegistryFind(&app, StrL("Watched Light")));
+    utassert(Is(ThemeNow(&app).background, 0x445566));
+
+    // Nothing the OS reported about those writes outlives the registry.
+    AppGlobalClear(&app);
+    ExecDrain();
+    StrFree(dir);
+}
+
+// The real thing: a file written into the watched folder reaches the main
+// thread as a reload, which re-applies the theme. Bounded: the queue is
+// pumped for up to five seconds, which is two orders of magnitude more than
+// ReadDirectoryChangesW, inotify or FSEvents (50 ms latency) take.
+static void AFileWrittenIntoTheFolderReloadsIt() {
+#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC
+    ExecInit();
+    App app;
+    Str dir = WatchTempDir("gpui-theme-watch-test");
+    RemoveTheme(dir, "light.json");
+    utassert(ThemeRegistryWatchDir(&app, dir));
+    utassert(WriteTheme(dir, "light.json", WatchedLight("#101010")));
+    const int waitMs = 5000;
+    for (int t = 0;
+         t < waitMs && !ThemeRegistryFind(&app, StrL("Watched Light"));
+         t += 10) {
+        ExecDrain();
+        PlatSleepMs(10);
+    }
+    utassert(ThemeRegistryApply(&app, StrL("Watched Light")));
+    ThemeSet(&app, ThemeMode::Light);
+    utassert(Is(ThemeNow(&app).background, 0x101010));
+
+    utassert(WriteTheme(dir, "light.json", WatchedLight("#202020")));
+    for (int t = 0; t < waitMs && !Is(ThemeNow(&app).background, 0x202020);
+         t += 10) {
+        ExecDrain();
+        PlatSleepMs(10);
+    }
+    utassert(Is(ThemeNow(&app).background, 0x202020));
+
+    RemoveTheme(dir, "light.json");
+    AppGlobalClear(&app);
+    ExecDrain();
+    StrFree(dir);
+#endif
+}
+
 void TestThemeRegistry() {
     TestSuite("theme_registry");
     AColourIsAHexOrAName();
@@ -436,4 +642,7 @@ void TestThemeRegistry() {
     RegistriesAreIsolatedPerApplication();
     SourceRegistryAndConfigSettingsAreRetained();
     ApplyConfigReadsTheChartColors();
+    ABurstOfChangesIsOneReload();
+    AReloadReappliesTheInstalledThemes();
+    AFileWrittenIntoTheFolderReloadsIt();
 }

@@ -3,6 +3,7 @@
 #include "base/lib.h"
 #include "gpui/assets.h"
 #include "gpui/paint.h"
+#include "sys/dir_watch.h"
 #include "ui/text.h"
 
 #include <math.h>
@@ -2386,6 +2387,11 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base) {
 // App Global; this has the same lifetime and isolates loaded/active themes
 // between applications.
 ThemeRegistry::~ThemeRegistry() {
+    // The watch calls back with the App this registry belongs to, so it goes
+    // before the App does. A call already queued finds no watch and is
+    // dropped.
+    DirWatchStop(watch);
+    watch = 0;
     VecReset(themes);
     VecReset(loadedDirs);
     if (arena) {
@@ -2884,29 +2890,33 @@ bool ThemeApplySemanticConfigStr(App* app, ThemeMode mode, Str json,
     return true;
 }
 
-int ThemeRegistryLoadDir(App* app, Str dir) {
-    ThemeRegistry* state = RegistryOf(app);
-    if (!state || !state->arena) {
-        return 0;
-    }
+// Where `dir` is: itself when it exists as given, else wherever an asset
+// root has one. `out` holds kMaxPath bytes.
+static bool ThemesDirResolve(Str dir, char* out) {
     int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
-    TempStr path = StrDupTemp(Str(dir.s ? dir.s : "", n));
-    if (!PlatDirExists(path.s)) {
-        TempStr resolved = AllocStrTemp(kMaxPath - 1);
-        if (!AssetsFindDir(dir, resolved.s, len(resolved) + 1)) {
-            return 0;
-        }
-        path = Str(resolved.s);
+    memcpy(out, dir.s ? dir.s : "", (size_t)n);
+    out[n] = 0;
+    if (PlatDirExists(out)) {
+        return true;
     }
-    // Already read once. A theme is never dropped, so a second pass over the
-    // same directory can only find what is in the registry already.
-    Str dirKey = path;
+    return AssetsFindDir(dir, out, kMaxPath);
+}
+
+// Remembers `path` as a folder the registry reads, answering false when it
+// already was one.
+static bool ThemesDirRemember(ThemeRegistry* state, const char* path) {
     for (int i = 0; i < state->loadedDirs.len; i++) {
-        if (base::StrEq(state->loadedDirs[i], dirKey)) {
-            return 0;
+        if (base::StrEq(state->loadedDirs[i], Str(path))) {
+            return false;
         }
     }
-    VecAppend(state->loadedDirs, StrDup(state->arena, dirKey));
+    VecAppend(state->loadedDirs, StrDup(state->arena, Str(path)));
+    return true;
+}
+
+// Every `*.json` in `path`, with an unparseable one skipped rather than
+// fatal, the way Rust's `reload()` logs and carries on.
+static int ThemesDirLoadFiles(App* app, const char* path) {
     // Rust reads the whole directory; a hundred entries is more themes than
     // anyone ships and the listing is a fixed buffer either way.
     const int kMaxEntries = 128;
@@ -2914,7 +2924,7 @@ int ThemeRegistryLoadDir(App* app, Str dir) {
     if (!entries) {
         return 0;
     }
-    int count = PlatListDir(path.s, entries, kMaxEntries);
+    int count = PlatListDir(path, entries, kMaxEntries);
     int added = 0;
     for (int i = 0; i < count; i++) {
         if (entries[i].isDir) {
@@ -2925,17 +2935,123 @@ int ThemeRegistryLoadDir(App* app, Str dir) {
         if (nameLen < 6 || !base::StrEqI(Str(name + nameLen - 5), ".json")) {
             continue;
         }
-        TempStr file = fmt("%s%c%s", path, kSep, Str(name));
+        TempStr file = fmt("%s%c%s", Str(path), kSep, Str(name));
         Str text = len(file) < kMaxPath ? ReadTextFile(file.s) : Str{};
         if (text.s) {
-            // An unparseable file is skipped rather than fatal, the way
-            // Rust's `reload()` logs and carries on.
             added += ThemeRegistryLoadStr(app, text);
             StrFree(text);
         }
     }
     free(entries);
     return added;
+}
+
+int ThemeRegistryLoadDir(App* app, Str dir) {
+    ThemeRegistry* state = RegistryOf(app);
+    if (!state || !state->arena) {
+        return 0;
+    }
+    char* path = AllocStrTemp(kMaxPath - 1).s;
+    if (!ThemesDirResolve(dir, path)) {
+        return 0;
+    }
+    // Already read once. Between reloads a theme is never dropped, so a
+    // second pass over the same directory can only find what is in the
+    // registry already.
+    if (!ThemesDirRemember(state, path)) {
+        return 0;
+    }
+    return ThemesDirLoadFiles(app, path);
+}
+
+// The observer Rust's `theme::init` puts on the registry global: both
+// modes' themes are looked up again by name and the current mode's is
+// re-applied (`Theme::change(mode, None)`). Rust re-resolves the other mode
+// when it is next switched to; a mode switch here shows the palette already
+// in that mode's slot, so it is resolved now instead. A theme whose file is
+// gone keeps the palette it had, as Rust keeps the `Rc` it had.
+static void ThemeRegistryReapply(App* app) {
+    ThemeMode cur = ThemeGet(app);
+    ThemeMode other =
+        cur == ThemeMode::Dark ? ThemeMode::Light : ThemeMode::Dark;
+    const ThemeConfig* cfg =
+        ThemeRegistryFind(app, ThemeRegistryActive(app, other));
+    if (cfg && cfg->mode == other) {
+        Theme t;
+        ThemeConfigResolve(&t, cfg,
+                           other == ThemeMode::Dark ? ThemeDefaultDark()
+                                                    : ThemeDefaultLight());
+        ThemeInstall(app, other, t);
+    }
+    // Theme::change: reloadMode re-applies the current mode's registered
+    // file, and the end of the update refreshes every window.
+    ThemeUpdateScope scope;
+    ThemeBeginUpdate(app, true, &scope);
+    ThemeEndUpdate(&scope);
+}
+
+int ThemeRegistryReload(App* app) {
+    ThemeRegistry* state = RegistryOf(app);
+    if (!state || !state->arena) {
+        return 0;
+    }
+    // Rust clears its map and reads the folder again. What an earlier load
+    // parsed stays in the arena rather than being popped: the names in
+    // `active`, a ThemeUpdateScope's snapshot and a caller's copy of a
+    // theme's name all point into it. That is a file's worth of memory per
+    // reload, and a reload is a person saving a theme.
+    VecClear(state->themes);
+    ThemeRegistryLoadStr(app, Str(kDefaultThemeJson));
+    for (int i = 0; i < state->loadedDirs.len; i++) {
+        ThemesDirLoadFiles(app, state->loadedDirs[i].s);
+    }
+    ThemeRegistryReapply(app);
+    return state->themes.len;
+}
+
+static void ThemeRegistryOnDirChange(App* app) {
+    logf("theme: reloading themes...");
+    int n = ThemeRegistryReload(app);
+    logf("theme: themes reloaded successfully (%d).", n);
+}
+
+bool ThemeRegistryWatchDir(App* app, Str dir, Func0 onLoad) {
+    ThemeRegistry* state = RegistryOf(app);
+    if (!state || !state->arena || len(dir) <= 0) {
+        return false;
+    }
+    char* path = AllocStrTemp(kMaxPath - 1).s;
+    if (!ThemesDirResolve(dir, path)) {
+        // Found nowhere: `dir` as given, which the watcher makes, as
+        // `_watch_themes_dir` does with `create_dir_all`.
+        int n = len(dir) < kMaxPath - 1 ? len(dir) : kMaxPath - 1;
+        memcpy(path, dir.s, (size_t)n);
+        path[n] = 0;
+    }
+    DirWatchStop(state->watch);
+    DirWatchError err = DirWatchError::None;
+    state->watch = DirWatchStart(
+        Str(path), MkFunc0(ThemeRegistryOnDirChange, app), true, &err);
+    if (!state->watch) {
+        if (err == DirWatchError::Limit) {
+            logf(
+                "theme: theme file watch limit reached, theme hot reload "
+                "is disabled: %s",
+                Str(DirWatchErrorName(err)));
+        } else if (err != DirWatchError::Unsupported) {
+            logf("theme: failed to watch themes directory %s: %s", Str(path),
+                 Str(DirWatchErrorName(err)));
+        }
+    }
+    // reload_themes, then on_load. Rust runs both on the next turn of the
+    // foreground executor; here they run before this returns, so a caller
+    // that looks a theme up next finds it.
+    if (PlatDirExists(path)) {
+        ThemesDirRemember(state, path);
+    }
+    ThemeRegistryReload(app);
+    onLoad.Call();
+    return state->watch != 0;
 }
 
 int ThemeRegistryCount(const App* app) {

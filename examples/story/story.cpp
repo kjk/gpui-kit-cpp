@@ -2026,6 +2026,11 @@ int GpuiMain(int argc, char** argv) {
     AssetsClear();
     AssetsAddDefaultRoots(Str{});
     AssetsAddRoot(StrL("assets"));
+    // themes::init: ThemeRegistry::watch_dir("./themes"), so a theme file
+    // edited while the gallery is open is re-applied without a restart. Rust
+    // skips the call on wasm; here it still loads the folder there and the
+    // watch reports itself unsupported.
+    ThemeRegistryWatchDir(app, StrL("themes"));
 
     // A theme out of the registry named in the environment, so a screenshot
     // of one is reproducible the way GPUI_TODAY makes the calendar's today.

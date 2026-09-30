@@ -18,8 +18,8 @@ work left is mostly depth.
 Processed through `201b55a431fb1b82a6047e908de63913db3d4354` (2026-09-30,
 chore: upgrade notify to 8.2 and harden theme watching (#3320)). Upstream
 moves the theme watcher to notify 8.2, coalescing reloads and watching
-non-recursively; this tree has no theme watcher to change. The current update
-target is `201b55a431fb1b82a6047e908de63913db3d4354`.
+non-recursively, which is what `ThemeRegistryWatchDir` does here. The current
+update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
 
 ## Known gaps vs Rust
 
@@ -45,10 +45,13 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   itself. The input right-click menu does not, so Input, Textarea and Editor
   show no context menu on those two platforms (`src/ui/native_menu.cpp`,
   `InputContextMenuState` in `src/ui/input.cpp`).
-- **Themes do not hot-reload.** Rust's `ThemeRegistry::watch_dir` loads a
-  folder of themes and then watches it (notify, non-recursive), reloading on
-  any create/modify/remove or rescan; here the folder is read once, because
-  the runtime has no file-watch seam (`src/ui/theme.h`).
+- **Theme hot reload is desktop-only and keeps what it replaced.** Rust's
+  `watch_dir` watches on every non-wasm target; `src/sys/dir_watch.h` has
+  no iOS or Android backend, so there the folder is read once. A reload
+  re-parses into the registry's arena and never frees the documents it
+  replaced — installed palettes and callers' theme names point into them —
+  so each reload costs the folder's size until the App goes
+  (`src/ui/theme.cpp`).
 - **A dock's own edge is an in-flow strip, not a hugging resize handle.**
   Rust's docks resize from a `resize_handle(..).inside(edge)` with the
   indicator appearance; here the edge is the four-DIP strip beside the dock's
