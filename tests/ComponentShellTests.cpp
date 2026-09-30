@@ -4394,6 +4394,171 @@ void SelectRefusesWhatRustRefuses() {
         StrL("Select expects id, rows callback, row renderer, and selection "
              "callback")));
 }
+
+// ─── collections/: mod.rs, tree.rs ─────────────────────────────────────────
+
+// mod.rs catalog_is_only_honest_tree_surface and collections_host.rs
+// collection_catalog_stays_bounded: the family registers TreeItem and Tree
+// and none of the deferred delegate collections.
+void CollectionCatalogIsOnlyTheHonestTreeSurface() {
+    FamilyCatalog catalog(&component_shell::RegisterCollections);
+    utassert(catalog.ok);
+    const char* names[] = {"TreeItem", "Tree"};
+    utassert(catalog.NamesAre(names, 2));
+    utassert(catalog.Documented());
+    const char* deferred[] = {"List",     "DataTable",      "Select",
+                              "Combobox", "SearchableList", "VirtualList"};
+    for (const char* name : deferred)
+        utassert(catalog.frozen.Find(Str(name)) == nullptr);
+}
+
+// tree.rs test_probe: the rows built, reduced the way distinct_rows does —
+// one per id, in first-seen order, the latest build winning.
+struct TreeRowSeen {
+    char id[16];
+    char label[32];
+    bool selected;
+};
+TreeRowSeen gTreeRows[16];
+int gTreeRowCount = 0;
+
+void RecordTreeRow(Str id, Str label, bool selected) {
+    TreeRowSeen* row = nullptr;
+    for (int i = 0; i < gTreeRowCount; i++) {
+        if (StrEq(Str(gTreeRows[i].id), id)) row = &gTreeRows[i];
+    }
+    if (!row) {
+        if (gTreeRowCount >= 16) return;
+        row = &gTreeRows[gTreeRowCount++];
+    }
+    snprintf(row->id, sizeof(row->id), "%.*s", (int)len(id), id.s);
+    snprintf(row->label, sizeof(row->label), "%.*s", (int)len(label), label.s);
+    row->selected = selected;
+}
+
+// Whether the distinct rows are exactly `expected`, each spelled
+// `id|label|0` or `id|label|1`.
+bool TreeRowsAre(const char* const* expected, int count) {
+    if (gTreeRowCount != count) return false;
+    for (int i = 0; i < count; i++) {
+        char row[64];
+        snprintf(row, sizeof(row), "%s|%s|%d", gTreeRows[i].id,
+                 gTreeRows[i].label, gTreeRows[i].selected ? 1 : 0);
+        if (strcmp(row, expected[i]) != 0) return false;
+    }
+    return true;
+}
+
+// collections_host.rs tree_native_interaction_and_data_sync_survive_public_
+// js_refresh: a press on the folder selects and collapses it natively; a
+// refresh that renames it and adds a child syncs the data while the native
+// selection and collapse persist; expanding again reveals the synchronized
+// structure. This also covers tree.rs duplicate_ids_and_expansion_merge_are_
+// defined's merge half: the incoming expanded(true) loses to the native
+// collapse of the same id. Rust clicks at window coordinates; here the press
+// goes to the row's own listener.
+void TreeNativeInteractionAndDataSyncSurvivePublicJsRefresh() {
+    FamilyCatalog catalog(&component_shell::RegisterCollections);
+    component_shell::SetTreeRowProbe(&RecordTreeRow);
+    {
+        Host host(
+            StrL("import { View } from 'gpui-kit';\n"
+                 "import { Tree, TreeItem } from 'gpui-component';\n"
+                 "export default class App extends View {\n"
+                 "  init() { this.renders = 0; }\n"
+                 "  render() { const updated = this.renders++ > 0;\n"
+                 "    const folder = new TreeItem('src', updated ? 'Sources "
+                 "renamed' : 'Source').expanded(true)\n"
+                 "      .child(new TreeItem('main', 'main.rs'));\n"
+                 "    if (updated) folder.child(new TreeItem('lib', "
+                 "'lib.rs'));\n"
+                 "    return new Tree('files').p(2).child(folder)\n"
+                 "    .child(new TreeItem('readme', 'README').disabled(true)); "
+                 "}\n"
+                 "}\n"),
+            &catalog.frozen);
+        gTreeRowCount = 0;
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+        const char* initial[] = {"src|Source|0", "main|main.rs|0",
+                                 "readme|README|0"};
+        utassert(TreeRowsAre(initial, 3));
+
+        El* folder = ListenerAbove(root, StrL("Source"));
+        utassert(folder != nullptr);
+        if (!folder) return;
+        Click(host, folder);
+        gTreeRowCount = 0;
+        root = host.Render();
+        const char* collapsed[] = {"src|Source|1", "readme|README|0"};
+        utassert(TreeRowsAre(collapsed, 2));
+
+        gTreeRowCount = 0;
+        root = Rerender(host);
+        utassert(len(host.ViewError()) == 0);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+        const char* synced[] = {"src|Sources renamed|1", "readme|README|0"};
+        utassert(TreeRowsAre(synced, 2));
+
+        folder = ListenerAbove(root, StrL("Sources renamed"));
+        utassert(folder != nullptr);
+        if (!folder) return;
+        Click(host, folder);
+        gTreeRowCount = 0;
+        host.Render();
+        const char* expanded[] = {"src|Sources renamed|1", "main|main.rs|0",
+                                  "lib|lib.rs|0", "readme|README|0"};
+        utassert(TreeRowsAre(expanded, 4));
+    }
+    component_shell::SetTreeRowProbe(nullptr);
+}
+
+// The failure a Tree script's render leaves behind.
+Str TreeFailureTemp(const char* expression) {
+    FamilyCatalog catalog(&component_shell::RegisterCollections);
+    TempStr source =
+        fmt("import { View, div } from 'gpui-kit';\n"
+            "import { Tree, TreeItem } from 'gpui-component';\n"
+            "export default class App extends View { render() { "
+            "return %s; } }\n",
+            Str(expression));
+    Host host(source, &catalog.frozen);
+    host.Render();
+    return fmt("%s", host.runtime->LastComponentFailure());
+}
+
+// collections_host.rs typed_materializer_boundary_rejects_ordinary_and_
+// registered_wrong_children, tree.rs wrong_children_are_rejected (a Tree
+// takes TreeItems, a styled TreeItem is refused) and the duplicate-id half
+// of duplicate_ids_and_expansion_merge_are_defined, through the scripts that
+// reach them. A nested TreeItem's own refusal is drawn as its failure and
+// the Tree then refuses the child it got, so the TreeItem cases render the
+// item as the root to read its message.
+void TreeTypedBoundaryRejectsWrongChildrenStyleAndDuplicates() {
+    utassert(StrContains(TreeFailureTemp("new Tree('ordinary').child(div())"),
+                         StrL("ordinary element")));
+    utassert(StrContains(
+        TreeFailureTemp("new Tree('outer').child(new Tree('wrong'))"),
+        StrL("received Tree")));
+    utassert(StrContains(
+        TreeFailureTemp("new TreeItem('a', 'A').child(div())"),
+        StrL("TreeItem accepts only registered TreeItem children")));
+    utassert(
+        StrContains(TreeFailureTemp("new TreeItem('a', 'A').p(2)"),
+                    StrL("TreeItem is data and does not support shell style")));
+    utassert(len(TreeFailureTemp("new Tree('t').child(new TreeItem('a', "
+                                 "'A'))")) == 0);
+    utassert(StrContains(
+        TreeFailureTemp("new Tree('t').child(new TreeItem('same', 'A'))"
+                        ".child(new TreeItem('same', 'B'))"),
+        StrL("TreeItem id `same` is duplicated; ids must be unique within a "
+             "Tree")));
+    utassert(StrContains(CallErrorTemp("TreeItem", "new TreeItem('a', ' ')"),
+                         StrL("TreeItem expects non-empty id and label")));
+    utassert(StrContains(CallErrorTemp("Tree", "new Tree('')"),
+                         StrL("Tree expects non-empty id")));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -4551,6 +4716,10 @@ void TestComponentShell() {
     ReturningToTheInstalledAppEffectCancelsAPendingReplacement();
     RetiringAnApplicationGenerationRunsItsAppEffectCleanups();
     LifecycleMenuRefusesWhatRustRefuses();
+    TestSuite("collections");
+    CollectionCatalogIsOnlyTheHonestTreeSurface();
+    TreeNativeInteractionAndDataSyncSurvivePublicJsRefresh();
+    TreeTypedBoundaryRejectsWrongChildrenStyleAndDuplicates();
 
     TestSuite("command");
     CommandCatalogIsClosed();

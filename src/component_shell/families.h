@@ -30,6 +30,7 @@ bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycle(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCollections(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCommand(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterOverlays(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
@@ -89,6 +90,15 @@ bool RegisterCompoundRadio(shell::ComponentRegistry*, shell::RegistryError*);
 // lifecycle/mod.rs
 bool RegisterLifecycleTooltip(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycleMenu(shell::ComponentRegistry*, shell::RegistryError*);
+
+// collections/mod.rs
+bool RegisterCollectionsTree(shell::ComponentRegistry*, shell::RegistryError*);
+
+// tree.rs test_probe, widened into a seam: when set, it hears every Tree row
+// the native tree builds, with its item's id and label and whether it is
+// selected.
+using TreeRowProbe = void (*)(Str id, Str label, bool selected);
+void SetTreeRowProbe(TreeRowProbe probe);
 
 // command/mod.rs
 bool RegisterCommandCommand(shell::ComponentRegistry*, shell::RegistryError*);
