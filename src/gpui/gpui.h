@@ -5690,6 +5690,14 @@ struct PlatWindow;
 // crates/base/src/text_selection.rs WindowSelectionState, one per window.
 struct WindowSelection;
 
+// One live cx.on_blur: `handler` runs when `focusId` held the focus and the
+// focus moves off it.
+struct WindowBlurSub {
+    int id = 0;
+    int focusId = 0;
+    Listener handler = {};
+};
+
 struct Window {
     App* app = nullptr;
     PlatWindow* plat = nullptr;
@@ -5738,6 +5746,9 @@ struct Window {
     // window.focus_generation: bumped every time the focus moves, so a
     // keystroke can tell that it stayed put without holding onto the element.
     int focusGen = 0;
+    // cx.on_blur's listeners, oldest first; see WindowOnBlur.
+    Vec<WindowBlurSub> blurSubs;
+    int nextBlurSubId = 1;
     float mouseX = 0;
     float mouseY = 0;
     // The modifiers the pointer last moved or pressed under. Rust reads them
@@ -6576,6 +6587,15 @@ FocusHandle WindowFocused(const Window* win);
 // The restore half of `previous_focus_handle.take()`: focus it again if the
 // frame still has somewhere to put it.
 bool FocusHandleRestore(Window* win, FocusHandle h);
+// cx.on_blur(&handle, window, listener): `handler` runs when `h` was the
+// focused handle and the focus moves anywhere else, nowhere included. GPUI
+// tests the last entry of the previous and current focus paths, which is
+// the handle itself rather than anything inside it. The event is the handle
+// that lost the focus. It runs inside WindowSetFocusId, after the move, so it
+// sees where the focus went; GPUI runs it from the effect cycle after the
+// move, which reads the same. A listener whose view has gone is swept.
+Subscription WindowOnBlur(Window* win, FocusHandle h, Listener handler);
+void WindowUnsubscribeBlur(Window* win, Subscription sub);
 
 void WindowSetFocusId(Window* win, int id);
 // window.focused(cx): which element has focus, or 0. What a widget stashes

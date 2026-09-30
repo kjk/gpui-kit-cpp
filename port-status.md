@@ -86,11 +86,6 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   so `handle_key_down`'s guards on them have nothing to read, and
   `aria_description` has no field in the accessibility node
   (`src/base/questionnaire.cpp`).
-- **A styled Select does not close when focus leaves it.** Rust's
-  `SelectState::on_blur` closes the menu (and emits `DismissEvent`); here only
-  Escape, an outside click, the trigger and a confirm close it, so the blur leg
-  of `select_emits_one_dismiss_event_for_each_open_to_closed_transition` is
-  not ported (`src/ui/select.cpp`).
 - **TextView's stream fade runs per top-level block.** Rust fades rendered
   byte ranges inside a leaf and staggers them word by word (character by
   character for CJK); an El has opacity only per subtree, so the block holding

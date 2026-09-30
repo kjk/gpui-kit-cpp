@@ -8503,15 +8503,75 @@ void FocusCollect(Window* win, El* root) {
     }
 }
 
+// The on_blur listeners of the handle that just lost the focus, oldest first
+// and over a copy of the ids: a listener may move the focus again, which
+// fires this afresh, or subscribe and unsubscribe.
+static void WindowFireBlur(Window* win, int was) {
+    if (!was || win->focusId == was || !win->app || win->blurSubs.len == 0) {
+        return;
+    }
+    for (int i = win->blurSubs.len - 1; i >= 0; i--) {
+        if (!EntityGet(win->app, win->blurSubs[i].handler.view)) {
+            VecRemoveAt(win->blurSubs, i);
+        }
+    }
+    int ids[16];
+    int n = 0;
+    for (int i = 0; i < win->blurSubs.len && n < 16; i++) {
+        if (win->blurSubs[i].focusId == was) {
+            ids[n++] = win->blurSubs[i].id;
+        }
+    }
+    FocusHandle lost;
+    lost.id = was;
+    for (int k = 0; k < n; k++) {
+        for (int i = 0; i < win->blurSubs.len; i++) {
+            if (win->blurSubs[i].id == ids[k]) {
+                Listener l = win->blurSubs[i].handler;
+                ListenerCall(win->app, win, l, &lost);
+                break;
+            }
+        }
+    }
+}
+
 void WindowSetFocusId(Window* win, int id) {
     if (!win || win->focusId == id) {
         return;
     }
+    int was = win->focusId;
     win->focusId = id;
     // focus_generation: what a pending keystroke is stamped with, so the move
     // is what tells it the element under it changed.
     win->focusGen++;
     PlatAccessibilityFocusChanged(win, id);
+    WindowFireBlur(win, was);
+}
+
+Subscription WindowOnBlur(Window* win, FocusHandle h, Listener handler) {
+    Subscription sub;
+    if (!win || !h.IsValid() || !handler.IsValid()) {
+        return sub;
+    }
+    WindowBlurSub s;
+    s.id = win->nextBlurSubId++;
+    s.focusId = h.id;
+    s.handler = handler;
+    VecAppend(win->blurSubs, s);
+    sub.id = s.id;
+    return sub;
+}
+
+void WindowUnsubscribeBlur(Window* win, Subscription sub) {
+    if (!win || !sub.IsValid()) {
+        return;
+    }
+    for (int i = 0; i < win->blurSubs.len; i++) {
+        if (win->blurSubs[i].id == sub.id) {
+            VecRemoveAt(win->blurSubs, i);
+            return;
+        }
+    }
 }
 
 // cx.focus_handle(). GPUI's slotmap hands out a refcounted key; a counter is

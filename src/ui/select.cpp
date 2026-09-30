@@ -230,6 +230,53 @@ void SelectState::OnListChange(SelectState* self, Ctx* cx,
     }
 }
 
+void SelectState::WatchBlur(Window* win) {
+    if (!win || !win->app) {
+        return;
+    }
+    // The handles are asked for here as well as in the render, since the
+    // listeners are keyed by them.
+    if (!state.triggerFocus.IsValid()) {
+        state.triggerFocus = FocusHandleNew(win->app);
+    }
+    if (!state.contentFocus.IsValid()) {
+        state.contentFocus = FocusHandleNew(win->app);
+    }
+    Listener onBlur = ListenTo(self, &SelectState::OnBlur);
+    if (blurWin != win) {
+        blurWin = win;
+        blurQueryFocus = 0;
+        WindowOnBlur(win, state.contentFocus, onBlur);
+        WindowOnBlur(win, state.triggerFocus, onBlur);
+    }
+    // The query field's handle is the input's own, made when it is first
+    // focused, and a caller can hand the select a different field.
+    if (activeQuery) {
+        if (!activeQuery->focus.IsValid()) {
+            activeQuery->focus = FocusHandleNew(win->app);
+        }
+        if (activeQuery->focus.id != blurQueryFocus) {
+            blurQueryFocus = activeQuery->focus.id;
+            WindowOnBlur(win, activeQuery->focus, onBlur);
+        }
+    }
+}
+
+// on_blur: focus that moves between the trigger, the list and its query
+// stays inside the select; anywhere else closes the menu.
+void SelectState::OnBlur(SelectState* self, Ctx* cx, const FocusHandle*) {
+    Window* win = cx->win;
+    if (FocusHandleIsFocused(win, self->state.contentFocus) ||
+        (self->activeQuery &&
+         FocusHandleIsFocused(win, self->activeQuery->focus)) ||
+        FocusHandleIsFocused(win, self->state.triggerFocus)) {
+        return;
+    }
+    self->ClearQueryAndRestore(cx);
+    self->SetOpen(false, cx);
+    Notify(cx);
+}
+
 void SelectState::OnMouseDownOut(SelectState* self, Ctx* cx,
                                  const MouseDownEvent*) {
     if (self && self->state.open) {
@@ -480,6 +527,7 @@ El* Select::IntoEl() {
         owner->focusRingEnabled = focusRing;
         owner->state.items = items;
         owner->state.nItems = nItems;
+        owner->WatchBlur(cx->win);
     }
     // input_size / input_text_size, by size.
     float h = 32, padX = 10, font = 14;

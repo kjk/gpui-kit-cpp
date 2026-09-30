@@ -55,6 +55,12 @@ struct SelectState {
     Str titlePrefix = {};
     bool focusRingEnabled = true;
     Entity<SelectState> self = {};
+    // SearchableListState::new's three cx.on_blur subscriptions — the list,
+    // its query field and the trigger — and the window they are on. Rust
+    // makes them with the state; this state is made without a window, so the
+    // first render (or WatchBlur) makes them instead.
+    Window* blurWin = nullptr;
+    int blurQueryFocus = 0;
 
     static Entity<SelectState> New(App* app);
     SearchableListState* List() { return &state; }
@@ -71,12 +77,14 @@ struct SelectState {
     void ToggleMenu(Ctx* cx);
     void ClearQueryAndRestore(Ctx* cx);
     void Clean(Ctx* cx);
+    void WatchBlur(Window* win);
 
     static void OnListClose(SelectState* self, Ctx* cx, const TickEvent* event);
     static void OnListChange(SelectState* self, Ctx* cx,
                              const ListEvent* event);
     static void OnMouseDownOut(SelectState* self, Ctx* cx,
                                const MouseDownEvent* event);
+    static void OnBlur(SelectState* self, Ctx* cx, const FocusHandle* lost);
 };
 
 // Typed rebind of the first-member list state. This is the C++ counterpart

@@ -240,8 +240,8 @@ static void ClosingASearchableSelectClearsItsQueryAndRestoresItsCursor() {
 // select_emits_one_dismiss_event_for_each_open_to_closed_transition. Opening
 // emits nothing, each way of closing an open menu emits one DismissEvent
 // (after the SelectEvent when a row is confirmed), and an Escape or a close
-// on an already-closed menu adds none. Rust's "blur" leg is not here: this
-// select does not close when focus leaves it.
+// on an already-closed menu adds none. The blur leg is window.blur(): focus
+// goes nowhere, and the list's on_blur closes the menu.
 struct DismissEventSink {
     char log[16] = {};
     int n = 0;
@@ -275,6 +275,9 @@ static void SelectEmitsOneDismissEventForEachOpenToClosedTransition() {
         s->Searchable(searchable);
         s->SetItems(items, 2);
         s->SetSelectedValue(StrL("rust"), &cx);
+        // The on_blur subscriptions Rust makes with the state; the first
+        // render makes them here.
+        s->WatchBlur(win);
         Entity<DismissEventSink> sink = EntityNewState<DismissEventSink>(&app);
         SubscribeTo(&app, state, sink, &DismissEventSink::OnConfirm);
         SubscribeTo(&app, state, sink, &DismissEventSink::OnDismiss);
@@ -284,7 +287,7 @@ static void SelectEmitsOneDismissEventForEachOpenToClosedTransition() {
         escape.action = action::Cancel();
         ActionEvent enter = {};
         enter.action = action::Confirm();
-        const char* closes[] = {"escape", "outside", "confirm"};
+        const char* closes[] = {"escape", "outside", "blur", "confirm"};
         for (const char* close : closes) {
             heard->n = 0;
             heard->log[0] = 0;
@@ -296,6 +299,9 @@ static void SelectEmitsOneDismissEventForEachOpenToClosedTransition() {
                 SearchableListState::OnAction(s->List(), &cx, &escape);
             } else if (base::StrEq(Str(close), StrL("outside"))) {
                 SelectState::OnMouseDownOut(s, &cx, nullptr);
+            } else if (base::StrEq(Str(close), StrL("blur"))) {
+                utassert(FocusHandleIsFocused(win, s->List()->contentFocus));
+                WindowSetFocusId(win, 0);
             } else {
                 SearchableListState::OnAction(s->List(), &cx, &enter);
             }
