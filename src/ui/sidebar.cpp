@@ -200,8 +200,9 @@ El* SidebarMenuItem::IntoEl(Str id) {
     Rgba fg =
         disabled ? th.mutedFg : (active ? th.sidebarAccentFg : th.sidebarFg);
     row->Fg(fg);
+    // An Icon with no size of its own takes the row's text_sm.
     if (icon != IconName::None) {
-        row->Child(IconEl(a, icon, 16)->Fg(fg));
+        row->Child(IconEl(a, icon)->Fg(fg));
     }
     if (collapsed) {
         row->JustifyCenter();
