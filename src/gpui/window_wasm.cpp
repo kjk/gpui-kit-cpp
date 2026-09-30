@@ -424,8 +424,15 @@ static EM_BOOL OnKeyDown(int, const EmscriptenKeyboardEvent* e, void*) {
     bool altGraph = AltGraphText(e);
     bool ctrl = (e->ctrlKey && !altGraph) || (e->metaKey && EditingChord(vk));
     if (vk) {
+        // gpui_web events.rs: `is_held: event.repeat()`. A keydown with
+        // keyCode 229 ("Process") is one the input method has taken for its
+        // composition, which types nothing itself.
+        KeyDownFlags flags;
+        flags.held = e->repeat != 0;
+        flags.imeInProgress =
+            e->keyCode == 229 || strcmp(e->key, "Process") == 0;
         WindowKeyDown(win, vk, e->shiftKey != 0, ctrl, e->altKey && !altGraph,
-                      false);
+                      false, false, flags);
     }
     // Backspace arrives as WM_CHAR 8 on Windows and the bound InputState
     // edits on that; the DOM only reports the key, so raise it here the way

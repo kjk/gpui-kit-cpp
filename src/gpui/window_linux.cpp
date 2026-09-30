@@ -44,6 +44,9 @@ struct PlatWindow {
     char preedit[512] = {};
     int preeditLen = 0;
     int preeditCaret = 0;
+    // The key whose auto-repeat release OnKeyRelease just dropped: the press
+    // that follows it is the repeat, which GPUI calls is_held.
+    unsigned int repeatKeycode = 0;
     int pxW = 0;
     int pxH = 0;
     bool dirty = true;
@@ -596,6 +599,14 @@ static void PreeditCaret(XIC, XPointer client, XPointer call) {
 
 static void OnKeyPress(Window* win, XKeyEvent* ke) {
     PlatWindow* pw = win->plat;
+    // The press after a dropped auto-repeat release is the repeat. Zed's X11
+    // client drops the same release but reports every press as fresh; the
+    // pair says which it is, so this one is held.
+    KeyDownFlags flags;
+    if (pw) {
+        flags.held = pw->repeatKeycode == ke->keycode;
+        pw->repeatKeycode = 0;
+    }
     char buf[64] = {};
     KeySym ks = 0;
     int n = 0;
@@ -618,8 +629,12 @@ static void OnKeyPress(Window* win, XKeyEvent* ke) {
     bool platform = (ke->state & Mod4Mask) != 0;
 
     int key = KeyFor(ks);
+    // is_ime_in_progress: a key that would type, with nothing typed and no
+    // modifier that makes it a chord — the input method or a dead key has it.
+    flags.imeInProgress =
+        KeyIsPrintable(key) && n <= 0 && !ctrl && !alt && !platform;
     if (key) {
-        WindowKeyDown(win, key, shift, ctrl, alt, platform);
+        WindowKeyDown(win, key, shift, ctrl, alt, platform, false, flags);
     }
     // Windows delivers backspace as WM_CHAR 8, and the bound InputState edits
     // on that; X11 only reports the keysym, so raise it here.
@@ -657,6 +672,9 @@ static void OnKeyRelease(Window* win, XKeyEvent* ke) {
         XPeekEvent(gDpy, &next);
         if (next.type == KeyPress && next.xkey.time == ke->time &&
             next.xkey.keycode == ke->keycode) {
+            if (win->plat) {
+                win->plat->repeatKeycode = ke->keycode;
+            }
             return;
         }
     }

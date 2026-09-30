@@ -739,6 +739,14 @@ struct KeyEvent {
     bool platform = false;
     // Fn. Only macOS reports it as a modifier of an ordinary key.
     bool function = false;
+    // KeyDownEvent::is_held: the OS repeating a key that is still down.
+    bool held = false;
+    // KeyDownEvent::prefer_character_input: the modifiers are part of the
+    // character this key types (AltGr, a dead key) rather than a chord.
+    bool preferCharacterInput = false;
+    // Keystroke::is_ime_in_progress: an input method is composing and has
+    // this key, which types nothing by itself.
+    bool imeInProgress = false;
     // cx.propagate(): an `El::OnKeyDown` handler that leaves this true passes
     // the keystroke on outwards, the way an action handler does. A
     // window-level `WindowOnKey` is last; clearing this there tells Windows

@@ -813,7 +813,8 @@ static bool SemanticKeyStep(Window* win, int key, bool ctrl, bool alt);
 static bool PageScrollBy(Window* win, int dir);
 
 static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
-                                  bool alt, bool platform, bool function) {
+                                  bool alt, bool platform, bool function,
+                                  KeyDownFlags flags) {
     // The focused field gets the chord first, as GPUI dispatches an action to
     // whatever has focus before anything else sees the key. The view's own
     // subscription still hears it — that is Rust's cx.propagate(), which every
@@ -859,6 +860,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
         kc.alt = alt;
         kc.platform = platform;
         kc.function = function;
+        kc.held = flags.held;
+        kc.preferCharacterInput = flags.preferCharacterInput;
+        kc.imeInProgress = flags.imeInProgress;
         if (WindowDispatchKeyCaptureEvent(win, &kc)) {
             win->eatChar = true;
             win->eatReturn = false;
@@ -914,6 +918,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
         kd.alt = alt;
         kd.platform = platform;
         kd.function = function;
+        kd.held = flags.held;
+        kd.preferCharacterInput = flags.preferCharacterInput;
+        kd.imeInProgress = flags.imeInProgress;
         if (WindowDispatchKeyEvent(win, &kd)) {
             // The character it also arrives as belongs to the handler that
             // took the key, not to whatever is under it.
@@ -954,6 +961,9 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
         ev.alt = alt;
         ev.platform = platform;
         ev.function = function;
+        ev.held = flags.held;
+        ev.preferCharacterInput = flags.preferCharacterInput;
+        ev.imeInProgress = flags.imeInProgress;
         ListenerCall(win->app, win, win->onKey, &ev);
         windowHandled = !ev.propagate;
     }
@@ -1015,7 +1025,7 @@ static bool IsModifierKey(int key) {
 }
 
 bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
-                   bool platform, bool function) {
+                   bool platform, bool function, KeyDownFlags flags) {
     if (!win) {
         return false;
     }
@@ -1027,8 +1037,8 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
     if (!IsModifierKey(key)) {
         win->lastInputKeyboard = true;
     }
-    bool handled =
-        WindowKeyDownDispatch(win, key, shift, ctrl, alt, platform, function);
+    bool handled = WindowKeyDownDispatch(win, key, shift, ctrl, alt, platform,
+                                         function, flags);
     if (!wasKeyboard && win->lastInputKeyboard) {
         if (win->hoverId) {
             WindowHoverChanged(win, win->hoverId, 0);

@@ -73,11 +73,19 @@ update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 
-- **Questionnaire keys are always fresh presses.** A key down here carries no
-  held/repeat flag, no `prefer_character_input` and no IME composition state,
-  so `handle_key_down`'s guards on them have nothing to read, and
-  `aria_description` has no field in the accessibility node
+- **Questionnaire choices carry no accessible description.** Rust sets
+  `aria_description` from a choice's description; the accessibility node
+  here has no field for it, so the description is visible text only
   (`src/base/questionnaire.cpp`).
+- **A key down's held and IME flags come from the platform, not from a
+  keystroke.** A key event here has no `key_char`, so
+  `Keystroke::is_ime_in_progress` is the platform saying an input method
+  has the key — Win32 `VK_PROCESSKEY`, the browser's keyCode 229, marked
+  text on macOS, a printable X11 key that looked up no character — rather
+  than "a printable key with no character", which on Windows also covers
+  Enter and Tab. X11 marks the press after a dropped auto-repeat release as
+  held, where Zed's X11 client drops the same release but reports every
+  press as fresh (`KeyDownFlags`, `src/gpui/platform.h`).
 - **TextView range highlights land with the render.** Rust parses in the
   background and rebuilds `RenderedText` when a parse lands; the parse here
   is synchronous inside `TextView::IntoEl`, so `RenderedText()` and the

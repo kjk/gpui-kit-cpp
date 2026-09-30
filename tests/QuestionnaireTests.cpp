@@ -87,6 +87,21 @@ struct QFixture {
         }
         QuestionnaireHandleKeyDown(state, &ev, &cx);
     }
+
+    // simulate_key(cx, key, is_held, simulate_ime): the rest of the
+    // KeyDownEvent. Rust's key without a simulated IME has no key_char, which
+    // is what Keystroke::is_ime_in_progress reads; the platform says so here.
+    void KeyWith(int vk, bool held, bool imeInProgress, bool shift = false,
+                 bool preferCharacterInput = false) {
+        KeyEvent ev = {};
+        ev.vk = vk;
+        ev.down = true;
+        ev.shift = shift;
+        ev.held = held;
+        ev.imeInProgress = imeInProgress;
+        ev.preferCharacterInput = preferCharacterInput;
+        QuestionnaireHandleKeyDown(state, &ev, &cx);
+    }
 };
 
 bool ValidAnswer(const QuestionnaireValidationContext* context, Str* error) {
@@ -598,25 +613,61 @@ void InputKeyboardState(QFixture& f, bool multiple) {
 
 } // namespace
 
-// shortcut_guards_held_keys_before_activation. The held-key and IME halves
-// have nothing to drive here: a key down carries neither (port-status.md).
-static void ShortcutActivatesAndEnterConfirms() {
+// shortcut_guards_held_keys_before_activation: a held key, a key an input
+// method is composing with, and a shifted one activate nothing; the fresh
+// bare letter does, and Enter then confirms it.
+static void ShortcutGuardsHeldKeysBeforeActivation() {
     QFixture f;
     KeyboardState(f, true);
-    f.Key(KeyA, false);
+    f.KeyWith(KeyA, true, false);
+    f.KeyWith(KeyA, false, true);
+    f.KeyWith(KeyA, false, false, true);
+    utassert(f.Answer("first").IsEmpty());
+    // prefer_character_input: the chord types a character, which is text
+    // rather than a shortcut.
+    f.KeyWith(KeyA, false, false, false, true);
+    utassert(f.Answer("first").IsEmpty());
+
+    f.KeyWith(KeyA, false, false);
     utassert(ChoicesAre(f.Answer("first"), "alpha"));
     utassert(StrEq(f.S()->FocusedCurrentChoice(f.win), "alpha"));
+    // The auto-repeat of the Enter that confirms is not a second Enter.
+    f.KeyWith(KeyReturn, true, false);
+    utassert(StrEq(f.CurrentItem(), "first"));
     f.Key(KeyReturn);
     utassert(StrEq(f.CurrentItem(), "second"));
+}
 
-    QFixture g;
-    KeyboardState(g, true);
-    KeyEvent shifted = {};
-    shifted.vk = KeyA;
-    shifted.down = true;
-    shifted.shift = true;
-    QuestionnaireHandleKeyDown(g.state, &shifted, &g.cx);
-    utassert(g.Answer("first").IsEmpty());
+// control.rs's confirm: Enter on a selected choice confirms the answer, and
+// its auto-repeat does not.
+static void AHeldEnterOnASelectedChoiceDoesNotConfirm() {
+    QFixture f;
+    KeyboardState(f, false);
+    QuestionnaireState* s = f.S();
+    s->ActivateChoice(StrL("first"), StrL("alpha"), &f.cx);
+    QuestionnaireChoiceControl control;
+    utassert(QuestionnaireChoiceControl::New(
+        &f.cx, f.state, StrL("first"), StrL("alpha"), StrL("alpha"), &control));
+    uint32_t capture = ActionOf(StrL("gpui::CaptureKeyDown"));
+    Listener confirm = {};
+    for (ActionSlot* slot = control.el->actions; slot; slot = slot->next) {
+        if (slot->action == capture) {
+            confirm = slot->fn;
+        }
+    }
+    utassert(confirm.IsValid());
+    KeyEvent held = {};
+    held.vk = KeyReturn;
+    held.down = true;
+    held.held = true;
+    ListenerCall(&f.app, f.win, confirm, &held);
+    utassert(held.propagate);
+    utassert(StrEq(f.CurrentItem(), "first"));
+    KeyEvent fresh = held;
+    fresh.held = false;
+    ListenerCall(&f.app, f.win, confirm, &fresh);
+    utassert(!fresh.propagate);
+    utassert(StrEq(f.CurrentItem(), "second"));
 }
 
 // root_keyboard_preserves_navigation_and_radio_semantics
@@ -736,7 +787,8 @@ void TestQuestionnaire() {
     ActionsStayInsideQuestionnaireWidth();
     ActionInstanceStyleOverridesDefaultTrailingAnchor();
     PartsTakeTheirScaleFromTheRootAndAPartMayOverrideIt();
-    ShortcutActivatesAndEnterConfirms();
+    ShortcutGuardsHeldKeysBeforeActivation();
+    AHeldEnterOnASelectedChoiceDoesNotConfirm();
     RootKeyboardPreservesNavigationAndRadioSemantics();
     EmptyInputEnterStaysPutAndArrowsMoveToAnswers();
     FilledGroupInputKeepsTextEditingDirections();

@@ -11116,7 +11116,7 @@ void ShellRuntime::DispatchKey(shell::CallbackId callback,
     // a release" looks like on the wire.
     if (event.down) {
         JS_SetPropertyStr(impl->context, payload, "is_held",
-                          JS_NewBool(impl->context, false));
+                          JS_NewBool(impl->context, event.held));
     }
     JS_SetPropertyStr(impl->context, payload, "modifiers",
                       JsModifiers(impl->context, event.shift, event.ctrl,

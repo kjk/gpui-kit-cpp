@@ -222,6 +222,58 @@ static bool WinDown() {
            (GetKeyState(VK_RWIN) & 0x8000) != 0;
 }
 
+// The rest of GPUI's KeyDownEvent for one WM_KEYDOWN / WM_SYSKEYDOWN, as
+// gpui_windows' handle_keydown_msg and process_key work it out: lParam bit 30
+// is the auto-repeat, and ToUnicode (flag 4: leave the dead-key state alone)
+// says whether the modifiers are part of the character — a dead key, or a
+// Ctrl/Alt/Win chord that types something other than the bare key (AltGr).
+// VK_PROCESSKEY is the key an IME took for its composition.
+static KeyDownFlags WinKeyDownFlags(WPARAM wParam, LPARAM lParam) {
+    KeyDownFlags f;
+    f.held = (lParam & (1ll << 30)) != 0;
+    f.imeInProgress = wParam == VK_PROCESSKEY;
+    BYTE state[256] = {};
+    if (!GetKeyboardState(state)) {
+        return f;
+    }
+    UINT vk = (UINT)wParam;
+    UINT scan = (UINT)((lParam >> 16) & 0xFFFF);
+    WCHAR buf[8] = {};
+    int n = ToUnicode(vk, scan, state, buf, 8, 0x4);
+    if (n == 0) {
+        return f;
+    }
+    if (n < 0) {
+        f.preferCharacterInput = true;
+        return f;
+    }
+    // key_char: a character that is not a control code.
+    if (buf[0] < 0x20 || buf[0] == 0x7F) {
+        return f;
+    }
+    bool ctrl = (state[VK_CONTROL] & 0x80) != 0;
+    bool alt = (state[VK_MENU] & 0x80) != 0;
+    bool win = (state[VK_LWIN] & 0x80) != 0 || (state[VK_RWIN] & 0x80) != 0;
+    if (!ctrl && !alt && !win) {
+        return f;
+    }
+    BYTE bare[256];
+    memcpy(bare, state, sizeof(bare));
+    const int mods[] = {VK_CONTROL, VK_LCONTROL, VK_RCONTROL, VK_MENU,
+                        VK_LMENU,   VK_RMENU,    VK_LWIN,     VK_RWIN};
+    for (int m : mods) {
+        bare[m] = 0;
+    }
+    WCHAR bufBare[8] = {};
+    int nBare = ToUnicode(vk, scan, bare, bufBare, 8, 0x4);
+    int cmp = n < 0 ? -n : n;
+    int cmpBare = nBare < 0 ? -nBare : nBare;
+    f.preferCharacterInput =
+        n != nBare || cmp != cmpBare ||
+        memcmp(buf, bufBare, (size_t)cmp * sizeof(WCHAR)) != 0;
+    return f;
+}
+
 static bool AltDown() {
     return (GetKeyState(VK_MENU) & 0x8000) != 0;
 }
@@ -373,7 +425,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             break;
         case WM_KEYDOWN:
             WindowKeyDown(win, (int)wParam, ShiftDown(), CtrlDown(), AltDown(),
-                          WinDown());
+                          WinDown(), false, WinKeyDownFlags(wParam, lParam));
             return 0;
         case WM_SYSKEYDOWN: {
             // Rust GPUI's translate_accelerator routes both WM_KEYDOWN and
@@ -383,7 +435,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             bool alt = AltDown() || (lParam & (1ll << 29)) != 0;
             win->eatSysChar = false;
             if (WindowKeyDown(win, (int)wParam, ShiftDown(), CtrlDown(), alt,
-                              WinDown())) {
+                              WinDown(), false,
+                              WinKeyDownFlags(wParam, lParam))) {
                 win->eatSysChar = true;
                 return 0;
             }

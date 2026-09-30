@@ -1147,7 +1147,15 @@ bool WindowMacKeyDown(Window* win, NSEvent* event) {
         !(first >= NSUpArrowFunctionKey && first <= NSModeSwitchFunctionKey);
     int key = KeyFor(first);
     if (key) {
-        WindowKeyDown(win, key, shift, ctrl, alt, platform, function);
+        // gpui_macos events.rs: `is_held: native_event.isARepeat()`. A key
+        // that lands while the focused field has marked text belongs to the
+        // input method's composition (Keystroke::is_ime_in_progress).
+        KeyDownFlags flags;
+        flags.held = [event isARepeat] == YES;
+        InputState* in = win->input;
+        flags
+            .imeInProgress = in && in->focused && InputMarkedRange(in, nullptr);
+        WindowKeyDown(win, key, shift, ctrl, alt, platform, function, flags);
     }
     // Backspace arrives as a key only; the bound InputState edits on the
     // control code the Windows window delivers through WM_CHAR.

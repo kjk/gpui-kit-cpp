@@ -629,6 +629,41 @@ void KeymapClearPending() {
     gNPending = 0;
 }
 
+bool KeyIsPrintable(int vk) {
+    if (vk <= 0) {
+        return false;
+    }
+    if ((vk >= KeyF1 && vk <= KeyF24) || (vk >= KeyF25 && vk <= KeyF35)) {
+        return false;
+    }
+    switch (vk) {
+        case KeyBack:
+        case KeyDelete:
+        case KeyLeft:
+        case KeyRight:
+        case KeyUp:
+        case KeyDown:
+        case KeyPageUp:
+        case KeyPageDown:
+        case KeyInsert:
+        case KeyHome:
+        case KeyEnd:
+        case KeyBrowserBack:
+        case KeyBrowserForward:
+        case KeyEscape:
+        // Shift, Control, Alt, caps lock and the Windows keys.
+        case KeyShift:
+        case KeyControl:
+        case KeyAlt:
+        case 0x14:
+        case 0x5B:
+        case 0x5C:
+            return false;
+        default:
+            return !(vk >= 0xA0 && vk <= 0xA5);
+    }
+}
+
 Str KeyName(int vk) {
     for (size_t i = 0; i < sizeof(kNamedKeys) / sizeof(kNamedKeys[0]); i++) {
         if (kNamedKeys[i].vk == vk && !kNamedKeys[i].shift) {

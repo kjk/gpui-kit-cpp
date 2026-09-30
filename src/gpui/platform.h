@@ -47,8 +47,19 @@ void PlatReduceMotionFollow(void (*onChange)(bool reduce));
 // Answers whether GPUI kept the keystroke. Windows needs the answer for
 // WM_SYSKEYDOWN: an unhandled Alt chord must still reach DefWindowProc for
 // system behavior such as Alt+F4 and menu activation.
+// `flags` is the rest of GPUI's KeyDownEvent, as much as the platform knows:
+// Win32 reads the repeat from lParam and the character from ToUnicode, X11
+// pairs the release and press auto-repeat sends, macOS asks the NSEvent and
+// the input context, the browser the KeyboardEvent; a mobile host that
+// passes none sends fresh presses.
+struct KeyDownFlags {
+    bool held = false;
+    bool preferCharacterInput = false;
+    bool imeInProgress = false;
+};
 bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
-                   bool platform = false, bool function = false);
+                   bool platform = false, bool function = false,
+                   KeyDownFlags flags = {});
 // The release of one. Only Enter and Space do anything with it — they make
 // the click on a focused element from the release, the way a mouse click is
 // made from the button coming back up — so a platform that has no key-up to

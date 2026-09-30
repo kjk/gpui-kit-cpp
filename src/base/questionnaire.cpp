@@ -1577,7 +1577,7 @@ static void ChoiceConfirmKey(QuestionnaireState* self, Ctx* cx,
                              const KeyEvent* ev, intptr_t packed) {
     Str item;
     Str value;
-    if (!ev || !ev->propagate || ev->vk != KeyReturn ||
+    if (!ev || !ev->propagate || ev->held || ev->vk != KeyReturn ||
         KeyModifierCount(ev) != 0 || !ChoiceAt(self, packed, &item, &value)) {
         return;
     }
@@ -1673,13 +1673,14 @@ static bool FocusedAnswerIsFilled(const QuestionnaireState* s,
            choice.selected;
 }
 
-// Held keys, `prefer_character_input` and an IME composition are not told
-// apart here: the platform layer reports none of them with a key down, so
-// every press is a fresh one (port-status.md).
+// window.default_prevented(), then the three keystrokes that are not a
+// deliberate press: the OS repeating a held key, a chord whose modifiers type
+// a character, and a key an input method is composing with.
 void QuestionnaireHandleKeyDown(Entity<QuestionnaireState> state, KeyEvent* ev,
                                 Ctx* cx) {
     QuestionnaireState* s = state.Get(cx->app);
-    if (!s || !ev || !ev->propagate || !ev->vk) {
+    if (!s || !ev || !ev->propagate || !ev->vk || ev->held ||
+        ev->preferCharacterInput || ev->imeInProgress) {
         return;
     }
     Window* win = cx->win;

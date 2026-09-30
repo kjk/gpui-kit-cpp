@@ -732,8 +732,70 @@ static void TheChordAnActionIsReachedBy() {
     KeymapClear();
 }
 
+// KeyDownEvent's is_held and prefer_character_input, and the keystroke's IME
+// state, travel from the platform's WindowKeyDown to whoever reads the key.
+struct KeyFlagsRecorder {
+    KeyEvent last = {};
+    static El* Render(KeyFlagsRecorder*, Ctx* cx) { return Div(cx->a); }
+    static void OnKey(KeyFlagsRecorder* self, Ctx*, const KeyEvent* ev) {
+        self->last = *ev;
+    }
+};
+
+static void TheKeyDownFlagsReachTheListener() {
+    KeymapClear();
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Entity<KeyFlagsRecorder> rec = EntityNew<KeyFlagsRecorder>(&app);
+    WindowOnKey(win, ListenTo(rec, &KeyFlagsRecorder::OnKey));
+
+    KeyDownFlags flags;
+    flags.held = true;
+    flags.imeInProgress = true;
+    WindowKeyDown(win, KeyA, false, false, false, false, false, flags);
+    const KeyEvent& ev = rec.Get(&app)->last;
+    utassert(ev.vk == KeyA && ev.down);
+    utassert(ev.held && ev.imeInProgress && !ev.preferCharacterInput);
+
+    flags = {};
+    flags.preferCharacterInput = true;
+    WindowKeyDown(win, KeyA, false, true, true, false, false, flags);
+    utassert(!ev.held && !ev.imeInProgress && ev.preferCharacterInput);
+
+    // A platform that knows none of it sends a fresh press.
+    WindowKeyDown(win, KeyA, false, false, false);
+    utassert(!ev.held && !ev.imeInProgress && !ev.preferCharacterInput);
+
+    EntityDropAll(&app);
+    delete win;
+}
+
+// keystroke.rs is_printable_key: the keys that type, as the IME test reads
+// them — not the function, editing and navigation keys, and not a modifier.
+static void OnlyTypingKeysArePrintable() {
+    utassert(KeyIsPrintable(KeyA));
+    utassert(KeyIsPrintable('7'));
+    utassert(KeyIsPrintable(KeySpace));
+    utassert(KeyIsPrintable(KeyReturn));
+    utassert(KeyIsPrintable(KeyTab));
+    utassert(KeyIsPrintable(KeySemicolon));
+    utassert(!KeyIsPrintable(0));
+    utassert(!KeyIsPrintable(KeyF1) && !KeyIsPrintable(KeyF24));
+    utassert(!KeyIsPrintable(KeyF25) && !KeyIsPrintable(KeyF35));
+    utassert(!KeyIsPrintable(KeyBack) && !KeyIsPrintable(KeyDelete));
+    utassert(!KeyIsPrintable(KeyLeft) && !KeyIsPrintable(KeyDown));
+    utassert(!KeyIsPrintable(KeyPageUp) && !KeyIsPrintable(KeyEnd));
+    utassert(!KeyIsPrintable(KeyInsert) && !KeyIsPrintable(KeyEscape));
+    utassert(!KeyIsPrintable(KeyBrowserBack));
+    utassert(!KeyIsPrintable(KeyShift) && !KeyIsPrintable(KeyControl));
+    utassert(!KeyIsPrintable(KeyAlt));
+}
+
 void TestKeymap() {
     TestSuite("keymap");
+    TheKeyDownFlagsReachTheListener();
+    OnlyTypingKeysArePrintable();
     ABindingCarriesTheActionsPayload();
     AnActionCanBeDispatchedWithoutAKeystroke();
     AnUnfocusedWindowStillRunsTheRootAction();

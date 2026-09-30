@@ -175,6 +175,13 @@ bool KeymapAnyBindingForAction(uint32_t action, KeyChord* out);
 // which is a key no binding could have named either.
 Str KeyName(int vk);
 
+// keystroke.rs is_printable_key, over the key codes: everything but the
+// function keys, the editing and navigation keys and escape. A modifier on
+// its own is not a key down in GPUI at all, so it is not printable either.
+// A printable key that typed nothing, with no Ctrl, Alt, Cmd or Fn held, is
+// Keystroke::is_ime_in_progress.
+bool KeyIsPrintable(int vk);
+
 // Whether a sequence is half-finished. The window asks before it offers a
 // keystroke to the focused field: GPUI matches the keystroke before the text
 // input is given it, which is what lets a sequence finish inside one.
