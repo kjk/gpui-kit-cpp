@@ -966,6 +966,47 @@ static void RestoredSplitSharesSurviveResizeAndTabChanges() {
     EntityDropAll(&app);
 }
 
+// dock_area.rs: set_split_sizes_restores_a_share_and_reports_it. Sizes of
+// [100, 300] on a 50/50 split land as a 25% share and emit exactly one
+// LayoutChanged; a mismatched length leaves the split and the count alone.
+static void SetSplitSizesRestoresAShareAndReportsIt() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    Entity<DockEventCounter> counter = EntityNewState<DockEventCounter>(&app);
+    s->onEvent = ListenTo(counter, &DockEventCounter::OnEvent);
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+
+    const float sizes[] = {100, 300};
+    DockSetSplitSizes(s, &cx, s->center, sizes, 2);
+    utassert(counter.Get(&app)->layoutChanges == 1);
+    El* area = DockArea::New(&cx, StrL("sizes"), state, nullptr);
+    LayoutEl(&win->paint, area, 0, 0, 600, 400, th.fontSize, th.foreground);
+    float left = FindDockBoundsElement(area, &s->nodes[a].bounds)->w;
+    float right = FindDockBoundsElement(area, &s->nodes[b].bounds)->w;
+    utassert(left > 0 && right > 0);
+    utassert(fabsf(left / (left + right) - .25f) < .01f);
+
+    const float one[] = {10};
+    DockSetSplitSizes(s, &cx, s->center, one, 1);
+    utassert(counter.Get(&app)->layoutChanges == 1);
+    utassertnear(s->nodes[s->center].size[0], 100);
+    utassertnear(s->nodes[s->center].size[1], 300);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void ADockSizeChangeEmitsOneLayoutEvent() {
     App app;
     Window* win = new Window();
@@ -1203,6 +1244,7 @@ void TestDock() {
     ADockIsItsOwnWidthUnderARendererThatDrawsNoChrome();
     RestoredSplitSharesSurviveResizeAndTabChanges();
     ADockSizeChangeEmitsOneLayoutEvent();
+    SetSplitSizesRestoresAShareAndReportsIt();
     DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd();
     SelectingAPanelByIdentityDoesNotMoveIt();
     TheFiveDropZones();

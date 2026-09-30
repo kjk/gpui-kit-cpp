@@ -992,6 +992,28 @@ void DockSetDockSize(DockState* s, Ctx* cx, DockPlacement p, float size) {
     DockEmit(s, cx);
 }
 
+void DockSetSplitSizes(DockState* s, Ctx* cx, int node, const float* sizes,
+                       int count) {
+    if (!s || !sizes || node < 0 || node >= s->nodes.len) {
+        return;
+    }
+    DockNode& n = s->nodes[node];
+    if (!n.used || !n.split || count != n.child.len || n.size.len != count) {
+        return;
+    }
+    bool same = true;
+    for (int i = 0; i < count; i++) {
+        same = same && n.size[i] == sizes[i];
+    }
+    if (same) {
+        return;
+    }
+    for (int i = 0; i < count; i++) {
+        n.size[i] = sizes[i];
+    }
+    DockEmit(s, cx);
+}
+
 void DockToggleZoom(DockState* s, Ctx* cx, int panelIx) {
     bool zoomed = s->zoomPanel == panelIx;
     if (!zoomed && (panelIx < 0 || panelIx >= s->panels.len ||

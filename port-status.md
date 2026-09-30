@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `caf830c02d08aaeaa0b15158dbe74cc7dcbac2b2` (2026-09-29, kit:
-Point the hidden gpui re-export at the Kit itself (#3306)). The Kit's hidden
-gpui re-export now names the Kit itself, so GPUI macro paths resolve through
-it; a Rust module-path fix with nothing to port. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `11b04d9bf09cec68c98ce97d759afc6776b1cda0` (2026-09-29,
+dock: Add `DockArea::set_split_sizes` to restore a split's slot sizes
+(#3314)). DockArea::set_split_sizes (DockSetSplitSizes here) restores one
+split's slot sizes in place, as shares of the split, with one LayoutChanged.
+The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

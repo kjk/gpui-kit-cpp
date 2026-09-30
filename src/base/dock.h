@@ -504,6 +504,15 @@ void DockEndSideResize(DockState* s, Ctx* cx, DockPlacement p);
 // clamps it. Only an effective change is persisted — a size that lands where
 // it already was neither redraws nor emits LayoutChanged.
 void DockSetDockSize(DockState* s, Ctx* cx, DockPlacement p, float size);
+// DockArea::set_split_sizes: replace the slot sizes of the split at `node`
+// in place, without rebuilding anything, and report it with one
+// LayoutChanged. The sizes are pixels read as shares of the split's box, the
+// way a restored layout's are, so sizes recorded in a window of another size
+// restore the same proportions. An unknown node, a node that is not a split,
+// a `count` that is not the split's child count, or sizes it already has are
+// a no-op and emit nothing, as PaneTree::set_sizes is.
+void DockSetSplitSizes(DockState* s, Ctx* cx, int node, const float* sizes,
+                       int count);
 // ToggleZoom.
 void DockToggleZoom(DockState* s, Ctx* cx, int panelIx);
 // The Dock on one side, or null for Center.
