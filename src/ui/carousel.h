@@ -160,6 +160,8 @@ struct Carousel {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
 
     static Carousel* New(Ctx* cx, Str id, Entity<CarouselState> state);
     Carousel* AccessibilityLabel(Str value);
@@ -176,6 +178,8 @@ struct CarouselContent {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
     Style trackStyle = {};
     uint32_t trackStyleSet = 0;
 
@@ -196,6 +200,8 @@ struct CarouselItem {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
 
     static CarouselItem* New(Ctx* cx, Str id, int index,
                              Entity<CarouselState> state);
@@ -214,6 +220,8 @@ struct CarouselControl {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
     bool next = false;
 
     CarouselControl* WithSize(UiSize value);
@@ -237,6 +245,8 @@ struct CarouselPagination {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
 
     static CarouselPagination* New(Ctx* cx);
     CarouselPagination* AccessibilityLabel(Str value);
@@ -256,6 +266,8 @@ struct CarouselPaginationItem {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed where `style` is.
+    ElRefiner refiner = {};
 
     static CarouselPaginationItem* New(Ctx* cx, Str id, int index,
                                        Entity<CarouselState> state);

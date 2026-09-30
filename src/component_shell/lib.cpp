@@ -41,6 +41,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterNavigation,
     &RegisterBasic,
     &RegisterChart,
+    &RegisterCarousel,
 };
 
 bool Register(shell::ComponentRegistry* registry, shell::RegistryError* error) {

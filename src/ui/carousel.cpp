@@ -1068,6 +1068,7 @@ El* Carousel::IntoEl() {
             ->OnMouseDown(ListenTo(state, &CarouselState::OnRootMouseDown),
                           DispatchPhase::Capture)
             ->Refine(style, styleSet);
+    refiner.Apply(root);
     if (focus.IsValid()) {
         root->TrackFocus(focus)->TabStop(true);
     }
@@ -1199,6 +1200,7 @@ El* CarouselContent::IntoEl() {
             ->OnScrollWheel(ListenTo(state, &CarouselState::OnWheel))
             ->Refine(style, styleSet)
             ->Child(track);
+    refiner.Apply(frame);
     if (axis == Axis::Vertical)
         frame->FlexCol();
     else
@@ -1275,6 +1277,7 @@ El* CarouselItem::IntoEl() {
                    ->FlexNone()
                    ->PaintOffset(loopOff.x, loopOff.y)
                    ->Refine(style, styleSet);
+    refiner.Apply(root);
     if (axis == Axis::Vertical)
         root->H(kFill)->PadT(kItemGap);
     else
@@ -1326,7 +1329,9 @@ El* CarouselControl::IntoEl() {
     if (!disabled)
         button->OnClick(next ? ListenTo(state, &CarouselState::OnNext)
                              : ListenTo(state, &CarouselState::OnPrevious));
-    return button->IntoEl()->Refine(style, styleSet);
+    El* root = button->IntoEl()->Refine(style, styleSet);
+    refiner.Apply(root);
+    return root;
 }
 CarouselPrevious* CarouselPrevious::New(Ctx* cx, Entity<CarouselState> state) {
     CarouselPrevious* value = CarouselPart<CarouselPrevious>(cx);
@@ -1369,6 +1374,7 @@ El* CarouselPagination::IntoEl() {
                    ->JustifyCenter()
                    ->Gap(8)
                    ->Refine(style, styleSet);
+    refiner.Apply(root);
     CarouselChildren(root, children);
     return root;
 }
@@ -1415,7 +1421,9 @@ El* CarouselPaginationItem::IntoEl() {
     if (!disabled)
         button->OnClick(
             ListenTo(state, &CarouselState::OnSelect, (intptr_t)index));
-    return button->IntoEl()->Refine(style, styleSet);
+    El* root = button->IntoEl()->Refine(style, styleSet);
+    refiner.Apply(root);
+    return root;
 }
 
 } // namespace component

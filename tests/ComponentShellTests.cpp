@@ -5822,6 +5822,156 @@ void ChartsRefuseWhatRustRefuses() {
     utassert(StrEq(failure, "PieChart received an incompatible payload"));
     StrFree(failure);
 }
+// ─── carousel.rs ───────────────────────────────────────────────────────────
+
+// registers_the_closed_carousel_family_and_state
+void RegistersTheClosedCarouselFamilyAndState() {
+    FamilyCatalog catalog(&component_shell::RegisterCarousel);
+    utassert(catalog.ok);
+    const char* expected[] = {"Carousel",
+                              "CarouselContent",
+                              "CarouselItem",
+                              "CarouselPrevious",
+                              "CarouselNext",
+                              "CarouselPagination",
+                              "CarouselPaginationItem"};
+    utassert(catalog.NamesAre(expected, 7));
+    utassert(catalog.frozen.StateCount() == 1);
+    if (catalog.frozen.StateCount() == 1) {
+        utassert(strcmp(catalog.frozen.State(0)->exportName, "CarouselState") ==
+                 0);
+        utassert(strcmp(catalog.frozen.State(0)->kind, "CarouselState") == 0);
+    }
+    utassert(catalog.Documented());
+}
+
+bool HasMethod(const ComponentDescriptor* d, const char* name) {
+    for (const MethodDescriptor& m : d->methods)
+        if (strcmp(m.name, name) == 0) return true;
+    return false;
+}
+
+// every_part_exposes_its_scriptable_surface
+void EveryCarouselPartExposesItsScriptableSurface() {
+    FamilyCatalog catalog(&component_shell::RegisterCarousel);
+    const ComponentDescriptor* root = catalog.frozen.Find(StrL("Carousel"));
+    utassert(root && HasMethod(root, "item_count") &&
+             HasMethod(root, "selected_index"));
+    const char* parts[] = {"Carousel",           "CarouselItem",
+                           "CarouselPrevious",   "CarouselNext",
+                           "CarouselPagination", "CarouselPaginationItem"};
+    for (const char* part : parts) {
+        const ComponentDescriptor* d = catalog.frozen.Find(Str(part));
+        utassert(d && HasMethod(d, "accessibility_label"));
+    }
+}
+
+// identifiers_and_indices_are_closed
+void CarouselIdentifiersAndIndicesAreClosed() {
+    utassert(component_shell::CarouselNonemptyId(StringArgument("carousel")));
+    utassert(!component_shell::CarouselNonemptyId(StringArgument("  ")));
+    shell::ComponentArgument number;
+    number.kind = shell::ComponentArgumentKind::Number;
+    double out = 0;
+    number.number = 3.;
+    utassert(component_shell::CarouselNonnegativeUsize(number, &out) &&
+             out == 3.);
+    number.number = -1.;
+    utassert(!component_shell::CarouselNonnegativeUsize(number, &out));
+    number.number = 1.5;
+    utassert(!component_shell::CarouselNonnegativeUsize(number, &out));
+    number.number = 18446744073709551615.0; // usize::MAX as f64
+    utassert(!component_shell::CarouselNonnegativeUsize(number, &out));
+}
+
+// Not in Rust (carousel has no host test): the parts compose through the
+// public host, the root reasserts a script-owned selection, and a click on
+// a control reaches on_change with the new index.
+void CarouselPartsComposeAndReportChanges() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Carousel, CarouselState, CarouselContent, CarouselItem, "
+        "CarouselNext, CarouselPagination, CarouselPaginationItem } from "
+        "'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() { this.index = 1; this.state = CarouselState(3, 0); }\n"
+        "  render() {\n"
+        "    const state = this.state;\n"
+        "    return div().child(new Carousel('c', state).selected_index("
+        "this.index)\n"
+        "      .on_change((index, cx) => { this.index = index; cx.notify(); "
+        "})\n"
+        "      .child(new CarouselContent(state).h(40)\n"
+        "        .child(new CarouselItem('a', 0, state).child('Slide A'))\n"
+        "        .child(new CarouselItem('b', 1, state).child('Slide B'))\n"
+        "        .child(new CarouselItem('c', 2, state).child('Slide C')))\n"
+        "      .child(new CarouselNext(state).size('small'))\n"
+        "      .child(new CarouselPagination()\n"
+        "        .child(new CarouselPaginationItem('p0', 0, state))\n"
+        "        .child(new CarouselPaginationItem('p1', 1, state))\n"
+        "        .child(new CarouselPaginationItem('p2', 2, state))))\n"
+        "      .child(`index: ${this.index}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    utassert(FindText(root, StrL("Slide B")) != nullptr);
+    utassert(FindText(root, StrL("index: 1")) != nullptr);
+    // The next control and the three pagination items take clicks.
+    El* clickable[8] = {};
+    int count = CollectListeners(root, clickable, 0, 8);
+    utassert(count == 4);
+    if (count == 4) Click(host, clickable[3]);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("index: 2")) != nullptr);
+    // On the last slide the next control is disabled and takes no click;
+    // the first pagination item goes back to the start.
+    count = CollectListeners(root, clickable, 0, 8);
+    utassert(count == 3);
+    if (count == 3) Click(host, clickable[0]);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("index: 0")) != nullptr);
+}
+
+// carousel.rs: the recorders' and the state factory's refusals.
+void CarouselRefusesWhatRustRefuses() {
+    struct Case {
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new Carousel(' ', CarouselState(1))",
+         "Carousel expects a nonempty string id"},
+        {"new CarouselItem('i', 1.5, CarouselState(2))",
+         "CarouselItem(id, index, state) expects a nonnegative integer"},
+        {"new Carousel('c', CarouselState(1)).item_count(-1)",
+         "Carousel.item_count(value) expects a nonnegative integer"},
+        {"new Carousel('c', CarouselState(1, 1))",
+         "CarouselState selected_index must be within item_count"},
+        {"new Carousel('c', CarouselState(0.5))",
+         "CarouselState(item_count) expects a nonnegative integer"},
+    };
+    for (const Case& c : cases) {
+        Str failure =
+            CallErrorTemp("Carousel, CarouselItem, CarouselState", c.call);
+        utassert(StrContains(failure, Str(c.message)));
+    }
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Carousel, CarouselState } from "
+             "'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new Carousel('c', CarouselState(1)).child(div()); "
+             "} }\n"));
+    host.Render();
+    utassert(len(host.runtime->LastComponentFailure()) != 0);
+    Str failure =
+        MaterializeFailure("CarouselPagination", shell::ComponentPayload{}, 0);
+    utassert(
+        StrEq(failure, "Carousel component received an incompatible payload"));
+    StrFree(failure);
+}
 } // namespace
 
 void TestComponentShell() {
@@ -6047,4 +6197,11 @@ void TestComponentShell() {
     ConcreteChartsConsumePlainImmutableRows();
     ChartRowsRejectMissingFieldsWithoutPanicking();
     ChartsRefuseWhatRustRefuses();
+
+    TestSuite("carousel");
+    RegistersTheClosedCarouselFamilyAndState();
+    EveryCarouselPartExposesItsScriptableSurface();
+    CarouselIdentifiersAndIndicesAreClosed();
+    CarouselPartsComposeAndReportChanges();
+    CarouselRefusesWhatRustRefuses();
 }

@@ -44,6 +44,7 @@ bool RegisterStructured(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterNavigation(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterChart(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCarousel(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
 
@@ -170,6 +171,12 @@ bool RegisterBasicDropdownButton(shell::ComponentRegistry*,
 // error a chart rendered in place of its data ("Failed to build X data: ..").
 using ChartErrorProbe = void (*)(Str error);
 void SetChartErrorProbe(ChartErrorProbe probe);
+
+// carousel.rs nonnegative_usize and nonempty_id, exposed for the tests as
+// Rust's are to its own.
+bool CarouselNonnegativeUsize(const shell::ComponentArgument& argument,
+                              double* out);
+bool CarouselNonemptyId(const shell::ComponentArgument& argument);
 
 } // namespace gpui::component_shell
 #endif // GPUI_COMPONENT_SHELL_FAMILIES_H_
