@@ -2058,7 +2058,7 @@ static void ApplyOwnStyle(Ctx* cx, const shell::SpecNode* node,
     for (const shell::SpecOp& op : node->ops) {
         if (op.kind == shell::SpecOpKind::NullaryStyle) {
             if (!ApplyNullary(target, op.name) && error && !error->IsSet())
-                ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
+                ShellErrorSet(error, shell::UnknownElementMethodTemp(op.name));
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
             if (!ApplyParam(target, op, error) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("invalid style call `%s`", op.name));
@@ -2544,7 +2544,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     for (const shell::SpecOp& op : node->ops) {
         if (op.kind == shell::SpecOpKind::NullaryStyle) {
             if (!ApplyNullary(element, op.name) && error && !error->IsSet())
-                ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
+                ShellErrorSet(error, shell::UnknownElementMethodTemp(op.name));
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
             if (StrEq(op.name, "border_color")) borderColored = true;
             if (!ApplyParam(element, op, error) && error && !error->IsSet())

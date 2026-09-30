@@ -37,5 +37,14 @@ bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error);
 // no StyleField covers.
 uint32_t StyleFieldsOf(Str name);
 
+// `suggest`: the closest known style method name, for a "did you mean"
+// error — within two edits, or a third of a longer name — or an empty
+// string when nothing is that close. A wrong suggestion is worse than none.
+TempStr StyleSuggestTemp(Str name);
+
+// The engine's `unknown_method`: what a script is told when it calls a
+// method no element has, with the closest style name when there is one.
+TempStr UnknownElementMethodTemp(Str name);
+
 } // namespace gpui::shell
 #endif // GPUI_SHELL_STYLE_H_

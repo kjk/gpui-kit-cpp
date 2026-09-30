@@ -559,6 +559,86 @@ static void AScriptMayCallEveryDeclaredStyle() {
     AppGlobalClear(&app);
 }
 
+// style.rs a_close_typo_gets_a_suggestion and
+// a_name_with_nothing_close_gets_no_suggestion; known_names_covers_both_halves
+// as "every declared name is its own closest name".
+static void ACloseTypoGetsASuggestion() {
+    utassert(StrEq(StyleSuggestTemp(StrL("items_centre")), "items_center"));
+    utassert(StrEq(StyleSuggestTemp(StrL("text_colour")), "text_color"));
+    utassert(StrEq(StyleSuggestTemp(StrL("rounde")), "rounded"));
+    utassert(len(StyleSuggestTemp(StrL("on_click"))) == 0);
+    utassert(len(StyleSuggestTemp(StrL("completely_unrelated_name"))) == 0);
+    // Equally close names: the alphabetically first, as Rust's sorted list
+    // gives it.
+    utassert(StrEq(StyleSuggestTemp(StrL("w_neg_7p5")), "w_neg_0p5"));
+
+    StrBuilder builtin;
+    AppendBuiltinTypeDeclarations(&builtin);
+    DeclaredStyles declared;
+    ReadDeclaredStyles(Str(builtin.els, builtin.len), &declared);
+    int missing = 0;
+    // A sample: every name against every name is millions of distances.
+    for (int i = 0; i < len(declared.nullary); i += 23) {
+        Str name = declared.nullary[i];
+        if (IsNullaryBehavior(name)) continue;
+        if (!StrEq(StyleSuggestTemp(name), name) && missing++ < 8) {
+            printf("  not a known name: %.*s\n", len(name), name.s);
+        }
+    }
+    for (Str name : declared.param) {
+        if (!StrEq(StyleSuggestTemp(name), name) && missing++ < 8) {
+            printf("  not a known name: %.*s\n", len(name), name.s);
+        }
+    }
+    utassert(missing == 0);
+
+    // The engine's unknown_method, with and without a candidate.
+    utassert(StrEq(UnknownElementMethodTemp(StrL("items_centre")),
+                   "unknown element method `items_centre` (did you mean "
+                   "`items_center`?)"));
+    utassert(StrStartsWith(UnknownElementMethodTemp(StrL("on_klick_me_now")),
+                           "unknown element method `on_klick_me_now`; it is "
+                           "neither a style method"));
+}
+
+// render.rs an_unknown_style_method_suggests_the_closest_name: a typo fails
+// the render, and the error names what was meant.
+static void AnUnknownStyleMethodSuggestsTheClosestName() {
+    App app;
+    Window window;
+    window.app = &app;
+    component::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime = ShellRuntime::New(&app, &error);
+    utassert(runtime != nullptr);
+    if (!runtime) return;
+    Str source = StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "export default class Typo extends View {\n"
+        "  render() { return div().items_centre(); }\n"
+        "}\n");
+    ViewType* type = runtime->LoadSource(StrL("typo.js"), source, &error);
+    ViewObject* object =
+        type ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+             : nullptr;
+    RenderSnapshot* snapshot =
+        object
+            ? runtime->BuildSnapshot(object, &window, &app, {}, nullptr, &error)
+            : nullptr;
+    Arena* frame = ArenaNew();
+    Ctx cx = {&app, &window, frame, {}};
+    if (snapshot) ShellMaterialize(&cx, runtime, snapshot, &error);
+    utassert(error.IsSet());
+    utassert(StrContains(error.message, StrL("items_center")));
+    ArenaDelete(frame);
+    delete snapshot;
+    ViewObjectRelease(object);
+    ViewTypeRelease(type);
+    ShellErrorClear(&error);
+    runtime->Release();
+    AppGlobalClear(&app);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -567,4 +647,6 @@ void TestShellStyle() {
     shell_style_tests::NullaryStylesCarryGpuiValues();
     shell_style_tests::ParamStylesFollowTheLengthGrammar();
     shell_style_tests::AScriptMayCallEveryDeclaredStyle();
+    shell_style_tests::ACloseTypoGetsASuggestion();
+    shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
 }

@@ -3332,14 +3332,10 @@ static void InstallComponentCatalog(ShellRuntimeImpl* impl) {
     JS_FreeValue(ctx, global);
 }
 
+// The engine's unknown_method, with the closest style name when one is near.
 static JSValue ThrowUnknownRegisteredMethod(JSContext* ctx, Str name) {
-    return JS_ThrowTypeError(
-        ctx,
-        "unknown element method `%.*s`; it is neither a style method nor one "
-        "of child, children, when, on_click, on_change, disabled, selected, "
-        "checked, overflow_scroll, overflow_x_scroll, overflow_y_scroll, "
-        "overflow_scrollbar, overflow_x_scrollbar, overflow_y_scrollbar",
-        len(name), name.s);
+    TempStr message = shell::UnknownElementMethodTemp(name);
+    return JS_ThrowTypeError(ctx, "%.*s", len(message), message.s);
 }
 
 static bool IsStyleCall(Str name, int argCount) {

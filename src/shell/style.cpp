@@ -6,9 +6,13 @@
 
 #include "shell/style.h"
 
+#include <limits.h>
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include <algorithm>
 
 namespace gpui::shell::style {
 
@@ -1341,9 +1345,143 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
     return true;
 }
 
+// ─── suggestions ─────────────────────────────────────────────────────────
+
+// Every known style method name (known_names), handed to `visit` one at a
+// time. Rust sorts and dedups a list first; `Suggest` below keeps the
+// alphabetically first of equally close names instead, which picks the same
+// one without holding the list.
+template <typename Visit>
+static void EachKnownName(Visit visit) {
+    for (const Keyword& keyword : kKeywords) {
+        visit(Str(keyword.name));
+    }
+    for (const ParamName& param : kOtherParamNames) {
+        visit(Str(param.name));
+    }
+    // The ramps: styles.rs box_style_suffixes, corner_suffixes and
+    // border_suffixes, each prefixed with its family's parametric name.
+    static const char* const kBoxSuffixes[] = {
+        "0",   "0p5", "1",   "1p5", "2",    "2p5", "3",   "3p5", "4",
+        "5",   "6",   "7",   "8",   "9",    "10",  "11",  "12",  "16",
+        "20",  "24",  "32",  "40",  "48",   "56",  "64",  "72",  "80",
+        "96",  "112", "128", "px",  "full", "1_2", "1_3", "2_3", "1_4",
+        "2_4", "3_4", "1_5", "2_5", "3_5",  "4_5", "1_6", "5_6", "1_12",
+    };
+    static const char* const kCornerSuffixes[] = {
+        "none", "xs", "sm", "md", "lg", "xl", "2xl", "3xl", "full"};
+    static const char* const kBorderSuffixes[] = {
+        "0", "1",  "2",  "3",  "4",  "5",  "6",  "7", "8",
+        "9", "10", "11", "12", "16", "20", "24", "32"};
+    char buf[64];
+    for (const Family& family : kFamilies) {
+        visit(Str(family.name));
+        auto emit = [&](const char* middle, const char* suffix) {
+            int n = snprintf(buf, sizeof(buf), "%s%s_%s", family.name, middle,
+                             suffix);
+            if (n > 0 && n < (int)sizeof(buf)) visit(Str(buf, n));
+        };
+        switch (family.suffix) {
+            case Suffix::Box:
+                if (family.arg == Arg::Length) emit("", "auto");
+                for (const char* suffix : kBoxSuffixes) {
+                    emit("", suffix);
+                    emit("_neg", suffix);
+                }
+                break;
+            case Suffix::Corner:
+                for (const char* suffix : kCornerSuffixes) emit("", suffix);
+                break;
+            case Suffix::Border:
+                for (const char* suffix : kBorderSuffixes) emit("", suffix);
+                break;
+        }
+    }
+}
+
+// One code point of UTF-8, advancing `at`. A malformed byte is taken as
+// itself, which is all a distance needs.
+static uint32_t NextCodepoint(Str s, int* at) {
+    uint8_t c = (uint8_t)s.s[*at];
+    int extra = c >= 0xf0 ? 3 : c >= 0xe0 ? 2 : c >= 0xc0 ? 1 : 0;
+    if (*at + extra >= len(s)) extra = 0;
+    uint32_t cp = extra == 0   ? c
+                  : extra == 1 ? (uint32_t)(c & 0x1f)
+                  : extra == 2 ? (uint32_t)(c & 0x0f)
+                               : (uint32_t)(c & 0x07);
+    for (int i = 1; i <= extra; i++) {
+        cp = (cp << 6) | ((uint8_t)s.s[*at + i] & 0x3f);
+    }
+    *at += extra + 1;
+    return cp;
+}
+
+static const int kMaxSuggestChars = 128;
+
+// edit_distance: Levenshtein over chars with one rolling row. `left` is the
+// decoded name; `right` a known name, which is ASCII.
+static int EditDistance(const uint32_t* left, int nLeft, Str right) {
+    int nRight = len(right);
+    if (nRight > kMaxSuggestChars) return INT_MAX;
+    int previous[kMaxSuggestChars + 1];
+    int current[kMaxSuggestChars + 1];
+    for (int j = 0; j <= nRight; j++) previous[j] = j;
+    for (int i = 0; i < nLeft; i++) {
+        current[0] = i + 1;
+        for (int j = 0; j < nRight; j++) {
+            int substitution =
+                previous[j] + (left[i] != (uint8_t)right.s[j] ? 1 : 0);
+            int best = std::min(substitution, previous[j + 1] + 1);
+            current[j + 1] = std::min(best, current[j] + 1);
+        }
+        memcpy(previous, current, sizeof(int) * (size_t)(nRight + 1));
+    }
+    return previous[nRight];
+}
+
 } // namespace gpui::shell::style
 
 namespace gpui::shell {
+
+TempStr StyleSuggestTemp(Str name) {
+    uint32_t decoded[style::kMaxSuggestChars];
+    int n = 0;
+    for (int at = 0; at < len(name);) {
+        if (n == style::kMaxSuggestChars) return {};
+        decoded[n++] = style::NextCodepoint(name, &at);
+    }
+    // A candidate within two edits, or a third of a longer name.
+    int budget = std::max(2, n / 3);
+    int bestDistance = INT_MAX;
+    char best[64] = {};
+    style::EachKnownName([&](Str candidate) {
+        int distance = style::EditDistance(decoded, n, candidate);
+        if (distance > budget || len(candidate) >= (int)sizeof(best)) return;
+        if (distance < bestDistance ||
+            (distance == bestDistance &&
+             style::CompareStr(candidate, Str(best)) < 0)) {
+            bestDistance = distance;
+            memcpy(best, candidate.s, (size_t)len(candidate));
+            best[len(candidate)] = 0;
+        }
+    });
+    if (bestDistance == INT_MAX) return {};
+    return StrDupTemp(Str(best));
+}
+
+TempStr UnknownElementMethodTemp(Str name) {
+    TempStr candidate = StyleSuggestTemp(name);
+    if (len(candidate) > 0) {
+        return fmt("unknown element method `%s` (did you mean `%s`?)", name,
+                   candidate);
+    }
+    return fmt(
+        "unknown element method `%s`; it is neither a style method nor one "
+        "of child, children, when, on_click, on_change, disabled, selected, "
+        "checked, overflow_scroll, overflow_x_scroll, overflow_y_scroll, "
+        "overflow_scrollbar, overflow_x_scrollbar, overflow_y_scrollbar",
+        name);
+}
 
 bool IsParamStyleName(Str name) {
     return style::FindFamily(name) != nullptr || style::IsOtherParam(name);

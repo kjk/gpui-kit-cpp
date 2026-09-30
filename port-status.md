@@ -167,7 +167,7 @@ macOS font-kit requirement on the website only. The current update target is
   `min_*`, `max_h`, padding, margin and gap (except `_full`), grid placement,
   underline thickness and wavy style, start/middle ellipsis and `debug*` are
   accepted and ignored; `text_bg` is validated but not painted; negative
-  sizes clamp to 0; unknown names get no "did you mean" (`src/shell/style.cpp`).
+  sizes clamp to 0 (`src/shell/style.cpp`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle
