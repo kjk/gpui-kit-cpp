@@ -212,6 +212,11 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
                             ->Fg(st.active ? th.primaryFg : th.foreground));
         }
         case CalendarItemKind::Weekday:
+            // text_xs, muted, and — muted and disabled, as base marks every
+            // weekday — at half opacity.
+            if (st.muted && st.disabled) {
+                item->Opacity(0.5f);
+            }
             return item->Child(
                 TextEl(a, Tr(weekdays[st.value]))->Font(12)->Fg(th.mutedFg));
         case CalendarItemKind::Day: {

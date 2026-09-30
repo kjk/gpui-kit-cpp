@@ -506,6 +506,10 @@ static El* CalMonthGrid(Ctx* cx, const CalendarOpts& o, int year, int month) {
         CalendarItemState st;
         st.kind = CalendarItemKind::Weekday;
         st.value = (o.firstDayOfWeek + i) % 7;
+        // calendar.rs: a weekday cell is muted and disabled, which is what
+        // the design system reads to draw it in the faded muted ink.
+        st.muted = true;
+        st.disabled = true;
         header->Child(CalSlot(cx, o, {}, st, {})
                           ->W(o.cellSize)
                           ->H(o.cellSize)
