@@ -380,9 +380,10 @@ static const Family* ParseFamily(Str name, Len* out) {
 
 // ─── applying a family's length ──────────────────────────────────────────
 
-// A size in pixels. CSS has no negative size, and this Style spells `auto`
-// and `100%` as -1 and -2, so `w_neg_4` is held at zero rather than read as
-// one of those.
+// A size in pixels. This Style spells `auto` and `100%` as -1 and -2, so
+// `w_neg_4` is held at zero rather than read as one of those. Upstream hands
+// taffy the -16px, which floors a box at its padding and border, so zero lays
+// out the same.
 static float SizePx(float v) {
     return v < 0 ? 0.f : v;
 }
@@ -393,11 +394,16 @@ static float InsetPx(float v) {
     return v == kAuto ? -1.0001f : v;
 }
 
-// Fractions this Style cannot hold for a field: `min_w_1_2`, `p_1_2`,
-// `gap_full`, `m_1_3`. GPUI resolves them against the parent; this tree's
-// Style carries those fields in pixels only, so the name is accepted and
-// changes nothing. `full` of a min or max size is the exception, since kFill
-// there already means relative(1.).
+// A fraction of a field this Style keeps in DIPs — `min_w_1_2`, `p_1_2`,
+// `gap_full`, `m_1_3` — is the fraction in that field with its kRel* bit
+// set, which taffy resolves as relative(f). A DIP value clears the bit.
+static void SetRel(Style& s, uint16_t bits, bool fraction) {
+    if (fraction) {
+        s.relLengths |= bits;
+    } else {
+        s.relLengths &= (uint16_t)~bits;
+    }
+}
 
 static void SetWidth(Style& s, Len l) {
     switch (l.kind) {
@@ -433,14 +439,21 @@ static void SetHeight(Style& s, Len l) {
     }
 }
 
-static void SetMin(float* field, Len l) {
+// `full` stays kFill, which is already relative(1.) for a min size. A
+// negative fraction is held at zero, as a negative size is: a minimum below
+// zero constrains nothing, as zero does not.
+static void SetMin(Style& s, float* field, uint16_t bit, Len l) {
+    bool fraction = l.kind == LenKind::Frac && l.v > 0 && l.v != 1.f;
     if (l.kind == LenKind::Px) {
         *field = SizePx(l.v);
     } else if (l.kind == LenKind::Auto) {
         *field = kAuto;
     } else if (l.v == 1.f) {
         *field = kFill;
+    } else {
+        *field = fraction ? l.v : 0.f;
     }
+    SetRel(s, bit, fraction);
 }
 
 static void SetMaxW(Style& s, Len l) {
@@ -463,19 +476,20 @@ static void SetMaxW(Style& s, Len l) {
 }
 
 static void SetMaxH(Style& s, Len l) {
+    bool fraction = l.kind == LenKind::Frac && l.v > 0 && l.v != 1.f;
     if (l.kind == LenKind::Px) {
         s.maxH = SizePx(l.v);
     } else if (l.kind == LenKind::Auto) {
         s.maxH = 1e9f;
     } else if (l.v == 1.f) {
         s.maxH = kFill;
+    } else {
+        s.maxH = fraction ? l.v : 0.f;
     }
+    SetRel(s, kRelMaxH, fraction);
 }
 
 static void SetMargin(Style& s, Len l, bool t, bool r, bool b, bool left) {
-    if (l.kind == LenKind::Frac) {
-        return;
-    }
     bool automatic = l.kind == LenKind::Auto;
     float v = automatic ? 0.f : l.v;
     uint8_t bits =
@@ -490,16 +504,36 @@ static void SetMargin(Style& s, Len l, bool t, bool r, bool b, bool left) {
     } else {
         s.marginAuto &= (uint8_t)~bits;
     }
+    SetRel(s,
+           (uint16_t)((t ? kRelMarginT : 0) | (r ? kRelMarginR : 0) |
+                      (b ? kRelMarginB : 0) | (left ? kRelMarginL : 0)),
+           l.kind == LenKind::Frac);
 }
 
+// Padding is a DefiniteLength, so never `auto`; a negative length or
+// fraction goes to taffy as it is, as it does upstream.
 static void SetPad(Style& s, Len l, bool t, bool r, bool b, bool left) {
-    if (l.kind != LenKind::Px) {
+    if (l.kind == LenKind::Auto) {
         return;
     }
     if (t) s.pad.top = l.v;
     if (r) s.pad.right = l.v;
     if (b) s.pad.bottom = l.v;
     if (left) s.pad.left = l.v;
+    SetRel(s,
+           (uint16_t)((t ? kRelPadT : 0) | (r ? kRelPadR : 0) |
+                      (b ? kRelPadB : 0) | (left ? kRelPadL : 0)),
+           l.kind == LenKind::Frac);
+}
+
+static void SetGap(Style& s, Len l, bool x, bool y) {
+    if (l.kind == LenKind::Auto) {
+        return;
+    }
+    if (x) s.gapX = l.v;
+    if (y) s.gapY = l.v;
+    SetRel(s, (uint16_t)((x ? kRelGapX : 0) | (y ? kRelGapY : 0)),
+           l.kind == LenKind::Frac);
 }
 
 static void SetInset(float* px, float* rel, Len l) {
@@ -577,14 +611,14 @@ static void ApplyFamily(El* e, Fam fam, Len l) {
             SetHeight(s, l);
             break;
         case Fam::MinW:
-            SetMin(&s.minW, l);
+            SetMin(s, &s.minW, kRelMinW, l);
             break;
         case Fam::MinH:
-            SetMin(&s.minH, l);
+            SetMin(s, &s.minH, kRelMinH, l);
             break;
         case Fam::MinSize:
-            SetMin(&s.minW, l);
-            SetMin(&s.minH, l);
+            SetMin(s, &s.minW, kRelMinW, l);
+            SetMin(s, &s.minH, kRelMinH, l);
             break;
         case Fam::MaxW:
             SetMaxW(s, l);
@@ -598,13 +632,13 @@ static void ApplyFamily(El* e, Fam fam, Len l) {
             break;
         // gpui's gap.width is the gap between columns — gap_x.
         case Fam::Gap:
-            if (l.kind == LenKind::Px) s.gapX = s.gapY = l.v;
+            SetGap(s, l, true, true);
             break;
         case Fam::GapX:
-            if (l.kind == LenKind::Px) s.gapX = l.v;
+            SetGap(s, l, true, false);
             break;
         case Fam::GapY:
-            if (l.kind == LenKind::Px) s.gapY = l.v;
+            SetGap(s, l, false, true);
             break;
         case Fam::P:
             SetPad(s, l, true, true, true, true);

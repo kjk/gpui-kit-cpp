@@ -1930,6 +1930,14 @@ struct Style {
     // the line is being measured (shrink-to-fit, max-content). Set, the
     // basis is flexBasisFrac as a fraction even when that is zero.
     uint8_t flexBasisPercent : 1 = false;
+    // Which of minW, minH, maxH and the pad, margin and gap edges hold a
+    // fraction rather than DIPs — Rust's relative(f), which a script writes
+    // as `p_1_2` or `min_h("25%")` — one kRel* bit each. Padding, margin
+    // and gap keep the fraction until WriteBackEl replaces it with the DIPs
+    // taffy resolved and clears the bit, so what reads them after layout
+    // reads pixels as it always has. Two bytes that were padding before
+    // heightFrac.
+    uint16_t relLengths = 0;
     // h_1_2 / h_2_3 / …: widthFrac's twin for the height. 0 = unset.
     float heightFrac = 0;
 };
@@ -1941,10 +1949,30 @@ enum : uint8_t {
     kMarginAutoB = 8,
 };
 
+// Style::relLengths: the field holds relative(f) rather than DIPs.
+enum : uint16_t {
+    kRelMinW = 1 << 0,
+    kRelMinH = 1 << 1,
+    kRelMaxH = 1 << 2,
+    kRelPadL = 1 << 3,
+    kRelPadR = 1 << 4,
+    kRelPadT = 1 << 5,
+    kRelPadB = 1 << 6,
+    kRelMarginL = 1 << 7,
+    kRelMarginR = 1 << 8,
+    kRelMarginT = 1 << 9,
+    kRelMarginB = 1 << 10,
+    kRelGapX = 1 << 11,
+    kRelGapY = 1 << 12,
+    kRelPad = kRelPadL | kRelPadR | kRelPadT | kRelPadB,
+    kRelMargin = kRelMarginL | kRelMarginR | kRelMarginT | kRelMarginB,
+    kRelGap = kRelGapX | kRelGapY,
+};
+
 // 416 was full to the byte; heightFrac, which had nowhere else to go, opened
-// the next 8-byte unit, and alignContent and the two bits beside it took two
-// of the four bytes it left, so two byte-sized members are free. Grow this
-// only for a member that has nowhere else to go, never to absorb padding.
+// the next 8-byte unit, and alignContent, the bits beside it and relLengths
+// took the four bytes it left. Grow this only for a member that has nowhere
+// else to go, never to absorb padding.
 static_assert(sizeof(Style) <= 424, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these

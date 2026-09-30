@@ -647,10 +647,12 @@ El* El::SizeFull() {
 }
 El* El::MinH(float v) {
     style.minH = v;
+    style.relLengths &= (uint16_t)~kRelMinH;
     return this;
 }
 El* El::MinW(float v) {
     style.minW = v;
+    style.relLengths &= (uint16_t)~kRelMinW;
     return this;
 }
 El* El::MaxW(float v) {
@@ -667,90 +669,109 @@ El* El::Aspect(float ratio) {
 }
 El* El::MaxH(float v) {
     style.maxH = v;
+    style.relLengths &= (uint16_t)~kRelMaxH;
     return this;
 }
 El* El::Gap(float v) {
     style.display = Display::Flex;
     style.gapX = v;
     style.gapY = v;
+    style.relLengths &= (uint16_t)~kRelGap;
     return this;
 }
 El* El::GapX(float v) {
     style.display = Display::Flex;
     style.gapX = v;
+    style.relLengths &= (uint16_t)~kRelGapX;
     return this;
 }
 El* El::GapY(float v) {
     style.display = Display::Flex;
     style.gapY = v;
+    style.relLengths &= (uint16_t)~kRelGapY;
     return this;
 }
 El* El::Pad(float v) {
     style.pad = {v, v, v, v};
+    style.relLengths &= (uint16_t)~kRelPad;
     return this;
 }
 El* El::PadX(float v) {
     style.pad.left = style.pad.right = v;
+    style.relLengths &= (uint16_t)~(kRelPadL | kRelPadR);
     return this;
 }
 El* El::PadY(float v) {
     style.pad.top = style.pad.bottom = v;
+    style.relLengths &= (uint16_t)~(kRelPadT | kRelPadB);
     return this;
 }
 El* El::PadL(float v) {
     style.pad.left = v;
+    style.relLengths &= (uint16_t)~kRelPadL;
     return this;
 }
 El* El::PadR(float v) {
     style.pad.right = v;
+    style.relLengths &= (uint16_t)~kRelPadR;
     return this;
 }
 El* El::PadT(float v) {
     style.pad.top = v;
+    style.relLengths &= (uint16_t)~kRelPadT;
     return this;
 }
 El* El::PadB(float v) {
     style.pad.bottom = v;
+    style.relLengths &= (uint16_t)~kRelPadB;
     return this;
 }
 El* El::Margin(float v) {
     style.margin = {v, v, v, v};
+    style.relLengths &= (uint16_t)~kRelMargin;
     style.marginAuto = 0;
     return this;
 }
 El* El::MarginX(float v) {
     style.margin.left = style.margin.right = v;
+    style.relLengths &= (uint16_t)~(kRelMarginL | kRelMarginR);
     style.marginAuto &= (uint8_t)~(kMarginAutoL | kMarginAutoR);
     return this;
 }
 El* El::MarginY(float v) {
     style.margin.top = style.margin.bottom = v;
+    style.relLengths &= (uint16_t)~(kRelMarginT | kRelMarginB);
     style.marginAuto &= (uint8_t)~(kMarginAutoT | kMarginAutoB);
     return this;
 }
 El* El::MarginL(float v) {
     style.margin.left = v;
+    style.relLengths &= (uint16_t)~kRelMarginL;
     style.marginAuto &= (uint8_t)~kMarginAutoL;
     return this;
 }
 El* El::MarginR(float v) {
     style.margin.right = v;
+    style.relLengths &= (uint16_t)~kRelMarginR;
     style.marginAuto &= (uint8_t)~kMarginAutoR;
     return this;
 }
 El* El::MarginT(float v) {
     style.margin.top = v;
+    style.relLengths &= (uint16_t)~kRelMarginT;
     style.marginAuto &= (uint8_t)~kMarginAutoT;
     return this;
 }
 El* El::MarginB(float v) {
     style.margin.bottom = v;
+    style.relLengths &= (uint16_t)~kRelMarginB;
     style.marginAuto &= (uint8_t)~kMarginAutoB;
     return this;
 }
 El* El::MlAuto() {
     style.margin.left = 0;
     style.marginAuto |= kMarginAutoL;
+    style.relLengths &= (uint16_t)~kRelMarginL;
     return this;
 }
 El* El::ItemsCenter() {
@@ -1344,16 +1365,24 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     if (fields & StyleFieldBorderColor) {
         into->borderColor = over.borderColor;
     }
+    // A fraction travels with the edges it is in.
+    auto rel = [&](uint16_t bits) {
+        into->relLengths =
+            (uint16_t)((into->relLengths & ~bits) | (over.relLengths & bits));
+    };
     if (fields & StyleFieldPad) {
         into->pad = over.pad;
+        rel(kRelPad);
     }
     if (fields & StyleFieldMargin) {
         into->margin = over.margin;
         into->marginAuto = over.marginAuto;
+        rel(kRelMargin);
     }
     if (fields & StyleFieldGap) {
         into->gapX = over.gapX;
         into->gapY = over.gapY;
+        rel(kRelGap);
     }
     if (fields & StyleFieldRadius) {
         into->radius = over.radius;
@@ -3522,7 +3551,14 @@ static taffy::Style ToTaffyStyle(const El* e) {
     // opposite instruction — `min_w_0()`, "this may shrink past its content"
     // — and it is what a pane holding something wider than the window says so
     // the window's width still wins.
-    t.minSize = {ToMinDim(s.minW), ToMinDim(s.minH)};
+    //
+    // A fraction other than the whole — `min_w_1_2`, `min_h("25%")` — is
+    // flagged in relLengths and resolved by taffy against the parent, as
+    // relative(f) is upstream.
+    auto rel = [&](uint16_t bit) { return (s.relLengths & bit) != 0; };
+    t.minSize = {
+        rel(kRelMinW) ? taffy::Dimension::Percent(s.minW) : ToMinDim(s.minW),
+        rel(kRelMinH) ? taffy::Dimension::Percent(s.minH) : ToMinDim(s.minH)};
     // Through ToDim rather than straight to Length: kFill in a max is
     // `max_w(relative(1.))` -- a hundred percent of what holds it, which is
     // how node.rs keeps a picture inside its column -- and a length of -2 is
@@ -3530,7 +3566,9 @@ static taffy::Style ToTaffyStyle(const El* e) {
     t.maxSize = {s.maxWFrac > 0 ? taffy::Dimension::Percent(s.maxWFrac)
                                 : (s.maxW < 1e9f ? ToDim(s.maxW, 0)
                                                  : taffy::Dimension::Auto()),
-                 s.maxH < 1e9f ? ToDim(s.maxH, 0) : taffy::Dimension::Auto()};
+                 rel(kRelMaxH)   ? taffy::Dimension::Percent(s.maxH)
+                 : s.maxH < 1e9f ? ToDim(s.maxH, 0)
+                                 : taffy::Dimension::Auto()};
 
     t.flexGrow = s.flexGrow;
     t.flexShrink = s.flexShrink;
@@ -3543,21 +3581,23 @@ static taffy::Style ToTaffyStyle(const El* e) {
             : (s.flexBasis == kAuto ? taffy::Dimension::Auto()
                                     : taffy::Dimension::Length(s.flexBasis));
 
-    t.padding = {taffy::LengthPercentage::Length(s.pad.left),
-                 taffy::LengthPercentage::Length(s.pad.right),
-                 taffy::LengthPercentage::Length(s.pad.top),
-                 taffy::LengthPercentage::Length(s.pad.bottom)};
+    auto lp = [&](float v, uint16_t bit) {
+        return rel(bit) ? taffy::LengthPercentage::Percent(v)
+                        : taffy::LengthPercentage::Length(v);
+    };
+    t.padding = {lp(s.pad.left, kRelPadL), lp(s.pad.right, kRelPadR),
+                 lp(s.pad.top, kRelPadT), lp(s.pad.bottom, kRelPadB)};
     // ml_auto and its siblings are CSS's `margin: auto`, which taffy has.
-    auto margin = [&](float v, uint8_t bit) {
+    auto margin = [&](float v, uint8_t bit, uint16_t relBit) {
         return (s.marginAuto & bit) ? taffy::LengthPercentageAuto::Auto()
+               : rel(relBit)        ? taffy::LengthPercentageAuto::Percent(v)
                                     : taffy::LengthPercentageAuto::Length(v);
     };
-    t.margin = {margin(s.margin.left, kMarginAutoL),
-                margin(s.margin.right, kMarginAutoR),
-                margin(s.margin.top, kMarginAutoT),
-                margin(s.margin.bottom, kMarginAutoB)};
-    t.gap = {taffy::LengthPercentage::Length(s.gapX),
-             taffy::LengthPercentage::Length(s.gapY)};
+    t.margin = {margin(s.margin.left, kMarginAutoL, kRelMarginL),
+                margin(s.margin.right, kMarginAutoR, kRelMarginR),
+                margin(s.margin.top, kMarginAutoT, kRelMarginT),
+                margin(s.margin.bottom, kMarginAutoB, kRelMarginB)};
+    t.gap = {lp(s.gapX, kRelGapX), lp(s.gapY, kRelGapY)};
     // GPUI hands `Style::border_widths` straight to taffy, so a border takes
     // room the way CSS says it does: the box keeps its size and the content
     // inside it moves in by the width. This tree drew the border inside the
@@ -4284,6 +4324,33 @@ static void WriteBackChildren(LayoutCache* lc, PaintCtx* ctx, El* e) {
     }
 }
 
+// Padding, margin and gap that were relative(f) become the DIPs taffy
+// resolved them to, so what reads the box after layout — anchored overlays
+// and inputs read its padding — reads pixels. Taffy reports padding and
+// margin; a gap resolves against the container's own content box, per axis.
+static void ResolveRelLengths(El* e, const taffy::Layout& l) {
+    Style& s = e->style;
+    uint16_t bits = s.relLengths & (uint16_t)(kRelPad | kRelMargin | kRelGap);
+    if (!bits) {
+        return;
+    }
+    if (bits & kRelPad) {
+        s.pad = {l.padding.left, l.padding.right, l.padding.top,
+                 l.padding.bottom};
+    }
+    if (bits & kRelMargin) {
+        s.margin = {l.margin.left, l.margin.right, l.margin.top,
+                    l.margin.bottom};
+    }
+    if (bits & kRelGapX) {
+        s.gapX *= l.ContentBoxWidth();
+    }
+    if (bits & kRelGapY) {
+        s.gapY *= l.ContentBoxHeight();
+    }
+    s.relLengths &= (uint16_t)~bits;
+}
+
 static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
                         float originY) {
     const taffy::Layout& l = lc->tree.GetLayout(taffy::NodeId{e->layoutNode});
@@ -4293,6 +4360,7 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     e->h = l.size.h;
     e->contentW = l.contentSize.w;
     e->contentH = l.contentSize.h;
+    ResolveRelLengths(e, l);
 
     // The shaped run paint wants, taken from the text cache at the size
     // layout settled on. Releasing our reference is safe because a cached run

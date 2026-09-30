@@ -639,6 +639,99 @@ static void AnUnknownStyleMethodSuggestsTheClosestName() {
     AppGlobalClear(&app);
 }
 
+// Fractions of the fields this Style keeps in DIPs are relative(f), as
+// GPUI's are: the fraction goes to taffy against the parent, and after layout
+// the padding, margin and gap are the pixels it came to.
+static void FractionsOfMinMaxPaddingMarginAndGapApply() {
+    Arena* arena = ArenaNew();
+    El* e =
+        Styled(arena, "min_w_1_2 min_h_1_3 max_h_3_4 p_1_4 mt_1_5 gap_x_1_6");
+    utassertnear(e->style.minW, 0.5f);
+    utassertnear(e->style.minH, 1.f / 3.f);
+    utassertnear(e->style.maxH, 0.75f);
+    utassertnear(e->style.pad.left, 0.25f);
+    utassertnear(e->style.margin.top, 0.2f);
+    utassertnear(e->style.gapX, 1.f / 6.f);
+    utassert(e->style.relLengths == (kRelMinW | kRelMinH | kRelMaxH | kRelPad |
+                                     kRelMarginT | kRelGapX));
+    // A length after a fraction is a length again, edge by edge.
+    e = Styled(arena, "p_1_2 pt_2 gap_full gap_y_1 min_w_1_2 min_w_4");
+    utassert(e->style
+                 .relLengths == (kRelPadL | kRelPadR | kRelPadB | kRelGapX));
+    utassertnear(e->style.pad.top, 8);
+    utassertnear(e->style.gapY, 4);
+    utassertnear(e->style.minW, 16);
+    // A negative fraction of a min or max is no constraint below zero.
+    e = Styled(arena, "min_h_neg_1_2 max_h_neg_1_4 ml_neg_1_2");
+    utassertnear(e->style.minH, 0);
+    utassertnear(e->style.maxH, 0);
+    utassert(e->style.relLengths == kRelMarginL);
+    utassertnear(e->style.margin.left, -0.5f);
+
+    ShellError error = {};
+    e = Div(arena);
+    utassert(
+        ApplyParamValue(e, StrL("px"), Bridged::String(StrL("10%")), &error));
+    utassert(ApplyParamValue(e, StrL("min_h"), Bridged::String(StrL("25%")),
+                             &error));
+    utassert(
+        ApplyParamValue(e, StrL("gap"), Bridged::String(StrL("50%")), &error));
+    utassert(!error.IsSet());
+    utassert(e->style.relLengths ==
+             (kRelPadL | kRelPadR | kRelMinH | kRelGapX | kRelGapY));
+
+    // Through layout: a 400x200 row whose child pads a quarter and margins a
+    // tenth of the row's width, both horizontal and vertical edges, as CSS
+    // resolves padding and margin; the gap is half the row's own width.
+    El* row = Div(arena)->Flex()->W(400)->H(200);
+    El* child = Styled(arena, "p_1_4 ml_1_2 flex_none");
+    El* other = Styled(arena, "min_h_1_2 max_h_3_4 self_start w_4");
+    row->Child(child)->Child(other);
+    utassert(ApplyNullaryStyle(row, StrL("gap_x_1_4")));
+    LayoutEl(nullptr, row, 0, 0, 400, 200, 14, Rgba{});
+    utassertnear(child->style.pad.left, 100);
+    utassertnear(child->style.pad.top, 100);
+    utassertnear(child->style.margin.left, 200);
+    utassertnear(child->x, 200);
+    utassertnear(other->h, 100);
+    utassertnear(row->style.gapX, 100);
+    utassertnear(other->x, child->x + child->w + 100);
+    utassert(child->style.relLengths == 0);
+    // A min or max is not read after layout, so it keeps its fraction.
+    utassert(other->style.relLengths == (kRelMinH | kRelMaxH));
+    utassert(row->style.relLengths == 0);
+    ArenaDelete(arena);
+}
+
+// \`w_neg_4\` is Length::Definite(px(-16.)) upstream, and taffy floors a box
+// at its padding and border, so a negative size lays out exactly as zero
+// does \u2014 which is what this Style, whose negative widths are sentinels,
+// holds it at.
+static void ANegativeSizeLaysOutAsZero() {
+    float widths[2] = {};
+    for (int i = 0; i < 2; i++) {
+        taffy::TaffyTree tree;
+        taffy::Style style;
+        style.size = {taffy::Dimension::Length(i == 0 ? -16.f : 0.f),
+                      taffy::Dimension::Length(i == 0 ? -16.f : 0.f)};
+        style.padding = {taffy::LengthPercentage::Length(3),
+                         taffy::LengthPercentage::Length(3),
+                         taffy::LengthPercentage::Length(3),
+                         taffy::LengthPercentage::Length(3)};
+        style.flexShrink = 0;
+        taffy::NodeId child = tree.NewLeaf(style);
+        taffy::Style rowStyle;
+        rowStyle.display = taffy::Display::Flex;
+        taffy::NodeId row = tree.NewWithChildren(rowStyle, &child, 1);
+        tree.ComputeLayout(row, taffy::SizeAvail::MaxContent());
+        widths[i] = tree.GetLayout(child).size.w;
+        utassertnear(tree.GetLayout(child).size.h, widths[i]);
+        tree.Free();
+    }
+    utassertnear(widths[0], 6);
+    utassertnear(widths[1], 6);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -648,5 +741,7 @@ void TestShellStyle() {
     shell_style_tests::ParamStylesFollowTheLengthGrammar();
     shell_style_tests::AScriptMayCallEveryDeclaredStyle();
     shell_style_tests::ACloseTypoGetsASuggestion();
+    shell_style_tests::FractionsOfMinMaxPaddingMarginAndGapApply();
+    shell_style_tests::ANegativeSizeLaysOutAsZero();
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
 }

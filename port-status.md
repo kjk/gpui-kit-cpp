@@ -163,11 +163,10 @@ macOS font-kit requirement on the website only. The current update target is
   as-is); Progress is 200 wide unless styled; a plain Textarea's height
   follows `rows`; the Editor's gutter is narrower; InputGroup lacks the
   inline-addon inset, border/background transitions and ghost colours.
-- **Some script style names apply partly or not at all.** Fractions of
-  `min_*`, `max_h`, padding, margin and gap (except `_full`), grid placement,
+- **Some script style names apply partly or not at all.** Grid placement,
   underline thickness and wavy style, start/middle ellipsis and `debug*` are
-  accepted and ignored; `text_bg` is validated but not painted; negative
-  sizes clamp to 0 (`src/shell/style.cpp`).
+  accepted and ignored; `text_bg` is validated but not painted
+  (`src/shell/style.cpp`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle
