@@ -32,6 +32,8 @@ struct QuestionnairePart {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // The shell's whole StyleRefinement, replayed after `style`.
+    ElRefiner refiner = {};
 };
 
 #define GPUI_QUESTIONNAIRE_PART(T)                       \

@@ -283,6 +283,7 @@ static El* RefineWith(El* e, const QuestionnairePart* part) {
     if (e && part->styleSet) {
         e->Refine(part->style, part->styleSet);
     }
+    part->refiner.Apply(e);
     return e;
 }
 

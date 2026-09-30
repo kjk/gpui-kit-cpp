@@ -6,6 +6,9 @@
 
 #include "shell/component_registry.h"
 
+namespace gpui {
+struct QuestionnaireState;
+}
 namespace gpui::component {
 struct NativeMenu;
 }
@@ -45,6 +48,7 @@ bool RegisterNavigation(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterChart(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCarousel(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterQuestionnaire(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
 
@@ -177,6 +181,11 @@ void SetChartErrorProbe(ChartErrorProbe probe);
 bool CarouselNonnegativeUsize(const shell::ComponentArgument& argument,
                               double* out);
 bool CarouselNonemptyId(const shell::ComponentArgument& argument);
+
+// questionnaire/mod.rs: the retained QuestionnaireState a Questionnaire
+// keyed by `id` renders in `cx`'s window, for the tests to drive the flow
+// the way a key press would. Invalid when there is none.
+Entity<QuestionnaireState> QuestionnaireStateFor(Ctx* cx, Str id);
 
 } // namespace gpui::component_shell
 #endif // GPUI_COMPONENT_SHELL_FAMILIES_H_

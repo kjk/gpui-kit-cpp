@@ -5972,6 +5972,196 @@ void CarouselRefusesWhatRustRefuses() {
         StrEq(failure, "Carousel component received an incompatible payload"));
     StrFree(failure);
 }
+// ─── questionnaire/mod.rs, tests/questionnaire_host.rs ─────────────────────
+
+void QuestionnaireRegistersTypedPartsAndTheRoot() {
+    FamilyCatalog catalog(&component_shell::RegisterQuestionnaire);
+    utassert(catalog.ok);
+    const char* expected[] = {"QuestionnaireChoice", "QuestionnaireItem",
+                              "QuestionnaireInput", "Questionnaire"};
+    utassert(catalog.NamesAre(expected, 4));
+    utassert(catalog.Documented());
+}
+
+// Every element carrying a keyboard-shortcut badge's text: the letters the
+// native flow handed the active question's choices.
+bool HasShortcutBadge(El* root, const char* key) {
+    return FindText(root, Str(key)) != nullptr;
+}
+
+// questionnaire_host.rs questionnaire_answers_and_advances_from_script_
+// declared_questions. Rust reads the shortcut badges by their debug bounds
+// (`kbd:a`), clicks the first choice and presses Enter. The port has no
+// debug bounds or simulated keystrokes here, so it reads the badges' text,
+// activates the first choice with its own click listener and confirms
+// through QuestionnaireState::ConfirmCurrent, which is what Enter on a
+// filled answer runs (QuestionnaireHandleKeyDown).
+void QuestionnaireAnswersAndAdvancesFromScriptDeclaredQuestions() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { Questionnaire, QuestionnaireItem, QuestionnaireChoice } "
+        "from 'gpui-component';\n"
+        "export default class QuestionnaireHost extends View {\n"
+        "  render() {\n"
+        "    return div().w(500).h(400)\n"
+        "      .child(new Questionnaire('host-questionnaire')"
+        ".shortcuts('letters')\n"
+        "        .child(new QuestionnaireItem('direction', 'Which "
+        "direction?').required(true)\n"
+        "          .child(new QuestionnaireChoice('delegation', "
+        "'Delegation'))\n"
+        "          .child(new QuestionnaireChoice('prompts', 'Question "
+        "prompts')))\n"
+        "        .child(new QuestionnaireItem('tools', 'Which "
+        "tools?').multiple(true)\n"
+        "          .child(new QuestionnaireChoice('editor', 'Editor'))\n"
+        "          .child(new QuestionnaireChoice('terminal', 'Terminal'))\n"
+        "          .child(new QuestionnaireChoice('browser', 'Browser'))));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    utassert(HasShortcutBadge(root, "A"));
+    utassert(HasShortcutBadge(root, "B"));
+    utassert(!HasShortcutBadge(root, "C"));
+    utassert(FindText(root, StrL("Which direction?")) != nullptr);
+    utassert(FindText(root, StrL("Which tools?")) == nullptr);
+
+    El* choice = ListenerAbove(root, StrL("Delegation"));
+    utassert(choice != nullptr);
+    if (choice) Click(host, choice);
+    root = Rerender(host);
+    // Enter on the filled answer: the retained state the root keyed.
+    Ctx cx = {};
+    cx.app = &host.app;
+    cx.win = &host.window;
+    cx.a = host.frame;
+    Entity<QuestionnaireState> state =
+        component_shell::QuestionnaireStateFor(&cx, StrL("host-questionnaire"));
+    QuestionnaireState* native = state.Get(&host.app);
+    utassert(native != nullptr);
+    if (native) {
+        utassert(StrEq(native->CurrentItem(), "direction"));
+        cx.self = state.id;
+        utassert(native->ConfirmCurrent(&cx));
+        utassert(StrEq(native->CurrentItem(), "tools"));
+    }
+    root = Rerender(host);
+    utassert(HasShortcutBadge(root, "C"));
+    utassert(FindText(root, StrL("Which tools?")) != nullptr);
+}
+
+// mod.rs: the constructors' and materializers' refusals.
+void QuestionnaireRefusesWhatRustRefuses() {
+    struct Case {
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new QuestionnaireChoice(' ', 'x')",
+         "QuestionnaireChoice expects a non-empty value and label"},
+        {"new QuestionnaireItem('n', '')",
+         "QuestionnaireItem expects a non-empty name and label"},
+        {"new Questionnaire(' ')", "Questionnaire expects a non-empty id"},
+    };
+    for (const Case& c : cases) {
+        Str failure = CallErrorTemp(
+            "Questionnaire, QuestionnaireItem, QuestionnaireChoice", c.call);
+        utassert(StrContains(failure, Str(c.message)));
+    }
+    struct Render {
+        const char* body;
+        const char* message;
+    };
+    const Render renders[] = {
+        {"new Questionnaire('q').child(div())",
+         "Questionnaire accepts only registered QuestionnaireItem children"},
+        // Materialized on its own, so the failure is the choice's rather
+        // than its parent's report of it.
+        {"div().child(new QuestionnaireChoice('x', 'X').p(4))",
+         "QuestionnaireChoice carries data rather than a box, so it does not "
+         "implement Styled"},
+        {"new Questionnaire('q').child(new QuestionnaireItem('a', 'A'))"
+         ".child(new QuestionnaireItem('a', 'B'))",
+         "Questionnaire schema is invalid: "},
+    };
+    for (const Render& r : renders) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { Questionnaire, QuestionnaireItem, "
+                "QuestionnaireChoice } from 'gpui-component';\n"
+                "export default class App extends View { render() { "
+                "return %s; } }\n",
+                Str(r.body));
+        Host host(source);
+        host.Render();
+        Str failure = host.runtime->LastComponentFailure();
+        utassert(StrContains(failure, Str(r.message)));
+    }
+}
+
+// ─── the whole catalog ─────────────────────────────────────────────────────
+
+// With every family registered, the catalog's whole `declare module
+// "gpui-component"` block and its Element union are byte for byte what the
+// Rust catalog writes: every export in the same order, nothing missing and
+// nothing extra (130 element types and 14 state exports).
+void WholeCatalogDeclarationsEqualRust() {
+    const FrozenComponentRegistry* frozen = component_shell::Components();
+    utassert(frozen->DescriptorCount() == 130);
+    utassert(frozen->StateCount() == 14);
+
+    StrBuilder rust;
+    AppendRustComponentDeclarations(&rust);
+    Str expected = Str(rust.els, rust.len);
+    // The inline-token types sit between the module's import line and its
+    // first state or descriptor, which is how typings.cpp finds them in the
+    // runtime's own declarations too.
+    Str header = StrL(
+        "declare module \"gpui-component\" {\n"
+        "  import { ClickEvent, Context, Element, NativeElement } from "
+        "\"gpui-kit\";\n");
+    utassert(StrStartsWith(expected, header));
+    StrBuilder builtin;
+    shell::AppendBuiltinTypeDeclarations(&builtin);
+    Str text = Str(builtin.els, builtin.len);
+    int moduleAt = StrFind(text, header);
+    Str moduleEnd = StrL("}\n\ndeclare module \"gpui-shell\" {\n");
+    int endAt =
+        moduleAt >= 0
+            ? StrFind(Str(text.s + moduleAt, len(text) - moduleAt), moduleEnd)
+            : -1;
+    utassert(moduleAt >= 0 && endAt >= 0);
+    if (moduleAt < 0 || endAt < 0) return;
+    int tokensAt = moduleAt + len(header);
+    Str inlineTokenTypes = Str(text.s + tokensAt, moduleAt + endAt - tokensAt);
+
+    StrBuilder ours;
+    shell::AppendComponentDeclarations(&ours, frozen, inlineTokenTypes);
+    Str actual = Str(ours.els, ours.len);
+    bool same = StrEq(actual, expected);
+    if (!same) {
+        int at = 0;
+        while (at < len(actual) && at < len(expected) &&
+               actual.s[at] == expected.s[at])
+            at++;
+        int from = at > 80 ? at - 80 : 0;
+        printf(
+            "catalog declarations differ from Rust at %d:\n  ours: %.*s\n"
+            "  rust: %.*s\n",
+            at, std::min(160, len(actual) - from), actual.s + from,
+            std::min(160, len(expected) - from), expected.s + from);
+    }
+    utassert(same);
+
+    StrBuilder rustUnion;
+    AppendRustComponentElementUnion(&rustUnion);
+    StrBuilder ourUnion;
+    shell::AppendComponentElementUnion(&ourUnion, frozen);
+    utassert(StrEq(Str(ourUnion.els, ourUnion.len),
+                   Str(rustUnion.els, rustUnion.len)));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -6204,4 +6394,12 @@ void TestComponentShell() {
     CarouselIdentifiersAndIndicesAreClosed();
     CarouselPartsComposeAndReportChanges();
     CarouselRefusesWhatRustRefuses();
+
+    TestSuite("questionnaire");
+    QuestionnaireRegistersTypedPartsAndTheRoot();
+    QuestionnaireAnswersAndAdvancesFromScriptDeclaredQuestions();
+    QuestionnaireRefusesWhatRustRefuses();
+
+    TestSuite("component-shell catalog");
+    WholeCatalogDeclarationsEqualRust();
 }

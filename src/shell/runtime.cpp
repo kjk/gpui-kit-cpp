@@ -2949,17 +2949,51 @@ static void WarnDeprecatedExport(ShellRuntimeImpl* impl,
         Str(ctor.deprecationMessage ? ctor.deprecationMessage : ""));
 }
 
+// A native function's `magic` is an int16_t inside QuickJS, so a
+// descriptor id times 256 overflows past the 127th component. The catalog
+// numbers its constructors (and its state methods) flat instead, in
+// registration order, and these walk back from that number to the
+// descriptor and its entry. Where Rust's engine binds a closure per export,
+// this is what stands in for the capture.
+static const shell::ComponentDescriptor* ConstructorAt(
+    const shell::FrozenComponentRegistry* components, int flat,
+    uint32_t* componentId, int* index) {
+    for (int d = 0; components && d < components->DescriptorCount(); d++) {
+        const shell::ComponentDescriptor* descriptor =
+            components->Descriptor((uint32_t)d);
+        if (flat < descriptor->constructors.count) {
+            *componentId = (uint32_t)d;
+            *index = flat;
+            return descriptor;
+        }
+        flat -= descriptor->constructors.count;
+    }
+    return nullptr;
+}
+static const shell::StateDescriptor* StateMethodAt(
+    const shell::FrozenComponentRegistry* components, int flat, int* index) {
+    for (int s = 0; components && s < components->StateCount(); s++) {
+        const shell::StateDescriptor* state = components->State(s);
+        if (flat < state->methods.count) {
+            *index = flat;
+            return state;
+        }
+        flat -= state->methods.count;
+    }
+    return nullptr;
+}
+
 // `__gpui_components[export](args)`: one per constructor. `magic` is the
-// descriptor's id times 256 plus the constructor's index.
+// constructor's place among every descriptor's constructors (ConstructorAt).
 static JSValue NativeRegisteredConstructor(JSContext* ctx, JSValueConst,
                                            int argc, JSValueConst* argv,
                                            int magic) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
-    uint32_t componentId = (uint32_t)magic >> 8;
-    int index = magic & 0xff;
+    uint32_t componentId = 0;
+    int index = 0;
     const shell::ComponentDescriptor* descriptor =
-        impl && impl->components ? impl->components->Descriptor(componentId)
-                                 : nullptr;
+        impl ? ConstructorAt(impl->components, magic, &componentId, &index)
+             : nullptr;
     if (!descriptor || index >= descriptor->constructors.count || argc < 1)
         return JS_ThrowTypeError(ctx, "unknown registered component export");
     const shell::ConstructorDescriptor& ctor = descriptor->constructors[index];
@@ -3173,15 +3207,14 @@ static JSValue NativeRegisteredState(JSContext* ctx, JSValueConst, int argc,
 }
 
 // `__gpui_components["Export.method"](proof, handle, args)`. `magic` is the
-// state descriptor's index times 256 plus the method's.
+// method's place among every state's methods (StateMethodAt).
 static JSValue NativeRegisteredStateMethod(JSContext* ctx, JSValueConst,
                                            int argc, JSValueConst* argv,
                                            int magic) {
     ShellRuntimeImpl* impl = (ShellRuntimeImpl*)JS_GetContextOpaque(ctx);
+    int index = 0;
     const shell::StateDescriptor* descriptor =
-        impl && impl->components ? impl->components->State(magic >> 8)
-                                 : nullptr;
-    int index = magic & 0xff;
+        impl ? StateMethodAt(impl->components, magic, &index) : nullptr;
     if (!descriptor || index >= descriptor->methods.count || argc < 3)
         return JS_ThrowTypeError(ctx, "unknown registered state operation");
     const shell::StateMethodDescriptor& method = descriptor->methods[index];
@@ -3263,6 +3296,7 @@ static void InstallComponentCatalog(ShellRuntimeImpl* impl) {
     JSValue global = JS_GetGlobalObject(ctx);
     JSValue module = JS_NewObject(ctx);
     const shell::FrozenComponentRegistry* components = impl->components;
+    int flatMethod = 0;
     for (int s = 0; components && s < components->StateCount(); s++) {
         const shell::StateDescriptor* state = components->State(s);
         for (int m = 0; m < state->methods.count; m++) {
@@ -3271,22 +3305,23 @@ static void InstallComponentCatalog(ShellRuntimeImpl* impl) {
             JS_SetPropertyStr(
                 ctx, module, name.s,
                 JS_NewCFunctionMagic(ctx, NativeRegisteredStateMethod, name.s,
-                                     3, JS_CFUNC_generic_magic, s * 256 + m));
+                                     3, JS_CFUNC_generic_magic, flatMethod++));
         }
         JS_SetPropertyStr(
             ctx, module, state->exportName,
             JS_NewCFunctionMagic(ctx, NativeRegisteredState, state->exportName,
                                  1, JS_CFUNC_generic_magic, s));
     }
+    int flatConstructor = 0;
     for (int d = 0; components && d < components->DescriptorCount(); d++) {
         const shell::ComponentDescriptor* descriptor =
             components->Descriptor((uint32_t)d);
         for (int c = 0; c < descriptor->constructors.count; c++) {
             const char* name = descriptor->constructors[c].exportName;
-            JS_SetPropertyStr(
-                ctx, module, name,
-                JS_NewCFunctionMagic(ctx, NativeRegisteredConstructor, name, 1,
-                                     JS_CFUNC_generic_magic, d * 256 + c));
+            JS_SetPropertyStr(ctx, module, name,
+                              JS_NewCFunctionMagic(
+                                  ctx, NativeRegisteredConstructor, name, 1,
+                                  JS_CFUNC_generic_magic, flatConstructor++));
         }
     }
     JS_SetPropertyStr(ctx, global, "__gpui_components", module);
