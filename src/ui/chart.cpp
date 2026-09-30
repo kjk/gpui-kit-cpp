@@ -156,6 +156,18 @@ AreaChart* AreaChart::Id(Str name) {
     id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
+AreaChart* AreaChart::Natural() {
+    strokeStyle = ChartStroke::Natural;
+    return this;
+}
+AreaChart* AreaChart::XAxis(bool v) {
+    xAxis = v;
+    return this;
+}
+AreaChart* AreaChart::Grid(bool v) {
+    grid = v;
+    return this;
+}
 AreaChart* AreaChart::Linear() {
     strokeStyle = ChartStroke::Linear;
     return this;
@@ -240,6 +252,8 @@ El* AreaChart::IntoEl() {
     chart->domainMin = yDomainMin;
     chart->domainMax = yDomainMax;
     chart->pointCount = pointCount;
+    chart->xAxis = xAxis;
+    chart->grid = grid;
     axes.ApplyTo(a, chart);
     // Every chart takes the pointer now that its id defaults (upstream
     // a2d15b56); only a hand-built ChartEl stays a still picture.
@@ -350,6 +364,18 @@ LineChart* LineChart::Id(Str name) {
     id = IdFoldName(cx ? cx->path : 0, name);
     return this;
 }
+LineChart* LineChart::Natural() {
+    strokeStyle = ChartStroke::Natural;
+    return this;
+}
+LineChart* LineChart::XAxis(bool v) {
+    xAxis = v;
+    return this;
+}
+LineChart* LineChart::Grid(bool v) {
+    grid = v;
+    return this;
+}
 LineChart* LineChart::Linear() {
     strokeStyle = ChartStroke::Linear;
     return this;
@@ -385,6 +411,8 @@ El* LineChart::IntoEl() {
     ChartSeries* chart = e->Chart();
     chart->kind = ChartKind::Line;
     chart->labels = labels;
+    chart->xAxis = xAxis;
+    chart->grid = grid;
     chart->strokeStyle = strokeStyle;
     chart->dot = dot;
     chart->pinnedDomain = hasYDomain;
@@ -519,6 +547,8 @@ El* BarChart::IntoEl() {
     ChartSeries* chart = e->Chart();
     chart->kind = ChartKind::Bar;
     chart->labels = labels;
+    chart->xAxis = labelAxis;
+    chart->grid = grid;
     chart->barAlign = align;
     chart->bases = bases;
     chart->overlay = overlay;
@@ -578,6 +608,16 @@ BarChart* BarChart::BandCount(int count) {
 
 BarChart* BarChart::BandTickCount(int count) {
     bandTickCount = count < 0 ? 0 : count;
+    return this;
+}
+
+BarChart* BarChart::LabelAxis(bool v) {
+    labelAxis = v;
+    return this;
+}
+
+BarChart* BarChart::Grid(bool v) {
+    grid = v;
     return this;
 }
 
@@ -834,6 +874,10 @@ RadarChart* RadarChart::GridLevels(int v) {
     gridLevels = v > 1 ? v : 1;
     return this;
 }
+RadarChart* RadarChart::Grid(bool v) {
+    grid = v;
+    return this;
+}
 RadarChart* RadarChart::Tooltip(Str name) {
     tooltipName = name;
     return this;
@@ -851,6 +895,7 @@ El* RadarChart::IntoEl() {
     chart->dot = dot;
     chart->radarRadius = outerRadius;
     chart->gridLevels = gridLevels;
+    chart->grid = grid;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
     // Every chart takes the pointer now that its id defaults (upstream

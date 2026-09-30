@@ -221,6 +221,9 @@ struct AreaChart {
     float yDomainMax = 0;
     int pointCount = 0;
     PointAxes axes;
+    // x_axis(..) / grid(..): both on by default.
+    bool xAxis = true;
+    bool grid = true;
 
     static AreaChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -275,7 +278,12 @@ struct AreaChart {
     AreaChart* TickMargin(int n);
     AreaChart* Overlay(bool v = true);
     // StrokeStyle: Natural is the default Catmull-Rom curve.
+    AreaChart* Natural();
     AreaChart* Linear();
+    // x_axis(false): no x axis line or labels, and no room kept for them.
+    AreaChart* XAxis(bool v);
+    // grid(false): no grid lines.
+    AreaChart* Grid(bool v);
     AreaChart* StepAfter();
     // y_domain(min, max): pin the y axis to min..max instead of fitting every
     // series from zero, where zero is not a meaningful baseline (a price line).
@@ -351,6 +359,9 @@ struct LineChart {
     PointAxes axes;
     ChartStroke strokeStyle = ChartStroke::Natural;
     bool dot = false;
+    // x_axis(..) / grid(..): both on by default.
+    bool xAxis = true;
+    bool grid = true;
 
     static LineChart* New(Ctx* cx, const float* ys, int n,
                           const char* file = __builtin_FILE(),
@@ -438,9 +449,14 @@ struct LineChart {
     // y_padding: the space kept clear above the highest value and below the
     // lowest. Default 10 above, none below.
     LineChart* YPadding(float top, float bottom);
+    LineChart* Natural();
     LineChart* Linear();
     LineChart* StepAfter();
     LineChart* Dot(bool v = true);
+    // x_axis(false): no x axis line or labels, and no room kept for them.
+    LineChart* XAxis(bool v);
+    // grid(false): no grid lines.
+    LineChart* Grid(bool v);
     El* IntoEl();
 };
 
@@ -502,6 +518,9 @@ struct BarChart {
     bool gradientDiagonal = false;
     Rgba gradientFrom = {};
     Rgba gradientTo = {};
+    // label_axis(..) / grid(..): both on by default.
+    bool labelAxis = true;
+    bool grid = true;
 
     static BarChart* New(Ctx* cx, const float* ys, int n,
                          const char* file = __builtin_FILE(),
@@ -574,6 +593,11 @@ struct BarChart {
     BarChart* BandTickCount(int count);
     // grid_dashed: default true.
     BarChart* GridDashed(bool dashed);
+    // label_axis(false): no band axis line or band labels, and no room kept
+    // for them under the bars.
+    BarChart* LabelAxis(bool v);
+    // grid(false): no grid lines.
+    BarChart* Grid(bool v);
     // Set the gap between neighbouring bars, as a share of each band.
     // Default 0.4.
     BarChart* PaddingInner(float v);
@@ -731,6 +755,8 @@ struct RadarChart {
     bool dot = false;
     float outerRadius = 0;
     int gridLevels = 4;
+    // grid(..): the rings and spokes, on by default.
+    bool grid = true;
     float labelGap = 10;
     Rgba labelColor = {};
     bool hasLabelColor = false;
@@ -787,6 +813,8 @@ struct RadarChart {
     RadarChart* Dot(bool v = true);
     RadarChart* OuterRadius(float v);
     RadarChart* GridLevels(int v);
+    // grid(false): no rings or spokes.
+    RadarChart* Grid(bool v);
     El* IntoEl();
 };
 

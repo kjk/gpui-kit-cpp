@@ -43,6 +43,7 @@ bool RegisterSettings(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterStructured(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterNavigation(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterChart(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
 
@@ -164,6 +165,11 @@ bool RegisterNavigationSidebar(shell::ComponentRegistry*,
 bool RegisterBasicText(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasicDropdownButton(shell::ComponentRegistry*,
                                  shell::RegistryError*);
+
+// chart/mod.rs test_probe, widened into a seam: when set, it hears the
+// error a chart rendered in place of its data ("Failed to build X data: ..").
+using ChartErrorProbe = void (*)(Str error);
+void SetChartErrorProbe(ChartErrorProbe probe);
 
 } // namespace gpui::component_shell
 #endif // GPUI_COMPONENT_SHELL_FAMILIES_H_

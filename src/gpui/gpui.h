@@ -1525,6 +1525,11 @@ struct ChartSeries {
     // RadarChart::outer_radius / grid_levels, and its own dot flag.
     float radarRadius = 0;
     int gridLevels = 4;
+    // grid(false): no grid lines (a radar's rings and spokes). On by default.
+    bool grid = true;
+    // x_axis(false) / BarChart::label_axis(false): no axis along the band or
+    // x axis — its line and its labels — and no AXIS_GAP kept for them.
+    bool xAxis = true;
     // Plot::id returning Some: the chart takes the pointer, and shows a
     // crosshair and a tooltip for whatever it is over. Every themed chart
     // sets it; a hand-built ChartEl is a plot with no id and stays still.

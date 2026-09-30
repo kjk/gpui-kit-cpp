@@ -5680,6 +5680,148 @@ void WindowEffectRecordersRefuseWhatRustRefuses() {
                                   ".message('')"),
                     StrL("message(text) expects non-empty text")));
 }
+// ─── chart/mod.rs, tests/chart_host.rs ─────────────────────────────────────
+
+// mod.rs catalog_contains_only_concrete_constructible_charts
+void CatalogContainsOnlyConcreteConstructibleCharts() {
+    FamilyCatalog catalog(&component_shell::RegisterChart);
+    utassert(catalog.ok);
+    const char* expected[] = {"BarChart", "LineChart", "AreaChart", "PieChart",
+                              "RadarChart"};
+    utassert(catalog.NamesAre(expected, 5));
+    utassert(catalog.Documented());
+}
+
+// The chart series in the tree, in tree order.
+int CollectCharts(El* element, const ChartSeries** out, int count, int cap) {
+    if (!element) return count;
+    if (const ChartSeries* chart = element->Chart()) {
+        if (count < cap) out[count++] = chart;
+    }
+    for (El* child = element->first; child; child = child->next)
+        count = CollectCharts(child, out, count, cap);
+    return count;
+}
+
+// A pie is painted by its own hook rather than carried as a ChartSeries.
+int CountCustomPainted(El* element) {
+    if (!element) return 0;
+    int count = element->customPaint && !element->Chart() ? 1 : 0;
+    for (El* child = element->first; child; child = child->next)
+        count += CountCustomPainted(child);
+    return count;
+}
+
+Str gChartError;
+void RecordChartError(Str error) {
+    StrFree(gChartError);
+    gChartError = StrDup(error);
+}
+
+// chart_host.rs concrete_charts_consume_plain_immutable_rows. Rust reads the
+// debug tree for the five chart names; the port has no named element per
+// chart, so it finds the four series the charts carry and the painted pie,
+// with the ops the script recorded.
+void ConcreteChartsConsumePlainImmutableRows() {
+    FamilyCatalog catalog(&component_shell::RegisterChart);
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { BarChart, LineChart, AreaChart, PieChart, RadarChart } "
+             "from 'gpui-component';\n"
+             "globalThis.calls = 0;\n"
+             "const rows = () => { globalThis.calls++; return [{label: 'Jan', "
+             "value: 2}, {label: 'Feb', value: 5}]; };\n"
+             "export default class App extends View {\n"
+             "  render() { return div()\n"
+             "    .child(new BarChart(rows).grid(false).value_axis(true))\n"
+             "    .child(new LineChart(rows).linear().dot().grid(false))\n"
+             "    .child(new AreaChart(rows).step_after().grid(false))\n"
+             "    .child(new PieChart(rows).inner_radius(8).pad_angle(0.05)"
+             ".labels(true))\n"
+             "    .child(new RadarChart(rows).dot().grid_levels(3)); }\n"
+             "}\n"),
+        &catalog.frozen);
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    utassert(FindTextPrefix(root, StrL("Failed to")) == nullptr);
+    const ChartSeries* charts[8] = {};
+    int count = CollectCharts(root, charts, 0, 8);
+    utassert(count == 4);
+    if (count == 4) {
+        utassert(charts[0]->kind == ChartKind::Bar && !charts[0]->grid &&
+                 charts[0]->valueAxis && charts[0]->barLabels &&
+                 charts[0]->n == 2 && charts[0]->ys[1] == 5.f &&
+                 strcmp(charts[0]->labels[0], "Jan") == 0);
+        utassert(charts[1]->kind == ChartKind::Line && !charts[1]->grid &&
+                 charts[1]->dot &&
+                 charts[1]->strokeStyle == ChartStroke::Linear);
+        utassert(charts[2]->kind == ChartKind::Area && !charts[2]->grid &&
+                 charts[2]->strokeStyle == ChartStroke::StepAfter);
+        utassert(charts[3]->kind == ChartKind::Radar && charts[3]->grid &&
+                 charts[3]->dot && charts[3]->gridLevels == 3);
+    }
+    utassert(CountCustomPainted(root) == 1);
+}
+
+// chart_host.rs chart_rows_reject_missing_fields_without_panicking.
+void ChartRowsRejectMissingFieldsWithoutPanicking() {
+    FamilyCatalog catalog(&component_shell::RegisterChart);
+    component_shell::SetChartErrorProbe(&RecordChartError);
+    StrFree(gChartError);
+    gChartError = {};
+    {
+        Host host(StrL("import { View } from 'gpui-kit';\n"
+                       "import { BarChart } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new BarChart(() => [{label: 'Jan'}]); } }\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(StrContains(gChartError, StrL("finite number field `value`")));
+        utassert(FindTextPrefix(root, StrL("Failed to build BarChart data: "
+                                           "chart row 0 must have finite "
+                                           "number field `value`")) != nullptr);
+    }
+    component_shell::SetChartErrorProbe(nullptr);
+    StrFree(gChartError);
+    gChartError = {};
+}
+
+// mod.rs: the recorders' and the materializer's refusals.
+void ChartsRefuseWhatRustRefuses() {
+    struct Case {
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new BarChart(() => []).tick_margin(0)",
+         "tick_margin expects a positive integer"},
+        {"new BarChart(() => []).tick_margin(1.5)",
+         "tick_margin expects a positive integer"},
+        {"new RadarChart(() => []).grid_levels(-1)",
+         "grid_levels expects a positive integer"},
+        {"new PieChart(() => []).inner_radius(-1)",
+         "inner_radius expects a non-negative finite number"},
+        {"new PieChart(() => []).pad_angle(1e39)",
+         "pad_angle expects a non-negative finite number"},
+    };
+    for (const Case& c : cases) {
+        Str failure = CallErrorTemp("BarChart, RadarChart, PieChart", c.call);
+        utassert(StrContains(failure, Str(c.message)));
+    }
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { LineChart } from 'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new LineChart(() => []).child(div()); } }\n"));
+    host.Render();
+    utassert(StrContains(host.runtime->LastComponentFailure(),
+                         StrL("charts do not accept children")));
+    Str failure = MaterializeFailure("PieChart", shell::ComponentPayload{}, 0);
+    utassert(StrEq(failure, "PieChart received an incompatible payload"));
+    StrFree(failure);
+}
 } // namespace
 
 void TestComponentShell() {
@@ -5899,4 +6041,10 @@ void TestComponentShell() {
     PopoverContentIsLazyAndOpenChangesCrossTheRegisteredBoundary();
     HoverCardBuildsLazyContentOnlyAfterHoverAndReportsLifecycle();
     DropdownMenuOpensRealItemsAndDispatchesTheSelectedCallback();
+
+    TestSuite("chart");
+    CatalogContainsOnlyConcreteConstructibleCharts();
+    ConcreteChartsConsumePlainImmutableRows();
+    ChartRowsRejectMissingFieldsWithoutPanicking();
+    ChartsRefuseWhatRustRefuses();
 }

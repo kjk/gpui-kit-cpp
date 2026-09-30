@@ -5514,16 +5514,17 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     float y = e->y;
     float w = e->w;
     float h = e->h;
-    const float axisGap = 18.f;
-    float plotH = h - axisGap;
-    if (plotH < 8 || w < 8) {
-        return;
-    }
     const ChartSeries* chart = e->Chart();
     if (!chart) {
         return;
     }
     const ChartSeries& c = *chart;
+    // AXIS_GAP, kept under the plot only while the x (band) axis is drawn.
+    const float axisGap = c.xAxis ? 18.f : 0.f;
+    float plotH = h - axisGap;
+    if (plotH < 8 || w < 8) {
+        return;
+    }
     Arena* scratch = GetTempArena();
     // The chart's id on the stack, so its appear and hover state are its own.
     Ctx idCx = {};
@@ -5654,7 +5655,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         int levels = c.gridLevels > 0 ? c.gridLevels : 4;
         // The rings, and a spoke out to every axis. An overlaid series draws
         // on the rings the first one put down.
-        for (int ring = 1; ring <= (c.overlay ? 0 : levels); ring++) {
+        for (int ring = 1; ring <= (c.overlay || !c.grid ? 0 : levels);
+             ring++) {
             float rr = radius * (float)ring / (float)levels;
             Path* p = PathNew(ctx, false);
             if (!p) {
@@ -5673,7 +5675,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             PathStroke(ctx, p, 1.f, th.chartGrid);
             PathFree(p);
         }
-        for (int i = 0; i < (c.overlay ? 0 : n); i++) {
+        for (int i = 0; i < (c.overlay || !c.grid ? 0 : n); i++) {
             float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
             DrawLine(ctx, cx, cy, cx + radius * cosf(a), cy + radius * sinf(a),
                      1.f, th.chartGrid);
@@ -5789,8 +5791,9 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     };
 
     // An overlay series draws over the grid and axis the first one drew.
+    // grid(false) leaves the grid lines out and x_axis(false) the axis line.
     if (!c.overlay) {
-        if (barRow) {
+        if (c.grid && barRow) {
             // `value_tick_count` ticks, both ends included, so one interval
             // fewer than that.
             for (int i = 1; i <= intervals; i++) {
@@ -5798,7 +5801,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.chartGrid,
                            gridDash);
             }
-        } else if (pointChart) {
+        } else if (c.grid && pointChart) {
             // PointAxes::paint_grid: a line at every y tick but the
             // baseline, which the x axis draws, and grid_columns evenly
             // spaced vertical lines from the left edge.
@@ -5811,14 +5814,15 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 CanvasLine(ctx, gx, y, gx, y + plotH, 1.f, th.chartGrid,
                            gridDash);
             }
-            DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
-        } else {
+        } else if (c.grid) {
             // Evenly over the whole range, which is what the value-axis labels
             // are placed on as well; the baseline gets the solid axis line.
             for (int i = 0; i < intervals; i++) {
                 float gy = y + plotH * ((float)i / (float)intervals);
                 CanvasLine(ctx, x, gy, x + w, gy, 1.f, th.chartGrid, gridDash);
             }
+        }
+        if (c.xAxis && !barRow) {
             DrawLine(ctx, x, y + plotH, x + w, y + plotH, 1.f, th.border);
         }
         if (valueAxis && !valueLabelsInside) {
@@ -6212,7 +6216,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
     if (step < 1) {
         step = 15;
     }
-    if (c.overlay) {
+    if (c.overlay || !c.xAxis) {
         return;
     }
     // labeled_items: x_tick_count (band_tick_count) of the items, spread
