@@ -264,7 +264,8 @@ static void OnTokenChipClick(TokenClick* p) {
 }
 
 static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
-                     const Selection& sel, float lineH) {
+                     const Selection& sel, float lineH,
+                     const InputEditorStyle& style, float font) {
     Arena* a = cx->a;
     InlineTokenContext ctx = {};
     ctx.span = span;
@@ -286,6 +287,14 @@ static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
                    ->Child(TextEl(a, span.token.label));
     }
     chip->Shrink0();
+    // The chip is drawn inside the editor, under the editor's text style:
+    // what it names no size or colour of itself takes the editor's.
+    if (chip->style.fontSize <= 0) {
+        chip->Font(font);
+    }
+    if (!chip->style.hasColor) {
+        chip->Fg(style.foreground);
+    }
     if (state->disabled) {
         return chip;
     }
@@ -409,7 +418,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                                  Str(run.s + (at - start), span.start - at), at,
                                  sel, caret, cursor, wrap);
             }
-            row->Child(TokenChip(cx, state, span, sel, lineH));
+            row->Child(TokenChip(cx, state, span, sel, lineH, style, font));
             at = span.end;
         }
     }
