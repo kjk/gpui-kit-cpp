@@ -814,7 +814,17 @@ void ThemeConfigResolve(Theme* out, const ThemeConfig* cfg, const Theme& base);
 // ─── the registry ────────────────────────────────────────────────────────
 
 struct ThemeRegistry {
+    // The parsed documents the table's colours and highlights point into.
+    // A reload parses into a fresh arena, rebuilds the table from it and
+    // then frees this one, so the documents a reload replaced go with it.
     Arena* arena = nullptr;
+    // What outlives a reload: every string a theme hands out -- its name,
+    // author, url and font families, which `active`, installed palettes and
+    // callers keep -- interned here once for the App's life, so a name read
+    // before a reload is the same pointer after it. It grows by the distinct
+    // strings seen, not by the reloads.
+    Arena* names = nullptr;
+    Vec<Str> interned;
     Vec<ThemeConfig> themes;
     Vec<Str> loadedDirs;
     Str active[2] = {};

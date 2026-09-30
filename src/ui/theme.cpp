@@ -2394,10 +2394,34 @@ ThemeRegistry::~ThemeRegistry() {
     watch = 0;
     VecReset(themes);
     VecReset(loadedDirs);
+    VecReset(interned);
     if (arena) {
         ArenaDelete(arena);
         arena = nullptr;
     }
+    if (names) {
+        ArenaDelete(names);
+        names = nullptr;
+    }
+}
+
+// The one copy of `s` in the registry's App-lifetime arena. Null stays null;
+// an empty string stays empty and non-null, which is what a file naming an
+// empty font family said.
+static Str ThemeIntern(ThemeRegistry* state, Str s) {
+    if (!s.s || !state->names) {
+        return {};
+    }
+    for (int i = 0; i < state->interned.len; i++) {
+        if (base::StrEq(state->interned[i], s)) {
+            return state->interned[i];
+        }
+    }
+    Str copy = StrDup(state->names, s);
+    if (copy.s) {
+        VecAppend(state->interned, copy);
+    }
+    return copy;
 }
 
 static ThemeRegistry* RegistryOf(const App* app);
@@ -2465,9 +2489,10 @@ int ThemeRegistryLoadStr(App* app, Str json) {
     if (!state || !state->arena || !json.s || len(json) <= 0) {
         return 0;
     }
-    // What a theme keeps — its name, its colors object — points into the
-    // document, so an accepted theme pins the parse. A document that adds
-    // nothing pins nothing, and the arena goes back to where it was.
+    // An accepted theme's colors and highlight objects point into the
+    // document, so it pins the parse until the next reload replaces it; its
+    // strings are interned and pin nothing. A document that adds nothing
+    // pins nothing, and the arena goes back to where it was.
     uint64_t mark = ArenaUsed(state->arena);
     JsonValue* doc = JsonParse(state->arena, json);
     if (!doc) {
@@ -2491,14 +2516,18 @@ int ThemeRegistryLoadStr(App* app, Str json) {
         if (len(cfg.name) <= 0 || ThemeRegistryFind(app, cfg.name)) {
             continue;
         }
-        cfg.author = setAuthor;
-        cfg.url = setUrl;
+        // What a theme hands out outlives the document it came from.
+        cfg.name = ThemeIntern(state, cfg.name);
+        cfg.author = ThemeIntern(state, setAuthor);
+        cfg.url = ThemeIntern(state, setUrl);
         cfg.mode = ParseMode(JsonString(JsonGet(t, "mode")));
         cfg.isDefault = JsonBool(JsonGet(t, "is_default"));
         cfg.colors = JsonGet(t, "colors");
         cfg.fontSize = JsonFloatOr(t, "font.size", 0);
-        cfg.fontFamily = JsonString(JsonGet(t, "font.family"));
-        cfg.monoFontFamily = JsonString(JsonGet(t, "mono_font.family"));
+        cfg.fontFamily =
+            ThemeIntern(state, JsonString(JsonGet(t, "font.family")));
+        cfg.monoFontFamily =
+            ThemeIntern(state, JsonString(JsonGet(t, "mono_font.family")));
         cfg.monoFontSize = JsonFloatOr(t, "mono_font.size", 0);
         cfg.radius = JsonFloatOr(t, "radius", -1);
         cfg.radiusLg = JsonFloatOr(t, "radius.lg", -1);
@@ -2524,6 +2553,7 @@ static ThemeRegistry* RegistryOf(const App* app) {
     }
     state->initialized = true;
     state->arena = ArenaNew();
+    state->names = ArenaNew();
     // The two the tree was built with are what everything else resolves
     // against, so they go in first and stay first.
     ThemeRegistryLoadStr((App*)app, Str(kDefaultThemeJson));
@@ -2870,13 +2900,11 @@ bool ThemeApplySemanticConfigStr(App* app, ThemeMode mode, Str json,
     SemanticThemeTokens tokens = ThemeSemanticTokens(t);
     bool ok = doc && ThemeSemanticConfigApply(doc, &tokens);
     // The two font families are the only strings a token set keeps, and they
-    // point into the document. They move to the registry's own arena — where
-    // every theme's name already lives — so the answer outlives the parse.
-    if (ok && registry && registry->arena) {
-        tokens.typography
-            .sans = StrDup(registry->arena, tokens.typography.sans);
-        tokens.typography
-            .mono = StrDup(registry->arena, tokens.typography.mono);
+    // point into the document. They are interned where every theme's name
+    // already lives, so the answer outlives the parse and every reload.
+    if (ok && registry) {
+        tokens.typography.sans = ThemeIntern(registry, tokens.typography.sans);
+        tokens.typography.mono = ThemeIntern(registry, tokens.typography.mono);
     }
     ArenaDelete(a);
     if (!ok) {
@@ -2910,7 +2938,7 @@ static bool ThemesDirRemember(ThemeRegistry* state, const char* path) {
             return false;
         }
     }
-    VecAppend(state->loadedDirs, StrDup(state->arena, Str(path)));
+    VecAppend(state->loadedDirs, ThemeIntern(state, Str(path)));
     return true;
 }
 
@@ -2995,17 +3023,22 @@ int ThemeRegistryReload(App* app) {
     if (!state || !state->arena) {
         return 0;
     }
-    // Rust clears its map and reads the folder again. What an earlier load
-    // parsed stays in the arena rather than being popped: the names in
-    // `active`, a ThemeUpdateScope's snapshot and a caller's copy of a
-    // theme's name all point into it. That is a file's worth of memory per
-    // reload, and a reload is a person saving a theme.
+    // Rust clears its map and reads the folder again. The documents are read
+    // into a fresh arena, and the one the table pointed into goes once the
+    // table points into the new one and the installed themes have been
+    // resolved from it. Nothing outside the registry keeps a document's
+    // memory: the names in `active`, a ThemeUpdateScope's snapshot, an
+    // installed palette's font families and a caller's copy of a theme's
+    // name are all interned, and are the same strings after the reload.
+    Arena* replaced = state->arena;
+    state->arena = ArenaNew();
     VecClear(state->themes);
     ThemeRegistryLoadStr(app, Str(kDefaultThemeJson));
     for (int i = 0; i < state->loadedDirs.len; i++) {
         ThemesDirLoadFiles(app, state->loadedDirs[i].s);
     }
     ThemeRegistryReapply(app);
+    ArenaDelete(replaced);
     return state->themes.len;
 }
 

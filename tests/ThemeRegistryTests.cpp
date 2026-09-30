@@ -343,6 +343,33 @@ static void RegistriesAreIsolatedPerApplication() {
     AppGlobalClear(&second);
 }
 
+// A reload keeps nothing it replaced. The documents are parsed into a fresh
+// arena and the replaced one is freed, so reading the same themes again
+// costs the same memory however many times it happens; and the strings a
+// theme hands out are interned for the App's life, so a name read before a
+// reload is the same string after it rather than a pointer into a freed
+// document.
+static void AReloadKeepsNothingItReplaced() {
+    App app;
+    ThemeRegistry* r = ThemeRegistry::Global(&app);
+    Str light = ThemeRegistryActive(&app, ThemeMode::Light);
+    utassert(len(light) > 0);
+    ThemeRegistryReload(&app);
+    uint64_t docs = ArenaUsed(r->arena);
+    uint64_t names = ArenaUsed(r->names);
+    for (int i = 0; i < 5; i++) {
+        Arena* replaced = r->arena;
+        ThemeRegistryReload(&app);
+        utassert(r->arena != replaced);
+        utassert(ArenaUsed(r->arena) == docs);
+        utassert(ArenaUsed(r->names) == names);
+    }
+    utassert(ThemeRegistryActive(&app, ThemeMode::Light).s == light.s);
+    const ThemeConfig* cfg = ThemeRegistryFind(&app, light);
+    utassert(cfg && cfg->name.s == light.s);
+    AppGlobalClear(&app);
+}
+
 static void SourceRegistryAndConfigSettingsAreRetained() {
     App app;
     const char* doc =
@@ -580,6 +607,16 @@ static void AReloadReappliesTheInstalledThemes() {
     utassert(Is(ThemeDark(&app).background, 0x556677));
     utassert(StrEq(ThemeRegistryActive(&app, ThemeMode::Light),
                    StrL("Watched Light")));
+    // The same files again cost nothing more, and a name a caller kept
+    // across the reload still reads.
+    Str kept = ThemeRegistryActive(&app, ThemeMode::Light);
+    ThemeRegistry* registry = ThemeRegistry::Global(&app);
+    uint64_t docs = ArenaUsed(registry->arena);
+    uint64_t names = ArenaUsed(registry->names);
+    utassert(ThemeRegistryReload(&app) == defaults + 2);
+    utassert(ArenaUsed(registry->arena) == docs);
+    utassert(ArenaUsed(registry->names) == names);
+    utassert(StrEq(kept, StrL("Watched Light")));
 
     RemoveTheme(dir, "light.json");
     RemoveTheme(dir, "dark.json");
@@ -640,6 +677,7 @@ void TestThemeRegistry() {
     AGradientReachesTheTokenAndItsFallbacks();
     AConfigKnowsWhichKeysItsFileNamed();
     RegistriesAreIsolatedPerApplication();
+    AReloadKeepsNothingItReplaced();
     SourceRegistryAndConfigSettingsAreRetained();
     ApplyConfigReadsTheChartColors();
     ABurstOfChangesIsOneReload();
