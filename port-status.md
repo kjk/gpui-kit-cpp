@@ -45,13 +45,6 @@ macOS font-kit requirement on the website only. The current update target is
   replaced — installed palettes and callers' theme names point into them —
   so each reload costs the folder's size until the App goes
   (`src/ui/theme.cpp`).
-- **A dock's own edge is an in-flow strip, not a hugging resize handle.**
-  Rust's docks resize from a `resize_handle(..).inside(edge)` with the
-  indicator appearance; here the edge is the four-DIP strip beside the dock's
-  body with a hover fill, so it shows no indicator and `HandleEdge` is used
-  only by standalone handles (`src/ui/dock.cpp` SkinDock,
-  `src/base/dock_area.cpp` DockBindResizeStrip). Splits inside a dock do use
-  the indicator.
 - **Editor range decorations paint from the rows, not from one prepaint.**
   Rust projects each decoration through the shaped lines in prepaint and
   paints one path per decoration; the editor's rows are separate flex

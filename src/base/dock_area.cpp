@@ -251,6 +251,17 @@ bool DockGroupIsPanelClosable(const DockTabGroup* g, int ix) {
     return ix >= 0 && ix < n.panel.len && s->panels[n.panel[ix]].closable;
 }
 
+ResizeHandle* DockBindResizeHandle(const DockCtx* d, ResizeHandle* h) {
+    if (!d || !h) {
+        return h;
+    }
+    return h
+        ->OnDrag(kDockResizeDrag,
+                 (int)DockPack(kDockSideBase + (int)d->placement, 0),
+                 ListenTo(d->state, &DockState::OnResizeDrag))
+        ->OnRelease(ListenTo(d->state, &DockState::OnResizeEnd));
+}
+
 El* DockBindResizeStrip(const DockCtx* d, El* e) {
     if (!e) {
         return e;

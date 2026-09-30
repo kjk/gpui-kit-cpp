@@ -165,6 +165,14 @@ struct ResizeHandle {
     HandleEdge edge = HandleEdge::Leading;
     bool hasEdge = false;
     Listener onDrag = {};
+    // on_drag's value: what the press picks up. A handle nobody names a
+    // value for drags the group's own kind, which only its group reads.
+    Str dragKind = {};
+    int dragIx = 0;
+    // The release that ends a drag, wherever the pointer is by then. Rust's
+    // dock skin follows it from a window-level listener; the port's element
+    // carries one listener per event, so it rides the handle's shared state.
+    Listener onRelease = {};
     void* appearanceUser = nullptr;
     ResizeHandleRenderer appearance = nullptr;
     Rgba color = {};
@@ -175,6 +183,10 @@ struct ResizeHandle {
     // straddling the boundary it resizes.
     ResizeHandle* Inside(HandleEdge value);
     ResizeHandle* OnDrag(Listener listener);
+    // on_drag(value, ..): the payload the press picks up, as a drag kind and
+    // an index, and the listener each move of it reaches.
+    ResizeHandle* OnDrag(Str kind, int ix, Listener listener);
+    ResizeHandle* OnRelease(Listener listener);
     ResizeHandle* WithAppearance(void* user, ResizeHandleRenderer renderer);
     ResizeHandle* Colors(Rgba rest, Rgba active);
     El* IntoEl();

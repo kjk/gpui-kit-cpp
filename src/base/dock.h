@@ -705,9 +705,15 @@ El* DockBindClose(const DockTabGroup* g, int ix, El* e);
 // panel's own `closable`. Rust names the panel by PanelId; the skin here
 // walks the group by tab index, so the index names it.
 bool DockGroupIsPanelClosable(const DockTabGroup* g, int ix);
-// The strip on a Dock's inner edge that resizes it. Rust's showcase skin
-// stashes the DockContext on mouse down and follows the pointer from the area
-// frame; the drag is base's here, so the strip only has to say it is one.
+// A Dock's own edge handle: `resize_handle(..).inside(edge).on_drag(..)` in
+// Rust's skin, whose DockResizeTracker then follows the pointer through
+// DockContext::resize_to and end_resize. The drag is base's here, so this
+// names the handle's payload as this dock's and hands its moves and its
+// release to the area; the skin still picks the id, the edge it hugs and
+// the appearance.
+ResizeHandle* DockBindResizeHandle(const DockCtx* d, ResizeHandle* h);
+// The same drag bound to an element a script drew itself (the shell's
+// `resize_dock`), which is in the flow rather than a hugging handle.
 El* DockBindResizeStrip(const DockCtx* d, El* e);
 // A menu the skin opens over a group: which node it belongs to, so the row it
 // reports lands on the right panel.

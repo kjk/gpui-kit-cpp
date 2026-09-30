@@ -1102,6 +1102,91 @@ static void DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd() {
     EntityDropAll(&app);
 }
 
+// dock.rs dragging_the_left_handle_resizes_only_the_left_dock, and the edge
+// every dock resizes from: resize_handle(..).inside(edge) with the
+// indicator appearance. Every dock's handle once shared one element id, so
+// a press on the left handle let the right one claim the drag; one id per
+// placement keeps their states and their payloads apart. The handle hugs
+// the dock's inner edge, its hairline the dock's outermost pixel, and a
+// shut bottom dock keeps its handle on top of the strip it shrank to.
+static void DraggingTheLeftHandleResizesOnlyTheLeftDock() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    Entity<DockState> state = EntityNewState<DockState>(&app);
+    DockState* s = state.Get(&cx);
+    int a = 0, b = 0;
+    Seed(s, &a, &b);
+    DockSide* sides[3] = {&s->left, &s->right, &s->bottom};
+    for (DockSide* side : sides) {
+        int node = DockNewTabs(s);
+        DockTabsAdd(s, node, 0);
+        side->node = node;
+        side->open = true;
+        side->SetSize(200);
+    }
+    s->bottom.open = false;
+    s->bounds = {0, 0, 800, 600};
+
+    component::DockSkin skin = component::DockSkin::New(state);
+    El* area = DockArea::New(&cx, StrL("area"), state, skin.Renderer());
+    IdsCollect(area);
+    const RuntimeStyle& th = RuntimeStyleNow(&app);
+    LayoutEl(&win->paint, area, 0, 0, 800, 600, th.fontSize, th.foreground);
+
+    El* left = FindNamedDk(area, "resize-handle-left");
+    El* right = FindNamedDk(area, "resize-handle-right");
+    El* bottom = FindNamedDk(area, "resize-handle-bottom");
+    utassert(left && right && bottom);
+    if (!left || !right || !bottom) {
+        return;
+    }
+    utassert(left->clickId != right->clickId);
+    utassert(left->drag.ix != right->drag.ix);
+    utassert(base::StrEq(left->drag.kind, kDockResizeDrag));
+    utassert(left->style.absolute);
+    utassert(left->cursor == CursorKind::ColResize);
+    utassert(bottom->cursor == CursorKind::RowResize);
+    // The left dock spans [0, 200): its hairline is x in [199, 200). The
+    // right one spans [600, 800) and hugs its leading edge.
+    utassert(left->first && right->first && bottom->first);
+    utassertnear(left->first->x, 199.f);
+    utassertnear(left->first->w, 1.f);
+    utassertnear(left->x + left->w, 200.f);
+    utassertnear(right->first->x, 600.f);
+    utassertnear(right->x, 600.f);
+    // The shut bottom dock is its 29px strip, and its handle is on top of it.
+    utassertnear(bottom->first->y, 600.f - kClosedBottomStrip);
+    utassertnear(bottom->first->h, 1.f);
+
+    // Past the drag threshold, then the move the claimed dock resizes to,
+    // then the release.
+    const float xs[2] = {204.f, 240.f};
+    for (float x : xs) {
+        DragMoveEvent move;
+        move.drag = left->drag;
+        move.event.x = x;
+        move.event.y = 300.f;
+        ListenerCall(&app, win, left->onDragMove, &move);
+    }
+    MouseUpEvent up;
+    up.x = 240.f;
+    up.y = 300.f;
+    ListenerCall(&app, win, left->onMouseUpOut, &up);
+    utassert(!s->resizing);
+    utassertnear(s->right.GetSize(), 200.f);
+    utassertnear(s->left.GetSize(), 240.f);
+
+    WindowKeyedFree(win);
+    ArenaDelete(arena);
+    delete win;
+    EntityDropAll(&app);
+}
+
 static void SelectingAPanelByIdentityDoesNotMoveIt() {
     App app;
     Window win;
@@ -1246,6 +1331,7 @@ void TestDock() {
     ADockSizeChangeEmitsOneLayoutEvent();
     SetSplitSizesRestoresAShareAndReportsIt();
     DraggingTheBottomHandleBelowTheMinimumSnapsToTheNearerEnd();
+    DraggingTheLeftHandleResizesOnlyTheLeftDock();
     SelectingAPanelByIdentityDoesNotMoveIt();
     TheFiveDropZones();
     ThePlaceholderCoversEachZone();

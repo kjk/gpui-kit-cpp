@@ -511,41 +511,47 @@ static El* SkinSplitHandle(Ctx* cx, void*, const DockHandleCtx* h) {
     return RenderResizeHandle(nullptr, &handle, cx);
 }
 
-// render_dock: the strip on one Dock's inner edge, and the rule beside it.
-// No box here any more. A dock's extent is structural, so base's RenderDock
-// applies DockFrame around whatever this returns -- which also means a skin
-// that draws no chrome still gets a dock the right shape. This adds the edge
-// you drag and nothing else; a shut bottom dock keeps its tab bar and loses
-// the strip, and a shut side dock never reaches here.
+// DockSkin::render_resize_handle. One id per placement: the docks all render
+// under the same area, so a shared name would collapse the handles into one
+// element state, and a press on the left handle would start the right one's
+// drag. Every dock's handle lives inside the dock, because DockFrame clips to
+// the dock's box: the left dock hugs its trailing edge, the right and bottom
+// docks their leading one. The hairline is the seam between the dock and the
+// centre, which is why the dock draws no border of its own.
+static ResizeHandle* SkinDockResizeHandle(Ctx* cx, const DockCtx* d) {
+    Str id = StrL("resize-handle-center");
+    HandleEdge edge = HandleEdge::Leading;
+    Axis axis = Axis::Horizontal;
+    switch (d->placement) {
+        case DockPlacement::Left:
+            id = StrL("resize-handle-left");
+            edge = HandleEdge::Trailing;
+            break;
+        case DockPlacement::Right:
+            id = StrL("resize-handle-right");
+            break;
+        case DockPlacement::Bottom:
+            id = StrL("resize-handle-bottom");
+            axis = Axis::Vertical;
+            break;
+        case DockPlacement::Center:
+            break;
+    }
+    ResizeHandle* h = resize_handle(cx, id, axis)
+                          ->WithAppearance(nullptr, ResizeHandleAppearance())
+                          ->Inside(edge);
+    return DockBindResizeHandle(d, h);
+}
+
+// render_dock: the content and the edge you drag, nothing else. No box here
+// any more. A dock's extent is structural, so base's RenderDock applies
+// DockFrame around whatever this returns -- which also means a skin that draws
+// no chrome still gets a dock the right shape. A shut side dock never reaches
+// here; a shut bottom dock is its tab bar, and keeps its handle, since
+// dragging that strip up is how it opens again.
 static El* SkinDock(Ctx* cx, void*, const DockCtx* d, El* content) {
-    Arena* a = cx->a;
-    const Theme& th = ThemeNow(cx->app);
-    if (d->placement == DockPlacement::Bottom) {
-        El* dock = Div(a)->FlexCol()->SizeFull()->BorderT(1, th.border);
-        if (d->open) {
-            dock->Child(DockBindResizeStrip(d, Div(a)
-                                                   ->W(kFill)
-                                                   ->H(kDockHandleW)
-                                                   ->Shrink0()
-                                                   ->HoverBg(th.border)));
-        }
-        dock->Child(Div(a)->FlexCol()->Flex1()->W(kFill)->Child(content));
-        return dock;
-    }
-    if (!d->open) {
-        return content;
-    }
-    bool left = d->placement == DockPlacement::Left;
-    El* dock = Div(a)->FlexRow()->SizeFull();
-    El* strip = DockBindResizeStrip(
-        d, Div(a)->H(kFill)->W(kDockHandleW)->Shrink0()->HoverBg(th.border));
-    El* body = Div(a)->FlexCol()->Flex1()->H(kFill)->Child(content);
-    if (left) {
-        dock->Child(body->BorderR(1, th.border))->Child(strip);
-    } else {
-        dock->Child(strip)->Child(body->BorderL(1, th.border));
-    }
-    return dock;
+    El* handle = SkinDockResizeHandle(cx, d)->IntoEl();
+    return Div(cx->a)->FlexRow()->SizeFull()->Child(content)->Child(handle);
 }
 
 static El* SkinDropIndicator(Ctx* cx, void*, Bounds) {

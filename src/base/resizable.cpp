@@ -426,6 +426,18 @@ ResizeHandle* ResizeHandle::OnDrag(Listener listener) {
     return this;
 }
 
+ResizeHandle* ResizeHandle::OnDrag(Str kind, int ix, Listener listener) {
+    dragKind = kind;
+    dragIx = ix;
+    onDrag = listener;
+    return this;
+}
+
+ResizeHandle* ResizeHandle::OnRelease(Listener listener) {
+    onRelease = listener;
+    return this;
+}
+
 ResizeHandle* ResizeHandle::WithAppearance(void* user,
                                            ResizeHandleRenderer renderer) {
     appearanceUser = user;
@@ -492,6 +504,7 @@ El* ResizeHandle::IntoEl() {
     ResizeHandleState now = stored ? stored->Get() : ResizeHandleState::Idle;
     if (stored) {
         stored->nextDrag = onDrag;
+        stored->nextUp = onRelease;
     }
     ResizeHandleContext context = {axis, now, edge, hasEdge};
     El* line = nullptr;
@@ -515,7 +528,7 @@ El* ResizeHandle::IntoEl() {
     El* handle = Div(cx->a)->Absolute()->PathClick(id);
     ResizeHandleBindState(handle, state);
     if (onDrag.IsValid()) {
-        handle->OnDrag(kResizeDrag, 0);
+        handle->OnDrag(dragKind.s ? dragKind : kResizeDrag, dragIx);
     }
     ResizeHandlePlace(handle, axis, hasEdge, edge);
     return handle->Child(line);
