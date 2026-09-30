@@ -13,7 +13,8 @@ struct Progress {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     float value = 0;
-    float w = 200;
+    // w_full(), as progress.rs has it; W() sizes it otherwise.
+    float w = kFill;
     float h = 8;
     // `loading`: the indeterminate bar, which sweeps rather than filling.
     bool loading = false;

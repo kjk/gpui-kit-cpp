@@ -72,27 +72,23 @@ El* Slider::IntoEl() {
     if (state && !disabled) {
         state->onChange = onChange;
     }
-    const float kBar = 4.f; // h_1: the rail
-    const float kThumb = 14.f;
-    const float kH = 20.f;
+    const float kBar = 6.f;    // h_1p5: the indicator
+    const float kThumb = 16.f; // size_4, a 1px ring of bar_color at 50%
+    const float kH = 24.f;     // h_6: the track
     // THUMB_RING_WIDTH / THUMB_RING_OPACITY / THUMB_RING_DURATION: a
     // translucent ring grows outside the thumb while the pointer is over it.
     const float kRingWidth = 3.f;
     const float kRingOpacity = 0.5f;
-    float w = width;
+    // w_full() across, h(px(120.)) upright, unless the caller sized it.
+    float w = width == kAuto ? (axis == Axis::Vertical ? 120.f : kFill) : width;
     float mid = (kH - kBar) * 0.5f;
 
-    Background railBg = th.tokens.secondary;
-    Background fillBg = disabled ? BackgroundOpacity(th.tokens.primary, 0.5f)
-                                 : th.tokens.primary;
-    Rgba thumbBorder = disabled ? RgbaOpacity(th.primary, 0.5f) : th.primary;
-    // bar_color: the rail at 20%, the fill whole, the thumb's ring at 50%.
-    if (hasBar) {
-        railBg = RgbaOpacity(bar, 0.2f);
-        Rgba full = disabled ? RgbaOpacity(bar, 0.5f) : bar;
-        fillBg = full;
-        thumbBorder = RgbaOpacity(bar, 0.5f);
-    }
+    // bar_color, the theme's slider_bar unless the style's background named
+    // one: the indicator at 20%, the fill whole, the thumb's ring at 50%.
+    Rgba barColor = hasBar ? bar : th.sliderBar;
+    Background railBg = RgbaOpacity(barColor, 0.2f);
+    Background fillBg = barColor;
+    Rgba thumbBorder = RgbaOpacity(barColor, 0.5f);
     SliderState* bind = disabled ? nullptr : state;
 
     // The ring shows while the pointer is over the thumb, and stays while the

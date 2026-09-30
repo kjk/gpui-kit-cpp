@@ -27,7 +27,8 @@ struct Slider {
     // The track's length along its axis. kFill is Rust's `w_full()` inside a
     // `flex_1` root: the parts are then placed by `left(relative(..))` rather
     // than by pixels, so the slider can share a row with anything.
-    float width = 224;
+    // kAuto is Rust's own: w_full() across, 120px upright.
+    float width = kAuto;
     // Styled::bg on the slider — `bar_color` in slider.rs. The rail takes it
     // at 20%, the filled part whole and the thumb's ring at 50%. Unset is the
     // theme's own pair. The colour picker passes a transparent one so only

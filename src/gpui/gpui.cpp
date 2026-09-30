@@ -3387,8 +3387,14 @@ static taffy::Dimension ToMinDim(float v) {
 static taffy::LengthPercentageAuto ToInset(float v, float rel) {
     // The pixel and the `relative(f)` halves of one inset cannot both reach
     // taffy without a calc() node, so a mixed pair is finished off by
-    // PlaceAnchored below and only the plain cases are handed over here.
+    // PlaceAnchored below and only the plain cases are handed over here. A
+    // `relative(f)` with no pixels beside it is a plain percentage, and has
+    // to reach taffy as one: a box inset on both sides by them is sized by
+    // the pair, which a move after layout cannot do.
     if (rel != 0) {
+        if (v == kAuto || v == 0) {
+            return taffy::LengthPercentageAuto::Percent(rel);
+        }
         return taffy::LengthPercentageAuto::Auto();
     }
     if (v == kAuto) {
@@ -4470,7 +4476,13 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
         if (!anchored && (c->style.fixed || !c->style.absolute)) {
             continue;
         }
-        if (!anchored && s.absLeftRel == 0 && s.absRightRel == 0) {
+        // Only a mixed inset — pixels and `relative(f)` together — is left
+        // for this pass; a plain percentage went to taffy (ToInset).
+        bool mixedLeft =
+            s.absLeftRel != 0 && s.absLeft != kAuto && s.absLeft != 0;
+        bool mixedRight =
+            s.absRightRel != 0 && s.absRight != kAuto && s.absRight != 0;
+        if (!anchored && !mixedLeft && !mixedRight) {
             continue;
         }
         float innerW = e->w - e->style.pad.HorizontalAxisSum();
@@ -4491,11 +4503,11 @@ static void PlaceAnchored(El* e, float viewW, float viewH, Edges frame) {
             }
             ay = e->y;
         }
-        if (s.absLeftRel != 0) {
+        if (mixedLeft) {
             float absL = (s.absLeft == kAuto ? 0.f : s.absLeft);
             ax = e->x + e->style.pad.left + absL + innerW * s.absLeftRel;
         }
-        if (s.absRightRel != 0) {
+        if (mixedRight) {
             float absR = (s.absRight == kAuto ? 0.f : s.absRight);
             ax = e->x + e->w - e->style.pad.right - absR -
                  innerW * s.absRightRel - c->w;
