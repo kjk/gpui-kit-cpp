@@ -41,12 +41,12 @@ El* StatusBarStory::Render(StatusBarStory*, Ctx* cx) {
     const Theme& th = ThemeNow(cx->app);
     El* page = Div(a)->FlexCol()->ItemsCenter()->Gap(24)->W(kFill);
 
-    // Every section is .w(px(760.)), which is wider than the pane and so
-    // runs past it, exactly as it does in Rust at this window size.
+    // Every section is .max_w(px(760.)): it fills a narrower pane and stays
+    // 760 wide in a wider one.
     El* editor = StorySection(
         cx, "Editor",
         "Places repository state on the left and document state on the right.");
-    StorySectionBody(editor)->W(760);
+    StorySectionBody(editor)->MaxW(760);
     StorySectionAdd(
         editor,
         component::StatusBar::New(cx)
@@ -92,7 +92,7 @@ El* StatusBarStory::Render(StatusBarStory*, Ctx* cx) {
     El* appSec = StorySection(
         cx, "Application",
         "Combines connectivity, progress, save state, and notifications.");
-    StorySectionBody(appSec)->W(760);
+    StorySectionBody(appSec)->MaxW(760);
     StorySectionAdd(
         appSec,
         component::StatusBar::New(cx)
@@ -130,7 +130,7 @@ El* StatusBarStory::Render(StatusBarStory*, Ctx* cx) {
     El* align = StorySection(
         cx, "Alignment",
         "Center content adapts when either side is empty or populated.");
-    StorySectionBody(align)->W(760);
+    StorySectionBody(align)->MaxW(760);
     El* alignCol = Div(a)->FlexCol()->Gap(24)->W(kFill);
     alignCol->Child(component::StatusBar::New(cx)
                         ->Center(StrL("Center only → start-aligned"))

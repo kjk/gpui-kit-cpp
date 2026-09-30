@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "eb6c13ad8e95d278443b7ce54d1de20ba2920947",
+  sha: "9fda5d54522b1f6367ea7b73d68cc68e99a363f2",
   date: "2026-09-28",
-  subject: "button: Keep the focus line off text and legible on fills (#3300)",
+  subject: "website: Fit StatusBar demo sections to narrow windows (#3301)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

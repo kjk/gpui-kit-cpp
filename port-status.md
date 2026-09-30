@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eb6c13ad8e95d278443b7ce54d1de20ba2920947` (2026-09-28,
-button: Keep the focus line off text and legible on fills (#3300)). With the
-outer focus ring off, a borderless button now places its focus line by
-variant: on the edge for Ghost, 2px outside for Text and Link, and 2px inside
-a filled variant in its own foreground at 60%. The current update target is
+Processed through `9fda5d54522b1f6367ea7b73d68cc68e99a363f2` (2026-09-28,
+website: Fit StatusBar demo sections to narrow windows (#3301)). The StatusBar
+story's sections cap their width at 760px instead of fixing it, so they fit
+narrower windows. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
