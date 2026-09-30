@@ -692,11 +692,12 @@ struct Host {
     Arena* frame = nullptr;
     ShellError error = {};
 
-    explicit Host(Str source) {
+    explicit Host(Str source,
+                  const FrozenComponentRegistry* catalog = nullptr) {
         window.app = &app;
         component_shell::Init(&app);
-        runtime =
-            ShellRuntime::New(&app, &error, component_shell::Components());
+        runtime = ShellRuntime::New(
+            &app, &error, catalog ? catalog : component_shell::Components());
         ViewType* type =
             runtime ? runtime->LoadSource(StrL("main.js"), source, &error)
                     : nullptr;
@@ -2807,6 +2808,165 @@ void MessageScrollerRendersScriptRows() {
     utassert(FindText(root, StrL("second")) != nullptr);
 }
 
+// ─── media/: mod.rs, image.rs, editor.rs ───────────────────────────────────
+
+// image.rs image_sources_are_confined_to_the_asset_root
+void ImageSourcesAreConfinedToTheAssetRoot() {
+    using component_shell::media::image::AssetPath;
+    Str out, error;
+    utassert(AssetPath(StrL("assets/pixel.svg"), &out, &error) &&
+             StrEq(out, StrL("assets/pixel.svg")));
+    const char* denied[] = {"",
+                            "/tmp/pixel.png",
+                            "../pixel.png",
+                            "a/../../pixel.png",
+                            "https://example.com/a.png",
+                            "https:example.com/a.png",
+                            "data:image/png;base64,x",
+                            "file:/tmp/a.png",
+                            "..\\pixel.png"};
+    for (const char* path : denied)
+        utassert(!AssetPath(Str(path), &out, &error));
+}
+
+// editor.rs editor_is_an_exact_leaf
+void EditorIsAnExactLeaf() {
+    Str error;
+    utassert(component_shell::media::editor::RequireLeaf(0, &error));
+    utassert(!component_shell::media::editor::RequireLeaf(1, &error));
+    utassert(StrEq(error, StrL("Editor does not accept children")));
+}
+
+// media_public_host.rs catalog_exposes_only_renderable_media_surfaces
+void CatalogExposesOnlyRenderableMediaSurfaces() {
+    FamilyCatalog catalog(&component_shell::RegisterMedia);
+    utassert(catalog.ok);
+    const char* names[] = {"Image", "Editor"};
+    utassert(catalog.NamesAre(names, 2));
+    utassert(catalog.frozen.StateCount() == 1 &&
+             strcmp(catalog.frozen.State(0)->exportName, "EditorState") == 0);
+}
+
+// media_public_host.rs's EditorProbe: what each render saw of the state.
+struct EditorObservation {
+    const void* state;
+    Str value;
+};
+EditorObservation gEditorObservations[8];
+int gEditorObservationCount = 0;
+
+bool EditorProbePayload(shell::PayloadBuild* build,
+                        const shell::ComponentArgument* args, int count) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::Entity)
+        return build->Fail(StrL("EditorProbe expects EditorState"));
+    *build->New<shell::ComponentArgument>() = args[0];
+    return true;
+}
+
+El* EditorProbeMaterialize(shell::MaterializeRequest* request) {
+    const shell::ComponentArgument* argument =
+        request->PayloadAs<shell::ComponentArgument>();
+    if (!argument) return request->Fail(StrL("probe payload"));
+    auto* state =
+        request->StateAs<component_shell::media::editor::EditorStateValue>(
+            *argument, "EditorState");
+    if (!state) return nullptr;
+    if (gEditorObservationCount < 8) {
+        gEditorObservations[gEditorObservationCount++] = {
+            state, StrDup(InputValue(&state->text.input))};
+    }
+    return Div(request->cx->a);
+}
+
+constexpr ArgumentDescriptor kEditorProbeArgs[] = {
+    {"state", shell::SchemaEntity("EditorState")}};
+constexpr ConstructorDescriptor kEditorProbeConstructors[] = {
+    {"EditorProbe", kEditorProbeArgs, &EditorProbePayload}};
+constexpr ComponentDescriptor kEditorProbe = {"EditorProbe",
+                                              kEditorProbeConstructors,
+                                              {},
+                                              "Test-only retained state probe.",
+                                              &EditorProbeMaterialize};
+
+// media_public_host.rs local_image_and_retained_editor_cross_the_public_
+// host_and_draw
+void LocalImageAndRetainedEditorCrossThePublicHost() {
+    ComponentRegistry registry;
+    RegistryError error;
+    registry.Open(shell::kComponentRegistryApiVersion,
+                  shell::kDefaultComponentModule, &error);
+    utassert(component_shell::RegisterMedia(&registry, &error));
+    utassert(registry.Register(&kEditorProbe, &error));
+    FrozenComponentRegistry frozen;
+    registry.Freeze(&frozen);
+    gEditorObservationCount = 0;
+    {
+        Host host(
+            StrL("import { div, View } from 'gpui-kit';\n"
+                 "import { Editor, EditorProbe, EditorState, Image } from "
+                 "'gpui-component';\n"
+                 "export default class Media extends View {\n"
+                 "  init() { this.editor = EditorState('fn main() {}'); }\n"
+                 "  render() { return div()\n"
+                 "    .child(new Image('assets/pixel.svg').w(24).h(24))\n"
+                 "    .child(new Editor(this.editor).appearance(true)"
+                 ".bordered(false).readonly(true).aria_label('Source')"
+                 ".disabled(false).p(2).h(180))\n"
+                 "    .child(new EditorProbe(this.editor)); }\n"
+                 "}\n"),
+            &frozen);
+        for (int frame = 0; frame < 2; frame++) {
+            El* root = host.Render();
+            utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+            utassert(!FindTextPrefix(root, StrL("Failed to render")));
+            Str tree = DebugTreeTemp(host);
+            const char* expected[] = {"Image", "Editor",
+                                      ":readonly(registered)"};
+            for (const char* part : expected)
+                utassert(StrContains(tree, Str(part)));
+            // The image is the asset path, styled; the editor is the
+            // retained state's text.
+            El* image = root ? root->first : nullptr;
+            utassert(
+                image && image->kind == ElKind::Image &&
+                StrEq(image->imageSource.resource, StrL("assets/pixel.svg")) &&
+                image->style.width == 24);
+            InputState* inputs[2] = {};
+            int count = 0;
+            CollectInputs(root, inputs, &count, 2);
+            utassert(count == 1 && inputs[0]->kind == InputKind::Editor &&
+                     inputs[0]->readonly);
+        }
+    }
+    utassert(gEditorObservationCount >= 2);
+    for (int i = 0; i < gEditorObservationCount; i++) {
+        utassert(StrEq(gEditorObservations[i].value, StrL("fn main() {}")));
+        utassert(gEditorObservations[i].state == gEditorObservations[0].state);
+        StrFree(gEditorObservations[i].value);
+    }
+}
+
+// The recorders' own refusals, and an Image refusing its children.
+void MediaRecordersRefuseWhatRustRefuses() {
+    Str message = CallErrorTemp("Image", "new Image('../x.png')");
+    utassert(StrContains(message, StrL("Image path must stay inside the "
+                                       "application asset root")));
+    message = CallErrorTemp("Image", "new Image(' ')");
+    utassert(StrContains(message, StrL("Image path must not be empty")));
+    message =
+        CallErrorTemp("Editor, EditorState",
+                      "new Editor(EditorState('x', 'json')).aria_label(' ')");
+    utassert(StrContains(message, StrL("Editor.aria_label expects non-empty "
+                                       "text")));
+    Host leaf(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Image } from 'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new Image('a.png').child(div()); } }\n"));
+    utassert(StrContains(RenderRefusal(leaf),
+                         StrL("Image does not accept children")));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -2923,4 +3083,11 @@ void TestComponentShell() {
     LayoutCatalogHasClosedStateAndTypedLayoutContracts();
     TextareaStateSurvivesTwoNativeDraws();
     ResizableConsumesTwoTypedPanels();
+
+    TestSuite("media");
+    ImageSourcesAreConfinedToTheAssetRoot();
+    EditorIsAnExactLeaf();
+    CatalogExposesOnlyRenderableMediaSurfaces();
+    LocalImageAndRetainedEditorCrossThePublicHost();
+    MediaRecordersRefuseWhatRustRefuses();
 }

@@ -23,6 +23,7 @@ bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
@@ -54,6 +55,10 @@ bool RegisterCompoundRadio(shell::ComponentRegistry*, shell::RegistryError*);
 // layout/mod.rs
 bool RegisterLayoutTextarea(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayoutResizable(shell::ComponentRegistry*, shell::RegistryError*);
+
+// media/mod.rs
+bool RegisterMediaImage(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterMediaEditor(shell::ComponentRegistry*, shell::RegistryError*);
 
 // basic/mod.rs
 bool RegisterBasicText(shell::ComponentRegistry*, shell::RegistryError*);
