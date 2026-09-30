@@ -1458,6 +1458,11 @@ El* El::WithImageCache(EntityId cache) {
     return this;
 }
 
+El* El::WithPlotAppearScope(uint32_t key) {
+    plotAppearScope = key;
+    return this;
+}
+
 El* El::ScrollMode(ScrollbarMode m) {
     scrollModeSet = true;
     scrollMode = m;
@@ -6295,6 +6300,13 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->groupHovered = e->w > 0 && e->h > 0 &&
                             e->Bounds().Contains({ctx->mouseX, ctx->mouseY});
     }
+    // PlotAppearScope::paint: the element and what it holds paint with the
+    // scope innermost, and the scope's memory is kept alive for the frame.
+    bool appearScope = e->plotAppearScope && ctx->window;
+    if (appearScope) {
+        (void)WindowPlotAppearScopeToken(ctx->window, e->plotAppearScope);
+        VecAppend(ctx->window->plotAppearScopes, e->plotAppearScope);
+    }
     if (e->style.opacity >= 1.f) {
         PaintElNodeInner(ctx, e, skipOverlay);
     } else {
@@ -6302,6 +6314,9 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         ctx->opacity = prev * e->style.opacity;
         PaintElNodeInner(ctx, e, skipOverlay);
         ctx->opacity = prev;
+    }
+    if (appearScope) {
+        ctx->window->plotAppearScopes.len--;
     }
     ctx->groupHovered = prevGroup;
     scene::ContextPop(ctx, parentContext);

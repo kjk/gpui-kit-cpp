@@ -682,12 +682,36 @@ struct PlotAppear {
     float Staggered(int index, int count, float spread) const;
 };
 
+// plot/appear.rs PlotAppearScope: remembers which plots inside it have
+// finished appearing, so a plot that is painted again after a gap — a row a
+// virtual list scrolled out of view and back — shows its data whole instead
+// of drawing in again. Wrap the list, or whatever region repaints its plots
+// on and off, in one.
+//
+// A plot is remembered by its id (its GlobalElementId: the chart's id folded
+// onto the stack) and its appear generation, once its appear has finished; a
+// new generation still replays it, and one taken away mid-appear draws in
+// again from the start. The memory lasts while the scope is painted every
+// frame and goes with it, so a scope that stops being painted, or whose id
+// changes — name it after the content — draws its plots in afresh. The
+// innermost scope wins. Without one, every plot draws in each time it is
+// painted anew.
+//
+// The scope takes no part in layout: Rust hands on its child's LayoutId, and
+// here the scope is a mark on the child element itself. A child that is
+// already some scope's gets a plain box around it for the outer one.
+struct PlotAppearScope {
+    // PlotAppearScope::new(id, child): `id` unique among its siblings.
+    static El* New(Ctx* cx, Str id, El* child);
+};
+
 // track_appear: sample the appear of the plot painting under `cx`'s id
-// scope; a new `generation` starts it over. Rust's PlotElement calls it for
-// a plot whose appear_generation is Some; the charts here paint themselves
-// and call it under their own id scope, as they do TrackHover. The state is
-// keyed on that scope and the generation and dropped with the plot, so a
-// remounted plot appears again.
+// scope; a new `generation` starts it over, and one the innermost
+// PlotAppearScope saw finish is complete at once. Rust's PlotElement calls
+// it for a plot whose appear_generation is Some; the charts here paint
+// themselves and call it under their own id scope, as they do TrackHover.
+// The state is keyed on that scope and the generation and dropped with the
+// plot, so a remounted plot appears again unless a scope remembers it.
 PlotAppear TrackAppear(Ctx* cx, uint64_t generation);
 
 // pointer_spring: the spring a hover pointer — the crosshair, highlight band

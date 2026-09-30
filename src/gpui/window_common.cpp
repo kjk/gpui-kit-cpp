@@ -3423,6 +3423,7 @@ void AppFree(App* app) {
         PaintTargetFree(&w->paint);
         VecReset(w->timers);
         VecReset(w->imageCacheStack);
+        VecReset(w->plotAppearScopes);
         WindowKeyedFree(w);
         WindowMotionFree(w);
         delete w;

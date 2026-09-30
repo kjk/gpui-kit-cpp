@@ -2215,6 +2215,10 @@ struct El {
     // img.image_cache(entity), or on a container the window stack
     // `image_cache(entity)` pushes for descendants.
     EntityId imageCache = {};
+    // plot::PlotAppearScope's key: while this element and its children
+    // paint, it is the innermost scope plot::TrackAppear remembers finished
+    // appears in. 0 is none.
+    uint32_t plotAppearScope = 0;
     Func0 onClick;
 
     // Keep every entity Listener together. El is copied and walked as
@@ -2564,6 +2568,8 @@ struct El {
     El* WithLoading(El* loading);
     El* WithFallback(El* fallback);
     El* WithImageCache(EntityId cache);
+    // plot::PlotAppearScope::New sets this; see El::plotAppearScope.
+    El* WithPlotAppearScope(uint32_t key);
     El* H(float v);
     El* SizeFull();
     El* MinH(float v);
@@ -5670,6 +5676,9 @@ struct Window {
     // Window::image_cache_stack. `image_cache(entity)` / El::WithImageCache
     // on a container pushes for the layout and paint of its descendants.
     Vec<EntityId> imageCacheStack;
+    // plot/appear.rs SCOPES: the PlotAppearScope keys being painted,
+    // innermost last. Only non-empty while a scope paints its subtree.
+    Vec<uint32_t> plotAppearScopes;
     // The scroll boxes the frame before this one painted, swapped out of
     // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
     // answers with the box the last layout gave it. Virtual lists bind rows
@@ -6194,6 +6203,13 @@ void* WindowMotionState(Window* win, uint32_t key, int size);
 // Drop what this frame did not ask for, which is what GPUI does with the
 // state of an element it no longer renders.
 void WindowMotionSweep(Window* win);
+// PlotAppearScope's half in the runtime: the scope's liveness token, a
+// motion slot under the scope's key (zero when the slot is new, which is a
+// scope that was not painted last frame), touched each frame the scope paints
+// so it lives exactly as long as that; and the innermost scope painting now,
+// or 0.
+uint32_t* WindowPlotAppearScopeToken(Window* win, uint32_t key);
+uint32_t WindowPlotAppearScope(const Window* win);
 void WindowMotionFree(Window* win);
 
 template <typename T>

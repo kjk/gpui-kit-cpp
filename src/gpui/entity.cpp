@@ -578,6 +578,17 @@ void* WindowMotionState(Window* win, uint32_t key, int size) {
     return s.ptr;
 }
 
+uint32_t* WindowPlotAppearScopeToken(Window* win, uint32_t key) {
+    return (uint32_t*)WindowMotionState(win, key, (int)sizeof(uint32_t));
+}
+
+uint32_t WindowPlotAppearScope(const Window* win) {
+    if (!win || win->plotAppearScopes.len == 0) {
+        return 0;
+    }
+    return win->plotAppearScopes[win->plotAppearScopes.len - 1];
+}
+
 void WindowMotionSweep(Window* win) {
     if (!win) {
         return;

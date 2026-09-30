@@ -843,6 +843,90 @@ static void PlotNewGenerationReplaysTheAppear() {
     utassertnear(h.Frame(1.2, 1, nullptr), 0.f);
 }
 
+// A plot inside a PlotAppearScope, or none, the way PlotElement paints it
+// under PaintElNode: the scope pushed and its memory kept alive for the
+// frame, the plot sampled if it is mounted, and the frame's motion swept.
+// Rust's ScopedView; `scope` < 0 is none. Returns the progress the plot was
+// handed, or -1 when it was not painted.
+struct ScopedAppearHarness : AppearHarness {
+    float Frame(double now, int scope, bool mounted, uint64_t generation,
+                bool* wantsFrame = nullptr) {
+        win->frameNow = now;
+        win->animFrame = false;
+        uint32_t key = 0;
+        if (scope >= 0) {
+            Ctx top = {&app, win, arena, {}};
+            El* el = gpui::plot::PlotAppearScope::New(
+                &top, StrDup(arena, fmt("scope-%d", scope)), Div(arena));
+            key = el->plotAppearScope;
+            (void)WindowPlotAppearScopeToken(win, key);
+            VecAppend(win->plotAppearScopes, key);
+        }
+        float progress = -1.f;
+        if (mounted) {
+            progress = gpui::plot::TrackAppear(&cx, generation).Progress();
+        }
+        if (scope >= 0) {
+            win->plotAppearScopes.len--;
+        }
+        if (wantsFrame) {
+            *wantsFrame = win->animFrame;
+        }
+        WindowMotionSweep(win);
+        win->frameSeq++;
+        return progress;
+    }
+    ~ScopedAppearHarness() {
+        VecReset(win->plotAppearScopes);
+        WindowKeyedFree(win);
+        WindowMotionFree(win);
+    }
+};
+
+// test_scope_keeps_a_finished_appear_across_a_remount: inside a scope, a plot
+// painted again after a gap is whole at once and asks for no frames; a new
+// generation still replays.
+static void PlotScopeKeepsAFinishedAppearAcrossARemount() {
+    ScopedAppearHarness h;
+    utassertnear(h.Frame(1.0, 0, true, 0), 0.f);
+    utassertnear(h.Frame(1.1, 0, true, 0), 1.f);
+    utassert(h.Frame(1.2, 0, false, 0) == -1.f);
+    bool wants = true;
+    utassertnear(h.Frame(1.3, 0, true, 0, &wants), 1.f);
+    utassert(!wants);
+    utassertnear(h.Frame(1.4, 0, true, 1), 0.f);
+}
+
+// test_scope_replays_an_unfinished_appear
+static void PlotScopeReplaysAnUnfinishedAppear() {
+    ScopedAppearHarness h;
+    utassertnear(h.Frame(1.0, 0, true, 0), 0.f);
+    utassert(h.Frame(1.01, 0, false, 0) == -1.f);
+    utassertnear(h.Frame(1.02, 0, true, 0), 0.f);
+}
+
+// test_scope_forgets_when_it_goes: a scope under a new id, or one that stops
+// being painted, draws its plots in afresh.
+static void PlotScopeForgetsWhenItGoes() {
+    ScopedAppearHarness h;
+    h.Frame(1.0, 0, true, 0);
+    utassertnear(h.Frame(1.1, 0, true, 0), 1.f);
+    utassertnear(h.Frame(1.2, 1, true, 0), 0.f);
+    utassertnear(h.Frame(1.3, 1, true, 0), 1.f);
+    utassertnear(h.Frame(1.4, -1, true, 0), 0.f);
+    utassertnear(h.Frame(1.5, -1, true, 0), 1.f);
+    utassertnear(h.Frame(1.6, 1, true, 0), 0.f);
+}
+
+// test_without_a_scope_a_remount_replays
+static void PlotWithoutAScopeARemountReplays() {
+    ScopedAppearHarness h;
+    h.Frame(1.0, -1, true, 0);
+    utassertnear(h.Frame(1.1, -1, true, 0), 1.f);
+    utassert(h.Frame(1.2, -1, false, 0) == -1.f);
+    utassertnear(h.Frame(1.3, -1, true, 0), 0.f);
+}
+
 void TestScale() {
     TestSuite("scale/linear");
     ScaleLinearBasics();
@@ -900,4 +984,8 @@ void TestScale() {
     PlotReducedMotionSkipsTheAppear();
     PlotWithoutAGenerationDoesNotAppear();
     PlotNewGenerationReplaysTheAppear();
+    PlotScopeKeepsAFinishedAppearAcrossARemount();
+    PlotScopeReplaysAnUnfinishedAppear();
+    PlotScopeForgetsWhenItGoes();
+    PlotWithoutAScopeARemountReplays();
 }

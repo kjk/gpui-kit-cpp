@@ -1489,9 +1489,62 @@ float PlotAppear::Staggered(int index, int count, float spread) const {
     return easing.Sample(t);
 }
 
+// The plots a PlotAppearScope has seen finish appearing, by id, with the
+// generation that finished: Rust's `Appeared`, the scope's element state.
+// `token` ties it to the scope's liveness slot; a slot that is new again
+// (the scope went unpainted for a frame) no longer matches, and the memory
+// starts over. The empty struct stays keyed on the scope for the window's
+// life, where Rust drops it with the scope.
+struct PlotAppeared {
+    uint32_t plot = 0;
+    uint64_t generation = 0;
+};
+struct PlotAppearMemory {
+    uint32_t token = 0;
+    Vec<PlotAppeared> plots;
+};
+
+static PlotAppearMemory* PlotAppearMemoryOf(Ctx* cx, uint32_t scope) {
+    uint32_t* live = WindowPlotAppearScopeToken(cx->win, scope);
+    auto* memory = KeyedState<PlotAppearMemory>(
+        cx, KeyedKey(scope, HashClickId(StrL("gpui::PlotAppearMemory"))));
+    if (!live || !memory) {
+        return nullptr;
+    }
+    if (*live == 0 || *live != memory->token) {
+        VecReset(memory->plots);
+        memory->token = memory->token + 1 ? memory->token + 1 : 1;
+        *live = memory->token;
+    }
+    return memory;
+}
+
+El* PlotAppearScope::New(Ctx* cx, Str id, El* child) {
+    uint32_t key =
+        KeyedKey(KeyedName(cx, id), HashClickId(StrL("gpui::PlotAppearScope")));
+    if (!child) {
+        return Div(cx->a)->WithPlotAppearScope(key);
+    }
+    if (child->plotAppearScope) {
+        child = Div(cx->a)->Child(child);
+    }
+    return child->WithPlotAppearScope(key);
+}
+
 PlotAppear TrackAppear(Ctx* cx, uint64_t generation) {
     if (!cx || !cx->win || !cx->app) {
         return PlotAppear::Complete();
+    }
+    // The innermost scope, if any: a plot it saw finish this generation is
+    // whole at once, with no Presence tracking and no frames.
+    uint32_t scope = WindowPlotAppearScope(cx->win);
+    PlotAppearMemory* memory = scope ? PlotAppearMemoryOf(cx, scope) : nullptr;
+    if (memory) {
+        for (const PlotAppeared& seen : memory->plots) {
+            if (seen.plot == cx->path && seen.generation == generation) {
+                return PlotAppear::Complete();
+            }
+        }
     }
     // try_global: borrowed rather than cloned, since every plot asks on
     // every frame; without a theme there is no appear.
@@ -1503,11 +1556,34 @@ PlotAppear TrackAppear(Ctx* cx, uint64_t generation) {
     // APPEAR, under ElementId::Integer(generation), within the plot's scope.
     uint32_t key = KeyedName(cx, StrL("__plot-appear")) * 31u +
                    (uint32_t)(generation ^ (generation >> 32));
+    // In Rust the scope's id is part of every GlobalElementId under it, so a
+    // plot moved into, out of or between scopes is a new element and appears
+    // again. The plot's id here was folded before the scope was put around
+    // it, so the scope is folded into the appear's key instead.
+    if (scope) {
+        key = KeyedKey(key, scope);
+    }
     // Presence keeps the linear time so the marks can each ease over their
     // own slice of it; see PlotAppear::Staggered.
     PresenceSample sample = Presence::New(key, true)
                                 .Transition(policy.Ease(Easing::Linear()))
                                 .Sample(cx);
+    if (sample.progress >= 1.f && memory) {
+        bool updated = false;
+        for (PlotAppeared& seen : memory->plots) {
+            if (seen.plot == cx->path) {
+                seen.generation = generation;
+                updated = true;
+                break;
+            }
+        }
+        if (!updated) {
+            PlotAppeared seen;
+            seen.plot = cx->path;
+            seen.generation = generation;
+            VecAppend(memory->plots, seen);
+        }
+    }
     PlotAppear out;
     out.time = sample.progress;
     out.easing = policy.easing;
