@@ -1247,16 +1247,16 @@ OtpInput* OtpInput::OnFocus(Listener fn) {
 
 El* OtpInput::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    float cell = 32, text = 16;
+    // otp_input.rs: input_text_size, the Input/Select ladder, and half the
+    // cell for a custom Size. The masked icon follows the same size.
+    float cell = 32, text = UiInputFontPx(size);
     if (cellPx > 0) {
         cell = cellPx;
         text = cellPx * 0.5f;
     } else if (size == UiSize::Large) {
         cell = 44;
-        text = 18;
     } else if (size == UiSize::Small || size == UiSize::XSmall) {
         cell = 24;
-        text = 14;
     }
     int nGroups = groups < 1 ? 1 : (groups > slots ? slots : groups);
     int per = (slots + nGroups - 1) / nGroups;

@@ -117,16 +117,19 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
             ->Columns(self->twoColumns ? 2 : 1)
             ->Field(StrL("Name"),
                     component::Input::New(cx, StrL("form-name"), &self->name)
+                        ->WithSize(self->toolbar.size)
                         ->Prefix(prefix)
                         ->OnFocus(Listen(cx, &FocusName))
                         ->IntoEl())
             ->Field(StrL("Email"),
                     component::Input::New(cx, StrL("form-email"), &self->email)
+                        ->WithSize(self->toolbar.size)
                         ->OnFocus(Listen(cx, &FocusEmail))
                         ->IntoEl())
             ->Required()
             ->Field(StrL("Bio"),
                     component::Textarea::New(cx, StrL("form-bio"), &self->bio)
+                        ->WithSize(self->toolbar.size)
                         ->Rows(5)
                         ->IntoEl())
             ->Align(component::FieldAlign::Start)
@@ -140,10 +143,14 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
             ->LabelIndent(false)
             ->SpanAll()
             ->Field(StrL("Please select your birthday"),
-                    component::DatePicker::New(cx)->Day(0)->IntoEl())
+                    component::DatePicker::New(cx)
+                        ->Day(0)
+                        ->WithSize(self->toolbar.size)
+                        ->IntoEl())
             ->Description(
                 StrL("Select your birthday, we will send you a gift."))
             ->Field(Str{}, component::Switch::New(cx, StrL("subscribe"))
+                               ->WithSize(self->toolbar.size)
                                ->Label(StrL("Subscribe our newsletter"))
                                ->Checked(self->subscribe)
                                ->OnClick(Listen(cx, &ToggleSubscribe))
@@ -154,6 +161,7 @@ El* FormStory::Render(FormStory* self, Ctx* cx) {
                         ->WithSize(self->toolbar.size)
                         ->IntoEl())
             ->Field(Str{}, component::Checkbox::New(cx, StrL("future-events"))
+                               ->WithSize(self->toolbar.size)
                                ->Label(StrL("Use this color for future "
                                             "events"))
                                ->Checked(self->subscribe)

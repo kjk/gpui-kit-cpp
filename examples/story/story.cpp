@@ -955,7 +955,9 @@ static const int kStoryLocaleCount =
 // which action a kind of row names, whether it is ticked, and what it reads
 // back to say so.
 enum class ApKind : uint8_t {
-    Label,
+    // Starts a submenu the value rows after it go into, up to the next row
+    // that is not one of its kind.
+    Submenu,
     Sep,
     Font,
     Radius,
@@ -975,20 +977,20 @@ struct ApRow {
     float value;
 };
 
+// Font Size, Border Radius and Scrollbar are submenus, so the sizes can be
+// compared at each base font size without scrolling the menu.
 static const ApRow kAppearance[] = {
-    {ApKind::Label, "Font Size", 0},
+    {ApKind::Submenu, "Font Size", 0},
     {ApKind::Font, "Large", 18},
     {ApKind::Font, "Medium (default)", 16},
     {ApKind::Font, "Small", 14},
-    {ApKind::Sep, nullptr, 0},
-    {ApKind::Label, "Border Radius", 0},
+    {ApKind::Submenu, "Border Radius", 0},
     {ApKind::Radius, "8px", 8},
     {ApKind::Radius, "6px (default)", 6},
     {ApKind::Radius, "4px", 4},
     {ApKind::Radius, "0px", 0},
-    {ApKind::Sep, nullptr, 0},
-    {ApKind::Label, "Scrollbar", 0},
-    {ApKind::Scroll, "Scrolling", (float)ScrollbarMode::Scrolling},
+    {ApKind::Submenu, "Scrollbar", 0},
+    {ApKind::Scroll, "Scrolling to show", (float)ScrollbarMode::Scrolling},
     {ApKind::Scroll, "Hover to show", (float)ScrollbarMode::Hover},
     {ApKind::Scroll, "Always show", (float)ScrollbarMode::Always},
     {ApKind::Sep, nullptr, 0},
@@ -1158,22 +1160,42 @@ struct AboutDialog {
 static El* AppearanceMenu(StoryApp* app, Ctx* cx) {
     component::PopupMenu* menu =
         component::PopupMenu::New(cx, StrL("story-appearance-menu"));
+    // The submenu being filled, and the kind of row that goes into it.
+    component::PopupMenu* sub = nullptr;
+    Str subLabel = {};
+    ApKind subKind = ApKind::Sep;
+    auto closeSub = [&]() {
+        if (sub) {
+            menu->Submenu(subLabel, sub);
+            sub = nullptr;
+        }
+    };
     for (int i = 0; i < kAppearanceRows; i++) {
         const ApRow& r = kAppearance[i];
+        if (sub && r.kind != subKind) {
+            closeSub();
+        }
         switch (r.kind) {
-            case ApKind::Label:
-                menu->Label(Str(r.label));
+            case ApKind::Submenu:
+                sub = component::PopupMenu::New(
+                    cx, StrDup(cx->a, fmt("story-appearance-sub-%d", i)));
+                sub->CheckSide(Side::Right);
+                subLabel = Str(r.label);
+                subKind = kAppearance[i + 1].kind;
                 break;
             case ApKind::Sep:
                 menu->Separator();
                 break;
-            default:
-                menu->MenuWithAction(Str(r.label), ApAction(r.kind),
+            default: {
+                component::PopupMenu* into = sub ? sub : menu;
+                into->MenuWithAction(Str(r.label), ApAction(r.kind),
                                      (intptr_t)r.value);
-                menu->Checked(ApChecked(app, cx, r));
+                into->Checked(ApChecked(app, cx, r));
                 break;
+            }
         }
     }
+    closeSub();
     // check_side(Right): the tick sits on the far edge, so the labels start
     // flush.
     menu->CheckSide(Side::Right);

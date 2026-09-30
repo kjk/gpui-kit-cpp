@@ -9,12 +9,12 @@ namespace component {
 // theme's `spring_control`. Critically damped, so the panel height never
 // overshoots the measured content height.
 
-// AccordionItem::render's text_size: rems(0.8125) / rems(0.875) / rems(1.).
+// AccordionItem::render's text_size: rems(0.75) / rems(0.875) / rems(1.).
 // Not UiFontPx — the accordion runs its own scale, and Small shares Medium's.
 static float AccordionFontPx(UiSize s) {
     switch (s) {
         case UiSize::XSmall:
-            return 13;
+            return 12;
         case UiSize::Large:
             return 16;
         default:

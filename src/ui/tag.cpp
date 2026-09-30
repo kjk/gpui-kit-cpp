@@ -110,6 +110,8 @@ El* Tag::IntoEl() {
         bg = Rgba{0, 0, 0, 0};
     }
     bool tiny = size == UiSize::XSmall || size == UiSize::Small;
+    // tag.rs: rems(0.625) small, text_sm large, text_xs otherwise.
+    float font = tiny ? 10.f : (size == UiSize::Large ? 14.f : 12.f);
     float r = radius >= 0 ? radius : (tiny ? th.radius * 0.5f : th.radius);
     return Div(a)
         ->PadX(tiny ? 6.f : 10.f)
@@ -119,7 +121,7 @@ El* Tag::IntoEl() {
         ->Border(1, bd)
         ->LineHeight(1.25f)
         ->ItemsCenter()
-        ->Child(TextEl(a, text)->Font(12)->Fg(fg));
+        ->Child(TextEl(a, text)->Font(font)->Fg(fg));
 }
 
 } // namespace component

@@ -326,8 +326,16 @@ inline float UiInputHeight(UiSize s) {
     }
 }
 
+// DROPDOWN_LIST_PADDING: the inset between an input's dropdown popup and its
+// list rows.
+constexpr float kDropdownListPadding = 4.f;
+
+// Size::list_px: the horizontal padding of a row in an input's dropdown list.
+// The trigger insets its text by a 1px border plus input_px; the popup insets
+// a row by kDropdownListPadding. The row pads the difference, so the chosen
+// item's text lines up with the trigger's.
 inline float UiListPadX(UiSize s) {
-    return s == UiSize::Small ? 8.f : 12.f;
+    return UiInputPadX(s) + 1.f - kDropdownListPadding;
 }
 
 inline float UiListPadY(UiSize s) {
@@ -392,17 +400,42 @@ inline El* UiSizeWith(El* e, UiSize s) {
     float px = UiSizeWithPx(s);
     return e->W(px)->H(px);
 }
+// table_cell_size's text: text_xs / text_sm / text_sm / text_base, the
+// Input ladder; 0 for a custom Size, which sets none.
+inline float UiTableCellFontPx(UiSize s) {
+    switch (s) {
+        case UiSize::XSmall:
+            return 12;
+        case UiSize::Small:
+        case UiSize::Medium:
+            return 14;
+        case UiSize::Large:
+            return 16;
+        default:
+            return 0;
+    }
+}
 inline El* UiTableCellSize(El* e, UiSize s) {
     Edges pad = UiTableCellPadding(s);
-    if (s == UiSize::XSmall || s == UiSize::Small) {
-        e->Font(14);
+    if (float font = UiTableCellFontPx(s)) {
+        e->Font(font);
     }
     return e->PadL(pad.left)->PadR(pad.right)->PadT(pad.top)->PadB(pad.bottom);
 }
+// button_text_size: text_xs, text_sm for Small and Medium, text_base.
+inline float UiButtonTextPx(UiSize s) {
+    switch (s) {
+        case UiSize::XSmall:
+            return 12;
+        case UiSize::Small:
+        case UiSize::Medium:
+            return 14;
+        default:
+            return 16;
+    }
+}
 inline El* UiButtonTextSize(El* e, UiSize s) {
-    float font =
-        s == UiSize::XSmall ? 12.f : (s == UiSize::Small ? 14.f : 16.f);
-    return e->Font(font);
+    return e->Font(UiButtonTextPx(s));
 }
 
 namespace component {

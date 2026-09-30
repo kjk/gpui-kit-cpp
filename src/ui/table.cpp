@@ -1012,7 +1012,9 @@ El* DataTable::BuildEl() {
                              : nullptr;
         content->Child(customHead ? customHead
                                   : TextEl(a, colLabel)
-                                        ->Font(14)
+                                        ->Font(UiTableCellFontPx(size) > 0
+                                                   ? UiTableCellFontPx(size)
+                                                   : 14.f)
                                         ->Fg(th.foreground)
                                         ->LineHeight(1.f));
         if (col.selectable) {
@@ -1183,6 +1185,11 @@ El* DataTable::BuildEl() {
                          ->W(ColWidth(s, c))
                          ->ItemsCenter();
             TableColumnPadding(td, columns[c]);
+            // render_cell's table_cell_size: the text half of it, the Input
+            // ladder. The padding stays the table's own, above.
+            if (float font = UiTableCellFontPx(size)) {
+                td->Font(font);
+            }
             if (columns[c].right) {
                 td->JustifyEnd();
             } else if (columns[c].center) {

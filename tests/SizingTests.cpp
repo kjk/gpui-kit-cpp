@@ -85,7 +85,7 @@ static void StyleSizedHelpersRefineTheElement() {
     utassertnear(input->style.height, 24);
 
     El* list = UiListSize(Div(a), UiSize::Large);
-    utassertnear(list->style.pad.left, 12);
+    utassertnear(list->style.pad.left, 9);
     utassertnear(list->style.pad.top, 8);
     utassertnear(list->style.fontSize, 16);
 
@@ -94,7 +94,7 @@ static void StyleSizedHelpersRefineTheElement() {
     utassertnear(custom->style.height, 37);
 
     El* cell = UiTableCellSize(Div(a), UiSize::XSmall);
-    utassertnear(cell->style.fontSize, 14);
+    utassertnear(cell->style.fontSize, 12);
     utassert(cell->style.pad == Edges::New(4, 4, 2, 2));
     El* button = UiButtonTextSize(Div(a), UiSize::Small);
     utassertnear(button->style.fontSize, 14);

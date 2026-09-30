@@ -855,12 +855,9 @@ El* Button::IntoEl() {
         e->Child(ic);
     }
     if (label.s) {
-        // button_text_size: text_xs, text_sm, then text_base — a step larger
-        // than the generic control font.
-        float fontPx = size == UiSize::XSmall  ? 12.f
-                       : size == UiSize::Small ? 14.f
-                                               : 16.f;
-        El* text = TextEl(a, label)->Font(fontPx)->Truncate();
+        // button_text_size: text_xs, text_sm for Small and Medium, then
+        // text_base — the Input ladder.
+        El* text = TextEl(a, label)->Font(UiButtonTextPx(size))->Truncate();
         // ButtonVariant::underline: only the link looks like a link.
         if (variant == ButtonVariant::Link) {
             text->Underline();
@@ -973,9 +970,10 @@ El* Toggle::IntoEl() {
                    ->ItemsCenter()
                    ->JustifyCenter();
 
+    // toggle.rs: text_xs / text_sm / text_sm / text_base, the Input ladder.
     float h = 32.f;
     float pad = 8.f;
-    float font = 16.f;
+    float font = 14.f;
     if (size == UiSize::XSmall) {
         h = 20.f;
         pad = 2.f;
@@ -987,7 +985,7 @@ El* Toggle::IntoEl() {
     } else if (size == UiSize::Large) {
         h = 36.f;
         pad = 12.f;
-        font = 18.f;
+        font = 16.f;
     }
     root->MinW(h)->H(h)->PadX(pad)->Corners(
         cornerTL ? th.radius : 0.f, cornerTR ? th.radius : 0.f,

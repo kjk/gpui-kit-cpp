@@ -209,7 +209,7 @@ static void ItemElementReservesItsCheckAndUsesListSizing() {
                   ->WithSize(UiSize::Small)
                   ->Child(TextEl(a, StrL("Seven")))
                   ->IntoEl();
-    utassertnear(row->style.pad.left, 8.f);
+    utassertnear(row->style.pad.left, 5.f);
     utassertnear(row->style.pad.top, 2.f);
     utassertnear(row->style.fontSize, 14.f);
     El* inner = row->first;
@@ -225,7 +225,7 @@ static void ItemElementReservesItsCheckAndUsesListSizing() {
                       ->Selected(true)
                       ->CheckIcon(IconName::CircleCheck)
                       ->IntoEl();
-    utassertnear(checked->style.pad.left, 12.f);
+    utassertnear(checked->style.pad.left, 9.f);
     utassertnear(checked->style.pad.top, 8.f);
     utassertnear(checked->style.fontSize, 16.f);
     El* visibleCheck = checked->first->first->next;

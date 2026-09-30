@@ -784,7 +784,9 @@ El* SearchableList::IntoEl() {
                   ->Role(AccessibilityRole::ListBox)
                   ->FlexCol()
                   ->W(w)
-                  ->Pad(4)
+                  // DROPDOWN_LIST_PADDING, which the rows' list_px pads
+                  // against so their text lines up with the trigger's.
+                  ->Pad(kDropdownListPadding)
                   ->Gap(2)
                   ->Radius(th.radius)
                   ->Border(1, th.border)

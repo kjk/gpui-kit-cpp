@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "11b04d9bf09cec68c98ce97d759afc6776b1cda0",
+  sha: "4708780a28af49b787963775dfa57323d9d4d1eb",
   date: "2026-09-29",
-  subject: "dock: Add `DockArea::set_split_sizes` to restore a split's slot sizes (#3314)",
+  subject: "component: Align control text sizes with Input and Select (#3287)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

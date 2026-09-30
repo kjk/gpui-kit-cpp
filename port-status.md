@@ -15,11 +15,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `11b04d9bf09cec68c98ce97d759afc6776b1cda0` (2026-09-29,
-dock: Add `DockArea::set_split_sizes` to restore a split's slot sizes
-(#3314)). DockArea::set_split_sizes (DockSetSplitSizes here) restores one
-split's slot sizes in place, as shares of the split, with one LayoutChanged.
-The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `4708780a28af49b787963775dfa57323d9d4d1eb` (2026-09-29,
+component: Align control text sizes with Input and Select (#3287)). Control
+text follows the Input/Select ladder (12/14/14/16 px) across Button, Toggle,
+Checkbox, Radio, Switch, Accordion, OtpInput and table cells, Tag steps
+10/12/14, a Large Switch gets its own track, and dropdown rows pad to line up
+with the trigger. The story's settings menu groups its size choices into
+submenus. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

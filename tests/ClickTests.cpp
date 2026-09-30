@@ -191,7 +191,9 @@ static void LongLabelsPreserveTrackSizeInNarrowContainers() {
         UiSize size;
         float w, h;
     };
-    const Case cases[] = {{UiSize::Small, 28, 16}, {UiSize::Medium, 36, 20}};
+    const Case cases[] = {{UiSize::Small, 28, 16},
+                          {UiSize::Medium, 36, 20},
+                          {UiSize::Large, 44, 24}};
     for (const Case& c : cases) {
         for (int checked = 0; checked < 2; checked++) {
             for (int disabled = 0; disabled < 2; disabled++) {

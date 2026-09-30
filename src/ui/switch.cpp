@@ -176,10 +176,11 @@ El* Switch::IntoEl() {
             ->Gap(8);
     root->Child(track);
     if (label.s) {
-        // text_sm below Medium, text_base at and above it. A disabled switch
-        // mutes the label along with the track it names.
+        // input_text_size: the Input/Select ladder, Medium's for a custom
+        // Size. A disabled switch mutes the label along with the track it
+        // names.
         float labelFont =
-            (size == UiSize::XSmall || size == UiSize::Small) ? 14.f : 16.f;
+            UiInputFontPx(size == UiSize::Size ? UiSize(UiSize::Medium) : size);
         // min_w_0: the label shrinks to what the row has left and wraps
         // there, rather than pushing past the container.
         root->Child(TextEl(a, label)

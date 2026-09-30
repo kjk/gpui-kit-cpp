@@ -157,17 +157,15 @@ El* Checkbox::IntoEl() {
         // them out as a column, so the label measures itself instead.
         El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
         if (label.s) {
-            // text_xs / text_sm / text_base / text_lg, a step above the
-            // generic control font — the same table component::Radio
-            // spells out. This was UiFontPx, which is a step smaller.
-            float fontPx = size == UiSize::XSmall  ? 12.f
-                           : size == UiSize::Small ? 14.f
-                           : size == UiSize::Large ? 18.f
-                                                   : 16.f;
-            col->Child(TextEl(a, label)
-                           ->Font(fontPx)
+            // input_text_size: the Input/Select ladder. A custom Size sets
+            // no size and inherits.
+            El* text = TextEl(a, label)
                            ->Fg(disabled ? th.mutedFg : th.foreground)
-                           ->Wrap());
+                           ->Wrap();
+            if (size != UiSize::Size) {
+                UiInputTextSize(text, size);
+            }
+            col->Child(text);
         }
         if (hint.s) {
             col->Child(TextEl(a, hint)
