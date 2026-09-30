@@ -486,6 +486,7 @@ struct FetchAsyncState {
     Vec<HttpHeader> wire;
     Func1<FetchAsyncResult> done;
     int redirects = 0;
+    double deadline = 0;
 
     // The test transport has the blocking signature on purpose: the redirect
     // rule tests use it directly too. Its async adapter fills these on an
@@ -534,6 +535,7 @@ static bool FetchAsyncInit(FetchAsyncState* state, const FetchRequest& request,
         return false;
     }
     state->capabilities = capabilities;
+    state->deadline = request.deadline;
     return FetchAuthorize(state->walk.url, state->walk.method,
                           state->capabilities, &state->result.error);
 }
@@ -551,6 +553,12 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
     if (!landed.ok || !response) {
         FetchError(&state->result.error,
                    fmt("fetching %s failed", state->walk.url));
+        FetchAsyncFinish(state, false);
+        return;
+    }
+    if (state->deadline > 0 && TimeNow() >= state->deadline) {
+        FetchError(&state->result.error,
+                   fmt("fetching %s timed out", state->walk.url));
         FetchAsyncFinish(state, false);
         return;
     }

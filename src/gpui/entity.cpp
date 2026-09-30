@@ -525,6 +525,41 @@ void* WindowKeyedState(Window* win, uint32_t key, void* fresh, DropFn drop) {
     return fresh;
 }
 
+void* WindowFrameKeyedState(Window* win, uint32_t key, void* fresh,
+                            DropFn drop) {
+    void* p = WindowKeyedState(win, key, fresh, drop);
+    if (!p) {
+        return nullptr;
+    }
+    for (int i = win->keyed.len - 1; i >= 0; i--) {
+        if (win->keyed[i].key == key) {
+            win->keyed[i].frameScoped = true;
+            win->keyed[i].frame = win->frameSeq;
+            break;
+        }
+    }
+    return p;
+}
+
+void WindowKeyedSweep(Window* win) {
+    if (!win) {
+        return;
+    }
+    int keep = 0;
+    for (int i = 0; i < win->keyed.len; i++) {
+        KeyedSlot slot = win->keyed[i];
+        if (!slot.frameScoped || slot.frame == win->frameSeq) {
+            win->keyed[keep++] = slot;
+            continue;
+        }
+        // Frame-scoped slots are always pointer slots with a drop function.
+        if (slot.ptr && slot.drop) {
+            slot.drop(slot.ptr);
+        }
+    }
+    win->keyed.len = keep;
+}
+
 // window.use_keyed_state, when the state has to be an entity so timers and
 // listeners can be bound to it. `fresh` is a new T the caller allocated; it is
 // adopted on the first call for this key and deleted on every later one, which

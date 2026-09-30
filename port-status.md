@@ -176,12 +176,6 @@ macOS font-kit requirement on the website only. The current update target is
   underline thickness and wavy style, start/middle ellipsis and `debug*` are
   accepted and ignored; `text_bg` is validated but not painted; negative
   sizes clamp to 0; unknown names get no "did you mean" (`src/shell/style.cpp`).
-- **A script TextView's images outlive the view.** They load under the
-  script's network grant as upstream's do, but the per-view owner is window
-  keyed state and the decoded pixels sit in the app's encoded-image cache, so
-  both go with the window rather than with the view; and the time limit is
-  the transport's per request rather than one 30-second deadline over every
-  redirect (`src/shell/materialize.cpp`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle

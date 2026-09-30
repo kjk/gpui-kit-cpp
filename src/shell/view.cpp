@@ -195,6 +195,10 @@ void ScriptView::OnOpenChange(ScriptView* self, Ctx* cx,
                                   cx->win, cx->app);
 }
 
+void ScriptView::OnImageDeadline(ScriptView* self, Ctx* cx, const TickEvent*) {
+    if (self) Notify(cx);
+}
+
 void ScriptView::OnResize(ScriptView* self, Ctx* cx,
                           const ResizablePanelEvent* event, intptr_t callback) {
     if (!self || !self->runtime || !event) return;

@@ -641,6 +641,8 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // is GPUI's element state going with the element. Something that comes
     // back on screen starts its entrance again rather than resuming one.
     WindowMotionSweep(win);
+    // So is what an element kept in frame-scoped keyed state.
+    WindowKeyedSweep(win);
 
     // A picture is still on its way: this frame asked image.h for it and got
     // nothing. Nothing else need be keeping the window awake, so arm the

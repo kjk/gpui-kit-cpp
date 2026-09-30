@@ -645,6 +645,24 @@ static EncodedImageSlot* EncodedSlotFor(const ImageLookup& cx,
     return &store->encoded[store->encoded.len - 1];
 }
 
+bool ImageDropEncoded(App* app, const uint8_t* bytes, int len) {
+    if (!app || !app->images || !bytes || len <= 0) {
+        return false;
+    }
+    ImageStore* store = app->images;
+    uint64_t hash = ImageBytesHash(bytes, len);
+    for (int i = 0; i < store->encoded.len; i++) {
+        EncodedImageSlot* slot = &store->encoded[i];
+        if (slot->tried && slot->hash == hash && slot->bytesLen == len) {
+            EncodedSlotFree(slot);
+            store->encoded[i] = store->encoded[store->encoded.len - 1];
+            store->encoded.len--;
+            return true;
+        }
+    }
+    return false;
+}
+
 static uint64_t ImageSourceKey(const ImageSource& source) {
     uint64_t key = ((uint64_t)source.kind + 1) * 0x9e3779b97f4a7c15ull;
     switch (source.kind) {

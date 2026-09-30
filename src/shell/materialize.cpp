@@ -1388,12 +1388,14 @@ struct AccordionItemScope {
 //
 // Rust keys the owner by the view's element id and the policy's identity, so
 // two documents under different grants never share a load; the keyed state
-// here is the same key. What differs: Rust's asset cache drops a document's
-// decoded images when the view goes; this tree's keyed state lives with the
-// window and the decoded pixels in the app's encoded-image cache, keyed by
-// the bytes, so they are released with the window instead. And the 30-second
-// limit is the transport's per-request one (sys/http kHttpTimeoutMs, 15s)
-// rather than one deadline over every hop.
+// here is the same key, and like GPUI's element state it lives as long as
+// frames keep building the view: the first frame that does not drops it,
+// and with it the fetched bytes and what the app decoded from them
+// (`cx.drop_image`, here ImageDropEncoded). A load still in flight then
+// lands on nothing. One 30-second deadline covers the whole load, every
+// redirect hop included, as Rust's race against IMAGE_TIMEOUT does: the walk
+// fails a hop that lands after it, and a load still pending when it passes
+// is drawn as failed.
 
 namespace shell {
 
@@ -1426,9 +1428,11 @@ static void TextViewImageFetched(TextViewImageFetch* fetch,
 }
 
 bool TextViewImageRequest(const Capabilities& capabilities, Str url,
-                          Func1<TextViewImageResponse> done) {
+                          Func1<TextViewImageResponse> done, double deadline) {
     if (!TextViewImageUrl(capabilities, url)) return false;
     FetchRequest request;
+    request.deadline =
+        deadline > 0 ? deadline : TimeNow() + kTextViewImageTimeoutSecs;
     // url.set_fragment(None): the fragment is the document's, not the
     // server's.
     int end = 0;
@@ -1512,8 +1516,19 @@ struct DocumentImage {
     Str bytes = {};
     ImageLoadState state = ImageLoadState::Loading;
     DocumentImages* owner = nullptr;
+    // IMAGE_TIMEOUT from when the load started, over every hop.
+    double deadline = 0;
     int refs = 1;
 };
+
+// The race against the timer: a load still pending past its deadline has
+// failed, whatever lands later.
+static void DocumentImageExpire(DocumentImage* image) {
+    if (image && image->state == ImageLoadState::Loading &&
+        TimeNow() >= image->deadline) {
+        image->state = ImageLoadState::Failed;
+    }
+}
 
 static void DocumentImageRelease(DocumentImage* image) {
     if (!image || --image->refs > 0) return;
@@ -1527,13 +1542,24 @@ struct DocumentImages {
     // the key, from being reused.
     Policy* policy = nullptr;
     App* app = nullptr;
+    // Where to arm the redraw that shows a load which missed its deadline,
+    // and the view it redraws.
+    Window* win = nullptr;
+    Listener deadline = {};
     Vec<DocumentImage*> used;
 
+    // on_release: what the app decoded from each image goes with the view.
     ~DocumentImages() {
         for (int i = 0; i < used.len; i++) {
-            used[i]->owner = nullptr;
-            DocumentImageRelease(used[i]);
+            DocumentImage* image = used[i];
+            if (image->bytes.s) {
+                ImageDropEncoded(app, (const uint8_t*)image->bytes.s,
+                                 len(image->bytes));
+            }
+            image->owner = nullptr;
+            DocumentImageRelease(image);
         }
+        VecReset(used);
         if (policy) PolicyRelease(policy);
     }
 };
@@ -1541,14 +1567,15 @@ struct DocumentImages {
 static void DocumentImageLanded(DocumentImage* image,
                                 shell::TextViewImageResponse response) {
     DocumentImages* owner = image->owner;
-    if (owner) {
+    DocumentImageExpire(image);
+    if (owner && image->state == ImageLoadState::Loading) {
         bool ok =
             response.ok && !shell::TextViewSvgReferencesFile(response.bytes);
         if (ok) image->bytes = StrDup(response.bytes);
         image->state = ok && image->bytes.s ? ImageLoadState::Ready
                                             : ImageLoadState::Failed;
-        if (owner->app) NotifyApp(owner->app);
     }
+    if (owner && owner->app) NotifyApp(owner->app);
     DocumentImageRelease(image);
 }
 
@@ -1558,6 +1585,7 @@ static ImageLoadState DocumentImageState(PaintApp*, void* user,
                                          RenderImage** image) {
     *image = nullptr;
     DocumentImage* entry = (DocumentImage*)user;
+    DocumentImageExpire(entry);
     return entry ? entry->state : ImageLoadState::Failed;
 }
 
@@ -1579,10 +1607,18 @@ static DocumentImage* DocumentImageFor(DocumentImages* images, Str uri) {
         return nullptr;
     }
     image->refs++;
+    image->deadline = TimeNow() + shell::kTextViewImageTimeoutSecs;
     if (!shell::TextViewImageRequest(PolicyCapabilities(images->policy), uri,
-                                     MkFunc1(DocumentImageLanded, image))) {
+                                     MkFunc1(DocumentImageLanded, image),
+                                     image->deadline)) {
         image->refs--;
         image->state = ImageLoadState::Failed;
+    } else if (images->win && images->deadline.IsValid()) {
+        // A hop that never answers lands no sooner than the transport gives
+        // up on it, so the deadline asks for its own redraw.
+        WindowSetTimeout(images->win,
+                         (int)(shell::kTextViewImageTimeoutSecs * 1000) + 1,
+                         images->deadline);
     }
     return image;
 }
@@ -1591,6 +1627,7 @@ static ImageSource DocumentImageSource(Str uri, void* data) {
     DocumentImages* images = (DocumentImages*)data;
     DocumentImage* image = images ? DocumentImageFor(images, uri) : nullptr;
     if (!image) return ImageSource::FromCustom(DocumentImageDenied, nullptr);
+    DocumentImageExpire(image);
     if (image->state == ImageLoadState::Ready) {
         // The fetched bytes, never the URL: decoding them cannot start a
         // request of its own.
@@ -1601,17 +1638,23 @@ static ImageSource DocumentImageSource(Str uri, void* data) {
 }
 
 // image_sources: the owner is keyed by the view's id (already on the id
-// stack) and the policy's identity. Without a window — a check that only
-// constructs elements — there is no owner and nothing loads.
+// stack) and the policy's identity, and lives while frames build the view.
+// Without a window — a check that only constructs elements — there is no
+// owner and nothing loads.
 static DocumentImages* DocumentImagesFor(Ctx* cx, Policy* policy) {
     if (!cx || !cx->win || !policy) return nullptr;
     char name[48];
     snprintf(name, sizeof(name), "shell-images/%p", (void*)policy);
-    DocumentImages* images =
-        ElementState<DocumentImages>(cx, Str(name), StrL("DocumentImages"));
+    DocumentImages* images = FrameKeyedState<DocumentImages>(
+        cx, KeyedKey(KeyedName(cx, Str(name)),
+                     HashClickId(StrL("DocumentImages"))));
     if (images && !images->policy) {
         images->policy = PolicyRetain(policy);
         images->app = cx->app;
+    }
+    if (images) {
+        images->win = cx->win;
+        images->deadline = Listen(cx, &ScriptView::OnImageDeadline);
     }
     return images;
 }

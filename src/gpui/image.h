@@ -76,6 +76,12 @@ struct ImageCache {
     bool Empty() const { return Len() == 0; }
 };
 
+// cx.drop_image for an ImageSource::FromImage source: forget what the App
+// decoded from these encoded bytes, releasing the pixels. False when it held
+// nothing for them. An element that asks for the same bytes again decodes
+// them again.
+bool ImageDropEncoded(App* app, const uint8_t* bytes, int len);
+
 ImageStore* ImageStoreNew();
 void ImageStoreFree(ImageStore* s);
 

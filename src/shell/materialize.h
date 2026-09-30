@@ -40,11 +40,18 @@ struct TextViewImageResponse {
     Str bytes = {};
 };
 
+// IMAGE_TIMEOUT: one deadline over a document image's whole load, every
+// redirect hop included.
+constexpr double kTextViewImageTimeoutSecs = 30;
+
 // request_image: GETs `url` without its fragment, re-authorizing every
 // redirect, and answers the body of a success status within the 8 MiB limit.
 // False, with no callback and no request, for a URL TextViewImageUrl refuses.
+// The walk fails once TimeNow() passes `deadline`; 0 means
+// kTextViewImageTimeoutSecs from now.
 bool TextViewImageRequest(const Capabilities& capabilities, Str url,
-                          Func1<TextViewImageResponse> done);
+                          Func1<TextViewImageResponse> done,
+                          double deadline = 0);
 
 // refuse_svg_file_references: an SVG with an `<image>` naming anything but a
 // data URL, which a document image is refused for.

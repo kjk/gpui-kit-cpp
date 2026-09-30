@@ -370,6 +370,10 @@ struct KeyedSlot {
     // Set when the slot was taken through KeyedEntity: the app owns the
     // memory then, and the window only remembers which entity the key means.
     EntityId entity = {};
+    // WindowFrameKeyedState: the last frame that asked for the slot, which
+    // WindowKeyedSweep drops the slot after the first frame that does not.
+    uint64_t frame = 0;
+    bool frameScoped = false;
 };
 
 // ─── mouse input ──────────────────────────────────────────────────────────
@@ -6423,6 +6427,14 @@ El* EntityRender(App* app, Window* win, Arena* a, EntityId id);
 // adopted object's drop function.
 void* WindowKeyedState(Window* win, uint32_t key, void* fresh, DropFn drop);
 void WindowKeyedFree(Window* win);
+// The same slot with GPUI's element-state lifetime rather than the
+// window's: every frame that builds the element asks for it, and the first
+// frame that does not ask drops it (WindowKeyedSweep, run at the end of each
+// frame the way WindowMotionSweep is). What an element owns -- a document's
+// image loads -- goes with the element this way instead of with the window.
+void* WindowFrameKeyedState(Window* win, uint32_t key, void* fresh,
+                            DropFn drop);
+void WindowKeyedSweep(Window* win);
 
 // The transition state behind one id, created zeroed on first ask and marked
 // as wanted by this frame. Everything about it is in base/motion.h; this is
@@ -6443,6 +6455,12 @@ void WindowMotionFree(Window* win);
 template <typename T>
 T* KeyedState(Ctx* cx, uint32_t key) {
     void* p = WindowKeyedState(cx->win, key, new T(), &EntityDropT<T>);
+    return (T*)p;
+}
+
+template <typename T>
+T* FrameKeyedState(Ctx* cx, uint32_t key) {
+    void* p = WindowFrameKeyedState(cx->win, key, new T(), &EntityDropT<T>);
     return (T*)p;
 }
 

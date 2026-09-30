@@ -1208,6 +1208,8 @@ static int gTvStatus = 200;
 static int gTvBodyLen = 0;
 static Vec<Str> gTvRequests;
 static bool gTvFollowed = false;
+// How long each hop takes to answer, on the executor worker.
+static int gTvDelayMs = 0;
 
 static void TvRequestsClear() {
     for (int i = 0; i < gTvRequests.len; i++) StrFree(gTvRequests[i]);
@@ -1226,6 +1228,7 @@ static bool TvTransport(const HttpReq& req, HttpRsp* out) {
         gTvFollowed = true;
     }
     VecAppend(gTvRequests, StrDup(req.url));
+    if (gTvDelayMs > 0) PlatSleepMs(gTvDelayMs);
     switch (gTvReply) {
         case TvReply::Png:
             TvPng(out);
@@ -1449,6 +1452,43 @@ static void TextViewDocumentImageRequestsBoundBodiesAndRedirects() {
     FetchSetHttpSendForTests(nullptr);
 }
 
+// IMAGE_TIMEOUT is one deadline over the whole load, not one per request:
+// every hop here answers well inside any per-request limit, and the walk
+// still ends once the hops together pass the deadline, long before the
+// redirect limit would have ended it.
+static void TextViewDocumentImageDeadlineCoversEveryRedirect() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Redirect;
+    gTvRedirect = "https://images.example/image.png";
+    gTvDelayMs = 40;
+    TvRequestsClear();
+    TvFetch fetch;
+    utassert(TextViewImageRequest(TvGetGrant("/image.png"),
+                                  StrL("https://images.example/image.png"),
+                                  MkFunc1(TvFetched, &fetch), TimeNow() + 0.1));
+    utassert(ExecWaitIdle(5000));
+    utassert(fetch.called && !fetch.ok);
+    utassert(gTvRequests.len >= 2 && gTvRequests.len < kFetchMaxRedirects);
+    // A deadline already gone fails the first hop that lands.
+    TvRequestsClear();
+    gTvDelayMs = 0;
+    fetch = {};
+    gTvReply = TvReply::Png;
+    utassert(TextViewImageRequest(TvGetGrant("/image.png"),
+                                  StrL("https://images.example/image.png"),
+                                  MkFunc1(TvFetched, &fetch), TimeNow() - 1));
+    utassert(ExecWaitIdle(5000));
+    utassert(fetch.called && !fetch.ok && gTvRequests.len == 1);
+    // The default is IMAGE_TIMEOUT from now, which a prompt answer beats.
+    static_assert(shell::kTextViewImageTimeoutSecs == 30, "IMAGE_TIMEOUT");
+    utassert(TvFetchOnce(TvGetGrant("/image.png"),
+                         StrL("https://images.example/image.png"), &fetch));
+    gTvRedirect = nullptr;
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
 // document_svg_images_cannot_read_local_files.
 static void TextViewDocumentSvgImagesCannotReadLocalFiles() {
     utassert(TextViewSvgReferencesFile(
@@ -1583,6 +1623,43 @@ static void TextViewDocumentImagesRequirePolicy() {
             }
         }
     }
+    TvRequestsClear();
+    FetchSetHttpSendForTests(nullptr);
+}
+
+// The owner of a document's images belongs to the view, the way GPUI's keyed
+// element state does: kept by every frame that builds the view, dropped by
+// the first frame that does not, and with it the loads. A view that comes
+// back loads again rather than finding what it had.
+static void TextViewDocumentImagesGoWithTheView() {
+    ExecInit();
+    FetchSetHttpSendForTests(TvTransport);
+    gTvReply = TvReply::Png;
+    Capabilities capabilities = TvGetGrant("/image.png");
+    TvRequestsClear();
+    TvMounted* m = new TvMounted();
+    TvMount(m, "markdown", "'![image](https://images.example/image.png)'",
+            false, &capabilities, 1);
+    Vec<El*> images;
+    // Frames that build the view keep its owner, so nothing loads twice.
+    for (int frame = 0; frame < 3; frame++) {
+        TvDraw(m, &images);
+        WindowKeyedSweep(&m->window);
+        m->window.frameSeq++;
+    }
+    utassert(gTvRequests.len == 1);
+    utassert(images.len == 1 &&
+             images[0]->imageSource.kind == ImageSourceKind::Image);
+    int kept = m->window.keyed.len;
+    // A frame without the view drops the owner.
+    WindowKeyedSweep(&m->window);
+    m->window.frameSeq++;
+    utassert(m->window.keyed.len < kept);
+    // Back on screen, it is a new owner and a new load.
+    TvDraw(m, &images);
+    utassert(gTvRequests.len == 2);
+    TvUnmount(m);
+    delete m;
     TvRequestsClear();
     FetchSetHttpSendForTests(nullptr);
 }
@@ -4772,6 +4849,8 @@ void TestShellCore() {
     TextViewDocumentImagesRequirePolicy();
     TextViewDataImagesCannotBypassPolicy();
     TextViewDocumentImagesKeepPoliciesSeparate();
+    TextViewDocumentImagesGoWithTheView();
+    TextViewDocumentImageDeadlineCoversEveryRedirect();
     ShellMaterializesStateTemplatesInputsAndPaths();
     ShellWithoutCatalogRefusesGpuiComponent();
     ShellHostsInlineTokenOperationsAndRenderers();

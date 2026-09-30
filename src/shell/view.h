@@ -97,6 +97,10 @@ struct ScriptView {
                         intptr_t callback);
     static void OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent* event,
                            intptr_t binding);
+    // A document image's deadline passed: redraw, so a load still pending
+    // then is drawn as failed.
+    static void OnImageDeadline(ScriptView* self, Ctx* cx,
+                                const TickEvent* event);
     static void OnChange(ScriptView* self, Ctx* cx, const ClickEvent* event,
                          intptr_t value);
     static void OnHover(ScriptView* self, Ctx* cx, const HoverEvent* event,
