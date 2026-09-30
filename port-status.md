@@ -39,6 +39,13 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   WindowState's `prepare` sets no rem size and its tooltip and fallback-menu
   overlays are the window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
+- **A native menu has no automatic drawn fallback.** Rust's
+  `NativeMenu::show` falls back to Root's `FallbackMenuOverlay` where the
+  platform has no popup menu of its own; here `NativeMenu::Show` answers
+  false on X11 and in the browser and the caller draws `IntoPopupMenu`
+  itself. The input right-click menu does not, so Input, Textarea and Editor
+  show no context menu on those two platforms (`src/ui/native_menu.cpp`,
+  `InputContextMenuState` in `src/ui/input.cpp`).
 - **A striped DataTable leaves the space below its last row empty.** Rust's
   `calculate_extra_rows_needed` pads a short striped table with filler rows
   (`floor(remaining / row_height)`) so the stripes run to the bottom; here

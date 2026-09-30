@@ -2556,11 +2556,34 @@ static void BaseInputCoreKeepsTheSourceModeAndPresentationSeams() {
         normal.color.b == focus.color.b && normal.color.a == focus.color.a);
     utassertnear(normal.opacity, 0.5f);
 
+    // input.rs's built-in menu. A read-only code editor can still go to a
+    // definition; the items that change the text, and the copy items of a
+    // masked value, are disabled; Select All always is not.
     NativeMenu menu;
     InputDefaultNativeMenu(&state, &menu);
-    utassert(menu.items.len >= 6);
-    utassert(menu.items[0].disabled);
-    utassert(menu.items[menu.items.len - 1].goToDefinition);
+    utassert(menu.items.len == 8);
+    utassert(menu.items[0].goToDefinition && !menu.items[0].disabled);
+    utassert(menu.items[1].action == InputAction::ToggleCodeActions &&
+             menu.items[1].disabled);
+    utassert(menu.items[2].kind == NativeMenuItemKind::Separator);
+    utassert(menu.items[3].action == InputAction::Cut && menu.items[3]
+                                                             .disabled);
+    utassert(menu.items[4].action == InputAction::Copy && menu.items[4]
+                                                              .disabled);
+    utassert(menu.items[5].action == InputAction::Paste && menu.items[5]
+                                                               .disabled);
+    utassert(menu.items[7].action == InputAction::SelectAll && !menu.items[7]
+                                                                    .disabled);
+    // A plain editable input with a selection: no code rows, and Cut, Copy
+    // and Paste are live.
+    InputState plain;
+    InputSetValue(&plain, StrL("hello"));
+    plain.selectedRange = {0, 2};
+    NativeMenu plainMenu;
+    InputDefaultNativeMenu(&plain, &plainMenu);
+    utassert(plainMenu.items.len == 5);
+    utassert(!plainMenu.items[0].disabled && !plainMenu.items[1].disabled &&
+             !plainMenu.items[2].disabled);
     ArenaDelete(arena);
 }
 

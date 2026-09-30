@@ -173,25 +173,26 @@ void InputDefaultNativeMenu(const InputState* state, NativeMenu* out) {
         return;
     }
     InputContextMenuCapabilities c = InputContextMenuCapabilities::Of(state);
-    out->MenuWithDisabled(StrL("Copy"), !c.IsCopyable(), InputAction::Copy)
-        .MenuWithDisabled(StrL("Cut"), !c.IsEditable() || !c.IsCopyable(),
-                          InputAction::Cut)
-        .MenuWithDisabled(StrL("Paste"), !c.IsEditable(), InputAction::Paste)
-        .Separator()
-        .MenuWithDisabled(StrL("Select All"),
-                          !state || len(InputValue(state)) == 0,
-                          InputAction::SelectAll);
-    if (c.IsCodeEditor() && (c.HasDefinition() || c.HasCodeActions())) {
+    bool enabled = !c.IsDisabled();
+    bool editable = enabled && !c.IsReadonly();
+    if (c.IsCodeEditor()) {
+        out->MenuWithDisabled(StrL("Go to Definition"),
+                              !(enabled && c.HasDefinition()),
+                              InputAction::None);
+        out->items[out->items.len - 1].goToDefinition = true;
+        out->MenuWithDisabled(StrL("Show Code Actions"),
+                              !(editable && c.HasCodeActions()),
+                              InputAction::ToggleCodeActions);
         out->Separator();
-        if (c.HasDefinition()) {
-            out->Menu(StrL("Go to Definition"), InputAction::None);
-            out->items[out->items.len - 1].goToDefinition = true;
-        }
-        if (c.HasCodeActions()) {
-            out->MenuWithDisabled(StrL("Code Actions"), !c.IsEditable(),
-                                  InputAction::ToggleCodeActions);
-        }
     }
+    // Paste is offered whenever the text can change, without peeking at the
+    // clipboard, as Rust does: an empty clipboard pastes nothing.
+    out->MenuWithDisabled(StrL("Cut"), !(editable && c.IsCopyable()),
+                          InputAction::Cut)
+        .MenuWithDisabled(StrL("Copy"), !c.IsCopyable(), InputAction::Copy)
+        .MenuWithDisabled(StrL("Paste"), !editable, InputAction::Paste)
+        .Separator()
+        .Menu(StrL("Select All"), InputAction::SelectAll);
 }
 
 bool InputPerformNativeMenuItem(InputState* state, App* app, Window* win,

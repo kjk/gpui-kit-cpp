@@ -112,6 +112,13 @@ enum class InputContentType : uint8_t {
     CellularImei
 };
 
+struct NativeMenu;
+// context_menu(..): replace the built-in right-click menu with this one. It
+// is handed an empty menu and answers the one to show; rows choose through
+// the menu's own OnSelect.
+using EditorContextMenuFn = NativeMenu* (*)(Ctx * cx, NativeMenu* empty,
+                                            void* data);
+
 struct Input {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -149,8 +156,12 @@ struct Input {
     void* tokenRendererUser = nullptr;
     InlineTokenClickListener tokenClick = nullptr;
     void* tokenClickUser = nullptr;
+    EditorContextMenuFn contextMenu = nullptr;
+    void* contextMenuData = nullptr;
 
     static Input* New(Ctx* cx, Str id, InputState* state);
+    // context_menu(..): overrides the built-in right-click menu.
+    Input* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
     Input* Label(Str s);
     Input* WithSize(UiSize s);
     Input* Align(InputAlign v);
@@ -215,10 +226,6 @@ struct SearchPanel {
     static SearchPanel* New(Ctx* cx, Str id, InputState* target);
     El* IntoEl();
 };
-
-struct NativeMenu;
-using EditorContextMenuFn = NativeMenu* (*)(Ctx * cx, NativeMenu* empty,
-                                            void* data);
 
 // editor.rs Editor. Highlighter remains the compatibility spelling for the
 // earlier façade; Editor is the source-shaped styled control over the same
@@ -360,8 +367,12 @@ struct Textarea {
     void* tokenRendererUser = nullptr;
     InlineTokenClickListener tokenClick = nullptr;
     void* tokenClickUser = nullptr;
+    EditorContextMenuFn contextMenu = nullptr;
+    void* contextMenuData = nullptr;
 
     static Textarea* New(Ctx* cx, Str id, InputState* state);
+    // context_menu(..): overrides the built-in right-click menu.
+    Textarea* ContextMenu(EditorContextMenuFn fn, void* data = nullptr);
     // Rust sizes a textarea by rows (`auto_grow(min, max)`); without one it
     // keeps the two-row default. An explicit height wins, as `.h(px(..))`
     // does there.

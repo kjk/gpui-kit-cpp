@@ -4433,6 +4433,9 @@ struct InputState {
     Window* focusWin = nullptr;
     bool disabled = false;
     bool readonly = false;
+    // enable_context_menu: whether a right-click opens the context menu. On
+    // by default; off turns the menu off entirely, a custom one included.
+    bool enableContextMenu = true;
     bool loading = false;
     // NumberInput's current directional bounds. The themed facade refreshes
     // these every frame; blur uses them to clamp a completed numeric value

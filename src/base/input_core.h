@@ -158,7 +158,18 @@ struct NativeMenu {
     bool IsEmpty() const { return len(items) == 0; }
 };
 
+// input.rs's built-in right-click menu: Go to Definition and Show Code
+// Actions first in a code editor, then Cut, Copy, Paste and Select All. A
+// read-only input can still navigate the code; it only disables the items
+// that would change the text. Labels are the part of the "Input." locale key
+// after the dot; the styled layer translates them.
 void InputDefaultNativeMenu(const InputState* state, NativeMenu* out);
+// InputState::context_menu / set_context_menu_enabled.
+inline void InputSetContextMenuEnabled(InputState* state, bool enabled) {
+    if (state) {
+        state->enableContextMenu = enabled;
+    }
+}
 bool InputPerformNativeMenuItem(InputState* state, App* app, Window* win,
                                 const NativeMenuItem& item);
 

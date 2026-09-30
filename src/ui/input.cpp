@@ -185,24 +185,109 @@ bool AnyInputState::operator==(const AnyInputState& other) const {
     return kind == other.kind && text == other.text && otp.id == other.otp.id;
 }
 
-struct EditorContextMenuState {
+// The right-click menu every Input, Textarea and Editor has: the state's
+// on_mouse_down(Right) moves the caret to the press unless it landed in the
+// selection and holds the menu pending; on_mouse_up(Right) shows it
+// (handle_right_click_menu), unless the input is disabled or a deferred
+// layer is open. The menu is the caller's context_menu(..) if it set one,
+// and input.rs's built-in one otherwise.
+struct InputContextMenuState {
+    InputState* state = nullptr;
+    bool disabled = false;
     EditorContextMenuFn build = nullptr;
     void* data = nullptr;
+    bool pending = false;
 
-    static void OnMouseDown(EditorContextMenuState* self, Ctx* cx,
+    static void OnMouseDown(InputContextMenuState* self, Ctx* cx,
                             const MouseDownEvent* event) {
-        if (!self->build || !event || event->button != MouseButton::Right ||
-            event->phase != DispatchPhase::Bubble) {
+        InputState* s = self->state;
+        if (!s || !event || event->button != MouseButton::Right ||
+            event->phase != DispatchPhase::Bubble || !s->enableContextMenu) {
+            return;
+        }
+        int offset =
+            InputIndexForPosition(s, &cx->win->paint, event->x, event->y);
+        if (!s->selectedRange.Contains(offset)) {
+            InputMoveTo(s, cx->app, cx->win, offset);
+        }
+        self->pending = true;
+    }
+
+    static void OnMouseUp(InputContextMenuState* self, Ctx* cx,
+                          const MouseUpEvent* event) {
+        if (!event || event->button != MouseButton::Right || !self->pending) {
+            return;
+        }
+        self->pending = false;
+        InputState* s = self->state;
+        if (!s || self->disabled || s->disabled ||
+            BaseIsInDeferredContext(cx->app)) {
             return;
         }
         NativeMenu* menu = NativeMenu::New(cx);
-        menu = self->build(cx, menu, self->data);
+        if (self->build) {
+            menu = self->build(cx, menu, self->data);
+        } else {
+            // The built-in rows, translated; a row's id is its index + 1 in
+            // the menu InputDefaultNativeMenu builds, rebuilt on selection.
+            gpui::NativeMenu rows;
+            InputDefaultNativeMenu(s, &rows);
+            for (int i = 0; i < rows.items.len; i++) {
+                const gpui::NativeMenuItem& row = rows.items[i];
+                if (row.kind == gpui::NativeMenuItemKind::Separator) {
+                    menu->Separator();
+                    continue;
+                }
+                Str label = Tr(fmt("Input.%s", row.label).s);
+                menu->MenuWithDisabled(label, row.disabled, i + 1);
+            }
+            menu->OnSelect(Listen(cx, &InputContextMenuState::OnSelect, 0));
+        }
         if (menu && !menu->IsEmpty()) {
             menu->Show(event->x, event->y);
             WindowStopPropagation(cx);
         }
     }
+
+    static void OnSelect(InputContextMenuState* self, Ctx* cx,
+                         const ClickEvent*, intptr_t id) {
+        InputState* s = self->state;
+        if (!s) {
+            return;
+        }
+        gpui::NativeMenu rows;
+        InputDefaultNativeMenu(s, &rows);
+        if (id < 1 || id > rows.items.len) {
+            return;
+        }
+        InputPerformNativeMenuItem(s, cx->app, cx->win,
+                                   rows.items[(int)id - 1]);
+        Notify(cx);
+    }
 };
+
+// Wire the right-click menu onto the element an input draws, keyed on the
+// input's id so it outlives the frame.
+static void BindInputContextMenu(Ctx* cx, El* e, Str id, InputState* state,
+                                 bool disabled, EditorContextMenuFn build,
+                                 void* data) {
+    if (!state || disabled) {
+        return;
+    }
+    Entity<InputContextMenuState> menuState =
+        ElementStateEntity<InputContextMenuState>(
+            cx, id, StrL("component::InputContextMenu"));
+    InputContextMenuState* menu = menuState.Get(cx);
+    if (!menu) {
+        return;
+    }
+    menu->state = state;
+    menu->disabled = disabled;
+    menu->build = build;
+    menu->data = data;
+    e->OnMouseDown(ListenTo(menuState, &InputContextMenuState::OnMouseDown));
+    e->OnMouseUp(ListenTo(menuState, &InputContextMenuState::OnMouseUp));
+}
 
 Editor* Editor::New(Ctx* cx, InputState* state) {
     return New(cx, StrL("editor"), state);
@@ -259,6 +344,18 @@ Editor* Editor::Role(AccessibilityRole value) {
 
 Editor* Editor::AriaLabel(Str value) {
     ariaLabel = value;
+    return this;
+}
+
+Input* Input::ContextMenu(EditorContextMenuFn fn, void* data) {
+    contextMenu = fn;
+    contextMenuData = data;
+    return this;
+}
+
+Textarea* Textarea::ContextMenu(EditorContextMenuFn fn, void* data) {
+    contextMenu = fn;
+    contextMenuData = data;
     return this;
 }
 
@@ -348,17 +445,8 @@ El* Editor::IntoEl() {
     if (disabled) element->Opacity(0.5f);
     if (styleFields) element->Refine(style, styleFields);
 
-    if (contextMenu) {
-        Entity<EditorContextMenuState> menuState =
-            ElementStateEntity<EditorContextMenuState>(
-                cx, id, StrL("component::EditorContextMenu"));
-        if (EditorContextMenuState* menu = menuState.Get(cx)) {
-            menu->build = contextMenu;
-            menu->data = contextMenuData;
-            element->OnMouseDown(
-                ListenTo(menuState, &EditorContextMenuState::OnMouseDown));
-        }
-    }
+    BindInputContextMenu(cx, element, id, state, disabled, contextMenu,
+                         contextMenuData);
     return element;
 }
 
@@ -792,6 +880,8 @@ El* Input::IntoEl() {
             field->OnClick(onChange);
         }
     }
+    BindInputContextMenu(cx, field, id, state, disabled, contextMenu,
+                         contextMenuData);
     if (!col) {
         return field;
     }
@@ -954,6 +1044,8 @@ El* Textarea::IntoEl() {
     if (ariaLabel.s) {
         box->AriaLabel(ariaLabel);
     }
+    BindInputContextMenu(cx, box, id, state, disabled, contextMenu,
+                         contextMenuData);
     // `Scrollbar::new(..)` against `Scrollbar::vertical(..)`: a field that
     // wraps has nothing to reach sideways, and one that does not is as wide
     // as its longest row and scrolls to the end of it.
