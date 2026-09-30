@@ -1,6 +1,7 @@
 #include "shell/materialize.h"
 
 #include "base/accordion.h"
+#include "gpui/image.h"
 #include "base/avatar.h"
 #include "base/button.h"
 #include "base/actions.h"
