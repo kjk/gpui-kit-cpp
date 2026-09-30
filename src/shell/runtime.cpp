@@ -1,5 +1,6 @@
 #include "shell/runtime.h"
 
+#include "base/lib.h"
 #include "base/theme.h"
 #include "quickjs/quickjs.h"
 #include "shell/a11y.h"
@@ -45,6 +46,20 @@ bool ShellDevelopmentMode() {
 
 void ShellOnExitRequest(ShellExitHandler handler) {
     gShellExitHandler = handler;
+}
+
+// lib.rs `init`. Rust's also warms the style reflection table; the style
+// lookups here (shell/style.h) keep no table to warm.
+void ShellInit(App* app) {
+    BaseInit(app);
+}
+
+void ShellInitWithComponents(App* app,
+                             const shell::FrozenComponentRegistry* components) {
+    shell::ComponentInitializer initializer =
+        components ? components->Initializer() : nullptr;
+    if (initializer) initializer(app);
+    ShellInit(app);
 }
 
 struct ShellRuntimeControl {

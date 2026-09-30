@@ -6,22 +6,6 @@
 using namespace gpui;
 using namespace gpui::shell;
 
-enum class CommandKind : uint8_t {
-    Run,
-    Check,
-    Types,
-    Help,
-    Version,
-};
-
-struct Invocation {
-    CommandKind kind = CommandKind::Run;
-    Str directory;
-    bool watch = false;
-    bool development = false;
-    bool printSpec = false;
-};
-
 static void Print(Str value, FILE* file = stdout) {
     if (value) fwrite(value.s, 1, (size_t)len(value), file);
 }
@@ -50,58 +34,6 @@ static void PrintHelp() {
         "  --print-spec With check, print the rendered element description.\n"
         "  --help       Print this message and exit.\n"
         "  --version    Print the version and exit.\n");
-}
-
-static bool Parse(int argc, char** argv, Invocation* out, Str* error) {
-    *out = {};
-    StrFree(*error);
-    *error = {};
-    for (int i = 1; i < argc; i++) {
-        Str argument = Str(argv[i]);
-        if (StrEq(argument, StrL("--help")) || StrEq(argument, StrL("-h"))) {
-            out->kind = CommandKind::Help;
-            return true;
-        }
-        if (StrEq(argument, StrL("--version")) || StrEq(argument, StrL("-V"))) {
-            out->kind = CommandKind::Version;
-            return true;
-        }
-    }
-    bool command = false;
-    for (int i = 1; i < argc; i++) {
-        Str argument = Str(argv[i]);
-        if (!command && !out->directory && StrEq(argument, StrL("check"))) {
-            out->kind = CommandKind::Check;
-            command = true;
-        } else if (!command && !out->directory &&
-                   StrEq(argument, StrL("types"))) {
-            out->kind = CommandKind::Types;
-            command = true;
-        } else if (StrEq(argument, StrL("--watch"))) {
-            out->watch = true;
-        } else if (StrEq(argument, StrL("--dev"))) {
-            out->development = true;
-            out->watch = true;
-        } else if (StrEq(argument, StrL("--print-spec"))) {
-            out->printSpec = true;
-        } else if (argument.s[0] == '-') {
-            *error = StrDup(fmt("unknown flag `%s`", argument));
-            return false;
-        } else if (!out->directory) {
-            out->directory = argument;
-        } else {
-            *error =
-                StrDup(fmt("unexpected argument `%s`; gpui-shell runs one "
-                           "application directory",
-                           argument));
-            return false;
-        }
-    }
-    if (!out->directory) {
-        *error = StrDup(StrL("expected an application directory"));
-        return false;
-    }
-    return true;
 }
 
 static TempStr JoinPathTemp(Str left, Str right) {
@@ -245,7 +177,7 @@ static int Check(Str root, Str entry, bool printSpec, Policy* policy) {
     App app;
     Window window;
     window.app = &app;
-    component_shell::Init(&app);
+    ShellInitWithComponents(&app, component_shell::Components());
     ShellError error = {};
     ShellRuntime* runtime =
         ShellRuntime::New(&app, &error, component_shell::Components());
@@ -303,7 +235,7 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         ShellSetDevelopmentMode(false);
         return 1;
     }
-    component_shell::Init(app);
+    ShellInitWithComponents(app, component_shell::Components());
     ShellError error = {};
     ShellRuntime* runtime =
         ShellRuntime::New(app, &error, component_shell::Components());
@@ -355,10 +287,26 @@ static int Run(Str root, Str entry, const Invocation& invocation,
     return status;
 }
 
+// A failure before the application loads. A check reports it the way it
+// reports a failed load, so its caller finds `check failed:` either way
+// (host.rs CheckOutcome::report).
+static void ReportSetupFailure(const Invocation& invocation, Str message) {
+    if (invocation.kind == InvocationKind::Check) {
+        Print(message, stderr);
+        fprintf(stderr, "\n\ncheck failed: ");
+        Print(invocation.directory, stderr);
+        fputc('\n', stderr);
+        return;
+    }
+    fprintf(stderr, "gpui-shell: ");
+    Print(message, stderr);
+    fputc('\n', stderr);
+}
+
 int GpuiMain(int argc, char** argv) {
     Invocation invocation;
     Str parseError;
-    if (!Parse(argc, argv, &invocation, &parseError)) {
+    if (!ShellParseInvocation(argv + 1, argc - 1, &invocation, &parseError)) {
         fprintf(stderr, "gpui-shell: ");
         Print(parseError, stderr);
         fprintf(stderr,
@@ -366,11 +314,11 @@ int GpuiMain(int argc, char** argv) {
         StrFree(parseError);
         return 2;
     }
-    if (invocation.kind == CommandKind::Help) {
+    if (invocation.kind == InvocationKind::Help) {
         PrintHelp();
         return 0;
     }
-    if (invocation.kind == CommandKind::Version) {
+    if (invocation.kind == InvocationKind::Version) {
         PrintVersion();
         return 0;
     }
@@ -379,15 +327,13 @@ int GpuiMain(int argc, char** argv) {
     Str root;
     Str entry;
     if (!ResolveRoot(invocation.directory,
-                     invocation.kind != CommandKind::Types, &root, &entry,
+                     invocation.kind != InvocationKind::Types, &root, &entry,
                      &error)) {
-        fprintf(stderr, "gpui-shell: ");
-        Print(error.message, stderr);
-        fputc('\n', stderr);
+        ReportSetupFailure(invocation, error.message);
         ShellErrorClear(&error);
         return 1;
     }
-    if (invocation.kind == CommandKind::Types) {
+    if (invocation.kind == InvocationKind::Types) {
         Policy* policy = PolicyDefault();
         int status = RefreshTypes(root, policy, true) ? 0 : 1;
         // The declarations describe the runtime; the manifest's Git
@@ -411,16 +357,14 @@ int GpuiMain(int argc, char** argv) {
 
     Policy* policy = LocalPolicy(root, &error);
     if (!policy) {
-        fprintf(stderr, "gpui-shell: ");
-        Print(error.message, stderr);
-        fputc('\n', stderr);
+        ReportSetupFailure(invocation, error.message);
         StrFree(root);
         ShellErrorClear(&error);
         return 1;
     }
 
     int status = 0;
-    if (invocation.kind == CommandKind::Check) {
+    if (invocation.kind == InvocationKind::Check) {
         RefreshTypes(root, policy, false);
         status = Check(root, entry, invocation.printSpec, policy);
     } else {

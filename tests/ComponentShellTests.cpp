@@ -17,9 +17,15 @@ using shell::ComponentDescriptor;
 using shell::ComponentRegistry;
 using shell::ConstructorDescriptor;
 using shell::FrozenComponentRegistry;
+using shell::FsEntry;
+using shell::FsOperation;
+using shell::FsResult;
+using shell::FsRun;
 using shell::MethodDescriptor;
 using shell::RegistryError;
 using shell::RegistryErrorKind;
+using shell::ShellCheckApplication;
+using shell::ShellWriteTypeDeclarations;
 using shell::StateDescriptor;
 
 namespace {
@@ -682,6 +688,13 @@ El* FindText(El* element, Str text) {
     return nullptr;
 }
 
+// An application directory and the entry inside it, loaded the way the
+// public host's `load_application` loads one.
+struct AppDir {
+    Str directory;
+    Str entry;
+};
+
 // Loads `source` into a runtime built with the catalog, renders it once and
 // answers the root element (null with `error` set when it failed).
 struct Host {
@@ -694,21 +707,40 @@ struct Host {
 
     explicit Host(Str source,
                   const FrozenComponentRegistry* catalog = nullptr) {
-        window.app = &app;
-        component_shell::Init(&app);
-        runtime = ShellRuntime::New(
-            &app, &error, catalog ? catalog : component_shell::Components());
+        Start(catalog);
         ViewType* type =
             runtime ? runtime->LoadSource(StrL("main.js"), source, &error)
                     : nullptr;
         if (type) view = ScriptView::New(&app, runtime, type);
         ViewTypeRelease(type);
+    }
+    explicit Host(AppDir dir) {
+        Start(nullptr);
+        ViewType* type =
+            runtime ? runtime->LoadApp(dir.directory, dir.entry, &error)
+                    : nullptr;
+        if (type) view = ScriptView::New(&app, runtime, type);
+        ViewTypeRelease(type);
+    }
+    void Start(const FrozenComponentRegistry* catalog) {
+        window.app = &app;
+        component_shell::Init(&app);
+        runtime = ShellRuntime::New(
+            &app, &error, catalog ? catalog : component_shell::Components());
         frame = ArenaNew();
         window.frameArena = frame;
     }
     El* Render() {
         if (!view.IsValid()) return nullptr;
         return EntityRender(&app, &window, frame, view.id);
+    }
+    // Rebuilds the description on the next render even though nothing the
+    // view owns changed: what Rust's `view.refresh(cx)` asks for.
+    void Refresh() {
+        ScriptView* live = view.Get(&app);
+        if (!live) return;
+        Ctx cx = {&app, &window, frame, view.id};
+        ScriptView::Refresh(live, &cx);
     }
     Str ViewError() {
         ScriptView* script = view.Get(&app);
@@ -6162,6 +6194,1020 @@ void WholeCatalogDeclarationsEqualRust() {
     utassert(StrEq(Str(ourUnion.els, ourUnion.len),
                    Str(rustUnion.els, rustUnion.len)));
 }
+
+// ─── tests/story_gallery_host.rs ───────────────────────────────────────────
+
+// Where examples/js_story is from the test's working directory (the build's
+// out/ directory, or the repository root). Null when the checkout has no
+// such directory to read: the browser build has no file system to load it
+// from.
+const char* StoryRoot() {
+#if GPUI_OS_WASM
+    return nullptr;
+#else
+    static const char* const kCandidates[] = {
+        "examples/js_story",
+        "../examples/js_story",
+        "../../examples/js_story",
+        "../../../examples/js_story",
+    };
+    for (const char* candidate : kCandidates) {
+        TempStr entry = fmt("%s/fixtures/all-examples.js", Str(candidate));
+        if (PlatFileExists(entry.s)) return candidate;
+    }
+    return nullptr;
+#endif
+}
+
+// The host of one js_story fixture, rendered.
+struct StoryHost : Host {
+    explicit StoryHost(const char* root, const char* fixture)
+        : Host(AppDir{Str(root), Str(fixture)}) {}
+    // A frame: the previous one's elements are gone, as after Rust's
+    // `window.draw(cx).clear(cx)`.
+    El* Draw() {
+        frame->Reset();
+        return Render();
+    }
+};
+
+// The first element under `id` that takes a click: where Rust's simulated
+// click at that element's position lands.
+El* ClickTargetIn(El* root, const char* id) {
+    El* element = FindById(root, Str(id));
+    El* targets[1] = {};
+    return CollectListeners(element, targets, 0, 1) == 1 ? targets[0] : nullptr;
+}
+
+// The text field under `id`: where Rust's click at that element focuses.
+InputState* InputIn(El* root, const char* id) {
+    InputState* inputs[1] = {};
+    int count = 0;
+    CollectInputs(FindById(root, Str(id)), inputs, &count, 1);
+    return count == 1 ? inputs[0] : nullptr;
+}
+
+// input_group_comment_story_posts_once_and_cancels_the_next_draft. The
+// clicks land on the elements Rust's simulated clicks hit, and the text
+// arrives as one input event, the way `simulate_input` sends it.
+void InputGroupCommentStoryPostsOnceAndCancelsTheNextDraft() {
+    const char* storyRoot = StoryRoot();
+    if (!storyRoot) return;
+    StoryHost host(storyRoot, "fixtures/input-group.js");
+    El* root = host.Draw();
+    utassert(root && len(host.ViewError()) == 0);
+    InputState* editor = InputIn(root, "ig-extra-comment");
+    utassert(editor != nullptr);
+    if (!editor) return;
+    Str greeting = StrL("\xe4\xbd\xa0\xe5\xa5\xbd\xf0\x9f\x99\x82");
+    InputReplaceTextInRange(editor, &host.app, &host.window, nullptr, greeting);
+    ExecDrain();
+    root = host.Draw();
+    utassert(len(host.ViewError()) == 0);
+    utassert(StrContains(DebugTreeTemp(host), fmt("Draft: %s", greeting)));
+
+    El* post = ClickTargetIn(root, "ig-extra-comment-post");
+    utassert(post != nullptr);
+    if (post) Click(host, post);
+    ExecDrain();
+    root = host.Draw();
+    Str posted = DebugTreeTemp(host);
+    utassert(StrContains(posted, fmt("Posted: %s", greeting)));
+    utassert(StrContains(posted, StrL("Draft: \xe2\x80\x94")));
+
+    editor = InputIn(root, "ig-extra-comment");
+    utassert(editor != nullptr);
+    if (!editor) return;
+    InputReplaceTextInRange(editor, &host.app, &host.window, nullptr,
+                            StrL("New draft"));
+    ExecDrain();
+    root = host.Draw();
+    El* cancel = ClickTargetIn(root, "ig-extra-comment-cancel");
+    utassert(cancel != nullptr);
+    if (cancel) Click(host, cancel);
+    ExecDrain();
+    root = host.Draw();
+    Str cancelled = DebugTreeTemp(host);
+    utassert(len(host.ViewError()) == 0);
+    utassert(StrContains(cancelled, fmt("Posted: %s", greeting)));
+    utassert(StrContains(cancelled, StrL("Draft: \xe2\x80\x94")));
+    utassert(!StrContains(cancelled, StrL("New draft")));
+}
+
+// interactive_examples_keep_their_state_across_redraws: Rust clicks the
+// compact Switch and the default Toggle by position; here the click lands on
+// the control inside each fixture row.
+void InteractiveExamplesKeepTheirStateAcrossRedraws() {
+    const char* storyRoot = StoryRoot();
+    if (!storyRoot) return;
+    StoryHost host(storyRoot, "fixtures/interaction.js");
+    El* root = host.Draw();
+    utassert(root && len(host.ViewError()) == 0);
+    Str initial = DebugTreeTemp(host);
+    utassert(StrContains(initial, StrL("compact:false")));
+    utassert(StrContains(initial, StrL("preview:false")));
+
+    El* compact = ClickTargetIn(root, "switch-fixture");
+    utassert(compact != nullptr);
+    if (compact) Click(host, compact);
+    ExecDrain();
+    root = host.Draw();
+    utassert(len(host.ViewError()) == 0);
+    utassert(StrContains(DebugTreeTemp(host), StrL("compact:true")));
+
+    El* preview = ClickTargetIn(root, "toggle-fixture");
+    utassert(preview != nullptr);
+    if (preview) Click(host, preview);
+    ExecDrain();
+    host.Draw();
+    utassert(len(host.ViewError()) == 0);
+    utassert(StrContains(DebugTreeTemp(host), StrL("preview:true")));
+}
+
+// input_story_accepts_text_and_keeps_it_across_redraws: Rust clicks the
+// first Input example and types; the text survives two more frames.
+void InputStoryAcceptsTextAndKeepsItAcrossRedraws() {
+    const char* storyRoot = StoryRoot();
+    if (!storyRoot) return;
+    StoryHost host(storyRoot, "fixtures/input.js");
+    El* root = host.Draw();
+    utassert(root && len(host.ViewError()) == 0);
+    InputState* input = InputIn(root, "input-target");
+    utassert(input != nullptr);
+    if (!input) return;
+    TypeInto(host, input, "roadmap");
+    ExecDrain();
+    for (int frame = 0; frame < 2; frame++) {
+        root = host.Draw();
+        utassert(root && len(host.ViewError()) == 0);
+        InputState* again = InputIn(root, "input-target");
+        utassert(again == input &&
+                 StrContains(InputValue(input), StrL("roadmap")));
+    }
+}
+
+// dock_story_materializes_real_panels_dock_and_tabs
+void DockStoryMaterializesRealPanelsDockAndTabs() {
+    const char* storyRoot = StoryRoot();
+    if (!storyRoot) return;
+    StoryHost host(storyRoot, "fixtures/dock.js");
+    host.Draw();
+    ExecDrain();
+    El* root = host.Draw();
+    utassert(root && len(host.ViewError()) == 0);
+    Str tree = DebugTreeTemp(host);
+    utassert(StrContains(tree, StrL("dock_area")));
+    utassert(StrContains(tree, StrL(":tab_bar(fn)")));
+    utassert(StrContains(tree, StrL(":dock(fn)")));
+}
+
+Str gStorySurfaces[256];
+int gStorySurfaceCount = 0;
+Str gSelectedSurface;
+
+void StoryRegisterSurfaces(HostCall* call) {
+    const HostValue* list = nullptr;
+    if (!call->arguments->Value(0, &list, &call->error)) return;
+    if (list->kind != HostValueKind::Array) {
+        call->Fail(StrL("fixture surface list"));
+        return;
+    }
+    for (int i = 0; i < gStorySurfaceCount; i++) StrFree(gStorySurfaces[i]);
+    gStorySurfaceCount = 0;
+    for (HostValue* value : list->array) {
+        if (value->kind != HostValueKind::String || gStorySurfaceCount >= 256) {
+            call->Fail(StrL("surface name"));
+            return;
+        }
+        gStorySurfaces[gStorySurfaceCount++] = StrDup(value->string);
+    }
+    call->result.SetNull();
+}
+
+void StorySelectedSurface(HostCall* call) {
+    if (gSelectedSurface)
+        call->result.SetString(gSelectedSurface);
+    else
+        call->result.SetNull();
+}
+
+// every_registered_story_example_materializes: each surface the gallery
+// covers is selected in turn and rendered, and every one builds without a
+// script error and without a registered component failing to materialize.
+void EveryRegisteredStoryExampleMaterializes() {
+    const char* storyRoot = StoryRoot();
+    if (!storyRoot) return;
+    ShellClearExportedModules();
+    HostModule* module = HostModule::New(StrL("story-gallery-fixture"))
+                             ->Function(StrL("register_surfaces"),
+                                        MkFunc1Void(StoryRegisterSurfaces))
+                             ->Function(StrL("selected_surface"),
+                                        MkFunc1Void(StorySelectedSurface));
+    HostError hostError;
+    utassert(ShellExportModule(module, &hostError));
+    module->Release();
+    gSelectedSurface = {};
+    {
+        StoryHost host(storyRoot, "fixtures/all-examples.js");
+        utassert(!host.error.IsSet() && host.view.IsValid());
+        utassert(host.Draw() != nullptr && len(host.ViewError()) == 0);
+
+        utassert(gStorySurfaceCount > 1);
+        bool virtualList = false, tabBar = false, tab = false;
+        for (int i = 0; i < gStorySurfaceCount; i++) {
+            for (int j = i + 1; j < gStorySurfaceCount; j++)
+                utassert(!StrEq(gStorySurfaces[i], gStorySurfaces[j]));
+            virtualList |= StrEq(gStorySurfaces[i], StrL("VirtualList"));
+            tabBar |= StrEq(gStorySurfaces[i], StrL("TabBar"));
+            tab |= StrEq(gStorySurfaces[i], StrL("Tab"));
+        }
+        utassert(virtualList && tabBar && !tab);
+
+        for (int i = 0; i < gStorySurfaceCount; i++) {
+            Str surface = gStorySurfaces[i];
+            gSelectedSurface = surface;
+            uint64_t failures = host.runtime->ComponentFailureCount();
+            host.Refresh();
+            host.Draw();
+            ExecDrain();
+            El* root = host.Draw();
+            bool clean = root && len(host.ViewError()) == 0 &&
+                         host.runtime->ComponentFailureCount() == failures;
+            Str tree = DebugTreeTemp(host);
+            bool shown = StrEq(surface, StrL("VirtualList"))
+                             ? StrContains(tree, StrL("v_virtual_list")) &&
+                                   StrContains(tree, StrL("10,000 projects"))
+                             : StrContains(tree, fmt("fixture-%s-", surface));
+            if (!clean || !shown) {
+                printf("story surface %.*s: %.*s%.*s\n", len(surface),
+                       surface.s, len(host.ViewError()), host.ViewError().s,
+                       host.runtime->ComponentFailureCount() != failures
+                           ? len(host.runtime->LastComponentFailure())
+                           : 0,
+                       host.runtime->LastComponentFailure().s);
+            }
+            utassert(clean && shown);
+        }
+        gSelectedSurface = {};
+    }
+    for (int i = 0; i < gStorySurfaceCount; i++) StrFree(gStorySurfaces[i]);
+    gStorySurfaceCount = 0;
+    ShellClearExportedModules();
+}
+
+// ─── Temporary application directories ─────────────────────────────────────
+
+// An application directory under the test's working directory, holding the
+// files a test writes (main.js first) and removed with them: public_host.rs
+// `TempApp` and check.rs `CheckApp`. Null `name` where there is no writable
+// directory — the browser build.
+struct TempApp {
+    char name[64] = {};
+    Str files[4] = {};
+    int fileCount = 0;
+
+    explicit TempApp(Str source) {
+#if !GPUI_OS_WASM
+        static int next = 0;
+        snprintf(name, sizeof(name), "component_shell_app_%d", next++);
+        // What a run that stopped half way may have left behind.
+        const char* const stale[] = {"main.js", "gpui-shell.json",
+                                     "gpui-kit.d.ts", "jsconfig.json"};
+        for (const char* file : stale) Remove(Str(file));
+        Fs(FsOperation::RemoveDirectory, StrL("."), Str(name));
+        if (!Fs(FsOperation::MakeDirectory, StrL("."), Str(name)) ||
+            !Write("main.js", source)) {
+            name[0] = 0;
+        }
+#else
+        (void)source;
+#endif
+    }
+    ~TempApp() {
+        if (!name[0]) return;
+        for (int i = 0; i < fileCount; i++) {
+            Remove(files[i]);
+            StrFree(files[i]);
+        }
+        Fs(FsOperation::RemoveDirectory, StrL("."), Str(name));
+    }
+    bool Ok() const { return name[0] != 0; }
+    Str Directory() const { return Str(name); }
+    bool Write(const char* file, Str contents) {
+        if (fileCount >= 4 ||
+            !Fs(FsOperation::Write, Str(name), Str(file), contents))
+            return false;
+        files[fileCount++] = StrDup(Str(file));
+        return true;
+    }
+    void Remove(Str file) { Fs(FsOperation::RemoveFile, Str(name), file); }
+    static bool Fs(FsOperation operation, Str root, Str relative,
+                   Str input = {}) {
+        FsResult result;
+        Str error;
+        bool ok =
+            FsRun(operation, root, relative, input, false, &result, &error);
+        result.Free();
+        StrFree(error);
+        return ok;
+    }
+};
+
+// Whether `dir` was written. Only the browser build has nowhere to write it,
+// and skips; anywhere else a directory that could not be made fails.
+bool Ready(const TempApp& dir) {
+#if !GPUI_OS_WASM
+    utassert(dir.Ok());
+#endif
+    return dir.Ok();
+}
+
+// ─── tests/public_host.rs ──────────────────────────────────────────────────
+
+// public_host_api_mounts_and_materializes_registered_component_js: the
+// application is read from its directory, as `load_application` reads it,
+// mounted as a ScriptView and drawn.
+void PublicHostApiMountsAndMaterializesRegisteredComponentJs() {
+    TempApp dir(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { Spinner } from 'gpui-component';\n"
+             "export default class ComponentApp extends View {\n"
+             "  render() {\n"
+             "    return div().p(2).child('loading')"
+             ".child(new Spinner().size('small'));\n"
+             "  }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    Host host(AppDir{dir.Directory(), StrL("main.js")});
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    Str tree = DebugTreeTemp(host);
+    utassert(StrContains(tree, StrL("div")));
+    utassert(StrContains(tree, StrL("loading")));
+    utassert(StrContains(tree, StrL("Spinner")));
+    utassert(StrContains(tree, StrL(":size(registered)")));
+}
+
+// registered_component_argument_errors_are_reported_during_render
+void RegisteredComponentArgumentErrorsAreReportedDuringRender() {
+    TempApp dir(
+        StrL("import { View } from 'gpui-kit';\n"
+             "import { Spinner } from 'gpui-component';\n"
+             "export default class InvalidComponentApp extends View {\n"
+             "  render() {\n"
+             "    return new Spinner().size('enormous');\n"
+             "  }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    Host host(AppDir{dir.Directory(), StrL("main.js")});
+    host.Render();
+    Str error = host.ViewError();
+    utassert(StrContains(
+        error,
+        StrL("size(size) expects `xsmall`, `small`, `medium`, `large`")));
+    utassert(StrContains(error, StrL("at render")));
+}
+
+// failed_owner_mount_consumes_the_loaded_application, its first half: an
+// application whose init throws fails its mount with that error. The second
+// half — a later mount of the same loaded application is refused as
+// "already been mounted" — has no C++ counterpart: a ViewType is a
+// refcounted class handle that any number of ScriptViews instantiate, with
+// no LoadedApplication wrapper to consume.
+void FailedMountReportsTheInitError() {
+    TempApp dir(
+        StrL("import { View } from 'gpui-kit';\n"
+             "export default class Broken extends View {\n"
+             "  init() { throw new Error('init failed'); }\n"
+             "  render() { return 'unreachable'; }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    App app;
+    Window window;
+    window.app = &app;
+    component_shell::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime =
+        ShellRuntime::New(&app, &error, component_shell::Components());
+    ViewType* type =
+        runtime ? runtime->LoadApp(dir.Directory(), StrL("main.js"), &error)
+                : nullptr;
+    utassert(type != nullptr && !error.IsSet());
+    ViewObject* object =
+        type ? runtime->Instantiate(type, &window, &app, nullptr, &error)
+             : nullptr;
+    utassert(object == nullptr);
+    utassert(StrContains(error.message, StrL("init failed")));
+    ViewObjectRelease(object);
+    ViewTypeRelease(type);
+    EntityDropAll(&app);
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
+// ─── tests/check.rs ────────────────────────────────────────────────────────
+
+// What `gpui_shell check <directory> --print-spec` does with one
+// application, in process: ShellCheckApplication with the component catalog
+// and a hidden window. Answers the printed description, or empty with
+// `error` set. The binary's exit status and its "check passed:"/"check
+// failed:" lines are gpui_shell/main.cpp's printing around exactly this.
+struct Checker {
+    App app;
+    Window window;
+    ShellRuntime* runtime = nullptr;
+    Arena* arena = nullptr;
+    ShellError error = {};
+
+    Checker() {
+        window.app = &app;
+        ShellInitWithComponents(&app, component_shell::Components());
+        runtime =
+            ShellRuntime::New(&app, &error, component_shell::Components());
+        arena = ArenaNew();
+    }
+    ~Checker() {
+        EntityDropAll(&app);
+        if (runtime) runtime->Release();
+        AppGlobalClear(&app);
+        ArenaDelete(arena);
+        ShellErrorClear(&error);
+    }
+    Str Check(const TempApp& dir) {
+        ShellErrorClear(&error);
+        if (!runtime) return {};
+        return ShellCheckApplication(arena, runtime, dir.Directory(), &window,
+                                     &app, nullptr, &error);
+    }
+};
+
+// check_materializes_valid_typed_children_and_preserves_print_spec
+void CheckMaterializesValidTypedChildrenAndPreservesPrintSpec() {
+    TempApp dir(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { HForm, Field } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  render() {\n"
+             "    return new HForm().child(new Field().label('Name')"
+             ".child(div().child('Ada')));\n"
+             "  }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    Checker checker;
+    Str spec = checker.Check(dir);
+    utassert(!checker.error.IsSet());
+    utassert(StrContains(spec, StrL("Field")) &&
+             StrContains(spec, StrL("Ada")));
+}
+
+// check_rejects_an_ordinary_child_in_a_typed_form
+void CheckRejectsAnOrdinaryChildInATypedForm() {
+    TempApp dir(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { HForm } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  render() { return div().child(new HForm()"
+             ".child(div())); }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    Checker checker;
+    Str spec = checker.Check(dir);
+    utassert(len(spec) == 0);
+    utassert(StrContains(checker.error.message,
+                         StrL("failed to materialize `Form`")));
+    utassert(StrContains(checker.error.message,
+                         StrL("Field children; received an ordinary element")));
+}
+
+// check_rejects_style_on_a_data_only_component
+void CheckRejectsStyleOnADataOnlyComponent() {
+    TempApp dir(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { MenuItem } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  render() { return div().child(new MenuItem('Open', "
+             "'open').p(2)); }\n"
+             "}\n"));
+    if (!Ready(dir)) return;
+    Checker checker;
+    Str spec = checker.Check(dir);
+    utassert(len(spec) == 0);
+    utassert(StrContains(checker.error.message,
+                         StrL("failed to materialize `MenuItem`")));
+    utassert(
+        StrContains(checker.error.message, StrL("does not implement Styled")));
+}
+
+// check_reports_load_and_render_failures_without_hanging
+void CheckReportsLoadAndRenderFailuresWithoutHanging() {
+    struct Case {
+        const char* source;
+        const char* expected;
+    };
+    const Case cases[] = {
+        {"this is not javascript", "main.js"},
+        {"import { View } from 'gpui-kit';\n"
+         "export default class App extends View {\n"
+         "  render() { throw new Error('render failed deliberately'); }\n"
+         "}\n",
+         "render failed deliberately"},
+        {"import { View } from 'gpui-kit';\n"
+         "export default class App extends View {\n"
+         "  render() { while (true) {} }\n"
+         "}\n",
+         "interrupted"},
+    };
+    for (const Case& c : cases) {
+        TempApp dir(Str(c.source));
+        if (!Ready(dir)) return;
+        Checker checker;
+        Str spec = checker.Check(dir);
+        utassert(len(spec) == 0);
+        utassert(StrContains(checker.error.message, Str(c.expected)));
+    }
+}
+
+// check_reports_invalid_metadata_before_opening_a_window
+void CheckReportsInvalidMetadataBeforeOpeningAWindow() {
+    TempApp dir(StrL("export default 1;"));
+    if (!Ready(dir)) return;
+    utassert(dir.Write("gpui-shell.json", StrL("{}")));
+    Checker checker;
+    Str spec = checker.Check(dir);
+    utassert(len(spec) == 0);
+    utassert(StrContains(checker.error.message, StrL("gpui-shell.json")));
+}
+
+// runtime_check_preserves_errors_and_clears_them_before_the_next_check: one
+// runtime checks a broken application, then a valid one, which must neither
+// inherit the first failure nor render twice.
+void RuntimeCheckPreservesErrorsAndClearsThemBeforeTheNextCheck() {
+    TempApp invalid(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { HForm } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  render() { return new HForm().child(div()); }\n"
+             "}\n"));
+    TempApp valid(StrL(
+        "import { View } from 'gpui-kit';\n"
+        "import { HForm, Field } from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  render() {\n"
+        "    if (this.rendered) throw new Error('check rendered twice');\n"
+        "    this.rendered = true;\n"
+        "    return new HForm().child(new Field().child('checked once'));\n"
+        "  }\n"
+        "}\n"));
+    if (!Ready(invalid) || !Ready(valid)) return;
+    Checker checker;
+    checker.Check(invalid);
+    utassert(StrContains(checker.error.message,
+                         StrL("Form accepts only registered Field children")));
+    Str description = checker.Check(valid);
+    utassert(!checker.error.IsSet());
+    utassert(StrContains(description, StrL("checked once")));
+}
+
+// ─── tests/cli.rs and src/bin/gpui-component-shell.rs ──────────────────────
+
+// component_shell_accepts_the_same_run_check_and_types_commands_as_shell
+void ComponentShellAcceptsTheSameRunCheckAndTypesCommandsAsShell() {
+    struct Case {
+        const char* arguments[2];
+        int count;
+        shell::InvocationKind kind;
+    };
+    const Case cases[] = {
+        {{"examples/js_story", nullptr}, 1, shell::InvocationKind::Run},
+        {{"check", "examples/js_story"}, 2, shell::InvocationKind::Check},
+        {{"types", "examples/js_story"}, 2, shell::InvocationKind::Types},
+    };
+    for (const Case& c : cases) {
+        shell::Invocation invocation;
+        Str error;
+        utassert(shell::ShellParseInvocation(c.arguments, c.count, &invocation,
+                                             &error));
+        utassert(invocation.kind == c.kind);
+        utassert(StrEq(invocation.directory, StrL("examples/js_story")));
+        StrFree(error);
+    }
+}
+
+// help_uses_the_adapter_program_name: --help answers before anything else
+// can fail, even beside an unknown flag. The program is named gpui-shell by
+// design — the C++ host carries the catalog itself, so there is no separate
+// adapter name to brand the help with.
+void HelpIsAnsweredBeforeAnyOtherArgument() {
+    const char* const arguments[] = {"--unknown", "--help", "--version"};
+    shell::Invocation invocation;
+    Str error;
+    utassert(shell::ShellParseInvocation(arguments, 3, &invocation, &error));
+    utassert(invocation.kind == shell::InvocationKind::Help);
+    StrFree(error);
+}
+
+// invalid_arguments_exit_two_with_adapter_branding: the sentence the host
+// prints, followed by the pointer to --help, before it exits 2.
+void InvalidArgumentsAreRefusedWithTheSentenceToPrint() {
+    const char* const unknown[] = {"--unknown"};
+    shell::Invocation invocation;
+    Str error;
+    utassert(!shell::ShellParseInvocation(unknown, 1, &invocation, &error));
+    utassert(StrEq(error, StrL("unknown flag `--unknown`")));
+    const char* const two[] = {"one", "two"};
+    utassert(!shell::ShellParseInvocation(two, 2, &invocation, &error));
+    utassert(StrEq(error, StrL("unexpected argument `two`; gpui-shell runs "
+                               "one application directory")));
+    utassert(!shell::ShellParseInvocation(nullptr, 0, &invocation, &error));
+    utassert(StrEq(error, StrL("expected an application directory")));
+    StrFree(error);
+}
+
+// types_uses_the_adapter_component_registry: `types` writes the declarations
+// of the catalog the host carries.
+void TypesUsesTheComponentCatalog() {
+    TempApp dir(StrL("export default 1;"));
+    if (!Ready(dir)) return;
+    ShellError error = {};
+    int written = 0;
+    utassert(ShellWriteTypeDeclarations(dir.Directory(), nullptr, &written,
+                                        &error, component_shell::Components()));
+    utassert(!error.IsSet() && written > 0);
+    FsResult result;
+    Str fsError;
+    utassert(FsRun(FsOperation::Read, dir.Directory(), StrL("gpui-kit.d.ts"),
+                   {}, false, &result, &fsError));
+    utassert(StrContains(result.bytes, StrL("export const Spinner:")));
+    utassert(StrContains(result.bytes, StrL("export const Accordion:")));
+    result.Free();
+    StrFree(fsError);
+    dir.Remove(StrL("gpui-kit.d.ts"));
+    dir.Remove(StrL("jsconfig.json"));
+    ShellErrorClear(&error);
+}
+
+// ─── src/lib.rs ────────────────────────────────────────────────────────────
+
+// init_installs_the_component_catalog_globals: the component library's
+// theme registry is the global its init installs.
+void InitInstallsTheComponentCatalogGlobals() {
+    App app;
+    utassert(AppGlobalGet<ThemeRegistry>(&app) == nullptr);
+    component_shell::Init(&app);
+    utassert(AppGlobalGet<ThemeRegistry>(&app) != nullptr);
+    AppGlobalClear(&app);
+}
+
+// the_frozen_catalog_carries_its_own_startup: a host holding only the
+// frozen catalog, as gpui_shell does, starts the components through it.
+void TheFrozenCatalogCarriesItsOwnStartup() {
+    const FrozenComponentRegistry* components = component_shell::Components();
+    utassert(components->Initializer() != nullptr);
+    App app;
+    ShellInitWithComponents(&app, components);
+    utassert(AppGlobalGet<ThemeRegistry>(&app) != nullptr);
+    AppGlobalClear(&app);
+
+    // init_with_components_matches_init_for_a_catalog_without_one
+    FrozenComponentRegistry bare;
+    utassert(bare.Initializer() == nullptr);
+    App plain;
+    ShellInitWithComponents(&plain, &bare);
+    utassert(AppGlobalGet<ThemeRegistry>(&plain) == nullptr);
+    AppGlobalClear(&plain);
+}
+
+// Where src/shell is from the test's working directory, found the way
+// StoryRoot finds examples/js_story.
+const char* ShellSourceRoot() {
+#if GPUI_OS_WASM
+    return nullptr;
+#else
+    static const char* const kCandidates[] = {
+        "src/shell",
+        "../src/shell",
+        "../../src/shell",
+        "../../../src/shell",
+    };
+    for (const char* candidate : kCandidates) {
+        TempStr probe = fmt("%s/component_registry.h", Str(candidate));
+        if (PlatFileExists(probe.s)) return candidate;
+    }
+    return nullptr;
+#endif
+}
+
+// the_runtime_does_not_depend_on_the_component_library. Rust reads
+// crates/shell's Cargo.toml; here the edge is an #include. The runtime names
+// no adapter: no file under src/shell includes a component_shell/ header.
+// (It does include some ui/ headers — ShellRoot hosts the themed dialog,
+// sheet and notification layers, and the inline-token Input and the theme
+// tokens read ui/ — so that half of Rust's rule does not hold here; see
+// port-status.md.)
+void TheRuntimeDoesNotDependOnTheComponentCatalog() {
+    const char* source = ShellSourceRoot();
+    if (!source) return;
+    FsResult listing;
+    Str error;
+    utassert(FsRun(FsOperation::ReadDirectory, Str(source), StrL("."), {},
+                   false, &listing, &error));
+    int files = 0;
+    for (const FsEntry& entry : listing.entries) {
+        if (entry.isDirectory) continue;
+        FsResult file;
+        Str readError;
+        if (!FsRun(FsOperation::Read, Str(source), entry.name, {}, false, &file,
+                   &readError)) {
+            utassert(false);
+            StrFree(readError);
+            continue;
+        }
+        files++;
+        bool includesAdapter =
+            StrContains(file.bytes, StrL("#include \"component_shell/"));
+        if (includesAdapter)
+            printf("src/shell/%.*s includes a component_shell/ header\n",
+                   len(entry.name), entry.name.s);
+        utassert(!includesAdapter);
+        file.Free();
+        StrFree(readError);
+    }
+    utassert(files > 10);
+    listing.Free();
+    StrFree(error);
+}
+
+// ─── tests/inventory.rs ────────────────────────────────────────────────────
+
+// Where the Rust tree's crates are from the test's working directory, or null
+// without a .work checkout (CI builds with GPUI_NO_RUST_TREE=1 and has none):
+// the inventory is Rust's, read where Rust keeps it rather than copied.
+const char* RustCratesRoot() {
+#if GPUI_OS_WASM
+    return nullptr;
+#else
+    static const char* const kCandidates[] = {
+        ".work/gpui-component/crates",
+        "../.work/gpui-component/crates",
+        "../../.work/gpui-component/crates",
+        "../../../.work/gpui-component/crates",
+    };
+    for (const char* candidate : kCandidates) {
+        TempStr probe =
+            fmt("%s/component-shell/component-inventory.json", Str(candidate));
+        if (PlatFileExists(probe.s)) return candidate;
+    }
+    return nullptr;
+#endif
+}
+
+// A file of the Rust tree, copied into `a`; empty when it cannot be read.
+Str ReadRustFile(Arena* a, const char* crates, const char* relative) {
+    FsResult result;
+    Str error;
+    Str text = {};
+    if (FsRun(FsOperation::Read, Str(crates), Str(relative), {}, false, &result,
+              &error))
+        text = StrDup(a, result.bytes);
+    result.Free();
+    StrFree(error);
+    return text;
+}
+
+// A set of strings, as the BTreeSets inventory.rs compares.
+struct NameSet {
+    Vec<Str> items;
+    bool Has(Str name) const {
+        for (Str item : items)
+            if (StrEq(item, name)) return true;
+        return false;
+    }
+    // False when `name` was already there.
+    bool Insert(Str name) {
+        if (Has(name)) return false;
+        VecAppend(items, name);
+        return true;
+    }
+    bool Equals(const NameSet& other) const {
+        if (len(items) != len(other.items)) return false;
+        for (Str item : items)
+            if (!other.Has(item)) return false;
+        return true;
+    }
+};
+
+// Every string of a JSON array, as a set.
+NameSet JsonNames(const JsonValue* array) {
+    NameSet set;
+    for (const JsonValue* v = array ? array->first : nullptr; v; v = v->next)
+        set.Insert(v->str);
+    return set;
+}
+
+// The C++ catalog's constructor exports of `descriptor`, as a set.
+NameSet CatalogExports(const ComponentDescriptor* descriptor) {
+    NameSet set;
+    for (const ConstructorDescriptor& c : descriptor->constructors)
+        set.Insert(Str(c.exportName));
+    return set;
+}
+
+// The next line of `text` at `*at`, trimmed; false at the end.
+bool NextTrimmedLine(Str text, int* at, Str* line) {
+    if (*at >= len(text)) return false;
+    int start = *at;
+    int end = start;
+    while (end < len(text) && text.s[end] != '\n') end++;
+    *at = end + 1;
+    while (start < end && (text.s[start] == ' ' || text.s[start] == '\t'))
+        start++;
+    while (end > start && (text.s[end - 1] == ' ' || text.s[end - 1] == '\t' ||
+                           text.s[end - 1] == '\r'))
+        end--;
+    *line = Str(text.s + start, end - start);
+    return true;
+}
+
+// public_ui_modules and public_story_modules, into `sources` as
+// "ui:name"/"story:name".
+void PublicModules(Arena* a, Str uiLib, Str storiesMod, NameSet* sources) {
+    int at = 0;
+    Str line;
+    while (NextTrimmedLine(uiLib, &at, &line)) {
+        Str prefix = StrL("pub mod ");
+        if (!StrStartsWith(line, prefix)) continue;
+        int start = len(prefix), end = start;
+        while (end < len(line) && line.s[end] != ' ' && line.s[end] != '{' &&
+               line.s[end] != ';')
+            end++;
+        if (end > start)
+            sources->Insert(
+                StrDup(a, fmt("ui:%s", Str(line.s + start, end - start))));
+    }
+    at = 0;
+    while (NextTrimmedLine(storiesMod, &at, &line)) {
+        Str prefix = StrL("pub use ");
+        if (!StrStartsWith(line, prefix)) continue;
+        Str rest = Str(line.s + len(prefix), len(line) - len(prefix));
+        int split = StrFind(rest, StrL("::"));
+        if (split < 0) continue;
+        Str module = Str(rest.s, split);
+        while (StrEndsWith(module, StrL("_story")))
+            module = Str(module.s, len(module) - len(StrL("_story")));
+        sources->Insert(StrDup(a, fmt("story:%s", module)));
+    }
+}
+
+// every_public_component_and_story_is_accounted_for
+void EveryPublicComponentAndStoryIsAccountedFor() {
+    const char* crates = RustCratesRoot();
+    if (!crates) return;
+    Arena* a = ArenaNew();
+    const JsonValue* document = JsonParse(
+        a, ReadRustFile(a, crates, "component-shell/component-inventory.json"));
+    const JsonValue* items = JsonGet(document, "items");
+    utassert(items && items->kind == JsonKind::Array);
+    NameSet expected;
+    PublicModules(a, ReadRustFile(a, crates, "component/src/lib.rs"),
+                  ReadRustFile(a, crates, "story/src/stories/mod.rs"),
+                  &expected);
+    NameSet sources;
+    int entries = 0;
+    for (const JsonValue* item = items ? items->first : nullptr; item;
+         item = item->next) {
+        entries++;
+        sources
+            .Insert(StrDup(a, fmt("%s:%s", JsonString(JsonGet(item, "source")),
+                                  JsonString(JsonGet(item, "name")))));
+    }
+    // No duplicate inventory item, and no drift from the public exports.
+    utassert(entries == len(sources.items));
+    utassert(len(expected.items) > 0 && sources.Equals(expected));
+    ArenaDelete(a);
+}
+
+// inventory_entries_have_a_registration_or_a_reason
+void InventoryEntriesHaveARegistrationOrAReason() {
+    const char* crates = RustCratesRoot();
+    if (!crates) return;
+    Arena* a = ArenaNew();
+    const JsonValue* items = JsonGet(
+        JsonParse(a, ReadRustFile(a, crates,
+                                  "component-shell/component-inventory.json")),
+        "items");
+    utassert(items != nullptr);
+    for (const JsonValue* item = items ? items->first : nullptr; item;
+         item = item->next) {
+        Str classification = JsonString(JsonGet(item, "classification"));
+        if (StrEq(classification, StrL("infrastructure"))) {
+            utassert(len(JsonString(JsonGet(item, "explanation"))) > 0);
+            continue;
+        }
+        utassert(StrEq(classification, StrL("component")) ||
+                 StrEq(classification, StrL("platform")));
+        const JsonValue* registration = JsonGet(item, "registration");
+        utassert(registration != nullptr);
+        if (!registration) continue;
+        utassert(StrEq(JsonString(JsonGet(registration, "status")),
+                       StrL("registered")));
+        utassert(len(JsonString(JsonGet(registration, "descriptor"))) > 0);
+        utassert(JsonLen(JsonGet(registration, "exports")) > 0);
+        const JsonValue* related = JsonGet(registration, "related");
+        for (const JsonValue* r = related ? related->first : nullptr; r;
+             r = r->next) {
+            utassert(len(JsonString(JsonGet(r, "descriptor"))) > 0);
+            utassert(JsonLen(JsonGet(r, "exports")) > 0);
+            utassert(len(JsonString(JsonGet(r, "role"))) > 0);
+        }
+        const JsonValue* states = JsonGet(registration, "states");
+        for (const JsonValue* s = states ? states->first : nullptr; s;
+             s = s->next) {
+            utassert(len(JsonString(JsonGet(s, "export"))) > 0);
+            utassert(len(JsonString(JsonGet(s, "kind"))) > 0);
+            utassert(len(JsonString(JsonGet(s, "role"))) > 0);
+        }
+    }
+    ArenaDelete(a);
+}
+
+// registered_inventory_matches_the_frozen_component_catalog: what Rust's
+// inventory says is registered — descriptors, their exports, and the state
+// exports with their kinds — is exactly the C++ catalog.
+void RegisteredInventoryMatchesTheFrozenComponentCatalog() {
+    const char* crates = RustCratesRoot();
+    if (!crates) return;
+    const FrozenComponentRegistry* frozen = component_shell::Components();
+    Arena* a = ArenaNew();
+    const JsonValue* items = JsonGet(
+        JsonParse(a, ReadRustFile(a, crates,
+                                  "component-shell/component-inventory.json")),
+        "items");
+    utassert(items != nullptr);
+    NameSet descriptors, exports, states;
+    // One descriptor's claimed exports against the catalog's.
+    auto claim = [&](Str descriptor, const JsonValue* claimed) {
+        const ComponentDescriptor* actual = frozen->Find(descriptor);
+        if (!actual)
+            printf("inventory claims missing descriptor `%.*s`\n",
+                   len(descriptor), descriptor.s);
+        utassert(actual != nullptr);
+        if (!actual) return;
+        bool same = JsonNames(claimed).Equals(CatalogExports(actual));
+        if (!same)
+            printf("inventory has stale exports for `%.*s`\n", len(descriptor),
+                   descriptor.s);
+        utassert(same);
+        descriptors.Insert(descriptor);
+        for (const JsonValue* e = claimed ? claimed->first : nullptr; e;
+             e = e->next)
+            exports.Insert(e->str);
+    };
+    for (const JsonValue* item = items ? items->first : nullptr; item;
+         item = item->next) {
+        const JsonValue* registration = JsonGet(item, "registration");
+        if (!registration) continue;
+        claim(JsonString(JsonGet(registration, "descriptor")),
+              JsonGet(registration, "exports"));
+        const JsonValue* related = JsonGet(registration, "related");
+        for (const JsonValue* r = related ? related->first : nullptr; r;
+             r = r->next)
+            claim(JsonString(JsonGet(r, "descriptor")), JsonGet(r, "exports"));
+        const JsonValue* stateList = JsonGet(registration, "states");
+        for (const JsonValue* s = stateList ? stateList->first : nullptr; s;
+             s = s->next) {
+            Str name = JsonString(JsonGet(s, "export"));
+            const StateDescriptor* actual = nullptr;
+            for (int i = 0; i < frozen->StateCount(); i++) {
+                if (StrEq(Str(frozen->State(i)->exportName), name))
+                    actual = frozen->State(i);
+            }
+            if (!actual)
+                printf("inventory claims missing retained state `%.*s`\n",
+                       len(name), name.s);
+            utassert(actual != nullptr);
+            if (actual)
+                utassert(
+                    StrEq(Str(actual->kind), JsonString(JsonGet(s, "kind"))));
+            states.Insert(name);
+        }
+    }
+
+    NameSet actualDescriptors, actualExports, actualStates;
+    for (int i = 0; i < frozen->DescriptorCount(); i++) {
+        const ComponentDescriptor* d = frozen->Descriptor((uint32_t)i);
+        actualDescriptors.Insert(Str(d->name));
+        for (const ConstructorDescriptor& c : d->constructors)
+            actualExports.Insert(Str(c.exportName));
+    }
+    for (int i = 0; i < frozen->StateCount(); i++)
+        actualStates.Insert(Str(frozen->State(i)->exportName));
+    utassert(descriptors.Equals(actualDescriptors));
+    utassert(exports.Equals(actualExports));
+    utassert(states.Equals(actualStates));
+    ArenaDelete(a);
+}
 } // namespace
 
 void TestComponentShell() {
@@ -6402,4 +7448,40 @@ void TestComponentShell() {
 
     TestSuite("component-shell catalog");
     WholeCatalogDeclarationsEqualRust();
+
+    TestSuite("component-shell lib");
+    InitInstallsTheComponentCatalogGlobals();
+    TheFrozenCatalogCarriesItsOwnStartup();
+    TheRuntimeDoesNotDependOnTheComponentCatalog();
+
+    TestSuite("public_host");
+    PublicHostApiMountsAndMaterializesRegisteredComponentJs();
+    RegisteredComponentArgumentErrorsAreReportedDuringRender();
+    FailedMountReportsTheInitError();
+
+    TestSuite("check");
+    CheckMaterializesValidTypedChildrenAndPreservesPrintSpec();
+    CheckRejectsAnOrdinaryChildInATypedForm();
+    CheckRejectsStyleOnADataOnlyComponent();
+    CheckReportsLoadAndRenderFailuresWithoutHanging();
+    CheckReportsInvalidMetadataBeforeOpeningAWindow();
+    RuntimeCheckPreservesErrorsAndClearsThemBeforeTheNextCheck();
+
+    TestSuite("cli");
+    ComponentShellAcceptsTheSameRunCheckAndTypesCommandsAsShell();
+    HelpIsAnsweredBeforeAnyOtherArgument();
+    InvalidArgumentsAreRefusedWithTheSentenceToPrint();
+    TypesUsesTheComponentCatalog();
+
+    TestSuite("inventory");
+    EveryPublicComponentAndStoryIsAccountedFor();
+    InventoryEntriesHaveARegistrationOrAReason();
+    RegisteredInventoryMatchesTheFrozenComponentCatalog();
+
+    TestSuite("story_gallery_host");
+    InputGroupCommentStoryPostsOnceAndCancelsTheNextDraft();
+    InteractiveExamplesKeepTheirStateAcrossRedraws();
+    InputStoryAcceptsTextAndKeepsItAcrossRedraws();
+    DockStoryMaterializesRealPanelsDockAndTabs();
+    EveryRegisteredStoryExampleMaterializes();
 }

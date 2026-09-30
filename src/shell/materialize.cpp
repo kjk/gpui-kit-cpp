@@ -2032,6 +2032,14 @@ void ShellApplyNodeStyle(Ctx* cx, const shell::SpecArena* specs,
     ApplyOwnStyle(cx, node, id, behavior, target, error);
 }
 
+// materialize.rs FACTORY_MATERIALIZE_ERRORS: the error frame a
+// ShellTryMaterialize holds open, which the first registered component that
+// fails under it fills. Only ShellTryMaterialize sets it. Rust also opens one
+// around each slot factory build; here a factory's failure is noticed by its
+// adapter through ShellRuntime::ComponentFailureCount, so under a check it
+// lands in the check's frame instead of in a nested one.
+static ShellError* gMaterializeErrorFrame = nullptr;
+
 // materialize.rs materialize_registered_component: builds the request, hands
 // it to the descriptor's materializer, and reports what it left unread.
 static El* MaterializeRegistered(Ctx* cx, ShellRuntime* runtime,
@@ -2095,6 +2103,10 @@ static El* MaterializeRegistered(Ctx* cx, ShellRuntime* runtime,
         Str why = request.failure.s ? request.failure : StrL("no element");
         logf("shell: failed to materialize `%s`: %s\n", name, why);
         if (runtime) runtime->NoteComponentFailure(why);
+        if (gMaterializeErrorFrame && !gMaterializeErrorFrame->IsSet()) {
+            ShellErrorSet(gMaterializeErrorFrame,
+                          fmt("failed to materialize `%s`: %s", name, why));
+        }
         return Div(cx->a)->Child(
             TextEl(cx->a, StrDup(cx->a, fmt("Failed to render %s", name))));
     }
@@ -2697,6 +2709,19 @@ El* ShellMaterializeSpec(Ctx* cx, ShellRuntime* runtime,
                          ShellError* error) {
     if (!cx || !specs) return cx ? Div(cx->a) : nullptr;
     return MaterializeNode(cx, runtime, specs, root, error);
+}
+
+El* ShellTryMaterialize(Ctx* cx, ShellRuntime* runtime,
+                        const RenderSnapshot* snapshot, ShellError* error) {
+    ShellError held = {};
+    ShellError* outer = gMaterializeErrorFrame;
+    gMaterializeErrorFrame = &held;
+    El* element = ShellMaterialize(cx, runtime, snapshot, error);
+    gMaterializeErrorFrame = outer;
+    if (!held.IsSet()) return error && error->IsSet() ? nullptr : element;
+    if (error && !error->IsSet()) ShellErrorSet(error, held.message);
+    ShellErrorClear(&held);
+    return nullptr;
 }
 
 } // namespace gpui

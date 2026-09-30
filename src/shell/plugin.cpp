@@ -1236,11 +1236,16 @@ Str ShellCheckApplication(Arena* arena, ShellRuntime* runtime, Str directory,
         // registered-component failures cannot hide behind a valid script
         // description. The snapshot stays alive through materialization
         // because its callbacks and strings own what the element tree reads.
+        // A registered component that fails to materialize fails the check,
+        // as Rust's `try_materialize` makes it.
         Ctx cx = {app, window, arena, view->self};
-        (void)ShellMaterialize(&cx, runtime, snapshot, error);
-        if (!error->IsSet()) {
+        ShellError materialized = {};
+        if (ShellTryMaterialize(&cx, runtime, snapshot, &materialized)) {
             result = snapshot->DebugTree(arena);
+        } else {
+            ShellErrorSet(error, materialized.message);
         }
+        ShellErrorClear(&materialized);
         delete snapshot;
     }
     EntityDrop(app, root.id);

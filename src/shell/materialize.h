@@ -14,6 +14,12 @@ El* ShellMaterialize(Ctx* cx, ShellRuntime* runtime,
 El* ShellMaterializeSpec(Ctx* cx, ShellRuntime* runtime,
                          const shell::SpecArena* specs, shell::SpecId root,
                          ShellError* error = nullptr);
+// materialize.rs `try_materialize`: the same eager tree, for a source check.
+// A registered component that fails still leaves its "Failed to render X"
+// stand-in, but the first such failure is also answered in `error` as
+// "failed to materialize `X`: why", and the result is null.
+El* ShellTryMaterialize(Ctx* cx, ShellRuntime* runtime,
+                        const RenderSnapshot* snapshot, ShellError* error);
 // A node's own style methods and motions, applied to `target`: what a
 // registered component takes as its style.
 void ShellApplyNodeStyle(Ctx* cx, const shell::SpecArena* specs,

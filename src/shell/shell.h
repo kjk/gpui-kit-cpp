@@ -8,6 +8,7 @@
 #include "shell/error.h"
 #include "shell/fetch.h"
 #include "shell/filesystem.h"
+#include "shell/host.h"
 #include "shell/host_modules.h"
 #include "shell/input_tokens.h"
 #include "shell/metrics.h"

@@ -212,5 +212,16 @@ struct ShellExitRequest {
 using ShellExitHandler = void (*)(const ShellExitRequest&, Ctx*);
 void ShellOnExitRequest(ShellExitHandler handler);
 
+// lib.rs `init`: the base layer the bare runtime needs. Once, at startup,
+// before any script runs.
+void ShellInit(App* app);
+// lib.rs `init_with_components`: runs the startup the catalog carries
+// (ComponentRegistry::WithInitializer), then ShellInit. The runtime still
+// names no component library; a catalog without an initializer behaves
+// exactly like ShellInit. A host holding only the frozen catalog — the
+// shipped gpui_shell command — starts its components this way.
+void ShellInitWithComponents(App* app,
+                             const shell::FrozenComponentRegistry* components);
+
 } // namespace gpui
 #endif // GPUI_SHELL_RUNTIME_H_
