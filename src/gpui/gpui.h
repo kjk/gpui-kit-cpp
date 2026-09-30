@@ -1581,6 +1581,15 @@ enum class TextAlign : uint8_t {
     Right,
 };
 
+// gpui::FontFeatures, the slice a ported widget asks for. Rust holds any
+// list of OpenType (tag, value) pairs; gpui-kit names one, `tnum`, through
+// time_field.rs tabular_figures(). `Default` is FontFeatures::default(), no
+// features, which a subtree can set to undo an inherited one.
+enum class FontFeatures : uint8_t {
+    Default,
+    TabularFigures,
+};
+
 // gpui::Anchor. Base's Popup and Positioner import this runtime vocabulary in
 // Rust; keeping it here avoids each component inventing a near-copy.
 enum class Anchor : uint8_t {
@@ -1860,6 +1869,10 @@ struct Style {
     // run lays each of its lines out at that edge of its own box. Two bits
     // beside focusLine, in the byte that already holds it.
     uint8_t textAlign : 2 = 0;
+    // font_features, which cascades the same way: 0 is unset (inherit, and
+    // no features at the root), otherwise 1 + FontFeatures. Two more bits of
+    // the same byte.
+    uint8_t fontFeatures : 2 = 0;
     // El::TipPlacement: the side the tooltip prefers, as Placement's ordinal
     // like positionerPlacement above, or -1 to leave the overlay to place it.
     // The side is a preference: the positioner still flips and clamps when
@@ -2721,6 +2734,9 @@ struct El {
     // text_align / text_left / text_center / text_right. Inherited by the
     // text below, which aligns each wrapped line inside its own box.
     El* TextAlignment(TextAlign align);
+    // font_features(..): the OpenType features the text below is shaped
+    // with. Inherited like the rest of the text style.
+    El* FontFeatures(gpui::FontFeatures features);
     El* TextLeft() { return TextAlignment(TextAlign::Left); }
     El* TextCenter() { return TextAlignment(TextAlign::Center); }
     El* TextRight() { return TextAlignment(TextAlign::Right); }
@@ -5441,10 +5457,10 @@ int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 // weight sentinel here, so a code row measured with 0 drifts further from the
 // glyphs the further along the line it is.
 void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                    uint8_t weight, float lineH, float x, float y, int u8a,
+                    uint16_t weight, float lineH, float x, float y, int u8a,
                     int u8b, Rgba color, TextAlign align = TextAlign::Left);
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                        bool wrap, uint8_t weight, float lineH, float x,
+                        bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color,
                         bool wavy = false, TextAlign align = TextAlign::Left);
 // The taffy tree a window lays out in, kept between frames so taffy's own

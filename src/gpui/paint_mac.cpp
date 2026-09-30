@@ -40,11 +40,11 @@ static uint64_t PaintResourceGenerationNew() {
     return id;
 }
 
-// A resolved font, keyed by the size and weight byte the element tree asks
+// A resolved font, keyed by the size and weight word the element tree asks
 // for. Small and linear: a frame uses a handful of distinct fonts.
 struct FontSlot {
     float size = 0;
-    uint8_t weight = 0;
+    uint16_t weight = 0;
     CTFontRef font = nullptr;
 };
 
@@ -1015,7 +1015,7 @@ struct TextLayout {
     float strikeThick = 1;
 };
 
-static NSFontWeight WeightFor(uint8_t weight, float fontSize) {
+static NSFontWeight WeightFor(uint16_t weight, float fontSize) {
     switch (weight & kFontWeightMask) {
         case kFontWeightThin:
             return NSFontWeightThin;
@@ -1043,7 +1043,7 @@ static NSFontWeight WeightFor(uint8_t weight, float fontSize) {
     return fontSize >= 18.f ? NSFontWeightSemibold : NSFontWeightRegular;
 }
 
-static CTFontRef FontFor(PaintApp* pa, float fontSize, uint8_t weight) {
+static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
     for (int i = 0; i < pa->nFonts; i++) {
         if (pa->fonts[i].size == fontSize && pa->fonts[i].weight == weight) {
             return pa->fonts[i].font;
@@ -1072,6 +1072,23 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint8_t weight) {
             font = italic;
         }
     }
+    // font_features: gpui_macos sets a run's features on the font's
+    // descriptor as kCTFontFeatureSettingsAttribute, one OpenType tag and
+    // value per feature.
+    if ((weight & kFontTabularNums) && font) {
+        NSDictionary* tnum = @{
+            (__bridge id)kCTFontOpenTypeFeatureTag : @"tnum",
+            (__bridge id)kCTFontOpenTypeFeatureValue : @1,
+        };
+        NSFontDescriptor* desc =
+            [font.fontDescriptor fontDescriptorByAddingAttributes:@{
+                (__bridge id)kCTFontFeatureSettingsAttribute : @[ tnum ]
+            }];
+        NSFont* tabular = [NSFont fontWithDescriptor:desc size:fontSize];
+        if (tabular) {
+            font = tabular;
+        }
+    }
     if (!font) {
         return nullptr;
     }
@@ -1093,8 +1110,8 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint8_t weight) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH, Size* outSize,
-                          TextAlign align) {
+                          bool wrap, uint16_t weight, float lineH,
+                          Size* outSize, TextAlign align) {
     if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }

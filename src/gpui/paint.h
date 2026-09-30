@@ -122,9 +122,10 @@ const WinPaintOptions& WinPaintOptionsGet();
 bool WinPaintOptionsTakeArg(Str arg);
 #endif
 
-// Text weight byte: the weight in the low bits plus family / decoration
-// flags, so the shaped-text cache keys mono and proportional runs apart on
-// its own. Both backends decode the same byte.
+// Text weight word: the weight in the low bits plus family / decoration
+// flags in the low byte and font features above it, so the shaped-text cache
+// keys mono and proportional runs apart on its own. Every backend decodes the
+// same word.
 enum : uint8_t {
     kFontWeightMask = 15,
     kFontWeightNormal = 0,
@@ -144,6 +145,18 @@ enum : uint8_t {
     // HTML <s> / <del> paint with. DirectWrite and Pango draw it themselves;
     // Core Text has no strikethrough attribute, so paint_mac draws the rule.
     kFontStrike = 128
+};
+
+// Above the byte: the OpenType features a run turns on, GPUI's
+// TextStyle::font_features. The weight word is what every text entry point
+// and the shaped-text cache key take, so a run with a feature is shaped and
+// cached apart from one without. `tnum` is the one a ported widget asks for:
+// tabular figures, every digit one width, for a value edited in place.
+// DirectWrite takes it as IDWriteTypography, Pango as a font-features
+// attribute and Core Text as kCTFontFeatureSettingsAttribute; Canvas2D has no
+// font-variant-numeric, so the browser draws proportional digits.
+enum : uint16_t {
+    kFontTabularNums = 256
 };
 
 // GPUI lays every line of text into a box phi times the font size — the
@@ -351,8 +364,8 @@ struct TextLayout;
 // `maxW` stays on its lines and is aligned inside it. `outSize` is the
 // alignment-free extent of the lines — what the text measures.
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH, Size* outSize,
-                          TextAlign align = TextAlign::Left);
+                          bool wrap, uint16_t weight, float lineH,
+                          Size* outSize, TextAlign align = TextAlign::Left);
 // The area drawing the shaped run covers, from the point it is drawn at. For a
 // left-aligned run this is what TextLayoutNew reported as `outSize`; an
 // aligned run reaches as far as its furthest line was pushed.

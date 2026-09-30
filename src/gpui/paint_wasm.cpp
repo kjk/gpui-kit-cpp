@@ -742,6 +742,8 @@ EM_JS(int, GpJsTextNew,
     const italic = (weightBits & 64) !== 0;
     const underline = (weightBits & 32) !== 0;
     const strike = (weightBits & 128) !== 0;
+    // kFontTabularNums (256) is not read: Canvas2D has no
+    // font-variant-numeric, so the page draws proportional digits.
     let w = 400;
     const wb = weightBits & 15;
     if (wb > 0) {
@@ -1549,8 +1551,8 @@ struct TextLayout {
 };
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH, Size* outSize,
-                          TextAlign align) {
+                          bool wrap, uint16_t weight, float lineH,
+                          Size* outSize, TextAlign align) {
     if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }

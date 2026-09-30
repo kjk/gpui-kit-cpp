@@ -519,6 +519,104 @@ static void TwoPickersHaveTwoTriggers() {
     EntityDropAll(&app);
 }
 
+static const uint8_t kTabular = 1 + (uint8_t)gpui::FontFeatures::TabularFigures;
+
+static int CountTabular(const El* e) {
+    if (!e) {
+        return 0;
+    }
+    int n = e->style.fontFeatures == kTabular ? 1 : 0;
+    for (const El* c = e->first; c; c = c->next) {
+        n += CountTabular(c);
+    }
+    return n;
+}
+
+// time_field.rs tabular_figures(): the TimeField row asks for `tnum`, and a
+// DatePicker's trigger asks for it only while its time is being edited — the
+// value there updates live as it is typed (date_picker.rs).
+static void TabularFiguresWhereATimeIsTyped() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    Entity<TimeFieldState> time =
+        TimeFieldStateNew(&cx, TimePrecision::Minute, HourCycle::H23);
+    El* field = component::TimeField::New(&cx, time)->IntoEl();
+    utassert(field && field->style.fontFeatures == kTabular);
+
+    Entity<component::DatePickerState> picker =
+        component::DatePickerStateNew(&cx);
+    component::DatePickerState* state = picker.Get(&app);
+    component::DatePickerStateSetDate(state, Date::Single(D(2025, 8, 3)), &cx);
+    El* dateOnly = component::DatePicker::New(&cx, picker)->IntoEl();
+    utassert(CountTabular(dateOnly) == 0);
+    component::DatePickerStateSetTimePrecision(state, TimePrecision::Minute);
+    El* withTime = component::DatePicker::New(&cx, picker)->IntoEl();
+    utassert(CountTabular(withTime) == 1);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    ArenaDelete(a);
+    delete win;
+}
+
+// font_features is text style, so it cascades like the weight: the runs
+// under a row that asks for `tnum` are shaped with it unless they name their
+// own, and FontFeatures::default() is one way to name them. A shaped run with
+// it gives every digit one width.
+static void FontFeaturesCascadeAndShapeTabularDigits() {
+    App app = {};
+    app.paint = PaintAppNew();
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    win->paint.pa = app.paint;
+    Arena* a = ArenaNew();
+    El* inherits = TextEl(a, StrL("10:11"));
+    El* optsOut = TextEl(a, StrL("10:11"));
+    El* root = Div(a)
+                   ->FlexCol()
+                   ->FontFeatures(gpui::FontFeatures::TabularFigures)
+                   ->Child(Div(a)->Child(inherits))
+                   ->Child(Div(a)
+                               ->FontFeatures(gpui::FontFeatures::Default)
+                               ->Child(optsOut));
+    LayoutEl(&win->paint, root, 0, 0, 400, 200, 14, Rgba{});
+    utassert(inherits->style.fontFeatures == kTabular);
+    utassert(optsOut->style
+                 .fontFeatures == 1 + (uint8_t)gpui::FontFeatures::Default);
+
+    Size ones =
+        MeasureText(&win->paint, StrL("1111"), 14, 0, false, kFontTabularNums);
+    Size zeros =
+        MeasureText(&win->paint, StrL("0000"), 14, 0, false, kFontTabularNums);
+    // The browser's canvas has no font-variant-numeric (paint_wasm.cpp).
+#if !GPUI_OS_WASM
+    utassert(ones.w > 0 && ones.w > zeros.w - 0.5f && ones.w < zeros.w + 0.5f);
+#if GPUI_OS_MAC
+    // The system font's own figures are proportional, so there the flag is
+    // what evens them out. Segoe UI and DejaVu Sans figures are tabular
+    // already.
+    Size bareOnes = MeasureText(&win->paint, StrL("1111"), 14, 0, false, 0);
+    Size bareZeros = MeasureText(&win->paint, StrL("0000"), 14, 0, false, 0);
+    utassert(bareOnes.w < bareZeros.w - 0.5f);
+#endif
+#else
+    utassert(ones.w > 0 && zeros.w > 0);
+#endif
+
+    ArenaDelete(a);
+    delete win;
+    PaintAppFree(app.paint);
+    app.paint = nullptr;
+}
+
 void TestDatePicker() {
     TestSuite("date_picker");
     EnterOpensAndCloses();
@@ -535,4 +633,6 @@ void TestDatePicker() {
     RangePickerEditsDatesOnly();
     TimeFieldBuilder();
     TwoPickersHaveTwoTriggers();
+    TabularFiguresWhereATimeIsTyped();
+    FontFeaturesCascadeAndShapeTabularDigits();
 }

@@ -556,8 +556,8 @@ El* TimeField::IntoEl() {
     // that owns the focus here, and the runtime paints a focus ring only on
     // that element, so the frame's styling goes onto it instead of a wrapper
     // around it; the layout is the same, a flex row centring the segments.
-    // Rust also sets tabular figures (OpenType tnum) so the digits keep their
-    // width while typed; text here has no font features (see port-status).
+    // `font_features(tabular_figures())`: every digit one width, so the
+    // segments do not shift while a value is typed.
     El* root = gpui::TimeField::New(cx, id, state)
                    ->Disabled(disabled)
                    ->RenderSegment(&ThemedTimeSegment, look)
@@ -565,6 +565,7 @@ El* TimeField::IntoEl() {
     root->FlexRow()
         ->ItemsCenter()
         ->FlexNone()
+        ->FontFeatures(FontFeatures::TabularFigures)
         ->Bg(bg)
         ->Fg(fg)
         ->Border(1, invalid ? th.danger : th.inputBorder)
@@ -1326,8 +1327,6 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     bool complete = state->date.IsComplete();
     TimePrecision editedPrecision = TimePrecision::Minute;
     bool editsTime = EditedTimePrecision(state, &editedPrecision);
-    // The value updates live while its time is typed; Rust gives the trigger
-    // tabular figures for that, which text here cannot take (port-status).
     Str title = DatePickerStateDateTime(state)
                     .Format(a, DatePickerStateDisplayFormat(a, state));
     if (!title.s) {
@@ -1381,6 +1380,10 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                    ->Flex1()
                    ->MinW(0)
                    ->Truncate();
+    // The value updates live while its time is typed.
+    if (editsTime) {
+        text->FontFeatures(FontFeatures::TabularFigures);
+    }
     El* triggerRow = Div(a)
                          ->FlexRow()
                          ->W(kFill)

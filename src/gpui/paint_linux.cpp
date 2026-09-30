@@ -1092,7 +1092,7 @@ struct TextLayout {
 static const char* kSans = "Sans";
 static const char* kMono = "Monospace";
 
-static PangoWeight PangoWeightFor(uint8_t weight, float fontSize) {
+static PangoWeight PangoWeightFor(uint16_t weight, float fontSize) {
     switch (weight & kFontWeightMask) {
         case kFontWeightThin:
             return PANGO_WEIGHT_THIN;
@@ -1121,8 +1121,8 @@ static PangoWeight PangoWeightFor(uint8_t weight, float fontSize) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH, Size* outSize,
-                          TextAlign align) {
+                          bool wrap, uint16_t weight, float lineH,
+                          Size* outSize, TextAlign align) {
     if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || len(s) <= 0) {
         return nullptr;
     }
@@ -1144,7 +1144,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     pango_layout_set_font_description(l, fd);
     pango_font_description_free(fd);
 
-    if (weight & (kFontUnderline | kFontStrike)) {
+    if (weight & (kFontUnderline | kFontStrike | kFontTabularNums)) {
         PangoAttrList* attrs = pango_attr_list_new();
         if (weight & kFontUnderline) {
             pango_attr_list_insert(
@@ -1152,6 +1152,12 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         }
         if (weight & kFontStrike) {
             pango_attr_list_insert(attrs, pango_attr_strikethrough_new(TRUE));
+        }
+        // font_features: gpui_linux hands a run's features to its shaper as
+        // OpenType settings; Pango takes them as HarfBuzz feature strings.
+        if (weight & kFontTabularNums) {
+            pango_attr_list_insert(attrs,
+                                   pango_attr_font_features_new("tnum=1"));
         }
         pango_layout_set_attributes(l, attrs);
         pango_attr_list_unref(attrs);

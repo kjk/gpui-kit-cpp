@@ -164,10 +164,12 @@ update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   draws the focused element's own foreground at 0.6 — the same colour for a
   focused button, but no other colour can be asked for (`FocusLine`,
   `src/gpui/gpui.h`; the focus line in `src/gpui/gpui.cpp`).
-- **No OpenType font features.** Text has no `font_features`, so the
-  TimeField and a time-editing DatePicker's trigger do not switch to tabular
-  figures (`tnum`) and their digits may shift width while typed
-  (`src/ui/time.cpp`).
+- **Font features are one flag, and the browser ignores it.** GPUI's
+  `FontFeatures` is any list of OpenType (tag, value) pairs; here it is
+  `FontFeatures::TabularFigures` or none — `tnum`, the one gpui-kit names —
+  carried as a bit of the text weight word. Canvas2D has no
+  `font-variant-numeric`, so in the browser the TimeField's digits stay
+  proportional (`kFontTabularNums`, `src/gpui/paint.h`).
 
 - **Textarea tokens still use flex wrapping instead of display-map inline
   metrics.** Text gaps can break at UTF-8 characters around atomic chips, but

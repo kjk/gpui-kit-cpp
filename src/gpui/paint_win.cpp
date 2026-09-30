@@ -1324,7 +1324,7 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
 // ─── shaped text ──────────────────────────────────────────────────────────
 
 static IDWriteTextFormat* FontFor(PaintApp* pa, float fontSize,
-                                  uint8_t weight) {
+                                  uint16_t weight) {
     if ((weight & kFontMono) && pa->fontMono) {
         return pa->fontMono;
     }
@@ -1367,7 +1367,7 @@ static IDWriteInlineObject* EllipsisSign(PaintApp* pa, IDWriteTextFormat* fmt) {
     return *slot;
 }
 
-static DWRITE_FONT_WEIGHT DwriteWeight(uint8_t weight) {
+static DWRITE_FONT_WEIGHT DwriteWeight(uint16_t weight) {
     switch (weight & kFontWeightMask) {
         case kFontWeightThin:
             return DWRITE_FONT_WEIGHT_THIN;
@@ -1860,8 +1860,8 @@ static IDWriteTextLayout* Dw(TextLayout* tl) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH, Size* outSize,
-                          TextAlign align) {
+                          bool wrap, uint16_t weight, float lineH,
+                          Size* outSize, TextAlign align) {
     if (!ctx || !ctx->pa || !ctx->pa->dwrite || !s.s || len(s) <= 0) {
         return nullptr;
     }
@@ -1896,6 +1896,19 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
     if (weight & kFontItalic) {
         layout->SetFontStyle(DWRITE_FONT_STYLE_ITALIC, range);
+    }
+    // font_features: gpui_windows hands a run's features to DirectWrite as
+    // an IDWriteTypography over the whole run.
+    if (weight & kFontTabularNums) {
+        IDWriteTypography* typo = nullptr;
+        if (SUCCEEDED(ctx->pa->dwrite->CreateTypography(&typo)) && typo) {
+            DWRITE_FONT_FEATURE tnum = {DWRITE_FONT_FEATURE_TAG_TABULAR_FIGURES,
+                                        1};
+            if (SUCCEEDED(typo->AddFontFeature(tnum))) {
+                layout->SetTypography(typo, range);
+            }
+        }
+        Rel(&typo);
     }
     layout->SetWordWrapping(wrap && maxW > 0 ? DWRITE_WORD_WRAPPING_WRAP
                                              : DWRITE_WORD_WRAPPING_NO_WRAP);
