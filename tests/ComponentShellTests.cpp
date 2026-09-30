@@ -2097,13 +2097,263 @@ void TextareaRowsArePositiveWholeCounts() {
 // actions. Typing is the retained state's own edit path, one edit per
 // character as simulated input delivers; clicks are the controls' listeners.
 // Layout bounds are not measured here, so the addon order is the tree's.
+void InputGroupRetainsTextCallbacksAndRoutesAddonActions() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { InputGroup, InputGroupInput, InputGroupTextarea, "
+        "InputGroupAddon,\n"
+        "  InputGroupButton, InputGroupText, InputState, TextareaState, Button "
+        "} from 'gpui-component';\n"
+        "export default class InputGroupHost extends View {\n"
+        "  init() {\n"
+        "    this.input = InputState('Search');\n"
+        "    this.textarea = TextareaState();\n"
+        "    this.value = ''; this.message = ''; this.changes = 0;\n"
+        "    this.clicks = 0; this.disabled = false;\n"
+        "  }\n"
+        "  render() {\n"
+        "    return div().relative().w(500).h(400)\n"
+        "      .child(new InputGroup('search-group').absolute().left(0).top(0)"
+        ".w(400).disabled(this.disabled)\n"
+        "        .input(new InputGroupInput(this.input).child('discarded'))\n"
+        "        .input(new InputGroupInput(this.input).value(this.value)"
+        ".aria_label('Search').px(16)\n"
+        "          .on_change((value, cx) => { this.value = value; "
+        "this.changes += 1; cx.notify(); }))\n"
+        "        .addon(new InputGroupAddon('leading').w(64)\n"
+        "          .child(new InputGroupText().child('Find')))\n"
+        "        .addon(new InputGroupAddon('actions').align('inline-end')\n"
+        "          .child(new InputGroupButton('replace').w(80)"
+        ".label('Replace').size('small')\n"
+        "            .on_click((_event, cx) => { this.clicks += 1; "
+        "this.value = 'server'; cx.notify(); }))\n"
+        "          .child(new Button('between-actions').w(24).label('/')"
+        ".disabled(true))\n"
+        "          .child(new InputGroupButton('last-action').label('Last')"
+        ".icon('icons/check.svg'))))\n"
+        "      .child(new InputGroup('message-group').absolute().left(0)"
+        ".top(80).w(400)\n"
+        "        .input(new InputGroupTextarea(this.textarea)"
+        ".value(this.message).placeholder('Message')\n"
+        "          .auto_grow(1, 4).aria_label('Message').text_base()\n"
+        "          .on_change((value, cx) => { this.message = value; "
+        "cx.notify(); }))\n"
+        "        .addon(new InputGroupAddon('header').align('block-start')"
+        ".child('Message header'))\n"
+        "        .addon(new InputGroupAddon('footer').align('block-end')"
+        ".child('Message footer')))\n"
+        "      .child(new Button('disable').absolute().left(0).top(300)"
+        ".w(100).h(30).label('Disable')\n"
+        "        .on_click((_event, cx) => { this.disabled = !this.disabled; "
+        "cx.notify(); }))\n"
+        "      .child(div().absolute().left(0).top(340)\n"
+        "        .child(`value:${this.value};changes:${this.changes};"
+        "clicks:${this.clicks};message:${this.message}`));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    utassert(FindText(root, StrL("value:;changes:0;clicks:0;message:")));
+    // The replaced control is never materialized.
+    utassert(!FindText(root, StrL("discarded")));
+    utassert(FindText(root, StrL("Find")) && FindText(root, StrL("Last")));
+    utassert(FindText(root, StrL("Message header")) &&
+             FindText(root, StrL("Message footer")));
+    utassert(Precedes(root, StrL("replace"), StrL("between-actions")) &&
+             Precedes(root, StrL("between-actions"), StrL("last-action")));
+
+    InputState* inputs[4] = {};
+    int count = 0;
+    CollectInputs(root, inputs, &count, 4);
+    utassert(count == 2);
+    if (count != 2) return;
+    InputState* search = inputs[0];
+    InputState* message = inputs[1];
+    utassert(search->kind == InputKind::Input &&
+             message->kind == InputKind::Textarea);
+    utassert(StrEq(search->placeholder, StrL("Search")));
+    utassert(StrEq(message->placeholder, StrL("Message")));
+    utassert(message->mode.kind == LayoutModeKind::AutoGrow &&
+             message->mode.minRows == 1 && message->mode.maxRows == 4);
+
+    TypeInto(host, search, "abc");
+    root = host.Render();
+    utassert(FindText(root, StrL("value:abc;changes:3;clicks:0;message:")));
+
+    El* replace = ListenerAbove(root, StrL("Replace"));
+    utassert(replace != nullptr);
+    if (replace) Click(host, replace);
+    root = host.Render();
+    utassert(FindText(root, StrL("value:server;changes:3;clicks:1;message:")));
+    utassert(StrEq(InputValue(search), StrL("server")));
+    // Programmatic value synchronization must not echo a change or loop.
+    root = host.Render();
+    utassert(FindTextPrefix(root, StrL("value:server;changes:3;")));
+
+    El* disable = ListenerAbove(root, StrL("Disable"));
+    utassert(disable != nullptr);
+    if (disable) Click(host, disable);
+    root = host.Render();
+    // A disabled group disables its addon buttons: nothing to click.
+    utassert(ListenerAbove(root, StrL("Replace")) == nullptr);
+    utassert(FindText(root, StrL("value:server;changes:3;clicks:1;message:")));
+
+    TypeInto(host, message, "hello");
+    root = host.Render();
+    utassert(FindTextPrefix(root, StrL("value:server;changes:3;clicks:1;"
+                                       "message:hello")));
+}
+
 // input_group_host.rs input_group_rejects_wrong_part_types_and_invalid_
 // layout_options.
+void InputGroupRejectsWrongPartTypesAndInvalidLayoutOptions() {
+    struct Case {
+        const char* expression;
+        const char* diagnostic;
+    };
+    const Case cases[] = {
+        {"new InputGroup('g').child(div())",
+         "InputGroup does not accept ordinary children"},
+        {"new InputGroup('g').input(new InputGroupText())", "InputGroupInput"},
+        {"new InputGroup('g').addon(new InputGroupText())", "InputGroupAddon"},
+        {"new InputGroupInput(this.textarea)", "InputState"},
+        {"new InputGroupTextarea(this.textarea).auto_grow(4, 2)", "max_rows"},
+        {"new InputGroupTextarea(this.textarea).rows(0)", "positive integer"},
+        {"new InputGroupAddon('a').align('left')", "align"},
+        {"new InputGroupButton('b').size('giant')", "size"},
+        {"new InputGroupButton('b').size('icon-small')", "size"},
+        {"new InputGroupInput(this.input).content_type('unknown')",
+         "content_type"},
+    };
+    for (const Case& c : cases) {
+        TempStr source = fmt(
+            "import { View, div } from 'gpui-kit';\n"
+            "import { InputGroup, InputGroupInput, InputGroupTextarea, "
+            "InputGroupAddon,\n"
+            "  InputGroupButton, InputGroupText, InputState, TextareaState, "
+            "Button } from 'gpui-component';\n"
+            "export default class Invalid extends View {\n"
+            "  init() { this.input = InputState(); this.textarea = "
+            "TextareaState(); }\n"
+            "  render() { return %s; }\n"
+            "}\n",
+            Str(c.expression));
+        Host host(source);
+        Str refusal = RenderRefusal(host);
+        if (!StrContains(refusal, Str(c.diagnostic)))
+            printf("%s: %.*s\n", c.expression, len(refusal),
+                   refusal.s ? refusal.s : "");
+        utassert(StrContains(refusal, Str(c.diagnostic)));
+    }
+}
+
+// ─── input_tokens.rs, and inline_tokens_host.rs ────────────────────────────
 
 // Walks for the first element carrying a click Func0 (a token chip's
 // activation) and runs it.
+bool ClickFirstToken(El* element) {
+    if (!element) return false;
+    if (element->onClick.IsValid()) {
+        element->onClick.Call();
+        return true;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (ClickFirstToken(child)) return true;
+    }
+    return false;
+}
+
 // inline_tokens_host.rs inline_tokens_script_operations_and_click_reentry.
 // The token chip's click is its activation handler, run directly.
+void InlineTokensScriptOperationsAndClickReentry() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { Input, InputState, Textarea, TextareaState } from "
+        "'gpui-component';\n"
+        "import { Button as BaseButton, InputState as BaseInputState, "
+        "TextareaState as BaseTextareaState } from 'gpui-base';\n"
+        "function assert(value, message) { if (!value) throw new "
+        "Error(message); }\n"
+        "function exercise(state) {\n"
+        "  state.set_value('🙂 @a!');\n"
+        "  state.replace_range_with_token({start: 3, end: 5}, {id: 'a', text: "
+        "'@a', label: 'Alice'});\n"
+        "  const saved = state.content();\n"
+        "  assert(saved.tokens[0].range.start === 3, 'UTF-16 range');\n"
+        "  let code = '';\n"
+        "  try { state.replace_range_with_token({start: 1, end: 2}, {id: "
+        "'bad', text: 'x'}); } catch (error) { code = error.code; }\n"
+        "  assert(code === 'InvalidBoundary', 'surrogate boundary must fail "
+        "with code');\n"
+        "  assert(JSON.stringify(state.content()) === JSON.stringify(saved), "
+        "'failure must be atomic');\n"
+        "  state.set_selected_range({start: 4, end: 5}); state.replace('');\n"
+        "  assert(state.value() === '🙂 !' && state.tokens().length === 0, "
+        "'partial token deletion');\n"
+        "  state.set_value(saved);\n"
+        "  state.set_value(state.value());\n"
+        "  assert(state.tokens().length === 0, 'explicit same value clears "
+        "identity');\n"
+        "  state.set_value(saved);\n"
+        "  return state;\n"
+        "}\n"
+        "export default class TokenHost extends View {\n"
+        "  init() {\n"
+        "    this.input = exercise(InputState());\n"
+        "    this.textarea = exercise(TextareaState());\n"
+        "    this.child = exercise(InputState());\n"
+        "    this.base = exercise(BaseInputState.new());\n"
+        "    this.baseArea = exercise(BaseTextareaState.new());\n"
+        "    this.status = 'verified';\n"
+        "  }\n"
+        "  render() {\n"
+        "    return div().relative().w(400).h(260)\n"
+        "      .child(new Input(this.input).w(350).aria_label('Token input')\n"
+        "        .token(token => div().w(80).h(20).child(token.token.label))\n"
+        "        .on_token_click((event, cx) => {\n"
+        "          assert(event.token.id === 'a', 'current identity');\n"
+        "          this.input.set_value('opened'); this.status = 'clicked'; "
+        "cx.notify();\n"
+        "        }))\n"
+        "      .child(new Textarea(this.textarea).w(350).h(60))\n"
+        "      .child(new "
+        "Input(this.child).absolute().top(140).left(0).w(350)\n"
+        "        .token(token => div().flex().w(100).h(20).child(div().w(70)"
+        ".child(token.token.label))\n"
+        "          .child(BaseButton.new('remove-token-child').w(30).h(20)"
+        ".child('×')\n"
+        "            .on_mouse_down('left', (_event, cx) => "
+        "cx.stop_propagation())\n"
+        "            .on_click((_event, cx) => { "
+        "this.child.set_value('removed'); this.status = 'child'; "
+        "cx.stop_propagation(); cx.notify(); })))\n"
+        "        .on_token_click((_event, cx) => { this.status = 'wrong body "
+        "activation'; cx.notify(); }))\n"
+        "      .child(div().child(`${this.status}:${this.input.value()}:"
+        "${this.input.tokens().length};child=${this.child.tokens().length}:"
+        "${this.child.value()}`));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("verified:🙂 @a!:1")) != nullptr);
+    utassert(FindText(root, StrL("Alice")) != nullptr);
+    // A rerender preserves identity.
+    root = host.Render();
+    utassert(FindTextPrefix(root, StrL("verified:🙂 @a!:1")) != nullptr);
+    utassert(ClickFirstToken(root));
+    root = host.Render();
+    utassert(FindTextPrefix(root, StrL("clicked:opened:0")) != nullptr);
+    // The custom child's callback survives the frame and consumes its own
+    // gesture.
+    El* remove = ListenerAbove(root, StrL("×"));
+    utassert(remove != nullptr);
+    if (remove) Click(host, remove);
+    root = host.Render();
+    utassert(FindTextPrefix(root, StrL("child:opened:0")) != nullptr);
+}
+
 // ─── retained_forms/mod.rs ─────────────────────────────────────────────────
 
 // retained_forms_publish_matching_state_and_component_contracts
@@ -2285,16 +2535,143 @@ void ComponentStateExportsDoNotShadowGpuiBaseExports() {
     utassert(count == 1);
 }
 
+// ─── layout/: mod.rs, textarea.rs, resizable.rs, and layout_host.rs ────────
+
 // registers_only_real_constructible_layout_surfaces
+void RegistersOnlyRealConstructibleLayoutSurfaces() {
+    FamilyCatalog catalog(&component_shell::RegisterLayout);
+    utassert(catalog.ok);
+    utassert(catalog.frozen.StateCount() == 1 &&
+             strcmp(catalog.frozen.State(0)->exportName, "TextareaState") == 0);
+    const char* names[] = {"Textarea", "ResizablePanel", "Resizable"};
+    utassert(catalog.NamesAre(names, 3));
+}
+
 // resizable.rs numeric_contracts_are_closed
+void ResizableNumericContractsAreClosed() {
+    using component_shell::layout::resizable::FinitePositive;
+    float value = 0;
+    Str error;
+    utassert(FinitePositive(1.0, "x", &value, &error));
+    utassert(!FinitePositive(0.0, "x", &value, &error));
+    utassert(!FinitePositive(INFINITY, "x", &value, &error));
+}
+
 // resizable.rs group_rejects_style_and_wrong_children
+void ResizableGroupRejectsStyleAndWrongChildren() {
+    using namespace component_shell::layout::resizable;
+    Str error;
+    utassert(RequireGroupStyle(false, &error));
+    utassert(!RequireGroupStyle(true, &error));
+    utassert(RequirePanelChild("ResizablePanel", &error));
+    utassert(!RequirePanelChild("Textarea", &error));
+    utassert(!RequirePanelChild(nullptr, &error));
+    utassert(StrContains(error, StrL("ordinary element")));
+}
+
 // textarea.rs textarea_is_an_exact_leaf
+void TextareaIsAnExactLeaf() {
+    Str error;
+    utassert(component_shell::layout::textarea::RequireLeaf(0, &error));
+    utassert(!component_shell::layout::textarea::RequireLeaf(1, &error));
+    utassert(StrEq(error, StrL("Textarea does not accept children")));
+}
+
 // layout_host.rs layout_catalog_has_closed_real_state_and_typed_layout_
 // contracts
+void LayoutCatalogHasClosedStateAndTypedLayoutContracts() {
+    FamilyCatalog catalog(&component_shell::RegisterLayout);
+    const ComponentDescriptor* textarea = catalog.frozen.Find(StrL("Textarea"));
+    utassert(textarea != nullptr);
+    if (!textarea) return;
+    const ArgumentSchema& state = textarea->constructors[0].arguments[0].schema;
+    utassert(state.kind == shell::SchemaKind::Entity &&
+             strcmp(state.text, "TextareaState") == 0);
+    bool readonly = false;
+    for (const MethodDescriptor& method : textarea->methods)
+        readonly = readonly || strcmp(method.name, "readonly") == 0;
+    utassert(readonly);
+    const ComponentDescriptor* resizable = catalog.frozen
+                                               .Find(StrL("Resizable"));
+    utassert(resizable != nullptr);
+    if (!resizable) return;
+    const ArgumentSchema& axis = resizable->methods[0].arguments[0].schema;
+    utassert(axis.kind == shell::SchemaKind::Enum && axis.values.count == 2 &&
+             strcmp(axis.values[0], "horizontal") == 0 &&
+             strcmp(axis.values[1], "vertical") == 0);
+    utassert(!catalog.frozen.Find(StrL("Scrollbar")) &&
+             !catalog.frozen.Find(StrL("Scroll")));
+}
+
 // layout_host.rs textarea_state_survives_two_native_draws_with_methods_and_
 // style: the same retained state, with its methods, across two renders.
+void TextareaStateSurvivesTwoNativeDraws() {
+    Host host(StrL(
+        "import { View } from 'gpui-kit';\n"
+        "import { Textarea, TextareaState } from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  init() { this.editor = TextareaState('Draft'); }\n"
+        "  render() { return new Textarea(this.editor).appearance(true)"
+        ".bordered(false).readonly(true).aria_label('Notes').disabled(false)"
+        ".p(2).h(120); }\n"
+        "}\n"));
+    InputState* first = nullptr;
+    for (int frame = 0; frame < 2; frame++) {
+        El* root = host.Render();
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(!FindTextPrefix(root, StrL("Failed to render")));
+        InputState* inputs[2] = {};
+        int count = 0;
+        CollectInputs(root, inputs, &count, 2);
+        utassert(count == 1);
+        if (count != 1) return;
+        utassert(inputs[0]->kind == InputKind::Textarea);
+        utassert(StrEq(InputValue(inputs[0]), StrL("Draft")));
+        if (!first) first = inputs[0];
+        utassert(first == inputs[0]);
+        // The style refines the textarea's own box.
+        utassert(root->style.height == 120);
+    }
+}
+
 // layout_host.rs resizable_consumes_two_real_typed_panels_with_methods_
 // style_and_children
+void ResizableConsumesTwoTypedPanels() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Resizable, ResizablePanel } from 'gpui-component';\n"
+             "export default class App extends View { render() { return new "
+             "Resizable('workspace').axis('horizontal').cross_size(240)\n"
+             "  .child(new ResizablePanel().size(180).size_range(100,260).p(2)"
+             ".child(div().child('Navigation')))\n"
+             "  .child(new ResizablePanel().visible(true).child(div()"
+             ".child('Content'))); } }\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    utassert(FindText(root, StrL("Navigation")) != nullptr);
+    utassert(FindText(root, StrL("Content")) != nullptr);
+    utassert(FindById(root, StrL("resizable-panel-0")) != nullptr);
+    utassert(FindById(root, StrL("resizable-panel-1")) != nullptr);
+    utassert(FindById(root, StrL("resizable-panel-2")) == nullptr);
+
+    // A group has no box of its own to style, and takes only panels.
+    Host styled(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Resizable, ResizablePanel } from 'gpui-component';\n"
+             "export default class App extends View { render() { return new "
+             "Resizable('workspace').p(2).child(new ResizablePanel()); } }\n"));
+    utassert(StrContains(RenderRefusal(styled),
+                         StrL("Resizable does not implement Styled")));
+    Host foreign(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Resizable } from 'gpui-component';\n"
+             "export default class App extends View { render() { return new "
+             "Resizable('workspace').child(div()); } }\n"));
+    utassert(StrContains(RenderRefusal(foreign),
+                         StrL("received an ordinary element")));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -2382,6 +2759,9 @@ void TestComponentShell() {
     TestSuite("input_group");
     InputGroupRegistersItsSixDocumentedParts();
     TextareaRowsArePositiveWholeCounts();
+    InputGroupRetainsTextCallbacksAndRoutesAddonActions();
+    InputGroupRejectsWrongPartTypesAndInvalidLayoutOptions();
+    InlineTokensScriptOperationsAndClickReentry();
 
     TestSuite("retained_forms");
     RetainedFormsPublishMatchingStateAndComponentContracts();
@@ -2393,4 +2773,13 @@ void TestComponentShell() {
     RetainedOtpRejectsAnOrdinaryChild();
     RetainedStateConstructorRejectsRoundedOverflowFromJs();
     ComponentStateExportsDoNotShadowGpuiBaseExports();
+
+    TestSuite("layout");
+    RegistersOnlyRealConstructibleLayoutSurfaces();
+    ResizableNumericContractsAreClosed();
+    ResizableGroupRejectsStyleAndWrongChildren();
+    TextareaIsAnExactLeaf();
+    LayoutCatalogHasClosedStateAndTypedLayoutContracts();
+    TextareaStateSurvivesTwoNativeDraws();
+    ResizableConsumesTwoTypedPanels();
 }

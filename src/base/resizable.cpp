@@ -571,6 +571,7 @@ ResizablePanelGroup* ResizablePanelGroup::Panel(El* content, float size,
     maxs.Append(a, max);
     grows.Append(a, false);
     shown.Append(a, true);
+    sources.Append(a, nullptr);
     return this;
 }
 
@@ -598,6 +599,7 @@ ResizablePanelGroup* ResizablePanelGroup::Child(ResizablePanel* panel) {
     Panel(panel->content, panel->size, panel->min, panel->max);
     grows[grows.len - 1] = panel->grow;
     shown[shown.len - 1] = panel->visible;
+    sources[sources.len - 1] = panel;
     return this;
 }
 
@@ -609,6 +611,7 @@ ResizablePanelGroup* ResizablePanelGroup::Children(ResizablePanel** values,
     maxs.len = 0;
     grows.len = 0;
     shown.len = 0;
+    sources.len = 0;
     for (int i = 0; values && i < count; i++) Child(values[i]);
     return this;
 }
@@ -754,8 +757,14 @@ El* ResizablePanelGroup::IntoEl() {
         } else {
             box->H(s->sizes[i])->W(kFill);
         }
+        const ResizablePanel* source = i < sources.len ? sources[i] : nullptr;
+        // The panel's own style refines its box after the flex defaults.
+        if (source) source->refiner.Apply(box);
         if (panels[i]) {
             box->Child(panels[i]);
+        }
+        if (source) {
+            for (El* more : source->more) box->Child(more);
         }
         // The handle sits over the boundary rather than taking room from it:
         // a hairline with four DIPs of grab either side, absolutely placed on
@@ -847,7 +856,12 @@ ResizablePanel* ResizablePanel::New(Ctx* cx) {
 }
 
 ResizablePanel* ResizablePanel::Child(El* value) {
-    content = value;
+    if (!value) return this;
+    if (!content) {
+        content = value;
+    } else {
+        more.Append(cx->a, value);
+    }
     return this;
 }
 

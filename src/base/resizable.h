@@ -277,6 +277,9 @@ struct ResizablePanelGroup {
     ArenaVec<float> maxs;
     ArenaVec<bool> grows;
     ArenaVec<bool> shown;
+    // The ResizablePanel each panel was declared from, or null for one
+    // declared through Panel / Grow: its style and its further children.
+    ArenaVec<const struct ResizablePanel*> sources;
     void* handleAppearanceUser = nullptr;
     ResizeHandleRenderer handleAppearance = nullptr;
     Listener onResize = {};
@@ -323,7 +326,11 @@ using Resizable = ResizablePanelGroup;
 
 struct ResizablePanel {
     Ctx* cx = nullptr;
+    // The first child; `more` holds the rest, in order.
     El* content = nullptr;
+    ArenaVec<El*> more;
+    // Styled::style: refines the panel's own box.
+    ElRefiner refiner = {};
     float size = 0;
     float min = PANEL_MIN_SIZE;
     float max = 0;
