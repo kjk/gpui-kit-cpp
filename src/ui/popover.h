@@ -73,11 +73,16 @@ void ArrowPoints(Bounds surface, Bounds trigger, gpui::Placement side,
 Bounds ArrowJoinBounds(const Point points[3], gpui::Placement side,
                        float stroke);
 
+struct Button;
+
 struct Popover {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
     El* trigger = nullptr;
+    // trigger(Button): a Selectable trigger, built once the popover knows
+    // whether it is open so it can show it (`trigger.open(open || is_open)`).
+    component::Button* triggerButton = nullptr;
     El* content = nullptr;
     // Popover::content(closure): built only while the popover is open, in
     // place of `content`, which is built whether or not it shows.
@@ -109,6 +114,7 @@ struct Popover {
     static Popover* New(Ctx* cx);
     static Popover* New(Ctx* cx, Str id);
     Popover* Trigger(El* e);
+    Popover* Trigger(component::Button* triggerBtn);
     Popover* Content(El* e);
     Popover* ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user);
     Popover* Open(bool v);

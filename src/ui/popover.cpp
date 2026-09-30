@@ -1,4 +1,5 @@
 #include "ui/popover.h"
+#include "ui/button.h"
 #include "base/actions.h"
 
 namespace gpui {
@@ -60,7 +61,14 @@ Popover* Popover::New(Ctx* cx) {
     p->cx = cx;
     return p;
 }
+Popover* Popover::Trigger(component::Button* triggerBtn) {
+    triggerButton = triggerBtn;
+    trigger = nullptr;
+    return this;
+}
+
 Popover* Popover::Trigger(El* e) {
+    triggerButton = nullptr;
     trigger = e;
     return this;
 }
@@ -282,6 +290,9 @@ El* Popover::IntoEl() {
         PopoverSetOpen(cx, st, open);
     }
     bool isOpen = PopoverIsOpen(cx, st);
+    if (triggerButton) {
+        trigger = triggerButton->Open(triggerButton->open || isOpen)->IntoEl();
+    }
     if (isOpen && contentFn) {
         content = contentFn(contentUser, cx);
     }

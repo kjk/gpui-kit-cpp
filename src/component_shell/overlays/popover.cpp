@@ -78,8 +78,7 @@ static El* Materialize(MaterializeRequest* request) {
         ->Trigger(component::Button::New(
                       cx, StrDup(cx->a, fmt("popover-trigger:%s", payload->id)))
                       ->Ghost()
-                      ->Label(payload->label)
-                      ->IntoEl());
+                      ->Label(payload->label));
     EachMethod<PopoverOp>(request, [&](const PopoverOp& op) {
         switch (op.kind) {
             case PopoverOp::Anchor:
