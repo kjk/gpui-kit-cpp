@@ -1517,6 +1517,11 @@ El* El::AriaValue(Str value) {
     accessibility.value = value;
     return this;
 }
+El* El::AriaDescription(Str description) {
+    accessibility.description = description;
+    return this;
+}
+
 El* El::AriaPlaceholder(Str placeholder) {
     accessibility.placeholder = placeholder;
     return this;

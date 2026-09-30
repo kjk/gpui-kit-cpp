@@ -754,6 +754,51 @@ static void FilledGroupInputKeepsTextEditingDirections() {
     utassert(f.Answer("first").nChoices == 0);
 }
 
+// control.rs and components.rs: an item's description and a choice's are its
+// aria_description, on the item's group and on the radio or checkbox, beside
+// the label that names it; one with none sets none.
+static void DescriptionsAreAccessibleDescriptions() {
+    QFixture f;
+    QuestionnaireItemDefinition items[] = {
+        QuestionnaireItemDefinition::New(StrL("single"), StrL("Single"))
+            .WithDescription(StrL("Pick the one that fits"))
+            .WithChoice(Choice("a", "A").WithDescription(StrL("The first")))
+            .WithChoice(Choice("b", "B")),
+        QuestionnaireItemDefinition::New(StrL("many"), StrL("Many"))
+            .WithMultiple(true)
+            .WithChoice(Choice("x", "X").WithDescription(StrL("The ex"))),
+    };
+    QuestionnaireStateNew(&f.app, items, 2, &f.state);
+
+    El* group =
+        component::QuestionnaireItem::New(&f.cx, f.state, StrL("single"))
+            ->IntoEl();
+    utassert(group && group->accessibility.role == AccessibilityRole::Group);
+    utassert(group &&
+             StrEq(group->accessibility.description, "Pick the one that fits"));
+
+    QuestionnaireChoiceControl radio;
+    utassert(QuestionnaireChoiceControl::New(&f.cx, f.state, StrL("single"),
+                                             StrL("a"), StrL("a"), &radio));
+    utassert(radio.el && StrEq(radio.el->accessibility.label, "A"));
+    utassert(radio.el &&
+             StrEq(radio.el->accessibility.description, "The first"));
+    QuestionnaireChoiceControl plain;
+    utassert(QuestionnaireChoiceControl::New(&f.cx, f.state, StrL("single"),
+                                             StrL("b"), StrL("b"), &plain));
+    utassert(plain.el && !plain.el->accessibility.description.s);
+
+    f.S()->WithCurrentItem(StrL("many"));
+    QuestionnaireChoiceControl box;
+    utassert(QuestionnaireChoiceControl::New(&f.cx, f.state, StrL("many"),
+                                             StrL("x"), StrL("x"), &box));
+    utassert(box.kind == QuestionnaireChoiceControl::Kind::Checkbox);
+    utassert(box.el && StrEq(box.el->accessibility.description, "The ex"));
+    El* many = component::QuestionnaireItem::New(&f.cx, f.state, StrL("many"))
+                   ->IntoEl();
+    utassert(many && !many->accessibility.description.s);
+}
+
 // invalid_error_projects_alert_role
 static void InvalidErrorProjectsAlertRole() {
     QFixture f;
@@ -793,4 +838,5 @@ void TestQuestionnaire() {
     EmptyInputEnterStaysPutAndArrowsMoveToAnswers();
     FilledGroupInputKeepsTextEditingDirections();
     InvalidErrorProjectsAlertRole();
+    DescriptionsAreAccessibleDescriptions();
 }

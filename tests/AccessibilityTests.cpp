@@ -219,6 +219,7 @@ static void ExplicitAriaFieldsSurviveCollection() {
                    ->Role(AccessibilityRole::Heading)
                    ->AccessibilityId(StrL("heading.main"))
                    ->AriaLabel(StrL("Explicit"))
+                   ->AriaDescription(StrL("described"))
                    ->AriaValue(StrL("value"))
                    ->AriaPlaceholder(StrL("placeholder"))
                    ->AriaToggled(AccessibilityToggled::Mixed)
@@ -244,6 +245,7 @@ static void ExplicitAriaFieldsSurviveCollection() {
         const AccessibilityInfo& a = f.win->accessibility[0].info;
         utassert(base::StrEq(a.authorId, StrL("heading.main")));
         utassert(base::StrEq(a.label, StrL("Explicit")));
+        utassert(base::StrEq(a.description, StrL("described")));
         utassert(base::StrEq(a.value, StrL("value")));
         utassert(base::StrEq(a.placeholder, StrL("placeholder")));
         utassert(a.toggled == AccessibilityToggled::Mixed);
@@ -262,6 +264,11 @@ static void ExplicitAriaFieldsSurviveCollection() {
         utassert(a.hasRowIndex && a.hasColumnIndex);
         utassert(a.level == 2 && a.hasLevel && a.disabled);
         utassert(f.win->accessibility[0].actions == AccessibilityActionNone);
+#if GPUI_OS_WINDOWS
+        // UIA reads it as FullDescription, the way accesskit_windows maps a
+        // node's description.
+        utassert(AccessibilityWinSmokeTest(f.win, f.win->accessibility[0].id));
+#endif
     }
     FreeAccessibilityFrame(&f);
 }

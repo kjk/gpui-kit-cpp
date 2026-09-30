@@ -979,8 +979,13 @@ static bool PutPropertyVariant(DbusWriter* body, const LinuxAccessible& object,
             PutVariantU32(body, 1);
         } else if (StrIs(property, "Name")) {
             PutVariantString(body, "s", ObjectName(object));
-        } else if (StrIs(property, "Description") ||
-                   StrIs(property, "HelpText")) {
+        } else if (StrIs(property, "Description")) {
+            // AccessKit's description; a node without one keeps offering its
+            // placeholder here, as it did before it could have one.
+            Str description = node ? node->info.description : Str{};
+            if (!description.s && node) description = node->info.placeholder;
+            PutVariantString(body, "s", description);
+        } else if (StrIs(property, "HelpText")) {
             PutVariantString(body, "s", node ? node->info.placeholder : Str{});
         } else if (StrIs(property, "AccessibleId")) {
             PutVariantString(body, "s", node ? node->info.authorId : Str{});

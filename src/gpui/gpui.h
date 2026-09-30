@@ -2271,15 +2271,20 @@ enum class AccessibilityAction : uint8_t {
 
 struct AccessibilityInfo {
     AccessibilityRole role = AccessibilityRole::None;
+    // Beside the role, in the padding before the first pointer.
+    AccessibilityToggled toggled = AccessibilityToggled::Unset;
+    AccessibilityOrientation orientation = AccessibilityOrientation::Unset;
     // GPUI's `accessibility_id`: a developer-assigned identifier for test
     // and automation clients, separate from the element id used by layout
     // and hit testing.
     Str authorId = {};
     Str label = {};
+    // GPUI's `aria_description`: supplementary information assistive
+    // technology announces after the name, role and value -- a settings
+    // subtitle, a hint. AccessKit's `description`; UIA's FullDescription.
+    Str description = {};
     Str value = {};
     Str placeholder = {};
-    AccessibilityToggled toggled = AccessibilityToggled::Unset;
-    AccessibilityOrientation orientation = AccessibilityOrientation::Unset;
     float numericValue = 0;
     float minNumericValue = 0;
     float maxNumericValue = 0;
@@ -2311,7 +2316,10 @@ struct AccessibilityInfo {
     unsigned int disabled : 1 = false;
 };
 
-static_assert(sizeof(AccessibilityInfo) <= 128,
+// 128 held until the description joined the four strings; the role's
+// padding already holds the two small enums, so the fifth string is the
+// growth.
+static_assert(sizeof(AccessibilityInfo) <= 136,
               "keep AccessibilityInfo boolean state packed");
 
 // Interactive refinements are absent from most elements. Keeping five full
@@ -2515,8 +2523,9 @@ struct El {
     // into it. Rust's layout_cursors walks every selection; the row builder
     // does the walk and hands each run its share. Arena-owned by the frame.
     const Selection* extraSels = nullptr;
-    int nExtraSels = 0;
     const int* extraCarets = nullptr;
+    // The two counts side by side, so neither pads out a pointer's slot.
+    int nExtraSels = 0;
     int nExtraCarets = 0;
     // What a copy of this run says, and whether it continues the run before
     // it on the same line. The record is owned by whoever built the element —
@@ -2832,6 +2841,8 @@ struct El {
     El* Role(AccessibilityRole role);
     El* AccessibilityId(Str authorId);
     El* AriaLabel(Str label);
+    // aria_description: what the element is, beyond its name.
+    El* AriaDescription(Str description);
     El* AriaValue(Str value);
     El* AriaPlaceholder(Str placeholder);
     El* AriaDisabled(bool disabled = true);

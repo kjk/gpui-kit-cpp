@@ -62,10 +62,6 @@ macOS font-kit requirement on the website only. The current update target is
   keeps the repository's sole vendored-source exception and identical host API
   on every target, including wasm (`src/quickjs`, `src/shell/runtime.cpp`).
 
-- **Questionnaire choices carry no accessible description.** Rust sets
-  `aria_description` from a choice's description; the accessibility node
-  here has no field for it, so the description is visible text only
-  (`src/base/questionnaire.cpp`).
 - **A key down's held and IME flags come from the platform, not from a
   keystroke.** A key event here has no `key_char`, so
   `Keystroke::is_ime_in_progress` is the platform saying an input method

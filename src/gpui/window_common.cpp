@@ -347,6 +347,7 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
         GPUI_A11Y_HASH(info.role);
         hash = AccessibilityHashStr(hash, info.authorId);
         hash = AccessibilityHashStr(hash, info.label);
+        hash = AccessibilityHashStr(hash, info.description);
         hash = AccessibilityHashStr(hash, info.value);
         hash = AccessibilityHashStr(hash, info.placeholder);
         GPUI_A11Y_HASH(info.toggled);

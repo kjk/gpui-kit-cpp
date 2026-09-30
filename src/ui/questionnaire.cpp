@@ -526,6 +526,9 @@ El* QuestionnaireItem::IntoEl() {
                 ->FlexCol()
                 ->Gap(m.itemGap)
                 ->W(kFill);
+    if (len(d->description) > 0) {
+        e->AriaDescription(d->description);
+    }
     if (const FocusHandle* h = s->ItemFocusHandle(item)) {
         e->TrackFocus(*h)->TabIndex(-1)->TabStop(false);
     }

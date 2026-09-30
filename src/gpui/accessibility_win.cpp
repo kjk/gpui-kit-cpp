@@ -980,6 +980,10 @@ HRESULT WinAccessibilityNode::GetPropertyValue(PROPERTYID property,
         VariantString(out, info.label);
     } else if (property == UIA_AutomationIdPropertyId) {
         VariantString(out, info.authorId);
+    } else if (property == UIA_FullDescriptionPropertyId) {
+        // accesskit_windows maps a node's description here, and leaves
+        // HelpText to the placeholder.
+        VariantString(out, info.description);
     } else if (property == UIA_HelpTextPropertyId) {
         VariantString(out, info.placeholder);
     } else if (property == UIA_AriaRolePropertyId) {
@@ -2305,6 +2309,16 @@ bool AccessibilityWinSmokeTest(Window* win, uint32_t nodeId) {
                            ->GetPropertyValue(UIA_NamePropertyId, &property)) &&
              property.vt == VT_BSTR;
         BSTR wanted = AccessibilityBstr(expected->info.label);
+        ok = ok && wanted && property.bstrVal &&
+             wcscmp(wanted, property.bstrVal) == 0;
+        SysFreeString(wanted);
+        VariantClear(&property);
+    }
+    if (ok && expected->info.description.s) {
+        ok = SUCCEEDED(simple->GetPropertyValue(UIA_FullDescriptionPropertyId,
+                                                &property)) &&
+             property.vt == VT_BSTR;
+        BSTR wanted = AccessibilityBstr(expected->info.description);
         ok = ok && wanted && property.bstrVal &&
              wcscmp(wanted, property.bstrVal) == 0;
         SysFreeString(wanted);

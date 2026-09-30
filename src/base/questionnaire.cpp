@@ -1645,8 +1645,9 @@ bool QuestionnaireChoiceControl::New(Ctx* cx, Entity<QuestionnaireState> state,
     if (hasPosition) {
         e->AriaPositionInSet(position)->AriaSizeOfSet(total);
     }
-    // aria_description has no counterpart in this tree's accessibility
-    // node; the description stays visible text in the skin.
+    if (len(definition.description) > 0) {
+        e->AriaDescription(definition.description);
+    }
     e->CaptureKeyDown(ListenTo(state, &ChoiceConfirmKey, packed));
     if (out) {
         out->kind = multiple ? Kind::Checkbox : Kind::Radio;

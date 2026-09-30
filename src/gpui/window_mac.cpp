@@ -248,6 +248,11 @@ static NSArray* GpuiAccessibilityChildren(gpui::Window* win, int parent) {
     if (!node) {
         return @"";
     }
+    // aria_description is what VoiceOver reads after the name, role and
+    // value; a node without one keeps offering its placeholder.
+    if (node->info.description.s) {
+        return GpuiAccessibilityString(node->info.description);
+    }
     return GpuiAccessibilityString(node->info.placeholder);
 }
 - (id)accessibilityValue {
