@@ -257,10 +257,12 @@ struct Editor {
     Str language = {};
     const TextSpan* decorations = nullptr;
     int nDecorations = 0;
-    bool activeLine = false;
-    bool indentGuides = false;
+    // LayoutMode::code_editor: indent guides and folding on, and the line
+    // the cursor is on highlighted, unless the caller says otherwise.
+    bool activeLine = true;
+    bool indentGuides = true;
     bool searchable = true;
-    bool folding = false;
+    bool folding = true;
     const Diagnostic* diagnostics = nullptr;
     int nDiagnostics = 0;
     gpui::Style style = {};
