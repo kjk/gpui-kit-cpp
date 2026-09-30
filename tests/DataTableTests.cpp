@@ -781,7 +781,53 @@ static void TwoTablesOnOnePageAreTwoTables() {
     EntityDropAll(&app);
 }
 
+// calculate_extra_rows_needed: the whole rows that fit under the data, and
+// none once the data overflows the body.
+static void AStripedTableFillsTheBodyWithEmptyRows() {
+    utassert(TableExtraRowsNeeded(100, 40, 20) == 3);
+    utassert(TableExtraRowsNeeded(100, 45, 20) == 2);
+    utassert(TableExtraRowsNeeded(100, 100, 20) == 0);
+    utassert(TableExtraRowsNeeded(100, 140, 20) == 0);
+    utassert(TableExtraRowsNeeded(0, 40, 20) == 0);
+
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.win = win;
+    cx.a = a;
+    const Theme& th = ThemeNow(&app);
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    auto build = [&](bool stripe) {
+        return component::DataTable::New(&cx, StrL("t"), state)
+            ->Columns(kDumpColumns, 2)
+            ->Rows(2, nullptr, nullptr)
+            ->CellText(DumpCellText)
+            ->RowHeight(20)
+            ->H(100)
+            ->Stripe(stripe)
+            ->IntoEl();
+    };
+    // Two rows of 20 in a body of 100 leave room for three more, striped by
+    // their own index: row 3 is an odd one.
+    El* striped = build(true);
+    utassert(FindNamed(striped, "row-2") && FindNamed(striped, "row-4"));
+    utassert(!FindNamed(striped, "row-5"));
+    utassert(RgbaEq(FindNamed(striped, "row-3")->style.bg.color,
+                    th.tokens.tableEven.color));
+    // Without stripes the space stays empty, as upstream.
+    El* plain = build(false);
+    utassert(FindNamed(plain, "row-1") && !FindNamed(plain, "row-2"));
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestDataTable() {
+    AStripedTableFillsTheBodyWithEmptyRows();
     SourceColumnBuildersKeepEveryField();
     EachColumnHasItsOwnResizeBounds();
     TheSourceDelegateDrivesTheTable();

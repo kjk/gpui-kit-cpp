@@ -1254,6 +1254,45 @@ El* DataTable::BuildEl() {
         bodyFixed->Child(Div(a)->H(pad));
         bodyScroll->Child(Div(a)->W(kFill)->H(pad));
     }
+    // calculate_extra_rows_needed: a striped table whose rows do not fill the
+    // body runs the stripes on to the bottom with empty rows — the whole rows
+    // that fit under the last one, each bordered and striped by its index the
+    // way a data row is. They only exist when every data row fits, so the
+    // range above is all of them and nothing is virtualized away. Rust's fake
+    // row is the delegate's `render_tr(ix)` past the end, a spacer as wide as
+    // the columns and the last empty column; here it is a bare row, since a
+    // delegate here indexes its data by the row it is handed.
+    int extraRows =
+        stripe && s && h > 0
+            ? TableExtraRowsNeeded(h, (float)nRows * s->rowH, s->rowH)
+            : 0;
+    float colsW = 0;
+    for (int d = nFixed; extraRows > 0 && d < nColumns; d++) {
+        colsW += ColWidth(s, TableColAt(s, d));
+    }
+    for (int r = nRows; r < nRows + extraRows; r++) {
+        El* fillFixed = Div(a)
+                            ->Id(StrDup(a, fmt("row-fixed-%d", r)))
+                            ->FlexRow()
+                            ->W(kFill)
+                            ->Shrink0()
+                            ->H(s->rowH)
+                            ->BorderB(1, th.tableRowBorder);
+        El* fillScroll = Div(a)
+                             ->Id(StrDup(a, fmt("row-%d", r)))
+                             ->FlexRow()
+                             ->Shrink0()
+                             ->H(s->rowH)
+                             ->BorderB(1, th.tableRowBorder)
+                             ->Child(Div(a)->Shrink0()->H(kFill)->W(colsW))
+                             ->Child(LastEmptyColEl(cx, lastEmptyCol, data));
+        if (r % 2 == 1) {
+            fillFixed->Bg(th.tokens.tableEven);
+            fillScroll->Bg(th.tokens.tableEven);
+        }
+        bodyFixed->Child(fillFixed);
+        bodyScroll->Child(fillScroll);
+    }
     fixedPane->Child(bodyFixed);
     scrollPane->Child(bodyScroll);
     // load_more_if_need: the last row built is near the end, and the delegate

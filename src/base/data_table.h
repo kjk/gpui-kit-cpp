@@ -316,6 +316,11 @@ bool TableVisibleColsChanged(TableState* s, int first, int end);
 // the same question without being what decides anything.
 void TableVisibleCols(const TableState* s, int* first, int* end);
 
+// calculate_extra_rows_needed: how many empty rows a striped table adds under
+// its last one so the stripes run to the bottom of the body — the whole rows
+// that fit in what the data rows leave over, and none when they overflow it.
+int TableExtraRowsNeeded(float totalH, float actualH, float rowH);
+
 // load_more_if_need: the last row built is within the threshold of the end,
 // and the delegate says there is more.
 bool TableShouldLoadMore(const TableState* s, int visibleEnd);

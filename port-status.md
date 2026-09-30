@@ -49,10 +49,6 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   folder of themes and then watches it (notify, non-recursive), reloading on
   any create/modify/remove or rescan; here the folder is read once, because
   the runtime has no file-watch seam (`src/ui/theme.h`).
-- **A striped DataTable leaves the space below its last row empty.** Rust's
-  `calculate_extra_rows_needed` pads a short striped table with filler rows
-  (`floor(remaining / row_height)`) so the stripes run to the bottom; here
-  the stripes stop at the last data row (`src/ui/table.cpp`).
 - **A dock's own edge is an in-flow strip, not a hugging resize handle.**
   Rust's docks resize from a `resize_handle(..).inside(edge)` with the
   indicator appearance; here the edge is the four-DIP strip beside the dock's

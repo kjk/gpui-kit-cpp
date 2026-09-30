@@ -730,6 +730,14 @@ void TableVisibleCols(const TableState* s, int* first, int* end) {
     *end = last < nScroll ? last : nScroll;
 }
 
+int TableExtraRowsNeeded(float totalH, float actualH, float rowH) {
+    float remaining = totalH - actualH;
+    if (remaining <= 0 || rowH <= 0) {
+        return 0;
+    }
+    return (int)floorf(remaining / rowH);
+}
+
 bool TableShouldLoadMore(const TableState* s, int visibleEnd) {
     if (!s->hasMore || s->loading) {
         return false;
