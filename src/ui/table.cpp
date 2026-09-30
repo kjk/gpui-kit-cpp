@@ -272,7 +272,8 @@ El* TableGroup::IntoEl() {
         g = gpui::TableHeader::New(cx, StrDup(a, fmt("header-%d", ix)))
                 ->W(kFill)
                 ->FlexCol()
-                ->Bg(th.tokens.tableHead);
+                ->Bg(th.tokens.tableHead)
+                ->Fg(th.tableHeadFg);
         refiner.Apply(g);
         g->BorderB(1, th.tableRowBorder);
     } else if (kind == TableGroupKind::Footer) {
@@ -282,6 +283,7 @@ El* TableGroup::IntoEl() {
                 ->W(kFill)
                 ->FlexCol()
                 ->Bg(th.tokens.tableFoot)
+                ->Fg(th.tableFootFg)
                 ->BorderT(1, th.tableRowBorder);
         refiner.Apply(g);
     } else {
@@ -318,7 +320,9 @@ El* TableCaption::IntoEl() {
                 ->JustifyCenter()
                 ->TextCenter()
                 ->PadX(p.left)
-                ->PadY(p.top);
+                ->PadY(p.top)
+                ->Font(14)
+                ->Fg(ThemeNow(cx->app).mutedFg);
     refiner.Apply(e);
     for (El* c : children) {
         e->Child(c);
@@ -368,6 +372,7 @@ El* Table::IntoEl() {
     El* t = gpui::Table::New(cx, id, -1, -1, accessibilityLabel)
                 ->FlexCol()
                 ->W(kFill)
+                ->Font(14)
                 ->ClipY()
                 ->ClipX()
                 ->Bg(th.tokens.tableBg);
