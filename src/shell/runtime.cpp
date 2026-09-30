@@ -390,6 +390,7 @@ struct ShellRuntimeImpl {
     Str componentModuleSource;
     // ShellRuntime::LastComponentFailure. Owned.
     Str lastComponentFailure;
+    uint64_t componentFailureCount = 0;
     // Deprecated exports already warned about, once each.
     Vec<const char*> warnedDeprecatedExports;
     // component_app_effects: one generation per application that scheduled
@@ -12654,6 +12655,11 @@ void ShellRuntime::NoteComponentFailure(Str message) {
     if (!impl) return;
     StrFree(impl->lastComponentFailure);
     impl->lastComponentFailure = StrDup(message);
+    impl->componentFailureCount++;
+}
+
+uint64_t ShellRuntime::ComponentFailureCount() const {
+    return impl ? impl->componentFailureCount : 0;
 }
 
 void* ShellRuntime::ComponentState(uint64_t handle, const char* kind,

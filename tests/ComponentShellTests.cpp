@@ -4559,6 +4559,405 @@ void TreeTypedBoundaryRejectsWrongChildrenStyleAndDuplicates() {
     utassert(StrContains(CallErrorTemp("Tree", "new Tree('')"),
                          StrL("Tree expects non-empty id")));
 }
+
+// ─── window_effects/mod.rs ─────────────────────────────────────────────────
+
+// window_effects_host.rs catalog_exposes_only_closed_command_triggers.
+void WindowEffectsCatalogExposesOnlyClosedCommandTriggers() {
+    FamilyCatalog catalog(&component_shell::RegisterWindowEffects);
+    utassert(catalog.ok);
+    const char* names[] = {"Dialog", "AlertDialog", "Sheet", "Notification"};
+    utassert(catalog.NamesAre(names, 4));
+    utassert(catalog.Documented());
+    for (int i = 0; i < catalog.frozen.DescriptorCount(); i++) {
+        const ComponentDescriptor* d = catalog.frozen.Descriptor((uint32_t)i);
+        const ArgumentSchema& schema = d->constructors[0].arguments[2].schema;
+        utassert(schema.kind == shell::SchemaKind::Callback);
+        utassert(
+            StrEq(Str(schema.text), "(message: string, cx: Context) => void"));
+    }
+}
+
+// The test-only lazy marker window_effects_host.rs registers beside the
+// family: it records every build, and "fail" refuses.
+char gEffectBuilds[16][24];
+int gEffectBuildCount = 0;
+
+bool ConstructEffectMarker(shell::PayloadBuild* build,
+                           const shell::ComponentArgument* args, int count) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String)
+        return build->Fail(StrL("EffectMarker expects a label"));
+    *build->New<Str>() = args[0].string;
+    return true;
+}
+
+El* MaterializeEffectMarker(shell::MaterializeRequest* request) {
+    const Str* label = request->PayloadAs<Str>();
+    if (!label) return request->Fail(StrL("EffectMarker incompatible payload"));
+    if (StrEq(*label, "fail"))
+        return request->Fail(StrL("forced lazy factory failure"));
+    if (gEffectBuildCount < 16) {
+        snprintf(gEffectBuilds[gEffectBuildCount++], 24, "%.*s",
+                 (int)len(*label), label->s);
+    }
+    return request
+        ->Finish(Div(request->cx->a)->Child(TextEl(request->cx->a, *label)));
+}
+
+constexpr ArgumentDescriptor kEffectMarkerArgs[] = {
+    {"label", shell::SchemaString()}};
+constexpr ConstructorDescriptor kEffectMarkerConstructors[] = {
+    {"EffectMarker", kEffectMarkerArgs, &ConstructEffectMarker}};
+constexpr ComponentDescriptor kEffectMarker = {"EffectMarker",
+                                               kEffectMarkerConstructors,
+                                               {},
+                                               "Test-only lazy marker.",
+                                               &MaterializeEffectMarker};
+
+bool RegisterWindowEffectsWithMarker(ComponentRegistry* registry,
+                                     RegistryError* error) {
+    return component_shell::RegisterWindowEffects(registry, error) &&
+           registry->Register(&kEffectMarker, error);
+}
+
+bool EffectBuilt(const char* label) {
+    for (int i = 0; i < gEffectBuildCount; i++) {
+        if (strcmp(gEffectBuilds[i], label) == 0) return true;
+    }
+    return false;
+}
+
+// The window's layers, which a Root would draw over the page: each open
+// dialog and the sheet, rendered into the host's frame the way the Root
+// renders them after the page.
+void RenderLayers(Host& host) {
+    WindowLayers* layers = WindowLayersOf(&host.window);
+    if (!layers) return;
+    if (layers->hasSheet)
+        EntityRender(&host.app, &host.window, host.frame, layers->sheet.view);
+    for (int i = 0; i < layers->dialogs.len; i++) {
+        EntityRender(&host.app, &host.window, host.frame,
+                     layers->dialogs[i].view);
+    }
+}
+
+// A frame of the whole window: the page, then the layers over it.
+El* DrawWindow(Host& host) {
+    El* root = host.Render();
+    RenderLayers(host);
+    return root;
+}
+
+Ctx HostCtx(Host& host) {
+    Ctx cx;
+    cx.app = &host.app;
+    cx.win = &host.window;
+    cx.a = host.frame;
+    return cx;
+}
+
+// The element answering `action` in `element`'s tree, if any.
+El* FindAction(El* element, uint32_t action) {
+    if (!element) return nullptr;
+    for (ActionSlot* slot = element->actions; slot; slot = slot->next) {
+        if (slot->action == action && slot->fn.IsValid()) return element;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindAction(child, action)) return found;
+    }
+    return nullptr;
+}
+
+// Dispatches `action` to the topmost dialog, the way the window would
+// dispatch it to the focused dialog's key context.
+void DispatchToTopDialog(Host& host, uint32_t action) {
+    WindowLayers* layers = WindowLayersOf(&host.window);
+    if (!layers || layers->dialogs.len == 0) return;
+    El* dialog = EntityRender(&host.app, &host.window, host.frame,
+                              layers->dialogs[layers->dialogs.len - 1].view);
+    El* target = FindAction(dialog, action);
+    utassert(target != nullptr);
+    if (!target) return;
+    for (ActionSlot* slot = target->actions; slot; slot = slot->next) {
+        if (slot->action != action) continue;
+        ActionEvent event = {};
+        event.action = action;
+        ListenerCall(&host.app, &host.window, slot->fn, &event);
+        return;
+    }
+}
+
+void ClickLabel(Host& host, El* root, const char* label) {
+    El* trigger = ListenerAbove(root, Str(label));
+    utassert(trigger != nullptr);
+    if (trigger) Click(host, trigger);
+}
+
+// window_effects_host.rs real_click_events_open_native_surfaces_and_build_
+// lazy_content. Nothing is built by rendering the triggers; each real click
+// opens its surface, whose lazy content is built only when the surface is
+// drawn; cancelling and closing reach the script callbacks; a failing
+// content factory is reported to on_effect_error once per opening. Rust
+// clicks at window coordinates and dispatches dialog::Cancel to the focused
+// dialog; here the clicks go to each trigger's listener, Cancel to the
+// dialog's own action handler, and the sheet's outside press to its
+// overlay's.
+void RealClickEventsOpenNativeSurfacesAndBuildLazyContent() {
+    FamilyCatalog catalog(&RegisterWindowEffectsWithMarker);
+    gEffectBuildCount = 0;
+    Host host(
+        StrL(
+            "import { View, div } from 'gpui-kit';\n"
+            "import { Dialog, AlertDialog, Sheet, Notification, "
+            "EffectMarker } from 'gpui-component';\n"
+            "export default class App extends View {\n"
+            " init() { this.errors = 0; this.closed = 0; }\n"
+            " render() { const report = (_message, cx) => { this.errors += "
+            "1; cx.notify(); };\n"
+            "  return div().v_flex().gap(2)\n"
+            "   .child(new Dialog('dialog', 'Open dialog', report).w(180)"
+            ".title('Native dialog').on_cancel(cx => { this.closed += 1; "
+            "cx.notify(); }).on_close(cx => { this.closed += 1; cx.notify(); "
+            "}).content(new EffectMarker('dialog-lazy')))\n"
+            "   .child(new Sheet('sheet', 'Open sheet', report).w(180)"
+            ".title('Native sheet').placement('left').on_close(cx => { "
+            "this.closed += 1; cx.notify(); }).content(new "
+            "EffectMarker('sheet-lazy')))\n"
+            "   .child(new AlertDialog('alert', 'Open alert', report).w(180)"
+            ".title('Native alert').description('Closed contract')"
+            ".show_cancel(true).on_cancel(cx => { this.closed += 1; "
+            "cx.notify(); }).on_close(cx => { this.closed += 1; cx.notify(); "
+            "}))\n"
+            "   .child(new Notification('note', 'Notify', report).w(180)"
+            ".title('Saved').message('Native notification').type('success')"
+            ".autohide(false))\n"
+            "   .child(new Dialog('fail-dialog', 'Open failing dialog', "
+            "report).w(180).content(new EffectMarker('fail')))\n"
+            "   .child(`Errors:${this.errors}`).child(`Closed:${this.closed}`);"
+            "\n }\n"
+            "}\n"),
+        &catalog.frozen);
+    Ctx cx = HostCtx(host);
+    El* root = DrawWindow(host);
+    root = DrawWindow(host);
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(gEffectBuildCount == 0);
+
+    ClickLabel(host, root, "Open dialog");
+    utassert(WindowHasActiveDialog(&cx));
+    root = DrawWindow(host);
+    root = DrawWindow(host);
+    utassert(EffectBuilt("dialog-lazy"));
+    utassert(FindText(root, StrL("Native dialog")) == nullptr);
+    DispatchToTopDialog(host, action::Cancel());
+    utassert(!WindowHasActiveDialog(&cx));
+
+    utassert(!EffectBuilt("sheet-lazy"));
+    root = DrawWindow(host);
+    ClickLabel(host, root, "Open sheet");
+    utassert(WindowHasActiveSheet(&cx));
+    root = DrawWindow(host);
+    root = DrawWindow(host);
+    utassert(EffectBuilt("sheet-lazy"));
+    // The press outside the sheet, on its overlay.
+    WindowLayers* layers = WindowLayersOf(&host.window);
+    El* sheet = layers && layers->hasSheet
+                    ? EntityRender(&host.app, &host.window, host.frame,
+                                   layers->sheet.view)
+                    : nullptr;
+    El* capture = nullptr;
+    for (El* child = sheet ? sheet->first : nullptr; child;
+         child = child->next) {
+        if (child->onMouseDown.IsValid()) capture = child;
+    }
+    utassert(capture != nullptr);
+    if (capture) MouseDown(host, capture);
+    root = DrawWindow(host);
+    utassert(!WindowHasActiveSheet(&cx));
+
+    ClickLabel(host, root, "Open alert");
+    utassert(WindowHasActiveDialog(&cx));
+    DispatchToTopDialog(host, action::Cancel());
+    utassert(!WindowHasActiveDialog(&cx));
+
+    root = DrawWindow(host);
+    ClickLabel(host, root, "Notify");
+    utassert(WindowNotificationCount(&cx) == 1);
+
+    root = DrawWindow(host);
+    ClickLabel(host, root, "Open failing dialog");
+    utassert(WindowHasActiveDialog(&cx));
+    DrawWindow(host);
+    DrawWindow(host);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("Errors:1")) != nullptr);
+    // Dialog: on_cancel + on_close; Sheet: on_close; AlertDialog: on_cancel
+    // + on_close, the same pair a cancelled Dialog reports.
+    utassert(FindText(root, StrL("Closed:5")) != nullptr);
+
+    WindowCloseDialog(&cx);
+    ClickLabel(host, root, "Open failing dialog");
+    DrawWindow(host);
+    DrawWindow(host);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("Errors:2")) != nullptr);
+    WindowCloseAllDialogs(&cx);
+    WindowClearNotifications(&cx);
+}
+
+// window_effects_host.rs closed_alert_and_notification_reject_common_named_
+// slots.
+void ClosedAlertAndNotificationRejectCommonNamedSlots() {
+    FamilyCatalog catalog(&component_shell::RegisterWindowEffects);
+    const char* expressions[] = {
+        "new AlertDialog('alert', 'Alert', (_message, _cx) => {})"
+        ".content(div())",
+        "new AlertDialog('alert', 'Alert', (_message, _cx) => {})"
+        ".trigger(div())",
+        "new AlertDialog('alert', 'Alert', (_message, _cx) => {})"
+        ".header(div())",
+        "new AlertDialog('alert', 'Alert', (_message, _cx) => {})"
+        ".footer(div())",
+        "new Notification('note', 'Notify', (_message, _cx) => {})"
+        ".content(div())",
+        "new Notification('note', 'Notify', (_message, _cx) => {})"
+        ".trigger(div())",
+        "new Notification('note', 'Notify', (_message, _cx) => {})"
+        ".header(div())",
+        "new Notification('note', 'Notify', (_message, _cx) => {})"
+        ".footer(div())",
+    };
+    for (const char* expression : expressions) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { AlertDialog, Notification } from 'gpui-component';\n"
+                "export default class App extends View { render() { return "
+                "%s; } }\n",
+                Str(expression));
+        Host host(source, &catalog.frozen);
+        host.Render();
+        host.Render();
+        utassert(len(host.ViewError()) == 0);
+        utassert(StrContains(host.runtime->LastComponentFailure(),
+                             StrL("do not accept named slots")));
+    }
+    // Dialog and Sheet take only their content slot, and need it.
+    const char* dialogs[][2] = {
+        {"new Dialog('d', 'D', (_m, _cx) => {}).content(div()).header(div())",
+         "Dialog and Sheet accept only the content named slot"},
+        {"new Sheet('s', 'S', (_m, _cx) => {}).content(div()).footer(div())",
+         "Dialog and Sheet accept only the content named slot"},
+        {"new Dialog('d', 'D', (_m, _cx) => {})",
+         "Dialog and Sheet require exactly one content(element) named slot"},
+        {"new Sheet('s', 'S', (_m, _cx) => {}).content(div()).child(div())",
+         "window effect triggers do not accept children"},
+    };
+    for (const auto& c : dialogs) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { Dialog, Sheet } from 'gpui-component';\n"
+                "export default class App extends View { render() { return "
+                "%s; } }\n",
+                Str(c[0]));
+        Host host(source, &catalog.frozen);
+        host.Render();
+        utassert(StrContains(host.runtime->LastComponentFailure(), Str(c[1])));
+    }
+}
+
+// window_effects_host.rs dialog_and_sheet_duplicate_content_is_last_call_
+// wins.
+void DialogAndSheetDuplicateContentIsLastCallWins() {
+    FamilyCatalog catalog(&RegisterWindowEffectsWithMarker);
+    const char* cases[][3] = {
+        {"new Dialog('dialog', 'Dialog', (_message, _cx) => {}).content(new "
+         "EffectMarker('dialog-first')).content(new "
+         "EffectMarker('dialog-second'))",
+         "dialog-second", "Dialog"},
+        {"new Sheet('sheet', 'Sheet', (_message, _cx) => {}).content(new "
+         "EffectMarker('sheet-first')).content(new "
+         "EffectMarker('sheet-second'))",
+         "sheet-second", "Sheet"},
+    };
+    for (const auto& c : cases) {
+        gEffectBuildCount = 0;
+        TempStr source =
+            fmt("import { View } from 'gpui-kit';\n"
+                "import { Dialog, Sheet, EffectMarker } from "
+                "'gpui-component';\n"
+                "export default class App extends View { render() { return "
+                "%s; } }\n",
+                Str(c[0]));
+        Host host(source, &catalog.frozen);
+        El* root = DrawWindow(host);
+        root = DrawWindow(host);
+        utassert(gEffectBuildCount == 0);
+        ClickLabel(host, root, c[2]);
+        DrawWindow(host);
+        DrawWindow(host);
+        utassert(gEffectBuildCount > 0);
+        for (int i = 0; i < gEffectBuildCount; i++)
+            utassert(strcmp(gEffectBuilds[i], c[1]) == 0);
+        Ctx cx = HostCtx(host);
+        WindowCloseAllDialogs(&cx);
+        WindowCloseSheet(&cx);
+    }
+}
+
+// mod.rs test_probe: the reporter failures diagnosed.
+char gReporterFailure[256];
+int gReporterFailureCount = 0;
+
+void RecordReporterFailure(Str diagnosis) {
+    gReporterFailureCount++;
+    snprintf(gReporterFailure, sizeof(gReporterFailure), "%.*s",
+             (int)len(diagnosis), diagnosis.s);
+}
+
+// window_effects_host.rs failed_factory_and_failed_reporter_are_both_
+// diagnosed.
+void FailedFactoryAndFailedReporterAreBothDiagnosed() {
+    FamilyCatalog catalog(&RegisterWindowEffectsWithMarker);
+    component_shell::SetWindowEffectsReporterFailureProbe(
+        &RecordReporterFailure);
+    {
+        Host host(StrL("import { View } from 'gpui-kit';\n"
+                       "import { Dialog, EffectMarker } from "
+                       "'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new Dialog('fail', 'Fail', () => { throw new "
+                       "Error('reporter exploded'); }).content(new "
+                       "EffectMarker('fail')); } }\n"),
+                  &catalog.frozen);
+        El* root = DrawWindow(host);
+        gReporterFailureCount = 0;
+        ClickLabel(host, root, "Fail");
+        DrawWindow(host);
+        utassert(gReporterFailureCount == 1);
+        utassert(strstr(gReporterFailure, "forced lazy factory failure"));
+        utassert(strstr(gReporterFailure, "reporter exploded"));
+        Ctx cx = HostCtx(host);
+        WindowCloseAllDialogs(&cx);
+    }
+    component_shell::SetWindowEffectsReporterFailureProbe(nullptr);
+}
+
+// mod.rs: the recorders refuse what Rust refuses.
+void WindowEffectRecordersRefuseWhatRustRefuses() {
+    utassert(StrContains(
+        CallErrorTemp("Dialog", "new Dialog(' ', 'Open', (_m, _cx) => {})"),
+        StrL("Dialog(id, label, on_effect_error) expects two non-empty "
+             "strings and a callback")));
+    utassert(StrContains(CallErrorTemp("Sheet",
+                                       "new Sheet('s', 'Open', (_m, _cx) => {})"
+                                       ".title(' ')"),
+                         StrL("title(text) expects non-empty text")));
+    utassert(
+        StrContains(CallErrorTemp("Notification",
+                                  "new Notification('n', 'N', (_m, _cx) => {})"
+                                  ".message('')"),
+                    StrL("message(text) expects non-empty text")));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -4727,6 +5126,13 @@ void TestComponentShell() {
     RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative();
     NativeMenuTriggerRunsOneKeyedShowEffectPerClick();
     NativeMenuItemOperationsAreLastCallWins();
+    TestSuite("window_effects");
+    WindowEffectsCatalogExposesOnlyClosedCommandTriggers();
+    RealClickEventsOpenNativeSurfacesAndBuildLazyContent();
+    ClosedAlertAndNotificationRejectCommonNamedSlots();
+    DialogAndSheetDuplicateContentIsLastCallWins();
+    FailedFactoryAndFailedReporterAreBothDiagnosed();
+    WindowEffectRecordersRefuseWhatRustRefuses();
 
     TestSuite("overlays");
     OverlayDescriptorsUseClosedSchemas();

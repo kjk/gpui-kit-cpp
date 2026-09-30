@@ -42,6 +42,10 @@ class ShellRuntime {
     // host (and a test) reads the reason. Empty until one fails.
     Str LastComponentFailure() const;
     void NoteComponentFailure(Str message);
+    // How many registered failures this runtime has noted. What an adapter
+    // building a deferred factory compares before and after, to learn that
+    // something inside it failed — which Rust's factory answers as an Err.
+    uint64_t ComponentFailureCount() const;
     ShellRuntime* Retain();
     void Release();
 

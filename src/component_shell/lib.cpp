@@ -29,6 +29,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterLifecycle,
     &RegisterCollections,
     &RegisterCommand,
+    &RegisterWindowEffects,
     &RegisterOverlays,
     &RegisterRetainedForms,
     &RegisterLayout,

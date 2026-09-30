@@ -32,6 +32,7 @@ bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycle(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCollections(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCommand(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterWindowEffects(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterOverlays(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
@@ -113,6 +114,13 @@ bool RegisterCommandNativeMenu(shell::ComponentRegistry*,
 using NativeMenuShowProbe = bool (*)(const component::NativeMenu* menu,
                                      Str* error, Arena* a);
 void SetNativeMenuShowProbe(NativeMenuShowProbe probe);
+
+// window_effects/mod.rs test_probe, widened into a seam: when set, it hears
+// the diagnosis logged when a surface's content factory failed and the
+// effect's error reporter failed as well.
+using WindowEffectsReporterFailureProbe = void (*)(Str diagnosis);
+void SetWindowEffectsReporterFailureProbe(
+    WindowEffectsReporterFailureProbe probe);
 
 // overlays/mod.rs
 bool RegisterOverlaysHoverCard(shell::ComponentRegistry*,
