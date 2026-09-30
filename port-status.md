@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `25d59c06f45cd81a02c5b9d5b81d32ee4985f87d` (2026-09-28,
-docs: Update gpui-kit dependency version to 0.7 in READMEs (#3304)). READMEs
-ask for gpui-kit 0.7, the release that added open_window; the story's
-Introduction page carries the root README verbatim. The current update target
-is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `cb12d200422c449fbc64004fa220aa4d4d32c60d` (2026-09-29,
+website: Keep box-drawing glyphs in the gallery font subsets (#3305)). The web
+gallery's font subsets keep the box-drawing glyphs; story-web only, nothing
+ported. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
