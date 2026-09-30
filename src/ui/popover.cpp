@@ -68,6 +68,11 @@ Popover* Popover::Content(El* e) {
     content = e;
     return this;
 }
+Popover* Popover::ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user) {
+    contentFn = fn;
+    contentUser = user;
+    return this;
+}
 Popover* Popover::New(Ctx* cx, Str id) {
     Popover* p = New(cx);
     p->id = id;
@@ -277,6 +282,9 @@ El* Popover::IntoEl() {
         PopoverSetOpen(cx, st, open);
     }
     bool isOpen = PopoverIsOpen(cx, st);
+    if (isOpen && contentFn) {
+        content = contentFn(contentUser, cx);
+    }
     const Theme& th = ThemeNow(cx->app);
     float arrowSize = arrow ? kPopoverArrowSize : 0.f;
     float gap = (hasOffset ? offset : kPopoverOffset) + arrowSize;

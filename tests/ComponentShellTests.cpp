@@ -3777,6 +3777,299 @@ void NativeMenuItemOperationsAreLastCallWins() {
     component_shell::SetNativeMenuShowProbe(nullptr);
 }
 
+// ─── overlays/: mod.rs, hover_card.rs, popover.rs, dropdown_menu.rs ────────
+
+// hover_card.rs descriptor_uses_closed_anchor_and_callback_schemas,
+// popover.rs callback_schema_includes_the_script_context and dropdown_menu.rs
+// item_callback_schema_includes_the_script_context, over the family's own
+// catalog in mod.rs order.
+void OverlayDescriptorsUseClosedSchemas() {
+    FamilyCatalog catalog(&component_shell::RegisterOverlays);
+    utassert(catalog.ok);
+    const char* expected[] = {"HoverCard", "Popover", "DropdownMenu"};
+    utassert(catalog.NamesAre(expected, 3));
+    utassert(catalog.Documented());
+    if (catalog.frozen.DescriptorCount() != 3) return;
+    const ComponentDescriptor* card = catalog.frozen.Descriptor(0);
+    utassert(card->methods[1].arguments[0].schema.kind ==
+             shell::SchemaKind::Enum);
+    utassert(card->methods[5].arguments[0].schema.kind ==
+             shell::SchemaKind::Callback);
+    utassert(StrEq(Str(card->methods[5].arguments[0].schema.text),
+                   "(open: boolean, cx: Context) => void"));
+    const ComponentDescriptor* popover = catalog.frozen.Descriptor(1);
+    utassert(StrEq(Str(popover->methods[5].arguments[0].schema.text),
+                   "(open: boolean, cx: Context) => void"));
+    const ComponentDescriptor* dropdown = catalog.frozen.Descriptor(2);
+    utassert(StrEq(Str(dropdown->methods[0].arguments[1].schema.text),
+                   "(cx: Context) => void"));
+}
+
+// hover_card.rs delay_schema_rejects_values_that_duration_cannot_honestly_
+// represent, whitespace_only_identity_is_rejected, incompatible_payload_
+// reports_the_materializer_contract and materializer_requires_the_trigger_
+// element_operation; overlay_host.rs hover_card_rejects_whitespace_identity;
+// dropdown_menu.rs item_only_contract_rejects_every_child_lane; and the
+// content requirement both lazy overlays state.
+void OverlaysRefuseWhatRustRefuses() {
+    const char* delays[] = {"-1", "60001"};
+    for (const char* delay : delays) {
+        TempStr call = fmt("new HoverCard('h').open_delay(%s)", Str(delay));
+        utassert(StrContains(
+            CallErrorTemp("HoverCard", call.s),
+            StrL("HoverCard.open_delay(milliseconds) expects a finite value "
+                 "from 0 through 60000")));
+    }
+    utassert(RendersCleanly(
+        "HoverCard",
+        "new HoverCard('h').trigger_element(div().child('Profile'))"
+        ".content(div()).open_delay(250)",
+        "Profile"));
+    utassert(StrContains(CallErrorTemp("HoverCard", "new HoverCard('  \\t ')"),
+                         StrL("HoverCard id must not be empty")));
+    Str failure = MaterializeFailure("HoverCard", shell::ComponentPayload{}, 0);
+    utassert(StrEq(failure, "HoverCard received an incompatible payload"));
+    StrFree(failure);
+
+    struct Case {
+        const char* imports;
+        const char* body;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"HoverCard", "new HoverCard('h').content(div())",
+         "HoverCard requires trigger_element(element)"},
+        {"HoverCard", "new HoverCard('h').trigger_element(div())",
+         "HoverCard requires content(element)"},
+        {"Popover", "new Popover('p', 'Open')",
+         "Popover requires content(element)"},
+        {"DropdownMenu", "new DropdownMenu('d', 'Actions').child(div())",
+         "DropdownMenu accepts item(label, callback) methods only; ordinary "
+         "and typed children are unsupported"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { %s } from 'gpui-component';\n"
+                "export default class App extends View { "
+                "render() { return %s; } }\n",
+                Str(c.imports), Str(c.body));
+        Host host(source);
+        utassert(StrContains(RenderRefusal(host), Str(c.message)));
+    }
+    utassert(StrContains(CallErrorTemp("Popover", "new Popover('p', ' ')"),
+                         StrL("Popover id and label must not be empty")));
+    utassert(StrContains(
+        CallErrorTemp("DropdownMenu",
+                      "new DropdownMenu('d', 'A').item(' ', () => {})"),
+        StrL("DropdownMenu.item label must not be empty")));
+}
+
+// overlay_host.rs hover_card_materializes_real_trigger_content_style_and_
+// closed_methods. The port's DebugTree spells a style `.p(2)` where Rust's
+// prints `.p[Number(2.0)]`.
+void HoverCardMaterializesRealTriggerContentStyleAndClosedMethods() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { HoverCard } from 'gpui-component';\n"
+             "export default class OverlayHost extends View {\n"
+             "  render() {\n"
+             "    return new HoverCard('profile')\n"
+             "      .trigger_element(div().child('Profile'))\n"
+             "      .content(div().child('Ada Lovelace'))\n"
+             "      .p(2)\n"
+             "      .card_anchor('bottom_center')\n"
+             "      .open_delay(125)\n"
+             "      .close_delay(250)\n"
+             "      .appearance(true)\n"
+             "      .on_open_change(open => { this.last_open = open; "
+             "});\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    utassert(FindText(root, StrL("Profile")) != nullptr);
+    Str tree = DebugTreeTemp(host);
+    const char* contracts[] = {"HoverCard",
+                               ":trigger_element(registered)",
+                               "Ada Lovelace",
+                               ".p(2)",
+                               ":card_anchor(registered)",
+                               ":open_delay(registered)",
+                               ":close_delay(registered)",
+                               ":appearance(registered)",
+                               ":on_open_change(registered)"};
+    for (const char* contract : contracts) {
+        bool found = StrContains(tree, Str(contract));
+        if (!found) printf("missing %s in %s\n", contract, tree.s);
+        utassert(found);
+    }
+}
+
+// The nearest element on the path to `text` whose `field` listener is set.
+El* HandlerAbove(El* element, Str text, Listener El::* field,
+                 El* best = nullptr) {
+    if (!element) return nullptr;
+    if ((element->*field).IsValid()) best = element;
+    if (element->kind == ElKind::Text && StrEq(element->text, text))
+        return best;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = HandlerAbove(child, text, field, best)) return found;
+    }
+    return nullptr;
+}
+
+void MouseDown(Host& host, El* element) {
+    MouseDownEvent event = {};
+    ListenerCall(&host.app, &host.window, element->onMouseDown, &event);
+}
+
+// lazy_overlay_host.rs popover_content_is_lazy_and_open_changes_cross_the_
+// registered_boundary: the content is built only while the popover is open,
+// the trigger's press reaches on_open_change, and the lazy content's own
+// click handler stays live. Closing goes through the trigger again rather
+// than a press outside, which needs window hit-testing.
+void PopoverContentIsLazyAndOpenChangesCrossTheRegisteredBoundary() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { Popover } from 'gpui-component';\n"
+             "export default class LazyPopover extends View {\n"
+             "  init() { this.open = false; this.hits = 0; }\n"
+             "  render() {\n"
+             "    return div().pt(100).child(\n"
+             "      new Popover('actions', 'Open actions')\n"
+             "        .open(this.open)\n"
+             "        .on_open_change((open, cx) => { this.open = open; "
+             "cx.notify(); })\n"
+             "        .content(div().w(200).h(120)\n"
+             "          .on_click((_event, cx) => { this.hits += 1; "
+             "cx.notify(); })\n"
+             "          .child(`Lazy content ${this.hits}`))\n"
+             "    ).child(`Open:${this.open}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(StrContains(DebugTreeTemp(host), StrL("Popover")));
+    utassert(FindTextPrefix(root, StrL("Lazy content")) == nullptr);
+    utassert(FindText(root, StrL("Open:false")) != nullptr);
+
+    for (int round = 1; round <= 2; round++) {
+        El* trigger =
+            HandlerAbove(root, StrL("Open actions"), &El::onMouseDown);
+        utassert(trigger != nullptr);
+        if (!trigger) return;
+        MouseDown(host, trigger);
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Open:true")) != nullptr);
+        TempStr before = fmt("Lazy content %d", round - 1);
+        El* content = ListenerAbove(root, Str(before));
+        utassert(content != nullptr);
+        if (!content) return;
+        Click(host, content);
+        root = Rerender(host);
+        TempStr after = fmt("Lazy content %d", round);
+        utassert(FindText(root, Str(after)) != nullptr);
+
+        // Closed again through the trigger: nothing of the content is
+        // built.
+        trigger = HandlerAbove(root, StrL("Open actions"), &El::onMouseDown);
+        if (!trigger) return;
+        MouseDown(host, trigger);
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Open:false")) != nullptr);
+        utassert(FindTextPrefix(root, StrL("Lazy content")) == nullptr);
+    }
+}
+
+// lazy_overlay_host.rs hover_card_builds_lazy_content_only_after_hover_and_
+// reports_lifecycle. The hover arms the open timer; the timer firing is
+// driven directly, since a render has no clock.
+void HoverCardBuildsLazyContentOnlyAfterHoverAndReportsLifecycle() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { HoverCard } from 'gpui-component';\n"
+             "export default class LazyHoverCard extends View {\n"
+             "  init() { this.open = false; this.hits = 0; }\n"
+             "  render() {\n"
+             "    return div().v_flex().w(400).h(400)\n"
+             "      .child(div().w(400).h(100))\n"
+             "      .child(new HoverCard('profile')\n"
+             "        .trigger_element(div().w(300).h(40).child('Profile'))\n"
+             "        .content(div().w(200).h(120)\n"
+             "          .on_click((_event, cx) => { this.hits += 1; "
+             "cx.notify(); })\n"
+             "          .child(`Lazy profile ${this.hits}`))\n"
+             "        .card_anchor('top_left')\n"
+             "        .open_delay(0).close_delay(0)\n"
+             "        .on_open_change(open => { this.open = open; }))\n"
+             "      .child(`Hover:${this.open}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("Lazy profile")) == nullptr);
+
+    El* trigger = HandlerAbove(root, StrL("Profile"), &El::onHover);
+    utassert(trigger != nullptr);
+    if (!trigger) return;
+    HoverEvent hover = {};
+    hover.hovered = true;
+    ListenerCall(&host.app, &host.window, trigger->onHover, &hover);
+    Entity<HoverCardState> state;
+    state.id = trigger->onHover.view;
+    HoverCardState* card = state.Get(&host.app);
+    utassert(card && card->timer != 0);
+    TickEvent tick = {};
+    ListenerCall(&host.app, &host.window,
+                 ListenTo(state, &HoverCardState::OnOpen), &tick);
+    root = Rerender(host);
+    El* content = ListenerAbove(root, StrL("Lazy profile 0"));
+    utassert(content != nullptr);
+    if (!content) return;
+    Click(host, content);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("Lazy profile 1")) != nullptr);
+    utassert(FindText(root, StrL("Hover:true")) != nullptr);
+    if (card && card->timer) WindowCancelTimer(&host.window, card->timer);
+}
+
+// lazy_overlay_host.rs dropdown_menu_opens_real_items_and_dispatches_the_
+// selected_callback.
+void DropdownMenuOpensRealItemsAndDispatchesTheSelectedCallback() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { DropdownMenu } from 'gpui-component';\n"
+             "export default class LazyMenu extends View {\n"
+             "  init() { this.choice = 'none'; }\n"
+             "  render() {\n"
+             "    return div().pt(100)\n"
+             "      .child(new DropdownMenu('actions', 'Actions').w(160)\n"
+             "        .item('Rename', cx => { this.choice = 'rename'; "
+             "cx.notify(); })\n"
+             "        .item('Archive', cx => { this.choice = 'archive'; "
+             "cx.notify(); }))\n"
+             "      .child(`Choice:${this.choice}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Rename")) == nullptr);
+    El* trigger = ListenerAbove(root, StrL("Actions"));
+    utassert(trigger != nullptr);
+    if (!trigger) return;
+    Click(host, trigger);
+    root = Rerender(host);
+    El* rename = ListenerAbove(root, StrL("Rename"));
+    utassert(rename != nullptr);
+    utassert(FindText(root, StrL("Archive")) != nullptr);
+    if (!rename) return;
+    Click(host, rename);
+    root = Rerender(host);
+    utassert(FindText(root, StrL("Choice:rename")) != nullptr);
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -3927,4 +4220,12 @@ void TestComponentShell() {
     RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative();
     NativeMenuTriggerRunsOneKeyedShowEffectPerClick();
     NativeMenuItemOperationsAreLastCallWins();
+
+    TestSuite("overlays");
+    OverlayDescriptorsUseClosedSchemas();
+    OverlaysRefuseWhatRustRefuses();
+    HoverCardMaterializesRealTriggerContentStyleAndClosedMethods();
+    PopoverContentIsLazyAndOpenChangesCrossTheRegisteredBoundary();
+    HoverCardBuildsLazyContentOnlyAfterHoverAndReportsLifecycle();
+    DropdownMenuOpensRealItemsAndDispatchesTheSelectedCallback();
 }

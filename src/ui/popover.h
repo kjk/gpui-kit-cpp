@@ -79,6 +79,10 @@ struct Popover {
     Str id = {};
     El* trigger = nullptr;
     El* content = nullptr;
+    // Popover::content(closure): built only while the popover is open, in
+    // place of `content`, which is built whether or not it shows.
+    El* (*contentFn)(void* user, Ctx* cx) = nullptr;
+    void* contentUser = nullptr;
     // Set only by Open(). Without it the popover keeps its own state and the
     // trigger's press toggles it, which is Rust's uncontrolled default;
     // Open() is Rust's `.open(Some(b))`.
@@ -106,6 +110,7 @@ struct Popover {
     static Popover* New(Ctx* cx, Str id);
     Popover* Trigger(El* e);
     Popover* Content(El* e);
+    Popover* ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user);
     Popover* Open(bool v);
     Popover* DefaultOpen(bool v);
     Popover* Button(MouseButton b);

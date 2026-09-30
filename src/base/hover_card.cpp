@@ -50,15 +50,18 @@ void HoverCardState::OnDismiss(HoverCardState* self, Ctx* cx,
     HoverCardSetOpen(self, cx, false);
 }
 
+// Rust's zero delay is Timer::after(Duration::ZERO), which still fires;
+// WindowSetTimeout arms nothing for zero, so the shortest real timer stands
+// in for it.
 static void HoverCardScheduleOpen(HoverCardState* self, Ctx* cx) {
     HoverCardCancel(self, cx);
-    self->timer = WindowSetTimeout(cx->win, self->openDelayMs,
+    self->timer = WindowSetTimeout(cx->win, std::max(1, self->openDelayMs),
                                    Listen(cx, &HoverCardState::OnOpen));
 }
 
 static void HoverCardScheduleClose(HoverCardState* self, Ctx* cx) {
     HoverCardCancel(self, cx);
-    self->timer = WindowSetTimeout(cx->win, self->closeDelayMs,
+    self->timer = WindowSetTimeout(cx->win, std::max(1, self->closeDelayMs),
                                    Listen(cx, &HoverCardState::OnClose));
 }
 

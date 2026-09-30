@@ -27,6 +27,7 @@ bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycle(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCommand(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterOverlays(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
@@ -77,6 +78,13 @@ bool RegisterCommandNativeMenu(shell::ComponentRegistry*,
 using NativeMenuShowProbe = bool (*)(const component::NativeMenu* menu,
                                      Str* error, Arena* a);
 void SetNativeMenuShowProbe(NativeMenuShowProbe probe);
+
+// overlays/mod.rs
+bool RegisterOverlaysHoverCard(shell::ComponentRegistry*,
+                               shell::RegistryError*);
+bool RegisterOverlaysPopover(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterOverlaysDropdownMenu(shell::ComponentRegistry*,
+                                  shell::RegistryError*);
 
 // layout/mod.rs
 bool RegisterLayoutTextarea(shell::ComponentRegistry*, shell::RegistryError*);

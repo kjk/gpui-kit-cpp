@@ -19,6 +19,12 @@ HoverCard* HoverCard::Content(El* e) {
     content = e;
     return this;
 }
+HoverCard* HoverCard::ContentBuilder(El* (*fn)(void* user, Ctx* cx),
+                                     void* user) {
+    contentFn = fn;
+    contentUser = user;
+    return this;
+}
 HoverCard* HoverCard::Open(bool v) {
     controlled = true;
     open = v;
@@ -56,6 +62,9 @@ El* HoverCard::IntoEl() {
     // sync(open_delay, close_delay): the caller's numbers every frame.
     HoverCardSetDelays(cx, st, openDelayMs, closeDelayMs);
     bool isOpen = controlled ? open : HoverCardIsOpen(cx, st);
+    if (isOpen && contentFn) {
+        content = contentFn(contentUser, cx);
+    }
     El* card = isOpen ? content : nullptr;
     if (card) {
         // The eight anchors are Popup's own, including its edge point and

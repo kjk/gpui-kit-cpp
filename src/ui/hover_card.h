@@ -26,6 +26,10 @@ struct HoverCard {
     Str id = {};
     El* trigger = nullptr;
     El* content = nullptr;
+    // HoverCard::content(closure): built only while the card shows, in place
+    // of `content`.
+    El* (*contentFn)(void* user, Ctx* cx) = nullptr;
+    void* contentUser = nullptr;
     // Set only by Open(); otherwise the state decides.
     bool controlled = false;
     bool open = false;
@@ -39,6 +43,7 @@ struct HoverCard {
     static HoverCard* New(Ctx* cx, Str id);
     HoverCard* Trigger(El* e);
     HoverCard* Content(El* e);
+    HoverCard* ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user);
     HoverCard* Open(bool v);
     HoverCard* OpenDelay(int ms);
     HoverCard* CloseDelay(int ms);
