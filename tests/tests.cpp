@@ -165,6 +165,7 @@ int GpuiMain(int argc, char** argv) {
     TestForm();
     TestQuickJs();
     TestShellCore();
+    TestShellStyle();
     TestComponentShell();
     TestShellDependencies();
     TestShellDock();

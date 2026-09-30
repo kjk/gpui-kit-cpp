@@ -39,6 +39,7 @@
 #include "shell/dock.h"
 #include "shell/fetch.h"
 #include "shell/policy.h"
+#include "shell/style.h"
 #include "shell/view.h"
 
 #include <math.h>
@@ -462,13 +463,6 @@ static bool ParseNumber(Str text, float* out) {
     return true;
 }
 
-struct MaterialLength {
-    float pixels = 0;
-    float fraction = 0;
-    bool automatic = false;
-    bool valid = false;
-};
-
 static Str TrimSpace(Str value) {
     while (StrStartsWithAny(value, " \t\r\n")) {
         value.s++;
@@ -483,434 +477,17 @@ static Str TrimSpace(Str value) {
     return value;
 }
 
-static MaterialLength LengthOf(const shell::Bridged* value) {
-    MaterialLength result = {};
-    if (!value) return result;
-    if (value->kind == shell::BridgedKind::Number && isfinite(value->number)) {
-        result.pixels = (float)value->number;
-        result.valid = true;
-        return result;
-    }
-    if (value->kind != shell::BridgedKind::String) return result;
-    Str text = TrimSpace(value->string);
-    if (StrEq(text, StrL("auto"))) {
-        result.automatic = true;
-        result.valid = true;
-        return result;
-    }
-    float scale = 1;
-    if (StrEndsWith(text, "%")) {
-        text.len--;
-        if (ParseNumber(text, &result.fraction)) {
-            result.fraction /= 100.f;
-            result.valid = true;
-        }
-        return result;
-    }
-    if (StrEndsWith(text, "rem")) {
-        text.len -= 3;
-        scale = 16;
-    } else if (StrEndsWith(text, "px")) {
-        text.len -= 2;
-    }
-    if (ParseNumber(text, &result.pixels)) {
-        result.pixels *= scale;
-        result.valid = true;
-    }
-    return result;
-}
-
-static bool StyleColor(const shell::SpecOp& op, Rgba* out) {
-    const shell::Bridged* value = Arg(op, 0);
-    Hsla color = {};
-    if (!value || !shell::BridgedAsColor(*value, &color)) return false;
-    *out = HslaToRgba(color);
-    return true;
-}
-
-static float PresetNumber(Str name, Str prefix, bool* found) {
-    *found = false;
-    if (!StrStartsWith(name, prefix) || len(name) <= len(prefix)) return 0;
-    Str suffix(name.s + len(prefix), len(name) - len(prefix));
-    if (len(suffix) >= 32) return 0;
-    TempStr text = StrDupTemp(suffix);
-    for (int i = 0; i < len(suffix); i++)
-        text.s[i] = suffix.s[i] == 'p' ? '.' : suffix.s[i];
-    float value = 0;
-    if (!ParseNumber(text, &value)) return 0;
-    *found = true;
-    return value;
-}
-
-static bool PresetNumberIs(Str name, Str prefix, float* value) {
-    bool found = false;
-    *value = PresetNumber(name, prefix, &found);
-    return found;
-}
-
+// The style vocabulary is shell/style.cpp, Rust's style.rs.
 static bool ApplyNullary(El* element, Str name) {
-    if (StrEq(name, StrL("flex")))
-        element->Flex();
-    else if (StrEq(name, StrL("flex_row")))
-        element->FlexRow();
-    else if (StrEq(name, StrL("flex_col")))
-        element->FlexCol();
-    else if (StrEq(name, StrL("flex_row_reverse")))
-        element->FlexRowReverse();
-    else if (StrEq(name, StrL("flex_col_reverse")))
-        element->FlexColReverse();
-    // gpui_base::StyledExt, which Rust's style reflection reaches.
-    else if (StrEq(name, StrL("h_flex")))
-        element->Flex()->FlexRow()->ItemsCenter();
-    else if (StrEq(name, StrL("v_flex")))
-        element->Flex()->FlexCol();
-    else if (StrEq(name, StrL("flex_wrap")))
-        element->FlexWrap();
-    else if (StrEq(name, StrL("flex_1")))
-        element->Flex1();
-    else if (StrEq(name, StrL("flex_none")))
-        element->FlexNone();
-    else if (StrEq(name, StrL("grow")))
-        element->Grow();
-    else if (StrEq(name, StrL("shrink_0")))
-        element->Shrink0();
-    else if (StrEq(name, StrL("size_full")))
-        element->SizeFull();
-    else if (StrEq(name, StrL("w_full")))
-        element->W(kFill);
-    else if (StrEq(name, StrL("h_full")))
-        element->H(kFill);
-    else if (StrEq(name, StrL("w_auto")))
-        element->style.width = kAuto;
-    else if (StrEq(name, StrL("h_auto")))
-        element->style.height = kAuto;
-    else if (StrEq(name, StrL("items_center")))
-        element->ItemsCenter();
-    else if (StrEq(name, StrL("items_start")))
-        element->ItemsStart();
-    else if (StrEq(name, StrL("items_end")))
-        element->ItemsEnd();
-    else if (StrEq(name, StrL("items_stretch")))
-        element->ItemsStretch();
-    else if (StrEq(name, StrL("justify_center")))
-        element->JustifyCenter();
-    else if (StrEq(name, StrL("justify_start")))
-        element->JustifyStart();
-    else if (StrEq(name, StrL("justify_end")))
-        element->JustifyEnd();
-    else if (StrEq(name, StrL("justify_between")))
-        element->JustifyBetween();
-    else if (StrEq(name, StrL("justify_around")))
-        element->JustifyAround();
-    else if (StrEq(name, StrL("absolute")))
-        element->Absolute();
-    // `relative()` is the position an element already has — GPUI's own
-    // default — so it says nothing rather than being unknown. A script writes
-    // it to mark the box an absolutely placed child is measured against, which
-    // is what it means in CSS and what it means here.
-    else if (StrEq(name, StrL("relative"))) {
-    } else if (StrEq(name, StrL("fixed")))
-        element->Fixed();
-    else if (StrEq(name, StrL("overflow_hidden")))
-        element->ClipX()->ClipY();
-    else if (StrEq(name, StrL("overflow_x_hidden")))
-        element->ClipX();
-    else if (StrEq(name, StrL("overflow_y_hidden")))
-        element->ClipY();
-    else if (StrEq(name, StrL("overflow_scroll")))
-        element->ScrollX(0)->ScrollY(0);
-    else if (StrEq(name, StrL("overflow_x_scroll")))
-        element->ScrollX(0);
-    else if (StrEq(name, StrL("overflow_y_scroll")))
-        element->ScrollY(0);
-    else if (StrEq(name, StrL("truncate")))
-        element->Truncate();
-    else if (StrEq(name, StrL("whitespace_normal")))
-        element->Wrap();
-    else if (StrEq(name, StrL("underline")))
-        element->Underline();
-    else if (StrEq(name, StrL("italic")))
-        element->Italic();
-    else if (StrEq(name, StrL("line_through")))
-        element->Strikethrough();
-    else if (StrEq(name, StrL("font_medium")))
-        element->Medium();
-    else if (StrEq(name, StrL("font_semibold")))
-        element->Semibold();
-    else if (StrEq(name, StrL("font_bold")))
-        element->Bold();
-    else if (StrEq(name, StrL("font_normal")))
-        element->Weight(FontWeight::Normal);
-    else if (StrEq(name, StrL("font_thin")))
-        element->Weight((FontWeight)100);
-    else if (StrEq(name, StrL("font_extralight")))
-        element->Weight((FontWeight)200);
-    else if (StrEq(name, StrL("font_light")))
-        element->Weight((FontWeight)300);
-    else if (StrEq(name, StrL("font_extrabold")))
-        element->Weight((FontWeight)800);
-    else if (StrEq(name, StrL("font_black")))
-        element->Weight((FontWeight)900);
-    else if (StrEq(name, StrL("text_xs")))
-        element->Font(12);
-    else if (StrEq(name, StrL("text_sm")))
-        element->Font(14);
-    else if (StrEq(name, StrL("text_base")))
-        element->Font(16);
-    else if (StrEq(name, StrL("text_lg")))
-        element->Font(18);
-    else if (StrEq(name, StrL("text_xl")))
-        element->Font(20);
-    else if (StrEq(name, StrL("cursor_pointer")))
-        element->Cursor(CursorKind::Pointer);
-    else if (StrEq(name, StrL("cursor_text")))
-        element->Cursor(CursorKind::IBeam);
-    else if (StrEq(name, StrL("cursor_col_resize")))
-        element->Cursor(CursorKind::ColResize);
-    else if (StrEq(name, StrL("cursor_row_resize")))
-        element->Cursor(CursorKind::RowResize);
-    else if (StrEq(name, StrL("invisible")))
-        element->Opacity(0);
-    else if (StrEq(name, StrL("visible")))
-        element->Opacity(1);
-    else {
-        bool found = false;
-        float n = PresetNumber(name, StrL("gap_"), &found);
-        if (found)
-            element->Gap(n * 4);
-        else if (PresetNumberIs(name, StrL("gap_x_"), &n))
-            element->GapX(n * 4);
-        else if (PresetNumberIs(name, StrL("gap_y_"), &n))
-            element->GapY(n * 4);
-        else if (PresetNumberIs(name, StrL("p_"), &n))
-            element->Pad(n * 4);
-        else if (PresetNumberIs(name, StrL("px_"), &n))
-            element->PadX(n * 4);
-        else if (PresetNumberIs(name, StrL("py_"), &n))
-            element->PadY(n * 4);
-        else if (PresetNumberIs(name, StrL("pt_"), &n))
-            element->PadT(n * 4);
-        else if (PresetNumberIs(name, StrL("pb_"), &n))
-            element->PadB(n * 4);
-        else if (PresetNumberIs(name, StrL("pl_"), &n))
-            element->PadL(n * 4);
-        else if (PresetNumberIs(name, StrL("pr_"), &n))
-            element->PadR(n * 4);
-        else if (PresetNumberIs(name, StrL("m_"), &n))
-            element->Margin(n * 4);
-        else if (PresetNumberIs(name, StrL("mx_"), &n))
-            element->MarginX(n * 4);
-        else if (PresetNumberIs(name, StrL("my_"), &n))
-            element->MarginY(n * 4);
-        else if (PresetNumberIs(name, StrL("mt_"), &n))
-            element->MarginT(n * 4);
-        else if (PresetNumberIs(name, StrL("mb_"), &n))
-            element->MarginB(n * 4);
-        else if (PresetNumberIs(name, StrL("ml_"), &n))
-            element->MarginL(n * 4);
-        else if (PresetNumberIs(name, StrL("mr_"), &n))
-            element->MarginR(n * 4);
-        else if (PresetNumberIs(name, StrL("rounded_"), &n))
-            element->Radius(n * 4);
-        else if (PresetNumberIs(name, StrL("border_"), &n))
-            element->style.border = n;
-        else
-            return false;
-    }
-    return true;
+    return shell::ApplyNullaryStyle(element, name);
 }
 
-static bool ApplyParam(El* e, const shell::SpecOp& op) {
-    MaterialLength length = LengthOf(Arg(op, 0));
-    Rgba color = {};
-    if (StrEq(op.name, StrL("w")) && length.valid) {
-        if (length.fraction != 0)
-            e->WFrac(length.fraction);
-        else
-            e->style.width = length.automatic ? kAuto : length.pixels;
-    } else if (StrEq(op.name, StrL("h")) && length.valid)
-        e->style.height = length.automatic ? kAuto : length.pixels;
-    else if (StrEq(op.name, StrL("size")) && length.valid) {
-        e->style.width = e->style
-                             .height = length.automatic ? kAuto : length.pixels;
-    } else if (StrEq(op.name, StrL("min_w")) && length.valid)
-        e->style.minW = length.automatic ? kAuto : length.pixels;
-    else if (StrEq(op.name, StrL("min_h")) && length.valid)
-        e->style.minH = length.automatic ? kAuto : length.pixels;
-    else if (StrEq(op.name, StrL("min_size")) && length.valid)
-        e->style.minW = e->style
-                            .minH = length.automatic ? kAuto : length.pixels;
-    else if (StrEq(op.name, StrL("max_w")) && length.valid)
-        e->style.maxW = length.automatic ? 1e9f : length.pixels;
-    else if (StrEq(op.name, StrL("max_h")) && length.valid)
-        e->style.maxH = length.automatic ? 1e9f : length.pixels;
-    else if (StrEq(op.name, StrL("max_size")) && length.valid)
-        e->style.maxW = e->style.maxH = length.automatic ? 1e9f : length.pixels;
-    else if (StrEq(op.name, StrL("p")) && length.valid)
-        e->Pad(length.pixels);
-    else if (StrEq(op.name, StrL("px")) && length.valid)
-        e->PadX(length.pixels);
-    else if (StrEq(op.name, StrL("py")) && length.valid)
-        e->PadY(length.pixels);
-    else if (StrEq(op.name, StrL("pt")) && length.valid)
-        e->PadT(length.pixels);
-    else if (StrEq(op.name, StrL("pb")) && length.valid)
-        e->PadB(length.pixels);
-    else if (StrEq(op.name, StrL("pl")) && length.valid)
-        e->PadL(length.pixels);
-    else if (StrEq(op.name, StrL("pr")) && length.valid)
-        e->PadR(length.pixels);
-    else if (StrEq(op.name, StrL("m")) && length.valid)
-        e->Margin(length.pixels);
-    else if (StrEq(op.name, StrL("mx")) && length.valid)
-        e->MarginX(length.pixels);
-    else if (StrEq(op.name, StrL("my")) && length.valid)
-        e->MarginY(length.pixels);
-    else if (StrEq(op.name, StrL("mt")) && length.valid)
-        e->MarginT(length.pixels);
-    else if (StrEq(op.name, StrL("mb")) && length.valid)
-        e->MarginB(length.pixels);
-    else if (StrEq(op.name, StrL("ml")) && length.valid)
-        e->MarginL(length.pixels);
-    else if (StrEq(op.name, StrL("mr")) && length.valid)
-        e->MarginR(length.pixels);
-    else if (StrEq(op.name, StrL("inset")) && length.valid)
-        e->Top(length.pixels)
-            ->Bottom(length.pixels)
-            ->Left(length.pixels)
-            ->Right(length.pixels);
-    else if (StrEq(op.name, StrL("top")) && length.valid) {
-        if (length.fraction != 0)
-            e->TopRel(length.fraction);
-        else
-            e->Top(length.pixels);
-    } else if (StrEq(op.name, StrL("bottom")) && length.valid) {
-        if (length.fraction != 0)
-            e->BottomRel(length.fraction);
-        else
-            e->Bottom(length.pixels);
-    } else if (StrEq(op.name, StrL("left")) && length.valid) {
-        if (length.fraction != 0)
-            e->LeftRel(length.fraction);
-        else
-            e->Left(length.pixels);
-    } else if (StrEq(op.name, StrL("right")) && length.valid) {
-        if (length.fraction != 0)
-            e->RightRel(length.fraction);
-        else
-            e->Right(length.pixels);
-    } else if (StrEq(op.name, StrL("gap")) && length.valid)
-        e->Gap(length.pixels);
-    else if (StrEq(op.name, StrL("gap_x")) && length.valid)
-        e->GapX(length.pixels);
-    else if (StrEq(op.name, StrL("gap_y")) && length.valid)
-        e->GapY(length.pixels);
-    else if (StrEq(op.name, StrL("flex_grow")))
-        e->Grow(AsNumber(op, 0));
-    else if (StrEq(op.name, StrL("flex_shrink")))
-        e->Shrink(AsNumber(op, 0));
-    else if (StrEq(op.name, StrL("flex_basis")) && length.valid)
-        e->Basis(length.pixels);
-    else if (StrEq(op.name, StrL("bg")) && StyleColor(op, &color))
-        e->Bg(color);
-    else if (StrEq(op.name, StrL("text_color")) && StyleColor(op, &color))
-        e->Fg(color);
-    else if (StrEq(op.name, StrL("text_size")) && length.valid)
-        e->Font(length.pixels);
-    else if (StrEq(op.name, StrL("font_family"))) {
-        if (StrEq(AsString(op, 0), StrL("monospace"))) e->Mono();
-    } else if (StrEq(op.name, StrL("font_weight")))
-        e->Weight((FontWeight)(int)AsNumber(op, 0, 400));
-    else if (StrEq(op.name, StrL("line_height"))) {
-        const shell::Bridged* value = Arg(op, 0);
-        if (value && value->kind == shell::BridgedKind::Number)
-            e->LineHeight((float)value->number);
-        else if (length.valid)
-            e->LineHeight(length.pixels /
-                          (e->style.fontSize > 0 ? e->style.fontSize : 16));
-    } else if (StrEq(op.name, StrL("opacity")))
-        e->Opacity(AsNumber(op, 0, 1));
-    else if (StrEq(op.name, StrL("border_color")) && StyleColor(op, &color))
-        e->style.borderColor = color;
-    else if (StrEq(op.name, StrL("border")) && length.valid)
-        e->style.border = length.pixels;
-    else if (StrEq(op.name, StrL("border_t")) && length.valid)
-        e->style.borderT = length.pixels;
-    else if (StrEq(op.name, StrL("border_b")) && length.valid)
-        e->style.borderB = length.pixels;
-    else if (StrEq(op.name, StrL("border_l")) && length.valid)
-        e->style.borderL = length.pixels;
-    else if (StrEq(op.name, StrL("border_r")) && length.valid)
-        e->style.borderR = length.pixels;
-    else if (StrEq(op.name, StrL("border_x")) && length.valid)
-        e->style.borderL = e->style.borderR = length.pixels;
-    else if (StrEq(op.name, StrL("border_y")) && length.valid)
-        e->style.borderT = e->style.borderB = length.pixels;
-    else if (StrEq(op.name, StrL("rounded")) && length.valid)
-        e->Radius(length.pixels);
-    else if (StrEq(op.name, StrL("rounded_t")) && length.valid)
-        e->Corners(length.pixels, length.pixels, 0, 0);
-    else if (StrEq(op.name, StrL("rounded_b")) && length.valid)
-        e->Corners(0, 0, length.pixels, length.pixels);
-    else if (StrEq(op.name, StrL("rounded_l")) && length.valid)
-        e->Corners(length.pixels, 0, 0, length.pixels);
-    else if (StrEq(op.name, StrL("rounded_r")) && length.valid)
-        e->Corners(0, length.pixels, length.pixels, 0);
-    else if (StrEq(op.name, StrL("rounded_tl")) && length.valid)
-        e->Corners(length.pixels, 0, 0, 0);
-    else if (StrEq(op.name, StrL("rounded_tr")) && length.valid)
-        e->Corners(0, length.pixels, 0, 0);
-    else if (StrEq(op.name, StrL("rounded_br")) && length.valid)
-        e->Corners(0, 0, length.pixels, 0);
-    else if (StrEq(op.name, StrL("rounded_bl")) && length.valid)
-        e->Corners(0, 0, 0, length.pixels);
-    else
-        return false;
-    return true;
+static bool ApplyParam(El* e, const shell::SpecOp& op, ShellError* error) {
+    return shell::ApplyParamStyle(e, op, error);
 }
 
 static uint32_t StyleFieldsFor(Str name) {
-    if (StrEq(name, StrL("bg"))) return StyleFieldBg;
-    if (StrEq(name, StrL("text_color"))) return StyleFieldColor;
-    if (StrEq(name, StrL("border_color"))) return StyleFieldBorderColor;
-    if (StrEq(name, StrL("opacity")) || StrEq(name, StrL("invisible")) ||
-        StrEq(name, StrL("visible")))
-        return StyleFieldOpacity;
-    if (StrEq(name, StrL("w")) || StrEq(name, StrL("w_full")) ||
-        StrEq(name, StrL("w_auto")))
-        return StyleFieldWidth;
-    if (StrEq(name, StrL("h")) || StrEq(name, StrL("h_full")) ||
-        StrEq(name, StrL("h_auto")))
-        return StyleFieldHeight;
-    if (StrEq(name, StrL("size")) || StrEq(name, StrL("size_full")))
-        return StyleFieldWidth | StyleFieldHeight;
-    if (StrEq(name, StrL("text_size")) || StrStartsWith(name, "text_"))
-        return StyleFieldFontSize;
-    if (StrEq(name, StrL("gap")) || StrEq(name, StrL("gap_x")) ||
-        StrEq(name, StrL("gap_y")) || StrStartsWith(name, "gap_"))
-        return StyleFieldGap;
-    if (StrEq(name, StrL("p")) || StrEq(name, StrL("px")) ||
-        StrEq(name, StrL("py")) || StrEq(name, StrL("pt")) ||
-        StrEq(name, StrL("pb")) || StrEq(name, StrL("pl")) ||
-        StrEq(name, StrL("pr")) || StrStartsWith(name, "p_"))
-        return StyleFieldPad;
-    if (StrEq(name, StrL("m")) || StrEq(name, StrL("mx")) ||
-        StrEq(name, StrL("my")) || StrEq(name, StrL("mt")) ||
-        StrEq(name, StrL("mb")) || StrEq(name, StrL("ml")) ||
-        StrEq(name, StrL("mr")) || StrStartsWith(name, "m_"))
-        return StyleFieldMargin;
-    if (StrStartsWith(name, "rounded")) return StyleFieldRadius;
-    if (StrEq(name, StrL("border_t"))) return StyleFieldBorderT;
-    if (StrEq(name, StrL("border_b"))) return StyleFieldBorderB;
-    if (StrEq(name, StrL("border_l"))) return StyleFieldBorderL;
-    if (StrEq(name, StrL("border_r"))) return StyleFieldBorderR;
-    if (StrEq(name, StrL("border_x")))
-        return StyleFieldBorderL | StyleFieldBorderR;
-    if (StrEq(name, StrL("border_y")))
-        return StyleFieldBorderT | StyleFieldBorderB;
-    if (StrEq(name, StrL("border")) || StrStartsWith(name, "border_"))
-        return StyleFieldBorder;
-    return 0;
+    return shell::StyleFieldsOf(name);
 }
 
 static bool ApplyStyleNode(Arena* arena, const shell::SpecNode* node,
@@ -921,7 +498,7 @@ static bool ApplyStyleNode(Arena* arena, const shell::SpecNode* node,
         if (op.kind == shell::SpecOpKind::NullaryStyle) {
             recognized = ApplyNullary(target, op.name);
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
-            recognized = ApplyParam(target, op);
+            recognized = ApplyParam(target, op, error);
         } else {
             continue;
         }
@@ -2418,7 +1995,7 @@ static void ApplyOwnStyle(Ctx* cx, const shell::SpecNode* node,
             if (!ApplyNullary(target, op.name) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
-            if (!ApplyParam(target, op) && error && !error->IsSet())
+            if (!ApplyParam(target, op, error) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("invalid style call `%s`", op.name));
         }
     }
@@ -2891,7 +2468,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             if (!ApplyNullary(element, op.name) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("unknown style method `%s`", op.name));
         } else if (op.kind == shell::SpecOpKind::ParamStyle) {
-            if (!ApplyParam(element, op) && error && !error->IsSet())
+            if (!ApplyParam(element, op, error) && error && !error->IsSet())
                 ShellErrorSet(error, fmt("invalid style call `%s`", op.name));
         }
     }

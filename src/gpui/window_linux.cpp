@@ -813,43 +813,41 @@ void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat || !gDpy) {
         return;
     }
-    // The server owns these; one of each per process is all this needs.
-    static ::Cursor arrow = 0;
-    static ::Cursor ibeam = 0;
-    static ::Cursor colResize = 0;
-    static ::Cursor rowResize = 0;
-    static ::Cursor pointer = 0;
-    static ::Cursor crosshair = 0;
-    if (!arrow) {
-        arrow = XCreateFontCursor(gDpy, XC_left_ptr);
+    // The server owns these; one of each per process is all this needs. The
+    // cursor font's nearest glyph for each of gpui's shapes, in CursorKind
+    // order.
+    static const unsigned int shapes[(int)CursorKind::Count] = {
+        XC_left_ptr,          // Arrow
+        XC_xterm,             // IBeam
+        XC_hand2,             // Pointer
+        XC_sb_h_double_arrow, // ColResize
+        XC_sb_v_double_arrow, // RowResize
+        XC_crosshair,         // Crosshair
+        XC_fleur,             // ClosedHand
+        XC_hand1,             // OpenHand
+        XC_left_side,         // ResizeLeft
+        XC_right_side,        // ResizeRight
+        XC_sb_h_double_arrow, // ResizeLeftRight
+        XC_top_side,          // ResizeUp
+        XC_bottom_side,       // ResizeDown
+        XC_sb_v_double_arrow, // ResizeUpDown
+        XC_top_left_corner,   // ResizeUpLeftDownRight
+        XC_top_right_corner,  // ResizeUpRightDownLeft
+        XC_xterm,             // IBeamVertical
+        XC_X_cursor,          // NotAllowed
+        XC_hand2,             // DragLink
+        XC_plus,              // DragCopy
+        XC_left_ptr,          // ContextMenu
+    };
+    static ::Cursor cursors[(int)CursorKind::Count] = {};
+    int index = (int)kind;
+    if (index < 0 || index >= (int)CursorKind::Count) {
+        index = 0;
     }
-    if (!ibeam) {
-        ibeam = XCreateFontCursor(gDpy, XC_xterm);
+    if (!cursors[index]) {
+        cursors[index] = XCreateFontCursor(gDpy, shapes[index]);
     }
-    if (!colResize) {
-        colResize = XCreateFontCursor(gDpy, XC_sb_h_double_arrow);
-    }
-    if (!rowResize) {
-        rowResize = XCreateFontCursor(gDpy, XC_sb_v_double_arrow);
-    }
-    if (!pointer) {
-        pointer = XCreateFontCursor(gDpy, XC_hand2);
-    }
-    if (!crosshair) {
-        crosshair = XCreateFontCursor(gDpy, XC_crosshair);
-    }
-    ::Cursor want = arrow;
-    if (kind == CursorKind::IBeam) {
-        want = ibeam;
-    } else if (kind == CursorKind::ColResize) {
-        want = colResize;
-    } else if (kind == CursorKind::RowResize) {
-        want = rowResize;
-    } else if (kind == CursorKind::Pointer) {
-        want = pointer;
-    } else if (kind == CursorKind::Crosshair) {
-        want = crosshair;
-    }
+    ::Cursor want = cursors[index];
     XDefineCursor(gDpy, win->plat->xwin, want);
     XFlush(gDpy);
 }

@@ -754,9 +754,11 @@ struct KeyEvent {
     bool propagate = true;
 };
 
-// The pointer shape the window asks the OS for. GPUI spells this
-// CursorStyle and has a dozen; these are the two the element tree can tell
-// apart today.
+// The pointer shape the window asks the OS for: GPUI's CursorStyle. The
+// first six were what the element tree could tell apart before the shell's
+// cursor_* styles; the rest follow gpui's own list, and a platform with no
+// shape of its own for one shows the arrow, the way gpui's Windows backend
+// does.
 enum class CursorKind : uint8_t {
     Arrow,
     IBeam,
@@ -770,7 +772,23 @@ enum class CursorKind : uint8_t {
     // other.
     RowResize,
     // cursor_crosshair: a canvas that is drawn on rather than clicked.
-    Crosshair
+    Crosshair,
+    ClosedHand,            // cursor_move, cursor_grabbing
+    OpenHand,              // cursor_grab
+    ResizeLeft,            // cursor_w_resize
+    ResizeRight,           // cursor_e_resize
+    ResizeLeftRight,       // cursor_ew_resize
+    ResizeUp,              // cursor_n_resize
+    ResizeDown,            // cursor_s_resize
+    ResizeUpDown,          // cursor_ns_resize
+    ResizeUpLeftDownRight, // cursor_nwse_resize
+    ResizeUpRightDownLeft, // cursor_nesw_resize
+    IBeamVertical,         // cursor_vertical_text
+    NotAllowed,            // cursor_not_allowed, cursor_no_drop
+    DragLink,              // cursor_alias
+    DragCopy,              // cursor_copy
+    ContextMenu,           // cursor_context_menu
+    Count
 };
 
 // Fired by a window timer; GPUI does this with cx.spawn + Timer::after.
@@ -918,9 +936,13 @@ Bounds ObjectFitBounds(ObjectFit fit, Bounds bounds, Size imageSize);
 // element is: children stack down the page at the container's full width, and
 // nothing is stretched or shrunk to make them fit. `flex()` — or either of the
 // h_flex/v_flex helpers that call it — is what turns on the flex model.
+// `grid()` is taffy's grid with no template (this Style carries none), and
+// `hidden()` is display: none — no box, and nothing painted.
 enum class Display : uint8_t {
     Block,
-    Flex
+    Flex,
+    Grid,
+    None
 };
 
 enum class FlexDir : uint8_t {
@@ -939,14 +961,16 @@ enum class FlexAlign : uint8_t {
     Start,
     Center,
     End,
-    Stretch
+    Stretch,
+    Baseline
 };
 enum class Justify : uint8_t {
     Start,
     Center,
     End,
     SpaceBetween,
-    SpaceAround
+    SpaceAround,
+    SpaceEvenly
 };
 // gpui's Overflow, per axis: `overflow_hidden` clips and
 // `overflow_x_scroll` / `overflow_y_scroll` scroll.
@@ -1883,6 +1907,17 @@ struct Style {
     // The side is a preference: the positioner still flips and clamps when
     // space is short.
     int8_t tooltipPlacement = -1;
+    // align_content (content_start, content_between, …): 0 is unset, which
+    // is also what content_normal() puts back, otherwise 1 + the taffy
+    // AlignContentKeyword.
+    uint8_t alignContent = 0;
+    // flex_wrap_reverse: flexWrap with the lines stacked from the far end.
+    uint8_t flexWrapReverse : 1 = false;
+    // invisible(): gpui's Visibility::Hidden. The box is laid out and not
+    // painted; visible() clears it.
+    uint8_t invisible : 1 = false;
+    // h_1_2 / h_2_3 / …: widthFrac's twin for the height. 0 = unset.
+    float heightFrac = 0;
 };
 
 enum : uint8_t {
@@ -1892,10 +1927,11 @@ enum : uint8_t {
     kMarginAutoB = 8,
 };
 
-// 408 was full to the byte; tooltipPlacement opened the next 8-byte unit, so
-// the next seven byte-sized members are free. Grow this only for a member
-// that has nowhere else to go, never to absorb padding.
-static_assert(sizeof(Style) <= 416, "keep Style members packed by alignment");
+// 416 was full to the byte; heightFrac, which had nowhere else to go, opened
+// the next 8-byte unit, and alignContent and the two bits beside it took two
+// of the four bytes it left, so two byte-sized members are free. Grow this
+// only for a member that has nowhere else to go, never to absorb padding.
+static_assert(sizeof(Style) <= 424, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
 // chained off an element costs a pointer each and dies with the frame.
@@ -3006,7 +3042,7 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1864,
+static_assert(sizeof(El) <= 1872,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {

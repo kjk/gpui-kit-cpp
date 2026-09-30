@@ -898,17 +898,44 @@ void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat) {
         return;
     }
+    // gpui's Windows backend, platform/windows/util.rs load_cursor: the
+    // shapes Windows has no cursor for fall back to the arrow.
     LPCWSTR name = IDC_ARROW;
-    if (kind == CursorKind::IBeam) {
-        name = IDC_IBEAM;
-    } else if (kind == CursorKind::Pointer) {
-        name = IDC_HAND;
-    } else if (kind == CursorKind::ColResize) {
-        name = IDC_SIZEWE;
-    } else if (kind == CursorKind::RowResize) {
-        name = IDC_SIZENS;
-    } else if (kind == CursorKind::Crosshair) {
-        name = IDC_CROSS;
+    switch (kind) {
+        case CursorKind::IBeam:
+        case CursorKind::IBeamVertical:
+            name = IDC_IBEAM;
+            break;
+        case CursorKind::Pointer:
+        case CursorKind::DragLink:
+            name = IDC_HAND;
+            break;
+        case CursorKind::ColResize:
+        case CursorKind::ResizeLeft:
+        case CursorKind::ResizeRight:
+        case CursorKind::ResizeLeftRight:
+            name = IDC_SIZEWE;
+            break;
+        case CursorKind::RowResize:
+        case CursorKind::ResizeUp:
+        case CursorKind::ResizeDown:
+        case CursorKind::ResizeUpDown:
+            name = IDC_SIZENS;
+            break;
+        case CursorKind::ResizeUpLeftDownRight:
+            name = IDC_SIZENWSE;
+            break;
+        case CursorKind::ResizeUpRightDownLeft:
+            name = IDC_SIZENESW;
+            break;
+        case CursorKind::NotAllowed:
+            name = IDC_NO;
+            break;
+        case CursorKind::Crosshair:
+            name = IDC_CROSS;
+            break;
+        default:
+            break;
     }
     win->plat->cursor = LoadCursorW(nullptr, name);
     SetCursor(win->plat->cursor);

@@ -3363,6 +3363,10 @@ static taffy::Dimension ToDim(float v, float frac) {
 // A min-width / min-height: kAuto is the content-based automatic minimum,
 // anything else is the length it says, zero included.
 static taffy::Dimension ToMinDim(float v) {
+    // kFill is `min_w_full()`: relative(1.), as it is for a width.
+    if (v == kFill) {
+        return taffy::Dimension::Percent(1.0f);
+    }
     if (v == kAuto || v < 0) {
         return taffy::Dimension::Auto();
     }
@@ -3380,6 +3384,17 @@ static taffy::LengthPercentageAuto ToInset(float v, float rel) {
         return taffy::LengthPercentageAuto::Auto();
     }
     return taffy::LengthPercentageAuto::Length(v);
+}
+
+// A top or bottom inset. PlaceAnchored only finishes the horizontal
+// `relative(f)` halves, so a vertical one with no pixel part beside it —
+// `top_1_2()`, `bottom(relative(f))` — goes to taffy as the percentage it
+// is, which resolves against the parent's height as gpui's does.
+static taffy::LengthPercentageAuto ToInsetY(float v, float rel) {
+    if (rel != 0 && (v == kAuto || v == 0)) {
+        return taffy::LengthPercentageAuto::Percent(rel);
+    }
+    return ToInset(v, rel);
 }
 
 static taffy::Overflow ToTaffyOverflow(Overflow o) {
@@ -3402,6 +3417,8 @@ static taffy::OptAlignItems ToTaffyAlignItems(FlexAlign a) {
             return taffy::OptAlignItems(taffy::AlignItems{K::Center});
         case FlexAlign::End:
             return taffy::OptAlignItems(taffy::AlignItems{K::End});
+        case FlexAlign::Baseline:
+            return taffy::OptAlignItems(taffy::AlignItems{K::Baseline});
         default:
             return taffy::OptAlignItems(taffy::AlignItems{K::Stretch});
     }
@@ -3433,6 +3450,9 @@ static taffy::OptJustifyContent ToTaffyJustify(Justify j) {
         case Justify::SpaceAround:
             return taffy::OptJustifyContent(
                 taffy::AlignContent{K::SpaceAround});
+        case Justify::SpaceEvenly:
+            return taffy::OptJustifyContent(
+                taffy::AlignContent{K::SpaceEvenly});
         default:
             return taffy::OptJustifyContent(taffy::AlignContent{K::Start});
     }
@@ -3442,10 +3462,28 @@ static taffy::OptJustifyContent ToTaffyJustify(Justify j) {
 static taffy::Style ToTaffyStyle(const El* e) {
     const Style& s = e->style;
     taffy::Style t;
-    t.display = s.display == Display::Flex ? taffy::Display::Flex
-                                           : taffy::Display::Block;
+    switch (s.display) {
+        case Display::Flex:
+            t.display = taffy::Display::Flex;
+            break;
+        case Display::Grid:
+            t.display = taffy::Display::Grid;
+            break;
+        case Display::None:
+            t.display = taffy::Display::None;
+            break;
+        default:
+            t.display = taffy::Display::Block;
+            break;
+    }
     t.flexDirection = ToTaffyFlexDir(s.dir);
-    t.flexWrap = s.flexWrap ? taffy::FlexWrap::Wrap : taffy::FlexWrap::NoWrap;
+    t.flexWrap = !s.flexWrap         ? taffy::FlexWrap::NoWrap
+                 : s.flexWrapReverse ? taffy::FlexWrap::WrapReverse
+                                     : taffy::FlexWrap::Wrap;
+    if (s.alignContent != 0) {
+        t.alignContent = taffy::OptAlignContent(taffy::AlignContent{
+            (taffy::AlignContentKeyword)(s.alignContent - 1)});
+    }
     t.alignItems = ToTaffyAlignItems(s.align);
     if (s.hasAlignSelf) {
         t.alignSelf = ToTaffyAlignItems(s.alignSelf);
@@ -3453,7 +3491,7 @@ static taffy::Style ToTaffyStyle(const El* e) {
     t.justifyContent = ToTaffyJustify(s.justify);
     t.overflow = {ToTaffyOverflow(s.overflowX), ToTaffyOverflow(s.overflowY)};
 
-    t.size = {ToDim(s.width, s.widthFrac), ToDim(s.height, 0)};
+    t.size = {ToDim(s.width, s.widthFrac), ToDim(s.height, s.heightFrac)};
     if (s.aspect > 0) {
         t.aspectRatio = taffy::Some(s.aspect);
     }
@@ -3519,8 +3557,8 @@ static taffy::Style ToTaffyStyle(const El* e) {
         t.position = taffy::Position::Absolute;
         t.inset = {ToInset(s.absLeft, s.absLeftRel),
                    ToInset(s.absRight, s.absRightRel),
-                   ToInset(s.absTop, s.absTopRel),
-                   ToInset(s.absBottom, s.absBottomRel)};
+                   ToInsetY(s.absTop, s.absTopRel),
+                   ToInsetY(s.absBottom, s.absBottomRel)};
     }
     return t;
 }
@@ -6633,6 +6671,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // `.invisible()` until the group is hovered. The box was laid out either
     // way; this only stops it being drawn.
     if (e->style.groupHoverVisible && !ctx->groupHovered) {
+        return;
+    }
+    // `invisible()` keeps its box and draws nothing; `hidden()` has no box
+    // to draw into. Neither paints what it holds.
+    if (e->style.invisible || e->style.display == Display::None) {
         return;
     }
     // SliderIndicator::on_prepaint. Layout is over by the time an element

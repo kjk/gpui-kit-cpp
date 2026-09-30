@@ -16,6 +16,7 @@
 #include "shell/root.h"
 #include "shell/scope.h"
 #include "shell/standard.h"
+#include "shell/style.h"
 #include "shell/theme_tokens.h"
 #include "shell/view.h"
 #include "base/input_tokens.h"
@@ -2133,21 +2134,9 @@ static const char* MouseButtonCallbackName(Str method, Str button) {
     return nullptr;
 }
 
+// style.rs param_style_name.
 static bool IsParamStyle(Str name) {
-    static const char names[] =
-        "w\0h\0size\0min_w\0min_h\0min_size\0max_w\0max_h\0max_size\0"
-        "p\0px\0py\0pt\0pb\0pl\0pr\0m\0mx\0my\0mt\0mb\0ml\0mr\0"
-        "inset\0top\0bottom\0left\0right\0gap\0gap_x\0gap_y\0"
-        "flex_grow\0flex_shrink\0flex_basis\0bg\0text_color\0text_bg\0"
-        "text_size\0font_family\0font_weight\0line_height\0opacity\0"
-        "border\0border_t\0border_b\0border_l\0border_r\0border_x\0"
-        "border_y\0border_color\0rounded\0rounded_t\0rounded_b\0"
-        "rounded_l\0rounded_r\0rounded_tl\0rounded_tr\0rounded_bl\0"
-        "rounded_br\0";
-    for (const char* at = names; *at; at += strlen(at) + 1) {
-        if (StrEq(name, at)) return true;
-    }
-    return false;
+    return shell::IsParamStyleName(name);
 }
 
 static bool IsBehavior(Str name) {

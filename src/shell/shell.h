@@ -25,6 +25,7 @@
 #include "shell/spec.h"
 #include "shell/standard.h"
 #include "shell/storage.h"
+#include "shell/style.h"
 #include "shell/theme_tokens.h"
 #include "shell/typings.h"
 

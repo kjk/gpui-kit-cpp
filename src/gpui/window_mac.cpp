@@ -1305,7 +1305,35 @@ void PlatSetCursor(Window* win, CursorKind kind) {
         [[NSCursor resizeUpDownCursor] set];
     } else if (kind == CursorKind::Crosshair) {
         [[NSCursor crosshairCursor] set];
+    } else if (kind == CursorKind::ClosedHand) {
+        [[NSCursor closedHandCursor] set];
+    } else if (kind == CursorKind::OpenHand) {
+        [[NSCursor openHandCursor] set];
+    } else if (kind == CursorKind::ResizeLeft) {
+        [[NSCursor resizeLeftCursor] set];
+    } else if (kind == CursorKind::ResizeRight) {
+        [[NSCursor resizeRightCursor] set];
+    } else if (kind == CursorKind::ResizeLeftRight) {
+        [[NSCursor resizeLeftRightCursor] set];
+    } else if (kind == CursorKind::ResizeUp) {
+        [[NSCursor resizeUpCursor] set];
+    } else if (kind == CursorKind::ResizeDown) {
+        [[NSCursor resizeDownCursor] set];
+    } else if (kind == CursorKind::ResizeUpDown) {
+        [[NSCursor resizeUpDownCursor] set];
+    } else if (kind == CursorKind::IBeamVertical) {
+        [[NSCursor IBeamCursorForVerticalLayout] set];
+    } else if (kind == CursorKind::NotAllowed) {
+        [[NSCursor operationNotAllowedCursor] set];
+    } else if (kind == CursorKind::DragLink) {
+        [[NSCursor dragLinkCursor] set];
+    } else if (kind == CursorKind::DragCopy) {
+        [[NSCursor dragCopyCursor] set];
+    } else if (kind == CursorKind::ContextMenu) {
+        [[NSCursor contextualMenuCursor] set];
     } else {
+        // Including the two diagonal resizes, which AppKit has no public
+        // cursor for.
         [[NSCursor arrowCursor] set];
     }
 }
