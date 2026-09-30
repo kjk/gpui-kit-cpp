@@ -33,6 +33,12 @@ Collapsible* Collapsible::Trigger(El* e) {
     trigger = e;
     return this;
 }
+Collapsible* Collapsible::Child(El* e) {
+    if (e) {
+        children.Append(a, e);
+    }
+    return this;
+}
 Collapsible* Collapsible::Content(El* e) {
     content = e;
     return this;
@@ -43,6 +49,9 @@ El* Collapsible::IntoEl() {
     // does not; a collapsible stacks its trigger over its content.
     gpui::Collapsible* base =
         gpui::Collapsible::New(cx)->FlexCol()->Open(open)->Child(trigger);
+    for (El* child : children) {
+        base->Child(child);
+    }
     if (hasMotion) {
         // spring_control, the policy every control that answers a click
         // shares: a trigger clicked twice reverses the reveal from where it

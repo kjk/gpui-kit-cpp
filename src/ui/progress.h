@@ -31,6 +31,8 @@ struct Progress {
     Progress* Id(Str v);
     // Set the accessible name exposed by the progress indicator.
     Progress* AccessibilityLabel(Str s);
+    // Sizable: the bar's height, 4 / 6 / 8 / 10 px or a custom one.
+    Progress* WithSize(UiSize s);
     El* IntoEl();
 };
 

@@ -18,6 +18,9 @@ struct Collapsible {
     Str motionId = {};
     bool hasMotion = false;
     El* trigger = nullptr;
+    // ParentElement: what shows whether or not the collapsible is open, after
+    // the trigger.
+    ArenaVec<El*> children;
     El* content = nullptr;
     // The caller's own style on the collapsible's root: `w_full()` and
     // `gap_2()` are what every one of the story's carries.
@@ -30,6 +33,7 @@ struct Collapsible {
     Collapsible* Open(bool v);
     Collapsible* MotionId(Str id);
     Collapsible* Trigger(El* e);
+    Collapsible* Child(El* e);
     Collapsible* Content(El* e);
     El* IntoEl();
 };

@@ -39,6 +39,27 @@ Progress* Progress::H(float v) {
     h = v;
     return this;
 }
+Progress* Progress::WithSize(UiSize s) {
+    // progress.rs render: XSmall 4, Small 6, Medium 8, Large 10, Size(s) s.
+    switch (s.kind) {
+        case UiSize::Kind::XSmall:
+            h = 4;
+            break;
+        case UiSize::Kind::Small:
+            h = 6;
+            break;
+        case UiSize::Kind::Large:
+            h = 10;
+            break;
+        case UiSize::Kind::Size:
+            h = s.pixels;
+            break;
+        default:
+            h = 8;
+            break;
+    }
+    return this;
+}
 Progress* Progress::Loading(bool v) {
     loading = v;
     return this;

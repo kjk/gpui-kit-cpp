@@ -43,6 +43,17 @@ Pagination* Pagination::Id(Str s) {
     id = s;
     return this;
 }
+Pagination* Pagination::CurrentPage(int value) {
+    page = value < 1 ? 1 : value;
+    return this;
+}
+Pagination* Pagination::TotalPages(int value) {
+    total = value < 1 ? 1 : value;
+    if (page > total) {
+        page = total;
+    }
+    return this;
+}
 Pagination* Pagination::VisiblePages(int n) {
     visiblePages = n;
     return this;

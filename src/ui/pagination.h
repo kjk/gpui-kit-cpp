@@ -47,6 +47,10 @@ struct Pagination {
 
     static Pagination* New(Ctx* cx, int page, int total);
     Pagination* Id(Str s);
+    // current_page: at least 1.
+    Pagination* CurrentPage(int page);
+    // total_pages: at least 1, and the current page no further than it.
+    Pagination* TotalPages(int pages);
     Pagination* VisiblePages(int n);
     Pagination* Compact(bool v = true);
     Pagination* Disabled(bool v);

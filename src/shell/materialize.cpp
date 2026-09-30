@@ -559,6 +559,11 @@ static bool ApplyNullary(El* element, Str name) {
         element->FlexRowReverse();
     else if (StrEq(name, StrL("flex_col_reverse")))
         element->FlexColReverse();
+    // gpui_base::StyledExt, which Rust's style reflection reaches.
+    else if (StrEq(name, StrL("h_flex")))
+        element->Flex()->FlexRow()->ItemsCenter();
+    else if (StrEq(name, StrL("v_flex")))
+        element->Flex()->FlexCol();
     else if (StrEq(name, StrL("flex_wrap")))
         element->FlexWrap();
     else if (StrEq(name, StrL("flex_1")))

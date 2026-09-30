@@ -16,6 +16,7 @@ bool RegisterSeparator(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterSkeleton(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 
@@ -35,6 +36,15 @@ bool RegisterDisplayGroupBox(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayRating(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayStatusBar(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplayToolbar(shell::ComponentRegistry*, shell::RegistryError*);
+
+// compound/mod.rs
+bool RegisterCompoundAvatar(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCompoundCollapsible(shell::ComponentRegistry*,
+                                 shell::RegistryError*);
+bool RegisterCompoundPagination(shell::ComponentRegistry*,
+                                shell::RegistryError*);
+bool RegisterCompoundProgress(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCompoundRadio(shell::ComponentRegistry*, shell::RegistryError*);
 
 // basic/mod.rs
 bool RegisterBasicText(shell::ComponentRegistry*, shell::RegistryError*);

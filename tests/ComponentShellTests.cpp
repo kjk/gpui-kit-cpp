@@ -6,6 +6,8 @@
 
 #include "Test.h"
 
+#include <float.h>
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -1560,6 +1562,276 @@ void TypedContainersRefuseForeignChildren() {
                             "Lonely step"));
 }
 
+// ─── compound/: mod.rs, common.rs and the five modules ─────────────────────
+
+// registers_only_the_honestly_materializable_compound_batch
+void RegistersOnlyTheHonestlyMaterializableCompoundBatch() {
+    FamilyCatalog catalog(&component_shell::RegisterCompound);
+    utassert(catalog.ok);
+    const char* names[] = {"Avatar", "Collapsible", "Pagination", "Progress",
+                           "Radio"};
+    utassert(catalog.NamesAre(names, 5));
+    utassert(catalog.Documented());
+}
+
+// numeric_and_controlled_arguments_have_closed_schemas
+void NumericAndControlledArgumentsHaveClosedSchemas() {
+    FamilyCatalog catalog(&component_shell::RegisterCompound);
+    // By name, not by position.
+    auto schemaOf = [&](const char* component,
+                        const char* method) -> shell::SchemaKind {
+        const ComponentDescriptor* d = catalog.frozen.Find(Str(component));
+        if (!d) return shell::SchemaKind::Optional;
+        for (const MethodDescriptor& m : d->methods) {
+            if (strcmp(m.name, method) == 0) return m.arguments[0].schema.kind;
+        }
+        return shell::SchemaKind::Optional;
+    };
+    utassert(schemaOf("Pagination", "current_page") ==
+             shell::SchemaKind::Number);
+    utassert(schemaOf("Radio", "checked") == shell::SchemaKind::Boolean);
+}
+
+// common.rs usize_conversion_rejects_fractional_negative_and_overflow_values
+void CompoundUsizeConversionRejectsFractionalNegativeAndOverflow() {
+    using component_shell::compound::common::NonnegativeUsize;
+    uint64_t out = 7;
+    Str error;
+    utassert(NonnegativeUsize(0.0, StrL("value"), &out, &error) && out == 0);
+    utassert(NonnegativeUsize(42.0, StrL("value"), &out, &error) && out == 42);
+    utassert(!NonnegativeUsize(-1.0, StrL("value"), &out, &error));
+    utassert(!NonnegativeUsize(1.5, StrL("value"), &out, &error));
+    utassert(!NonnegativeUsize(INFINITY, StrL("value"), &out, &error));
+    utassert(
+        !NonnegativeUsize(18446744073709551616.0, StrL("value"), &out, &error));
+    utassert(StrEq(error, StrL("value expects an exactly representable "
+                               "nonnegative integer")));
+}
+
+// common.rs f32_conversion_rejects_values_that_would_become_infinite, and
+// progress.rs value_rejects_f64_values_outside_the_f32_range
+void CompoundF32ConversionRejectsValuesThatWouldBecomeInfinite() {
+    using component_shell::compound::common::FiniteF32;
+    float out = 0;
+    Str error;
+    utassert(FiniteF32(42.5, StrL("value"), &out, &error) && out == 42.5f);
+    utassert(!FiniteF32((double)FLT_MAX * 2.0, StrL("value"), &out, &error));
+    utassert(!FiniteF32(-(double)FLT_MAX * 2.0, StrL("value"), &out, &error));
+    utassert(!FiniteF32(NAN, StrL("value"), &out, &error));
+    utassert(
+        !FiniteF32(-INFINITY, StrL("Progress.value(value)"), &out, &error));
+    utassert(StrEq(error, StrL("Progress.value(value) expects a finite "
+                               "number representable as f32")));
+}
+
+// common.rs ids_must_contain_non_whitespace_text, and each module's
+// id_rejects_empty_and_whitespace_only_values through its constructor.
+void CompoundIdsMustContainNonWhitespaceText() {
+    using component_shell::compound::common::NonemptyId;
+    Str error;
+    utassert(!NonemptyId(StrL(""), "Widget", &error));
+    utassert(!NonemptyId(StrL("  \t"), "Widget", &error));
+    utassert(StrEq(error, StrL("Widget(id) expects a nonempty string id")));
+    utassert(NonemptyId(StrL("widget-1"), "Widget", &error));
+    utassert(StrContains(CallErrorTemp("Pagination", "new Pagination('\\n')"),
+                         StrL("Pagination(id) expects a nonempty string id")));
+    utassert(StrContains(CallErrorTemp("Progress", "new Progress('   ')"),
+                         StrL("Progress(id) expects a nonempty string id")));
+    utassert(StrContains(CallErrorTemp("Radio", "new Radio(' \\t ')"),
+                         StrL("Radio(id) expects a nonempty string id")));
+    utassert(RendersCleanly("Radio", "new Radio('choice-a').label('A')", "A"));
+}
+
+// pagination.rs positive_integer_validation, through the recorder that
+// calls it.
+void PaginationPositiveIntegerValidation() {
+    utassert(
+        RendersCleanly("Pagination", "new Pagination('p').total_pages(3)"));
+    const char* refused[] = {"0", "1.5", "2 ** 64"};
+    for (const char* value : refused) {
+        TempStr call = fmt("new Pagination('p').total_pages(%s)", Str(value));
+        TempStr message = CallErrorTemp("Pagination", call.s);
+        utassert(StrContains(message, StrL("Pagination.total_pages")));
+    }
+    utassert(StrContains(
+        CallErrorTemp("Pagination", "new Pagination('p').total_pages(0)"),
+        StrL("Pagination.total_pages(total_pages) expects a positive "
+             "integer")));
+    utassert(StrContains(
+        CallErrorTemp("Pagination", "new Pagination('p').visible_pages(1.5)"),
+        StrL("Pagination.visible_pages(visible_pages) expects an exactly "
+             "representable nonnegative integer")));
+}
+
+// avatar.rs incompatible_payload_is_rejected, progress.rs
+// invalid_payload_fails, and the three other modules' payload checks.
+void CompoundComponentsRejectAnIncompatiblePayload() {
+    const char* const names[] = {"Avatar", "Collapsible", "Pagination",
+                                 "Progress", "Radio"};
+    for (const char* name : names) {
+        Str failure = MaterializeFailure(name, shell::ComponentPayload{}, 0);
+        utassert(StrEq(failure,
+                       fmt("%s received an incompatible payload", Str(name))));
+        StrFree(failure);
+    }
+    Arena* a = ArenaNew();
+    shell::ComponentArgument id = StringArgument("p");
+    const char* const leaves[] = {"Avatar", "Pagination", "Progress"};
+    for (const char* name : leaves) {
+        shell::ComponentPayload payload = BuildPayload(
+            name, 0, &id, StrEq(Str(name), "Avatar") ? 0 : 1, a, nullptr);
+        Str failure = MaterializeFailure(name, payload, 1);
+        utassert(StrEq(failure, fmt("%s does not accept children", Str(name))));
+        StrFree(failure);
+    }
+    ArenaDelete(a);
+}
+
+// avatar.rs real_avatar_accepts_recorded_operations and progress.rs
+// real_progress_accepts_value, with the rest of the family, from a script.
+void CompoundComponentsBuildFromAScript() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Avatar, Collapsible, Pagination, Progress, Radio } from "
+        "'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() { this.page = 1; this.checked = false; }\n"
+        "  render() {\n"
+        "    return div().w(600)\n"
+        "      .child(new Avatar().name('Ada Lovelace').size('large'))\n"
+        "      .child(new Collapsible().open(true).motion_id('details')\n"
+        "        .child('Trigger').content(div().child('Revealed')))\n"
+        "      .child(new Collapsible().child('Closed trigger')"
+        ".content(div().child('Hidden')))\n"
+        "      .child(new Pagination('pages').total_pages(5)"
+        ".current_page(this.page)\n"
+        "        .on_change((page, cx) => { this.page = page; cx.notify(); "
+        "}))\n"
+        "      .child(new Progress('p').value(42).size('small')"
+        ".accessibility_label('Upload'))\n"
+        "      .child(new Radio('alone').label('Alone').checked(this.checked)\n"
+        "        .on_change((checked, cx) => { this.checked = checked; "
+        "cx.notify(); }))\n"
+        "      .child(`state: ${this.page}|${this.checked}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
+    utassert(FindText(root, StrL("Trigger")) != nullptr);
+    utassert(FindText(root, StrL("Revealed")) != nullptr);
+    utassert(FindText(root, StrL("Closed trigger")) != nullptr);
+    utassert(FindText(root, StrL("Hidden")) == nullptr);
+    utassert(FindText(root, StrL("state: 1|false")) != nullptr);
+
+    El* page = ListenerAbove(root, StrL("3"));
+    utassert(page != nullptr);
+    if (page) Click(host, page);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: 3|false")) != nullptr);
+
+    El* radio = ListenerAbove(root, StrL("Alone"));
+    utassert(radio != nullptr);
+    if (radio) Click(host, radio);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: 3|true")) != nullptr);
+}
+
+// The text elements under `element`, in tree order, joined by `|`.
+void CollectTexts(El* element, StrBuilder* out) {
+    if (!element) return;
+    if (element->kind == ElKind::Text) {
+        out->Append(element->text);
+        out->Append(StrL("|"));
+    }
+    for (El* child = element->first; child; child = child->next)
+        CollectTexts(child, out);
+}
+
+// public_host.rs public_host_materializes_real_typed_compound_children_in
+// _script_order. Rust counts the recorded `.w(500)` calls in the debug tree;
+// here each container's style is what lands on its root.
+void PublicHostMaterializesTypedCompoundChildrenInScriptOrder() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import {\n"
+        "  Accordion, AccordionItem, Radio, RadioGroup,\n"
+        "  Stepper, StepperItem, Tab, TabBar,\n"
+        "} from 'gpui-component';\n"
+        "export default class TypedCompounds extends View {\n"
+        "  render() {\n"
+        "    return div().v_flex().gap(8)\n"
+        "      .child(new Accordion('faq').w(500).multiple(true)\n"
+        "        .child(new AccordionItem().px(2).title(div().child('Question "
+        "A')).open(true).child('Answer A'))\n"
+        "        .child(new AccordionItem().title(div().child('Question B'))"
+        ".child('Answer B')))\n"
+        "      .child(new TabBar('sections').w(500).selected_index(1)"
+        ".variant('underline')\n"
+        "        .child(new Tab().label('First'))\n"
+        "        .child(new Tab().label('Second')))\n"
+        "      .child(new Stepper('setup').w(500).selected_index(1)\n"
+        "        .child(new StepperItem().child('Account'))"
+        ".child(new StepperItem().child('Profile')))\n"
+        "      .child(new RadioGroup('density').w(500).selected_index(1)\n"
+        "        .child(new Radio('comfortable').px(2).label('Comfortable'))\n"
+        "        .child(new Radio('compact').label('Compact')));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
+    StrBuilder texts;
+    CollectTexts(root, &texts);
+    Str tree = texts.TakeStr();
+    const char* ordered[] = {"Question A", "Answer A",    "Question B",
+                             "First",      "Second",      "Account",
+                             "Profile",    "Comfortable", "Compact"};
+    int at = 0;
+    for (const char* text : ordered) {
+        TempStr needle = fmt("%s|", Str(text));
+        Str rest = Str(tree.s + at, len(tree) - at);
+        int found = StrFind(rest, needle);
+        utassert(found >= 0);
+        if (found >= 0) at += found + len(needle);
+    }
+    StrFree(tree);
+    int wide = 0;
+    for (El* child = root->first; child; child = child->next) {
+        if (child->style.width == 500) wide++;
+    }
+    utassert(wide == 4);
+}
+
+// A RadioGroup reports the radio clicked, and a radio's own style reaches
+// it inside the group.
+void RadioGroupReportsTheClickedIndex() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Radio, RadioGroup } from 'gpui-component';\n"
+             "export default class Main extends View {\n"
+             "  init() { this.sel = 0; }\n"
+             "  render() {\n"
+             "    return div()\n"
+             "      .child(new RadioGroup('g').selected_index(this.sel)\n"
+             "        .on_change((i, cx) => { this.sel = i; cx.notify(); })\n"
+             "        .child(new Radio('a').label('Alpha'))\n"
+             "        .child(new Radio('b').label('Beta').w(123)))\n"
+             "      .child(`sel: ${this.sel}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("sel: 0")) != nullptr);
+    El* beta = ListenerAbove(root, StrL("Beta"));
+    utassert(beta != nullptr && beta->style.width == 123);
+    if (beta) Click(host, beta);
+    root = host.Render();
+    utassert(FindText(root, StrL("sel: 1")) != nullptr);
+    utassert(!RendersCleanly("RadioGroup, Radio",
+                             "new RadioGroup('g').child(div())"));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -1618,6 +1890,18 @@ void TestComponentShell() {
     TextConstructorIsClosedAndPreservesContent();
     DropdownButtonDescriptorIsClosed();
     BasicTextAndDropdownMaterializeThroughTheHost();
+
+    TestSuite("compound");
+    RegistersOnlyTheHonestlyMaterializableCompoundBatch();
+    NumericAndControlledArgumentsHaveClosedSchemas();
+    CompoundUsizeConversionRejectsFractionalNegativeAndOverflow();
+    CompoundF32ConversionRejectsValuesThatWouldBecomeInfinite();
+    CompoundIdsMustContainNonWhitespaceText();
+    PaginationPositiveIntegerValidation();
+    CompoundComponentsRejectAnIncompatiblePayload();
+    CompoundComponentsBuildFromAScript();
+    PublicHostMaterializesTypedCompoundChildrenInScriptOrder();
+    RadioGroupReportsTheClickedIndex();
 
     TestSuite("typed_compound");
     WrongRegisteredChildIdentityIsRejected();
