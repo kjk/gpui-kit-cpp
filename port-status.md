@@ -204,9 +204,9 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
 - **The Base showcase's editor is plain text with a gutter.** Upstream's
   page installs its own syntect highlighter (`syntect_highlighter.rs`,
   a third-party crate) for Rust, colours its captures through
-  `ShowcaseHighlightStyles`, and turns on folding and whitespace markers;
-  here the page draws the same text with line numbers and the showcase
-  editor style only (`examples/showcase/editor.cpp`).
+  `ShowcaseHighlightStyles`, and turns on folding; here the page draws the
+  same text with line numbers, whitespace markers and the showcase editor
+  style only (`examples/showcase/editor.cpp`).
 - **Process CPU %** is a Win32/procfs times delta, not `sysinfo`. First sample
   is 0; values are in the same ballpark, not bit-identical.
 - **The scene graph is still smaller than GPUI's.** `src/gpui/scene.h`

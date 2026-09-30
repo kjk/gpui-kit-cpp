@@ -50,6 +50,8 @@ El* ShowcaseEditor(ShowcaseApp* app, Ctx* cx) {
     Arena* a = cx->a;
     if (!app->editorInited) {
         app->editor.kind = InputKind::Editor;
+        // mod.rs: `.show_whitespaces(true)`.
+        app->editor.showWhitespaces = true;
         InputSetValue(&app->editor, Str(kEditorDefault));
         InputMoveTo(&app->editor, cx, 0);
         app->editorInited = true;
