@@ -956,7 +956,12 @@ El* Toggle::IntoEl() {
     styles.Pressed(pressed);
     StateStyle instance;
     instance.Fg(th.foreground);
-    if (variant == ToggleVariant::Outline) {
+    if (variant == ToggleVariant::Outline && edgeL && edgeR && edgeT && edgeB) {
+        // All four edges: one border, which follows the rounded corners the
+        // way Rust's four border_*_1 do; the per-side ones paint square.
+        instance.Border(1, th.border);
+        instance.Bg(th.tokens.background);
+    } else if (variant == ToggleVariant::Outline) {
         if (edgeL) instance.BorderL(1, th.border);
         if (edgeR) instance.BorderR(1, th.border);
         if (edgeT) instance.BorderT(1, th.border);
