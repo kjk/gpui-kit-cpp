@@ -9141,7 +9141,13 @@ globalThis.__gpui = (() => {
     HoverCard: named("HoverCard"), Popup: named("Popup"),
     Select: named("Select"), Combobox: named("Combobox"),
     DatePicker: { new: (id, focus) => component("DatePicker", String(id), focus?.__handle) },
-    Scrollbar: named("Scrollbar"),
+    // `horizontal` and `vertical` are `new` plus the orientation the group
+    // containers already spell `axis`, as quickjs/mod.rs has them.
+    Scrollbar: {
+      new: (id) => component("Scrollbar", String(id)),
+      horizontal: (id) => component("Scrollbar", String(id)).axis("horizontal"),
+      vertical: (id) => component("Scrollbar", String(id)).axis("vertical"),
+    },
     v_virtual_list: virtualList(__v_virtual_list, "v_virtual_list"),
     h_virtual_list: virtualList(__h_virtual_list, "h_virtual_list"),
     list: lazyList(__list, "list", true),
