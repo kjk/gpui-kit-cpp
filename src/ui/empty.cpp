@@ -48,6 +48,7 @@ El* EmptyMedia::IntoEl() {
             ->Font(16);
     }
     root->Refine(style, styleSet);
+    refiner.Apply(root);
     EmptyChildren(root, children);
     return root;
 }
@@ -67,6 +68,7 @@ EmptyTitle* EmptyTitle::Refine(const Style& value, uint32_t fields) {
 El* EmptyTitle::IntoEl() {
     El* root = Div(a)->MaxW(kFill)->MinW(0)->Font(14)->Medium()->Wrap();
     root->Refine(style, styleSet);
+    refiner.Apply(root);
     EmptyChildren(root, children);
     return root;
 }
@@ -96,6 +98,7 @@ El* EmptyDescription::IntoEl() {
                    ->Fg(theme.mutedFg)
                    ->Wrap();
     root->Refine(style, styleSet);
+    refiner.Apply(root);
     EmptyChildren(root, children);
     return root;
 }
@@ -122,6 +125,7 @@ El* EmptyContent::IntoEl() {
                    ->Gap(10)
                    ->Font(14);
     root->Refine(style, styleSet);
+    refiner.Apply(root);
     EmptyChildren(root, children);
     return root;
 }
@@ -155,6 +159,7 @@ El* EmptyHeader::IntoEl() {
                    ->ItemsCenter()
                    ->Gap(8)
                    ->Refine(style, styleSet);
+    refiner.Apply(root);
     if (media) root->Child(media->IntoEl());
     if (title) root->Child(title->IntoEl());
     if (description) root->Child(description->IntoEl());
@@ -202,6 +207,7 @@ El* Empty::IntoEl() {
                    ->TextCenter()
                    ->Fg(theme.foreground)
                    ->Refine(style, styleSet);
+    refiner.Apply(root);
     if (header) root->Child(header->IntoEl());
     if (content) root->Child(content->IntoEl());
     EmptyChildren(root, children);

@@ -1832,6 +1832,172 @@ void RadioGroupReportsTheClickedIndex() {
                              "new RadioGroup('g').child(div())"));
 }
 
+// ─── empty.rs and tests/empty_host.rs ──────────────────────────────────────
+
+// empty_publishes_all_parts_with_closed_documented_methods
+void EmptyPublishesAllPartsWithClosedDocumentedMethods() {
+    FamilyCatalog catalog(&component_shell::RegisterEmpty);
+    utassert(catalog.ok);
+    const char* names[] = {"Empty",      "EmptyHeader",      "EmptyMedia",
+                           "EmptyTitle", "EmptyDescription", "EmptyContent"};
+    utassert(catalog.NamesAre(names, 6));
+    const char* methods[6][3] = {
+        {}, {"media", "title", "description"}, {"variant"}, {}, {}, {}};
+    const int counts[6] = {0, 3, 1, 0, 0, 0};
+    for (int i = 0; i < catalog.frozen.DescriptorCount() && i < 6; i++) {
+        const ComponentDescriptor* d = catalog.frozen.Descriptor((uint32_t)i);
+        utassert(d->documentation != nullptr);
+        utassert(d->constructors[0].arguments.count == 0);
+        utassert(d->methods.count == counts[i]);
+        for (int m = 0; m < d->methods.count && m < counts[i]; m++) {
+            const MethodDescriptor& method = d->methods[m];
+            utassert(strcmp(method.name, methods[i][m]) == 0);
+            utassert(method.documentation != nullptr);
+            const ArgumentSchema& schema = method.arguments[0].schema;
+            if (strcmp(method.name, "variant") == 0) {
+                utassert(schema.kind == shell::SchemaKind::Enum &&
+                         schema.values.count == 2 &&
+                         strcmp(schema.values[0], "default") == 0 &&
+                         strcmp(schema.values[1], "icon") == 0);
+            } else {
+                utassert(schema.kind == shell::SchemaKind::Element);
+            }
+        }
+    }
+}
+
+// empty_host.rs empty_slots_replace_previous_parts_and_preserve_child
+// _actions. Rust clicks at the button's laid-out position; here the click is
+// the listener the button carries. The media holds text where Rust's holds
+// an Icon, which the catalog here does not register yet.
+void EmptySlotsReplacePreviousPartsAndPreserveChildActions() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import {\n"
+        "  Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, "
+        "EmptyContent, Button,\n"
+        "} from 'gpui-component';\n"
+        "export default class EmptyHost extends View {\n"
+        "  init() { this.hits = 0; }\n"
+        "  render() {\n"
+        "    return div()\n"
+        "      .child(new Empty().relative().w(400).h(260).p(0)\n"
+        "        .child(div().child(`Hits: ${this.hits}`))\n"
+        "        // Invalid, overwritten values must not be materialized.\n"
+        "        .header(new EmptyHeader().child('discarded header'))\n"
+        "        .content(new EmptyTitle())\n"
+        "        .content(new EmptyContent().absolute().left(0).top(100)"
+        ".w(180).h(40).p(0)\n"
+        "          .child(new Button('create-project').w(180).h(40)"
+        ".label('Create project')\n"
+        "            .on_click((_event, cx) => { this.hits += 1; cx.notify(); "
+        "})))\n"
+        "        .header(new EmptyHeader().items_start().gap(4)\n"
+        "          .media(new EmptyContent())\n"
+        "          .title(new EmptyContent())\n"
+        "          .description(new EmptyContent())\n"
+        "          .description(new EmptyDescription().text_size(12)"
+        ".child('Create your first project.'))\n"
+        "          .title(new EmptyTitle().font_semibold().child('No "
+        "projects'))\n"
+        "          .media(new EmptyMedia().variant('icon').variant('default')"
+        ".p(2)\n"
+        "            .child('Folder icon'))))\n"
+        "      // Parts also render directly, outside the typed slots.\n"
+        "      .child(new EmptyHeader().title(new "
+        "EmptyTitle().child('Standalone "
+        "header')))\n"
+        "      .child(new EmptyMedia().child('Standalone media'))\n"
+        "      .child(new EmptyTitle().child('Standalone title'))\n"
+        "      .child(new EmptyDescription().child('Standalone description'))\n"
+        "      .child(new EmptyContent().child('Standalone content'));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    if (!root) return;
+    utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
+    const char* texts[] = {"Hits: 0",
+                           "Folder icon",
+                           "Create project",
+                           "No projects",
+                           "Create your first project.",
+                           "Standalone header",
+                           "Standalone media",
+                           "Standalone title",
+                           "Standalone description",
+                           "Standalone content"};
+    for (const char* text : texts) utassert(FindText(root, Str(text)));
+    utassert(FindText(root, StrL("discarded header")) == nullptr);
+    // The header's own style reached the header the Empty rendered.
+    El* title = FindParentOfText(root, StrL("No projects"));
+    El* header = nullptr;
+    for (El* e = root->first ? root->first->first : nullptr; e; e = e->next) {
+        for (El* c = e->first; c; c = c->next)
+            if (c == title) header = e;
+    }
+    utassert(header != nullptr && header->style.gapY == 4);
+
+    El* button = ListenerAbove(root, StrL("Create project"));
+    utassert(button != nullptr);
+    if (button) Click(host, button);
+    root = host.Render();
+    utassert(FindText(root, StrL("Hits: 1")) != nullptr);
+}
+
+// empty_host.rs empty_rejects_wrong_slot_types_and_ordinary_header_children.
+// Rust reads each diagnostic from `check`; the host here renders the refused
+// part as "Failed to render <part>", and the diagnostics themselves are the
+// TakeElement messages typed_compound's tests pin, plus the header's own.
+void EmptyRejectsWrongSlotTypesAndOrdinaryHeaderChildren() {
+    struct Case {
+        const char* expression;
+        const char* failed;
+    };
+    const Case cases[] = {
+        {"new Empty().header(new EmptyTitle())", "Failed to render Empty"},
+        {"new Empty().content(new EmptyTitle())", "Failed to render Empty"},
+        {"new EmptyHeader().media(new EmptyTitle())",
+         "Failed to render EmptyHeader"},
+        {"new EmptyHeader().title(new EmptyContent())",
+         "Failed to render EmptyHeader"},
+        {"new EmptyHeader().description(new EmptyTitle())",
+         "Failed to render EmptyHeader"},
+        {"new Empty().header(div())", "Failed to render Empty"},
+        {"new EmptyHeader().child(div())", "Failed to render EmptyHeader"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { Empty, EmptyHeader, EmptyTitle, EmptyContent, "
+                "EmptyMedia } from 'gpui-component';\n"
+                "export default class Invalid extends View {\n"
+                "  render() { return div().child(%s); }\n"
+                "}\n",
+                Str(c.expression));
+        Host host(source);
+        El* root = host.Render();
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(FindText(root, Str(c.failed)) != nullptr);
+    }
+    utassert(StrContains(
+        CallErrorTemp("EmptyMedia", "new EmptyMedia().variant('avatar')"),
+        StrL("variant")));
+
+    Arena* a = ArenaNew();
+    shell::ComponentPayload header =
+        BuildPayload("EmptyHeader", 0, nullptr, 0, a, nullptr);
+    Str failure = MaterializeFailure("EmptyHeader", header, 1);
+    utassert(StrEq(failure, StrL("EmptyHeader does not accept children; use "
+                                 "media, title, and description")));
+    StrFree(failure);
+    Str payload =
+        MaterializeFailure("EmptyTitle", shell::ComponentPayload{}, 0);
+    utassert(StrEq(payload, StrL("Empty received an incompatible payload")));
+    StrFree(payload);
+    ArenaDelete(a);
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -1890,6 +2056,11 @@ void TestComponentShell() {
     TextConstructorIsClosedAndPreservesContent();
     DropdownButtonDescriptorIsClosed();
     BasicTextAndDropdownMaterializeThroughTheHost();
+
+    TestSuite("empty");
+    EmptyPublishesAllPartsWithClosedDocumentedMethods();
+    EmptySlotsReplacePreviousPartsAndPreserveChildActions();
+    EmptyRejectsWrongSlotTypesAndOrdinaryHeaderChildren();
 
     TestSuite("compound");
     RegistersOnlyTheHonestlyMaterializableCompoundBatch();

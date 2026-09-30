@@ -19,6 +19,8 @@ struct EmptyMedia {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static EmptyMedia* New(Ctx* cx);
     EmptyMedia* WithVariant(EmptyMediaVariant value);
@@ -32,6 +34,8 @@ struct EmptyTitle {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static EmptyTitle* New(Ctx* cx);
     EmptyTitle* Child(El* child);
@@ -45,6 +49,8 @@ struct EmptyDescription {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static EmptyDescription* New(Ctx* cx);
     EmptyDescription* Child(El* child);
@@ -57,6 +63,8 @@ struct EmptyContent {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static EmptyContent* New(Ctx* cx);
     EmptyContent* Child(El* child);
@@ -71,6 +79,8 @@ struct EmptyHeader {
     EmptyDescription* description = nullptr;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static EmptyHeader* New(Ctx* cx);
     EmptyHeader* Media(EmptyMedia* value);
@@ -88,6 +98,8 @@ struct Empty {
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static Empty* New(Ctx* cx);
     Empty* Header(EmptyHeader* value);
