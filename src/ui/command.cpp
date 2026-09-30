@@ -22,8 +22,10 @@ namespace component {
 // An item row is px_2 py_1p5 over text_sm, a heading the same over text_xs,
 // and SEPARATOR_ROW_HEIGHT is Rust's own constant: a one-pixel rule with a
 // little air on either side.
-static const float kItemRowH = 32.f;
-static const float kHeadingRowH = 28.f;
+// Both come to their text's line box (GPUI's default phi line height) and
+// py_1p5 above and below it.
+static const float kItemRowH = 14.f * kLineHeight + 12.f;
+static const float kHeadingRowH = 12.f * kLineHeight + 12.f;
 static const float kSeparatorRowH = 9.f;
 
 Str CommandContext() {
@@ -374,7 +376,8 @@ void CommandInstall(CommandState* s, Ctx* cx, const CommandEntry* entries,
     } else {
         ResetSelection(s);
     }
-    FireSelect(s, cx, hadPrev, prev);
+    // install_model reports nothing: the highlight a model lands on is not
+    // a selection the user made, so on_select waits for one.
 }
 
 void CommandSetSelectedIndex(CommandState* s, Ctx* cx, const IndexPath* path) {
@@ -668,7 +671,7 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
     }
     if (row.kind == CommandRowKind::Heading) {
         return Div(a)->W(kFill)->PadX(8)->PadY(6)->Child(
-            TextEl(a, row.heading)->Font(12)->Fg(th.mutedFg));
+            TextEl(a, row.heading)->Font(12)->Medium()->Fg(th.mutedFg));
     }
 
     int matchIx = row.match;
@@ -771,6 +774,8 @@ El* Command::IntoEl() {
         box->Child(header);
     }
     if (searchable) {
+        // `div().flex_none().px_3().border_b_1()` around an Input with the
+        // search icon as its prefix, no appearance and `p_0`.
         El* field = Div(a)
                         ->FlexRow()
                         ->W(kFill)
@@ -779,11 +784,12 @@ El* Command::IntoEl() {
                         ->Gap(8)
                         ->ItemsCenter()
                         ->BorderB(1, th.border);
-        field->Child(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg));
-        field->Child(
-            Div(a)->Flex1()->Child(Input::New(cx, StrL("query"), &s->query)
-                                       ->Appearance(false)
-                                       ->IntoEl()));
+        field->Child(Div(a)->Flex1()->Child(
+            Input::New(cx, StrL("query"), &s->query)
+                ->Prefix(IconEl(a, IconName::Search)->Fg(th.mutedFg))
+                ->Appearance(false)
+                ->IntoEl()
+                ->Pad(0)));
         // `input.set_loading`: there is no spinner inside a field here, so the
         // palette puts one where the field ends.
         if (s->loading) {
