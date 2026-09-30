@@ -4556,8 +4556,89 @@ static void RequestingCodeActionsAgainReplacesTheOpenMenu() {
     utassert(ValueIs(s, "value"));
 }
 
+// A shaped run with proportional advances, wrapped before byte 9: what
+// TextLayoutRangeRects answers for it. A letter is 7 wide, a space 3.5, the
+// three bytes of one CJK glyph 14 and the tab 28; each row is 20 tall.
+static float FakeAdvance(Str s, int i) {
+    unsigned char c = (unsigned char)s.s[i];
+    if (c == ' ') {
+        return 3.5f;
+    }
+    if (c == '\t') {
+        return 28.f;
+    }
+    if (c >= 0x80) {
+        return (c & 0xC0) == 0xC0 ? 14.f : 0.f;
+    }
+    return 7.f;
+}
+
+static int FakeWhitespaceRects(void* ud, int lo, int hi, Bounds* out, int max) {
+    Str s = *(Str*)ud;
+    const int kWrapAt = 9;
+    if (max < 1 || lo >= len(s)) {
+        return 0;
+    }
+    int rowStart = lo >= kWrapAt ? kWrapAt : 0;
+    float x = 0;
+    for (int i = rowStart; i < lo; i++) {
+        x += FakeAdvance(s, i);
+    }
+    float w = 0;
+    for (int i = lo; i < hi; i++) {
+        w += FakeAdvance(s, i);
+    }
+    // DirectWrite's hit test answers the glyph run's top, a little below
+    // the line box's.
+    out[0] = Bounds{x, (rowStart ? 20.f : 0.f) + 2.4f, w, 20.f};
+    return 1;
+}
+
+static void CollectWhitespaceMark(void* ud, const WhitespaceMark* m) {
+    auto* v = (Vec<WhitespaceMark>*)((void**)ud)[1];
+    VecAppend(*v, *m);
+}
+
+static int CollectWhitespaceRects(void* ud, int lo, int hi, Bounds* out,
+                                  int max) {
+    return FakeWhitespaceRects(((void**)ud)[0], lo, hi, out, max);
+}
+
+// show_whitespaces marks each space and tab where the shaped run put it
+// (LineLayout::with_whitespaces): a space's dot centred in the space's own
+// advance, a tab's arrow at the tab's start, a wrapped character on its own
+// row. The editor used to lay the marks on a 0.6em column grid, which put
+// them past the line end or under a glyph as soon as an advance differed.
+static void WhitespaceMarksFollowTheShapedGlyphs() {
+    Str text = StrL("ab \xE4\xB8\xAD x\ty z");
+    Vec<WhitespaceMark> marks;
+    void* ud[2] = {&text, &marks};
+    int n = WhitespaceMarksVisit(text, 2.f, CollectWhitespaceRects,
+                                 CollectWhitespaceMark, ud);
+    utassert(n == 4);
+    utassert(marks.len == 4);
+    if (marks.len == 4) {
+        utassert(marks[0].off == 2 && !marks[0].tab);
+        utassertnear(marks[0].x, 14.f + 1.75f - 1.f);
+        // The line box's top, not the glyph run's: the mark is centred in
+        // the box, and from the run's top it sat on the baseline.
+        utassertnear(marks[0].y, 0.f);
+        // After the wide glyph, not one grid column after the one before.
+        utassert(marks[1].off == 6 && !marks[1].tab);
+        utassertnear(marks[1].x, 31.5f + 1.75f - 1.f);
+        utassert(marks[2].off == 8 && marks[2].tab);
+        utassertnear(marks[2].x, 42.f);
+        // The wrapped line's space, on the second row from its own start.
+        utassert(marks[3].off == 10 && !marks[3].tab);
+        utassertnear(marks[3].x, 7.f + 1.75f - 1.f);
+        utassertnear(marks[3].y, 20.f);
+        utassertnear(marks[3].h, 20.f);
+    }
+}
+
 void TestInputState() {
     TestSuite("input_state");
+    WhitespaceMarksFollowTheShapedGlyphs();
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
     SetValueOnUnfocusedInputStaysQuiet();
     BlurringAPausedCursorLeavesTheNextFocusBlinking();

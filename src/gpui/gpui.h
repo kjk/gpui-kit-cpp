@@ -1251,6 +1251,28 @@ struct TextSpan {
     bool wavy = false;
 };
 
+// show_whitespaces (Rust LineLayout::with_whitespaces): one mark per space
+// or tab of a shaped run. `x` is where the mark's own run starts and `y`,
+// `h` are the line box the character landed in, so a wrapped run marks its
+// continuation lines on their own rows.
+struct WhitespaceMark {
+    int off = 0;
+    float x = 0;
+    float y = 0;
+    float h = 0;
+    bool tab = false;
+};
+// Where the bytes [lo, hi) of the run landed: TextLayoutRangeRects.
+typedef int (*WhitespaceRectsFn)(void* ud, int lo, int hi, Bounds* out,
+                                 int max);
+typedef void (*WhitespaceMarkFn)(void* ud, const WhitespaceMark* m);
+// Visit the marks of `s`. A space's mark (`spaceMarkW` wide) is centred in
+// the space's own advance and a tab's starts where the tab does — Rust's
+// x_for_index on the shaped line, not a column grid, which drifts off the
+// glyphs of any font whose advance is not the grid's. Returns how many.
+int WhitespaceMarksVisit(Str s, float spaceMarkW, WhitespaceRectsFn rects,
+                         WhitespaceMarkFn emit, void* ud);
+
 // Which of crates/ui/src/chart's charts this series is. They share the axis,
 // the grid and the labels; what differs is the shape drawn over them.
 enum class ChartKind : uint8_t {
@@ -2461,6 +2483,9 @@ struct El {
     // The caret this run draws, as a UTF-8 offset into it; -1 for none.
     int caretOff = -1;
     Rgba caretColor = {};
+    // show_whitespaces: the colour of the mark painted over every space and
+    // tab of this run. Alpha 0, the default, paints none.
+    Rgba whitespaceColor = {0, 0, 0, 0};
     float caretW = 2;
     float laidFont = 0; // resolved font size from last LayoutEl
     float laidMaxW = 0; // MeasureText maxW used (0 = unconstrained)
@@ -2744,6 +2769,9 @@ struct El {
     El* RangeOut(int lo, int hi, gpui::Bounds* out);
     El* Washes(const TextSpan* runs, int n);
     El* Underlines(const TextSpan* runs, int n);
+    // show_whitespaces: mark every space and tab of this run, measured
+    // against its own shaped glyphs (see WhitespaceMarksVisit).
+    El* Whitespaces(Rgba color);
     El* Spans(const TextSpan* runs, int n);
     // The marked range, which is drawn underlined in the text's own colour.
     El* MarkRange(int lo, int hi);
@@ -2863,7 +2891,7 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1848,
+static_assert(sizeof(El) <= 1864,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {

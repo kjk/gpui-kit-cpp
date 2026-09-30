@@ -1517,8 +1517,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             RowExtraCursors(a, el, state, style, start, len(line), caret);
         }
         // indent_guides: a hairline every tab stop of the row's own leading
-        // whitespace, drawn behind the text. show_whitespaces shares the
-        // same underlay: a mid-dot on every space and an arrow on every tab.
+        // whitespace, drawn behind the text.
         El* guides = nullptr;
         if (!tokenLine && colW > 0) {
             int lead = 0;
@@ -1540,54 +1539,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 }
             }
         }
+        // show_whitespaces: the row's own run paints a mark over each space
+        // and tab, measured against the glyphs it shaped (the same
+        // x_for_index Rust uses), so a mark stays on its character however
+        // wide the glyphs before it are and on whichever wrapped line the
+        // character went to. editor_invisible is not in this tree's
+        // highlight theme; Rust falls back to muted_foreground without it.
         if (!tokenLine && state->showWhitespaces) {
-            float charW = colW > 0 ? colW : font * 0.6f;
-            if (charW > 0) {
-                if (!guides) {
-                    guides = Div(a)->Absolute()->Left(0)->Top(0)->H(kFill);
-                }
-                int displayCol = 0;
-                Rgba invis = style.mutedForeground;
-                for (int i = 0; i < len(line);) {
-                    unsigned char c = (unsigned char)line.s[i];
-                    if (c == ' ' || c == '\t') {
-                        float startX = charW * (float)displayCol;
-                        float x = c == ' '
-                                      ? startX + charW * 0.5f - font * 0.25f
-                                      : startX;
-                        if (x < 0) {
-                            x = 0;
-                        }
-                        El* mark = TextEl(a, c == ' ' ? StrL("\xE2\x80\xA2")
-                                                      : StrL("\xE2\x86\x92"))
-                                       ->Font(c == ' ' ? font * 0.5f : font)
-                                       ->Fg(invis);
-                        guides->Child(Div(a)
-                                          ->Absolute()
-                                          ->Left(x)
-                                          ->Top(0)
-                                          ->H(kFill)
-                                          ->ItemsCenter()
-                                          ->Child(mark));
-                        displayCol++;
-                        i++;
-                        continue;
-                    }
-                    if ((c & 0x80) == 0) {
-                        i++;
-                    } else if ((c & 0xE0) == 0xC0) {
-                        i += 2;
-                    } else if ((c & 0xF0) == 0xE0) {
-                        i += 3;
-                    } else {
-                        i += 4;
-                    }
-                    if (i > len(line)) {
-                        i = len(line);
-                    }
-                    displayCol++;
-                }
-            }
+            el->Whitespaces(style.mutedForeground);
         }
         // The row's slice of the range decorations paints from the row's
         // own box, so a bare run gets a box of its own to paint from.

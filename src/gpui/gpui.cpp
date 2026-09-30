@@ -1855,6 +1855,10 @@ El* El::Underlines(const TextSpan* runs, int n) {
     nUnderlines = n;
     return this;
 }
+El* El::Whitespaces(Rgba color) {
+    whitespaceColor = color;
+    return this;
+}
 El* El::Spans(const TextSpan* runs, int n) {
     spans = runs;
     nSpans = n;
@@ -2926,6 +2930,96 @@ void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
             CanvasFillRect(ctx, ux, uy, rects[i].w, 1.f, color);
         }
     }
+    TextLayoutRelease(layout);
+}
+
+int WhitespaceMarksVisit(Str s, float spaceMarkW, WhitespaceRectsFn rects,
+                         WhitespaceMarkFn emit, void* ud) {
+    if (!s.s || !rects) {
+        return 0;
+    }
+    int n = 0;
+    for (int i = 0; i < len(s); i++) {
+        char c = s.s[i];
+        if (c != ' ' && c != '\t') {
+            continue;
+        }
+        Bounds r = {};
+        if (rects(ud, i, i + 1, &r, 1) <= 0) {
+            continue;
+        }
+        WhitespaceMark m;
+        m.off = i;
+        m.tab = c == '\t';
+        // (start_x + end_x).half() - space.width.half() for a space; start_x
+        // for a tab.
+        m.x = m.tab ? r.x : r.x + r.w * 0.5f - spaceMarkW * 0.5f;
+        // The mark is centred in the character's line box. A range rect's y
+        // is where the hit test put the glyph run's top, which DirectWrite
+        // puts below the box's top by the leading; the lines of one run are
+        // all one height, so the box is the one that y falls in.
+        m.h = r.h;
+        m.y = r.h > 0 ? floorf((r.y + 0.01f) / r.h) * r.h : r.y;
+        if (emit) {
+            emit(ud, &m);
+        }
+        n++;
+    }
+    return n;
+}
+
+struct WhitespacePaint {
+    PaintCtx* ctx;
+    TextLayout* layout;
+    Str text;
+    float x, y;
+    float font;
+    int weight;
+    Rgba color;
+};
+
+static int WhitespacePaintRects(void* ud, int lo, int hi, Bounds* out,
+                                int max) {
+    auto* p = (WhitespacePaint*)ud;
+    return TextLayoutRangeRects(p->layout, p->text, lo, hi, out, max);
+}
+
+static void WhitespacePaintMark(void* ud, const WhitespaceMark* m) {
+    auto* p = (WhitespacePaint*)ud;
+    // input/element.rs layout_whitespace_indicators: "•" at half the text
+    // size, "→" at the text size, each painted into the character's line box
+    // (ShapedLine::paint centres a glyph in the line height it is given).
+    float font = m->tab ? p->font : p->font * 0.5f;
+    Str mark = m->tab ? StrL("\xE2\x86\x92") : StrL("\xE2\x80\xA2");
+    float mult = m->h > 0 && font > 0 ? m->h / font : 0.f;
+    DrawTextAt(p->ctx, mark, p->x + m->x, p->y + m->y, 0, m->h, font, p->color,
+               false, false, -1.f, p->weight, mult);
+}
+
+// show_whitespaces over a painted run: LineLayout::paint's second half.
+static void PaintTextWhitespaces(PaintCtx* ctx, Str s, float fontSize,
+                                 float maxW, bool wrap, uint8_t weight,
+                                 float lineH, float x, float y, Rgba color) {
+    if (!ctx || !ctx->rt || color.a == 0 || !s.s || len(s) <= 0) {
+        return;
+    }
+    TextLayout* layout =
+        TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight, lineH, nullptr);
+    if (!layout) {
+        return;
+    }
+    // indicators.space.width: the shaped mark's advance, which is what
+    // centres it in the space.
+    float spaceMarkW = 0;
+    TextLayout* dot = TextMeasLayout(ctx, StrL("\xE2\x80\xA2"), fontSize * 0.5f,
+                                     0, false, weight, 0, nullptr);
+    if (dot) {
+        spaceMarkW = TextLayoutSize(dot).w;
+        TextLayoutRelease(dot);
+    }
+    WhitespacePaint p = {ctx, layout, s, x, y, fontSize, weight, color};
+    WhitespaceMarksVisit(s, spaceMarkW, WhitespacePaintRects,
+                         WhitespacePaintMark, &p);
     TextLayoutRelease(layout);
 }
 
@@ -6734,6 +6828,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             DrawTextAt(ctx, e->text, e->x, e->y, e->w, e->h, font, c,
                        e->style.truncate, e->style.wrap, e->laidMaxW,
                        ElTextWeight(e), e->style.lineHeight);
+        }
+        // show_whitespaces: over the glyphs, as LineLayout::paint has it.
+        if (e->whitespaceColor.a != 0) {
+            PaintTextWhitespaces(
+                ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
+                e->whitespaceColor);
         }
         // range_to_bounds: where a named run of this text landed, for a
         // caller that hit-tests against it on a later frame.
