@@ -1251,6 +1251,26 @@ struct TextSpan {
     bool wavy = false;
 };
 
+// HighlightStyle::fade_out over the bytes [lo, hi) of a run: they paint that
+// share more transparent, glyphs, highlight colour and highlight background
+// alike. 0 leaves the run alone, 1 makes it invisible. This is what a
+// TextView's streamed fade-in paints each arriving word with.
+struct TextFade {
+    int lo = 0;
+    int hi = 0;
+    float fadeOut = 0;
+};
+// Hsla::fade_out: `c` with `fadeOut` of its alpha taken away.
+Rgba TextFadeColor(Rgba c, float fadeOut);
+// fade_highlights: `spans` (sorted, not overlapping) with `fades` layered over
+// them, as the runs a text of `textLen` bytes paints with. A faded byte keeps
+// its span's colour and background, or takes `base`, and loses the fade's
+// share of both; an unfaded byte outside every span stays out. `*out` is
+// `spans` itself when there is nothing to fade, else allocated from `a`.
+int TextFadeSpans(Arena* a, int textLen, Rgba base, const TextSpan* spans,
+                  int nSpans, const TextFade* fades, int nFades,
+                  const TextSpan** out);
+
 // show_whitespaces (Rust LineLayout::with_whitespaces): one mark per space
 // or tab of a shaped run. `x` is where the mark's own run starts and `y`,
 // `h` are the line box the character landed in, so a wrapped run marks its
@@ -2441,6 +2461,11 @@ struct El {
     int clickActionFocusId = 0;
     // Interactive refinements are held in the arena sidecar above.
     ArenaPtr<ElStyleStates> styleStates = {};
+    // El::Fades: byte ranges painted more transparent, sorted and not
+    // overlapping, as an arena copy ended by an entry with hi <= lo. Only a
+    // streaming TextView run has any, so the rest pay four bytes, not a
+    // pointer and a count.
+    ArenaPtr<TextFade> fades = {};
     float lineSpanHeight = 0;
     float lineClampCap = 0;
 
@@ -2804,6 +2829,11 @@ struct El {
     El* RangeOut(int lo, int hi, gpui::Bounds* out);
     El* Washes(const TextSpan* runs, int n);
     El* Underlines(const TextSpan* runs, int n);
+    // fade_out highlights over this run: each range paints its colour and
+    // any highlight background that much more transparent.
+    El* Fades(const TextFade* runs, int n);
+    // The fades El::Fades set, or null; `*n` is how many.
+    const TextFade* FadesGet(int* n) const;
     // show_whitespaces: mark every space and tab of this run, measured
     // against its own shaped glyphs (see WhitespaceMarksVisit).
     El* Whitespaces(Rgba color);

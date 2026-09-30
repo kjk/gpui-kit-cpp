@@ -600,6 +600,29 @@ inline bool operator<(TextLeafKey a, TextLeafKey b) {
                                         : a.ordinal < b.ordinal;
 }
 
+// stream_fade.rs FadeSegment: rendered bytes [range) of one leaf that an
+// update added, fading in from `startedAt` (MotionNow seconds, which may lie
+// ahead for a staggered word).
+struct StreamFadeSegment {
+    TextLeafKey key = {};
+    Span range = {};
+    double startedAt = 0;
+};
+
+// StreamFadeFrame's entries: the fade_out a leaf's rendered bytes [range)
+// paint with this frame, 1 transparent and 0 opaque.
+struct StreamFadeRange {
+    TextLeafKey key = {};
+    Span range = {};
+    float fadeOut = 0;
+};
+
+// stream_fade.rs fade_units: `start..end` of a leaf's rendered `text` split
+// into the units that fade one after another — a word with the whitespace
+// after it, or one CJK character, since CJK text has no spaces to reveal it
+// by. Appended to `out`.
+void StreamFadeUnits(Str text, int start, int end, Vec<Span>* out);
+
 // range_highlight.rs RangeHighlight: a background painted behind one range
 // of a RenderedText. It is painted under the text and under the selection,
 // and never changes layout. Where highlights overlap, the later one paints
@@ -791,10 +814,10 @@ struct TextViewState {
     bool clamped = false;
     gpui::SelectionFormat selectionFormat = gpui::SelectionFormat::Plain;
     TextViewMotion motion = {};
-    // The last rendered text and an append waiting for the next parse. Rust
-    // tracks one entry per leaf; the port retains the same rendered-prefix
-    // decision and fades the affected top-level block.
-    Str streamRenderedText = {};
+    // StreamFadeTracker::segments: what recent updates added, per leaf, and
+    // when each piece starts fading in. An append waiting for the next parse
+    // is streamFadePending; streamFadeReplace says it replaced the text.
+    Vec<StreamFadeSegment> fadeSegments;
     // state.rs `select_all`: the selection SelectAll made, which
     // selected_source_range answers with the whole source for as long as the
     // window's selection is still that one. -1 when there is none.
@@ -802,8 +825,6 @@ struct TextViewState {
     int selectAllCursor = -1;
     bool streamFadePending = false;
     bool streamFadeReplace = false;
-    int streamFadeFrom = -1;
-    double streamFadeStartedAt = 0;
     // state.rs fade_tick: the pending repaint of a streamed fade, a
     // WindowSetTimeout handle, or 0.
     int fadeTick = 0;
@@ -881,7 +902,17 @@ struct TextViewState {
     // text with parser fingerprint `extensions`, has landed. Rebuilds the
     // rendered index when the parse is a new one and carries the highlights
     // over to it. Called by TextView::IntoEl.
-    void ReconcileRangeHighlights(const MdNode* doc, uint64_t extensions);
+    // `now` is when the parse landed, for the stream fade it records.
+    void ReconcileRangeHighlights(const MdNode* doc, uint64_t extensions,
+                                  double now = 0);
+    // StreamFadeTracker::record: what `next` renders that `prev` did not,
+    // for the update noted since the last parse, as segments that start
+    // fading at `now` — word by word when the motion staggers.
+    void RecordStreamFade(const RenderedIndex* prev, const RenderedIndex* next,
+                          double now);
+    // StreamFadeTracker::frame: every unfinished segment sampled at `now`
+    // into `out` (arena-owned), the finished ones dropped. Returns how many.
+    int StreamFadeFrame(Arena* a, double now, StreamFadeRange** out);
     static void OnAction(TextViewState* self, Ctx* cx,
                          const ActionEvent* event);
     static void OnScroll(TextViewState* self, Ctx* cx,
@@ -1001,10 +1032,12 @@ struct TextView {
     uint32_t outerStyleFields = 0;
     TextViewMotion motion = {};
     bool motionSet = false;
-    int streamBlockDepth = 0;
-    int streamRenderedOffset = 0;
-    int streamFadeFrom = -1;
-    float streamFadeOpacity = 1;
+    // How deep Blocks is, so it knows the top-level blocks a whole-block
+    // reveal counts.
+    int blockDepth = 0;
+    // NodeContext::stream_fade: this frame's fading ranges, per leaf.
+    const StreamFadeRange* streamFades = nullptr;
+    int nStreamFades = 0;
     // NodeContext::range_highlights: the view state's resolved highlights,
     // for this frame. Null when there are none.
     const RangeHighlightFrame* rangeHighlights = nullptr;

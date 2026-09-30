@@ -513,7 +513,6 @@ void TextViewState::OnFadeTick(TextViewState* self, Ctx* cx, const TickEvent*) {
 
 TextViewState::~TextViewState() {
     StrFree(text);
-    StrFree(streamRenderedText);
     RenderedIndexFree(renderedIndex);
     RangeHighlightFrameFree(rangeHighlights);
 }
@@ -606,7 +605,7 @@ void TextViewState::SetMotion(TextViewMotion value, App* app, Window* window) {
     if (motion.streamFadeMs <= 0) {
         streamFadePending = false;
         streamFadeReplace = false;
-        streamFadeFrom = -1;
+        VecClear(fadeSegments);
     }
     Changed(app, window, true);
 }
@@ -3853,25 +3852,54 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     return row->Child(content);
 }
 
-static int MdRenderedLen(const MdNode* n) {
-    if (!n) return 0;
-    int total = 0;
-    for (const MdRun* run = n->runFirst; run; run = run->next) {
-        total += len(run->text);
-    }
-    for (const MdNode* child = n->first; child; child = child->next) {
-        total += MdRenderedLen(child);
-    }
-    return total;
+// char::is_whitespace.
+static bool StreamIsWhitespace(uint32_t c) {
+    return c == ' ' || (c >= 0x09 && c <= 0x0d) || c == 0x85 || c == 0xa0 ||
+           c == 0x1680 || (c >= 0x2000 && c <= 0x200a) || c == 0x2028 ||
+           c == 0x2029 || c == 0x202f || c == 0x205f || c == 0x3000;
 }
 
-static void MdAppendRendered(StrBuilder* out, const MdNode* n) {
-    if (!n) return;
-    for (const MdRun* run = n->runFirst; run; run = run->next) {
-        out->Append(run->text);
+// stream_fade.rs is_cjk.
+static bool StreamIsCjk(uint32_t c) {
+    return (c >= 0x3040 && c <= 0x30ff)       // Hiragana, Katakana
+           || (c >= 0x3400 && c <= 0x4dbf)    // CJK Extension A
+           || (c >= 0x4e00 && c <= 0x9fff)    // CJK Unified Ideographs
+           || (c >= 0xac00 && c <= 0xd7af)    // Hangul syllables
+           || (c >= 0xf900 && c <= 0xfaff)    // CJK Compatibility
+           || (c >= 0x20000 && c <= 0x2fa1f); // Extensions B and later
+}
+
+void StreamFadeUnits(Str text, int start, int end, Vec<Span>* out) {
+    end = std::min(end, len(text));
+    int unitStart = start;
+    bool unitHasGlyph = false;
+    bool hasPrevious = false;
+    uint32_t previous = 0;
+    for (int at = 0; at < end;) {
+        uint32_t c = 0;
+        int step = Utf8At(text, at, &c);
+        if (step <= 0) {
+            step = 1;
+        }
+        if (at >= start) {
+            bool space = StreamIsWhitespace(c);
+            bool startsUnit = unitHasGlyph && !space &&
+                              (StreamIsCjk(c) ||
+                               (hasPrevious && (StreamIsWhitespace(previous) ||
+                                                StreamIsCjk(previous))));
+            if (startsUnit && at > unitStart) {
+                VecAppend(*out, Span{unitStart, at});
+                unitStart = at;
+                unitHasGlyph = false;
+            }
+            unitHasGlyph |= !space;
+        }
+        previous = c;
+        hasPrevious = true;
+        at += step;
     }
-    for (const MdNode* child = n->first; child; child = child->next) {
-        MdAppendRendered(out, child);
+    if (unitStart < end) {
+        VecAppend(*out, Span{unitStart, end});
     }
 }
 
@@ -4494,7 +4522,7 @@ void TextViewState::ClearRangeHighlights(App* app, Window* window) {
 }
 
 void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
-                                             uint64_t extensions) {
+                                             uint64_t extensions, double now) {
     if (renderedIndex && indexedRevision == revision &&
         indexedExtensions == extensions) {
         return;
@@ -4508,6 +4536,10 @@ void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
     }
     indexedExtensions = extensions;
     RenderedIndex* next = RenderedIndexNew(doc, text);
+    // The tracker compares rendered text, not source, so `**bo` completing
+    // into bold `bold` fades the changed glyphs rather than mapping source
+    // bytes.
+    RecordStreamFade(renderedIndex, next, now);
     if (rangeHighlights) {
         RangeHighlightFrame* moved =
             RangeHighlightFrameRemap(rangeHighlights, renderedIndex, next);
@@ -4533,8 +4565,128 @@ void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
     renderedRevision++;
 }
 
+void TextViewState::RecordStreamFade(const RenderedIndex* prev,
+                                     const RenderedIndex* next, double now) {
+    bool pending = streamFadePending;
+    bool replace = streamFadeReplace;
+    streamFadePending = false;
+    streamFadeReplace = false;
+    if (motion.streamFadeMs <= 0) {
+        VecClear(fadeSegments);
+        return;
+    }
+    if (!pending || !next) {
+        return;
+    }
+    if (replace) {
+        VecClear(fadeSegments);
+        return;
+    }
+    Vec<Span> units;
+    for (int li = 0; li < len(next->leaves); li++) {
+        const RenderedLeafSpan& leaf = next->leaves[li];
+        Str leafText = LeafText(next, &leaf);
+        int leafLen = len(leafText);
+        const RenderedLeafSpan* old =
+            prev ? RenderedIndexFind(prev, leaf.key) : nullptr;
+        int prefix =
+            old ? StreamCommonPrefix(LeafText(prev, old), leafText) : 0;
+        // Text past the divergence is repainted, so its earlier fade no
+        // longer describes what is on screen.
+        for (int i = len(fadeSegments) - 1; i >= 0; i--) {
+            StreamFadeSegment& s = fadeSegments[i];
+            if (!(s.key == leaf.key)) {
+                continue;
+            }
+            s.range.end = std::min(s.range.end, prefix);
+            if (s.range.start >= s.range.end) {
+                VecRemoveAt(fadeSegments, i);
+            }
+        }
+        if (prefix >= leafLen) {
+            continue;
+        }
+        if (motion.streamFadeStaggerMs <= 0) {
+            VecAppend(fadeSegments,
+                      StreamFadeSegment{leaf.key, Span{prefix, leafLen}, now});
+            continue;
+        }
+        VecClear(units);
+        StreamFadeUnits(leafText, prefix, leafLen, &units);
+        double step = motion.StaggerStepMs(len(units)) / 1000.0;
+        for (int u = 0; u < len(units); u++) {
+            VecAppend(fadeSegments,
+                      StreamFadeSegment{leaf.key, units[u], now + step * u});
+        }
+    }
+}
+
+int TextViewState::StreamFadeFrame(Arena* a, double now,
+                                   StreamFadeRange** out) {
+    *out = nullptr;
+    if (len(fadeSegments) == 0) {
+        return 0;
+    }
+    if (MotionReduced() || motion.streamFadeMs <= 0) {
+        VecClear(fadeSegments);
+        return 0;
+    }
+    Timing timing = Timing::New(motion.streamFadeMs)
+                        .Ease(motion.streamFadeEasing);
+    StreamFadeRange* ranges =
+        (StreamFadeRange*)Alloc(a, len(fadeSegments) * (int)sizeof(*ranges));
+    int n = 0;
+    for (int i = 0; i < len(fadeSegments);) {
+        const StreamFadeSegment& s = fadeSegments[i];
+        // saturating_duration_since: a word whose turn has not come yet is
+        // sampled at its start, fully transparent.
+        float elapsedMs = (float)std::max(0.0, (now - s.startedAt) * 1000.0);
+        TimingSample sample = timing.Sample(elapsedMs);
+        if (sample.finished) {
+            VecRemoveAt(fadeSegments, i);
+            continue;
+        }
+        if (ranges) {
+            float fadeOut = 1.f - sample.directedProgress;
+            ranges[n].key = s.key;
+            ranges[n].range = s.range;
+            ranges[n].fadeOut = std::min(std::max(fadeOut, 0.f), 1.f);
+            n++;
+        }
+        i++;
+    }
+    *out = ranges;
+    return n;
+}
+
 El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
                           bool markOver) {
+    // fade_highlights: the streamed fade of this leaf's bytes [lo, hi),
+    // rebased to lo, over whatever the run paints.
+    if (t && nStreamFades > 0 && leaf && leaf->leafStart >= 0 && hi > lo) {
+        TextLeafKey key{leaf->leafStart, leaf->leafOrdinal};
+        int n = 0;
+        for (int i = 0; i < nStreamFades; i++) {
+            const StreamFadeRange& f = streamFades[i];
+            if (f.key == key && f.range.start < hi && f.range.end > lo) {
+                n++;
+            }
+        }
+        TextFade* fades = n ? TextArenaArray<TextFade>(a, n) : nullptr;
+        if (fades) {
+            int at = 0;
+            for (int i = 0; i < nStreamFades; i++) {
+                const StreamFadeRange& f = streamFades[i];
+                if (f.key == key && f.range.start < hi && f.range.end > lo) {
+                    fades[at].lo = std::max(f.range.start, lo) - lo;
+                    fades[at].hi = std::min(f.range.end, hi) - lo;
+                    fades[at].fadeOut = f.fadeOut;
+                    at++;
+                }
+            }
+            t->Fades(fades, at);
+        }
+    }
     if (!t || !rangeHighlights || !leaf || leaf->leafStart < 0 || hi <= lo) {
         return t;
     }
@@ -4724,10 +4876,9 @@ void TextView::RevealMark(El* t, int lo, int offset) {
 }
 
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
-    bool outer = streamBlockDepth++ == 0;
+    bool outer = blockDepth++ == 0;
     int blockIx = 0;
     for (MdNode* c = n->first; c; c = c->next, blockIx++) {
-        int start = streamRenderedOffset;
         El* e = Block(c, depth, inList, c->next == nullptr);
         if (e && outer && revealTarget && revealTarget->block && revealOut &&
             revealTarget->blockIx == blockIx) {
@@ -4736,19 +4887,10 @@ El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
             revealOut = nullptr;
         }
         if (e) {
-            int end = start + MdRenderedLen(c);
-            if (outer && streamFadeFrom >= 0 && end > streamFadeFrom) {
-                // The Rust renderer can fade highlight byte ranges inside a
-                // leaf. Elements here expose opacity at subtree granularity,
-                // so the top-level block containing the rendered divergence
-                // fades as one unit; new following blocks do the same.
-                e->Opacity(streamFadeOpacity);
-            }
             into->Child(e);
         }
-        streamRenderedOffset = start + MdRenderedLen(c);
     }
-    streamBlockDepth--;
+    blockDepth--;
     return into;
 }
 
@@ -5008,7 +5150,7 @@ El* TextView::IntoEl() {
             if (motion.streamFadeMs <= 0) {
                 managed->streamFadePending = false;
                 managed->streamFadeReplace = false;
-                managed->streamFadeFrom = -1;
+                VecClear(managed->fadeSegments);
             }
         } else {
             motion = managed->motion;
@@ -5028,62 +5170,28 @@ El* TextView::IntoEl() {
     rangeHighlights = nullptr;
     revealTarget = nullptr;
     revealOut = nullptr;
+    blockDepth = 0;
+    streamFades = nullptr;
+    nStreamFades = 0;
     if (managed) {
+        double now = MotionNow(cx);
         managed->ReconcileRangeHighlights(
-            doc, html ? 0 : markdownExtensions.ParserFingerprint());
+            doc, html ? 0 : markdownExtensions.ParserFingerprint(), now);
+        // An update whose parse changed nothing rendered has nothing to fade.
+        managed->streamFadePending = false;
+        managed->streamFadeReplace = false;
         rangeHighlights = managed->rangeHighlights;
         RevealFrame(managed);
-    }
-    streamBlockDepth = 0;
-    streamRenderedOffset = 0;
-    streamFadeFrom = -1;
-    streamFadeOpacity = 1;
-    if (managed) {
-        StrBuilder renderedBuilder(a);
-        MdAppendRendered(&renderedBuilder, doc);
-        Str rendered = renderedBuilder.TakeStr();
-        if (managed->streamFadePending) {
-            if (managed->streamFadeReplace || motion.streamFadeMs <= 0) {
-                managed->streamFadeFrom = -1;
-            } else {
-                int prefix =
-                    StreamCommonPrefix(managed->streamRenderedText, rendered);
-                managed->streamFadeFrom = prefix < len(rendered) ? prefix : -1;
-                managed->streamFadeStartedAt = MotionNow(cx);
-            }
-            managed->streamFadePending = false;
-            managed->streamFadeReplace = false;
-        }
-        if (!base::StrEq(managed->streamRenderedText, rendered)) {
-            Str replacement = StrDup(rendered);
-            StrFree(managed->streamRenderedText);
-            managed->streamRenderedText = replacement;
-        }
-        if (managed->streamFadeFrom >= 0) {
-            if (MotionReduced() || motion.streamFadeMs <= 0) {
-                managed->streamFadeFrom = -1;
-            } else {
-                float elapsed =
-                    (float)((MotionNow(cx) - managed->streamFadeStartedAt) *
-                            1000.0);
-                float progress = elapsed / motion.streamFadeMs;
-                if (progress >= 1.f) {
-                    managed->streamFadeFrom = -1;
-                } else {
-                    progress = std::max(0.f, progress);
-                    streamFadeFrom = managed->streamFadeFrom;
-                    streamFadeOpacity = motion.streamFadeEasing
-                                            .Sample(progress);
-                    // A streamed fade repaints at about 30 fps on a
-                    // timer, not at the display's refresh rate; the frame
-                    // the tick paints arms the next one.
-                    if (!managed->fadeTick) {
-                        managed->fadeTick = WindowSetTimeout(
-                            cx->win, kStreamFadeTickMs,
-                            ListenTo(state, &TextViewState::OnFadeTick));
-                    }
-                }
-            }
+        StreamFadeRange* fades = nullptr;
+        nStreamFades = managed->StreamFadeFrame(a, now, &fades);
+        streamFades = fades;
+        // A streamed fade repaints at about 30 fps on a timer, not at the
+        // display's refresh rate; the frame the tick paints arms the next
+        // one.
+        if (nStreamFades > 0 && !managed->fadeTick) {
+            managed->fadeTick =
+                WindowSetTimeout(cx->win, kStreamFadeTickMs,
+                                 ListenTo(state, &TextViewState::OnFadeTick));
         }
     }
     // Rust keeps selection_format on the view's own state and reconstructs

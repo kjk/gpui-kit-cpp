@@ -82,11 +82,6 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   so `handle_key_down`'s guards on them have nothing to read, and
   `aria_description` has no field in the accessibility node
   (`src/base/questionnaire.cpp`).
-- **TextView's stream fade runs per top-level block.** Rust fades rendered
-  byte ranges inside a leaf and staggers them word by word (character by
-  character for CJK); an El has opacity only per subtree, so the block holding
-  the new text fades as one unit and `stream_fade_stagger` / `StaggerStepMs`
-  shape nothing on screen (`src/base/text.cpp`).
 - **TextView range highlights land with the render.** Rust parses in the
   background and rebuilds `RenderedText` when a parse lands; the parse here
   is synchronous inside `TextView::IntoEl`, so `RenderedText()` and the

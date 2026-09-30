@@ -2020,6 +2020,150 @@ static void SetTextExtendingHtmlParsesItAgain() {
     AppGlobalClear(&app);
 }
 
+// The first text run under `e` whose text holds `needle`.
+static El* StreamTextEl(El* e, Str needle) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->kind == ElKind::Text && base::StrContains(e->text, needle)) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* t = StreamTextEl(c, needle)) {
+            return t;
+        }
+    }
+    return nullptr;
+}
+
+// stream_fade.rs fade_units_are_words_with_their_trailing_space and
+// fade_units_split_cjk_by_character.
+static void StreamFadeUnitsAreWordsOrCjkCharacters() {
+    Vec<Span> units;
+    StreamFadeUnits(StrL("hello one two  three"), 5, 20, &units);
+    utassert(len(units) == 3);
+    utassert(units[0].start == 5 && units[0].end == 10);
+    utassert(units[1].start == 10 && units[1].end == 15);
+    utassert(units[2].start == 15 && units[2].end == 20);
+    // A unit that is only whitespace joins the word after it.
+    VecClear(units);
+    StreamFadeUnits(StrL("a  b"), 1, 4, &units);
+    utassert(len(units) == 1 && units[0].start == 1 && units[0].end == 4);
+    VecClear(units);
+    StreamFadeUnits(StrL("abc"), 3, 3, &units);
+    utassert(len(units) == 0);
+
+    VecClear(units);
+    StreamFadeUnits(StrL("你好，世界 ok"), 0, 18, &units);
+    const int want[][2] = {{0, 3}, {3, 6}, {6, 9}, {9, 12}, {12, 16}, {16, 18}};
+    utassert(len(units) == 6);
+    for (int i = 0; i < 6 && i < len(units); i++) {
+        utassert(units[i].start == want[i][0] && units[i].end == want[i][1]);
+    }
+    // Latin before CJK starts a unit at the script change.
+    VecClear(units);
+    StreamFadeUnits(StrL("ab中"), 0, 5, &units);
+    utassert(len(units) == 2 && units[0].end == 2 && units[1].start == 2);
+}
+
+// inline.rs fade_highlights_tests: a fade takes its share of the colour and
+// the background of whatever it lands on, and nothing outside it.
+static void FadesLayerOverHighlightsInsideTheirRange() {
+    Arena* a = ArenaNew();
+    Rgba base = Rgba8(0, 0, 0, 255);
+    TextSpan code;
+    code.lo = 0;
+    code.hi = 4;
+    code.color = Rgba8(200, 0, 0, 255);
+    code.bg = Rgba8(0, 0, 200, 200);
+    TextFade half = {2, 6, 0.5f};
+    const TextSpan* out = nullptr;
+    int n = TextFadeSpans(a, 8, base, &code, 1, &half, 1, &out);
+    utassert(n == 3);
+    if (n == 3) {
+        // Untouched highlight, faded highlight, faded plain text.
+        utassert(out[0].lo == 0 && out[0].hi == 2 && out[0].color.a == 255 &&
+                 out[0].bg.a == 200);
+        utassert(out[1].lo == 2 && out[1].hi == 4 && out[1].color.r == 200 &&
+                 out[1].color.a == 128 && out[1].bg.a == 100);
+        utassert(out[2].lo == 4 && out[2].hi == 6 && out[2].color.a == 128 &&
+                 out[2].color.r == 0 && out[2].bg.a == 0);
+    }
+    // No fades leave the highlights untouched: the same array comes back.
+    utassert(TextFadeSpans(a, 8, base, &code, 1, nullptr, 0, &out) == 1 &&
+             out == &code);
+    ArenaDelete(a);
+}
+
+// A staggered update fades word by word: each word starts a step after the
+// one before it, so mid-fade the earlier words are further along.
+static void StreamedWordsFadeInOneAfterAnother() {
+    bool wasReduced = MotionReduced();
+    MotionSetReduced(false);
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    win->frameNow = 100.0;
+    Entity<TextViewState> entity = TextViewState::Markdown(&app, StrL("hello"));
+    TextViewState* state = entity.Get(&app);
+    state->SetMotion(TextViewMotion{}
+                         .WithStreamFade(600.f)
+                         .WithStreamFadeStagger(100.f)
+                         .WithStreamFadeEasing(Easing::Linear()),
+                     &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+
+    state->PushStr(StrL(" one two  three"), &app, win);
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(len(state->fadeSegments) == 3);
+    if (len(state->fadeSegments) == 3) {
+        utassert(state->fadeSegments[0].range.start == 5);
+        utassertnear((float)(state->fadeSegments[1].startedAt -
+                             state->fadeSegments[0].startedAt),
+                     0.1f);
+        utassertnear((float)(state->fadeSegments[2].startedAt -
+                             state->fadeSegments[0].startedAt),
+                     0.2f);
+    }
+
+    // 150 ms in: the first word is a quarter lit, the second a twelfth, the
+    // third has not started.
+    win->frameNow = 100.15;
+    a->Reset();
+    El* view = TextView::New(&cx, entity)->IntoEl();
+    El* run = StreamTextEl(view, StrL("three"));
+    int n = 0;
+    const TextFade* fades = run ? run->FadesGet(&n) : nullptr;
+    utassert(fades && n == 3);
+    if (fades && n == 3) {
+        utassertnear(fades[0].fadeOut, 0.75f);
+        utassertnear(fades[1].fadeOut, 1.f - 50.f / 600.f);
+        utassertnear(fades[2].fadeOut, 1.f);
+        utassert(fades[0].lo == 5 && fades[2].hi == 20);
+    }
+
+    // Once the first word is lit it stops fading; the others carry on.
+    win->frameNow = 100.65;
+    a->Reset();
+    view = TextView::New(&cx, entity)->IntoEl();
+    run = StreamTextEl(view, StrL("three"));
+    fades = run ? run->FadesGet(&n) : nullptr;
+    utassert(fades && n == 2 && fades[0].lo == 10);
+    win->frameNow = 101.0;
+    a->Reset();
+    TextView::New(&cx, entity)->IntoEl();
+    utassert(len(state->fadeSegments) == 0);
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    MotionSetReduced(wasReduced);
+}
+
 static void TestStreamFadeTracksRenderedAppends() {
     bool wasReduced = MotionReduced();
     MotionSetReduced(false);
@@ -2033,17 +2177,25 @@ static void TestStreamFadeTracksRenderedAppends() {
     state->SetMotion(TextViewMotion{}.WithStreamFade(10000.f), &app, win);
 
     TextView::New(&cx, entity)->IntoEl();
-    utassert(StrEq(state->streamRenderedText, StrL("hello")));
-    utassert(state->streamFadeFrom < 0);
+    utassert(len(state->fadeSegments) == 0);
 
+    // The appended bytes of the leaf fade; the text before them does not,
+    // and nothing fades by opacity on a whole block any more.
     state->PushStr(StrL(" world"), &app, win);
     El* faded = TextView::New(&cx, entity)->IntoEl();
-    utassert(state->streamFadeFrom == 5);
-    utassert(faded && faded->first && faded->first->style.opacity < 1.f);
+    utassert(len(state->fadeSegments) == 1);
+    utassert(state->fadeSegments[0].range.start == 5 &&
+             state->fadeSegments[0].range.end == 11);
+    utassert(faded && faded->first && faded->first->style.opacity == 1.f);
+    El* run = StreamTextEl(faded, StrL("world"));
+    int n = 0;
+    const TextFade* fades = run ? run->FadesGet(&n) : nullptr;
+    utassert(fades && n == 1 && fades[0].lo == 5 && fades[0].hi == 11);
+    utassert(fades && fades[0].fadeOut > 0.99f);
 
     state->SetText(StrL("replacement"), &app, win);
     TextView::New(&cx, entity)->IntoEl();
-    utassert(state->streamFadeFrom < 0);
+    utassert(len(state->fadeSegments) == 0);
 
     TextView* compat = TextView::New(&cx, entity)->StreamFade();
     utassert(compat->motionSet && compat->motion.streamFadeMs == 280.f);
@@ -3557,6 +3709,9 @@ void TestTextView() {
     InlineCodeLineIsAsTallAsAPlainLine();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
+    StreamFadeUnitsAreWordsOrCjkCharacters();
+    FadesLayerOverHighlightsInsideTheirRange();
+    StreamedWordsFadeInOneAfterAnother();
     SetTextExtendingMarkdownAppendsAndKeepsSelection();
     SetTextStreamingMarkdownMatchesAFullParse();
     SetTextExtendingHtmlParsesItAgain();

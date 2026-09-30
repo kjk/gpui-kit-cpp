@@ -1859,6 +1859,31 @@ El* El::Underlines(const TextSpan* runs, int n) {
     nUnderlines = n;
     return this;
 }
+El* El::Fades(const TextFade* runs, int n) {
+    fades = {};
+    if (!runs || n <= 0 || !arena) {
+        return this;
+    }
+    TextFade* copy = (TextFade*)Alloc(arena, (n + 1) * (int)sizeof(TextFade));
+    if (!copy) {
+        return this;
+    }
+    memcpy(copy, runs, (size_t)n * sizeof(TextFade));
+    copy[n] = TextFade{0, 0, 0};
+    fades = ArenaPtrOf(arena, copy);
+    return this;
+}
+const TextFade* El::FadesGet(int* n) const {
+    *n = 0;
+    const TextFade* runs = arena ? ArenaPtrGet(arena, fades) : nullptr;
+    if (!runs) {
+        return nullptr;
+    }
+    while (runs[*n].hi > runs[*n].lo) {
+        (*n)++;
+    }
+    return runs;
+}
 El* El::Whitespaces(Rgba color) {
     whitespaceColor = color;
     return this;
@@ -5219,9 +5244,85 @@ void TextLayoutDrawSpans(PaintCtx* ctx, TextLayout* layout, Str text, float x,
     }
 }
 
+Rgba TextFadeColor(Rgba c, float fadeOut) {
+    float keep = 1.f - (fadeOut < 0.f ? 0.f : (fadeOut > 1.f ? 1.f : fadeOut));
+    c.a = (uint8_t)((float)c.a * keep + 0.5f);
+    return c;
+}
+
+int TextFadeSpans(Arena* a, int textLen, Rgba base, const TextSpan* spans,
+                  int nSpans, const TextFade* fades, int nFades,
+                  const TextSpan** out) {
+    *out = spans;
+    if (nFades <= 0 || !a) {
+        return nSpans;
+    }
+    // Every place a span or a fade starts or ends cuts the run; each piece
+    // then has at most one span and one fade over it.
+    int cap = 2 * (nSpans + nFades) + 2;
+    int* cuts = (int*)Alloc(a, cap * (int)sizeof(int));
+    TextSpan* runs = (TextSpan*)Alloc(a, cap * (int)sizeof(TextSpan));
+    if (!cuts || !runs) {
+        return nSpans;
+    }
+    int nCuts = 0;
+    cuts[nCuts++] = 0;
+    cuts[nCuts++] = textLen;
+    for (int i = 0; i < nSpans; i++) {
+        cuts[nCuts++] = spans[i].lo;
+        cuts[nCuts++] = spans[i].hi;
+    }
+    for (int i = 0; i < nFades; i++) {
+        cuts[nCuts++] = fades[i].lo;
+        cuts[nCuts++] = fades[i].hi;
+    }
+    std::sort(cuts, cuts + nCuts);
+    int n = 0;
+    int si = 0;
+    int fi = 0;
+    for (int c = 0; c + 1 < nCuts; c++) {
+        int lo = std::max(cuts[c], 0);
+        int hi = std::min(cuts[c + 1], textLen);
+        if (hi <= lo) {
+            continue;
+        }
+        while (si < nSpans && spans[si].hi <= lo) {
+            si++;
+        }
+        while (fi < nFades && fades[fi].hi <= lo) {
+            fi++;
+        }
+        bool inSpan = si < nSpans && spans[si].lo <= lo;
+        float fade = fi < nFades && fades[fi].lo <= lo ? fades[fi].fadeOut : 0;
+        if (!inSpan && fade <= 0) {
+            continue;
+        }
+        TextSpan run = inSpan ? spans[si] : TextSpan{};
+        if (!inSpan) {
+            run.color = base;
+        }
+        run.lo = lo;
+        run.hi = hi;
+        if (fade > 0) {
+            run.color = TextFadeColor(run.color, fade);
+            run.bg = TextFadeColor(run.bg, fade);
+        }
+        runs[n++] = run;
+    }
+    *out = runs;
+    return n;
+}
+
 // One shaped layout: backgrounds first, foreground colors through the
 // backend's single pass or range-clip fallback, then decorations.
 static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
+    // fade_highlights: the fades layered over the highlights, so a faded
+    // byte paints its own colour — or the run's — that much lighter.
+    const TextSpan* spans = nullptr;
+    int nFades = 0;
+    const TextFade* fades = e->FadesGet(&nFades);
+    int nSpans = TextFadeSpans(e->arena, len(e->text), base, e->spans,
+                               e->nSpans, fades, nFades, &spans);
     float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
     TextLayout* layout =
         TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap, ElTextWeight(e),
@@ -5242,8 +5343,8 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
     // glyphs, underlines and strikethroughs; the equivalent early-out here is
     // the per-span alpha test below, which costs nothing on a line with no
     // highlight.
-    for (int i = 0; i < e->nSpans; i++) {
-        const TextSpan& sp = e->spans[i];
+    for (int i = 0; i < nSpans; i++) {
+        const TextSpan& sp = spans[i];
         if (sp.bg.a == 0 || sp.hi <= sp.lo) {
             continue;
         }
@@ -5253,11 +5354,10 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
                            rects[r].w, rects[r].h, sp.bg);
         }
     }
-    TextLayoutDrawSpans(ctx, layout, e->text, e->x, e->y, base, e->spans,
-                        e->nSpans);
+    TextLayoutDrawSpans(ctx, layout, e->text, e->x, e->y, base, spans, nSpans);
     // The rules last, so nothing paints over them.
-    for (int i = 0; i < e->nSpans; i++) {
-        const TextSpan& sp = e->spans[i];
+    for (int i = 0; i < nSpans; i++) {
+        const TextSpan& sp = spans[i];
         if (!sp.underline || sp.hi <= sp.lo) {
             continue;
         }
@@ -6882,15 +6982,33 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         }
         // Under the selection quad as well as under the glyphs: a match the
         // caret happens to be inside still reads as selected.
+        int nFades = 0;
+        const TextFade* fades = e->FadesGet(&nFades);
         for (int i = 0; i < e->nWashes; i++) {
             const TextSpan& w = e->washes[i];
             if (w.bg.a == 0 || w.hi <= w.lo) {
                 continue;
             }
-            PaintTextRange(ctx, e->text, font,
-                           e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
-                           ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                           w.lo, w.hi, w.bg, ElTextAlign(e));
+            // A wash fades with the text over it, as fade_highlights fades
+            // a highlight's background: the wash through the fades, as runs.
+            const TextSpan* parts = &w;
+            int nParts = 1;
+            if (nFades > 0) {
+                TextSpan whole = w;
+                whole.color = w.bg;
+                nParts = TextFadeSpans(e->arena, w.hi, w.bg, &whole, 1, fades,
+                                       nFades, &parts);
+            }
+            for (int p = 0; p < nParts; p++) {
+                if (parts[p].hi <= w.lo) {
+                    continue;
+                }
+                PaintTextRange(
+                    ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                    e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                    e->y, std::max(parts[p].lo, w.lo), parts[p].hi, parts[p].bg,
+                    ElTextAlign(e));
+            }
         }
         if (lo >= 0 && hi > lo) {
             PaintTextRange(ctx, e->text, font,
@@ -6914,7 +7032,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
                 e->markLo, e->markHi, c, false, ElTextAlign(e));
         }
-        if (e->nSpans > 0 && e->text.s) {
+        if ((e->nSpans > 0 || nFades > 0) && e->text.s) {
             PaintTextSpans(ctx, e, font, c);
         } else if (e->laidLayout) {
             TextLayoutDraw(ctx, e->laidLayout, e->x, e->y, c, e->style.truncate,
@@ -6964,10 +7082,23 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             if (u.hi <= u.lo || u.color.a == 0) {
                 continue;
             }
-            PaintTextUnderline(
-                ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
-                e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                u.lo, u.hi, u.color, u.wavy, ElTextAlign(e));
+            // The rule fades with the glyphs it is under.
+            const TextSpan* parts = &u;
+            int nParts = 1;
+            if (nFades > 0) {
+                nParts = TextFadeSpans(e->arena, u.hi, u.color, &u, 1, fades,
+                                       nFades, &parts);
+            }
+            for (int p = 0; p < nParts; p++) {
+                if (parts[p].hi <= u.lo) {
+                    continue;
+                }
+                PaintTextUnderline(
+                    ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                    e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                    e->y, std::max(parts[p].lo, u.lo), parts[p].hi,
+                    parts[p].color, u.wavy, ElTextAlign(e));
+            }
         }
         if (clipText) {
             CanvasPopClip(ctx);
