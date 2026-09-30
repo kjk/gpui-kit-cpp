@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4f861e8a0654064fa53255cf8d9597bb9d5ef826` (2026-09-29,
-highlighter: Clip stale injection ranges to char boundaries before slicing
-(#3317)). The tree-sitter highlighter clips stale injection ranges to char
-boundaries; our dependency-free scanner reads no stale tree, so nothing is
-ported. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146` (2026-09-29,
+slider: Let a touch drag on the track move the thumb (#3313)). A touch drag
+that starts on a slider's track is claimed as a TouchDrag and moves the thumb
+(the nearer one of a range) instead of scrolling the page, with Change and
+Release as for the mouse; the FPS HUD names Droid Sans Mono on Android. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

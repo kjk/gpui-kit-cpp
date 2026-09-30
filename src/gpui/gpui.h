@@ -440,7 +440,10 @@ enum class TouchHostKind : uint8_t {
     LongPress,
     Scroll,
     BarDrag,
-    HandleDrag
+    HandleDrag,
+    // A pan that started on a slider's track, which claims it as a
+    // TouchDrag rather than letting it scroll the page (slider.rs).
+    SliderDrag
 };
 
 // gpui::OngoingScroll. Precise scrolling is a gesture rather than a series of
@@ -5823,6 +5826,13 @@ struct Window {
     bool longPressSelection = false;
     // WindowTouch*: a host-owned iOS/Android view feeds raw touches here.
     TouchHostKind touchHost = TouchHostKind::None;
+    // SliderState::touch_drag: the slider a live TouchDrag was claimed by,
+    // the axis it maps along, and whether it moves a range's start thumb.
+    // Checked against the painted sliders before each use, since the state
+    // is the caller's.
+    SliderState* touchSlider = nullptr;
+    Axis touchSliderAxis = Axis::Horizontal;
+    bool touchSliderStart = false;
     Point touchHostStart = {};
     Point touchHostLast = {};
     double touchHostStartAt = 0;

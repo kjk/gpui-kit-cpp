@@ -162,6 +162,90 @@ static void TheArrowsStepByTheStep() {
     utassertnear(r.value.End(), 50.f);
 }
 
+namespace {
+struct SliderEventCounter {
+    int changes = 0;
+    int releases = 0;
+
+    static void OnEvent(SliderEventCounter* self, Ctx*, const SliderEvent* ev) {
+        if (ev->kind == SliderEventKind::Change) {
+            self->changes++;
+        } else {
+            self->releases++;
+        }
+    }
+};
+} // namespace
+
+// crates/kit/tests/disclosure.rs: slider_touch_drag_moves_the_actual_thumb,
+// and the touch half of disabled_slider_ignores_pointer_changes. A finger
+// drag arrives as TouchDrag Started/Moved/Ended; one that starts on the
+// track moves the thumb both ways and ends with a Release, and a drag on a
+// disabled slider (which binds no state) leaves it alone. The host's pan
+// on a track is claimed as a TouchDrag rather than a scroll.
+static void ATouchDragOnTheTrackMovesTheThumb() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Entity<SliderEventCounter> counter =
+        EntityNewState<SliderEventCounter>(&app);
+    SliderState s = TrackState();
+    SliderSetValue(&s, SliderSingle(20.f));
+    s.onChange = ListenTo(counter, &SliderEventCounter::OnEvent);
+    HitRect track = {};
+    track.id = 7;
+    track.bounds = {0, 0, 100, 20};
+    track.slider = &s;
+    VecAppend(win->paint.hits, track);
+
+    auto drag = [&](TouchPhase phase, Point start, Point at) {
+        PlatformInput in = InputTouchDrag(phase, start, at);
+        WindowDispatchInput(win, &in);
+    };
+    Point start = {20, 10};
+    drag(TouchPhase::Started, start, start);
+    drag(TouchPhase::Moved, start, {70, 10});
+    utassertnear(s.value.End(), 70.f);
+    drag(TouchPhase::Moved, start, {40, 10});
+    utassertnear(s.value.End(), 40.f);
+    drag(TouchPhase::Ended, start, {40, 10});
+    utassert(counter.Get(&app)->changes >= 2);
+    utassert(counter.Get(&app)->releases == 1);
+    utassert(!s.dragging && win->touchSlider == nullptr);
+
+    // A range moves the thumb nearer where the touch started.
+    SliderSetValue(&s, SliderRange(20.f, 60.f));
+    drag(TouchPhase::Started, {25, 10}, {25, 10});
+    drag(TouchPhase::Moved, {25, 10}, {10, 10});
+    drag(TouchPhase::Ended, {25, 10}, {10, 10});
+    utassertnear(s.value.Start(), 10.f);
+    utassertnear(s.value.End(), 60.f);
+
+    // The host claims a pan that starts on the track instead of scrolling.
+    SliderSetValue(&s, SliderSingle(20.f));
+    WindowTouchBegin(win, 20, 10);
+    WindowTouchMove(win, 80, 10);
+    utassert(win->touchHost == TouchHostKind::SliderDrag);
+    utassertnear(s.value.End(), 80.f);
+    WindowTouchEnd(win, 80, 10);
+    utassert(win->touchSlider == nullptr);
+
+    // Disabled: the track binds no state, so nothing claims the drag.
+    VecClear(win->paint.hits);
+    HitRect disabled = track;
+    disabled.slider = nullptr;
+    VecAppend(win->paint.hits, disabled);
+    SliderSetValue(&s, SliderSingle(20.f));
+    drag(TouchPhase::Started, start, start);
+    drag(TouchPhase::Moved, start, {70, 10});
+    drag(TouchPhase::Ended, start, {70, 10});
+    utassertnear(s.value.End(), 20.f);
+
+    VecReset(win->paint.hits);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestSlider() {
     TestSuite("slider");
     ValueConversionsAndClampingArePreserved();
@@ -175,4 +259,5 @@ void TestSlider() {
     APressTakesTheNearerHalfOfARange();
     ReleaseOnlyFiresAfterAPress();
     TheArrowsStepByTheStep();
+    ATouchDragOnTheTrackMovesTheThumb();
 }

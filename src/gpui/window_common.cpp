@@ -1993,6 +1993,92 @@ void WindowStopPropagation(Ctx* cx) {
 // The chain of hit rects the pointer is inside, leaf first. Not every box
 // that contains the point: two absolutely placed siblings can overlap without
 // either being inside the other, so the chain is the one the paint recorded.
+static void HitChain(Window* win, float x, float y, Vec<int>* out);
+
+// The slider whose track (or a thumb on it) is under `at`: the first element
+// on the hit chain bound to one. A disabled slider binds none. Rust claims
+// through a layer over the track's hitbox, so an element covering the track
+// keeps its own drags; one that is not the track's descendant is not on the
+// chain either.
+static const HitRect* SliderHitAt(Window* win, Point at) {
+    Vec<int> chain;
+    HitChain(win, at.x, at.y, &chain);
+    const HitRect* found = nullptr;
+    for (int i = 0; i < len(chain); i++) {
+        if (win->paint.hits[chain[i]].slider) {
+            found = &win->paint.hits[chain[i]];
+            break;
+        }
+    }
+    VecReset(chain);
+    return found;
+}
+
+static bool SliderPainted(Window* win, const SliderState* s) {
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        if (win->paint.hits[i].slider == s) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// SliderTrack's TouchDragEvent listener. GPUI delivers a finger drag as a
+// TouchDrag (when a handler claims it on Started) or as scrolling; on_drag
+// is mouse-only. A drag that starts on the track is claimed and fed through
+// the same update/release path as the mouse, so Change and Release fire as
+// they do for it; a range moves the thumb nearer where the touch started.
+// Answers whether the event was the slider's.
+static bool SliderTouchDrag(Window* win, const TouchDragEvent& touch,
+                            bool claimable) {
+    if (touch.phase == TouchPhase::Started) {
+        // A drag whose end never arrived ends when another begins.
+        if (win->touchSlider) {
+            SliderState* was = win->touchSlider;
+            win->touchSlider = nullptr;
+            if (SliderPainted(win, was) && SliderHandleRelease(was)) {
+                SliderEmit(win, was, SliderEventKind::Release);
+            }
+        }
+        const HitRect* hit =
+            claimable ? SliderHitAt(win, touch.startPosition) : nullptr;
+        if (!hit) {
+            return false;
+        }
+        SliderState* s = hit->slider;
+        if (s->bounds.w <= 0 || s->bounds.h <= 0) {
+            SliderSetBounds(s, hit->bounds);
+        }
+        win->touchSlider = s;
+        win->touchSliderAxis = hit->sliderAxis;
+        win->touchSliderStart =
+            SliderIsStartAt(s, hit->sliderAxis, touch.startPosition);
+        s->dragStart = win->touchSliderStart;
+    }
+    SliderState* s = win->touchSlider;
+    if (!s) {
+        return false;
+    }
+    if (!SliderPainted(win, s)) {
+        win->touchSlider = nullptr;
+        return false;
+    }
+    if (touch.phase == TouchPhase::Started ||
+        touch.phase == TouchPhase::Moved) {
+        if (SliderUpdateByPosition(s, win->touchSliderAxis, touch.position,
+                                   win->touchSliderStart)) {
+            SliderEmit(win, s, SliderEventKind::Change);
+        }
+    } else {
+        win->touchSlider = nullptr;
+        if (SliderHandleRelease(s)) {
+            SliderEmit(win, s, SliderEventKind::Release);
+        }
+    }
+    AppInvalidate(win);
+    return true;
+}
+
 static void HitChain(Window* win, float x, float y, Vec<int>* out) {
     VecClear(*out);
     int leaf = -1;
@@ -2691,6 +2777,14 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                         }
                     }
                 }
+                // The scrollbar and a selection handle claim first; what
+                // neither took may be a slider's.
+                (void)SliderTouchDrag(
+                    win, touch,
+                    !win->touchScrollbarDrag &&
+                        !(win->sel && win->sel->hasTouchEdgeDrag));
+            } else if (win->touchSlider) {
+                (void)SliderTouchDrag(win, touch, false);
             } else if (win->touchScrollbarDrag) {
                 if (touch.phase == TouchPhase::Moved ||
                     touch.phase == TouchPhase::Ended) {
@@ -2870,7 +2964,9 @@ static bool TouchHostHitHandle(Window* win, Point at) {
 }
 
 static bool TouchHostIsDrag(TouchHostKind kind) {
-    return kind == TouchHostKind::BarDrag || kind == TouchHostKind::HandleDrag;
+    return kind == TouchHostKind::BarDrag ||
+           kind == TouchHostKind::HandleDrag ||
+           kind == TouchHostKind::SliderDrag;
 }
 
 static void TouchHostEmitScroll(Window* win, TouchPhase phase, Point last,
@@ -2960,6 +3056,12 @@ void WindowTouchMove(Window* win, float x, float y) {
                                       win->touchHostStart.y, &horizontal);
         if (bar) {
             win->touchHost = TouchHostKind::BarDrag;
+            TouchHostEmitDrag(win, TouchPhase::Started, win->touchHostStart);
+            TouchHostEmitDrag(win, TouchPhase::Moved, now);
+        } else if (SliderHitAt(win, win->touchHostStart)) {
+            // slider.rs claims a drag that starts on its track, so the
+            // finger moves the thumb instead of scrolling the page.
+            win->touchHost = TouchHostKind::SliderDrag;
             TouchHostEmitDrag(win, TouchPhase::Started, win->touchHostStart);
             TouchHostEmitDrag(win, TouchPhase::Moved, now);
         } else {
