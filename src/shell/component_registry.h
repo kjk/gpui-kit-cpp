@@ -513,6 +513,12 @@ struct ComponentCallback {
                       const ComponentDataValue* arguments, int count, Ctx* cx,
                       ComponentDataValue* out, Arena* a,
                       Str* error = nullptr) const;
+    // ComponentDataCallback::snapshot_rows_with: a snapshot that must be an
+    // array, answered as its rows (ComponentDelegateSnapshot).
+    bool SnapshotRowsWith(ShellRuntime* runtime,
+                          const ComponentDataValue* arguments, int count,
+                          Ctx* cx, const ComponentDataValue** rows,
+                          int* rowCount, Arena* a, Str* error = nullptr) const;
     // An element renderer: the element the handler described, materialized
     // into `cx`'s frame. Null when it returned nothing or failed (`error`).
     El* BuildWith(ShellRuntime* runtime, const ComponentDataValue* arguments,

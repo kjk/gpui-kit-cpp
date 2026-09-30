@@ -22,6 +22,8 @@ bool RegisterChat(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterEmpty(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterInputGroup(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterDelegateCollections(shell::ComponentRegistry*,
+                                 shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
@@ -41,6 +43,15 @@ bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControlsAction(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControlsDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControlsText(shell::ComponentRegistry*, shell::RegistryError*);
+
+// delegate_collections/mod.rs
+bool RegisterDelegateCollectionsList(shell::ComponentRegistry*,
+                                     shell::RegistryError*);
+
+// list.rs test_probe, widened into a seam: when set, it hears the id of every
+// List row whose renderer built an element, in the order they were built.
+using ListRowProbe = void (*)(Str id);
+void SetListRowProbe(ListRowProbe probe);
 
 // display/mod.rs
 bool RegisterDisplayAlert(shell::ComponentRegistry*, shell::RegistryError*);

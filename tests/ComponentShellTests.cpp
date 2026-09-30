@@ -4070,6 +4070,105 @@ void DropdownMenuOpensRealItemsAndDispatchesTheSelectedCallback() {
     utassert(FindText(root, StrL("Choice:rename")) != nullptr);
 }
 
+// ─── delegate_collections/: mod.rs, list.rs ────────────────────────────────
+
+// delegate_collections_host.rs delegate_collection_catalog_exposes_retained_
+// list_contract.
+void DelegateCollectionCatalogExposesRetainedListContract() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCollections);
+    utassert(catalog.ok);
+    const char* names[] = {"List"};
+    utassert(catalog.NamesAre(names, 1));
+    utassert(catalog.frozen.StateCount() == 0);
+    utassert(catalog.Documented());
+}
+
+// list.rs test_probe: the ids of the rows the renderer built.
+int gListRowsSeen = 0;
+int gListRowsOther = 0;
+const char* gListRowExpect = "";
+
+void RecordListRow(Str id) {
+    gListRowsSeen++;
+    if (!StrEq(id, gListRowExpect)) gListRowsOther++;
+}
+
+void ExpectListRows(const char* id) {
+    gListRowsSeen = 0;
+    gListRowsOther = 0;
+    gListRowExpect = id;
+}
+
+// delegate_collections_host.rs list_uses_a_fresh_immutable_snapshot_and_
+// lazy_row_renderer: every render takes a fresh rows snapshot, and the rows
+// the list lays out are built from it by the lazy renderer.
+void ListUsesAFreshImmutableSnapshotAndLazyRowRenderer() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCollections);
+    component_shell::SetListRowProbe(&RecordListRow);
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { List } from 'gpui-component';\n"
+                       "export default class App extends View {\n"
+                       "  init() { this.updated = false; }\n"
+                       "  render() {\n"
+                       "    const rows = this.updated ? [{id: 'beta', label: "
+                       "'Beta'}] : [{id: 'alpha', label: 'Alpha'}];\n"
+                       "    this.updated = true;\n"
+                       "    return new List('people', () => rows, row => "
+                       "div().child(row.label));\n"
+                       "  }\n"
+                       "}\n"),
+                  &catalog.frozen);
+        ExpectListRows("alpha");
+        El* root = RenderLaidOut(host);
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(gListRowsSeen > 0 && gListRowsOther == 0);
+        utassert(FindText(root, StrL("Alpha")) != nullptr);
+
+        ExpectListRows("beta");
+        root = RenderLaidOut(host);
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(gListRowsSeen > 0 && gListRowsOther == 0);
+        utassert(FindText(root, StrL("Beta")) != nullptr);
+        utassert(FindText(root, StrL("Alpha")) == nullptr);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+    }
+    component_shell::SetListRowProbe(nullptr);
+}
+
+// list.rs: the rows callback must answer an array, and a List takes no
+// children.
+void ListRefusesWhatRustRefuses() {
+    FamilyCatalog catalog(&component_shell::RegisterDelegateCollections);
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { List } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new List('people', () => 3, row => div()); } "
+                       "}\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        utassert(root != nullptr);
+        utassert(FindTextPrefix(
+                     root, StrL("Failed to snapshot List rows: component "
+                                "delegate snapshot callback must return an "
+                                "array of rows")) != nullptr);
+    }
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { List } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new List('people', () => [], row => div())"
+                       ".child(div()); } }\n"),
+                  &catalog.frozen);
+        host.Render();
+        utassert(StrContains(host.runtime->LastComponentFailure(),
+                             StrL("List does not accept children")));
+    }
+    Str failure = CallErrorTemp("List", "new List(' ', () => [], r => null)");
+    utassert(StrContains(failure, StrL("List expects a non-empty id, rows "
+                                       "callback, and row renderer")));
+}
 } // namespace
 
 void TestComponentShell() {
@@ -4112,6 +4211,11 @@ void TestComponentShell() {
     KbdParsesItsKeystroke();
     ClickingATwoStateControlReportsItsNewState();
     ClickingAButtonReachesTheScript();
+
+    TestSuite("delegate_collections");
+    DelegateCollectionCatalogExposesRetainedListContract();
+    ListUsesAFreshImmutableSnapshotAndLazyRowRenderer();
+    ListRefusesWhatRustRefuses();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

@@ -12847,6 +12847,27 @@ bool shell::ComponentCallback::SnapshotWith(
     return ok;
 }
 
+bool shell::ComponentCallback::SnapshotRowsWith(
+    ShellRuntime* runtime, const shell::ComponentDataValue* arguments,
+    int count, Ctx* cx, const shell::ComponentDataValue** rows, int* rowCount,
+    Arena* a, Str* error) const {
+    *rows = nullptr;
+    *rowCount = 0;
+    shell::ComponentDataValue value;
+    if (!SnapshotWith(runtime, arguments, count, cx, &value, a, error))
+        return false;
+    if (value.kind != shell::DataKind::Array) {
+        if (error)
+            *error = StrL(
+                "component delegate snapshot callback must return an array "
+                "of rows");
+        return false;
+    }
+    *rows = value.items;
+    *rowCount = value.count;
+    return true;
+}
+
 static El* BuildComponentElement(ShellRuntime* runtime, shell::CallbackId id,
                                  const shell::ComponentDataValue* arguments,
                                  int count, Ctx* cx, Str* error,

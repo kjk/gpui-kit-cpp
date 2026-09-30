@@ -119,6 +119,16 @@ struct EntityState {
     }
 };
 
+// window.use_keyed_state(key, ..) with a string key: one state per window
+// and key, not scoped by the element path the way ElementStateEntity is —
+// which is what makes a Rust keyed state follow its id wherever the element
+// moves. `kind` keeps two adapters' states under one key apart.
+template <class T>
+Entity<T> UseKeyedState(Ctx* cx, Str key, Str kind) {
+    return KeyedEntity<T>(
+        cx, KeyedKey((uint32_t)HashClickId(key), (uint32_t)HashClickId(kind)));
+}
+
 // A repeatable deferred slot (ComponentElementFactory) that a native builder
 // asks for after the materializer returned — an overlay's content, a command
 // row — built into the frame the builder runs in. Frame-allocated.
