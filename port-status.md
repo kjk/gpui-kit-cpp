@@ -15,12 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0d887f1285acc4ff5ec8e2ee57999310f8e398d0` (2026-09-29,
-scroll_bounce: Let phaseless wheels scroll again after bouncing at an edge
-(#3316)). ScrollBounce lifts its momentum suppression after a 250 ms pause in
-the wheel stream or on a packet pointing back inward, so phaseless
-smooth-scrolling wheels can scroll again after bouncing at an edge. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `4f861e8a0654064fa53255cf8d9597bb9d5ef826` (2026-09-29,
+highlighter: Clip stale injection ranges to char boundaries before slicing
+(#3317)). The tree-sitter highlighter clips stale injection ranges to char
+boundaries; our dependency-free scanner reads no stale tree, so nothing is
+ported. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

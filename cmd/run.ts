@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0d887f1285acc4ff5ec8e2ee57999310f8e398d0",
+  sha: "4f861e8a0654064fa53255cf8d9597bb9d5ef826",
   date: "2026-09-29",
-  subject: "scroll_bounce: Let phaseless wheels scroll again after bouncing at an edge (#3316)",
+  subject: "highlighter: Clip stale injection ranges to char boundaries before slicing (#3317)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
