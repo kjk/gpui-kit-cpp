@@ -175,11 +175,18 @@ El* TableCellEl::IntoEl() {
     // `.when(self.style.size.width.is_none(), ..)`: a cell the caller sized
     // keeps that width and shrinks from it like any flex item; one that was
     // not sized starts from the whole row and shares it with its siblings,
-    // a span counting for that many columns.
-    if (width == kAuto) {
-        e->Shrink(1)->BasisFrac((float)colSpan);
-    } else {
+    // a span counting for that many columns. A width in the refinement is
+    // the caller's too.
+    bool styledWidth = false;
+    if (width == kAuto && refiner.IsSet()) {
+        El* probe = Div(a);
+        refiner.Apply(probe);
+        styledWidth = probe->style.width != kAuto;
+    }
+    if (width != kAuto) {
         e->W(width);
+    } else if (!styledWidth) {
+        e->Shrink(1)->BasisFrac((float)colSpan);
     }
     e->MinW(kMinCellWidth * (float)colSpan);
     e->PadX(p.left)->PadY(p.top);
@@ -188,6 +195,7 @@ El* TableCellEl::IntoEl() {
     } else if (align == TableAlign::Right) {
         e->JustifyEnd();
     }
+    refiner.Apply(e);
     for (El* c : children) {
         e->Child(c);
     }
@@ -218,6 +226,7 @@ El* TableRow::IntoEl() {
     if (hasBg) {
         row->Bg(bg);
     }
+    refiner.Apply(row);
     // `.when(self.ix > 0, |this| this.border_t_1())`: the rule goes between
     // the rows of a group, never above its first one — the header carries
     // its own rule underneath, and the footer one above.
@@ -263,8 +272,9 @@ El* TableGroup::IntoEl() {
         g = gpui::TableHeader::New(cx, StrDup(a, fmt("header-%d", ix)))
                 ->W(kFill)
                 ->FlexCol()
-                ->Bg(th.tokens.tableHead)
-                ->BorderB(1, th.tableRowBorder);
+                ->Bg(th.tokens.tableHead);
+        refiner.Apply(g);
+        g->BorderB(1, th.tableRowBorder);
     } else if (kind == TableGroupKind::Footer) {
         // A footer is a plain div in Rust, not one of the semantic parts.
         g = Div(a)
@@ -273,10 +283,12 @@ El* TableGroup::IntoEl() {
                 ->FlexCol()
                 ->Bg(th.tokens.tableFoot)
                 ->BorderT(1, th.tableRowBorder);
+        refiner.Apply(g);
     } else {
         g = gpui::TableBody::New(cx, StrDup(a, fmt("body-%d", ix)))
                 ->W(kFill)
                 ->FlexCol();
+        refiner.Apply(g);
     }
     for (int i = 0; i < rows.len; i++) {
         rows[i]->ix = i;
@@ -300,13 +312,14 @@ TableCaption* TableCaption::Child(El* e) {
 
 El* TableCaption::IntoEl() {
     Edges p = UiTableCellPadding(size);
-    El* e = gpui::TableCaption::New(cx, StrL("caption"))
+    El* e = gpui::TableCaption::New(cx, StrDup(a, fmt("caption-%d", ix)))
                 ->W(kFill)
                 ->FlexRow()
                 ->JustifyCenter()
                 ->TextCenter()
                 ->PadX(p.left)
                 ->PadY(p.top);
+    refiner.Apply(e);
     for (El* c : children) {
         e->Child(c);
     }
@@ -338,11 +351,15 @@ Table* Table::AccessibilityLabel(Str s) {
     return this;
 }
 Table* Table::Child(TableGroup* g) {
-    groups.Append(a, g);
+    TablePart part;
+    part.group = g;
+    parts.Append(a, part);
     return this;
 }
 Table* Table::Child(TableCaption* c) {
-    caption = c;
+    TablePart part;
+    part.caption = c;
+    parts.Append(a, part);
     return this;
 }
 
@@ -357,14 +374,17 @@ El* Table::IntoEl() {
     if (bordered) {
         t->Border(1, th.border)->Radius(th.radius);
     }
-    for (int i = 0; i < groups.len; i++) {
-        groups[i]->ix = i;
-        groups[i]->size = size;
-        t->Child(groups[i]->IntoEl());
-    }
-    if (caption) {
-        caption->size = size;
-        t->Child(caption->IntoEl());
+    // Every child in the order it was added, numbered by its place.
+    for (int i = 0; i < parts.len; i++) {
+        if (TableGroup* g = parts[i].group) {
+            g->ix = i;
+            g->size = size;
+            t->Child(g->IntoEl());
+        } else if (TableCaption* c = parts[i].caption) {
+            c->ix = i;
+            c->size = size;
+            t->Child(c->IntoEl());
+        }
     }
     return t;
 }

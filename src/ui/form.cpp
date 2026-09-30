@@ -63,6 +63,11 @@ Field& Field::ColStart(int value) {
     colStart = value;
     return *this;
 }
+Field& Field::Children(El* const* elements, int count) {
+    children = elements;
+    childCount = count;
+    return *this;
+}
 Field& Field::ColEnd(int value) {
     colEnd = value;
     return *this;
@@ -189,6 +194,7 @@ El* Form::IntoEl() {
             continue;
         }
         El* f = Div(a)->FlexCol()->W(kFill)->Gap(fieldGap * 0.5f);
+        fld.refiner.Apply(f);
 
         El* head = Div(a)->W(kFill)->Gap(inner);
         if (horizontal) {
@@ -227,6 +233,9 @@ El* Form::IntoEl() {
         El* control = Div(a)->W(kFill)->Flex1();
         if (fld.control) {
             control->Child(fld.control);
+        }
+        for (int j = 0; j < fld.childCount; j++) {
+            control->Child(fld.children[j]);
         }
         head->Child(control);
         f->Child(head);

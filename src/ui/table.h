@@ -254,6 +254,9 @@ struct TableCellEl {
     // the style", which is what makes the cell share the row by its span.
     float width = kAuto;
     ArenaVec<El*> children;
+    // The part's own StyleRefinement (Styled), applied where Rust's render
+    // calls refine_style. A width in it counts as the caller's width.
+    ElRefiner refiner = {};
 
     TableCellEl* ColSpan(int n);
     TableCellEl* TextCenter();
@@ -279,6 +282,7 @@ struct TableRow {
     bool hasBg = false;
     Background bg = {};
     ArenaVec<TableCellEl*> cells;
+    ElRefiner refiner = {};
 
     static TableRow* New(Ctx* cx);
     TableRow* Bg(Background c);
@@ -301,6 +305,7 @@ struct TableGroup {
     int ix = 0;
     UiSize size = UiSize::Medium;
     ArenaVec<TableRow*> rows;
+    ElRefiner refiner = {};
 
     TableGroup* Child(TableRow* r);
     El* IntoEl();
@@ -319,12 +324,23 @@ struct TableFooter {
 struct TableCaption {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
+    // The caption's place among the table's children, stamped by the table.
+    int ix = 0;
     UiSize size = UiSize::Medium;
     ArenaVec<El*> children;
+    ElRefiner refiner = {};
 
     static TableCaption* New(Ctx* cx);
     TableCaption* Child(El* e);
     El* IntoEl();
+};
+
+// One of a Table's children: a row group or a caption. Rust keeps them as
+// one list of AnyChildElement, in the order they were added, and numbers
+// each by its place in it.
+struct TablePart {
+    TableGroup* group = nullptr;
+    TableCaption* caption = nullptr;
 };
 
 struct Table {
@@ -332,8 +348,7 @@ struct Table {
     Ctx* cx = nullptr;
     UiSize size = UiSize::Medium;
     bool bordered = false;
-    ArenaVec<TableGroup*> groups;
-    TableCaption* caption = nullptr;
+    ArenaVec<TablePart> parts;
     // What every part under it is scoped by. Rust takes one for the same
     // reason: a name only has to be unique among its siblings, and the table
     // is what makes two rows called `row-0` two different rows.

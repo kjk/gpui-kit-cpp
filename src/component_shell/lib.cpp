@@ -37,6 +37,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterMedia,
     &RegisterScroll,
     &RegisterSettings,
+    &RegisterStructured,
     &RegisterBasic,
 };
 

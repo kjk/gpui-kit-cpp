@@ -4506,6 +4506,292 @@ void DataTableRefusesWhatRustRefuses() {
                          StrL("DataTable does not accept children")));
 }
 
+// ─── structured/: mod.rs, common.rs, description_list.rs, form.rs, table.rs ─
+
+// mod.rs registers_structured_components_in_dependency_order
+void RegistersStructuredComponentsInDependencyOrder() {
+    FamilyCatalog catalog(&component_shell::RegisterStructured);
+    utassert(catalog.ok);
+    const char* names[] = {
+        "DescriptionItem", "DescriptionList", "Field",        "Form",
+        "TableHeader",     "TableBody",       "TableFooter",  "TableRow",
+        "TableHead",       "TableCell",       "TableCaption", "Table"};
+    utassert(catalog.NamesAre(names, 12));
+    utassert(catalog.Documented());
+}
+
+// common.rs integer_conversions_reject_rounded_overflow_and_u16_overflow
+void StructuredIntegerConversionsRejectRoundedOverflowAndU16Overflow() {
+    using namespace component_shell::structured;
+    uint64_t wide = 0;
+    uint16_t narrow = 0;
+    Str error;
+    utassert(PositiveUsize(1.0, StrL("value"), &wide, &error) && wide == 1);
+    utassert(
+        !PositiveUsize(18446744073709551616.0, StrL("value"), &wide, &error));
+    utassert(StrEq(error, StrL("value expects an exactly representable "
+                               "positive integer")));
+    utassert(PositiveU16(65535.0, StrL("span"), &narrow, &error) &&
+             narrow == 65535);
+    utassert(!PositiveU16(65536.0, StrL("span"), &narrow, &error));
+    utassert(StrEq(error, StrL("span expects an integer no greater than "
+                               "65535")));
+}
+
+// common.rs f32_conversion_rejects_values_that_overflow_to_infinity
+void StructuredF32ConversionRejectsValuesThatOverflowToInfinity() {
+    using namespace component_shell::structured;
+    float out = 0;
+    Str error;
+    utassert(NonnegativeF32(42.5, StrL("width"), &out, &error) && out == 42.5f);
+    utassert(
+        !NonnegativeF32((double)FLT_MAX * 2.0, StrL("width"), &out, &error));
+    utassert(!NonnegativeF32(-1.0, StrL("width"), &out, &error));
+    utassert(!NonnegativeF32(NAN, StrL("width"), &out, &error));
+    utassert(StrEq(error, StrL("width expects a nonnegative finite number "
+                               "representable as f32")));
+}
+
+// Runs a structured recorder on one number argument.
+bool RecordsNumber(bool (*record)(shell::PayloadBuild*,
+                                  const shell::ComponentArgument*, int),
+                   double value) {
+    Arena* a = ArenaNew();
+    shell::PayloadBuild build;
+    build.a = a;
+    shell::ComponentArgument argument = NumberArgument(value);
+    bool ok = record(&build, &argument, 1);
+    ArenaDelete(a);
+    return ok;
+}
+
+// description_list.rs span_rejects_fractional_and_zero_values
+void DescriptionSpanRejectsFractionalAndZeroValues() {
+    using component_shell::structured::RecordItemSpan;
+    utassert(!RecordsNumber(&RecordItemSpan, 0.0));
+    utassert(!RecordsNumber(&RecordItemSpan, 1.5));
+    utassert(RecordsNumber(&RecordItemSpan, 2.0));
+    utassert(!RecordsNumber(&RecordItemSpan, 18446744073709551616.0));
+}
+
+// description_list.rs vertical_preserves_operations_recorded_before_and_
+// after_it
+void DescriptionVerticalPreservesOperationsRecordedBeforeAndAfterIt() {
+    using namespace component_shell::structured;
+    ListConfig config;
+    ListOp ops[4];
+    ops[0].kind = ListOp::Bordered;
+    ops[0].bordered = false;
+    ops[1].kind = ListOp::Columns;
+    ops[1].columns = 7;
+    ops[2].kind = ListOp::Vertical;
+    ops[3].kind = ListOp::Size;
+    ops[3].size = UiSize::Large;
+    for (const ListOp& op : ops) config.Apply(op);
+    utassert(config.vertical && !config.bordered && config.columns == 7 &&
+             config.size == UiSize::Large);
+}
+
+// description_list.rs columns_rejects_values_the_component_would_otherwise_
+// clamp
+void DescriptionColumnsRejectsValuesTheComponentWouldOtherwiseClamp() {
+    using component_shell::structured::RecordListColumns;
+    utassert(RecordsNumber(&RecordListColumns, 10.0));
+    utassert(!RecordsNumber(&RecordListColumns, 11.0));
+    utassert(StrContains(
+        CallErrorTemp("DescriptionList", "new DescriptionList().columns(11)"),
+        StrL("DescriptionList.columns expects an integer from 1 through 10")));
+}
+
+// description_list.rs description_item_explicitly_rejects_children_and_style
+void DescriptionItemExplicitlyRejectsChildrenAndStyle() {
+    using component_shell::structured::EnsureItemSurface;
+    Str error;
+    utassert(EnsureItemSurface(0, false, &error));
+    utassert(!EnsureItemSurface(1, false, &error));
+    utassert(StrEq(error, StrL("DescriptionItem does not accept children; use "
+                               "value(string)")));
+    utassert(!EnsureItemSurface(0, true, &error));
+    utassert(StrContains(error, StrL("does not accept style methods")));
+}
+
+// form.rs columns_accept_only_positive_integers
+void FormColumnsAcceptOnlyPositiveIntegers() {
+    using component_shell::structured::RecordFormColumns;
+    utassert(RecordsNumber(&RecordFormColumns, 2.0));
+    utassert(!RecordsNumber(&RecordFormColumns, 65536.0));
+    utassert(!RecordsNumber(&RecordFormColumns, -1.0));
+    utassert(!RecordsNumber(&RecordFormColumns, 1.5));
+    utassert(!RecordsNumber(&RecordFormColumns, 18446744073709551616.0));
+}
+
+// form.rs field_span_and_label_width_reject_lossy_ranges
+void FieldSpanAndLabelWidthRejectLossyRanges() {
+    using namespace component_shell::structured;
+    uint16_t span = 0;
+    float width = 0;
+    Str error;
+    utassert(!PositiveU16(65536.0, StrL("Field.col_span"), &span, &error));
+    utassert(!NonnegativeF32((double)FLT_MAX * 2.0, StrL("Form.label_width"),
+                             &width, &error));
+    utassert(StrContains(
+        CallErrorTemp("Form, Field",
+                      "new Form().child(new Field().col_span("
+                      "65536))"),
+        StrL("Field.col_span expects an integer no greater than 65535")));
+    utassert(
+        StrContains(CallErrorTemp("HForm", "new HForm().label_width(-1)"),
+                    StrL("Form.label_width expects a nonnegative finite number "
+                         "representable as f32")));
+}
+
+// table.rs table_span_rejects_rounded_usize_overflow
+void TableSpanRejectsRoundedUsizeOverflow() {
+    using component_shell::structured::RecordCellSpan;
+    utassert(!RecordsNumber(&RecordCellSpan, 18446744073709551616.0));
+    utassert(RecordsNumber(&RecordCellSpan, 2.0));
+}
+
+// table.rs typed_table_carriers_hold_real_gpui_component_parts
+void TypedTableCarriersHoldRealGpuiComponentParts() {
+    using namespace component_shell::typed_compound;
+    using component_shell::structured::TableCellPart;
+    RequestFixture f(0, nullptr, 0);
+    Ctx* cx = &f.cx;
+    El* row = TypedChildElementOf(cx, component::TableRow::New(cx));
+    utassert(TakeElementAs<component::TableRow>(&f.request, row, "TableRow"));
+    utassert(len(f.request.failure) == 0);
+    utassert(!TakeElementAs<component::TableRow>(&f.request, row, "TableRow"));
+    utassert(StrEq(f.request.failure,
+                   StrL("registered TableRow child was already consumed")));
+
+    RequestFixture g(0, nullptr, 0);
+    component::TableCellEl* cell = component::TableCell::New(cx);
+    El* wrong = TypedChildElement(cx, shell::PayloadTag<TableCellPart>(), cell,
+                                  cell->IntoEl());
+    utassert(
+        !TakeElementAs<component::TableRow>(&g.request, wrong, "TableRow"));
+}
+
+// structured_host.rs structured_components_materialize_nested_children_in_
+// script_order. The port's DebugTree spells a style `.p(2)` where Rust's
+// prints `.p[Number(2.0)]`.
+void StructuredComponentsMaterializeNestedChildrenInScriptOrder() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import {\n"
+             "  DescriptionItem, DescriptionList, Field, HForm,\n"
+             "  Table, TableBody, TableCaption, TableHeader,\n"
+             "} from 'gpui-component';\n"
+             "export default class StructuredApp extends View {\n"
+             "  render() {\n"
+             "    return div()\n"
+             "      .child(new DescriptionList()\n"
+             "        .bordered(false).columns(2).vertical().p(2)\n"
+             "        .child(new DescriptionItem('First label').value('First "
+             "value').span(1))\n"
+             "        .child(new DescriptionItem('Second label').value('Second "
+             "value')))\n"
+             "      .child(new HForm()\n"
+             "        .columns(2).label_width(120)\n"
+             "        .child(new Field().label('Name').required(true)"
+             ".child(div().child('Ada')))\n"
+             "        .child(new Field().label('Role').child(div()"
+             ".child('Admin'))))\n"
+             "      .child(new Table()\n"
+             "          .accessibility_label('People')\n"
+             "          .size('small')\n"
+             "          .child(new TableCaption().child('Current people'))\n"
+             "          .child(new TableHeader())\n"
+             "          .child(new TableBody()));\n"
+             "  }\n"
+             "}\n"));
+    El* root = RenderLaidOut(host);
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    Str tree = DebugTreeTemp(host);
+    const char* expected[] = {"DescriptionList",
+                              ":bordered(registered)",
+                              ":columns(registered)",
+                              ":vertical(registered)",
+                              ".p(2)",
+                              "DescriptionItem",
+                              "Form",
+                              ":label_width(registered)",
+                              "Field",
+                              "Table",
+                              ":accessibility_label(registered)",
+                              "TableHeader",
+                              "TableBody",
+                              "TableCaption"};
+    for (const char* contract : expected) {
+        bool found = StrContains(tree, Str(contract));
+        if (!found) printf("missing %s in %s\n", contract, tree.s);
+        utassert(found);
+    }
+    auto at = [&](const char* needle) { return StrFind(tree, Str(needle)); };
+    utassert(at(":bordered(registered)") < at(":columns(registered)"));
+    utassert(at(":columns(registered)") < at(":vertical(registered)"));
+    int items = 0;
+    for (Str rest = tree; StrContains(rest, StrL("DescriptionItem")); items++) {
+        int i = StrFind(rest, StrL("DescriptionItem"));
+        rest = Str(rest.s + i + 1, rest.len - i - 1);
+    }
+    utassert(items == 2);
+    utassert(at("Ada") < at("Admin"));
+    utassert(at("TableHeader") < at("TableBody"));
+    utassert(at("TableCaption") < at("TableHeader"));
+
+    // And the built tree carries what the script said, in its order.
+    utassert(FindText(root, StrL("First value")) != nullptr);
+    utassert(FindText(root, StrL("Second label")) != nullptr);
+    utassert(FindText(root, StrL("Name")) != nullptr);
+    utassert(FindText(root, StrL("Ada")) != nullptr);
+    utassert(FindText(root, StrL("Admin")) != nullptr);
+    utassert(FindText(root, StrL("Current people")) != nullptr);
+}
+
+// Children the typed parents do not take are refused as Rust refuses them.
+void StructuredParentsRefuseForeignChildren() {
+    struct Case {
+        const char* imports;
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"DescriptionList", "new DescriptionList().child(div())",
+         "DescriptionList"},
+        {"Form", "new Form().child(div())", "Form"},
+        {"Table, TableRow", "new Table().child(new TableRow())", "Table"},
+        {"TableBody, TableCell", "new TableBody().child(new TableCell())",
+         "TableBody"},
+        {"TableRow, TableBody", "new TableRow().child(new TableBody())",
+         "TableRow"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { %s } from 'gpui-component';\n"
+                "export default class Main extends View {\n"
+                "  render() { return div().child(%s); }\n"
+                "}\n",
+                Str(c.imports), Str(c.call));
+        Host host(source);
+        host.Render();
+        Str failure = host.runtime->LastComponentFailure();
+        bool ok = StrContains(failure, Str(c.message)) && len(failure) > 0;
+        if (!ok) printf("structured refusal: %s -> %s\n", c.call, failure.s);
+        utassert(ok);
+    }
+    utassert(RendersCleanly(
+        "Table, TableHeader, TableBody, TableRow, TableHead, TableCell",
+        "new Table().child(new TableHeader().child(new TableRow().child(new "
+        "TableHead().child('Name')))).child(new TableBody().child(new "
+        "TableRow().child(new TableCell().col_span(2).text_right().child("
+        "'Ada'))))",
+        "Ada"));
+}
+
 // ─── collections/: mod.rs, tree.rs ─────────────────────────────────────────
 
 // mod.rs catalog_is_only_honest_tree_surface and collections_host.rs
@@ -5131,6 +5417,21 @@ void TestComponentShell() {
     RetainedDataTableRendersLazyCellsFromPlainRows();
     DataTableRejectsNonArraySnapshotWithoutPanicking();
     DataTableRefusesWhatRustRefuses();
+
+    TestSuite("structured");
+    RegistersStructuredComponentsInDependencyOrder();
+    StructuredIntegerConversionsRejectRoundedOverflowAndU16Overflow();
+    StructuredF32ConversionRejectsValuesThatOverflowToInfinity();
+    DescriptionSpanRejectsFractionalAndZeroValues();
+    DescriptionVerticalPreservesOperationsRecordedBeforeAndAfterIt();
+    DescriptionColumnsRejectsValuesTheComponentWouldOtherwiseClamp();
+    DescriptionItemExplicitlyRejectsChildrenAndStyle();
+    FormColumnsAcceptOnlyPositiveIntegers();
+    FieldSpanAndLabelWidthRejectLossyRanges();
+    TableSpanRejectsRoundedUsizeOverflow();
+    TypedTableCarriersHoldRealGpuiComponentParts();
+    StructuredComponentsMaterializeNestedChildrenInScriptOrder();
+    StructuredParentsRefuseForeignChildren();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

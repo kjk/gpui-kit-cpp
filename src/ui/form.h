@@ -51,6 +51,13 @@ struct Field {
     // the form's edge.
     bool labelIndent = true;
     FieldAlign align = FieldAlign::Center;
+    // ParentElement: children beyond `control`, drawn after it in the
+    // control column. The array is the caller's and outlives the frame.
+    El* const* children = nullptr;
+    int childCount = 0;
+    // Styled: the field's StyleRefinement, applied to its outer column
+    // where Rust's render calls refine_style.
+    ElRefiner refiner = {};
 
     static Field New(El* control = nullptr);
     Field& Label(Str value);
@@ -64,6 +71,7 @@ struct Field {
     Field& ColSpan(int value);
     Field& ColStart(int value);
     Field& ColEnd(int value);
+    Field& Children(El* const* elements, int count);
 };
 
 using FormField = Field;
