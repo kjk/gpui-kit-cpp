@@ -1624,8 +1624,11 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
     switch (component.kind) {
         case shell::ComponentKind::Div:
             return Div(cx->a);
+        // base's h_flex(): flex().flex_row().items_center() — a row
+        // centres its children across, where v_flex() leaves them to
+        // stretch.
         case shell::ComponentKind::HFlex:
-            return Div(cx->a)->FlexRow();
+            return Div(cx->a)->FlexRow()->ItemsCenter();
         case shell::ComponentKind::VFlex:
             return Div(cx->a)->FlexCol();
         case shell::ComponentKind::Text:
@@ -1944,6 +1947,21 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 if (scroll &&
                     scroll->kind == shell::RetainedKind::VirtualScroll)
                     opts.handle = &scroll->scroll;
+            }
+            // Without track_scroll the list's position is its own, in
+            // element state under its id, as GPUI keeps it: the wheel over
+            // it writes it back.
+            if (!opts.handle && cx->win) {
+                ShellScrollPosition* at = KeyedState<ShellScrollPosition>(
+                    cx, KeyedKey((uint32_t)HashClickId(list->id),
+                                 (uint32_t)HashClickId(StrL("ShellScroll"))));
+                if (at) {
+                    opts.scrollX = at->x;
+                    opts.scrollY = at->y;
+                    opts.scrollId = HashClickId(list->id);
+                    opts.onScroll =
+                        Listen(cx, &ScriptView::OnScrollPosition, (intptr_t)at);
+                }
             }
             return VirtualList::New(cx, list->id, opts);
         }
@@ -2556,6 +2574,18 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         if (at)
             element->OnScroll(
                 Listen(cx, &ScriptView::OnScrollPosition, (intptr_t)at));
+        // overflow_*_scrollbar: materialize.rs hands the element to a
+        // Scrollable, whose root is size_full refined by the element's own
+        // size, so a side the script left unsized fills its parent rather
+        // than taking its content's extent (and a row's items_center never
+        // shrinks it).
+        if (behavior.scrollbar) {
+            if (element->style.width == kAuto && element->style.widthFrac == 0)
+                element->W(kFill);
+            if (element->style.height == kAuto && element->style
+                                                          .heightFrac == 0)
+                element->H(kFill);
+        }
         if (scrollName)
             element->ScrollId(HashClickId(scrollName));
         else
