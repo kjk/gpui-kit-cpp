@@ -1916,6 +1916,16 @@ struct Style {
     // invisible(): gpui's Visibility::Hidden. The box is laid out and not
     // painted; visible() clears it.
     uint8_t invisible : 1 = false;
+    // white_space and text_overflow were named on this element (the shell's
+    // whitespace_normal / whitespace_nowrap / truncate / text_ellipsis): they
+    // are GPUI text style and cascade, so PrepareEl hands `wrap` and
+    // `truncate` down to every descendant that did not name its own.
+    uint8_t whiteSpaceSet : 1 = false;
+    // flex_1() is `flex_basis(relative(0.))`: zero *percent*, which taffy
+    // resolves to 0 against a definite line and to the content size when
+    // the line is being measured (shrink-to-fit, max-content). Set, the
+    // basis is flexBasisFrac as a fraction even when that is zero.
+    uint8_t flexBasisPercent : 1 = false;
     // h_1_2 / h_2_3 / …: widthFrac's twin for the height. 0 = unset.
     float heightFrac = 0;
 };
@@ -2696,6 +2706,14 @@ struct El {
     // does not — with an auto basis each item keeps its content's width and
     // only the slack is split.
     El* Flex1();
+    // flex_1() exactly as GPUI spells it: `flex_basis(relative(0.))`, zero
+    // percent. Against a definite line it is Flex1(); on a line that is
+    // being measured (shrink-to-fit, max-content) the percentage does not
+    // resolve and the item starts from its content, which is how a Rust
+    // row sized to its content still gives a flex_1 child its text's width.
+    // Flex1() keeps the zero-pixel basis the native components were laid
+    // out against.
+    El* Flex1Rel();
     // flex_none(): neither grows nor shrinks, and keeps its own size.
     El* FlexNone();
     El* Basis(float v);

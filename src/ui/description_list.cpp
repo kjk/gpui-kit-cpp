@@ -213,8 +213,11 @@ El* DescriptionList::IntoEl() {
                 row->Child(separator);
                 continue;
             }
+            // flex_1().flex_basis(relative(span / columns)), and the value's
+            // flex_1() is relative(0.) too: in a list sized to its content
+            // neither percentage resolves, so each starts from its text.
             El* cell = Div(a)
-                           ->Flex1()
+                           ->Flex1Rel()
                            ->BasisFrac((float)it.span / (float)columns)
                            ->ClipX();
             cell = vertical ? cell->FlexCol() : cell->FlexRow()->H(kFill);
@@ -241,7 +244,7 @@ El* DescriptionList::IntoEl() {
                 }
             }
             El* value =
-                Div(a)->Flex1()->PadX(padX)->PadY(padY)->ClipX()->ClipY();
+                Div(a)->Flex1Rel()->PadX(padX)->PadY(padY)->ClipX()->ClipY();
             value->Child(it.value.IntoEl(cx));
             cell->Child(label)->Child(value);
             row->Child(cell);

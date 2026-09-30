@@ -1629,7 +1629,10 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
         case shell::ComponentKind::VFlex:
             return Div(cx->a)->FlexCol();
         case shell::ComponentKind::Text:
-            return TextEl(cx->a, component.text);
+            // A GPUI string element: it wraps at the width it is given, as
+            // white_space's default `normal` says, unless an element above
+            // it named whitespace_nowrap or truncate (PrepareEl cascades it).
+            return TextEl(cx->a, component.text)->Wrap();
         case shell::ComponentKind::TextView: {
             IdScope scope(cx, id);
             TextView* view =

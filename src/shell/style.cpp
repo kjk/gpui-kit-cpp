@@ -796,6 +796,15 @@ static void SetShadows(El* e, const float (*rows)[5], int count) {
 
 // gpui-base's debug colours: `border_1().border_color(hsl(..))` in a debug
 // build and nothing at all in a release one, as `cfg!(debug_assertions)`.
+// text_overflow: GPUI truncates the run to the width it is given (times any
+// line clamp) before it wraps, so the run is one truncated line whatever
+// white_space says.
+static void TextEllipsis(El* e) {
+    e->style.wrap = false;
+    e->style.truncate = true;
+    e->style.whiteSpaceSet = true;
+}
+
 static void DebugBorder(El* e, float h, float s, float l) {
 #if defined(DEBUG)
     SetBorderAll(e->style, 1);
@@ -889,6 +898,7 @@ static const Keyword kKeywords[] = {
          e->style.flexShrink = 1;
          e->style.flexBasis = 0;
          e->style.flexBasisFrac = 0;
+         e->style.flexBasisPercent = true;
      },
      0},
     {"flex_auto",
@@ -897,6 +907,7 @@ static const Keyword kKeywords[] = {
          e->style.flexShrink = 1;
          e->style.flexBasis = kAuto;
          e->style.flexBasisFrac = 0;
+         e->style.flexBasisPercent = false;
      },
      0},
     {"flex_initial",
@@ -905,6 +916,7 @@ static const Keyword kKeywords[] = {
          e->style.flexShrink = 1;
          e->style.flexBasis = kAuto;
          e->style.flexBasisFrac = 0;
+         e->style.flexBasisPercent = false;
      },
      0},
     {"flex_none",
@@ -913,6 +925,7 @@ static const Keyword kKeywords[] = {
          e->style.flexShrink = 0;
          e->style.flexBasis = kAuto;
          e->style.flexBasisFrac = 0;
+         e->style.flexBasisPercent = false;
      },
      0},
     {"flex_grow_0", [](El* e) { e->style.flexGrow = 0; }, 0},
@@ -1077,17 +1090,28 @@ static const Keyword kKeywords[] = {
     {"text_right", [](El* e) { e->TextAlignment(TextAlign::Right); }, 0},
     // White space and overflow. This tree's truncation is one ellipsis at the
     // end of one line, so the start and middle ellipses truncate there too.
-    {"whitespace_normal", [](El* e) { e->style.wrap = true; }, 0},
-    {"whitespace_nowrap", [](El* e) { e->style.wrap = false; }, 0},
-    {"text_ellipsis", [](El* e) { e->style.truncate = true; }, 0},
-    {"text_ellipsis_start", [](El* e) { e->style.truncate = true; }, 0},
-    {"text_ellipsis_middle", [](El* e) { e->style.truncate = true; }, 0},
+    {"whitespace_normal",
+     [](El* e) {
+         e->style.wrap = true;
+         e->style.whiteSpaceSet = true;
+     },
+     0},
+    {"whitespace_nowrap",
+     [](El* e) {
+         e->style.wrap = false;
+         e->style.whiteSpaceSet = true;
+     },
+     0},
+    {"text_ellipsis", TextEllipsis, 0},
+    {"text_ellipsis_start", TextEllipsis, 0},
+    {"text_ellipsis_middle", TextEllipsis, 0},
     {"truncate",
      [](El* e) {
          e->style.overflowX = Overflow::Hidden;
          e->style.overflowY = Overflow::Hidden;
          e->style.wrap = false;
          e->style.truncate = true;
+         e->style.whiteSpaceSet = true;
      },
      0},
     // Font style and decoration. The underline here is a single straight
@@ -1259,6 +1283,7 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         if (!ParseLength(value, name, &l, error)) return false;
         s.flexBasis = l.kind == LenKind::Px ? l.v : kAuto;
         s.flexBasisFrac = l.kind == LenKind::Frac ? l.v : 0;
+        s.flexBasisPercent = l.kind == LenKind::Frac;
     } else if (StrEq(name, StrL("bg"))) {
         if (!Color(value, &color, error)) return false;
         e->Bg(color);

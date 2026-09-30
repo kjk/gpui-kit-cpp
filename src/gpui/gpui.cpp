@@ -596,16 +596,27 @@ El* El::Flex1() {
     style.flexGrow = 1;
     style.flexShrink = 1;
     style.flexBasis = 0;
+    style.flexBasisPercent = false;
+    return this;
+}
+El* El::Flex1Rel() {
+    style.flexGrow = 1;
+    style.flexShrink = 1;
+    style.flexBasis = 0;
+    style.flexBasisFrac = 0;
+    style.flexBasisPercent = true;
     return this;
 }
 El* El::FlexNone() {
     style.flexGrow = 0;
     style.flexShrink = 0;
     style.flexBasis = kAuto;
+    style.flexBasisPercent = false;
     return this;
 }
 El* El::Basis(float v) {
     style.flexBasis = v;
+    style.flexBasisPercent = false;
     return this;
 }
 El* El::BasisFrac(float f) {
@@ -3516,7 +3527,7 @@ static taffy::Style ToTaffyStyle(const El* e) {
     // what a plain `W()` means. `flex_1()` names zero instead, and taffy then
     // splits the whole line by the grow factors rather than only the slack.
     t.flexBasis =
-        s.flexBasisFrac > 0
+        s.flexBasisFrac > 0 || s.flexBasisPercent
             ? taffy::Dimension::Percent(s.flexBasisFrac)
             : (s.flexBasis == kAuto ? taffy::Dimension::Auto()
                                     : taffy::Dimension::Length(s.flexBasis));
@@ -3848,6 +3859,17 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
     if (e->style.textAlign) {
         for (El* c = e->first; c; c = c->next) {
             if (!c->style.textAlign) c->style.textAlign = e->style.textAlign;
+        }
+    }
+    // white_space and text_overflow cascade as well, from an element that
+    // named them: a shell `truncate()` on the div around a string is what
+    // puts the ellipsis on the string.
+    if (e->style.whiteSpaceSet) {
+        for (El* c = e->first; c; c = c->next) {
+            if (c->style.whiteSpaceSet) continue;
+            c->style.wrap = e->style.wrap;
+            c->style.truncate = e->style.truncate;
+            c->style.whiteSpaceSet = true;
         }
     }
     // font_features too: TimeField's `font_features(tabular_figures())` on
