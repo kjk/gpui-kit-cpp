@@ -25,6 +25,7 @@ bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterScroll(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterSettings(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.

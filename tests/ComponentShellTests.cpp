@@ -3100,6 +3100,200 @@ void NativeScrollbarRejectsChildrenAndShellStyle() {
     }
 }
 
+// ─── settings/mod.rs ───────────────────────────────────────────────────────
+
+// settings/mod.rs numeric_and_structural_contracts_are_closed
+void SettingsNumericAndStructuralContractsAreClosed() {
+    using component_shell::settings::Positive;
+    float value = 0;
+    Str error;
+    utassert(Positive(1.0, "width", &value, &error) && value == 1.0f);
+    utassert(!Positive(0.0, "width", &value, &error));
+    utassert(!Positive(INFINITY, "width", &value, &error));
+    utassert(StrEq(error, StrL("width expects a positive finite pixel value")));
+    static constexpr const char* kPages[] = {"SettingPage"};
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(component_shell::RequireChild(&f.request, "Settings",
+                                               "SettingPage", kPages));
+        utassert(!component_shell::RequireChild(&f.request, "Settings",
+                                                "SettingGroup", kPages));
+    }
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(!component_shell::RequireChild(&f.request, "SettingPage",
+                                                nullptr, kPages));
+        utassert(StrContains(f.request.failure,
+                             StrL("received an ordinary element")));
+    }
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(component_shell::RejectStyle(&f.request, "Settings"));
+    }
+    {
+        RequestFixture f(0, nullptr, 0);
+        shell::SpecOp style = {};
+        style.kind = shell::SpecOpKind::NullaryStyle;
+        style.name = StrL("p_2");
+        f.specs.PushOp(f.id, style);
+        f.request.node = f.specs.Node(f.id);
+        utassert(!component_shell::RejectStyle(&f.request, "Settings"));
+        utassert(StrEq(f.request.failure,
+                       StrL("Settings carries data rather than a box, so it "
+                            "does not implement Styled")));
+    }
+}
+
+// settings_public_host.rs catalog_names_the_real_native_hierarchy
+void SettingsCatalogNamesTheRealNativeHierarchy() {
+    FamilyCatalog catalog(&component_shell::RegisterSettings);
+    utassert(catalog.ok);
+    const char* names[] = {"SettingItem", "SettingGroup", "SettingPage",
+                           "Settings"};
+    utassert(catalog.NamesAre(names, 4));
+    utassert(catalog.frozen.StateCount() == 0);
+}
+
+// settings_public_host.rs's LazyMarker: every label it was built with.
+Str gLazyBuilds[16];
+int gLazyBuildCount = 0;
+
+bool LazyMarkerPayload(shell::PayloadBuild* build,
+                       const shell::ComponentArgument* args, int count) {
+    if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String)
+        return build->Fail(StrL("LazyMarker expects text"));
+    build->New<Str>()[0] = args[0].string;
+    return true;
+}
+
+El* LazyMarkerMaterialize(shell::MaterializeRequest* request) {
+    const Str* label = request->PayloadAs<Str>();
+    if (!label)
+        return request->Fail(StrL("LazyMarker received incompatible payload"));
+    if (gLazyBuildCount < 16) gLazyBuilds[gLazyBuildCount++] = *label;
+    return request
+        ->Finish(Div(request->cx->a)->Child(TextEl(request->cx->a, *label)));
+}
+
+constexpr ArgumentDescriptor kLazyMarkerArgs[] = {
+    {"label", shell::SchemaString()}};
+constexpr ConstructorDescriptor kLazyMarkerConstructors[] = {
+    {"LazyMarker", kLazyMarkerArgs, &LazyMarkerPayload}};
+constexpr ComponentDescriptor kLazyMarker = {
+    "LazyMarker",
+    kLazyMarkerConstructors,
+    {},
+    "Test-only lazy materialization marker.",
+    &LazyMarkerMaterialize};
+
+int LazyBuilds(const char* label) {
+    int count = 0;
+    for (int i = 0; i < gLazyBuildCount; i++)
+        count += StrEq(gLazyBuilds[i], label) ? 1 : 0;
+    return count;
+}
+
+// settings_public_host.rs full_settings_hierarchy_rebuilds_lazy_native_
+// slots_across_draws. A render here is the draw; Rust's "refresh alone must
+// not build" has no separate step to check.
+void FullSettingsHierarchyRebuildsLazySlotsAcrossDraws() {
+    ComponentRegistry registry;
+    RegistryError error;
+    registry.Open(shell::kComponentRegistryApiVersion,
+                  shell::kDefaultComponentModule, &error);
+    utassert(component_shell::RegisterSettings(&registry, &error));
+    utassert(registry.Register(&kLazyMarker, &error));
+    FrozenComponentRegistry frozen;
+    registry.Freeze(&frozen);
+    gLazyBuildCount = 0;
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { LazyMarker, Settings, SettingPage, SettingGroup, "
+             "SettingItem } from 'gpui-component';\n"
+             "export default class App extends View { render(){ return new "
+             "Settings('prefs').size('small').sidebar_width(220)"
+             ".sidebar_size_range(160,320)\n"
+             " .child(new SettingPage('General').description('Application "
+             "preferences').default_open(true).content(new "
+             "LazyMarker('suffix-built'))\n"
+             "  .child(new SettingGroup().title('Appearance')"
+             ".description('Visual choices').p(2)\n"
+             "   .child(new SettingItem('Theme').description('Choose "
+             "appearance').layout('vertical').keywords(['color','theme'])"
+             ".disabled(false).content(new LazyMarker('field-built'))))); } "
+             "}\n"),
+        &frozen);
+    utassert(LazyBuilds("suffix-built") == 0 && LazyBuilds("field-built") == 0);
+    for (int frame = 1; frame <= 2; frame++) {
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(!FindTextPrefix(root, StrL("Failed to render")));
+        utassert(!host.runtime ||
+                 len(host.runtime->LastComponentFailure()) == 0);
+        Str tree = DebugTreeTemp(host);
+        const char* expected[] = {"Settings", "SettingPage", "SettingGroup",
+                                  "SettingItem",
+                                  ":sidebar_size_range(registered)"};
+        for (const char* part : expected)
+            utassert(StrContains(tree, Str(part)));
+        utassert(FindText(root, StrL("General")) != nullptr);
+        utassert(FindText(root, StrL("Theme")) != nullptr);
+        utassert(FindText(root, StrL("suffix-built")) != nullptr);
+        utassert(FindText(root, StrL("field-built")) != nullptr);
+        utassert(LazyBuilds("suffix-built") == frame);
+        utassert(LazyBuilds("field-built") == frame);
+    }
+}
+
+// The typed hierarchy's refusals.
+void SettingsRejectStyleAndForeignChildren() {
+    struct Case {
+        const char* expression;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new Settings('s').p(2)",
+         "Settings carries data rather than a box, so it does not implement "
+         "Styled"},
+        {"new Settings('s').child(new SettingGroup())",
+         "SettingPage accepts only registered SettingPage children; received "
+         "SettingGroup"},
+        {"new SettingPage('P').p(1)",
+         "SettingPage carries data rather than a box"},
+        {"new SettingPage('P').child(div())",
+         "SettingGroup accepts only registered SettingGroup children; received "
+         "an ordinary element"},
+        {"new SettingItem('I')", "SettingItem requires content(element)"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { Settings, SettingPage, SettingGroup, SettingItem } "
+                "from 'gpui-component';\n"
+                "export default class App extends View { render() { return "
+                "%s; } }\n",
+                Str(c.expression));
+        Host host(source);
+        Str refusal = RenderRefusal(host);
+        if (!StrContains(refusal, Str(c.message)))
+            printf("settings refusal: %s -> %s\n", c.expression, refusal.s);
+        utassert(StrContains(refusal, Str(c.message)));
+    }
+    Str message = CallErrorTemp("Settings",
+                                "new Settings('s')"
+                                ".sidebar_size_range(300, 200)");
+    utassert(StrContains(message, StrL("minimum must not exceed maximum")));
+    message = CallErrorTemp("Settings", "new Settings('s').sidebar_width(0)");
+    utassert(StrContains(
+        message, StrL("sidebar_width expects a positive finite pixel value")));
+    message = CallErrorTemp("Settings",
+                            "new Settings('s').default_selected_page(1.5)");
+    utassert(StrContains(
+        message, StrL("default_selected_page expects a nonnegative integer")));
+    message = CallErrorTemp("SettingGroup", "new SettingGroup().title(' ')");
+    utassert(StrContains(message, StrL("title expects non-empty text")));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -3230,4 +3424,10 @@ void TestComponentShell() {
     RepeatedScrollConfigurationIsLastCallWins();
     SharedNativeHandleScrollsAndPreservesOffset();
     NativeScrollbarRejectsChildrenAndShellStyle();
+
+    TestSuite("settings");
+    SettingsNumericAndStructuralContractsAreClosed();
+    SettingsCatalogNamesTheRealNativeHierarchy();
+    FullSettingsHierarchyRebuildsLazySlotsAcrossDraws();
+    SettingsRejectStyleAndForeignChildren();
 }

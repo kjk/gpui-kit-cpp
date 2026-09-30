@@ -852,8 +852,9 @@ El* Settings::IntoEl() {
                                                         ->Truncate()));
         if (visibleGroups > 1) {
             item->Child(IconEl(a,
-                               pageSelected ? IconName::ChevronDown
-                                            : IconName::ChevronRight,
+                               pageSelected || p.defaultOpen
+                                   ? IconName::ChevronDown
+                                   : IconName::ChevronRight,
                                16)
                             ->Fg(th.mutedFg));
         }
@@ -862,8 +863,9 @@ El* Settings::IntoEl() {
         side->Child(item);
         // click_to_open: the open page lists its groups under it, and each
         // one jumps to that part of the page. Clicks bind the original group
-        // index, not the visible position.
-        if (!pageSelected || visibleGroups <= 1) {
+        // index, not the visible position. A default_open page lists them
+        // before it is opened.
+        if ((!pageSelected && !p.defaultOpen) || visibleGroups <= 1) {
             continue;
         }
         int g = -1;
@@ -976,6 +978,7 @@ El* Settings::IntoEl() {
                     g, itemIx, shown == 0, p.resettable, &anyDirty));
                 shown++;
             }
+            grp.refiner.Apply(card);
             if (g == scrollGroup && !scroll->target) {
                 scroll->target = card;
             }
@@ -1000,6 +1003,9 @@ El* Settings::IntoEl() {
         titleCell->Child(TextEl(a, p.title)->Font(16)->Fg(th.foreground));
         if (p.titleSuffix) {
             titleCell->Child(p.titleSuffix);
+        } else if (p.titleSuffixFn) {
+            if (El* suffix = p.titleSuffixFn(p.titleSuffixUser, cx))
+                titleCell->Child(suffix);
         }
         titleRow->Child(titleCell);
         // reset_all: the page's own button, there once anything on it has

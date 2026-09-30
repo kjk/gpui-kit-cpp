@@ -255,7 +255,14 @@ struct SettingGroup {
     // settings-level one; unset follows it.
     GroupBoxVariant variant = GroupBoxVariant::Normal;
     bool hasVariant = false;
+    // SettingGroup's Styled: the refinement its GroupBox takes last. The
+    // group's box here is its card, which is what it refines.
+    ElRefiner refiner = {};
 };
+
+// SettingPage::title_suffix's closure, for a caller that builds the suffix
+// only when the page renders rather than with the builder.
+using SettingTitleSuffixFn = El* (*)(void* user, Ctx* cx);
 
 struct SettingPage {
     Str title = {};
@@ -265,6 +272,11 @@ struct SettingPage {
     // SettingPage::title_suffix: whatever the caller puts beside the title.
     // The story's is a ghost Info button that opens the docs.
     El* titleSuffix = nullptr;
+    SettingTitleSuffixFn titleSuffixFn = nullptr;
+    void* titleSuffixUser = nullptr;
+    // SettingPage::default_open: the sidebar lists this page's groups under
+    // it from the start, not only while the page is the open one.
+    bool defaultOpen = false;
     // SettingPage::resettable, default true: whether this page offers the
     // reset buttons at all — the per-item one, and the Reset All in its
     // header once anything on it has been changed.
