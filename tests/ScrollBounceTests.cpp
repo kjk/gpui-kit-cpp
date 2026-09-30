@@ -115,6 +115,63 @@ static void ADeliberateDragAfterACatchCanFling() {
     utassert(shortDrag.Observe(TouchPhase::Ended, kCatchDragSlop));
 }
 
+// phaseless_wheel_scrolls_back_right_after_bouncing and
+// phaseless_wheel_bounces_again_only_after_a_pause drive a window's wheel
+// stream with Moved packets and no Started, as smooth-scrolling mouse
+// drivers on macOS send them. These walk the same packets through what the
+// wheel handler does with them: a packet at rest on the edge grabs and
+// releases it, and the suppression that release sets is lifted by an inward
+// packet or a pause.
+static void APhaselessWheelScrollsBackRightAfterBouncing() {
+    ScrollBouncePhysics physics;
+    ScrollBounceSuppression suppression;
+    // -50 at the bottom, at rest: the edge stretches and is let go.
+    utassert(!suppression.Lifts(1.0, -50));
+    physics.Begin(600);
+    physics.Pull(-50);
+    suppression.Release(&physics, true);
+    utassert(physics.Offset() < 0 && physics.suppressMomentum);
+    // +200 right after it points inward, which is a new scroll.
+    utassert(suppression.Lifts(1.01, 200));
+    physics.suppressMomentum = false;
+    bool fromRest = !physics.dragging;
+    utassert(fromRest);
+    physics.Begin(600);
+    float remainder = physics.Pull(200);
+    suppression.Release(&physics, fromRest);
+    utassert(remainder > 0);
+    utassertnear(physics.Offset(), 0);
+}
+
+static void APhaselessWheelBouncesAgainOnlyAfterAPause() {
+    ScrollBouncePhysics physics;
+    ScrollBounceSuppression suppression;
+    utassert(!suppression.Lifts(1.0, 50));
+    physics.Begin(600);
+    physics.Pull(50);
+    suppression.Release(&physics, true);
+    float bounced = physics.Offset();
+    utassert(bounced > 0 && physics.suppressMomentum);
+    // Momentum after an edge hit keeps pushing outward; it must not stretch
+    // further.
+    utassert(!suppression.Lifts(1.01, 50));
+    utassert(physics.suppressMomentum);
+    // After MOMENTUM_GAP another outward packet bounces again.
+    utassert(suppression.Lifts(1.01 + kMomentumGapSeconds, 50));
+    physics.suppressMomentum = false;
+    physics.Begin(600);
+    physics.Pull(50);
+    suppression.Release(&physics, true);
+    utassert(physics.Offset() > bounced);
+    // A gesture's own release suppresses both ways: no inward lift.
+    ScrollBounceSuppression gesture;
+    physics.Begin(600);
+    physics.Pull(50);
+    gesture.Release(&physics, false);
+    utassert(physics.suppressMomentum && gesture.direction == 0);
+    utassert(!gesture.Lifts(2.0, -50));
+}
+
 void TestScrollBounce() {
     TestSuite("scroll_bounce");
     ResistanceAndReversePreserveUnconsumedDistance();
@@ -124,4 +181,6 @@ void TestScrollBounce() {
     APhasedWheelAtTheEdgeStretches();
     ATinyCatchSuppressesTheReverseFling();
     ADeliberateDragAfterACatchCanFling();
+    APhaselessWheelScrollsBackRightAfterBouncing();
+    APhaselessWheelBouncesAgainOnlyAfterAPause();
 }

@@ -15,14 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4708780a28af49b787963775dfa57323d9d4d1eb` (2026-09-29,
-component: Align control text sizes with Input and Select (#3287)). Control
-text follows the Input/Select ladder (12/14/14/16 px) across Button, Toggle,
-Checkbox, Radio, Switch, Accordion, OtpInput and table cells, Tag steps
-10/12/14, a Large Switch gets its own track, and dropdown rows pad to line up
-with the trigger. The story's settings menu groups its size choices into
-submenus. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `0d887f1285acc4ff5ec8e2ee57999310f8e398d0` (2026-09-29,
+scroll_bounce: Let phaseless wheels scroll again after bouncing at an edge
+(#3316)). ScrollBounce lifts its momentum suppression after a 250 ms pause in
+the wheel stream or on a packet pointing back inward, so phaseless
+smooth-scrolling wheels can scroll again after bouncing at an edge. The
+current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

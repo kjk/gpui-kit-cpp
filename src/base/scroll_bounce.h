@@ -61,6 +61,34 @@ struct ScrollBounceCatch {
     bool Observe(TouchPhase phase, float deltaY);
 };
 
+// MOMENTUM_GAP: momentum arrives once per frame until it stops, so a longer
+// silence means the suppressed stream has ended. Smooth-scrolling mouse
+// drivers on macOS send precise deltas with no phase: they never send the
+// Started that otherwise ends suppression, and would stay locked after one
+// bounce.
+const double kMomentumGapSeconds = 0.25;
+
+// State::last_wheel_at and State::suppressed_direction: what ends a
+// momentum suppression other than a new gesture's Started.
+struct ScrollBounceSuppression {
+    // When the last wheel packet arrived, or < 0 before the first.
+    double lastWheelAt = -1;
+    // The sign of the stream being suppressed, when it is known to be
+    // momentum that cannot reverse; 0 suppresses both directions.
+    float direction = 0;
+
+    // State::release: release the edge. A stretch made outside a gesture is
+    // momentum (or a phaseless wheel) hitting the edge; that stream only
+    // pushes outward, so an inward packet is a new scroll and ends the
+    // suppression. After a gesture's own release the suppressed momentum may
+    // point either way.
+    void Release(ScrollBouncePhysics* physics, bool fromRest);
+    // A packet at `now` moving `deltaY`: records it, and answers whether it
+    // ends the suppression — the stream paused for kMomentumGapSeconds, or
+    // the packet points against a stream known to be one-way.
+    bool Lifts(double now, float deltaY);
+};
+
 struct ScrollBounce {
     Ctx* cx = nullptr;
     Str id = {};

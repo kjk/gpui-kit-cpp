@@ -85,6 +85,23 @@ ScrollBounce* ScrollBounce::OnScroll(Listener listener) {
     return this;
 }
 
+void ScrollBounceSuppression::Release(ScrollBouncePhysics* physics,
+                                      bool fromRest) {
+    physics->Release();
+    float offset = physics->Offset();
+    direction = fromRest && physics->suppressMomentum
+                    ? (offset > 0 ? 1.f : (offset < 0 ? -1.f : 0.f))
+                    : 0.f;
+}
+
+bool ScrollBounceSuppression::Lifts(double now, float deltaY) {
+    bool paused = lastWheelAt >= 0 && now - lastWheelAt >= kMomentumGapSeconds;
+    lastWheelAt = now;
+    bool reversed =
+        direction != 0 && deltaY != 0 && (deltaY > 0 ? 1.f : -1.f) != direction;
+    return paused || reversed;
+}
+
 bool ScrollBounceCatch::Observe(TouchPhase phase, float deltaY) {
     if (phase == TouchPhase::Started) {
         tracking = deltaY == 0;
@@ -106,6 +123,7 @@ bool ScrollBounceCatch::Observe(TouchPhase phase, float deltaY) {
 struct ScrollBounceState {
     ScrollBouncePhysics physics;
     ScrollBounceCatch shortDrag;
+    ScrollBounceSuppression suppression;
     OngoingScroll wheelLock;
     double sampledAt = 0;
     Listener onScroll = {};
@@ -149,6 +167,9 @@ struct ScrollBounceState {
         // packet is handled; only momentum packets after it are dropped.
         bool suppressShortDragMomentum = self->shortDrag
                                              .Observe(ev->phase, delta.y);
+        if (self->suppression.Lifts(TimeNow(), delta.y)) {
+            self->physics.suppressMomentum = false;
+        }
         if (self->physics.suppressMomentum) {
             const_cast<ScrollWheelEvent*>(ev)->propagate = false;
             return;
@@ -156,13 +177,20 @@ struct ScrollBounceState {
         bool changed = false;
         bool scrolled = false;
         if (self->physics.Offset() != 0) {
+            // Outside a gesture (a phaseless wheel once suppression lifts) a
+            // packet grabs the returning edge and lets it go again, as it
+            // would at rest.
+            bool fromRest = !self->physics.dragging;
+            if (fromRest) {
+                self->physics.Begin(viewH);
+            }
             float remainder = self->physics.Pull(delta.y);
             if (remainder != 0 &&
                 WindowScrollApply(win, ev->x, ev->y, 0, remainder)) {
                 scrolled = true;
             }
-            if (ended) {
-                self->physics.Release();
+            if (ended || fromRest) {
+                self->suppression.Release(&self->physics, fromRest);
             }
             changed = true;
             const_cast<ScrollWheelEvent*>(ev)->propagate = false;
@@ -174,12 +202,13 @@ struct ScrollBounceState {
             bool atTop = box->scrollY <= 0 && delta.y > 0;
             bool atBot = box->scrollY >= maxOff && delta.y < 0;
             if (atTop || atBot) {
-                if (!self->physics.dragging) {
+                bool dragging = self->physics.dragging;
+                if (!dragging) {
                     self->physics.Begin(viewH);
                 }
                 self->physics.Pull(delta.y);
-                if (ended) {
-                    self->physics.Release();
+                if (!dragging || ended) {
+                    self->suppression.Release(&self->physics, !dragging);
                 }
                 changed = true;
                 const_cast<ScrollWheelEvent*>(ev)->propagate = false;
@@ -190,6 +219,7 @@ struct ScrollBounceState {
         }
         if (suppressShortDragMomentum) {
             self->physics.suppressMomentum = true;
+            self->suppression.direction = 0;
         }
         self->sampledAt = TimeNow();
         if (changed && cx->win) {
