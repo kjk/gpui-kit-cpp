@@ -1732,10 +1732,12 @@ InputGroupAppearance InputGroupAppearance::New(const Theme& th, bool focused,
                                                bool disabled, bool invalid) {
     InputGroupAppearance out;
     bool dark = th.mode == ThemeMode::Dark;
+    // `theme.input` is the input's border colour, which is what the
+    // surface is tinted with.
     if (disabled) {
-        out.background = RgbaOpacity(th.inputBg, dark ? 0.8f : 0.5f);
+        out.background = RgbaOpacity(th.inputBorder, dark ? 0.8f : 0.5f);
     } else if (dark) {
-        out.background = RgbaOpacity(th.inputBg, 0.3f);
+        out.background = RgbaOpacity(th.inputBorder, 0.3f);
     } else {
         out.background = th.transparent;
     }
@@ -1887,14 +1889,25 @@ InputGroupText* InputGroupText::Child(El* el) {
     return this;
 }
 
+// An icon without an explicit size follows the addon's one-rem default;
+// an explicit size stays with the icon (group.rs addon_child).
+static El* InputGroupAddonChildEl(Arena* a, El* child) {
+    if (child && child->kind == ElKind::Icon && child->style.width == kAuto &&
+        child->style.height == kAuto) {
+        return Div(a)->Shrink0()->Font(16)->Child(child);
+    }
+    return child;
+}
+
 El* InputGroupText::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    El* row = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+    // h_flex().gap_2().text_sm() in the muted foreground.
+    El* row =
+        Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Font(14)->Fg(th.mutedFg);
     refiner.Apply(row);
     for (El* c : children) {
         if (c) {
-            c->Fg(th.mutedFg);
-            row->Child(c);
+            row->Child(InputGroupAddonChildEl(a, c));
         }
     }
     return row;
@@ -1938,7 +1951,21 @@ El* InputGroupAddon::IntoEl() {
 
 El* InputGroupAddon::RenderInGroup(bool disabled) {
     const Theme& th = ThemeNow(cx->app);
-    El* row = Div(a)->Id(id)->FlexRow()->Gap(8)->ItemsCenter()->Shrink0();
+    float inputH = 0, inputPx = 0, inputPy = 0, inputFont = 0;
+    InputSizeMetrics(size, &inputH, &inputPx, &inputPy, &inputFont);
+    // flex_none, gap_2, py_1p5, justify_center, font_medium, the input's
+    // text size, muted, and the text cursor.
+    El* row = Div(a)
+                  ->Id(id)
+                  ->FlexRow()
+                  ->Gap(8)
+                  ->ItemsCenter()
+                  ->Shrink0()
+                  ->JustifyCenter()
+                  ->Medium()
+                  ->Font(inputFont)
+                  ->Fg(th.mutedFg)
+                  ->Cursor(CursorKind::IBeam);
     bool compact = size == UiSize::XSmall || size == UiSize::Small;
     row->PadY(compact ? 0.f : 6.f);
     switch (alignment) {
@@ -1948,17 +1975,18 @@ El* InputGroupAddon::RenderInGroup(bool disabled) {
         case InputGroupAddonAlignment::InlineEnd:
             row->PadR(6);
             break;
+        // Block addons share the control's horizontal inset.
         case InputGroupAddonAlignment::BlockStart:
-            row->W(kFill)->JustifyStart()->PadX(10)->PadT(8);
+            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadT(8);
             break;
         case InputGroupAddonAlignment::BlockEnd:
-            row->W(kFill)->JustifyStart()->PadX(10)->PadB(8);
+            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadB(8);
             break;
     }
-    (void)th;
     refiner.Apply(row);
     for (const InputGroupAddonChild& c : children) {
-        row->Child(c.button ? c.button->RenderInGroup(disabled) : c.el);
+        row->Child(c.button ? c.button->RenderInGroup(disabled)
+                            : InputGroupAddonChildEl(a, c.el));
     }
     return row;
 }
