@@ -319,13 +319,15 @@ static void VirtualListPlace(PaintCtx* ctx, El* e, El* made, Axis axis,
         y += origin - offset;
         h = extent;
     }
-    LayoutEl(ctx, made, x, y, w, h, 0, {});
+    // The rows are laid out under the list's own text style, the way GPUI
+    // prepaints a list's items inside the text style the list was given.
+    LayoutEl(ctx, made, x, y, w, h, e->laidFont, e->style.color);
     e->Child(made);
 }
 
-static float VirtualListMeasureItem(PaintCtx* ctx, El* made, Axis axis,
+static float VirtualListMeasureItem(PaintCtx* ctx, El* e, El* made, Axis axis,
                                     float fallback) {
-    Size got = MeasureEl(ctx, made);
+    Size got = MeasureEl(ctx, made, e->laidFont, e->style.color);
     float extent = axis == Axis::Horizontal ? got.w : got.h;
     if (extent <= 0) extent = fallback > 0 ? fallback : 1.f;
     return extent;
@@ -363,7 +365,7 @@ static void VirtualListBindRows(PaintCtx* ctx, El* e, VirtualListPaint* paint,
             }
             float extent = ix < layout->sizes.len ? layout->sizes[ix] : o.rowH;
             if (extent <= 0) {
-                extent = VirtualListMeasureItem(ctx, made, axis, o.rowH);
+                extent = VirtualListMeasureItem(ctx, e, made, axis, o.rowH);
                 if (o.sizes && ix < o.count) {
                     const_cast<float*>(o.sizes)[ix] = extent;
                 }
@@ -434,9 +436,8 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
     bool hadPending = o.handle && o.handle->pending;
     int pendingIx = hadPending ? o.handle->pendingIx : 0;
     int pendingOffset = hadPending ? o.handle->pendingOffset : 0;
-    ScrollStrategy pendingStrategy = hadPending
-                                         ? o.handle->pendingStrategy
-                                         : ScrollStrategy::Top;
+    ScrollStrategy pendingStrategy =
+        hadPending ? o.handle->pendingStrategy : ScrollStrategy::Top;
     if (o.handle) {
         o.handle->axis = axis;
         VirtualListHandleLayout(o.handle, sizes, o.count, 0, viewport);
@@ -463,10 +464,12 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                 layout.origins.els, layout.sizes.els, o.count,
                 offset > o.overdraw ? offset - o.overdraw : 0,
                 viewport + o.overdraw * 2);
-            int anchor = VirtualListVisibleRangeFromLayout(
-                layout.origins.els, layout.sizes.els, o.count, offset, 0).first;
-            float anchorOrigin = anchor < layout.origins.len
-                                     ? layout.origins[anchor] : 0;
+            int anchor =
+                VirtualListVisibleRangeFromLayout(
+                    layout.origins.els, layout.sizes.els, o.count, offset, 0)
+                    .first;
+            float anchorOrigin =
+                anchor < layout.origins.len ? layout.origins[anchor] : 0;
             bool changed = false;
             for (int ix = range.first; ix < range.end; ix++) {
                 if (!o.needsMeasure[ix]) continue;
@@ -479,8 +482,8 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                 changed = true;
             }
             if (!changed) break;
-            ItemSizeLayoutBuild(&layout, axis, o.sizes, o.count, o.rowH,
-                                o.gap, cross);
+            ItemSizeLayoutBuild(&layout, axis, o.sizes, o.count, o.rowH, o.gap,
+                                cross);
             if (o.handle) {
                 if (!hadPending && anchor < layout.origins.len)
                     o.handle->offset += layout.origins[anchor] - anchorOrigin;
@@ -490,11 +493,13 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
                     o.handle->pendingOffset = pendingOffset;
                     o.handle->pendingStrategy = pendingStrategy;
                 }
-                VirtualListHandleLayout(o.handle, layout.sizes.els, o.count,
-                                        0, viewport);
+                VirtualListHandleLayout(o.handle, layout.sizes.els, o.count, 0,
+                                        viewport);
                 offset = o.handle->offset;
-                if (axis == Axis::Horizontal) e->scrollX = offset;
-                else e->scrollY = offset;
+                if (axis == Axis::Horizontal)
+                    e->scrollX = offset;
+                else
+                    e->scrollY = offset;
             }
         }
     }
