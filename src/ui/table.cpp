@@ -405,6 +405,15 @@ DataTable* DataTable::Stripe(bool v) {
     stripe = v;
     return this;
 }
+DataTable* DataTable::Bordered(bool v) {
+    bordered = v;
+    return this;
+}
+DataTable* DataTable::ScrollbarVisible(bool vertical, bool horizontal) {
+    scrollbarV = vertical;
+    scrollbarH = horizontal;
+    return this;
+}
 DataTable* DataTable::WithSize(UiSize sz) {
     size = sz;
     rowHeight = UiTableRowHeight(sz);
@@ -843,11 +852,10 @@ El* DataTable::BuildEl() {
     }
     float scrollX = s ? s->scrollX : 0;
 
-    El* box = gpui::Table::New(cx, id, nRows, nColumns)
-                  ->FlexCol()
-                  ->W(kFill)
-                  ->Radius(th.radius)
-                  ->Border(1, th.border);
+    El* box = gpui::Table::New(cx, id, nRows, nColumns)->FlexCol()->W(kFill);
+    if (bordered) {
+        box->Radius(th.radius)->Border(1, th.border);
+    }
 
     // render_loading stands in for the whole table, head and all — its first
     // row is the fake head, which is why that row is painted the head colour.
@@ -1113,6 +1121,8 @@ El* DataTable::BuildEl() {
         // table even at its edge; vertical ones chain to an outer scroller.
         ScrollableMask::Apply(bodyScroll, Axis::Horizontal);
         ScrollableMask::Apply(bodyScroll, Axis::Vertical);
+        bodyScroll->noScrollbarY = !scrollbarV;
+        bodyScroll->noScrollbarX = !scrollbarH;
         if (range.first > 0) {
             float pad = (float)range.first * s->rowH;
             bodyFixed->Child(Div(a)->H(pad));

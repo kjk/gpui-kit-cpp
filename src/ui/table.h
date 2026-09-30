@@ -129,6 +129,13 @@ struct DataTable {
     void* data = nullptr;
     int nRows = 0;
     bool stripe = false;
+    // TableOptions::bordered: the rounded 1px border round the table, on by
+    // default as in Rust.
+    bool bordered = true;
+    // TableOptions::scrollbar_visible: the right (vertical) and bottom
+    // (horizontal) scrollbars of the scrolling body, both on by default.
+    bool scrollbarV = true;
+    bool scrollbarH = true;
     // group_headers: the extra head rows a caller stacks over the columns,
     // outermost first.
     ArenaVec<TableGroupHeader> groupHeaders;
@@ -175,6 +182,8 @@ struct DataTable {
     DataTable* Rows(int n, void* data,
                     El* (*cell)(Ctx* cx, void* data, int row, int col));
     DataTable* Stripe(bool v);
+    DataTable* Bordered(bool v);
+    DataTable* ScrollbarVisible(bool vertical, bool horizontal);
     DataTable* WithSize(UiSize s);
     // Size::Size(px), which the story's 48px row offers.
     DataTable* RowHeight(float px);

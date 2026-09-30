@@ -4395,6 +4395,117 @@ void SelectRefusesWhatRustRefuses() {
              "callback")));
 }
 
+// ─── data_table/mod.rs, and data_table_host.rs ─────────────────────────────
+
+// mod.rs catalog_is_retained_data_table_only.
+void DataTableCatalogIsRetainedDataTableOnly() {
+    FamilyCatalog catalog(&component_shell::RegisterDataTable);
+    utassert(catalog.ok);
+    const char* names[] = {"DataTable"};
+    utassert(catalog.NamesAre(names, 1));
+    utassert(catalog.frozen.StateCount() == 1);
+    utassert(catalog.Documented());
+}
+
+// mod.rs test_probe: cells built, and failures rendered in their place.
+int gDataTableCellBuilds = 0;
+int gDataTableErrors = 0;
+
+void RecordDataTableProbe(bool built) {
+    if (built)
+        gDataTableCellBuilds++;
+    else
+        gDataTableErrors++;
+}
+
+void ResetDataTableProbe() {
+    gDataTableCellBuilds = 0;
+    gDataTableErrors = 0;
+}
+
+// data_table_host.rs retained_data_table_renders_lazy_cells_from_plain_rows.
+void RetainedDataTableRendersLazyCellsFromPlainRows() {
+    FamilyCatalog catalog(&component_shell::RegisterDataTable);
+    component_shell::SetDataTableProbe(&RecordDataTableProbe);
+    ResetDataTableProbe();
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                       "import { DataTableState, DataTable } from "
+                       "'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new DataTable(\n"
+                       "  DataTableState(['name', 'status']),\n"
+                       "  () => [{name: 'Ada', status: 'Ready'}, {name: "
+                       "'Lin', status: 'Busy'}],\n"
+                       "  (row, column) => div().child(row[column])\n"
+                       ").stripe(true).bordered(false).row_selectable(true)"
+                       ".cell_selectable(true); } }\n"),
+                  &catalog.frozen);
+        El* root = RenderLaidOut(host);
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+        utassert(gDataTableCellBuilds >= 4);
+        utassert(gDataTableErrors == 0);
+        utassert(FindText(root, StrL("Ada")) != nullptr);
+        utassert(FindText(root, StrL("Busy")) != nullptr);
+    }
+    component_shell::SetDataTableProbe(nullptr);
+}
+
+// data_table_host.rs data_table_rejects_non_array_snapshot_without_panicking.
+void DataTableRejectsNonArraySnapshotWithoutPanicking() {
+    FamilyCatalog catalog(&component_shell::RegisterDataTable);
+    component_shell::SetDataTableProbe(&RecordDataTableProbe);
+    ResetDataTableProbe();
+    {
+        Host host(StrL("import { View, div } from 'gpui-kit'; import { "
+                       "DataTableState, DataTable } from 'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new DataTable(DataTableState(['name']), () => "
+                       "({name:'Ada'}), () => div()); } }\n"),
+                  &catalog.frozen);
+        El* root = RenderLaidOut(host);
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(gDataTableCellBuilds == 0);
+        utassert(gDataTableErrors == 1);
+        utassert(FindTextPrefix(root, StrL("DataTable rows callback must "
+                                           "return an array of rows: ")) !=
+                 nullptr);
+    }
+    component_shell::SetDataTableProbe(nullptr);
+}
+
+// mod.rs: DataTableState's column refusals, and a DataTable takes no
+// children.
+void DataTableRefusesWhatRustRefuses() {
+    struct Case {
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new DataTable(DataTableState([]), () => [], () => div())",
+         "DataTableState requires at least one column"},
+        {"new DataTable(DataTableState([' ']), () => [], () => div())",
+         "DataTableState columns must be non-empty strings"},
+        {"new DataTable(DataTableState(['a', 'a']), () => [], () => div())",
+         "DataTableState column keys must be unique"},
+    };
+    for (const Case& c : cases) {
+        Str failure = CallErrorTemp("DataTable, DataTableState", c.call);
+        utassert(StrContains(failure, Str(c.message)));
+    }
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { DataTable, DataTableState } from "
+             "'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new DataTable(DataTableState(['a']), () => [], "
+             "() => div()).child(div()); } }\n"));
+    host.Render();
+    utassert(StrContains(host.runtime->LastComponentFailure(),
+                         StrL("DataTable does not accept children")));
+}
+
 // ─── collections/: mod.rs, tree.rs ─────────────────────────────────────────
 
 // mod.rs catalog_is_only_honest_tree_surface and collections_host.rs
@@ -5014,6 +5125,12 @@ void TestComponentShell() {
     SelectCatalogExposesNativeRetainedContract();
     SelectNativeClickEmitsSelectedStableValue();
     SelectRefusesWhatRustRefuses();
+
+    TestSuite("data_table");
+    DataTableCatalogIsRetainedDataTableOnly();
+    RetainedDataTableRendersLazyCellsFromPlainRows();
+    DataTableRejectsNonArraySnapshotWithoutPanicking();
+    DataTableRefusesWhatRustRefuses();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

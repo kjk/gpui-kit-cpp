@@ -26,6 +26,7 @@ bool RegisterDelegateCollections(shell::ComponentRegistry*,
                                  shell::RegistryError*);
 bool RegisterDelegateCombobox(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDelegateSelect(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterDataTable(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
@@ -68,6 +69,12 @@ void SetComboboxEventProbe(ComboboxEventProbe probe);
 // before the script callback.
 using SelectProbe = void (*)(Str value);
 void SetSelectProbe(SelectProbe probe);
+
+// data_table/mod.rs test_probe, widened into a seam: when set, it hears
+// every DataTable cell the renderer built (true) and every rows-snapshot or
+// cell failure the table rendered in its place (false).
+using DataTableProbe = void (*)(bool built);
+void SetDataTableProbe(DataTableProbe probe);
 
 // display/mod.rs
 bool RegisterDisplayAlert(shell::ComponentRegistry*, shell::RegistryError*);
