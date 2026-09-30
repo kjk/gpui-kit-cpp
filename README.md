@@ -164,6 +164,14 @@ bun cmd/run.ts -rel gpui_shell -- check examples/js_todolist
 bun cmd/run.ts -rel gpui_shell -- types examples/js_todolist
 ```
 
+`gpui_shell` carries the `gpui-component` catalog (`src/component_shell`, the
+port of `crates/component-shell`), so the upstream JavaScript component gallery
+runs unchanged too:
+
+```
+bun cmd/run.ts -rel gpui_shell -- examples/js_story
+```
+
 The first command opens the application and reloads it after source changes.
 `check` loads and renders once without a window; `types` writes the exact
 upstream `gpui.d.ts` plus declarations for registered host modules. A directory
