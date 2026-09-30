@@ -893,8 +893,9 @@ Point AccessibilityLinuxWindowOrigin(Window* win) {
 }
 
 bool PlatHasMenu() {
-    // X11 has no popup menu of its own — a toolkit draws its own. The caller
-    // falls back to the drawn menu, which is what Rust does here too.
+    // X11 has no popup menu of its own — a toolkit draws its own — so
+    // NativeMenu::Show draws the menu instead, which is what Rust does here
+    // too.
     return false;
 }
 

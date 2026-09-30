@@ -2,6 +2,7 @@
 #include "ui/window_border.h"
 #include "ui/global_state.h"
 #include "ui/touch_selection.h"
+#include "ui/native_menu.h"
 
 namespace gpui {
 
@@ -107,16 +108,24 @@ static El* WindowStateDecorate(void*, El* surface, const Root*, Ctx* cx) {
 static El* WindowStateRender(void*, Ctx* cx) {
     El* layers = WindowStateLayers(cx);
     // After the layers, so the edit menu floats above whatever was selected.
-    // Handles are painted by the owning text. The tooltip and fallback menu
-    // overlays Rust mounts here are the window's own (win->tooltip).
+    // Handles are painted by the owning text. The tooltip overlay Rust
+    // mounts here is the window's own (win->tooltip); the native menu's drawn
+    // fallback is mounted here, as Rust's is.
     El* touch = WindowTouchSelectionOverlay(cx);
-    if (!touch) {
+    El* menu = NativeMenuFallbackOverlay(cx);
+    if (!touch && !menu) {
         return layers;
     }
     if (!layers) {
         layers = Div(cx->a)->Absolute()->Left(0)->Top(0)->Right(0)->Bottom(0);
     }
-    return layers->Child(touch);
+    if (touch) {
+        layers->Child(touch);
+    }
+    if (menu) {
+        layers->Child(menu);
+    }
+    return layers;
 }
 
 const RootPlugin kWindowStatePlugin = {

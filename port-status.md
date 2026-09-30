@@ -35,16 +35,9 @@ update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   through `RootSurface`. Root's Tab / shift-Tab / copy actions are the
   runtime's for every window (`FocusNext`, `WindowSelectionCopy`); the
   surface carries no `id("root")`, which would re-key every element's state;
-  WindowState's `prepare` sets no rem size and its tooltip and fallback-menu
-  overlays are the window's own; and WindowExt's layers still open in a
+  WindowState's `prepare` sets no rem size and its tooltip overlay is the
+  window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **A native menu has no automatic drawn fallback.** Rust's
-  `NativeMenu::show` falls back to Root's `FallbackMenuOverlay` where the
-  platform has no popup menu of its own; here `NativeMenu::Show` answers
-  false on X11 and in the browser and the caller draws `IntoPopupMenu`
-  itself. The input right-click menu does not, so Input, Textarea and Editor
-  show no context menu on those two platforms (`src/ui/native_menu.cpp`,
-  `InputContextMenuState` in `src/ui/input.cpp`).
 - **Theme hot reload is desktop-only and keeps what it replaced.** Rust's
   `watch_dir` watches on every non-wasm target; `src/sys/dir_watch.h` has
   no iOS or Android backend, so there the folder is read once. A reload

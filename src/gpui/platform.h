@@ -250,14 +250,29 @@ struct PlatMenuItem {
 };
 
 // Whether this platform has a popup menu of its own. False sends the caller
-// to a drawn menu instead, which is Rust's FallbackMenuOverlay.
+// to a drawn menu instead, which is Rust's FallbackMenuOverlay. Rust pops an
+// OS menu on macOS and Windows only, so iOS and Android draw it too and a
+// host adapter has nothing to supply.
+//
+// PlatShowMenu shows `items` at (x, y) in the window's client area, in
+// logical pixels, and answers the id of the row that was chosen — 0 for a
+// menu dismissed without choosing one. The OS runs the tracking loop, so it
+// returns once the menu is gone. `dark` asks for the dark rendering where the
+// OS can be told.
+#if GPUI_OS_IOS || GPUI_OS_ANDROID
+inline bool PlatHasMenu() {
+    return false;
+}
+inline int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
+                        float y, bool dark) {
+    (void)win, (void)items, (void)n, (void)x, (void)y, (void)dark;
+    return 0;
+}
+#else
 bool PlatHasMenu();
-// Show `items` at (x, y) in the window's client area, in logical pixels, and
-// answer the id of the row that was chosen — 0 for a menu dismissed without
-// choosing one. The OS runs the tracking loop, so this returns once the menu
-// is gone. `dark` asks for the dark rendering where the OS can be told.
 int PlatShowMenu(Window* win, const PlatMenuItem* items, int n, float x,
                  float y, bool dark);
+#endif
 
 // ─── the application menu bar (App::set_menus) ───────────────────────────
 

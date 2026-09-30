@@ -241,7 +241,7 @@ struct InputContextMenuState {
                 Str label = Tr(fmt("Input.%s", row.label).s);
                 menu->MenuWithDisabled(label, row.disabled, i + 1);
             }
-            menu->OnSelect(Listen(cx, &InputContextMenuState::OnSelect, 0));
+            menu->OnSelect(Listen(cx, &InputContextMenuState::OnSelect));
         }
         if (menu && !menu->IsEmpty()) {
             menu->Show(event->x, event->y);

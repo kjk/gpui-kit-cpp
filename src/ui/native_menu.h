@@ -4,9 +4,10 @@
 
    Unlike component::PopupMenu, which is drawn into the window and clipped to
    it, a native menu is the operating system's own and can extend past the
-   window edge. Where a platform has no menu of its own (X11), the caller
-   draws a PopupMenu built from the same rows instead, which is Rust's
-   FallbackMenuOverlay. */
+   window edge. Where a platform has no menu of its own (X11, the browser,
+   iOS, Android), Show draws a PopupMenu built from the same rows instead,
+   anchored at the pointer through Root's overlay — Rust's
+   FallbackMenuOverlay (native_menu/fallback.rs). */
 
 #include "ui/menu.h"
 
@@ -63,14 +64,47 @@ struct NativeMenu {
     bool IsEmpty() const { return len(items) == 0; }
 
     // Show the menu at (x, y) in the window, in logical pixels, and run
-    // onSelect for the row that was chosen. False means this platform has no
-    // menu of its own and nothing was shown — build the drawn menu instead.
+    // onSelect for the row that was chosen. The OS's menu where there is one;
+    // elsewhere the drawn fallback, which a window without a Root has nowhere
+    // to put (Rust's `native_menu_overlay` answering None). False only for an
+    // empty menu.
     bool Show(float x, float y);
 
-    // The same rows as a drawn menu, for the platforms without one of their
-    // own and for a caller that would rather draw it anyway.
+    // The same rows as a drawn menu, for a caller that would rather place it
+    // itself.
     PopupMenu* IntoPopupMenu(Str id) const;
 };
+
+// fallback.rs FallbackMenuOverlay: the drawn menu a window is showing in place
+// of an OS one. The rows are copied off the frame arena, since the menu stays
+// up across frames; the menu and each submenu have a PopupMenu state of their
+// own, `states[k]` drawing `menus[k]` in the preorder CopyMenu walks.
+struct NativeMenuFallback {
+    Arena* a = nullptr;
+    ArenaVec<const NativeMenu*> menus;
+    Entity<PopupMenuState>* states = nullptr;
+    int nStates = 0;
+    Listener onSelect = {};
+    Point position = {};
+    // The last press when the menu opened (Window::lastDownAt): its release
+    // is not a click outside, only one ending a later press is.
+    double openedPress = -1;
+    bool open = false;
+
+    ~NativeMenuFallback();
+};
+
+// The window's overlay, created on first ask; null only for a null window.
+NativeMenuFallback* NativeMenuFallbackOf(Window* win);
+// fallback::show: copy `m`, open its drawn menu at (x, y) and focus it.
+bool NativeMenuShowFallback(Ctx* cx, const NativeMenu* m, float x, float y);
+// What row `row` of the menu drawn by `state` reports when chosen: the item,
+// or null for a separator, a submenu row, a greyed row or a closed overlay.
+const NativeMenuItem* NativeMenuFallbackRow(const NativeMenuFallback* f,
+                                            EntityId state, int row);
+// FallbackMenuOverlay::render, which Root mounts above the page; null when
+// nothing is open.
+El* NativeMenuFallbackOverlay(Ctx* cx);
 
 // The rows that can be chosen, in the order the OS is given them: preorder
 // over the submenus, skipping separators, submenu rows and disabled rows —

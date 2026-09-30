@@ -770,7 +770,7 @@ void PlatAccessibilityFocusChanged(Window* win, int focusId) {
     (void)focusId;
 }
 
-// A page has no popup menu of its own, so the caller draws one — Rust's
+// A page has no popup menu of its own, so NativeMenu::Show draws one — Rust's
 // FallbackMenuOverlay, which is what the X11 window gets too.
 bool PlatHasMenu() {
     return false;
