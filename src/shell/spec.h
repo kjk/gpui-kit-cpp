@@ -164,12 +164,6 @@ enum class ComponentKind : uint8_t {
     UniformList,
     // A shared frame around one Input or Textarea and its addons. The
     // control is the `input` slot; addons accumulate as `addon` slots.
-    InputGroup,
-    InputGroupAddon,
-    InputGroupButton,
-    InputGroupInput,
-    InputGroupTextarea,
-    InputGroupText,
     // A component a catalog registered: the descriptor is `index` in the
     // runtime's frozen registry, `text` its name, and `payload` what its
     // constructor recorded. See shell/component_registry.h.

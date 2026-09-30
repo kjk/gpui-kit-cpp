@@ -209,18 +209,6 @@ const char* ComponentName(const Component& component) {
             return "list";
         case ComponentKind::UniformList:
             return "uniform_list";
-        case ComponentKind::InputGroup:
-            return "InputGroup";
-        case ComponentKind::InputGroupAddon:
-            return "InputGroupAddon";
-        case ComponentKind::InputGroupButton:
-            return "InputGroupButton";
-        case ComponentKind::InputGroupInput:
-            return "InputGroupInput";
-        case ComponentKind::InputGroupTextarea:
-            return "InputGroupTextarea";
-        case ComponentKind::InputGroupText:
-            return "InputGroupText";
         case ComponentKind::Registered:
             return component.text.s ? component.text.s : "element";
     }

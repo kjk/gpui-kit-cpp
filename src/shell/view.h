@@ -41,14 +41,6 @@ struct ShellNumberBinding {
     shell::CallbackId onStep = 0;
 };
 
-// An InputGroupInput / InputGroupTextarea: the retained state's events plus
-// the element's on_change, which reports the value as a string.
-struct ShellInputGroupBinding {
-    shell::EntityHandle handle = 0;
-    shell::CallbackId onChange = 0;
-    InputState* state = nullptr;
-};
-
 // The three buttons an element listened for, and the handler for each.
 //
 // GPUI takes the button as an argument to on_mouse_down and installs one
@@ -132,8 +124,6 @@ struct ScriptView {
                             intptr_t binding);
     static void OnInputEvent(ScriptView* self, Ctx* cx, const InputEvent* event,
                              intptr_t handle);
-    static void OnInputGroupEvent(ScriptView* self, Ctx* cx,
-                                  const InputEvent* event, intptr_t binding);
     static void OnSliderEvent(ScriptView* self, Ctx* cx,
                               const SliderEvent* event, intptr_t handle);
     static void OnOtpEvent(ScriptView* self, Ctx* cx, const OtpEvent* event,
