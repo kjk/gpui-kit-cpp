@@ -16,11 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `201b55a431fb1b82a6047e908de63913db3d4354` (2026-09-30,
-chore: upgrade notify to 8.2 and harden theme watching (#3320)). Upstream
-moves the theme watcher to notify 8.2, coalescing reloads and watching
-non-recursively, which is what `ThemeRegistryWatchDir` does here. The current
-update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
+Processed through `eb1316f1da12ae9860e47bf1438472882a844e1c` (2026-10-01,
+shell: update QuickJS JIT to 0.12.11 (#3338)). Upstream moves the shell's
+quickjs-jit to 0.12.11; the C++ shell stays on QuickJS-NG. The current update
+target is `912f8a9b70c24aa79de696f26ab0c7ef065ed134`.
 
 ## Known gaps vs Rust
 
