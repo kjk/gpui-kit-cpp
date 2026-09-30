@@ -165,6 +165,13 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle
   once, at its last element (`FocusNext`, `src/gpui/gpui.cpp`).
+- **FocusLine::Inside carries no colour.** Rust's `Inside(Hsla)` takes the
+  line's colour from its caller, which a filled button passes as its normal
+  foreground at `FOCUS_LINE_OPACITY` (0.6). `Style` has no room for a colour
+  beside the two bits `El::FocusLineStyle` records, so the runtime always
+  draws the focused element's own foreground at 0.6 — the same colour for a
+  focused button, but no other colour can be asked for (`FocusLine`,
+  `src/gpui/gpui.h`; the focus line in `src/gpui/gpui.cpp`).
 - **No OpenType font features.** Text has no `font_features`, so the
   TimeField and a time-editing DatePicker's trigger do not switch to tabular
   figures (`tnum`) and their digits may shift width while typed
