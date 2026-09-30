@@ -15,11 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9fda5d54522b1f6367ea7b73d68cc68e99a363f2` (2026-09-28,
-website: Fit StatusBar demo sections to narrow windows (#3301)). The StatusBar
-story's sections cap their width at 760px instead of fixing it, so they fit
-narrower windows. The current update target is
-`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `25d59c06f45cd81a02c5b9d5b81d32ee4985f87d` (2026-09-28,
+docs: Update gpui-kit dependency version to 0.7 in READMEs (#3304)). READMEs
+ask for gpui-kit 0.7, the release that added open_window; the story's
+Introduction page carries the root README verbatim. The current update target
+is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 
