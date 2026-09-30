@@ -15,12 +15,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146` (2026-09-29,
-slider: Let a touch drag on the track move the thumb (#3313)). A touch drag
-that starts on a slider's track is claimed as a TouchDrag and moves the thumb
-(the nearer one of a range) instead of scrolling the page, with Change and
-Release as for the mouse; the FPS HUD names Droid Sans Mono on Android. The
-current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `201b55a431fb1b82a6047e908de63913db3d4354` (2026-09-30,
+chore: upgrade notify to 8.2 and harden theme watching (#3320)). Upstream
+moves the theme watcher to notify 8.2, coalescing reloads and watching
+non-recursively; this tree has no theme watcher to change. The current update
+target is `201b55a431fb1b82a6047e908de63913db3d4354`.
 
 ## Known gaps vs Rust
 
@@ -46,6 +45,10 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   itself. The input right-click menu does not, so Input, Textarea and Editor
   show no context menu on those two platforms (`src/ui/native_menu.cpp`,
   `InputContextMenuState` in `src/ui/input.cpp`).
+- **Themes do not hot-reload.** Rust's `ThemeRegistry::watch_dir` loads a
+  folder of themes and then watches it (notify, non-recursive), reloading on
+  any create/modify/remove or rescan; here the folder is read once, because
+  the runtime has no file-watch seam (`src/ui/theme.h`).
 - **A striped DataTable leaves the space below its last row empty.** Rust's
   `calculate_extra_rows_needed` pads a short striped table with filler rows
   (`floor(remaining / row_height)`) so the stripes run to the bottom; here
