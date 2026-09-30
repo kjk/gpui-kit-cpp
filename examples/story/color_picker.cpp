@@ -89,10 +89,17 @@ El* ColorPickerStory::Render(ColorPickerStory* self, Ctx* cx) {
     El* preview = Div(a)
                       ->FlexCol()
                       ->W(kFill)
+                      ->ClipX()
                       ->ClipY()
                       ->Radius(th.radiusLg)
                       ->Border(1, th.border);
-    preview->Child(Div(a)->W(kFill)->H(96)->Bg(color));
+    // `rounded_t(radius_lg)`: the content mask is square, so the swatch
+    // rounds its own top corners under the border drawn over them.
+    preview->Child(Div(a)
+                       ->W(kFill)
+                       ->H(96)
+                       ->Corners(th.radiusLg, th.radiusLg, 0, 0)
+                       ->Bg(color));
     El* foot = Div(a)
                    ->FlexRow()
                    ->W(kFill)

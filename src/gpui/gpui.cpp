@@ -6617,6 +6617,71 @@ void PaintEl(PaintCtx* ctx, El* e) {
     ctx->paintLayer = kPaintLayerTree;
 }
 
+// The border quad of Style::paint. GPUI paints it after the continuation —
+// the children, under the element's content mask — so it lands over them: a
+// child whose background runs to the box's edge does not hide its parent's
+// border or the border's rounded corners.
+static void PaintElBorder(PaintCtx* ctx, El* e) {
+    if (e->style.border > 0) {
+        if (e->style.borderDashed) {
+            // In stroke widths; the default is what GPUI's border_dashed
+            // draws. D2D's own DASH style is 2/2 and reads too sparse.
+            const float dash[2] = {e->style.dashOn, e->style.dashOff};
+            float half = e->style.border * 0.5f;
+            if (e->style.radius <= 0) {
+                // Square corners: stroke each side on its own, so both the
+                // line and the dashes along it can land on whole pixels.
+                float l = EdgeLine(ctx, e->x + half);
+                float r = EdgeLine(ctx, e->x + e->w - half);
+                float t = EdgeLine(ctx, e->y + half);
+                float b = EdgeLine(ctx, e->y + e->h - half);
+                float x0 = EdgeEnd(ctx, e->x);
+                float x1 = EdgeEnd(ctx, e->x + e->w);
+                float y0 = EdgeEnd(ctx, e->y);
+                float y1 = EdgeEnd(ctx, e->y + e->h);
+                Rgba bc = e->style.borderColor;
+                float bw = e->style.border;
+                CanvasLine(ctx, x0, t, x1, t, bw, bc, dash);
+                CanvasLine(ctx, x0, b, x1, b, bw, bc, dash);
+                CanvasLine(ctx, l, y0, l, y1, bw, bc, dash);
+                CanvasLine(ctx, r, y0, r, y1, bw, bc, dash);
+            } else {
+                CanvasStrokeRound(ctx, e->x, e->y, e->w, e->h,
+                                  ClampRadius(e->style.radius, e->w, e->h),
+                                  e->style.border, e->style.borderColor, dash);
+            }
+        } else if (e->style.hasCorners) {
+            StrokeCorners(ctx, e->x, e->y, e->w, e->h, e->style.corners,
+                          e->style.border, e->style.borderColor);
+        } else {
+            DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius,
+                            e->style.border, e->style.borderColor);
+        }
+    }
+    // An edge border sits inside the box and covers whole pixels: the line
+    // goes half a stroke in from the edge, and lands on a device pixel.
+    if (e->style.borderT > 0) {
+        float y = EdgeLine(ctx, e->y + e->style.borderT * 0.5f);
+        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderT,
+                 e->style.borderColor);
+    }
+    if (e->style.borderB > 0) {
+        float y = EdgeLine(ctx, e->y + e->h - e->style.borderB * 0.5f);
+        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderB,
+                 e->style.borderColor);
+    }
+    if (e->style.borderL > 0) {
+        float x = EdgeLine(ctx, e->x + e->style.borderL * 0.5f);
+        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderL,
+                 e->style.borderColor);
+    }
+    if (e->style.borderR > 0) {
+        float x = EdgeLine(ctx, e->x + e->w - e->style.borderR * 0.5f);
+        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderR,
+                 e->style.borderColor);
+    }
+}
+
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);
 
 // with_element_opacity: the opacity in force while this element and its
@@ -6841,79 +6906,47 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         FillBackground(ctx, e->x, e->y, e->w, e->h, e->style.radius,
                        e->style.hasCorners ? &e->style.corners : nullptr, b);
     }
-    if (e->style.border > 0) {
-        if (e->style.borderDashed) {
-            // In stroke widths; the default is what GPUI's border_dashed
-            // draws. D2D's own DASH style is 2/2 and reads too sparse.
-            const float dash[2] = {e->style.dashOn, e->style.dashOff};
-            float half = e->style.border * 0.5f;
-            if (e->style.radius <= 0) {
-                // Square corners: stroke each side on its own, so both the
-                // line and the dashes along it can land on whole pixels.
-                float l = EdgeLine(ctx, e->x + half);
-                float r = EdgeLine(ctx, e->x + e->w - half);
-                float t = EdgeLine(ctx, e->y + half);
-                float b = EdgeLine(ctx, e->y + e->h - half);
-                float x0 = EdgeEnd(ctx, e->x);
-                float x1 = EdgeEnd(ctx, e->x + e->w);
-                float y0 = EdgeEnd(ctx, e->y);
-                float y1 = EdgeEnd(ctx, e->y + e->h);
-                Rgba bc = e->style.borderColor;
-                float bw = e->style.border;
-                CanvasLine(ctx, x0, t, x1, t, bw, bc, dash);
-                CanvasLine(ctx, x0, b, x1, b, bw, bc, dash);
-                CanvasLine(ctx, l, y0, l, y1, bw, bc, dash);
-                CanvasLine(ctx, r, y0, r, y1, bw, bc, dash);
-            } else {
-                CanvasStrokeRound(ctx, e->x, e->y, e->w, e->h,
-                                  ClampRadius(e->style.radius, e->w, e->h),
-                                  e->style.border, e->style.borderColor, dash);
-            }
-        } else if (e->style.hasCorners) {
-            StrokeCorners(ctx, e->x, e->y, e->w, e->h, e->style.corners,
-                          e->style.border, e->style.borderColor);
-        } else {
-            DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius,
-                            e->style.border, e->style.borderColor);
+    // Style::overflow_mask: what the children paint under is the box less its
+    // border widths, when the border has a colour — the border is painted
+    // over them afterwards, and nothing of theirs shows under or outside it.
+    // GPUI insets the axes as it does below: with only one axis hidden, it is
+    // the *other* axis that loses the border widths, and this copies that.
+    bool clipX = e->style.overflowX != Overflow::Visible;
+    bool clipY = e->style.overflowY != Overflow::Visible;
+    bool clip = clipX || clipY;
+    Bounds clipBox = e->Bounds();
+    if (clip && e->style.borderColor.a != 0) {
+        auto widest = [](float all, float one) {
+            return one > all ? one : all;
+        };
+        float l = widest(e->style.border, e->style.borderL);
+        float r = widest(e->style.border, e->style.borderR);
+        float t = widest(e->style.border, e->style.borderT);
+        float b = widest(e->style.border, e->style.borderB);
+        if (clipY) {
+            clipBox.x += l;
+            clipBox.w -= l + r;
+        }
+        if (clipX) {
+            clipBox.y += t;
+            clipBox.h -= t + b;
         }
     }
-    // An edge border sits inside the box and covers whole pixels: the line
-    // goes half a stroke in from the edge, and lands on a device pixel.
-    if (e->style.borderT > 0) {
-        float y = EdgeLine(ctx, e->y + e->style.borderT * 0.5f);
-        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderT,
-                 e->style.borderColor);
-    }
-    if (e->style.borderB > 0) {
-        float y = EdgeLine(ctx, e->y + e->h - e->style.borderB * 0.5f);
-        DrawLine(ctx, e->x, y, e->x + e->w, y, e->style.borderB,
-                 e->style.borderColor);
-    }
-    if (e->style.borderL > 0) {
-        float x = EdgeLine(ctx, e->x + e->style.borderL * 0.5f);
-        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderL,
-                 e->style.borderColor);
-    }
-    if (e->style.borderR > 0) {
-        float x = EdgeLine(ctx, e->x + e->w - e->style.borderR * 0.5f);
-        DrawLine(ctx, x, e->y, x, e->y + e->h, e->style.borderR,
-                 e->style.borderColor);
-    }
-
-    bool clip = e->style.overflowY != Overflow::Visible ||
-                e->style.overflowX != Overflow::Visible;
     float clipBottom = e->y + e->h;
     ResolveLineClamp(ctx, e, &clipBottom);
-    float clipH = clipBottom - e->y;
-    if (clipH < 0) clipH = 0;
+    if (clipBottom < clipBox.y + clipBox.h) {
+        clipBox.h = clipBottom - clipBox.y;
+    }
+    if (clipBox.w < 0) clipBox.w = 0;
+    if (clipBox.h < 0) clipBox.h = 0;
     if (clip) {
-        CanvasPushClip(ctx, e->x, e->y, e->w, clipH);
+        CanvasPushClip(ctx, clipBox.x, clipBox.y, clipBox.w, clipBox.h);
     }
 
     Bounds previousHitMask = ctx->hitMask;
     bool previousHasHitMask = ctx->hasHitMask;
     if (clip) {
-        Bounds ownMask = {e->x, e->y, e->w, clipH};
+        Bounds ownMask = clipBox;
         ctx->hitMask = previousHasHitMask
                            ? BoundsIntersect(previousHitMask, ownMask)
                            : ownMask;
@@ -7297,12 +7330,18 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     ctx->hitParent = outerHitParent;
     ctx->paintDepth--;
 
-    if (paintDx != 0 || paintDy != 0) {
-        ShiftElTree(e, -paintDx, -paintDy);
-    }
-
     if (clip) {
         CanvasPopClip(ctx);
+    }
+
+    // Style::paint's border quad, after the continuation and outside the
+    // content mask the continuation painted under. A built-in scrollbar is
+    // gpui-kit's Scrollable overlay, a later sibling of the bordered
+    // element, so it goes over the border below.
+    PaintElBorder(ctx, e);
+
+    if (paintDx != 0 || paintDy != 0) {
+        ShiftElTree(e, -paintDx, -paintDy);
     }
 
     // `wants_visible` and the visibility animation under it: an always-on bar,
