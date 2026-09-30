@@ -2967,6 +2967,139 @@ void MediaRecordersRefuseWhatRustRefuses() {
                          StrL("Image does not accept children")));
 }
 
+// ─── scroll/: mod.rs, scroll.rs ────────────────────────────────────────────
+
+// mod.rs catalog_is_bounded_to_capability_and_real_surfaces and
+// scroll_host.rs catalog_exposes_state_and_two_closed_surfaces_only
+void ScrollCatalogIsBoundedToCapabilityAndRealSurfaces() {
+    FamilyCatalog catalog(&component_shell::RegisterScroll);
+    utassert(catalog.ok);
+    utassert(catalog.frozen.StateCount() == 1 &&
+             strcmp(catalog.frozen.State(0)->exportName, "ScrollbarHandle") ==
+                 0);
+    const char* names[] = {"Scroll", "Scrollbar"};
+    utassert(catalog.NamesAre(names, 2));
+    const ComponentDescriptor* scroll = catalog.frozen.Find(StrL("Scroll"));
+    utassert(scroll != nullptr);
+    if (!scroll) return;
+    const ArgumentSchema& handle = scroll->constructors[0].arguments[0].schema;
+    utassert(handle.kind == shell::SchemaKind::Entity &&
+             strcmp(handle.text, "ScrollbarHandle") == 0);
+}
+
+// scroll.rs scrollbar_leaf_contract_is_exact
+void ScrollbarLeafContractIsExact() {
+    using component_shell::scroll::scroll::RequireLeaf;
+    Str error;
+    utassert(RequireLeaf(0, false, &error));
+    utassert(!RequireLeaf(1, false, &error));
+    utassert(!RequireLeaf(0, true, &error));
+}
+
+// scroll.rs repeated_configuration_is_last_call_wins
+void RepeatedScrollConfigurationIsLastCallWins() {
+    using component_shell::scroll::scroll::Op;
+    using component_shell::scroll::scroll::ResolvedOps;
+    Op ops[6];
+    ops[0].kind = Op::Axis;
+    ops[0].axis = ScrollbarAxis::Horizontal;
+    ops[1].kind = Op::Mode;
+    ops[1].mode = ScrollbarMode::Hover;
+    ops[2].kind = Op::ViewportFromLayout;
+    ops[2].flag = true;
+    ops[3].kind = Op::Axis;
+    ops[3].axis = ScrollbarAxis::Vertical;
+    ops[4].kind = Op::Mode;
+    ops[4].mode = ScrollbarMode::Always;
+    ops[5].kind = Op::ViewportFromLayout;
+    ops[5].flag = false;
+    ResolvedOps resolved;
+    for (const Op& op : ops) resolved.Fold(op);
+    utassert(resolved.hasAxis && resolved.axis == ScrollbarAxis::Vertical);
+    utassert(resolved.hasMode && resolved.mode == ScrollbarMode::Always);
+    utassert(!resolved.viewportFromLayout);
+}
+
+El* FindIdPrefix(El* element, Str prefix) {
+    if (!element) return nullptr;
+    if (StrStartsWith(element->id, prefix)) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindIdPrefix(child, prefix)) return found;
+    }
+    return nullptr;
+}
+
+// scroll_host.rs shared_native_handle_scrolls_and_preserves_offset_across_
+// refresh. The wheel is the offset the viewport's own scroll listener is
+// handed; the refresh is the next render.
+void SharedNativeHandleScrollsAndPreservesOffset() {
+    FamilyCatalog catalog(&component_shell::RegisterScroll);
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { ScrollbarHandle, Scroll, Scrollbar } from "
+             "'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  init() { this.scroll = ScrollbarHandle(); }\n"
+             "  render() { return div().relative().w(160).h(100)\n"
+             "    .child(new Scroll(this.scroll).scroll_axis('vertical')"
+             ".size_full()\n"
+             "      .child(div().h(400).flex_shrink(0).child('Tall shared "
+             "content')))\n"
+             "    .child(new Scrollbar('main-scrollbar', this.scroll)"
+             ".scroll_axis('vertical').mode('always')"
+             ".viewport_from_layout(true)); }\n"
+             "}\n"),
+        &catalog.frozen);
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Tall shared content")) != nullptr);
+    El* viewport = FindIdPrefix(root, StrL("shell-scroll-"));
+    utassert(viewport && viewport->scrollY == 0 &&
+             viewport->onScroll.IsValid());
+    if (!viewport) return;
+    ScrollEvent wheel = {};
+    wheel.id = viewport->scrollId;
+    wheel.offsetY = 60;
+    ListenerCall(&host.app, &host.window, viewport->onScroll, &wheel);
+    for (int frame = 0; frame < 2; frame++) {
+        root = host.Render();
+        utassert(root && len(host.ViewError()) == 0);
+        viewport = FindIdPrefix(root, StrL("shell-scroll-"));
+        utassert(viewport && viewport->scrollY == 60);
+        // The Scrollbar sharing the handle: its bar, in its mode, painted
+        // by the viewport.
+        utassert(viewport && !viewport->noScrollbarY &&
+                 viewport->scrollModeSet &&
+                 viewport->scrollMode == ScrollbarMode::Always);
+    }
+}
+
+// scroll_host.rs native_scrollbar_rejects_children_and_shell_style_at_
+// materializer_boundary
+void NativeScrollbarRejectsChildrenAndShellStyle() {
+    FamilyCatalog catalog(&component_shell::RegisterScroll);
+    struct Case {
+        const char* expression;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new Scrollbar('child-error', this.h).child(div())",
+         "does not accept children"},
+        {"new Scrollbar('style-error', this.h).p(2)",
+         "does not support shell style"},
+    };
+    for (const Case& c : cases) {
+        TempStr source =
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { ScrollbarHandle, Scrollbar } from 'gpui-component';\n"
+                "export default class App extends View { init() { this.h = "
+                "ScrollbarHandle(); } render() { return %s; } }\n",
+                Str(c.expression));
+        Host host(source, &catalog.frozen);
+        utassert(StrContains(RenderRefusal(host), Str(c.message)));
+    }
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -3090,4 +3223,11 @@ void TestComponentShell() {
     CatalogExposesOnlyRenderableMediaSurfaces();
     LocalImageAndRetainedEditorCrossThePublicHost();
     MediaRecordersRefuseWhatRustRefuses();
+
+    TestSuite("scroll");
+    ScrollCatalogIsBoundedToCapabilityAndRealSurfaces();
+    ScrollbarLeafContractIsExact();
+    RepeatedScrollConfigurationIsLastCallWins();
+    SharedNativeHandleScrollsAndPreservesOffset();
+    NativeScrollbarRejectsChildrenAndShellStyle();
 }
