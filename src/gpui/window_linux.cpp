@@ -1770,6 +1770,68 @@ void PlatShutdown(App* app) {
     }
 }
 
+// One CARDINAL-array property of the root window, or false when the window
+// manager did not set it. `out` takes at most `max` values from `first` on.
+static bool RootCardinals(const char* name, long first, long max, long* out,
+                          long* nOut) {
+    Atom prop = XInternAtom(gDpy, name, True);
+    if (prop == None) {
+        return false;
+    }
+    Atom type = 0;
+    int format = 0;
+    unsigned long n = 0, after = 0;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(gDpy, gRoot, prop, first, max, False, XA_CARDINAL,
+                           &type, &format, &n, &after, &data) != Success) {
+        return false;
+    }
+    bool ok = data && format == 32 && type == XA_CARDINAL && n > 0;
+    *nOut = 0;
+    if (ok) {
+        // Xlib hands a 32-bit property back as longs.
+        auto* v = (long*)data;
+        for (unsigned long i = 0; i < n && (long)i < max; i++) {
+            out[(*nOut)++] = v[i];
+        }
+    }
+    if (data) {
+        XFree(data);
+    }
+    return ok;
+}
+
+// Bounds::centered's display.visible_bounds(): the work area the window
+// manager publishes in _NET_WORKAREA — x, y, width, height for each desktop,
+// read for the current one — clear of panels and docks. The whole display
+// when the manager says nothing, which is all a bare X server knows.
+static void X11WorkArea(int* x, int* y, int* w, int* h) {
+    *x = 0;
+    *y = 0;
+    *w = DisplayWidth(gDpy, gScreen);
+    *h = DisplayHeight(gDpy, gScreen);
+    long desk = 0, n = 0;
+    long cur[1] = {};
+    if (RootCardinals("_NET_CURRENT_DESKTOP", 0, 1, cur, &n) && n == 1 &&
+        cur[0] >= 0) {
+        desk = cur[0];
+    }
+    long wa[4] = {};
+    if (!RootCardinals("_NET_WORKAREA", desk * 4, 4, wa, &n) || n != 4) {
+        if (desk == 0 || !RootCardinals("_NET_WORKAREA", 0, 4, wa, &n) ||
+            n != 4) {
+            return;
+        }
+    }
+    if (wa[2] <= 0 || wa[3] <= 0) {
+        return;
+    }
+    *x = (int)wa[0];
+    *y = (int)wa[1];
+    *w = (int)wa[2];
+    *h = (int)wa[3];
+}
+
 Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     if (!gDpy) {
         return nullptr;
@@ -1778,16 +1840,18 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     if (!win) {
         return nullptr;
     }
-    int sw = DisplayWidth(gDpy, gScreen);
-    int sh = DisplayHeight(gDpy, gScreen);
+    // Centred in and clamped to the work area, as window_win.cpp does with
+    // SPI_GETWORKAREA and window_mac.cpp with visibleFrame.
+    int wx = 0, wy = 0, sw = 0, sh = 0;
+    X11WorkArea(&wx, &wy, &sw, &sh);
     WindowClampToDisplay(&dipW, &dipH, sw, sh);
 
     auto* pw = new PlatWindow();
     pw->pxW = dipW;
     pw->pxH = dipH;
 
-    int x = (sw - dipW) / 2;
-    int y = (sh - dipH) / 2;
+    int x = wx + (sw - dipW) / 2;
+    int y = wy + (sh - dipH) / 2;
 
     XSetWindowAttributes attrs = {};
     attrs.background_pixel = BlackPixel(gDpy, gScreen);

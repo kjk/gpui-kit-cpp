@@ -71,10 +71,6 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   a handle here knows containment only through a focus trap, which would
   also keep Tab inside, so the toolbar records its laid-out bounds and roves
   among the tab stops whose centre lies within them (`src/base/toolbar.cpp`).
-- **Linux centres a new window on the whole X display.** GPUI's
-  `Bounds::centered` uses the display's visible bounds; Windows and macOS read
-  the work area, the X11 path does not read `_NET_WORKAREA`
-  (`src/gpui/window_linux.cpp`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
