@@ -1329,9 +1329,39 @@ El* CarouselControl::IntoEl() {
     if (!disabled)
         button->OnClick(next ? ListenTo(state, &CarouselState::OnNext)
                              : ListenTo(state, &CarouselState::OnPrevious));
-    El* root = button->IntoEl()->Refine(style, styleSet);
-    refiner.Apply(root);
-    return root;
+    // carousel_control: the button is absolute and fully rounded, beside
+    // the frame on the side it moves toward — right_full / left_full with
+    // mr_4 / ml_4 and centred by my_auto across, or bottom_full / top_full
+    // with mb_4 / mt_4 and mx_auto upright.
+    El* btn = button->IntoEl()->Absolute();
+    if (!vertical) {
+        btn->Top(0)->Bottom(0);
+        btn->style.marginAuto |= kMarginAutoT | kMarginAutoB;
+        if (next) {
+            btn->LeftRel(1.f)->MarginL(16);
+        } else {
+            btn->RightRel(1.f)->MarginR(16);
+        }
+    } else {
+        btn->Left(0)->Right(0);
+        btn->style.marginAuto |= kMarginAutoL | kMarginAutoR;
+        if (next) {
+            btn->TopRel(1.f)->MarginT(16);
+        } else {
+            btn->BottomRel(1.f)->MarginB(16);
+        }
+    }
+    btn->Refine(style, styleSet);
+    refiner.Apply(btn);
+    // The box it is placed against: absolute over the carousel's frame, the
+    // frame's size once it has one and the whole carousel until then.
+    El* root = Div(a)->Absolute()->Top(0)->Left(0);
+    if (snapshot && snapshot->frame.w > 0 && snapshot->frame.h > 0) {
+        root->W(snapshot->frame.w)->H(snapshot->frame.h);
+    } else {
+        root->Right(0)->Bottom(0);
+    }
+    return root->Child(btn);
 }
 CarouselPrevious* CarouselPrevious::New(Ctx* cx, Entity<CarouselState> state) {
     CarouselPrevious* value = CarouselPart<CarouselPrevious>(cx);
