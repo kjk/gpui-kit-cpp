@@ -745,6 +745,8 @@ src/wry/               the wry webview crate, ported (readme.md)
 src/autocorrect/       the autocorrect CJK linter crate, ported (readme.md)
 src/webview/           crates/webview: the view that gives a wry webview a box
 src/shell/             crates/shell: sandboxed JS apps; fetch.h is the policy
+src/component_shell/   crates/component-shell: the gpui-component catalog the
+                       shell registers (component_registry.h is the API)
 src/quickjs/           the reduced QuickJS-NG, generated, compiled as C11
 
 examples/              AppLog.cpp (log hooks) + every example, showcase/, story/

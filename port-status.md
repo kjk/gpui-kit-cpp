@@ -8,7 +8,8 @@ session to rediscover it. This is not a changelog — do not log what was done.
 The shared story gallery pages in `crates/story` are ported. Everything in
 `crates/base`, `crates/component`,
 `crates/base/examples/showcase`, `crates/fps`, `crates/webview`,
-`crates/shell` and `examples/` is ported and builds on Windows, Linux, macOS
+`crates/shell`, `crates/component-shell` and `examples/` is ported and builds on
+Windows, Linux, macOS
 and wasm. The portable library also cross-compiles for iOS and Android; their
 application-owned native window/paint adapters remain integration work. The
 work left is mostly depth.
@@ -143,10 +144,46 @@ update target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   styled surface. So `arrow` fills with that surface's background and outlines
   with its border, or with the ring `PopoverSurface` draws, instead of reading
   `appearance` (`src/ui/popover.cpp`).
-- **`crates/component-shell` registrations are not ported.** The C++ shell
-  materializes the base components; the styled Carousel, Chart, Toolbar,
-  Questionnaire and TimeField registrations and `examples/js_story` have no
-  counterpart (`src/shell/runtime.cpp`).
+- **The shell's component catalog is not independent of the component
+  library.** `src/component_shell` registers into the ported registry as
+  crates/component-shell does, and `gpui_shell` is always the component
+  shell; but `src/shell` still includes `ui/` headers (root, sheet, theme,
+  input), so Rust's "the runtime depends on no component library" holds
+  only for `component_shell/`. There is no catalog window opener (ShellRoot
+  hosts the overlays), no single-mount `LoadedApplication` (a `ViewType` is
+  refcounted), and a template refuses a registered component, whose payload
+  lives in the arena that recorded it (`src/shell/component_registry.h`).
+- **Registered components render within one frame's description.** A typed
+  part is rendered standalone and again by its parent; deferred slots,
+  delegate rows and window-effect surfaces (Dialog, Sheet, ...) are rebuilt
+  from the latest render rather than a leased snapshot, so an open surface
+  shows the current render's content and callbacks. A retained InputState
+  has one change listener, so when two components render one state the last
+  wins. Accordion's `on_toggle` reports only trigger clicks
+  (`src/component_shell/`).
+- **Registered components that need a number before layout take it from the
+  script's style.** MessageScroller, List, Tree and DataTable virtualize from
+  a definite height in the style (List/Tree default to 320); Settings picks
+  its stacked layout from last frame's width. Scroll/Scrollbar has no
+  overlay bar reading a shared handle: the viewport paints its own bar from
+  the ScrollbarHandle entity, and a Scrollbar placed after its viewport
+  takes effect a frame later (`src/component_shell/scroll/`).
+- **Registered-component numbers are ints.** usize counts and indices
+  (Badge, Rating, pagination, textarea rows, chart ticks, ...) are clamped
+  to INT_MAX, OtpState is capped at 64 cells, and chart rows are narrowed to
+  f32. Id checks trim ASCII whitespace only.
+- **Component-shell gaps against the Rust components.** DropdownButton's
+  `bottom_*` anchors do not open upward; a disabled Link takes no click;
+  MenuItem/Menu `disabled` and the retained forms' `disabled()` are inert
+  (upstream records them as common behaviors and drops the op — ported
+  as-is); Progress is 200 wide unless styled; a plain Textarea's height
+  follows `rows`; the Editor's gutter is narrower; InputGroup lacks the
+  inline-addon inset, border/background transitions and ghost colours.
+- **Some script style names apply partly or not at all.** Fractions of
+  `min_*`, `max_h`, padding, margin and gap (except `_full`), grid placement,
+  underline thickness and wavy style, start/middle ellipsis and `debug*` are
+  accepted and ignored; `text_bg` is validated but not painted; negative
+  sizes clamp to 0; unknown names get no "did you mean" (`src/shell/style.cpp`).
 - **A script TextView's images outlive the view.** They load under the
   script's network grant as upstream's do, but the per-view owner is window
   keyed state and the decoded pixels sit in the app's encoded-image cache, so
