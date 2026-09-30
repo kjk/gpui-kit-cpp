@@ -4922,6 +4922,11 @@ void InputSetValue(InputState* s, Str value);
 // replace_all(): the same replacement, but recorded so it can be undone.
 void InputReplaceAll(InputState* s, App* app, Window* win, Str value);
 void InputSetPlaceholder(InputState* s, Str value);
+// TextareaState::set_auto_grow / set_rows: grow between the two row counts,
+// or a fixed row count (which an auto-growing textarea also takes as its
+// maximum). Both only make sense on a textarea.
+void TextareaSetAutoGrow(InputState* s, int minRows, int maxRows);
+void TextareaSetRows(InputState* s, int rows);
 void InputSetMaskPattern(InputState* s, MaskPattern pattern);
 // clean(): empties the field.
 void InputClean(InputState* s, App* app, Window* win);

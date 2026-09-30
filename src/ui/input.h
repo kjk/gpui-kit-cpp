@@ -158,6 +158,8 @@ struct Input {
     void* tokenClickUser = nullptr;
     EditorContextMenuFn contextMenu = nullptr;
     void* contextMenuData = nullptr;
+    // Styled::style: the caller's refinement, applied to the root last.
+    ElRefiner refiner = {};
 
     static Input* New(Ctx* cx, Str id, InputState* state);
     // context_menu(..): overrides the built-in right-click menu.
@@ -357,6 +359,9 @@ struct Textarea {
     Str ariaLabel = {};
     Str accessibilityId = {};
     bool appearance = true;
+    // bordered(): the 1px input border under the appearance, and the focus
+    // ring that follows it.
+    bool bordered = true;
     bool disabled = false;
     bool readonly = false;
     bool focusRing = true;
@@ -369,6 +374,8 @@ struct Textarea {
     void* tokenClickUser = nullptr;
     EditorContextMenuFn contextMenu = nullptr;
     void* contextMenuData = nullptr;
+    // Styled::style: the caller's refinement, applied to the root last.
+    ElRefiner refiner = {};
 
     static Textarea* New(Ctx* cx, Str id, InputState* state);
     // context_menu(..): overrides the built-in right-click menu.
@@ -386,6 +393,7 @@ struct Textarea {
     Textarea* Disabled(bool v);
     Textarea* Readonly(bool v = true);
     Textarea* Appearance(bool v);
+    Textarea* Bordered(bool v);
     Textarea* FocusRing(bool v);
     Textarea* OnFocus(Listener fn);
     Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
@@ -419,6 +427,7 @@ struct InputGroupButton {
     Ctx* cx = nullptr;
     Button* button = nullptr;
     UiSize size = UiSize::XSmall;
+    ElRefiner refiner = {};
 
     static InputGroupButton* New(Ctx* cx, Str id);
     InputGroupButton* Label(Str s);
@@ -433,6 +442,8 @@ struct InputGroupButton {
     InputGroupButton* Outline();
     InputGroupButton* OnClick(Listener fn);
     InputGroupButton* Child(El* el);
+    // render_in_group: a group that is disabled disables its buttons too.
+    El* RenderInGroup(bool disabled);
     El* IntoEl();
 };
 
@@ -441,24 +452,37 @@ struct InputGroupText {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     ArenaVec<El*> children;
+    ElRefiner refiner = {};
 
     static InputGroupText* New(Ctx* cx);
     InputGroupText* Child(El* el);
     El* IntoEl();
 };
 
-// InputGroupAddon: text, icons and buttons on one side of the frame.
+// One child of an addon: an element, or an InputGroupButton the addon renders
+// itself so that the group's disabled state reaches it.
+struct InputGroupAddonChild {
+    El* el = nullptr;
+    InputGroupButton* button = nullptr;
+};
+
+// InputGroupAddon: text, icons and buttons on one side of the frame. Direct
+// InputGroupButton children inherit the group's disabled state.
 struct InputGroupAddon {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
     InputGroupAddonAlignment alignment = InputGroupAddonAlignment::InlineStart;
     UiSize size = UiSize::Medium;
-    ArenaVec<El*> children;
+    ArenaVec<InputGroupAddonChild> children;
+    ElRefiner refiner = {};
 
     static InputGroupAddon* New(Ctx* cx, Str id);
     InputGroupAddon* Align(InputGroupAddonAlignment v);
     InputGroupAddon* Child(El* el);
+    InputGroupAddon* Child(InputGroupButton* button);
+    // render_in_group, with the group's disabled state.
+    El* RenderInGroup(bool disabled);
     El* IntoEl();
 };
 
@@ -488,6 +512,8 @@ struct InputGroup {
     bool invalid = false;
     bool focusRing = true;
     Str ariaLabel = {};
+    // Styled::style: the group's refinement, applied to the frame.
+    ElRefiner refiner = {};
     // Filled by IntoEl so a host can apply the control's own style ops
     // after the group has stripped appearance and the focus ring.
     El* controlEl = nullptr;

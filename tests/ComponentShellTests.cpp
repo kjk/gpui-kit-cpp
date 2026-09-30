@@ -1998,6 +1998,134 @@ void EmptyRejectsWrongSlotTypesAndOrdinaryHeaderChildren() {
     ArenaDelete(a);
 }
 
+// ─── Shared helpers for the text-control families ──────────────────────────
+
+// Every element bound to a text field, in tree order.
+void CollectInputs(El* element, InputState** out, int* count, int max) {
+    if (!element) return;
+    if (element->input && *count < max) {
+        bool seen = false;
+        for (int i = 0; i < *count; i++)
+            seen = seen || out[i] == element->input;
+        if (!seen) out[(*count)++] = element->input;
+    }
+    for (El* child = element->first; child; child = child->next)
+        CollectInputs(child, out, count, max);
+}
+
+// Types `text` one character at a time, the way simulated input arrives:
+// one edit, and so one change, per character.
+void TypeInto(Host& host, InputState* state, const char* text) {
+    for (const char* at = text; *at; at++) {
+        InputReplaceTextInRange(state, &host.app, &host.window, nullptr,
+                                Str(at, 1));
+    }
+}
+
+El* FindById(El* element, Str id) {
+    if (!element) return nullptr;
+    if (StrEq(element->id, id)) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindById(child, id)) return found;
+    }
+    return nullptr;
+}
+
+// The order `a` comes before `b` in a depth-first walk.
+bool Precedes(El* root, Str a, Str b) {
+    struct Walk {
+        static void Visit(El* element, Str a, Str b, int* at, int* ia,
+                          int* ib) {
+            if (!element) return;
+            int here = (*at)++;
+            if (*ia < 0 && StrEq(element->id, a)) *ia = here;
+            if (*ib < 0 && StrEq(element->id, b)) *ib = here;
+            for (El* child = element->first; child; child = child->next)
+                Visit(child, a, b, at, ia, ib);
+        }
+    };
+    int at = 0, ia = -1, ib = -1;
+    Walk::Visit(root, a, b, &at, &ia, &ib);
+    return ia >= 0 && ib >= 0 && ia < ib;
+}
+
+// What a script that renders `source` was refused with: a TypeError from the
+// description, or the reason its registered component failed to render.
+Str RenderRefusal(Host& host) {
+    host.Render();
+    Str message = host.ViewError();
+    if (!len(message)) message = host.error.message;
+    if (!len(message) && host.runtime)
+        message = host.runtime->LastComponentFailure();
+    return message;
+}
+
+// ─── input_group/: mod.rs, binding.rs, content_type.rs ─────────────────────
+
+void InputGroupRegistersItsSixDocumentedParts() {
+    FamilyCatalog catalog(&component_shell::RegisterInputGroup);
+    utassert(catalog.ok);
+    const char* names[] = {"InputGroup",         "InputGroupAddon",
+                           "InputGroupButton",   "InputGroupInput",
+                           "InputGroupTextarea", "InputGroupText"};
+    utassert(catalog.NamesAre(names, 6));
+    utassert(catalog.Documented());
+    utassert(catalog.frozen.StateCount() == 0);
+}
+
+// binding.rs rows / auto_grow.
+void TextareaRowsArePositiveWholeCounts() {
+    shell::ComponentArgument arg;
+    arg.kind = shell::ComponentArgumentKind::Number;
+    int rows = 0;
+    Str error;
+    arg.number = 3;
+    utassert(component_shell::input_group::binding::Rows(arg, &rows, &error) &&
+             rows == 3);
+    const double refused[] = {0.0, -1.0,     1.5,
+                              NAN, INFINITY, 18446744073709551616.0};
+    for (double value : refused) {
+        arg.number = value;
+        utassert(
+            !component_shell::input_group::binding::Rows(arg, &rows, &error));
+        utassert(
+            StrEq(error, StrL("textarea rows must be a positive integer")));
+    }
+}
+
+// input_group_host.rs input_group_retains_text_callbacks_and_routes_addon_
+// actions. Typing is the retained state's own edit path, one edit per
+// character as simulated input delivers; clicks are the controls' listeners.
+// Layout bounds are not measured here, so the addon order is the tree's.
+// input_group_host.rs input_group_rejects_wrong_part_types_and_invalid_
+// layout_options.
+
+// Walks for the first element carrying a click Func0 (a token chip's
+// activation) and runs it.
+// inline_tokens_host.rs inline_tokens_script_operations_and_click_reentry.
+// The token chip's click is its activation handler, run directly.
+
+// retained_forms_publish_matching_state_and_component_contracts
+// state_arguments_are_closed_and_component_state_kinds_match
+// positive_usize_rejects_values_that_round_past_usize_max
+// positive_usize_accepts_only_exact_positive_integers
+// otp_leaf_contract_rejects_ordinary_children
+// public_host.rs all_retained_form_bindings_materialize_and_keep_their_
+// state_across_frames: two renders, each building every control.
+// retained_otp_rejects_an_ordinary_child_during_public_host_materialization
+// retained_state_constructor_rejects_rounded_overflow_from_js
+// component_state_exports_do_not_shadow_same_named_gpui_base_exports
+
+// registers_only_real_constructible_layout_surfaces
+// resizable.rs numeric_contracts_are_closed
+// resizable.rs group_rejects_style_and_wrong_children
+// textarea.rs textarea_is_an_exact_leaf
+// layout_host.rs layout_catalog_has_closed_real_state_and_typed_layout_
+// contracts
+// layout_host.rs textarea_state_survives_two_native_draws_with_methods_and_
+// style: the same retained state, with its methods, across two renders.
+// layout_host.rs resizable_consumes_two_real_typed_panels_with_methods_
+// style_and_children
 } // namespace
 
 void TestComponentShell() {
@@ -2081,4 +2209,8 @@ void TestComponentShell() {
     BatchPublishesClosedDocumentedDescriptors();
     TypedContainersReportTheirSelection();
     TypedContainersRefuseForeignChildren();
+
+    TestSuite("input_group");
+    InputGroupRegistersItsSixDocumentedParts();
+    TextareaRowsArePositiveWholeCounts();
 }

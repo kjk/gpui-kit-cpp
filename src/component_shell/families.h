@@ -15,6 +15,7 @@ bool RegisterSpinner(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterSeparator(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterSkeleton(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterEmpty(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterInputGroup(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterControls(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);

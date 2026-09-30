@@ -53,6 +53,11 @@ El* TypedChildElement(Ctx* cx, const void* tag, void* value, El* rendered) {
     return host;
 }
 
+bool IsTypedElement(El* element, const void* tag) {
+    TypedChildBox* box = BoxOf(element);
+    return box && box->tag == tag && !box->taken;
+}
+
 void* TakeElement(MaterializeRequest* request, El* element, const void* tag,
                   const char* name) {
     TypedChildBox* box = BoxOf(element);

@@ -33,6 +33,16 @@ El* TypedChildElement(Ctx* cx, const void* tag, void* value, El* rendered);
 void* TakeElement(MaterializeRequest* request, El* element, const void* tag,
                   const char* name);
 
+// `element.downcast_mut::<TypedChildElement<T>>().is_some()`: whether
+// `element` is a typed part of `tag` still holding its value, without taking
+// it or failing the request.
+bool IsTypedElement(El* element, const void* tag);
+
+template <class T>
+bool IsTypedElementOf(El* element) {
+    return IsTypedElement(element, shell::PayloadTag<T>());
+}
+
 template <class T>
 El* TypedChildElementOf(Ctx* cx, T* value) {
     return TypedChildElement(cx, shell::PayloadTag<T>(), value,

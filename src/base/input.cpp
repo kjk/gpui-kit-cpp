@@ -1902,6 +1902,19 @@ void LayoutModeSetRows(LayoutMode* m, int rows) {
     m->rows = rows;
 }
 
+void TextareaSetAutoGrow(InputState* s, int minRows, int maxRows) {
+    // LayoutMode::auto_grow(min_rows, max_rows.max(min_rows)).
+    s->mode.kind = LayoutModeKind::AutoGrow;
+    s->mode.rows = minRows;
+    s->mode.minRows = minRows;
+    s->mode.maxRows = maxRows > minRows ? maxRows : minRows;
+}
+
+void TextareaSetRows(InputState* s, int rows) {
+    s->mode.rows = rows;
+    if (s->mode.kind == LayoutModeKind::AutoGrow) s->mode.maxRows = rows;
+}
+
 int LayoutModeRows(const LayoutMode& m) {
     return m.rows > 1 ? m.rows : 1; // "At least 1 row be return."
 }

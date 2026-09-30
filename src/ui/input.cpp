@@ -883,9 +883,11 @@ El* Input::IntoEl() {
     BindInputContextMenu(cx, field, id, state, disabled, contextMenu,
                          contextMenuData);
     if (!col) {
+        refiner.Apply(field);
         return field;
     }
     col->Child(field);
+    refiner.Apply(col);
     return col;
 }
 
@@ -936,6 +938,10 @@ Textarea* Textarea::Readonly(bool v) {
 }
 Textarea* Textarea::Appearance(bool v) {
     appearance = v;
+    return this;
+}
+Textarea* Textarea::Bordered(bool v) {
+    bordered = v;
     return this;
 }
 Textarea* Textarea::FocusRing(bool v) {
@@ -1027,10 +1033,11 @@ El* Textarea::IntoEl() {
         box->AccessibilityId(accessibilityId);
     }
     if (appearance) {
-        box->Radius(th.radius)
-            ->Bg(th.inputBg)
-            ->Border(1, focused ? th.ring : th.inputBorder)
-            ->FocusRing(focusRing);
+        box->Radius(th.radius)->Bg(th.inputBg);
+        if (bordered) {
+            box->Border(1, focused ? th.ring : th.inputBorder)
+                ->FocusRing(focusRing);
+        }
     }
     if (state) {
         box->AriaValue(InputValue(state));
@@ -1055,6 +1062,7 @@ El* Textarea::IntoEl() {
     if (onFocus.IsValid()) {
         box->OnClick(onFocus);
     }
+    refiner.Apply(box);
     return box;
 }
 
@@ -1838,8 +1846,15 @@ InputGroupButton* InputGroupButton::Child(El* el) {
 }
 
 El* InputGroupButton::IntoEl() {
+    return RenderInGroup(false);
+}
+
+El* InputGroupButton::RenderInGroup(bool disabled) {
     if (!button) {
         return Div(a);
+    }
+    if (disabled) {
+        button->Disabled(true);
     }
     bool iconOnly = !button->label.s &&
                     (button->icon != IconName::None || button->buttonIcon);
@@ -1851,7 +1866,9 @@ El* InputGroupButton::IntoEl() {
     } else {
         button->WithSize(size);
     }
-    return button->IntoEl();
+    El* el = button->IntoEl();
+    refiner.Apply(el);
+    return el;
 }
 
 InputGroupText* InputGroupText::New(Ctx* cx) {
@@ -1872,6 +1889,7 @@ InputGroupText* InputGroupText::Child(El* el) {
 El* InputGroupText::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+    refiner.Apply(row);
     for (El* c : children) {
         if (c) {
             c->Fg(th.mutedFg);
@@ -1897,12 +1915,27 @@ InputGroupAddon* InputGroupAddon::Align(InputGroupAddonAlignment v) {
 
 InputGroupAddon* InputGroupAddon::Child(El* el) {
     if (el) {
-        children.Append(a, el);
+        InputGroupAddonChild child;
+        child.el = el;
+        children.Append(a, child);
+    }
+    return this;
+}
+
+InputGroupAddon* InputGroupAddon::Child(InputGroupButton* button) {
+    if (button) {
+        InputGroupAddonChild child;
+        child.button = button;
+        children.Append(a, child);
     }
     return this;
 }
 
 El* InputGroupAddon::IntoEl() {
+    return RenderInGroup(false);
+}
+
+El* InputGroupAddon::RenderInGroup(bool disabled) {
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)->Id(id)->FlexRow()->Gap(8)->ItemsCenter()->Shrink0();
     bool compact = size == UiSize::XSmall || size == UiSize::Small;
@@ -1922,8 +1955,9 @@ El* InputGroupAddon::IntoEl() {
             break;
     }
     (void)th;
-    for (El* c : children) {
-        row->Child(c);
+    refiner.Apply(row);
+    for (const InputGroupAddonChild& c : children) {
+        row->Child(c.button ? c.button->RenderInGroup(disabled) : c.el);
     }
     return row;
 }
@@ -2001,7 +2035,12 @@ El* InputGroup::IntoEl() {
     InputState* state = nullptr;
     bool controlDisabled = false;
     bool multiline = false;
+    // The control's own style wins over the group's presets, so it is
+    // applied after them rather than by the control.
+    ElRefiner controlStyle = {};
     if (input) {
+        controlStyle = input->refiner;
+        input->refiner = {};
         state = input->state;
         controlDisabled = input->disabled;
         input->WithSize(size)
@@ -2010,6 +2049,8 @@ El* InputGroup::IntoEl() {
             ->Disabled(disabled || input->disabled)
             ->Readonly(readonly || input->readonly);
     } else if (textarea) {
+        controlStyle = textarea->refiner;
+        textarea->refiner = {};
         state = textarea->state;
         controlDisabled = textarea->disabled;
         multiline = true;
@@ -2070,6 +2111,7 @@ El* InputGroup::IntoEl() {
                                            : 32.f;
         frame->H(h);
     }
+    refiner.Apply(frame);
     if (groupDisabled) {
         frame->Opacity(0.5f);
     }
@@ -2099,31 +2141,33 @@ El* InputGroup::IntoEl() {
     for (InputGroupAddon* addon : addons) {
         addon->size = size;
         if (addon->alignment == InputGroupAddonAlignment::BlockStart) {
-            frame->Child(addon->IntoEl());
+            frame->Child(addon->RenderInGroup(groupDisabled));
         }
     }
     for (InputGroupAddon* addon : addons) {
         if (addon->alignment == InputGroupAddonAlignment::InlineStart) {
-            row->Child(addon->IntoEl());
+            row->Child(addon->RenderInGroup(groupDisabled));
         }
     }
     if (input) {
         controlEl = input->IntoEl()->Flex1();
+        controlStyle.Apply(controlEl);
         row->Child(controlEl);
     } else if (textarea) {
         controlEl = textarea->IntoEl();
         controlEl->Flex1()->MinH(64);
+        controlStyle.Apply(controlEl);
         row->Child(controlEl);
     }
     for (InputGroupAddon* addon : addons) {
         if (addon->alignment == InputGroupAddonAlignment::InlineEnd) {
-            row->Child(addon->IntoEl());
+            row->Child(addon->RenderInGroup(groupDisabled));
         }
     }
     frame->Child(row);
     for (InputGroupAddon* addon : addons) {
         if (addon->alignment == InputGroupAddonAlignment::BlockEnd) {
-            frame->Child(addon->IntoEl());
+            frame->Child(addon->RenderInGroup(groupDisabled));
         }
     }
     (void)inlineStart;

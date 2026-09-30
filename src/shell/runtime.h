@@ -35,6 +35,12 @@ class ShellRuntime {
     // Adapter-owned retained state, when `handle` is live and of `kind`.
     void* ComponentState(uint64_t handle, const char* kind,
                          Str* error = nullptr, Arena* a = nullptr) const;
+    // Why the last registered component this runtime materialized failed:
+    // the message Rust's `check` answers with. A registered failure renders
+    // as "Failed to render X" rather than failing the frame, so this is how a
+    // host (and a test) reads the reason. Empty until one fails.
+    Str LastComponentFailure() const;
+    void NoteComponentFailure(Str message);
     ShellRuntime* Retain();
     void Release();
 

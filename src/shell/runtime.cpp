@@ -380,6 +380,8 @@ struct ShellRuntimeImpl {
     Str componentStateProof;
     // The module source the catalog is imported as, built once.
     Str componentModuleSource;
+    // ShellRuntime::LastComponentFailure. Owned.
+    Str lastComponentFailure;
     // Deprecated exports already warned about, once each.
     Vec<const char*> warnedDeprecatedExports;
 };
@@ -3450,7 +3452,11 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
     bool buttonCallback =
         StrEq(name, StrL("on_mouse_down")) || StrEq(name, StrL("on_mouse_up"));
     if (actionCallback || buttonCallback) {
-        if (shell::ScopeCurrentPhase() == ScopePhase::Layout) {
+        // An interactive inline renderer (Rust's interactive_inline_layout,
+        // tokenRender here) keeps its handlers until the next frame replaces
+        // them, so it may register them in Layout.
+        if (shell::ScopeCurrentPhase() == ScopePhase::Layout &&
+            !impl->callbacks.tokenRender) {
             JSValue thrown = JS_ThrowTypeError(
                 ctx,
                 "`%.*s` cannot be registered from a virtual list's item "
@@ -3537,7 +3543,8 @@ static JSValue NativeApply(JSContext* ctx, JSValueConst, int argc,
     uint16_t slotArgument = 0;
     shell::SlotSiteKind slotSite = shell::SlotSiteKind::Handler;
     if (IsCallbackMethod(name)) {
-        if (shell::ScopeCurrentPhase() == ScopePhase::Layout) {
+        if (shell::ScopeCurrentPhase() == ScopePhase::Layout &&
+            !impl->callbacks.tokenRender) {
             ArenaDelete(arena);
             return JS_ThrowTypeError(
                 ctx,
@@ -11063,6 +11070,7 @@ ShellRuntime::~ShellRuntime() {
         impl->componentStates.Clear();
         StrFree(impl->componentStateProof);
         StrFree(impl->componentModuleSource);
+        StrFree(impl->lastComponentFailure);
         VecReset(impl->warnedDeprecatedExports);
         // Each holds a live view class, which must be released while the
         // context still exists — and the panel registry keeps a second
@@ -12631,6 +12639,16 @@ void ShellRuntime::DispatchTokenClick(shell::CallbackId click,
 
 const shell::FrozenComponentRegistry* ShellRuntime::Components() const {
     return impl ? impl->components : nullptr;
+}
+
+Str ShellRuntime::LastComponentFailure() const {
+    return impl ? impl->lastComponentFailure : Str{};
+}
+
+void ShellRuntime::NoteComponentFailure(Str message) {
+    if (!impl) return;
+    StrFree(impl->lastComponentFailure);
+    impl->lastComponentFailure = StrDup(message);
 }
 
 void* ShellRuntime::ComponentState(uint64_t handle, const char* kind,

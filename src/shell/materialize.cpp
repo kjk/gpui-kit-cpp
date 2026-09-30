@@ -2709,10 +2709,34 @@ static El* MaterializeRegistered(Ctx* cx, ShellRuntime* runtime,
     request.selected = behavior.selected;
     request.onClick = behavior.onClick;
     request.error = error;
+    // Filling the same slot twice replaces it, the way resolve() folds the
+    // slot specs: the last call in the chain is what the script meant, and
+    // the ones it replaced are never built. They count as read.
+    int opCount = 0;
+    for (const shell::SpecOp& op : node->ops) {
+        (void)op;
+        opCount++;
+    }
+    request.slotTaken = (bool*)Alloc(cx->a, (int)sizeof(bool) * (opCount + 1));
+    memset(request.slotTaken, 0, sizeof(bool) * (size_t)(opCount + 1));
+    int slotAt = 0;
+    for (const shell::SpecOp& op : node->ops) {
+        int at = slotAt++;
+        if (op.kind != shell::SpecOpKind::Slot) continue;
+        int laterAt = 0;
+        for (const shell::SpecOp& later : node->ops) {
+            if (laterAt++ > at && later.kind == shell::SpecOpKind::Slot &&
+                StrEq(later.name, op.name)) {
+                request.slotTaken[at] = true;
+                break;
+            }
+        }
+    }
     El* element = descriptor->materialize(&request);
     if (!element) {
         Str why = request.failure.s ? request.failure : StrL("no element");
         logf("shell: failed to materialize `%s`: %s\n", name, why);
+        if (runtime) runtime->NoteComponentFailure(why);
         return Div(cx->a)->Child(
             TextEl(cx->a, StrDup(cx->a, fmt("Failed to render %s", name))));
     }
