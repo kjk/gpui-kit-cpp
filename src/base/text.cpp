@@ -2943,11 +2943,12 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         if (RevealIn(n, &reveal)) {
             RevealMark(t, 0, reveal);
         }
-        if (align == MdAlignCenter || align == MdAlignRight) {
-            // The text shrink-wraps so the box around it can push it over.
-            return AlignRow(Div(a)->FlexRow()->W(kFill), align)
-                ->Child(t)
-                ->ReportLineSpan(font * kLineHeight);
+        // text_center / text_right on the cell: the run fills the cell and
+        // each of its wrapped lines is aligned inside it.
+        if (align == MdAlignCenter) {
+            t->TextCenter();
+        } else if (align == MdAlignRight) {
+            t->TextRight();
         }
         return t->W(kFill)->ReportLineSpan(font * kLineHeight);
     }

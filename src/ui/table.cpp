@@ -304,6 +304,7 @@ El* TableCaption::IntoEl() {
                 ->W(kFill)
                 ->FlexRow()
                 ->JustifyCenter()
+                ->TextCenter()
                 ->PadX(p.left)
                 ->PadY(p.top);
     for (El* c : children) {

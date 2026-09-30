@@ -785,8 +785,8 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     uint8_t* copy = (uint8_t*)Alloc(nullptr, (int)bytes);
     if (!copy) return nullptr;
     memcpy(copy, bgra, bytes);
-    CGDataProviderRef provider = CGDataProviderCreateWithData(
-        nullptr, copy, bytes, ReleaseRawImageData);
+    CGDataProviderRef provider =
+        CGDataProviderCreateWithData(nullptr, copy, bytes, ReleaseRawImageData);
     if (!provider) {
         Free(nullptr, copy);
         return nullptr;
@@ -795,11 +795,10 @@ RenderImage* RenderImageFromBgra(PaintApp* pa, const uint8_t* bgra, int w,
     CGBitmapInfo bitmapInfo =
         (CGBitmapInfo)((uint32_t)kCGImageAlphaPremultipliedFirst |
                        (uint32_t)kCGBitmapByteOrder32Little);
-    CGImageRef cg = space
-        ? CGImageCreate(w, h, 8, 32, (size_t)w * 4, space,
-                        bitmapInfo,
-                        provider, nullptr, false, kCGRenderingIntentDefault)
-        : nullptr;
+    CGImageRef cg = space ? CGImageCreate(w, h, 8, 32, (size_t)w * 4, space,
+                                          bitmapInfo, provider, nullptr, false,
+                                          kCGRenderingIntentDefault)
+                          : nullptr;
     if (space) CGColorSpaceRelease(space);
     CGDataProviderRelease(provider);
     if (!cg) return nullptr;
@@ -988,14 +987,17 @@ struct MacLine {
     int start = 0; // UTF-16 index into the whole string
     int len = 0;
     float width = 0;
+    // text_align: where the line starts inside the layout's box.
+    float dx = 0;
 };
 
 struct TextLayout {
     uint64_t generation = 0;
     int refs = 1;
     // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again.
+    // measuring again: the lines' extent, and how far the aligned ones reach.
     Size size = {};
+    Size cover = {};
     CFAttributedStringRef attr = nullptr;
     MacLine* lines = nullptr;
     int nLines = 0;
@@ -1091,8 +1093,8 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint8_t weight) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH,
-                          Size* outSize) {
+                          bool wrap, uint8_t weight, float lineH, Size* outSize,
+                          TextAlign align) {
     if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }
@@ -1221,6 +1223,20 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     tl->size = Size{width, tl->box * (float)nLines};
+    tl->cover = tl->size;
+    // GPUI's aligned_origin_x, per line: inside the box the run was laid out
+    // in, or inside the widest line when it had none.
+    if (align != TextAlign::Left) {
+        float alignW = maxW > 0 ? maxW : width;
+        float f = align == TextAlign::Center ? 0.5f : 1.f;
+        for (int i = 0; i < nLines; i++) {
+            lines[i].dx = (alignW - lines[i].width) * f;
+            float right = lines[i].dx + lines[i].width;
+            if (right > tl->cover.w) {
+                tl->cover.w = right;
+            }
+        }
+    }
     if (outSize) {
         outSize->w = tl->size.w;
         outSize->h = tl->size.h;
@@ -1229,7 +1245,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
 }
 
 Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->size : Size{0, 0};
+    return tl ? tl->cover : Size{0, 0};
 }
 
 void TextLayoutAddRef(TextLayout* tl) {
@@ -1298,17 +1314,19 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
         // ellipsis.
         float boxH = tl->box * (float)tl->nLines;
         CGContextSaveGState(cg);
-        CGContextClipToRect(cg, CGRectMake(x, y - boxH, tl->width, boxH * 3.f));
+        CGContextClipToRect(cg,
+                            CGRectMake(x, y - boxH, tl->cover.w, boxH * 3.f));
     }
     SetFill(ctx, cg, c);
     CGContextSetTextMatrix(cg, CGAffineTransformMakeScale(1, -1));
     for (int i = 0; i < tl->nLines; i++) {
         float base = y + (float)i * tl->box + tl->baseline;
-        CGContextSetTextPosition(cg, x, base);
+        float lx = x + tl->lines[i].dx;
+        CGContextSetTextPosition(cg, lx, base);
         CTLineDraw(tl->lines[i].line, cg);
         if (tl->strike && tl->lines[i].width > 0) {
             CGContextFillRect(
-                cg, CGRectMake(x, base - tl->strikeOff, tl->lines[i].width,
+                cg, CGRectMake(lx, base - tl->strikeOff, tl->lines[i].width,
                                tl->strikeThick));
         }
     }
@@ -1330,7 +1348,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     }
     const MacLine& ml = tl->lines[row];
     CFIndex idx =
-        CTLineGetStringIndexForPosition(ml.line, CGPointMake(relX, 0));
+        CTLineGetStringIndexForPosition(ml.line, CGPointMake(relX - ml.dx, 0));
     if (idx == kCFNotFound) {
         idx = ml.start + ml.len;
     }
@@ -1363,7 +1381,7 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
             x0 = x1;
             x1 = t;
         }
-        out[n].x = (float)x0;
+        out[n].x = (float)x0 + ml.dx;
         out[n].y = (float)i * tl->box;
         out[n].w = (float)(x1 - x0);
         out[n].h = tl->box;

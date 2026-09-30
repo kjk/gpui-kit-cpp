@@ -211,9 +211,141 @@ static void TheResolvedAlignmentFollowsTheVariantUnlessSet() {
     ArenaDelete(a);
 }
 
+static El* FirstTextEl(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->kind == ElKind::Text) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* t = FirstTextEl(c)) {
+            return t;
+        }
+    }
+    return nullptr;
+}
+
+// marker.rs text_left / text_center / text_right on the content: a label
+// that wraps puts every one of its lines at that edge of its box, and a
+// click on a line lands on the glyph drawn there.
+static void AWrappedLabelAlignsEveryLine() {
+    App app = {};
+    component::Init(&app);
+    app.paint = PaintAppNew();
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    win->paint.pa = app.paint;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    PaintCtx* pc = &win->paint;
+
+    const MarkerAlignment aligns[] = {
+        MarkerAlignment::Start, MarkerAlignment::Center, MarkerAlignment::End};
+    for (MarkerAlignment align : aligns) {
+        Str label = StrL(
+            "A marker label long enough to wrap onto several "
+            "lines of uneven width here");
+        El* row = Marker::New(&cx)
+                      ->Alignment(align)
+                      ->Content(MarkerContent::New(&cx)->Text(label))
+                      ->IntoEl();
+        El* root = Div(a)->W(180)->Child(row);
+        LayoutEl(pc, root, 0, 0, 180, 600, 14, Rgba{});
+        El* t = FirstTextEl(row);
+        utassert(t != nullptr);
+        if (!t) {
+            continue;
+        }
+        Bounds lines[16] = {};
+        int n = ElTextRangeRects(pc, t, 0, len(t->text), lines, 16);
+        utassert(n >= 2);
+        // A wrapped line's rect keeps the space the wrap left behind, which
+        // the alignment does not count; allow for it.
+        const float slack = 6.f;
+        bool pushed = false;
+        for (int i = 0; i < n; i++) {
+            float left = lines[i].x - t->x;
+            float right = t->x + t->w - (lines[i].x + lines[i].w);
+            if (align == MarkerAlignment::Start) {
+                utassert(left >= -0.5f && left < 0.5f);
+            } else if (align == MarkerAlignment::Center) {
+                utassert(left - right > -slack && left - right < slack);
+            } else {
+                utassert(right > -slack && right < slack);
+            }
+            if (left > 2.f) {
+                pushed = true;
+            }
+        }
+        // Lines of different widths: something moved off the leading edge
+        // exactly when the label is not start-aligned.
+        utassert(pushed == (align != MarkerAlignment::Start));
+
+        // The hit test reads the same line positions the paint does: just
+        // inside the second line's leading edge is that line's first glyph.
+        float relX = lines[1].x - t->x + 1.f;
+        float relY = lines[1].y - t->y + lines[1].h * 0.5f;
+        TextAlign ta = align == MarkerAlignment::Start    ? TextAlign::Left
+                       : align == MarkerAlignment::Center ? TextAlign::Center
+                                                          : TextAlign::Right;
+        int at =
+            TextIndexAt(pc, t->text, t->laidFont, t->laidMaxW, t->style.wrap,
+                        relX, relY, false, t->style.lineHeight, ta);
+        Bounds glyph = {};
+        utassert(ElTextRangeRects(pc, t, at, at + 1, &glyph, 1) == 1);
+        utassertnear(glyph.x, lines[1].x);
+        a->Reset();
+    }
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    AppGlobalClear(&app);
+    PaintAppFree(app.paint);
+}
+
+// The runtime half on its own: a run that does not wrap but is given a wider
+// box sits at the box's far edge, and what the scene records for it covers
+// where it was drawn.
+static void AnAlignedRunCoversWhereItIsDrawn() {
+    PaintApp* pa = PaintAppNew();
+    utassert(pa);
+    if (!pa) {
+        return;
+    }
+    PaintCtx paint = {};
+    paint.pa = pa;
+    Size plain = {};
+    TextLayout* left =
+        TextLayoutNew(&paint, StrL("edge"), 14, 0, false, 0, 0, &plain);
+    Size size = {};
+    TextLayout* right = TextLayoutNew(&paint, StrL("edge"), 14, 200, false, 0,
+                                      0, &size, TextAlign::Right);
+    utassert(left && right);
+    if (left && right) {
+        // Alignment does not change what the text measures.
+        utassertnear(size.w, plain.w);
+        Bounds r = {};
+        utassert(TextLayoutRangeRects(right, StrL("edge"), 0, 4, &r, 1) == 1);
+        utassert(r.x + r.w > 199.f && r.x + r.w < 201.f);
+        utassert(TextLayoutSize(right).w > 199.f);
+        utassert(TextLayoutHitPoint(right, StrL("edge"), r.x + 0.5f, 5) == 0);
+        utassert(TextLayoutHitPoint(right, StrL("edge"), 10, 5) == 0);
+        utassertnear(TextLayoutSize(left).w, plain.w);
+    }
+    TextLayoutRelease(left);
+    TextLayoutRelease(right);
+    PaintAppFree(pa);
+}
+
 void TestMarker() {
     TestSuite("marker");
     TheBuilderCarriesVariantLoadingAndSlots();
     TheVariantsDrawTheirOwnDecoration();
     TheResolvedAlignmentFollowsTheVariantUnlessSet();
+    AWrappedLabelAlignsEveryLine();
+    AnAlignedRunCoversWhereItIsDrawn();
 }

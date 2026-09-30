@@ -1076,6 +1076,15 @@ struct TextLayout {
     float box = 0;
     float natural = 0;
     int lines = 1;
+    // text_align. A wrapping run aligns its lines inside the width Pango
+    // wraps at. A run that does not wrap has no width to Pango (setting one
+    // would wrap it), so Pango aligns its lines inside the widest and `dx`
+    // moves that block into the box it was given.
+    float dx = 0;
+    // The width Pango was given, restored after an ellipsized draw.
+    int width = -1;
+    // TextLayoutSize: how far the aligned lines reach.
+    Size cover = {};
 };
 
 // DirectWrite gets "Segoe UI" and "Consolas"; fontconfig resolves these two
@@ -1112,8 +1121,8 @@ static PangoWeight PangoWeightFor(uint8_t weight, float fontSize) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH,
-                          Size* outSize) {
+                          bool wrap, uint8_t weight, float lineH, Size* outSize,
+                          TextAlign align) {
     if (!ctx || !ctx->pa || !ctx->pa->pango || !s.s || len(s) <= 0) {
         return nullptr;
     }
@@ -1155,8 +1164,14 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     } else {
         pango_layout_set_width(l, -1);
     }
+    if (align != TextAlign::Left) {
+        pango_layout_set_alignment(l, align == TextAlign::Center
+                                          ? PANGO_ALIGN_CENTER
+                                          : PANGO_ALIGN_RIGHT);
+    }
 
     auto* tl = new TextLayout();
+    tl->width = pango_layout_get_width(l);
     tl->generation = PaintResourceGenerationNew();
     tl->layout = l;
     tl->lines = pango_layout_get_line_count(l);
@@ -1176,6 +1191,19 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         pango_layout_get_pixel_size(l, &pw, &ph);
     }
     tl->size = Size{(float)pw, tl->box * (float)tl->lines};
+    tl->cover = tl->size;
+    if (align != TextAlign::Left) {
+        if (tl->width < 0 && maxW > (float)pw) {
+            float f = align == TextAlign::Center ? 0.5f : 1.f;
+            tl->dx = (maxW - (float)pw) * f;
+        }
+        PangoRectangle logical = {};
+        pango_layout_get_pixel_extents(l, nullptr, &logical);
+        float right = tl->dx + (float)(logical.x + logical.width);
+        if (right > tl->cover.w) {
+            tl->cover.w = right;
+        }
+    }
     if (outSize) {
         outSize->w = tl->size.w;
         outSize->h = tl->size.h;
@@ -1184,7 +1212,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
 }
 
 Size TextLayoutSize(TextLayout* tl) {
-    return tl ? tl->size : Size{0, 0};
+    return tl ? tl->cover : Size{0, 0};
 }
 
 void TextLayoutAddRef(TextLayout* tl) {
@@ -1245,7 +1273,11 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
     // rather than when the run was shaped, because a non-wrapping run is
     // shaped unconstrained and does not know the box it lands in.
     bool ellipsized = false;
+    // An ellipsized draw gives Pango the box, which it then aligns inside
+    // itself, so the shift for a non-wrapping run is not added on top.
+    float dx = tl->dx;
     if (clip && clipW > 0) {
+        dx = 0;
         pango_layout_set_width(tl->layout, (int)(clipW * PANGO_SCALE));
         pango_layout_set_ellipsize(tl->layout, PANGO_ELLIPSIZE_END);
         ellipsized = true;
@@ -1261,11 +1293,11 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
         // while keeping the ellipsis.
         float boxH = tl->box * (float)tl->lines;
         cairo_save(cr);
-        cairo_rectangle(cr, x, y - boxH, boxW, boxH * 3.f);
+        cairo_rectangle(cr, x, y - boxH, boxW + dx, boxH * 3.f);
         cairo_clip(cr);
     }
     SetColor(ctx, cr, c);
-    cairo_move_to(cr, x, y + BoxPad(tl));
+    cairo_move_to(cr, x + dx, y + BoxPad(tl));
     pango_cairo_show_layout(cr, tl->layout);
     if (clip) {
         cairo_restore(cr);
@@ -1274,8 +1306,22 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
     // truncate, so it goes back the way it was found.
     if (ellipsized) {
         pango_layout_set_ellipsize(tl->layout, PANGO_ELLIPSIZE_NONE);
-        pango_layout_set_width(tl->layout, -1);
+        pango_layout_set_width(tl->layout, tl->width);
     }
+}
+
+// Line `lineNo`'s logical rect in layout coordinates.
+static PangoRectangle LineExtents(PangoLayout* l, int lineNo) {
+    PangoRectangle logical = {};
+    PangoLayoutIter* iter = pango_layout_get_iter(l);
+    if (!iter) {
+        return logical;
+    }
+    for (int i = 0; i < lineNo && pango_layout_iter_next_line(iter); i++) {
+    }
+    pango_layout_iter_get_line_extents(iter, nullptr, &logical);
+    pango_layout_iter_free(iter);
+    return logical;
 }
 
 int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
@@ -1284,7 +1330,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     }
     int index = 0;
     int trailing = 0;
-    int px = (int)(relX * PANGO_SCALE);
+    int px = (int)((relX - tl->dx) * PANGO_SCALE);
     bool inside = pango_layout_xy_to_index(
         tl->layout, px, (int)((relY - BoxPad(tl)) * PANGO_SCALE), &index,
         &trailing);
@@ -1299,8 +1345,9 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
         PangoLayoutLine* line =
             pango_layout_get_line_readonly(tl->layout, lineNo);
         if (line) {
-            PangoRectangle logical = {};
-            pango_layout_line_get_extents(line, nullptr, &logical);
+            // In layout coordinates, so an aligned line is measured where
+            // it was put rather than from the layout's left edge.
+            PangoRectangle logical = LineExtents(tl->layout, lineNo);
             if (px <= logical.x) {
                 index = line->start_index;
                 trailing = 0;
@@ -1364,8 +1411,12 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
         pango_layout_line_index_to_x(line, hi, FALSE, &x1);
         int y0 = 0, y1 = 0;
         pango_layout_iter_get_line_yrange(iter, &y0, &y1);
-        float left = (float)x0 / PANGO_SCALE;
-        float right = (float)x1 / PANGO_SCALE;
+        // index_to_x is from the line's own left edge; the iterator's
+        // extents say where an aligned line was put.
+        PangoRectangle logical = {};
+        pango_layout_iter_get_line_extents(iter, nullptr, &logical);
+        float left = (float)(logical.x + x0) / PANGO_SCALE + tl->dx;
+        float right = (float)(logical.x + x1) / PANGO_SCALE + tl->dx;
         if (right < left) {
             float t = left;
             left = right;

@@ -732,7 +732,7 @@ EM_JS(void, GpJsImageFree, (int id), {
 
 EM_JS(int, GpJsTextNew,
       (const uint8_t* ptr, int len, float fontSize, float maxW, int wrap,
-       int weightBits, float lineH, float* outSize), {
+       int weightBits, float lineH, int align, float* outSize), {
     const G = globalThis.__gpui;
     const text = G.str(ptr, len);
     if (text.length === 0) {
@@ -823,10 +823,26 @@ EM_JS(int, GpJsTextNew,
     }
 
     let maxLine = 0;
+    const widths = [];
     for (let i = 0; i < lines.length; i++) {
         const lw = width(wrapped[i] ? lines[i].trimEnd() : lines[i]);
+        widths.push(lw);
         if (lw > maxLine) {
             maxLine = lw;
+        }
+    }
+    // text_align, GPUI's aligned_origin_x per line: inside the box the run
+    // was laid out in, or inside the widest line when it had none. 1 is
+    // center, 2 right.
+    const dx = [];
+    let cover = maxLine;
+    const alignW = maxW > 0 ? maxW : maxLine;
+    for (let i = 0; i < lines.length; i++) {
+        const d = align === 1 ? (alignW - widths[i]) * 0.5
+            : (align === 2 ? alignW - widths[i] : 0);
+        dx.push(d);
+        if (d + widths[i] > cover) {
+            cover = d + widths[i];
         }
     }
 
@@ -834,7 +850,8 @@ EM_JS(int, GpJsTextNew,
     const natural = fm.asc + fm.desc;
     const box = fontSize * (lineH > 0 ? lineH : 1.618034);
     const rec = {
-        lines: lines, starts: starts, wrapped: wrapped, font: font,
+        lines: lines, starts: starts, wrapped: wrapped, dx: dx, cover: cover,
+        font: font,
         px: fontSize, box: box, natural: natural, asc: fm.asc,
         underline: underline, strike: strike,
         wrapW: (wrap && maxW > 0) ? maxW : maxLine
@@ -843,6 +860,7 @@ EM_JS(int, GpJsTextNew,
     if (outSize) {
         HEAPF32[(outSize >> 2)] = maxLine;
         HEAPF32[(outSize >> 2) + 1] = box * lines.length;
+        HEAPF32[(outSize >> 2) + 2] = cover;
     }
     return G.alloc(G.texts, G.textFree, rec);
 });
@@ -866,7 +884,7 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
     if (clip) {
         c.save();
         c.beginPath();
-        c.rect(x, y, e.wrapW, e.box * e.lines.length);
+        c.rect(x, y, Math.max(e.wrapW, e.cover), e.box * e.lines.length);
         c.clip();
     }
     const pad = (e.box - e.natural) * 0.5;
@@ -876,18 +894,19 @@ EM_JS(void, GpJsTextDraw, (int id, float x, float y, int color, int clip), {
     c.fillStyle = G.color(color);
     for (let i = 0; i < e.lines.length; i++) {
         const base = y + pad + i * e.box + e.asc;
-        c.fillText(e.lines[i], x, base);
+        const lx = x + e.dx[i];
+        c.fillText(e.lines[i], lx, base);
         if (e.underline || e.strike) {
             const lw = Math.max(1, Math.round(e.px / 14));
             const w = c.measureText(
                 e.wrapped[i] ? e.lines[i].trimEnd() : e.lines[i]).width;
             if (e.underline) {
-                c.fillRect(x, Math.round(base + lw * 2), w, lw);
+                c.fillRect(lx, Math.round(base + lw * 2), w, lw);
             }
             if (e.strike) {
                 // Just under a third of the ascent above the baseline, which
                 // is where Core Text's own strikethrough would sit.
-                c.fillRect(x, Math.round(base - e.asc * 0.3), w, lw);
+                c.fillRect(lx, Math.round(base - e.asc * 0.3), w, lw);
             }
         }
     }
@@ -911,6 +930,7 @@ EM_JS(int, GpJsTextHit, (int id, float relX, float relY), {
         li = e.lines.length - 1;
     }
     const line = e.lines[li];
+    relX -= e.dx[li];
     const c = G.measurer();
     const prev = c.font;
     c.font = e.font;
@@ -954,7 +974,7 @@ EM_JS(int, GpJsTextRangeRects,
         const x0 = c.measureText(line.slice(0, G.u16at(line, lo - start))).width;
         const x1 = c.measureText(line.slice(0, G.u16at(line, hi - start))).width;
         const o = (out >> 2) + n * 4;
-        HEAPF32[o] = x0;
+        HEAPF32[o] = x0 + e.dx[i];
         HEAPF32[o + 1] = pad + i * e.box;
         HEAPF32[o + 2] = x1 - x0;
         HEAPF32[o + 3] = e.natural;
@@ -1523,23 +1543,23 @@ struct TextLayout {
     uint64_t generation = 0;
     int js = 0;
     int refs = 1;
-    // What TextLayoutNew reported, kept so TextLayoutSize can answer without
-    // measuring again.
+    // How far the aligned lines reach, so TextLayoutSize can answer without
+    // measuring again. TextLayoutNew reports the lines' own extent.
     Size size = {};
 };
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH,
-                          Size* outSize) {
+                          bool wrap, uint8_t weight, float lineH, Size* outSize,
+                          TextAlign align) {
     if (!ctx || !ctx->pa || !s.s || len(s) <= 0) {
         return nullptr;
     }
     if (fontSize <= 0) {
         fontSize = 16.f;
     }
-    float size[2] = {0, 0};
+    float size[3] = {0, 0, 0};
     int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
-                         wrap ? 1 : 0, weight, lineH, size);
+                         wrap ? 1 : 0, weight, lineH, (int)align, size);
     if (!id) {
         return nullptr;
     }
@@ -1550,7 +1570,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     auto* tl = new TextLayout();
     tl->generation = PaintResourceGenerationNew();
     tl->js = id;
-    tl->size = Size{size[0], size[1]};
+    tl->size = Size{size[2], size[1]};
     return tl;
 }
 

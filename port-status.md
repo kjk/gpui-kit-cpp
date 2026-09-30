@@ -139,10 +139,6 @@ target is `201b55a431fb1b82a6047e908de63913db3d4354`.
   `TrackAppear` under their own id scope (`src/base/plot.cpp`), and
   `Plot::interactive` / `appear_generation` are `PlotInteractive` /
   `AppearGeneration` on each chart.
-- **No text alignment on an element.** `text_center()` / `text_right()` have
-  no counterpart, so a wrapped centered or trailing Marker label keeps its
-  lines at the leading edge; a single run is placed by the flex box instead
-  (`src/ui/marker.cpp`).
 - **The styled Popover takes its surface from the caller.** It has no
   `appearance`, `popover_style().p_3()` or child list; `Content` is the whole
   styled surface. So `arrow` fills with that surface's background and outlines

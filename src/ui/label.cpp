@@ -350,10 +350,12 @@ El* Label::IntoEl() {
     if (semibold) {
         root->Semibold();
     }
+    // text_center / text_right: the run is placed by the row and its wrapped
+    // lines by the text alignment the row hands down.
     if (align == 1) {
-        root->JustifyCenter();
+        root->JustifyCenter()->TextCenter();
     } else if (align == 2) {
-        root->JustifyEnd();
+        root->JustifyEnd()->TextRight();
     }
     return root->Child(styled);
 }

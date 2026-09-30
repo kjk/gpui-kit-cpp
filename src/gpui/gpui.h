@@ -1543,6 +1543,16 @@ enum class FontWeight : uint16_t {
     Black = 900
 };
 
+// gpui::TextAlign: where each line of a text run sits in the box it was laid
+// out in. GPUI applies it per wrapped line when it paints
+// (`aligned_origin_x`); here the paint backend shapes it in (TextLayoutNew),
+// so painting, hit-testing and range rects all read the same line positions.
+enum class TextAlign : uint8_t {
+    Left,
+    Center,
+    Right,
+};
+
 // gpui::Anchor. Base's Popup and Positioner import this runtime vocabulary in
 // Rust; keeping it here avoids each component inventing a near-copy.
 enum class Anchor : uint8_t {
@@ -1817,6 +1827,11 @@ struct Style {
     // has no border and the theme's outer ring is off. Packed beside
     // focusRing, since Style has no byte to spare.
     uint8_t focusLine : 2 = (uint8_t)FocusLine::Edge;
+    // text_align, which cascades like the rest of the text style: 0 is
+    // unset (inherit, and Left at the root), otherwise 1 + TextAlign. A text
+    // run lays each of its lines out at that edge of its own box. Two bits
+    // beside focusLine, in the byte that already holds it.
+    uint8_t textAlign : 2 = 0;
     // El::TipPlacement: the side the tooltip prefers, as Placement's ordinal
     // like positionerPlacement above, or -1 to leave the overlay to place it.
     // The side is a preference: the positioner still flips and clamps when
@@ -2670,6 +2685,12 @@ struct El {
     El* Fg(Rgba c);
     El* Font(float px);
     El* LineHeight(float mult);
+    // text_align / text_left / text_center / text_right. Inherited by the
+    // text below, which aligns each wrapped line inside its own box.
+    El* TextAlignment(TextAlign align);
+    El* TextLeft() { return TextAlignment(TextAlign::Left); }
+    El* TextCenter() { return TextAlignment(TextAlign::Center); }
+    El* TextRight() { return TextAlignment(TextAlign::Right); }
     El* Truncate();
     El* ClipY();
     El* ScrollY(float off);
@@ -3096,6 +3117,8 @@ struct TextHit {
     float font = 14;
     float maxW = 0;
     bool wrap = false;
+    // The run's text_align, so a click lands where its lines were put.
+    TextAlign align = TextAlign::Left;
     int docOff = 0;
     EntityId owner = {};
     // El::SelSrc, for a copy in SelectionFormat::Source. Null otherwise, and
@@ -5373,19 +5396,19 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  bool mono = false, float lineHeight = 0,
                  bool lineEndAffinity = true);
 int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                float relX, float relY, bool mono = false,
-                float lineHeight = 0);
+                float relX, float relY, bool mono = false, float lineHeight = 0,
+                TextAlign align = TextAlign::Left);
 // `weight` and `lineH` have to be the ones the run was laid out with, or the
 // rects come back measured against a different font: the mono family is a
 // weight sentinel here, so a code row measured with 0 drifts further from the
 // glyphs the further along the line it is.
 void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                     uint8_t weight, float lineH, float x, float y, int u8a,
-                    int u8b, Rgba color);
+                    int u8b, Rgba color, TextAlign align = TextAlign::Left);
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint8_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color,
-                        bool wavy = false);
+                        bool wavy = false, TextAlign align = TextAlign::Left);
 // The taffy tree a window lays out in, kept between frames so taffy's own
 // per-node caches are. It is reconciled against the element tree rather than
 // rebuilt: an element whose style and content are the ones its node already

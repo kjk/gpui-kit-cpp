@@ -234,7 +234,7 @@ El* EmptyStory::Render(EmptyStory* self, Ctx* cx) {
         ->Content(EmptyContent::New(cx)->Child(
             EmptyAction(cx, StrL("empty-add-file"), StrL("添加文件…"),
                         Listen(cx, &Open, 4), true)))
-        ->IntoEl()->MaxW(320)->Pad(16)->ItemsStart()->Border(1, th.border);
+        ->IntoEl()->MaxW(320)->Pad(16)->ItemsStart()->TextLeft()->Border(1, th.border);
     if (compact->first) compact->first->ItemsStart();
     page->Child(EmptySection(
         cx, "Constrained layout",

@@ -737,8 +737,13 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
 static El* DefaultEmpty(Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    return Div(a)->W(kFill)->PadY(24)->ItemsCenter()->JustifyCenter()->Child(
-        TextEl(a, Tr("Command.empty"))->Font(14)->Fg(th.mutedFg));
+    return Div(a)
+        ->W(kFill)
+        ->PadY(24)
+        ->ItemsCenter()
+        ->JustifyCenter()
+        ->TextCenter()
+        ->Child(TextEl(a, Tr("Command.empty"))->Font(14)->Fg(th.mutedFg));
 }
 
 El* Command::IntoEl() {

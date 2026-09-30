@@ -363,7 +363,7 @@ static void TestStyleDefaults() {
     utassert(!s.alignContent.IsSome());
     utassert(!s.justifyContent.IsSome());
     utassert(s.gap == SizeLp::Zero());
-    utassert(s.textAlign == TextAlign::Auto);
+    utassert(s.textAlign == taffy::TextAlign::Auto);
     utassert(s.flexDirection == FlexDirection::Row);
     utassert(s.flexWrap == FlexWrap::NoWrap);
     utassert(s.flexBasis == Dimension::Auto());

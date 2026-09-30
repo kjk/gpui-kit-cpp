@@ -346,13 +346,16 @@ inline void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 struct TextLayout;
 
 // Shape `s` and report its size. maxW <= 0 is unconstrained. Null if the text
-// is empty or shaping failed.
+// is empty or shaping failed. `align` places each line inside `maxW`, or
+// inside the widest line when unconstrained; a non-wrapping run given a
+// `maxW` stays on its lines and is aligned inside it. `outSize` is the
+// alignment-free extent of the lines — what the text measures.
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH,
-                          Size* outSize);
-// What TextLayoutNew reported as `outSize`, asked for again: the size the
-// shaped run occupies, which is what a caller holding only the layout needs
-// to know what area drawing it covers.
+                          bool wrap, uint8_t weight, float lineH, Size* outSize,
+                          TextAlign align = TextAlign::Left);
+// The area drawing the shaped run covers, from the point it is drawn at. For a
+// left-aligned run this is what TextLayoutNew reported as `outSize`; an
+// aligned run reaches as far as its furthest line was pushed.
 Size TextLayoutSize(TextLayout* tl);
 void TextLayoutAddRef(TextLayout* tl);
 void TextLayoutRelease(TextLayout* tl);

@@ -1860,8 +1860,8 @@ static IDWriteTextLayout* Dw(TextLayout* tl) {
 }
 
 TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
-                          bool wrap, uint8_t weight, float lineH,
-                          Size* outSize) {
+                          bool wrap, uint8_t weight, float lineH, Size* outSize,
+                          TextAlign align) {
     if (!ctx || !ctx->pa || !ctx->pa->dwrite || !s.s || len(s) <= 0) {
         return nullptr;
     }
@@ -1902,6 +1902,16 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     ApplyLineHeight(layout, fontSize, lineH);
     DWRITE_TEXT_METRICS m = {};
     layout->GetMetrics(&m);
+    if (align != TextAlign::Left) {
+        // An unconstrained run was laid into a 10000-DIP box; its lines align
+        // inside the widest of them instead, as they do on the other backends.
+        if (maxW <= 0) {
+            layout->SetMaxWidth(m.widthIncludingTrailingWhitespace);
+        }
+        layout->SetTextAlignment(align == TextAlign::Center
+                                     ? DWRITE_TEXT_ALIGNMENT_CENTER
+                                     : DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
     if (outSize) {
         outSize->w = m.widthIncludingTrailingWhitespace;
         outSize->h = m.height;
@@ -1920,7 +1930,9 @@ Size TextLayoutSize(TextLayout* tl) {
     if (FAILED(Dw(tl)->GetMetrics(&m))) {
         return Size{0, 0};
     }
-    return Size{m.widthIncludingTrailingWhitespace, m.height};
+    // An aligned run's lines start `left` in; a left-aligned one's at zero.
+    float left = m.left > 0 ? m.left : 0.f;
+    return Size{left + m.widthIncludingTrailingWhitespace, m.height};
 }
 
 void TextLayoutAddRef(TextLayout* tl) {

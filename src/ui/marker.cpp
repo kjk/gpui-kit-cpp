@@ -90,22 +90,19 @@ El* MarkerContent::IntoEl() {
     El* content = Div(a)->MinW(0);
     if (separator) {
         // Between separator lines the label keeps its own width so the lines
-        // take the rest; elsewhere it may shrink and wrap. text_left /
-        // text_center / text_right: there is no text alignment on an El here,
-        // so a separator's single run is placed by the flex box instead, and
-        // a wrapped label elsewhere keeps its lines at the leading edge.
-        content->FlexNone()->Flex();
-        switch (alignment) {
-            case MarkerAlignment::Start:
-                content->JustifyStart();
-                break;
-            case MarkerAlignment::Center:
-                content->JustifyCenter();
-                break;
-            case MarkerAlignment::End:
-                content->JustifyEnd();
-                break;
-        }
+        // take the rest; elsewhere it may shrink and wrap.
+        content->FlexNone();
+    }
+    switch (alignment) {
+        case MarkerAlignment::Start:
+            content->TextLeft();
+            break;
+        case MarkerAlignment::Center:
+            content->TextCenter();
+            break;
+        case MarkerAlignment::End:
+            content->TextRight();
+            break;
     }
     if (styleSet) {
         content->Refine(style, styleSet);
@@ -126,7 +123,8 @@ El* MarkerContent::IntoEl() {
             }
             content->Child(text->IntoEl());
         } else {
-            content->Child(TextEl(a, child.text));
+            // StyledText wraps inside the content box.
+            content->Child(TextEl(a, child.text)->Wrap());
         }
     }
 
@@ -259,13 +257,13 @@ El* Marker::IntoEl() {
     MarkerAlignment align = ResolvedAlignment();
     switch (align) {
         case MarkerAlignment::Start:
-            row->JustifyStart();
+            row->JustifyStart()->TextLeft();
             break;
         case MarkerAlignment::Center:
-            row->JustifyCenter();
+            row->JustifyCenter()->TextCenter();
             break;
         case MarkerAlignment::End:
-            row->JustifyEnd();
+            row->JustifyEnd()->TextRight();
             break;
     }
     if (variant == MarkerVariant::Border) {

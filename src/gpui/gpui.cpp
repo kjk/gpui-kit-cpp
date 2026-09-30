@@ -878,6 +878,10 @@ El* El::LineHeight(float mult) {
     style.lineHeight = mult;
     return this;
 }
+El* El::TextAlignment(TextAlign align) {
+    style.textAlign = (uint8_t)((uint8_t)align + 1);
+    return this;
+}
 El* El::Truncate() {
     style.truncate = true;
     return this;
@@ -2262,8 +2266,10 @@ int DipToPx(PaintCtx* ctx, float dip) {
 
 // Key wrap width: 0 = unconstrained. Round to 1 DIP so tiny parent-size
 // jitter from extra layout passes still hits.
-static float MeasKeyMaxW(float maxW, bool wrap) {
-    if (!wrap || maxW <= 0) {
+// An aligned run that does not wrap still keys on its width: its lines are
+// placed inside it (TextMeasLayout).
+static float MeasKeyMaxW(float maxW, bool wrap, uint8_t align) {
+    if ((!wrap && align == 0) || maxW <= 0) {
         return 0;
     }
     return floorf(maxW + 0.5f);
@@ -2336,7 +2342,7 @@ struct TextMeasSlot {
 };
 
 static uint32_t TextMeasHash(Str s, float fontSize, float maxW, bool wrap,
-                             uint8_t weight, float lineH) {
+                             uint8_t weight, float lineH, uint8_t align) {
     uint32_t h = MurmurHash2(s);
     uint32_t fs = 0;
     uint32_t mw = 0;
@@ -2353,17 +2359,25 @@ static uint32_t TextMeasHash(Str s, float fontSize, float maxW, bool wrap,
     if (weight) {
         h ^= 0x27d4eb2fu * (uint32_t)weight;
     }
+    if (align) {
+        h ^= 0x3c6ef372u * (uint32_t)align;
+    }
     return h;
+}
+
+// `wrap` in a slot holds the wrap bit and, above it, the TextAlign.
+static uint8_t MeasKeyFlags(bool wrap, uint8_t align) {
+    return (uint8_t)((wrap ? 1 : 0) | (align << 1));
 }
 
 static bool TextMeasKeyEq(const TextMeasSlot* sl, uint32_t hash, Str s,
                           float fontSize, float maxW, bool wrap, uint8_t weight,
-                          float lineH) {
+                          float lineH, uint8_t align) {
     if (!sl->occupied || sl->hash != hash || sl->len != len(s)) {
         return false;
     }
     if (sl->fontSize != fontSize || sl->maxW != maxW || sl->lineH != lineH ||
-        sl->wrap != (wrap ? 1 : 0) || sl->bold != weight) {
+        sl->wrap != MeasKeyFlags(wrap, align) || sl->bold != weight) {
         return false;
     }
     return StrEq(Str(sl->text, len(s)), s);
@@ -2424,6 +2438,12 @@ static uint8_t ElTextWeight(const El* e) {
     return w;
 }
 
+// The run's text_align, resolved by PrepareEl's cascade. Unset is Left.
+static TextAlign ElTextAlign(const El* e) {
+    return e->style.textAlign ? (TextAlign)(e->style.textAlign - 1)
+                              : TextAlign::Left;
+}
+
 static void TextMeasFreeSlot(TextMeasSlot* sl) {
     if (!sl) {
         return;
@@ -2442,10 +2462,12 @@ static void TextMeasFreeSlot(TextMeasSlot* sl) {
 
 static TextMeasSlot* TextMeasFind(TextMeasCache* c, Str s, float fontSize,
                                   float maxW, bool wrap, uint8_t weight,
-                                  float lineH, uint32_t* outHash) {
+                                  float lineH, uint32_t* outHash,
+                                  uint8_t align = 0) {
     float keyFont = MeasKeyFont(fontSize);
-    float keyMaxW = MeasKeyMaxW(maxW, wrap);
-    uint32_t hash = TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH);
+    float keyMaxW = MeasKeyMaxW(maxW, wrap, align);
+    uint32_t hash =
+        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align);
     if (outHash) {
         *outHash = hash;
     }
@@ -2459,7 +2481,8 @@ static TextMeasSlot* TextMeasFind(TextMeasCache* c, Str s, float fontSize,
         if (!sl->occupied) {
             return nullptr;
         }
-        if (TextMeasKeyEq(sl, hash, s, keyFont, keyMaxW, wrap, weight, lineH)) {
+        if (TextMeasKeyEq(sl, hash, s, keyFont, keyMaxW, wrap, weight, lineH,
+                          align)) {
             return sl;
         }
         i = (i + 1) & mask;
@@ -2518,11 +2541,12 @@ static void TextMeasInsertMove(TextMeasCache* c, TextMeasSlot* src) {
 static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
                                     float maxW, bool wrap, uint8_t weight,
                                     float lineH, float w, float h,
-                                    TextLayout* layout) {
+                                    TextLayout* layout, uint8_t align) {
     TextMeasCache* c = &ctx->textCache;
     float keyFont = MeasKeyFont(fontSize);
-    float keyMaxW = MeasKeyMaxW(maxW, wrap);
-    uint32_t hash = TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH);
+    float keyMaxW = MeasKeyMaxW(maxW, wrap, align);
+    uint32_t hash =
+        TextMeasHash(s, keyFont, keyMaxW, wrap, weight, lineH, align);
     if (c->cap == 0 || (c->used + 1) * 10 > c->cap * 6) {
         TextMeasGrow(c, c->cap > 0 ? c->cap * 2 : 256);
     }
@@ -2538,8 +2562,8 @@ static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
             sl = cand;
             break;
         }
-        if (TextMeasKeyEq(cand, hash, s, keyFont, keyMaxW, wrap, weight,
-                          lineH)) {
+        if (TextMeasKeyEq(cand, hash, s, keyFont, keyMaxW, wrap, weight, lineH,
+                          align)) {
             sl = cand;
             break;
         }
@@ -2559,7 +2583,7 @@ static TextMeasSlot* TextMeasInsert(PaintCtx* ctx, Str s, float fontSize,
         sl->fontSize = keyFont;
         sl->maxW = keyMaxW;
         sl->lineH = lineH;
-        sl->wrap = wrap ? 1 : 0;
+        sl->wrap = MeasKeyFlags(wrap, align);
         sl->bold = weight;
         sl->occupied = 1;
         c->used++;
@@ -2717,10 +2741,13 @@ void TextMeasClear(PaintCtx* ctx) {
 // Create or reuse a cached shaped run. Caller must TextLayoutRelease.
 // `outCached` says whether the cache took a reference of its own, i.e. whether
 // the run outlives the caller's; see El::laidLayout.
+// `align` is the run's text_align; a run that does not wrap keeps `maxW`
+// when it has one, since that is the box its line is aligned in.
 static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
                                   float maxW, bool wrap, uint8_t weight,
                                   float lineH, Size* outSize,
-                                  bool* outCached = nullptr) {
+                                  bool* outCached = nullptr,
+                                  TextAlign align = TextAlign::Left) {
     if (outCached) {
         *outCached = false;
     }
@@ -2740,12 +2767,13 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
     // for at one pixel would otherwise keep the one-pixel run it was given,
     // and paint a one-pixel smear where its text belongs. `truncate` does its
     // own cutting at paint time, against the box layout settled on.
-    if (!wrap) {
+    uint8_t alignKey = (uint8_t)align;
+    if (!wrap && align == TextAlign::Left) {
         maxW = 0;
     }
     TextMeasCache* c = &ctx->textCache;
-    TextMeasSlot* hit =
-        TextMeasFind(c, s, fontSize, maxW, wrap, weight, lineH, nullptr);
+    TextMeasSlot* hit = TextMeasFind(c, s, fontSize, maxW, wrap, weight, lineH,
+                                     nullptr, alignKey);
     if (hit && hit->layout) {
         hit->lastUsed = c->frame;
         if (outCached) {
@@ -2759,8 +2787,8 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
         return hit->layout;
     }
     Size size = {};
-    TextLayout* layout =
-        TextLayoutNew(ctx, s, fontSize, maxW, wrap, weight, lineH, &size);
+    TextLayout* layout = TextLayoutNew(ctx, s, fontSize, maxW, wrap, weight,
+                                       lineH, &size, align);
     if (!layout) {
         return nullptr;
     }
@@ -2768,7 +2796,7 @@ static TextLayout* TextMeasLayout(PaintCtx* ctx, Str s, float fontSize,
         *outSize = size;
     }
     TextMeasSlot* sl = TextMeasInsert(ctx, s, fontSize, maxW, wrap, weight,
-                                      lineH, size.w, size.h, layout);
+                                      lineH, size.w, size.h, layout, alignKey);
     if (outCached) {
         *outCached = sl != nullptr;
     }
@@ -2870,10 +2898,11 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 }
 
 int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                float relX, float relY, bool mono, float lineHeight) {
+                float relX, float relY, bool mono, float lineHeight,
+                TextAlign align) {
     TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap,
                                         mono ? (uint8_t)kFontMono : (uint8_t)0,
-                                        lineHeight, nullptr);
+                                        lineHeight, nullptr, nullptr, align);
     if (!layout) {
         return 0;
     }
@@ -2915,12 +2944,13 @@ static void PaintWavyRun(PaintCtx* ctx, float x, float y, float w, Rgba color) {
 
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint8_t weight, float lineH, float x,
-                        float y, int u8a, int u8b, Rgba color, bool wavy) {
+                        float y, int u8a, int u8b, Rgba color, bool wavy,
+                        TextAlign align) {
     if (!ctx || !ctx->rt || color.a == 0 || u8a >= u8b) {
         return;
     }
-    TextLayout* layout =
-        TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight, lineH, nullptr);
+    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
+                                        lineH, nullptr, nullptr, align);
     if (!layout) {
         return;
     }
@@ -3046,12 +3076,13 @@ static void WhitespacePaintMark(void* ud, const WhitespaceMark* m) {
 // show_whitespaces over a painted run: LineLayout::paint's second half.
 static void PaintTextWhitespaces(PaintCtx* ctx, Str s, float fontSize,
                                  float maxW, bool wrap, uint8_t weight,
-                                 float lineH, float x, float y, Rgba color) {
+                                 float lineH, float x, float y, Rgba color,
+                                 TextAlign align) {
     if (!ctx || !ctx->rt || color.a == 0 || !s.s || len(s) <= 0) {
         return;
     }
-    TextLayout* layout =
-        TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight, lineH, nullptr);
+    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
+                                        lineH, nullptr, nullptr, align);
     if (!layout) {
         return;
     }
@@ -3072,7 +3103,7 @@ static void PaintTextWhitespaces(PaintCtx* ctx, Str s, float fontSize,
 
 void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                     uint8_t weight, float lineH, float x, float y, int u8a,
-                    int u8b, Rgba color) {
+                    int u8b, Rgba color, TextAlign align) {
     if (!ctx || !ctx->rt || color.a == 0) {
         return;
     }
@@ -3084,8 +3115,8 @@ void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     if (u8a == u8b) {
         return;
     }
-    TextLayout* layout =
-        TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight, lineH, nullptr);
+    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
+                                        lineH, nullptr, nullptr, align);
     if (!layout) {
         return;
     }
@@ -3740,6 +3771,14 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
                 c->style.lineHeight = e->style.lineHeight;
         }
     }
+    // text_align is part of the text style, so it cascades the same way: a
+    // Marker's `text_center()` on the content div centres the wrapped lines
+    // of the text run inside it.
+    if (e->style.textAlign) {
+        for (El* c = e->first; c; c = c->next) {
+            if (!c->style.textAlign) c->style.textAlign = e->style.textAlign;
+        }
+    }
     e->laidFont = font;
     if (e->kind == ElKind::Icon && e->style.width == kAuto &&
         e->style.height == kAuto) {
@@ -4146,13 +4185,17 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     // layout settled on. Releasing our reference is safe because a cached run
     // belongs to the cache until TextMeasEndFrame, well after paint.
     if (e->kind == ElKind::Text) {
-        bool constrain = e->style.wrap || e->style.truncate;
+        // An aligned run is laid out in its box even when it does not wrap,
+        // since that box is what its line is aligned inside.
+        bool constrain = e->style.wrap || e->style.truncate ||
+                         ElTextAlign(e) != TextAlign::Left;
         float measW = constrain ? e->w : 0.0f;
         e->laidMaxW = measW;
         bool cached = false;
-        TextLayout* tl = TextMeasLayout(ctx, e->text, e->laidFont, measW,
-                                        e->style.wrap, (uint8_t)ElTextWeight(e),
-                                        e->style.lineHeight, nullptr, &cached);
+        TextLayout* tl =
+            TextMeasLayout(ctx, e->text, e->laidFont, measW, e->style.wrap,
+                           (uint8_t)ElTextWeight(e), e->style.lineHeight,
+                           nullptr, &cached, ElTextAlign(e));
         e->laidLayout = cached ? tl : nullptr;
         if (tl) {
             TextLayoutRelease(tl);
@@ -5182,7 +5225,7 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
     float maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
     TextLayout* layout =
         TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap, ElTextWeight(e),
-                       e->style.lineHeight, nullptr, nullptr);
+                       e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
     if (!layout) {
         DrawTextAt(ctx, e->text, e->x, e->y, e->w, e->h, font, base,
                    e->style.truncate, e->style.wrap, e->laidMaxW,
@@ -5220,7 +5263,7 @@ static void PaintTextSpans(PaintCtx* ctx, El* e, float font, Rgba base) {
         }
         PaintTextUnderline(ctx, e->text, font, maxW, e->style.wrap,
                            ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                           sp.lo, sp.hi, sp.color, sp.wavy);
+                           sp.lo, sp.hi, sp.color, sp.wavy, ElTextAlign(e));
     }
     TextLayoutRelease(layout);
 }
@@ -6256,9 +6299,9 @@ static TextLayout* ElTextLayout(PaintCtx* ctx, const El* e) {
     float font = e->laidFont > 0
                      ? e->laidFont
                      : (e->style.fontSize > 0 ? e->style.fontSize : 14.f);
-    return TextMeasLayout(ctx, e->text, font,
-                          e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
-                          ElTextWeight(e), e->style.lineHeight, nullptr);
+    return TextMeasLayout(
+        ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
+        ElTextWeight(e), e->style.lineHeight, nullptr, nullptr, ElTextAlign(e));
 }
 
 int ElTextRangeRects(PaintCtx* ctx, const El* e, int lo, int hi, Bounds* out,
@@ -6323,9 +6366,9 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
         // come back measured against a different font -- the mono family is a
         // weight sentinel -- and the caret drifts further from the glyphs the
         // further along the line it stands.
-        TextLayout* tl =
-            TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap,
-                           ElTextWeight(e), e->style.lineHeight, nullptr);
+        TextLayout* tl = TextMeasLayout(ctx, e->text, font, maxW, e->style.wrap,
+                                        ElTextWeight(e), e->style.lineHeight,
+                                        nullptr, nullptr, ElTextAlign(e));
         if (tl) {
             Bounds r[32] = {};
             if (off > len(e->text)) {
@@ -6786,6 +6829,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             th.font = font;
             th.maxW = e->laidMaxW > 0 ? e->laidMaxW : e->w;
             th.wrap = e->style.wrap;
+            th.align = ElTextAlign(e);
             th.docOff = docOff;
             th.owner = e->selectionOwner;
             th.src = e->selSrc;
@@ -6846,13 +6890,13 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             PaintTextRange(ctx, e->text, font,
                            e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
                            ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                           w.lo, w.hi, w.bg);
+                           w.lo, w.hi, w.bg, ElTextAlign(e));
         }
         if (lo >= 0 && hi > lo) {
             PaintTextRange(ctx, e->text, font,
                            e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
                            ElTextWeight(e), e->style.lineHeight, e->x, e->y, lo,
-                           hi, e->selColor);
+                           hi, e->selColor, ElTextAlign(e));
         }
         // The other cursors' selections, in the same wash.
         for (int i = 0; i < e->nExtraSels; i++) {
@@ -6861,20 +6905,28 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 PaintTextRange(
                     ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                     e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
-                    e->y, r.start, r.end, e->selColor);
+                    e->y, r.start, r.end, e->selColor, ElTextAlign(e));
             }
         }
         if (e->markLo >= 0 && e->markHi > e->markLo) {
             PaintTextUnderline(
                 ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                e->markLo, e->markHi, c);
+                e->markLo, e->markHi, c, false, ElTextAlign(e));
         }
         if (e->nSpans > 0 && e->text.s) {
             PaintTextSpans(ctx, e, font, c);
         } else if (e->laidLayout) {
             TextLayoutDraw(ctx, e->laidLayout, e->x, e->y, c, e->style.truncate,
                            e->laidMaxW);
+        } else if (ElTextAlign(e) != TextAlign::Left) {
+            // DrawTextAt knows nothing of alignment; shape the run the way
+            // every hit test of it does.
+            if (TextLayout* tl = ElTextLayout(ctx, e)) {
+                TextLayoutDraw(ctx, tl, e->x, e->y, c, e->style.truncate,
+                               e->laidMaxW);
+                TextLayoutRelease(tl);
+            }
         } else {
             DrawTextAt(ctx, e->text, e->x, e->y, e->w, e->h, font, c,
                        e->style.truncate, e->style.wrap, e->laidMaxW,
@@ -6885,7 +6937,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             PaintTextWhitespaces(
                 ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                e->whitespaceColor);
+                e->whitespaceColor, ElTextAlign(e));
         }
         // range_to_bounds: where a named run of this text landed, for a
         // caller that hit-tests against it on a later frame.
@@ -6894,7 +6946,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             TextLayout* tl = TextMeasLayout(
                 ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                 e->style.wrap, (uint8_t)ElTextWeight(e), e->style.lineHeight,
-                nullptr);
+                nullptr, nullptr, ElTextAlign(e));
             if (tl) {
                 Bounds r[8] = {};
                 int n = TextLayoutRangeRects(tl, e->text, e->rangeOutLo,
@@ -6915,7 +6967,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             PaintTextUnderline(
                 ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
                 e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
-                u.lo, u.hi, u.color, u.wavy);
+                u.lo, u.hi, u.color, u.wavy, ElTextAlign(e));
         }
         if (clipText) {
             CanvasPopClip(ctx);
@@ -7418,7 +7470,7 @@ static const TextHit* TextHitFind(PaintCtx* ctx, float x, float y, bool nearest,
 static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     int local =
         TextIndexAt(ctx, h->text, h->font, h->maxW > 0 ? h->maxW : h->bounds.w,
-                    h->wrap, rel.x, rel.y);
+                    h->wrap, rel.x, rel.y, false, 0, h->align);
     if (local < 0) {
         local = 0;
     }

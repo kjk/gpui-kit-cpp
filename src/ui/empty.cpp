@@ -199,6 +199,7 @@ El* Empty::IntoEl() {
                    // itself has no visible border until a caller refines one.
                    ->Border(0, theme.border)
                    ->Dashed()
+                   ->TextCenter()
                    ->Fg(theme.foreground)
                    ->Refine(style, styleSet);
     if (header) root->Child(header->IntoEl());
