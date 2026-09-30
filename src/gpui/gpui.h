@@ -1557,6 +1557,23 @@ struct AnchoredPlacedHook {
 // along that direction, away from the trigger.
 Point AnchorPosition(Anchor anchor, Bounds trigger, float offset);
 
+// styled.rs FocusLine: where a borderless element draws its 1px focus line
+// when the theme's outer ring is off.
+enum class FocusLine : uint8_t {
+    // On the element's edge, in the ring colour. For elements whose content
+    // sits clear of the edge and that have no fill of their own.
+    Edge,
+    // Inset from the edge, in the element's own foreground at
+    // kFocusLineOpacity. For filled elements, where the ring colour can land
+    // close to the fill. Rust's Inside carries its colour, which the button
+    // makes its normal foreground at FOCUS_LINE_OPACITY; Style has no room
+    // for a colour, and a focused button's foreground is that normal one.
+    Inside,
+    // Just outside the edge, in the ring colour. For elements with no
+    // padding, where a line on the edge would touch their text.
+    Outside,
+};
+
 struct Style {
     // Keep pointer-aligned members together at the front, then 32-bit values,
     // then the 16- and 8-bit tail. Style is copied into every frame element,
@@ -1761,7 +1778,11 @@ struct Style {
     // outline for them. A themed control calls focus_ring_style explicitly,
     // which is El::FocusRing(true) here. Turning it off drops the tinted
     // border along with the outside ring.
-    bool focusRing = false;
+    bool focusRing : 1 = false;
+    // focus_style's FocusLine: where the focus line goes when the element
+    // has no border and the theme's outer ring is off. Packed beside
+    // focusRing, since Style has no byte to spare.
+    uint8_t focusLine : 2 = (uint8_t)FocusLine::Edge;
     // El::TipPlacement: the side the tooltip prefers, as Placement's ordinal
     // like positionerPlacement above, or -1 to leave the overlay to place it.
     // The side is a preference: the positioner still flips and clamps when
@@ -2820,6 +2841,9 @@ struct El {
     // not paint anything, matching GPUI's separation between focus routing
     // and the UI layer's explicit focus_ring_style.
     El* FocusRing(bool v = true);
+    // styled::focus_style(.., line, ..): where this element's focus line goes
+    // when it has no border and the theme's outer ring is off.
+    El* FocusLineStyle(FocusLine line);
     El* TrapId(int v);
     El* Tip(Str s);
     // managed_tooltip_with_placement's preferred side, as the value of base's

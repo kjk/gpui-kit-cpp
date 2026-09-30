@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2960200f20b375689c218ec751ff221e6a55eeaa",
+  sha: "eb6c13ad8e95d278443b7ce54d1de20ba2920947",
   date: "2026-09-28",
-  subject: "text: parse prefix extensions incrementally in TextViewState::set_text (#3291) (#3294)",
+  subject: "button: Keep the focus line off text and legible on fills (#3300)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

@@ -683,6 +683,18 @@ El* Button::IntoEl() {
     else if (rounded == ButtonRounded::Size)
         rounding = roundedPx;
     if (resolved.Has(StateFieldRadius)) rounding = resolved.style.radius;
+    // Only borderless variants use this; the others tint their border. Text
+    // and Link have no padding, so their line goes outside; a ghost has no
+    // fill, so its line sits on the edge; a filled variant draws it inside
+    // in its own foreground at FOCUS_LINE_OPACITY, which the theme keeps
+    // legible on that fill (the runtime reads the element's foreground; see
+    // FocusLine::Inside).
+    FocusLine focusLine = FocusLine::Inside;
+    if (variant == ButtonVariant::Text || variant == ButtonVariant::Link) {
+        focusLine = FocusLine::Outside;
+    } else if (variant == ButtonVariant::Ghost) {
+        focusLine = FocusLine::Edge;
+    }
     AccessibilityRole role = hasAccessibilityRole ? accessibilityRole
                              : variant == ButtonVariant::Link
                                  ? AccessibilityRole::Link
@@ -693,6 +705,7 @@ El* Button::IntoEl() {
                 ->TabIndex(tabIndex)
                 ->TabStop(tabStop)
                 ->FocusRing(focusRing)
+                ->FocusLineStyle(focusLine)
                 ->H(h > 0 ? h : kAuto)
                 ->PadX(padX)
                 ->ItemsCenter()

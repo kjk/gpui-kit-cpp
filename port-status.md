@@ -15,11 +15,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2960200f20b375689c218ec751ff221e6a55eeaa` (2026-09-28,
-text: parse prefix extensions incrementally in TextViewState::set_text (#3291)
-(#3294)). TextViewState::set_text appends Markdown that extends the current
-text the way push_str does, keeping the selection, instead of replacing it.
-The current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
+Processed through `eb6c13ad8e95d278443b7ce54d1de20ba2920947` (2026-09-28,
+button: Keep the focus line off text and legible on fills (#3300)). With the
+outer focus ring off, a borderless button now places its focus line by
+variant: on the edge for Ghost, 2px outside for Text and Link, and 2px inside
+a filled variant in its own foreground at 60%. The current update target is
+`9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
 

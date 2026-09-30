@@ -2198,6 +2198,10 @@ El* El::FocusRing(bool v) {
     style.focusRing = v;
     return this;
 }
+El* El::FocusLineStyle(FocusLine line) {
+    style.focusLine = (uint8_t)line;
+    return this;
+}
 El* El::TrapId(int v) {
     style.trapId = v;
     return this;
@@ -7064,18 +7068,41 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                      e->style.borderB > 0 || e->style.borderL > 0 ||
                      e->style.borderR > 0;
     if (focused && !RuntimeStyleNow(ctx->app).focusRing && !hasBorder) {
-        // inset_focus_ring: with the outer ring off, an element with no
-        // border to tint (a ghost, text, link or filled button) draws a 1px
-        // ring-coloured line just inside its edge instead, with its own
-        // corner radii. Rust hangs it off the element as its last absolute
-        // child, so it paints over the content, as it does here.
-        Rgba ring = RuntimeStyleNow(ctx->app).ring;
+        // focus_style: with the outer ring off, an element with no border to
+        // tint (a ghost, text, link or filled button) draws a 1px line where
+        // its FocusLine says — on its edge in the ring colour, FOCUS_LINE_GAP
+        // (0.125rem) inside it in the given colour, or that far outside it
+        // in the ring colour — with its own corner radii shrunk or grown by
+        // the same amount so the line stays concentric. Rust hangs it off
+        // the element as its last absolute child, so it paints over the
+        // content, as it does here.
+        const float kFocusLineGap = 16.f * 0.125f;
+        // button.rs FOCUS_LINE_OPACITY: the Inside line is the element's own
+        // foreground at this much, which the theme keeps legible on its fill.
+        const float kFocusLineOpacity = 0.6f;
+        Rgba color = RuntimeStyleNow(ctx->app).ring;
+        float inset = 0;
+        if ((FocusLine)e->style.focusLine == FocusLine::Inside) {
+            color = RgbaOpacity(e->style.color, kFocusLineOpacity);
+            inset = kFocusLineGap;
+        } else if ((FocusLine)e->style.focusLine == FocusLine::Outside) {
+            inset = -kFocusLineGap;
+        }
+        auto shrink = [&](float r) { return r - inset > 0 ? r - inset : 0.f; };
+        float lx = e->x + inset;
+        float ly = e->y + inset;
+        float lw = e->w - inset * 2.f;
+        float lh = e->h - inset * 2.f;
         if (e->style.hasCorners) {
-            StrokeCorners(ctx, e->x, e->y, e->w, e->h, e->style.corners, 1.f,
-                          ring);
+            Corners c = e->style.corners;
+            c.tl = shrink(c.tl);
+            c.tr = shrink(c.tr);
+            c.br = shrink(c.br);
+            c.bl = shrink(c.bl);
+            StrokeCorners(ctx, lx, ly, lw, lh, c, 1.f, color);
         } else {
-            DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius, 1.f,
-                            ring);
+            DrawRoundStroke(ctx, lx, ly, lw, lh, shrink(e->style.radius), 1.f,
+                            color);
         }
     }
     if (focused && RuntimeStyleNow(ctx->app).focusRing) {
