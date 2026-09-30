@@ -64,11 +64,12 @@ struct Doc {
     }
 
     void Add(Str s) {
-        if (len + len(s) > cap) {
+        int32_t n = base::len(s);
+        if (len + n > cap) {
             return;
         }
-        memcpy(buf + len, s.s, (size_t)len(s));
-        len += len(s);
+        memcpy(buf + len, s.s, (size_t)n);
+        len += n;
     }
 
     void Add(const char* s) { Add(Str(s)); }
@@ -314,7 +315,8 @@ static void RunShapeSized(const char* name, BuildFn build, int32_t largeBytes) {
             st.bytes = c.source;
             c.out->Reset();
             Vec<markdown::Event> events = markdown::Parse(&st);
-            markdown::Node* tree = markdown::ToMdastCompile(events, &st);
+            markdown::Node* tree =
+                markdown::ToMdastCompile(events, &st, nullptr);
             BenchKeep(tree);
             BenchMemAs(group, name, "scratch", doc.len, ArenaUsed(scratch));
             ArenaDelete(scratch);
@@ -377,7 +379,8 @@ static void CompileSetup(CompileCase* c) {
 }
 
 static void CompileRun(CompileCase* c) {
-    markdown::Node* tree = markdown::ToMdastCompile(c->events, &c->state);
+    markdown::Node* tree =
+        markdown::ToMdastCompile(c->events, &c->state, nullptr);
     BenchKeep(tree);
 }
 
