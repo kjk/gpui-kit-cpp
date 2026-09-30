@@ -3541,6 +3541,13 @@ static taffy::Style ToTaffyStyle(const El* e) {
     }
     t.justifyContent = ToTaffyJustify(s.justify);
     t.overflow = {ToTaffyOverflow(s.overflowX), ToTaffyOverflow(s.overflowY)};
+    // col_span_full and its kin: grid lines 1 and -1, or auto.
+    auto line = [](bool set, int16_t index) {
+        return set ? taffy::GridPlacement::FromLineIndex(index)
+                   : taffy::GridPlacement::Auto();
+    };
+    t.gridColumn = {line(s.gridColStartLine, 1), line(s.gridColEndLine, -1)};
+    t.gridRow = {line(s.gridRowStartLine, 1), line(s.gridRowEndLine, -1)};
 
     t.size = {ToDim(s.width, s.widthFrac), ToDim(s.height, s.heightFrac)};
     if (s.aspect > 0) {

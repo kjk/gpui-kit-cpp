@@ -732,6 +732,30 @@ static void ANegativeSizeLaysOutAsZero() {
     utassertnear(widths[1], 6);
 }
 
+// styled.rs col_span_full / row_span_full and the _auto forms: lines 1 and
+// -1, one end at a time. A script names no template, so against the
+// implicit one-track grid the full span is the first track, where auto
+// placement would have put the item too.
+static void GridPlacementApplies() {
+    Arena* arena = ArenaNew();
+    El* e = Styled(arena, "col_span_full row_span_full row_end_auto");
+    utassert(e->style.gridColStartLine && e->style.gridColEndLine);
+    utassert(e->style.gridRowStartLine && !e->style.gridRowEndLine);
+    e = Styled(arena, "col_span_full col_start_auto");
+    utassert(!e->style.gridColStartLine && e->style.gridColEndLine);
+
+    El* grid = Styled(arena, "grid w_32");
+    El* a = Div(arena)->H(10);
+    El* b = Styled(arena, "col_span_full h_5");
+    grid->Child(a)->Child(b);
+    El* root = Div(arena)->Child(grid);
+    LayoutEl(nullptr, root, 0, 0, 400, 200, 14, Rgba{});
+    utassertnear(b->x, 0);
+    utassertnear(b->y, 10);
+    utassertnear(b->h, 20);
+    ArenaDelete(arena);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -743,5 +767,6 @@ void TestShellStyle() {
     shell_style_tests::ACloseTypoGetsASuggestion();
     shell_style_tests::FractionsOfMinMaxPaddingMarginAndGapApply();
     shell_style_tests::ANegativeSizeLaysOutAsZero();
+    shell_style_tests::GridPlacementApplies();
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
 }

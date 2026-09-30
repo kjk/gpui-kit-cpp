@@ -1930,6 +1930,16 @@ struct Style {
     // the line is being measured (shrink-to-fit, max-content). Set, the
     // basis is flexBasisFrac as a fraction even when that is zero.
     uint8_t flexBasisPercent : 1 = false;
+    // Grid placement: whether the column's and the row's start is line 1
+    // and its end line -1 rather than auto. `col_span_full` is both of the
+    // column's; `col_start_auto` takes the start back and keeps the end.
+    // Line 1 and line -1 are all the placement a script can name, since
+    // grid_cols and col_start(n) take arguments the shell does not bind.
+    // The four bits that were left in this byte.
+    uint8_t gridColStartLine : 1 = false;
+    uint8_t gridColEndLine : 1 = false;
+    uint8_t gridRowStartLine : 1 = false;
+    uint8_t gridRowEndLine : 1 = false;
     // Which of minW, minH, maxH and the pad, margin and gap edges hold a
     // fraction rather than DIPs — Rust's relative(f), which a script writes
     // as `p_1_2` or `min_h("25%")` — one kRel* bit each. Padding, margin

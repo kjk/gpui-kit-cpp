@@ -1018,14 +1018,24 @@ static const Keyword kKeywords[] = {
      0},
     {"content_stretch",
      [](El* e) { SetAlignContent(e, taffy::AlignContentKeyword::Stretch); }, 0},
-    // Grid placement. This Style carries no grid lines or spans, so these
-    // are accepted and change nothing.
-    {"col_start_auto", [](El*) {}, 0},
-    {"col_end_auto", [](El*) {}, 0},
-    {"col_span_full", [](El*) {}, 0},
-    {"row_start_auto", [](El*) {}, 0},
-    {"row_end_auto", [](El*) {}, 0},
-    {"row_span_full", [](El*) {}, 0},
+    // Grid placement: styled.rs col_span_full is `Line(1)..Line(-1)`, and
+    // the _auto forms put one end back to auto.
+    {"col_start_auto", [](El* e) { e->style.gridColStartLine = false; }, 0},
+    {"col_end_auto", [](El* e) { e->style.gridColEndLine = false; }, 0},
+    {"col_span_full",
+     [](El* e) {
+         e->style.gridColStartLine = true;
+         e->style.gridColEndLine = true;
+     },
+     0},
+    {"row_start_auto", [](El* e) { e->style.gridRowStartLine = false; }, 0},
+    {"row_end_auto", [](El* e) { e->style.gridRowEndLine = false; }, 0},
+    {"row_span_full",
+     [](El* e) {
+         e->style.gridRowStartLine = true;
+         e->style.gridRowEndLine = true;
+     },
+     0},
     // Box.
     {"aspect_square", [](El* e) { e->style.aspect = 1; }, 0},
     {"border_dashed", [](El* e) { e->style.borderDashed = true; }, 0},
