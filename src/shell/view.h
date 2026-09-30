@@ -61,6 +61,12 @@ struct ShellActionBinding {
     shell::CallbackId callback = 0;
 };
 
+// Where one scrolled element is scrolled to, kept in window keyed state.
+struct ShellScrollPosition {
+    float x = 0;
+    float y = 0;
+};
+
 // The retained native half of a script view. JavaScript runs only when dirty
 // and publishes a RenderSnapshot; every ordinary repaint replays that snapshot
 // through ShellMaterialize without entering the VM.
@@ -149,6 +155,11 @@ struct ScriptView {
     static void OnScriptMouseDownOut(ScriptView* self, Ctx* cx,
                                      const MouseDownEvent* event,
                                      intptr_t callback);
+    // track_scroll_position: a scrolled element's offset, kept in window
+    // state under its identity and written back from its scroll events.
+    // `position` is the ShellScrollPosition the element was built with.
+    static void OnScrollPosition(ScriptView* self, Ctx* cx,
+                                 const ScrollEvent* event, intptr_t position);
     static void OnScriptScrollWheel(ScriptView* self, Ctx* cx,
                                     const ScrollWheelEvent* event,
                                     intptr_t callback);

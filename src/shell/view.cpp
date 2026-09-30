@@ -169,6 +169,17 @@ void ScriptView::OnHover(ScriptView* self, Ctx* cx, const HoverEvent* event,
                                   cx->win, cx->app);
 }
 
+void ScriptView::OnScrollPosition(ScriptView*, Ctx* cx,
+                                  const ScrollEvent* event, intptr_t position) {
+    auto* at = (ShellScrollPosition*)position;
+    if (!at || !event) return;
+    at->x = event->offsetX;
+    at->y = event->offsetY;
+    // A repaint, not a new snapshot: the script's description has not
+    // changed, only where the box is scrolled to.
+    Notify(cx);
+}
+
 void ScriptView::OnMouseMove(ScriptView* self, Ctx* cx,
                              const MouseMoveEvent* event, intptr_t callback) {
     if (!self || !self->runtime || !event) return;

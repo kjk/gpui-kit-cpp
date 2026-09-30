@@ -2532,13 +2532,30 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     element->TabIndex(behavior.tabIndex)->TabStop(behavior.tabStop);
     if (behavior.scrollX || behavior.scrollY ||
         node->component.kind == shell::ComponentKind::Scrollbar) {
+        Str scrollName = behavior.key ? behavior.key : node->component.text;
+        // track_scroll_position / Scrollable: the offset lives in window
+        // state under the element's identity (its key, or the spec node's
+        // own "gpui-shell" id), and the element's scroll events write it
+        // back, which is what lets a wheel over it move it.
+        ShellScrollPosition* at = nullptr;
+        if (cx->win && node->component
+                               .kind != shell::ComponentKind::Scrollbar) {
+            Str identity = scrollName
+                               ? scrollName
+                               : Str(fmt("gpui-shell-spec-%u", (unsigned)id));
+            at = KeyedState<ShellScrollPosition>(
+                cx, KeyedKey((uint32_t)HashClickId(identity),
+                             (uint32_t)HashClickId(StrL("ShellScroll"))));
+        }
         if (behavior.scrollX ||
             node->component.kind == shell::ComponentKind::Scrollbar)
-            element->ScrollX(0);
+            element->ScrollX(at ? at->x : 0);
         if (behavior.scrollY ||
             node->component.kind == shell::ComponentKind::Scrollbar)
-            element->ScrollY(0);
-        Str scrollName = behavior.key ? behavior.key : node->component.text;
+            element->ScrollY(at ? at->y : 0);
+        if (at)
+            element->OnScroll(
+                Listen(cx, &ScriptView::OnScrollPosition, (intptr_t)at));
         if (scrollName)
             element->ScrollId(HashClickId(scrollName));
         else
