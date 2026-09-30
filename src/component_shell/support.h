@@ -119,6 +119,24 @@ struct EntityState {
     }
 };
 
+// A repeatable deferred slot (ComponentElementFactory) that a native builder
+// asks for after the materializer returned — an overlay's content, a command
+// row — built into the frame the builder runs in. Frame-allocated.
+struct DeferredSlot {
+    ShellRuntime* runtime = nullptr;
+    const shell::SpecArena* specs = nullptr;
+    ShellError* error = nullptr;
+    shell::ComponentElementFactory factory = {};
+    // "Failed to render Popover content" and the like: what the element says
+    // when the factory builds nothing.
+    const char* failure = nullptr;
+};
+DeferredSlot* NewDeferredSlot(MaterializeRequest* request,
+                              shell::ComponentElementFactory factory,
+                              const char* failure);
+// `factory.build(window, cx)`, or a div naming the failure.
+El* BuildDeferredSlot(const DeferredSlot* slot, Ctx* cx);
+
 // Visits every recorded method whose payload is a `T`, in script order.
 template <class T, class F>
 void EachMethod(const MaterializeRequest* request, F&& visit) {

@@ -17,6 +17,29 @@ bool RecordCommonBehavior(PayloadBuild* build, const ComponentArgument*, int) {
     return build->Mark<CommonBehavior>();
 }
 
+DeferredSlot* NewDeferredSlot(MaterializeRequest* request,
+                              shell::ComponentElementFactory factory,
+                              const char* failure) {
+    DeferredSlot* slot = ArenaNew<DeferredSlot>(request->cx->a);
+    slot->runtime = request->runtime;
+    slot->specs = request->specs;
+    slot->error = request->error;
+    slot->factory = factory;
+    slot->failure = failure;
+    return slot;
+}
+
+El* BuildDeferredSlot(const DeferredSlot* slot, Ctx* cx) {
+    MaterializeRequest request;
+    request.cx = cx;
+    request.runtime = slot->runtime;
+    request.specs = slot->specs;
+    request.error = slot->error;
+    if (El* element = request.BuildFactory(slot->factory)) return element;
+    return Div(cx->a)->Child(TextEl(
+        cx->a, StrDup(cx->a, fmt("%s: no element", Str(slot->failure)))));
+}
+
 UiSize SizeOfLiteral(Str literal) {
     if (StrEq(literal, "xsmall")) return UiSize::XSmall;
     if (StrEq(literal, "small")) return UiSize::Small;

@@ -6,6 +6,10 @@
 
 #include "shell/component_registry.h"
 
+namespace gpui::component {
+struct NativeMenu;
+}
+
 namespace gpui::component_shell {
 
 using RegisterFamily = bool (*)(shell::ComponentRegistry* registry,
@@ -22,6 +26,7 @@ bool RegisterDisplay(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterTypedCompound(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycle(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCommand(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterRetainedForms(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLayout(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
@@ -58,6 +63,20 @@ bool RegisterCompoundRadio(shell::ComponentRegistry*, shell::RegistryError*);
 // lifecycle/mod.rs
 bool RegisterLifecycleTooltip(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterLifecycleMenu(shell::ComponentRegistry*, shell::RegistryError*);
+
+// command/mod.rs
+bool RegisterCommandCommand(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterCommandNativeMenu(shell::ComponentRegistry*,
+                               shell::RegistryError*);
+
+// native_menu.rs test_probe, widened into a seam: when set, a
+// NativeMenuTrigger's keyed show effect hands the menu it built here instead
+// of showing it, and the effect fails with `*error` when this answers false.
+// A menu the OS takes over has nothing a test can reach, which is why Rust
+// counts shows behind #[cfg(test)]; this is that count plus the menu.
+using NativeMenuShowProbe = bool (*)(const component::NativeMenu* menu,
+                                     Str* error, Arena* a);
+void SetNativeMenuShowProbe(NativeMenuShowProbe probe);
 
 // layout/mod.rs
 bool RegisterLayoutTextarea(shell::ComponentRegistry*, shell::RegistryError*);

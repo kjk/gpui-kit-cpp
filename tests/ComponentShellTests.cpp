@@ -3485,6 +3485,298 @@ void LifecycleMenuRefusesWhatRustRefuses() {
                          StrL("MenuItem carries data rather than a box")));
 }
 
+// ─── command/: mod.rs, command.rs, native_menu.rs ──────────────────────────
+
+// command_host.rs command_catalog_is_closed and mod.rs
+// catalog_is_the_retained_command_family_only.
+void CommandCatalogIsClosed() {
+    FamilyCatalog catalog(&component_shell::RegisterCommand);
+    utassert(catalog.ok);
+    const char* expected[] = {
+        "CommandItem",    "CommandGroup",        "CommandSeparator", "Command",
+        "NativeMenuItem", "NativeMenuSeparator", "NativeMenuTrigger"};
+    utassert(catalog.NamesAre(expected, 7));
+    utassert(catalog.frozen.StateCount() == 1);
+    utassert(catalog.Documented());
+}
+
+// The refusal a script rendering `body` from the command family meets.
+Str CommandRefusalTemp(const char* body) {
+    TempStr source =
+        fmt("import { View, div } from 'gpui-kit';\n"
+            "import { CommandState, Command, CommandItem, CommandGroup, "
+            "CommandSeparator, NativeMenuTrigger, NativeMenuItem, "
+            "NativeMenuSeparator } from 'gpui-component';\n"
+            "export default class App extends View {\n"
+            "  init() { this.state = CommandState(); }\n"
+            "  render() { return %s; }\n"
+            "}\n",
+            Str(body));
+    Host host(source);
+    return fmt("%s", RenderRefusal(host));
+}
+
+// command.rs typed_boundaries_are_closed, native_menu.rs typed_lane_is_closed
+// and the item refusal of item_operations_are_last_call_wins_and_combination_
+// is_honest, through the scripts that reach them.
+void CommandTypedBoundariesAreClosed() {
+    utassert(StrContains(
+        CommandRefusalTemp("new Command(this.state).child(div())"),
+        StrL("Command accepts only registered CommandItem or CommandGroup or "
+             "CommandSeparator children; received an ordinary element")));
+    utassert(StrContains(
+        CommandRefusalTemp(
+            "new CommandGroup('g').child(new CommandGroup('h'))"),
+        StrL("CommandGroup accepts only registered CommandItem children; "
+             "received CommandGroup")));
+    utassert(StrContains(
+        CommandRefusalTemp("new NativeMenuTrigger('n', 'Actions')"
+                           ".on_effect_error(() => {}).child(div())"),
+        StrL("NativeMenuTrigger accepts only registered NativeMenuItem or "
+             "NativeMenuSeparator children; received an ordinary element")));
+    utassert(StrContains(
+        CommandRefusalTemp("new NativeMenuTrigger('n', 'Actions')"),
+        StrL("NativeMenuTrigger requires on_effect_error(callback)")));
+    utassert(StrContains(
+        CommandRefusalTemp("new NativeMenuItem('Open', 'open')"
+                           ".disabled(true).checked(true)"),
+        StrL("NativeMenuItem cannot be both disabled and checked because the "
+             "native API has no combined constructor")));
+    utassert(StrContains(CommandRefusalTemp("new CommandItem('Alpha').p(2)"),
+                         StrL("CommandItem carries data rather than a box")));
+    Str message = CallErrorTemp("CommandItem",
+                                "new CommandItem('a')"
+                                ".keyword(' ')");
+    utassert(StrContains(message,
+                         StrL("CommandItem.keyword expects non-empty text")));
+    message = CallErrorTemp("NativeMenuTrigger",
+                            "new NativeMenuTrigger(' ', 'Actions')");
+    utassert(StrContains(
+        message, StrL("NativeMenuTrigger expects non-empty id and label")));
+}
+
+// Re-renders a host whose script asked for one (cx.notify()).
+El* Rerender(Host& host) {
+    ScriptView* script = host.view.Get(&host.app);
+    if (script) script->dirty = true;
+    return host.Render();
+}
+
+// Renders and lays the frame out, which is when a virtual list builds the
+// rows it shows.
+El* RenderLaidOut(Host& host) {
+    El* root = Rerender(host);
+    host.window.paint.app = &host.app;
+    host.window.paint.window = &host.window;
+    if (root) LayoutEl(&host.window.paint, root, 0, 0, 400, 600, 14, Rgba{});
+    return root;
+}
+
+// command_host.rs retained_command_typed_entries_query_and_confirm_callbacks_
+// are_native. The header, the footer and each custom row are built into the
+// frame that shows them; typing into the retained query reaches on_query, and
+// confirming the one match reports its path. Rust also counts the lazy
+// factory builds per phase through a #[cfg(test)] probe, which has no
+// counterpart here (the port builds header and footer eagerly each render),
+// and confirms with the keyboard, which needs window key dispatch: a click
+// on the row is the same ConfirmMatch. The action the row dispatches needs
+// the window's dispatch tree, which a render alone does not build, so the
+// action count is not asserted.
+void RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative() {
+    FamilyCatalog catalog(&component_shell::RegisterCommand);
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { CommandState, Command, CommandItem, CommandGroup, "
+             "CommandSeparator } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             " init(){this.state=CommandState();this.query='';"
+             "this.confirm='none';this.actions=0;}\n"
+             " render(){return div().on_action('open',(_event,cx)=>"
+             "{this.actions++;cx.notify();})\n"
+             "  .child(new Command(this.state).placeholder('Find command')"
+             ".max_height(240).p(2).header(div().child('Header factory'))"
+             ".footer(div().child('Footer factory'))\n"
+             "   .on_query((query,cx)=>{this.query=query;cx.notify();})\n"
+             "   .on_confirm((section,row,cx)=>{this.confirm=`${section}:"
+             "${row}`;cx.notify();})\n"
+             "   .child(new CommandItem('Alpha').keyword('first')"
+             ".action('open').content(div().child('Alpha custom row')))\n"
+             "   .child(new CommandSeparator())\n"
+             "   .child(new CommandGroup('Group').child(new CommandItem('Beta')"
+             ".checked(true).action('open').content(div().child('Beta custom "
+             "row')))))\n"
+             "  .child(`State: ${this.query}|${this.confirm}|${this.actions}`)"
+             ";}\n"
+             "}\n"),
+        &catalog.frozen);
+    El* root = RenderLaidOut(host);
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    utassert(FindText(root, StrL("Header factory")) != nullptr);
+    utassert(FindText(root, StrL("Footer factory")) != nullptr);
+    utassert(FindText(root, StrL("Alpha custom row")) != nullptr);
+    utassert(FindText(root, StrL("Beta custom row")) != nullptr);
+    utassert(FindText(root, StrL("State: |none|0")) != nullptr);
+
+    InputState* inputs[4] = {};
+    int count = 0;
+    CollectInputs(root, inputs, &count, 4);
+    utassert(count == 1);
+    if (count != 1) return;
+    TypeInto(host, inputs[0], "b");
+    RenderLaidOut(host);
+    root = RenderLaidOut(host);
+    utassert(FindText(root, StrL("State: b|none|0")) != nullptr);
+    utassert(FindText(root, StrL("Alpha custom row")) == nullptr);
+
+    El* row = ListenerAbove(root, StrL("Beta custom row"));
+    utassert(row != nullptr);
+    if (!row) return;
+    Click(host, row);
+    root = RenderLaidOut(host);
+    utassert(FindTextPrefix(root, StrL("State: b|1:0|")) != nullptr);
+
+    // A refresh rebuilds the callbacks; the retained query and the state
+    // survive it.
+    root = RenderLaidOut(host);
+    utassert(FindTextPrefix(root, StrL("State: b|1:0|")) != nullptr);
+    utassert(FindText(root, StrL("Beta custom row")) != nullptr);
+}
+
+// What the NativeMenuTrigger's show effect built, as the probe saw it.
+int gNativeMenuShown = 0;
+bool gNativeMenuRefuse = false;
+int gNativeMenuRows = 0;
+component::NativeMenuItem gNativeMenuRow[8];
+Listener gNativeMenuSelect = {};
+
+bool RecordNativeMenu(const component::NativeMenu* menu, Str* error, Arena* a) {
+    gNativeMenuShown++;
+    gNativeMenuRows = 0;
+    for (const component::NativeMenuItem& item : menu->items) {
+        if (gNativeMenuRows < 8) gNativeMenuRow[gNativeMenuRows++] = item;
+    }
+    gNativeMenuSelect = menu->onSelect;
+    if (gNativeMenuRefuse) {
+        *error = StrDup(a, StrL("the menu could not be shown"));
+        return false;
+    }
+    return true;
+}
+
+int TakeNativeMenuShown() {
+    int shown = gNativeMenuShown;
+    gNativeMenuShown = 0;
+    return shown;
+}
+
+const char* kNativeMenuSource =
+    "import { View, div } from 'gpui-kit';\n"
+    "import { NativeMenuTrigger, NativeMenuItem, NativeMenuSeparator } from "
+    "'gpui-component';\n"
+    "export default class App extends View { init(_props,cx){this.hits=0;"
+    "this.errors=0;this.focus=cx.focus_handle();this.focus.focus();} "
+    "render(){return div().size_full().track_focus(this.focus)"
+    ".on_action('open',(_event,cx)=>{this.hits++;cx.notify();})\n"
+    " .child(new NativeMenuTrigger('native','Actions').absolute().left(0)"
+    ".top(0).w(140).h(40).on_effect_error((_message,cx)=>{this.errors+=10;"
+    "cx.notify();}).on_effect_error((_message,cx)=>{this.errors++;"
+    "cx.notify();})\n"
+    "  .child(new NativeMenuItem('Open','open')).child(new "
+    "NativeMenuSeparator()).child(new NativeMenuItem('Disabled','disabled')"
+    ".disabled(true)))\n"
+    " .child(`Menu: ${this.hits}|${this.errors}`);}}\n";
+
+// command_host.rs native_menu_trigger_runs_one_keyed_show_effect_per_click:
+// one click, one keyed show effect, and a generation that survives a
+// refresh. The rows carry their ShellAction and the disabled one is greyed.
+// A failing effect reports through the last on_effect_error only (native_
+// menu.rs last_reporter). native_menu_selection_dispatches_a_shell_action
+// needs simulated keystrokes into the drawn menu and window action dispatch;
+// Rust itself runs it only where the menu is drawn in the window.
+void NativeMenuTriggerRunsOneKeyedShowEffectPerClick() {
+    FamilyCatalog catalog(&component_shell::RegisterCommand);
+    component_shell::SetNativeMenuShowProbe(&RecordNativeMenu);
+    gNativeMenuRefuse = false;
+    TakeNativeMenuShown();
+    {
+        Host host(Str(kNativeMenuSource), &catalog.frozen);
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(!FindTextPrefix(root, StrL("Failed to render")));
+        // Rust's debug_tree prints the op as `:disabled[Bool(true)]`; the
+        // port's DebugTree spells a behavior op `:disabled(true)`.
+        utassert(StrContains(DebugTreeTemp(host),
+                             StrL("NativeMenuItem :disabled(true)")));
+        El* trigger = ListenerAbove(root, StrL("Actions"));
+        utassert(trigger != nullptr);
+        if (!trigger) return;
+        Click(host, trigger);
+        utassert(TakeNativeMenuShown() == 1);
+        utassert(gNativeMenuRows == 3);
+        if (gNativeMenuRows == 3) {
+            utassert(StrEq(gNativeMenuRow[0].label, "Open"));
+            utassert(gNativeMenuRow[0]
+                         .id == (intptr_t)shell::ShellActionOf(StrL("open")));
+            utassert(!gNativeMenuRow[0].disabled);
+            utassert(gNativeMenuRow[1]
+                         .kind == component::NativeMenuItemKind::Separator);
+            utassert(gNativeMenuRow[2].disabled);
+        }
+        utassert(gNativeMenuSelect.IsValid());
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Menu: 0|0")) != nullptr);
+
+        // The effect fails: the last reporter is told, once.
+        gNativeMenuRefuse = true;
+        trigger = ListenerAbove(root, StrL("Actions"));
+        if (trigger) Click(host, trigger);
+        gNativeMenuRefuse = false;
+        utassert(TakeNativeMenuShown() == 1);
+        root = Rerender(host);
+        utassert(FindText(root, StrL("Menu: 0|1")) != nullptr);
+
+        // A refresh rebuilds the callback and the effect generation.
+        root = Rerender(host);
+        trigger = ListenerAbove(root, StrL("Actions"));
+        utassert(trigger != nullptr);
+        if (trigger) Click(host, trigger);
+        utassert(TakeNativeMenuShown() == 1);
+    }
+    component_shell::SetNativeMenuShowProbe(nullptr);
+}
+
+// native_menu.rs item_operations_are_last_call_wins_and_combination_is_
+// honest: checked and action are last-call-wins.
+void NativeMenuItemOperationsAreLastCallWins() {
+    FamilyCatalog catalog(&component_shell::RegisterCommand);
+    component_shell::SetNativeMenuShowProbe(&RecordNativeMenu);
+    TakeNativeMenuShown();
+    {
+        Host host(StrL("import { View } from 'gpui-kit';\n"
+                       "import { NativeMenuTrigger, NativeMenuItem } from "
+                       "'gpui-component';\n"
+                       "export default class App extends View { render() { "
+                       "return new NativeMenuTrigger('n', 'Actions')"
+                       ".on_effect_error(() => {}).child(new "
+                       "NativeMenuItem('Open', 'old').action('first')"
+                       ".checked(false).action('last').checked(true)); } }\n"),
+                  &catalog.frozen);
+        El* root = host.Render();
+        El* trigger = ListenerAbove(root, StrL("Actions"));
+        utassert(trigger != nullptr);
+        if (trigger) Click(host, trigger);
+        utassert(TakeNativeMenuShown() == 1);
+        utassert(gNativeMenuRows == 1);
+        if (gNativeMenuRows == 1) {
+            utassert(gNativeMenuRow[0].checked);
+            utassert(gNativeMenuRow[0]
+                         .id == (intptr_t)shell::ShellActionOf(StrL("last")));
+        }
+    }
+    component_shell::SetNativeMenuShowProbe(nullptr);
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -3628,4 +3920,11 @@ void TestComponentShell() {
     ReturningToTheInstalledAppEffectCancelsAPendingReplacement();
     RetiringAnApplicationGenerationRunsItsAppEffectCleanups();
     LifecycleMenuRefusesWhatRustRefuses();
+
+    TestSuite("command");
+    CommandCatalogIsClosed();
+    CommandTypedBoundariesAreClosed();
+    RetainedCommandTypedEntriesQueryAndConfirmCallbacksAreNative();
+    NativeMenuTriggerRunsOneKeyedShowEffectPerClick();
+    NativeMenuItemOperationsAreLastCallWins();
 }

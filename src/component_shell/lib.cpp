@@ -16,9 +16,9 @@ static const RegisterFamily kFamilies[] = {
     &RegisterSpinner,       &RegisterSeparator, &RegisterSkeleton,
     &RegisterChat,          &RegisterEmpty,     &RegisterInputGroup,
     &RegisterControls,      &RegisterDisplay,   &RegisterCompound,
-    &RegisterTypedCompound, &RegisterLifecycle, &RegisterRetainedForms,
-    &RegisterLayout,        &RegisterMedia,     &RegisterScroll,
-    &RegisterSettings,      &RegisterBasic,
+    &RegisterTypedCompound, &RegisterLifecycle, &RegisterCommand,
+    &RegisterRetainedForms, &RegisterLayout,    &RegisterMedia,
+    &RegisterScroll,        &RegisterSettings,  &RegisterBasic,
 };
 
 bool Register(shell::ComponentRegistry* registry, shell::RegistryError* error) {
