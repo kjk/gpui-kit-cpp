@@ -23,8 +23,13 @@ struct Radio {
     int tabIndex = 0;
     bool tabStop = true;
     Listener onClick;
+    // ParentElement: children follow the label in the text column.
+    ArenaVec<El*> children;
+    // Styled: a caller's whole refinement of the row.
+    ElRefiner refiner = {};
 
     static Radio* New(Ctx* cx, Str id);
+    Radio* Child(El* child);
     Radio* Label(Str s);
     // Set the name a screen reader announces, when the visible label is not
     // it. A radio's name comes from its Label by default; setting this
@@ -57,6 +62,9 @@ struct RadioGroup {
     int selected = -1;
     bool disabled = false;
     UiSize size = UiSize::Medium;
+    // Rust's RadioGroup has no size of its own: each radio keeps the one it
+    // was given unless the group is told one.
+    bool hasSize = false;
     Listener onClick;
 
     // The source's default constructor is a vertical group with no selected

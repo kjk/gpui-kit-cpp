@@ -68,6 +68,8 @@ struct Tab {
     Listener onClick;
     Style style = {};
     uint32_t styleSet = 0;
+    // A caller's whole StyleRefinement, applied with `style`.
+    ElRefiner refiner = {};
 
     static Tab* New(Ctx* cx);
     static Tab* New(Ctx* cx, Str label);

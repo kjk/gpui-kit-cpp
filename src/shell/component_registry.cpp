@@ -1002,6 +1002,35 @@ El* MaterializeRequest::ApplyStyle(El* target) {
     return target;
 }
 
+// What TakeStyle's refiner replays: the node's own style, from the
+// description the frame is materializing.
+struct DeferredNodeStyle {
+    Ctx* cx = nullptr;
+    const SpecArena* specs = nullptr;
+    SpecId id = 0;
+    ShellError* error = nullptr;
+};
+
+static void ApplyDeferredNodeStyle(El* target, void* user) {
+    DeferredNodeStyle* style = (DeferredNodeStyle*)user;
+    ShellApplyNodeStyle(style->cx, style->specs, style->id, target,
+                        style->error);
+}
+
+ElRefiner MaterializeRequest::TakeStyle() {
+    if (styleTaken) return {};
+    styleTaken = true;
+    DeferredNodeStyle* style = ArenaNew<DeferredNodeStyle>(cx->a);
+    style->cx = cx;
+    style->specs = specs;
+    style->id = id;
+    style->error = error;
+    ElRefiner refiner;
+    refiner.apply = &ApplyDeferredNodeStyle;
+    refiner.user = style;
+    return refiner;
+}
+
 int MaterializeRequest::ChildrenLen() const {
     int remaining = node->children.len - childrenTaken;
     for (int i = 0; i < typedCount; i++) {

@@ -25,12 +25,23 @@ struct AccordionStyle {
 struct AccordionItem {
     Ctx* cx = nullptr;
     El* title = nullptr;
-    El* content = nullptr;
+    // ParentElement: the panel's content, in order.
+    ArenaVec<El*> children;
     bool open = false;
     bool disabled = false;
     IconName icon = IconName::None;
     AccordionStyle titleStyle = {};
     AccordionStyle contentStyle = {};
+    // Styled: a caller's whole refinement of the item.
+    ElRefiner refiner = {};
+    // What the Accordion hands each item before rendering it (Rust's private
+    // index / last / with_size / on_toggle_click). An item rendered on its
+    // own is item 0 at the default size.
+    int index = 0;
+    bool last = false;
+    UiSize size = UiSize::Medium;
+    // Called with the item's index when its trigger is clicked.
+    Listener onToggle;
 
     static AccordionItem* New(Ctx* cx);
     AccordionItem* Title(El* t);
@@ -42,6 +53,9 @@ struct AccordionItem {
     AccordionItem* Child(Str s);
     AccordionItem* TitleStyle(const AccordionStyle& s);
     AccordionItem* ContentStyle(const AccordionStyle& s);
+    AccordionItem* WithSize(UiSize s);
+    // AccordionItem's RenderOnce: the trigger row over the revealed panel.
+    El* IntoEl();
 };
 
 struct Accordion {

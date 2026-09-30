@@ -13,6 +13,13 @@ Radio* Radio::New(Ctx* cx, Str id) {
     return r;
 }
 
+Radio* Radio::Child(El* child) {
+    if (child) {
+        children.Append(a, child);
+    }
+    return this;
+}
+
 Radio* Radio::Label(Str s) {
     label = s;
     return this;
@@ -99,8 +106,9 @@ El* Radio::IntoEl() {
     if (name.s) {
         row->AriaLabel(name);
     }
+    refiner.Apply(row);
     row->Child(dot);
-    if (label.s || hint.s) {
+    if (label.s || hint.s || children.len > 0) {
         dot->MarginT(box * 0.125f);
         El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
         if (label.s) {
@@ -119,6 +127,9 @@ El* Radio::IntoEl() {
                            ->LineHeight(1.2f)
                            ->Fg(th.mutedFg)
                            ->Wrap());
+        }
+        for (El* child : children) {
+            col->Child(child);
         }
         row->Child(col);
     }
@@ -161,6 +172,7 @@ RadioGroup* RadioGroup::Disabled(bool v) {
 }
 RadioGroup* RadioGroup::WithSize(UiSize s) {
     size = s;
+    hasSize = true;
     return this;
 }
 RadioGroup* RadioGroup::OnClick(Listener fn) {
@@ -186,7 +198,10 @@ El* RadioGroup::IntoEl() {
     }
     for (int i = 0; i < radios.len; i++) {
         Radio* r = radios[i];
-        r->Checked(selected == i)->Disabled(disabled)->WithSize(size);
+        r->Checked(selected == i)->Disabled(disabled);
+        if (hasSize) {
+            r->WithSize(size);
+        }
         if (onClick.IsValid()) {
             r->OnClick(ListenerArg(onClick, i));
         }

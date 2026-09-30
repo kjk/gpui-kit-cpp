@@ -606,6 +606,11 @@ struct MaterializeRequest {
     // Applies this node's style to `target` exactly once: Rust's
     // `take_style` refined into the component's own style.
     El* ApplyStyle(El* target);
+    // Rust's `take_style` handed to a component rather than applied here:
+    // this node's style as a refinement the component applies to the element
+    // it refines, whenever it renders — including when a typed parent renders
+    // it. Counts as taking the style. Valid for the frame.
+    ElRefiner TakeStyle();
 
     int ChildrenLen() const;
     // The ordinary children, materialized in order. Exclusive with

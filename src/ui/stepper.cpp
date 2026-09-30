@@ -56,7 +56,9 @@ StepperItem* StepperItem::Icon(IconName v) {
     return this;
 }
 StepperItem* StepperItem::Child(El* e) {
-    child = e;
+    if (e) {
+        children.Append(a, e);
+    }
     return this;
 }
 StepperItem* StepperItem::Disabled(bool v) {
@@ -131,8 +133,8 @@ static El* StepperTrigger(Arena* a, const Theme& th, StepperItem* it) {
     }
     trig->Font(font);
     trig->Child(ind);
-    if (it->child) {
-        trig->Child(it->child);
+    for (El* child : it->children) {
+        trig->Child(child);
     }
     return trig;
 }
@@ -156,6 +158,7 @@ El* StepperItem::IntoEl() {
     if (textCenter) {
         root->Flex1()->JustifyCenter();
     }
+    refiner.Apply(root);
     El* trig = StepperTrigger(a, th, this);
     if (!disabled) {
         BindClick(trig, StrDup(a, fmt("trigger-%d", step)),

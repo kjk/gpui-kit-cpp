@@ -15,10 +15,11 @@ struct StepperItem {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     IconName icon = IconName::None;
-    // Rust takes any number of children; one element is the same thing, since
-    // a caller that wants two nests them.
-    El* child = nullptr;
+    // ParentElement: the trigger holds them after the indicator.
+    ArenaVec<El*> children;
     bool disabled = false;
+    // Styled: a caller's whole refinement of the item root.
+    ElRefiner refiner = {};
 
     // Filled in by Stepper, which is what knows them.
     int step = 0;

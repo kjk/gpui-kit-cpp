@@ -726,6 +726,7 @@ El* TabBar::IntoEl() {
         // The instance refinement is applied before selected/disabled state,
         // the same order gpui-base::Tab resolves its StateStyle.
         StyleApplyFields(&tab->style, item.style, item.styleSet);
+        item.refiner.Apply(tab);
         if (st.bg.a) {
             tab->Bg(st.bg);
         }

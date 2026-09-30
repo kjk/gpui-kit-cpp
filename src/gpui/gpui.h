@@ -2279,6 +2279,23 @@ struct ElStyleStates {
 };
 
 struct Selection;
+struct El;
+
+// A StyleRefinement held by someone other than the component it refines: a
+// script's whole style, which Style + StyleField cannot name field by field.
+// A component that takes one applies it where Rust's render calls
+// `refine_style(&self.style)`, so a caller's refinement lands on the element
+// Rust refines even when the component is rendered by a parent that took it
+// as a value (a RadioGroup's Radio, a TabBar's Tab).
+struct ElRefiner {
+    void (*apply)(El* target, void* user) = nullptr;
+    void* user = nullptr;
+
+    bool IsSet() const { return apply != nullptr; }
+    void Apply(El* target) const {
+        if (apply && target) apply(target, user);
+    }
+};
 
 struct El {
     // Members are ordered by decreasing alignment. El is allocated many

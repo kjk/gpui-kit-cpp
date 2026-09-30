@@ -1375,6 +1375,191 @@ void BasicTextAndDropdownMaterializeThroughTheHost() {
     utassert(FindText(root, StrL("Counts: 1|1")) != nullptr);
 }
 
+// ─── typed_compound/mod.rs ─────────────────────────────────────────────────
+
+// wrong_registered_child_identity_is_rejected
+void WrongRegisteredChildIdentityIsRejected() {
+    const char* accordion[] = {"AccordionItem"};
+    const char* radio[] = {"Radio"};
+    const char* stepper[] = {"StepperItem"};
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(!component_shell::RequireChild(&f.request, "Accordion", "Tab",
+                                                accordion));
+    }
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(!component_shell::RequireChild(&f.request, "Accordion",
+                                                nullptr, accordion));
+        utassert(StrContains(f.request.failure, StrL("ordinary element")));
+    }
+    {
+        RequestFixture f(0, nullptr, 0);
+        utassert(!component_shell::RequireChild(&f.request, "RadioGroup",
+                                                nullptr, radio));
+        utassert(component_shell::RequireChild(&f.request, "Stepper",
+                                               "StepperItem", stepper));
+    }
+}
+
+// callback_operation_preserves_the_script_callback_handle
+void CallbackOperationPreservesTheScriptCallbackHandle() {
+    Arena* a = ArenaNew();
+    shell::ComponentArgument callback;
+    callback.kind = shell::ComponentArgumentKind::Callback;
+    callback.callback = 42;
+    shell::PayloadBuild build;
+    build.a = a;
+    utassert(component_shell::typed_compound::IndexCallbackPayload(
+        &build, &callback, 1, "RadioGroup"));
+    shell::CallbackId id = 0;
+    utassert(component_shell::typed_compound::RadioGroupOnChangeCallback(
+        build.out, &id));
+    utassert(id == 42);
+
+    shell::ComponentArgument number;
+    number.kind = shell::ComponentArgumentKind::Number;
+    number.number = 42;
+    shell::PayloadBuild refused;
+    refused.a = a;
+    utassert(!component_shell::typed_compound::IndexCallbackPayload(
+        &refused, &number, 1, "RadioGroup"));
+    utassert(StrEq(refused.error,
+                   StrL("RadioGroup.on_change(callback) expects a callback")));
+    ArenaDelete(a);
+}
+
+// typed_elements_are_extracted_from_real_any_elements
+void TypedElementsAreExtractedFromRealElements() {
+    using namespace component_shell::typed_compound;
+    RequestFixture f(0, nullptr, 0);
+    Ctx* cx = &f.cx;
+    El* accordionItem =
+        TypedChildElementOf(cx, component::AccordionItem::New(cx));
+    El* radio =
+        TypedChildElementOf(cx, component::Radio::New(cx, StrL("radio")));
+    El* tab = TypedChildElementOf(cx, component::Tab::New(cx));
+    El* stepperItem = TypedChildElementOf(cx, component::StepperItem::New(cx));
+
+    shell::MaterializeRequest& request = f.request;
+    utassert(TakeElementAs<component::AccordionItem>(&request, accordionItem,
+                                                     "AccordionItem"));
+    utassert(TakeElementAs<component::Radio>(&request, radio, "Radio"));
+    utassert(TakeElementAs<component::Tab>(&request, tab, "Tab"));
+    utassert(TakeElementAs<component::StepperItem>(&request, stepperItem,
+                                                   "StepperItem"));
+    utassert(len(request.failure) == 0);
+
+    utassert(
+        !TakeElementAs<component::StepperItem>(&request, tab, "StepperItem"));
+    utassert(StrEq(request.failure,
+                   StrL("registered StepperItem materialized an incompatible "
+                        "element")));
+    RequestFixture g(0, nullptr, 0);
+    utassert(!TakeElementAs<component::Tab>(&g.request, tab, "Tab"));
+    utassert(StrEq(g.request.failure,
+                   StrL("registered Tab child was already consumed")));
+    RequestFixture h(0, nullptr, 0);
+    utassert(!TakeElementAs<component::Tab>(&h.request, Div(cx->a), "Tab"));
+}
+
+// batch_publishes_closed_documented_descriptors
+void BatchPublishesClosedDocumentedDescriptors() {
+    FamilyCatalog catalog(&component_shell::RegisterTypedCompound);
+    utassert(catalog.ok);
+    const char* names[] = {"AccordionItem", "Accordion",   "RadioGroup", "Tab",
+                           "TabBar",        "StepperItem", "Stepper"};
+    utassert(catalog.NamesAre(names, 7));
+    utassert(catalog.Documented());
+    const ComponentDescriptor* tabBar = catalog.frozen.Find(StrL("TabBar"));
+    utassert(tabBar != nullptr);
+    if (!tabBar) return;
+    utassert(tabBar->constructors[0].arguments[0].schema.kind ==
+             shell::SchemaKind::String);
+    const ArgumentSchema& variant = tabBar->methods[1].arguments[0].schema;
+    const char* literals[] = {"tab", "outline", "pill", "segmented",
+                              "underline"};
+    utassert(variant.kind == shell::SchemaKind::Enum && variant.values
+                                                                .count == 5);
+    for (int i = 0; i < variant.values.count && i < 5; i++)
+        utassert(strcmp(variant.values[i], literals[i]) == 0);
+}
+
+// The index a typed container reports reaches the script, and the accordion
+// reports the open set Rust's click leaves behind.
+void TypedContainersReportTheirSelection() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Accordion, AccordionItem, Tab, TabBar, Stepper, StepperItem "
+        "} from 'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() { this.tab = 0; this.step = 0; this.open = 'none'; }\n"
+        "  render() {\n"
+        "    return div().w(600)\n"
+        "      .child(new TabBar('tabs').selected_index(this.tab)\n"
+        "        .on_change((i, cx) => { this.tab = i; cx.notify(); })\n"
+        "        .child(new Tab().label('First'))"
+        ".child(new Tab().label('Second')))\n"
+        "      .child(new Stepper('steps').selected_index(this.step)\n"
+        "        .on_change((i, cx) => { this.step = i; cx.notify(); })\n"
+        "        .child(new StepperItem().child('Account'))"
+        ".child(new StepperItem().child('Profile')))\n"
+        "      .child(new Accordion('faq')\n"
+        "        .on_toggle((open, cx) => { this.open = open.join(',') || "
+        "'none'; cx.notify(); })\n"
+        "        .child(new AccordionItem().title(div().child('Question A'))"
+        ".open(true).child('Answer A'))\n"
+        "        .child(new AccordionItem().title(div().child('Question B'))"
+        ".child('Answer B')))\n"
+        "      .child(`state: ${this.tab}|${this.step}|${this.open}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
+    utassert(FindText(root, StrL("state: 0|0|none")) != nullptr);
+
+    El* second = ListenerAbove(root, StrL("Second"));
+    utassert(second != nullptr);
+    if (second) Click(host, second);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: 1|0|none")) != nullptr);
+
+    El* profile = ListenerAbove(root, StrL("Profile"));
+    utassert(profile != nullptr);
+    if (profile) Click(host, profile);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: 1|1|none")) != nullptr);
+
+    // Single-open: opening B closes A.
+    El* question = ListenerAbove(root, StrL("Question B"));
+    utassert(question != nullptr);
+    if (question) Click(host, question);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: 1|1|1")) != nullptr);
+}
+
+// A typed container refuses a child that is not its part, and a part that
+// materialized as something else, by failing to render.
+void TypedContainersRefuseForeignChildren() {
+    utassert(!RendersCleanly("TabBar, Tab, AccordionItem",
+                             "new TabBar('t').child(new AccordionItem())"));
+    utassert(!RendersCleanly("Stepper", "new Stepper('s').child(div())"));
+    utassert(StrContains(CallErrorTemp("TabBar", "new TabBar(' ')"),
+                         StrL("TabBar(id) expects a nonempty string id")));
+    utassert(StrContains(CallErrorTemp("Tabs", "new Tabs('')"),
+                         StrL("Tabs(id) expects a nonempty string id")));
+    utassert(StrContains(
+        CallErrorTemp("RadioGroup", "new RadioGroup('r').selected_index(1.5)"),
+        StrL("RadioGroup.selected_index(index) expects a nonnegative "
+             "integer")));
+    // Parts render on their own outside their container.
+    utassert(RendersCleanly("Tab", "new Tab().label('Alone')", "Alone"));
+    utassert(RendersCleanly("StepperItem",
+                            "new StepperItem().child('Lonely step')",
+                            "Lonely step"));
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -1433,4 +1618,12 @@ void TestComponentShell() {
     TextConstructorIsClosedAndPreservesContent();
     DropdownButtonDescriptorIsClosed();
     BasicTextAndDropdownMaterializeThroughTheHost();
+
+    TestSuite("typed_compound");
+    WrongRegisteredChildIdentityIsRejected();
+    CallbackOperationPreservesTheScriptCallbackHandle();
+    TypedElementsAreExtractedFromRealElements();
+    BatchPublishesClosedDocumentedDescriptors();
+    TypedContainersReportTheirSelection();
+    TypedContainersRefuseForeignChildren();
 }

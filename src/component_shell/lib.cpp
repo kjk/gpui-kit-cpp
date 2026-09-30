@@ -14,7 +14,8 @@ void Init(App* app) {
 // the declarations and the component ids follow.
 static const RegisterFamily kFamilies[] = {
     &RegisterSpinner,  &RegisterSeparator, &RegisterSkeleton,
-    &RegisterControls, &RegisterDisplay,   &RegisterBasic,
+    &RegisterControls, &RegisterDisplay,   &RegisterTypedCompound,
+    &RegisterBasic,
 };
 
 bool Register(shell::ComponentRegistry* registry, shell::RegistryError* error) {
