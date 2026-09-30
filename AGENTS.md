@@ -63,8 +63,8 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    g++/clang++ with system X11, cairo, Pango and gdk-pixbuf via `pkg-config`,
    and libcurl the same way when installed (the one soft dependency; without
    it the tree builds and only loses remote images). macOS: clang++ with
-   Cocoa, Core Graphics, ImageIO, Core Text, IOKit, NSURLSession. iOS: the Xcode iPhoneOS SDK and a
-   UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
+   Cocoa, Core Graphics, ImageIO, Core Text, IOKit, CoreServices (FSEvents),
+   NSURLSession. iOS: the Xcode iPhoneOS SDK and a UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
    24 or newer, and an app-owned native host. Mobile builds are static
    libraries: the application owns lifecycle and embeds the GPUI surface. No
    CMake, Gradle, vcpkg, or C++ package manager, no `ext/`. What Rust gets
@@ -155,14 +155,15 @@ src/base.h            Str, Vec, Arena, Geom, Color
 `src/base.h` defines the six `GPUI_OS_*` macros from compiler predefines;
 exactly one is 1. Seams:
 
-| Seam                               | Shared header          | Windows           | Linux                  | macOS             | iOS                  | Android              | wasm                  |
-| ---------------------------------- | ---------------------- | ----------------- | ---------------------- | ----------------- | -------------------- | -------------------- | --------------------- |
-| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`    | `base_linux.cpp`       | `base_mac.cpp`    | host adapter + POSIX | host adapter + POSIX | `base_wasm.cpp`       |
-| 2D drawing and shaped text         | `src/gpui/paint.h`     | `paint_win.cpp`   | `paint_linux.cpp`      | `paint_mac.cpp`   | host adapter         | host adapter         | `paint_wasm.cpp`      |
-| the OS window and its event loop   | `src/gpui/platform.h`  | `window_win.cpp`  | `window_linux.cpp`     | `window_mac.cpp`  | UIKit host           | Android host         | `window_wasm.cpp`     |
-| system metrics                     | `src/sys/sysinfo.h`    | `sysinfo_win.cpp` | `sysinfo_linux.cpp`    | `sysinfo_mac.cpp` | host adapter         | host adapter         | `sysinfo_wasm.cpp`    |
-| one HTTP request                   | `src/sys/http.h`       | `http_win.cpp`    | `http_linux.cpp`       | `http_mac.cpp`    | host adapter         | host adapter         | `http_wasm.cpp`       |
-| a webview in the window            | `src/wry/wry.h`        | `wry_win.cpp`     | `wry_linux.cpp` (stub) | `wry_mac.cpp`     | host adapter         | host adapter         | `wry_wasm.cpp` (stub) |
+| Seam                               | Shared header          | Windows             | Linux                  | macOS               | iOS                  | Android              | wasm                  |
+| ---------------------------------- | ---------------------- | ------------------- | ---------------------- | ------------------- | -------------------- | -------------------- | --------------------- |
+| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`      | `base_linux.cpp`       | `base_mac.cpp`      | host adapter + POSIX | host adapter + POSIX | `base_wasm.cpp`       |
+| 2D drawing and shaped text         | `src/gpui/paint.h`     | `paint_win.cpp`     | `paint_linux.cpp`      | `paint_mac.cpp`     | host adapter         | host adapter         | `paint_wasm.cpp`      |
+| the OS window and its event loop   | `src/gpui/platform.h`  | `window_win.cpp`    | `window_linux.cpp`     | `window_mac.cpp`    | UIKit host           | Android host         | `window_wasm.cpp`     |
+| system metrics                     | `src/sys/sysinfo.h`    | `sysinfo_win.cpp`   | `sysinfo_linux.cpp`    | `sysinfo_mac.cpp`   | host adapter         | host adapter         | `sysinfo_wasm.cpp`    |
+| one HTTP request                   | `src/sys/http.h`       | `http_win.cpp`      | `http_linux.cpp`       | `http_mac.cpp`      | host adapter         | host adapter         | `http_wasm.cpp`       |
+| a directory's changes              | `src/sys/dir_watch.h`  | `dir_watch_win.cpp` | `dir_watch_linux.cpp`  | `dir_watch_mac.cpp` | none (stub)          | none (stub)          | `dir_watch_wasm.cpp`  |
+| a webview in the window            | `src/wry/wry.h`        | `wry_win.cpp`       | `wry_linux.cpp` (stub) | `wry_mac.cpp`       | host adapter         | host adapter         | `wry_wasm.cpp` (stub) |
 
 `_posix.cpp` is the shared suffix for Linux, macOS, iOS, Android **and** wasm,
 since

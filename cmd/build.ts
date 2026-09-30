@@ -1012,7 +1012,8 @@ function winLibs(f: BuildFlags): string[] {
 // Cocoa pulls in AppKit, Foundation and CoreGraphics; CoreText shapes the
 // glyphs and IOKit answers the battery question. WebKit is
 // src/wry/wry_mac.cpp — the webview.
-const macFrameworks = ["Cocoa", "CoreText", "CoreGraphics", "ImageIO", "IOKit", "WebKit"];
+// CoreServices is FSEvents, the directory watcher in sys/dir_watch_mac.cpp.
+const macFrameworks = ["Cocoa", "CoreServices", "CoreText", "CoreGraphics", "ImageIO", "IOKit", "WebKit"];
 
 // x11 for the window, cairo + pangocairo for everything drawn in it.
 const linuxPkgs = ["x11", "cairo", "pangocairo", "gdk-pixbuf-2.0", "gio-2.0"];
