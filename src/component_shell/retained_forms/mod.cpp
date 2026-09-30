@@ -37,17 +37,6 @@ struct FormOp {
     uint64_t count = 0;
 };
 
-// A retained Entity<T> the state store owns: dropped with it.
-template <class T>
-struct EntityState {
-    App* app = nullptr;
-    Entity<T> entity = {};
-
-    ~EntityState() {
-        if (app && entity.IsValid()) EntityDrop(app, entity.id);
-    }
-};
-
 bool PositiveUsize(const ComponentArgument* args, int count,
                    const char* callable, uint64_t* out, Str* error) {
     // 2^64: `2_f64.powi(usize::BITS as i32)`.

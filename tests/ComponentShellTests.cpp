@@ -2672,6 +2672,141 @@ void ResizableConsumesTwoTypedPanels() {
                          StrL("received an ordinary element")));
 }
 
+// The description a Host's view last rendered, as Rust's
+// `snapshot().debug_tree()` prints it.
+Str DebugTreeTemp(Host& host) {
+    ScriptView* script = host.view.Get(&host.app);
+    if (!script || !script->snapshot) return {};
+    Arena* a = ArenaNew();
+    Str tree = script->snapshot->DebugTree(a);
+    TempStr out = fmt("%s", tree);
+    ArenaDelete(a);
+    return out;
+}
+
+// ─── chat.rs ───────────────────────────────────────────────────────────────
+
+// lib.rs main_chat_components_are_registered
+void MainChatComponentsAreRegistered() {
+    const FrozenComponentRegistry* frozen = component_shell::Components();
+    const char* expected[] = {"Attachment", "Bubble",          "Marker",
+                              "Message",    "MessageScroller", "ShimmerText"};
+    for (const char* name : expected)
+        utassert(frozen->Find(Str(name)) != nullptr);
+    utassert(frozen->StateOfKind(StrL("MessageScrollerState")) != nullptr);
+}
+
+// chat_host.rs chat_components_materialize_through_the_public_host
+void ChatComponentsMaterializeThroughThePublicHost() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import {\n"
+        "  Attachment, Bubble, Marker, Message, MessageScroller,\n"
+        "  MessageScrollerState, ShimmerText,\n"
+        "} from 'gpui-component';\n"
+        "export default class ChatHost extends View {\n"
+        "  init() { this.scroller = MessageScrollerState(2); }\n"
+        "  render() {\n"
+        "    const rows = ['first', 'second'];\n"
+        "    return div()\n"
+        "      .child(new Attachment('attachment').status('complete')"
+        ".child('report.pdf'))\n"
+        "      .child(new Bubble().alignment('end').variant('filled')"
+        ".child('bubble'))\n"
+        "      .child(new Marker('marker').variant('separator').loading(true)"
+        ".child('marker'))\n"
+        "      .child(new Message().alignment('start').child('message'))\n"
+        "      .child(new ShimmerText('thinking').id('shimmer')"
+        ".duration_ms(900))\n"
+        "      .child(new MessageScroller('messages', this.scroller,\n"
+        "        (index) => div().child(rows[index]))\n"
+        "        .h(120).scrollbar(true).jump_button_label('Latest'));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    utassert(!host.runtime || len(host.runtime->LastComponentFailure()) == 0);
+    Str tree = DebugTreeTemp(host);
+    const char* expected[] = {"Attachment", "Bubble",      "Marker",
+                              "Message",    "ShimmerText", "MessageScroller"};
+    for (const char* name : expected) utassert(StrContains(tree, Str(name)));
+    utassert(FindText(root, StrL("report.pdf")) != nullptr);
+    utassert(FindText(root, StrL("bubble")) != nullptr);
+    utassert(FindText(root, StrL("message")) != nullptr);
+}
+
+// The recorders' own refusals, which the schemas let through.
+void ChatRecordersRefuseWhatRustRefuses() {
+    struct Case {
+        const char* call;
+        const char* message;
+    };
+    const Case cases[] = {
+        {"new Attachment(' ')", "Attachment expects a non-empty stable id"},
+        {"new Marker('')", "Marker expects a non-empty stable id"},
+        {"new ShimmerText('x').id(' ')",
+         "ShimmerText.id expects a non-empty stable id"},
+        {"new ShimmerText('x').duration_ms(-1)",
+         "ShimmerText.duration_ms expects a finite non-negative duration"},
+        {"new ShimmerText('x').spread(1e300)",
+         "ShimmerText.spread expects a finite f32 fraction"},
+        {"new MessageScroller(' ', MessageScrollerState(1), () => null)",
+         "MessageScroller expects a non-empty id, MessageScrollerState, and "
+         "row renderer"},
+        {"new MessageScroller('m', MessageScrollerState(1), () => null)"
+         ".jump_button_label(' ')",
+         "MessageScroller.jump_button_label expects non-empty text"},
+        {"new MessageScroller('m', MessageScrollerState(1.5), () => null)",
+         "MessageScrollerState expects a non-negative integer item_count"},
+    };
+    for (const Case& c : cases) {
+        Str message = CallErrorTemp(
+            "Attachment, Marker, ShimmerText, MessageScroller, "
+            "MessageScrollerState",
+            c.call);
+        if (!StrContains(message, Str(c.message)))
+            printf("chat refusal: %s -> %s\n", c.call, message.s);
+        utassert(StrContains(message, Str(c.message)));
+    }
+    Host leaf(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { ShimmerText } from 'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new ShimmerText('x').child(div()); } }\n"));
+    utassert(StrContains(RenderRefusal(leaf),
+                         StrL("ShimmerText does not accept children")));
+    Str failure;
+    utassert(MaterializeDirect("Bubble", shell::ComponentPayload{}, &failure) ==
+             nullptr);
+    utassert(StrEq(failure,
+                   StrL("chat component received an incompatible payload")));
+    StrFree(failure);
+}
+
+// The rows a MessageScroller renders come from the script's renderer.
+void MessageScrollerRendersScriptRows() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { MessageScroller, MessageScrollerState } from "
+             "'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  init() { this.scroller = MessageScrollerState(2); }\n"
+             "  render() { const rows = ['first', 'second'];\n"
+             "    return new MessageScroller('messages', this.scroller,\n"
+             "      (index) => div().child(rows[index])).h(120); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(root && root->style.height == 120);
+    // The virtual list builds the visible rows while it lays out.
+    host.window.paint.app = &host.app;
+    host.window.paint.window = &host.window;
+    if (root) LayoutEl(&host.window.paint, root, 0, 0, 300, 400, 14, Rgba{});
+    utassert(FindText(root, StrL("first")) != nullptr);
+    utassert(FindText(root, StrL("second")) != nullptr);
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -2730,6 +2865,12 @@ void TestComponentShell() {
     TextConstructorIsClosedAndPreservesContent();
     DropdownButtonDescriptorIsClosed();
     BasicTextAndDropdownMaterializeThroughTheHost();
+
+    TestSuite("chat");
+    MainChatComponentsAreRegistered();
+    ChatComponentsMaterializeThroughThePublicHost();
+    ChatRecordersRefuseWhatRustRefuses();
+    MessageScrollerRendersScriptRows();
 
     TestSuite("empty");
     EmptyPublishesAllPartsWithClosedDocumentedMethods();

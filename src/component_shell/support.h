@@ -107,6 +107,18 @@ T* TakeCarriedAs(MaterializeRequest* request, El* element, const char* name) {
     return (T*)TakeCarried(request, element, shell::PayloadTag<T>(), name);
 }
 
+// A retained Entity<T> the state store owns: dropped with it. What Rust's
+// `Box::new(cx.new(..))` state factories hand the store.
+template <class T>
+struct EntityState {
+    App* app = nullptr;
+    Entity<T> entity = {};
+
+    ~EntityState() {
+        if (app && entity.IsValid()) EntityDrop(app, entity.id);
+    }
+};
+
 // Visits every recorded method whose payload is a `T`, in script order.
 template <class T, class F>
 void EachMethod(const MaterializeRequest* request, F&& visit) {
