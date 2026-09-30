@@ -31,6 +31,16 @@ int KbdFormat(Keystroke stroke, char* out, int cap);
 // The same, into the frame arena.
 Str KbdFormatStr(Ctx* cx, Keystroke stroke);
 
+// gpui `Keystroke::parse`: `[secondary-][ctrl-][alt-][shift-][cmd-][fn-]key`,
+// modifiers in any case and any order, the key lowercased (a lone capital
+// letter is shift plus the letter), and a spec of only modifiers naming the
+// first of them as its key. The key is copied into `a`. False for a spec
+// gpui refuses, with `KeystrokeParseErrorTemp` the message it gives. This
+// Keystroke carries no `fn` modifier and no `->key_char` suffix, so both
+// are read and dropped.
+bool KeystrokeParse(Arena* a, Str source, Keystroke* out);
+TempStr KeystrokeParseErrorTemp(Str source);
+
 // Kbd::binding_for_action / binding_for_action_in. The chord bound to
 // `action`, as a Keystroke this platform can spell — so a menu row and a
 // tooltip show what is actually bound rather than what a caller remembered to

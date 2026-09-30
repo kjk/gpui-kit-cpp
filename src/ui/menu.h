@@ -42,6 +42,9 @@ struct MenuItem {
     // `on_action` the keyboard reaches is what runs.
     uint32_t action = 0;
     intptr_t actionArg = 0;
+    // PopupMenuItem::on_click: runs instead of the action when the row is
+    // chosen, by a click or by Enter.
+    Listener onClick = {};
     bool checked = false;
     bool disabled = false;
     bool isLink = false;
@@ -87,6 +90,8 @@ struct PopupMenu {
     PopupMenu* MenuWithAction(Str label, uint32_t action, intptr_t arg = 0);
     // Applies to the last row added, for the builders that add one first.
     PopupMenu* Action(uint32_t action, intptr_t arg = 0);
+    // Applies to the last row added: PopupMenuItem::on_click.
+    PopupMenu* OnClick(Listener l);
     PopupMenu* Link(Str label, Str href, IconName icon = IconName::None);
     PopupMenu* Separator();
     PopupMenu* Label(Str label);

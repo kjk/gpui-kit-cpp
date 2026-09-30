@@ -41,7 +41,7 @@ Badge* Badge::WithSize(UiSize s) {
     return this;
 }
 Badge* Badge::Child(El* c) {
-    child = c;
+    if (c) children.Append(a, c);
     return this;
 }
 
@@ -51,7 +51,7 @@ El* Badge::IntoEl() {
     // always there.
     bool visible = kind != BadgeKind::Number || count > 0;
     El* root = Div(a);
-    if (child) {
+    for (El* child : children) {
         root->Child(child);
     }
     if (!visible) {

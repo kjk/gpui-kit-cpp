@@ -2,6 +2,9 @@
 
 #include "ui/theme.h"
 
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 namespace gpui::component_shell {
@@ -95,6 +98,48 @@ bool ParseColorArgument(PayloadBuild* build, const char* component, Str text,
     if (ThemeParseColor(text, out)) return true;
     return build->Fail(
         fmt("invalid %s color: `%s` is not a color", Str(component), text));
+}
+
+TempStr F64DisplayTemp(double value) {
+    if (value != value) return fmt("NaN");
+    if (value == INFINITY) return fmt("inf");
+    if (value == -INFINITY) return fmt("-inf");
+    bool negative = signbit(value) != 0;
+    double magnitude = negative ? -value : value;
+    if (magnitude == 0) return fmt(negative ? "-0" : "0");
+    // The shortest `%.*e` that reads back as the same double: its digits and
+    // its exponent are what Display lays out without the exponent.
+    char buf[40];
+    for (int precision = 0; precision < 17; precision++) {
+        snprintf(buf, sizeof(buf), "%.*e", precision, magnitude);
+        if (strtod(buf, nullptr) == magnitude) break;
+    }
+    char digits[24];
+    int count = 0;
+    const char* at = buf;
+    for (; *at && *at != 'e'; at++) {
+        if (*at >= '0' && *at <= '9' && count < 23) digits[count++] = *at;
+    }
+    int exponent = *at == 'e' ? atoi(at + 1) : 0;
+    while (count > 1 && digits[count - 1] == '0') count--;
+    StrBuilder out;
+    if (negative) out.Append(StrL("-"));
+    if (exponent < 0) {
+        out.Append(StrL("0."));
+        for (int i = 0; i < -exponent - 1; i++) out.Append(StrL("0"));
+        out.Append(Str(digits, count));
+    } else if (exponent >= count - 1) {
+        out.Append(Str(digits, count));
+        for (int i = 0; i < exponent - (count - 1); i++) out.Append(StrL("0"));
+    } else {
+        out.Append(Str(digits, exponent + 1));
+        out.Append(StrL("."));
+        out.Append(Str(digits + exponent + 1, count - exponent - 1));
+    }
+    Str owned = out.TakeStr();
+    TempStr result = fmt("%s", owned);
+    StrFree(owned);
+    return result;
 }
 
 } // namespace gpui::component_shell

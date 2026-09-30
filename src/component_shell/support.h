@@ -14,6 +14,7 @@
 namespace gpui::component_shell {
 
 using shell::ArgumentDescriptor;
+using shell::ArgumentSchema;
 using shell::ComponentArgument;
 using shell::ComponentDescriptor;
 using shell::ComponentPayload;
@@ -21,12 +22,14 @@ using shell::ConstructorDescriptor;
 using shell::MaterializeRequest;
 using shell::MethodDescriptor;
 using shell::PayloadBuild;
+using shell::SchemaArray;
 using shell::SchemaBoolean;
 using shell::SchemaCallback;
 using shell::SchemaElement;
 using shell::SchemaEntity;
 using shell::SchemaEnum;
 using shell::SchemaNumber;
+using shell::SchemaOptional;
 using shell::SchemaString;
 using shell::Slice;
 
@@ -117,6 +120,11 @@ void EachMethod(const MaterializeRequest* request, F&& visit) {
 // recorder, failing with "invalid <component> color: ..." as Rust does.
 bool ParseColorArgument(PayloadBuild* build, const char* component, Str text,
                         Rgba* out);
+
+// `format!("{value}")` for an f64: the fewest digits that read back as the
+// same double, never in exponent form (`18446744073709552000`, `1.5`, `-1`,
+// `inf`, `NaN`), which is how Rust spells a number inside an error message.
+TempStr F64DisplayTemp(double value);
 
 } // namespace gpui::component_shell
 #endif // GPUI_COMPONENT_SHELL_SUPPORT_H_

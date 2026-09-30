@@ -130,6 +130,13 @@ void PopupMenuDismissAll(PopupMenuState* s, Ctx* cx) {
 }
 
 void PopupMenuConfirm(PopupMenuState* s, Ctx* cx, int ix) {
+    // `handler(&ClickEvent::default(), window, cx)`: the row's own handler,
+    // for a click and for Enter alike.
+    if (ix >= 0 && ix < len(s->rows) && s->rows[ix].handler.IsValid()) {
+        Listener handler = s->rows[ix].handler;
+        ClickEvent ev = {};
+        ListenerCall(cx->app, cx->win, handler, &ev);
+    }
     if (s->onConfirm.IsValid()) {
         ClickEvent ev = {};
         ListenerCall(cx->app, cx->win, ListenerFill(s->onConfirm, ix), &ev);

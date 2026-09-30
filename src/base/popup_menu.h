@@ -57,6 +57,9 @@ struct PopupMenuRow {
     bool submenu = false;
     bool link = false;
     Str href = {};
+    // The row's own handler, PopupMenuItem::on_click, which confirm runs
+    // in place of the action.
+    Listener handler = {};
 };
 
 // What a menu is between frames. Rust keeps this in the PopupMenu entity

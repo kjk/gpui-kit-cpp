@@ -12892,6 +12892,47 @@ Listener shell::ComponentListener(Ctx* cx, shell::ComponentEventRun run,
     return Listen(cx, &ScriptView::OnComponentEvent, (intptr_t)binding);
 }
 
+// What ComponentValueListener binds to: the callback a frame last gave it,
+// and the ScriptView that frame belonged to. Rewritten every frame the
+// component renders, so a click always reaches what the view last showed.
+struct ShellComponentValueRelay {
+    EntityId view = {};
+    shell::ComponentEventRun run = nullptr;
+    shell::ComponentCallback callback = {};
+    void* user = nullptr;
+
+    static void OnValue(ShellComponentValueRelay* self, Ctx* cx,
+                        const void* event, intptr_t value) {
+        if (!self || !self->run) return;
+        Entity<ScriptView> handle;
+        handle.id = self->view;
+        ScriptView* view = handle.Get(cx);
+        if (!view || !view->runtime) return;
+        shell::ComponentEventBinding binding;
+        binding.run = self->run;
+        binding.callback = self->callback;
+        binding.user = self->user;
+        binding.value = value;
+        self->run(&binding, view, cx, event);
+    }
+};
+
+Listener shell::ComponentValueListener(Ctx* cx, Str key,
+                                       shell::ComponentEventRun run,
+                                       shell::ComponentCallback callback,
+                                       void* user) {
+    Entity<ShellComponentValueRelay> relay =
+        ElementStateEntity<ShellComponentValueRelay>(
+            cx, key, StrL("shell::ComponentValueRelay"));
+    ShellComponentValueRelay* state = relay.Get(cx);
+    if (!state) return {};
+    state->view = cx->self;
+    state->run = run;
+    state->callback = callback;
+    state->user = user;
+    return ListenTo(relay, &ShellComponentValueRelay::OnValue);
+}
+
 void* shell::MaterializeRequest::State(const shell::ComponentArgument& argument,
                                        const char* kind) {
     const shell::ComponentArgument* value = argument.Some();

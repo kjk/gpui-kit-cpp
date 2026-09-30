@@ -16,12 +16,15 @@ struct Link {
     Str text = {};
     bool disabled = false;
     Listener onOpen;
+    // ParentElement: link.rs renders its children in place of any text.
+    ArenaVec<El*> children;
 
     static Link* New(Ctx* cx, Str id);
     Link* Href(Str s);
     Link* Text(Str s);
     Link* Disabled(bool v);
     Link* OnOpen(Listener fn);
+    Link* Child(El* e);
     El* IntoEl();
 };
 

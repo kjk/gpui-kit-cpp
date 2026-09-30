@@ -1,5 +1,7 @@
 #include "ui/kbd.h"
 
+#include <string.h>
+
 namespace gpui {
 
 namespace component {
@@ -130,6 +132,132 @@ int KbdFormat(Keystroke stroke, char* out, int cap) {
     }
     out[len] = 0;
     return len;
+}
+
+static bool KeystrokePartIs(Str part, const char* name) {
+    int n = (int)strlen(name);
+    if (len(part) != n) return false;
+    for (int i = 0; i < n; i++) {
+        char c = part.s[i];
+        if (c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        if (c != name[i]) return false;
+    }
+    return true;
+}
+
+bool KeystrokeParse(Arena* a, Str source, Keystroke* out) {
+    // The `-`-separated parts, as `source.split('-')` gives them.
+    Str parts[32];
+    int n = 0;
+    int start = 0;
+    for (int i = 0; i <= len(source); i++) {
+        if (i < len(source) && source.s[i] != '-') continue;
+        if (n == 32) return false;
+        parts[n++] = Str(source.s + start, i - start);
+        start = i + 1;
+    }
+    Keystroke k;
+    bool function = false;
+    bool hasKey = false;
+    Str key = {};
+    bool lower = true;
+    for (int i = 0; i < n; i++) {
+        Str part = parts[i];
+        if (KeystrokePartIs(part, "ctrl")) {
+            k.ctrl = true;
+            continue;
+        }
+        if (KeystrokePartIs(part, "alt")) {
+            k.alt = true;
+            continue;
+        }
+        if (KeystrokePartIs(part, "shift")) {
+            k.shift = true;
+            continue;
+        }
+        if (KeystrokePartIs(part, "fn")) {
+            function = true;
+            continue;
+        }
+        if (KeystrokePartIs(part, "secondary")) {
+#if GPUI_OS_MAC
+            k.platform = true;
+#else
+            k.ctrl = true;
+#endif
+            continue;
+        }
+        if (KeystrokePartIs(part, "cmd") || KeystrokePartIs(part, "super") ||
+            KeystrokePartIs(part, "win")) {
+            k.platform = true;
+            continue;
+        }
+        if (i + 1 < n) {
+            Str next = parts[i + 1];
+            if (len(next) == 0 && len(source) > 0 &&
+                source.s[len(source) - 1] == '-') {
+                key = StrL("-");
+                hasKey = true;
+                lower = false;
+                break;
+            }
+            if (len(next) > 1 && next.s[0] == '>') {
+                // `key->key_char`: the key as written, and the character
+                // only test events use, which this Keystroke has no room for.
+                key = part;
+                hasKey = true;
+                lower = false;
+                i++;
+                continue;
+            }
+            return false;
+        }
+        if (len(part) == 1 && part.s[0] >= 'A' && part.s[0] <= 'Z') {
+            k.shift = true;
+        }
+        key = part;
+        hasKey = true;
+        lower = true;
+    }
+    if (!hasKey) {
+        // A spec of nothing but modifiers names the first of them.
+        if (k.shift) {
+            k.shift = false;
+            key = StrL("shift");
+        } else if (k.ctrl) {
+            k.ctrl = false;
+            key = StrL("control");
+        } else if (k.alt) {
+            k.alt = false;
+            key = StrL("alt");
+        } else if (k.platform) {
+            k.platform = false;
+            key = StrL("platform");
+        } else if (function) {
+            key = StrL("function");
+        } else {
+            return false;
+        }
+        lower = false;
+    }
+    char* copy = (char*)Alloc(a, len(key) + 1);
+    for (int i = 0; i < len(key); i++) {
+        char c = key.s[i];
+        if (lower && c >= 'A' && c <= 'Z') c = (char)(c + 32);
+        copy[i] = c;
+    }
+    copy[len(key)] = 0;
+    k.key = Str(copy, len(key));
+    *out = k;
+    return true;
+}
+
+TempStr KeystrokeParseErrorTemp(Str source) {
+    return fmt(
+        "Invalid keystroke \"%s\". Expected a sequence of modifiers "
+        "(`ctrl`, `alt`, `shift`, `fn`, `cmd`, `super`, or `win`) "
+        "followed by a key, separated by `-`.",
+        source);
 }
 
 Str KbdFormatStr(Ctx* cx, Keystroke stroke) {

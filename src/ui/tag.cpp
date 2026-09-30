@@ -49,6 +49,10 @@ Tag* Tag::Radius(float v) {
     radius = v;
     return this;
 }
+Tag* Tag::Child(El* e) {
+    if (e) children.Append(a, e);
+    return this;
+}
 Tag* Tag::Custom(Rgba bg, Rgba fg, Rgba border) {
     customBg = bg;
     customFg = fg;
@@ -113,15 +117,24 @@ El* Tag::IntoEl() {
     // tag.rs: rems(0.625) small, text_sm large, text_xs otherwise.
     float font = tiny ? 10.f : (size == UiSize::Large ? 14.f : 12.f);
     float r = radius >= 0 ? radius : (tiny ? th.radius * 0.5f : th.radius);
-    return Div(a)
-        ->PadX(tiny ? 6.f : 10.f)
-        ->PadY(tiny ? 2.f : 4.f)
-        ->Radius(r)
-        ->Bg(bg)
-        ->Border(1, bd)
-        ->LineHeight(1.25f)
-        ->ItemsCenter()
-        ->Child(TextEl(a, text)->Font(font)->Fg(fg));
+    El* root = Div(a)
+                   ->PadX(tiny ? 6.f : 10.f)
+                   ->PadY(tiny ? 2.f : 4.f)
+                   ->Radius(r)
+                   ->Bg(bg)
+                   ->Border(1, bd)
+                   ->LineHeight(1.25f)
+                   ->ItemsCenter();
+    if (text.s || children.len == 0) {
+        root->Child(TextEl(a, text)->Font(font)->Fg(fg));
+    }
+    if (children.len > 0) {
+        // tag.rs sets the text size and colour on the chip itself, so the
+        // children it holds inherit them.
+        root->Font(font)->Fg(fg);
+        for (El* child : children) root->Child(child);
+    }
+    return root;
 }
 
 } // namespace component

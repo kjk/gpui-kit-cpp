@@ -44,6 +44,10 @@ Switch* Switch::Color(Rgba c) {
     hasColor = true;
     return this;
 }
+Switch* Switch::Tooltip(Str s) {
+    tooltip = s;
+    return this;
+}
 Switch* Switch::FocusRing(bool v) {
     focusRing = v;
     return this;
@@ -132,6 +136,9 @@ El* Switch::IntoEl() {
     }
     if (!checked) {
         track->Bg(th.tokens.secondary);
+    }
+    if (tooltip.s) {
+        track->Tip(tooltip);
     }
     // The thumb slides rather than jumping: Rust animates `left` from one end
     // to the other over 150 ms whenever the checked flag turns over. A

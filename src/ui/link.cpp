@@ -29,6 +29,10 @@ Link* Link::OnOpen(Listener fn) {
     onOpen = fn;
     return this;
 }
+Link* Link::Child(El* e) {
+    if (e) children.Append(a, e);
+    return this;
+}
 
 El* Link::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
@@ -39,6 +43,13 @@ El* Link::IntoEl() {
     // `when(!disabled)` beside it, so a disabled link keeps the hand there
     // too; this keeps that.
     e->Cursor(CursorKind::Pointer);
+    if (children.len > 0) {
+        // The colour and underline go on the link itself, as link.rs sets
+        // them, for the children to take.
+        e->Fg(disabled ? th.mutedFg : th.blue)->Underline();
+        for (El* child : children) e->Child(child);
+        return e;
+    }
     // text_decoration_1(): a link is underlined at rest, not only on hover.
     e->Child(TextEl(a, text.s ? text : href)
                  ->Font(14)

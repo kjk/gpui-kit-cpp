@@ -24,7 +24,9 @@ struct Badge {
     Rgba color = {};
     bool hasColor = false;
     UiSize size = UiSize::Medium;
-    El* child = nullptr;
+    // ParentElement: badge.rs extends a Vec, and the dot sits over all of
+    // them.
+    ArenaVec<El*> children;
 
     static Badge* New(Ctx* cx);
     Badge* Count(int n);

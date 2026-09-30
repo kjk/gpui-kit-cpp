@@ -773,6 +773,608 @@ void RegisteredCallsAreValidatedAgainstTheirSchemas() {
     }
 }
 
+// ─── Shared helpers for the family tests below ─────────────────────────────
+
+// A catalog holding only what `family` registers, the way each family's own
+// mod.rs test builds one.
+struct FamilyCatalog {
+    FrozenComponentRegistry frozen;
+    bool ok = false;
+
+    explicit FamilyCatalog(component_shell::RegisterFamily family) {
+        ComponentRegistry registry;
+        RegistryError error;
+        registry.Open(shell::kComponentRegistryApiVersion,
+                      shell::kDefaultComponentModule, &error);
+        ok = family(&registry, &error);
+        registry.Freeze(&frozen);
+    }
+    bool NamesAre(const char* const* names, int count) const {
+        if (frozen.DescriptorCount() != count) return false;
+        for (int i = 0; i < count; i++) {
+            if (strcmp(frozen.Descriptor((uint32_t)i)->name, names[i]) != 0)
+                return false;
+        }
+        return true;
+    }
+    bool Documented() const {
+        for (int i = 0; i < frozen.DescriptorCount(); i++) {
+            const ComponentDescriptor* d = frozen.Descriptor((uint32_t)i);
+            if (!d->documentation) return false;
+            for (const MethodDescriptor& m : d->methods)
+                if (!m.documentation) return false;
+        }
+        return true;
+    }
+};
+
+// The payload a registered constructor records from `args`, in `a`; the
+// failure message when it refuses, in `failure`.
+shell::ComponentPayload BuildPayload(const char* component, int constructor,
+                                     const shell::ComponentArgument* args,
+                                     int count, Arena* a, Str* failure) {
+    const ComponentDescriptor* d = component_shell::Components()
+                                       ->Find(Str(component));
+    shell::PayloadBuild build;
+    build.a = a;
+    if (!d || !d->constructors[constructor].factory(&build, args, count)) {
+        if (failure) *failure = build.error;
+        return {};
+    }
+    return build.out;
+}
+
+shell::ComponentArgument StringArgument(const char* value) {
+    shell::ComponentArgument argument;
+    argument.kind = shell::ComponentArgumentKind::String;
+    argument.string = Str(value);
+    return argument;
+}
+
+// What a materializer says for a node recorded from `payload` with
+// `children` ordinary children and nothing else.
+Str MaterializeFailure(const char* name, shell::ComponentPayload payload,
+                       int children) {
+    const ComponentDescriptor* descriptor = component_shell::Components()
+                                                ->Find(Str(name));
+    if (!descriptor) return {};
+    RequestFixture f(children, nullptr, 0);
+    f.request.descriptor = descriptor;
+    f.request.payload = payload;
+    f.request.elementId = StrL("direct");
+    El* element = descriptor->materialize(&f.request);
+    return element ? Str{} : StrDup(f.request.failure);
+}
+
+// The error a script sees when it renders `call` from the catalog: a
+// constructor's or method's TypeError, or a schema refusal.
+Str CallErrorTemp(const char* imports, const char* call) {
+    TempStr source =
+        fmt("import { View, div } from 'gpui-kit';\n"
+            "import { %s } from 'gpui-component';\n"
+            "export default class Main extends View {\n"
+            "  render() { return div().child(%s); }\n"
+            "}\n",
+            Str(imports), Str(call));
+    Host host(source);
+    host.Render();
+    Str message = host.ViewError();
+    if (!len(message)) message = host.error.message;
+    return fmt("%s", message);
+}
+
+// Whether any text in the tree starts with `prefix`.
+El* FindTextPrefix(El* element, Str prefix) {
+    if (!element) return nullptr;
+    if (element->kind == ElKind::Text && StrStartsWith(element->text, prefix))
+        return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindTextPrefix(child, prefix)) return found;
+    }
+    return nullptr;
+}
+
+// Renders `call` once and answers whether it built without an error.
+bool RendersCleanly(const char* imports, const char* call,
+                    const char* expectText = nullptr) {
+    TempStr source =
+        fmt("import { View, div } from 'gpui-kit';\n"
+            "import { %s } from 'gpui-component';\n"
+            "export default class Main extends View {\n"
+            "  render() { return div().child(%s); }\n"
+            "}\n",
+            Str(imports), Str(call));
+    Host host(source);
+    El* root = host.Render();
+    if (!root || host.error.IsSet() || len(host.ViewError()) != 0) return false;
+    if (FindTextPrefix(root, StrL("Failed to render"))) return false;
+    return !expectText || FindText(root, Str(expectText)) != nullptr;
+}
+
+El* FindParentOfText(El* element, Str text) {
+    if (!element) return nullptr;
+    for (El* child = element->first; child; child = child->next) {
+        if (child->kind == ElKind::Text && StrEq(child->text, text))
+            return element;
+        if (El* found = FindParentOfText(child, text)) return found;
+    }
+    return nullptr;
+}
+
+// Every element carrying a click listener, in tree order: what a pointer
+// press on each would dispatch.
+int CollectListeners(El* element, El** out, int count, int cap) {
+    if (!element) return count;
+    if (element->listener.IsValid() && count < cap) out[count++] = element;
+    for (El* child = element->first; child; child = child->next)
+        count = CollectListeners(child, out, count, cap);
+    return count;
+}
+
+// The nearest element on the path to `text` that takes a click.
+El* ListenerAbove(El* element, Str text, El* best = nullptr) {
+    if (!element) return nullptr;
+    if (element->listener.IsValid()) best = element;
+    if (element->kind == ElKind::Text && StrEq(element->text, text))
+        return best;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = ListenerAbove(child, text, best)) return found;
+    }
+    return nullptr;
+}
+
+void Click(Host& host, El* element) {
+    ClickEvent event = {};
+    ListenerCall(&host.app, &host.window, element->listener, &event);
+}
+
+// ─── controls/: mod.rs, action.rs, display.rs, text.rs ─────────────────────
+
+// controls_register_the_supported_public_exports
+void ControlsRegisterTheSupportedPublicExports() {
+    FamilyCatalog catalog(&component_shell::RegisterControls);
+    utassert(catalog.ok);
+    const char* expected[] = {"Button", "Checkbox", "Switch", "Toggle", "Badge",
+                              "Tag",    "Label",    "Link",   "Kbd"};
+    int at = 0;
+    bool same = true;
+    for (int i = 0; i < catalog.frozen.DescriptorCount(); i++) {
+        for (const ConstructorDescriptor& ctor :
+             catalog.frozen.Descriptor((uint32_t)i)->constructors) {
+            same = same && at < 9 && strcmp(ctor.exportName, expected[at]) == 0;
+            at++;
+        }
+    }
+    utassert(same && at == 9);
+}
+
+// every_control_uses_closed_argument_schemas_and_documents_its_surface
+void EveryControlDocumentsItsSurface() {
+    FamilyCatalog catalog(&component_shell::RegisterControls);
+    utassert(catalog.Documented());
+}
+
+// identity_controls_reject_empty_ids, through the constructors that call it.
+void IdentityControlsRejectEmptyIds() {
+    utassert(StrContains(CallErrorTemp("Button", "new Button('')"),
+                         StrL("Button id must not be empty")));
+    utassert(StrContains(CallErrorTemp("Toggle", "new Toggle('')"),
+                         StrL("Toggle id must not be empty")));
+    utassert(StrContains(CallErrorTemp("Label", "new Label('')"),
+                         StrL("Label text must not be empty")));
+    utassert(RendersCleanly("Link", "new Link('save').child('Save')", "Save"));
+}
+
+// button_operations_replay_in_recorded_order_on_a_real_component
+void ButtonOperationsReplayInRecordedOrder() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Button } from 'gpui-component';\n"
+             "export default class Main extends View {\n"
+             "  render() { return div().child(new Button('ordered')"
+             ".label('First').primary().label('Last').outline()); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Last")) != nullptr);
+    utassert(FindText(root, StrL("First")) == nullptr);
+}
+
+// badge_numbers_reject_fractional_negative_and_overflow_values
+void BadgeNumbersRejectFractionalNegativeAndOverflow() {
+    utassert(RendersCleanly("Badge", "new Badge().count(7).child('inbox')",
+                            "inbox"));
+    utassert(StrContains(CallErrorTemp("Badge", "new Badge().count(1.5)"),
+                         StrL("Badge.count expects a non-negative integer")));
+    utassert(StrContains(CallErrorTemp("Badge", "new Badge().count(-1)"),
+                         StrL("Badge.count expects a non-negative integer")));
+    utassert(StrContains(CallErrorTemp("Badge", "new Badge().max(2 ** 64)"),
+                         StrL("Badge.max expects a non-negative integer")));
+}
+
+// later_tag_variant_preserves_earlier_size_outline_and_rounding
+void LaterTagVariantPreservesEarlierSizeOutlineAndRounding() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Tag } from 'gpui-component';\n"
+             "export default class Main extends View {\n"
+             "  render() { return div().child(new Tag().size('large')"
+             ".outline().rounded_full().variant('danger').child('x')); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    El* tag = FindParentOfText(root, StrL("x"));
+    utassert(tag != nullptr);
+    if (tag) {
+        const Theme& th = ThemeNow(&host.app);
+        // Large, outlined, pill-shaped, and in the danger colours.
+        utassertnear(tag->style.fontSize, 14.f);
+        utassertnear(tag->style.radius, 16.f);
+        utassert(RgbaEq(tag->style.borderColor, th.danger));
+        utassert(RgbaEq(tag->style.color, th.danger));
+    }
+}
+
+// badge_operations_materialize_a_real_component_in_recorded_order
+void BadgeOperationsMaterializeInRecordedOrder() {
+    utassert(RendersCleanly(
+        "Badge", "new Badge().count(2).dot().count(9).child('inbox')",
+        "inbox"));
+}
+
+// Kbd's constructor is gpui's Keystroke::parse, and its error is gpui's.
+void KbdParsesItsKeystroke() {
+    utassert(StrContains(CallErrorTemp("Kbd", "new Kbd('a-b')"),
+                         StrL("invalid Kbd keystroke: Invalid keystroke "
+                              "\"a-b\". Expected a sequence of modifiers")));
+#if !GPUI_OS_MAC
+    utassert(RendersCleanly("Kbd", "new Kbd('ctrl-s')", "Ctrl+S"));
+    utassert(
+        RendersCleanly("Kbd", "new Kbd('secondary-shift-P')", "Ctrl+Shift+P"));
+#endif
+}
+
+// controls_host.rs: clicking_a_two_state_control_reports_its_new_state. The
+// click is the listener each control put on its element, invoked the way a
+// press on it would be.
+void ClickingATwoStateControlReportsItsNewState() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Checkbox, Switch, Toggle } from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  init(_props, _cx) { this.checkbox = false; this.switch = false; "
+        "this.toggle = false; }\n"
+        "  render() {\n"
+        "    return div().size_full()\n"
+        "      .child(new Checkbox('cb').label('Checkbox')"
+        ".checked(this.checkbox)\n"
+        "        .on_change((checked, cx) => { this.checkbox = checked; "
+        "cx.notify(); }))\n"
+        "      .child(new Switch('sw').label('Switch').checked(this.switch)\n"
+        "        .on_change((checked, cx) => { this.switch = checked; "
+        "cx.notify(); }))\n"
+        "      .child(new Toggle('tg').label('Toggle').checked(this.toggle)\n"
+        "        .on_change((checked, cx) => { this.toggle = checked; "
+        "cx.notify(); }))\n"
+        "      .child(`state: ${this.checkbox}|${this.switch}|"
+        "${this.toggle}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("state: false|false|false")) != nullptr);
+    const char* labels[] = {"Checkbox", "Switch", "Toggle"};
+    for (const char* label : labels) {
+        El* control = ListenerAbove(root, Str(label));
+        utassert(control != nullptr);
+        if (control) Click(host, control);
+        root = host.Render();
+    }
+    utassert(FindText(root, StrL("state: true|true|true")) != nullptr);
+    // And back: each reports the state its click produces from the one it
+    // was rendered with.
+    El* checkbox = ListenerAbove(root, StrL("Checkbox"));
+    if (checkbox) Click(host, checkbox);
+    root = host.Render();
+    utassert(FindText(root, StrL("state: false|true|true")) != nullptr);
+}
+
+// controls_host.rs: clicking_a_button_reaches_the_script
+void ClickingAButtonReachesTheScript() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Button } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  init(_props, _cx) { this.hits = 0; }\n"
+             "  render() {\n"
+             "    return div().size_full()\n"
+             "      .child(new Button('press').primary().label('Press me')\n"
+             "        .on_click((_event, cx) => { this.hits++; cx.notify(); "
+             "}))\n"
+             "      .child(`hits: ${this.hits}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && FindText(root, StrL("hits: 0")) != nullptr);
+    El* button = ListenerAbove(root, StrL("Press me"));
+    utassert(button != nullptr);
+    if (button) Click(host, button);
+    root = host.Render();
+    utassert(FindText(root, StrL("hits: 1")) != nullptr);
+}
+
+// ─── display/: mod.rs, common.rs and the seven modules ─────────────────────
+
+// registers_the_display_catalog_with_documented_callables
+void RegistersTheDisplayCatalogWithDocumentedCallables() {
+    FamilyCatalog catalog(&component_shell::RegisterDisplay);
+    utassert(catalog.ok);
+    const char* names[] = {"Alert",  "Breadcrumb", "Clipboard", "GroupBox",
+                           "Rating", "StatusBar",  "Toolbar"};
+    utassert(catalog.NamesAre(names, 7));
+    utassert(catalog.Documented());
+}
+
+// common.rs rejects_an_empty_component_id, through the constructors.
+void DisplayRejectsAnEmptyComponentId() {
+    utassert(StrContains(CallErrorTemp("Rating", "new Rating('')"),
+                         StrL("Rating id must not be empty")));
+    utassert(StrContains(CallErrorTemp("InfoAlert", "new InfoAlert('', 'x')"),
+                         StrL("Alert id must not be empty")));
+    utassert(StrContains(CallErrorTemp("Toolbar", "new Toolbar('')"),
+                         StrL("Toolbar id must not be empty")));
+}
+
+// builds_real_* and alert_payload_and_operations_build_the_real_component:
+// every display component, with its operations, from a script.
+void DisplayComponentsBuildFromAScript() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { WarningAlert, Breadcrumb, Clipboard, GroupBox, Rating, "
+        "StatusBar, Toolbar } from 'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  render() {\n"
+        "    return div().w(600)\n"
+        "      .child(new WarningAlert('network', 'Offline')"
+        ".title('Connection').banner().visible(true).size('small'))\n"
+        "      .child(new Breadcrumb(['Home', 'Settings']))\n"
+        "      .child(new Clipboard('copy').value('value').tooltip('Copy'))\n"
+        "      .child(new GroupBox().title('Options').variant('outline')"
+        ".child('Grouped'))\n"
+        "      .child(new Rating('quality').value(3).max(5).size('small')"
+        ".color('#ff0000'))\n"
+        "      .child(new StatusBar().left_content(div().child('Left'))"
+        ".right_content(div().child('Right')).child('Center'))\n"
+        "      .child(new Toolbar('toolbar').child('Tool'));\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
+    // A banner never shows its title, so "Connection" is not drawn.
+    const char* texts[] = {"Offline", "Home",  "Settings", "Options", "Grouped",
+                           "Left",    "Right", "Center",   "Tool"};
+    for (const char* text : texts) {
+        utassert(FindText(root, Str(text)) != nullptr);
+    }
+}
+
+// alert_rejects_an_incompatible_payload and each module's
+// rejects_an_incompatible_payload.
+void DisplayComponentsRejectAnIncompatiblePayload() {
+    const char* const names[] = {"Alert",    "Breadcrumb", "Clipboard",
+                                 "GroupBox", "Rating",     "StatusBar",
+                                 "Toolbar"};
+    for (const char* name : names) {
+        Str failure = MaterializeFailure(name, shell::ComponentPayload{}, 0);
+        utassert(StrEq(failure,
+                       fmt("%s received an incompatible payload", Str(name))));
+        StrFree(failure);
+    }
+}
+
+// ensure_no_children, which runs before the payload is read.
+void DisplayLeavesRefuseChildren() {
+    Arena* a = ArenaNew();
+    shell::ComponentArgument args[2] = {StringArgument("copy"),
+                                        StringArgument("x")};
+    const char* const names[] = {"Alert", "Clipboard", "Rating"};
+    for (const char* name : names) {
+        shell::ComponentPayload payload = BuildPayload(
+            name, 0, args, StrEq(Str(name), "Alert") ? 2 : 1, a, nullptr);
+        utassert(payload.type != nullptr);
+        Str failure = MaterializeFailure(name, payload, 1);
+        utassert(StrEq(failure,
+                       fmt("%s does not accept child elements", Str(name))));
+        StrFree(failure);
+    }
+    ArenaDelete(a);
+}
+
+// The stars a rating rendered: how many, and how many are filled.
+void CountStars(El* element, Str filledIcon, int* stars, int* filled) {
+    if (!element) return;
+    if (element->kind == ElKind::Icon) {
+        (*stars)++;
+        if (StrEq(element->iconPath, filledIcon)) (*filled)++;
+    }
+    for (El* child = element->first; child; child = child->next)
+        CountStars(child, filledIcon, stars, filled);
+}
+
+// later_value_and_max_operations_win_in_call_order
+void LaterValueAndMaxOperationsWinInCallOrder() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Rating } from 'gpui-component';\n"
+             "export default class Main extends View {\n"
+             "  render() { return div().child(new Rating('q').value(4).max(3)"
+             ".value(2)); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    Arena* a = ArenaNew();
+    Str filledIcon = IconEl(a, IconName::StarFill, 16)->iconPath;
+    int stars = 0;
+    int filled = 0;
+    CountStars(root, filledIcon, &stars, &filled);
+    utassert(stars == 3);
+    utassert(filled == 2);
+    ArenaDelete(a);
+}
+
+// rejects_the_rounded_usize_overflow_boundary, and the Display Rust gives
+// the number in the message.
+void RatingRejectsTheRoundedUsizeOverflowBoundary() {
+    utassert(
+        StrContains(CallErrorTemp("Rating", "new Rating('r').max(2 ** 64)"),
+                    StrL("Rating.max(max) expects a non-negative integer, got "
+                         "18446744073709552000")));
+    utassert(StrContains(
+        CallErrorTemp("Rating", "new Rating('r').value(1.5)"),
+        StrL("Rating.value(value) expects a non-negative integer, got 1.5")));
+    utassert(StrContains(
+        CallErrorTemp("Rating", "new Rating('r').value(-1)"),
+        StrL("Rating.value(value) expects a non-negative integer, got -1")));
+}
+
+// Rating.on_change reports the star the reader clicked, which the rating
+// only knows once the click lands.
+void RatingReportsTheClickedStar() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Rating } from 'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() { this.value = 0; }\n"
+        "  render() {\n"
+        "    return div().child(new Rating('q').value(this.value)\n"
+        "      .on_change((value, cx) => { this.value = value; cx.notify(); "
+        "}))\n"
+        "      .child(`value: ${this.value}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && FindText(root, StrL("value: 0")) != nullptr);
+    El* stars[8] = {};
+    int count = CollectListeners(root, stars, 0, 8);
+    utassert(count == 5);
+    if (count == 5) Click(host, stars[1]);
+    root = host.Render();
+    utassert(FindText(root, StrL("value: 2")) != nullptr);
+}
+
+// ─── basic/: mod.rs, text.rs, dropdown_button.rs ───────────────────────────
+
+// registers_only_the_two_closed_renderable_surfaces
+void RegistersOnlyTheTwoClosedRenderableSurfaces() {
+    FamilyCatalog catalog(&component_shell::RegisterBasic);
+    utassert(catalog.ok);
+    const char* names[] = {"Text", "DropdownButton"};
+    utassert(catalog.NamesAre(names, 2));
+    utassert(catalog.Documented());
+}
+
+// text_constructor_is_closed_and_preserves_content
+void TextConstructorIsClosedAndPreservesContent() {
+    const ComponentDescriptor* text = component_shell::Components()
+                                          ->Find(StrL("Text"));
+    utassert(text && text->constructors[0].arguments[0].schema.kind ==
+                         shell::SchemaKind::String);
+    utassert(RendersCleanly("Text", "new Text('hello')", "hello"));
+    Arena* a = ArenaNew();
+    shell::ComponentArgument value = StringArgument("hello");
+    shell::ComponentPayload payload =
+        BuildPayload("Text", 0, &value, 1, a, nullptr);
+    Str failure = MaterializeFailure("Text", payload, 1);
+    utassert(StrEq(failure, StrL("Text does not accept children; pass its "
+                                 "content to Text(value)")));
+    StrFree(failure);
+    ArenaDelete(a);
+}
+
+// menu_item_keeps_label_and_closed_callback_handle and
+// descriptor_uses_only_closed_schemas
+void DropdownButtonDescriptorIsClosed() {
+    const ComponentDescriptor* d = component_shell::Components()
+                                       ->Find(StrL("DropdownButton"));
+    utassert(d != nullptr);
+    if (!d) return;
+    utassert(d->constructors[0].arguments[0].schema.kind ==
+             shell::SchemaKind::String);
+    const MethodDescriptor& item = d->methods[d->methods.count - 1];
+    utassert(strcmp(item.name, "menu_item") == 0);
+    utassert(item.arguments[1].schema.kind == shell::SchemaKind::Callback &&
+             strcmp(item.arguments[1].schema.text, "(cx: Context) => void") ==
+                 0);
+    Arena* a = ArenaNew();
+    shell::ComponentArgument args[2] = {StringArgument("Open"), {}};
+    args[1].kind = shell::ComponentArgumentKind::Callback;
+    args[1].callback = 42;
+    shell::PayloadBuild build;
+    build.a = a;
+    utassert(item.recorder(&build, args, 2) && build.out.type != nullptr);
+    Str failure;
+    shell::ComponentArgument blank[2] = {StringArgument("  "),
+                                         StringArgument("Actions")};
+    BuildPayload("DropdownButton", 0, blank, 2, a, &failure);
+    utassert(StrEq(failure, StrL("DropdownButton id must not be empty")));
+    shell::ComponentPayload payload =
+        BuildPayload("DropdownButton", 0, args, 2, a, nullptr);
+    Str children = MaterializeFailure("DropdownButton", payload, 1);
+    utassert(StrEq(children, StrL("DropdownButton does not accept children")));
+    StrFree(children);
+    ArenaDelete(a);
+}
+
+// basic_public_host.rs: basic_text_and_dropdown_materialize_through_public
+// _host. Rust reads the recording back as a debug tree; here the element
+// tree is what is checked, and the clicks are the listeners the action half,
+// the caret and the menu row carry.
+void BasicTextAndDropdownMaterializeThroughTheHost() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { DropdownButton, Text } from 'gpui-component';\n"
+             "export default class BasicRemaining extends View {\n"
+             "  init() { this.action_hits = 0; this.menu_hits = 0; }\n"
+             "  render() {\n"
+             "    return div()\n"
+             "      .child(new Text('Plain component text').p(2))\n"
+             "      .child(new DropdownButton('actions', 'Actions')\n"
+             "        .absolute().left(0).top(60).w(180).h(40)\n"
+             "        .outline().disabled(false).selected(true)\n"
+             "        .size('small').variant('primary').menu_anchor"
+             "('bottom_right')\n"
+             "        .on_click((_event, cx) => { this.action_hits += 1; "
+             "cx.notify(); })\n"
+             "        .menu_item('Open', (cx) => { this.menu_hits += 1; "
+             "cx.notify(); }))\n"
+             "      .child(`Counts: ${this.action_hits}|${this.menu_hits}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Plain component text")) != nullptr);
+    utassert(FindText(root, StrL("Counts: 0|0")) != nullptr);
+
+    El* action = ListenerAbove(root, StrL("Actions"));
+    utassert(action != nullptr);
+    if (action) Click(host, action);
+    root = host.Render();
+    utassert(FindText(root, StrL("Counts: 1|0")) != nullptr);
+
+    // The caret is the listener after the action half's.
+    El* listeners[8] = {};
+    int count = CollectListeners(root, listeners, 0, 8);
+    utassert(count >= 2);
+    if (count >= 2) Click(host, listeners[1]);
+    root = host.Render();
+    El* open = ListenerAbove(root, StrL("Open"));
+    utassert(open != nullptr);
+    if (open) Click(host, open);
+    root = host.Render();
+    utassert(FindText(root, StrL("Counts: 1|1")) != nullptr);
+}
+
 } // namespace
 
 void TestComponentShell() {
@@ -803,4 +1405,32 @@ void TestComponentShell() {
     LeafComponentsRejectAnIncompatiblePayload();
     LeafComponentsMaterializeFromAScript();
     RegisteredCallsAreValidatedAgainstTheirSchemas();
+
+    TestSuite("controls");
+    ControlsRegisterTheSupportedPublicExports();
+    EveryControlDocumentsItsSurface();
+    IdentityControlsRejectEmptyIds();
+    ButtonOperationsReplayInRecordedOrder();
+    BadgeNumbersRejectFractionalNegativeAndOverflow();
+    LaterTagVariantPreservesEarlierSizeOutlineAndRounding();
+    BadgeOperationsMaterializeInRecordedOrder();
+    KbdParsesItsKeystroke();
+    ClickingATwoStateControlReportsItsNewState();
+    ClickingAButtonReachesTheScript();
+
+    TestSuite("display");
+    RegistersTheDisplayCatalogWithDocumentedCallables();
+    DisplayRejectsAnEmptyComponentId();
+    DisplayComponentsBuildFromAScript();
+    DisplayComponentsRejectAnIncompatiblePayload();
+    DisplayLeavesRefuseChildren();
+    LaterValueAndMaxOperationsWinInCallOrder();
+    RatingRejectsTheRoundedUsizeOverflowBoundary();
+    RatingReportsTheClickedStar();
+
+    TestSuite("basic");
+    RegistersOnlyTheTwoClosedRenderableSurfaces();
+    TextConstructorIsClosedAndPreservesContent();
+    DropdownButtonDescriptorIsClosed();
+    BasicTextAndDropdownMaterializeThroughTheHost();
 }

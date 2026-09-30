@@ -19,6 +19,9 @@ struct Switch {
     bool disabled = false;
     UiSize size = UiSize::Medium;
     Rgba color = {};
+    // Tooltip text, shown over the track the way switch.rs applies its
+    // ComponentTooltip there.
+    Str tooltip = {};
     bool hasColor = false;
     bool focusRing = true;
     int tabIndex = 0;
@@ -35,6 +38,7 @@ struct Switch {
     Switch* Disabled(bool v);
     Switch* WithSize(UiSize s);
     Switch* Color(Rgba c);
+    Switch* Tooltip(Str s);
     // FocusableExt::focus_ring: no focus appearance on this control.
     Switch* FocusRing(bool v);
     Switch* TabIndex(int v);

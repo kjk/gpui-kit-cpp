@@ -183,6 +183,13 @@ PopupMenu* PopupMenu::Action(uint32_t action, intptr_t arg) {
     return this;
 }
 
+PopupMenu* PopupMenu::OnClick(Listener l) {
+    if (items.len > 0) {
+        items[items.len - 1].onClick = l;
+    }
+    return this;
+}
+
 PopupMenu* PopupMenu::Kbd(Str v) {
     if (items.len > 0) {
         items[items.len - 1].kbd = v;
@@ -334,6 +341,7 @@ El* PopupMenu::IntoEl() {
         row.submenu = it.submenu != nullptr;
         row.link = it.isLink;
         row.href = it.href;
+        row.handler = it.onClick;
         PopupMenuAddRow(s, row);
     }
     El* rows = Div(a)->Id(StrL("items"))->FlexCol()->W(kFill)->Pad(4)->Gap(2);
@@ -473,7 +481,7 @@ El* PopupMenu::IntoEl() {
                 BindClick(row, StrDup(a, fmt("%d", i)), ListenerArg(click, i));
                 // `window.dispatch_action(action.boxed_clone(), cx)`, beside
                 // the click the menu itself needs to close on.
-                if (it.action) {
+                if (it.action && !it.onClick.IsValid()) {
                     row->OnClickAction(it.action, it.actionArg);
                 }
                 row->OnHover(ListenerArg(hover, i));
