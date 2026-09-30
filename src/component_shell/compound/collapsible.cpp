@@ -55,7 +55,8 @@ static El* Materialize(MaterializeRequest* request) {
     });
     if (El* content = request->TakeSlot("content")) component->Content(content);
     // request.finish: the ordinary children are the collapsible's own
-    // (ParentElement), ahead of its content, and the style refines its root.
+    // (ParentElement), added after the content slot was, so they follow it
+    // as Rust's base keeps them in call order; the style refines its root.
     El** children = nullptr;
     int count = 0;
     if (!request->TakeChildren(&children, &count)) return nullptr;

@@ -41,6 +41,7 @@ Collapsible* Collapsible::Child(El* e) {
 }
 Collapsible* Collapsible::Content(El* e) {
     content = e;
+    contentAt = children.len;
     return this;
 }
 
@@ -49,9 +50,6 @@ El* Collapsible::IntoEl() {
     // does not; a collapsible stacks its trigger over its content.
     gpui::Collapsible* base =
         gpui::Collapsible::New(cx)->FlexCol()->Open(open)->Child(trigger);
-    for (El* child : children) {
-        base->Child(child);
-    }
     if (hasMotion) {
         // spring_control, the policy every control that answers a click
         // shares: a trigger clicked twice reverses the reveal from where it
@@ -61,7 +59,16 @@ El* Collapsible::IntoEl() {
             ThemeNow(cx->app).motion.springControl);
         base->Reveal(motionId, progress);
     }
-    El* e = base->Content(content)->IntoEl();
+    // The children and the content in the order they were given.
+    for (int i = 0; i <= children.len; i++) {
+        if (i == contentAt) {
+            base->Content(content);
+        }
+        if (i < children.len) {
+            base->Child(children[i]);
+        }
+    }
+    El* e = base->IntoEl();
     if (width != 0) {
         e->W(width);
     }

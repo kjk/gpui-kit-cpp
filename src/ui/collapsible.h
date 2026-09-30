@@ -22,6 +22,10 @@ struct Collapsible {
     // the trigger.
     ArenaVec<El*> children;
     El* content = nullptr;
+    // How many children had been added when Content() was called: Rust's
+    // base keeps the two in call order, so content set before a child comes
+    // before it.
+    int contentAt = 0;
     // The caller's own style on the collapsible's root: `w_full()` and
     // `gap_2()` are what every one of the story's carries.
     float width = 0;

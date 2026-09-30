@@ -641,7 +641,11 @@ El* MotionReveal::New(Ctx* cx, Str id, float progress, El* child) {
     Arena* a = cx->a;
     progress = ClampF01(progress);
     MotionRevealState* st = MotionRevealStateOf(cx, id);
-    El* box = Div(a)->W(kFill)->ClipY();
+    // reveal.rs lays the child out as a root in the box's width
+    // (`layout_as_root` against a definite width): a child with no width of
+    // its own takes the width of its content, not the box's, so it is not
+    // stretched across it.
+    El* box = Div(a)->W(kFill)->ClipY()->FlexCol()->ItemsStart();
     if (!st) {
         return box->Child(child);
     }
