@@ -300,6 +300,7 @@ El* SidebarMenu::IntoEl(Str id) {
     IdScope scope(cx, id);
     El* col = Div(a)->FlexCol()->W(kFill)->Gap(8);
     StyleApplyFields(&col->style, style, styleSet);
+    refiner.Apply(col);
     for (int i = 0; i < items.len; i++) {
         items[i]->collapsed = collapsed;
         col->Child(items[i]->IntoEl(StrDup(a, fmt("%d", i))));
@@ -358,7 +359,7 @@ El* SidebarGroup::IntoEl(Str id) {
 
 static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
                        Listener onClick, Str id, const Style& style,
-                       uint32_t styleSet) {
+                       uint32_t styleSet, ElRefiner refiner = {}) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* row = Div(a)
@@ -372,6 +373,7 @@ static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
                   ->HoverBg(th.tokens.sidebarAccent)
                   ->HoverFg(th.sidebarAccentFg);
     StyleApplyFields(&row->style, style, styleSet);
+    refiner.Apply(row);
     if (selected) {
         row->Bg(th.tokens.sidebarAccent)->Fg(th.sidebarAccentFg);
     }
@@ -412,7 +414,7 @@ SidebarHeader* SidebarHeader::Refine(const Style& v, uint32_t fields) {
 }
 El* SidebarHeader::IntoEl() {
     return SidebarBand(cx, children, selected, onClick, StrL("sidebar-header"),
-                       style, styleSet);
+                       style, styleSet, refiner);
 }
 
 SidebarFooter* SidebarFooter::New(Ctx* cx) {
@@ -449,6 +451,7 @@ El* SidebarFooter::IntoEl() {
     // which the themed outer row wraps as one child upstream.
     El* base = Div(a)->FlexRow()->Gap(8)->W(kFill);
     StyleApplyFields(&base->style, style, styleSet);
+    refiner.Apply(base);
     for (int i = 0; i < len(children); i++) {
         base->Child(children[i]);
     }
@@ -667,6 +670,11 @@ El* Sidebar::IntoEl() {
     // reset. Every other Styled field is retained. The refinement follows
     // the side border upstream, so callers may replace that border too.
     StyleApplyFields(&root->style, style, styleSet & ~StyleFieldPad);
+    if (refiner.IsSet()) {
+        Edges pad = root->style.pad;
+        refiner.Apply(root);
+        root->style.pad = pad;
+    }
     if (iconCollapsed) {
         root->W(kSidebarCollapsedWidth);
     }

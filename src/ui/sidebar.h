@@ -142,6 +142,9 @@ struct SidebarMenu {
     bool collapsed = false;
     Style style = {};
     uint32_t styleSet = 0;
+    // A whole StyleRefinement (what the shell's style hands over), applied
+    // after the field-masked one above, where Rust's render refines.
+    ElRefiner refiner = {};
 
     static SidebarMenu* New(Ctx* cx);
     SidebarMenu* Child(SidebarMenuItem* item);
@@ -175,6 +178,7 @@ struct SidebarHeader {
     bool selected = false;
     bool collapsed = false;
     Listener onClick = {};
+    ElRefiner refiner = {};
 
     static SidebarHeader* New(Ctx* cx);
     SidebarHeader* Child(El* child);
@@ -194,6 +198,7 @@ struct SidebarFooter {
     bool selected = false;
     bool collapsed = false;
     Listener onClick = {};
+    ElRefiner refiner = {};
 
     static SidebarFooter* New(Ctx* cx);
     SidebarFooter* Child(El* child);
@@ -241,6 +246,10 @@ struct Sidebar {
     float width = 255;
     Style style = {};
     uint32_t styleSet = 0;
+    // A whole StyleRefinement, applied to the sidebar after the field-masked
+    // one; its padding is cleared the way Rust clears the style's. A pixel
+    // width in it is the expanded width only when W() also says so.
+    ElRefiner refiner = {};
 
     static Sidebar* New(Ctx* cx, Str id);
     Sidebar* WithSide(Side v);

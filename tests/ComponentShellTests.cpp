@@ -1869,14 +1869,13 @@ void EmptyPublishesAllPartsWithClosedDocumentedMethods() {
 
 // empty_host.rs empty_slots_replace_previous_parts_and_preserve_child
 // _actions. Rust clicks at the button's laid-out position; here the click is
-// the listener the button carries. The media holds text where Rust's holds
-// an Icon, which the catalog here does not register yet.
+// the listener the button carries.
 void EmptySlotsReplacePreviousPartsAndPreserveChildActions() {
     Host host(StrL(
         "import { div, View } from 'gpui-kit';\n"
         "import {\n"
         "  Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, "
-        "EmptyContent, Button,\n"
+        "EmptyContent, Button, Icon,\n"
         "} from 'gpui-component';\n"
         "export default class EmptyHost extends View {\n"
         "  init() { this.hits = 0; }\n"
@@ -1903,7 +1902,7 @@ void EmptySlotsReplacePreviousPartsAndPreserveChildActions() {
         "projects'))\n"
         "          .media(new EmptyMedia().variant('icon').variant('default')"
         ".p(2)\n"
-        "            .child('Folder icon'))))\n"
+        "            .child(new Icon('folder')))))\n"
         "      // Parts also render directly, outside the typed slots.\n"
         "      .child(new EmptyHeader().title(new "
         "EmptyTitle().child('Standalone "
@@ -1918,15 +1917,10 @@ void EmptySlotsReplacePreviousPartsAndPreserveChildActions() {
     utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
     if (!root) return;
     utassert(FindTextPrefix(root, StrL("Failed to render")) == nullptr);
-    const char* texts[] = {"Hits: 0",
-                           "Folder icon",
-                           "Create project",
-                           "No projects",
-                           "Create your first project.",
-                           "Standalone header",
-                           "Standalone media",
-                           "Standalone title",
-                           "Standalone description",
+    const char* texts[] = {"Hits: 0",           "Create project",
+                           "No projects",       "Create your first project.",
+                           "Standalone header", "Standalone media",
+                           "Standalone title",  "Standalone description",
                            "Standalone content"};
     for (const char* text : texts) utassert(FindText(root, Str(text)));
     utassert(FindText(root, StrL("discarded header")) == nullptr);
@@ -4792,6 +4786,337 @@ void StructuredParentsRefuseForeignChildren() {
         "Ada"));
 }
 
+// ─── navigation/: mod.rs, icon.rs, sidebar.rs ──────────────────────────────
+
+// mod.rs remaining_catalog_registers_real_icon_and_sidebar_exports
+void RemainingCatalogRegistersRealIconAndSidebarExports() {
+    FamilyCatalog catalog(&component_shell::RegisterNavigation);
+    utassert(catalog.ok);
+    const char* names[] = {"Icon",
+                           "SidebarMenuItem",
+                           "SidebarMenu",
+                           "SidebarHeader",
+                           "SidebarFooter",
+                           "Sidebar",
+                           "SidebarToggleButton"};
+    utassert(catalog.NamesAre(names, 7));
+    utassert(catalog.Documented());
+}
+
+// icon.rs icon_numeric_and_size_arguments_are_closed
+void IconNumericAndSizeArgumentsAreClosed() {
+    using namespace component_shell::navigation;
+    UiSize size = UiSize::Medium;
+    float radians = 0;
+    Str error;
+    utassert(IconSize(StrL("small"), &size, &error) && size == UiSize::Small);
+    utassert(!IconSize(StrL("tiny"), &size, &error));
+    utassert(StrEq(error, StrL("unsupported Icon size `tiny`")));
+    utassert(IconRotation(0.5, &radians, &error) && radians == 0.5f);
+    utassert(!IconRotation(NAN, &radians, &error));
+    utassert(!IconRotation(INFINITY, &radians, &error));
+    utassert(StrEq(error, StrL("Icon.rotate expects finite radians "
+                               "representable as f32")));
+}
+
+// icon.rs icon_paths_are_relative_to_the_application_asset_root
+void IconPathsAreRelativeToTheApplicationAssetRoot() {
+    using component_shell::navigation::IconPath;
+    Str error;
+    utassert(IconPath(StrL("icons/check.svg"), &error));
+    utassert(!IconPath(StrL("/tmp/check.svg"), &error));
+    utassert(!IconPath(StrL("../check.svg"), &error));
+    utassert(!IconPath(StrL("icons/../../check.svg"), &error));
+    utassert(StrEq(error, StrL("Icon path must stay inside the application "
+                               "asset root")));
+    utassert(!IconPath(StrL("  "), &error));
+    utassert(StrEq(error, StrL("Icon path must not be empty")));
+}
+
+// The method `method` of the navigation catalog's `component`.
+const MethodDescriptor* NavigationMethod(const FamilyCatalog& catalog,
+                                         const char* component,
+                                         const char* method) {
+    const ComponentDescriptor* d = catalog.frozen.Find(Str(component));
+    if (!d) return nullptr;
+    for (const MethodDescriptor& m : d->methods)
+        if (strcmp(m.name, method) == 0) return &m;
+    return nullptr;
+}
+
+// sidebar.rs sidebar_exports_use_closed_boolean_and_enum_schemas
+void SidebarExportsUseClosedBooleanAndEnumSchemas() {
+    FamilyCatalog catalog(&component_shell::RegisterNavigation);
+    const MethodDescriptor* side = NavigationMethod(catalog, "Sidebar", "side");
+    utassert(side && side->arguments.count == 1);
+    if (side) {
+        const ArgumentSchema& schema = side->arguments[0].schema;
+        utassert(schema.kind == shell::SchemaKind::Enum &&
+                 schema.values.count == 2 &&
+                 strcmp(schema.values[0], "left") == 0 &&
+                 strcmp(schema.values[1], "right") == 0);
+    }
+    const MethodDescriptor* collapsed =
+        NavigationMethod(catalog, "Sidebar", "collapsed");
+    utassert(collapsed && collapsed->arguments[0]
+                                  .schema.kind == shell::SchemaKind::Boolean);
+}
+
+// sidebar.rs clickable_sidebar_parts_declare_the_exact_common_callback_schema
+void ClickableSidebarPartsDeclareTheExactCommonCallbackSchema() {
+    FamilyCatalog catalog(&component_shell::RegisterNavigation);
+    for (const char* component : {"SidebarMenuItem", "SidebarToggleButton"}) {
+        const MethodDescriptor* method =
+            NavigationMethod(catalog, component, "on_click");
+        utassert(method && method->arguments.count == 1);
+        if (!method) continue;
+        utassert(strcmp(method->arguments[0].name, "callback") == 0);
+        utassert(method->arguments[0]
+                         .schema.kind == shell::SchemaKind::Callback &&
+                 strcmp(method->arguments[0].schema.text,
+                        "(event: ClickEvent, cx: Context) => void") == 0);
+    }
+}
+
+// sidebar.rs sidebar_menu_items_expose_a_closed_icon_vocabulary
+void SidebarMenuItemsExposeAClosedIconVocabulary() {
+    FamilyCatalog catalog(&component_shell::RegisterNavigation);
+    const MethodDescriptor* icon =
+        NavigationMethod(catalog, "SidebarMenuItem", "icon");
+    utassert(icon != nullptr);
+    if (!icon) return;
+    const ArgumentSchema& schema = icon->arguments[0].schema;
+    const char* expected[] = {"home", "components", "settings", "archive",
+                              "account"};
+    utassert(schema.kind == shell::SchemaKind::Enum && schema.values
+                                                               .count == 5);
+    for (int i = 0; i < 5 && i < schema.values.count; i++)
+        utassert(strcmp(schema.values[i], expected[i]) == 0);
+}
+
+// sidebar.rs typed_carrier_rejects_double_consumption
+void SidebarTypedCarrierRejectsDoubleConsumption() {
+    RequestFixture f(0, nullptr, 0);
+    El* element =
+        component_shell::CarrierOf(&f.cx, component::SidebarMenu::New(&f.cx));
+    utassert(component_shell::TakeCarriedAs<component::SidebarMenu>(
+                 &f.request, element, "SidebarMenu") != nullptr);
+    utassert(component_shell::TakeCarriedAs<component::SidebarMenu>(
+                 &f.request, element, "SidebarMenu") == nullptr);
+}
+
+// sidebar.rs sidebar_typed_parents_reject_wrong_registered_and_ordinary_
+// children
+void SidebarTypedParentsRejectWrongRegisteredAndOrdinaryChildren() {
+    using component_shell::navigation::RequireRegisteredChild;
+    Str error;
+    utassert(!RequireRegisteredChild("Sidebar", "SidebarMenu", "Icon", &error));
+    utassert(
+        !RequireRegisteredChild("Sidebar", "SidebarMenu", nullptr, &error));
+    utassert(StrContains(error, StrL("ordinary element")));
+    utassert(RequireRegisteredChild("SidebarMenu", "SidebarMenuItem",
+                                    "SidebarMenuItem", &error));
+}
+
+// sidebar.rs sidebar_menu_item_rejects_style_instead_of_silently_dropping_it
+void SidebarMenuItemRejectsStyleInsteadOfSilentlyDroppingIt() {
+    using component_shell::navigation::RequireDefaultItemStyle;
+    Str error;
+    utassert(RequireDefaultItemStyle(false, &error));
+    utassert(!RequireDefaultItemStyle(true, &error));
+    utassert(StrContains(error, StrL("does not support shell style")));
+    // And through a script, where the item's style is the one it was given.
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { SidebarMenu, SidebarMenuItem } from "
+             "'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return new SidebarMenu().child(new SidebarMenuItem('A')"
+             ".p(2)); } }\n"));
+    host.Render();
+    utassert(host.runtime->ComponentFailureCount() > 0);
+}
+
+// On the path to `text`: -1 when it is not under `element`, 1 when a box
+// on the way is painted `accent`, 0 otherwise.
+int AccentAbove(El* element, Str text, Rgba accent, bool seen = false) {
+    if (!element) return -1;
+    if (memcmp(&element->style.bg.color, &accent, sizeof(Rgba)) == 0)
+        seen = true;
+    if (element->kind == ElKind::Text && StrEq(element->text, text))
+        return seen ? 1 : 0;
+    for (El* child = element->first; child; child = child->next) {
+        int found = AccentAbove(child, text, accent, seen);
+        if (found >= 0) return found;
+    }
+    return -1;
+}
+
+// sidebar.rs common_selected_state_reaches_native_header_and_footer_selection
+void CommonSelectedStateReachesNativeHeaderAndFooterSelection() {
+    {
+        RequestFixture f(0, nullptr, 0);
+        component::SidebarHeader* header = component::SidebarHeader::New(&f.cx)
+                                               ->Selected(true);
+        component::SidebarFooter* footer = component::SidebarFooter::New(&f.cx)
+                                               ->Selected(true);
+        utassert(header->selected && footer->selected);
+        header->Selected(false);
+        footer->Selected(false);
+        utassert(!header->selected && !footer->selected);
+    }
+    // The common selected state reaches them through the materializer.
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { SidebarHeader, SidebarFooter } from "
+             "'gpui-component';\n"
+             "export default class App extends View { render() { "
+             "return div().child(new SidebarHeader().selected(true)"
+             ".child('Head')).child(new SidebarFooter()"
+             ".child('Foot')); } }\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    Rgba accent = ThemeNow(&host.app).tokens.sidebarAccent.color;
+    utassert(AccentAbove(root, StrL("Head"), accent) == 1);
+    utassert(AccentAbove(root, StrL("Foot"), accent) == 0);
+}
+
+// navigation_host.rs icon_accepts_an_application_relative_asset_and_
+// rejects_traversal
+void IconAcceptsAnApplicationRelativeAssetAndRejectsTraversal() {
+    Host host(
+        StrL("import { View } from 'gpui-kit';\n"
+             "import { Icon } from 'gpui-component';\n"
+             "export default class App extends View {\n"
+             "  render() { return new Icon('icons/check.svg')"
+             ".size('small'); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    Str tree = DebugTreeTemp(host);
+    utassert(StrContains(tree, StrL("Icon")));
+    utassert(StrContains(tree, StrL(":size(registered)")));
+    utassert(StrContains(CallErrorTemp("Icon", "new Icon('../outside.svg')"),
+                         StrL("application asset root")));
+}
+
+// navigation_host.rs sidebar_materializes_typed_items_menu_header_and_
+// wrapper_style_in_order. The port's DebugTree spells a style `.p(2)` and a
+// behavior `:disabled(true)` where Rust's prints `.p[Number(2.0)]` and
+// `:disabled[Bool(true)]`.
+void SidebarMaterializesTypedItemsMenuHeaderAndWrapperStyleInOrder() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import {\n"
+        "  Sidebar, SidebarFooter, SidebarHeader, SidebarMenu, "
+        "SidebarMenuItem, SidebarToggleButton,\n"
+        "} from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  render() {\n"
+        "    return div()\n"
+        "      .child(new SidebarToggleButton().side('left').collapsed(false)"
+        ".p(2))\n"
+        "      .child(\n"
+        "        new Sidebar('nav')\n"
+        "          .side('left')\n"
+        "          .collapsible('icon')\n"
+        "          .header(new SidebarHeader().selected(true)"
+        ".child('Workspace'))\n"
+        "          .footer(new SidebarFooter().child('Account'))\n"
+        "          .child(new SidebarMenu()\n"
+        "            .child(new SidebarMenuItem('First').selected(true)"
+        ".disabled(true))\n"
+        "            .child(new SidebarMenuItem('Second')))\n"
+        "      );\n"
+        "  }\n"
+        "}\n"));
+    El* root = RenderLaidOut(host);
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(len(host.runtime->LastComponentFailure()) == 0);
+    Str tree = DebugTreeTemp(host);
+    const char* expected[] = {
+        "SidebarToggleButton", ".p(2)",          "Sidebar", "SidebarHeader",
+        "Workspace",           "SidebarFooter",  "Account", "SidebarMenu",
+        ":disabled(true)",     ":selected(true)"};
+    for (const char* contract : expected) {
+        bool found = StrContains(tree, Str(contract));
+        if (!found) printf("missing %s in %s\n", contract, tree.s);
+        utassert(found);
+    }
+    int first = StrFind(tree, StrL("SidebarMenuItem"));
+    utassert(first >= 0);
+    Str rest = Str(tree.s + first + 1, tree.len - first - 1);
+    int second = StrFind(rest, StrL("SidebarMenuItem"));
+    utassert(second >= 0);
+    second += first + 1;
+    Str after = Str(tree.s + second + 1, tree.len - second - 1);
+    utassert(StrFind(after, StrL("SidebarMenuItem")) < 0);
+    int disabled = StrFind(tree, StrL(":disabled(true)"));
+    utassert(first < disabled && disabled < second);
+    utassert(FindText(root, StrL("Workspace")) != nullptr);
+    utassert(FindText(root, StrL("First")) != nullptr);
+    utassert(FindText(root, StrL("Second")) != nullptr);
+}
+
+// The first element in `root`, depth first, whose click listener is set.
+El* FirstListener(El* element) {
+    if (!element) return nullptr;
+    if (element->listener.IsValid()) return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FirstListener(child)) return found;
+    }
+    return nullptr;
+}
+
+// navigation_host.rs sidebar_toggle_invokes_the_registered_common_click_
+// callback. Rust clicks at laid-out positions (the toggle once, then a grid
+// over the menu row); here each click is the listener the element carries,
+// and the disabled row is clicked again once it has been disabled.
+void SidebarToggleInvokesTheRegisteredCommonClickCallback() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Sidebar, SidebarMenu, SidebarMenuItem, SidebarToggleButton "
+        "} from 'gpui-component';\n"
+        "export default class App extends View {\n"
+        "  init() { this.hits = 0; this.nav_disabled = false; }\n"
+        "  render() {\n"
+        "    return div().w(300).h(100)\n"
+        "      .child(new SidebarToggleButton().w(120).h(40)"
+        ".on_click((_event, cx) => {\n"
+        "        this.hits += 1;\n"
+        "        cx.notify();\n"
+        "      }))\n"
+        "      .child(new Sidebar('disabled-nav').w(240).child(\n"
+        "        new SidebarMenu().child(\n"
+        "          new SidebarMenuItem('Disabled destination')\n"
+        "            .selected(true)\n"
+        "            .disabled(this.nav_disabled)\n"
+        "            .on_click((_event, cx) => {\n"
+        "              this.hits += 100;\n"
+        "              this.nav_disabled = true;\n"
+        "              cx.notify();\n"
+        "            })\n"
+        "        )\n"
+        "      ))\n"
+        "      .child(`Hits: ${this.hits}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    El* toggle = FirstListener(root);
+    utassert(toggle != nullptr);
+    if (toggle) Click(host, toggle);
+    for (int i = 0; i < 3; i++) {
+        root = host.Render();
+        El* row = ListenerAbove(root, StrL("Disabled destination"));
+        if (row && row != FirstListener(root)) Click(host, row);
+    }
+    root = host.Render();
+    utassert(FindText(root, StrL("Hits: 101")) != nullptr);
+}
+
 // ─── collections/: mod.rs, tree.rs ─────────────────────────────────────────
 
 // mod.rs catalog_is_only_honest_tree_surface and collections_host.rs
@@ -5432,6 +5757,21 @@ void TestComponentShell() {
     TypedTableCarriersHoldRealGpuiComponentParts();
     StructuredComponentsMaterializeNestedChildrenInScriptOrder();
     StructuredParentsRefuseForeignChildren();
+
+    TestSuite("navigation");
+    RemainingCatalogRegistersRealIconAndSidebarExports();
+    IconNumericAndSizeArgumentsAreClosed();
+    IconPathsAreRelativeToTheApplicationAssetRoot();
+    SidebarExportsUseClosedBooleanAndEnumSchemas();
+    ClickableSidebarPartsDeclareTheExactCommonCallbackSchema();
+    SidebarMenuItemsExposeAClosedIconVocabulary();
+    SidebarTypedCarrierRejectsDoubleConsumption();
+    SidebarTypedParentsRejectWrongRegisteredAndOrdinaryChildren();
+    SidebarMenuItemRejectsStyleInsteadOfSilentlyDroppingIt();
+    CommonSelectedStateReachesNativeHeaderAndFooterSelection();
+    IconAcceptsAnApplicationRelativeAssetAndRejectsTraversal();
+    SidebarMaterializesTypedItemsMenuHeaderAndWrapperStyleInOrder();
+    SidebarToggleInvokesTheRegisteredCommonClickCallback();
 
     TestSuite("display");
     RegistersTheDisplayCatalogWithDocumentedCallables();

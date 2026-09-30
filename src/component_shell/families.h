@@ -41,6 +41,7 @@ bool RegisterMedia(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterScroll(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterSettings(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterStructured(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterNavigation(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterBasic(shell::ComponentRegistry*, shell::RegistryError*);
 
 // A family's own modules, in the order its mod.rs registers them.
@@ -153,6 +154,11 @@ bool RegisterStructuredDescriptionList(shell::ComponentRegistry*,
                                        shell::RegistryError*);
 bool RegisterStructuredForm(shell::ComponentRegistry*, shell::RegistryError*);
 bool RegisterStructuredTable(shell::ComponentRegistry*, shell::RegistryError*);
+
+// navigation/mod.rs
+bool RegisterNavigationIcon(shell::ComponentRegistry*, shell::RegistryError*);
+bool RegisterNavigationSidebar(shell::ComponentRegistry*,
+                               shell::RegistryError*);
 
 // basic/mod.rs
 bool RegisterBasicText(shell::ComponentRegistry*, shell::RegistryError*);

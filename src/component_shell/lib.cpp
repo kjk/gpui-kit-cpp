@@ -38,6 +38,7 @@ static const RegisterFamily kFamilies[] = {
     &RegisterScroll,
     &RegisterSettings,
     &RegisterStructured,
+    &RegisterNavigation,
     &RegisterBasic,
 };
 
