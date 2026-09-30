@@ -28,7 +28,8 @@ El* ShowcaseTextarea(ShowcaseApp* app, Ctx* cx) {
                     ->FocusId(0)
                     ->Border(1, app->textareaOn ? ExampleRgb(0x171717)
                                                 : ExampleRgb(0xd4d4d4))
-                    ->Child(Textarea::New(cx, &app->textarea)));
+                    ->Child(Textarea::New(cx, &app->textarea,
+                                          ShowcaseEditorStyle())));
 }
 
 SHOWCASE_PAGE(CompTextarea, ShowcaseTextarea);

@@ -20,15 +20,16 @@ El* ShowcaseInput(ShowcaseApp* app, Ctx* cx) {
             Div(a)->H(16)->ItemsCenter()->Child(TextEl(a, StrL("Project name"))
                                                     ->Font(12)
                                                     ->Fg(ExampleRgb(0x171717))))
-        ->Child(InputBase::New(cx, StrL("example-input"), true)
-                    ->OnClick(Listen(cx, &OnInput))
-                    ->W(224)
-                    ->H(28)
-                    ->PadX(8)
-                    ->FocusId(0)
-                    ->Border(1, app->input.focused ? ExampleRgb(0x171717)
-                                                   : ExampleRgb(0xd4d4d4))
-                    ->Child(Input::New(cx, &app->input)));
+        ->Child(
+            InputBase::New(cx, StrL("example-input"), true)
+                ->OnClick(Listen(cx, &OnInput))
+                ->W(224)
+                ->H(28)
+                ->PadX(8)
+                ->FocusId(0)
+                ->Border(1, app->input.focused ? ExampleRgb(0x171717)
+                                               : ExampleRgb(0xd4d4d4))
+                ->Child(Input::New(cx, &app->input, ShowcaseEditorStyle())));
 }
 
 SHOWCASE_PAGE(CompInput, ShowcaseInput);

@@ -198,6 +198,12 @@ current update target is `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
   what position alone settles. Nothing that needs a tree (rename, semantic
   scope) can be asked of it. Folding is brace-pair scanning, which is what
   upstream's own showcase highlighter does.
+- **The Base showcase's editor is plain text with a gutter.** Upstream's
+  page installs its own syntect highlighter (`syntect_highlighter.rs`,
+  a third-party crate) for Rust, colours its captures through
+  `ShowcaseHighlightStyles`, and turns on folding and whitespace markers;
+  here the page draws the same text with line numbers and the showcase
+  editor style only (`examples/showcase/editor.cpp`).
 - **Process CPU %** is a Win32/procfs times delta, not `sysinfo`. First sample
   is 0; values are in the same ballpark, not bit-identical.
 - **The scene graph is still smaller than GPUI's.** `src/gpui/scene.h`

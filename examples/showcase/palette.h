@@ -159,4 +159,19 @@ inline Rgba ExampleCanvas() {
     return RgbU32(gActive.canvas);
 }
 
+// BaseShowcase::new's set_editor_style(..), and refresh_editor_styles on an
+// appearance change: every field the showcase draws gets the example
+// foreground, the subtle grey for its placeholder, a blue selection and a
+// foreground caret. Rust stores it on each state; here the page hands it to
+// the element each frame, which reads the palette in force, so the
+// appearance refresh comes for free.
+inline InputEditorStyle ShowcaseEditorStyle() {
+    InputEditorStyle style;
+    style.foreground = ExampleRgb(0x171717);
+    style.mutedForeground = ExampleRgb(0x737373);
+    style.selection = RgbaHsla(0.6f, 0.8f, 0.7f, 0.45f);
+    style.caret = ExampleRgb(0x171717);
+    return style;
+}
+
 #endif // GPUI_EXAMPLES_SHOWCASE_PALETTE_H_

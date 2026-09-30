@@ -61,18 +61,19 @@ El* ShowcaseEditor(ShowcaseApp* app, Ctx* cx) {
         ->ItemsStart()
         ->Child(Div(a)->H(16)->ItemsCenter()->Child(
             TextEl(a, StrL("Rust Editor"))->Font(12)->Fg(ExampleRgb(0x171717))))
-        ->Child(InputBase::New(cx, StrL("example-editor"), true)
-                    ->OnClick(Listen(cx, &OnEditor))
-                    ->W(320)
-                    ->H(128)
-                    ->PadX(8)
-                    ->PadY(8)
-                    ->ClipY()
-                    ->FlexCol()
-                    ->FocusId(0)
-                    ->Border(1, app->editorOn ? ExampleRgb(0x171717)
-                                              : ExampleRgb(0xd4d4d4))
-                    ->Child(Editor::New(cx, &app->editor)));
+        ->Child(
+            InputBase::New(cx, StrL("example-editor"), true)
+                ->OnClick(Listen(cx, &OnEditor))
+                ->W(320)
+                ->H(128)
+                ->PadX(8)
+                ->PadY(8)
+                ->ClipY()
+                ->FlexCol()
+                ->FocusId(0)
+                ->Border(1, app->editorOn ? ExampleRgb(0x171717)
+                                          : ExampleRgb(0xd4d4d4))
+                ->Child(Editor::New(cx, &app->editor, ShowcaseEditorStyle())));
 }
 
 SHOWCASE_PAGE(CompEditor, ShowcaseEditor);

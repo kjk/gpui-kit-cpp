@@ -87,7 +87,8 @@ El* ShowcaseNumberInput(ShowcaseApp* app, Ctx* cx) {
                             ->H(28)
                             ->PadX(8)
                             ->ItemsCenter()
-                            ->Child(Input::New(cx, &app->input)))
+                            ->Child(Input::New(cx, &app->input,
+                                               ShowcaseEditorStyle())))
                 ->Child(controls))
         ->Child(TextEl(a, valid ? StrL("Step: 1") : StrL("Enter a number"))
                     ->Font(12)

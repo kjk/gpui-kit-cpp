@@ -62,7 +62,8 @@ El* ShowcaseCombobox(ShowcaseApp* app, Ctx* cx) {
                        ->H(28)
                        ->PadX(8)
                        ->BorderB(1, ExampleRgb(0xe5e5e5))
-                       ->Child(Input::New(cx, &app->comboQuery)));
+                       ->Child(Input::New(cx, &app->comboQuery,
+                                          ShowcaseEditorStyle())));
         El* list = Div(a)->FlexCol()->W(kFill)->Pad(4);
         for (int i = 0; i < 4; i++) {
             if (!Matches(Str(kFwCombo[i]), Str(InputCStr(&app->comboQuery)))) {

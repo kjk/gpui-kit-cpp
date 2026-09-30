@@ -67,7 +67,8 @@ El* ShowcaseToolbar(ShowcaseApp* app, Ctx* cx) {
                 ->H(28)
                 ->PadX(8)
                 ->Border(1, app->toolbarSearch.focused ? ScInk() : ScBorder())
-                ->Child(Input::New(cx, &app->toolbarSearch)));
+                ->Child(Input::New(cx, &app->toolbarSearch,
+                                   ShowcaseEditorStyle())));
     Str action =
         app->toolbarAction < 0
             ? StrL("No command yet")
