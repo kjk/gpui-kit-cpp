@@ -2054,7 +2054,10 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
     // sign above already ends the run at its width, and the element-level
     // clip still bounds it horizontally, so the ellipsis survives without the
     // `overflow_hidden` upstream dropped.
-    D2D1_DRAW_TEXT_OPTIONS opt = D2D1_DRAW_TEXT_OPTIONS_NONE;
+    // ENABLE_COLOR_FONT: an emoji is drawn in its own colours, as GPUI's
+    // text system rasterizes colour glyphs, rather than as a monochrome
+    // outline in the run's colour.
+    D2D1_DRAW_TEXT_OPTIONS opt = D2D1_DRAW_TEXT_OPTIONS_ENABLE_COLOR_FONT;
     ctx->rt->rt->DrawTextLayout(D2D1::Point2F(x, y), layout, b, opt);
     if (ellipsized) {
         DWRITE_TRIMMING none = {DWRITE_TRIMMING_GRANULARITY_NONE, 0, 0};
