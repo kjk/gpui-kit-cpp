@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2ec5696c2e975ddd2b8380d12ec00631bd159128",
+  sha: "caf830c02d08aaeaa0b15158dbe74cc7dcbac2b2",
   date: "2026-09-29",
-  subject: "plot: Keep finished appears across remounts with `PlotAppearScope` (#3308)",
+  subject: "kit: Point the hidden gpui re-export at the Kit itself (#3306)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

@@ -15,11 +15,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2ec5696c2e975ddd2b8380d12ec00631bd159128` (2026-09-29,
-plot: Keep finished appears across remounts with `PlotAppearScope` (#3308)).
-PlotAppearScope remembers which plots inside it have finished appearing, so a
-plot a virtual list scrolls away and back is whole at once instead of drawing
-in again. The current update target is
+Processed through `caf830c02d08aaeaa0b15158dbe74cc7dcbac2b2` (2026-09-29, kit:
+Point the hidden gpui re-export at the Kit itself (#3306)). The Kit's hidden
+gpui re-export now names the Kit itself, so GPUI macro paths resolve through
+it; a Rust module-path fix with nothing to port. The current update target is
 `9c369db6f9b0f3754fdf5d2e4027acb1f68b1146`.
 
 ## Known gaps vs Rust
