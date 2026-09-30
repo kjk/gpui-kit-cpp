@@ -228,7 +228,8 @@ static bool RefreshTypes(Str root, Policy* policy, bool reportFailure) {
     HostModules* modules = PolicyHostModules(policy);
     ShellError error = {};
     int written = 0;
-    bool ok = ShellWriteTypeDeclarations(root, modules, &written, &error);
+    bool ok = ShellWriteTypeDeclarations(root, modules, &written, &error,
+                                         component_shell::Components());
     if (!ok && reportFailure) {
         fprintf(stderr, "gpui-shell: ");
         Print(error.message, stderr);

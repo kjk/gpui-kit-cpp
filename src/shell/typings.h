@@ -14,19 +14,25 @@ constexpr const char* kShellTypeScriptConfigFile = "tsconfig.json";
 constexpr int kShellTypesMaxDepth = 8;
 constexpr int kShellTypesMaxFiles = 4096;
 
+class FrozenComponentRegistry;
+
+// What `gpui-shell types` writes: the runtime's declarations with an empty
+// component catalog. Generated into typings_data.cpp.
 void AppendBuiltinTypeDeclarations(StrBuilder* out);
 
-// Appends the generated built-ins followed by declarations for modules the
+// Appends the generated built-ins, with `components`' declarations spliced in
+// the way typings.rs writes them, followed by declarations for modules the
 // embedding host grants.
 void ShellTypeDeclarations(StrBuilder* out,
-                           const HostModules* modules = nullptr);
+                           const HostModules* modules = nullptr,
+                           const FrozenComponentRegistry* components = nullptr);
 
 // Writes gpui-kit.d.ts at the application root and beside scripts in nested
 // directories that import a built-in module. Identical files are untouched.
-bool ShellWriteTypeDeclarations(Str directory,
-                                const HostModules* modules = nullptr,
-                                int* written = nullptr,
-                                ShellError* error = nullptr);
+bool ShellWriteTypeDeclarations(
+    Str directory, const HostModules* modules = nullptr, int* written = nullptr,
+    ShellError* error = nullptr,
+    const FrozenComponentRegistry* components = nullptr);
 
 } // namespace gpui::shell
 

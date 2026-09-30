@@ -6,6 +6,7 @@
 
 #include "Test.h"
 
+#include <stdio.h>
 #include <string.h>
 
 using shell::ArgumentDescriptor;
@@ -582,6 +583,61 @@ void RuntimeTypingsIncludeLeafExportsAndMethods() {
     StrFree(declarations);
 }
 
+// The declarations one descriptor or state contributes, without the module
+// around them: what the Rust catalog's block must contain verbatim.
+Str OneDeclaration(const ComponentDescriptor* descriptor,
+                   const StateDescriptor* state) {
+    ComponentRegistry registry;
+    RegistryError error;
+    registry.Open(shell::kComponentRegistryApiVersion,
+                  shell::kDefaultComponentModule, &error);
+    if (descriptor) registry.Register(descriptor, &error);
+    if (state) registry.RegisterState(state, &error);
+    FrozenComponentRegistry frozen;
+    registry.Freeze(&frozen);
+    StrBuilder out;
+    shell::AppendComponentDeclarations(&out, &frozen, Str{});
+    Str text = out.TakeStr();
+    // Past `declare module ...` and its import line, and before `}\n\n`.
+    int at = 0;
+    for (int lines = 0; lines < 2 && at < len(text); at++) {
+        if (text.s[at] == '\n') lines++;
+    }
+    Str body = StrDup(Str(text.s + at, len(text) - at - 3));
+    StrFree(text);
+    return body;
+}
+
+// The catalog's declarations are byte-for-byte what `gpui-component-shell
+// types` writes (tests/ComponentShellTypesData.cpp, generated from the pinned
+// crate), which is what keeps every export, method, argument and document
+// sentence a script sees the same on both runtimes.
+void ComponentDeclarationsMatchRust() {
+    StrBuilder rust;
+    AppendRustComponentDeclarations(&rust);
+    Str expected = rust.TakeStr();
+    const FrozenComponentRegistry* frozen = component_shell::Components();
+    for (int i = 0; i < frozen->DescriptorCount(); i++) {
+        Str one = OneDeclaration(frozen->Descriptor((uint32_t)i), nullptr);
+        bool found = StrContains(expected, one);
+        if (!found)
+            printf("declaration differs from Rust: %s\n",
+                   frozen->Descriptor((uint32_t)i)->name);
+        utassert(found);
+        StrFree(one);
+    }
+    for (int i = 0; i < frozen->StateCount(); i++) {
+        Str one = OneDeclaration(nullptr, frozen->State(i));
+        bool found = StrContains(expected, one);
+        if (!found)
+            printf("declaration differs from Rust: %s\n", frozen->State(i)
+                                                              ->exportName);
+        utassert(found);
+        StrFree(one);
+    }
+    StrFree(expected);
+}
+
 // ─── Family tests: spinner.rs, separator.rs, skeleton.rs ───────────────────
 
 // The request a family materializer is handed for a node recorded from
@@ -743,6 +799,7 @@ void TestComponentShell() {
     LeafDescriptorsPublishOnlyClosedHonestMethodSchemas();
     DescriptorVocabularyUsesSnakeCaseEverywhere();
     RuntimeTypingsIncludeLeafExportsAndMethods();
+    ComponentDeclarationsMatchRust();
     LeafComponentsRejectAnIncompatiblePayload();
     LeafComponentsMaterializeFromAScript();
     RegisteredCallsAreValidatedAgainstTheirSchemas();

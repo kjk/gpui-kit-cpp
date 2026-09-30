@@ -1,5 +1,7 @@
 #include "shell/typings.h"
 
+#include "shell/component_registry.h"
+
 #include <limits.h>
 #include <stdio.h>
 #include <string.h>
@@ -108,83 +110,50 @@ static void AppendReindented(StrBuilder* out, Str declarations) {
     }
 }
 
-void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules) {
+// typings.rs declarations_with_components: the runtime's own declarations,
+// with the catalog's element types joined to `Element` and its module
+// written from its descriptors. The embedded text is what `gpui-shell types`
+// writes — an empty catalog — so the two places a catalog changes are found
+// in it and rewritten here rather than stored twice.
+static void AppendDeclarationsWithComponents(
+    StrBuilder* out, const FrozenComponentRegistry* components) {
+    StrBuilder builtin;
+    AppendBuiltinTypeDeclarations(&builtin);
+    Str text = Str(builtin.els, builtin.len);
+    Str union_ = StrL("  export type Element = NativeElement;\n");
+    Str moduleStart = StrL("declare module \"gpui-component\" {\n");
+    Str moduleImport = StrL(
+        "  import { ClickEvent, Context, Element, "
+        "NativeElement } from \"gpui-kit\";\n");
+    Str moduleEnd = StrL("}\n\ndeclare module \"gpui-shell\" {\n");
+    int unionAt = StrFind(text, union_);
+    int moduleAt = StrFind(text, moduleStart);
+    int endAt =
+        moduleAt >= 0
+            ? StrFind(Str(text.s + moduleAt, len(text) - moduleAt), moduleEnd)
+            : -1;
+    if (unionAt < 0 || moduleAt < unionAt || endAt < 0) {
+        out->Append(text);
+        return;
+    }
+    endAt += moduleAt;
+    int tokensAt = moduleAt + len(moduleStart) + len(moduleImport);
+    Str inlineTokenTypes = Str(text.s + tokensAt, endAt - tokensAt);
+    out->Append(Str(text.s, unionAt));
+    out->Append(StrL("  export type Element = NativeElement"));
+    AppendComponentElementUnion(out, components);
+    out->Append(StrL(";\n"));
+    int afterUnion = unionAt + len(union_);
+    out->Append(Str(text.s + afterUnion, moduleAt - afterUnion));
+    AppendComponentDeclarations(out, components, inlineTokenTypes);
+    int afterModule = endAt + 3;
+    out->Append(Str(text.s + afterModule, len(text) - afterModule));
+}
+
+void ShellTypeDeclarations(StrBuilder* out, const HostModules* modules,
+                           const FrozenComponentRegistry* components) {
     if (!out) return;
-    AppendBuiltinTypeDeclarations(out);
-    // The embedded declarations predate the Kit package rename. Both names
-    // expose the same types, just as the runtime exposes the same values.
-    out->Append(StrL(
-        "\ndeclare module \"gpui-kit\" {\n  export * from \"gpui\";\n}\n"));
-    out->Append(StrL(R"TS(
-declare module "gpui-kit" {
-  interface NativeElement {
-    token(render: (token: import("gpui-base").InlineTokenContext, cx: Context) => Element | null): this;
-    on_token_click(listener: (event: import("gpui-base").InlineTokenClickEvent, cx: Context) => void): this;
-  }
-  interface InputState {
-    content(): import("gpui-base").InputContent;
-    tokens(): import("gpui-base").InlineTokenSpan[];
-    set_value(next: string | import("gpui-base").InputContent): void;
-    replace_with_token(token: import("gpui-base").InlineToken): void;
-    replace_range_with_token(range: import("gpui-base").InputRange, token: import("gpui-base").InlineToken): void;
-    set_selected_range(range: import("gpui-base").InputRange): void;
-    replace(text: string): void;
-  }
-  interface TextareaState {
-    content(): import("gpui-base").InputContent;
-    tokens(): import("gpui-base").InlineTokenSpan[];
-    set_value(next: string | import("gpui-base").InputContent): void;
-    replace_with_token(token: import("gpui-base").InlineToken): void;
-    replace_range_with_token(range: import("gpui-base").InputRange, token: import("gpui-base").InlineToken): void;
-    set_selected_range(range: import("gpui-base").InputRange): void;
-    replace(text: string): void;
-  }
-}
-)TS"));
-    out->Append(StrL(R"TS(
-declare module "gpui-base" {
-  export interface InlineToken {
-    id: string;
-    text: string;
-    label: string;
-  }
-  export interface InputRange { start: number; end: number; }
-  export interface InlineTokenSpan { range: InputRange; token: InlineToken; }
-  export interface InputContent { text: string; tokens: InlineTokenSpan[]; }
-  export interface InlineTokenContext {
-    token: InlineToken;
-    range: InputRange;
-    selected: boolean;
-    disabled: boolean;
-    readonly: boolean;
-    line_height: number;
-    available_width: number;
-  }
-  export interface InlineTokenClickEvent {
-    token: InlineToken;
-    range: InputRange;
-    bounds: { x: number; y: number; width: number; height: number };
-    modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
-  }
-  export const InputGroup: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupAddon: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupButton: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupInput: { new: (state: InputState) => import("gpui-kit").NativeElement };
-  export const InputGroupTextarea: { new: (state: TextareaState) => import("gpui-kit").NativeElement };
-  export const InputGroupText: { new: () => import("gpui-kit").NativeElement };
-}
-declare module "gpui-component" {
-  export const InputGroup: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupAddon: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupButton: { new: (id: string) => import("gpui-kit").NativeElement };
-  export const InputGroupInput: { new: (state: import("gpui-base").InputState) => import("gpui-kit").NativeElement };
-  export const InputGroupTextarea: { new: (state: import("gpui-base").TextareaState) => import("gpui-kit").NativeElement };
-  export const InputGroupText: { new: () => import("gpui-kit").NativeElement };
-  export const Input: { new: (state: import("gpui-base").InputState) => import("gpui-kit").NativeElement };
-  export const Textarea: { new: (state: import("gpui-base").TextareaState) => import("gpui-kit").NativeElement };
-  export { InputState, TextareaState, Button } from "gpui-base";
-}
-)TS"));
+    AppendDeclarationsWithComponents(out, components);
     for (int i = 0; i < HostModulesCount(modules); i++) {
         HostModule* module = HostModulesAt(modules, i);
         if (!module) continue;
@@ -329,7 +298,8 @@ static bool RefreshTypes(Str directory, Str declarations, DirEntry* entries,
 }
 
 bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
-                                int* written, ShellError* error) {
+                                int* written, ShellError* error,
+                                const FrozenComponentRegistry* components) {
     ShellErrorClear(error);
     if (written) *written = 0;
     if (!root || len(root) >= kMaxPath) {
@@ -347,7 +317,7 @@ bool ShellWriteTypeDeclarations(Str root, const HostModules* modules,
     }
 
     StrBuilder declarations;
-    ShellTypeDeclarations(&declarations, modules);
+    ShellTypeDeclarations(&declarations, modules, components);
     Str text = declarations.TakeStr();
     if (!text || len(text) > kTypesMaxDeclarationBytes) {
         StrFree(text);
