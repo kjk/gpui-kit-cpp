@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `eb1316f1da12ae9860e47bf1438472882a844e1c` (2026-10-01,
-shell: update QuickJS JIT to 0.12.11 (#3338)). Upstream moves the shell's
-quickjs-jit to 0.12.11; the C++ shell stays on QuickJS-NG. The current update
-target is `912f8a9b70c24aa79de696f26ab0c7ef065ed134`.
+Processed through `912f8a9b70c24aa79de696f26ab0c7ef065ed134` (2026-10-01,
+docs: Document macOS font-kit requirement (#3339)). Upstream documents the
+macOS font-kit requirement on the website only. The current update target is
+`912f8a9b70c24aa79de696f26ab0c7ef065ed134`.
 
 ## Known gaps vs Rust
 

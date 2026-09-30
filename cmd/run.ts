@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "eb1316f1da12ae9860e47bf1438472882a844e1c",
+  sha: "912f8a9b70c24aa79de696f26ab0c7ef065ed134",
   date: "2026-10-01",
-  subject: "shell: update QuickJS JIT to 0.12.11 (#3338)",
+  subject: "docs: Document macOS font-kit requirement (#3339)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
