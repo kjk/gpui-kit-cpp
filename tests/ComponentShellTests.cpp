@@ -2104,17 +2104,186 @@ void TextareaRowsArePositiveWholeCounts() {
 // activation) and runs it.
 // inline_tokens_host.rs inline_tokens_script_operations_and_click_reentry.
 // The token chip's click is its activation handler, run directly.
+// ─── retained_forms/mod.rs ─────────────────────────────────────────────────
 
 // retained_forms_publish_matching_state_and_component_contracts
+void RetainedFormsPublishMatchingStateAndComponentContracts() {
+    FamilyCatalog catalog(&component_shell::RegisterRetainedForms);
+    utassert(catalog.ok);
+    const char* states[] = {
+        "InputState",       "CalendarState",   "OtpState",      "SliderState",
+        "ColorPickerState", "DatePickerState", "TimeFieldState"};
+    utassert(catalog.frozen.StateCount() == 7);
+    for (int i = 0; i < catalog.frozen.StateCount() && i < 7; i++) {
+        utassert(strcmp(catalog.frozen.State(i)->exportName, states[i]) == 0);
+        utassert(catalog.frozen.State(i)->documentation != nullptr);
+    }
+    const char* components[] = {"Input",      "NumberInput", "OtpInput",
+                                "Slider",     "ColorPicker", "Calendar",
+                                "DatePicker", "TimeField"};
+    utassert(catalog.NamesAre(components, 8));
+    utassert(catalog.Documented());
+}
+
 // state_arguments_are_closed_and_component_state_kinds_match
+void StateArgumentsAreClosedAndComponentStateKindsMatch() {
+    FamilyCatalog catalog(&component_shell::RegisterRetainedForms);
+    const StateDescriptor* otp = catalog.frozen.StateOfKind(StrL("OtpState"));
+    utassert(otp && otp->arguments.count == 1 &&
+             otp->arguments[0].schema.kind == shell::SchemaKind::Number);
+    for (int i = 0; i < catalog.frozen.DescriptorCount(); i++) {
+        const ConstructorDescriptor& constructor =
+            catalog.frozen.Descriptor((uint32_t)i)->constructors[0];
+        utassert(constructor.arguments.count == 1);
+        utassert(constructor.arguments[0]
+                     .schema.kind == shell::SchemaKind::Entity);
+    }
+}
+
+shell::ComponentArgument NumberArgument(double value) {
+    shell::ComponentArgument argument;
+    argument.kind = shell::ComponentArgumentKind::Number;
+    argument.number = value;
+    return argument;
+}
+
 // positive_usize_rejects_values_that_round_past_usize_max
+void PositiveUsizeRejectsValuesThatRoundPastUsizeMax() {
+    shell::ComponentArgument rounded = NumberArgument(18446744073709551616.0);
+    uint64_t value = 0;
+    Str error;
+    utassert(!component_shell::retained_forms::PositiveUsize(
+        &rounded, 1, "OtpState", &value, &error));
+    utassert(StrContains(error, StrL("positive integer")));
+}
+
 // positive_usize_accepts_only_exact_positive_integers
+void PositiveUsizeAcceptsOnlyExactPositiveIntegers() {
+    shell::ComponentArgument six = NumberArgument(6.0);
+    uint64_t value = 0;
+    Str error;
+    utassert(component_shell::retained_forms::PositiveUsize(&six, 1, "OtpState",
+                                                            &value, &error) &&
+             value == 6);
+    const double refused[] = {0.0, -1.0, 1.5, NAN, INFINITY};
+    for (double number : refused) {
+        shell::ComponentArgument argument = NumberArgument(number);
+        utassert(!component_shell::retained_forms::PositiveUsize(
+            &argument, 1, "OtpState", &value, &error));
+    }
+}
+
 // otp_leaf_contract_rejects_ordinary_children
+void OtpLeafContractRejectsOrdinaryChildren() {
+    Str error;
+    utassert(
+        !component_shell::retained_forms::EnsureLeaf(1, "OtpInput", &error));
+    utassert(StrEq(error, StrL("OtpInput does not accept children")));
+    utassert(
+        component_shell::retained_forms::EnsureLeaf(0, "OtpInput", &error));
+}
+
 // public_host.rs all_retained_form_bindings_materialize_and_keep_their_
 // state_across_frames: two renders, each building every control.
+void AllRetainedFormBindingsMaterializeAcrossFrames() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import {\n"
+             "  Calendar, CalendarState, ColorPicker, ColorPickerState,\n"
+             "  DatePicker, DatePickerState, Input, InputState, NumberInput,\n"
+             "  OtpInput, OtpState, Slider, SliderState, TimeField, "
+             "TimeFieldState,\n"
+             "} from 'gpui-component';\n"
+             "export default class RetainedForms extends View {\n"
+             "  init() {\n"
+             "    this.input = InputState();\n"
+             "    this.otp = OtpState(6);\n"
+             "    this.slider = SliderState();\n"
+             "    this.color = ColorPickerState();\n"
+             "    this.calendar = CalendarState();\n"
+             "    this.date = DatePickerState();\n"
+             "    this.time = TimeFieldState();\n"
+             "  }\n"
+             "  render() {\n"
+             "    return div()\n"
+             "      .child(new Input(this.input).aria_label('Project')"
+             ".disabled(false))\n"
+             "      .child(new NumberInput(this.input).placeholder('Quantity')"
+             ".disabled(true))\n"
+             "      .child(new OtpInput(this.otp).w(320).groups(3)"
+             ".disabled(false))\n"
+             "      .child(new Slider(this.slider).vertical().reverse()"
+             ".disabled(false))\n"
+             "      .child(new ColorPicker(this.color).label('Accent')"
+             ".accessibility_label('Accent color'))\n"
+             "      .child(new Calendar(this.calendar).number_of_months(2))\n"
+             "      .child(new DatePicker(this.date).placeholder('Choose date')"
+             ".disabled(false))\n"
+             "      .child(new TimeField(this.time));\n"
+             "  }\n"
+             "}\n"));
+    for (int frame = 0; frame < 2; frame++) {
+        El* root = host.Render();
+        utassert(root && len(host.ViewError()) == 0);
+        utassert(!FindTextPrefix(root, StrL("Failed to render")));
+        utassert(FindText(root, StrL("Accent")) != nullptr);
+        utassert(FindText(root, StrL("Choose date")) != nullptr);
+    }
+}
+
 // retained_otp_rejects_an_ordinary_child_during_public_host_materialization
+void RetainedOtpRejectsAnOrdinaryChild() {
+    Host host(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "import { OtpInput, OtpState } from 'gpui-component';\n"
+             "export default class InvalidOtp extends View {\n"
+             "  init() { this.otp = OtpState(6); }\n"
+             "  render() { return new OtpInput(this.otp).child(div()"
+             ".child('not allowed')); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("Failed to render OtpInput")) != nullptr);
+    utassert(StrEq(host.runtime->LastComponentFailure(),
+                   StrL("OtpInput does not accept children")));
+}
+
 // retained_state_constructor_rejects_rounded_overflow_from_js
+void RetainedStateConstructorRejectsRoundedOverflowFromJs() {
+    Host host(
+        StrL("import { View } from 'gpui-kit';\n"
+             "import { OtpInput, OtpState } from 'gpui-component';\n"
+             "export default class InvalidOtpState extends View {\n"
+             "  init() { this.otp = OtpState(18446744073709551616); }\n"
+             "  render() { return new OtpInput(this.otp); }\n"
+             "}\n"));
+    Str refusal = RenderRefusal(host);
+    utassert(StrContains(refusal, StrL("positive integer")));
+}
+
 // component_state_exports_do_not_shadow_same_named_gpui_base_exports
+void ComponentStateExportsDoNotShadowGpuiBaseExports() {
+    Host host(StrL(
+        "import { View } from 'gpui-kit';\n"
+        "import { InputState as BaseInputState } from 'gpui-base';\n"
+        "import { Input, InputState as ComponentInputState } from "
+        "'gpui-component';\n"
+        "export default class CoexistingStates extends View {\n"
+        "  init() {\n"
+        "    this.base_state = BaseInputState.new({ placeholder: 'Search' });\n"
+        "    this.component_state = ComponentInputState();\n"
+        "  }\n"
+        "  render() { return new Input(this.component_state)"
+        ".aria_label('Name'); }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+    InputState* inputs[2] = {};
+    int count = 0;
+    CollectInputs(root, inputs, &count, 2);
+    utassert(count == 1);
+}
 
 // registers_only_real_constructible_layout_surfaces
 // resizable.rs numeric_contracts_are_closed
@@ -2213,4 +2382,15 @@ void TestComponentShell() {
     TestSuite("input_group");
     InputGroupRegistersItsSixDocumentedParts();
     TextareaRowsArePositiveWholeCounts();
+
+    TestSuite("retained_forms");
+    RetainedFormsPublishMatchingStateAndComponentContracts();
+    StateArgumentsAreClosedAndComponentStateKindsMatch();
+    PositiveUsizeRejectsValuesThatRoundPastUsizeMax();
+    PositiveUsizeAcceptsOnlyExactPositiveIntegers();
+    OtpLeafContractRejectsOrdinaryChildren();
+    AllRetainedFormBindingsMaterializeAcrossFrames();
+    RetainedOtpRejectsAnOrdinaryChild();
+    RetainedStateConstructorRejectsRoundedOverflowFromJs();
+    ComponentStateExportsDoNotShadowGpuiBaseExports();
 }

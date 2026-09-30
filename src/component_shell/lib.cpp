@@ -13,10 +13,10 @@ void Init(App* app) {
 // shell/mod.rs `register`, in its order: the order is the catalog's, which
 // the declarations and the component ids follow.
 static const RegisterFamily kFamilies[] = {
-    &RegisterSpinner, &RegisterSeparator,  &RegisterSkeleton,
-    &RegisterEmpty,   &RegisterInputGroup, &RegisterControls,
-    &RegisterDisplay, &RegisterCompound,   &RegisterTypedCompound,
-    &RegisterBasic,
+    &RegisterSpinner,       &RegisterSeparator,  &RegisterSkeleton,
+    &RegisterEmpty,         &RegisterInputGroup, &RegisterControls,
+    &RegisterDisplay,       &RegisterCompound,   &RegisterTypedCompound,
+    &RegisterRetainedForms, &RegisterBasic,
 };
 
 bool Register(shell::ComponentRegistry* registry, shell::RegistryError* error) {
