@@ -60,13 +60,17 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
             }
         }
     }
+    // with_group_variant: the story opens on Outline, its dropdown's first
+    // choice.
     component::Settings* s = component::Settings::New(cx, StrL("settings"))
+                                 ->Bordered(true)
                                  ->SidebarWidth(200)
                                  ->H(WindowSize(cx->win).dipH - 160);
 
     // SettingPage::resettable: the story's own switch, which turns the reset
     // buttons on this page off.
     s->Page(StrL("General"), IconName::Settings2)
+        ->PageDefaultOpen(true)
         ->PageResettable(self->resettable)
         // title_suffix: a ghost Info button that opens the docs.
         ->PageTitleSuffix(component::Button::New(cx, StrL("help"))

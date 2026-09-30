@@ -3,7 +3,9 @@
 #include "ui/button.h"
 #include "ui/checkbox.h"
 #include "ui/input.h"
+#include "ui/resizable.h"
 #include "ui/select.h"
+#include "ui/sidebar.h"
 #include "ui/switch.h"
 
 namespace gpui {
@@ -221,6 +223,34 @@ static void SettingsPageScrollPaint(PaintCtx* ctx, El* e, void* user) {
     st->pendingScrollGroup = -1;
     Ctx cx = {ctx->app, ctx->window, nullptr, m->state.id};
     Notify(&cx);
+}
+
+// settings.rs STACKED_LAYOUT_MAX_WIDTH: a page panel this narrow or
+// narrower lays every item out stacked.
+static const float kStackedLayoutMaxWidth = 480;
+
+// What the page panel's prepaint needs: the state the width is kept in, and
+// the layout this frame was built with.
+struct SettingsContainerQuery {
+    Entity<SettingsState> state = {};
+    Axis layout = Axis::Horizontal;
+};
+
+// container_query's size, once layout has given the panel one. A width on
+// the other side of the line from the layout this frame used asks for one
+// more frame, built with it.
+static void SettingsContainerPrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* q = (SettingsContainerQuery*)user;
+    SettingsState* st = q ? q->state.Get(ctx->app) : nullptr;
+    if (!st) {
+        return;
+    }
+    st->containerWidth = e->w;
+    Axis want =
+        e->w <= kStackedLayoutMaxWidth ? Axis::Vertical : Axis::Horizontal;
+    if (want != q->layout && ctx->window) {
+        WindowRequestAnimationFrame(ctx->window);
+    }
 }
 
 // The one selected index, or -1. A setting dropdown is single-select, which
@@ -519,6 +549,13 @@ Settings* Settings::PageResettable(bool v) {
     return this;
 }
 
+Settings* Settings::PageDefaultOpen(bool v) {
+    if (pages.len > 0) {
+        pages[pages.len - 1].defaultOpen = v;
+    }
+    return this;
+}
+
 Settings* Settings::PageTitleSuffix(El* e) {
     if (pages.len > 0) {
         pages[pages.len - 1].titleSuffix = e;
@@ -697,7 +734,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
 // One row: the title and description on the left, the field on the right —
 // or under it, when the item asked for a vertical layout.
 static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
-                      int pageIx, int groupIx, int itemIx, bool first,
+                      int pageIx, int groupIx, int itemIx, Axis pageLayout,
                       bool pageResettable, bool* anyDirty) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -710,23 +747,36 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     // padding is the GroupBox's `p_4` and the space between two items is its
     // `gap_4`; the port gave every item a box of its own and drew a line
     // between them, which is a table where Rust has a stack.
+    // A stacked page (the container query's Vertical) stacks every item;
+    // otherwise the item's own layout stands.
+    Axis layout = pageLayout == Axis::Vertical ? Axis::Vertical : it.layout;
     El* line = Div(a)->Id(id)->W(kFill)->Gap(12);
-    if (it.layout == Axis::Horizontal) {
+    if (it.disabled) {
+        line->Opacity(0.5f);
+    }
+    if (layout == Axis::Horizontal) {
         line->FlexRow()->ItemsCenter()->JustifyBetween();
     } else {
         line->FlexCol();
     }
-    (void)first;
-    El* text = Div(a)->FlexCol()->Flex1();
-    text->Child(TextEl(a, it.title)
-                    ->Font(16)
-                    ->Fg(it.disabled ? th.mutedFg : th.foreground));
+    // The label column: flex_1().max_w_3_5() beside the field, w_full over
+    // it; Label::new(title).text_sm(), and the description text_sm muted.
+    El* text = Div(a)->FlexCol();
+    if (layout == Axis::Horizontal) {
+        text->Flex1()->MaxWFrac(0.6f);
+    } else {
+        text->W(kFill);
+    }
+    text->Child(TextEl(a, it.title)->Font(14)->Fg(th.foreground)->Wrap());
     if (it.description.s) {
         text->Child(
             TextEl(a, it.description)->Font(14)->Fg(th.mutedFg)->Wrap());
     }
     line->Child(text);
-    El* right = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+    // `div().id("field")`: a plain block, so a field stacked under its
+    // label is as wide as the item. The row is this port's, for the reset
+    // button it puts beside a changed field.
+    El* right = Div(a);
     RenderOptions options =
         RenderOptions::New()
             .WithPageIx(pageIx)
@@ -735,7 +785,7 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             .WithSize(s->size)
             .WithGroupVariant(s->bordered ? GroupBoxVariant::Outline
                                           : GroupBoxVariant::Normal)
-            .WithLayout(it.layout)
+            .WithLayout(layout)
             .WithDisabled(it.disabled);
     FieldEl f = RenderField(cx, s, it, StrL("field"), pageResettable, options);
     if (f.dirty && f.resettable && f.onReset.IsValid()) {
@@ -746,6 +796,7 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     }
     // The reset button, which is only there once the item has been changed.
     if (f.dirty && f.resettable && f.onReset.IsValid()) {
+        right->FlexRow()->Gap(8)->ItemsCenter();
         // Rust's reset button carries an Undo2 icon; the nearest one this
         // tree has is the arrow that points back.
         right->Child(Button::New(cx, StrL("reset"))
@@ -791,33 +842,29 @@ El* Settings::IntoEl() {
     // search field, the page rows, the group rows and every item under them —
     // and the states the fields keep, which is what the id stack is for.
     IdScope scope(cx, id);
-    El* row = Div(a)->Id(id)->FlexRow()->W(kFill)->H(h)->ItemsStart();
     float sideWidth =
         std::max(sidebarMinWidth, std::min(sidebarWidth, sidebarMaxWidth));
 
-    // The sidebar: the search field, then a row per page, with the groups of
-    // the open page under it.
-    El* side = Div(a)
-                   ->FlexCol()
-                   ->W(sideWidth)
-                   ->H(kFill)
-                   ->Pad(8)
-                   ->Gap(4)
-                   ->ClipX()
-                   ->BorderR(1, th.border);
+    // render_sidebar: a Sidebar the width of its panel, borderless and not
+    // collapsible, with the search field as its header and one SidebarMenu
+    // of the pages that still have a matching group.
+    Sidebar* sidebar = Sidebar::New(cx, StrL("settings-sidebar"))
+                           ->Collapsible(false)
+                           ->Collapsed(false);
     if (st) {
-        side->Child(
+        El* search =
             Input::New(cx, StrL("search"), &st->search)
-                ->Prefix(Div(a)->PadL(10)->Child(IconEl(a, IconName::Search, 16)
-                                                     ->Fg(th.mutedFg)))
-                ->WithSize(UiSize::Small)
+                ->Prefix(IconEl(a, IconName::Search))
                 ->OnFocus(ListenTo(state, &SettingsState::OnSearchFocus))
-                ->IntoEl());
+                ->IntoEl();
+        sidebar->Header(Div(a)->W(kFill)->Child(search));
         if (st->search.focused) {
             cx->win->input = &st->search;
         }
     }
+    SidebarMenu* menu = SidebarMenu::New(cx);
     int selected = st ? st->page : 0;
+    int selectedGroup = st ? st->group : -1;
     int i = -1;
     for (const SettingPage& p : pages) {
         i++;
@@ -825,78 +872,65 @@ El* Settings::IntoEl() {
         if (visibleGroups == 0) {
             continue;
         }
-        bool pageSelected = i == selected;
         // The page row is active when no group is selected, or when the page
         // has only one visible group — the group cannot be a separate row.
-        bool pageActive = pageSelected && (st == nullptr || st->group < 0 ||
-                                           visibleGroups == 1);
-        El* item = Div(a)
-                       ->FlexRow()
-                       ->W(kFill)
-                       ->H(32)
-                       ->PadX(8)
-                       ->Gap(8)
-                       ->ItemsCenter()
-                       ->Radius(th.radius)
-                       ->HoverBg(th.tokens.muted);
-        if (pageActive) {
-            item->Bg(th.tokens.accent);
-        }
+        bool pageActive =
+            i == selected &&
+            (st == nullptr || selectedGroup < 0 || visibleGroups == 1);
+        SidebarMenuItem* item =
+            SidebarMenuItem::New(cx, p.title)
+                ->ClickToOpen(true)
+                ->DefaultOpen(p.defaultOpen)
+                ->Active(pageActive)
+                ->OnClick(
+                    ListenTo(state, &SettingsState::OnPageClick, (intptr_t)i));
         if (p.icon != IconName::None) {
-            item->Child(IconEl(a, p.icon, 16)->Fg(th.foreground));
+            item->Icon(p.icon);
         }
-        item->Child(Div(a)->Flex1()->ClipY()->Child(TextEl(a, p.title)
-                                                        ->Font(16)
-                                                        ->Fg(th.foreground)
-                                                        ->MaxW(sideWidth - 80)
-                                                        ->Truncate()));
+        // Each titled group is a row under its page, and jumps to that part
+        // of it. Clicks bind the original group index, not the visible
+        // position.
         if (visibleGroups > 1) {
-            item->Child(IconEl(a,
-                               pageSelected || p.defaultOpen
-                                   ? IconName::ChevronDown
-                                   : IconName::ChevronRight,
-                               16)
-                            ->Fg(th.mutedFg));
-        }
-        BindClick(item, StrDup(a, fmt("page-%d", i)),
-                  ListenTo(state, &SettingsState::OnPageClick, (intptr_t)i));
-        side->Child(item);
-        // click_to_open: the open page lists its groups under it, and each
-        // one jumps to that part of the page. Clicks bind the original group
-        // index, not the visible position. A default_open page lists them
-        // before it is opened.
-        if ((!pageSelected && !p.defaultOpen) || visibleGroups <= 1) {
-            continue;
-        }
-        int g = -1;
-        for (const SettingGroup& group : p.groups) {
-            g++;
-            if (!SettingGroupMatches(&group, query) || !group.title.s) {
-                continue;
+            int g = -1;
+            for (const SettingGroup& group : p.groups) {
+                g++;
+                if (!SettingGroupMatches(&group, query) || !group.title.s) {
+                    continue;
+                }
+                item->Child(
+                    SidebarMenuItem::New(cx, group.title)
+                        ->Active(i == selected && selectedGroup == g)
+                        ->OnClick(ListenTo(state, &SettingsState::OnGroupClick,
+                                           (intptr_t)i * 64 + (intptr_t)g)));
             }
-            El* sub = Div(a)
-                          ->FlexRow()
-                          ->W(kFill)
-                          ->H(32)
-                          ->PadL(28)
-                          ->ItemsCenter()
-                          ->Radius(th.radius)
-                          ->HoverBg(th.tokens.muted);
-            if (st && st->group == g) {
-                sub->Bg(BackgroundOpacity(th.tokens.accent, 0.6f));
-            }
-            sub->Child(TextEl(a, group.title)->Font(16)->Fg(th.foreground));
-            BindClick(sub, StrDup(a, fmt("group-%d-%d", i, g)),
-                      ListenTo(state, &SettingsState::OnGroupClick,
-                               (intptr_t)i * 64 + (intptr_t)g));
-            side->Child(sub);
         }
+        menu->Child(item);
     }
-    row->Child(side);
+    sidebar->Child(menu);
+    // `.w(relative(1.)).border_0()`: the panel is what sizes it.
+    El* side = sidebar->IntoEl()->W(kFill);
+    side->style.border = 0;
+    side->style.borderT = side->style.borderR = 0;
+    side->style.borderB = side->style.borderL = 0;
 
-    // The page: its title, then a card per group. An empty filter keeps the
-    // selection but does not render a stale page.
-    El* pane = Div(a)->FlexCol()->Flex1()->H(kFill)->ClipY();
+    // The page: its header, then each group as a GroupBox. An empty filter
+    // keeps the selection but does not render a stale page.
+    El* pane = Div(a)->FlexCol()->SizeFull()->ClipY();
+    // container_query: the page is laid out stacked when the panel it is in
+    // is at most STACKED_LAYOUT_MAX_WIDTH wide. GPUI builds the page after
+    // the panel has its size; this tree builds before layout, so the width
+    // is the one the panel had last frame, and a frame that finds it on the
+    // other side of the line asks for another.
+    Axis pageLayout = Axis::Horizontal;
+    if (st && st->containerWidth >= 0 &&
+        st->containerWidth <= kStackedLayoutMaxWidth) {
+        pageLayout = Axis::Vertical;
+    }
+    SettingsContainerQuery* query_ = ArenaNew<SettingsContainerQuery>(a);
+    query_->state = state;
+    query_->layout = pageLayout;
+    pane->prePaint = &SettingsContainerPrePaint;
+    pane->customUser = query_;
     if (selected >= 0 && selected < pages.len &&
         PageHasMatchingGroup(pages[selected], query)) {
         const SettingPage& p = pages[selected];
@@ -924,6 +958,7 @@ El* Settings::IntoEl() {
                               : (changed ? st->group : -1);
             st->deferredScrollGroup = -1;
         }
+        // `div().px_4().flex_1().w_full()` around the list of groups.
         El* body =
             Div(a)
                 ->Id(StrL("page-body"))
@@ -931,8 +966,7 @@ El* Settings::IntoEl() {
                 ->W(kFill)
                 ->Flex1()
                 ->MinH(0)
-                ->Pad(16)
-                ->Gap(8)
+                ->PadX(16)
                 ->ClipY()
                 ->ScrollY(st ? st->scrollY : 0)
                 ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
@@ -943,29 +977,49 @@ El* Settings::IntoEl() {
             if (!SettingGroupMatches(&grp, query)) {
                 continue;
             }
-            if (grp.title.s) {
-                El* title =
-                    TextEl(a, grp.title)->Font(16)->Fg(th.mutedFg)->PadY(4);
-                if (g == scrollGroup) {
-                    scroll->target = title;
-                }
-                body->Child(title);
-            }
-            // GroupBox's content pane: `p_4` and `gap_4`, `rounded(radius)`,
-            // bordered for the Outline variant and filled for Fill.
-            // `self.variant.unwrap_or(options.group_variant())`: a group's
-            // own variant wins over the settings-level one.
+            // group.rs renders a GroupBox; `self.variant.unwrap_or(options.
+            // group_variant())`: a group's own variant wins over the
+            // settings-level one.
             GroupBoxVariant variant =
                 grp.hasVariant ? grp.variant
                                : (bordered ? GroupBoxVariant::Outline
                                            : GroupBoxVariant::Normal);
-            El* card = Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius);
+            bool padded = variant != GroupBoxVariant::Normal;
+            // The GroupBox root: v_flex w_full, gap_3 around a padded surface
+            // and gap_4 around a plain one; the page gives each group `py_4`
+            // and the group's own style refines it last.
+            El* box = Div(a)
+                          ->FlexCol()
+                          ->W(kFill)
+                          ->Gap(padded ? 12.f : 16.f)
+                          ->PadY(16);
+            if (grp.title.s) {
+                // The title slot: muted, line_height 1.25, holding
+                // `v_flex().gap_1()` of the title and a text_sm description.
+                El* title = Div(a)
+                                ->FlexCol()
+                                ->Gap(4)
+                                ->Fg(th.mutedFg)
+                                ->LineHeight(1.25f);
+                title->Child(TextEl(a, grp.title)->Wrap());
+                if (grp.description.s) {
+                    title->Child(TextEl(a, grp.description)
+                                     ->Font(14)
+                                     ->Fg(th.mutedFg)
+                                     ->Wrap());
+                }
+                box->Child(title);
+            }
+            // The surface: gap_4, rounded, p_4 and a border (Outline) or a
+            // fill (Fill), in group_box_foreground.
+            El* card =
+                Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius)->Fg(
+                    th.groupBoxFg);
             if (variant == GroupBoxVariant::Outline) {
                 card->Pad(16)->Border(1, th.border);
             } else if (variant == GroupBoxVariant::Fill) {
                 card->Pad(16)->Bg(th.groupBox);
             }
-            int shown = 0;
             int itemIx = -1;
             for (const SettingItem& it : grp.items) {
                 itemIx++;
@@ -975,19 +1029,21 @@ El* Settings::IntoEl() {
                 card->Child(RenderItem(
                     cx, this, it,
                     StrDup(a, fmt("%d-%d-%d", selected, g, itemIx)), selected,
-                    g, itemIx, shown == 0, p.resettable, &anyDirty));
-                shown++;
+                    g, itemIx, pageLayout, p.resettable, &anyDirty));
             }
-            grp.refiner.Apply(card);
-            if (g == scrollGroup && !scroll->target) {
-                scroll->target = card;
-            }
-            body->Child(card);
-            // group_box.rs: the footer is 8 px under the surface, outside it.
+            // The surface and the footer share a `v_flex().gap_2()`, so the
+            // footer's 8 px is its own and not the root's gap.
+            El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(card);
             if (grp.footer) {
-                body->Child(
+                slot->Child(
                     Div(a)->Font(14)->Fg(th.mutedFg)->Child(grp.footer));
             }
+            box->Child(slot);
+            grp.refiner.Apply(box);
+            if (g == scrollGroup) {
+                scroll->target = box;
+            }
+            body->Child(box);
         }
 
         // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and
@@ -1000,7 +1056,7 @@ El* Settings::IntoEl() {
         El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
         // page.rs puts the title in the header with no styling of its own,
         // so it is the page's own text and not a heading.
-        titleCell->Child(TextEl(a, p.title)->Font(16)->Fg(th.foreground));
+        titleCell->Child(TextEl(a, p.title)->Fg(th.foreground));
         if (p.titleSuffix) {
             titleCell->Child(p.titleSuffix);
         } else if (p.titleSuffixFn) {
@@ -1033,8 +1089,15 @@ El* Settings::IntoEl() {
         pane->Child(head);
         pane->Child(body);
     }
-    row->Child(pane);
-    return row;
+
+    // h_resizable(id): the sidebar's panel at its width, kept inside its
+    // range, and the page's panel taking the rest.
+    return component::Resizable::New(cx, id)
+        ->W(kFill)
+        ->H(h)
+        ->Panel(side, sideWidth, sidebarMinWidth, sidebarMaxWidth)
+        ->Grow(pane)
+        ->IntoEl();
 }
 
 } // namespace component

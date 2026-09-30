@@ -345,6 +345,9 @@ struct SettingsState {
     uint32_t listQuery = 0;
     float scrollY = 0;
     int pendingScrollGroup = -1;
+    // The width the page's panel was laid out at last frame, which is what
+    // the container query decides the stacked layout by. -1 until known.
+    float containerWidth = -1;
     // `SettingsState { search_input: cx.new(|cx| InputState::new(window, cx)
     // .placeholder(t!("Settings.search_placeholder"))), .. }`: the pane's own
     // field, made with the state rather than asked of the application. Every
@@ -387,12 +390,13 @@ struct Settings {
     float sidebarWidth = 250;
     float sidebarMinWidth = 160;
     float sidebarMaxWidth = 360;
-    float h = 480;
+    // h_resizable fills what it is put in.
+    float h = kFill;
     UiSize size = UiSize::Medium;
     SelectIndex defaultSelectedIndex = {};
     // GroupBoxVariant: whether a group is a card with a border or a plain
-    // run of rows under a heading.
-    bool bordered = true;
+    // run of rows under a heading. GroupBoxVariant::default() is Normal.
+    bool bordered = false;
 
     // The state is optional, as `use_keyed_state(self.id, ..)` is upstream:
     // a pane left to itself keys its own off the id.
@@ -426,6 +430,8 @@ struct Settings {
     Settings* FieldWidth(float v);
     // SettingPage::resettable, on the page last added.
     Settings* PageResettable(bool v);
+    // SettingPage::default_open, on the page last added.
+    Settings* PageDefaultOpen(bool v);
     // SettingPage::title_suffix, on the page just declared.
     Settings* PageTitleSuffix(El* e);
     // The item last added: its keywords, whether it is disabled, and what a
