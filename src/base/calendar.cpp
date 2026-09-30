@@ -620,12 +620,12 @@ El* Calendar::New(Ctx* cx, Str id, const CalendarOpts& o) {
                     ->ItemsCenter());
             labels->Child(label);
         } else {
-            El* label = Div(a)
-                            ->FlexCol()
-                            ->H(o.cellSize)
-                            ->Flex1()
-                            ->ItemsCenter()
-                            ->JustifyCenter();
+            // Several months: each title is one more child of the header's
+            // justify_between row — a text_sm font_medium div holding a
+            // v_flex().items_center() of the month and the year — so the
+            // titles are spread across it between the arrows rather than
+            // packed into a strip of their own.
+            El* label = Div(a)->FlexCol()->ItemsCenter()->Font(14)->Medium();
             CalendarItemState mSt;
             mSt.kind = CalendarItemKind::MonthToggle;
             mSt.value = shownMonth;
@@ -634,10 +634,12 @@ El* Calendar::New(Ctx* cx, Str id, const CalendarOpts& o) {
             ySt.value = shownYear;
             label->Child(CalSlot(cx, o, {}, mSt, {}));
             label->Child(CalSlot(cx, o, {}, ySt, {}));
-            labels->Child(label);
+            nav->Child(label);
         }
     }
-    nav->Child(labels);
+    if (o.numberOfMonths == 1) {
+        nav->Child(labels);
+    }
 
     bool canNext =
         o.view == CalendarView::Day ||
