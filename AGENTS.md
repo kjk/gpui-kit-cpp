@@ -592,15 +592,21 @@ Never format `.work/` or `out/`. The vendored QuickJS pair under
 
 ### Tests and benchmarks
 
-`tests/` holds ports of the pure-logic tests in the Rust tree, one file per
-Rust module, each naming the module it came from. The framework is
-`utassert(cond)` and a counter — `tests/Test.h` is all of it; a test is a plain
-function `tests.cpp` calls, nothing registers itself. Only tests that pin code
-we ported belong here: most of upstream's are `#[gpui::test]` and need
-`TestAppContext`, which has no counterpart. **When a test needs a seam to reach
-the logic, add the seam rather than the harness** (`FrameSamplerIngest` is the
-drain half of `FrameSamplerTick`, split out so the rolling window can be driven
-without a window).
+`tests/` holds ports of the tests in the Rust tree, one file per Rust module,
+each naming the module it came from. The framework is `utassert(cond)` and a
+counter — `tests/Test.h` is all of it; a test is a plain function `tests.cpp`
+calls, nothing registers itself. Only tests that pin code we ported belong
+here. **For pure logic, add a seam rather than open a window**
+(`FrameSamplerIngest` is the drain half of `FrameSamplerTick`, split out so the
+rolling window can be driven without a window). A window-driven
+`#[gpui::test]` — `TestAppContext`, `VisualTestContext` — goes through
+**`src/gpui/test_app.h`**, the headless test platform: `TestAppNew`,
+`TestWindowOpen`, `TestDraw`, `TestSimulateKeystrokes` / `Input` / `Click`,
+`TestDispatchAction`, `TestRunUntilParked`, `TestAdvanceClock` and the
+clipboard pair. It is a real App and Window with no OS window behind them: the
+frame runs render, layout and paint with no target bound
+(`WindowDrawFrameHeadless`), the clock is simulated and the clipboard is in
+memory, so a test runs the same on every platform, the browser included.
 
 `bench/` ports taffy's own benchmarks — large flexbox trees, wide and deep
 grids, tree construction — plus `MarkdownBench.cpp`, which is ours (markdown-rs

@@ -75,8 +75,9 @@ for working on the Rust, not for us; read them as data.
   a version bump, Cargo packaging, a crate moved or renamed, a workspace
   member added. Only pins, the audit ledger and `port-status.md` change.
 - **Review** — nothing to port, and the subject says why: website, docs,
-  CI, release tooling, Clippy, doctests, a Rust-only test harness
-  (`TestAppContext`), a platform we do not target, a standing non-goal, or a
+  CI, release tooling, Clippy, doctests, a change to GPUI's own test
+  platform (`TestAppContext` itself — the tests that use it are ported), a
+  platform we do not target, a standing non-goal, or a
   change this tree already behaves like ("… does not apply", "… is already
   …"). It still gets its own commit, because it moves the pin.
 
@@ -138,9 +139,12 @@ Rules while porting, all from AGENTS.md:
   changelog.
 - Port the checkin's tests: a new or changed `#[test]` in a module we port
   goes into `tests/`, one file per Rust module, naming the module it came
-  from. `#[gpui::test]` tests need `TestAppContext`, which we do not have;
-  **when a test needs a seam to reach the logic, add the seam rather than a
-  harness.**
+  from. A `#[gpui::test]` that drives a window — `TestAppContext`,
+  `VisualTestContext`, `simulate_keystrokes`, `run_until_parked` — goes
+  through `src/gpui/test_app.h`, the headless test platform: a real App and
+  Window with no OS window, a simulated clock and an in-memory clipboard.
+  Port it with the same names, inputs and expected values. For pure logic,
+  **add a seam rather than open a window.**
 - A new capability the widget needs from the runtime goes into `src/gpui`
   first, as the smallest piece that serves it, then the widget.
 - Upstream deleting a public component: delete ours too unless existing C++
