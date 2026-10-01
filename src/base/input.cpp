@@ -3071,7 +3071,12 @@ void InputSetSelectedRange(InputState* s, App* app, Window* win, int a, int b) {
 void InputSelectWord(InputState* s, App* app, Window* win, int offset) {
     int a = 0;
     int b = 0;
-    if (!TextWordRangeAt(InputValue(s), offset, &a, &b)) {
+    // A masked value renders as one unbroken run of mask characters, so it
+    // has no word boundaries to select by: take all of it, rather than let
+    // the selection highlight reveal where the words are.
+    if (s->masked) {
+        b = len(InputValue(s));
+    } else if (!TextWordRangeAt(InputValue(s), offset, &a, &b)) {
         return;
     }
     UndoBreakCoalescing(&s->undo);
