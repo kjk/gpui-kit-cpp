@@ -4501,6 +4501,13 @@ void InputSetValue(InputState* s, Str value) {
     Notify(app, win);
 }
 
+void InputDefaultValue(InputState* s, Str value) {
+    // `self.text = Rope::from(self.normalize_input(&text))`, and the
+    // pending update that has the highlighter read it on the next render —
+    // which TextSet's whole-document edit is here.
+    TextSet(s, NormalizeInput(GetTempArena(), s, value));
+}
+
 void InputSetValue(InputState* s, const InputContent& content) {
     InputSetValue(s, content.text);
     InstallTokens(s, content);

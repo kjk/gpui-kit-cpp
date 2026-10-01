@@ -5145,7 +5145,12 @@ RopePoint InputCursorPosition(const InputState* s);
 // set_value(): replaces the text, resets the selection to the end, and clears
 // the undo history — the programmatic write, not an edit.
 void InputSetValue(InputState* s, Str value);
-// replace_all(): the same replacement, but recorded so it can be undone.
+// default_value(): the builder's initial text, put in as it is — normalized
+// the way typed input is, but not validated, so a value a mask would refuse
+// is still shown and the user can edit their way out of it. Not an edit:
+// no history, no event, and the selection stays where it was.
+void InputDefaultValue(InputState* s, Str value);
+// replace_all():the same replacement, but recorded so it can be undone.
 void InputReplaceAll(InputState* s, App* app, Window* win, Str value);
 void InputSetPlaceholder(InputState* s, Str value);
 // TextareaState::set_auto_grow / set_rows: grow between the two row counts,
