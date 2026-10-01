@@ -7082,7 +7082,895 @@ static void RunWindowTestsC() {}
 // Each port keeps the Rust test's name in the comment above it.
 //
 
-static void RunWindowTestsD() {}
+// state.rs parse_cursor_spec: `|` marks a caret, empty lines are dropped,
+// the rest are joined by newlines and one more newline ends the text.
+struct CursorSpecD {
+    char text[1024] = {};
+    int len = 0;
+    int cursors[32] = {};
+    int nCursors = 0;
+};
+
+static CursorSpecD ParseCursorSpecD(const char* spec) {
+    CursorSpecD out;
+    const char* p = spec;
+    bool firstLine = true;
+    while (*p) {
+        const char* end = strchr(p, '\n');
+        int n = end ? (int)(end - p) : (int)strlen(p);
+        if (n > 0) {
+            if (!firstLine) {
+                out.text[out.len++] = '\n';
+            }
+            firstLine = false;
+            for (int i = 0; i < n; i++) {
+                if (p[i] == '|') {
+                    out.cursors[out.nCursors++] = out.len;
+                } else {
+                    out.text[out.len++] = p[i];
+                }
+            }
+        }
+        p += n;
+        if (*p == '\n') {
+            p++;
+        }
+    }
+    out.text[out.len++] = '\n';
+    return out;
+}
+
+// state.rs setup_cursors: the text, and one caret per mark — the first is
+// the active one, the way Selections keeps it at index 0.
+static void SetupCursorsD(const InputView& v, const char* spec) {
+    CursorSpecD c = ParseCursorSpecD(spec);
+    InputSetValue(v.input, Str(c.text, c.len));
+    if (c.nCursors > 0) {
+        v.input->selectedRange = {c.cursors[0], c.cursors[0]};
+        v.input->selectionReversed = false;
+        VecClear(v.input->extraCursors);
+        for (int i = 1; i < c.nCursors; i++) {
+            CursorSelection extra;
+            extra.range = {c.cursors[i], c.cursors[i]};
+            VecAppend(v.input->extraCursors, extra);
+        }
+    }
+    Flush(v);
+}
+
+// Every caret, active first: Selections::iter's order.
+static int CursorOffsetsD(const InputState* s, int* out, int cap) {
+    int n = 0;
+    if (n < cap) {
+        out[n++] = s->selectionReversed ? s->selectedRange.start
+                                        : s->selectedRange.end;
+    }
+    for (int i = 0; i < s->extraCursors.len && n < cap; i++) {
+        out[n++] = s->extraCursors[i].Cursor();
+    }
+    return n;
+}
+
+static void SortIntsD(int* a, int n) {
+    for (int i = 1; i < n; i++) {
+        for (int j = i; j > 0 && a[j - 1] > a[j]; j--) {
+            int t = a[j];
+            a[j] = a[j - 1];
+            a[j - 1] = t;
+        }
+    }
+}
+
+// state.rs assert_cursors: the text, and the carets as a sorted set.
+static bool CursorsAreD(const InputView& v, const char* spec) {
+    CursorSpecD want = ParseCursorSpecD(spec);
+    if (!base::StrEq(InputValue(v.input), Str(want.text, want.len))) {
+        return false;
+    }
+    int got[32];
+    int n = CursorOffsetsD(v.input, got, 32);
+    if (n != want.nCursors) {
+        return false;
+    }
+    SortIntsD(got, n);
+    SortIntsD(want.cursors, want.nCursors);
+    for (int i = 0; i < n; i++) {
+        if (got[i] != want.cursors[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// state.rs multi_line: a textarea.
+static InputView MultiLineD() {
+    return InputViewBuildTextarea();
+}
+
+static void EnterD(const InputView& v) {
+    // Enter { secondary: false, shift: false }
+    ViewAct(v, InputAction::Enter, false);
+}
+
+// set_test_syntax_provider: a LanguageProvider whose every language answers
+// the one SyntaxContextProvider.
+using SyntaxAtD = SyntaxContext (*)(void* data, Str text, int offset);
+
+struct SyntaxProviderD {
+    SyntaxAtD at = nullptr;
+    int creations = 0;
+};
+
+static bool TestSyntaxProviderD(void* data, Str, SyntaxContextProvider* out) {
+    SyntaxProviderD* p = (SyntaxProviderD*)data;
+    p->creations++;
+    out->data = nullptr;
+    out->contextAt = p->at;
+    return true;
+}
+
+static void SetTestSyntaxProviderD(App* app, SyntaxProviderD* p) {
+    LanguageProvider provider;
+    provider.data = p;
+    provider.syntaxContextProvider = &TestSyntaxProviderD;
+    InputSetLanguageProvider(app, provider);
+}
+
+// CommentAllProvider / StringAllProvider.
+static SyntaxContext CommentAllD(void*, Str, int) {
+    return SyntaxContext::Comment;
+}
+
+static SyntaxContext StringAllD(void*, Str, int) {
+    return SyntaxContext::String;
+}
+
+// set_highlighter(name): the language the editor is in, which is what its
+// highlighter names.
+struct LanguageNameD {
+    Str name = {};
+};
+
+static Str LanguageNameOfD(void* data) {
+    return ((LanguageNameD*)data)->name;
+}
+
+static void SetHighlighterD(InputState* s, LanguageNameD* holder,
+                            const char* name) {
+    holder->name = Str(name);
+    s->highlighter.data = holder;
+    s->highlighter.language = &LanguageNameOfD;
+}
+
+// state.rs test_enter_split_respects_smart_indent_off: smart indent controls
+// both structural splitting and extra indentation.
+static void EnterSplitRespectsSmartIndentOff() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "{|}");
+    InputSetSmartIndent(view.input, false, view.app, view.win);
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "{\n|}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_enter_split_is_independent_of_auto_close: disabling
+// automatic insertion does not disable structural indentation.
+static void EnterSplitIsIndependentOfAutoClose() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "{|}");
+    InputSetAutoClose(view.input, false, view.app, view.win);
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "{\n  |\n}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_language_config_applies_before_render_and_on_language_change.
+static void LanguageConfigAppliesBeforeRenderAndOnLanguageChange() {
+    InputView view = InputViewNew();
+    AutoClosingPair alphaPair = AutoClosingPair::New(StrL("«"), StrL("»"));
+    LanguageConfig alpha = LanguageConfig::Default();
+    alpha.autoClosingPairs = &alphaPair;
+    alpha.nAutoClosingPairs = 1;
+    alpha.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, StrL("alpha"), alpha);
+    AutoClosingPair betaPair = AutoClosingPair::New(StrL("‹"), StrL("›"));
+    LanguageConfig beta = LanguageConfig::Default();
+    beta.autoClosingPairs = &betaPair;
+    beta.nAutoClosingPairs = 1;
+    beta.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, StrL("beta"), beta);
+    {
+        InputState first;
+        LanguageNameD firstLanguage;
+        MakeCodeEditor(&first);
+        SetHighlighterD(&first, &firstLanguage, "ALPHA");
+        InputState second;
+        LanguageNameD secondLanguage;
+        MakeCodeEditor(&second);
+        SetHighlighterD(&second, &secondLanguage, "beta");
+
+        InputReplaceTextInRange(&first, view.app, view.win, nullptr, StrL("«"));
+        utassert(base::StrEq(InputValue(&first), "«»"));
+        InputSetValue(&first, StrL(""));
+        InputSetSmartIndent(&first, false, view.app, view.win);
+        SetHighlighterD(&first, &firstLanguage, "beta");
+        utassert(!first.smartIndent);
+        InputReplaceTextInRange(&first, view.app, view.win, nullptr, StrL("‹"));
+        utassert(base::StrEq(InputValue(&first), "‹›"));
+        InputSetValue(&first, StrL(""));
+        SetHighlighterD(&first, &firstLanguage, "unknown");
+        InputReplaceTextInRange(&first, view.app, view.win, nullptr, StrL("("));
+        utassert(base::StrEq(InputValue(&first), "()"));
+
+        InputReplaceTextInRange(&second, view.app, view.win, nullptr,
+                                StrL("‹"));
+        utassert(base::StrEq(InputValue(&second), "‹›"));
+    }
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_language_service_replacement_updates_syntax_without_render.
+static void LanguageServiceReplacementUpdatesSyntaxWithoutRender() {
+    InputView view = InputViewNew();
+    SyntaxProviderD strings;
+    strings.at = &StringAllD;
+    SetTestSyntaxProviderD(view.app, &strings);
+    ViewTypeText(view, "(");
+    ViewTypeText(view, "[");
+    utassert(ViewValueIs(view, "(["));
+    // "retain the document provider between edits"
+    utassert(strings.creations == 1);
+    // CodeLanguages: a provider that names nothing.
+    InputSetLanguageProvider(view.app, LanguageProvider{});
+    ViewTypeText(view, "{");
+    utassert(ViewValueIs(view, "([{}"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_language_config_updates_existing_editors: batched
+// registrations must update every affected language.
+static void LanguageConfigUpdatesExistingEditors() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    LanguageNameD language;
+    SetHighlighterD(view.input, &language, "CUSTOM");
+    InputSetAutoClose(view.input, false, view.app, view.win);
+    InputSetSmartIndent(view.input, false, view.app, view.win);
+    AutoClosingPair pair = AutoClosingPair::New(StrL("«"), StrL("»"));
+    LanguageConfig custom = LanguageConfig::Default();
+    custom.autoClosingPairs = &pair;
+    custom.nAutoClosingPairs = 1;
+    custom.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, StrL("custom"), custom);
+    InputSetLanguageConfig(view.app, StrL("other"), LanguageConfig::Default());
+    utassert(!view.input->autoClose);
+    utassert(!view.input->smartIndent);
+    InputSetAutoClose(view.input, true, view.app, view.win);
+    ViewTypeText(view, "«");
+    Flush(view);
+    utassert(CursorsAreD(view, "«|»"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_before_is_language_configurable.
+static void AutoCloseBeforeIsLanguageConfigurable() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|word");
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreD(view, "(|word"));
+    SetupCursorsD(view, "|word");
+    LanguageConfig config = LanguageConfig::Default();
+    config.autoCloseBefore = StrL("w");
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           config);
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreD(view, "(|)word"));
+    InputViewFree(&view);
+}
+
+// state.rs test_pair_context_restrictions_are_per_pair.
+static void PairContextRestrictionsArePerPair() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    SyntaxProviderD comments;
+    comments.at = &CommentAllD;
+    SetTestSyntaxProviderD(view.app, &comments);
+    SyntaxContext notString[] = {SyntaxContext::String};
+    SyntaxContext notComment[] = {SyntaxContext::Comment};
+    AutoClosingPair pairs[2] = {AutoClosingPair::New(StrL("("), StrL(")")),
+                                AutoClosingPair::New(StrL("["), StrL("]"))};
+    pairs[0].notIn = notString;
+    pairs[0].nNotIn = 1;
+    pairs[1].notIn = notComment;
+    pairs[1].nNotIn = 1;
+    LanguageConfig config = LanguageConfig::Default();
+    config.autoClosingPairs = pairs;
+    config.nAutoClosingPairs = 2;
+    config.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           config);
+    ViewTypeText(view, "(");
+    ViewTypeText(view, "[");
+    Flush(view);
+    utassert(CursorsAreD(view, "([|)"));
+    InputViewFree(&view);
+}
+
+// BlockComment: a comment once the text holds `/*`.
+static SyntaxContext BlockCommentD(void*, Str text, int) {
+    for (int i = 0; i + 1 < len(text); i++) {
+        if (text.s[i] == '/' && text.s[i + 1] == '*') {
+            return SyntaxContext::Comment;
+        }
+    }
+    return SyntaxContext::Code;
+}
+
+// The `/*` `*/` pair, not opened inside the given contexts.
+static LanguageConfig BlockPairConfigD(AutoClosingPair* pair,
+                                       SyntaxContext* notIn, int nNotIn) {
+    *pair = AutoClosingPair::New(StrL("/*"), StrL("*/"));
+    pair->notIn = notIn;
+    pair->nNotIn = nNotIn;
+    LanguageConfig config = LanguageConfig::Default();
+    config.autoClosingPairs = pair;
+    config.nAutoClosingPairs = 1;
+    config.hasAutoClosingPairs = true;
+    return config;
+}
+
+// state.rs test_multichar_delimiters_insert_delete_and_skip.
+static void MulticharDelimitersInsertDeleteAndSkip() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    SyntaxProviderD block;
+    block.at = &BlockCommentD;
+    SetTestSyntaxProviderD(view.app, &block);
+    AutoClosingPair pair;
+    SyntaxContext notIn[] = {SyntaxContext::String, SyntaxContext::Comment};
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           BlockPairConfigD(&pair, notIn, 2));
+    ViewTypeText(view, "/");
+    ViewTypeText(view, "*");
+    Flush(view);
+    utassert(CursorsAreD(view, "/*|*/"));
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "|"));
+    ViewAct(view, InputAction::Undo);
+    ViewTypeText(view, "*");
+    ViewTypeText(view, "/");
+    Flush(view);
+    utassert(CursorsAreD(view, "/**/|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_closed_pairs_fallback_and_explicit_disable: with no
+// auto-closing pairs the brackets close; an explicit empty list closes none.
+static void AutoClosedPairsFallbackAndExplicitDisable() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    BracketPair bracket = BracketPair::New(StrL("«"), StrL("»"));
+    LanguageConfig rules = LanguageConfig::Default();
+    rules.brackets = &bracket;
+    rules.nBrackets = 1;
+    rules.autoClosingPairs = nullptr;
+    rules.nAutoClosingPairs = 0;
+    rules.hasAutoClosingPairs = false;
+    Str language = view.input->highlighter.Language();
+    InputSetLanguageConfig(view.app, language, rules);
+    ViewTypeText(view, "«");
+    rules.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, language, rules);
+    ViewTypeText(view, "«");
+    Flush(view);
+    utassert(CursorsAreD(view, "««|»"));
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_open_composition_preserves_generated_pairs.
+static void UndoOpenCompositionPreservesGeneratedPairs() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    AutoClosingPair pair;
+    SyntaxContext notIn[] = {SyntaxContext::Comment};
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           BlockPairConfigD(&pair, notIn, 1));
+    ViewTypeText(view, "/");
+    ViewTypeText(view, "*");
+    SyntaxProviderD comments;
+    comments.at = &CommentAllD;
+    SetTestSyntaxProviderD(view.app, &comments);
+    Selection caret = {1, 1};
+    InputReplaceAndMarkText(view.input, view.app, view.win, nullptr, StrL("x"),
+                            &caret);
+    ViewAct(view, InputAction::Undo);
+    ViewTypeText(view, "*");
+    ViewTypeText(view, "/");
+    Flush(view);
+    utassert(CursorsAreD(view, "/**/|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_does_not_promote_literal_comment_delimiters.
+static void UndoDoesNotPromoteLiteralCommentDelimiters() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "/*|*/");
+    SyntaxProviderD comments;
+    comments.at = &CommentAllD;
+    SetTestSyntaxProviderD(view.app, &comments);
+    AutoClosingPair pair;
+    SyntaxContext notIn[] = {SyntaxContext::Comment};
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           BlockPairConfigD(&pair, notIn, 1));
+    ViewAct(view, InputAction::DeleteToEndOfLine);
+    ViewAct(view, InputAction::Undo);
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "/|*/"));
+    InputViewFree(&view);
+}
+
+// CommentScope: a comment up to the end of the first `*/`.
+static SyntaxContext CommentScopeD(void*, Str text, int offset) {
+    for (int i = 0; i + 1 < len(text); i++) {
+        if (text.s[i] == '*' && text.s[i + 1] == '/') {
+            return offset < i + 2 ? SyntaxContext::Comment
+                                  : SyntaxContext::Code;
+        }
+    }
+    return SyntaxContext::Code;
+}
+
+// state.rs test_multiple_generated_pairs_retain_their_identity.
+static void MultipleGeneratedPairsRetainTheirIdentity() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    SyntaxProviderD scope;
+    scope.at = &CommentScopeD;
+    SetTestSyntaxProviderD(view.app, &scope);
+    SyntaxContext notComment[] = {SyntaxContext::Comment};
+    AutoClosingPair pairs[2] = {AutoClosingPair::New(StrL("/*"), StrL("*/")),
+                                AutoClosingPair::New(StrL("("), StrL(")"))};
+    for (AutoClosingPair& p : pairs) {
+        p.notIn = notComment;
+        p.nNotIn = 1;
+    }
+    LanguageConfig config = LanguageConfig::Default();
+    config.autoClosingPairs = pairs;
+    config.nAutoClosingPairs = 2;
+    config.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           config);
+    ViewTypeText(view, "/");
+    ViewTypeText(view, "*");
+    InputSetSelectedRange(view.input, view.app, view.win, 4, 4);
+    ViewTypeText(view, "(");
+    InputSetSelectedRange(view.input, view.app, view.win, 2, 2);
+    ViewTypeText(view, "*");
+    ViewTypeText(view, "/");
+    Flush(view);
+    utassert(CursorsAreD(view, "/**/|()"));
+    InputSetSelectedRange(view.input, view.app, view.win, 2, 2);
+    ViewAct(view, InputAction::Backspace);
+    ViewAct(view, InputAction::Undo);
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreD(view, "|()"));
+    InputViewFree(&view);
+}
+
+// state.rs test_replacing_generated_opener_invalidates_the_pair.
+static void ReplacingGeneratedOpenerInvalidatesThePair() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    AutoClosingPair pair;
+    SyntaxContext notIn[] = {SyntaxContext::Comment};
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           BlockPairConfigD(&pair, notIn, 1));
+    ViewTypeText(view, "/");
+    ViewTypeText(view, "*");
+    Selection opener = {0, 2};
+    InputReplaceTextInRange(view.input, view.app, view.win, &opener,
+                            StrL("//"));
+    SyntaxProviderD comments;
+    comments.at = &CommentAllD;
+    SetTestSyntaxProviderD(view.app, &comments);
+    ViewTypeText(view, "*");
+    Flush(view);
+    utassert(CursorsAreD(view, "//*|*/"));
+    InputViewFree(&view);
+}
+
+// `begin$` as RegexBuilder compiles it, case-insensitive or not, and `^end`.
+static bool EndsWithBeginD(Str text, bool insensitive) {
+    const char* word = "begin";
+    int n = len(text);
+    if (n < 5) {
+        return false;
+    }
+    for (int i = 0; i < 5; i++) {
+        char c = text.s[n - 5 + i];
+        if (insensitive && c >= 'A' && c <= 'Z') {
+            c = (char)(c - 'A' + 'a');
+        }
+        if (c != word[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool BeginSensitiveD(void*, Str text) {
+    return EndsWithBeginD(text, false);
+}
+
+static bool BeginInsensitiveD(void*, Str text) {
+    return EndsWithBeginD(text, true);
+}
+
+static bool StartsWithEndD(void*, Str text) {
+    return len(text) >= 3 && memcmp(text.s, "end", 3) == 0;
+}
+
+// state.rs test_configuration_preserves_compiled_regex_options: the rules
+// are compiled by the caller (Rust's Arc<Regex>, a matcher function here),
+// and a later registration carries its compiled options with it.
+static void ConfigurationPreservesCompiledRegexOptions() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "BEGIN|");
+    Str language = view.input->highlighter.Language();
+    for (int insensitive = 0; insensitive < 2; insensitive++) {
+        LanguageConfig rules = LanguageConfig::Default();
+        rules.indentation.increaseIndent =
+            insensitive ? &BeginInsensitiveD : &BeginSensitiveD;
+        rules.indentation.decreaseIndent = &StartsWithEndD;
+        rules.hasIndentationRules = true;
+        InputSetLanguageConfig(view.app, language, rules);
+    }
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "BEGIN\n  |"));
+    InputViewFree(&view);
+}
+
+static bool IsWordD(char c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+           (c >= '0' && c <= '9') || c == '_';
+}
+
+// `\bbegin\s*$`
+static bool BeginLineEndD(void*, Str text) {
+    int n = len(text);
+    while (n > 0 && (text.s[n - 1] == ' ' || text.s[n - 1] == '\t')) {
+        n--;
+    }
+    if (n < 5 || memcmp(text.s + n - 5, "begin", 5) != 0) {
+        return false;
+    }
+    return n == 5 || !IsWordD(text.s[n - 6]);
+}
+
+// `^\s*end\b`
+static bool EndLineStartD(void*, Str text) {
+    int i = 0;
+    while (i < len(text) && (text.s[i] == ' ' || text.s[i] == '\t')) {
+        i++;
+    }
+    if (len(text) - i < 3 || memcmp(text.s + i, "end", 3) != 0) {
+        return false;
+    }
+    return i + 3 == len(text) || !IsWordD(text.s[i + 3]);
+}
+
+// state.rs test_indent_patterns_are_applied_on_enter.
+static void IndentPatternsAreAppliedOnEnter() {
+    InputView view = InputViewNew();
+    LanguageConfig rules = LanguageConfig::Default();
+    rules.indentation.increaseIndent = &BeginLineEndD;
+    rules.indentation.decreaseIndent = &EndLineStartD;
+    rules.hasIndentationRules = true;
+    const char* cases[][2] = {{"begin|", "begin\n  |"}, {"  |end", "  \n|end"}};
+    for (const auto& c : cases) {
+        SetupCursorsD(view, c[0]);
+        InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                               rules);
+        EnterD(view);
+        Flush(view);
+        utassert(CursorsAreD(view, c[1]));
+    }
+    InputViewFree(&view);
+}
+
+// state.rs test_custom_language_config.
+static void CustomLanguageConfig() {
+    InputView view = InputViewNew();
+    BracketPair bracket = BracketPair::New(StrL("«"), StrL("»"));
+    AutoClosingPair pair = AutoClosingPair::New(StrL("«"), StrL("»"));
+    LanguageConfig config = LanguageConfig::Default();
+    config.brackets = &bracket;
+    config.nBrackets = 1;
+    config.autoClosingPairs = &pair;
+    config.nAutoClosingPairs = 1;
+    config.hasAutoClosingPairs = true;
+    InputSetLanguageConfig(view.app, view.input->highlighter.Language(),
+                           config);
+    Flush(view);
+    // Custom pair closes.
+    SetupCursorsD(view, "|");
+    ViewTypeText(view, "«");
+    Flush(view);
+    utassert(CursorsAreD(view, "«|»"));
+    // Default `(` no longer pairs under custom rules.
+    InputSetValue(view.input, StrL("\n"));
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreD(view, "(|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_skip_records_no_history.
+static void SkipRecordsNoHistory() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "(a|)");
+    // Type a normal char (recorded), then skip over `)`.
+    ViewTypeText(view, "b");
+    Flush(view);
+    utassert(CursorsAreD(view, "(ab|)"));
+    ViewTypeText(view, ")");
+    Flush(view);
+    // Skip is a pure cursor move: no history entry of its own.
+    utassert(CursorsAreD(view, "(ab)|"));
+    // Undo removes `b`, never exposing a transient `())`.
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "(a|)"));
+    InputViewFree(&view);
+}
+
+// state.rs test_pair_insert_undo_removes_both: one undo removes the whole
+// pair (typing coalescing).
+static void PairInsertUndoRemovesBoth() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "|");
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreD(view, "(|)"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_escaped_quote_does_not_skip: odd backslashes, the typed
+// quote is escaped and goes in literally.
+static void EscapedQuoteDoesNotSkip() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "\"hello\\|\"");
+    ViewTypeText(view, "\"");
+    Flush(view);
+    utassert(CursorsAreD(view, "\"hello\\\"|\""));
+    InputViewFree(&view);
+}
+
+// state.rs test_even_backslashes_still_skip: the quote is not escaped, so
+// it skips over the terminator.
+static void EvenBackslashesStillSkip() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "\"hello\\\\|\"");
+    ViewTypeText(view, "\"");
+    Flush(view);
+    utassert(CursorsAreD(view, "\"hello\\\\\"|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_editor_options_survive_configuration_replacement: language
+// changes update rules without changing editor preferences.
+static void EditorOptionsSurviveConfigurationReplacement() {
+    InputView view = InputViewNew();
+    InputSetSmartIndent(view.input, false, view.app, view.win);
+    BracketPair bracket = BracketPair::New(StrL("«"), StrL("»"));
+    LanguageConfig config = LanguageConfig::Default();
+    config.brackets = &bracket;
+    config.nBrackets = 1;
+    Str language = view.input->highlighter.Language();
+    InputSetLanguageConfig(view.app, language, config);
+    Flush(view);
+    // "editor option preserved"
+    utassert(!view.input->smartIndent);
+    utassert(view.input->autoClose);
+    LanguageConfig now = InputLanguageConfig(view.app, language);
+    // "pairs follow configuration"
+    utassert(now.nBrackets == 1);
+    utassert(now.nBrackets == 1 && base::StrEq(now.brackets[0].open, "«"));
+    InputViewFree(&view);
+}
+
+// state.rs test_smart_indent_suppressed_in_strings: `{` inside a string
+// gets no extra level, only the base indent.
+static void SmartIndentSuppressedInStrings() {
+    InputView view = InputViewNew();
+    SyntaxProviderD strings;
+    strings.at = &StringAllD;
+    SetTestSyntaxProviderD(view.app, &strings);
+    SetupCursorsD(view, "  x = {|");
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "  x = {\n  |"));
+    InputViewFree(&view);
+}
+
+// state.rs test_split_suppressed_in_strings: no three-way split inside
+// strings, a plain newline instead.
+static void SplitSuppressedInStrings() {
+    InputView view = InputViewNew();
+    SyntaxProviderD strings;
+    strings.at = &StringAllD;
+    SetTestSyntaxProviderD(view.app, &strings);
+    SetupCursorsD(view, "{|}");
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "{\n|}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_comment_context_disables_pairing: in comments every
+// character is literal.
+static void CommentContextDisablesPairing() {
+    InputView view = InputViewNew();
+    SyntaxProviderD comments;
+    comments.at = &CommentAllD;
+    SetTestSyntaxProviderD(view.app, &comments);
+    SetupCursorsD(view, "|");
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreD(view, "(|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_backspace_deletes_empty_pair.
+static void BackspaceDeletesEmptyPair() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "{|}");
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_backspace_keeps_closer_with_content: only `d` is deleted,
+// the closing brace stays.
+static void BackspaceKeepsCloserWithContent() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "{d|}");
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "{|}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_enter_splits_brackets.
+static void EnterSplitsBrackets() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "{|}");
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "{\n  |\n}"));
+    // Selection must be collapsed: typing next must insert, not replace.
+    utassert(view.input->selectedRange.IsEmpty());
+    ViewTypeText(view, "x");
+    Flush(view);
+    utassert(CursorsAreD(view, "{\n  x|\n}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_enter_smart_indent_after_brace.
+static void EnterSmartIndentAfterBrace() {
+    InputView view = InputViewNew();
+    SetupCursorsD(view, "fn main() {|");
+    EnterD(view);
+    Flush(view);
+    utassert(CursorsAreD(view, "fn main() {\n  |"));
+    InputViewFree(&view);
+}
+
+// state.rs test_block_indent_tracks_all_preceding_edits.
+static void BlockIndentTracksAllPrecedingEdits() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|ab\n|cd\n|ef");
+    ViewAct(view, InputAction::Indent);
+    Flush(view);
+    utassert(CursorsAreD(view, "  |ab\n  |cd\n  |ef"));
+    ViewAct(view, InputAction::Outdent);
+    Flush(view);
+    utassert(CursorsAreD(view, "|ab\n|cd\n|ef"));
+    InputViewFree(&view);
+}
+
+// state.rs test_block_outdent_clamps_cursor_inside_indent.
+static void BlockOutdentClampsCursorInsideIndent() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "ab\n | cd");
+    ViewAct(view, InputAction::Outdent);
+    Flush(view);
+    utassert(CursorsAreD(view, "ab\n|cd"));
+    InputViewFree(&view);
+}
+
+// state.rs test_ime_restores_original_selection.
+static void ImeRestoresOriginalSelection() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("abc"));
+    InputSetSelectedRange(view.input, view.app, view.win, 1, 2);
+    InputReplaceAndMarkText(view.input, view.app, view.win, nullptr, StrL("ni"),
+                            nullptr);
+    ViewTypeText(view, "你");
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, "abc"));
+    utassert(ViewRangeIs(view, 1, 2));
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewRangeIs(view, 4, 4));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_noop_does_not_change_redo_selection.
+static void NoopDoesNotChangeRedoSelection() {
+    InputView view = MultiLineD();
+    InputSetValue(view.input, StrL("abc"));
+    InputSetSelectedRange(view.input, view.app, view.win, 1, 1);
+    ViewTypeText(view, "X");
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
+    ViewTypeText(view, "");
+    ViewAct(view, InputAction::Undo);
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "aXbc"));
+    utassert(ViewRangeIs(view, 2, 2));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+static void RunWindowTestsD() {
+    EnterSplitRespectsSmartIndentOff();
+    EnterSplitIsIndependentOfAutoClose();
+    LanguageConfigAppliesBeforeRenderAndOnLanguageChange();
+    LanguageServiceReplacementUpdatesSyntaxWithoutRender();
+    LanguageConfigUpdatesExistingEditors();
+    AutoCloseBeforeIsLanguageConfigurable();
+    PairContextRestrictionsArePerPair();
+    MulticharDelimitersInsertDeleteAndSkip();
+    AutoClosedPairsFallbackAndExplicitDisable();
+    UndoOpenCompositionPreservesGeneratedPairs();
+    UndoDoesNotPromoteLiteralCommentDelimiters();
+    MultipleGeneratedPairsRetainTheirIdentity();
+    ReplacingGeneratedOpenerInvalidatesThePair();
+    ConfigurationPreservesCompiledRegexOptions();
+    IndentPatternsAreAppliedOnEnter();
+    CustomLanguageConfig();
+    SkipRecordsNoHistory();
+    PairInsertUndoRemovesBoth();
+    EscapedQuoteDoesNotSkip();
+    EvenBackslashesStillSkip();
+    EditorOptionsSurviveConfigurationReplacement();
+    SmartIndentSuppressedInStrings();
+    SplitSuppressedInStrings();
+    CommentContextDisablesPairing();
+    BackspaceDeletesEmptyPair();
+    BackspaceKeepsCloserWithContent();
+    EnterSplitsBrackets();
+    EnterSmartIndentAfterBrace();
+    BlockIndentTracksAllPrecedingEdits();
+    BlockOutdentClampsCursorInsideIndent();
+    ImeRestoresOriginalSelection();
+    NoopDoesNotChangeRedoSelection();
+}
 
 static void RunWindowTests() {
     InlineTokenClickSelectsIt();
