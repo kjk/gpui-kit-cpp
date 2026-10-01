@@ -4370,6 +4370,13 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
         r.end = r.start;
     }
     Str oldAll = StrDup(tmp, before);
+    // The pairs the editor inserted move with the composition, and the
+    // transaction keeps them from before it, the way the committed path does.
+    int nPairsBefore = 0;
+    AutoClosedPairRange* pairsBefore = nullptr;
+    if (!UndoIsIgnoring(&s->undo)) {
+        pairsBefore = AutoClosedDup(s->autoClosed, &nPairsBefore);
+    }
     TextSplice(s, r.start, r.end, text);
     if (InputIsSingleLine(s)) {
         // The same rule the committed path uses: only refuse the edit when it
@@ -4378,11 +4385,15 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
         Str pending = InputValue(s);
         if (!IsValidInput(s, pending) && IsValidInput(s, oldAll)) {
             TextSet(s, oldAll);
+            free(pairsBefore);
             if (startsComposition) {
                 UndoCommitTransaction(&s->undo);
             }
             return;
         }
+    }
+    if (!UndoIsIgnoring(&s->undo)) {
+        AutoClosedAdjust(s->autoClosed, r.start, r.end, len(text));
     }
     InputRangeDecorationsAdjustForEdit(s, r, len(text));
     s->cursorLineEndAffinity = false;
@@ -4413,6 +4424,11 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     // through the candidates one at a time.
     Selection after = s->selectedRange;
     PushHistory(s, oldAll, r, text, hasIntent, requested, selBefore, &after);
+    if (!UndoIsIgnoring(&s->undo)) {
+        UndoRecordAutoClosedPairs(&s->undo, pairsBefore, nPairsBefore,
+                                  s->autoClosed.els, s->autoClosed.len);
+    }
+    free(pairsBefore);
     UpdatePreferredColumn(s);
     if (InputIsMultiLine(s) && s->mode.kind == LayoutModeKind::AutoGrow) {
         LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
