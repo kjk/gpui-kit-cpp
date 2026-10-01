@@ -98,6 +98,10 @@ static void InlineAddonsInsetTheControlAndButtonsAreCompact() {
     Ctx cx = {&app, win, arena, {}};
     const Theme& th = ThemeNow(&app);
     InputState field;
+    InputGroupButton* star = InputGroupButton::New(&cx, StrL("star"))
+                                 ->Icon(IconName::Star);
+    InputGroupButton* reset = InputGroupButton::New(&cx, StrL("reset"))
+                                  ->Label(StrL("Reset"));
     InputGroup* group =
         InputGroup::New(&cx, StrL("group"))
             ->Input(component::Input::New(&cx, StrL("url"), &field))
@@ -105,12 +109,8 @@ static void InlineAddonsInsetTheControlAndButtonsAreCompact() {
                         ->Child(TextEl(arena, StrL("https://"))))
             ->Addon(InputGroupAddon::New(&cx, StrL("actions"))
                         ->Align(InputGroupAddonAlignment::InlineEnd)
-                        ->Child(InputGroupButton::New(&cx, StrL("star"))
-                                    ->Icon(IconName::Star))
-                        ->Child(InputGroupButton::New(&cx, StrL("reset"))
-                                    ->Label(StrL("Reset"))));
-    InputGroupButton* star = group->addons[1]->children[0].button;
-    InputGroupButton* reset = group->addons[1]->children[1].button;
+                        ->Child(star)
+                        ->Child(reset));
     group->IntoEl();
     utassert(group->controlEl != nullptr);
     if (group->controlEl) {
