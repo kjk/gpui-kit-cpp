@@ -533,16 +533,16 @@ El* SelectStory::Render(SelectStory* self, Ctx* cx) {
                                ->IntoEl());
     page->Child(menuH);
 
-    El* multi = StorySection(cx, "Multiple",
-                             "Pick more than one; the trigger says how many.");
-    StorySectionAdd(multi,
-                    Sel(self, cx, SelLanguage, "language", toggle, clear)
-                        ->Placeholder(StrL("Language"))
-                        ->Multiple()
-                        ->Searchable(&self->search[SelLanguage],
-                                     ListenerArg(focusQuery, SelLanguage))
-                        ->IntoEl());
-    page->Child(multi);
+    El* lang = StorySection(cx, "Search", "Filter options from the popup.");
+    StorySectionBody(lang)->W(280)->ItemsCenter();
+    StorySectionAdd(lang, Sel(self, cx, SelLanguage, "language", toggle, clear)
+                              ->AccessibilityLabel(StrL("Programming language"))
+                              ->Placeholder(StrL("Language"))
+                              ->TitlePrefix(StrL("Language: "))
+                              ->Searchable(&self->search[SelLanguage],
+                                           ListenerArg(focusQuery, SelLanguage))
+                              ->IntoEl());
+    page->Child(lang);
 
     El* empty = StorySection(cx, "Empty", "Render a custom empty state.");
     StorySectionBody(empty)->W(280)->ItemsCenter();
