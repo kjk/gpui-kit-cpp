@@ -66,6 +66,11 @@ function unescape(s: string): string {
     .replace(/\\"/g, '"')
     .replace(/\\'/g, "'")
     .replace(/\\u\{([0-9a-fA-F]+)\}/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/(?:\\x[0-9a-fA-F]{2})+/g, (run) => {
+      // C++ spells non-ASCII text as UTF-8 byte escapes ("\xE2\x86\x92").
+      const bytes = run.match(/[0-9a-fA-F]{2}/g)!.map((h) => parseInt(h, 16));
+      return new TextDecoder().decode(new Uint8Array(bytes));
+    })
     .replace(/\\\\/g, "\\");
 }
 
