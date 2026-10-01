@@ -8,40 +8,68 @@ struct NativeMenuStory {
     static El* Render(NativeMenuStory* self, Ctx* cx);
 };
 
-// The rows every trigger on this page opens: a checked row, a greyed one and
-// a submenu, which is what the Rust story shows off.
+// demo_menu: plain items, icons (a named one, the Github row that opens
+// github.com, and embedded SVG bytes), a disabled item, the checked Word
+// Wrap the story toggles, and nested submenus.
+enum {
+    NmCut = 1,
+    NmCopy,
+    NmPaste,
+    NmGithub,
+    NmInbox,
+    NmSearch,
+    NmDisabled,
+    NmWordWrap,
+    NmProjectA,
+    NmProjectB,
+    NmProjectC,
+    NmProjectD,
+    NmSelectAll,
+};
+
 static component::NativeMenu* DemoMenu(Ctx* cx, NativeMenuStory* self) {
-    component::NativeMenu* sub =
-        component::NativeMenu::New(cx)
-            ->MenuWithIcon(StrL("Copy"), IconName::Copy, 10)
-            ->Menu(StrL("Cut"), 11)
-            ->MenuWithDisabled(StrL("Paste"), true, 12);
     // `Icon::default().data(include_bytes!("../../../assets/.../search.svg"))`:
     // the same lucide file, embedded rather than looked up.
     static const char kSearchSvg[] =
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" "
         "viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" "
         "stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">"
-        "<circle cx=\"11\" cy=\"11\" r=\"8\"/><path d=\"m21 21-4.3-4.3\"/>"
+        "<path d=\"m21 21-4.34-4.34\"/><circle cx=\"11\" cy=\"11\" r=\"8\"/>"
         "</svg>";
+    component::NativeMenu* more = component::NativeMenu::New(cx)
+                                      ->Menu(StrL("project-c"), NmProjectC)
+                                      ->Menu(StrL("project-d"), NmProjectD);
+    component::NativeMenu* recent = component::NativeMenu::New(cx)
+                                        ->Menu(StrL("project-a"), NmProjectA)
+                                        ->Menu(StrL("project-b"), NmProjectB)
+                                        ->Separator()
+                                        ->Submenu(StrL("More"), more);
     return component::NativeMenu::New(cx)
-        ->MenuWithIcon(StrL("New"), IconName::Plus, 1)
-        ->MenuWithIcon(StrL("Open..."), IconName::FolderOpen, 2)
+        ->Menu(StrL("Cut"), NmCut)
+        ->Menu(StrL("Copy"), NmCopy)
+        ->Menu(StrL("Paste"), NmPaste)
+        ->Separator()
+        ->MenuWithIcon(StrL("Github"), IconName::Github, NmGithub)
+        ->MenuWithIcon(StrL("Inbox"), IconName::Inbox, NmInbox)
         ->MenuWithIcon(StrL("Search (SVG bytes)"),
-                       component::Icon::Empty(cx)->Data(Str(kSearchSvg)), 6)
-        ->MenuWithCheck(StrL("Word Wrap"), self->wordWrap, 3)
+                       component::Icon::Empty(cx)->Data(Str(kSearchSvg)),
+                       NmSearch)
         ->Separator()
-        ->Submenu(StrL("Edit"), sub)
+        ->MenuWithDisabled(StrL("Disabled item"), true, NmDisabled)
+        ->MenuWithCheck(StrL("Word Wrap"), self->wordWrap, NmWordWrap)
         ->Separator()
-        ->MenuWithDisabled(StrL("Save"), true, 4)
-        ->MenuWithIcon(StrL("Quit"), IconName::X, 5);
+        ->Submenu(StrL("Open Recent"), recent)
+        ->Separator()
+        ->Menu(StrL("Select All"), NmSelectAll);
 }
 
-// on_click: only "Word Wrap" changes anything.
+// on_click: only "Word Wrap" changes anything; open_github opens the site.
 static void OnMenuSelect(NativeMenuStory* self, Ctx* cx, const ClickEvent*,
                          intptr_t id) {
-    if (id == 3) {
+    if (id == NmWordWrap) {
         self->wordWrap = !self->wordWrap;
+    } else if (id == NmGithub) {
+        OpenUrl(StrL("https://github.com"));
     }
     Notify(cx);
 }
