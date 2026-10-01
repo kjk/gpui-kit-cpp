@@ -82,6 +82,12 @@ struct SheetStory {
     bool birthdayOpen = false;
     Entity<ListState> foods = {};
     int confirmedFood = -1;
+    // perform_search's matches: indices into kSheetFoods whose name holds
+    // the query, case-insensitively. Rebuilt every frame from the field.
+    int matches[kSheetFoodCount] = {};
+    int nMatches = 0;
+    // selected_value: the food the list last confirmed, shown under the page.
+    int selectedFood = -1;
     float sheetScrollY = 0;
     StoryToolbarState toolbar;
     bool seeded = false;
@@ -97,7 +103,8 @@ static component::ListItem* SheetFoodRow(Ctx* cx, void* data, int, int row,
     SheetStory* self = (SheetStory*)data;
     El* line =
         Div(a)->FlexRow()->W(kFill)->Gap(8)->ItemsCenter()->JustifyBetween();
-    line->Child(StoryTxt(cx, Str(kSheetFoods[row]), 16, th.foreground));
+    line->Child(
+        StoryTxt(cx, Str(kSheetFoods[self->matches[row]]), 16, th.foreground));
     line->Child(component::Button::New(cx, StrL("like"))
                     ->Ghost()
                     ->Size(18)
@@ -163,6 +170,68 @@ static void PickSheetBirthday(SheetStory* self, Ctx* cx, const ClickEvent*,
     self->birthdayOpen = false;
     Notify(cx);
 }
+// ListDelegate::confirm: the confirmed match becomes the page's
+// selected_value.
+static void OnFoodEvent(SheetStory* self, Ctx* cx, const ListEvent* ev) {
+    ListState* s = self->foods.Get(cx);
+    if (!s || ev->kind != ListEventKind::Confirm) {
+        return;
+    }
+    self->confirmedFood = ev->index;
+    ListRow row = ListRowAt(s, ListRowOfEntry(s, ev->index));
+    if (row.row >= 0 && row.row < self->nMatches) {
+        self->selectedFood = self->matches[row.row];
+    }
+    Notify(cx);
+}
+
+// render_empty: a 50px Inbox icon over "No matches found", muted on muted.
+static El* SheetFoodsEmpty(Ctx* cx) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    return Div(a)
+        ->FlexCol()
+        ->SizeFull()
+        ->ItemsCenter()
+        ->JustifyCenter()
+        ->Pad(12)
+        ->Bg(th.muted)
+        ->Child(IconEl(a, IconName::Inbox, 50)->Fg(th.mutedFg))
+        ->Child(StoryTxt(cx, StrL("No matches found"), 16, th.mutedFg));
+}
+
+// The alert the sheet's "Open Confirm Dialog" raises over it.
+struct SheetConfirmDialog {
+    static void OnOk(SheetConfirmDialog*, Ctx* cx, const ClickEvent*) {
+        StoryPushNotification(cx, StrL("You have pressed ok."));
+        WindowCloseDialog(cx);
+    }
+    static void OnCancel(SheetConfirmDialog*, Ctx* cx, const ClickEvent*) {
+        StoryPushNotification(cx, StrL("You have pressed cancel."));
+        WindowCloseDialog(cx);
+    }
+    static El* Render(SheetConfirmDialog*, Ctx* cx) {
+        const Theme& th = ThemeNow(cx->app);
+        return component::AlertDialog::New(cx)
+            ->Open(true)
+            ->Body(StoryTxt(cx, StrL("Confirm dialog opened from sheet."), 16,
+                            th.foreground))
+            ->OnOk(Listen(cx, &SheetConfirmDialog::OnOk))
+            ->OnCancel(Listen(cx, &SheetConfirmDialog::OnCancel))
+            ->OnClose(Listen(cx, &SheetConfirmDialog::OnCancel))
+            ->IntoEl(WindowSize(cx->win));
+    }
+};
+
+static void OpenSheetConfirm(SheetStory*, Ctx* cx, const ClickEvent*) {
+    WindowOpenAlertDialog(cx, EntityNew<SheetConfirmDialog>(cx->app));
+}
+
+// on_action_test_action.
+static void SheetTestAction(SheetStory*, Ctx* cx, const ClickEvent*) {
+    StoryPushNotification(cx, StrL("You have clicked the TestAction."));
+}
+
 // push_notification("Hello this is message from Sheet.")
 static void SheetNotify(SheetStory*, Ctx* cx, const ClickEvent*) {
     StoryPushNotification(cx, StrL("Hello this is message from Sheet."));
@@ -179,6 +248,19 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
         InputSetPlaceholder(&self->nameInput, StrL("Your Name"));
         InputSetPlaceholder(&self->foodSearch, StrL("Search..."));
         self->foods = EntityNewState<ListState>(cx->app);
+        if (ListState* ls = self->foods.Get(cx)) {
+            ls->onEvent = Listen(cx, &OnFoodEvent);
+        }
+    }
+    // perform_search: filter the foods by the query, case-insensitively.
+    {
+        Str query = InputValue(&self->foodSearch);
+        self->nMatches = 0;
+        for (int i = 0; i < kSheetFoodCount; i++) {
+            if (len(query) == 0 || StrContainsI(Str(kSheetFoods[i]), query)) {
+                self->matches[self->nMatches++] = i;
+            }
+        }
     }
     if (self->focusInput.focused) {
         cx->win->input = &self->focusInput;
@@ -237,10 +319,21 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
                         ->Label(StrL("Test Action"))
                         ->Outline()
                         ->Tooltip(StrL("This button for test dispatch action, "
-                                       "to make sure when Dialog close, this "
+                                       "to make sure when Dialog close,\nthis "
                                        "still can handle the action."))
+                        ->OnClick(Listen(cx, &SheetTestAction))
                         ->IntoEl());
     page->Child(focus);
+    if (self->selectedFood >= 0) {
+        page->Child(
+            Div(a)
+                ->FlexRow()
+                ->Gap(4)
+                ->Child(
+                    StoryTxt(cx, StrL("You have selected:"), 16, th.foreground))
+                ->Child(StoryTxt(cx, Str(kSheetFoods[self->selectedFood]), 16,
+                                 Rgb(0xff, 0, 0))));
+    }
 
     if (self->open != SheetNone) {
         component::SheetPlacement placement =
@@ -280,9 +373,10 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
             body->Child(
                 component::Button::New(cx, StrL("confirm-dialog-from-sheet"))
                     ->Label(StrL("Open Confirm Dialog"))
+                    ->OnClick(Listen(cx, &OpenSheetConfirm))
                     ->IntoEl());
             // List::new(&list).border_1().rounded(radius), searchable.
-            int counts[1] = {kSheetFoodCount};
+            int counts[1] = {self->nMatches};
             component::List* list =
                 component::List::New(cx, StrL("sheet-foods"), self->foods)
                     ->Items(self, &SheetFoodRow)
@@ -293,6 +387,9 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
                     // and the footer under them.
                     ->H(size.dipH - 272);
             list->Sections(counts, 1);
+            if (self->nMatches == 0) {
+                list->Empty(SheetFoodsEmpty(cx));
+            }
             body->Child(list->IntoEl()
                             ->Flex1()
                             ->MinH(0)

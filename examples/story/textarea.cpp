@@ -180,6 +180,10 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
         InputSetValue(&self->noWrap, Str(kNoWrapText));
         InputSetValue(&self->autoGrow, Str(kAutoGrowText));
         InputSetValue(&self->both, StrL("Hello 世界，this is GPUI component."));
+        // placeholder("Enter text here...") on the three Rust gives one.
+        InputSetPlaceholder(&self->notes, StrL("Enter text here..."));
+        InputSetPlaceholder(&self->autoGrow, StrL("Enter text here..."));
+        InputSetPlaceholder(&self->both, StrL("Enter text here..."));
         // auto_grow(1, 5).
         self->autoGrow.mode.kind = LayoutModeKind::AutoGrow;
         self->autoGrow.mode.minRows = 1;
