@@ -102,7 +102,7 @@ static const StoryInfo kMeta[StoryCount] = {
      "Present labels and values in a structured summary."},
     {"dialog", "Dialog", "Present focused content above the current view."},
     {"dock", "Dock",
-     "A dockable layout of panels that can be moved, split and resized."},
+     "Drag tabs between groups or towards an edge to split the workspace."},
     {"dropdown-button", "DropdownButton",
      "A button with an attached dropdown menu for additional "
      "options."},
@@ -1864,6 +1864,17 @@ static El* Footer(StoryApp* app, Ctx* cx) {
                             ->Cursor(CursorKind::Pointer)));
 }
 
+// StoryContainer::render: `div().size_full().p(paddings).child(story)` inside
+// the scrolling pane. Story::paddings is 16 unless a story asks for none,
+// and a story with none fills the pane, as the Dock page's area does.
+static El* StoryContainerBody(StoryApp* app, Ctx* cx, Arena* frame) {
+    if (app->story == StoryDock) {
+        return Div(frame)->FlexCol()->SizeFull()->Child(
+            StoryRenderRegistered(app, cx));
+    }
+    return Div(frame)->Pad(16)->W(kFill)->Child(StoryRenderRegistered(app, cx));
+}
+
 El* StoryApp::Render(StoryApp* app, Ctx* cx) {
     Arena* frame = cx->a;
     // Pages that own a text field point the window at it from their Render.
@@ -1885,8 +1896,7 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
                            ->ScrollY(app->scrollY)
                            ->ScrollId(PageScrollId())
                            ->OnScroll(Listen(cx, &OnPaneScroll));
-        scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
-            StoryRenderRegistered(app, cx)));
+        scroller->Child(StoryContainerBody(app, cx, frame));
         return scroller;
     }
     El* root = Div(frame)->FlexCol()->SizeFull();
@@ -1924,8 +1934,7 @@ El* StoryApp::Render(StoryApp* app, Ctx* cx) {
                            ->ScrollId(PageScrollId())
                            ->OnScroll(Listen(cx, &OnPaneScroll))
                            ->W(kFill);
-        scroller->Child(Div(frame)->Pad(16)->W(kFill)->Child(
-            StoryRenderRegistered(app, cx)));
+        scroller->Child(StoryContainerBody(app, cx, frame));
         main->Child(scroller);
     }
     body->Child(main);
