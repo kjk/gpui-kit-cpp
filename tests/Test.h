@@ -112,6 +112,7 @@ void TestInputState();
 void TestInputGroup();
 void TestSearchMatcher();
 void TestFoldMap();
+void TestTextWrapper();
 void TestList();
 void TestPopupMenu();
 void TestDataTable();

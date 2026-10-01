@@ -1640,4 +1640,186 @@ El* FoldIconRenderer::Render(Ctx* cx, int line, bool folded) const {
     return render ? render(data, cx, line, folded) : nullptr;
 }
 
+// ─── line_wrapper.rs / text_wrapper.rs ────────────────────────────────────
+
+bool LineWrapperIsWordChar(uint32_t c) {
+    // ASCII alphanumeric characters, for English, numbers: `Hello123`.
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9')) {
+        return true;
+    }
+    // Latin-1 Supplement, Latin Extended-A and -B, Cyrillic, Vietnamese
+    // (Latin Extended Additional and the combining diacritics) and Bengali.
+    if ((c >= 0x00C0 && c <= 0x00FF) || (c >= 0x0100 && c <= 0x017F) ||
+        (c >= 0x0180 && c <= 0x024F) || (c >= 0x0400 && c <= 0x04FF) ||
+        (c >= 0x1E00 && c <= 0x1EFF) || (c >= 0x0300 && c <= 0x036F) ||
+        (c >= 0x0980 && c <= 0x09FF)) {
+        return true;
+    }
+    switch (c) {
+        // `a-b`, `var_name`, `I'm`/`won’t`, `@mention`, `#hashtag`, `100%`,
+        // `3.1415`, `2^3`, `a~b`, `a=1`, `Self::new`; trailing `,` `.` `:`
+        // `;` stay attached to the word before them.
+        case '-':
+        case '_':
+        case '.':
+        case '\'':
+        case 0x2019: // ’
+        case 0x2018: // ‘
+        case '$':
+        case '%':
+        case '@':
+        case '#':
+        case '^':
+        case '~':
+        case ',':
+        case '=':
+        case ':':
+        case ';':
+        // Closing punctuation never starts a line (UAX #14 LB13).
+        case '!':
+        case ')':
+        case ']':
+        case '}':
+        case '"':
+        case 0x201D: // ”
+        case 0x00BB: // »
+        case 0x2026: // …
+        // `⋯`, which Zed keeps at the end of the line.
+        case 0x22EF:
+        // Non-breaking glue.
+        case 0x202F:
+        case 0x00A0:
+        case 0x2011:
+            return true;
+        default:
+            return false;
+    }
+}
+
+void LineWrapperWrapLine(const LineFragment* fragments, int n, float wrapWidth,
+                         WrapCharWidth widthFor, void* user,
+                         Vec<WrapBoundary>* out) {
+    float width = 0;
+    int firstNonWhitespace = -1;
+    int indent = -1;
+    int lastCandidateIx = 0;
+    float lastCandidateWidth = 0;
+    int lastWrapIx = 0;
+    uint32_t prevC = 0;
+    int index = 0;
+    for (int f = 0; f < n; f++) {
+        const LineFragment& frag = fragments[f];
+        bool element = frag.elementLen > 0 && !frag.text.s;
+        int at = 0;
+        while (element ? at == 0 : at < len(frag.text)) {
+            int ix = index;
+            uint32_t c = 0;
+            int bytes = 0;
+            if (element) {
+                bytes = frag.elementLen;
+            } else {
+                bytes = Utf8At(frag.text, at, &c);
+                if (bytes <= 0) {
+                    bytes = 1;
+                }
+            }
+            at += element ? 1 : bytes;
+            index += bytes;
+            uint32_t newPrevC = prevC;
+            float itemWidth = 0;
+            if (element) {
+                if (prevC == ' ' && firstNonWhitespace >= 0) {
+                    lastCandidateIx = ix;
+                    lastCandidateWidth = width;
+                }
+                if (firstNonWhitespace < 0) {
+                    firstNonWhitespace = ix;
+                }
+                itemWidth = frag.elementWidth;
+            } else {
+                if (c == '\n') {
+                    continue;
+                }
+                if (LineWrapperIsWordChar(c)) {
+                    if (prevC == ' ' && c != ' ' && firstNonWhitespace >= 0) {
+                        lastCandidateIx = ix;
+                        lastCandidateWidth = width;
+                    }
+                } else if (c != ' ' && firstNonWhitespace >= 0) {
+                    // CJK may not be space separated: `Hello world你好世界`.
+                    lastCandidateIx = ix;
+                    lastCandidateWidth = width;
+                }
+                if (c != ' ' && firstNonWhitespace < 0) {
+                    firstNonWhitespace = ix;
+                }
+                newPrevC = c;
+                itemWidth = widthFor(user, c);
+            }
+            width += itemWidth;
+            if (width > wrapWidth && ix > lastWrapIx) {
+                if (indent < 0 && firstNonWhitespace >= 0) {
+                    indent = std::min(kLineWrapperMaxIndent,
+                                      firstNonWhitespace - lastWrapIx);
+                }
+                if (lastCandidateIx > 0) {
+                    lastWrapIx = lastCandidateIx;
+                    width -= lastCandidateWidth;
+                    lastCandidateIx = 0;
+                } else {
+                    lastWrapIx = ix;
+                    width = itemWidth;
+                }
+                if (indent >= 0) {
+                    width += widthFor(user, ' ') * (float)indent;
+                }
+                VecAppend(*out,
+                          WrapBoundary{lastWrapIx, indent >= 0 ? indent : 0});
+            }
+            prevC = newPrevC;
+        }
+    }
+}
+
+void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
+                         WrapLineFn wrapLine, void* user, Vec<int>* rows,
+                         int* indentChars) {
+    VecClear(*rows);
+    int prev = 0;
+    int indentOut = 0;
+    if (wrap) {
+        Vec<WrapBoundary> boundaries;
+        wrapLine(user, line, 0, &boundaries);
+        if (indent == WrappingIndent::Same) {
+            // Only a line that wraps has boundaries at all.
+            for (int i = 0; i < len(boundaries); i++) {
+                VecAppend(*rows, prev);
+                prev = boundaries[i].ix;
+                indentOut = boundaries[i].nextIndent;
+            }
+        } else if (len(boundaries) > 0) {
+            // The first visual row keeps the line's leading indentation, so
+            // it is wrapped as is; the rest wrap again at the full width.
+            int first = boundaries[0].ix;
+            VecAppend(*rows, prev);
+            prev = first;
+            Vec<WrapBoundary> rest;
+            wrapLine(user, Str(line.s + first, len(line) - first), first,
+                     &rest);
+            for (int i = 0; i < len(rest); i++) {
+                VecAppend(*rows, prev);
+                prev = first + rest[i].ix;
+            }
+        }
+    }
+    // The rest of the line.
+    if (prev < len(line) || prev == 0) {
+        VecAppend(*rows, prev);
+    }
+    if (indentChars) {
+        *indentChars = indentOut;
+    }
+}
+
 } // namespace gpui

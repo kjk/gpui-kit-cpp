@@ -92,6 +92,7 @@ int GpuiMain(int argc, char** argv) {
     TestInputGroup();
     TestSearchMatcher();
     TestFoldMap();
+    TestTextWrapper();
     TestList();
     TestPopupMenu();
     TestDataTable();

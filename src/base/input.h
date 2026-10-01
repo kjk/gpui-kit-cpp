@@ -147,6 +147,42 @@ bool InputLastRangeDecorationPaths(const InputState* s, const Window* win,
 // nothing has been painted yet.
 bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
                          Point* out);
+// last_layout.lines[..].wrapped_lines: every visual row the last frame
+// painted, in order. `text` is where the row's run landed and `width` its
+// shaped width; a continuation row's run starts its line's wrap_indent to
+// the right of the first row's.
+struct InputPaintedVisualRow {
+    int start = 0; // buffer offset of the row's first byte
+    int len = 0;
+    int lineStart = 0; // the logical line's
+    int lineLen = 0;
+    bool lastOfLine = false;
+    Bounds text = {};
+    float width = 0;
+};
+int InputLastVisualRows(const InputState* s, Window* win,
+                        InputPaintedVisualRow* out, int cap);
+// The active-line quad the last frame painted under the caret's line, gutter
+// and the editor's left padding included. False when it painted none.
+bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out);
+
+// ─── soft wrap (display_map/text_wrapper.rs) ─────────────────────────────
+
+// TextWrapper::on_layout_changed and set_font: the rows every line wraps to
+// at `width` (0 wraps nothing) in `fontSize` and `fontWord`, rebuilt only
+// when one of those, the document or the wrapping indent moved. `ctx`
+// measures the characters; without one a character not measured before is
+// estimated. The editor element calls it every frame with the text column it
+// last laid out; a test calls it to wrap without drawing.
+void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
+                        float fontSize, uint16_t fontWord);
+// The rows of logical line `line`, as byte offsets into it (row 0's is 0),
+// and the continuation rows' indent. One row when nothing wraps.
+int InputWrapRows(const InputState* s, int line, const int** starts,
+                  float* indent);
+// InputState::set_wrapping_indent.
+void InputSetWrappingIndent(InputState* s, App* app, Window* win,
+                            WrappingIndent indent);
 
 // ─── touch selection (input/base/touch.rs) ───────────────────────────────
 //

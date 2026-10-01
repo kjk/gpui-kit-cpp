@@ -38,27 +38,18 @@ macOS font-kit requirement on the website only. The current update target is
   WindowState's `prepare` sets no rem size and its tooltip overlay is the
   window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **Editor range decorations paint from the rows, not from one prepaint.**
-  Rust projects each decoration through the shaped lines in prepaint and
-  paints one path per decoration; the editor's rows are separate flex
-  elements here, so the corners are measured at paint from where each row's
-  run landed (`ElTextRangeRects`) and every row paints its own slice of the
-  paths after its active-line wash and before its text. The collection
-  methods do not notify the editor as Rust's do; the owning view re-renders.
-  The geometry tests read the last frame's rows back through
-  `InputLastRangeCorners`; the wrap-boundary one is not ported, since it
-  needs the wrap indent of the next bullet (`src/base/input.cpp`
-  RangeDecorationCorners).
-- **Soft-wrapped editor lines are not indented.** Rust's default
-  `WrappingIndent::Same` keeps a wrapped line's leading whitespace for its
-  continuation rows: GPUI's `LineWrapper` wraps them at the width less
-  that indent, and `LineLayout::wrap_indent` shifts them by it. Here each
-  logical line is one text run wrapped by the platform's own layout, so a
-  continuation row starts at the left edge. A hanging indent inside the
-  run is a Pango (`pango_layout_set_indent`) and Core Text (head indent)
-  paragraph property, but DirectWrite has none, so Windows would need a
-  run made of two layouts, or the editor its own visual rows
-  (`src/base/input.cpp`).
+- **The editor wraps before layout, to the column the frame before laid
+  out.** Rust wraps in prepaint, with the bounds it is painting into; the
+  visual rows here are elements built before layout, so the wrap width is
+  the text column the last frame laid out, and a column that came out
+  another width wraps again in the next frame (one frame of the old wrap
+  after a resize, and none on a first frame). The wrap map re-wraps the
+  whole document when the text, the width, the font or a chip's width moved,
+  where Rust's TextWrapper re-wraps only the lines an edit touched. Range
+  decorations are measured when the editor's column paints, from where each
+  visual row's run landed, and painted once from there under every row; the
+  collection methods do not notify the editor as Rust's do, the owning view
+  re-renders (`src/base/input.cpp` InputUpdateWrapMap, PaintEditorUnderlay).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
@@ -211,14 +202,13 @@ macOS font-kit requirement on the website only. The current update target is
   `font-variant-numeric`, so in the browser the TimeField's digits stay
   proportional (`kFontTabularNums`, `src/gpui/paint.h`).
 
-- **Textarea tokens still use flex wrapping instead of display-map inline
-  metrics.** Text gaps can break at UTF-8 characters around atomic chips, but
-  shaping, selection geometry and hit testing do not yet share Rust's fragment
-  map (`src/base/input.cpp`). Nor do inline tokens have Rust's keyboard
-  activation or geometry query: there is no `ActivateToken` action and no
-  `range_to_bounds`, so a chip is activated only by a click on it (TokenChip).
-  state.rs's `test_inline_token_wrap_and_size_refresh` and
-  `test_inline_token_geometry_and_reentrant_activation` are not ported.
+- **Inline tokens have no keyboard activation or geometry query.** A
+  multi-line field wraps and hit-tests its chips as fragments of their
+  measured width, as Rust's display map does, but there is no `ActivateToken`
+  action and no `range_to_bounds`, so a chip is activated only by a click on
+  it (TokenChip), and a single-line field still hit-tests a token's own text
+  rather than its chip (`src/base/input.cpp`). state.rs's
+  `test_inline_token_geometry_and_reentrant_activation` is not ported.
 - **The input's touch handles and edit menu are not drawn.** touch.rs's
   touch selection is ported (`InputTouchSelection` and the edge-drag calls,
   `src/base/input.cpp`), but the styled layer draws handles and an edit menu

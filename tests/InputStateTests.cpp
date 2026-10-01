@@ -2829,40 +2829,28 @@ static void SoftWrapBoundariesKeepTheVisualRowAffinity() {
     }
     PaintCtx ctx;
     ctx.pa = paint;
-    Str line = InputValue(&state);
     const float font = 16.f;
     const float width = 72.f;
-    const float lineMult = 1.5f;
-    int boundary = -1;
-    float endY = 0, endH = 0, nextY = 0, nextH = 0;
-    for (int i = 1; i < len(line); i++) {
-        float endX = 0, nextX = 0;
-        if (TextPointAt(&ctx, line, font, width, true, i, &endX, &endY, &endH,
-                        false, lineMult, true) &&
-            TextPointAt(&ctx, line, font, width, true, i, &nextX, &nextY,
-                        &nextH, false, lineMult, false) &&
-            endY + 0.5f < nextY) {
-            boundary = i;
-            break;
-        }
-    }
-    utassert(boundary > 0);
-    if (boundary > 0) {
+    const float lineH = 24.f;
+    // The wrap map breaks the line where LineWrapper does, at this width.
+    InputUpdateWrapMap(&state, &ctx, width, font, 0);
+    const int* starts = nullptr;
+    int rows = InputWrapRows(&state, 0, &starts, nullptr);
+    utassert(rows > 1);
+    if (rows > 1) {
         // The same byte offset closes one row and opens the next. The
         // affinity decides which caret position is intended.
-        utassert(endY < nextY);
-        state.lastBounds = {0, 0, width, nextY + nextH + 20};
-        state.inputBounds = state.lastBounds;
+        int boundary = starts[1];
+        state.lastBounds = {0, 0, width, lineH};
+        state.inputBounds = {0, 0, width, (float)rows * lineH + 20};
         state.lastFont = font;
-        state.lastLineH = font * lineMult;
-        VecAppend(state.rowBoxes, state.lastBounds);
+        state.lastLineH = lineH;
 
         bool affinity = false;
-        int at = InputIndexForPosition(&state, &ctx, width + 100,
-                                       endY + endH * 0.5f, &affinity);
+        int at = InputIndexForPosition(&state, &ctx, width + 100, lineH * 0.5f,
+                                       &affinity);
         utassert(at == boundary && affinity);
-        at = InputIndexForPosition(&state, &ctx, 0, nextY + nextH * 0.5f,
-                                   &affinity);
+        at = InputIndexForPosition(&state, &ctx, 0, lineH * 1.5f, &affinity);
         utassert(at == boundary && !affinity);
     }
     TextMeasClear(&ctx);
@@ -2919,56 +2907,49 @@ static void ALongDocumentBuildsOnlyTheVisibleBand() {
     EntityDropAll(&app);
 }
 
-// The first element under `e` whose first child is absolute and painted in
-// `bg`: the caret row's band, by the wash it carries.
-static El* FindWashedBand(El* e, Rgba bg) {
-    for (; e; e = e->next) {
-        El* f = e->first;
-        if (f && f->style.absolute && f->style.hasBg &&
-            f->style.bg.color.r == bg.r && f->style.bg.color.g == bg.g &&
-            f->style.bg.color.b == bg.b && f->style.bg.color.a == bg.a) {
-            return e;
-        }
-        if (El* found = FindWashedBand(e->first, bg)) {
-            return found;
-        }
-    }
-    return nullptr;
-}
-
 // element.rs paint: the active-line quad starts left of the gutter, so it
 // covers the editor's left padding (set_editor_paddings' 6px) as well as the
-// line numbers and the text.
-static void TheActiveLineWashCoversTheLeftPadding() {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    win->paint.viewH = 400;
-    Arena* a = ArenaNew();
-    Ctx cx = {&app, win, a, {}};
-    InputState state;
-    state.kind = InputKind::Editor;
-    InputSetValue(&state, StrL("one\ntwo\nthree"));
+// line numbers and the text. The column paints it under every row, read back
+// here from the frame that painted it.
+namespace {
+struct ActiveLineRoot {
+    InputState input;
     InputEditorStyle style;
-    style.activeLine = Rgba8(10, 20, 30, 255);
-    style.activeLineBleedL = 6;
-    El* editor = gpui::Editor::New(&cx, &state, style);
-    El* band = FindWashedBand(editor, style.activeLine);
-    utassert(band != nullptr);
-    if (band) {
-        // Behind the row's own cells, from 6px left of the band to its right
-        // edge, top to bottom.
-        utassertnear(band->first->style.absLeft, -6.f);
-        utassertnear(band->first->style.absRight, 0.f);
-        utassert(!band->style.hasBg);
+
+    static El* Render(ActiveLineRoot* self, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(gpui::Editor::New(cx, &self->input, self->style));
     }
-    // Without a padding to cover, the band takes the wash itself.
-    style.activeLineBleedL = 0;
-    El* plain = gpui::Editor::New(&cx, &state, style);
-    utassert(FindWashedBand(plain, style.activeLine) == nullptr);
-    ArenaDelete(a);
-    delete win;
-    EntityDropAll(&app);
+};
+} // namespace
+
+static void TheActiveLineWashCoversTheLeftPadding() {
+    App* app = TestAppNew();
+    Entity<ActiveLineRoot> root = EntityNew<ActiveLineRoot>(app);
+    ActiveLineRoot* r = root.Get(app);
+    r->input.kind = InputKind::Editor;
+    InputSetValue(&r->input, StrL("one\ntwo\nthree"));
+    r->style.activeLine = Rgba8(10, 20, 30, 255);
+    r->style.activeLineBleedL = 6;
+    Window* win = TestWindowOpen(app, root, 400, 300);
+    TestDraw(win);
+    Bounds wash = {};
+    utassert(InputLastActiveLine(&r->input, win, &wash));
+    InputPaintedVisualRow rows[4];
+    utassert(InputLastVisualRows(&r->input, win, rows, 4) == 3);
+    // The caret's line, from 6px left of the gutter to the band's right
+    // edge, one row tall.
+    utassertnear(wash.x, r->input.gutterBox.x - 6.f);
+    utassertnear(wash.y, rows[0].text.y);
+    utassertnear(wash.h, r->input.lastLineH);
+    // Without a padding to cover, the quad starts at the gutter.
+    r->style.activeLineBleedL = 0;
+    AppInvalidate(win);
+    TestDraw(win);
+    utassert(InputLastActiveLine(&r->input, win, &wash));
+    utassertnear(wash.x, r->input.gutterBox.x);
+    TestAppFree(app);
 }
 
 // A click in a scrolled editor must use the clip box plus live scrollY.
@@ -3001,9 +2982,11 @@ static void AClickInAScrolledEditorMapsThroughScrollY() {
     utassert(at == InputLineStartOffset(&state, 405));
 }
 
-// Wrap walks rowBoxes. After a scroll the off-screen rows still hold the
-// window y they had when last painted, which still covers the viewport, so
-// a click would map to the old band and scroll_to would jump back there.
+// A wrapping editor finds the row under a press by walking the lines'
+// heights in visual rows from the document top, never by a row's last
+// painted window y: after a scroll the off-screen rows held the y they had
+// when last painted, which still covered the viewport, so a click mapped to
+// the old band and scroll_to jumped back there.
 static void AClickInAWrappedScrolledEditorIgnoresStaleWindowY() {
     const int kLines = 40;
     char* buf = (char*)Alloc(nullptr, kLines * 2);
@@ -3022,11 +3005,7 @@ static void AClickInAWrappedScrolledEditorIgnoresStaleWindowY() {
     state.lastBounds = {12, 80, 200, 20};
     state.inputBounds = {0, 80, 400, 400};
     state.scrollY = 200;
-    int rows = InputLinesLen(&state);
-    for (int i = 0; i < rows; i++) {
-        Bounds box = {12, 80.f + (float)i * 20.f, 200, 20};
-        VecAppend(state.rowBoxes, box);
-    }
+    InputUpdateWrapMap(&state, nullptr, 200, 14, 0);
     PaintCtx ctx = {};
     int at = InputIndexForPosition(&state, &ctx, 12, 80.f + 30.f, nullptr);
     utassert(at == InputLineStartOffset(&state, 11));
@@ -3049,16 +3028,7 @@ static void ScrollToCursorUsesDocumentYNotStaleWindowY() {
     state.viewH = 400;
     state.contentH = (float)kLines * 20.f;
     state.scrollY = 400;
-    // Row 0 last painted at the top of the file; row 20 is on screen now
-    // at the same window y. Subtracting those would put the caret at 0.
-    int rows = InputLinesLen(&state);
-    for (int i = 0; i < rows; i++) {
-        Bounds box = {12, 80.f + (float)i * 20.f, 200, 20};
-        if (i == 20) {
-            box.y = 80;
-        }
-        VecAppend(state.rowBoxes, box);
-    }
+    InputUpdateWrapMap(&state, nullptr, 200, 14, 0);
     state.selectedRange = SelectionAt(InputLineStartOffset(&state, 20));
     InputScrollToCursor(&state, InputMoveDir::None);
     utassert(state.scrollY > 200);
@@ -3420,20 +3390,10 @@ static void AColumnarSelectionFollowsTheWrappedRows() {
     s.lastLineH = font * 1.5f;
     s.lastBounds = {0, 0, width, 400};
     s.inputBounds = s.lastBounds;
-    // Where the first line breaks, read the way the block reads it.
-    Str line = StrL("alpha beta gamma delta epsilon");
-    int boundary = -1;
-    for (int i = 1; i < len(line); i++) {
-        float ex = 0, ey = 0, eh = 0, nx = 0, ny = 0, nh = 0;
-        if (TextPointAt(&win->paint, line, font, width, true, i, &ex, &ey, &eh,
-                        false, 1.5f, true) &&
-            TextPointAt(&win->paint, line, font, width, true, i, &nx, &ny, &nh,
-                        false, 1.5f, false) &&
-            ey + 0.5f < ny) {
-            boundary = i;
-            break;
-        }
-    }
+    // Where the first line breaks: the wrap map's second row.
+    InputUpdateWrapMap(&s, &win->paint, width, font, 0);
+    const int* starts = nullptr;
+    int boundary = InputWrapRows(&s, 0, &starts, nullptr) > 1 ? starts[1] : -1;
     utassert(boundary > 0);
     if (boundary > 0) {
         // From column 1 of the first visual row to column 3 of the second:
@@ -3666,57 +3626,6 @@ static void InlineTokensRespectModeAndContent() {
              InlineTokenError::UnsupportedMode);
 
     VecReset(content.tokens);
-}
-
-static El* FindWrappedTokenRow(El* el) {
-    if (!el) {
-        return nullptr;
-    }
-    if (el->style.flexWrap) {
-        return el;
-    }
-    for (El* child = el->first; child; child = child->next) {
-        if (El* found = FindWrappedTokenRow(child)) {
-            return found;
-        }
-    }
-    return nullptr;
-}
-
-static void TextareaTokenGapsBreakAtUtf8Characters() {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    Arena* arena = ArenaNew();
-    Ctx cx = {&app, win, arena, {}};
-    InputState state;
-    state.kind = InputKind::Textarea;
-    state.softWrap = true;
-    InputContent content = InputContent::New(StrL("ab@a🙂cd"));
-    utassert(content.WithToken(
-                 2, 4, InlineToken::New(StrL("person:a"), StrL("@a"))) ==
-             InlineTokenError::Ok);
-    InputSetValue(&state, content);
-    El* row = FindWrappedTokenRow(Textarea::New(&cx, &state));
-    utassert(row);
-    const char* expected[] = {"a", "b", nullptr, "🙂", "c", "d"};
-    El* child = row->first;
-    for (int i = 0; i < 6; i++) {
-        utassert(child);
-        if (expected[i]) {
-            utassert(child->kind == ElKind::Text);
-            utassert(StrEq(child->text, Str(expected[i])));
-            utassert(child->style.flexShrink == 0);
-        } else {
-            utassert(child->kind == ElKind::Div);
-            utassert(child->style.flexShrink == 0);
-        }
-        child = child->next;
-    }
-    utassert(!child);
-    VecReset(content.tokens);
-    ArenaDelete(arena);
-    delete win;
 }
 
 // blink_cursor.rs mod tests, on the test platform: the cursor's timers are
@@ -4367,6 +4276,50 @@ static InputView InputViewBuild(InputBuild build = nullptr) {
     return InputViewBuildWith(InputKind::Input, build);
 }
 
+// state.rs test_inline_token_wrap_and_size_refresh: a chip is as wide as its
+// renderer draws it, the wrap map breaks the line around it as one atomic
+// fragment, and a chip that renders at another width re-wraps the line. Rust
+// reads the rows back through display_map and last_layout; the rows here are
+// the wrap map's and the visual rows the frame painted.
+static float gTokenRenderWidth = 4000;
+
+static El* WidthTokenRenderer(Ctx* cx, const InlineTokenContext*, void*) {
+    return Div(cx->a)->W(gTokenRenderWidth);
+}
+
+static void InlineTokenWrapAndSizeRefresh() {
+    gTokenRenderWidth = 4000;
+    InputView v =
+        InputViewBuildWith(InputKind::Textarea, [](InputState* s, App*) {
+            LayoutModeSetRows(&s->mode, 4);
+            InputSetValue(s, StrL("@a@b"));
+        });
+    utassert(
+        InputReplaceRangeWithToken(v.input, v.app, v.win, 0, 2,
+                                   InlineToken::New(StrL("a"), StrL("@a"))) ==
+        InlineTokenError::Ok);
+    utassert(
+        InputReplaceRangeWithToken(v.input, v.app, v.win, 2, 4,
+                                   InlineToken::New(StrL("b"), StrL("@b"))) ==
+        InlineTokenError::Ok);
+    InputSetTokenPresentation(v.input, &WidthTokenRenderer, nullptr, nullptr,
+                              nullptr, false);
+    AppInvalidate(v.win);
+    TestDraw(v.win);
+    const int* starts = nullptr;
+    utassert(InputWrapRows(v.input, 0, &starts, nullptr) == 2);
+    utassert(starts[1] == 2);
+    InputPaintedVisualRow rows[4];
+    utassert(InputLastVisualRows(v.input, v.win, rows, 4) == 2);
+    utassert(rows[1].text.y > rows[0].text.y);
+    utassert(rows[0].len == 2);
+
+    gTokenRenderWidth = 100;
+    AppInvalidate(v.win);
+    TestDraw(v.win);
+    utassert(InputWrapRows(v.input, 0, nullptr, nullptr) == 1);
+    TestAppFree(v.app);
+}
 static InputView InputViewBuildTextarea(InputBuild build = nullptr) {
     return InputViewBuildWith(InputKind::Textarea, build);
 }
@@ -5017,10 +4970,8 @@ static void CursorLayoutConsumerUpdatesAfterSelection() {
 // field (src/ui/input.cpp BindInputContextMenu), not by the state.
 
 // line_and_position_for_offset's y plus the scroll offset: where the visual
-// row holding `offset` starts inside the field. The rows above it are summed
-// from their laid-out heights (a wrapped line is several rows tall), and the
-// row inside the offset's own line is measured against the run as it was
-// shaped, snapped to the row grid as Rust's whole-row positions are.
+// row holding `offset` starts inside the field — the visual rows of the
+// lines above it, then the row of its own line the wrap map puts it on.
 static float VisibleRowTopA(const InputView& v, int offset) {
     const InputState* s = v.input;
     float lh = s->lastLineH;
@@ -5028,21 +4979,19 @@ static float VisibleRowTopA(const InputView& v, int offset) {
     int row = RopeOffsetToPoint(text, offset).row;
     float y = 0;
     for (int i = 0; i < row; i++) {
-        bool boxed = s->rowBoxes.len == InputLinesLen(s) && s->rowBoxes[i]
-                                                                    .h > 0;
-        y += boxed ? s->rowBoxes[i].h : lh;
+        y += (float)InputWrapRows(s, i, nullptr, nullptr) * lh;
     }
-    if (s->softWrap && s->lastBounds.w > 0 && s->lastFont > 0) {
-        Str line = RopeSliceLine(text, row);
-        int lineStart = RopeLineStartOffset(text, row);
-        float x = 0;
-        float localY = 0;
-        float h = lh;
-        TextPointAt(&v.win->paint, line, s->lastFont, s->lastBounds.w, true,
-                    offset - lineStart, &x, &localY, &h, s->lastFontWord,
-                    lh / s->lastFont, true);
-        y += floorf(localY / lh + 0.5f) * lh;
+    const int* starts = nullptr;
+    int rows = InputWrapRows(s, row, &starts, nullptr);
+    int local = offset - RopeLineStartOffset(text, row);
+    int k = rows - 1;
+    while (k > 0 && starts[k] > local) {
+        k--;
     }
+    if (s->cursorLineEndAffinity && k > 0 && starts[k] == local) {
+        k--;
+    }
+    y += (float)k * lh;
     return y - s->scrollY;
 }
 
@@ -8983,10 +8932,75 @@ static void GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges() {
 }
 
 // element.rs geometric_decorations_use_shaped_wrap_boundaries_and_newline_
-// cells: not ported — it asserts `first.wrap_indent > 0`, a continuation row
-// indented by the line's leading whitespace, which is port-status.md's
-// "Soft-wrapped editor lines are not indented": each logical line here is one
-// platform-wrapped run, and its continuation rows start at the left edge.
+// cells. Rust's corners are relative to the text origin and its rows' widths
+// come off last_layout; here both are window coordinates read back through
+// InputLastVisualRows, so a continuation row's wrap_indent is its run's x
+// less the first row's.
+static void GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells() {
+    const char* text =
+        "    h\xC3\xA9llo world h\xC3\xA9llo world h\xC3\xA9llo world "
+        "h\xC3\xA9llo world\n\nlast";
+    int n = (int)strlen(text);
+    DecorationEditor d = DecorationEditorOpen(text, true);
+    // The rows wrap to the column the frame before laid out.
+    TestDraw(d.win);
+    InputPaintedVisualRow rows[16];
+    int nRows = InputLastVisualRows(d.editor, d.win, rows, 16);
+    utassert(nRows > 3 && nRows <= 16);
+    if (nRows <= 3 || nRows > 16) {
+        TestAppFree(d.app);
+        return;
+    }
+    int firstRows = 0;
+    while (firstRows < nRows && rows[firstRows].lineStart == 0) {
+        firstRows++;
+    }
+    utassert(firstRows > 1);
+    float lineH = d.editor->lastLineH;
+    const InputPaintedVisualRow& first = rows[0];
+    float wrapIndent = rows[1].text.x - first.text.x;
+    utassert(wrapIndent > 0);
+    int lineLen = first.lineLen;
+    int boundary = first.len;
+
+    Vec<RangeCorners> firstRow;
+    // "a wrap end must not open the next visual row"
+    utassert(InputLastRangeCorners(d.editor, d.win, {0, boundary}, &firstRow) ==
+             1);
+    if (len(firstRow) == 1) {
+        utassertnear(firstRow[0].topRight.x, first.text.x + first.width);
+    }
+    Vec<RangeCorners> rest;
+    utassert(InputLastRangeCorners(d.editor, d.win, {boundary, lineLen},
+                                   &rest) == firstRows - 1);
+    if (len(rest) == firstRows - 1) {
+        utassertnear(rest[0].topLeft.y, first.text.y + lineH);
+        for (int i = 0; i < len(rest); i++) {
+            const InputPaintedVisualRow& row = rows[i + 1];
+            utassertnear(row.text.x - first.text.x, wrapIndent);
+            utassertnear(rest[i].topRight.x, row.text.x + row.width);
+            utassertnear(rest[i].bottomLeft.y - rest[i].topLeft.y, lineH);
+        }
+    }
+    int blankOffset = (int)(strstr(text, "\n\n") - text) + 1;
+    Vec<RangeCorners> blank;
+    utassert(InputLastRangeCorners(
+                 d.editor, d.win, {blankOffset, blankOffset + 1}, &blank) == 1);
+    if (len(blank) == 1) {
+        float cell = blank[0].topRight.x - blank[0].topLeft.x;
+        utassert(cell > 0);
+        utassert(fabsf(cell - d.editor->wrap.spaceWidth) < 1.f);
+    }
+    // A later-line decoration cannot paint the first row.
+    int lastOffset = n - 4;
+    Vec<RangeCorners> last;
+    utassert(InputLastRangeCorners(d.editor, d.win, {lastOffset, n}, &last) ==
+             1);
+    if (len(last) == 1 && len(rest) > 0) {
+        utassert(last[0].topLeft.y > rest[len(rest) - 1].topLeft.y);
+    }
+    TestAppFree(d.app);
+}
 
 // element.rs geometric_decorations_include_crlf_boundaries.
 static void GeometricDecorationsIncludeCrlfBoundaries() {
@@ -9081,6 +9095,7 @@ static void GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges() {
 static void RunElementWindowTests() {
     EditorLineNumberGutterResizesWithDocumentLines();
     GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
+    GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells();
     GeometricDecorationsIncludeCrlfBoundaries();
     GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
 }
@@ -9391,7 +9406,7 @@ void TestInputState() {
     StoppingABlinkingCursorEndsTheBlinkLoop();
     InlineTokenContentValidatesRanges();
     InlineTokensRespectModeAndContent();
-    TextareaTokenGapsBreakAtUtf8Characters();
+    InlineTokenWrapAndSizeRefresh();
     AnAltClickAddsACursorAndTypingWritesAtEach();
     DeletesAtEveryCursorAreOneUndoStep();
     TypingAtEveryCursorUndoesToEveryCursor();

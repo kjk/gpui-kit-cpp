@@ -149,16 +149,349 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
 // Input::LINE_HEIGHT is 1.25rem — 20 px at the 16 px root, whatever the text
 // size is, rather than the phi box every other line of text gets.
 static const float kInputLineH = 20.f;
+// element.rs RIGHT_MARGIN: what the text keeps clear on its right, which a
+// soft-wrapping editor wraps short of and an inline token is measured within.
+static const float kEditorRightMargin = 10.f;
 
 static float DisplayLineH(const InputState* s, int row, float lineH);
 static float DisplayRowDocY(const InputState* s, int row, float lineH);
+static void Notify(App* app, Window* win);
+
+// ─── soft wrap (display_map/text_wrapper.rs) ──────────────────────────────
+//
+// TextWrapper over the live document. Rust keeps a SumTree of LineItems and
+// re-wraps the lines an edit touched; the map here is flat and re-wraps the
+// whole document when anything it depends on moved, which is a sum of cached
+// character widths per byte.
+
+static int WrapEncodeUtf8(uint32_t c, char* out) {
+    if (c < 0x80) {
+        out[0] = (char)c;
+        return 1;
+    }
+    if (c < 0x800) {
+        out[0] = (char)(0xC0 | (c >> 6));
+        out[1] = (char)(0x80 | (c & 0x3F));
+        return 2;
+    }
+    if (c < 0x10000) {
+        out[0] = (char)(0xE0 | (c >> 12));
+        out[1] = (char)(0x80 | ((c >> 6) & 0x3F));
+        out[2] = (char)(0x80 | (c & 0x3F));
+        return 3;
+    }
+    out[0] = (char)(0xF0 | (c >> 18));
+    out[1] = (char)(0x80 | ((c >> 12) & 0x3F));
+    out[2] = (char)(0x80 | ((c >> 6) & 0x3F));
+    out[3] = (char)(0x80 | (c & 0x3F));
+    return 4;
+}
+
+struct WrapMeasure {
+    InputWrapMap* map = nullptr;
+    PaintCtx* ctx = nullptr;
+};
+
+// The advance of `bytes` on their own, in the map's font: where a caret after
+// them stands, which counts a trailing space the way a width would not.
+static bool WrapAdvance(const WrapMeasure* wm, Str bytes, float* out) {
+    const InputWrapMap* m = wm->map;
+    float x = 0, y = 0, h = 0;
+    if (!wm->ctx || !TextPointAt(wm->ctx, bytes, m->fontSize, 0, false,
+                                 len(bytes), &x, &y, &h, m->fontWord)) {
+        return false;
+    }
+    *out = x;
+    return true;
+}
+
+// LineWrapper::width_for_char.
+static float WrapCharWidthOf(void* user, uint32_t c) {
+    WrapMeasure* wm = (WrapMeasure*)user;
+    InputWrapMap* m = wm->map;
+    if (m->charFont != m->fontSize || m->charWord != m->fontWord) {
+        m->charFont = m->fontSize;
+        m->charWord = m->fontWord;
+        for (float& w : m->asciiWidths) {
+            w = -1;
+        }
+        for (uint32_t& k : m->otherChars) {
+            k = 0;
+        }
+    }
+    int slot = -1;
+    if (c < 128) {
+        if (m->asciiWidths[c] >= 0) {
+            return m->asciiWidths[c];
+        }
+    } else {
+        const int kSlots = (int)dimof(m->otherChars);
+        int at = (int)((c * 2654435761u) >> 24) % kSlots;
+        for (int probe = 0; probe < kSlots; probe++) {
+            int i = (at + probe) % kSlots;
+            if (m->otherChars[i] == c) {
+                return m->otherWidths[i];
+            }
+            if (m->otherChars[i] == 0) {
+                slot = i;
+                break;
+            }
+        }
+    }
+    char buf[4];
+    int n = WrapEncodeUtf8(c, buf);
+    float w = 0;
+    if (!WrapAdvance(wm, Str(buf, n), &w)) {
+        // Nothing to shape against: an estimate, not kept, so the next
+        // measure with a context replaces it.
+        return m->fontSize * 0.6f;
+    }
+    if (c < 128) {
+        m->asciiWidths[c] = w;
+    } else if (slot >= 0) {
+        m->otherChars[slot] = c;
+        m->otherWidths[slot] = w;
+    }
+    return w;
+}
+
+// One line's fragments for the wrapper: the text between its inline tokens,
+// and each token as an element of its measured width.
+struct WrapLineUser {
+    WrapMeasure* measure = nullptr;
+    float width = 0;
+    int lineStart = 0;
+    const InlineTokenSpan* spans = nullptr;
+    const float* widths = nullptr;
+    int nSpans = 0;
+};
+
+static float WrapTokenWidth(WrapLineUser* u, int i) {
+    if (u->widths) {
+        return u->widths[i];
+    }
+    // Not measured: the label's own width, which is what a chip with no
+    // renderer draws.
+    Str label = u->spans[i].token.label;
+    if (len(label) == 0) {
+        label = u->spans[i].token.text;
+    }
+    float w = 0;
+    for (int at = 0; at < len(label);) {
+        uint32_t c = 0;
+        int n = Utf8At(label, at, &c);
+        w += WrapCharWidthOf(u->measure, c);
+        at += n > 0 ? n : 1;
+    }
+    return w > 1 ? w : 1;
+}
+
+static void WrapLineFragments(void* user, Str slice, int base,
+                              Vec<WrapBoundary>* out) {
+    WrapLineUser* u = (WrapLineUser*)user;
+    if (u->nSpans == 0) {
+        LineFragment f = LineFragment::Text(slice);
+        LineWrapperWrapLine(&f, 1, u->width, &WrapCharWidthOf, u->measure, out);
+        return;
+    }
+    Vec<LineFragment> frags;
+    int from = u->lineStart + base;
+    int end = from + len(slice);
+    int at = from;
+    for (int i = 0; i < u->nSpans; i++) {
+        const InlineTokenSpan& span = u->spans[i];
+        if (span.end <= from || span.start >= end) {
+            continue;
+        }
+        int s0 = span.start < from ? from : span.start;
+        if (s0 > at) {
+            VecAppend(frags,
+                      LineFragment::Text(Str(slice.s + (at - from), s0 - at)));
+        }
+        int e0 = span.end > end ? end : span.end;
+        VecAppend(frags, LineFragment::Element(WrapTokenWidth(u, i), e0 - s0));
+        at = e0;
+    }
+    if (at < end) {
+        VecAppend(frags,
+                  LineFragment::Text(Str(slice.s + (at - from), end - at)));
+    }
+    LineWrapperWrapLine(frags.els, len(frags), u->width, &WrapCharWidthOf,
+                        u->measure, out);
+}
+
+static void WrapMapRebuild(InputState* s, PaintCtx* ctx) {
+    InputWrapMap* m = &s->wrap;
+    VecClear(m->lines);
+    VecClear(m->starts);
+    m->totalRows = 0;
+    m->docVersion = s->docVersion;
+    m->valid = true;
+    const Vec<int>& lineStarts = InputLineStarts(s);
+    Str text = InputValue(s);
+    int nLines = len(lineStarts);
+    WrapMeasure wm;
+    wm.map = m;
+    wm.ctx = ctx;
+    m->spaceWidth = WrapCharWidthOf(&wm, ' ');
+    const Vec<InlineTokenSpan>* spans =
+        InputTokensVisible(s) ? InputTokens(s) : nullptr;
+    int nSpans = spans ? len(*spans) : 0;
+    const float* widths = nSpans > 0 && len(m->tokenWidths) == nSpans
+                              ? m->tokenWidths.els
+                              : nullptr;
+    WrappingIndent indent =
+        m->wrappingIndent ? WrappingIndent::Same : WrappingIndent::None;
+    Vec<int> rows;
+    int spanAt = 0;
+    for (int line = 0; line < nLines; line++) {
+        int start = lineStarts[line];
+        int end = line + 1 < nLines ? lineStarts[line + 1] - 1 : len(text);
+        Str str = Str(text.s + start, end - start);
+        WrapLineUser u;
+        u.measure = &wm;
+        u.width = m->width;
+        u.lineStart = start;
+        while (spanAt < nSpans && (*spans)[spanAt].end <= start) {
+            spanAt++;
+        }
+        int firstSpan = spanAt;
+        int count = 0;
+        while (firstSpan + count < nSpans && (*spans)[firstSpan + count]
+                                                     .start < end) {
+            count++;
+        }
+        if (count > 0) {
+            u.spans = spans->els + firstSpan;
+            u.widths = widths ? widths + firstSpan : nullptr;
+            u.nSpans = count;
+        }
+        int indentChars = 0;
+        TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u,
+                            &rows, &indentChars);
+        InputWrapLine item;
+        item.firstStart = len(m->starts);
+        item.nRows = len(rows);
+        item.rowsAbove = m->totalRows;
+        // Use the first visual row's indentation width for the rows after
+        // it: x_for_index of the indent's byte length in that row.
+        if (indentChars > 0 && item.nRows > 1) {
+            int bytes = 0;
+            for (int k = 0; k < indentChars && bytes < len(str); k++) {
+                uint32_t c = 0;
+                int n = Utf8At(str, bytes, &c);
+                bytes += n > 0 ? n : 1;
+            }
+            float x = 0;
+            if (!WrapAdvance(&wm, Str(str.s, bytes), &x)) {
+                x = m->spaceWidth * (float)indentChars;
+            }
+            item.indent = x;
+        }
+        for (int k = 0; k < len(rows); k++) {
+            VecAppend(m->starts, rows[k]);
+        }
+        m->totalRows += item.nRows;
+        VecAppend(m->lines, item);
+    }
+}
+
+void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
+                        float fontSize, uint16_t fontWord) {
+    if (!s) {
+        return;
+    }
+    InputWrapMap* m = &s->wrap;
+    if (width < 0) {
+        width = 0;
+    }
+    bool same = m->valid && m->docVersion == s->docVersion &&
+                m->width == width && m->fontSize == fontSize &&
+                m->fontWord == fontWord &&
+                m->wrappingIndent == s->wrappingIndent;
+    if (same) {
+        return;
+    }
+    m->width = width;
+    m->fontSize = fontSize;
+    m->fontWord = fontWord;
+    m->wrappingIndent = s->wrappingIndent;
+    WrapMapRebuild(s, ctx);
+}
+
+// The map as of the current document. An edit since the element last built
+// it re-wraps at the width and font it last had.
+static const InputWrapMap* WrapMapOf(const InputState* s, PaintCtx* ctx) {
+    if (!s || !s->softWrap || !InputIsMultiLine(s)) {
+        return nullptr;
+    }
+    const InputWrapMap* m = &s->wrap;
+    if (!m->valid || m->width <= 0) {
+        return nullptr;
+    }
+    if (m->docVersion != s->docVersion ||
+        m->wrappingIndent != s->wrappingIndent) {
+        InputState* ms = const_cast<InputState*>(s);
+        ms->wrap.wrappingIndent = s->wrappingIndent;
+        WrapMapRebuild(ms, ctx);
+    }
+    return m;
+}
+
+int InputWrapRows(const InputState* s, int line, const int** starts,
+                  float* indent) {
+    static const int kZero = 0;
+    const InputWrapMap* m = WrapMapOf(s, nullptr);
+    if (!m || line < 0 || line >= len(m->lines)) {
+        if (starts) {
+            *starts = &kZero;
+        }
+        if (indent) {
+            *indent = 0;
+        }
+        return 1;
+    }
+    const InputWrapLine& item = m->lines[line];
+    if (starts) {
+        *starts = m->starts.els + item.firstStart;
+    }
+    if (indent) {
+        *indent = item.indent;
+    }
+    return item.nRows;
+}
+
+void InputSetWrappingIndent(InputState* s, App* app, Window* win,
+                            WrappingIndent indent) {
+    if (!s) {
+        return;
+    }
+    s->wrappingIndent = indent == WrappingIndent::Same ? 1 : 0;
+    Notify(app, win);
+}
+
+// The visual row of a line holding `local`: the last row starting at or
+// before it, or, at a soft-wrap boundary with the line-end affinity, the
+// row that boundary ends.
+static int WrapRowOfOffset(const int* starts, int nRows, int local,
+                           bool lineEndAffinity) {
+    int k = nRows - 1;
+    while (k > 0 && starts[k] > local) {
+        k--;
+    }
+    if (lineEndAffinity && k > 0 && starts[k] == local) {
+        k--;
+    }
+    return k;
+}
 
 // layout_cursors, for the cursors other than the active one: the part of each
 // selection that falls inside this row and each caret that lands on it, as
-// offsets into the row. The lists live in the frame arena with the element.
+// offsets into the row. A caret on a soft-wrap boundary opens the next row
+// unless this is its line's last. The lists live in the frame arena.
 static void RowExtraCursors(Arena* a, El* el, const InputState* state,
                             const InputEditorStyle& style, int start, int len,
-                            bool caret) {
+                            bool caret, bool lastRow) {
     int n = state->extraCursors.len;
     auto* sels = (Selection*)Alloc(a, n * (int)sizeof(Selection));
     auto* carets = (int*)Alloc(a, n * (int)sizeof(int));
@@ -181,7 +514,8 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
             sels[nSels++] = Selection{lo, hi};
         }
         int cur = c.Cursor();
-        if (caret && cur >= start && cur <= start + len) {
+        if (caret && cur >= start && cur <= start + len &&
+            (lastRow || cur < start + len)) {
             carets[nCarets++] = cur - start;
         }
     }
@@ -274,7 +608,13 @@ static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
     ctx.disabled = state->disabled;
     ctx.readonly = state->readonly;
     ctx.lineHeight = lineH > 0 ? lineH : kInputLineH;
-    ctx.availableWidth = state->lastBounds.w > 0 ? state->lastBounds.w : kFill;
+    // token_context's width: the text column, the bounds less RIGHT_MARGIN
+    // (a wrapping editor's is its wrap width). Not the run the field last
+    // bound, which in a token row is whichever text piece painted last.
+    float avail = state->wrap.width > 0 && InputIsMultiLine(state)
+                      ? state->wrap.width
+                      : state->viewW - kEditorRightMargin;
+    ctx.availableWidth = avail > 1 ? avail : kFill;
     El* chip = nullptr;
     InlineTokenStore* store = state->tokens;
     if (store && store->renderer) {
@@ -307,6 +647,93 @@ static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
     click->end = span.end;
     chip->OnClick(MkFunc0(&OnTokenChipClick, click))->StopClick();
     return chip;
+}
+
+// measure_tokens: every inline token's chip laid out on its own at the line
+// height, which is the width the wrapper reserves for it (at most the wrap
+// width, at least a pixel). Rust keys its cache on the font, the width, the
+// line height and the document revision and measures again when one moved;
+// a new measure re-wraps the document.
+static void MeasureTokenWidths(Ctx* cx, InputState* state,
+                               const InputEditorStyle& style, float font,
+                               float lineH, float width) {
+    InputWrapMap* m = &state->wrap;
+    const Vec<InlineTokenSpan>* spans =
+        InputTokensVisible(state) ? InputTokens(state) : nullptr;
+    int n = spans ? len(*spans) : 0;
+    if (n == 0) {
+        if (len(m->tokenWidths) > 0) {
+            VecClear(m->tokenWidths);
+            m->valid = false;
+        }
+        return;
+    }
+    if (!cx->win) {
+        return;
+    }
+    uint32_t fontBits = 0, widthBits = 0, lineBits = 0;
+    memcpy(&fontBits, &font, sizeof(fontBits));
+    memcpy(&widthBits, &width, sizeof(widthBits));
+    memcpy(&lineBits, &lineH, sizeof(lineBits));
+    uint64_t key = state->docVersion * 1000003u;
+    key = (key ^ fontBits) * 1000003u;
+    key = (key ^ widthBits) * 1000003u;
+    key = (key ^ lineBits) * 1000003u;
+    key ^= (uint64_t)n;
+    // Everything when the key moved; otherwise the chips on the lines in
+    // view, which is where a renderer drawing at another width shows.
+    bool all = key != m->tokenKey || len(m->tokenWidths) != n;
+    Selection visible = {0, 0};
+    if (!all) {
+        float viewH = state->viewH > 0 ? state->viewH : 600.f;
+        float top = state->scrollY - viewH;
+        float bottom = state->scrollY + 2 * viewH;
+        int lines = InputLinesLen(state);
+        float at = 0;
+        visible = {-1, len(InputValue(state))};
+        for (int i = 0; i < lines; i++) {
+            float h = DisplayLineH(state, i, lineH);
+            if (visible.start < 0 && at + h > top) {
+                visible.start = InputLineStartOffset(state, i);
+            }
+            if (at > bottom) {
+                visible.end = InputLineStartOffset(state, i);
+                break;
+            }
+            at += h;
+        }
+        if (visible.start < 0) {
+            visible.start = 0;
+        }
+    } else {
+        VecClear(m->tokenWidths);
+        if (VecAppendBlanks(m->tokenWidths, n)) {
+            for (int i = 0; i < n; i++) {
+                m->tokenWidths[i] = 0;
+            }
+        }
+    }
+    bool changed = all;
+    Selection none = {};
+    for (int i = 0; i < n && i < len(m->tokenWidths); i++) {
+        const InlineTokenSpan& span = (*spans)[i];
+        if (!all && (span.end < visible.start || span.start > visible.end)) {
+            continue;
+        }
+        El* chip = TokenChip(cx, state, span, none, lineH, style, font);
+        Size size = MeasureEl(&cx->win->paint, chip, font);
+        float w = size.w;
+        if (width > 0 && w > width) {
+            w = width;
+        }
+        w = w > 1 ? w : 1.f;
+        changed |= m->tokenWidths[i] != w;
+        m->tokenWidths[i] = w;
+    }
+    m->tokenKey = key;
+    if (changed) {
+        m->valid = false;
+    }
 }
 
 static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
@@ -342,11 +769,12 @@ static uint16_t InputFontWord(const InputEditorStyle& style) {
                       FontFamilyBits(style.fontFamily));
 }
 
-static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
-                               const InputEditorStyle& style, float font,
-                               float lineMult, Str slice, int docStart,
-                               const Selection& sel, bool caret, int cursor,
-                               bool wrap) {
+// One text run between a row's chips: the whole gap, shaped as one fragment
+// the way Rust shapes it. Where the row breaks is the wrap map's business.
+static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
+                             const InputEditorStyle& style, float font,
+                             float lineMult, Str slice, int docStart,
+                             const Selection& sel, bool caret, int cursor) {
     if (!row || len(slice) == 0) {
         return;
     }
@@ -354,13 +782,11 @@ static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
                     ->Font(font)
                     ->LineHeight(lineMult)
                     ->Fg(style.foreground)
-                    ->BindInput(state);
+                    ->BindInput(state)
+                    // The wrap map already fit the row to the column; a run
+                    // that shrank would slide under the chip beside it.
+                    ->Shrink0();
     InputFace(piece, style);
-    if (wrap) {
-        // Each piece is one UTF-8 character. Let the row break between
-        // pieces while the token chip remains one atomic flex item.
-        piece->Shrink0();
-    }
     int lo = sel.start - docStart;
     int hi = sel.end - docStart;
     if (lo < 0) {
@@ -378,42 +804,13 @@ static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
     row->Child(piece);
 }
 
-static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
-                             const InputEditorStyle& style, float font,
-                             float lineMult, Str slice, int docStart,
-                             const Selection& sel, bool caret, int cursor,
-                             bool wrap) {
-    if (!row || len(slice) == 0) {
-        return;
-    }
-    if (!wrap) {
-        EmitTokenTextPiece(row, a, state, style, font, lineMult, slice,
-                           docStart, sel, caret, cursor, false);
-        return;
-    }
-    // Flex layout only breaks between children. Give text a break after each
-    // UTF-8 character, so the remaining width beside a chip can be used.
-    // Rust instead shapes the gap as one fragment and uses inline metrics in
-    // its display map; this is the portable element-tree approximation.
-    int at = 0;
-    while (at < len(slice)) {
-        int start = at;
-        uint32_t codepoint = 0;
-        int bytes = Utf8At(slice, at, &codepoint);
-        at += bytes > 0 ? bytes : 1;
-        EmitTokenTextPiece(row, a, state, style, font, lineMult,
-                           Str(slice.s + start, at - start), docStart + start,
-                           sel, caret, cursor, true);
-    }
-}
-
 // Split a document range into text runs and chips. Tokens cannot contain
-// newlines, so a logical line is a complete set of pieces.
+// newlines, and a wrap never breaks inside one, so a visual row is a
+// complete set of pieces.
 static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                               const InputEditorStyle& style, float font,
                               float lineMult, float lineH, Str run, int start,
-                              const Selection& sel, bool caret, int cursor,
-                              bool wrap) {
+                              const Selection& sel, bool caret, int cursor) {
     if (!row) {
         return;
     }
@@ -432,7 +829,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
             if (span.start > at) {
                 EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
                                  Str(run.s + (at - start), span.start - at), at,
-                                 sel, caret, cursor, wrap);
+                                 sel, caret, cursor);
             }
             row->Child(TokenChip(cx, state, span, sel, lineH, style, font));
             at = span.end;
@@ -441,7 +838,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
     if (at < end) {
         EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
                          Str(run.s + (at - start), end - at), at, sel, caret,
-                         cursor, wrap);
+                         cursor);
     }
 }
 
@@ -520,7 +917,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     }
     if (InputTokensVisible(state) && !masked) {
         AppendTokenPieces(row, cx, state, style, font, lineMult, kInputLineH,
-                          run, 0, sel, caret, cursor, false);
+                          run, 0, sel, caret, cursor);
         return row;
     }
     El* el = TextEl(a, run)
@@ -555,10 +952,8 @@ static const float kLineNumberRightMargin = 6.f;
 // Whether the pointer is over the gutter, which is what decides if the
 // chevrons show. Rust inserts one hitbox over the whole line-number column
 // (fold icons included) at the editor's visible height; the column is the
-// same x on every row, so last frame's gutter strip locates it. rowBoxes
-// are only filled when the text wraps, so they cannot be the vertical
-// extent — without wrap that test never passed and the chevrons stayed
-// hidden until a click folded the line.
+// same x on every row, so last frame's gutter strip locates it, and the
+// editor's clip is the vertical extent.
 static bool GutterHovered(const InputState* s, Window* win) {
     if (!win || s->gutterBox.w <= 0) {
         return false;
@@ -678,16 +1073,19 @@ int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
 
 // element.rs layout_range_decorations and its paint. Rust builds one path per
 // decoration in prepaint from the shaped lines and paints the fills, then the
-// frames, below the selection. The rows here are separate elements laid out
-// by the flex column, so the geometry is built at paint, once per frame, from
-// where the rows' runs landed; each row then paints the slice of every path
-// that falls in its own box, after its own background (the active line) and
-// before its text, which keeps Rust's order.
+// frames, below the selection. The rows here are elements the flex column
+// lays out, so the geometry is built when the column paints, once per frame,
+// from where every visual row's run landed, and the column paints every path
+// before any row paints its own: after the active line, before the
+// selection and the text, which is Rust's order.
 struct RangeDecorationRow {
-    El* box = nullptr;  // the row's container, which paints its slice
-    El* text = nullptr; // the row's shaped run
-    int start = 0;      // the buffer offset of the line
-    int len = 0;        // the line's length, without its newline
+    El* text = nullptr; // the visual row's shaped run (a token row's box)
+    int start = 0;      // the buffer offset of the row's first byte
+    int len = 0;        // the row's length
+    int lineStart = 0;  // the logical line it belongs to
+    int lineLen = 0;    // that line's length, without its newline
+    bool first = true;  // the line's first visual row
+    bool last = true;   // the line's last visual row
 };
 
 struct RangeDecorationPath {
@@ -710,69 +1108,73 @@ struct RangeDecorationPaint {
     int nPaths = 0;
 };
 
-struct RangeDecorationRowPaint {
-    RangeDecorationPaint* shared = nullptr;
-};
-
 // layout_range_corners: a buffer range through the visible (non-folded)
-// shaped rows. Half-open intersections give soft-wrap ends their trailing
-// affinity and keep a range on a later line from painting an earlier line's
-// first glyph. A range that runs over a line's end gives the last visual row
-// of that line a one-space newline cell; a wrap boundary gets none.
+// visual rows. Half-open intersections give soft-wrap ends their trailing
+// affinity and keep a range on a later row from painting an earlier row's
+// first glyph. A range that runs over a line's end gives the line's last
+// visual row a one-space newline cell; a wrap boundary gets none.
 static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
                                   Selection range, Vec<RangeCorners>* out) {
     int before = len(*out);
-    Bounds rects[64];
     for (int r = 0; r < p->nRows; r++) {
         const RangeDecorationRow& row = p->rows[r];
-        int lineEnd = row.start + row.len;
+        if (!row.text || row.text->kind != ElKind::Text) {
+            continue;
+        }
+        int rowEnd = row.start + row.len;
+        int lineEnd = row.lineStart + row.lineLen;
         int startIx = std::max(range.start, row.start);
-        int endIx = std::min(range.end, lineEnd);
-        bool newline = range.start <= lineEnd && range.end > lineEnd;
-        int n = 0;
-        if (startIx < endIx) {
-            n = ElTextRangeRects(ctx, row.text, startIx - row.start,
-                                 endIx - row.start, rects, dimof(rects));
+        int endIx = std::min(range.end, rowEnd);
+        bool newline =
+            row.last && range.start <= lineEnd && range.end > lineEnd;
+        bool hasText = startIx < endIx;
+        if (!hasText && !newline) {
+            continue;
         }
-        if (newline && n == 0) {
-            // The newline cell alone, where the line's last visual row ends.
-            Bounds end = {row.text->x, row.text->y, 0, p->lineH};
-            Bounds whole[64];
-            int m = row.len > 0 ? ElTextRangeRects(ctx, row.text, 0, row.len,
-                                                   whole, dimof(whole))
-                                : 0;
-            if (m > 0) {
-                end = {whole[m - 1].x + whole[m - 1].w, whole[m - 1].y, 0,
-                       p->lineH};
+        float left = row.text->x;
+        float right = row.text->x;
+        Bounds rect = {};
+        if (hasText && ElTextRangeRects(ctx, row.text, startIx - row.start,
+                                        endIx - row.start, &rect, 1) == 0) {
+            // Nothing shaped there (a lone '\r'): only a newline cell, if
+            // the range has one, is left to draw.
+            if (!newline) {
+                continue;
             }
-            if (n < (int)dimof(rects)) {
-                rects[n++] = end;
+            hasText = false;
+        }
+        if (hasText) {
+            left = rect.x;
+            right = rect.x + rect.w;
+        } else if (row.len > 0) {
+            // The newline cell alone, where the row's text ends.
+            Bounds whole = {};
+            if (ElTextRangeRects(ctx, row.text, 0, row.len, &whole, 1) > 0) {
+                left = right = whole.x + whole.w;
             }
         }
-        for (int i = 0; i < n; i++) {
-            float left = rects[i].x;
-            float right = rects[i].x + rects[i].w;
-            if (newline && i == n - 1) {
-                right += ElTextSpaceWidth(ctx, row.text);
-            }
-            float top = rects[i].y;
-            RangeCorners c;
-            c.topLeft = {left, top};
-            c.topRight = {right, top};
-            c.bottomLeft = {left, top + p->lineH};
-            c.bottomRight = {right, top + p->lineH};
-            VecAppend(*out, c);
+        if (newline) {
+            right += ElTextSpaceWidth(ctx, row.text);
         }
+        float top = row.text->y;
+        RangeCorners c;
+        c.topLeft = {left, top};
+        c.topRight = {right, top};
+        c.bottomLeft = {left, top + p->lineH};
+        c.bottomRight = {right, top + p->lineH};
+        VecAppend(*out, c);
     }
     return len(*out) - before;
 }
 
-// What InputLastRangeCorners and its siblings read: every row the element
-// built, whether or not a decoration lies over it, and the decorations' own
-// paint when there was one.
+// What InputLastRangeCorners and its siblings read: every visual row the
+// element built, whether or not a decoration lies over it, and the
+// decorations' own paint when there was one.
 struct InputPaintedRows {
     RangeDecorationPaint geometry;
     RangeDecorationPaint* decorations = nullptr;
+    // What the column painted the active line from.
+    const struct EditorUnderlay* underlay = nullptr;
 };
 
 static const InputPaintedRows* LastPaintedRows(const InputState* s,
@@ -796,8 +1198,41 @@ int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
     int n = 0;
     for (int i = 0; i < pr->geometry.nRows; i++) {
         const RangeDecorationRow& row = pr->geometry.rows[i];
+        if (!row.first) {
+            continue;
+        }
         if (n < cap && out) {
-            out[n] = Selection{row.start, row.start + row.len};
+            out[n] = Selection{row.lineStart, row.lineStart + row.lineLen};
+        }
+        n++;
+    }
+    return n;
+}
+
+int InputLastVisualRows(const InputState* s, Window* win,
+                        InputPaintedVisualRow* out, int cap) {
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    if (!pr) {
+        return 0;
+    }
+    int n = 0;
+    for (int i = 0; i < pr->geometry.nRows; i++) {
+        const RangeDecorationRow& row = pr->geometry.rows[i];
+        if (n < cap && out && row.text) {
+            InputPaintedVisualRow& v = out[n];
+            v.start = row.start;
+            v.len = row.len;
+            v.lineStart = row.lineStart;
+            v.lineLen = row.lineLen;
+            v.lastOfLine = row.last;
+            v.text = row.text->Bounds();
+            v.width = 0;
+            Bounds whole = {};
+            if (row.len > 0 && row.text->kind == ElKind::Text &&
+                ElTextRangeRects(&win->paint, row.text, 0, row.len, &whole, 1) >
+                    0) {
+                v.width = whole.x + whole.w - row.text->x;
+            }
         }
         n++;
     }
@@ -884,24 +1319,35 @@ static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
     }
 }
 
-static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user);
+// What the editor's column paints before its rows: the active line's wash and
+// then every range decoration, each path once for the whole editor.
+struct EditorUnderlay {
+    InputState* state = nullptr;
+    RangeDecorationPaint* decorations = nullptr;
+    El* activeLine = nullptr; // the caret line's band, gutter and all
+    Rgba activeColor = {};
+    float activeBleedL = 0;
+};
 
-static void AttachRangeDecorationRow(Arena* a, RangeDecorationPaint* p, El* box,
-                                     El* text, int start, int len) {
-    RangeDecorationRow& row = p->rows[p->nRows++];
-    row.box = box;
-    row.text = text;
-    row.start = start;
-    row.len = len;
-    RangeDecorationRowPaint* user = ArenaNew<RangeDecorationRowPaint>(a);
-    user->shared = p;
-    box->customPaint = &PaintRangeDecorationsRow;
-    box->customUser = user;
-}
-
-static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user) {
-    RangeDecorationRowPaint* rp = (RangeDecorationRowPaint*)user;
-    RangeDecorationPaint* p = rp ? rp->shared : nullptr;
+static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
+    EditorUnderlay* u = (EditorUnderlay*)user;
+    if (!u) {
+        return;
+    }
+    // The rows were wrapped to the column the frame before laid out; a
+    // column that came out another width wraps again in the next frame.
+    InputState* s = u->state;
+    if (s && s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
+        ctx->window) {
+        AppInvalidate(ctx->window);
+    }
+    if (u->activeLine && u->activeColor.a != 0) {
+        const El* band = u->activeLine;
+        FillRound(ctx, band->x - u->activeBleedL, band->y,
+                  band->w + u->activeBleedL, band->h, 0,
+                  PaintFade(ctx, u->activeColor));
+    }
+    RangeDecorationPaint* p = u->decorations;
     if (!p) {
         return;
     }
@@ -909,10 +1355,6 @@ static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user) {
         Bounds mask = ctx->hasHitMask ? ctx->hitMask : e->Bounds();
         BuildRangeDecorationPaths(ctx, p, mask);
     }
-    if (p->nPaths == 0) {
-        return;
-    }
-    CanvasPushClip(ctx, e->x - 2, e->y, e->w + 4, e->h);
     for (int i = 0; i < p->nPaths; i++) {
         const RangeDecorationPath& path = p->paths[i];
         Path* shape = PathNew(ctx, true);
@@ -932,7 +1374,20 @@ static void PaintRangeDecorationsRow(PaintCtx* ctx, El* e, void* user) {
         }
         PathFree(shape);
     }
-    CanvasPopClip(ctx);
+}
+
+bool InputLastActiveLine(const InputState* s, const Window* win, Bounds* out) {
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    const EditorUnderlay* u = pr ? pr->underlay : nullptr;
+    if (!u || !u->activeLine || u->activeColor.a == 0) {
+        return false;
+    }
+    if (out) {
+        const El* band = u->activeLine;
+        *out = {band->x - u->activeBleedL, band->y, band->w + u->activeBleedL,
+                band->h};
+    }
+    return true;
 }
 
 El* Textarea::New(Ctx* cx, InputState* state) {
@@ -969,13 +1424,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     int cursor = InputCursor(state);
     Selection sel = state->selectedRange;
 
-    // soft_wrap: a row is as tall as the wrapped text in it rather than one
-    // line, so the map of where the rows are cannot be arithmetic.
-    bool wrap = state->softWrap;
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
     if (len(text) == 0) {
-        VecClear(state->rowBoxes);
         if (caret) {
             col->Caret(0, style.caret);
         }
@@ -988,37 +1439,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     }
 
     int rows = InputLinesLen(state);
-    // The scrolled height, which is what scroll_to clamps against. A wrapping
-    // editor takes it off the box the rows were laid out in last frame, since
-    // nothing here can tell how many times a line will break; until there is
-    // one, a line apiece is the estimate.
+    // The scrolled height, which is what scroll_to clamps against: one line
+    // height per display row.
     state->contentH = (float)rows * lineH;
     if (LayoutModeIsFolding(state->mode)) {
         FoldMapRebuild(&state->folds, rows);
         state->contentH = (float)FoldMapDisplayRowCount(&state->folds) * lineH;
-    }
-    if (wrap) {
-        // Sum laid-out heights. contentBox.h is the last painted column,
-        // which includes that frame's scroll and is wrong the moment a
-        // spacer is rebuilt.
-        float wrapped = DisplayRowDocY(state, rows, lineH);
-        if (wrapped > 0) {
-            state->contentH = wrapped;
-        }
-    }
-    // The boxes the rows will report into. Sized here, before any of them is
-    // built, so the pointers handed out stay put for the frame. The values
-    // are last frame's until this frame paints — clearing them would leave
-    // every reader with zeros for the length of a frame.
-    if (!wrap) {
-        VecClear(state->rowBoxes);
-    } else if (state->rowBoxes.len != rows) {
-        VecClear(state->rowBoxes);
-        if (Bounds* slots = VecAppendBlanks(state->rowBoxes, rows)) {
-            for (int i = 0; i < rows; i++) {
-                slots[i] = Bounds{};
-            }
-        }
     }
     float numW = 0;
     // The numbers are shaped at the editor's own text size and family, as
@@ -1047,6 +1473,38 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     float foldW = folding ? kFoldIconHitbox : 0.f;
     if (folding) {
         FoldMapRebuild(&state->folds, rows);
+    }
+    // soft_wrap: wrap_width is the bounds less the line numbers and
+    // RIGHT_MARGIN. Rust has the bounds in prepaint, the frame it wraps in;
+    // the rows here are built before layout, so the bounds are the column
+    // the last frame laid out, and a column that came out a different width
+    // asks for the frame after (PaintEditorUnderlay). Until the first frame
+    // has one, nothing wraps.
+    bool wrap = false;
+    {
+        float colW = state->contentBox.w;
+        float gutterW =
+            lineNumbers ? numW + kLineNumberRightMargin + foldW : 0.f;
+        float textW = 0;
+        if (colW > 0) {
+            textW = colW - gutterW - kEditorRightMargin;
+            if (textW < 1) {
+                textW = 1;
+            }
+        }
+        // The chips are measured whether or not the text wraps: the hit
+        // test and the caret walk them as fragments of their own width.
+        MeasureTokenWidths(cx, state, style, font, lineH, textW);
+        if (state->softWrap) {
+            InputUpdateWrapMap(state, cx->win ? &cx->win->paint : nullptr,
+                               textW, font, InputFontWord(style));
+            state->wrap.measuredWidth = colW;
+            wrap = WrapMapOf(state, cx->win ? &cx->win->paint : nullptr) !=
+                   nullptr;
+            if (wrap) {
+                state->contentH = DisplayRowDocY(state, rows, lineH);
+            }
+        }
     }
     // The chevrons are only on screen while the gutter is hovered, on the
     // caret's own row, or over a fold that is closed — a column of them on
@@ -1112,7 +1570,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         const int kSlack = 2;
         float top = state->scrollY;
         float bottom = top + vh;
-        if (!wrap || state->rowBoxes.len != rows) {
+        if (!wrap) {
             int first = (int)(top / lineH) - kSlack;
             int end = (int)(bottom / lineH) + 1 + kSlack;
             firstRow = first < 0 ? 0 : (first > rows ? rows : first);
@@ -1358,12 +1816,16 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 a, (int)sizeof(const RangeDecoration*) * n);
             rangePaint->nDecorations = InputRangeDecorations(
                 state, spans.els, len(spans), rangePaint->decorations, n);
-            rangePaint->rows = (RangeDecorationRow*)Alloc(
-                a, (int)sizeof(RangeDecorationRow) * (endRow - firstRow));
             rangePaint->foreground = style.foreground;
             rangePaint->lineH = lineH;
             rangePaint->arena = a;
         }
+    }
+    // Every visual row the lines in the band wrap to: each is one shaped
+    // run, the way element.rs shapes `wrapped_lines` one ShapedLine apiece.
+    int visualRows = 0;
+    for (int row = firstRow; row < endRow; row++) {
+        visualRows += InputWrapRows(state, row, nullptr, nullptr);
     }
     InputPaintedRows* painted = ArenaNew<InputPaintedRows>(a);
     state->paintedRows = painted;
@@ -1372,31 +1834,43 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         painted->decorations = rangePaint;
         painted->geometry.lineH = lineH;
         painted->geometry.arena = a;
-        if (endRow > firstRow) {
+        if (visualRows > 0) {
             painted->geometry.rows = (RangeDecorationRow*)Alloc(
-                a, (int)sizeof(RangeDecorationRow) * (endRow - firstRow));
+                a, (int)sizeof(RangeDecorationRow) * visualRows);
+        }
+        if (rangePaint) {
+            rangePaint->rows = painted->geometry.rows;
+        }
+    }
+    // What the column paints under its rows, once for the whole editor: the
+    // active line, then every decoration path, element.rs's paint order.
+    EditorUnderlay* underlay = ArenaNew<EditorUnderlay>(a);
+    if (underlay) {
+        underlay->state = state;
+        underlay->decorations = rangePaint;
+        underlay->activeColor = style.activeLine;
+        underlay->activeBleedL = style.activeLineBleedL;
+        col->customPaint = &PaintEditorUnderlay;
+        col->customUser = underlay;
+        if (painted) {
+            painted->underlay = underlay;
         }
     }
     for (int row = firstRow; row < endRow; row++) {
-        int start = lineStarts[row];
+        int lineStart = lineStarts[row];
         int lineEnd =
             row + 1 < len(lineStarts) ? lineStarts[row + 1] - 1 : len(text);
-        Str line = Str(text.s + start, lineEnd - start);
+        Str lineText = Str(text.s + lineStart, lineEnd - lineStart);
         // A line inside a closed fold is not built at all, which is what
-        // makes the rows below it move up. Its box is zeroed rather than left
-        // at last frame's, so the hit test and the vertical walk read it as
-        // gone the moment the fold closes.
+        // makes the rows below it move up.
         if (folding && FoldMapLineHidden(&state->folds, row)) {
-            if (row < state->rowBoxes.len) {
-                state->rowBoxes[row] = Bounds{};
-            }
             continue;
         }
         // The spans and matches are in document order and the walk carries on
         // where the last row left off, so a range that does not start at the
         // top has to skip what came before it.
         if (row == firstRow) {
-            while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
+            while (spanAt < nDocSpans && docSpans[spanAt].hi <= lineStart) {
                 spanAt++;
             }
             // layout_search_matches: partition_point over the sorted,
@@ -1405,7 +1879,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             int lo = matchAt, hi = style.nMatches;
             while (lo < hi) {
                 int mid = lo + (hi - lo) / 2;
-                if (style.matches[mid].end <= start) {
+                if (style.matches[mid].end <= lineStart) {
                     lo = mid + 1;
                 } else {
                     hi = mid;
@@ -1413,311 +1887,316 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             matchAt = lo;
         }
-        bool tokenLine = LineHasVisibleTokens(state, start, start + len(line));
-        El* el = nullptr;
-        RangeDecorationRow* paintedRow = nullptr;
-        if (painted && painted->geometry.rows) {
-            paintedRow = &painted->geometry.rows[painted->geometry.nRows++];
-            paintedRow->start = start;
-            paintedRow->len = len(line);
-        }
-        if (tokenLine) {
-            // Overlay chips instead of the raw token text, matching
-            // Input::New. A logical line is a flex row. Each text character
-            // can move to the next flex line; each chip remains atomic.
-            el = Div(a)->FlexRow()->ItemsCenter();
-            if (wrap) {
-                el->FlexWrap()->W(kFill);
-                if (lineNumbers) {
-                    el->Flex1();
-                }
+        const int* wrapStarts = nullptr;
+        float wrapIndent = 0;
+        int nVis = InputWrapRows(state, row, &wrapStarts, &wrapIndent);
+        // A wrapped line's rows stack in a column of their own, each a whole
+        // line height, the ones after the first shifted by the wrap indent.
+        El* lineEl = nVis > 1 ? Div(a)->FlexCol()->W(kFill) : nullptr;
+        El* single = nullptr;
+        for (int vis = 0; vis < nVis; vis++) {
+            int segLo = wrapStarts[vis];
+            int segHi = vis + 1 < nVis ? wrapStarts[vis + 1] : len(lineText);
+            int start = lineStart + segLo;
+            Str line = Str(lineText.s + segLo, segHi - segLo);
+            bool firstSeg = vis == 0;
+            bool lastSeg = vis == nVis - 1;
+            bool tokenLine =
+                LineHasVisibleTokens(state, start, start + len(line));
+            El* el = nullptr;
+            RangeDecorationRow* paintedRow = nullptr;
+            if (painted && painted->geometry.rows &&
+                painted->geometry.nRows < visualRows) {
+                paintedRow = &painted->geometry.rows[painted->geometry.nRows++];
+                paintedRow->start = start;
+                paintedRow->len = len(line);
+                paintedRow->lineStart = lineStart;
+                paintedRow->lineLen = len(lineText);
+                paintedRow->first = firstSeg;
+                paintedRow->last = lastSeg;
+            }
+            if (tokenLine) {
+                // Overlay chips instead of the raw token text, matching
+                // Input::New: the row's text runs and its atomic chips, one
+                // visual row of what the wrap map broke the line into.
+                el = Div(a)->FlexRow()->ItemsCenter()->H(lineH);
+                AppendTokenPieces(el, cx, state, style, font, lineMult, lineH,
+                                  line, start, sel, caret, cursor);
             } else {
-                el->H(lineH);
+                el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
+                    style.foreground);
+                InputFace(el, style);
             }
-            AppendTokenPieces(el, cx, state, style, font, lineMult, lineH, line,
-                              start, sel, caret, cursor, wrap);
-        } else {
-            el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
-                style.foreground);
-            InputFace(el, style);
-        }
-        if (paintedRow) {
-            paintedRow->text = el;
-        }
-        // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this —
-        // minified output, generated code — draws in the default style
-        // rather than styled, which is Rust's guard against laying spans
-        // over an enormous run. The cursor is not advanced here; the next
-        // row's catch-up loop above skips whatever this one left behind.
-        const int kMaxHighlightLineLen = 10000;
-        // Highlight, diagnostics, wrap and selection belong to the shaped
-        // TextEl. A token line is already split into runs and chips.
-        if (!tokenLine && nDocSpans > 0 && len(line) <= kMaxHighlightLineLen) {
-            while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
-                spanAt++;
+            if (paintedRow) {
+                paintedRow->text = el;
             }
-            int first = spanAt;
-            int count = 0;
-            while (first + count < nDocSpans &&
-                   docSpans[first + count].lo < start + len(line)) {
-                count++;
-            }
-            if (count > 0) {
-                auto* rowSpans =
-                    (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * count);
-                int nRowSpans = 0;
-                for (int k = 0; k < count; k++) {
-                    const TextSpan& sp = docSpans[first + k];
-                    int lo = sp.lo - start;
-                    int hi = sp.hi - start;
-                    if (lo < 0) {
-                        lo = 0;
-                    }
-                    if (hi > len(line)) {
-                        hi = len(line);
-                    }
-                    if (hi <= lo) {
-                        continue;
-                    }
-                    rowSpans[nRowSpans] = sp;
-                    rowSpans[nRowSpans].lo = lo;
-                    rowSpans[nRowSpans].hi = hi;
-                    nRowSpans++;
+            // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this --
+            // minified output, generated code -- draws in the default style
+            // rather than styled, which is Rust's guard against laying spans
+            // over an enormous run. The cursor is not advanced here; the next
+            // row's catch-up loop above skips whatever this one left behind.
+            const int kMaxHighlightLineLen = 10000;
+            // Highlight, diagnostics and selection belong to the shaped
+            // TextEl. A token row is already split into runs and chips.
+            if (!tokenLine && nDocSpans > 0 &&
+                len(lineText) <= kMaxHighlightLineLen) {
+                while (spanAt < nDocSpans && docSpans[spanAt].hi <= start) {
+                    spanAt++;
                 }
-                if (nRowSpans > 0) {
-                    el->Spans(rowSpans, nRowSpans);
+                int first = spanAt;
+                int count = 0;
+                while (first + count < nDocSpans &&
+                       docSpans[first + count].lo < start + len(line)) {
+                    count++;
+                }
+                if (count > 0) {
+                    auto* rowSpans =
+                        (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * count);
+                    int nRowSpans = 0;
+                    for (int k = 0; k < count; k++) {
+                        const TextSpan& sp = docSpans[first + k];
+                        int lo = sp.lo - start;
+                        int hi = sp.hi - start;
+                        if (lo < 0) {
+                            lo = 0;
+                        }
+                        if (hi > len(line)) {
+                            hi = len(line);
+                        }
+                        if (hi <= lo) {
+                            continue;
+                        }
+                        rowSpans[nRowSpans] = sp;
+                        rowSpans[nRowSpans].lo = lo;
+                        rowSpans[nRowSpans].hi = hi;
+                        nRowSpans++;
+                    }
+                    if (nRowSpans > 0) {
+                        el->Spans(rowSpans, nRowSpans);
+                    }
                 }
             }
-        }
-        // element.rs composes the diagnostic styles over the rest: a wavy
-        // underline in the severity's colour, which is a run of its own
-        // rather than a recolouring of the glyphs.
-        if (!tokenLine && state->diagnostics.len > 0) {
-            int nDiag = 0;
-            for (int d = 0; d < state->diagnostics.len; d++) {
-                const Diagnostic& dg = state->diagnostics[d];
-                if (dg.range.end <= start ||
-                    dg.range.start >= start + len(line)) {
-                    continue;
-                }
-                nDiag++;
-            }
-            if (nDiag > 0) {
-                auto* runs = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nDiag);
-                int n = 0;
-                for (int d = 0; d < state->diagnostics.len && runs; d++) {
+            // element.rs composes the diagnostic styles over the rest: a wavy
+            // underline in the severity's colour, which is a run of its own
+            // rather than a recolouring of the glyphs.
+            if (!tokenLine && state->diagnostics.len > 0) {
+                int nDiag = 0;
+                for (int d = 0; d < state->diagnostics.len; d++) {
                     const Diagnostic& dg = state->diagnostics[d];
-                    int lo = dg.range.start - start;
-                    int hi = dg.range.end - start;
-                    if (lo < 0) {
-                        lo = 0;
-                    }
-                    if (hi > len(line)) {
-                        hi = len(line);
-                    }
-                    if (hi <= lo) {
+                    if (dg.range.end <= start ||
+                        dg.range.start >= start + len(line)) {
                         continue;
                     }
-                    Rgba c = style.diagnostics.info;
-                    if (dg.severity == DiagnosticSeverity::Error) {
-                        c = style.diagnostics.error;
-                    } else if (dg.severity == DiagnosticSeverity::Warning) {
-                        c = style.diagnostics.warning;
-                    } else if (dg.severity == DiagnosticSeverity::Hint) {
-                        c = style.diagnostics.hint;
-                    }
-                    if (c.a == 0) {
-                        continue;
-                    }
-                    runs[n].lo = lo;
-                    runs[n].hi = hi;
-                    runs[n].color = c;
-                    runs[n].bg = Rgba{0, 0, 0, 0};
-                    runs[n].underline = true;
-                    runs[n].wavy = true;
-                    n++;
+                    nDiag++;
                 }
-                if (n > 0) {
-                    el->Underlines(runs, n);
+                if (nDiag > 0) {
+                    auto* runs =
+                        (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nDiag);
+                    int n = 0;
+                    for (int d = 0; d < state->diagnostics.len && runs; d++) {
+                        const Diagnostic& dg = state->diagnostics[d];
+                        int lo = dg.range.start - start;
+                        int hi = dg.range.end - start;
+                        if (lo < 0) {
+                            lo = 0;
+                        }
+                        if (hi > len(line)) {
+                            hi = len(line);
+                        }
+                        if (hi <= lo) {
+                            continue;
+                        }
+                        Rgba c = style.diagnostics.info;
+                        if (dg.severity == DiagnosticSeverity::Error) {
+                            c = style.diagnostics.error;
+                        } else if (dg.severity == DiagnosticSeverity::Warning) {
+                            c = style.diagnostics.warning;
+                        } else if (dg.severity == DiagnosticSeverity::Hint) {
+                            c = style.diagnostics.hint;
+                        }
+                        if (c.a == 0) {
+                            continue;
+                        }
+                        runs[n].lo = lo;
+                        runs[n].hi = hi;
+                        runs[n].color = c;
+                        runs[n].bg = Rgba{0, 0, 0, 0};
+                        runs[n].underline = true;
+                        runs[n].wavy = true;
+                        n++;
+                    }
+                    if (n > 0) {
+                        el->Underlines(runs, n);
+                    }
                 }
             }
-        }
-        // hover_definition_style: the symbol a secondary-hover found is
-        // underlined in the link colour, one hairline and not a wavy one.
-        // Rust pushes it as another highlight style over the row; here it is
-        // one more underline run, which is the same list the diagnostics use.
-        if (!tokenLine && state->hoverDef.locations.len > 0 &&
-            style.linkText.a != 0) {
-            Selection sym = state->hoverDef.symbolRange;
-            int lo = sym.start - start;
-            int hi = sym.end - start;
+            // hover_definition_style: the symbol a secondary-hover found is
+            // underlined in the link colour, one hairline and not a wavy one.
+            // Rust pushes it as another highlight style over the row; here it
+            // is one more underline run, which is the same list the
+            // diagnostics use.
+            if (!tokenLine && state->hoverDef.locations.len > 0 &&
+                style.linkText.a != 0) {
+                Selection sym = state->hoverDef.symbolRange;
+                int lo = sym.start - start;
+                int hi = sym.end - start;
+                if (lo < 0) {
+                    lo = 0;
+                }
+                if (hi > len(line)) {
+                    hi = len(line);
+                }
+                if (hi > lo) {
+                    auto* run = (TextSpan*)Alloc(a, (int)sizeof(TextSpan));
+                    if (run) {
+                        run->lo = lo;
+                        run->hi = hi;
+                        run->color = style.linkText;
+                        run->bg = Rgba{0, 0, 0, 0};
+                        run->underline = true;
+                        run->wavy = false;
+                        el->Underlines(run, 1);
+                    }
+                    // Where it landed, for the hand cursor: measured on the
+                    // row the symbol starts in.
+                    if (sym.start >= start || firstSeg) {
+                        el->RangeOut(lo, hi, &state->hoverDef.bounds);
+                    }
+                }
+            }
+            // input/popovers::Popover::trigger_bounds: use the exact shaped
+            // range, not the pointer that happened to ask for it, on the row
+            // it starts in. Diagnostic and hover popovers are mutually
+            // exclusive, as they are in the source.
+            Selection popoverRange = state->hoverRange;
+            if (state->hoverDiagnostic >= 0 &&
+                state->hoverDiagnostic < state->diagnostics.len) {
+                popoverRange = state->diagnostics[state->hoverDiagnostic].range;
+            }
+            int popoverLo = popoverRange.start - start;
+            int popoverHi = popoverRange.end - start;
+            bool popoverHere = popoverRange.start >= start || firstSeg;
+            if (popoverLo < 0) popoverLo = 0;
+            if (popoverHi > len(line)) popoverHi = len(line);
+            if (!tokenLine && popoverHere && popoverHi > popoverLo) {
+                if (state->popoverTriggerRange.start != popoverRange.start ||
+                    state->popoverTriggerRange.end != popoverRange.end) {
+                    state->popoverTriggerRange = popoverRange;
+                    state->popoverTriggerBounds = {};
+                    WindowRequestAnimationFrame(cx->win);
+                }
+                el->RangeOut(popoverLo, popoverHi,
+                             &state->popoverTriggerBounds);
+            }
+            if (!tokenLine) {
+                RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
+            }
+            // The first line's first row is the one the state measures
+            // against; every row below it is a whole lastLineH further down.
+            if (row == 0 && firstSeg) {
+                el->BindInput(state);
+            }
+            int lo = sel.start - start;
+            int hi = sel.end - start;
             if (lo < 0) {
                 lo = 0;
             }
             if (hi > len(line)) {
                 hi = len(line);
             }
-            if (hi > lo) {
-                auto* run = (TextSpan*)Alloc(a, (int)sizeof(TextSpan));
-                if (run) {
-                    run->lo = lo;
-                    run->hi = hi;
-                    run->color = style.linkText;
-                    run->bg = Rgba{0, 0, 0, 0};
-                    run->underline = true;
-                    run->wavy = false;
-                    el->Underlines(run, 1);
+            if (!tokenLine && !sel.IsEmpty() && lo < hi) {
+                el->SelRange(lo, hi, style.selection);
+            }
+            // The caret on a soft-wrap boundary stands at the end of the row
+            // the boundary closes with the line-end affinity, and at the
+            // start of the row it opens without.
+            bool caretHere = cursor >= start && cursor <= start + len(line);
+            if (caretHere && cursor == start + len(line) && !lastSeg &&
+                !state->cursorLineEndAffinity) {
+                caretHere = false;
+            }
+            if (caretHere && cursor == start && !firstSeg &&
+                state->cursorLineEndAffinity) {
+                caretHere = false;
+            }
+            if (!tokenLine && caretFolded) {
+                if (row == caretRow && firstSeg) {
+                    el->Caret(0, style.caret);
                 }
-                // Where it landed, for the hand cursor. The row's own box is
-                // reported after layout, so the x pair is measured against
-                // the run and the y comes off the row.
-                el->RangeOut(lo, hi, &state->hoverDef.bounds);
+            } else if (!tokenLine && caret && caretHere) {
+                el->Caret(cursor - start, style.caret, 2,
+                          state->cursorLineEndAffinity);
+                // Where it lands is the anchor a completion menu hangs off.
+                el->CaretOut(&state->caretWinX, &state->caretWinY);
+            } else if (!tokenLine && !caretFolded && caretHere) {
+                // cursor_bounds is laid out whether or not the caret shows --
+                // unfocused, or the dark half of the blink -- so
+                // cursor_layout() follows the selection all the same.
+                // Measured, not drawn.
+                el->Caret(cursor - start, Rgba{0, 0, 0, 0}, 2,
+                          state->cursorLineEndAffinity);
+                el->CaretOut(&state->caretWinX, &state->caretWinY);
+            }
+            if (!tokenLine && state->extraCursors.len > 0) {
+                RowExtraCursors(a, el, state, style, start, len(line), caret,
+                                lastSeg);
+            }
+            // indent_guides: a hairline every tab stop of the line's leading
+            // whitespace (a tab counts as a whole stop), drawn by the line's
+            // first run behind its text at the width its font gives
+            // `indentWidth` spaces -- Rust's measure_indent_width, not a
+            // guessed column.
+            if (indentGuides && firstSeg) {
+                int indent = lastIndent;
+                if (len(lineText) > 0) {
+                    indent = TabSize{style.indentWidth}.IndentCount(lineText);
+                    lastIndent = indent;
+                }
+                if (!tokenLine) {
+                    el->IndentGuides(style.indentGuide, indent,
+                                     style.indentWidth);
+                }
+            }
+            // show_whitespaces: the row's own run paints a mark over each
+            // space and tab, measured against the glyphs it shaped (the same
+            // x_for_index Rust uses). editor_invisible is not in this tree's
+            // highlight theme; Rust falls back to muted_foreground without it.
+            if (!tokenLine && state->showWhitespaces) {
+                el->Whitespaces(style.mutedForeground);
+            }
+            if (!lineEl) {
+                single = el;
+            } else if (vis > 0 && wrapIndent > 0) {
+                lineEl->Child(
+                    Div(a)->FlexRow()->H(lineH)->PadL(wrapIndent)->Child(el));
+            } else {
+                lineEl->Child(el);
             }
         }
-        // input/popovers::Popover::trigger_bounds: use the exact shaped range,
-        // not the pointer that happened to ask for it. Diagnostic and hover
-        // popovers are mutually exclusive, as they are in the source.
-        Selection popoverRange = state->hoverRange;
-        if (state->hoverDiagnostic >= 0 &&
-            state->hoverDiagnostic < state->diagnostics.len) {
-            popoverRange = state->diagnostics[state->hoverDiagnostic].range;
+        El* el = lineEl ? lineEl : single;
+        if (!el) {
+            continue;
         }
-        int popoverLo = popoverRange.start - start;
-        int popoverHi = popoverRange.end - start;
-        if (popoverLo < 0) popoverLo = 0;
-        if (popoverHi > len(line)) popoverHi = len(line);
-        if (!tokenLine && popoverHi > popoverLo) {
-            if (state->popoverTriggerRange.start != popoverRange.start ||
-                state->popoverTriggerRange.end != popoverRange.end) {
-                state->popoverTriggerRange = popoverRange;
-                state->popoverTriggerBounds = {};
-                WindowRequestAnimationFrame(cx->win);
-            }
-            el->RangeOut(popoverLo, popoverHi, &state->popoverTriggerBounds);
-        }
-        if (!tokenLine) {
-            RowMatchWashes(a, el, style, state, start, len(line), &matchAt);
-        }
-        if (!tokenLine && state->softWrap) {
-            // flex_1: the run is bounded by what the gutter leaves, so it
-            // breaks at the text column's edge and its second line starts
-            // under its first rather than under the line number.
-            el->Wrap();
-            if (lineNumbers) {
-                el->Flex1();
-            }
-        }
-        // The first row is the one the state measures against; every row below
-        // it is a whole lastLineH further down.
-        if (row == 0) {
-            el->BindInput(state);
-        }
-        int lo = sel.start - start;
-        int hi = sel.end - start;
-        if (lo < 0) {
-            lo = 0;
-        }
-        if (hi > len(line)) {
-            hi = len(line);
-        }
-        if (!tokenLine && !sel.IsEmpty() && lo < hi) {
-            el->SelRange(lo, hi, style.selection);
-        }
-        if (!tokenLine && caretFolded) {
-            if (row == caretRow) {
-                el->Caret(0, style.caret);
-            }
-        } else if (!tokenLine && caret && cursor >= start &&
-                   cursor <= start + len(line)) {
-            el->Caret(cursor - start, style.caret, 2,
-                      state->cursorLineEndAffinity);
-            // Where it lands is the anchor a completion menu hangs off.
-            el->CaretOut(&state->caretWinX, &state->caretWinY);
-        } else if (!tokenLine && !caretFolded && cursor >= start &&
-                   cursor <= start + len(line)) {
-            // cursor_bounds is laid out whether or not the caret shows —
-            // unfocused, or the dark half of the blink — so cursor_layout()
-            // follows the selection all the same. Measured, not drawn.
-            el->Caret(cursor - start, Rgba{0, 0, 0, 0}, 2,
-                      state->cursorLineEndAffinity);
-            el->CaretOut(&state->caretWinX, &state->caretWinY);
-        }
-        if (!tokenLine && state->extraCursors.len > 0) {
-            RowExtraCursors(a, el, state, style, start, len(line), caret);
-        }
-        // indent_guides: a hairline every tab stop of the row's leading
-        // whitespace (a tab counts as a whole stop), drawn by the row's own
-        // run behind its text at the width its font gives `indentWidth`
-        // spaces — Rust's measure_indent_width, not a guessed column.
-        if (indentGuides) {
-            int indent = lastIndent;
-            if (len(line) > 0) {
-                indent = TabSize{style.indentWidth}.IndentCount(line);
-                lastIndent = indent;
-            }
-            if (!tokenLine) {
-                el->IndentGuides(style.indentGuide, indent, style.indentWidth);
-            }
-        }
-        // show_whitespaces: the row's own run paints a mark over each space
-        // and tab, measured against the glyphs it shaped (the same
-        // x_for_index Rust uses), so a mark stays on its character however
-        // wide the glyphs before it are and on whichever wrapped line the
-        // character went to. editor_invisible is not in this tree's
-        // highlight theme; Rust falls back to muted_foreground without it.
-        if (!tokenLine && state->showWhitespaces) {
-            el->Whitespaces(style.mutedForeground);
-        }
-        // The row's slice of the range decorations paints from the row's
-        // own box, so a bare run gets a box of its own to paint from.
-        bool rangeRow = rangePaint && rangePaint->rows && !tokenLine;
         if (!lineNumbers) {
-            El* only = el;
-            if (rangeRow) {
-                only = Div(a)->W(kFill);
-                only->Child(el);
-                if (!wrap) {
-                    only->H(lineH);
-                }
-            }
-            if (rangeRow) {
-                AttachRangeDecorationRow(a, rangePaint, only, el, start,
-                                         len(line));
-            }
-            if (wrap && row < state->rowBoxes.len) {
-                only->BoundsOut(&state->rowBoxes[row]);
-            }
-            col->Child(only);
+            col->Child(el);
             continue;
         }
         // LINE_NUMBER_RIGHT_MARGIN: what separates the numbers from the text.
-        El* band = Div(a)->FlexRow()->W(kFill)->Gap(kLineNumberRightMargin);
-        if (wrap) {
-            // A wrapped row is as tall as its own text, and its line number
-            // sits at the top of it rather than in the middle.
-            band->MinH(lineH)->ItemsStart();
-            if (row < state->rowBoxes.len) {
-                band->BoundsOut(&state->rowBoxes[row]);
-            }
-        } else {
-            band->H(lineH);
+        // A wrapped line's band is as tall as its rows, and its number sits
+        // on the first of them.
+        El* band = Div(a)
+                       ->FlexRow()
+                       ->W(kFill)
+                       ->Gap(kLineNumberRightMargin)
+                       ->H((float)nVis * lineH)
+                       ->ItemsStart();
+        // active_line: the wash under the line the caret is on, gutter and
+        // all, and the editor's padding left of the gutter. The column
+        // paints it under every row, before the decorations.
+        if (row == caretRow && style.activeLine.a != 0 && underlay) {
+            underlay->activeLine = band;
         }
-        // active_line: the wash under the row the caret is on, gutter and all,
-        // and the editor's padding left of the gutter.
-        if (row == caretRow && style.activeLine.a != 0) {
-            if (style.activeLineBleedL > 0) {
-                band->Child(Div(a)
-                                ->Absolute()
-                                ->Left(-style.activeLineBleedL)
-                                ->Right(0)
-                                ->Top(0)
-                                ->Bottom(0)
-                                ->Bg(style.activeLine));
-            } else {
-                band->Bg(style.activeLine);
-            }
-        }
-        // The caret's row is numbered in the foreground, the rest muted.
+        // The caret's line is numbered in the foreground, the rest muted.
         El* num =
             TextEl(a, StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
                 ->Font(font)
@@ -1730,15 +2209,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // The line-number column and the fold icons are one hit strip,
             // the way Rust's line_number_hitbox covers both. PathClick on
             // every row so entering the gutter from the text changes hover
-            // id and rebuilds — otherwise the editor already owns hover and
+            // id and rebuilds -- otherwise the editor already owns hover and
             // a move over the numbers would not show the chevrons.
             // The fold hitbox starts where the numbers end: Rust widens
             // the column by FOLD_ICON_HITBOX_WIDTH and puts the icon in it.
-            El* gutter = Div(a)->FlexRow()->ItemsCenter()->PathClick(
+            El* gutter = Div(a)->FlexRow()->ItemsCenter()->H(lineH)->PathClick(
                 StrDup(a, fmt("gutter-%d", row)));
-            if (!wrap) {
-                gutter->H(lineH);
-            }
             gutter->Child(numCell);
             gutter->Child(FoldChevron(a, state, style, row, caretRow, lineH,
                                       gutterHover));
@@ -1752,11 +2228,16 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             band->Child(numCell);
         }
-        band->Child(el);
-        if (rangeRow) {
-            AttachRangeDecorationRow(a, rangePaint, band, el, start, len(line));
+        if (wrap) {
+            // flex_1: the text column is what the gutter leaves, the width
+            // the rows were wrapped to.
+            el->Flex1();
         }
+        band->Child(el);
         col->Child(band);
+    }
+    if (rangePaint && painted) {
+        rangePaint->nRows = painted->geometry.nRows;
     }
     if (padBottom > 0) {
         col->Child(Div(a)->W(kFill)->Shrink0()->H(padBottom));
@@ -2528,49 +3009,23 @@ int InputNextBoundary(const InputState* s, int offset) {
     return InputCursorBoundary(s, offset + 1, Bias::Right);
 }
 
-// The visual row the caret is on, as a range of the logical line holding it.
-// Rust reads it straight off `display_map.line(row).wrapped_lines[wrap_point
-// .local_row]`; the wrap here belongs to the shaped run rather than to a map
-// beside it, so the row is found by measuring where the caret landed and
-// asking the run what sits at either end of the row it landed on. False when
-// there is nothing laid out to measure against, which is what leaves Home and
-// End on the logical line.
-static bool WrappedRowOfCaret(const InputState* s, Window* win, Str line,
+// The visual row the caret is on, as a range of the logical line holding it:
+// `display_map.line(row).wrapped_lines[wrap_point.local_row]`, the wrap
+// point taken with the caret's affinity. False when the field does not wrap
+// as a code editor, which is what leaves Home and End on the logical line.
+static bool WrappedRowOfCaret(const InputState* s, Window* win, int line,
                               int rel, int* outLo, int* outHi) {
     // `soft_wrap && is_code_editor()`: a plain textarea keeps the logical
     // line even when it wraps, which is what Rust gates this on.
-    if (!win || !s->softWrap || s->kind != InputKind::Editor ||
-        len(line) == 0) {
+    if (s->kind != InputKind::Editor ||
+        !WrapMapOf(s, win ? &win->paint : nullptr)) {
         return false;
     }
-    PaintCtx* ctx = &win->paint;
-    float maxW = s->lastBounds.w;
-    float font = s->lastFont;
-    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    if (maxW <= 0 || font <= 0 || lineH <= 0) {
-        return false;
-    }
-    float lineMult = lineH / font;
-    float cx = 0, cy = 0, ch = lineH;
-    if (!TextPointAt(ctx, line, font, maxW, true, rel, &cx, &cy, &ch,
-                     s->lastFontWord, lineMult, s->cursorLineEndAffinity)) {
-        return false;
-    }
-    // The middle of the row rather than its top edge, for the same reason the
-    // vertical walk aims there: a hit test exactly on the boundary between
-    // two rows could answer either.
-    float mid = cy + ch * 0.5f;
-    int lo = TextIndexAt(ctx, line, font, maxW, true, 0, mid, s->lastFontWord,
-                         lineMult);
-    // Past the right edge of the box, which lands on the last character the
-    // row holds however far the run reaches.
-    int hi = TextIndexAt(ctx, line, font, maxW, true, maxW + font, mid,
-                         s->lastFontWord, lineMult);
-    if (lo > rel || hi < rel) {
-        return false;
-    }
-    *outLo = lo;
-    *outHi = hi;
+    const int* starts = nullptr;
+    int nRows = InputWrapRows(s, line, &starts, nullptr);
+    int k = WrapRowOfOffset(starts, nRows, rel, s->cursorLineEndAffinity);
+    *outLo = starts[k];
+    *outHi = k + 1 < nRows ? starts[k + 1] : len(InputSliceLine(s, line));
     return true;
 }
 
@@ -2585,8 +3040,7 @@ int InputStartOfLine(const InputState* s, Window* win) {
     // The first press goes to the visual row's start; a second one, with the
     // caret already there, carries on to the logical line's.
     int lo = 0, hi = 0;
-    if (WrappedRowOfCaret(s, win, RopeSliceLine(t, row), cursor - start, &lo,
-                          &hi) &&
+    if (WrappedRowOfCaret(s, win, row, cursor - start, &lo, &hi) &&
         cursor != start + lo) {
         return start + lo;
     }
@@ -2602,8 +3056,7 @@ int InputEndOfLine(const InputState* s, Window* win) {
     int row = RopeOffsetToPoint(t, cursor).row;
     int start = RopeLineStartOffset(t, row);
     int lo = 0, hi = 0;
-    if (WrappedRowOfCaret(s, win, RopeSliceLine(t, row), cursor - start, &lo,
-                          &hi) &&
+    if (WrappedRowOfCaret(s, win, row, cursor - start, &lo, &hi) &&
         cursor != start + hi) {
         return start + hi;
     }
@@ -2966,20 +3419,15 @@ static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
     int row = RopeOffsetToPoint(InputValue(s), offset).row;
     row = FoldMapNearestVisibleLine(&s->folds, row);
     float y = DisplayRowDocY(s, row, lineH);
-    if (win && s->softWrap && s->lastBounds.w > 0 && s->lastFont > 0) {
-        Str line = RopeSliceLine(InputValue(s), row);
+    if (WrapMapOf(s, win ? &win->paint : nullptr)) {
+        // The display row the offset is on: line_and_position_for_offset
+        // answers whole rows.
         int lineStart = RopeLineStartOffset(InputValue(s), row);
-        float x = 0;
-        float localY = 0;
-        float h = lineH;
-        TextPointAt(&win->paint, line, s->lastFont, s->lastBounds.w, true,
-                    std::max(0, offset - lineStart), &x, &localY, &h,
-                    s->lastFontWord, lineH / s->lastFont, false);
-        // The display row the offset is on, not where its glyph box sits in
-        // that row: line_and_position_for_offset answers whole rows, and
-        // the platform's range rects put a run's glyphs a pixel or so below
-        // its row's top, which was enough to cost the padding a row.
-        y += floorf(localY / lineH + 0.5f) * lineH;
+        const int* starts = nullptr;
+        int nRows = InputWrapRows(s, row, &starts, nullptr);
+        int k = WrapRowOfOffset(starts, nRows, std::max(0, offset - lineStart),
+                                false);
+        y += (float)k * lineH;
     }
     InputScrollToCaretWithPadding(s, -1, y, InputMoveDir::None,
                                   InputScrollPadding::SurroundingLines);
@@ -3272,35 +3720,9 @@ void InputAddCursorAt(InputState* s, App* app, Window* win, int offset) {
 
 // The soft-wrapped rows of one line as byte offsets into it — the
 // `wrapped_lines` of text_wrapper.rs, where row k is [starts[k], starts[k+1])
-// and the last row runs to the end of the line. Read back off the shaped run:
-// the left edge of each visual row hit-tests to the row's first byte. Returns
-// the row count, 0 when there was nothing to measure against.
-static int WrappedRowStarts(const InputState* s, PaintCtx* ctx, Str line,
-                            Arena* a, int** outStarts) {
-    float maxW = s->lastBounds.w;
-    float font = s->lastFont;
-    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    float lineMult = lineH / font;
-    float endX = 0, endY = 0, endH = 0;
-    if (!TextPointAt(ctx, line, font, maxW, true, len(line), &endX, &endY,
-                     &endH, s->lastFontWord, lineMult, true)) {
-        return 0;
-    }
-    float rowH = endH > 0 ? endH : lineH;
-    int rows = (int)(endY / rowH + 0.5f) + 1;
-    if (rows < 1) {
-        rows = 1;
-    }
-    int* starts = (int*)Alloc(a, rows * (int)sizeof(int));
-    starts[0] = 0;
-    for (int k = 1; k < rows; k++) {
-        int at =
-            TextIndexAt(ctx, line, font, maxW, true, 0,
-                        ((float)k + 0.5f) * rowH, s->lastFontWord, lineMult);
-        starts[k] = at > starts[k - 1] ? at : starts[k - 1];
-    }
-    *outStarts = starts;
-    return rows;
+// and the last row runs to the end of the line.
+static int WrappedRowStarts(const InputState* s, int line, const int** out) {
+    return InputWrapRows(s, line, out, nullptr);
 }
 
 // offset_to_wrap_display_point, without affinity: the row of the line the
@@ -3312,34 +3734,22 @@ struct WrapPoint {
     int column = 0;
 };
 
-static bool WrapPointAt(const InputState* s, PaintCtx* ctx, Str t, int offset,
-                        Arena* a, WrapPoint* out) {
+static void WrapPointAt(const InputState* s, Str t, int offset,
+                        WrapPoint* out) {
     RopePoint p = RopeOffsetToPoint(t, offset);
-    Str line = RopeSliceLine(t, p.row);
-    int* starts = nullptr;
-    int rows = WrappedRowStarts(s, ctx, line, a, &starts);
-    if (rows == 0) {
-        return false;
-    }
+    const int* starts = nullptr;
+    int rows = WrappedRowStarts(s, p.row, &starts);
     int local = offset - RopeLineStartOffset(t, p.row);
-    int k = rows - 1;
-    while (k > 0 && starts[k] > local) {
-        k--;
-    }
+    int k = WrapRowOfOffset(starts, rows, local, false);
     out->line = p.row;
     out->row = k;
     out->column = local - starts[k];
-    return true;
 }
 
 // The paint context a display-row walk measures against, or null when the
-// field is not soft-wrapping or has not been laid out yet.
+// field is not soft-wrapping.
 static PaintCtx* DisplayCtx(const InputState* s, Window* win) {
-    if (!win || !s->softWrap) {
-        return nullptr;
-    }
-    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    if (s->lastBounds.w <= 0 || s->lastFont <= 0 || lineH <= 0) {
+    if (!win || !WrapMapOf(s, &win->paint)) {
         return nullptr;
     }
     return &win->paint;
@@ -3359,10 +3769,9 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
         end = swap;
     }
     WrapPoint ps, pe;
-    if (!WrapPointAt(s, ctx, t, start.offset, a, &ps) ||
-        !WrapPointAt(s, ctx, t, end.offset, a, &pe)) {
-        return false;
-    }
+    (void)ctx;
+    WrapPointAt(s, t, start.offset, &ps);
+    WrapPointAt(s, t, end.offset, &pe);
     ps.column += start.columnsPastLineEnd;
     pe.column += end.columnsPastLineEnd;
     int col0 = ps.column <= pe.column ? ps.column : pe.column;
@@ -3370,7 +3779,7 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
     bool folding = LayoutModeIsFolding(s->mode);
     // The rows of every line spanned, measured once.
     int nLines = pe.line - ps.line + 1;
-    auto* lineStarts = (int**)Alloc(a, nLines * (int)sizeof(int*));
+    auto* lineStarts = (const int**)Alloc(a, nLines * (int)sizeof(int*));
     int* lineRows = (int*)Alloc(a, nLines * (int)sizeof(int));
     int cap = 0;
     for (int i = 0; i < nLines; i++) {
@@ -3379,8 +3788,7 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
         if (folding && FoldMapLineHidden(&s->folds, ps.line + i)) {
             continue;
         }
-        Str text = RopeSliceLine(t, ps.line + i);
-        lineRows[i] = WrappedRowStarts(s, ctx, text, a, &lineStarts[i]);
+        lineRows[i] = WrappedRowStarts(s, ps.line + i, &lineStarts[i]);
         if (lineRows[i] == 0) {
             return false;
         }
@@ -3396,7 +3804,7 @@ static bool ColumnarRowsDisplay(const InputState* s, PaintCtx* ctx, Str t,
         int line = ps.line + i;
         Str text = RopeSliceLine(t, line);
         int lineStart = RopeLineStartOffset(t, line);
-        int* starts = lineStarts[i];
+        const int* starts = lineStarts[i];
         int kFrom = line == ps.line ? ps.row : 0;
         int kTo = line == pe.line ? pe.row : rows - 1;
         if (kTo > rows - 1) {
@@ -5803,10 +6211,8 @@ void InputTypeChar(InputState* s, App* app, Window* win, uint32_t ch) {
 
 // ─── movement ─────────────────────────────────────────────────────────────
 
-// move_vertical, on logical lines. Rust walks the display map so a soft-wrapped
-// row counts as its own line; without one, a wrapped line moves as a whole.
-// How tall a logical line was laid out. The rows reported their boxes last
-// frame; without them every line is one row high.
+// How tall a logical line is: one line height per visual row the wrap map
+// gives it.
 static float DisplayLineH(const InputState* s, int row, float lineH) {
     // A folded-away line is worth no height at all, which is what makes the
     // walk below step straight over it: the row moves on and the y it is
@@ -5815,18 +6221,24 @@ static float DisplayLineH(const InputState* s, int row, float lineH) {
     if (FoldMapLineHidden(&s->folds, row)) {
         return 0;
     }
-    if (row >= 0 && row < s->rowBoxes.len && s->rowBoxes[row].h > 0) {
-        return s->rowBoxes[row].h;
-    }
-    return lineH;
+    return (float)InputWrapRows(s, row, nullptr, nullptr) * lineH;
 }
 
-// Document y of `row`: sum of laid-out heights above it. Window y on
-// rowBoxes is last-painted and goes stale the moment that row leaves the
-// viewport, so nothing that scrolls may subtract two of those.
+// Document y of `row`: the visual rows above it, less the ones a fold hides.
 static float DisplayRowDocY(const InputState* s, int row, float lineH) {
     if (!s || row <= 0) {
         return 0;
+    }
+    const InputWrapMap* m = WrapMapOf(s, nullptr);
+    bool folded = len(s->folds.folded) > 0;
+    if (!folded) {
+        if (!m) {
+            return (float)row * lineH;
+        }
+        if (row < len(m->lines)) {
+            return (float)m->lines[row].rowsAbove * lineH;
+        }
+        return (float)m->totalRows * lineH;
     }
     float y = 0;
     for (int i = 0; i < row; i++) {
@@ -5850,107 +6262,212 @@ struct VerticalTarget {
     bool noFurtherRow = false;
 };
 
-// Whether `offset` is the end of the visual row containing `relY`. The two
-// shaped points differ only at a soft-wrap boundary; everywhere else there
-// is no affinity to retain.
-static bool InputLineEndAffinityAt(PaintCtx* ctx, Str line, float font,
-                                   float maxW, int offset, float relY,
-                                   bool mono, float lineMult) {
-    if (!ctx || offset <= 0 || offset >= len(line)) {
-        return false;
+// One visual row of a line: its bytes [lo, hi), where its run starts from
+// the text column's left edge, and the buffer offset of the line, which is
+// what finds the inline tokens on it.
+struct WrapRowSpan {
+    int lo = 0;
+    int hi = 0;
+    float x = 0;
+    int lineStart = 0;
+};
+
+static WrapRowSpan WrapRowSpanOf(const int* starts, int nRows, float indent,
+                                 int lineLen, int k, int lineStart) {
+    WrapRowSpan r;
+    r.lo = starts[k];
+    r.hi = k + 1 < nRows ? starts[k + 1] : lineLen;
+    r.x = k > 0 ? indent : 0;
+    r.lineStart = lineStart;
+    return r;
+}
+
+static float WrapFontOf(const InputState* s) {
+    if (s->lastFont > 0) {
+        return s->lastFont;
     }
-    float endX = 0, endY = 0, endH = 0;
-    float startX = 0, startY = 0, startH = 0;
-    if (!TextPointAt(ctx, line, font, maxW, true, offset, &endX, &endY, &endH,
-                     mono, lineMult, true) ||
-        !TextPointAt(ctx, line, font, maxW, true, offset, &startX, &startY,
-                     &startH, mono, lineMult, false)) {
-        return false;
+    return s->wrap.fontSize > 0 ? s->wrap.fontSize : 14.f;
+}
+
+// The advance of a run of the row's text, as its own shaped run.
+static float WrapTextAdvance(PaintCtx* ctx, const InputState* s, Str text) {
+    float x = 0, y = 0, h = 0;
+    if (len(text) > 0 && ctx) {
+        TextPointAt(ctx, text, WrapFontOf(s), 0, false, len(text), &x, &y, &h,
+                    s->lastFontWord);
     }
-    float dy = endY - startY;
-    if (dy > -0.5f && dy < 0.5f) {
-        return false;
+    return x;
+}
+
+// The row's fragments, as Rust's display map lays them: the text runs
+// between inline tokens, and each token as its chip, `width` wide.
+struct WrapFragment {
+    int lo = 0; // into the line
+    int hi = 0;
+    bool chip = false;
+    float width = 0; // a chip's
+};
+
+static int WrapRowFragments(const InputState* s, Str line, WrapRowSpan r,
+                            WrapFragment* out, int cap) {
+    int n = 0;
+    int at = r.lo;
+    const Vec<InlineTokenSpan>* spans =
+        InputTokensVisible(s) ? InputTokens(s) : nullptr;
+    int nSpans = spans ? len(*spans) : 0;
+    const Vec<float>& widths = s->wrap.tokenWidths;
+    for (int i = 0; i < nSpans && n + 2 < cap; i++) {
+        const InlineTokenSpan& span = (*spans)[i];
+        int lo = span.start - r.lineStart;
+        int hi = span.end - r.lineStart;
+        if (hi <= r.lo || lo >= r.hi) {
+            continue;
+        }
+        if (lo > at) {
+            out[n++] = {at, lo, false, 0};
+        }
+        float w = len(widths) == nSpans ? widths[i] : 0;
+        out[n++] = {lo, hi, true, w};
+        at = hi;
     }
-    float endMid = endY + endH * 0.5f;
-    float startMid = startY + startH * 0.5f;
-    float toEnd = relY - endMid;
-    float toStart = relY - startMid;
-    if (toEnd < 0) toEnd = -toEnd;
-    if (toStart < 0) toStart = -toStart;
-    return toEnd <= toStart;
+    if (at < r.hi || n == 0) {
+        out[n++] = {at, r.hi, false, 0};
+    }
+    (void)line;
+    return n;
+}
+
+// x_for_index within the row, from the text column's left edge. An offset
+// inside a chip stands at the chip's left edge.
+static float WrapRowX(PaintCtx* ctx, const InputState* s, Str line,
+                      WrapRowSpan r, int local) {
+    WrapFragment frags[64];
+    int n = WrapRowFragments(s, line, r, frags, (int)dimof(frags));
+    float x = r.x;
+    for (int i = 0; i < n; i++) {
+        const WrapFragment& f = frags[i];
+        if (local <= f.lo) {
+            break;
+        }
+        if (f.chip) {
+            if (local < f.hi) {
+                break;
+            }
+            x += f.width;
+            continue;
+        }
+        int end = local < f.hi ? local : f.hi;
+        x += WrapTextAdvance(ctx, s, Str(line.s + f.lo, end - f.lo));
+        if (local < f.hi) {
+            break;
+        }
+    }
+    return x;
+}
+
+// closest_index_for_x within the row: a byte offset into the line. A press on
+// a chip lands before it on its left half and after it on its right half.
+static int WrapRowIndexAt(PaintCtx* ctx, const InputState* s, Str line,
+                          WrapRowSpan r, float x) {
+    if (x <= r.x || r.hi <= r.lo || !ctx) {
+        return r.lo;
+    }
+    WrapFragment frags[64];
+    int n = WrapRowFragments(s, line, r, frags, (int)dimof(frags));
+    float at = r.x;
+    float font = WrapFontOf(s);
+    for (int i = 0; i < n; i++) {
+        const WrapFragment& f = frags[i];
+        if (f.chip) {
+            if (x < at + f.width) {
+                return x < at + f.width * 0.5f ? f.lo : f.hi;
+            }
+            at += f.width;
+            continue;
+        }
+        Str text = Str(line.s + f.lo, f.hi - f.lo);
+        float w = WrapTextAdvance(ctx, s, text);
+        if (x < at + w || i == n - 1) {
+            return f.lo + TextIndexAt(ctx, text, font, 0, false, x - at, 0,
+                                      s->lastFontWord);
+        }
+        at += w;
+    }
+    return r.hi;
 }
 
 // display_map.rs: a vertical move walks *display* rows, so a wrapped line
-// takes as many presses to cross as it has visual rows. The caret's point
-// comes off the shaped run, the walk moves it a row at a time through the
-// lines around it, and the point maps back to an offset. False when there is
-// nothing laid out to measure against, which leaves the logical-line walk.
+// takes as many presses to cross as it has visual rows. The caret's row and x
+// come off the wrap map, the walk steps a row at a time through the lines
+// around it, skipping what a fold hides, and the x maps back to an offset in
+// the row it lands on. False when the field does not wrap, which leaves the
+// logical-line walk.
 static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
                                   Str t, int from, VerticalTarget* out) {
-    if (!win || !s->softWrap) {
+    if (!win) {
         return false;
     }
     PaintCtx* ctx = &win->paint;
-    float maxW = s->lastBounds.w;
-    float font = s->lastFont;
-    float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    if (maxW <= 0 || font <= 0 || lineH <= 0) {
+    if (!WrapMapOf(s, ctx)) {
         return false;
     }
     RopePoint p = RopeOffsetToPoint(t, from);
-    Str line = RopeSliceLine(t, p.row);
+    Str text = RopeSliceLine(t, p.row);
     int start = RopeLineStartOffset(t, p.row);
-    float cx = 0, cy = 0, ch = lineH;
-    float lineMult = lineH / font;
-    if (!TextPointAt(ctx, line, font, maxW, true, from - start, &cx, &cy, &ch,
-                     s->lastFontWord, lineMult, s->cursorLineEndAffinity)) {
-        return false;
-    }
+    const int* starts = nullptr;
+    float indent = 0;
+    int nRows = InputWrapRows(s, p.row, &starts, &indent);
+    int k =
+        WrapRowOfOffset(starts, nRows, from - start, s->cursorLineEndAffinity);
+    float cx = WrapRowX(
+        ctx, s, text, WrapRowSpanOf(starts, nRows, indent, len(text), k, start),
+        from - start);
     // The x the whole walk aims at, so crossing a short row and coming back
     // lands where it started.
     float wantX = s->preferredX >= 0 ? s->preferredX : cx;
-    int maxRow = RopeLinesLen(t) - 1;
-    int row = p.row;
-    float y = cy + (float)lines * lineH;
-    // Where the caret's own visual row starts, to tell whether the walk
-    // leaves it at all.
-    float fromRowTop = (float)(int)(cy / lineH) * lineH;
-    while (y < 0 && row > 0) {
-        row--;
-        y += DisplayLineH(s, row, lineH);
+    int maxLine = RopeLinesLen(t) - 1;
+    int line = p.row;
+    int row = k;
+    for (int step = lines; step < 0; step++) {
+        if (row > 0) {
+            row--;
+            continue;
+        }
+        int prev = line - 1;
+        while (prev >= 0 && FoldMapLineHidden(&s->folds, prev)) {
+            prev--;
+        }
+        if (prev < 0) {
+            break;
+        }
+        line = prev;
+        row = InputWrapRows(s, line, nullptr, nullptr) - 1;
     }
-    float h = DisplayLineH(s, row, lineH);
-    while (y >= h && row < maxRow) {
-        y -= h;
-        row++;
-        h = DisplayLineH(s, row, lineH);
+    for (int step = lines; step > 0; step--) {
+        if (row + 1 < InputWrapRows(s, line, nullptr, nullptr)) {
+            row++;
+            continue;
+        }
+        int next = line + 1;
+        while (next <= maxLine && FoldMapLineHidden(&s->folds, next)) {
+            next++;
+        }
+        if (next > maxLine) {
+            break;
+        }
+        line = next;
+        row = 0;
     }
-    if (y < 0) {
-        y = 0;
-    }
-    float atY = y < h ? y : h - 1;
-    if (row == p.row && atY >= fromRowTop && atY < fromRowTop + lineH) {
-        out->noFurtherRow = true;
-    }
-    // Aim at the middle of the visual row rather than at its top edge: a hit
-    // test exactly on the boundary between two rows could answer either.
-    y = ((float)(int)(y / lineH) + 0.5f) * lineH;
-    if (y > h - 1) {
-        y = h - 1;
-    }
-    // The ends of the document are the one place the walk can stop on a
-    // hidden row: it runs out of rows before it runs out of y.
-    row = FoldMapNearestVisibleLine(&s->folds, row);
-    Str target = RopeSliceLine(t, row);
-    int targetStart = RopeLineStartOffset(t, row);
-    out->offset = targetStart;
-    if (len(target) > 0) {
-        int local = TextIndexAt(ctx, target, font, maxW, true, wantX, y,
-                                s->lastFontWord, lineMult);
-        out->offset += local;
-        out->lineEndAffinity = InputLineEndAffinityAt(
-            ctx, target, font, maxW, local, y, s->lastFontWord, lineMult);
-    }
+    out->noFurtherRow = line == p.row && row == k;
+    Str target = RopeSliceLine(t, line);
+    nRows = InputWrapRows(s, line, &starts, &indent);
+    WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(target), row,
+                                  RopeLineStartOffset(t, line));
+    int local = WrapRowIndexAt(ctx, s, target, r, wantX);
+    out->offset = RopeLineStartOffset(t, line) + local;
+    // The end of a row that is not its line's last is the start of the next
+    // one: the affinity keeps the caret on the row it was aimed at.
+    out->lineEndAffinity = local == r.hi && row + 1 < nRows;
     out->preferredX = wantX;
     return true;
 }
@@ -7310,23 +7827,19 @@ static int FirstVisibleOffset(const InputState* s) {
     if (s->scrollY <= 0) {
         return 0;
     }
-    int row = 0;
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
-    if (s->rowBoxes.len > 0) {
-        float at = 0;
-        for (int i = 0; i < s->rowBoxes.len; i++) {
-            float h = DisplayLineH(s, i, lineH);
-            if (at + h > s->scrollY) {
-                row = i;
-                break;
-            }
-            at += h;
+    int rows = InputLinesLen(s);
+    int row = rows - 1;
+    float at = 0;
+    for (int i = 0; i < rows; i++) {
+        float h = DisplayLineH(s, i, lineH);
+        if (at + h > s->scrollY) {
             row = i;
+            break;
         }
-        row = FoldMapNearestVisibleLine(&s->folds, row);
-    } else {
-        row = (int)(s->scrollY / lineH);
+        at += h;
     }
+    row = FoldMapNearestVisibleLine(&s->folds, row);
     return RopeLineStartOffset(text, row);
 }
 
@@ -7566,8 +8079,9 @@ void InputBlur(InputState* s, App* app, Window* win) {
 // index_for_mouse_position. The element recorded the run it painted, so the
 // press is measured against that rather than against the whole field. Rust
 // asks the display map which visible row the y landed on and then the shaped
-// line for the x; the rows here are the logical lines, evenly spaced from the
-// first one, so the row is arithmetic and only the x needs shaping.
+// row for the x; the logical line is found by walking the lines' heights in
+// visual rows, the visual row inside it by the y left over, and the x is
+// measured against that row's own run, past its wrap indent.
 int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
                           bool* lineEndAffinity, int* columnsPastLineEnd) {
     if (lineEndAffinity) {
@@ -7594,89 +8108,66 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : b.h;
     int rows = InputLinesLen(s);
-    int row = 0;
-    // How far down its own row the press landed, which is which of a wrapped
-    // line's visual rows it wanted.
+    // lastBounds is the first row's text, which is only painted while that
+    // row is on screen, and contentBox.y is the column's last *painted*
+    // origin, which embeds that frame's scrollY — a click after scrolling
+    // from line 700 to 900 would still map as if the top were 700, and
+    // scroll_to would jump the view back. The clip box does not move; adding
+    // the live scrollY is the document.
+    float originY = b.y;
+    if (s->inputBounds.h > 0) {
+        originY = s->inputBounds.y - s->scrollY;
+    }
+    float docY = y - originY;
+    int row = FoldMapNearestVisibleLine(&s->folds, rows - 1);
+    // How far down its own line the press landed, which is which of a
+    // wrapped line's visual rows it wanted.
     float relY = 0;
-    if (s->rowBoxes.len == rows && rows > 0) {
-        // The rows are uneven, so the one under the press is found by walking
-        // heights rather than window y. Off-screen boxes keep the y they had
-        // when last painted; after a scroll those still cover the viewport
-        // and a click would map to the old band, then scroll_to would jump
-        // the view back there.
-        float originY = b.y;
-        if (s->inputBounds.h > 0) {
-            originY = s->inputBounds.y - s->scrollY;
+    float at = 0;
+    for (int i = 0; i < rows; i++) {
+        float h = DisplayLineH(s, i, lineH);
+        if (h <= 0) {
+            continue;
         }
-        float docY = y - originY;
-        float at = 0;
-        row = FoldMapNearestVisibleLine(&s->folds, rows - 1);
-        for (int i = 0; i < rows; i++) {
-            float h = DisplayLineH(s, i, lineH);
-            if (h <= 0) {
-                continue;
+        if (docY < at + h) {
+            row = i;
+            relY = docY - at;
+            if (relY < 0) {
+                relY = 0;
             }
-            if (docY < at + h) {
-                row = i;
-                relY = docY - at;
-                if (relY < 0) {
-                    relY = 0;
-                }
-                break;
-            }
-            at += h;
+            break;
         }
-    } else {
-        // lastBounds is the first row's text, which is only painted while
-        // that row is on screen. contentBox.y is the column's last *painted*
-        // origin, so it embeds that frame's scrollY — a click after scrolling
-        // from line 700 to 900 would still map as if the top were 700, and
-        // scroll_to would jump the view back. The clip box does not move;
-        // adding the live scrollY is the document.
-        float originY = b.y;
-        if (s->inputBounds.h > 0) {
-            originY = s->inputBounds.y - s->scrollY;
+        at += h;
+        if (i == rows - 1) {
+            relY = h - 1;
         }
-        row = lineH > 0 ? (int)((y - originY) / lineH) : 0;
-        if (row < 0) {
-            row = 0;
-        }
-        if (row > rows - 1) {
-            row = rows - 1;
-        }
-        row = FoldMapNearestVisibleLine(&s->folds, row);
     }
     Str line = InputSliceLine(s, row);
     int start = InputLineStartOffset(s, row);
-    // A wrapped line still needs shaping at its left edge: the same x starts
-    // every visual row, and relY is what distinguishes those offsets.  The
-    // logical-line shortcut is valid only when the line does not wrap.
-    if (len(line) == 0 || (x <= b.x && !s->softWrap)) {
-        return start;
+    const int* starts = nullptr;
+    float indent = 0;
+    int nRows = InputWrapRows(s, row, &starts, &indent);
+    int k = lineH > 0 ? (int)(relY / lineH) : 0;
+    if (k > nRows - 1) {
+        k = nRows - 1;
     }
-    float maxW = s->softWrap ? b.w : 0;
-    float lineMult = s->lastLineH > 0 ? s->lastLineH / font : 0;
-    int local = TextIndexAt(ctx, line, font, maxW, s->softWrap, x - b.x, relY,
-                            s->lastFontWord, lineMult);
-    if (lineEndAffinity && s->softWrap) {
-        *lineEndAffinity = InputLineEndAffinityAt(
-            ctx, line, font, maxW, local, relY, s->lastFontWord, lineMult);
+    WrapRowSpan r = WrapRowSpanOf(starts, nRows, indent, len(line), k, start);
+    float localX = x - b.x;
+    int local = WrapRowIndexAt(ctx, s, line, r, localX);
+    // The end of a row that is not the line's last is where the next row
+    // starts; a press past it wants the caret at the end of this one.
+    if (lineEndAffinity && local == r.hi && k + 1 < nRows) {
+        *lineEndAffinity = true;
     }
-    if (columnsPastLineEnd && local == len(line)) {
-        float endX = 0, endY = 0, endH = 0;
+    if (columnsPastLineEnd && local == len(line) && k == nRows - 1) {
+        float endX = WrapRowX(ctx, s, line, r, local);
         float spaceX = 0, spaceY = 0, spaceH = 0;
-        bool finalVisualRow = !s->softWrap;
-        if (TextPointAt(ctx, line, font, maxW, s->softWrap, len(line), &endX,
-                        &endY, &endH, s->lastFontWord, lineMult, true)) {
-            float rowH = endH > 0 ? endH : lineH;
-            finalVisualRow = finalVisualRow || relY + rowH * 0.5f >= endY;
-            if (finalVisualRow && x - b.x > endX &&
-                TextPointAt(ctx, StrL(" "), font, 0, false, 1, &spaceX, &spaceY,
-                            &spaceH, s->lastFontWord, 0, true) &&
-                spaceX > 0) {
-                float columns = (x - b.x - endX) / spaceX;
-                *columnsPastLineEnd = (int)(columns + 0.5f);
-            }
+        if (localX > endX &&
+            TextPointAt(ctx, StrL(" "), font, 0, false, 1, &spaceX, &spaceY,
+                        &spaceH, s->lastFontWord, 0, true) &&
+            spaceX > 0) {
+            float columns = (localX - endX) / spaceX;
+            *columnsPastLineEnd = (int)(columns + 0.5f);
         }
     }
     return start + local;
@@ -8971,13 +9462,20 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             row.text->kind != ElKind::Text) {
             continue;
         }
+        // A soft-wrap boundary is the end of one visual row and the start of
+        // the next; the affinity says which the caret is drawn on.
+        bool affinity = s->cursorLineEndAffinity;
+        if (offset == row.start + row.len && !row.last && !affinity) {
+            continue;
+        }
+        if (offset == row.start && !row.first && affinity) {
+            continue;
+        }
         Str line = Str(text.s + row.start, row.len);
-        float maxW = s->softWrap ? row.text->w : 0;
         float lineMult = lineH / font;
         float x = 0, y = 0, h = 0;
-        if (!TextPointAt(ctx, line, font, maxW, s->softWrap, offset - row.start,
-                         &x, &y, &h, s->lastFontWord, lineMult,
-                         s->cursorLineEndAffinity)) {
+        if (!TextPointAt(ctx, line, font, 0, false, offset - row.start, &x, &y,
+                         &h, s->lastFontWord, lineMult, affinity)) {
             return false;
         }
         *out = {row.text->x + x, row.text->y + y};

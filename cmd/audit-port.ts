@@ -215,6 +215,7 @@ const testTargets: Record<string, string[]> = {
     "tests/TextBoundaryTests.cpp",
     "tests/TextSelectionTests.cpp",
     "tests/FoldMapTests.cpp",
+    "tests/TextWrapperTests.cpp",
     "tests/SearchMatcherTests.cpp",
     "tests/RopeTests.cpp",
     "tests/MaskPatternTests.cpp",

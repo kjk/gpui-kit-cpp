@@ -4132,14 +4132,63 @@ void SearchMatcherCursorByOffset(SearchMatcher* m, int offset);
 bool SearchMatcherNext(SearchMatcher* m, Selection* out);
 bool SearchMatcherPrev(SearchMatcher* m, Selection* out);
 
+/* Port of crates/base/src/input/editor/display_map/text_wrapper.rs — the wrap
+   half of the display map, over the live editor.
+
+   Every logical line's visual rows, for the text column width and font the
+   editor element last laid out at: row 0 starts at the line's first byte,
+   row k at `starts[firstStart + k]`, and the rows after the first are shifted
+   right by `indent` (WrappingIndent::Same's wrap_indent, the shaped width of
+   the line's leading whitespace). The element builds one text element per
+   visual row from it, and the hit test, the caret, Up/Down, Home/End and
+   scroll_to all walk it, so a row is a row everywhere. Rebuilt by
+   InputUpdateWrapMap (base/input.h) whenever the document, the width, the
+   font or an inline token's measured width moved. */
+
+struct InputWrapLine {
+    int firstStart = 0;
+    int nRows = 1;
+    float indent = 0;
+    // Visual rows of the lines above this one, folds not applied.
+    int rowsAbove = 0;
+};
+
+struct InputWrapMap {
+    Vec<InputWrapLine> lines;
+    // Each line's row starts, as byte offsets into the line; row 0's is 0.
+    Vec<int> starts;
+    bool valid = false;
+    uint64_t docVersion = 0;
+    // What the rows were made for. A width of 0 is no wrap.
+    float width = 0;
+    float fontSize = 0;
+    uint16_t fontWord = 0;
+    uint8_t wrappingIndent = 1;
+    uint64_t tokenKey = 0;
+    int totalRows = 0;
+    // The text column width the element last laid the rows out at, which
+    // is the next frame's wrap width.
+    float measuredWidth = 0;
+    // LineWrapper's cached widths, for the font above: ASCII by code (a
+    // negative entry is not measured yet), the rest in a small open hash.
+    float charFont = 0;
+    uint16_t charWord = 0;
+    float asciiWidths[128] = {};
+    uint32_t otherChars[256] = {};
+    float otherWidths[256] = {};
+    float spaceWidth = 0;
+    // measure_tokens' widths, one per inline token span in document order,
+    // and the token revision they were measured at.
+    Vec<float> tokenWidths;
+};
+
 /* Port of crates/base/src/input/editor/display_map — the folding half.
 
    Rust's display map is two projections stacked: buffer -> wrap (soft wrap)
-   and wrap -> display (folding). The rows here are logical lines already — a
-   soft-wrapped line is one row as tall as the text in it, so `rowBoxes` is
-   indexed by line and the wrap projection has nowhere to live — which leaves
-   the fold projection, and its two ends are line and display row rather than
-   wrap row and display row. Everything else is `fold_map.rs` as written.
+   and wrap -> display (folding). The wrap half is InputWrapMap above, keyed
+   by logical line, so the fold projection's two ends here are line and
+   display row rather than wrap row and display row: a line a fold hides
+   hides all its visual rows. Everything else is `fold_map.rs` as written.
 
    Where the candidates come from is the themed layer's business, the way it
    is Rust's: `apply_highlighter_fold_candidates` takes whatever the
@@ -4864,8 +4913,8 @@ struct InputState {
     // The text run the element last painted, so a press can be turned into an
     // offset. Rust keeps `last_bounds` + `last_layout` for the same reason;
     // in a multi-line field this is the *first* row, and the ones under it are
-    // found by stepping `lastLineH` down from it — unless soft wrap made them
-    // different heights, which is what `rowBoxes` is for.
+    // found by stepping `lastLineH` down from it, a wrapped line taking as
+    // many steps as the wrap map gives it visual rows.
     Bounds lastBounds = {};
     float lastFont = 0;
     float lastLineH = 0;
@@ -4873,13 +4922,10 @@ struct InputState {
     // family's bits — so a press is measured against the same advances they
     // were laid out with.
     uint16_t lastFontWord = 0;
-    // display_map.rs: the box each logical line was last laid out in. Soft
-    // wrap makes them uneven — a line that wrapped is two of those boxes tall
-    // or more — so a press cannot be turned into a row by arithmetic, and
-    // neither can the caret's y. Empty when nothing wrapped, where the
-    // arithmetic is right and cheaper. Sized before the rows are built, so
-    // the pointers the elements are handed stay put for the frame.
-    Vec<Bounds> rowBoxes;
+    // display_map/text_wrapper.rs: every logical line's visual rows.
+    InputWrapMap wrap;
+    // WrappingIndent: 1 is Same (the default), 0 is None.
+    uint8_t wrappingIndent = 1;
     // DiagnosticSet: what a provider published over this document, in
     // document order. Rust keeps a SumTree so a range query is a seek; there
     // are tens of these on a screen, so this is the flat list the painter and

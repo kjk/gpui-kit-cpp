@@ -434,5 +434,65 @@ struct FoldIconRenderer {
     El* Render(Ctx* cx, int line, bool folded) const;
 };
 
+// ─── gpui text_system/line_wrapper.rs and display_map/text_wrapper.rs ────
+//
+// What turns one logical line into the editor's visual rows. The wrapper
+// sums per-character widths the way GPUI's LineWrapper does — the width a
+// glyph shapes to on its own, not the run's kerned advance — so where a row
+// breaks is a property of the text and the font, decided before anything is
+// laid out.
+
+// line_wrapper.rs Boundary: a row starts at `ix`, and the rows from there on
+// are indented by `nextIndent` characters.
+struct WrapBoundary {
+    int ix = 0;
+    int nextIndent = 0;
+
+    bool operator==(const WrapBoundary& o) const {
+        return ix == o.ix && nextIndent == o.nextIndent;
+    }
+};
+
+// line_wrapper.rs LineFragment: text, or an element of a fixed width that
+// occupies `elementLen` bytes of the line (an inline token's chip).
+struct LineFragment {
+    Str text = {};
+    float elementWidth = 0;
+    int elementLen = 0;
+
+    static LineFragment Text(Str text) { return {text, 0, 0}; }
+    static LineFragment Element(float width, int len) {
+        return {Str{}, width, len};
+    }
+};
+
+// LineWrapper::MAX_INDENT.
+constexpr int kLineWrapperMaxIndent = 256;
+
+// LineWrapper::width_for_char: what one character is worth, as the caller's
+// font measures it.
+using WrapCharWidth = float (*)(void* user, uint32_t c);
+
+// LineWrapper::is_word_char.
+bool LineWrapperIsWordChar(uint32_t c);
+
+// LineWrapper::wrap_line: the boundaries at which `fragments` break to fit
+// `wrapWidth`, appended to `out`. Empty when the line fits.
+void LineWrapperWrapLine(const LineFragment* fragments, int n, float wrapWidth,
+                         WrapCharWidth widthFor, void* user,
+                         Vec<WrapBoundary>* out);
+
+// text_wrapper.rs LineItem, built the way TextWrapper::_update builds one: the
+// visual rows of one logical line as [rows[k], rows[k + 1]) with the last
+// running to `len`, and the indent in characters the rows after the first
+// carry. `wrapLine` answers the boundaries for a slice of the line starting
+// at `base`; Same takes them in one pass, None wraps the first row as is and
+// the rest again at the full width.
+using WrapLineFn = void (*)(void* user, Str line, int base,
+                            Vec<WrapBoundary>* out);
+void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
+                         WrapLineFn wrapLine, void* user, Vec<int>* rows,
+                         int* indentChars);
+
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_EDITOR_H_
