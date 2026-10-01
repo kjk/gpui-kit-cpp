@@ -239,6 +239,7 @@ struct Editor {
     InputState* state = nullptr;
     float height = 0;
     float fontSize = 0;
+    Str fontFamily = {};
     bool appearance = true;
     bool bordered = true;
     bool disabled = false;
@@ -272,6 +273,8 @@ struct Editor {
     static Editor* New(Ctx* cx, Str id, InputState* state);
     Editor* H(float value);
     Editor* Font(float value);
+    // Styled::font_family. Empty keeps theme.mono_font_family.
+    Editor* FontFamily(Str family);
     Editor* Appearance(bool value);
     Editor* Bordered(bool value);
     Editor* Disabled(bool value);

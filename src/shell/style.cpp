@@ -1394,8 +1394,13 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
     } else if (StrEq(name, StrL("font_family"))) {
         Str family;
         if (!BridgedAsString(value, &family, error)) return false;
-        // The text system here has the UI face and one monospace face.
-        if (StrEq(family, StrL("monospace"))) e->Mono();
+        // "monospace" is the platform's default mono face; any other name is
+        // that family, in the default face where it is not installed.
+        if (StrEq(family, StrL("monospace"))) {
+            e->Mono();
+        } else {
+            e->FontFamily(family);
+        }
     } else if (StrEq(name, StrL("font_weight"))) {
         if (!BridgedAsF32(value, &number, error)) return false;
         if (!isfinite(number) || number < 100.f || number > 900.f) {

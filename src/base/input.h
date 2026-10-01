@@ -38,6 +38,10 @@ struct InputEditorStyle {
     // Editor::font_family(cx.theme().mono_font_family): a code editor draws
     // its rows, and its gutter, in the theme's monospace family.
     bool mono = false;
+    // The family itself, as FontFamilyIntern's id: 0 leaves the platform's
+    // default face for `mono`. Rust's Editor names theme.mono_font_family
+    // unless a caller's `.font_family(..)` refines over it.
+    uint8_t fontFamily = 0;
     // A masked field draws one bullet per character, and text_center /
     // text_right move the run inside the field. Both also live on the state;
     // either one turning it on is enough.

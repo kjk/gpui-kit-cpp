@@ -732,7 +732,8 @@ EM_JS(void, GpJsImageFree, (int id), {
 
 EM_JS(int, GpJsTextNew,
       (const uint8_t* ptr, int len, float fontSize, float maxW, int wrap,
-       int weightBits, float lineH, int align, float* outSize), {
+       int weightBits, float lineH, int align, float* outSize,
+       const uint8_t* famPtr, int famLen), {
     const G = globalThis.__gpui;
     const text = G.str(ptr, len);
     if (text.length === 0) {
@@ -757,9 +758,15 @@ EM_JS(int, GpJsTextNew,
     // Unquoted family names on purpose: CSS takes a multi-word family as a
     // run of identifiers, and a quote of either kind inside this literal
     // would not survive the preprocessor that turns this body into a string.
-    const family = mono
+    const fallback = mono
         ? "ui-monospace, SFMono-Regular, Menlo, Consolas, Liberation Mono, monospace"
         : "system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial, sans-serif";
+    // font_family: the named family first, quoted at run time, and the
+    // run's default list after it for the browser to fall back on.
+    const named = famLen > 0 ? G.str(famPtr, famLen) : "";
+    const family = named.length > 0
+        ? JSON.stringify(named) + ", " + fallback
+        : fallback;
     const font = (italic ? "italic " : "") + w + " " + fontSize + "px " + family;
 
     const c = G.measurer();
@@ -1560,8 +1567,10 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         fontSize = 16.f;
     }
     float size[3] = {0, 0, 0};
+    Str family = FontFamilyName(FontFamilyOf(weight));
     int id = GpJsTextNew((const uint8_t*)s.s, len(s), fontSize, maxW,
-                         wrap ? 1 : 0, weight, lineH, (int)align, size);
+                         wrap ? 1 : 0, weight, lineH, (int)align, size,
+                         (const uint8_t*)family.s, len(family));
     if (!id) {
         return nullptr;
     }

@@ -159,6 +159,34 @@ enum : uint16_t {
     kFontTabularNums = 256
 };
 
+// The top seven bits: TextStyle::font_family, a family named by the run
+// rather than the platform's default face for it. A name is interned once
+// per process into a small id, and the id rides in the weight word, so the
+// shaped-text cache and the layout cache key runs of two families apart
+// without a string in either key. Zero is "unset": the default sans face,
+// or the default mono face for a kFontMono run. Each backend resolves the
+// name itself and falls back to that default when the family is not
+// installed: DirectWrite asks the system collection, Pango and Canvas2D take
+// a family list ending in the default, and Core Text takes the default when
+// NSFontManager has no such family.
+enum : uint16_t {
+    kFontFamilyShift = 9,
+    kFontFamilyMask = 0xFE00
+};
+// The id for `name`, interning it on first sight: 0 for an empty name, and
+// 0 too once all 127 ids are taken (the run then draws in its default
+// face). Main thread only; names live until exit.
+uint8_t FontFamilyIntern(Str name);
+// The name an id was interned from; empty for 0 or an id never handed out.
+// Safe from any thread once the id is in hand.
+Str FontFamilyName(uint8_t id);
+inline uint16_t FontFamilyBits(uint8_t id) {
+    return (uint16_t)((uint16_t)(id & 0x7F) << kFontFamilyShift);
+}
+inline uint8_t FontFamilyOf(uint16_t weight) {
+    return (uint8_t)((weight & kFontFamilyMask) >> kFontFamilyShift);
+}
+
 // GPUI lays every line of text into a box phi times the font size — the
 // default TextStyle::line_height (gpui::phi(), geometry.rs) — and centers the
 // glyphs in it. Both text engines are tighter than that on their own, so

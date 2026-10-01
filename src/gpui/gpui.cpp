@@ -2093,6 +2093,14 @@ El* El::Mono() {
     style.fontMono = true;
     return this;
 }
+El* El::FontFamily(Str name) {
+    style.fontFamily = FontFamilyIntern(name);
+    return this;
+}
+El* El::FontFamilyId(uint8_t family) {
+    style.fontFamily = family;
+    return this;
+}
 El* El::Underline() {
     style.underline = true;
     return this;
@@ -2473,6 +2481,36 @@ static bool TextMeasKeyEq(const TextMeasSlot* sl, uint32_t hash, Str s,
     return StrEq(Str(sl->text, len(s)), s);
 }
 
+// font_family's names. One table for the process, not per window or app:
+// the id is part of the weight word every shaped-text cache keys on, and a
+// family means the same face whichever window draws it. Ids are handed out
+// once and never reused, so a reader holding one never sees it change.
+static Str gFontFamilies[128];
+static int gFontFamilyCount = 1; // id 0 is "unset"
+
+uint8_t FontFamilyIntern(Str name) {
+    if (!name.s || len(name) <= 0) {
+        return 0;
+    }
+    for (int i = 1; i < gFontFamilyCount; i++) {
+        if (StrEq(gFontFamilies[i], name)) {
+            return (uint8_t)i;
+        }
+    }
+    if (gFontFamilyCount >= (int)dimof(gFontFamilies)) {
+        return 0;
+    }
+    gFontFamilies[gFontFamilyCount] = StrDup(name);
+    return (uint8_t)gFontFamilyCount++;
+}
+
+Str FontFamilyName(uint8_t id) {
+    if (id == 0 || id >= gFontFamilyCount) {
+        return {};
+    }
+    return gFontFamilies[id];
+}
+
 static uint16_t ElTextWeight(const El* e) {
     uint16_t w = kFontWeightNormal;
     switch ((FontWeight)e->style.fontWeight) {
@@ -2531,6 +2569,7 @@ static uint16_t ElTextWeight(const El* e) {
             .fontFeatures == 1 + (uint8_t)gpui::FontFeatures::TabularFigures) {
         w |= kFontTabularNums;
     }
+    w |= FontFamilyBits(e->style.fontFamily);
     return w;
 }
 
@@ -2935,7 +2974,7 @@ Size MeasureText(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 }
 
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                 int off, float* outX, float* outY, float* outH, bool mono,
+                 int off, float* outX, float* outY, float* outH, uint16_t font,
                  float lineHeight, bool lineEndAffinity) {
     if (!ctx) {
         return false;
@@ -2948,7 +2987,7 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
         *outH = fontSize;
         return true;
     }
-    uint16_t weight = mono ? (uint16_t)kFontMono : (uint16_t)0;
+    uint16_t weight = font;
     if (off < 0) {
         off = 0;
     }
@@ -2994,10 +3033,9 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 }
 
 int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                float relX, float relY, bool mono, float lineHeight,
+                float relX, float relY, uint16_t font, float lineHeight,
                 TextAlign align) {
-    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap,
-                                        mono ? (uint8_t)kFontMono : (uint8_t)0,
+    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, font,
                                         lineHeight, nullptr, nullptr, align);
     if (!layout) {
         return 0;
@@ -3989,6 +4027,15 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
             c->style.underlineThickness = e->style.underlineThickness;
             c->style.underlineWavy = e->style.underlineWavy;
             c->style.underlineSet = true;
+        }
+    }
+    // font_family names a face rather than the flag fontMono is, and
+    // cascades the same way.
+    if (e->style.fontFamily) {
+        for (El* c = e->first; c; c = c->next) {
+            if (!c->style.fontFamily) {
+                c->style.fontFamily = e->style.fontFamily;
+            }
         }
     }
     // font_features too: TimeField's `font_features(tabular_figures())` on

@@ -1979,6 +1979,10 @@ struct Style {
     // text_overflow's side, read with `truncate` and cascaded with it: 0 the
     // end (text_ellipsis, truncate), 1 the start, 2 the middle.
     uint8_t textOverflow : 2 = 0;
+    // font_family, as the id FontFamilyIntern gave its name: 0 is unset
+    // (inherit, and the default face at the root). The spare byte of this
+    // unit.
+    uint8_t fontFamily = 0;
 };
 
 enum : uint8_t {
@@ -2012,9 +2016,9 @@ enum : uint16_t {
 // the next 8-byte unit, and alignContent, the bits beside it and relLengths
 // took the four bytes it left. 424 was full in turn, and the script's text
 // style — text_bg's colour, the underline's thickness, its wave and the side
-// an ellipsis goes on — opened the next unit, with a byte and three bits of
-// it to spare. Grow this only for a member that has nowhere else to go,
-// never to absorb padding.
+// an ellipsis goes on — opened the next unit, and font_family's id took the
+// byte it had to spare, leaving three bits. Grow this only for a member that
+// has nowhere else to go, never to absorb padding.
 static_assert(sizeof(Style) <= 432, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
@@ -3037,6 +3041,12 @@ struct El {
     El* Medium();
     El* Weight(FontWeight value);
     El* Mono();
+    // font_family(name): the run draws in that family, cascading like the
+    // rest of the text style, and in its default face where the family is
+    // not installed. An empty name clears it back to the default.
+    El* FontFamily(Str name);
+    // The same with an id FontFamilyIntern already handed out.
+    El* FontFamilyId(uint8_t family);
     El* Underline();
     El* Strikethrough();
     El* Italic();
@@ -4806,9 +4816,10 @@ struct InputState {
     Bounds lastBounds = {};
     float lastFont = 0;
     float lastLineH = 0;
-    // Whether those rows were drawn in the monospace family, so a press is
-    // measured against the same advances they were laid out with.
-    bool lastMono = false;
+    // The weight word those rows were drawn with — kFontMono and the
+    // family's bits — so a press is measured against the same advances they
+    // were laid out with.
+    uint16_t lastFontWord = 0;
     // display_map.rs: the box each logical line was last laid out in. Soft
     // wrap makes them uneven — a line that wrapped is two of those boxes tall
     // or more — so a press cannot be turned into a row by arithmetic, and
@@ -5618,16 +5629,17 @@ void TextMeasClear(PaintCtx* ctx);
 // is on and `outH` that row's height. False when there was nothing to
 // measure against.
 //
-// `mono` and `lineHeight` have to be the ones the run was painted with:
-// Consolas advances differently from the proportional face, so measuring a
-// code editor's row without them answers for a line of text that was never
-// drawn.
+// `font` (the weight word: kFontMono and the family's bits) and
+// `lineHeight` have to be the ones the run was painted with: Consolas
+// advances differently from the proportional face, and one mono family from
+// another, so measuring a code editor's row without them answers for a line
+// of text that was never drawn.
 bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                  int off, float* outX, float* outY, float* outH,
-                 bool mono = false, float lineHeight = 0,
+                 uint16_t font = 0, float lineHeight = 0,
                  bool lineEndAffinity = true);
 int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
-                float relX, float relY, bool mono = false, float lineHeight = 0,
+                float relX, float relY, uint16_t font = 0, float lineHeight = 0,
                 TextAlign align = TextAlign::Left);
 // `weight` and `lineH` have to be the ones the run was laid out with, or the
 // rects come back measured against a different font: the mono family is a

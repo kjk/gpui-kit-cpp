@@ -2462,6 +2462,18 @@ static void TheUiInputFacadeKeepsTheSourceShapes() {
                  .role == AccessibilityRole::MultilineTextInput);
     utassert((editor->StyleStates()->refineSet & StyleFieldWidth) != 0);
     utassert(state.focus.IsValid());
+    // editor.rs: `.font_family(cx.theme().mono_font_family)` under the
+    // caller's own, and the rows are measured in the family they draw in.
+    uint16_t word = state.lastFontWord;
+    utassert((word & kFontMono) != 0);
+    utassert(FontFamilyOf(word) ==
+             FontFamilyIntern(ThemeNow(&app).monoFontFamily));
+    component::Editor::New(&cx, StrL("source-editor"), &state)
+        ->FontFamily(StrL("Monaco"))
+        ->IntoEl();
+    utassert(FontFamilyOf(state.lastFontWord) ==
+             FontFamilyIntern(StrL("Monaco")));
+    utassert((state.lastFontWord & kFontMono) != 0);
 
     state.disabled = false;
     state.readonly = false;

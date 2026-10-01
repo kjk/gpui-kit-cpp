@@ -26,6 +26,9 @@ struct Highlighter {
     Edges editorPad = {};
     // theme.mono_font_size until a caller says otherwise.
     float fontSize = 0;
+    // `.font_family(..)` on the editor: theme.mono_font_family until a
+    // caller names another.
+    Str fontFamily = {};
     // EditorState::language: what the rows are scanned as. None leaves them
     // in the editor's own colour.
     SyntaxLang lang = SyntaxLangNone;
@@ -53,6 +56,7 @@ struct Highlighter {
     // `.text_size(..)` on the editor: the size the rows are drawn at, and
     // what their height follows. Zero is the theme's monospace size.
     Highlighter* Font(float px);
+    Highlighter* FontFamily(Str family);
     Highlighter* Language(Str name);
     Highlighter* Decorations(const TextSpan* runs, int n);
     Highlighter* ActiveLine(bool v = true);

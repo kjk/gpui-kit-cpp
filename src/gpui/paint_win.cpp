@@ -163,6 +163,10 @@ struct PaintApp {
     IDWriteInlineObject* ellipsis20 = nullptr;
     IDWriteInlineObject* ellipsis24 = nullptr;
     IDWriteInlineObject* ellipsisMono = nullptr;
+    // font_family ids (FontFamilyIntern) checked against the system
+    // collection: 0 not asked yet, 1 installed, -1 missing, which keeps the
+    // run's default face.
+    int8_t familyInstalled[128] = {};
 };
 
 // The window target is a DXGI flip-model swap chain with a D2D device context
@@ -1343,6 +1347,32 @@ static IDWriteTextFormat* FontFor(PaintApp* pa, float fontSize,
     return pa->font16;
 }
 
+// The run's font_family as DirectWrite wants it, or null to keep the
+// format's own face: unset, or not a family the system collection has. Zed's
+// DirectWrite text system falls back the same way when a family is missing.
+static const WCHAR* InstalledFamily(PaintApp* pa, uint16_t weight) {
+    uint8_t id = FontFamilyOf(weight);
+    Str name = FontFamilyName(id);
+    if (!pa || !pa->dwrite || id == 0 || len(name) <= 0) {
+        return nullptr;
+    }
+    const WCHAR* wname = ToCWstrTemp(name);
+    if (!wname) {
+        return nullptr;
+    }
+    if (pa->familyInstalled[id] == 0) {
+        IDWriteFontCollection* fonts = nullptr;
+        UINT32 index = 0;
+        BOOL exists = FALSE;
+        if (SUCCEEDED(pa->dwrite->GetSystemFontCollection(&fonts)) && fonts) {
+            fonts->FindFamilyName(wname, &index, &exists);
+        }
+        Rel(&fonts);
+        pa->familyInstalled[id] = exists ? 1 : -1;
+    }
+    return pa->familyInstalled[id] > 0 ? wname : nullptr;
+}
+
 static IDWriteInlineObject* EllipsisSign(PaintApp* pa, IDWriteTextFormat* fmt) {
     if (!pa || !fmt || !pa->dwrite) {
         return nullptr;
@@ -1884,6 +1914,11 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     DWRITE_TEXT_RANGE range = {0, (UINT32)n};
     if (fontSize > 0) {
         layout->SetFontSize(fontSize, range);
+    }
+    // font_family: the named family over the format's default face, when
+    // the system collection has it.
+    if (const WCHAR* family = InstalledFamily(ctx->pa, weight)) {
+        layout->SetFontFamilyName(family, range);
     }
     if (weight & kFontWeightMask) {
         layout->SetFontWeight(DwriteWeight(weight), range);

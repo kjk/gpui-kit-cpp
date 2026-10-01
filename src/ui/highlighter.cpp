@@ -114,6 +114,10 @@ Highlighter* Highlighter::Font(float px) {
     fontSize = px;
     return this;
 }
+Highlighter* Highlighter::FontFamily(Str family) {
+    fontFamily = family;
+    return this;
+}
 Highlighter* Highlighter::Language(Str name) {
     lang = SyntaxLangFor(name);
     return this;
@@ -961,8 +965,12 @@ El* Highlighter::IntoEl() {
     // caller that set a size of its own refines over it, and the rows follow
     // that size — Rust's `line_height(relative(1.5))` on the editor.
     style.fontSize = fontSize > 0 ? fontSize : 13;
-    // .font_family(theme.mono_font_family).text_size(theme.mono_font_size)
+    // .font_family(theme.mono_font_family).text_size(theme.mono_font_size),
+    // and a caller's own family refining over it. The mono flag keeps the
+    // platform's monospace face for a family that is not installed.
     style.mono = true;
+    style.fontFamily =
+        FontFamilyIntern(len(fontFamily) > 0 ? fontFamily : th.monoFontFamily);
     if (activeLine) {
         style.activeLine = RgbaOpacity(th.accent, 0.4f);
     }

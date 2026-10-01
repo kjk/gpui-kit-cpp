@@ -1051,14 +1051,35 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
     }
     NSFontWeight w = WeightFor(weight, fontSize);
     NSFont* font = nil;
-    if (weight & kFontMono) {
+    // font_family: the named family at the run's weight, when NSFontManager
+    // has it; otherwise the run's default face below. The cache above keys
+    // on the whole weight word, family bits included.
+    Str family = FontFamilyName(FontFamilyOf(weight));
+    if (len(family) > 0) {
+        NSString* name = [[NSString alloc] initWithBytes:family.s
+                                                  length:(NSUInteger)len(family)
+                                                encoding:NSUTF8StringEncoding];
+        if (name) {
+            // NSFontManager's weight scale runs 0-15 with 5 regular and 9
+            // bold; NSFontWeight runs -1 to 1 with 0 regular.
+            NSInteger managerWeight = (NSInteger)lround(5.0 + (double)w * 8.0);
+            if (managerWeight < 0) managerWeight = 0;
+            if (managerWeight > 15) managerWeight = 15;
+            font =
+                [[NSFontManager sharedFontManager] fontWithFamily:name
+                                                           traits:0
+                                                           weight:managerWeight
+                                                             size:fontSize];
+        }
+    }
+    if (!font && (weight & kFontMono)) {
         if (@available(macOS 10.15, *)) {
             font = [NSFont monospacedSystemFontOfSize:fontSize weight:w];
         }
         if (!font) {
             font = [NSFont fontWithName:@"Menlo" size:fontSize];
         }
-    } else {
+    } else if (!font) {
         font = [NSFont systemFontOfSize:fontSize weight:w];
     }
     if (!font) {

@@ -1134,7 +1134,18 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         return nullptr;
     }
     PangoFontDescription* fd = pango_font_description_new();
-    pango_font_description_set_family(fd, (weight & kFontMono) ? kMono : kSans);
+    const char* face = (weight & kFontMono) ? kMono : kSans;
+    // font_family: Pango takes a comma-separated family list, so the named
+    // family goes first and the run's default face after it, which is what
+    // fontconfig falls back to when the family is not installed.
+    Str family = FontFamilyName(FontFamilyOf(weight));
+    char families[160];
+    if (len(family) > 0 && len(family) < 120) {
+        snprintf(families, sizeof(families), "%.*s,%s", len(family), family.s,
+                 face);
+        face = families;
+    }
+    pango_font_description_set_family(fd, face);
     pango_font_description_set_weight(fd, PangoWeightFor(weight, fontSize));
     if (weight & kFontItalic) {
         pango_font_description_set_style(fd, PANGO_STYLE_ITALIC);

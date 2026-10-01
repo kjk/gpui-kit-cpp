@@ -312,6 +312,10 @@ Editor* Editor::Font(float value) {
     fontSize = value;
     return this;
 }
+Editor* Editor::FontFamily(Str family) {
+    fontFamily = family;
+    return this;
+}
 
 Editor* Editor::Appearance(bool value) {
     appearance = value;
@@ -434,6 +438,7 @@ El* Editor::IntoEl() {
     if (language.s) highlighter->Language(language);
     if (height > 0 || height == kFill) highlighter->H(height);
     if (fontSize > 0) highlighter->Font(fontSize);
+    highlighter->FontFamily(fontFamily);
     // input.rs set_editor_paddings for a multi-line Input of the default
     // Medium size: input_py above and below, input_px on the right, and on
     // the left input_px held to 6 for a code editor, where the gutter is.

@@ -324,6 +324,23 @@ static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
     return false;
 }
 
+// The face a row is drawn in: Editor::font_family's family, over the mono
+// flag a code editor sets, the way `.font_family(..)` refines the text
+// style the rows inherit.
+static void InputFace(El* e, const InputEditorStyle& style) {
+    if (style.mono) {
+        e->Mono();
+    }
+    if (style.fontFamily) {
+        e->FontFamilyId(style.fontFamily);
+    }
+}
+
+static uint16_t InputFontWord(const InputEditorStyle& style) {
+    return (uint16_t)((style.mono ? kFontMono : 0) |
+                      FontFamilyBits(style.fontFamily));
+}
+
 static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
                                const InputEditorStyle& style, float font,
                                float lineMult, Str slice, int docStart,
@@ -337,9 +354,7 @@ static void EmitTokenTextPiece(El* row, Arena* a, InputState* state,
                     ->LineHeight(lineMult)
                     ->Fg(style.foreground)
                     ->BindInput(state);
-    if (style.mono) {
-        piece->Mono();
-    }
+    InputFace(piece, style);
     if (wrap) {
         // Each piece is one UTF-8 character. Let the row break between
         // pieces while the token chip remains one atomic flex item.
@@ -445,7 +460,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     float font = style.fontSize > 0 ? style.fontSize : 12.f;
     float lineMult = kInputLineH / font;
     state->lastLineH = kInputLineH;
-    state->lastMono = style.mono;
+    state->lastFontWord = InputFontWord(style);
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
     // show_cursor: focused, not disabled, and this half of the blink is the
@@ -879,7 +894,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         state->kind == InputKind::Editor ? roundf(font * 1.5f) : kInputLineH;
     float lineMult = lineH / font;
     state->lastLineH = lineH;
-    state->lastMono = style.mono;
+    state->lastFontWord = InputFontWord(style);
     Str text = InputValue(state);
     bool caret =
         state->focused && !state->disabled && BlinkVisible(cx, state->blink);
@@ -900,9 +915,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                      ->Font(font)
                      ->LineHeight(lineMult)
                      ->Fg(style.mutedForeground);
-        if (style.mono) {
-            ph->Mono();
-        }
+        InputFace(ph, style);
         return col->Child(ph);
     }
 
@@ -942,8 +955,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     float numW = 0;
     // The numbers are shaped at the editor's own text size and family, as
     // layout_line_numbers shapes them with the text style.
-    uint16_t numWeight =
-        (uint16_t)(kFontWeightNormal | (style.mono ? kFontMono : 0));
+    uint16_t numWeight = InputFontWord(style);
     if (lineNumbers) {
         // layout_line_numbers: the width of line_number_len "+" shaped in
         // that font -- three for a small document, then the line count's
@@ -1341,9 +1353,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         } else {
             el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
                 style.foreground);
-            if (style.mono) {
-                el->Mono();
-            }
+            InputFace(el, style);
         }
         // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this —
         // minified output, generated code — draws in the default style
@@ -1606,9 +1616,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 ->LineHeight(lineMult)
                 ->Fg(row == caretRow ? style.foreground
                                      : style.mutedForeground);
-        if (style.mono) {
-            num->Mono();
-        }
+        InputFace(num, style);
         El* numCell = Div(a)->W(numW)->JustifyEnd()->Child(num);
         if (folding) {
             // The line-number column and the fold icons are one hit strip,
@@ -1685,9 +1693,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                                 ->Bg(style.background);
                 El* run = TextEl(a, one)->Font(font)->LineHeight(lineMult)->Fg(
                     ghostFg);
-                if (style.mono) {
-                    run->Mono();
-                }
+                InputFace(run, style);
                 col->Child(ghost->Child(run));
             }
             if (nl < 0) {
@@ -2435,19 +2441,19 @@ static bool WrappedRowOfCaret(const InputState* s, Window* win, Str line,
     float lineMult = lineH / font;
     float cx = 0, cy = 0, ch = lineH;
     if (!TextPointAt(ctx, line, font, maxW, true, rel, &cx, &cy, &ch,
-                     s->lastMono, lineMult, s->cursorLineEndAffinity)) {
+                     s->lastFontWord, lineMult, s->cursorLineEndAffinity)) {
         return false;
     }
     // The middle of the row rather than its top edge, for the same reason the
     // vertical walk aims there: a hit test exactly on the boundary between
     // two rows could answer either.
     float mid = cy + ch * 0.5f;
-    int lo =
-        TextIndexAt(ctx, line, font, maxW, true, 0, mid, s->lastMono, lineMult);
+    int lo = TextIndexAt(ctx, line, font, maxW, true, 0, mid, s->lastFontWord,
+                         lineMult);
     // Past the right edge of the box, which lands on the last character the
     // row holds however far the run reaches.
     int hi = TextIndexAt(ctx, line, font, maxW, true, maxW + font, mid,
-                         s->lastMono, lineMult);
+                         s->lastFontWord, lineMult);
     if (lo > rel || hi < rel) {
         return false;
     }
@@ -2792,7 +2798,7 @@ static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
         float h = lineH;
         TextPointAt(&win->paint, line, s->lastFont, s->lastBounds.w, true,
                     std::max(0, offset - lineStart), &x, &localY, &h,
-                    s->lastMono, lineH / s->lastFont, false);
+                    s->lastFontWord, lineH / s->lastFont, false);
         y += localY;
     }
     InputScrollToCaretWithPadding(s, -1, y, InputMoveDir::None,
@@ -3092,7 +3098,7 @@ static int WrappedRowStarts(const InputState* s, PaintCtx* ctx, Str line,
     float lineMult = lineH / font;
     float endX = 0, endY = 0, endH = 0;
     if (!TextPointAt(ctx, line, font, maxW, true, len(line), &endX, &endY,
-                     &endH, s->lastMono, lineMult, true)) {
+                     &endH, s->lastFontWord, lineMult, true)) {
         return 0;
     }
     float rowH = endH > 0 ? endH : lineH;
@@ -3103,8 +3109,9 @@ static int WrappedRowStarts(const InputState* s, PaintCtx* ctx, Str line,
     int* starts = (int*)Alloc(a, rows * (int)sizeof(int));
     starts[0] = 0;
     for (int k = 1; k < rows; k++) {
-        int at = TextIndexAt(ctx, line, font, maxW, true, 0,
-                             ((float)k + 0.5f) * rowH, s->lastMono, lineMult);
+        int at =
+            TextIndexAt(ctx, line, font, maxW, true, 0,
+                        ((float)k + 0.5f) * rowH, s->lastFontWord, lineMult);
         starts[k] = at > starts[k - 1] ? at : starts[k - 1];
     }
     *outStarts = starts;
@@ -5673,7 +5680,7 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     float cx = 0, cy = 0, ch = lineH;
     float lineMult = lineH / font;
     if (!TextPointAt(ctx, line, font, maxW, true, from - start, &cx, &cy, &ch,
-                     s->lastMono, lineMult, s->cursorLineEndAffinity)) {
+                     s->lastFontWord, lineMult, s->cursorLineEndAffinity)) {
         return false;
     }
     // The x the whole walk aims at, so crossing a short row and coming back
@@ -5716,10 +5723,10 @@ static bool VerticalTargetDisplay(const InputState* s, Window* win, int lines,
     out->offset = targetStart;
     if (len(target) > 0) {
         int local = TextIndexAt(ctx, target, font, maxW, true, wantX, y,
-                                s->lastMono, lineMult);
+                                s->lastFontWord, lineMult);
         out->offset += local;
         out->lineEndAffinity = InputLineEndAffinityAt(
-            ctx, target, font, maxW, local, y, s->lastMono, lineMult);
+            ctx, target, font, maxW, local, y, s->lastFontWord, lineMult);
     }
     out->preferredX = wantX;
     return true;
@@ -7332,7 +7339,7 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
         if (x <= b.x) {
             return 0;
         }
-        return TextIndexAt(ctx, t, font, 0, false, x - b.x, 0, s->lastMono);
+        return TextIndexAt(ctx, t, font, 0, false, x - b.x, 0, s->lastFontWord);
     }
     float lineH = s->lastLineH > 0 ? s->lastLineH : b.h;
     int rows = InputLinesLen(s);
@@ -7399,22 +7406,22 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     float maxW = s->softWrap ? b.w : 0;
     float lineMult = s->lastLineH > 0 ? s->lastLineH / font : 0;
     int local = TextIndexAt(ctx, line, font, maxW, s->softWrap, x - b.x, relY,
-                            s->lastMono, lineMult);
+                            s->lastFontWord, lineMult);
     if (lineEndAffinity && s->softWrap) {
-        *lineEndAffinity = InputLineEndAffinityAt(ctx, line, font, maxW, local,
-                                                  relY, s->lastMono, lineMult);
+        *lineEndAffinity = InputLineEndAffinityAt(
+            ctx, line, font, maxW, local, relY, s->lastFontWord, lineMult);
     }
     if (columnsPastLineEnd && local == len(line)) {
         float endX = 0, endY = 0, endH = 0;
         float spaceX = 0, spaceY = 0, spaceH = 0;
         bool finalVisualRow = !s->softWrap;
         if (TextPointAt(ctx, line, font, maxW, s->softWrap, len(line), &endX,
-                        &endY, &endH, s->lastMono, lineMult, true)) {
+                        &endY, &endH, s->lastFontWord, lineMult, true)) {
             float rowH = endH > 0 ? endH : lineH;
             finalVisualRow = finalVisualRow || relY + rowH * 0.5f >= endY;
             if (finalVisualRow && x - b.x > endX &&
                 TextPointAt(ctx, StrL(" "), font, 0, false, 1, &spaceX, &spaceY,
-                            &spaceH, s->lastMono, 0, true) &&
+                            &spaceH, s->lastFontWord, 0, true) &&
                 spaceX > 0) {
                 float columns = (x - b.x - endX) / spaceX;
                 *columnsPastLineEnd = (int)(columns + 0.5f);

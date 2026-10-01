@@ -212,13 +212,15 @@ El* EditorStory::Render(EditorStory* self, Ctx* cx) {
     // the view with it; that box virtualizes its rows against a height it
     // has to know now, so it is the pane's less the header, title row and
     // tab row above it rather than the flex_1 Rust leaves to layout.
-    // Editor::font_family is not carried: this tree draws
-    // every monospace run in the platform's one mono face (port-status.md),
-    // so the family rows only keep their check.
+    // `.when_some(self.font_family, |this, family| this.font_family(family))`:
+    // a family that is not installed draws in the platform's mono face.
     component::Editor* ed = component::Editor::New(
         cx, StrL("editor"), self->tab == 0 ? &self->code : &self->decorations);
     ed->H(WindowSize(cx->win).dipH - 262)
         ->Font(self->fontSize)
+        ->FontFamily(self->fontFamily >= 0
+                         ? Str(kFontFamilies[self->fontFamily])
+                         : Str{})
         ->ActiveLine()
         ->IndentGuides();
     if (self->tab == 0) {
