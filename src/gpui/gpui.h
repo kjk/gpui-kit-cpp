@@ -4724,6 +4724,11 @@ struct InputState {
     // retained handle, and AnyInputState forwards it without inspecting the
     // frame tree.
     FocusHandle focus = {};
+    // input.rs's ("input-frame-focus", state id) keyed handle: what the
+    // component's frame tracks, so it reads as focused while the focus is
+    // anywhere inside it — on the editor or on a prefix or suffix control.
+    // Not a tab stop. Made by the first frame that draws one.
+    FocusHandle frameFocus = {};
     // Rust's `Rope`. NUL-terminated past `len` so a `const char*` reader still
     // works; the terminator is not counted.
     Vec<char> text;
@@ -6995,6 +7000,9 @@ bool WindowAccessibilityPerform(Window* win, uint32_t nodeId,
 bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
                                         float value);
 int FocusNext(Window* win, int trapId, bool backward);
+// The tab stop FocusNext would move to from `fromId`, without moving the
+// focus or running anyone's blur; `fromId` when there is none.
+int FocusNextFrom(const Window* win, int fromId, int trapId, bool backward);
 // Move the focus. Everything that focuses goes through here, so the
 // generation a keystroke is stamped with counts every move.
 // FocusHandle — crates/gpui. In GPUI a focus handle is a refcounted key into
@@ -7018,6 +7026,11 @@ FocusHandle FocusHandleNew(App* app);
 FocusHandle FocusHandleNew(Ctx* cx);
 // handle.is_focused(window) / handle.focus(window) / window.focused(cx).
 bool FocusHandleIsFocused(const Window* win, FocusHandle h);
+// handle.contains(&other, window): `inner` is `outer`, or an element tracking
+// `inner` sat inside one tracking `outer` in the last collected frame (or in
+// the trap it hosts).
+bool FocusHandleContains(const Window* win, FocusHandle outer,
+                         FocusHandle inner);
 // contains_focused: the handle, or anything inside the box tracking it.
 bool FocusHandleContainsFocused(const Window* win, FocusHandle h);
 void FocusHandleFocus(Window* win, FocusHandle h);
@@ -7039,9 +7052,11 @@ void WindowSetFocusId(Window* win, int id);
 // window.focused(cx): which element has focus, or 0. What a widget stashes
 // before it takes focus for itself.
 int WindowFocusedId(const Window* win);
-// FocusHandle::contains_focused: focus is on this element, or inside the trap
-// it hosts — which is how a container that is not itself focusable asks
-// whether what it opened still holds the focus.
+// FocusHandle::contains by id: see FocusHandleContains.
+bool WindowFocusContains(const Window* win, int outer, int inner);
+// FocusHandle::contains_focused: focus is on this element, inside its
+// subtree, or inside the trap it hosts — which is also how a container that
+// is not itself focusable asks whether what it opened still holds the focus.
 bool WindowFocusWithin(const Window* win, int id);
 // `previous.focus(window, cx)` on a handle a widget stashed. An element that
 // is no longer on screen is a handle whose view has gone, which Rust treats as

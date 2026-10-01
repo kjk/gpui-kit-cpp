@@ -2,45 +2,21 @@
 
 namespace gpui {
 
-static bool ToolbarContains(Bounds container, Bounds item) {
-    float x = item.x + item.w * 0.5f;
-    float y = item.y + item.h * 0.5f;
-    return x >= container.x && x <= container.x + container.w &&
-           y >= container.y && y <= container.y + container.h;
-}
-
-bool ToolbarMoveFocus(Window* win, Bounds container, bool forward) {
-    if (!win || win->focusId == 0 || container.w <= 0 || container.h <= 0) {
+bool ToolbarMoveFocus(Window* win, FocusHandle container, bool forward) {
+    int start = WindowFocusedId(win);
+    if (!start || !container.IsValid()) {
         return false;
     }
-    // The toolbar's items in tab order, and where the focus is among them.
-    int n = win->focusEls.len;
-    int cur = -1;
-    int count = 0;
-    for (int i = 0; i < n; i++) {
-        const FocusRect& fr = win->focusEls[i];
-        if (!fr.tabStop || !ToolbarContains(container, fr.bounds)) {
-            continue;
-        }
-        if (fr.id == win->focusId) {
-            cur = count;
-        }
-        count++;
-    }
-    if (cur < 0 || count < 2) {
-        // Not inside, or the only item: focus stays put.
-        return false;
-    }
-    int want = forward ? (cur + 1) % count : (cur - 1 + count) % count;
-    int seen = 0;
-    for (int i = 0; i < n; i++) {
-        const FocusRect& fr = win->focusEls[i];
-        if (!fr.tabStop || !ToolbarContains(container, fr.bounds)) {
-            continue;
-        }
-        if (seen++ == want) {
-            WindowSetFocusId(win, fr.id);
+    // The first step and then up to MAX_FOCUS_ATTEMPTS more, as Rust takes.
+    int at = start;
+    for (int hop = 0; hop <= kToolbarMaxFocusAttempts; hop++) {
+        at = FocusNextFrom(win, at, 0, !forward);
+        if (at != start && WindowFocusContains(win, container.id, at)) {
+            WindowSetFocusId(win, at);
             return true;
+        }
+        if (at == start) {
+            break;
         }
     }
     return false;
@@ -59,7 +35,7 @@ void ToolbarState::OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev) {
     } else {
         return;
     }
-    ToolbarMoveFocus(cx->win, self->bounds, forward);
+    ToolbarMoveFocus(cx->win, self->focus, forward);
     const_cast<KeyEvent*>(ev)->propagate = false;
     Notify(cx);
 }
@@ -85,13 +61,16 @@ Toolbar* Toolbar::Child(El* child) {
 }
 
 El* Toolbar::IntoEl() {
-    // The state survives across frames so the key handler reads the box the
-    // last frame laid out, which is what the focus list was collected from.
+    // The handle must survive across frames so containment checks and the
+    // key handler refer to the same node; Rust keeps it in keyed state too.
     Entity<ToolbarState> state =
         ElementStateEntity<ToolbarState>(cx, id, StrL("gpui::Toolbar"));
     if (ToolbarState* s = state.Get(cx)) {
+        if (!s->focus.IsValid()) {
+            s->focus = FocusHandleNew(cx);
+        }
         s->disabled = disabled;
-        root->BoundsOut(&s->bounds);
+        root->TrackFocus(s->focus)->TabStop(false);
     }
     return root->Role(AccessibilityRole::Toolbar)
         ->AriaOrientation(AccessibilityOrientation::Horizontal)

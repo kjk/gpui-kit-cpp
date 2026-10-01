@@ -3846,18 +3846,14 @@ static void StoppingABlinkingCursorEndsTheBlinkLoop() {
 // Shift-Tab walk the inputs in order and wrap, a passive prefix or suffix
 // takes no stop of its own, and addon buttons take theirs in paint order.
 // Upstream reverted #3246 because its frame and editor registered the same
-// focus handle twice and Shift-Tab stuck on the focused editor. Here the
-// field and every editor row bound to the state track its handle, so the
-// traversal counts a handle once, at its last element. The Rust tests drive
-// a window and type between moves; this checks the traversal on fields that
+// focus handle twice and Shift-Tab stuck on the focused editor. Here, as
+// upstream, the frame tracks a handle of its own that is no stop, and the
+// editor rows bound to the state all track the state's, so the traversal
+// counts that handle once, at its last element. The Rust tests drive a
+// window and type between moves; this checks the traversal on fields that
 // hold text, which is when the most elements track one handle.
-static int InputFocusIdOf(El* e, InputState* state) {
-    if (!e) return 0;
-    if (e->input == state && e->style.focusId) return e->style.focusId;
-    for (El* child = e->first; child; child = child->next) {
-        if (int id = InputFocusIdOf(child, state)) return id;
-    }
-    return 0;
+static int InputFocusIdOf(El*, InputState* state) {
+    return state->focus.id;
 }
 
 static int ButtonFocusIdOf(El* e, Str id) {
@@ -3912,6 +3908,16 @@ static void InputFocusCyclesThroughInputsAndAddons() {
             int prefix = ButtonFocusIdOf(root, StrL("prefix-button"));
             int suffix = ButtonFocusIdOf(root, StrL("suffix-button"));
             utassert(prefix && suffix);
+            // The frame's own handle contains the editor and both addons,
+            // which is what keeps its ring on while either button has the
+            // focus, and nothing of the field beside it.
+            int frame = states[1].frameFocus.id;
+            utassert(frame && frame != second);
+            utassert(WindowFocusContains(win, frame, second));
+            utassert(WindowFocusContains(win, frame, prefix));
+            utassert(WindowFocusContains(win, frame, suffix));
+            utassert(!WindowFocusContains(win, frame, first));
+            utassert(!WindowFocusContains(win, second, suffix));
             int withButtons[5] = {first, prefix, second, suffix, third};
             memcpy(order, withButtons, sizeof(order));
             stops = 5;

@@ -7433,8 +7433,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // `.border_color(cx.theme().ring)` does to the style it is building.
     // `.when(is_focused && self.focus_ring_enabled, ..)`: the control's own
     // opt-out drops the whole focus appearance, both halves of it.
-    bool focused = e->style.focusId && e->style.focusId == ctx->focusId &&
-                   e->style.focusRing;
+    // A frame whose handle contains the focused one reads as focused too,
+    // which is how input.rs's frame shows the ring for its editor.
+    bool focused =
+        e->style.focusId && e->style.focusRing && ctx->focusId &&
+        (e->style.focusId == ctx->focusId ||
+         WindowFocusContains(ctx->window, e->style.focusId, ctx->focusId));
     if (focused) {
         e->style.borderColor = RuntimeStyleNow(ctx->app).ring;
     }
@@ -9344,6 +9348,11 @@ static void AccessibilityCollectNode(El* e, Vec<AccessibilityNode>* out,
         }
         node.clickId = e->clickId;
         node.focusId = e->style.focusId;
+        // A component input's frame tracks a handle of its own; its node is
+        // the text field, and focusing that focuses the editor.
+        if (e->input && e->input->focus.IsValid()) {
+            node.focusId = e->input->focus.id;
+        }
         node.onClick = e->onClick;
         node.listener = e->listener;
         node.accessibilityDefault = e->accessibilityDefault;
@@ -9517,6 +9526,11 @@ FocusHandle FocusHandleNew(Ctx* cx) {
 bool FocusHandleIsFocused(const Window* win, FocusHandle h) {
     return win && h.IsValid() && win->focusId == h.id;
 }
+bool FocusHandleContains(const Window* win, FocusHandle outer,
+                         FocusHandle inner) {
+    return outer.IsValid() && inner.IsValid() &&
+           WindowFocusContains(win, outer.id, inner.id);
+}
 bool FocusHandleContainsFocused(const Window* win, FocusHandle h) {
     return h.IsValid() && WindowFocusWithin(win, h.id);
 }
@@ -9538,19 +9552,44 @@ int WindowFocusedId(const Window* win) {
     return win ? win->focusId : 0;
 }
 
-bool WindowFocusWithin(const Window* win, int id) {
-    if (!win || !id) {
+// Rust asks the rendered frame's dispatch tree whether `outer`'s node is on
+// `inner`'s path. That tree is gone here, but each focusable left a marker in
+// the dispatch list whose span closes with its subtree, so an element of
+// `inner` is below one of `outer` exactly when its marker falls inside that
+// span. A handle several elements track is inside if any of them is.
+bool WindowFocusContains(const Window* win, int outer, int inner) {
+    if (!win || !outer || !inner) {
         return false;
     }
-    if (win->focusId == id) {
+    if (outer == inner) {
         return true;
     }
     for (int i = 0; i < win->focusEls.len; i++) {
-        if (win->focusEls[i].id == win->focusId) {
-            return win->focusEls[i].trapId == id;
+        const FocusRect& in = win->focusEls[i];
+        if (in.id != inner) {
+            continue;
+        }
+        // A trap container need not track a focusable of its own.
+        if (in.trapId == outer) {
+            return true;
+        }
+        for (int j = 0; j < win->focusEls.len; j++) {
+            const FocusRect& out = win->focusEls[j];
+            // A focus list written without its tree has no spans to test.
+            if (out.id != outer || out.dispatchIx >= win->dispatch.len) {
+                continue;
+            }
+            int end = win->dispatch[out.dispatchIx].subtreeEnd;
+            if (out.dispatchIx < in.dispatchIx && in.dispatchIx < end) {
+                return true;
+            }
         }
     }
     return false;
+}
+
+bool WindowFocusWithin(const Window* win, int id) {
+    return win && WindowFocusContains(win, id, win->focusId);
 }
 
 bool WindowRestoreFocus(Window* win, int id) {
@@ -9566,13 +9605,15 @@ bool WindowRestoreFocus(Window* win, int id) {
     return false;
 }
 
-// A focus handle is one tab stop however many elements track it. A field
-// and the editor rows inside it all track the input's handle, the way
-// upstream's frame and editor briefly did (#3246, reverted by #3253 because
-// Shift-Tab then stuck on the focused editor). The stop sits where the
-// handle's last element does, which is the editor's place, after a prefix
-// addon painted before it; whether it is a stop at all is the outermost
-// element's say, since that is the one a caller's TabStop lands on.
+// A focus handle is one tab stop however many elements track it. Every
+// editor row bound to an input tracks the input's handle where Rust's state
+// is one element, and so does a bare field bound to it (the code editor's,
+// the shell's), the way upstream's frame and editor briefly did (#3246,
+// reverted by #3253 because Shift-Tab then stuck on the focused editor). The
+// stop sits where the handle's last element does, which is the editor's
+// place, after a prefix addon painted before it; whether it is a stop at all
+// is the outermost element's say, since that is the one a caller's TabStop
+// lands on.
 static bool FocusIsLastOfItsHandle(const Window* win, int i) {
     for (int j = i + 1; j < win->focusEls.len; j++) {
         if (win->focusEls[j].id == win->focusEls[i].id) {
@@ -9591,14 +9632,14 @@ static bool FocusHandleIsTabStop(const Window* win, int id) {
     return false;
 }
 
-int FocusNext(Window* win, int trapId, bool backward) {
+// The tab stop after (or before) `fromId`, the walk FocusNext takes, without
+// moving the focus.
+static bool FocusNextStop(const Window* win, int fromId, int trapId,
+                          bool backward, int* out) {
     int n = win->focusEls.len;
-    if (n == 0) {
-        return 0;
-    }
     int cur = -1;
     for (int i = 0; i < n; i++) {
-        if (win->focusEls[i].id == win->focusId) {
+        if (win->focusEls[i].id == fromId) {
             cur = i;
         }
     }
@@ -9625,9 +9666,28 @@ int FocusNext(Window* win, int trapId, bool backward) {
                 continue;
             }
         }
-        WindowSetFocusId(win, win->focusEls[i].id);
-        return win->focusId;
+        *out = win->focusEls[i].id;
+        return true;
+    }
+    return false;
+}
+
+int FocusNext(Window* win, int trapId, bool backward) {
+    if (win->focusEls.len == 0) {
+        return 0;
+    }
+    int next = 0;
+    if (FocusNextStop(win, win->focusId, trapId, backward, &next)) {
+        WindowSetFocusId(win, next);
     }
     return win->focusId;
+}
+
+int FocusNextFrom(const Window* win, int fromId, int trapId, bool backward) {
+    int next = fromId;
+    if (win) {
+        FocusNextStop(win, fromId, trapId, backward, &next);
+    }
+    return next;
 }
 } // namespace gpui

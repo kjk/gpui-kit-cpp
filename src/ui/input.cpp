@@ -182,6 +182,31 @@ FocusHandle AnyInputState::FocusHandleOf(const Window* window, App* app) const {
                                                      : FocusHandle{};
 }
 
+// input.rs: the frame tracks a handle of its own, not the editor's, and
+// reads as focused while the editor has the focus or anything else inside
+// it does. The frame here also stays the element bound to the state, since
+// its box is the field's geometry and accessibility node, but the handle it
+// tracks is this one: a press on its padding no longer focuses the editor
+// (Rust's frame has no press handler) and Tab stops only at the editor.
+static FocusHandle InputFrameFocus(Ctx* cx, InputState* state) {
+    if (!state) return {};
+    if (!state->frameFocus.IsValid()) state->frameFocus = FocusHandleNew(cx);
+    return state->frameFocus;
+}
+
+static bool InputFrameFocused(Ctx* cx, InputState* state, bool disabled) {
+    if (!state || disabled) return false;
+    return state->focused ||
+           FocusHandleContainsFocused(cx->win, InputFrameFocus(cx, state));
+}
+
+static void InputTrackFrameFocus(Ctx* cx, El* frame, InputState* state) {
+    if (!state) return;
+    frame->TrackFocus(InputFrameFocus(cx, state))
+        ->TabStop(false)
+        ->FocusOnPress(false);
+}
+
 bool AnyInputState::operator==(const AnyInputState& other) const {
     return kind == other.kind && text == other.text && otp.id == other.otp.id;
 }
@@ -759,7 +784,8 @@ El* Input::IntoEl() {
     if (col) {
         col->Child(TextEl(a, label)->Font(12)->Fg(th.foreground));
     }
-    bool focused = state && state->focused && !disabled;
+    bool inputFocused = state && state->focused && !disabled;
+    bool focused = InputFrameFocused(cx, state, disabled);
     if (state) {
         bool editable = !disabled && !readonly && !state->readonly;
         state->pasteHandler = editable ? onPaste : nullptr;
@@ -770,7 +796,7 @@ El* Input::IntoEl() {
             state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
             tokenRendererUser, tokenClick, tokenClickUser, secret);
     }
-    if (focused && !readonly && !(state && state->readonly)) {
+    if (inputFocused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
             cx->win, InputNativeContentType(hasContentType, contentType));
     }
@@ -811,6 +837,7 @@ El* Input::IntoEl() {
                     // a value wider than the field scrolls under it rather
                     // than spilling out past whatever is next to it.
                     ->ClipX();
+    if (!disabled) InputTrackFrameFocus(cx, field, state);
     if (state) {
         if (state->placeholder.s) {
             field->AriaPlaceholder(state->placeholder);
@@ -984,7 +1011,7 @@ Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
 
 El* Textarea::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    bool focused = state && state->focused && !disabled;
+    bool focused = InputFrameFocused(cx, state, disabled);
     // The Input a Textarea wraps: a multi-line field takes input_py above and
     // below the rows and input_px beside them, and input_text_size for them.
     float inputH = 0, padX = 0, padY = 0, font = 0;
@@ -1053,6 +1080,7 @@ El* Textarea::IntoEl() {
                   // its place in the tree is what it is found by.
                   ->ScrollFromPath()
                   ->Child(gpui::Textarea::New(cx, state, editor));
+    if (interactive) InputTrackFrameFocus(cx, box, state);
     if (accessibilityId.s) {
         box->AccessibilityId(accessibilityId);
     }

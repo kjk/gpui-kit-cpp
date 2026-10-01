@@ -59,11 +59,6 @@ macOS font-kit requirement on the website only. The current update target is
   paragraph property, but DirectWrite has none, so Windows would need a
   run made of two layouts, or the editor its own visual rows
   (`src/base/input.cpp`).
-- **A toolbar's items are the tab stops inside its box.** Rust constrains
-  roving Left/Right focus to the toolbar's subtree through its focus handle;
-  a handle here knows containment only through a focus trap, which would
-  also keep Tab inside, so the toolbar records its laid-out bounds and roves
-  among the tab stops whose centre lies within them (`src/base/toolbar.cpp`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
@@ -203,9 +198,12 @@ macOS font-kit requirement on the website only. The current update target is
   differs only by kerning (`src/shell/style.cpp`,
   `TruncateTextStartOrMiddle`).
 - **A focus handle is one tab stop however many elements track it.** An
-  input's field and its editor rows all track the state's handle, where
-  upstream's frame has a handle of its own; Tab traversal counts a handle
-  once, at its last element (`FocusNext`, `src/gpui/gpui.cpp`).
+  input's editor rows each track the state's handle, where upstream's state
+  is one element, and so does a bare field bound to it (the code editor's,
+  the shell's); Tab traversal counts a handle once, at its last element
+  (`FocusNext`, `src/gpui/gpui.cpp`). The component Input's frame tracks a
+  handle of its own, as upstream's does, but stays the element bound to the
+  state, since its box is the field's geometry and accessibility node.
 - **Font features are one flag, and the browser ignores it.** GPUI's
   `FontFeatures` is any list of OpenType (tag, value) pairs; here it is
   `FontFeatures::TabularFigures` or none — `tnum`, the one gpui-kit names —

@@ -6,37 +6,39 @@
    among them. It exposes `Toolbar` semantics (a horizontal toolbar role) and
    moves focus between its focusable descendants with Left and Right,
    wrapping at either end. When disabled the arrow keys do nothing; hosted
-   controls are disabled by their owner. The container is not itself a tab
-   stop, so Tab enters and leaves through its items, and an input inside it
-   keeps its own arrow keys (place inputs at the trailing end).
-
-   Rust constrains the traversal to the subtree through the container's focus
-   handle. A focus handle here knows containment only through focus traps,
-   and a trap would also keep Tab inside the toolbar, so the toolbar records
-   its laid-out box and takes as its items the window's tab stops inside it.
+   controls are disabled by their owner. The container tracks a focus handle
+   that is not a tab stop, so Tab enters and leaves through its items, and an
+   input inside it keeps its own arrow keys (place inputs at the trailing
+   end).
 */
 
 #include "gpui/gpui.h"
 
 namespace gpui {
 
-// MAX_FOCUS_ATTEMPTS: Rust's bound on tab-stop hops. The traversal here walks
-// the frame's focus list once, so it needs no bound; kept for the name.
+// MAX_FOCUS_ATTEMPTS: upper bound on tab-stop hops when wrapping focus back
+// into the toolbar, so a toolbar whose items all vanished from the tab order
+// can never hang the key handler. Mirrors Root's focus-trap loop bound.
 const int kToolbarMaxFocusAttempts = 100;
 
-// The toolbar's element state: its box as last laid out, and whether its own
-// navigation is off.
+// The toolbar's element state: the focus handle its container tracks, kept
+// across frames so containment and the key handler name the same node, and
+// whether its own navigation is off.
 struct ToolbarState {
-    Bounds bounds = {};
+    FocusHandle focus = {};
     bool disabled = false;
 
     static void OnKeyDown(ToolbarState* self, Ctx* cx, const KeyEvent* ev);
 };
 
-// move_focus: focus the next (or previous) tab stop inside `container`,
-// wrapping at either end. Nothing moves when the focus is not inside or when
-// it is the only item. Answers whether the focus moved.
-bool ToolbarMoveFocus(Window* win, Bounds container, bool forward);
+// move_focus: step through the window's tab stops, the way Root's focus trap
+// cycles, until the focus lands on another one inside `container`; when the
+// walk comes back to where it started the toolbar has no other item and the
+// focus stays put. The hops are taken on the frame's focus list and only the
+// last one moves the focus, where Rust focuses each one in turn and lets the
+// effect cycle settle on the last; no blur runs for a stop passed over.
+// Answers whether the focus moved.
+bool ToolbarMoveFocus(Window* win, FocusHandle container, bool forward);
 
 struct Toolbar {
     Ctx* cx = nullptr;

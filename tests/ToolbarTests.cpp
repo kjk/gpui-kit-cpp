@@ -1,55 +1,67 @@
 /* Ported from crates/base/src/toolbar.rs and crates/component/src/toolbar.rs.
  *
  * Base's toolbar owns the toolbar role and roving Left/Right focus among the
- * tab stops inside it, wrapping at either end; a group is a named Group.
- * Component's toolbar passes one density to every sized control, whatever
- * order the builder calls came in, caps it at Medium, and turns a hosted
- * Button into a compact ghost command. */
+ * focusables its handle contains, wrapping at either end; a group is a named
+ * Group. Component's toolbar passes one density to every sized control,
+ * whatever order the builder calls came in, caps it at Medium, and turns a
+ * hosted Button into a compact ghost command. */
 
 #include "Test.h"
 
 namespace {
 
-// Three tab stops in a row, laid out inside a 100x20 toolbar at the origin,
-// and one outside it.
-struct RoveFixture {
-    App app;
-    Window* win = nullptr;
-    Arena* arena = nullptr;
-    Ctx cx = {};
+// toolbar.rs's harness: a toolbar of `count` 20px tab stops, here with one
+// more tab stop on either side of it, which roving must never reach.
+struct RoveView {
+    FocusHandle before = {};
+    FocusHandle items[3] = {};
+    FocusHandle after = {};
+    int count = 3;
+    bool disabled = false;
 
-    RoveFixture(int items) {
-        win = new Window();
-        win->app = &app;
-        arena = ArenaNew();
-        cx = {&app, win, arena, {}};
-        for (int i = 0; i < items; i++) {
-            FocusRect fr;
-            fr.id = 100 + i;
-            fr.bounds = {(float)(i * 25), 0, 20, 20};
-            VecAppend(win->focusEls, fr);
-        }
-        FocusRect outside;
-        outside.id = 999;
-        outside.bounds = {300, 0, 20, 20};
-        VecAppend(win->focusEls, outside);
-        win->focusId = 100;
+    static El* Item(Arena* a, FocusHandle h) {
+        return Div(a)->W(20)->H(20)->TrackFocus(h)->TabStop(true);
     }
-    ~RoveFixture() {
-        WindowKeyedFree(win);
-        EntityDropAll(&app);
-        delete win;
-        ArenaDelete(arena);
+
+    static El* Render(RoveView* self, Ctx* cx) {
+        Arena* a = cx->a;
+        Toolbar* bar = Toolbar::New(cx, StrL("toolbar"))
+                           ->Disabled(self->disabled);
+        for (int i = 0; i < self->count; i++) {
+            bar->Child(Item(a, self->items[i]));
+        }
+        return Div(a)
+            ->FlexRow()
+            ->Child(Item(a, self->before))
+            ->Child(bar->IntoEl())
+            ->Child(Item(a, self->after));
     }
 };
 
-const Bounds kToolbarBox = {0, 0, 100, 20};
+struct Rove {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<RoveView> view = {};
 
-KeyEvent Arrow(int vk) {
-    KeyEvent ev;
-    ev.vk = vk;
-    ev.down = true;
-    return ev;
+    RoveView* View() const { return view.Get(app); }
+    bool Focused(FocusHandle h) const { return FocusHandleIsFocused(win, h); }
+};
+
+Rove RoveOpen(int count, bool disabled = false) {
+    Rove r;
+    r.app = TestAppNew();
+    r.view = EntityNew<RoveView>(r.app);
+    RoveView* v = r.View();
+    v->count = count;
+    v->disabled = disabled;
+    v->before = FocusHandleNew(r.app);
+    v->after = FocusHandleNew(r.app);
+    for (FocusHandle& h : v->items) {
+        h = FocusHandleNew(r.app);
+    }
+    r.win = TestWindowOpen(r.app, r.view);
+    TestFocus(r.win, v->items[0]);
+    return r;
 }
 
 } // namespace
@@ -76,51 +88,98 @@ static void BaseToolbarBuilders() {
     EntityDropAll(&app);
 }
 
-// toolbar.rs: arrow_keys_rove_focus_across_items,
-// toolbar_with_a_single_item_keeps_focus_on_it and
-// disabled_toolbar_ignores_arrow_keys. The key handler is called as the
-// window calls it once a toolbar item has focus.
+// toolbar.rs: arrow_keys_rove_focus_across_items.
 static void ArrowKeysRoveFocusAcrossItems() {
-    RoveFixture f(3);
-    ToolbarState state;
-    state.bounds = kToolbarBox;
-    KeyEvent right = Arrow(KeyRight);
-    KeyEvent left = Arrow(KeyLeft);
-    ToolbarState::OnKeyDown(&state, &f.cx, &right);
-    utassert(f.win->focusId == 101);
-    utassert(!right.propagate);
-    ToolbarState::OnKeyDown(&state, &f.cx, &right);
-    utassert(f.win->focusId == 102);
+    Rove r = RoveOpen(3);
+    RoveView* v = r.View();
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[1]));
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[2]));
     // Wrapping: past the last item, focus returns to the first, and never
-    // reaches the tab stop outside the toolbar.
-    ToolbarState::OnKeyDown(&state, &f.cx, &right);
-    utassert(f.win->focusId == 100);
-    ToolbarState::OnKeyDown(&state, &f.cx, &left);
-    utassert(f.win->focusId == 102);
+    // reaches the tab stops on either side of the toolbar.
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[0]));
+    TestSimulateKeystrokes(r.win, "left");
+    utassert(r.Focused(v->items[2]));
+    // The toolbar itself is not a tab stop: Tab leaves through its items.
+    TestSimulateKeystrokes(r.win, "tab");
+    utassert(r.Focused(v->after));
+    TestAppFree(r.app);
 }
 
+// toolbar.rs: toolbar_with_a_single_item_keeps_focus_on_it.
 static void AToolbarWithOneItemKeepsFocusOnIt() {
-    RoveFixture f(1);
-    utassert(!ToolbarMoveFocus(f.win, kToolbarBox, true));
-    utassert(!ToolbarMoveFocus(f.win, kToolbarBox, false));
-    utassert(f.win->focusId == 100);
+    Rove r = RoveOpen(1);
+    RoveView* v = r.View();
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[0]));
+    TestSimulateKeystrokes(r.win, "left");
+    utassert(r.Focused(v->items[0]));
+    TestAppFree(r.app);
 }
 
+// toolbar.rs: disabled_toolbar_ignores_arrow_keys.
 static void ADisabledToolbarIgnoresArrowKeys() {
-    RoveFixture f(2);
-    ToolbarState state;
-    state.bounds = kToolbarBox;
-    state.disabled = true;
-    KeyEvent right = Arrow(KeyRight);
-    ToolbarState::OnKeyDown(&state, &f.cx, &right);
-    utassert(f.win->focusId == 100);
-    utassert(right.propagate);
+    Rove r = RoveOpen(2, true);
+    RoveView* v = r.View();
+    TestSimulateKeystrokes(r.win, "right");
+    utassert(r.Focused(v->items[0]));
+    TestAppFree(r.app);
 }
+
+// FocusHandle::contains: the toolbar's handle contains its items and not the
+// stops beside it, which is what keeps the roving inside.
+static void TheToolbarHandleContainsItsItems() {
+    Rove r = RoveOpen(3);
+    RoveView* v = r.View();
+    FocusHandle bar = {};
+    for (int i = 0; i < r.win->focusEls.len; i++) {
+        if (!r.win->focusEls[i].tabStop) {
+            bar.id = r.win->focusEls[i].id;
+        }
+    }
+    utassert(bar.IsValid());
+    utassert(FocusHandleContains(r.win, bar, v->items[0]));
+    utassert(FocusHandleContains(r.win, bar, v->items[2]));
+    utassert(!FocusHandleContains(r.win, bar, v->before));
+    utassert(!FocusHandleContains(r.win, bar, v->after));
+    utassert(!FocusHandleContains(r.win, v->items[0], bar));
+    utassert(FocusHandleContainsFocused(r.win, bar));
+    TestFocus(r.win, v->after);
+    utassert(!FocusHandleContainsFocused(r.win, bar));
+    TestAppFree(r.app);
+}
+
+namespace {
+
+// A window for the builders that read keyed element state.
+struct Fixture {
+    App app;
+    Window* win = nullptr;
+    Arena* arena = nullptr;
+    Ctx cx = {};
+
+    Fixture() {
+        win = new Window();
+        win->app = &app;
+        arena = ArenaNew();
+        cx = {&app, win, arena, {}};
+    }
+    ~Fixture() {
+        WindowKeyedFree(win);
+        EntityDropAll(&app);
+        delete win;
+        ArenaDelete(arena);
+    }
+};
+
+} // namespace
 
 // toolbar.rs: group_exposes_group_role_and_accessible_name. The toolbar
 // itself is a horizontal Toolbar.
 static void RolesAndNames() {
-    RoveFixture f(0);
+    Fixture f;
     El* group = ToolbarGroup::New(&f.cx, StrL("history"))
                     ->Label(StrL("History"))
                     ->Child(Div(f.arena)->W(20)->H(20))
@@ -157,7 +216,7 @@ struct SizeProbe {
 // toolbar_size_propagates_to_items_independent_of_builder_order and
 // toolbar_group_propagates_its_size_to_items.
 static void StyledToolbarSizesItsControls() {
-    RoveFixture f(0);
+    Fixture f;
     component::Init(&f.app);
     component::Toolbar* fresh = component::Toolbar::New(&f.cx, StrL("t"));
     utassert(fresh->size == UiSize::Small && !fresh->disabled &&
@@ -209,6 +268,7 @@ void TestToolbar() {
     BaseToolbarBuilders();
     ArrowKeysRoveFocusAcrossItems();
     AToolbarWithOneItemKeepsFocusOnIt();
+    TheToolbarHandleContainsItsItems();
     ADisabledToolbarIgnoresArrowKeys();
     RolesAndNames();
     StyledToolbarSizesItsControls();
