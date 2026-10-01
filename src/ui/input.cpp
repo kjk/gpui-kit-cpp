@@ -1001,7 +1001,20 @@ El* Textarea::IntoEl() {
     }
     // A row is one 1.25rem line box, like the single-line input; the border
     // sits outside the padded content, as in GPUI.
-    int shownRows = rows > 0 ? rows : state ? LayoutModeRows(state->mode) : 2;
+    //
+    // Without a Rows() here, the state's mode decides as element.rs
+    // request_layout does: an auto-grow textarea is at least its current
+    // rows (capped at max_rows) tall, and any other multi-line one at least
+    // one line — PlainText's own `rows` sizes nothing upstream.
+    int shownRows = rows;
+    if (shownRows <= 0) {
+        shownRows = 1;
+        if (state && state->mode.kind == LayoutModeKind::AutoGrow) {
+            int grown = LayoutModeRows(state->mode);
+            int maxRows = state->mode.maxRows;
+            shownRows = maxRows > 0 && maxRows < grown ? maxRows : grown;
+        }
+    }
     // `.h(px(..))` or `.h(relative(1.))`: a caller that gives the editor a
     // height means it, and kFill is the relative one — the inspector's pane
     // is what asks for it. Everything else is `rows` line boxes.

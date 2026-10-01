@@ -140,9 +140,45 @@ static void InlineAddonsInsetTheControlAndButtonsAreCompact() {
     delete win;
 }
 
+// element.rs request_layout: a multi-line field that does not auto-grow is
+// at least one line tall whatever its PlainText rows say; an auto-grow one
+// is its current rows, up to max_rows. A Rows() on the builder still wins.
+static void APlainTextareaIsOneLineUnlessItGrows() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    // Medium: input_py 8 above and below, a 1px border each side.
+    const float kPadded = 2 * 8.f + 2;
+    InputState plain;
+    plain.kind = InputKind::Textarea;
+    TextareaSetRows(&plain, 3);
+    El* e = component::Textarea::New(&cx, StrL("plain"), &plain)->IntoEl();
+    utassertnear(e->style.height, 20 + kPadded);
+
+    InputState grow;
+    grow.kind = InputKind::Textarea;
+    TextareaSetAutoGrow(&grow, 2, 3);
+    LayoutModeSetRows(&grow.mode, 5);
+    e = component::Textarea::New(&cx, StrL("grow"), &grow)->IntoEl();
+    utassertnear(e->style.height, 3 * 20 + kPadded);
+
+    e = component::Textarea::New(&cx, StrL("asked"), &plain)->Rows(4)->IntoEl();
+    utassertnear(e->style.height, 4 * 20 + kPadded);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestInputGroup() {
     TestSuite("input_group");
     ValidationTakesPrecedenceOverFocusAndRemainsVisibleWhenDisabled();
     TheBuilderKeepsTheLastControlAndAddonAlignment();
     InlineAddonsInsetTheControlAndButtonsAreCompact();
+    APlainTextareaIsOneLineUnlessItGrows();
 }
