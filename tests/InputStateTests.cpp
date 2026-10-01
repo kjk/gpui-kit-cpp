@@ -5662,9 +5662,11 @@ static void UndoManagerKeepsRapidLinesInDistinctTransactions() {
 // state.rs test_undo_manager_coalesces_long_unicode_typing_without_a_timer.
 static void UndoManagerCoalescesLongUnicodeTypingWithoutATimer() {
     InputView view = InputViewBuildTextarea();
-    const char* parts[] = {"The ", "quick ", "brown fox, ",
-                           "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\x96"
-                           "\xE7\x95\x8C ",
+    // "你好，世界 ", kept in one place where the line runs out.
+    const char* hello =
+        "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\x96"
+        "\xE7\x95\x8C ";
+    const char* parts[] = {"The ", "quick ", "brown fox, ", hello,
                            "\xF0\x9F\xA6\x80 jumps over 13 lazy dogs."};
     const char* expected =
         "The quick brown fox, "
@@ -5687,11 +5689,12 @@ static void UndoManagerCoalescesLongUnicodeTypingWithoutATimer() {
 // state.rs test_undo_manager_long_multiline_sequence_has_structural_boundaries.
 static void UndoManagerLongMultilineSequenceHasStructuralBoundaries() {
     InputView view = InputViewBuildTextarea();
-    const char* lines[] = {
-        "first line with punctuation!",
+    // "第二行包含 Unicode 🦀".
+    const char* second =
         "\xE7\xAC\xAC\xE4\xBA\x8C\xE8\xA1\x8C\xE5\x8C\x85\xE5\x90\xAB Unicode "
-        "\xF0\x9F\xA6\x80",
-        "third line has several words"};
+        "\xF0\x9F\xA6\x80";
+    const char* lines[] = {"first line with punctuation!", second,
+                           "third line has several words"};
     for (int index = 0; index < 3; index++) {
         // line.split_inclusive(' '): each chunk keeps the space ending it.
         const char* line = lines[index];
