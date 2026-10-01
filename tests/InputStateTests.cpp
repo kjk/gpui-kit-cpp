@@ -6806,6 +6806,214 @@ static void ImeSelectionIsRelativeToReplacementStart() {
     InputViewFree(&view);
 }
 
+// state.rs test_undo_manager_composition_is_one_undo_group.
+static void UndoManagerCompositionIsOneUndoGroup() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("a"));
+    MarkB(view, "s");
+    MarkB(view, "sh");
+    ViewTypeText(view, "\xE6\x98\xAF");
+    utassert(ViewValueIs(view, "a\xE6\x98\xAF"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "a"));
+    RedoB(view);
+    utassert(ViewValueIs(view, "a\xE6\x98\xAF"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_consecutive_compositions_are_separate_groups.
+static void UndoManagerConsecutiveCompositionsAreSeparateGroups() {
+    InputView view = InputViewBuild();
+    // First composition: "jin" -> "今天".
+    MarkB(view, "j");
+    MarkB(view, "jin");
+    ViewTypeText(view, "\xE4\xBB\x8A\xE5\xA4\xA9");
+    // Second composition: "wo" -> "我们".
+    MarkB(view, "w");
+    MarkB(view, "wo");
+    ViewTypeText(view, "\xE6\x88\x91\xE4\xBB\xAC");
+    utassert(
+        ViewValueIs(view, "\xE4\xBB\x8A\xE5\xA4\xA9\xE6\x88\x91\xE4\xBB\xAC"));
+    utassert(ViewRangeIs(view, 12, 12));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "\xE4\xBB\x8A\xE5\xA4\xA9"));
+    utassert(ViewRangeIs(view, 6, 6));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    utassert(ViewRangeIs(view, 0, 0));
+
+    RedoB(view);
+    utassert(ViewValueIs(view, "\xE4\xBB\x8A\xE5\xA4\xA9"));
+    utassert(ViewRangeIs(view, 6, 6));
+
+    RedoB(view);
+    utassert(
+        ViewValueIs(view, "\xE4\xBB\x8A\xE5\xA4\xA9\xE6\x88\x91\xE4\xBB\xAC"));
+    utassert(ViewRangeIs(view, 12, 12));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// `state.undo_manager.set_pending_intent(intent)`.
+static void SetPendingIntentB(const InputView& v, EditIntent intent) {
+    v.input->undo.hasPendingIntent = true;
+    v.input->undo.pendingIntent = intent;
+}
+
+// state.rs test_undo_manager_typing_after_composition_is_a_separate_group.
+static void UndoManagerTypingAfterCompositionIsASeparateGroup() {
+    InputView view = InputViewBuild();
+    MarkB(view, "n");
+    ViewTypeText(view, "\xE4\xBD\xA0");
+    SetPendingIntentB(view, EditIntent::Typing);
+    ViewTypeText(view, "a");
+    SetPendingIntentB(view, EditIntent::Typing);
+    ViewTypeText(view, "b");
+    utassert(ViewValueIs(view,
+                         "\xE4\xBD\xA0"
+                         "ab"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_composition_cancel_leaves_no_entry.
+static void UndoManagerCompositionCancelLeavesNoEntry() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("a"));
+    MarkB(view, "s");
+    MarkB(view, "");
+
+    utassert(ViewValueIs(view, "a"));
+    utassert(len(view.input->undo.undos) == 0);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_selection_restored_by_undo_and_redo.
+static void UndoManagerSelectionRestoredByUndoAndRedo() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("abc"));
+    SetSelectedRangeB(view, 1, 2);
+    ViewTypeText(view, "X");
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "abc"));
+    utassert(ViewRangeIs(view, 1, 2));
+
+    RedoB(view);
+    utassert(ViewValueIs(view, "aXc"));
+    utassert(ViewRangeIs(view, 2, 2));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_forward_delete_restores_cursor.
+static void UndoManagerForwardDeleteRestoresCursor() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("abc"));
+    SetSelectedRangeB(view, 1, 1);
+    ViewAct(view, InputAction::Delete);
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "abc"));
+    utassert(ViewRangeIs(view, 1, 1));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_selection_movement_preserves_redo.
+static void UndoManagerSelectionMovementPreservesRedo() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "ab");
+    UndoB(view);
+    SetSelectedRangeB(view, 0, 0);
+    RedoB(view);
+    utassert(ViewValueIs(view, "ab"));
+
+    UndoB(view);
+    ViewTypeText(view, "x");
+    RedoB(view);
+    utassert(ViewValueIs(view, "x"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_noop_edit_preserves_redo.
+static void UndoManagerNoopEditPreservesRedo() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    InputMoveTo(view.input, view.app, view.win, 0);
+    ViewTypeText(view, "");
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    RedoB(view);
+    utassert(ViewValueIs(view, "a"));
+    utassert(InputCursor(view.input) == 1);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_cursor_round_trip_stops_typing_coalescing.
+static void CursorRoundTripStopsTypingCoalescing() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    ViewAct(view, InputAction::MoveLeft);
+    ViewAct(view, InputAction::MoveRight);
+    ViewTypeText(view, "b");
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "a"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs
+// test_undo_manager_noop_edit_breaks_coalescing_without_clearing_history.
+static void UndoManagerNoopEditBreaksCoalescingWithoutClearingHistory() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "alpha");
+    ViewTypeText(view, "");
+    ViewTypeText(view, "beta");
+    utassert(ViewValueIs(view, "alphabeta"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "alpha"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_masked_redo_restores_actual_cursor.
+static void UndoManagerMaskedRedoRestoresActualCursor() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(','));
+    });
+    InputSetValue(view.input, StrL("12345"));
+    SetSelectedRangeB(view, 2, 2);
+    ViewTypeText(view, "9");
+    Selection afterEdit = view.input->selectedRange;
+    utassert(afterEdit.end != len(InputValue(view.input)));
+
+    UndoB(view);
+    RedoB(view);
+    utassert(ViewRangeIs(view, afterEdit.start, afterEdit.end));
+    Flush(view);
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsB() {
     UndoManagerCoalescesAdjacentTypingTransactions();
     UndoManagerCursorMovementSplitsTyping();
@@ -6845,6 +7053,17 @@ static void RunWindowTestsB() {
     CompositionCancelViaUnmarkDoesNotLeak();
     SetSelectedRangeClipsToUtf8BoundariesInAWindow();
     ImeSelectionIsRelativeToReplacementStart();
+    UndoManagerCompositionIsOneUndoGroup();
+    UndoManagerConsecutiveCompositionsAreSeparateGroups();
+    UndoManagerTypingAfterCompositionIsASeparateGroup();
+    UndoManagerCompositionCancelLeavesNoEntry();
+    UndoManagerSelectionRestoredByUndoAndRedo();
+    UndoManagerForwardDeleteRestoresCursor();
+    UndoManagerSelectionMovementPreservesRedo();
+    UndoManagerNoopEditPreservesRedo();
+    CursorRoundTripStopsTypingCoalescing();
+    UndoManagerNoopEditBreaksCoalescingWithoutClearingHistory();
+    UndoManagerMaskedRedoRestoresActualCursor();
 }
 
 // ─── state.rs window tests, part C ──────────────────────────────────────
