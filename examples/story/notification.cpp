@@ -110,34 +110,59 @@ static NotifySpec NotifySpecFor(int which) {
                     nullptr,
                     "There have some error occurred. Please try again later.",
                     kNotifyTimeout};
+        // "Title and description": one title and message per type.
         case 5:
-        case 6:
-        case 7:
-        case 8: {
-            K kind = which == 6   ? K::Success
-                     : which == 7 ? K::Warning
-                     : which == 8 ? K::Error
-                                  : K::Info;
             return {0,
                     true,
-                    kind,
+                    K::Info,
                     "All changes saved",
                     "Your changes have been saved to the cloud and will sync "
                     "across all of your devices.",
                     kNotifyTimeout};
-        }
+        case 6:
+            return {0,
+                    true,
+                    K::Success,
+                    "Payment received",
+                    "Your payment of $99.00 was processed and a receipt has "
+                    "been emailed to you.",
+                    kNotifyTimeout};
+        case 7:
+            return {0,
+                    true,
+                    K::Warning,
+                    "Connection unstable",
+                    "Your network connection is unstable. Some changes may "
+                    "take longer to save.",
+                    kNotifyTimeout};
+        case 8:
+            return {0,
+                    true,
+                    K::Error,
+                    "Request failed",
+                    "We couldn't reach the server. Check your internet "
+                    "connection and try again.",
+                    kNotifyTimeout};
         case 9:
             return {900,
                     true,
                     K::Info,
                     nullptr,
-                    "Only one of these is ever on screen at a time.",
+                    "This is a unique notification.",
                     kNotifyTimeout};
         case 10:
-            return {910,           true, K::Info, nullptr, "Notification A",
+            return {910,
+                    true,
+                    K::Info,
+                    nullptr,
+                    "This is A unique notification.",
                     kNotifyTimeout};
         case 11:
-            return {911,           true, K::Info, nullptr, "Notification B",
+            return {911,
+                    true,
+                    K::Info,
+                    nullptr,
+                    "This is B unique notification.",
                     kNotifyTimeout};
         // The system-delivered pair, both under one id: a second push
         // replaces the first in the notification center as it does in the
@@ -464,10 +489,13 @@ El* NotificationStory::Render(NotificationStory* self, Ctx* cx) {
     // center rather than — or as well as — the in-app stack.
     El* system = StorySection(
         cx, "System notification",
+        // Rust's text. Here Windows shows these in the Action Center;
+        // macOS, Linux and the browser drop the system half, while "In-app
+        // and system" still shows its toast.
         "Deliver to the OS notification center; click the system "
-        "notification to bring the window back. Windows shows these in the "
-        "Action Center; macOS, Linux and the browser currently drop the "
-        "system half, while In-app and system still shows its toast.");
+        "notification to refocus the app. macOS shows them only when "
+        "running from a bundled .app; Windows requires "
+        "cx.set_app_identity().");
     StorySectionAdd(system,
                     component::Button::New(cx, StrL("show-notify-system"))
                         ->OnClick(Listen(cx, &ShowNotify, 50))
