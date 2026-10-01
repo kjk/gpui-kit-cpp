@@ -2157,7 +2157,7 @@ El* El::DeferredLayer(int layer) {
     return this;
 }
 El* El::ZIndex(int z) {
-    style.zIndex = z;
+    style.zIndex = (int16_t)(z < -32768 ? -32768 : (z > 32767 ? 32767 : z));
     return this;
 }
 El* El::AnchorBelow(float gap) {
@@ -2320,6 +2320,12 @@ El* El::FocusRing(bool v) {
 }
 El* El::FocusLineStyle(FocusLine line) {
     style.focusLine = (uint8_t)line;
+    return this;
+}
+El* El::FocusLineStyle(FocusLine line, Rgba color) {
+    FocusLineStyle(line);
+    style.focusLineColor = color;
+    style.hasFocusLineColor = true;
     return this;
 }
 El* El::TrapId(int v) {
@@ -8063,13 +8069,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         // the element as its last absolute child, so it paints over the
         // content, as it does here.
         const float kFocusLineGap = 16.f * 0.125f;
-        // button.rs FOCUS_LINE_OPACITY: the Inside line is the element's own
-        // foreground at this much, which the theme keeps legible on its fill.
+        // button.rs FOCUS_LINE_OPACITY: an Inside line given no colour is the
+        // element's own foreground at this much.
         const float kFocusLineOpacity = 0.6f;
         Rgba color = RuntimeStyleNow(ctx->app).ring;
         float inset = 0;
         if ((FocusLine)e->style.focusLine == FocusLine::Inside) {
-            color = RgbaOpacity(e->style.color, kFocusLineOpacity);
+            color = e->style.hasFocusLineColor
+                        ? e->style.focusLineColor
+                        : RgbaOpacity(e->style.color, kFocusLineOpacity);
             inset = kFocusLineGap;
         } else if ((FocusLine)e->style.focusLine == FocusLine::Outside) {
             inset = -kFocusLineGap;

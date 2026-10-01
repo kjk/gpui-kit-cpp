@@ -606,6 +606,82 @@ static void AdjacentBoxesMeetWithoutASeam() {
 #endif
 }
 
+// styled.rs focus_style with FocusLine::Inside(color): with the outer ring
+// off, a focused borderless element draws its 1px line FOCUS_LINE_GAP inside
+// its edge in the colour it was given; a filled button gives its normal
+// foreground at FOCUS_LINE_OPACITY.
+static void AnInsideFocusLineTakesTheColourItWasGiven() {
+#if !GPUI_OS_WASM
+    App* app = AppNew();
+    if (!app) {
+        return;
+    }
+    RuntimeStyle style = RuntimeStyleNow(app);
+    style.focusRing = false;
+    RuntimeStyleInstall(app, style);
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    paint.focusId = 7;
+    if (PaintTargetBeginOffscreen(&paint, 64, 32)) {
+        Rgba red = Rgba8(255, 0, 0, 255);
+        El* box = Div(arena)
+                      ->W(40)
+                      ->H(24)
+                      ->FocusId(7)
+                      ->FocusRing(true)
+                      ->FocusLineStyle(FocusLine::Inside, red);
+        LayoutEl(nullptr, box, 0, 0, 64, 32, 14, Rgba{});
+        PaintEl(&paint, box);
+        uint8_t* px = (uint8_t*)Alloc(arena, 64 * 32 * 4);
+        utassert(PaintTargetEndOffscreen(&paint, px));
+        auto redAt = [&](int x, int y) {
+            const uint8_t* p = px + (y * 64 + x) * 4;
+            return p[3] > 100 && p[2] > 150 && p[1] < 80 && p[0] < 80;
+        };
+        // The line runs 2px in from the edge, along the middle of each side,
+        // and not on the edge itself.
+        utassert(redAt(20, 2));
+        utassert(redAt(2, 12));
+        utassert(px[(12 * 64 + 0) * 4 + 3] == 0);
+    }
+    TextMeasClear(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
+// button.rs: a filled button's focus line is Inside(normal fg at
+// FOCUS_LINE_OPACITY), and a ghost's sits on its edge with no colour of its
+// own.
+static void AFilledButtonGivesItsFocusLineItsForeground() {
+    App app;
+    component::Init(&app);
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, nullptr, arena, {}};
+    const Theme& th = ThemeNow(&app);
+    El* primary = component::Button::New(&cx, StrL("primary"))
+                      ->Primary()
+                      ->Label(StrL("Go"))
+                      ->IntoEl();
+    utassert((FocusLine)primary->style.focusLine == FocusLine::Inside);
+    utassert(primary->style.hasFocusLineColor);
+    Rgba want = RgbaOpacity(th.buttonPrimaryFg, component::kFocusLineOpacity);
+    utassert(primary->style.focusLineColor.r == want.r &&
+             primary->style.focusLineColor.g == want.g &&
+             primary->style.focusLineColor.b == want.b &&
+             primary->style.focusLineColor.a == want.a);
+    El* ghost = component::Button::New(&cx, StrL("ghost"))
+                    ->Ghost()
+                    ->Label(StrL("Go"))
+                    ->IntoEl();
+    utassert((FocusLine)ghost->style.focusLine == FocusLine::Edge);
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 static void ClipboardButtonsAcceptTheSharedSizeContract() {
     App app;
     component::Init(&app);
@@ -665,6 +741,8 @@ void TestButtonGroup() {
     ASplitButtonBordersOnlyTheVariantsRustBorders();
     PerSideBordersFollowRoundedCorners();
     AdjacentBoxesMeetWithoutASeam();
+    AnInsideFocusLineTakesTheColourItWasGiven();
+    AFilledButtonGivesItsFocusLineItsForeground();
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
 }

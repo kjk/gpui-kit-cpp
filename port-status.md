@@ -180,13 +180,6 @@ macOS font-kit requirement on the website only. The current update target is
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle
   once, at its last element (`FocusNext`, `src/gpui/gpui.cpp`).
-- **FocusLine::Inside carries no colour.** Rust's `Inside(Hsla)` takes the
-  line's colour from its caller, which a filled button passes as its normal
-  foreground at `FOCUS_LINE_OPACITY` (0.6). `Style` has no room for a colour
-  beside the two bits `El::FocusLineStyle` records, so the runtime always
-  draws the focused element's own foreground at 0.6 — the same colour for a
-  focused button, but no other colour can be asked for (`FocusLine`,
-  `src/gpui/gpui.h`; the focus line in `src/gpui/gpui.cpp`).
 - **Font features are one flag, and the browser ignores it.** GPUI's
   `FontFeatures` is any list of OpenType (tag, value) pairs; here it is
   `FontFeatures::TabularFigures` or none — `tnum`, the one gpui-kit names —

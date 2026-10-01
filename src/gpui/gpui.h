@@ -1693,11 +1693,11 @@ enum class FocusLine : uint8_t {
     // On the element's edge, in the ring colour. For elements whose content
     // sits clear of the edge and that have no fill of their own.
     Edge,
-    // Inset from the edge, in the element's own foreground at
-    // kFocusLineOpacity. For filled elements, where the ring colour can land
-    // close to the fill. Rust's Inside carries its colour, which the button
-    // makes its normal foreground at FOCUS_LINE_OPACITY; Style has no room
-    // for a colour, and a focused button's foreground is that normal one.
+    // Inset from the edge, in the colour FocusLineStyle was given -- Rust's
+    // Inside(Hsla). For filled elements, where the ring colour can land close
+    // to the fill; pass a colour that contrasts with it, such as the
+    // element's foreground. Given none, the line takes the element's own
+    // foreground at 0.6, the button's FOCUS_LINE_OPACITY.
     Inside,
     // Just outside the edge, in the ring colour. For elements with no
     // padding, where a line on the edge would touch their text.
@@ -1879,8 +1879,12 @@ struct Style {
     // length clears it.
     uint8_t marginAuto = 0;
     // Paint order among siblings. A child remains inside its parent's
-    // stacking context even when its own z-index is larger.
-    int zIndex = 0;
+    // stacking context even when its own z-index is larger. Sixteen bits, so
+    // it fits the two bytes after marginAuto and leaves room for the colour
+    // below; El::ZIndex clamps.
+    int16_t zIndex = 0;
+    // FocusLine::Inside(color)'s colour, read when hasFocusLineColor is set.
+    Rgba focusLineColor = {};
     // Rust sorts deferred elements by priority. Zero is the normal popup
     // layer; TooltipOverlay asks for the dedicated layer above it.
     uint8_t deferredLayer = 0;
@@ -1986,6 +1990,8 @@ struct Style {
     // text_overflow's side, read with `truncate` and cascaded with it: 0 the
     // end (text_ellipsis, truncate), 1 the start, 2 the middle.
     uint8_t textOverflow : 2 = 0;
+    // Whether focusLineColor holds FocusLine::Inside's colour.
+    uint8_t hasFocusLineColor : 1 = false;
     // font_family, as the id FontFamilyIntern gave its name: 0 is unset
     // (inherit, and the default face at the root). The spare byte of this
     // unit.
@@ -2024,8 +2030,10 @@ enum : uint16_t {
 // took the four bytes it left. 424 was full in turn, and the script's text
 // style — text_bg's colour, the underline's thickness, its wave and the side
 // an ellipsis goes on — opened the next unit, and font_family's id took the
-// byte it had to spare, leaving three bits. Grow this only for a member that
-// has nowhere else to go, never to absorb padding.
+// byte it had to spare, leaving three bits. FocusLine::Inside's colour took
+// the four bytes zIndex gave up going to sixteen bits, and one of those bits
+// says it is set, leaving two. Grow this only for a member that has nowhere
+// else to go, never to absorb padding.
 static_assert(sizeof(Style) <= 432, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
@@ -3152,6 +3160,8 @@ struct El {
     // styled::focus_style(.., line, ..): where this element's focus line goes
     // when it has no border and the theme's outer ring is off.
     El* FocusLineStyle(FocusLine line);
+    // FocusLine::Inside(color): the line inset from the edge in `color`.
+    El* FocusLineStyle(FocusLine line, Rgba color);
     El* TrapId(int v);
     El* Tip(Str s);
     // managed_tooltip_with_placement's preferred side, as the value of base's

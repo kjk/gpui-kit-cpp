@@ -8,6 +8,11 @@ namespace gpui {
 
 namespace component {
 
+// button.rs FOCUS_LINE_OPACITY: a filled button's focus line is its normal
+// foreground at this much (FocusLine::Inside), which the theme keeps legible
+// on the fill.
+const float kFocusLineOpacity = 0.6f;
+
 enum class ButtonRounded : uint8_t {
     None,
     Small,

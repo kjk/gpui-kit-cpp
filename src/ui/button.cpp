@@ -546,6 +546,9 @@ El* Button::IntoEl() {
             press = RgbaMixOklab(th.inputBorder, clear, 0.7f);
         }
     }
+    // normal_style.fg: what the focus line is drawn in, before a selected or
+    // disabled state recolours the label.
+    Rgba normalFg = fg;
     bool showsSelected = ShowsSelectedStyle();
     if (showsSelected) {
         // ButtonVariant::selected: Ghost keeps its distinct persistent
@@ -692,9 +695,8 @@ El* Button::IntoEl() {
     // Only borderless variants use this; the others tint their border. Text
     // and Link have no padding, so their line goes outside; a ghost has no
     // fill, so its line sits on the edge; a filled variant draws it inside
-    // in its own foreground at FOCUS_LINE_OPACITY, which the theme keeps
-    // legible on that fill (the runtime reads the element's foreground; see
-    // FocusLine::Inside).
+    // in its normal foreground at FOCUS_LINE_OPACITY, which the theme keeps
+    // legible on that fill.
     FocusLine focusLine = FocusLine::Inside;
     if (variant == ButtonVariant::Text || variant == ButtonVariant::Link) {
         focusLine = FocusLine::Outside;
@@ -711,7 +713,8 @@ El* Button::IntoEl() {
                 ->TabIndex(tabIndex)
                 ->TabStop(tabStop)
                 ->FocusRing(focusRing)
-                ->FocusLineStyle(focusLine)
+                ->FocusLineStyle(focusLine,
+                                 RgbaOpacity(normalFg, kFocusLineOpacity))
                 ->H(h > 0 ? h : kAuto)
                 ->PadX(padX)
                 ->ItemsCenter()
