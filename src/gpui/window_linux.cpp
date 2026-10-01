@@ -1530,7 +1530,12 @@ static void HandleEvent(App* app, XEvent* ev) {
             WindowSetActive(win, true);
             break;
         case FocusOut:
-            WindowSetActive(win, false);
+            // NotifyInferior: the focus went into a child X window — a
+            // webview (src/wry/wry_linux.cpp) — and this window, still the
+            // active one, only stopped being where the keys go.
+            if (ev->xfocus.detail != NotifyInferior) {
+                WindowSetActive(win, false);
+            }
             break;
         case ClientMessage:
             if (ev->xclient.message_type == aWmProtocols &&
@@ -1710,6 +1715,50 @@ void PlatWake(App* app) {
     char b = 1;
     ssize_t n = write(fd, &b, 1);
     (void)n; // a full pipe already says what this one would have
+}
+
+// ─── a second loop on this thread ─────────────────────────────────────────
+//
+// GLib's main context, when a WebKitGTK webview exists (platform.h). Its
+// descriptors are polled beside the X connection's, and it is turned every
+// time round, so a page keeps loading while this loop is busy drawing.
+
+static PlatLoopPrepare gLoopPrepare = nullptr;
+static PlatLoopDispatch gLoopDispatch = nullptr;
+
+void PlatAddLoopSource(PlatLoopPrepare prepare, PlatLoopDispatch dispatch) {
+    if (gLoopPrepare && gLoopPrepare != prepare) {
+        logf("PlatAddLoopSource: a second loop source is not supported\n");
+        return;
+    }
+    gLoopPrepare = prepare;
+    gLoopDispatch = dispatch;
+}
+
+// The X connection, the wake pipe and the accessibility bus, then whatever
+// the loop source asked for. Its revents are copied back for its dispatch.
+static void PollAll(int xfd, int timeoutMs, PlatPollFd* extra, int nExtra) {
+    static Vec<struct pollfd> pfd;
+    VecClear(pfd);
+    int accessibilityFd = AccessibilityLinuxFd();
+    VecAppend(pfd, pollfd{xfd, POLLIN, 0});
+    if (gWakeFd[0] >= 0) {
+        VecAppend(pfd, pollfd{gWakeFd[0], POLLIN, 0});
+    }
+    if (accessibilityFd >= 0) {
+        VecAppend(pfd, pollfd{accessibilityFd, POLLIN, 0});
+    }
+    int own = len(pfd);
+    for (int i = 0; i < nExtra; i++) {
+        VecAppend(pfd, pollfd{extra[i].fd, (short)extra[i].events, 0});
+    }
+    if (poll(pfd.els, (nfds_t)len(pfd), timeoutMs) < 0) {
+        VecClear(pfd);
+    }
+    for (int i = 0; i < nExtra; i++) {
+        extra[i].revents =
+            own + i < len(pfd) ? (uint16_t)pfd.els[own + i].revents : 0;
+    }
 }
 
 bool PlatInit(App* app) {
@@ -1972,7 +2021,21 @@ int AppRun(App* app) {
                 }
             }
         }
-        if (!anyDirty && XPending(gDpy) == 0 && ExecQueued() == 0) {
+        bool idle = !anyDirty && XPending(gDpy) == 0 && ExecQueued() == 0;
+        PlatPollFd* extra = nullptr;
+        int extraTimeoutMs = -1;
+        int nExtra = gLoopPrepare ? gLoopPrepare(&extra, &extraTimeoutMs) : 0;
+        if (gLoopPrepare) {
+            // With a second loop the poll always happens — without blocking
+            // when this loop has work of its own — so a busy X connection
+            // never starves GLib's descriptors.
+            int timeoutMs =
+                !idle ? 0 : (waitS <= 0 ? 0 : (int)(waitS * 1000.0));
+            if (extraTimeoutMs >= 0 && extraTimeoutMs < timeoutMs) {
+                timeoutMs = extraTimeoutMs;
+            }
+            PollAll(fd, timeoutMs, extra, nExtra);
+        } else if (idle) {
             int timeoutMs = waitS <= 0 ? 0 : (int)(waitS * 1000.0);
             int accessibilityFd = AccessibilityLinuxFd();
             struct pollfd pfd[3] = {{fd, POLLIN, 0},
@@ -1980,6 +2043,9 @@ int AppRun(App* app) {
                                     {accessibilityFd, POLLIN, 0}};
             int nfd = accessibilityFd >= 0 ? 3 : (gWakeFd[0] >= 0 ? 2 : 1);
             poll(pfd, nfd, timeoutMs);
+        }
+        if (gLoopDispatch) {
+            gLoopDispatch();
         }
         // Whatever woke us, the queue is drained on the way past: a worker
         // that finished while we were asleep wrote the byte that ended the

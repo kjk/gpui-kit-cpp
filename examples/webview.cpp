@@ -6,9 +6,10 @@ using namespace gpui;
 // bar over a webview, Enter loads what is in it.
 //
 // The webview is an OS control sitting over the window (WebView2 on Windows,
-// WKWebView on macOS), so it covers whatever is behind its box and does not
-// take part in the element tree's painting. That is why it gets a bordered
-// box of its own here, exactly as the Rust example gives it one.
+// WKWebView on macOS, WebKitGTK on Linux), so it covers whatever is behind
+// its box and does not take part in the element tree's painting. That is why
+// it gets a bordered box of its own here, exactly as the Rust example gives
+// it one.
 struct Example {
     InputState address;
     Entity<WebView> web;

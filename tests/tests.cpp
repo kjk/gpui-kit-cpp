@@ -124,6 +124,7 @@ int GpuiMain(int argc, char** argv) {
     TestThemeFont();
     TestColor();
     TestWryUri();
+    TestWryWebKitGtk();
     TestAutocorrect();
     TestObservers();
     TestStyleEq();

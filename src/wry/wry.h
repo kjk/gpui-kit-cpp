@@ -14,7 +14,7 @@
  * heard of gpui: it is written against base.h and its own header, and names
  * no gpui type. The parent window arrives as an opaque handle — Rust takes a
  * `raw_window_handle::HasWindowHandle`, here it is the `HWND` (or `NSView*`,
- * or GTK container) as a `void*`.
+ * or the X11 window id) as a `void*`.
  *
  * Three shapes of the Rust do not survive the crossing, and each is written
  * out rather than approximated:
@@ -391,7 +391,8 @@ struct WebViewAttributes {
 // ─── the webview ─────────────────────────────────────────────────────────
 
 /** `WebViewBuilder::build` (asChild false) / `build_as_child` (asChild true).
-    `parentWindow` is the platform window handle: an `HWND` on Windows.
+    `parentWindow` is the platform window handle: an `HWND` on Windows, an
+    `NSView*` on macOS, the X11 window id on Linux.
 
     A webview built as a child sits at `attrs.bounds` inside the parent and is
     moved by `WebViewSetBounds`; one built otherwise fills the parent and
@@ -487,6 +488,70 @@ bool IsWorkAroundUri(Str uri, Str httpOrHttps, Str protocol);
 /** `{protocol}://x` -> `{http_or_https}://{protocol}.x`, and the reverse. */
 Str ApplyUriWorkAround(Str uri, Str httpOrHttps, Str protocol);
 Str RevertUriWorkAround(Str uri, Str httpOrHttps, Str protocol);
+
+// ─── the WebKitGTK helpers ───────────────────────────────────────────────
+//
+// String and number work out of webkitgtk/, out here for the same reason as
+// the work-around above: tests/WryTests.cpp runs on every platform, and on a
+// machine with no display or no WebKitGTK this is the part of the Linux
+// backend that can be checked at all. Every string they answer is temp-arena
+// backed.
+
+/** The proxy URI `new_gtk` hands WebKit: `http://host:port` or
+    `socks5://host:port`; empty for `ProxyKind::None`. */
+Str ProxyUriTemp(const ProxyConfig* proxy);
+/** drag_drop.rs's `path_buf_from_uri`: a `text/uri-list` entry to a path —
+    `file://` dropped and the rest percent-decoded. */
+Str PathFromFileUriTemp(Str uri);
+/** web_context.rs's download destination name: the suggested file name
+    split at its first `.` into a stem and an extension that keeps the dot,
+    with the stem `Unknown` when WebKit suggested the payload of a `data:`
+    URL as the name. */
+void DownloadFileNameParts(Str uri, Str suggested, Str* stem, Str* ext);
+/** `scale_factor_from_x11`: the screen's DPI, from its width in pixels and
+    in millimetres, over 96. 1 when the screen does not know its size. */
+double ScaleFactorFromScreen(int widthPx, int widthMm);
+
+/** synthetic_mouse_events.rs: what WebKitGTK does not do for mouse buttons
+    8 and 9 (back and forward), done in the page. `buttons` is the DOM
+    `MouseEvent.buttons` bit set, already including those two. */
+struct SyntheticMouseEvent {
+    bool pressed = false;
+    /** The X11 button, 8 (back) or 9 (forward). */
+    int button = 8;
+    int x = 0;
+    int y = 0;
+    int buttons = 0;
+    int detail = 1;
+    bool ctrlKey = false;
+    bool altKey = false;
+    bool shiftKey = false;
+    bool metaKey = false;
+};
+Str SyntheticMouseEventJsTemp(const SyntheticMouseEvent* ev);
+
+// ─── the second event loop ───────────────────────────────────────────────
+//
+// Rust's Linux backend runs inside GTK's main loop: tao's event loop *is*
+// GTK's. This tree's Linux loop is its own, over a raw X11 connection, so
+// WebKitGTK's GLib main context is turned from inside it — the way GLib lets
+// any foreign loop do it, prepare / query, poll, check / dispatch — instead
+// of the other way round. On every other backend the OS loop already turns
+// the webview, and both calls are no-ops.
+
+/** `struct pollfd`'s layout, which is also `GPollFD`'s. */
+struct PollFd {
+    int fd;
+    uint16_t events;
+    uint16_t revents;
+};
+/** Before the host blocks: the descriptors to watch beside its own (owned
+    here, valid until `EventLoopDispatch`) and, lowered in `*timeoutMs` if
+    sooner (-1 there is no limit), how long it may sleep. Answers 0 while no
+    webview has been made. */
+int EventLoopPrepare(PollFd** fds, int* timeoutMs);
+/** After the host's poll has written each `revents`: run what is ready. */
+void EventLoopDispatch();
 
 /** `wry::webview_version`. Temp-arena backed; empty when there is no webview
     runtime on this machine, which is the one thing worth checking before

@@ -171,6 +171,31 @@ void PlatSetTimer(Window* win, int ms);
 // queue on macOS. AppNew installs it with ExecSetWake and nothing else calls
 // it.
 void PlatWake(App* app);
+
+// A second event loop sharing the main thread with the platform's own. The
+// one there is is GLib's main context, which WebKitGTK (src/wry/wry_linux.cpp)
+// runs on: the X11 loop asks `prepare` for the descriptors to watch and the
+// longest it may sleep (-1: no limit of its own), polls them beside its own,
+// fills in each `revents`, and then calls `dispatch`. `prepare` may answer 0
+// descriptors. One source at most; adding the same pair again does nothing.
+//
+// Windows', macOS's and the browser's loops already turn everything the OS
+// webview needs, so on every other platform this is a no-op.
+struct PlatPollFd {
+    int fd;
+    uint16_t events;  // poll(2) bits
+    uint16_t revents; // written by the platform before `dispatch`
+};
+using PlatLoopPrepare = int (*)(PlatPollFd** fds, int* timeoutMs);
+using PlatLoopDispatch = void (*)();
+#if GPUI_OS_LINUX
+void PlatAddLoopSource(PlatLoopPrepare prepare, PlatLoopDispatch dispatch);
+#else
+inline void PlatAddLoopSource(PlatLoopPrepare prepare,
+                              PlatLoopDispatch dispatch) {
+    (void)prepare, (void)dispatch;
+}
+#endif
 // Ask the OS for a pointer shape. Only called when it changes.
 void PlatSetCursor(Window* win, CursorKind kind);
 // GPUI holds the pointer for the length of a press, so a drag that leaves the

@@ -1446,4 +1446,12 @@ bool WebViewAvailable() {
     return true;
 }
 
+// The run loop that drives the window drives WKWebView too.
+int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
+    (void)timeoutMs;
+    *fds = nullptr;
+    return 0;
+}
+void EventLoopDispatch() {}
+
 } // namespace wry

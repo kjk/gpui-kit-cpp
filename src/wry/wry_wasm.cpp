@@ -122,4 +122,12 @@ bool WebViewAvailable() {
     return false;
 }
 
+// There is no webview here to drive.
+int EventLoopPrepare(PollFd** fds, int* timeoutMs) {
+    (void)timeoutMs;
+    *fds = nullptr;
+    return 0;
+}
+void EventLoopDispatch() {}
+
 } // namespace wry

@@ -71,7 +71,24 @@ void WebView::OnWindowMouseDown(WebView* self, Ctx* cx,
     }
 }
 
+// wry's own loop, for the platforms whose webview runs on one the OS loop does
+// not already turn (WebKitGTK's GLib context under X11). The two pollfd
+// shapes are the same struct written twice, because wry may not name gpui's.
+static_assert(sizeof(PlatPollFd) == sizeof(wry::PollFd), "pollfd layout");
+
+static int WryLoopPrepare(PlatPollFd** fds, int* timeoutMs) {
+    wry::PollFd* raw = nullptr;
+    int n = wry::EventLoopPrepare(&raw, timeoutMs);
+    *fds = (PlatPollFd*)raw;
+    return n;
+}
+
+static void WryLoopDispatch() {
+    wry::EventLoopDispatch();
+}
+
 Entity<WebView> WebViewNew(Ctx* cx, const wry::WebViewAttributes* attrs) {
+    PlatAddLoopSource(WryLoopPrepare, WryLoopDispatch);
     // `EntityNewState`, not `EntityNew`: a `WebView` has no Render of its
     // own here, since `WebViewEl` hands the element to whoever wants it.
     Entity<WebView> handle = EntityNewState<WebView>(cx->app);

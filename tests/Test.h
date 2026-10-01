@@ -144,6 +144,7 @@ void TestThemeColor();
 void TestThemeFont();
 void TestColor();
 void TestWryUri();
+void TestWryWebKitGtk();
 void TestAutocorrect();
 void TestObservers();
 void TestStyleEq();

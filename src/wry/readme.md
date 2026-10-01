@@ -21,7 +21,7 @@ the gpui-kit, Zed GPUI, taffy and markdown pins, and moves the same way
 | `src/web_context.rs`                                 | `wry.h` (`dataDirectory`)      |
 | `src/error.rs`                                       | — (see below)                  |
 | `src/wkwebview/mod.rs`, `class/**`, `navigation.rs`  | `wry_mac.cpp`                  |
-| `src/webkitgtk/**`                                   | `wry_linux.cpp` — a stub       |
+| `src/webkitgtk/**`                                   | `wry_linux.cpp`, `wry.cpp` (the string work) |
 | —                                                    | `wry_wasm.cpp` — a stub        |
 | `src/android/**`, `src/wkwebview/ios/**`             | not ported                     |
 
@@ -30,7 +30,8 @@ the way `src/taffy` and `src/markdown` are: it includes `base.h` and its own
 header and nothing else, and names no `gpui::` symbol.
 `cmd/update-dist.ts` fails the build if that stops being true. The parent
 window arrives as a `void*` — Rust takes a `raw_window_handle::
-HasWindowHandle`, and `src/gpui`'s `PlatWindowHandle` is what hands one over.
+HasWindowHandle`, and `src/gpui`'s `PlatWindowHandle` is what hands one over:
+an `HWND`, an `NSView*`, or on Linux the X11 window id widened to a pointer.
 
 ## The WebView2 dependency, and why there is none
 
@@ -135,10 +136,64 @@ release test target build on a Mac over ssh, and that native test binary runs
 to be run on the Mac itself (`bun cmd/run.ts -rel webview`) for anyone to see
 and interact with the page.
 
+## The Linux backend
+
+`wry_linux.cpp` is `webkitgtk/`, against WebKitGTK 4.1 (`webkit2gtk-4.1`) —
+the GTK 3 one, because GTK 4 (and so WebKitGTK 6.0) has no X11
+foreign-window embedding, and this tree's Linux window is raw X11. It is a
+soft dependency, the second after libcurl (AGENTS.md, hard rule 3):
+`cmd/build.ts` defines `GPUI_HAVE_WEBKITGTK` when pkg-config finds it, and
+without it the file's other half answers every call with "no webview here".
+`bash cmd/ubuntu-install-deps.sh` installs it; `--without-webkit` does not,
+and CI's clang job builds that way so both halves stay compiled.
+
+What is Rust's is the X11 path (`new_x11`): GDK opens its own connection, a
+container X window is made inside the parent through it, and a vertical
+`GtkBox` holding the `WebKitWebView` is put in that. Three things differ,
+each because the window is not tao's, and the file's header says why at
+length:
+
+- **This tree turns GLib's loop, not the other way round.** tao's event loop
+  is GTK's, so Rust never pumps anything. Here `EventLoopPrepare` /
+  `EventLoopDispatch` — GLib's prepare / query / check / dispatch, the
+  protocol it documents for a foreign loop — are registered by
+  `src/webview` through `PlatAddLoopSource`, and the X11 loop in
+  `window_linux.cpp` polls GLib's descriptors beside its own. GTK is
+  initialised by the first webview, X11 backend forced (WSLg and Wayland
+  desktops set `WAYLAND_DISPLAY` too).
+- **The GTK window is a `GtkPlug` inside the container**, where Rust swaps a
+  `GtkWindow`'s `GdkWindow` for a foreign wrapper of the container. GTK 3
+  gives a foreign `GdkWindow` no frame clock and selects no input on it;
+  a plug is a real GDK toplevel made inside the foreign window. The file is
+  the minimal embedder: it maps the plug, sizes it, and moves the X focus.
+- **The X focus.** A click on the page, and `WebViewFocus`, move the X focus
+  to the plug, since X delivers keys to the focus window; `WebViewFocusParent`
+  gives it back to the gpui window only when the page had it. gpui's
+  `FocusOut` with `NotifyInferior` no longer marks the window inactive.
+
+A webview that is not a child gets a container sized to the parent that
+follows its `ConfigureNotify`, where Rust wraps the parent itself (GDK
+would select `ButtonPress` on a window gpui already selects it on).
+`reparent` moves the container to another X11 window. Smaller differences,
+each commented in place: a new window the handler allows is a plain GTK
+window (Rust's `ApplicationWindow` lookup panics in the X11 path), the
+background colour's channels are scaled into GDK's 0..1, a download's
+failure flag is per download, and a zero size is one pixel because X refuses
+zero. Cookies, downloads, custom protocols (with their responder answering
+on the main context from any thread), drag and drop, the synthetic
+back/forward mouse buttons, the inspector, print, zoom, proxy, data
+directory and incognito are all there; `set_theme`, the memory usage level
+and the traffic-light inset answer false, as they are not Linux's.
+
+**The backend is compile-verified, not run-verified.** It builds and links
+with g++ and clang++ against WebKitGTK 2.52, and the parts that need no
+display (`TestWryWebKitGtk`) run; a page has not yet been seen in a window.
+Install `libwebkit2gtk-4.1-dev` and run `bun cmd/run.ts -rel webview`.
+
 ## What is ported
 
 The whole of the portable API in `lib.rs`, and under it the WebView2 and
-WKWebView backends:
+WKWebView backends (WebKitGTK's is above):
 attributes and defaults, a webview built into a window or as a child of one,
 bounds / visibility / focus, `evaluate_script` with and without a callback,
 `load_url`, `load_url_with_headers`, `load_html`, `reload`, `url`, zoom,
@@ -196,6 +251,8 @@ Not ported, each for a reason:
   runtime. There is none here; `WebViewNew` is the blocking one, and it
   blocks the way Rust's does.
 - **Android and iOS**, which are not platforms this tree builds for.
+- **The GTK builders** — `build_gtk` and `WebViewBuilderExtUnix` take a GTK
+  container, and nothing here has one; the X11 path is the Linux one.
 - **`error.rs`**. There are no exceptions here, so a call that can fail
   answers `bool` (or null) and logs. Nothing in the crate branches on an
   error kind.

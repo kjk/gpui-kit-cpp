@@ -110,3 +110,106 @@ void TestWryUri() {
     // not one of its.
     utassert(!wry::IsWorkAroundUri(uri, StrL("https"), StrL("wry")));
 }
+
+// webkitgtk/'s string and number work (wry.cpp), and the parts of the Linux
+// backend that answer without a display: the loop source before any webview
+// exists, and whether the build has WebKitGTK at all.
+void TestWryWebKitGtk() {
+    TestSuite("wry_webkitgtk");
+
+    // `new_gtk`'s proxy URI.
+    wry::ProxyConfig proxy;
+    utassert(len(wry::ProxyUriTemp(&proxy)) == 0);
+    proxy.kind = wry::ProxyKind::Http;
+    proxy.host = StrL("localhost");
+    proxy.port = StrL("8080");
+    utassert(
+        base::StrEq(wry::ProxyUriTemp(&proxy), StrL("http://localhost:8080")));
+    proxy.kind = wry::ProxyKind::Socks5;
+    utassert(base::StrEq(wry::ProxyUriTemp(&proxy),
+                         StrL("socks5://localhost:8080")));
+
+    // drag_drop.rs's `path_buf_from_uri`.
+    utassert(
+        base::StrEq(wry::PathFromFileUriTemp(StrL("file:///tmp/a%20b.txt")),
+                    StrL("/tmp/a b.txt")));
+    utassert(base::StrEq(wry::PathFromFileUriTemp(StrL("/no/scheme")),
+                         StrL("/no/scheme")));
+    // UTF-8 comes back as the bytes it encodes; a stray % stays.
+    utassert(base::StrEq(wry::PathFromFileUriTemp(StrL("file:///h%C3%A9/100%")),
+                         StrL("/h\xC3\xA9/100%")));
+    utassert(base::StrEq(wry::PathFromFileUriTemp(StrL("file:///x%zz")),
+                         StrL("/x%zz")));
+
+    // web_context.rs's download name: split at the *first* dot.
+    Str stem;
+    Str ext;
+    wry::DownloadFileNameParts(StrL("https://x/r.tar.gz"), StrL("r.tar.gz"),
+                               &stem, &ext);
+    utassert(base::StrEq(stem, StrL("r")));
+    utassert(base::StrEq(ext, StrL(".tar.gz")));
+    wry::DownloadFileNameParts(StrL("https://x/README"), StrL("README"), &stem,
+                               &ext);
+    utassert(base::StrEq(stem, StrL("README")));
+    utassert(len(ext) == 0);
+    // The comment's own example: a nameless data: URL's payload is no name.
+    wry::DownloadFileNameParts(StrL("data:attachment/text,sometext"),
+                               StrL("text,sometext"), &stem, &ext);
+    utassert(base::StrEq(stem, StrL("Unknown")));
+    utassert(len(ext) == 0);
+    wry::DownloadFileNameParts(StrL("data:attachment/text,sometext"),
+                               StrL("notes.txt"), &stem, &ext);
+    utassert(base::StrEq(stem, StrL("notes")));
+    utassert(base::StrEq(ext, StrL(".txt")));
+
+    // `scale_factor_from_x11`: 96 dpi is 1, and a screen that does not know
+    // its size does not divide by zero.
+    utassert(wry::ScaleFactorFromScreen(1920, 508) > 0.99 &&
+             wry::ScaleFactorFromScreen(1920, 508) < 1.01);
+    utassert(wry::ScaleFactorFromScreen(3840, 508) > 1.99);
+    utassert(wry::ScaleFactorFromScreen(1920, 0) == 1.0);
+
+    // synthetic_mouse_events.rs: button 8 is DOM button 3, 9 is 4.
+    wry::SyntheticMouseEvent ev;
+    ev.pressed = true;
+    ev.button = 8;
+    ev.x = 10;
+    ev.y = 20;
+    ev.buttons = 9;
+    ev.ctrlKey = true;
+    Str js = wry::SyntheticMouseEventJsTemp(&ev);
+    utassert(StrFind(js, "document.elementFromPoint(10,20)") >= 0);
+    utassert(StrFind(js, "new MouseEvent('mousedown'") >= 0);
+    utassert(StrFind(js, "button: 3,") >= 0);
+    utassert(StrFind(js, "buttons: 9,") >= 0);
+    utassert(StrFind(js, "screenY: window.screenY + 20,") >= 0);
+    utassert(StrFind(js, "ctrlKey: true,") >= 0);
+    utassert(StrFind(js, "altKey: false,") >= 0);
+    utassert(StrFind(js, "\"mousedown\" === \"mouseup\"") >= 0);
+    ev.pressed = false;
+    ev.button = 9;
+    js = wry::SyntheticMouseEventJsTemp(&ev);
+    utassert(StrFind(js, "new MouseEvent('mouseup'") >= 0);
+    utassert(StrFind(js, "button: 4,") >= 0);
+
+    // No webview yet, so there is no second loop to turn on any platform,
+    // and the host's timeout is left alone.
+    wry::PollFd* fds = (wry::PollFd*)&ev;
+    int timeoutMs = 250;
+    utassert(wry::EventLoopPrepare(&fds, &timeoutMs) == 0);
+    utassert(fds == nullptr);
+    utassert(timeoutMs == 250);
+    wry::EventLoopDispatch();
+
+#if GPUI_OS_LINUX
+#if defined(GPUI_HAVE_WEBKITGTK) && GPUI_HAVE_WEBKITGTK
+    // "2.44.1": the library answers without a display.
+    utassert(len(wry::WebViewVersionTemp()) >= 5);
+#else
+    // Built without WebKitGTK: the soft dependency's absence is a stub that
+    // says so, not a missing symbol.
+    utassert(len(wry::WebViewVersionTemp()) == 0);
+    utassert(!wry::WebViewAvailable());
+#endif
+#endif
+}
