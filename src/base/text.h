@@ -201,9 +201,15 @@ struct MarkdownExtensions {
     ArenaVec<MarkdownBlockParser> inlineParsers{};
     ArenaVec<MarkdownInlineRenderer> inlineRenderers{};
     uint64_t revision = 0;
+    // parser_revision: what the caller changes when a parser's captures or a
+    // plugin's configuration change. Equal revisions let registrations
+    // rebuilt every frame keep the parsed document; renderer-only changes
+    // need no new value.
+    uint64_t parserRevision = 0;
     bool enableMdx = false;
     bool enableFrontmatter = false;
 
+    MarkdownExtensions& ParserRevision(uint64_t value);
     MarkdownExtensions& Mdx();
     MarkdownExtensions& Frontmatter();
     MarkdownExtensions& BlockParser(Arena* a, MarkdownBlockParserFn fn,

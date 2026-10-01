@@ -133,6 +133,12 @@ static uint64_t NextMarkdownExtensionsRevision() {
     return out;
 }
 
+MarkdownExtensions& MarkdownExtensions::ParserRevision(uint64_t value) {
+    parserRevision = value;
+    revision = NextMarkdownExtensionsRevision();
+    return *this;
+}
+
 MarkdownExtensions& MarkdownExtensions::Mdx() {
     enableMdx = true;
     revision = NextMarkdownExtensionsRevision();
@@ -190,7 +196,8 @@ MarkdownExtensions& MarkdownExtensions::Plugin(Arena* a,
 
 bool MarkdownExtensions::HasSameParserConfiguration(
     const MarkdownExtensions& other) const {
-    if (enableMdx != other.enableMdx ||
+    if (parserRevision != other.parserRevision ||
+        enableMdx != other.enableMdx ||
         enableFrontmatter != other.enableFrontmatter ||
         blockParsers.len != other.blockParsers.len ||
         blockRenderers.len != other.blockRenderers.len ||
@@ -216,6 +223,7 @@ bool MarkdownExtensions::HasSameParserConfiguration(
 uint64_t MarkdownExtensions::ParserFingerprint() const {
     uint64_t h = enableMdx ? 0x9e3779b97f4a7c15ull : 0xcbf29ce484222325ull;
     h = h * 1099511628211ull + (enableFrontmatter ? 1ull : 0ull);
+    h = h * 1099511628211ull + parserRevision;
     h = h * 1099511628211ull + (uint64_t)blockParsers.len;
     h = h * 1099511628211ull + (uint64_t)blockRenderers.len;
     h = h * 1099511628211ull + (uint64_t)inlineParsers.len;
