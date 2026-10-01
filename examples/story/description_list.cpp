@@ -49,16 +49,16 @@ El* DescriptionListStory::Render(DescriptionListStory* self, Ctx* cx) {
             ->Vertical(self->vertical)
             ->Bordered(self->bordered)
             ->WithSize(self->toolbar.size)
-            ->ItemEl(StrL("Name"), Md(cx, StrL("GPUI Kit")))
+            ->ItemEl(StrL("Name"), Md(cx, StrL("GPUI Component")))
             ->ItemEl(
                 StrL("Description"),
                 Md(cx, StrL("UI components for building fantastic desktop "
-                            "application by using [GPUI](https://gpui.rs).\n\n"
+                            "application by using GPUI.\n\n"
                             "Contains a lot of useful UI components, such as "
                             "**Button**, **Input**, **Table**, **List**, "
                             "**Select**, **DatePicker** ...\n\n"
                             "You can easily create your native desktop "
-                            "application by using GPUI Kit.")),
+                            "application by using GPUI Component.")),
                 3)
             ->ItemEl(StrL("Version"), Md(cx, StrL("0.1.0")))
             ->ItemEl(StrL("License"), Md(cx, StrL("Apache-2.0")))

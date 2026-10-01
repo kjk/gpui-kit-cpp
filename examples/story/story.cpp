@@ -1134,37 +1134,23 @@ static Window* StoryOpenWindow(App* app, int story, bool embedded = false) {
 // The About dialog, which the Help menu raises. It is an entity of its own
 // rather than something a page renders, which is what WindowExt is for: the
 // menu handler has no view that draws dialogs and does not need one, and the
-// dialog outlives whichever page happens to be showing. Rust writes the same
-// thing as `window.open_alert_dialog(cx, |alert, ..| ..)`.
+// dialog outlives whichever page happens to be showing. Rust writes it as
+// `window.open_alert_dialog(cx, |alert, ..| alert.title("About")
+// .description(markdown(..)))`.
 struct AboutDialog {
     static void OnClose(AboutDialog*, Ctx* cx, const ClickEvent*) {
         WindowCloseDialog(cx);
     }
 
     static El* Render(AboutDialog*, Ctx* cx) {
-        Arena* a = cx->a;
-        const Theme& th = ThemeNow(cx->app);
-        El* body = Div(a)->FlexCol()->Gap(8)->W(kFill);
-        body->Child(
-            StoryTxt(cx,
-                     StrL("A C++ port of longbridge/gpui-kit: the "
-                          "same components, the same theme, no Rust and "
-                          "no STL."),
-                     14, th.mutedFg)
-                ->W(kFill)
-                ->Wrap());
-        body->Child(
-            StoryTxt(cx, StrL("github.com/longbridge/gpui-kit"), 14, th.mutedFg)
-                ->W(kFill));
         Listener close = Listen(cx, &AboutDialog::OnClose);
-        return component::Dialog::New(cx)
+        return component::AlertDialog::New(cx)
             ->Open(true)
-            ->Title(StrL("GPUI Kit"))
-            ->Description(StrL("Component showcase  v0.5.1"))
-            ->Body(body)
-            ->W(420)
-            ->CloseButton()
-            ->OkText(StrL("Close"))
+            ->Title(StrL("About"))
+            ->Body(component::TextView::New(
+                       cx, StrL("GPUI Component Storybook\n\nVersion "
+                                "0.1.0\n\nhttps://gpui-kit.com"))
+                       ->IntoEl())
             ->OnOk(close)
             ->OnClose(close)
             ->OnCancel(close)
@@ -2046,8 +2032,8 @@ int GpuiMain(int argc, char** argv) {
     // cx.set_app_identity(..): what the platform calls the application when it
     // shows one of its notifications. Windows names the notification area icon
     // with it; the other backends do not have one to name yet.
-    SysNotifySetAppIdentity(StrL("com.longbridge.gpui-kit.story"),
-                            StrL("GPUI Kit"));
+    SysNotifySetAppIdentity(StrL("com.longbridge.gpui-component.story"),
+                            StrL("GPUI Component"));
     bool dark = false;
     for (int i = 1; i < argc; i++) {
         dark |= argv[i] && base::StrEq(Str(argv[i]), StrL("--dark"));

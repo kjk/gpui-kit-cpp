@@ -47,10 +47,10 @@ El* SeparatorStory::Render(SeparatorStory*, Ctx* cx) {
     StorySectionBody(ctx)->W(520);
     El* box = Div(a)->FlexCol()->GapY(16)->W(kFill);
     El* head = Div(a)->FlexCol()->GapY(8)->W(kFill);
-    head->Child(StoryTxt(cx, StrL("Hello GPUI Kit"), 16, th.foreground));
+    head->Child(StoryTxt(cx, StrL("Hello GPUI Component"), 16, th.foreground));
     head->Child(
         StoryTxt(cx,
-                 StrL("GPUI Kit is a Rust GUI components for building "
+                 StrL("GPUI Component is a Rust GUI components for building "
                       "fantastic cross-platform desktop application by using "
                       "GPUI."),
                  14, th.mutedFg)

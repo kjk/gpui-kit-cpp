@@ -123,17 +123,17 @@ static void OnPopupItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 
 static component::PopupMenu* LinksMenu(MenuStory*, Ctx* cx) {
     return component::PopupMenu::New(cx, StrL("popup-menu-links"))
-        ->Link(StrL("GPUI Kit"), StrL("https://github.com/longbridge/gpui-kit"),
-               IconName::Github)
+        ->Link(StrL("GPUI Component"),
+               StrL("https://github.com/longbridge/gpui-kit"), IconName::Github)
         ->Separator()
-        ->Link(StrL("GPUI"), StrL("https://gpui.rs"))
+        ->Link(StrL("GPUI Kit"), StrL("https://gpui-kit.com"))
         ->Link(StrL("Zed"), StrL("https://zed.dev"));
 }
 
 static component::PopupMenu* OtherLinksMenu(MenuStory* self, Ctx* cx) {
     component::PopupMenu* deeper =
         component::PopupMenu::New(cx, StrL("popup-menu-other-deeper"))
-            ->Link(StrL("GPUI"), StrL("https://gpui.rs"));
+            ->Link(StrL("GPUI Kit"), StrL("https://gpui-kit.com"));
 
     component::PopupMenu* nested =
         component::PopupMenu::New(cx, StrL("popup-menu-other-nested"))
