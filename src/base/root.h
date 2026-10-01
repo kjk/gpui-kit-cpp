@@ -14,8 +14,7 @@
    Rust keeps each window's plugin instances on its Root entity; here they
    are kept on the window (window.use_keyed_state), captured the first time
    a Root renders in it, so a view that renders a Root surface of its own
-   (`RootSurface`, the shell's root) finds the same instances the Root entity
-   would.
+   (`RootSurface`) finds the same instances the Root entity would.
 
    Tab / shift-tab and ctrl-c (cmd-c) are Root's key bindings in Rust. The
    runtime already walks focus (FocusNext, which honors focus traps) and
@@ -91,7 +90,7 @@ const RootPluginInstance* RootPlugins(Window* window, int* n);
 // Root's render around content already built: prepare, the surface with the
 // content and every plugin's overlay, the plugins' styles, `root`'s
 // refinement, then each plugin's decoration. `root` may be null for a view
-// that hosts its own content (the shell's root).
+// that hosts its own content.
 El* RootSurface(Ctx* cx, const Root* root, El* content);
 
 // gpui_kit::open_window: open a window whose root view is a Base Root around

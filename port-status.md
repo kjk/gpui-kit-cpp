@@ -30,9 +30,9 @@ macOS font-kit requirement on the website only. The current update target is
   dependency versions are unchanged.
 - **Base Root keeps its plugins on the window.** Rust's `Root` entity owns
   each plugin's entity and observes it; here `RootPlugin` is a function table
-  whose per-window state lives in the window's keyed state, so a view that is
-  its own window root (the shell's `ShellRoot`) renders the same surface
-  through `RootSurface`. Root's Tab / shift-Tab / copy actions are the
+  whose per-window state lives in the window's keyed state, so a view that
+  renders the surface itself through `RootSurface` finds the same
+  instances. Root's Tab / shift-Tab / copy actions are the
   runtime's for every window (`FocusNext`, `WindowSelectionCopy`); the
   surface carries no `id("root")`, which would re-key every element's state;
   WindowState's `prepare` sets no rem size and its tooltip overlay is the
@@ -141,15 +141,21 @@ macOS font-kit requirement on the website only. The current update target is
   on a line or area runs over the box of the points the path passes
   through, where GPUI's spans the tessellated path's bounds; a natural
   curve's overshoot between two points is outside it.
-- **The shell's component catalog is not independent of the component
-  library.** `src/component_shell` registers into the ported registry as
-  crates/component-shell does, and `gpui_shell` is always the component
-  shell; but `src/shell` still includes `ui/` headers (root, sheet, theme,
-  input), so Rust's "the runtime depends on no component library" holds
-  only for `component_shell/`. There is no catalog window opener (ShellRoot
-  hosts the overlays), no single-mount `LoadedApplication` (a `ViewType` is
-  refcounted), and a template refuses a registered component, whose payload
-  lives in the arena that recorded it (`src/shell/component_registry.h`).
+- **The shell's window host differs from root.rs in four places.**
+  `src/shell` includes no `ui/` header (a test enforces it), ShellRoot is
+  its own overlay host over gpui-base, the catalog's window opener roots a
+  `gpui_shell` window at the component library's Root, and hosts mount
+  through a single-mount `LoadedApplication`, all as in Rust. What still
+  differs: `ShellRootOf` also finds the ShellRoot as the content of that
+  Base Root, where Rust's `window.root::<ShellRoot>()` would not and a
+  script's `open_dialog` in an opened component-shell window would have no
+  host; the tooltip is the window's one overlay, so the shell's enter and
+  switch transition dresses a component's tooltip too; a press on the
+  background does not blur the focused field (`blur_on_background_press`
+  needs GPUI's `default_prevented`); and `LoadApplication` takes the host's
+  policy where Rust's mount always uses the default. A template still
+  refuses a registered component, whose payload lives in the arena that
+  recorded it (`src/shell/component_registry.h`).
 - **Registered components render within one frame's description.** A typed
   part is rendered standalone and again by its parent; deferred slots,
   delegate rows and window-effect surfaces (Dialog, Sheet, ...) are rebuilt
