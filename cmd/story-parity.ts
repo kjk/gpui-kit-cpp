@@ -160,6 +160,14 @@ for (const [f, src] of cppSrc) {
     if (m[1] !== "ID") idToStruct.set(m[1], { struct: m[2], file: f });
   }
 }
+// Files that are no one page (story.cpp, Story.h, input_tokens.cpp, ...):
+// their literals are helpers any page may draw, like the toolbar's "Options".
+const sharedLits = new Set<string>();
+for (const [f, src] of cppSrc) {
+  if (basename(f) === "story.cpp" || !/STORY_PAGE(?:_KEYS)?\(Story/.test(src)) {
+    for (const l of cppLiterals(src)) sharedLits.add(l);
+  }
+}
 const cppOrder = cppIds.map((id) => idToStruct.get(id)?.struct ?? `(${id}: no page)`);
 
 const storyCppSrc = cppSrc.get(join(storyCpp, "story.cpp"))!;
@@ -213,8 +221,7 @@ for (let i = 0; i < cppIds.length; i++) {
 
     const pageSrc = cppSrc.get(page.file)!;
     const lits = cppLiterals(pageSrc);
-    const allLits = new Set<string>();
-    for (const s of cppSrc.values()) for (const l of cppLiterals(s)) allLits.add(l);
+    for (const l of sharedLits) lits.add(l);
 
     const rsSections = rsCall(rs.src, "section");
     const cppSections: string[] = [];
@@ -229,11 +236,7 @@ for (let i = 0; i < cppIds.length; i++) {
 
     const texts = [...new Set(rsMethod(rs.src, visible))].filter((s) => s.trim().length > 1 && !rsSections.includes(s));
     const absent = texts.filter((s) => !lits.has(s));
-    const here = absent.filter((s) => !allLits.has(s));
-    const elsewhere = absent.filter((s) => allLits.has(s));
-    if (here.length) lines.push(`  text missing: ${here.map((s) => JSON.stringify(s)).join(", ")}`);
-    if (elsewhere.length && showAll)
-      lines.push(`  text in another file: ${elsewhere.map((s) => JSON.stringify(s)).join(", ")}`);
+    if (absent.length) lines.push(`  text missing: ${absent.map((s) => JSON.stringify(s)).join(", ")}`);
   }
   if (lines.length) {
     problems++;
