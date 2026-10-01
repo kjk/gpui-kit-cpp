@@ -143,8 +143,7 @@ macOS font-kit requirement on the website only. The current update target is
   from the latest render rather than a leased snapshot, so an open surface
   shows the current render's content and callbacks. A retained InputState
   has one change listener, so when two components render one state the last
-  wins. Accordion's `on_toggle` reports only trigger clicks
-  (`src/component_shell/`).
+  wins (`src/component_shell/`).
 - **Registered components that need a number before layout take it from the
   script's style.** MessageScroller, List, Tree and DataTable virtualize from
   a definite height in the style (List/Tree default to 320); Settings picks

@@ -288,7 +288,20 @@ struct AccordionToggle {
     const bool* open = nullptr;
     int count = 0;
     bool multiple = false;
+    // The item whose trigger this click went through, noted by its
+    // on_toggle_click before the root's on_click hears the same click, or -1
+    // for a click that toggled nothing.
+    int clicked = -1;
 };
+
+// The item's on_toggle_click inside Accordion::render: it only updates the
+// open set the root reports, which here is noting which item flipped.
+static void NoteToggle(const shell::ComponentEventBinding* binding, ScriptView*,
+                       Ctx*, const void*) {
+    if (AccordionToggle* toggle = (AccordionToggle*)binding->user) {
+        toggle->clicked = (int)binding->value;
+    }
+}
 
 // Accordion::render's root on_click after the clicked item's on_change: the
 // clicked item flips, a single-open accordion closing the rest when it
@@ -296,8 +309,12 @@ struct AccordionToggle {
 // iteration order; these ascend.
 static void RunToggle(const shell::ComponentEventBinding* binding,
                       ScriptView* view, Ctx* cx, const void*) {
-    const AccordionToggle* toggle = (const AccordionToggle*)binding->user;
-    int clicked = (int)binding->value;
+    AccordionToggle* toggle = (AccordionToggle*)binding->user;
+    if (!toggle) return;
+    // A click anywhere in the accordion reports, as Rust's root on_click
+    // does; one that went through no trigger reports the set unchanged.
+    int clicked = toggle->clicked;
+    toggle->clicked = -1;
     Arena* a = cx->a;
     shell::ComponentDataValue* indices =
         toggle->count
@@ -342,6 +359,7 @@ static El* MaterializeAccordion(MaterializeRequest* request) {
     component::Accordion* accordion = component::Accordion::New(cx, payload->id)
                                           ->Disabled(request->disabled);
     AccordionToggle* toggle = nullptr;
+    shell::ComponentCallback onToggle = {};
     EachMethod<AccordionOp>(request, [&](const AccordionOp& op) {
         switch (op.kind) {
             case AccordionKind::Multiple:
@@ -355,9 +373,9 @@ static El* MaterializeAccordion(MaterializeRequest* request) {
                 break;
             case AccordionKind::OnToggle:
                 if (!toggle) toggle = ArenaNew<AccordionToggle>(cx->a);
+                onToggle = request->ResolveCallback(op.argument);
                 accordion->OnToggle(shell::ComponentValueListener(
-                    cx, request->elementId, &RunToggle,
-                    request->ResolveCallback(op.argument), toggle));
+                    cx, request->elementId, &NoteToggle, onToggle, toggle));
                 break;
         }
     });
@@ -381,7 +399,15 @@ static El* MaterializeAccordion(MaterializeRequest* request) {
         toggle->count = count;
         toggle->multiple = accordion->multiple;
     }
-    return FinishTyped(request, accordion->IntoEl());
+    El* root = accordion->IntoEl();
+    // when_some(on_toggle_click.filter(!disabled), on_click(..))
+    // on the root, which hears every click in the accordion after the item
+    // under it has toggled.
+    if (toggle && !accordion->disabled) {
+        root->OnClick(
+            shell::ComponentListener(cx, &RunToggle, onToggle, toggle));
+    }
+    return FinishTyped(request, root);
 }
 
 static constexpr ArgumentDescriptor kMultipleArgs[] = {

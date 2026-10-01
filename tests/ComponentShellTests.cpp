@@ -963,6 +963,30 @@ void Click(Host& host, El* element) {
     ListenerCall(&host.app, &host.window, element->listener, &event);
 }
 
+static bool PathTo(El* element, El* target, El** path, int* depth, int cap) {
+    if (!element || *depth >= cap) return false;
+    path[(*depth)++] = element;
+    if (element == target) return true;
+    for (El* child = element->first; child; child = child->next) {
+        if (PathTo(child, target, path, depth, cap)) return true;
+    }
+    (*depth)--;
+    return false;
+}
+
+// A click as the window dispatches it: on_click bubbles, so every element
+// from `target` out to `root` that takes one hears it, innermost first.
+void ClickBubbling(Host& host, El* root, El* target) {
+    El* path[256];
+    int depth = 0;
+    if (!PathTo(root, target, path, &depth, 256)) return;
+    ClickEvent event = {};
+    for (int i = depth - 1; i >= 0; i--) {
+        if (path[i]->listener.IsValid())
+            ListenerCall(&host.app, &host.window, path[i]->listener, &event);
+    }
+}
+
 // ─── controls/: mod.rs, action.rs, display.rs, text.rs ─────────────────────
 
 // controls_register_the_supported_public_exports
@@ -1619,9 +1643,45 @@ void TypedContainersReportTheirSelection() {
     // Single-open: opening B closes A.
     El* question = ListenerAbove(root, StrL("Question B"));
     utassert(question != nullptr);
-    if (question) Click(host, question);
+    if (question) ClickBubbling(host, root, question);
     root = host.Render();
     utassert(FindText(root, StrL("state: 1|1|1")) != nullptr);
+}
+
+// accordion.rs: on_toggle is the root's on_click, so every click in the
+// accordion reports the open set — one through a trigger after the item
+// flipped, one in an item's content with the set as it was.
+void AccordionReportsEveryClickInIt() {
+    Host host(StrL(
+        "import { View, div } from 'gpui-kit';\n"
+        "import { Accordion, AccordionItem } from 'gpui-component';\n"
+        "export default class Main extends View {\n"
+        "  init() { this.calls = 0; this.open = 'none'; }\n"
+        "  render() {\n"
+        "    return div().w(600)\n"
+        "      .child(new Accordion('faq')\n"
+        "        .on_toggle((open, cx) => { this.calls += 1; "
+        "this.open = open.join(',') || 'none'; cx.notify(); })\n"
+        "        .child(new AccordionItem().title(div().child('Question A'))"
+        ".open(true).child(div().child('Answer A')))\n"
+        "        .child(new AccordionItem().title(div().child('Question B'))"
+        ".child('Answer B')))\n"
+        "      .child(`calls: ${this.calls}|${this.open}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    utassert(FindText(root, StrL("calls: 0|none")) != nullptr);
+    El* answer = ListenerAbove(root, StrL("Answer A"));
+    utassert(answer != nullptr);
+    if (answer) ClickBubbling(host, root, answer);
+    root = host.Render();
+    utassert(FindText(root, StrL("calls: 1|0")) != nullptr);
+    El* question = ListenerAbove(root, StrL("Question B"));
+    utassert(question != nullptr);
+    if (question) ClickBubbling(host, root, question);
+    root = host.Render();
+    utassert(FindText(root, StrL("calls: 2|1")) != nullptr);
 }
 
 // A typed container refuses a child that is not its part, and a part that
@@ -7397,6 +7457,7 @@ void TestComponentShell() {
     TypedElementsAreExtractedFromRealElements();
     BatchPublishesClosedDocumentedDescriptors();
     TypedContainersReportTheirSelection();
+    AccordionReportsEveryClickInIt();
     TypedContainersRefuseForeignChildren();
 
     TestSuite("input_group");
