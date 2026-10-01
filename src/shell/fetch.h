@@ -44,7 +44,9 @@ struct FetchRequest {
     Vec<FetchHeader> headers;
     Str body;
     // One deadline over the whole redirect walk, as a TimeNow() reading; 0
-    // means none. FetchSendAsync fails a hop that lands past it rather than
+    // means none. TimeNow() counts from its first call, so a deadline that
+    // has already passed can be negative and still counts as one.
+    // FetchSendAsync fails a hop that lands past it rather than
     // following or answering it, so the walk as a whole ends there however
     // many hops it took, each also bounded by the transport's own limit.
     double deadline = 0;

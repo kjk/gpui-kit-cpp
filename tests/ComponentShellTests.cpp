@@ -578,8 +578,8 @@ void RuntimeTypingsIncludeLeafExportsAndMethods() {
     Str declarations = out.TakeStr();
     const char* expected[] = {
         "export const Spinner: { new(): SpinnerElement };",
-        "size(size: \"xsmall\" | \"small\" | \"medium\" | \"large\"): "
-        "SpinnerElement;",
+        ("size(size: \"xsmall\" | \"small\" | \"medium\" | \"large\"): "
+         "SpinnerElement;"),
         "export const VerticalDashedSeparator: { new(): SeparatorElement };",
         "label(label: string): SeparatorElement;",
         "secondary(): SkeletonElement;",

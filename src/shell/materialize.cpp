@@ -1433,7 +1433,7 @@ bool TextViewImageRequest(const Capabilities& capabilities, Str url,
     if (!TextViewImageUrl(capabilities, url)) return false;
     FetchRequest request;
     request.deadline =
-        deadline > 0 ? deadline : TimeNow() + kTextViewImageTimeoutSecs;
+        deadline != 0 ? deadline : TimeNow() + kTextViewImageTimeoutSecs;
     // url.set_fragment(None): the fragment is the document's, not the
     // server's.
     int end = 0;

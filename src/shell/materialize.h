@@ -47,8 +47,8 @@ constexpr double kTextViewImageTimeoutSecs = 30;
 // request_image: GETs `url` without its fragment, re-authorizing every
 // redirect, and answers the body of a success status within the 8 MiB limit.
 // False, with no callback and no request, for a URL TextViewImageUrl refuses.
-// The walk fails once TimeNow() passes `deadline`; 0 means
-// kTextViewImageTimeoutSecs from now.
+// The walk fails once TimeNow() passes `deadline` (which may be negative,
+// see FetchRequest::deadline); 0 means kTextViewImageTimeoutSecs from now.
 bool TextViewImageRequest(const Capabilities& capabilities, Str url,
                           Func1<TextViewImageResponse> done,
                           double deadline = 0);

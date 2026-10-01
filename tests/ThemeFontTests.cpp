@@ -65,12 +65,12 @@ static void AFontFamilyIsInternedCascadesAndShapes() {
 
     uint16_t mono = kFontMono;
     Size base = MeasureText(&win->paint, StrL("iiii"), 14, 0, false, mono);
+    utassert(base.w > 0);
+#if !GPUI_OS_WASM
     Size missing =
         MeasureText(&win->paint, StrL("iiii"), 14, 0, false,
                     (uint16_t)(mono | FontFamilyBits(FontFamilyIntern(
                                           StrL("NoSuchFamilyForGpuiTests")))));
-    utassert(base.w > 0);
-#if !GPUI_OS_WASM
     utassertnear(missing.w, base.w);
 #endif
 #if GPUI_OS_WINDOWS

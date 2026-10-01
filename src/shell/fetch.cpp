@@ -556,7 +556,7 @@ static void FetchAsyncResponse(FetchAsyncState* state, HttpAsyncResult landed) {
         FetchAsyncFinish(state, false);
         return;
     }
-    if (state->deadline > 0 && TimeNow() >= state->deadline) {
+    if (state->deadline != 0 && TimeNow() >= state->deadline) {
         FetchError(&state->result.error,
                    fmt("fetching %s timed out", state->walk.url));
         FetchAsyncFinish(state, false);
