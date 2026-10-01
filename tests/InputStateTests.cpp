@@ -4023,34 +4023,6 @@ static void TheThreeInputBuildersInstallPasteInterception() {
     delete win;
 }
 
-// state.rs single_line_is_centered_in_a_taller_frame: the frame is laid out
-// by the application, which should not have to center a single line in it.
-static void SingleLineIsCenteredInATallerFrame() {
-    App app = {};
-    ThemeSet(&app, ThemeMode::Light);
-    Window* win = new Window();
-    win->app = &app;
-    win->paint.app = &app;
-    win->paint.window = win;
-    Arena* arena = ArenaNew();
-    Ctx cx = {&app, win, arena, {}};
-
-    InputState state;
-    InputSetValue(&state, StrL("a"));
-    El* line = gpui::Input::New(&cx, &state);
-    El* frame = InputBase::New(&cx, StrL("frame"), true)->H(60)->Child(line);
-    El* page = Div(arena)->FlexCol()->W(400)->H(100)->Child(frame);
-    const RuntimeStyle& th = RuntimeStyleNow(&app);
-    LayoutEl(&win->paint, page, 0, 0, 400, 100, th.fontSize, th.foreground);
-    utassertnear(line->y + line->h / 2, 30.f);
-
-    WindowKeyedFree(win);
-    EntityDropAll(&app);
-    AppGlobalClear(&app);
-    ArenaDelete(arena);
-    delete win;
-}
-
 // state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
 // clipboard must not replace the selection with nothing. Rust drives it
 // through the Paste action and a test clipboard; the insert is the seam here,
@@ -4297,21 +4269,6 @@ static void PausingACursorThatIsNotBlinkingDoesNotStartIt() {
 
 // test_set_value_on_unfocused_input_stays_quiet: seeding a field that does
 // not have the keyboard arms no caret timer, so nothing repaints after it.
-static void SetValueOnUnfocusedInputStaysQuiet() {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    {
-        InputState s;
-        InputReplaceAll(&s, &app, win, StrL("seeded"));
-        utassert(StrEq(InputValue(&s), "seeded"));
-        utassert(len(win->timers) == 0);
-        utassert(!BlinkVisible(&app, s.blink));
-    }
-    delete win;
-    EntityDropAll(&app);
-}
-
 // blurring_a_paused_cursor_leaves_the_next_focus_blinking
 static void BlurringAPausedCursorLeavesTheNextFocusBlinking() {
     BlinkFixture f;
@@ -4766,6 +4723,427 @@ static void EachRowCarriesItsIndentGuides() {
     delete win;
 }
 
+// ─── window-driven tests ─────────────────────────────────────────────────
+//
+// state.rs mod tests opens each state in a window — `InputView`, a TestRoot
+// rendering the state — and drives it through `TestAppContext` /
+// `VisualTestContext`. gpui/test_app.h is that test platform: a real App and
+// Window with no OS window behind them, a frozen clock and an in-memory
+// clipboard. Each Rust `window.update(cx, |_, window, cx| ..)` block is the
+// calls below followed by Flush, which is the effect flush that ends it and
+// the frame it draws.
+
+// InputBaseState's Render: the frame — the input's key context and focus,
+// the whole height, a single line centred in it — around the TextElement,
+// which is Input, Textarea or Editor here by mode. A multi-line state
+// scrolls under the frame: Rust's TextElement offsets its rows by the
+// scroll handle, and in this tree the frame carries the offset, the way the
+// themed Textarea's box does.
+static El* InputStateFrame(Ctx* cx, InputState* s) {
+    bool interactive = !s->disabled;
+    El* frame = InputBase::New(cx, StrL("input-state"), interactive)
+                    ->BindInput(interactive ? s : nullptr)
+                    ->Flex1()
+                    ->W(kFill)
+                    ->H(kFill);
+    El* text = nullptr;
+    if (s->kind == InputKind::Editor) {
+        text = gpui::Editor::New(cx, s);
+    } else if (s->kind == InputKind::Textarea) {
+        text = gpui::Textarea::New(cx, s);
+    } else {
+        text = gpui::Input::New(cx, s);
+    }
+    if (InputIsMultiLine(s)) {
+        frame->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
+        if (!s->softWrap) {
+            frame->ScrollX(s->scrollX);
+        }
+    } else {
+        frame->FlexRow()->ItemsCenter()->ClipX();
+    }
+    return frame->Child(text);
+}
+
+// TestRoot<M>: `div().size_full().child(state)`.
+struct InputTestRoot {
+    InputState input;
+
+    static El* Render(InputTestRoot* self, Ctx* cx) {
+        return Div(cx->a)->SizeFull()->Child(InputStateFrame(cx, &self->input));
+    }
+};
+
+struct InputView {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<InputTestRoot> root = {};
+    InputState* input = nullptr;
+};
+
+// The builder closure: `|state| state.default_value(..)` and the like.
+using InputBuild = void (*)(InputState* s, App* app);
+
+static Str SqlLanguage(void*) {
+    return StrL("sql");
+}
+
+// EditorState::new(window, cx).language("sql"): the code editor mode —
+// line numbers, folding, search on — over a language this tree names
+// through the highlighter seam and highlights nothing for.
+static void MakeCodeEditor(InputState* s) {
+    s->kind = InputKind::Editor;
+    s->mode.kind = LayoutModeKind::CodeEditor;
+    LayoutModeSetRows(&s->mode, 2);
+    s->mode.lineNumber = true;
+    s->mode.folding = true;
+    s->searchable = true;
+    s->highlighter.language = &SqlLanguage;
+}
+
+// InputView::build_with: open a window whose root renders the state. The
+// window is TestDisplay's size unless the test says otherwise.
+static InputView InputViewBuildWith(InputKind kind, InputBuild build,
+                                    float w = 1920, float h = 1080) {
+    InputView v;
+    v.app = TestAppNew();
+    if (!v.app) {
+        return v;
+    }
+    v.root = EntityNew<InputTestRoot>(v.app);
+    v.input = &v.root.Get(v.app)->input;
+    if (kind == InputKind::Editor) {
+        MakeCodeEditor(v.input);
+    } else {
+        v.input->kind = kind;
+    }
+    if (build) {
+        build(v.input, v.app);
+    }
+    v.win = TestWindowOpen(v.app, v.root, w, h);
+    return v;
+}
+
+// InputView::build: a single-line state.
+static InputView InputViewBuild(InputBuild build = nullptr) {
+    return InputViewBuildWith(InputKind::Input, build);
+}
+
+static InputView InputViewBuildTextarea(InputBuild build = nullptr) {
+    return InputViewBuildWith(InputKind::Textarea, build);
+}
+
+static InputView InputViewBuildEditor(InputBuild build = nullptr) {
+    return InputViewBuildWith(InputKind::Editor, build);
+}
+
+// InputView::new: the code editor, which most of these were written against.
+static InputView InputViewNew() {
+    return InputViewBuildEditor(nullptr);
+}
+
+static void InputViewFree(InputView* v) {
+    TestAppFree(v->app);
+    *v = InputView{};
+}
+
+// The end of a `window.update` / `input.update` block: the state notified,
+// and the flush draws what it invalidated.
+static void Flush(const InputView& v) {
+    AppInvalidate(v.win);
+    TestFlushEffects(v.app);
+}
+
+// `state.left(&MoveLeft, window, cx)` and the rest of the action handlers.
+static bool ViewAct(const InputView& v, InputAction action,
+                    bool shift = false) {
+    return InputPerform(v.input, v.app, v.win, action, shift);
+}
+
+// `state.replace_text_in_range(None, text, window, cx)`: what the platform
+// input handler calls for each typed character.
+static void ViewTypeText(const InputView& v, const char* text) {
+    InputReplaceTextInRange(v.input, v.app, v.win, nullptr, Str(text));
+}
+
+static bool ViewValueIs(const InputView& v, const char* want) {
+    return base::StrEq(InputValue(v.input), want);
+}
+
+static bool ViewRangeIs(const InputView& v, int start, int end) {
+    return v.input->selectedRange.start == start && v.input->selectedRange
+                                                            .end == end;
+}
+
+// state.rs test_inline_token_click_selects_it: a click on a token selects it.
+// The token is the chip the element draws for it, which is the one thing in
+// the field that takes a click of its own; its box is what range_to_bounds
+// answers in Rust.
+static void InlineTokenClickSelectsIt() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetValue(s, StrL("before @alice after"));
+    });
+    utassert(InputReplaceRangeWithToken(
+                 view.input, view.app, view.win, 7, 13,
+                 InlineToken::New(StrL("a"), StrL("@alice"))) ==
+             InlineTokenError::Ok);
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
+    Flush(view);
+    const HitRect* chip = nullptr;
+    for (int i = 0; i < view.win->paint.hits.len; i++) {
+        const HitRect& hit = view.win->paint.hits[i];
+        if (hit.onClick.IsValid() && hit.bounds.w > 0) {
+            chip = &hit;
+        }
+    }
+    utassert(chip);
+    if (chip) {
+        Point center = {chip->bounds.CenterX(), chip->bounds.CenterY()};
+        TestSimulateClick(view.win, center);
+        TestRunUntilParked(view.app);
+        // "a click selects the token"
+        utassert(ViewRangeIs(view, 7, 13));
+    }
+    InputViewFree(&view);
+}
+
+// state.rs single_line_is_centered_in_a_taller_frame: the frame is laid out
+// by the application, which should not have to center a single line in it.
+struct CenteredFrame {
+    InputState input;
+
+    static El* Render(CenteredFrame* self, Ctx* cx) {
+        return InputBase::New(cx, StrL("frame"), true)
+            ->H(60)
+            ->Child(gpui::Input::New(cx, &self->input));
+    }
+};
+
+static void SingleLineIsCenteredInATallerFrame() {
+    App* app = TestAppNew();
+    Entity<CenteredFrame> frame = EntityNew<CenteredFrame>(app);
+    InputState* input = &frame.Get(app)->input;
+    InputSetValue(input, StrL("a"));
+    Window* win = TestWindowOpen(app, frame, 400, 100);
+    utassert(win);
+    TestDraw(win);
+    Bounds line = input->inputBounds;
+    utassertnear(line.CenterY(), 30.f);
+    TestAppFree(app);
+}
+
+struct EmptyRoot {
+    static El* Render(EmptyRoot*, Ctx* cx) { return Div(cx->a); }
+};
+
+// state.rs test_set_value_on_unfocused_input_stays_quiet: seeding a form is
+// a write, and that is all. The input is not focused and draws no caret, so
+// nothing may repaint after that. Rust counts the input entity's notifies;
+// an InputState is not an entity here, and what a notify does is draw a
+// frame, so the frames are what is counted.
+static void SetValueOnUnfocusedInputStaysQuiet() {
+    App* app = TestAppNew();
+    Entity<EmptyRoot> root = EntityNew<EmptyRoot>(app);
+    Window* win = TestWindowOpen(app, root, 400, 100);
+    {
+        InputState input;
+        TestRunUntilParked(app);
+        InputSetValue(&input, StrL("seeded"));
+        AppInvalidate(win);
+        TestFlushEffects(app);
+        TestRunUntilParked(app);
+        uint64_t settled = win->frameSeq;
+
+        TestAdvanceClock(app, 3000);
+        TestRunUntilParked(app);
+        // "an unfocused input is blinking, and every blink repaints the view
+        // it is in"
+        utassert(win->frameSeq == settled);
+        utassert(len(win->timers) == 0);
+    }
+    TestAppFree(app);
+}
+
+// state.rs textarea_cursor_treats_crlf_as_one_newline.
+static void TextareaCursorTreatsCrlfAsOneNewline() {
+    InputView view = InputViewBuildTextarea();
+    const char* originals[] = {"\r\nlast",
+                               "\xEF\xBB\xBF"
+                               "first\r\nlast\n",
+                               "first\nlast\r\n"};
+    for (const char* original : originals) {
+        InputSetValue(view.input, Str(original));
+        int n = (int)strlen(original);
+        int newline = (int)(strchr(original, '\n') - original);
+        int before = newline > 0 ? newline - 1 : 0;
+        int end = original[before] == '\r' ? newline - 1 : newline;
+        ViewAct(view, InputAction::MoveEnd);
+        utassert(InputCursor(view.input) == end);
+        ViewAct(view, InputAction::MoveRight);
+        utassert(InputCursor(view.input) == newline + 1);
+        ViewAct(view, InputAction::MoveLeft);
+        utassert(InputCursor(view.input) == end);
+        ViewAct(view, InputAction::SelectToEndOfLine);
+        utassert(ViewRangeIs(view, end, end));
+        ViewAct(view, InputAction::MoveToEnd);
+        utassert(InputCursor(view.input) == n);
+        ViewAct(view, InputAction::MoveToStart);
+        utassert(InputCursor(view.input) == 0);
+        utassert(ViewValueIs(view, original));
+    }
+    // A lone CR is an ordinary character; it must not skip its neighbour.
+    InputSetValue(view.input, StrL("a\rb"));
+    ViewAct(view, InputAction::MoveRight);
+    utassert(InputCursor(view.input) == 1);
+    ViewAct(view, InputAction::MoveRight);
+    utassert(InputCursor(view.input) == 2);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs only_a_multi_line_input_paints_scrollbars: a single-line input
+// keeps its caret in view by moving its own offset; it has no viewport to
+// drag, so a scrollbar in a text field is a control that does not exist.
+// Rust asks `shows_scrollbar`, which decides whether InputBaseState's frame
+// adds an EditorScrollbar. This tree builds that frame in the field
+// components, so they are what is opened, and the scroll box each one
+// registers is what is asked.
+struct ScrollbarFields {
+    InputState single;
+    InputState multi;
+
+    static El* Render(ScrollbarFields* self, Ctx* cx) {
+        self->multi.kind = InputKind::Textarea;
+        return Div(cx->a)
+            ->SizeFull()
+            ->FlexCol()
+            ->Child(component::Input::New(cx, StrL("single"), &self->single)
+                        ->IntoEl())
+            ->Child(component::Textarea::New(cx, StrL("multi"), &self->multi)
+                        ->IntoEl());
+    }
+};
+
+static void OnlyAMultiLineInputPaintsScrollbars() {
+    App* app = TestAppNew();
+    ThemeSet(app, ThemeMode::Light);
+    Entity<ScrollbarFields> root = EntityNew<ScrollbarFields>(app);
+    Window* win = TestWindowOpen(app, root);
+    ScrollbarFields* f = root.Get(app);
+    const ScrollRect* single = nullptr;
+    const ScrollRect* multi = nullptr;
+    for (int i = 0; i < win->paint.scrolls.len; i++) {
+        const ScrollRect& sr = win->paint.scrolls[i];
+        if (sr.input == &f->single) {
+            single = &sr;
+        } else if (sr.input == &f->multi) {
+            multi = &sr;
+        }
+    }
+    utassert(!single || !single->barY);
+    utassert(multi && multi->barY);
+    TestAppFree(app);
+}
+
+// state.rs test_readonly_rejects_user_edits_only.
+static void ReadonlyRejectsUserEditsOnlyInAWindow() {
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("hello"));
+    view.input->readonly = true;
+    Flush(view);
+    utassert(!InputIsEditable(view.input));
+    utassert(!InputIsReplaceable(view.input));
+
+    // Typing (and IME) goes through the input handler, it must be rejected.
+    ViewTypeText(view, " world");
+    InputReplaceAndMarkText(view.input, view.app, view.win, nullptr,
+                            StrL("\xE3\x81\x82"), nullptr);
+    Flush(view);
+    utassert(ViewValueIs(view, "hello"));
+
+    // The programmatic APIs are not limited by the readonly mode.
+    InputInsert(view.input, view.app, view.win, StrL(" world"));
+    InputSetValue(view.input, StrL("changed"));
+    Flush(view);
+    utassert(ViewValueIs(view, "changed"));
+
+    // And the user can edit again after leaving the readonly mode. The caret
+    // is at the start, because `set_value` has reset the selection.
+    view.input->readonly = false;
+    ViewTypeText(view, "!");
+    Flush(view);
+    utassert(InputIsEditable(view.input));
+    utassert(ViewValueIs(view, "!changed"));
+    InputViewFree(&view);
+}
+
+// state.rs press_search_shortcut: an editor inside a host that wants the
+// search shortcut for its own search UI, focused, and the shortcut pressed
+// once.
+struct SearchHost {
+    InputState editor;
+    int searchRequests = 0;
+
+    static void OnSearch(SearchHost* self, Ctx*, const ActionEvent*) {
+        self->searchRequests++;
+    }
+
+    static El* Render(SearchHost* self, Ctx* cx) {
+        return Div(cx->a)
+            ->SizeFull()
+            ->OnAction(input::Search(), Listen(cx, &SearchHost::OnSearch))
+            ->Child(gpui::Editor::New(cx, &self->editor));
+    }
+};
+
+static void PressSearchShortcut(bool searchable,
+                                void (*check)(SearchHost* host)) {
+    App* app = TestAppNew();
+    Entity<SearchHost> host = EntityNew<SearchHost>(app);
+    SearchHost* h = host.Get(app);
+    MakeCodeEditor(&h->editor);
+    h->editor.searchable = searchable;
+    Window* win = TestWindowOpen(app, host);
+    InputFocus(&h->editor, app, win);
+    TestFlushEffects(app);
+    TestRunUntilParked(app);
+#if GPUI_OS_MAC
+    TestSimulateKeystrokes(win, "cmd-f");
+#else
+    TestSimulateKeystrokes(win, "ctrl-f");
+#endif
+    TestRunUntilParked(app);
+    check(h);
+    TestAppFree(app);
+}
+
+// state.rs test_search_shortcut_reaches_the_host_when_not_searchable.
+static void SearchShortcutReachesTheHostWhenNotSearchable() {
+    PressSearchShortcut(false, [](SearchHost* h) {
+        utassert(h->searchRequests == 1);
+        utassert(!h->editor.search.open);
+        utassert(!SearchSessionIsActive(&h->editor.search));
+    });
+}
+
+// state.rs test_search_shortcut_opens_the_panel_when_searchable.
+static void SearchShortcutOpensThePanelWhenSearchable() {
+    PressSearchShortcut(true, [](SearchHost* h) {
+        utassert(h->searchRequests == 0);
+        utassert(h->editor.search.open);
+        utassert(SearchSessionIsActive(&h->editor.search));
+    });
+}
+
+static void RunWindowTests() {
+    InlineTokenClickSelectsIt();
+    TextareaCursorTreatsCrlfAsOneNewline();
+    OnlyAMultiLineInputPaintsScrollbars();
+    ReadonlyRejectsUserEditsOnlyInAWindow();
+    SearchShortcutReachesTheHostWhenNotSearchable();
+    SearchShortcutOpensThePanelWhenSearchable();
+}
+
 void TestInputState() {
     TestSuite("input_state");
     WhitespaceMarksFollowTheShapedGlyphs();
@@ -4916,4 +5294,5 @@ void TestInputState() {
     AClickInAWrappedScrolledEditorIgnoresStaleWindowY();
     ScrollToCursorUsesDocumentYNotStaleWindowY();
     InputFocusCyclesThroughInputsAndAddons();
+    RunWindowTests();
 }
