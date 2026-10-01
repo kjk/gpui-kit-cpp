@@ -1388,8 +1388,13 @@ void PathFill(PaintCtx* ctx, Path* p, Rgba c, float dx, float dy) {
         scene::RecPathFill(ctx, p, c);
         return;
     }
+    // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
+    // has nothing to draw into, and Node has no Path2D to build one with.
+    if (!ctx || !ctx->rt) {
+        return;
+    }
     int id = JsPath(p);
-    if (!id || !ctx || !ctx->rt) {
+    if (!id) {
         return;
     }
     GpJsPathFill(id, (int)Packed(ctx, c), dx, dy);
@@ -1406,8 +1411,13 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
         scene::RecPathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
         return;
     }
+    // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
+    // has nothing to draw into, and Node has no Path2D to build one with.
+    if (!ctx || !ctx->rt) {
+        return;
+    }
     int id = JsPath(p);
-    if (!id || !ctx || !ctx->rt) {
+    if (!id) {
         return;
     }
     GpJsPathFillGradient(id, x0, y0, x1, y1, (int)Packed(ctx, from),
@@ -1420,8 +1430,13 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
         scene::RecPathStroke(ctx, p, stroke, c, roundCaps);
         return;
     }
+    // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
+    // has nothing to draw into, and Node has no Path2D to build one with.
+    if (!ctx || !ctx->rt) {
+        return;
+    }
     int id = JsPath(p);
-    if (!id || !ctx || !ctx->rt) {
+    if (!id) {
         return;
     }
     GpJsPathStroke(id, stroke, (int)Packed(ctx, c), roundCaps ? 1 : 0, dx, dy);
@@ -1435,8 +1450,13 @@ void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
                                      roundCaps);
         return;
     }
+    // No canvas bound, no Path2D: a headless frame (WindowDrawFrameHeadless)
+    // has nothing to draw into, and Node has no Path2D to build one with.
+    if (!ctx || !ctx->rt) {
+        return;
+    }
     int id = JsPath(p);
-    if (!id || !ctx || !ctx->rt) {
+    if (!id) {
         return;
     }
     GpJsPathStrokeGradient(id, stroke, x0, y0, x1, y1, (int)Packed(ctx, from),
