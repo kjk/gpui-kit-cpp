@@ -6598,6 +6598,42 @@ Entity<T> ElementStateEntity(Ctx* cx, Str name, Str kind) {
     return KeyedEntity<T>(cx, KeyedKey(KeyedName(cx, name), HashClickId(kind)));
 }
 
+// The height an element was laid out at, for a widget that needs it as a
+// number while it builds. Rust's uniform_list and list virtualize at
+// prepaint from the bounds layout gave them; this tree builds its rows
+// before layout, so the number is the one the element was laid out at last
+// frame — what Settings already does with its panel's width. The first
+// frame has none and builds with `fallback`; a frame whose laid-out height
+// differs from the one it was built with asks for one more frame, built with
+// the new one. The slot is GPUI's element state: keyed by the name under the
+// current id scope, and dropped the first frame that does not ask for it.
+struct LaidOutHeight {
+    // What the element measured last frame, or -1 before it has been laid
+    // out. `built` is what this frame's build used.
+    float measured = -1;
+    float built = -1;
+    // Frames asked for in a row without the build catching up, which caps a
+    // height that depends on itself at one extra frame per change.
+    int chase = 0;
+    // Taken off the element's laid-out height before it is recorded: what
+    // surrounds the viewport inside the tracked box, in DIPs. With
+    // `contentBox`, the box's own vertical padding and border come off too,
+    // read after layout, so a script's p_4 is accounted for whatever it is.
+    float inset = 0;
+    bool contentBox = false;
+};
+
+// This frame's slot under `name`, with `built` set to the height to build
+// with: last frame's measurement, or `fallback` before there is one.
+LaidOutHeight* UseLaidOutHeight(Ctx* cx, Str name, float fallback);
+// Record the box `e` is laid out at into `slot` when this frame paints it.
+// `e` must not already carry a prepaint or a custom paint of its own, which
+// is when this returns false and records nothing.
+bool TrackLaidOutHeight(Ctx* cx, El* e, LaidOutHeight* slot);
+// The prepaint half without a window: take a laid-out box height into the
+// slot and answer whether one more frame should be built with it.
+bool LaidOutHeightObserve(LaidOutHeight* slot, float boxHeight);
+
 // Window-level subscriptions. GPUI spells these window.on_key_down and
 // cx.spawn + Timer::after; here each one is a Listener bound to a view.
 void WindowOnKey(Window* win, Listener l);

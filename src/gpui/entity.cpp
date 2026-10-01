@@ -5,6 +5,8 @@
 #include "gpui/keymap.h"
 #include "sys/executor.h"
 
+#include <math.h>
+
 namespace gpui {
 
 void* AppGlobalGetRaw(const App* app, const void* key) {
@@ -539,6 +541,69 @@ void* WindowFrameKeyedState(Window* win, uint32_t key, void* fresh,
         }
     }
     return p;
+}
+
+LaidOutHeight* UseLaidOutHeight(Ctx* cx, Str name, float fallback) {
+    static const uint32_t kKind = HashClickId(StrL("laid-out-height"));
+    LaidOutHeight* slot = cx && cx->win
+                              ? FrameKeyedState<LaidOutHeight>(
+                                    cx, KeyedKey(KeyedName(cx, name), kKind))
+                              : nullptr;
+    if (!slot) {
+        return nullptr;
+    }
+    slot->built = slot->measured >= 0 ? slot->measured : fallback;
+    slot->inset = 0;
+    slot->contentBox = false;
+    return slot;
+}
+
+bool LaidOutHeightObserve(LaidOutHeight* slot, float boxHeight) {
+    if (!slot) {
+        return false;
+    }
+    float h = boxHeight - slot->inset;
+    if (h < 0) {
+        h = 0;
+    }
+    slot->measured = h;
+    // Half a DIP either way is the same height: a fractional box is not a
+    // reason for another frame.
+    if (fabsf(h - slot->built) <= 0.5f) {
+        slot->chase = 0;
+        return false;
+    }
+    // One more frame per change. A box whose height follows the number it
+    // was built with would otherwise ask forever; it settles one frame late.
+    if (slot->chase >= 1) {
+        return false;
+    }
+    slot->chase++;
+    return true;
+}
+
+static void LaidOutHeightPrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* slot = (LaidOutHeight*)user;
+    float boxH = e->h;
+    if (slot && slot->contentBox) {
+        float bt = e->style.border > e->style.borderT ? e->style.border
+                                                      : e->style.borderT;
+        float bb = e->style.border > e->style.borderB ? e->style.border
+                                                      : e->style.borderB;
+        boxH -= e->style.pad.top + e->style.pad.bottom + bt + bb;
+    }
+    if (LaidOutHeightObserve(slot, boxH) && ctx && ctx->window) {
+        WindowRequestAnimationFrame(ctx->window);
+    }
+}
+
+bool TrackLaidOutHeight(Ctx*, El* e, LaidOutHeight* slot) {
+    if (!e || !slot || e->prePaint || e->customPaint) {
+        return false;
+    }
+    e->prePaint = &LaidOutHeightPrePaint;
+    e->customUser = slot;
+    return true;
 }
 
 void WindowKeyedSweep(Window* win) {

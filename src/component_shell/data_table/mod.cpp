@@ -214,19 +214,28 @@ static El* Render(MaterializeRequest* request, State* state,
     });
     // `div().size_full().child(table)`, refined by the script's style.
     // The port's table virtualizes its rows only when it is told the body's
-    // height as a number, where GPUI's takes it from layout: a definite
-    // height in the script's style, less the head row, becomes the body's.
+    // height as a number, where GPUI's takes it from layout: the body the
+    // host was laid out around last frame — the host's content box less the
+    // head row and the table's border (UseLaidOutHeight) — and on the first
+    // frame a definite height in the script's style, less the same.
     El* host = Div(a)->W(kFill)->H(kFill);
+    // The table fills the host, its own border inside it.
+    float chrome = table->rowHeight + (table->bordered ? 2.f : 0.f);
+    float body = -1;
     if (style.IsSet()) {
         style.Apply(host);
         float h = host->style.height;
-        if (h > 0) {
-            // The table fills the host, its own border inside it.
-            float body = h - table->rowHeight - (table->bordered ? 2.f : 0.f);
-            if (body > 0) table->H(body);
-        }
+        if (h > 0) body = h - chrome;
     }
+    LaidOutHeight* laid = UseLaidOutHeight(cx, request->elementId, body);
+    if (laid) {
+        laid->contentBox = true;
+        laid->inset = chrome;
+        body = laid->built;
+    }
+    if (body > 0) table->H(body);
     host->Child(table->IntoEl());
+    TrackLaidOutHeight(cx, host, laid);
     return host;
 }
 

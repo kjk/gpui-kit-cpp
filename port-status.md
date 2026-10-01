@@ -144,13 +144,20 @@ macOS font-kit requirement on the website only. The current update target is
   shows the current render's content and callbacks. A retained InputState
   hands a change to at most 16 components rendering it in one frame
   (`src/component_shell/`).
-- **Registered components that need a number before layout take it from the
-  script's style.** MessageScroller, List, Tree and DataTable virtualize from
-  a definite height in the style (List/Tree default to 320); Settings picks
-  its stacked layout from last frame's width. Scroll/Scrollbar has no
-  overlay bar reading a shared handle: the viewport paints its own bar from
-  the ScrollbarHandle entity, and a Scrollbar placed after its viewport
-  takes effect a frame later (`src/component_shell/scroll/`).
+- **Components that need a number before layout take last frame's.**
+  Rust's uniform_list and list virtualize at prepaint from the bounds layout
+  gave them; this tree builds rows before layout. The registered
+  MessageScroller, List, Tree and DataTable are `size_full()` as upstream
+  and build with the height they were laid out at last frame
+  (`UseLaidOutHeight`, `src/gpui/gpui.h`): the first frame uses a definite
+  height in the script's style or the component's default, and a change in
+  the laid-out height costs one extra frame. Settings picks its stacked
+  layout from last frame's width the same way. The native TreeList, List,
+  MessageScroller and DataTable still take the height from their caller,
+  who can use the same seam. Scroll/Scrollbar has no overlay bar reading a
+  shared handle: the viewport paints its own bar from the ScrollbarHandle
+  entity, and a Scrollbar placed after its viewport takes effect a frame
+  later (`src/component_shell/scroll/`).
 - **Registered-component numbers are ints.** usize counts and indices
   (Badge, Rating, pagination, textarea rows, chart ticks, ...) are clamped
   to INT_MAX, OtpState is capped at 64 cells, and chart rows are narrowed to
