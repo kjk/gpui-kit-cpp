@@ -5935,7 +5935,325 @@ static void RunWindowTestsA() {
 // Each port keeps the Rust test's name in the comment above it.
 //
 
-static void RunWindowTestsB() {}
+// `state.undo(&Undo, window, cx)` / `state.redo(&Redo, window, cx)`.
+static void UndoB(const InputView& v) {
+    ViewAct(v, InputAction::Undo);
+}
+
+static void RedoB(const InputView& v) {
+    ViewAct(v, InputAction::Redo);
+}
+
+// `state.enter(&Enter { secondary: false, shift: false }, window, cx)`.
+static void EnterB(const InputView& v) {
+    ViewAct(v, InputAction::Enter, false);
+}
+
+static void SetSelectedRangeB(const InputView& v, int start, int end) {
+    InputSetSelectedRange(v.input, v.app, v.win, start, end);
+}
+
+// state.rs test_undo_manager_coalesces_adjacent_typing_transactions.
+static void UndoManagerCoalescesAdjacentTypingTransactions() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    ViewTypeText(view, "b");
+    utassert(ViewValueIs(view, "ab"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_cursor_movement_splits_typing.
+static void UndoManagerCursorMovementSplitsTyping() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    ViewTypeText(view, "b");
+    ViewAct(view, InputAction::MoveLeft);
+    ViewTypeText(view, "x");
+    utassert(ViewValueIs(view, "axb"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "ab"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_splits_backward_and_forward_delete.
+static void UndoManagerSplitsBackwardAndForwardDelete() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("abcd"));
+    SetSelectedRangeB(view, 2, 2);
+    ViewAct(view, InputAction::Backspace);
+    ViewAct(view, InputAction::Delete);
+    utassert(ViewValueIs(view, "ad"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "acd"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "abcd"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_coalesces_directional_character_deletes.
+static void UndoManagerCoalescesDirectionalCharacterDeletes() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("abcd"));
+    ViewAct(view, InputAction::Backspace);
+    ViewAct(view, InputAction::Backspace);
+    utassert(ViewValueIs(view, "ab"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "abcd"));
+    utassert(ViewRangeIs(view, 4, 4));
+
+    InputSetValue(view.input, StrL("abcd"));
+    SetSelectedRangeB(view, 1, 1);
+    ViewAct(view, InputAction::Delete);
+    ViewAct(view, InputAction::Delete);
+    utassert(ViewValueIs(view, "ad"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "abcd"));
+    utassert(ViewRangeIs(view, 1, 1));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_atomic_paste_isolated_from_typing.
+static void UndoManagerAtomicPasteIsolatedFromTyping() {
+    InputView view = InputViewBuild();
+    TestWriteToClipboard(StrL("P"));
+    ViewTypeText(view, "a");
+    ViewAct(view, InputAction::Paste);
+    ViewTypeText(view, "b");
+    utassert(ViewValueIs(view, "aPb"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "aP"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "a"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_programmatic_insert_is_atomic.
+static void UndoManagerProgrammaticInsertIsAtomic() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    InputInsert(view.input, view.app, view.win, StrL("P"));
+    ViewTypeText(view, "b");
+    utassert(ViewValueIs(view, "aPb"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "aP"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "a"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_selection_round_trip_splits_typing.
+static void UndoManagerSelectionRoundTripSplitsTyping() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "a");
+    ViewTypeText(view, "b");
+    InputSelectAll(view.input, view.app, view.win);
+    InputUnselect(view.input, view.app, view.win);
+    ViewTypeText(view, "c");
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "ab"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_enter_is_atomic.
+static void UndoManagerEnterIsAtomic() {
+    InputView view = InputViewBuildTextarea();
+    ViewTypeText(view, "a");
+    EnterB(view);
+    ViewTypeText(view, "b");
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "a\n"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "a"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_single_line_return_commits_the_typing_session.
+static void UndoManagerSingleLineReturnCommitsTheTypingSession() {
+    InputView view = InputViewBuild();
+    const char* first[] = {"a", "b", "c"};
+    for (const char* part : first) {
+        ViewTypeText(view, part);
+    }
+    EnterB(view);
+    const char* second[] = {"d", "e", "f"};
+    for (const char* part : second) {
+        ViewTypeText(view, part);
+    }
+    utassert(ViewValueIs(view, "abcdef"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "abc"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_submit_on_enter_commits_the_textarea_session.
+static void UndoManagerSubmitOnEnterCommitsTheTextareaSession() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { s->submitOnEnter = true; });
+    ViewTypeText(view, "before submit");
+    EnterB(view);
+    ViewTypeText(view, " after submit");
+    utassert(ViewValueIs(view, "before submit after submit"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "before submit"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_blur_commits_the_typing_session.
+static void UndoManagerBlurCommitsTheTypingSession() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "before blur");
+    InputBlur(view.input, view.app, view.win);
+    InputFocus(view.input, view.app, view.win);
+    ViewTypeText(view, " after focus");
+    utassert(ViewValueIs(view, "before blur after focus"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "before blur"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_keeps_rapid_lines_in_distinct_transactions.
+static void UndoManagerKeepsRapidLinesInDistinctTransactions() {
+    InputView view = InputViewBuildTextarea();
+    ViewTypeText(view, "a");
+    EnterB(view);
+    ViewTypeText(view, "b");
+    EnterB(view);
+    ViewTypeText(view, "c");
+    utassert(ViewValueIs(view, "a\nb\nc"));
+
+    const char* steps[] = {"a\nb\n", "a\nb", "a\n", "a", ""};
+    for (const char* expected : steps) {
+        UndoB(view);
+        utassert(ViewValueIs(view, expected));
+    }
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_coalesces_long_unicode_typing_without_a_timer.
+static void UndoManagerCoalescesLongUnicodeTypingWithoutATimer() {
+    InputView view = InputViewBuildTextarea();
+    const char* parts[] = {"The ", "quick ", "brown fox, ",
+                           "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\x96"
+                           "\xE7\x95\x8C ",
+                           "\xF0\x9F\xA6\x80 jumps over 13 lazy dogs."};
+    const char* expected =
+        "The quick brown fox, "
+        "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\x96"
+        "\xE7\x95\x8C "
+        "\xF0\x9F\xA6\x80 jumps over 13 lazy dogs.";
+    for (const char* part : parts) {
+        ViewTypeText(view, part);
+    }
+    utassert(ViewValueIs(view, expected));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    RedoB(view);
+    utassert(ViewValueIs(view, expected));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_long_multiline_sequence_has_structural_boundaries.
+static void UndoManagerLongMultilineSequenceHasStructuralBoundaries() {
+    InputView view = InputViewBuildTextarea();
+    const char* lines[] = {
+        "first line with punctuation!",
+        "\xE7\xAC\xAC\xE4\xBA\x8C\xE8\xA1\x8C\xE5\x8C\x85\xE5\x90\xAB Unicode "
+        "\xF0\x9F\xA6\x80",
+        "third line has several words"};
+    for (int index = 0; index < 3; index++) {
+        // line.split_inclusive(' '): each chunk keeps the space ending it.
+        const char* line = lines[index];
+        int start = 0;
+        int n = (int)strlen(line);
+        for (int i = 0; i < n; i++) {
+            if (line[i] == ' ' || i == n - 1) {
+                InputReplaceTextInRange(view.input, view.app, view.win, nullptr,
+                                        Str(line + start, i + 1 - start));
+                start = i + 1;
+            }
+        }
+        if (index < 2) {
+            EnterB(view);
+        }
+    }
+
+    utassert(ViewValueIs(view,
+                         "first line with punctuation!\n"
+                         "\xE7\xAC\xAC\xE4\xBA\x8C\xE8\xA1\x8C\xE5\x8C\x85"
+                         "\xE5\x90\xAB Unicode \xF0\x9F\xA6\x80\n"
+                         "third line has several words"));
+    UndoB(view);
+    utassert(ViewValueIs(view,
+                         "first line with punctuation!\n"
+                         "\xE7\xAC\xAC\xE4\xBA\x8C\xE8\xA1\x8C\xE5\x8C\x85"
+                         "\xE5\x90\xAB Unicode \xF0\x9F\xA6\x80\n"));
+    UndoB(view);
+    utassert(ViewValueIs(view,
+                         "first line with punctuation!\n"
+                         "\xE7\xAC\xAC\xE4\xBA\x8C\xE8\xA1\x8C\xE5\x8C\x85"
+                         "\xE5\x90\xAB Unicode \xF0\x9F\xA6\x80"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "first line with punctuation!\n"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+static void RunWindowTestsB() {
+    UndoManagerCoalescesAdjacentTypingTransactions();
+    UndoManagerCursorMovementSplitsTyping();
+    UndoManagerSplitsBackwardAndForwardDelete();
+    UndoManagerCoalescesDirectionalCharacterDeletes();
+    UndoManagerAtomicPasteIsolatedFromTyping();
+    UndoManagerProgrammaticInsertIsAtomic();
+    UndoManagerSelectionRoundTripSplitsTyping();
+    UndoManagerEnterIsAtomic();
+    UndoManagerSingleLineReturnCommitsTheTypingSession();
+    UndoManagerSubmitOnEnterCommitsTheTextareaSession();
+    UndoManagerBlurCommitsTheTypingSession();
+    UndoManagerKeepsRapidLinesInDistinctTransactions();
+    UndoManagerCoalescesLongUnicodeTypingWithoutATimer();
+    UndoManagerLongMultilineSequenceHasStructuralBoundaries();
+}
 
 // ─── state.rs window tests, part C ──────────────────────────────────────
 //
