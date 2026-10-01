@@ -7073,7 +7073,568 @@ static void RunWindowTestsB() {
 // them. Each port keeps the Rust test's name in the comment above it.
 //
 
-static void RunWindowTestsC() {}
+// state.rs test_unfold_at: unfolding at a position opens exactly the folds
+// that hide it. A position on a fold's own first or last line is visible,
+// so either of them opens nothing. Nested folds all open at once, sibling
+// folds stay closed, and the opened ranges stay fold candidates.
+static void UnfoldAt() {
+    InputView view = InputViewNew();
+    InputState* s = view.input;
+    // An outer fold over lines 0..=5, a fold nested inside it, and a
+    // sibling fold that must never be touched.
+    InputSetValue(s, StrL("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl"));
+    FoldRange ranges[3] = {};
+    ranges[0].startLine = 0;
+    ranges[0].endLine = 5;
+    ranges[1].startLine = 2;
+    ranges[1].endLine = 4;
+    ranges[2].startLine = 7;
+    ranges[2].endLine = 10;
+    InputSetFoldCandidates(s, ranges, 3);
+    FoldMapSetFolded(&s->folds, 0, true);
+    FoldMapSetFolded(&s->folds, 2, true);
+    FoldMapSetFolded(&s->folds, 7, true);
+    FoldMapRebuild(&s->folds, InputLinesLen(s));
+    Flush(view);
+
+    // The outer fold's own first and last line stay visible, so neither
+    // position opens anything.
+    const int kOwnLines[] = {0, 5};
+    for (int line : kOwnLines) {
+        utassert(!FoldMapLineHidden(&s->folds, line));
+        utassert(!InputUnfoldAt(s, view.app, view.win, {line, 0}));
+        Flush(view);
+        utassert(FoldMapIsFolded(&s->folds, 0));
+        utassert(FoldMapIsFolded(&s->folds, 2));
+        utassert(FoldMapIsFolded(&s->folds, 7));
+    }
+
+    // Line 3 is hidden by both the outer and the nested fold, so both open;
+    // the sibling fold does not.
+    utassert(InputUnfoldAt(s, view.app, view.win, {3, 0}));
+    Flush(view);
+    utassert(!FoldMapLineHidden(&s->folds, 3));
+    utassert(!FoldMapIsFolded(&s->folds, 0));
+    utassert(!FoldMapIsFolded(&s->folds, 2));
+    utassert(FoldMapIsFolded(&s->folds, 7));
+    // The opened ranges are still candidates for refolding.
+    utassert(FoldMapIsCandidate(&s->folds, 0));
+    utassert(FoldMapIsCandidate(&s->folds, 2));
+
+    // Nothing is hidden there any more, so a second call is a no-op.
+    utassert(!InputUnfoldAt(s, view.app, view.win, {3, 0}));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_blur_keeps_decorations: losing focus hides the hover popover
+// but keeps the decorations. Both used to be dropped by one call, so
+// clicking away threw away decorations the application had installed and
+// never asked to remove. The decorations here are a DecorationCollections
+// kept beside the state rather than inside it, which is the shape this
+// tree's editor gives them.
+static void BlurKeepsDecorations() {
+    InputView view = InputViewNew();
+    InputState* s = view.input;
+    InputSetValue(s, StrL("select 1"));
+    DecorationCollections decorations(s);
+    TextSpan bold;
+    // HighlightStyle { font_weight: BOLD }. A TextSpan carries no weight (it
+    // would reshape the run), so a colour stands in for the style.
+    bold.color = Rgb(1, 2, 3);
+    TextDecoration first = TextDecoration::New({0, 6}, bold);
+    TextDecorationCollection collection = decorations.Create(&first, 1);
+    InputPresentHover(s, {0, 6}, StrL("docs"));
+    utassert(len(s->hoverText) > 0);
+
+    InputFocus(s, view.app, view.win);
+    InputBlur(s, view.app, view.win);
+
+    // "blur should hide the hover popover"
+    utassert(len(s->hoverText) == 0);
+    // "blur must not discard decorations"
+    TextSpan spans[4] = {};
+    utassert(decorations.BuildSpans(spans, 4) > 0);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_kind_does_not_follow_the_row_count: the mode marker is the
+// only source of truth for the kind of input. An auto-growing textarea
+// capped at one row used to report itself as single-line, because the
+// answer was derived from the row counts.
+static void KindDoesNotFollowTheRowCountInAWindow() {
+    InputView view = InputViewBuildTextarea([](InputState* s, App*) {
+        s->mode.kind = LayoutModeKind::AutoGrow;
+        s->mode.minRows = 1;
+        s->mode.maxRows = 1;
+        LayoutModeSetRows(&s->mode, 1);
+    });
+    utassert(InputIsMultiLine(view.input));
+    utassert(!InputIsSingleLine(view.input));
+    utassert(view.input->mode.kind != LayoutModeKind::CodeEditor);
+    InputViewFree(&view);
+}
+
+// state.rs test_soft_wrap_is_enabled_by_default: soft wrap is on by
+// default, for every mode that can wrap.
+static void SoftWrapIsEnabledByDefault() {
+    InputView textarea = InputViewBuildTextarea();
+    utassert(textarea.input->softWrap);
+    InputViewFree(&textarea);
+
+    InputView editor = InputViewNew();
+    utassert(editor.input->softWrap);
+    InputViewFree(&editor);
+}
+
+// state.rs parse_cursor_spec: `(text, cursor_offsets)`. Non-empty lines are
+// joined with `\n` plus a trailing `\n`. `|` marks a cursor. Leading
+// whitespace is kept, so a spec can express indentation.
+static Str ParseCursorSpecC(Arena* a, const char* spec, Vec<int>* offsets) {
+    StrBuilder text(a);
+    int lineIdx = 0;
+    const char* p = spec;
+    while (*p) {
+        const char* end = p;
+        while (*end && *end != '\n') {
+            end++;
+        }
+        if (end > p) {
+            if (lineIdx > 0) {
+                text.AppendChar('\n');
+            }
+            int lineStart = len(text);
+            int at = 0;
+            for (const char* c = p; c < end; c++) {
+                if (*c == '|') {
+                    VecAppend(*offsets, lineStart + at);
+                } else {
+                    text.AppendChar(*c);
+                    at++;
+                }
+            }
+            lineIdx++;
+        }
+        p = *end ? end + 1 : end;
+    }
+    text.AppendChar('\n');
+    return text.TakeStr();
+}
+
+// state.rs setup_cursors: the text and the cursors from a spec. The first is
+// the active one, as Selections::replace_all leaves it.
+static void SetupCursorsC(const InputView& v, const char* spec) {
+    Arena* a = ArenaNew();
+    Vec<int> offsets;
+    Str text = ParseCursorSpecC(a, spec, &offsets);
+    InputSetValue(v.input, text);
+    InputState* s = v.input;
+    VecClear(s->extraCursors);
+    for (int i = 0; i < len(offsets); i++) {
+        if (i == 0) {
+            s->selectedRange = {offsets[i], offsets[i]};
+            s->selectionReversed = false;
+            continue;
+        }
+        CursorSelection c;
+        c.range = {offsets[i], offsets[i]};
+        VecAppend(s->extraCursors, c);
+    }
+    VecReset(offsets);
+    ArenaDelete(a);
+    Flush(v);
+}
+
+static void SortIntsC(Vec<int>* v) {
+    for (int i = 1; i < len(*v); i++) {
+        for (int j = i; j > 0 && (*v)[j - 1] > (*v)[j]; j--) {
+            int t = (*v)[j];
+            (*v)[j] = (*v)[j - 1];
+            (*v)[j - 1] = t;
+        }
+    }
+}
+
+// state.rs assert_cursors: the text and the cursor positions match a spec.
+static bool CursorsAreC(const InputView& v, const char* spec) {
+    Arena* a = ArenaNew();
+    Vec<int> want;
+    Str text = ParseCursorSpecC(a, spec, &want);
+    SortIntsC(&want);
+    Vec<int> have;
+    VecAppend(have, InputCursor(v.input));
+    for (int i = 0; i < len(v.input->extraCursors); i++) {
+        VecAppend(have, v.input->extraCursors[i].Cursor());
+    }
+    SortIntsC(&have);
+    bool ok = base::StrEq(InputValue(v.input), text) && len(have) == len(want);
+    for (int i = 0; ok && i < len(have); i++) {
+        ok = have[i] == want[i];
+    }
+    VecReset(want);
+    VecReset(have);
+    ArenaDelete(a);
+    return ok;
+}
+
+// The selections in Selections::iter order: the active one first.
+static bool SelectionsAreC(const InputView& v, const Selection* want, int n) {
+    if (InputCursorCount(v.input) != n || n <= 0) {
+        return false;
+    }
+    if (v.input->selectedRange.start != want[0].start ||
+        v.input->selectedRange.end != want[0].end) {
+        return false;
+    }
+    for (int i = 1; i < n; i++) {
+        const Selection& r = v.input->extraCursors[i - 1].range;
+        if (r.start != want[i].start || r.end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Where row `row`, column `col` of the editor was painted, at the middle of
+// its line: the run's origin, the x the first row's text reaches at that
+// column, and `row + 0.5` lines down. Rust reads the same off last_layout
+// (`line_number_width + position_for_index(..).x`).
+static Point PositionC(const InputView& v, int row, int col) {
+    const InputState* s = v.input;
+    Str line0 = InputSliceLine(s, 0);
+    if (col > len(line0)) {
+        col = len(line0);
+    }
+    Size prefix = MeasureText(&v.win->paint, Str(line0.s, col), s->lastFont, 0,
+                              false, s->lastFontWord);
+    float x = s->lastBounds.x + (col > 0 ? prefix.w : 0.f);
+    float y = s->lastBounds.y + s->lastLineH * ((float)row + 0.5f);
+    return {x, y};
+}
+
+// state.rs test_alt_drag_selects_a_block_and_replaces_each_row.
+static void AltDragSelectsABlockAndReplacesEachRow() {
+    InputView view = InputViewNew();
+    Modifiers mods[3] = {};
+    int nMods = 0;
+    mods[nMods].alt = true;
+    nMods++;
+    mods[nMods].alt = true;
+    mods[nMods].shift = true;
+    nMods++;
+#if GPUI_OS_LINUX
+    mods[nMods].alt = true;
+    mods[nMods].control = true;
+    nMods++;
+#endif
+    for (int m = 0; m < nMods; m++) {
+        Modifiers modifiers = mods[m];
+        SetupCursorsC(view, "|abcd\nabcd\nabcd");
+        InputFocus(view.input, view.app, view.win);
+        Flush(view);
+        Point start = PositionC(view, 0, 1);
+        Point end = PositionC(view, 2, 3);
+        // Land inside the third column instead of exactly on its trailing
+        // glyph boundary, where pixel rounding can select the next column.
+        end.x -= 0.5f;
+        // A cached Ctrl-hover definition must not steal a column gesture.
+        HoverDefinition& def = view.input->hoverDef;
+        def.symbolRange = {0, 4};
+        VecClear(def.locations);
+        DefinitionLink link;
+        link.uri = StrL("file:///tmp/column-selection.rs");
+        VecAppend(def.locations, link);
+        Flush(view);
+        TestSimulateMouseDown(view.win, start, MouseButton::Left, modifiers);
+        TestSimulateMouseMove(view.win, end, true, MouseButton::Left,
+                              modifiers);
+        TestSimulateMouseUp(view.win, end, MouseButton::Left, modifiers);
+        Selection want[3] = {{1, 3}, {6, 8}, {11, 13}};
+        utassert(SelectionsAreC(view, want, 3));
+        // Moving after release must leave the block intact.
+        TestSimulateMouseMove(view.win, start, false, MouseButton::Left,
+                              modifiers);
+        TestSimulateKeystrokes(view.win, "x");
+        utassert(CursorsAreC(view, "ax|d\nax|d\nax|d"));
+        VecClear(view.input->hoverDef.locations);
+    }
+    InputViewFree(&view);
+}
+
+// state.rs test_alt_drag_extends_upward_from_an_existing_cursor.
+static void AltDragExtendsUpwardFromAnExistingCursor() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "abcd\nabcd\na|bcd");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+    Point start = PositionC(view, 2, 1);
+    Point end = PositionC(view, 0, 1);
+    Modifiers modifiers = {};
+    modifiers.alt = true;
+    TestSimulateMouseDown(view.win, start, MouseButton::Left, modifiers);
+    TestSimulateMouseMove(view.win, end, true, MouseButton::Left, modifiers);
+    TestSimulateMouseUp(view.win, end, MouseButton::Left, modifiers);
+    utassert(CursorsAreC(view, "a|bcd\na|bcd\na|bcd"));
+    InputViewFree(&view);
+}
+
+// state.rs test_alt_drag_over_a_short_row_keeps_the_block_width: drag from
+// row 0 column 1 down to row 1, at the x of row 0's column 5. Row 1 only has
+// two characters, so the pointer ends past its end.
+// The code editor in a monospace face. A column past a short row's end is
+// counted in space widths (columns_past_line_end), so the block keeps its
+// width only where every glyph is a space wide — which Rust's test text
+// system answers for every face, and a real one only for a monospace one.
+struct MonoEditorRootC {
+    InputState input;
+
+    static El* Render(MonoEditorRootC* self, Ctx* cx) {
+        InputState* s = &self->input;
+        InputEditorStyle style;
+        style.mono = true;
+        El* frame = InputBase::New(cx, StrL("input-state"), true)
+                        ->BindInput(s)
+                        ->Flex1()
+                        ->W(kFill)
+                        ->H(kFill)
+                        ->ClipY()
+                        ->ScrollY(s->scrollY)
+                        ->ScrollFromPath();
+        return Div(cx->a)
+            ->SizeFull()
+            ->Child(frame->Child(gpui::Editor::New(cx, s, style)));
+    }
+};
+
+static InputView InputViewMonoEditorC() {
+    InputView v;
+    v.app = TestAppNew();
+    Entity<MonoEditorRootC> root = EntityNew<MonoEditorRootC>(v.app);
+    v.input = &root.Get(v.app)->input;
+    MakeCodeEditor(v.input);
+    v.win = TestWindowOpen(v.app, root);
+    return v;
+}
+
+static void AltDragOverAShortRowKeepsTheBlockWidth() {
+    InputView view = InputViewMonoEditorC();
+    SetupCursorsC(view, "abcdef\nab\nabcdef");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+    Point start = PositionC(view, 0, 1);
+    Point end = PositionC(view, 1, 5);
+    Modifiers modifiers = {};
+    modifiers.alt = true;
+    modifiers.shift = true;
+    TestSimulateMouseDown(view.win, start, MouseButton::Left, modifiers);
+    TestSimulateMouseMove(view.win, end, true, MouseButton::Left, modifiers);
+    TestSimulateMouseUp(view.win, end, MouseButton::Left, modifiers);
+    // The short row is clipped to its own end; the long row keeps the full
+    // span.
+    Selection want[2] = {{1, 5}, {8, 9}};
+    utassert(SelectionsAreC(view, want, 2));
+    InputViewFree(&view);
+}
+
+// state.rs test_alt_mouse_release_outside_editor_ends_column_selection.
+static void AltMouseReleaseOutsideEditorEndsColumnSelection() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "|abcd\nabcd");
+    Point position = {view.input->lastBounds.x + 2.f,
+                      view.input->lastBounds.y + view.input->lastLineH * 0.5f};
+    Modifiers modifiers = {};
+    modifiers.alt = true;
+    TestSimulateMouseDown(view.win, position, MouseButton::Left, modifiers);
+    TestSimulateMouseUp(view.win, {-100.f, -100.f}, MouseButton::Left,
+                        modifiers);
+    utassert(!view.input->selecting);
+    utassert(!view.input->columnSelectStart.IsValid());
+    InputViewFree(&view);
+}
+
+// state.rs test_consumed_keystrokes_keep_cursor_visible: copy consumes its
+// shortcut without editing text or moving selections, and still keeps the
+// caret lit.
+static void ConsumedKeystrokesKeepCursorVisible() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "a|b");
+    InputFocus(view.input, view.app, view.win);
+    BlinkPause(view.app, view.win, &view.input->blink);
+    Flush(view);
+    TestRunUntilParked(view.app);
+    TestAdvanceClock(view.app, 300);
+    TestRunUntilParked(view.app);
+    utassert(!BlinkVisible(view.app, view.input->blink));
+    for (int i = 0; i < 5; i++) {
+#if GPUI_OS_MAC
+        TestSimulateKeystrokes(view.win, "cmd-c");
+#else
+        TestSimulateKeystrokes(view.win, "ctrl-c");
+#endif
+        TestRunUntilParked(view.app);
+        TestAdvanceClock(view.app, 200);
+        TestRunUntilParked(view.app);
+        utassert(BlinkVisible(view.app, view.input->blink));
+    }
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_actions_reveal_hidden_carets: start each action
+// in the hidden phase without depending on a key-down listener: actions and
+// text input also arrive directly.
+static void MultiCursorActionsRevealHiddenCarets() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "ab\na|b\nab");
+    for (int action = 0; action < 6; action++) {
+        BlinkStop(view.app, view.win, &view.input->blink);
+        BlinkStart(view.app, view.win, &view.input->blink);
+        Flush(view);
+        TestRunUntilParked(view.app);
+        TestAdvanceClock(view.app, 500);
+        TestRunUntilParked(view.app);
+        utassert(!BlinkVisible(view.app, view.input->blink));
+
+        switch (action) {
+            case 0:
+                ViewAct(view, InputAction::AddCursorAbove);
+                break;
+            case 1:
+                ViewAct(view, InputAction::AddCursorBelow);
+                break;
+            case 2:
+                ViewAct(view, InputAction::SelectUp);
+                break;
+            case 3:
+                ViewAct(view, InputAction::SelectDown);
+                break;
+            case 4:
+                ViewTypeText(view, "x");
+                break;
+            default:
+                ViewAct(view, InputAction::Backspace);
+                break;
+        }
+        utassert(BlinkVisible(view.app, view.input->blink));
+        Flush(view);
+    }
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_keyboard_dispatch.
+static void MultiCursorKeyboardDispatch() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "ab\na|b\nab");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+#if GPUI_OS_MAC
+    TestSimulateKeystrokes(view.win, "cmd-alt-up");
+#elif GPUI_OS_WINDOWS
+    TestSimulateKeystrokes(view.win, "ctrl-alt-up");
+#else
+    TestSimulateKeystrokes(view.win, "alt-shift-up");
+#endif
+    utassert(InputCursorCount(view.input) == 2);
+#if GPUI_OS_MAC
+    TestSimulateKeystrokes(view.win, "cmd-alt-down");
+#elif GPUI_OS_WINDOWS
+    TestSimulateKeystrokes(view.win, "ctrl-alt-down");
+#else
+    TestSimulateKeystrokes(view.win, "alt-shift-down");
+#endif
+    utassert(InputCursorCount(view.input) == 3);
+    TestSimulateKeystrokes(view.win, "x");
+    utassert(CursorsAreC(view, "ax|b\nax|b\nax|b"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_platform_word_selection_dispatch.
+static void MultiCursorPlatformWordSelectionDispatch() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "one |two\none |two");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+#if GPUI_OS_MAC || GPUI_OS_LINUX
+    TestSimulateKeystrokes(view.win, "alt-shift-right");
+#else
+    TestSimulateKeystrokes(view.win, "ctrl-shift-right");
+#endif
+    TestSimulateKeystrokes(view.win, "x");
+    utassert(CursorsAreC(view, "one x|\none x|"));
+    SetupCursorsC(view, "one two|\none two|");
+#if GPUI_OS_MAC || GPUI_OS_LINUX
+    TestSimulateKeystrokes(view.win, "alt-shift-left");
+#else
+    TestSimulateKeystrokes(view.win, "ctrl-shift-left");
+#endif
+    TestSimulateKeystrokes(view.win, "x");
+    utassert(CursorsAreC(view, "one x|\none x|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_horizontal_selection_dispatch (not macOS).
+static void MultiCursorHorizontalSelectionDispatch() {
+#if !GPUI_OS_MAC
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "ab\na|b");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+#if GPUI_OS_WINDOWS
+    TestSimulateKeystrokes(view.win, "ctrl-alt-up");
+#else
+    TestSimulateKeystrokes(view.win, "alt-shift-up");
+#endif
+#if GPUI_OS_LINUX
+    TestSimulateKeystrokes(view.win, "shift-right");
+#else
+    TestSimulateKeystrokes(view.win, "alt-shift-right");
+#endif
+    Selection first[2] = {{4, 5}, {1, 2}};
+    utassert(SelectionsAreC(view, first, 2));
+#if GPUI_OS_LINUX
+    TestSimulateKeystrokes(view.win, "shift-left shift-left");
+#else
+    TestSimulateKeystrokes(view.win, "alt-shift-left alt-shift-left");
+#endif
+    Selection second[2] = {{3, 4}, {0, 1}};
+    utassert(SelectionsAreC(view, second, 2));
+    TestSimulateKeystrokes(view.win, "x");
+    utassert(CursorsAreC(view, "x|b\nx|b"));
+    InputViewFree(&view);
+#endif
+}
+
+// state.rs test_multi_cursor_alt_click_dispatch.
+static void MultiCursorAltClickDispatch() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "a|b\nab\nab");
+    InputFocus(view.input, view.app, view.win);
+    Flush(view);
+    Point position = {view.input->lastBounds.x + 2.f,
+                      view.input->lastBounds.y + view.input->lastLineH * 1.5f};
+    Modifiers modifiers = {};
+    modifiers.alt = true;
+    TestSimulateClick(view.win, position, modifiers);
+    utassert(InputCursorCount(view.input) == 2);
+    InputViewFree(&view);
+}
+
+static void RunWindowTestsC() {
+    UnfoldAt();
+    BlurKeepsDecorations();
+    KindDoesNotFollowTheRowCountInAWindow();
+    SoftWrapIsEnabledByDefault();
+    AltDragSelectsABlockAndReplacesEachRow();
+    AltDragExtendsUpwardFromAnExistingCursor();
+    AltDragOverAShortRowKeepsTheBlockWidth();
+    AltMouseReleaseOutsideEditorEndsColumnSelection();
+    ConsumedKeystrokesKeepCursorVisible();
+    MultiCursorActionsRevealHiddenCarets();
+    MultiCursorKeyboardDispatch();
+    MultiCursorPlatformWordSelectionDispatch();
+    MultiCursorHorizontalSelectionDispatch();
+    MultiCursorAltClickDispatch();
+}
 
 // ─── state.rs window tests, part D ──────────────────────────────────────
 //
