@@ -158,9 +158,8 @@ macOS font-kit requirement on the website only. The current update target is
   f32. Id checks trim ASCII whitespace only.
 - **Component-shell gaps against the Rust components.** MenuItem/Menu `disabled` and the retained forms' `disabled()` are inert
   (upstream records them as common behaviors and drops the op — ported
-  as-is); Progress is 200 wide unless styled; a plain Textarea's height
-  follows `rows`; the Editor's gutter is narrower; InputGroup lacks the
-  inline-addon inset, border/background transitions and ghost colours.
+  as-is); a plain Textarea's height follows `rows`; the Editor's gutter is
+  narrower.
 - **A script's `debug()` and `debug_below()` paint nothing.** Upstream
   has them only in a debug build, where GPUI outlines the element (or every
   element under it) in red; here they are accepted in every build and change

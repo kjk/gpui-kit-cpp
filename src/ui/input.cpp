@@ -4,6 +4,7 @@
 #include "ui/highlighter.h"
 #include "ui/native_menu.h"
 #include "base/input.h"
+#include "base/motion.h"
 
 namespace gpui {
 
@@ -1856,20 +1857,70 @@ El* InputGroupButton::RenderInGroup(bool disabled) {
     if (!button) {
         return Div(a);
     }
+    const Theme& th = ThemeNow(cx->app);
+    disabled = disabled || button->disabled;
     if (disabled) {
         button->Disabled(true);
     }
-    bool iconOnly = !button->label.s &&
+    bool selected = button->selected;
+    bool iconOnly = !button->label.s && button->children.len == 0 &&
                     (button->icon != IconName::None || button->buttonIcon);
-    if (size == UiSize::XSmall || size == UiSize::Small) {
+    bool ghost = button->variant == ButtonVariant::Ghost && !button->outline;
+    bool compact = size == UiSize::XSmall || size == UiSize::Small;
+    if (compact) {
+        // A compact group button is laid out as a Medium one with the content
+        // row's style handed down: text_sm on a 1.25rem line, gap_1 or
+        // gap_1p5, and the icon one size up from the group's.
         button->WithSize(UiSize::Medium);
-        if (iconOnly) {
-            button->Size(size == UiSize::XSmall ? 24.f : 32.f);
-        }
+        button->contentTextPx = 14.f;
+        button->contentLineH = 20.f;
+        button->contentGap = size == UiSize::XSmall ? 4.f : 6.f;
+        // icon_size: XSmall -> Small, Small -> Medium.
+        button->contentIconPx = size == UiSize::XSmall ? 14.f : 16.f;
     } else {
         button->WithSize(size);
     }
+    if (ghost) {
+        // The group's own ghost: no surface at rest, the muted wash under the
+        // pointer — half of it in the dark — and the full muted when a
+        // selected one is pressed.
+        bool dark = th.mode == ThemeMode::Dark;
+        Rgba hover = RgbaOpacity(th.muted, dark ? 0.5f : 1.f);
+        button->Custom(ButtonCustomVariant::New(cx->app)
+                           .Color(th.transparent)
+                           .Foreground(th.foreground)
+                           .Hover(hover)
+                           .Active(selected ? th.muted : hover));
+    }
+    if (disabled) {
+        button->FocusRing(false);
+    }
     El* el = button->IntoEl();
+    if (ghost) {
+        el->Fg(th.foreground);
+        if (disabled) {
+            el->Opacity(0.5f);
+        }
+    }
+    // text_sm, font_medium, border_1, shadow_none, then the compact box: a
+    // 24 or 32 square for an icon alone, otherwise that height with px_2 or
+    // px_2p5, rounded to radius_tokens().sm or the radius.
+    el->Font(14)->Medium()->Shadows(nullptr, 0);
+    // A variant that drew no border still takes the 1px, transparent, as
+    // the custom ghost's border is its transparent fill.
+    if (el->style.border < 1) {
+        el->Border(1, th.transparent);
+    }
+    if (compact) {
+        float side = size == UiSize::XSmall ? 24.f : 32.f;
+        float radius = size == UiSize::XSmall ? th.radius * 0.5f : th.radius;
+        el->H(side)->Radius(radius);
+        if (iconOnly) {
+            el->W(side)->Pad(0);
+        } else {
+            el->PadX(size == UiSize::XSmall ? 8.f : 10.f);
+        }
+    }
     refiner.Apply(el);
     return el;
 }
@@ -2095,6 +2146,15 @@ El* InputGroup::IntoEl() {
     bool focused = state && state->focused && !groupDisabled;
     InputGroupAppearance appearance =
         InputGroupAppearance::New(th, focused, groupDisabled, invalid);
+    // The border and background colours transition, duration_fast along
+    // easing_move, under the group's own id; the ring outside them changes
+    // at once, like the standalone input's.
+    Motion fast = MotionNew(th.motion.durationFastMs)
+                      .Ease(th.motion.easingMove);
+    Rgba border = MotionValue(cx, MotionId(id, StrL("border-color")),
+                              appearance.border, fast);
+    Rgba background = MotionValue(cx, MotionId(id, StrL("background-color")),
+                                  appearance.background, fast);
     bool inlineStart = false, inlineEnd = false, blockStart = false,
          blockEnd = false;
     for (InputGroupAddon* addon : addons) {
@@ -2114,10 +2174,6 @@ El* InputGroup::IntoEl() {
         }
     }
     if (input) {
-        if (!multiline && inlineStart) {
-            // An inline addon takes over part of the control's horizontal
-            // inset.
-        }
         input->W(kFill);
     }
 
@@ -2127,8 +2183,8 @@ El* InputGroup::IntoEl() {
                     ->FlexCol()
                     ->W(kFill)
                     ->Radius(th.radius)
-                    ->Border(1, appearance.border)
-                    ->Bg(appearance.background)
+                    ->Border(1, border)
+                    ->Bg(background)
                     ->Fg(th.foreground);
     if (ariaLabel.s) {
         frame->AriaLabel(ariaLabel);
@@ -2180,6 +2236,15 @@ El* InputGroup::IntoEl() {
     }
     if (input) {
         controlEl = input->IntoEl()->Flex1();
+        // render_control: an inline addon takes over part of the control's
+        // horizontal inset — pl_2 / pr_2 in place of input_px on that side —
+        // and the caller's own style still wins.
+        if (inlineStart) {
+            controlEl->PadL(8);
+        }
+        if (inlineEnd) {
+            controlEl->PadR(8);
+        }
         controlStyle.Apply(controlEl);
         row->Child(controlEl);
     } else if (textarea) {

@@ -171,6 +171,15 @@ struct Button {
     ArenaVec<El*> children;
     // Size::Size(px), when the caller gave one instead of a Size.
     float sizePx = 0;
+    // content_style(style, icon_size): what a compound control — an
+    // InputGroupButton — asks of the content row over the size-derived one:
+    // the label's text size and line height, the gap, and the icon's size,
+    // all in DIPs. Zero leaves each to the button's size. Crate-private in
+    // Rust, set directly here.
+    float contentTextPx = 0;
+    float contentLineH = 0;
+    float contentGap = 0;
+    float contentIconPx = 0;
     IconName loadingIcon = IconName::None;
     // ButtonGroup joins its children: the edges each one draws and whether it
     // keeps the group's rounding. Nothing else sets these.

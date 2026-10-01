@@ -85,8 +85,64 @@ static void TheBuilderKeepsTheLastControlAndAddonAlignment() {
     delete win;
 }
 
+// render_control: an inline addon takes pl_2 / pr_2 of the control's inset.
+// InputGroupButton::render_in_group: a ghost XSmall button is a 24px box
+// (a square for an icon alone) with the muted hover, a 14px icon and a
+// transparent 1px border.
+static void InlineAddonsInsetTheControlAndButtonsAreCompact() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    const Theme& th = ThemeNow(&app);
+    InputState field;
+    InputGroup* group =
+        InputGroup::New(&cx, StrL("group"))
+            ->Input(component::Input::New(&cx, StrL("url"), &field))
+            ->Addon(InputGroupAddon::New(&cx, StrL("scheme"))
+                        ->Child(TextEl(arena, StrL("https://"))))
+            ->Addon(InputGroupAddon::New(&cx, StrL("actions"))
+                        ->Align(InputGroupAddonAlignment::InlineEnd)
+                        ->Child(InputGroupButton::New(&cx, StrL("star"))
+                                    ->Icon(IconName::Star))
+                        ->Child(InputGroupButton::New(&cx, StrL("reset"))
+                                    ->Label(StrL("Reset"))));
+    InputGroupButton* star = group->addons[1]->children[0].button;
+    InputGroupButton* reset = group->addons[1]->children[1].button;
+    group->IntoEl();
+    utassert(group->controlEl != nullptr);
+    if (group->controlEl) {
+        utassertnear(group->controlEl->style.pad.left, 8);
+        utassertnear(group->controlEl->style.pad.right, 8);
+    }
+    utassert(star && reset);
+    if (star && reset) {
+        utassert(star->button->variant == ButtonVariant::Custom);
+        utassert(star->button->customVariant.hover.r == th.muted.r);
+        utassertnear(star->button->contentIconPx, 14);
+        utassertnear(reset->button->contentGap, 4);
+    }
+    El* button = InputGroupButton::New(&cx, StrL("solo"))
+                     ->Icon(IconName::Star)
+                     ->RenderInGroup(false);
+    utassertnear(button->style.width, 24);
+    utassertnear(button->style.height, 24);
+    utassertnear(button->style.radius, th.radius * 0.5f);
+    utassertnear(button->style.border, 1);
+    utassert(button->style.borderColor.a == 0);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 void TestInputGroup() {
     TestSuite("input_group");
     ValidationTakesPrecedenceOverFocusAndRemainsVisibleWhenDisabled();
     TheBuilderKeepsTheLastControlAndAddonAlignment();
+    InlineAddonsInsetTheControlAndButtonsAreCompact();
 }

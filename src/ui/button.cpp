@@ -669,6 +669,12 @@ El* Button::IntoEl() {
     if (sizePx > 0) {
         iconPx = sizePx * 0.75f;
     }
+    if (contentIconPx > 0) {
+        iconPx = contentIconPx;
+    }
+    if (contentGap > 0) {
+        gap = contentGap;
+    }
     // The unstyled Button takes the interaction gate here. Loading is inert
     // without taking disabled styling, so its visual state stays separate
     // while Base still removes its focus and activation behavior.
@@ -857,7 +863,11 @@ El* Button::IntoEl() {
     if (label.s) {
         // button_text_size: text_xs, text_sm for Small and Medium, then
         // text_base — the Input ladder.
-        El* text = TextEl(a, label)->Font(UiButtonTextPx(size))->Truncate();
+        float textPx = contentTextPx > 0 ? contentTextPx : UiButtonTextPx(size);
+        El* text = TextEl(a, label)->Font(textPx)->Truncate();
+        if (contentLineH > 0) {
+            text->LineHeight(contentLineH / textPx);
+        }
         // ButtonVariant::underline: only the link looks like a link.
         if (variant == ButtonVariant::Link) {
             text->Underline();
