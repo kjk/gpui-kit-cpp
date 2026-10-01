@@ -3166,9 +3166,11 @@ void BlinkCursor::OnFlip(BlinkCursor* self, Ctx* cx, const TickEvent*) {
 }
 
 void BlinkCursor::OnResume(BlinkCursor* self, Ctx* cx, const TickEvent*) {
-    // The pause is over; pick blinking back up lit, as Rust does.
+    // The pause is over and blinking picks up where Rust's `blink(epoch)`
+    // does: the pause held the caret lit, so the first blink after it is the
+    // dark half, and an idle field shows that it has gone idle.
     self->paused = false;
-    self->visible = true;
+    self->visible = !self->visible;
     Listener flip;
     flip.SetFn(&BlinkCursor::OnFlip);
     flip.view = cx->self;
