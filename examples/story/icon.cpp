@@ -28,7 +28,23 @@ struct IconStory {
         self->message = "Search selected from the button.";
         Notify(cx);
     }
+    static void OnMenuPick(IconStory* self, Ctx* cx, const ClickEvent*,
+                           intptr_t) {
+        self->message = "Search selected from the menu.";
+        Notify(cx);
+    }
 };
+
+// Icon::default().data(ARROW_SVG).rotate(radians(FRAC_PI_2)).large(): the
+// story keeps one as a value and one as an Entity<Icon> view. An Icon here is
+// a frame-arena builder, so both are the same build, drawn twice.
+static El* IconArrow(Ctx* cx) {
+    return component::Icon::Empty(cx)
+        ->Data(Str(kArrowUpSvg))
+        ->Rotate(0.25f)
+        ->Size(UiSize::Large)
+        ->IntoEl();
+}
 
 // Every section is .w(px(480.)).
 static El* IconSection(Ctx* cx, const char* title, const char* desc) {
@@ -44,11 +60,11 @@ El* IconStory::Render(IconStory* self, Ctx* cx) {
 
     // section("SVG bytes"): embedded icons share the same sizing, colors and
     // loading behavior as the named ones — small and large, the button slot,
-    // a custom loading icon, and a rotated large arrow.
+    // a custom loading icon, and a menu item's icon slot.
     El* bytes = IconSection(cx, "SVG bytes",
                             "Embedded icons share the same sizing, colors, and "
                             "loading behavior.");
-    El* bytesRow = Div(a)->FlexRow()->Gap(16)->ItemsCenter()->Wrap();
+    El* bytesRow = Div(a)->FlexRow()->Gap(16)->ItemsCenter();
     bytesRow->Child(component::Icon::Empty(cx)
                         ->Data(Str(kSearchSvg))
                         ->Size(UiSize::Small)
@@ -74,14 +90,43 @@ El* IconStory::Render(IconStory* self, Ctx* cx) {
             ->Loading(true)
             ->Label(StrL("Searching"))
             ->IntoEl());
-    bytesRow->Child(component::Icon::Empty(cx)
-                        ->Data(Str(kArrowUpSvg))
-                        ->Rotate(0.25f)
-                        ->Size(UiSize::Large)
-                        ->IntoEl());
-    StorySectionAdd(bytes, bytesRow);
-    StorySectionAdd(bytes, StoryTxt(cx, Str(self->message), 14, th.mutedFg));
+    Str menuId = StrL("embedded-menu-popup");
+    Entity<PopupMenuState> menuState = component::PopupMenuStateFor(cx, menuId);
+    if (PopupMenuState* ms = menuState.Get(cx)) {
+        ms->onConfirm = Listen(cx, &IconStory::OnMenuPick);
+    }
+    bytesRow->Child(
+        component::DropdownMenu::New(cx, StrL("embedded-menu-dropdown"))
+            ->Trigger(component::Button::New(cx, StrL("embedded-menu"))
+                          ->Label(StrL("Actions"))
+                          ->IntoEl())
+            ->Menu(component::PopupMenu::New(cx, menuId, menuState)
+                       ->Menu(StrL("Search"), component::Icon::Empty(cx)
+                                                  ->Data(Str(kSearchSvg))))
+            ->IntoEl());
+    // v_flex().gap_3(): the row, then the message under it.
+    El* bytesCol = Div(a)->FlexCol()->Gap(12);
+    bytesCol->Child(bytesRow);
+    bytesCol->Child(StoryTxt(cx, Str(self->message), 14, th.mutedFg));
+    StorySectionAdd(bytes, bytesCol);
     page->Child(bytes);
+
+    El* cloning = IconSection(cx, "Cloning and views",
+                              "Both arrows retain their SVG bytes and 90° "
+                              "rotation.");
+    StorySectionAdd(cloning, Div(a)
+                                 ->FlexRow()
+                                 ->Gap(16)
+                                 ->ItemsCenter()
+                                 ->Child(TextEl(a, StrL("Clone")))
+                                 ->Child(IconArrow(cx)));
+    StorySectionAdd(cloning, Div(a)
+                                 ->FlexRow()
+                                 ->Gap(16)
+                                 ->ItemsCenter()
+                                 ->Child(TextEl(a, StrL("Entity")))
+                                 ->Child(IconArrow(cx)));
+    page->Child(cloning);
 
     // The icons are children of the section itself, which wraps them at
     // gap_4; .text_lg() is what sizes them, since an Icon is as big as the
