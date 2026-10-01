@@ -213,6 +213,18 @@ struct TextSelectionHandle {
     }
 };
 
+// project_ranges: what `snapshot` selects in each run, in the order given.
+// Null is no selection (inactive, nothing selected); a snapshot without
+// window points is active and selects nothing. What UpdateRuns projects.
+TextSelectionProjection TextSelectionProjectRanges(
+    const TextSelectionSnapshot* snapshot, const TextSelectionRun* runs,
+    int count);
+// The participant's own set_snapshot: replace the snapshot it projects (null
+// clears it) and say so with SelectionChanged when it changed. The window's
+// gesture is what normally calls it.
+void TextSelectionHandleSetSnapshot(const TextSelectionHandle& handle, App* app,
+                                    const TextSelectionSnapshot* snapshot);
+
 // Rust's did_hit_text, which is the rule the whole module's mouse handling
 // turns on: a gesture that never touched a glyph publishes nothing and copies
 // nothing, however far it dragged. `blank_only_drag_never_publishes_or_copies_
@@ -292,6 +304,12 @@ struct WindowSelection {
     Point anchorPoint = {};
     Point cursorPoint = {};
     bool hasWindowPoints = false;
+    // What Rust's anchor SelectionEndpoint remembers beside its offset:
+    // whether it landed on text, which a shift-click's did_hit_text starts
+    // from, and the participant it resolved to, so an extension from an
+    // anchor whose participant has since been swept starts afresh instead.
+    bool anchorInsideText = false;
+    EntityId anchorParticipant = {};
     bool publishing = false;
     bool clearing = false;
     uint64_t frameGeneration = 0;

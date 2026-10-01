@@ -620,11 +620,32 @@ static TextSelectionRange ProjectRun(const TextSelectionRun& run,
     return out;
 }
 
+TextSelectionProjection TextSelectionProjectRanges(
+    const TextSelectionSnapshot* snapshot, const TextSelectionRun* runs,
+    int count) {
+    TextSelectionProjection out;
+    out.active = snapshot != nullptr;
+    for (int i = 0; i < count; i++) {
+        VecAppend(out.ranges, snapshot ? ProjectRun(runs[i], *snapshot)
+                                       : TextSelectionRange{});
+    }
+    return out;
+}
+
+void TextSelectionHandleSetSnapshot(const TextSelectionHandle& handle, App* app,
+                                    const TextSelectionSnapshot* snapshot) {
+    ParticipantSetSnapshot(ParticipantState(handle, app), app,
+                           snapshot != nullptr,
+                           snapshot ? *snapshot : TextSelectionSnapshot{});
+}
+
 TextSelectionProjection TextSelectionHandle::UpdateRuns(
     const TextSelectionRun* values, int count, App* app) const {
-    TextSelectionProjection out;
     TextSelectionParticipantState* participant = ParticipantState(*this, app);
-    if (!participant) return out;
+    if (!participant) {
+        TextSelectionProjection none;
+        return none;
+    }
     for (int i = 0; i < participant->runs.len; i++) {
         if (participant->runs[i].layout) {
             TextLayoutRelease(participant->runs[i].layout);
@@ -635,12 +656,9 @@ TextSelectionProjection TextSelectionHandle::UpdateRuns(
         VecAppend(participant->runs, values[i]);
         if (values[i].layout) TextLayoutAddRef(values[i].layout);
     }
-    out.active = participant->hasSnapshot;
-    for (int i = 0; i < count; i++) {
-        VecAppend(out.ranges, participant->hasSnapshot
-                                  ? ProjectRun(values[i], participant->snapshot)
-                                  : TextSelectionRange{});
-    }
+    TextSelectionProjection out = TextSelectionProjectRanges(
+        participant->hasSnapshot ? &participant->snapshot : nullptr, values,
+        count);
 
     Vec<int> order;
     for (int i = 0; i < count; i++) {
@@ -826,6 +844,19 @@ bool WindowSelectionHas(const Window* win) {
     return TextSelectionPublishes(&s->gesture);
 }
 
+// SelectionEndpoint::resolve for the anchor: true unless the participant it
+// resolved to is gone from the window. An anchor in plain runs with no
+// participant resolves for as long as there is text to hold it.
+static bool AnchorResolves(Window* win, const WindowSelection* s) {
+    if (!s->anchorParticipant.IsValid()) {
+        return true;
+    }
+    TextSelectionParticipantState* participant =
+        (TextSelectionParticipantState*)EntityGet(win->app,
+                                                  s->anchorParticipant);
+    return participant && participant->registered && participant->window == win;
+}
+
 void WindowSelectionPress(Window* win, float x, float y, int clickCount,
                           bool extend) {
     if (win && BaseIsTextSelectionSuppressed(win->app)) {
@@ -836,18 +867,44 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     if (!s) {
         return;
     }
+    // prepare_for_mouse_down: every press — a shift-click too — clears what
+    // the participants hold (each hears Cleared and its clear handler runs,
+    // and a local selection ends), keeping only the anchor a shift-click
+    // extends from.
+    {
+        bool keep = extend && s->anchor >= 0;
+        int anchor = s->anchor;
+        int scope = s->scope;
+        Point anchorPoint = s->anchorPoint;
+        bool anchorInsideText = s->anchorInsideText;
+        EntityId anchorParticipant = s->anchorParticipant;
+        WindowSelectionClear(win);
+        if (keep) {
+            s->anchor = anchor;
+            s->cursor = anchor;
+            s->scope = scope;
+            s->anchorPoint = anchorPoint;
+            s->cursorPoint = anchorPoint;
+            s->hasWindowPoints = true;
+            s->anchorInsideText = anchorInsideText;
+            s->anchorParticipant = anchorParticipant;
+        }
+    }
     PaintCtx* ctx = &win->paint;
     // A shift-click keeps the anchor and moves the cursor — Rust's
     // `begin_in_window(.., extend)` — and stays in the scope it began in.
-    if (extend && s->anchor >= 0) {
+    // It begins a gesture of its own, so a drag after it carries the cursor
+    // on, and it has hit text if either end did. An anchor whose participant
+    // has since been swept no longer resolves, and the press starts afresh.
+    if (extend && s->anchor >= 0 && AnchorResolves(win, s)) {
         int off = TextHitOffsetIn(ctx, x, y, true, s->scope, nullptr);
         if (off >= 0) {
             s->cursor = off;
             s->cursorPoint = {x, y};
             s->hasWindowPoints = true;
-            TextSelectionExtend(
-                &s->gesture,
-                TextHitOffsetIn(ctx, x, y, false, s->scope, nullptr) >= 0);
+            bool inside =
+                TextHitOffsetIn(ctx, x, y, false, s->scope, nullptr) >= 0;
+            TextSelectionBegin(&s->gesture, s->anchorInsideText || inside);
         }
         WindowSelectionPublish(win);
         return;
@@ -872,6 +929,9 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         s->anchorPoint = {x - 0.5f, y};
         s->cursorPoint = {x + 0.5f, y};
         s->hasWindowPoints = true;
+        s->anchorInsideText = true;
+        s->anchorParticipant = {};
+        ParticipantAt(win, s->anchorPoint, &s->anchorParticipant);
         TextSelectionBegin(&s->gesture, true);
         TextSelectionEnd(&s->gesture);
         WindowSelectionPublish(win);
@@ -891,11 +951,13 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
         s->anchorPoint = {x, y};
         s->cursorPoint = {x, y};
         s->hasWindowPoints = true;
-        TextSelectionBegin(&s->gesture, TextHitOffsetIn(ctx, x, y, false, scope,
-                                                        nullptr) >= 0);
+        s->anchorInsideText =
+            TextHitOffsetIn(ctx, x, y, false, scope, nullptr) >= 0;
+        TextSelectionBegin(&s->gesture, s->anchorInsideText);
         EntityId participantId = {};
         TextSelectionParticipantState* participant =
             ParticipantAt(win, s->anchorPoint, &participantId);
+        s->anchorParticipant = participant ? participantId : EntityId{};
         if (participant && participant->focus) {
             participant->focus(participant->focusUser, win, win->app);
         }

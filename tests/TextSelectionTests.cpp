@@ -512,7 +512,9 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
 
     TextSelection::Clear(&win, &app);
     utassert(!TextSelection::HasSelection(&win, &app));
-    utassert(observed->cleared == 3 && observed->clearCallbacks == 3);
+    // Three participants, each cleared twice: by the press that began the
+    // gesture (prepare_for_mouse_down) and by this Clear.
+    utassert(observed->cleared == 6 && observed->clearCallbacks == 6);
 
     El* layer = TextSelectionLayer::New(&cx);
     El* scoped = TextSelectionScope(Div(arena), one);
