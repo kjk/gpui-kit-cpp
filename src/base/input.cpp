@@ -1605,9 +1605,20 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         } else {
             band->H(lineH);
         }
-        // active_line: the wash under the row the caret is on, gutter and all.
+        // active_line: the wash under the row the caret is on, gutter and all,
+        // and the editor's padding left of the gutter.
         if (row == caretRow && style.activeLine.a != 0) {
-            band->Bg(style.activeLine);
+            if (style.activeLineBleedL > 0) {
+                band->Child(Div(a)
+                                ->Absolute()
+                                ->Left(-style.activeLineBleedL)
+                                ->Right(0)
+                                ->Top(0)
+                                ->Bottom(0)
+                                ->Bg(style.activeLine));
+            } else {
+                band->Bg(style.activeLine);
+            }
         }
         // The caret's row is numbered in the foreground, the rest muted.
         El* num =

@@ -166,10 +166,9 @@ macOS font-kit requirement on the website only. The current update target is
   (Badge, Rating, pagination, textarea rows, chart ticks, ...) are clamped
   to INT_MAX, OtpState is capped at 64 cells, and chart rows are narrowed to
   f32. Id checks trim ASCII whitespace only.
-- **Component-shell gaps against the Rust components.** MenuItem/Menu `disabled` and the retained forms' `disabled()` are inert
-  (upstream records them as common behaviors and drops the op — ported
-  as-is); the Editor's active-line wash starts at the gutter, where
-  upstream's also covers the 6px of padding left of it.
+- **Component-shell gaps against the Rust components.** MenuItem/Menu
+  `disabled` and the retained forms' `disabled()` are inert (upstream
+  records them as common behaviors and drops the op — ported as-is).
 - **A script's `debug()` and `debug_below()` paint nothing.** Upstream
   has them only in a debug build, where GPUI outlines the element (or every
   element under it) in red; here they are accepted in every build and change

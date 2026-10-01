@@ -92,6 +92,9 @@ struct InputEditorStyle {
     // Editor's active-line wash and its indent guides. Alpha 0 and 0 are off,
     // which is what a plain textarea wants.
     Rgba activeLine = {0, 0, 0, 0};
+    // How far left of the rows the active-line wash reaches: the editor's
+    // left padding, which upstream's wash covers as well as the gutter.
+    float activeLineBleedL = 0;
     Rgba indentGuide = {0, 0, 0, 0};
     // How many columns an indent guide stands every, which is the language's
     // tab size.

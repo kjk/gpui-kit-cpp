@@ -3274,6 +3274,58 @@ static void ALongDocumentBuildsOnlyTheVisibleBand() {
     EntityDropAll(&app);
 }
 
+// The first element under `e` whose first child is absolute and painted in
+// `bg`: the caret row's band, by the wash it carries.
+static El* FindWashedBand(El* e, Rgba bg) {
+    for (; e; e = e->next) {
+        El* f = e->first;
+        if (f && f->style.absolute && f->style.hasBg &&
+            f->style.bg.color.r == bg.r && f->style.bg.color.g == bg.g &&
+            f->style.bg.color.b == bg.b && f->style.bg.color.a == bg.a) {
+            return e;
+        }
+        if (El* found = FindWashedBand(e->first, bg)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// element.rs paint: the active-line quad starts left of the gutter, so it
+// covers the editor's left padding (set_editor_paddings' 6px) as well as the
+// line numbers and the text.
+static void TheActiveLineWashCoversTheLeftPadding() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.viewH = 400;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    InputState state;
+    state.kind = InputKind::Editor;
+    InputSetValue(&state, StrL("one\ntwo\nthree"));
+    InputEditorStyle style;
+    style.activeLine = Rgba8(10, 20, 30, 255);
+    style.activeLineBleedL = 6;
+    El* editor = gpui::Editor::New(&cx, &state, style);
+    El* band = FindWashedBand(editor, style.activeLine);
+    utassert(band != nullptr);
+    if (band) {
+        // Behind the row's own cells, from 6px left of the band to its right
+        // edge, top to bottom.
+        utassertnear(band->first->style.absLeft, -6.f);
+        utassertnear(band->first->style.absRight, 0.f);
+        utassert(!band->style.hasBg);
+    }
+    // Without a padding to cover, the band takes the wash itself.
+    style.activeLineBleedL = 0;
+    El* plain = gpui::Editor::New(&cx, &state, style);
+    utassert(FindWashedBand(plain, style.activeLine) == nullptr);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 // A click in a scrolled editor must use the clip box plus live scrollY.
 // lastBounds is row 0's text (only painted at the top of the file);
 // contentBox.y is the column's last painted origin, so it still has the
@@ -4860,6 +4912,7 @@ void TestInputState() {
     LspFacadesInstallCapabilitiesAndExposeOverlayState();
     SoftWrapBoundariesKeepTheVisualRowAffinity();
     ALongDocumentBuildsOnlyTheVisibleBand();
+    TheActiveLineWashCoversTheLeftPadding();
     AClickInAScrolledEditorMapsThroughScrollY();
     AClickInAWrappedScrolledEditorIgnoresStaleWindowY();
     ScrollToCursorUsesDocumentYNotStaleWindowY();

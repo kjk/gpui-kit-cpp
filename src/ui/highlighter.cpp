@@ -1123,6 +1123,8 @@ El* Highlighter::IntoEl() {
     if (state && h > 0) {
         state->viewH = h - editorPad.top - editorPad.bottom;
     }
+    // The wash under the caret's row reaches over the left padding too.
+    style.activeLineBleedL = editorPad.left;
     El* editor = gpui::Editor::New(cx, state, style);
     bool padded = editorPad.left != 0 || editorPad.right != 0 ||
                   editorPad.top != 0 || editorPad.bottom != 0;
