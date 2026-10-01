@@ -51,6 +51,16 @@ macOS font-kit requirement on the website only. The current update target is
   element.rs's four window-driven geometry tests (scrolled viewport, wrap
   boundaries and newline cells, CRLF, folds) are not ported: this suite lays
   out no editor window (`src/base/input.cpp` RangeDecorationCorners).
+- **Soft-wrapped editor lines are not indented.** Rust's default
+  `WrappingIndent::Same` keeps a wrapped line's leading whitespace for its
+  continuation rows: GPUI's `LineWrapper` wraps them at the width less
+  that indent, and `LineLayout::wrap_indent` shifts them by it. Here each
+  logical line is one text run wrapped by the platform's own layout, so a
+  continuation row starts at the left edge. A hanging indent inside the
+  run is a Pango (`pango_layout_set_indent`) and Core Text (head indent)
+  paragraph property, but DirectWrite has none, so Windows would need a
+  run made of two layouts, or the editor its own visual rows
+  (`src/base/input.cpp`).
 - **A toolbar's items are the tab stops inside its box.** Rust constrains
   roving Left/Right focus to the toolbar's subtree through its focus handle;
   a handle here knows containment only through a focus trap, which would
