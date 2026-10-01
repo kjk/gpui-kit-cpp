@@ -5185,6 +5185,238 @@ static void RunWindowTests() {
     RunWindowTestsD();
 }
 
+// ─── element.rs window tests ──────────────────────────────────────────────
+//
+// element.rs mod tests open an EditorState in a 240×140 window
+// (`decoration_editor`) and read the prepaint geometry back from
+// `last_layout`. The rows here are elements laid out by the flex column,
+// and what the last frame painted is read back through InputLastPaintedRows,
+// InputLastRangeCorners and InputLastRangeDecorationPaths (base/input.h).
+
+// element.rs decoration_editor: EditorState::new(..).soft_wrap(wrap)
+// .folding(true).default_value(text), rendered by DecorationHarness.
+struct DecorationEditor {
+    App* app = nullptr;
+    Window* win = nullptr;
+    InputState* editor = nullptr;
+};
+
+static DecorationEditor DecorationEditorOpen(const char* text, bool wrap) {
+    DecorationEditor d;
+    d.app = TestAppNew();
+    Entity<InputTestRoot> root = EntityNew<InputTestRoot>(d.app);
+    d.editor = &root.Get(d.app)->input;
+    MakeCodeEditor(d.editor);
+    d.editor->softWrap = wrap;
+    d.editor->mode.folding = true;
+    InputSetValue(d.editor, Str(text));
+    d.win = TestWindowOpen(d.app, root, 240, 140);
+    return d;
+}
+
+static Str RepeatedText(Arena* a, const char* unit, int times) {
+    StrBuilder sb(a);
+    for (int i = 0; i < times; i++) {
+        sb.Append(Str(unit));
+    }
+    return sb.TakeStr();
+}
+
+static bool CornersEqual(const Vec<RangeCorners>& a,
+                         const Vec<RangeCorners>& b) {
+    if (len(a) != len(b)) {
+        return false;
+    }
+    for (int i = 0; i < len(a); i++) {
+        const RangeCorners& x = a[i];
+        const RangeCorners& y = b[i];
+        if (x.topLeft.x != y.topLeft.x || x.topLeft.y != y.topLeft.y ||
+            x.topRight.x != y.topRight.x || x.topRight.y != y.topRight.y ||
+            x.bottomLeft.x != y.bottomLeft.x ||
+            x.bottomLeft.y != y.bottomLeft.y ||
+            x.bottomRight.x != y.bottomRight.x ||
+            x.bottomRight.y != y.bottomRight.y) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// element.rs editor_line_number_gutter_resizes_with_document_lines.
+static void EditorLineNumberGutterResizesWithDocumentLines() {
+    Arena* a = ArenaNew();
+    DecorationEditor d =
+        DecorationEditorOpen(RepeatedText(a, "x\n", 8).s, false);
+    TestDraw(d.win);
+    float narrow = d.editor->gutterBox.w;
+
+    InputSetValue(d.editor, RepeatedText(a, "x\n", 99));
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    float middle = d.editor->gutterBox.w;
+    // "one to three digits must share a width"
+    utassert(middle == narrow);
+
+    InputSetValue(d.editor, RepeatedText(a, "x\n", 999));
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    float wide = d.editor->gutterBox.w;
+    // "more line-number digits must widen the gutter"
+    utassert(wide > narrow);
+    TestAppFree(d.app);
+    ArenaDelete(a);
+}
+
+// element.rs geometric_decorations_clip_scrolled_viewport_and_cull_offscreen_
+// ranges.
+static void GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges() {
+    Arena* a = ArenaNew();
+    Str text = RepeatedText(a, "abcdefghij\n", 100);
+    int n = len(text);
+    DecorationEditor d = DecorationEditorOpen(text.s, false);
+    RangeDecoration decorations[4] = {
+        RangeDecoration::New({0, n}).WithStyle(RangeDecorationStyle::Fill),
+        RangeDecoration::New({0, n}),
+        RangeDecoration::New({0, 3}),
+        RangeDecoration::New({n - 3, n}),
+    };
+    RangeDecorationCollection collection =
+        InputCreateRangeDecorationsCollection(d.editor, decorations, 4);
+    TestDraw(d.win);
+    float height = d.editor->lastLineH;
+    d.editor->scrollY = height * 40.f;
+    // Deferred scroll is committed by prepaint and reflected next frame.
+    TestDraw(d.win);
+    TestDraw(d.win);
+
+    Selection rows[64] = {};
+    int nRows = InputLastPaintedRows(d.editor, d.win, rows, 64);
+    utassert(nRows > 0 && nRows <= 64);
+    if (nRows > 0 && nRows <= 64) {
+        Selection visible = {rows[0].start, rows[nRows - 1].end + 1};
+        utassert(visible.start > 0);
+        utassert(visible.end < n);
+        Vec<RangeCorners> all;
+        Vec<RangeCorners> clipped;
+        utassert(InputLastRangeCorners(d.editor, d.win, {0, n}, &all) > 0);
+        utassert(InputLastRangeCorners(d.editor, d.win, visible, &clipped) > 0);
+        utassert(CornersEqual(all, clipped));
+        utassert(len(all) > 0);
+    }
+    Vec<RangeCorners> head;
+    utassert(InputLastRangeCorners(d.editor, d.win, {0, 3}, &head) == 0);
+    // Also the production path building seam, not just the corner helper.
+    int fills = 0, frames = 0;
+    utassert(InputLastRangeDecorationPaths(d.editor, d.win, &fills, &frames));
+    utassert(fills == 1);
+    utassert(frames == 1);
+    TestAppFree(d.app);
+    ArenaDelete(a);
+}
+
+// element.rs geometric_decorations_use_shaped_wrap_boundaries_and_newline_
+// cells: not ported — it asserts `first.wrap_indent > 0`, a continuation row
+// indented by the line's leading whitespace, which is port-status.md's
+// "Soft-wrapped editor lines are not indented": each logical line here is one
+// platform-wrapped run, and its continuation rows start at the left edge.
+
+// element.rs geometric_decorations_include_crlf_boundaries.
+static void GeometricDecorationsIncludeCrlfBoundaries() {
+    const char* text = "one\r\ntwo\r\nthree";
+    DecorationEditor d = DecorationEditorOpen(text, false);
+    RangeDecoration decorations[5] = {
+        RangeDecoration::New({0, 8}),  RangeDecoration::New({3, 5}),
+        RangeDecoration::New({4, 5}),  RangeDecoration::New({5, 8}),
+        RangeDecoration::New({9, 10}),
+    };
+    RangeDecorationCollection collection =
+        InputCreateRangeDecorationsCollection(d.editor, decorations, 5);
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    // Shaping retains '\r'; only '\n' needs an additional newline cell.
+    Selection rows[8] = {};
+    int nRows = InputLastPaintedRows(d.editor, d.win, rows, 8);
+    utassert(nRows == 3);
+    if (nRows == 3) {
+        utassert(rows[0].end - rows[0].start == 4);
+        utassert(rows[0].start == 0 && rows[1].start == 5 &&
+                 rows[2].start == 10);
+    }
+    Vec<RangeCorners> spanning;
+    utassert(InputLastRangeCorners(d.editor, d.win, {0, 8}, &spanning) == 2);
+    Selection ranges[3] = {{3, 5}, {4, 5}, {9, 10}};
+    for (Selection range : ranges) {
+        Vec<RangeCorners> corners;
+        utassert(InputLastRangeCorners(d.editor, d.win, range, &corners) == 1);
+        if (len(corners) == 1) {
+            utassert(corners[0].topRight.x > corners[0].topLeft.x);
+        }
+    }
+    int fills = -1, frames = -1;
+    utassert(InputLastRangeDecorationPaths(d.editor, d.win, &fills, &frames));
+    utassert(fills == 0);
+    utassert(frames == 5);
+    TestAppFree(d.app);
+}
+
+// element.rs geometric_decorations_project_folds_without_changing_tracked_
+// ranges.
+static void GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges() {
+    const char* text = "top\nhidden one\nhidden two\nend\nlast";
+    DecorationEditor d = DecorationEditorOpen(text, false);
+    int n = (int)strlen(text);
+    Selection hidden = {4, (int)(strstr(text, "end") - text)};
+    FoldRange fold = {0, 3};
+    InputSetFoldCandidates(d.editor, &fold, 1);
+    FoldMapSetFolded(&d.editor->folds, 0, true);
+    RangeDecoration decoration = RangeDecoration::New(hidden);
+    RangeDecorationCollection collection =
+        InputCreateRangeDecorationsCollection(d.editor, &decoration, 1);
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    {
+        Selection rows[8] = {};
+        int nRows = InputLastPaintedRows(d.editor, d.win, rows, 8);
+        utassert(nRows == 3);
+        if (nRows == 3) {
+            utassert(rows[0].start == InputLineStartOffset(d.editor, 0));
+            utassert(rows[1].start == InputLineStartOffset(d.editor, 3));
+            utassert(rows[2].start == InputLineStartOffset(d.editor, 4));
+        }
+        Vec<RangeCorners> none;
+        utassert(InputLastRangeCorners(d.editor, d.win, hidden, &none) == 0);
+        int fills = -1, frames = -1;
+        utassert(
+            InputLastRangeDecorationPaths(d.editor, d.win, &fills, &frames));
+        utassert(frames == 0);
+        Vec<RangeCorners> spanning;
+        utassert(InputLastRangeCorners(d.editor, d.win, {0, n}, &spanning) ==
+                 3);
+        if (len(spanning) == 3) {
+            utassert(spanning[1].topLeft.y == spanning[0].bottomLeft.y);
+        }
+    }
+    utassert(CollectionRangesAre(collection, &hidden, 1));
+    FoldMapSetFolded(&d.editor->folds, 0, false);
+    AppInvalidate(d.win);
+    TestDraw(d.win);
+    Vec<RangeCorners> revealed;
+    utassert(InputLastRangeCorners(d.editor, d.win, hidden, &revealed) == 2);
+    utassert(CollectionRangesAre(collection, &hidden, 1));
+    TestAppFree(d.app);
+}
+
+// element.rs geometric_decorations_track_edits_history_replacement_and_owner_
+// lifetime is GeometricDecorationsTrackEditsHistoryReplacementAndOwnerLifetime
+// above: everything it asserts is the collection's, which needs no frame.
+
+static void RunElementWindowTests() {
+    EditorLineNumberGutterResizesWithDocumentLines();
+    GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
+    GeometricDecorationsIncludeCrlfBoundaries();
+    GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
+}
+
 void TestInputState() {
     TestSuite("input_state");
     WhitespaceMarksFollowTheShapedGlyphs();
@@ -5336,4 +5568,5 @@ void TestInputState() {
     ScrollToCursorUsesDocumentYNotStaleWindowY();
     InputFocusCyclesThroughInputsAndAddons();
     RunWindowTests();
+    RunElementWindowTests();
 }

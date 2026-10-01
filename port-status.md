@@ -45,9 +45,10 @@ macOS font-kit requirement on the website only. The current update target is
   run landed (`ElTextRangeRects`) and every row paints its own slice of the
   paths after its active-line wash and before its text. The collection
   methods do not notify the editor as Rust's do; the owning view re-renders.
-  element.rs's four window-driven geometry tests (scrolled viewport, wrap
-  boundaries and newline cells, CRLF, folds) are not ported: this suite lays
-  out no editor window (`src/base/input.cpp` RangeDecorationCorners).
+  The geometry tests read the last frame's rows back through
+  `InputLastRangeCorners`; the wrap-boundary one is not ported, since it
+  needs the wrap indent of the next bullet (`src/base/input.cpp`
+  RangeDecorationCorners).
 - **Soft-wrapped editor lines are not indented.** Rust's default
   `WrappingIndent::Same` keeps a wrapped line's leading whitespace for its
   continuation rows: GPUI's `LineWrapper` wraps them at the width less
