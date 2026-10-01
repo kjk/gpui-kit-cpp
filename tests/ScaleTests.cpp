@@ -930,32 +930,41 @@ static void PlotWithoutAScopeARemountReplays() {
 // grid.rs: solid_line_is_one_segment, dashes_alternate_and_clip_at_the_end,
 // odd_dash_array_repeats_like_svg and
 // line_box_is_one_pixel_centred_on_the_coordinate.
+// The segments' ends as one flat array, read by index (gcc's array-bounds
+// check cannot follow ArenaVec's segmented operator[]).
+static Point* DashEnds(Arena* a, Point start, Point end, const float* dash,
+                       int dashCount, int* count) {
+    ArenaVec<Point> out;
+    gpui::plot::GridDashSegments(a, start, end, dash, dashCount, &out);
+    *count = len(out);
+    return out.Flatten(a);
+}
+
 static void PlotGridDashSegments() {
     Arena* a = ArenaNew();
-    ArenaVec<Point> solid;
-    gpui::plot::GridDashSegments(a, {0, 5}, {10, 5}, nullptr, 0, &solid);
-    utassert(len(solid) == 2 && solid[0].x == 0 && solid[1].x == 10);
+    int n = 0;
+    Point* solid = DashEnds(a, {0, 5}, {10, 5}, nullptr, 0, &n);
+    utassert(n == 2 && solid[0].x == 0 && solid[1].x == 10);
     const float empty[1] = {0};
-    ArenaVec<Point> none;
-    gpui::plot::GridDashSegments(a, {0, 5}, {10, 5}, empty, 0, &none);
-    utassert(len(none) == 2 && none[0].x == 0 && none[1].x == 10);
+    Point* none = DashEnds(a, {0, 5}, {10, 5}, empty, 0, &n);
+    utassert(n == 2 && none[0].x == 0 && none[1].x == 10);
 
     const float dashes[2] = {4, 2};
-    ArenaVec<Point> clipped;
-    gpui::plot::GridDashSegments(a, {0, 5}, {11, 5}, dashes, 2, &clipped);
-    utassert(len(clipped) == 4);
-    utassertnear(clipped[0].x, 0);
-    utassertnear(clipped[1].x, 4);
-    utassertnear(clipped[2].x, 6);
-    utassertnear(clipped[3].x, 10);
+    Point* clipped = DashEnds(a, {0, 5}, {11, 5}, dashes, 2, &n);
+    utassert(n == 4);
+    if (n == 4) {
+        utassertnear(clipped[0].x, 0);
+        utassertnear(clipped[1].x, 4);
+        utassertnear(clipped[2].x, 6);
+        utassertnear(clipped[3].x, 10);
+    }
 
     // 5,3,2 is 5 on, 3 off, 2 on, 5 off, 3 on, 2 off.
     const float odd[3] = {5, 3, 2};
-    ArenaVec<Point> svg;
-    gpui::plot::GridDashSegments(a, {0, 0}, {0, 20}, odd, 3, &svg);
+    Point* svg = DashEnds(a, {0, 0}, {0, 20}, odd, 3, &n);
     const float want[6] = {0, 5, 8, 10, 15, 18};
-    utassert(len(svg) == 6);
-    for (int i = 0; i < 6 && i < len(svg); i++) {
+    utassert(n == 6);
+    for (int i = 0; i < 6 && i < n; i++) {
         utassertnear(svg[i].y, want[i]);
     }
 
