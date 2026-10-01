@@ -2234,6 +2234,46 @@ void TextareaRowsArePositiveWholeCounts() {
 // actions. Typing is the retained state's own edit path, one edit per
 // character as simulated input delivers; clicks are the controls' listeners.
 // Layout bounds are not measured here, so the addon order is the tree's.
+// input_tokens.rs: the change host is keyed by the element's path and the
+// state, so two components rendering one InputState both hear its change,
+// and one that stops rendering stops hearing it.
+void TwoComponentsOnOneStateBothHearItsChange() {
+    Host host(StrL(
+        "import { div, View } from 'gpui-kit';\n"
+        "import { InputGroup, InputGroupInput, InputState } "
+        "from 'gpui-component';\n"
+        "export default class Shared extends View {\n"
+        "  init() { this.input = InputState('Shared'); this.a = 0; this.b = 0;"
+        " this.second = true; }\n"
+        "  render() {\n"
+        "    return div().w(400)\n"
+        "      .child(new InputGroup('first').input(new InputGroupInput("
+        "this.input)\n"
+        "        .on_change((_value, cx) => { this.a += 1; cx.notify(); })))\n"
+        "      .when(this.second, (d) => d.child(new InputGroup('second')"
+        ".input(new InputGroupInput(this.input)\n"
+        "        .on_change((_value, cx) => { this.b += 1; this.second = false;"
+        " cx.notify(); }))))\n"
+        "      .child(`a:${this.a};b:${this.b}`);\n"
+        "  }\n"
+        "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    InputState* inputs[4] = {};
+    int count = 0;
+    CollectInputs(root, inputs, &count, 4);
+    utassert(count == 1);
+    if (count < 1) return;
+    InputState* shared = inputs[0];
+    TypeInto(host, shared, "x");
+    root = host.Render();
+    utassert(FindText(root, StrL("a:1;b:1")) != nullptr);
+    // The second group is gone now, and with it its subscription.
+    TypeInto(host, shared, "y");
+    root = host.Render();
+    utassert(FindText(root, StrL("a:2;b:1")) != nullptr);
+}
+
 void InputGroupRetainsTextCallbacksAndRoutesAddonActions() {
     Host host(StrL(
         "import { div, View } from 'gpui-kit';\n"
@@ -7464,6 +7504,7 @@ void TestComponentShell() {
     InputGroupRegistersItsSixDocumentedParts();
     TextareaRowsArePositiveWholeCounts();
     InputGroupRetainsTextCallbacksAndRoutesAddonActions();
+    TwoComponentsOnOneStateBothHearItsChange();
     InputGroupRejectsWrongPartTypesAndInvalidLayoutOptions();
     InlineTokensScriptOperationsAndClickReentry();
 

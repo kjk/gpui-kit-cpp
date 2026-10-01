@@ -97,6 +97,9 @@ inline constexpr MethodDescriptor kAutoGrowMethod = {
 struct Binding {
     InputState* state = nullptr;
     uint64_t handle = 0;
+    // The control's place in the description, which with the state names
+    // its change host, as Rust's keyed state is the path and the state.
+    Str elementId;
     bool textarea = false;
     shell::ComponentCallback change = {};
     bool hasValue = false;

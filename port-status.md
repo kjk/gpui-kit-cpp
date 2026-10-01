@@ -142,8 +142,8 @@ macOS font-kit requirement on the website only. The current update target is
   delegate rows and window-effect surfaces (Dialog, Sheet, ...) are rebuilt
   from the latest render rather than a leased snapshot, so an open surface
   shows the current render's content and callbacks. A retained InputState
-  has one change listener, so when two components render one state the last
-  wins (`src/component_shell/`).
+  hands a change to at most 16 components rendering it in one frame
+  (`src/component_shell/`).
 - **Registered components that need a number before layout take it from the
   script's style.** MessageScroller, List, Tree and DataTable virtualize from
   a definite height in the style (List/Tree default to 320); Settings picks

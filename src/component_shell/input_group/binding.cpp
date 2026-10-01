@@ -1,6 +1,7 @@
 // crates/component-shell/src/shell/input_group/binding.rs
 
 #include "component_shell/input_group/mod.h"
+#include "component_shell/input_tokens.h"
 #include "shell/view.h"
 
 #include <limits.h>
@@ -58,6 +59,7 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
     *out = {};
     out->state = state;
     out->handle = handle;
+    out->elementId = request->elementId;
     out->textarea = textarea;
     const ComponentArgument* change = nullptr;
     EachMethod<Op>(request, [&](const Op& op) {
@@ -113,13 +115,16 @@ static void RunChange(const shell::ComponentEventBinding* binding,
 void Apply(const Binding& binding, Ctx* cx) {
     InputState* state = binding.state;
     if (!state) return;
-    // window.use_keyed_state(("shell-input-group", state.id())): the
-    // subscription is the state's one change listener, a keyed relay whose
-    // callback this render replaces.
+    // window.use_keyed_state(("shell-input-group", state.id())): the host
+    // holding the subscription, whose callback this render replaces. The
+    // keyed state is the element's path as well, so the relay is named by
+    // the node too and two controls on one state are two subscribers.
     Str key = StrDup(cx->a, fmt("shell-input-group-%llu",
                                 (unsigned long long)binding.handle));
-    state->onChange = shell::ComponentValueListener(cx, key, &RunChange,
-                                                    binding.change, state);
+    input_tokens::SubscribeChange(
+        cx, state, binding.handle,
+        StrDup(cx->a, fmt("%s-%s", key, binding.elementId)), &RunChange,
+        binding.change);
     Host* host = ElementStateEntity<Host>(cx, key, StrL("shell-input-group"))
                      .Get(cx);
 

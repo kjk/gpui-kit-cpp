@@ -57,9 +57,22 @@ struct Binding {
     // The retained state's handle, which names the subscription the way
     // Rust's entity id does.
     uint64_t handle = 0;
+    // The node's place in the description: with the handle, what keys the
+    // change host, as Rust's keyed state is the element's path and the state.
+    Str elementId;
     shell::InlineTokenCallbacks* callbacks = nullptr;
     shell::ComponentCallback change = {};
 };
+
+// A change host for `state`: what window.subscribe on the state is in Rust,
+// held in a keyed host named by the element's path and the state. `key`
+// names the host's relay (unique among the hosts this frame renders for the
+// state), `run` and `callback` are what it carries. The state's one
+// change listener hands a change to every host rendered this frame, in the
+// order they rendered, so two components on one state both hear it.
+void SubscribeChange(Ctx* cx, InputState* state, uint64_t handle, Str key,
+                     shell::ComponentEventRun run,
+                     shell::ComponentCallback callback);
 
 // prepare: the last token renderer, click listener and change listener
 // recorded on the request's node. False after request->Fail.
