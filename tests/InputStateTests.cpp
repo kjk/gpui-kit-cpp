@@ -5508,7 +5508,419 @@ static void CursorLayoutConsumerUpdatesAfterSelection() {
     TestAppFree(app);
 }
 
+// state.rs test_input_does_not_invalidate_cached_parent_during_paint: not
+// ported — it counts how often a `.cached()` parent view re-renders, and
+// this tree has no cached views: every frame rebuilds the whole element tree
+// (port-status.md "A repaint rebuilds the whole element tree").
+
+// state.rs context_menu_handler_is_deferred_and_respects_disabled: not
+// ported — the state has no on_context_menu handler or
+// handle_right_click_menu here; the right-click menu is bound by the themed
+// field (src/ui/input.cpp BindInputContextMenu), not by the state.
+
+// line_and_position_for_offset's y plus the scroll offset: where the visual
+// row holding `offset` starts inside the field. The rows above it are summed
+// from their laid-out heights (a wrapped line is several rows tall), and the
+// row inside the offset's own line is measured against the run as it was
+// shaped, snapped to the row grid as Rust's whole-row positions are.
+static float VisibleRowTopA(const InputView& v, int offset) {
+    const InputState* s = v.input;
+    float lh = s->lastLineH;
+    Str text = InputValue(s);
+    int row = RopeOffsetToPoint(text, offset).row;
+    float y = 0;
+    for (int i = 0; i < row; i++) {
+        bool boxed = s->rowBoxes.len == InputLinesLen(s) && s->rowBoxes[i]
+                                                                    .h > 0;
+        y += boxed ? s->rowBoxes[i].h : lh;
+    }
+    if (s->softWrap && s->lastBounds.w > 0 && s->lastFont > 0) {
+        Str line = RopeSliceLine(text, row);
+        int lineStart = RopeLineStartOffset(text, row);
+        float x = 0;
+        float localY = 0;
+        float h = lh;
+        TextPointAt(&v.win->paint, line, s->lastFont, s->lastBounds.w, true,
+                    offset - lineStart, &x, &localY, &h, s->lastFontWord,
+                    lh / s->lastFont, true);
+        y += floorf(localY / lh + 0.5f) * lh;
+    }
+    return y - s->scrollY;
+}
+
+// state.rs test_edit_reveals_far_offscreen_caret: editing at a caret that sits
+// far outside the viewport must reveal it in one frame.
+static void EditRevealsFarOffscreenCaret() {
+    InputView view = InputViewBuildWith(
+        InputKind::Textarea,
+        [](InputState* s, App*) {
+            s->mode.kind = LayoutModeKind::AutoGrow;
+            s->mode.rows = 1;
+            s->mode.minRows = 1;
+            s->mode.maxRows = 6;
+        },
+        720, 400);
+    StrBuilder text;
+    for (int i = 1; i <= 100; i++) {
+        if (i > 1) {
+            text.Append(StrL("\n"));
+        }
+        text.Append(fmt("line %d", i));
+    }
+    Str value = text.TakeStr();
+    InputSetValue(view.input, value);
+    StrFree(value);
+    int end = len(InputValue(view.input));
+    InputSetSelectedRange(view.input, view.app, view.win, end, end);
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    // The user scrolled back to the top to read the pasted text.
+    view.input->scrollY = 0;
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    ViewTypeText(view, "X");
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    utassert(StrEndsWith(InputValue(view.input), StrL("line 100X")));
+    float top = VisibleRowTopA(view, InputCursor(view.input));
+    float h = view.input->lastLineH;
+    // "caret top outside viewport height"
+    utassert(top >= 0 && top + h <= view.input->inputBounds.h);
+    InputViewFree(&view);
+}
+
+// state.rs test_scroll_to_eob_does_not_overshoot_safe_range: scroll_to at
+// end-of-buffer must stay within the safe scroll range, so the painted frame
+// matches what is persisted. Rust inspects the deferred offset before the
+// next paint consumes it; the port applies the offset at once, so the
+// offset itself is what is checked.
+static void ScrollToEobDoesNotOvershootSafeRange() {
+    InputView view = InputViewNew();
+    // JetBrains-style: 1 trailing empty row + 1-line cursor surrounding.
+    view.input->scrollBeyondLastLine = 1;
+    view.input->cursorSurroundingLines = 1;
+    StrBuilder text;
+    for (int i = 1; i <= 50; i++) {
+        if (i > 1) {
+            text.Append(StrL("\n"));
+        }
+        text.Append(fmt("line %d", i));
+    }
+    Str value = text.TakeStr();
+    InputSetValue(view.input, value);
+    StrFree(value);
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    // "scroll_size not populated by initial paint"
+    utassert(view.input->contentH > 0);
+    // "input_bounds not populated by initial paint"
+    utassert(view.input->inputBounds.h > 0);
+
+    // The same code path as a Down keystroke at the end of the buffer.
+    int end = len(InputValue(view.input));
+    InputMoveTo(view.input, view.app, view.win, end);
+    InputScrollToOffset(view.input, end, InputMoveDir::Down);
+    float safeMax = view.input->contentH - view.input->inputBounds.h;
+    if (safeMax < 0) {
+        safeMax = 0;
+    }
+    // "paint would jitter (Bug C regression)"
+    utassert(view.input->scrollY <= safeMax);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// visible_row_range(): the rows the viewport shows, end exclusive.
+static void VisibleRowsA(const InputState* s, int* start, int* end) {
+    float lh = s->lastLineH > 0 ? s->lastLineH : 1;
+    *start = (int)(s->scrollY / lh);
+    *end = (int)ceilf((s->scrollY + s->inputBounds.h) / lh);
+}
+
+// state.rs assert_search_reveals_with_padding_after_manual_scroll.
+static void AssertSearchRevealsWithPaddingAfterManualScrollA(bool previous) {
+    InputView view = InputViewNew();
+    StrBuilder text;
+    for (int row = 0; row < 160; row++) {
+        if (row > 0) {
+            text.Append(StrL("\n"));
+        }
+        if (row == 20 || row == 60 || row == 100) {
+            text.Append(fmt("match on row %d", row));
+        } else {
+            text.Append(fmt("line %d", row));
+        }
+    }
+    Str value = text.TakeStr();
+    // The second "match".
+    int start = StrFind(value, StrL("match on row 60"));
+    view.input->cursorSurroundingLines = 3;
+    InputSetValue(view.input, value);
+    StrFree(value);
+    InputSetSearchQuery(view.input, view.app, view.win, StrL("match"), true);
+    if (previous) {
+        Selection skip = {};
+        SearchMatcherNext(&view.input->search.matcher, &skip);
+        SearchMatcherNext(&view.input->search.matcher, &skip);
+    }
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    float lh = view.input->lastLineH;
+    view.input->scrollY = previous ? 0 : lh * 80;
+    Flush(view);
+    TestRunUntilParked(view.app);
+    int first = 0;
+    int last = 0;
+    VisibleRowsA(view.input, &first, &last);
+    if (previous) {
+        // "target must be below the viewport"
+        utassert(last <= 60);
+    } else {
+        // "target must be above the viewport"
+        utassert(first > 60);
+    }
+
+    Selection range = {};
+    bool found = previous
+                     ? InputSearchPrev(view.input, view.app, view.win, &range)
+                     : InputSearchNext(view.input, view.app, view.win, &range);
+    utassert(found && range.start == start && range.end == start + 5);
+    utassert(base::StrEq(
+        SearchMatcherLabel(GetTempArena(), &view.input->search.matcher),
+        "2/3"));
+    Flush(view);
+    TestRunUntilParked(view.app);
+
+    VisibleRowsA(view.input, &first, &last);
+    utassert(first <= 60 && 60 < last);
+    lh = view.input->lastLineH;
+    float targetY = lh * 60 - view.input->scrollY;
+    // Three lines of edge clearance include the matched line itself.
+    utassert(targetY >= lh * 2 - 0.1f);
+    // "search must preserve the configured surrounding-line padding"
+    utassert(targetY + lh * 3 <= view.input->inputBounds.h + 0.1f);
+    InputViewFree(&view);
+}
+
+// state.rs test_next_search_match_reveals_with_padding_after_manual_scroll.
+static void NextSearchMatchRevealsWithPaddingAfterManualScroll() {
+    AssertSearchRevealsWithPaddingAfterManualScrollA(false);
+}
+
+// state.rs
+// test_previous_search_match_reveals_with_padding_after_manual_scroll.
+static void PreviousSearchMatchRevealsWithPaddingAfterManualScroll() {
+    AssertSearchRevealsWithPaddingAfterManualScrollA(true);
+}
+
+// state.rs test_set_search_query_highlights_without_the_panel.
+static void SetSearchQueryHighlightsWithoutThePanelInAWindow() {
+    InputView view = InputViewBuildEditor(
+        [](InputState* s, App*) { s->searchable = false; });
+    InputSetValue(view.input, StrL("foo bar foo"));
+    InputSetSearchQuery(view.input, view.app, view.win, StrL("foo"), true);
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(SearchSessionIsActive(&view.input->search));
+    utassert(!view.input->search.open);
+    utassert(SearchMatcherLen(&view.input->search.matcher) == 2);
+    InputCloseSearch(view.input, view.app, view.win);
+    Flush(view);
+    utassert(!SearchSessionIsActive(&view.input->search));
+    InputViewFree(&view);
+}
+
+// state.rs test_closed_search_resyncs_matches_after_edits: a closed search
+// skips rescanning on edits, so every path that reads the matches again must
+// see the edited text, not the text at close.
+static void ClosedSearchResyncsMatchesAfterEditsInAWindow() {
+    InputView view = InputViewBuildEditor(
+        [](InputState* s, App*) { s->searchable = false; });
+    InputSetValue(view.input, StrL("foo bar foo"));
+    InputSetSearchQuery(view.input, view.app, view.win, StrL("foo"), true);
+    InputCloseSearch(view.input, view.app, view.win);
+
+    InputSetValue(view.input, StrL("bar foo"));
+    Selection next = {};
+    utassert(InputSearchNext(view.input, view.app, view.win, &next));
+    utassert(next.start == 4 && next.end == 7);
+
+    InputSetValue(view.input, StrL("foo foo foo"));
+    InputSetSearchQuery(view.input, view.app, view.win, StrL("foo"), true);
+    utassert(SearchMatcherLen(&view.input->search.matcher) == 3);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_search_reveals_offscreen_wrapped_match.
+static void SearchRevealsOffscreenWrappedMatch() {
+    InputView view = InputViewNew();
+    StrBuilder text;
+    text.Append(StrL("match\n"));
+    for (int i = 0; i < 80; i++) {
+        text.Append(StrL("line\n"));
+    }
+    text.Append(StrL("\n"));
+    for (int i = 0; i < 500; i++) {
+        text.Append(StrL("wrapped text "));
+    }
+    text.Append(StrL("match\n"));
+    for (int i = 0; i < 80; i++) {
+        text.Append(StrL("line\n"));
+    }
+    Str value = text.TakeStr();
+    view.input->cursorSurroundingLines = 3;
+    InputSetValue(view.input, value);
+    StrFree(value);
+    InputSetSearchQuery(view.input, view.app, view.win, StrL("match"), true);
+    Flush(view);
+    TestRunUntilParked(view.app);
+    Selection range = {};
+    utassert(InputSearchNext(view.input, view.app, view.win, &range));
+    Flush(view);
+    TestRunUntilParked(view.app);
+    const SearchMatcher& m = view.input->search.matcher;
+    utassert(m.ranges.len > 1 && range.end == m.ranges[1].end);
+    float lh = view.input->lastLineH;
+    float y = VisibleRowTopA(view, range.end);
+    utassert(y >= lh * 2 - 0.1f);
+    // "wrapped match must retain surrounding display rows"
+    utassert(y + lh * 3 <= view.input->inputBounds.h + 0.1f);
+    InputViewFree(&view);
+}
+
+static double BoundaryStepA(double value, StepAction action, App*, intptr_t) {
+    bool below = action == StepAction::Increment ? value < 1.0 : value <= 1.0;
+    return below ? 0.1 : 0.5;
+}
+
+// state.rs test_number_step: the step can differ by direction at a boundary:
+// at 1.0 it is 0.1 going down and 0.5 going up.
+static void NumberStepInAWindow() {
+    InputView view = InputViewBuild();
+    utassert(NumberStep::Fixed(5.)
+                 .Value(123., StepAction::Increment, view.app) == 5.);
+    NumberStep step = NumberStep::ByValue(&BoundaryStepA);
+    utassert(step.Value(0.5, StepAction::Increment, view.app) == 0.1);
+    utassert(step.Value(1.0, StepAction::Increment, view.app) == 0.5);
+    utassert(step.Value(1.0, StepAction::Decrement, view.app) == 0.1);
+    utassert(step.Value(2.0, StepAction::Decrement, view.app) == 0.5);
+    InputViewFree(&view);
+}
+
+// state.rs test_number_input_normalization: full-width digits and the
+// ideographic full stop are normalized, and the cursor is at the end in
+// normalized bytes, not the original 12.
+static void NumberInputNormalization() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(0));
+    });
+    ViewTypeText(view, "12。5");
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(ViewValueIs(view, "12.5"));
+    utassert(ViewRangeIs(view, 4, 4));
+
+    // Non-numeric input is rejected.
+    ViewTypeText(view, "abc");
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(ViewValueIs(view, "12.5"));
+
+    // A bare leading dot is kept as-is (normalized from the ideographic full
+    // stop), not completed to "0.", so it stays editable.
+    Selection all = {0, len(InputValue(view.input))};
+    InputReplaceTextInRange(view.input, view.app, view.win, &all, StrL("。"));
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(ViewValueIs(view, "."));
+    utassert(ViewRangeIs(view, 1, 1));
+    InputViewFree(&view);
+}
+
+// state.rs test_number_input_normalization_with_separator.
+static void NumberInputNormalizationWithSeparator() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        MaskPattern p = MaskPatternNumber(',');
+        p.fraction = 2;
+        InputSetMaskPattern(s, p);
+    });
+    ViewTypeText(view, "1234");
+    Flush(view);
+    TestRunUntilParked(view.app);
+    utassert(ViewValueIs(view, "1,234"));
+    utassert(base::StrEq(InputUnmaskValue(GetTempArena(), view.input), "1234"));
+    InputViewFree(&view);
+}
+
+// state.rs test_number_input_clamp_on_blur: out-of-range values are allowed
+// while typing and clamped on blur. Rust calls clamp_number_value, which is
+// the half of on_blur that clamps; the port clamps inside InputBlur.
+static void NumberInputClampOnBlur() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(0));
+        s->numberHasMin = true;
+        s->numberMin = 10;
+        s->numberHasMax = true;
+        s->numberMax = 100;
+    });
+    ViewTypeText(view, "1000");
+    utassert(ViewValueIs(view, "1000"));
+    InputBlur(view.input, view.app, view.win);
+    utassert(ViewValueIs(view, "100"));
+
+    Selection all = {0, len(InputValue(view.input))};
+    InputReplaceTextInRange(view.input, view.app, view.win, &all, StrL("1"));
+    utassert(ViewValueIs(view, "1"));
+    InputBlur(view.input, view.app, view.win);
+    utassert(ViewValueIs(view, "10"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_number_input_undo_with_mask: when the mask changes the text
+// (regrouping separators), a whole-document change is recorded, so undo and
+// redo restore it.
+static void NumberInputUndoWithMask() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(','));
+    });
+    ViewTypeText(view, "1234");
+    utassert(ViewValueIs(view, "1,234"));
+    ViewTypeText(view, "5");
+    utassert(ViewValueIs(view, "12,345"));
+
+    // Each whole-document mask rewrite is an atomic undo step.
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, "1,234"));
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewValueIs(view, ""));
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "1,234"));
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "12,345"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsA() {
+    EditRevealsFarOffscreenCaret();
+    ScrollToEobDoesNotOvershootSafeRange();
+    NextSearchMatchRevealsWithPaddingAfterManualScroll();
+    PreviousSearchMatchRevealsWithPaddingAfterManualScroll();
+    SetSearchQueryHighlightsWithoutThePanelInAWindow();
+    ClosedSearchResyncsMatchesAfterEditsInAWindow();
+    SearchRevealsOffscreenWrappedMatch();
+    NumberStepInAWindow();
+    NumberInputNormalization();
+    NumberInputNormalizationWithSeparator();
+    NumberInputClampOnBlur();
+    NumberInputUndoWithMask();
     CursorLayoutConsumerUpdatesAfterSelection();
     InlineTokenEditHistoryAndValidation();
     InlineTokenTextareaImeAndModes();
