@@ -101,7 +101,12 @@ macOS font-kit requirement on the website only. The current update target is
   not follow by itself — hand it the line through `OnReveal`, as the
   markdown example does for its preview panel. Visibility for a fit-content
   view is the window cut down to the scroll boxes last frame painted around
-  the view, which is what this runtime can read back of the clip.
+  the view, which is what this runtime can read back of the clip. The
+  handler runs while the view is built, so a container following a
+  fit-content view through `OnReveal` reads its offset after building it.
+  text/state.rs's `an_enclosing_list_scrolls_to_a_line_of_a_fit_content_view`
+  is not ported, and neither are the background-parse tests: a parse here
+  happens with the render.
 - **`selected_source_range` reads the window's painted runs.** Rust walks
   each inline state's selection; here the selection is the window's, so the
   view maps the runs it painted, which takes an inline image in whenever the
@@ -110,6 +115,14 @@ macOS font-kit requirement on the website only. The current update target is
   tree). `select_all` is the selection `SelectAll` made, for as long as the
   window still holds it. Under `-markdown=mini` the parser keeps no
   positions, so the answer is always None (`src/base/text.cpp`).
+- **The window owns its text selection; the layer element is a marker.**
+  `TextSelectionLayer` creates and gates nothing: `WindowSelectionOf` makes
+  the state on first use, the frame sweeps registrations itself, and a
+  registered participant's local selection answers queries whether or not a
+  layer rendered. A scope is an element's trap id, not a stack, and a run's
+  selection range cannot detect a layout shaped from different text, since
+  paint.h's `TextLayout` carries no length (`src/base/text_selection.cpp`).
+  Five text_selection.rs tests that turn on those are not ported.
 - **A series chart paints its default hover tooltip.** Line, area, bar
   and candlestick charts are one custom-painted element, so the title and
   rows `TooltipContent::apply` would build are drawn in the paint pass
