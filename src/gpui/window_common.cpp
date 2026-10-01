@@ -1056,6 +1056,12 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
     bool wasKeyboard = win->lastInputKeyboard;
     if (!IsModifierKey(key)) {
         win->lastInputKeyboard = true;
+        // InputState's intercept_keystrokes: every keystroke into a focused
+        // field holds its caret lit, before any binding can consume it — a
+        // copy that edits nothing still keeps the caret on screen.
+        if (win->input && win->input->focused) {
+            BlinkPause(win->app, win, &win->input->blink);
+        }
     }
     bool handled = WindowKeyDownDispatch(win, key, shift, ctrl, alt, platform,
                                          function, flags);

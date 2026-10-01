@@ -3953,6 +3953,10 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // trigger completion." Typing asks again once the edit is in.
     InputHideContextMenu(s);
     InputClearInlineCompletion(s);
+    // pause_blink_cursor, for every edit and before the cursors fan out: a
+    // caret caught in its dark half comes back lit, whichever path the text
+    // arrives by (a keystroke, the input method, a direct call).
+    PauseBlink(s, app, win);
     if (InputIsMultiLine(s)) {
         // A keystroke with several cursors goes to all of them. An edit that
         // names its range — the input method, an undo, a server's edit list
@@ -3967,9 +3971,6 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         }
     }
     Selection selBefore = s->selectedRange;
-    if (win && BlinkVisible(app, s->blink)) {
-        PauseBlink(s, app, win);
-    }
 
     Arena* tmp = GetTempArena();
     Str text = NormalizeInput(tmp, s, newText);
