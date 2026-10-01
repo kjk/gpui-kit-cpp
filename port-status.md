@@ -197,7 +197,28 @@ macOS font-kit requirement on the website only. The current update target is
 - **Textarea tokens still use flex wrapping instead of display-map inline
   metrics.** Text gaps can break at UTF-8 characters around atomic chips, but
   shaping, selection geometry and hit testing do not yet share Rust's fragment
-  map (`src/base/input.cpp`).
+  map (`src/base/input.cpp`). Nor do inline tokens have Rust's keyboard
+  activation or geometry query: there is no `ActivateToken` action and no
+  `range_to_bounds`, so a chip is activated only by a click on it (TokenChip).
+  state.rs's `test_inline_token_wrap_and_size_refresh` and
+  `test_inline_token_geometry_and_reentrant_activation` are not ported.
+- **The input's right-click menu belongs to the themed field.** Rust's state
+  carries `on_context_menu` and `handle_right_click_menu`, which defer the
+  handler and skip a disabled field; here `BindInputContextMenu` in
+  `src/ui/input.cpp` opens it, so state.rs's
+  `context_menu_handler_is_deferred_and_respects_disabled` is not ported.
+- **The highlighter seam has no batch update.** Rust's
+  `InputHighlighter::update_batch` hands a multi-edit change over once, as
+  each edit and the text after it, and the state installs highlighters
+  through a factory. Here a second splice before the highlighter is asked
+  collapses into one whole-document edit (`TextSplice`, `src/base/input.cpp`),
+  so `test_replace_text_in_ranges_drives_the_highlighter_once` is not ported.
+- **An editor's text decorations are kept beside the state.** Rust's
+  `create_decorations_collection` puts the collection in the editor state's
+  extras and every edit moves it; here a `DecorationCollections` is held next
+  to the `InputState` and its owner calls `AdjustForEdit`
+  (`src/base/input_editor.h`), so `test_editor_decorations_follow_typing` is
+  not ported.
 - **No language server.** Every seam in `input/editor/lsp` is ported —
   completion, resolve, ghost text, hover, code actions, document colours,
   semantic tokens, go-to-definition — but there is no JSON-RPC, no child
