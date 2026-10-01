@@ -4005,11 +4005,21 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     bool languageEdit = s->kind == InputKind::Editor && s->autoClose &&
                         !range && !s->imeMarking && r.IsEmpty() &&
                         s->extraCursors.len == 0;
-    if (languageEdit) {
+    // Skip-over as a pure cursor move: Rust keys it on the range being the
+    // caret, whether the platform named that range or left it to the
+    // selection — not on a replay or a silent edit the editor made itself.
+    bool skipEdit = s->kind == InputKind::Editor && s->autoClose &&
+                    !s->imeMarking && r.IsEmpty() &&
+                    r.start == InputCursor(s) && s->extraCursors.len == 0 &&
+                    !s->silentReplace && !UndoIsIgnoring(&s->undo);
+    if (skipEdit) {
         language = InputLanguageConfig(app, s->highlighter.Language());
         if (InputTrySkipCloser(s, app, win, text, language)) {
             return true;
         }
+    }
+    if (languageEdit) {
+        language = InputLanguageConfig(app, s->highlighter.Language());
         text =
             InputAutoCloseText(s, app, tmp, text, language, r.start,
                                &pairedCaret, &pairedOpenLen, &pairedCloseLen);
