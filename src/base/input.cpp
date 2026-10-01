@@ -7485,6 +7485,18 @@ void InputBlur(InputState* s, App* app, Window* win) {
     // Blurring ends the typing session, so a later undo stops here rather than
     // swallowing everything typed before the field lost focus.
     UndoBreakCoalescing(&s->undo);
+    // on_blur's overlays: the hover popover and the hovered definition, the
+    // diagnostic popover and any inline suggestion go with the focus. Rust
+    // skips all of on_blur while a context menu is open (the menu took the
+    // focus); the focus bookkeeping below has to happen here regardless, so
+    // only the overlays wait for the menu.
+    if (!InputIsContextMenuOpen(s)) {
+        InputClearHoverDefinition(s);
+        s->hoverText = Str{};
+        s->hoverRange = Selection{};
+        s->hoverDiagnostic = -1;
+        InputClearInlineCompletion(s);
+    }
     // NumberInput tolerates an out-of-range value while it is being typed —
     // otherwise entering "12" with a minimum of 6 would rewrite the first
     // keystroke to 6. A completed value is clamped only when editing ends.
