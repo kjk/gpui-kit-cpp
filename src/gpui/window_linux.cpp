@@ -77,6 +77,10 @@ static Atom aGtkEdgeConstraints;
 static Atom aClipboard, aTargets, aClipTarget;
 
 double TimeNow() {
+    double simulated = 0;
+    if (TestPlatformNow(&simulated)) {
+        return simulated;
+    }
     static bool started = false;
     static struct timespec start = {};
     struct timespec now = {};
@@ -1180,6 +1184,9 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
+    if (TestPlatformClipboardWrite(text)) {
+        return;
+    }
     if (!win || !win->plat || !text.s || len(text) <= 0) {
         return;
     }
@@ -1202,6 +1209,10 @@ void WindowSetTextContentType(Window* win, Str value) {
 // the one platform where the portable signature hides a wait — half a second,
 // after which an owner that never answered is given up on.
 Str ClipboardGetText(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated.text;
+    }
     if (!win || !win->plat || !gDpy) {
         return {};
     }
@@ -1249,6 +1260,10 @@ Str ClipboardGetText(Arena* a, Window* win) {
 }
 
 ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated;
+    }
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
     return out;

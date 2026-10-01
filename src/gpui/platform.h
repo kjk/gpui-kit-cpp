@@ -17,6 +17,11 @@ namespace gpui {
 // cairo surface on Linux.
 void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
                      float dipH);
+// The same frame with no target: the test platform's (gpui/test_app.h).
+// Everything but the drawing happens — the tree is built, laid out and
+// painted, hit rects, focus and every state an element writes back are
+// filled — and each backend call finds no surface bound and draws nothing.
+void WindowDrawFrameHeadless(Window* win, float dipW, float dipH);
 
 // cx.reduce_motion(): whether the desktop has asked for less animation.
 // Windows and macOS each have a switch to read; Linux answers through the
@@ -136,6 +141,11 @@ bool AppAnyWindowOpen(App* app);
 // Allocate and register the Window, minus its OS half. WindowOpen fills in
 // `plat` and shows it.
 Window* WindowAlloc(App* app, WinOpts opts);
+// AppNew and AppFree without the platform's halves — no PlatInit, no
+// PlatShutdown, no wake for a worker to call. The test platform's app
+// (gpui/test_app.h), whose windows have no OS window behind them.
+App* AppNewHeadless();
+void AppFreeHeadless(App* app);
 // Cap a requested window size at 85% of the display, the way Rust's
 // create_new_window_with_size does. Each WindowOpen calls it with the metrics
 // its platform reports.

@@ -384,8 +384,12 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     return hash;
 }
 
-void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
-                     float dipH) {
+// `headless` is the test platform's frame (gpui/test_app.h): the whole
+// pipeline runs — render, layout, prepaint, paint — with no target bound, so
+// every backend's drawing call finds no surface and draws nothing, the way
+// Rust's TestWindow hands its scene to no renderer.
+static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
+                      float dipH, bool headless) {
     if (!win) {
         return;
     }
@@ -406,7 +410,8 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // Root/WindowBorder writes the client-decorated inset while rendering.
     // Clear the last frame first so removing that wrapper removes the inset.
     win->paint.clientInset = 0;
-    if (!PaintTargetBegin(&win->paint, native, pxW, pxH)) {
+    win->paint.headless = headless;
+    if (!headless && !PaintTargetBegin(&win->paint, native, pxW, pxH)) {
         return;
     }
 
@@ -614,7 +619,9 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     win->paint.paintLayer = kPaintLayerTree;
 
     double tEnd0 = TimeNow();
-    PaintTargetEnd(&win->paint);
+    if (!headless) {
+        PaintTargetEnd(&win->paint);
+    }
     // The present goes with the painting: on the GPU path it is where the
     // multisampled surface is resolved, which is part of what drawing cost.
     gFramePaintSecs += TimeNow() - tEnd0;
@@ -664,13 +671,23 @@ void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // The present happened inside PaintTargetEnd above, so this is the closest
     // thing to GPUI's `present_end` the runtime has; a frame the scene did not
     // present carries no present time at all.
-    bool presented = !(SceneOn() && scene::SkipPresent(&win->paint));
+    bool presented =
+        !headless && !(SceneOn() && scene::SkipPresent(&win->paint));
     timing.presentAt = presented ? drawEnd : -1;
     win->frameTrace[win->frameSeq % (uint64_t)kFrameTraceCap] = timing;
     win->lastDrawTime = drawEnd;
     InteractionBenchRecord(win, timing);
     win->frameSeq++;
     FrameBenchTick(win, timing.drawSecs);
+}
+
+void WindowDrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
+                     float dipH) {
+    DrawFrame(win, native, pxW, pxH, dipW, dipH, false);
+}
+
+void WindowDrawFrameHeadless(Window* win, float dipW, float dipH) {
+    DrawFrame(win, nullptr, 0, 0, dipW, dipH, true);
 }
 
 // The hit rect an element id painted, from the last frame. The tree is
@@ -3479,7 +3496,9 @@ static void AppFetchLanded(App* app) {
     }
 }
 
-App* AppNew() {
+// `platform` is false for the test platform's app (gpui/test_app.h), which
+// has no OS window to initialise and nothing for a worker to wake.
+static App* AppMake(bool platform) {
     App* app = new App();
     // Somewhere to read icons and images from, unless the caller has
     // already said. Without a root the icon set falls back to the
@@ -3496,7 +3515,7 @@ App* AppNew() {
         return nullptr;
     }
     app->images = ImageStoreNew();
-    if (!PlatInit(app)) {
+    if (platform && !PlatInit(app)) {
         ImageStoreFree(app->images);
         app->images = nullptr;
         PaintAppFree(app->paint);
@@ -3508,15 +3527,25 @@ App* AppNew() {
     // says the same thing by handing its foreground executor the platform
     // dispatcher at startup.
     ExecInit();
-    ExecSetWake(MkFunc0(PlatWake, app));
+    // Without a platform loop there is nothing to wake, and the wake an
+    // earlier app installed names an app that is gone.
+    ExecSetWake(platform ? MkFunc0(PlatWake, app) : Func0{});
     HttpSetOnFetchDone(MkFunc0(AppFetchLanded, app));
     return app;
+}
+
+App* AppNew() {
+    return AppMake(true);
+}
+
+App* AppNewHeadless() {
+    return AppMake(false);
 }
 
 // Defined with AppOnShutdown below, and called from here.
 static void AppRunShutdownFns();
 
-void AppFree(App* app) {
+static void AppRelease(App* app, bool platform) {
     if (!app) {
         return;
     }
@@ -3554,9 +3583,19 @@ void AppFree(App* app) {
     AppGlobalClear(app);
     PaintAppFree(app->paint);
     app->paint = nullptr;
-    PlatShutdown(app);
+    if (platform) {
+        PlatShutdown(app);
+    }
     delete app;
     DestroyTempArena();
+}
+
+void AppFree(App* app) {
+    AppRelease(app, true);
+}
+
+void AppFreeHeadless(App* app) {
+    AppRelease(app, false);
 }
 
 // window.request_animation_frame(). The flag is cleared as the next frame

@@ -136,6 +136,10 @@ static bool ImeComposition(Window* win, LPARAM lParam) {
 }
 
 double TimeNow() {
+    double simulated = 0;
+    if (TestPlatformNow(&simulated)) {
+        return simulated;
+    }
     static LARGE_INTEGER freq = {};
     static LARGE_INTEGER start = {};
     if (freq.QuadPart == 0) {
@@ -1291,6 +1295,9 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
+    if (TestPlatformClipboardWrite(text)) {
+        return;
+    }
     if (!text.s || len(text) <= 0) {
         return;
     }
@@ -1338,6 +1345,10 @@ void WindowSetTextContentType(Window* win, Str value) {
 }
 
 Str ClipboardGetText(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated.text;
+    }
     if (!OpenClipboard(Hwnd(win))) {
         return {};
     }
@@ -1428,6 +1439,10 @@ static Str ClipboardReadPaths(Arena* a, HANDLE handle) {
 }
 
 ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated;
+    }
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
     if (!OpenClipboard(Hwnd(win))) {

@@ -3535,6 +3535,11 @@ struct PaintCtx {
     Window* window = nullptr;
     PaintApp* pa = nullptr;
     PaintTarget* rt = nullptr;
+    // The test platform's frame (WindowDrawFrameHeadless): no target is
+    // bound, and the tree is still walked as if one were — every element
+    // records its hit rect, focus and geometry, and every drawing call finds
+    // `rt` null and draws nothing.
+    bool headless = false;
     // The recorded and previous frames, damage history and retained path
     // geometry belong to this target's window. Opaque here so the portable
     // public drawing context does not expose the scene implementation.
@@ -6856,6 +6861,16 @@ int WindowCollectFrames(Window* win, uint64_t* cursor, FrameTiming* out,
 // Monotonic seconds since the first call. GPUI's `Instant`, which the FPS
 // readouts need at a finer resolution than GetTickCount64's ~16 ms.
 double TimeNow();
+
+// The test platform's halves of the clock and the clipboard
+// (gpui/test_app.h). While a test app is installed, time is its simulated
+// clock and the clipboard is an in-memory one, the way Rust's TestPlatform
+// keeps both; each platform's TimeNow and Clipboard* ask these first, and
+// with no test app installed they answer false and the OS is asked as
+// before.
+bool TestPlatformNow(double* out);
+bool TestPlatformClipboardWrite(Str text);
+bool TestPlatformClipboardRead(Arena* a, ClipboardItem* out);
 
 App* AppNew();
 void AppFree(App* app);

@@ -7275,7 +7275,7 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
 }
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
-    if (!e || !ctx->rt) {
+    if (!e || (!ctx->rt && !ctx->headless)) {
         return;
     }
     // `.invisible()` until the group is hovered. The box was laid out either

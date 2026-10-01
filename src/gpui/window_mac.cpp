@@ -44,6 +44,10 @@ struct PlatWindow {
 };
 
 double TimeNow() {
+    double simulated = 0;
+    if (TestPlatformNow(&simulated)) {
+        return simulated;
+    }
     static bool started = false;
     static struct timespec start = {};
     struct timespec now = {};
@@ -1862,6 +1866,9 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
+    if (TestPlatformClipboardWrite(text)) {
+        return;
+    }
     (void)win;
     if (!text.s || len(text) <= 0) {
         return;
@@ -1898,6 +1905,10 @@ void WindowSetTextContentType(Window* win, Str value) {
 }
 
 Str ClipboardGetText(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated.text;
+    }
     (void)win;
     NSPasteboard* pb = [NSPasteboard generalPasteboard];
     NSString* s = [pb stringForType:NSPasteboardTypeString];
@@ -1918,6 +1929,10 @@ Str ClipboardGetText(Arena* a, Window* win) {
 }
 
 ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated;
+    }
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
     NSPasteboard* pb = [NSPasteboard generalPasteboard];

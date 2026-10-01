@@ -54,6 +54,10 @@ static Str gClipboard = {};
 static const char* kCanvasSel = "#gpui-canvas";
 
 double TimeNow() {
+    double simulated = 0;
+    if (TestPlatformNow(&simulated)) {
+        return simulated;
+    }
     static double start = -1;
     double now = emscripten_get_now() / 1000.0;
     if (start < 0) {
@@ -841,6 +845,9 @@ TempStr PromptForPathTemp(Window* win, const PathPrompt& opts) {
 }
 
 void ClipboardSetText(Window* win, Str text) {
+    if (TestPlatformClipboardWrite(text)) {
+        return;
+    }
     (void)win;
     if (text.s && len(text) > 0) {
         GpJsClipboardWrite(text.s, len(text));
@@ -853,6 +860,10 @@ void WindowSetTextContentType(Window* win, Str value) {
 }
 
 Str ClipboardGetText(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated.text;
+    }
     (void)win;
     if (!gInPasteEvent) {
         return {};
@@ -870,6 +881,10 @@ Str ClipboardGetText(Arena* a, Window* win) {
 }
 
 ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
+    ClipboardItem simulated;
+    if (TestPlatformClipboardRead(a, &simulated)) {
+        return simulated;
+    }
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
     return out;
@@ -877,7 +892,8 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
 
 bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
     (void)win;
-    if (!done) {
+    ClipboardItem simulated;
+    if (!done || TestPlatformClipboardRead(GetTempArena(), &simulated)) {
         return false;
     }
     gClipboardReadDone = done;
