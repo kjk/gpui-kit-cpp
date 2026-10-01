@@ -103,9 +103,8 @@ static El* MaterializeItem(MaterializeRequest* request) {
     shell::ComponentElementFactory content = request
                                                  ->TakeSlotFactory("content");
     if (content.IsSet()) {
-        // Rust measures a custom row with layout_as_root; the port's
-        // CommandItem takes a declared height instead, and a shell row is
-        // given none, so it is laid out at the standard row height.
+        // The palette measures the row it builds, as Rust's layout_as_root
+        // does, so a shell row may be any height.
         item->content = &BuildItemContent;
         item->data = (intptr_t)NewDeferredSlot(request, content,
                                                "Failed to render CommandItem "

@@ -15,15 +15,14 @@ namespace component {
 
 // The rows a palette is made of. Rust measures each one with
 // `layout_as_root` before handing the sizes to the virtual list, since a
-// custom row may be any height; there is no measure pass here, so the two
-// standard rows are the heights their padding and text come to and a custom
-// row says its own with `CommandItem::contentH`.
+// custom row may be any height, and so does MeasureRows below. These are
+// what a row comes to when it cannot be laid out — a model installed without
+// a Ctx, as the tests do — and SEPARATOR_ROW_HEIGHT, which Rust does not
+// measure either: a one-pixel rule with a little air on either side.
 //
-// An item row is px_2 py_1p5 over text_sm, a heading the same over text_xs,
-// and SEPARATOR_ROW_HEIGHT is Rust's own constant: a one-pixel rule with a
-// little air on either side.
-// Both come to their text's line box (GPUI's default phi line height) and
-// py_1p5 above and below it.
+// An item row is px_2 py_1p5 over text_sm, a heading the same over text_xs:
+// their text's line box (GPUI's default phi line height) and py_1p5 above
+// and below it.
 static const float kItemRowH = 14.f * kLineHeight + 12.f;
 static const float kHeadingRowH = 12.f * kLineHeight + 12.f;
 static const float kSeparatorRowH = 9.f;
@@ -146,7 +145,7 @@ static bool ItemMatchesQuery(const CommandState* s, const CommandItem* item,
     return CommandItemMatches(item, query);
 }
 
-static float RowHeight(const CommandState* s, const CommandRow& row) {
+static float RowHeight(const CommandRow& row) {
     switch (row.kind) {
         case CommandRowKind::Separator:
             return kSeparatorRowH;
@@ -155,11 +154,75 @@ static float RowHeight(const CommandState* s, const CommandRow& row) {
         case CommandRowKind::Item:
             break;
     }
-    const CommandItem* item = ItemOfMatch(s, row.match);
-    if (item && item->content && item->contentH > 0) {
-        return item->contentH;
-    }
     return kItemRowH;
+}
+
+// CommandEntry::same_layout, folded into one number: FNV-1a over what
+// filtering and measuring read — label, keywords, icon, action, checked,
+// disabled, a group's heading and its item count, and the entry kinds.
+static void LayoutHashBytes(uint64_t* h, const void* p, int n) {
+    const uint8_t* b = (const uint8_t*)p;
+    for (int i = 0; i < n; i++) {
+        *h ^= b[i];
+        *h *= 1099511628211ull;
+    }
+}
+static void LayoutHashStr(uint64_t* h, Str s) {
+    int n = len(s);
+    LayoutHashBytes(h, &n, (int)sizeof(n));
+    if (n > 0) {
+        LayoutHashBytes(h, s.s, n);
+    }
+}
+// False for an item with a custom child, which is never the same layout:
+// the child can read state outside the item, so only laying it out again
+// tells whether its height changed.
+static bool LayoutHashItem(uint64_t* h, const CommandItem& it) {
+    if (it.content) {
+        return false;
+    }
+    LayoutHashStr(h, it.label);
+    LayoutHashBytes(h, &it.nKeywords, (int)sizeof(it.nKeywords));
+    for (int i = 0; i < it.nKeywords; i++) {
+        LayoutHashStr(h, it.keywords[i]);
+    }
+    uint32_t icon = (uint32_t)it.icon;
+    LayoutHashBytes(h, &icon, (int)sizeof(icon));
+    LayoutHashBytes(h, &it.action, (int)sizeof(it.action));
+    LayoutHashBytes(h, &it.actionArg, (int)sizeof(it.actionArg));
+    LayoutHashStr(h, it.actionContext ? Str(it.actionContext) : Str{});
+    uint8_t flags = (uint8_t)((it.checked ? 1 : 0) | (it.disabled ? 2 : 0));
+    LayoutHashBytes(h, &flags, 1);
+    return true;
+}
+
+// The model's fingerprint, or 0 for one that must be measured whatever came
+// before it.
+static uint64_t ModelLayoutKey(const CommandEntry* entries, int n,
+                               bool searchable, bool filterable) {
+    uint64_t h = 14695981039346656037ull;
+    uint8_t flags = (uint8_t)((searchable ? 1 : 0) | (filterable ? 2 : 0));
+    LayoutHashBytes(&h, &flags, 1);
+    LayoutHashBytes(&h, &n, (int)sizeof(n));
+    for (int i = 0; i < n; i++) {
+        const CommandEntry& e = entries[i];
+        uint8_t kind = (uint8_t)e.kind;
+        LayoutHashBytes(&h, &kind, 1);
+        if (e.kind == CommandEntryKind::Item) {
+            if (!LayoutHashItem(&h, e.item)) {
+                return 0;
+            }
+        } else if (e.kind == CommandEntryKind::Group) {
+            LayoutHashStr(&h, e.group.heading);
+            LayoutHashBytes(&h, &e.group.nItems, (int)sizeof(e.group.nItems));
+            for (int j = 0; j < e.group.nItems; j++) {
+                if (!LayoutHashItem(&h, e.group.items[j])) {
+                    return 0;
+                }
+            }
+        }
+    }
+    return h ? h : 1;
 }
 
 // update_matches: the visible rows and the matching items, for the query the
@@ -169,7 +232,6 @@ static float RowHeight(const CommandState* s, const CommandRow& row) {
 static void UpdateMatches(CommandState* s, Str query) {
     s->rows.len = 0;
     s->matched.len = 0;
-    s->rowSizes.len = 0;
     bool hasUngrouped = false;
     for (int i = 0; i < s->nEntries; i++) {
         if (s->entries[i].kind == CommandEntryKind::Item) {
@@ -261,9 +323,6 @@ static void UpdateMatches(CommandState* s, Str query) {
         }
     }
 
-    for (int i = 0; i < s->rows.len; i++) {
-        VecAppend(s->rowSizes, RowHeight(s, s->rows[i]));
-    }
     if (s->selected >= s->matched.len) {
         s->selected = -1;
     }
@@ -320,6 +379,56 @@ static void FireSelect(CommandState* s, Ctx* cx, bool hadPrev, IndexPath prev) {
     ListenerCall(cx->app, cx->win, s->onSelect, &ev);
 }
 
+static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
+                           Entity<CommandState> entity, float itemRadius,
+                           bool interactive);
+
+// measure_rows: each row built and laid out on its own, at the width the
+// list's content had last frame (MinContent before it has been laid out) and
+// under the font its rows inherit there, before the sizes go to the virtual
+// list. Nothing is done while the sizes are still those of the rows, the
+// width, the font and the keymap they were measured with. Without a Ctx the
+// rows cannot be built and take the standard heights.
+static void MeasureRows(CommandState* s, Ctx* cx) {
+    float font = s->listFont > 0
+                     ? s->listFont
+                     : RuntimeStyleNow(cx ? cx->app : nullptr).fontSize;
+    uint32_t keymap = KeymapGeneration();
+    if (!s->needsMeasure && s->rowSizes.len == s->rows.len &&
+        s->measuredW == s->listW && s->measuredFont == font &&
+        s->measuredKeymap == keymap) {
+        return;
+    }
+    s->needsMeasure = false;
+    s->measuredW = s->listW;
+    s->measuredFont = font;
+    s->measuredKeymap = keymap;
+    s->measureCount++;
+    s->rowSizes.len = 0;
+    bool canBuild = cx && cx->a && cx->app;
+    PaintCtx* paint = cx && cx->win ? &cx->win->paint : nullptr;
+    for (int i = 0; i < s->rows.len; i++) {
+        const CommandRow& row = s->rows[i];
+        float h = RowHeight(row);
+        if (canBuild && row.kind != CommandRowKind::Separator) {
+            El* made = BuildCommandRow(cx, s, i, {}, -1, false);
+            if (made) {
+                // `div().refine_style(&text_style).child(row)` laid out as a
+                // root: the wrapper is what carries the definite width.
+                El* probe = Div(cx->a)->FlexCol()->Child(made);
+                if (s->listW >= 0) {
+                    probe->W(s->listW);
+                }
+                float got = MeasureEl(paint, probe, font).h;
+                if (got > 0) {
+                    h = got;
+                }
+            }
+        }
+        VecAppend(s->rowSizes, h);
+    }
+}
+
 void CommandInstall(CommandState* s, Ctx* cx, const CommandEntry* entries,
                     int nEntries, bool searchable, bool filterable) {
     if (!s) {
@@ -337,7 +446,16 @@ void CommandInstall(CommandState* s, Ctx* cx, const CommandEntry* entries,
 
     IndexPath prev = {};
     bool hadPrev = CommandSelectedIndex(s, &prev);
+    // The rows are worked out again on every install, which is cheap and
+    // keeps what they point into this render's model; it is measuring them
+    // that an equal model skips. A new query is new rows.
+    uint64_t key = ModelLayoutKey(entries, nEntries, searchable, filterable);
+    if (key == 0 || key != s->layoutKey || queryChanged) {
+        s->needsMeasure = true;
+    }
+    s->layoutKey = key;
     UpdateMatches(s, query);
+    MeasureRows(s, cx);
 
     if (queryChanged) {
         SetApplied(s, query);
@@ -665,11 +783,19 @@ static float CommandItemRadius(const Theme& th, bool bordered) {
 }
 
 static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
-    Arena* a = cx->a;
-    const Theme& th = ThemeNow(cx->app);
     CommandRowContext* rowCx = (CommandRowContext*)user;
     Entity<CommandState> entity = rowCx ? rowCx->state : Entity<CommandState>{};
-    CommandState* s = entity.Get(cx);
+    return BuildCommandRow(cx, entity.Get(cx), rowIx, entity,
+                           rowCx ? rowCx->itemRadius : -1, true);
+}
+
+// render_row: one row as the list shows it. Measuring builds the same row
+// without its listeners, which add nothing to its size.
+static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
+                           Entity<CommandState> entity, float itemRadius,
+                           bool interactive) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
     if (!s || rowIx < 0 || rowIx >= s->rows.len) {
         return Div(a);
     }
@@ -701,7 +827,7 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
                    ->Gap(8)
                    ->PadX(8)
                    ->PadY(6)
-                   ->Radius(rowCx ? rowCx->itemRadius : th.radius);
+                   ->Radius(itemRadius >= 0 ? itemRadius : th.radius);
     if (selected) {
         line->Bg(th.tokens.accent);
     }
@@ -735,7 +861,7 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
                             ->Fg(selected ? th.accentFg : th.foreground));
         }
     }
-    if (!disabled) {
+    if (interactive && !disabled) {
         Listener click = ListenTo(entity, &CommandState::OnRowClick, 0);
         Listener hover = ListenTo(entity, &CommandState::OnRowHover, 0);
         line->HoverBg(th.tokens.accent);
@@ -744,6 +870,38 @@ static El* CommandRowEl(void* user, Ctx* cx, int rowIx) {
         line->OnHover(ListenerArg(hover, matchIx));
     }
     return line;
+}
+
+// The list container's on_prepaint: the width its rows get (less the
+// virtual list's p_1 either side) and the font they inherit, which is
+// Rust's ListMeasurementKey. A key the rows were not measured with asks for
+// one more frame, which measures them again.
+struct CommandListProbe {
+    Entity<CommandState> state = {};
+};
+
+static void CommandListPrePaint(PaintCtx* ctx, El* e, void* user) {
+    auto* probe = (CommandListProbe*)user;
+    CommandState* s = probe && ctx ? probe->state.Get(ctx->app) : nullptr;
+    if (!s) {
+        return;
+    }
+    float w = e->w - 8.f;
+    if (w < 0) {
+        w = 0;
+    }
+    float dw = w - s->listW;
+    bool changed = s->listW < 0 || dw > 0.5f || dw < -0.5f;
+    if (changed) {
+        s->listW = w;
+    }
+    if (e->laidFont > 0 && e->laidFont != s->listFont) {
+        s->listFont = e->laidFont;
+        changed = true;
+    }
+    if (changed && s->rows.len > 0 && ctx->window) {
+        WindowRequestAnimationFrame(ctx->window);
+    }
 }
 
 static El* DefaultEmpty(Ctx* cx) {
@@ -826,6 +984,10 @@ El* Command::IntoEl() {
                       ->W(kFill)
                       ->MaxH(maxH)
                       ->ClipY();
+    CommandListProbe* probe = ArenaNew<CommandListProbe>(a);
+    probe->state = state;
+    listBox->prePaint = &CommandListPrePaint;
+    listBox->customUser = probe;
     if (s->rows.len == 0) {
         // The inset is the list's own; only the empty slot needs it from the
         // box around it.

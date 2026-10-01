@@ -260,22 +260,27 @@ static void AQueryIsTrimmedBeforeItIsMatched() {
     utassert(CommandMatchedCount(&s) == 1);
 }
 
-static El* CustomRow(Ctx*, const CommandItem*) {
-    return nullptr;
+// A custom row of a stated height: Rust's tests build theirs as
+// `div().h(px(84.))`, with the item row's own py_1p5 around it.
+static El* TallRow(Ctx* cx, const CommandItem*) {
+    return Div(cx->a)->W(kFill)->H(72);
+}
+static El* ShortRow(Ctx* cx, const CommandItem*) {
+    return Div(cx->a)->W(kFill)->H(32);
 }
 
 // state.rs reinstalling_an_unchanged_model_keeps_the_measured_rows (#3268):
 // a host re-render hands the palette an equal model, and its rows and their
-// sizes stay as they were; a custom row keeps the height its item states.
-// Rust also asserts when rows are measured again;
-// rows are never measured here (contentH is the custom row's height), so
-// what is left to check is the answer.
-static void ReinstallingAnUnchangedModelKeepsItsRows() {
+// sizes stay as they were without being measured again. A custom row, a
+// changed label and a changed disabled flag are measured again, and the
+// matches stay right.
+static void ReinstallingAnUnchangedModelKeepsTheMeasuredRows() {
     CommandEntry entries[2] = {CommandEntryOf(kSuggestionsGroup),
                                CommandEntryOf(kSettingsGroup)};
     CommandState s;
     Install(&s, entries, 2, nullptr);
     utassert(CommandMatchedCount(&s) == 5);
+    utassert(s.measureCount == 1);
     float sizes[8] = {};
     int nSizes = s.rowSizes.len;
     utassert(nSizes == 7);
@@ -283,23 +288,84 @@ static void ReinstallingAnUnchangedModelKeepsItsRows() {
         sizes[i] = s.rowSizes[i];
     }
 
+    // A freshly built but equal model: no measuring.
     CommandEntry again[2] = {CommandEntryOf(kSuggestionsGroup),
                              CommandEntryOf(kSettingsGroup)};
     Install(&s, again, 2, nullptr);
+    utassert(s.measureCount == 1);
     utassert(CommandMatchedCount(&s) == 5);
     utassert(s.rowSizes.len == nSizes);
     for (int i = 0; i < nSizes && i < 8; i++) {
         utassertnear(s.rowSizes[i], sizes[i]);
     }
 
-    CommandItem custom = {StrL("Custom")};
-    custom.content = &CustomRow;
-    custom.contentH = 44;
-    CommandEntry one[1] = {CommandEntryOf(custom)};
-    Install(&s, one, 1, nullptr);
-    utassert(CommandMatchedCount(&s) == 1);
-    utassert(s.rowSizes.len == 1);
-    utassertnear(s.rowSizes[0], 44.f);
+    // A changed label is measured again.
+    CommandItem renamed[2] = {{StrL("Profile and account")}, {StrL("Billing")}};
+    CommandGroup renamedGroup = {StrL("Settings"), renamed, 2};
+    CommandEntry relabeled[2] = {CommandEntryOf(kSuggestionsGroup),
+                                 CommandEntryOf(renamedGroup)};
+    Install(&s, relabeled, 2, nullptr);
+    utassert(s.measureCount == 2);
+    // So is a changed disabled flag, and it is what the matches see.
+    renamed[1].disabled = true;
+    Install(&s, relabeled, 2, nullptr);
+    utassert(s.measureCount == 3);
+    utassert(s.matched[4].disabled);
+    Install(&s, relabeled, 2, nullptr);
+    utassert(s.measureCount == 3);
+
+    // A new query is new rows.
+    Install(&s, relabeled, 2, "bill");
+    utassert(s.measureCount == 4);
+    utassert(s.rowSizes.len == s.rows.len);
+}
+
+// state.rs custom rows: each one is laid out on its own and the list is
+// handed the height it came to, the standard rows beside them keeping
+// theirs — no height is stated by the caller. A model with a custom row is
+// measured on every install, since the row can read state outside the item.
+static void ACustomRowIsMeasured() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+
+    CommandItem tall = {StrL("Tall")};
+    tall.content = &TallRow;
+    CommandItem shortRow = {StrL("Short")};
+    shortRow.content = &ShortRow;
+    CommandItem plain = {StrL("Plain")};
+    CommandEntry entries[4] = {CommandEntryOf(tall), CommandSeparatorEntry(),
+                               CommandEntryOf(plain), CommandEntryOf(shortRow)};
+    CommandState s;
+    CommandInstall(&s, &cx, entries, 4, true);
+    utassert(s.rows.len == 4 && s.rowSizes.len == 4);
+    utassertnear(s.rowSizes[0], 84.f);
+    utassertnear(s.rowSizes[1], 9.f);
+    utassertnear(s.rowSizes[2], 14.f * kLineHeight + 12.f);
+    utassertnear(s.rowSizes[3], 44.f);
+    int measured = s.measureCount;
+    CommandInstall(&s, &cx, entries, 4, true);
+    utassert(s.measureCount == measured + 1);
+
+    // The rows are measured at the width the list's content had last
+    // frame, and a new width is measured again.
+    CommandItem plainOnly[1] = {{StrL("Plain")}};
+    CommandEntry one[1] = {CommandEntryOf(plainOnly[0])};
+    CommandState w;
+    CommandInstall(&w, &cx, one, 1, true);
+    utassert(w.measuredW < 0);
+    int before = w.measureCount;
+    w.listW = 240;
+    CommandInstall(&w, &cx, one, 1, true);
+    utassert(w.measureCount == before + 1 && w.measuredW == 240.f);
+    CommandInstall(&w, &cx, one, 1, true);
+    utassert(w.measureCount == before + 1);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
 }
 
 // impl Styled for Command: `.refine_style(&self.options.style)` lands on the
@@ -358,7 +424,8 @@ void TestCommand() {
     ACommandIsStyled();
     TheQueryIsACaseInsensitiveSubstringOfTheLabelOrAKeyword();
     GroupsFlattenIntoHeadingsAndItems();
-    ReinstallingAnUnchangedModelKeepsItsRows();
+    ReinstallingAnUnchangedModelKeepsTheMeasuredRows();
+    ACustomRowIsMeasured();
     AHeadingIsHiddenWhileItsGroupIsFilteredOut();
     UngroupedItemsKeepTheirGivenRow();
     AnUngroupedSectionComesBeforeTheGroups();

@@ -92,8 +92,6 @@ static component::CommandItem gVariableRows[2] = {};
 // text_sm and text_xs: 14px on a 20px line, 12px on a 16px one.
 static const float kTextSmLine = 20.f / 14.f;
 static const float kTextXsLine = 16.f / 12.f;
-// A command row's own px_2 py_1p5 around whatever it holds.
-static const float kRowPadY = 12.f;
 
 static El* TextSm(Ctx* cx, Str s, Rgba c) {
     return StoryTxt(cx, s, 14, c)->LineHeight(kTextSmLine);
@@ -102,8 +100,6 @@ static El* TextXs(Ctx* cx, Str s, Rgba c) {
     return StoryTxt(cx, s, 12, c)->LineHeight(kTextXsLine);
 }
 
-// Rust measures every flattened row; a custom row here says how tall it is
-// (CommandItem::contentH), worked out from the same text_sm/text_xs lines.
 static El* CompactRow(Ctx* cx, const component::CommandItem*) {
     return Div(cx->a)->FlexRow()->W(kFill)->PadY(4)->Child(
         TextSm(cx, StrL("Compact custom row"), ThemeNow(cx->app).foreground));
@@ -231,11 +227,8 @@ static void SeedEntries() {
 
     gVariableRows[0].label = StrL("small-row");
     gVariableRows[0].content = CompactRow;
-    gVariableRows[0].contentH = 8.f + 14.f * kTextSmLine + kRowPadY;
     gVariableRows[1].label = StrL("large-row");
     gVariableRows[1].content = ExpandedRow;
-    gVariableRows[1].contentH =
-        32.f + 14.f * kTextSmLine + 4.f + 12.f * kTextXsLine + kRowPadY;
 
     for (int i = 0; i < kStockCount; i++) {
         component::CommandItem& item = gStockItems[i];
@@ -243,8 +236,6 @@ static void SeedEntries() {
         item.keywords = &kStocks[i].symbol;
         item.nKeywords = 1;
         item.content = StockRow;
-        item.contentH =
-            14.f * kTextSmLine + 2.f + 12.f * kTextXsLine + kRowPadY;
         item.data = i;
     }
 }

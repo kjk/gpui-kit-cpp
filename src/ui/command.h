@@ -44,12 +44,10 @@ struct CommandItem {
     // CommandItem::child: the whole row drawn by the caller in place of the
     // icon and the label — including any keybinding hint, which only the
     // default row adds. Rust's is a closure; a builder here is handed the
-    // item it is drawing.
+    // item it is drawing. The row may be any height: the palette lays it out
+    // on its own to learn it, as Rust measures every row with
+    // `layout_as_root`.
     El* (*content)(Ctx* cx, const CommandItem* item) = nullptr;
-    // How tall that row is. Rust measures every row with `layout_as_root`
-    // before handing the sizes to the virtual list; there is no measure pass
-    // here, so a custom row that is not the standard height says so.
-    float contentH = 0;
     // What the caller knows the row by, for one that would rather not map an
     // IndexPath back to its own model. Rides along on every event.
     intptr_t data = 0;
@@ -151,7 +149,33 @@ struct CommandState {
     bool filterable = true;
     Vec<CommandRow> rows;
     Vec<CommandMatch> matched;
+    // Each row's height, measured: Rust's `row_sizes`. Every row is built and
+    // laid out on its own when the model, the query, the list's width, the
+    // inherited font or the keymap changed — and not when a host re-render
+    // hands the palette an equal model, which is upstream's remeasure skip
+    // (#3268). A model with a custom row is never equal, since the row can
+    // read state outside the item.
     Vec<float> rowSizes;
+    bool needsMeasure = true;
+    // CommandEntry::same_layout over the whole model, as a fingerprint of
+    // what filters and measures: the caller's array may be gone by the next
+    // render, so the previous model is kept as its hash rather than itself.
+    // 0 is a model that is never equal to another.
+    uint64_t layoutKey = 0;
+    // ListMeasurementKey: the list's content width and the font its rows
+    // inherit where it was laid out last frame, and the ones the sizes were
+    // measured with. A width of -1 is not laid out yet, which measures at
+    // MinContent as Rust does before the list's first prepaint.
+    float listW = -1;
+    float listFont = 0;
+    float measuredW = -1;
+    float measuredFont = 0;
+    // Rust remeasures when a visible row's keybinding hint is no longer the
+    // one it was measured with; a hint here is the keymap's, so a new keymap
+    // generation is that.
+    uint32_t measuredKeymap = 0;
+    // How many times the rows have been measured, for the tests.
+    int measureCount = 0;
     // Which match is highlighted, as an index into `matched`.
     int selected = -1;
     // set_selected_index(None): an owner that cleared the highlight keeps it
