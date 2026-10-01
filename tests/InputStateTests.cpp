@@ -7937,6 +7937,446 @@ static void NoopDoesNotChangeRedoSelection() {
     InputViewFree(&view);
 }
 
+// Every selection as a range, active first: Selections::iter's order.
+static int SelectionRangesD(const InputState* s, Selection* out, int cap) {
+    int n = 0;
+    if (n < cap) {
+        out[n++] = s->selectedRange;
+    }
+    for (int i = 0; i < s->extraCursors.len && n < cap; i++) {
+        out[n++] = s->extraCursors[i].range;
+    }
+    return n;
+}
+
+static bool RangesAreD(const InputState* s, const Selection* want, int n) {
+    Selection got[32];
+    if (SelectionRangesD(s, got, 32) != n) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i].start != want[i].start || got[i].end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The carets, in Selections order, are exactly `want`.
+static bool CursorListIsD(const InputState* s, const int* want, int n) {
+    int got[32];
+    if (CursorOffsetsD(s, got, 32) != n) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i] != want[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// state.rs test_multi_cursor_insert_text.
+static void MultiCursorInsertText() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|hello |world|");
+    ViewTypeText(view, ">>>");
+    Flush(view);
+    utassert(CursorsAreD(view, ">>>|hello >>>|world>>>|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_delete_backward: the first cursor has nothing
+// to delete; the others delete an `s`.
+static void MultiCursorDeleteBackward() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|islands| cars|");
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "|island| car|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_delete_forward_merges: adjacent deletions
+// merge into a single cursor.
+static void MultiCursorDeleteForwardMerges() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "hello| |world");
+    ViewAct(view, InputAction::Delete);
+    Flush(view);
+    utassert(CursorsAreD(view, "hello|orld"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_multiline_insert_and_delete.
+static void MultiCursorMultilineInsertAndDelete() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    ViewTypeText(view, "a");
+    Flush(view);
+    utassert(CursorsAreD(view, "a|1\na|2\na|3"));
+    // The whole multi-edit insert is a single undo transaction.
+    utassert(view.input->undo.undos.len == 1);
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_add_cursor_below_preserves_column.
+static void AddCursorBelowPreservesColumn() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "ab|cd\nabcd");
+    ViewAct(view, InputAction::AddCursorBelow);
+    Flush(view);
+    utassert(CursorsAreD(view, "ab|cd\nab|cd"));
+    InputViewFree(&view);
+}
+
+// state.rs test_add_cursor_at_rejects_duplicates.
+static void AddCursorAtRejectsDuplicates() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "he|llo");
+    // Duplicate of the existing cursor is rejected.
+    InputAddCursorAt(view.input, view.app, view.win, 2);
+    utassert(InputCursorCount(view.input) == 1);
+    // A distinct offset adds a cursor.
+    InputAddCursorAt(view.input, view.app, view.win, 4);
+    utassert(InputCursorCount(view.input) == 2);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_undo_redo_restores_selections.
+static void MultiCursorUndoRedoRestoresSelections() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    ViewTypeText(view, "a");
+    Flush(view);
+    utassert(CursorsAreD(view, "a|1\na|2\na|3"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreD(view, "a|1\na|2\na|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_undo_redo_different_line_lengths.
+static void MultiCursorUndoRedoDifferentLineLengths() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "abc123|\nabc12345|\nabc1234567|");
+    ViewTypeText(view, "a");
+    Flush(view);
+    utassert(CursorsAreD(view, "abc123a|\nabc12345a|\nabc1234567a|"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "abc123|\nabc12345|\nabc1234567|"));
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreD(view, "abc123a|\nabc12345a|\nabc1234567a|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_undo_multiple_inserts: the repeated keystrokes
+// form one typing gesture.
+static void MultiCursorUndoMultipleInserts() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    const char* chars[] = {"a", "b", "c"};
+    for (const char* ch : chars) {
+        ViewTypeText(view, ch);
+        Flush(view);
+    }
+    utassert(CursorsAreD(view, "abc|1\nabc|2\nabc|3"));
+    utassert(view.input->undo.undos.len == 1);
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreD(view, "abc|1\nabc|2\nabc|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_backspace_run_is_one_undo.
+static void MultiCursorBackspaceRunIsOneUndo() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "abc|1\nabc|2\nabc|3");
+    for (int i = 0; i < 3; i++) {
+        ViewAct(view, InputAction::Backspace);
+        Flush(view);
+    }
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    utassert(view.input->undo.undos.len == 1);
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "abc|1\nabc|2\nabc|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_adding_a_cursor_splits_the_typing_gesture: the keystroke
+// after the cursor was added is its own undo entry.
+static void AddingACursorSplitsTheTypingGesture() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n2\n3");
+    ViewTypeText(view, "a");
+    ViewAct(view, InputAction::AddCursorBelow);
+    ViewTypeText(view, "b");
+    Flush(view);
+    utassert(CursorsAreD(view, "ab|1\n2b|\n3"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "a|1\n2|\n3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_indent_is_one_undo.
+static void MultiCursorIndentIsOneUndo() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    ViewAct(view, InputAction::IndentInline);
+    utassert(view.input->undo.undos.len == 1);
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_indent_then_outdent_roundtrips: cursors at line
+// starts.
+static void MultiCursorIndentThenOutdentRoundtrips() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    ViewAct(view, InputAction::IndentInline);
+    Flush(view);
+    utassert(CursorsAreD(view, "  |1\n  |2\n  |3"));
+    ViewAct(view, InputAction::OutdentInline);
+    Flush(view);
+    utassert(CursorsAreD(view, "|1\n|2\n|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_inline_outdent_only_removes_line_indentation: a mid-line
+// indent lands at the cursor, and the outdent does not take it back — it
+// only ever removes leading line indentation.
+static void InlineOutdentOnlyRemovesLineIndentation() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "1|2\n1|2");
+    ViewAct(view, InputAction::IndentInline);
+    Flush(view);
+    utassert(CursorsAreD(view, "1  |2\n1  |2"));
+    ViewAct(view, InputAction::OutdentInline);
+    Flush(view);
+    utassert(CursorsAreD(view, "1  |2\n1  |2"));
+    // A line with leading indentation loses that, wherever the cursor is.
+    SetupCursorsD(view, "  1|2\n  1|2");
+    ViewAct(view, InputAction::OutdentInline);
+    Flush(view);
+    utassert(CursorsAreD(view, "1|2\n1|2"));
+    InputViewFree(&view);
+}
+
+// state.rs test_readonly_multi_cursor_commands_leave_state_unchanged.
+static void ReadonlyMultiCursorCommandsLeaveStateUnchanged() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "a|b\nc|d");
+    Selection before[32];
+    int n = SelectionRangesD(view.input, before, 32);
+    view.input->readonly = true;
+    ViewAct(view, InputAction::Backspace);
+    ViewAct(view, InputAction::IndentInline);
+    utassert(ViewValueIs(view, "ab\ncd\n"));
+    utassert(RangesAreD(view.input, before, n));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_edit_preserves_the_active_cursor: with the
+// second caret made the active one, an edit at both keeps it active.
+static void MultiCursorEditPreservesTheActiveCursor() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "x|\n|y");
+    // selections.swap(0, 1)
+    Selection first = view.input->selectedRange;
+    view.input->selectedRange = view.input->extraCursors[0].range;
+    view.input->extraCursors[0].range = first;
+    ViewTypeText(view, "!");
+    // The active caret was the one before `y`; both carets typed one `!`.
+    utassert(ViewValueIs(view, "x!\n!y\n"));
+    utassert(ViewRangeIs(view, 4, 4));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_block_indent_outdent_with_selection.
+static void BlockIndentOutdentWithSelection() {
+    InputView view = MultiLineD();
+    InputSetValue(view.input, StrL("line1\nline2\nline3"));
+    view.input->selectedRange = {0, 17};
+    view.input->selectionReversed = false;
+    Flush(view);
+    ViewAct(view, InputAction::Indent);
+    Flush(view);
+    utassert(ViewValueIs(view, "  line1\n  line2\n  line3"));
+    ViewAct(view, InputAction::Outdent);
+    Flush(view);
+    utassert(ViewValueIs(view, "line1\nline2\nline3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_word_movement.
+static void MultiCursorWordMovement() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "on|e two three\none t|wo three\non|e two three");
+    ViewAct(view, InputAction::MoveToNextWord);
+    Flush(view);
+    utassert(
+        CursorsAreD(view, "one| two three\none two| three\none| two three"));
+    ViewAct(view, InputAction::MoveToPreviousWord);
+    Flush(view);
+    utassert(
+        CursorsAreD(view, "|one two three\none |two three\n|one two three"));
+    // Move to end/start of document collapses to a single cursor.
+    ViewAct(view, InputAction::MoveToEnd);
+    Flush(view);
+    int end[] = {len(InputValue(view.input))};
+    utassert(CursorListIsD(view.input, end, 1));
+    ViewAct(view, InputAction::MoveToStart);
+    Flush(view);
+    int start[] = {0};
+    utassert(CursorListIsD(view.input, start, 1));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_selection_commands.
+static void MultiCursorSelectionCommands() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "on|e two three\none t|wo three\non|e two three");
+    ViewAct(view, InputAction::SelectToStartOfLine);
+    Flush(view);
+    utassert(
+        CursorsAreD(view, "|one two three\n|one two three\n|one two three"));
+    // Select to document start collapses to the active cursor only.
+    SetupCursorsD(view, "on|e two three\none t|wo three\non|e two three");
+    ViewAct(view, InputAction::SelectToStart);
+    Flush(view);
+    int start[] = {0};
+    utassert(CursorListIsD(view.input, start, 1));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_replace_selection.
+static void MultiCursorReplaceSelection() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|a\n|b\n|c");
+    ViewAct(view, InputAction::SelectRight);
+    Flush(view);
+    Selection want[] = {{0, 1}, {2, 3}, {4, 5}};
+    utassert(RangesAreD(view.input, want, 3));
+    ViewTypeText(view, "x");
+    Flush(view);
+    utassert(CursorsAreD(view, "x|\nx|\nx|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_escape_collapses.
+static void MultiCursorEscapeCollapses() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|a\n|b\n|c");
+    ViewAct(view, InputAction::Escape);
+    Flush(view);
+    utassert(InputCursorCount(view.input) == 1);
+    InputViewFree(&view);
+}
+
+// state.rs test_build_columnar_selection: from row 0 col 1 to row 2 col 3.
+static void BuildColumnarSelection() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "abcd\nabcd\nabcd");
+    InputBuildColumnarSelection(view.input, view.app, view.win, {1, 0},
+                                {13, 0});
+    Selection want[] = {{1, 3}, {6, 8}, {11, 13}};
+    utassert(RangesAreD(view.input, want, 3));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_columnar_selection_keeps_width_over_short_rows: ends on the
+// short row, 3 columns past its end — the block still spans columns 1..5,
+// and only that row is clipped to what it has.
+static void ColumnarSelectionKeepsWidthOverShortRows() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "abcdef\nab\nabcdef");
+    InputBuildColumnarSelection(view.input, view.app, view.win, {1, 0}, {9, 3});
+    Selection want[] = {{1, 5}, {8, 9}};
+    utassert(RangesAreD(view.input, want, 2));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_multi_cursor_paste_distributes_lines: one clipboard line
+// per cursor.
+static void MultiCursorPasteDistributesLines() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "|1\n|2\n|3");
+    TestWriteToClipboard(StrL("x\ny\nz"));
+    ViewAct(view, InputAction::Paste);
+    Flush(view);
+    utassert(CursorsAreD(view, "x|1\ny|2\nz|3"));
+    InputViewFree(&view);
+}
+
+// state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
+// clipboard must not replace the selection with nothing. The test platform's
+// clipboard holds text, so the image arrives the way Paste hands a
+// clipboard item over (InputInsertClipboard) — after a Paste with nothing
+// on the clipboard, which must leave the selection alone as well.
+static void PasteWithoutTextLeavesTheSelectionAloneInAWindow() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("hello world"));
+    InputSelectAll(view.input, view.app, view.win);
+    TestWriteToClipboard(Str{});
+    ViewAct(view, InputAction::Paste);
+    utassert(ViewValueIs(view, "hello world"));
+    utassert(ViewRangeIs(view, 0, 11));
+    ClipboardItem image;
+    const uint8_t png[4] = {0x89, 'P', 'N', 'G'};
+    image.imageBytes = png;
+    image.imageBytesLen = 4;
+    InputInsertClipboard(view.input, view.app, view.win, image);
+    utassert(ViewValueIs(view, "hello world"));
+    utassert(ViewRangeIs(view, 0, 11));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_paste_target_tracks_edits_and_selections.
+static void PasteTargetTracksEditsAndSelectionsInAWindow() {
+    InputView view = MultiLineD();
+    SetupCursorsD(view, "ab|c");
+    InputPasteTarget target = InputPasteTargetOf(view.input);
+    // Nothing happened: a paste asked for then still applies.
+    utassert(InputPasteTargetOf(view.input) == target);
+    // Moving the caret changes where the paste would go.
+    InputRemoveExtraCursors(view.input);
+    view.input->selectedRange = {1, 1};
+    view.input->selectionReversed = false;
+    Flush(view);
+    InputPasteTarget moved = InputPasteTargetOf(view.input);
+    utassert(moved != target);
+    // Editing the text changes it too, even with the caret put back.
+    view.input->silentReplace = true;
+    ViewTypeText(view, "x");
+    view.input->silentReplace = false;
+    InputRemoveExtraCursors(view.input);
+    view.input->selectedRange = {1, 1};
+    Flush(view);
+    utassert(InputPasteTargetOf(view.input) != moved);
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsD() {
     EnterSplitRespectsSmartIndentOff();
     EnterSplitIsIndependentOfAutoClose();
@@ -7970,6 +8410,32 @@ static void RunWindowTestsD() {
     BlockOutdentClampsCursorInsideIndent();
     ImeRestoresOriginalSelection();
     NoopDoesNotChangeRedoSelection();
+    MultiCursorInsertText();
+    MultiCursorDeleteBackward();
+    MultiCursorDeleteForwardMerges();
+    MultiCursorMultilineInsertAndDelete();
+    AddCursorBelowPreservesColumn();
+    AddCursorAtRejectsDuplicates();
+    MultiCursorUndoRedoRestoresSelections();
+    MultiCursorUndoRedoDifferentLineLengths();
+    MultiCursorUndoMultipleInserts();
+    MultiCursorBackspaceRunIsOneUndo();
+    AddingACursorSplitsTheTypingGesture();
+    MultiCursorIndentIsOneUndo();
+    MultiCursorIndentThenOutdentRoundtrips();
+    InlineOutdentOnlyRemovesLineIndentation();
+    ReadonlyMultiCursorCommandsLeaveStateUnchanged();
+    MultiCursorEditPreservesTheActiveCursor();
+    BlockIndentOutdentWithSelection();
+    MultiCursorWordMovement();
+    MultiCursorSelectionCommands();
+    MultiCursorReplaceSelection();
+    MultiCursorEscapeCollapses();
+    BuildColumnarSelection();
+    ColumnarSelectionKeepsWidthOverShortRows();
+    MultiCursorPasteDistributesLines();
+    PasteWithoutTextLeavesTheSelectionAloneInAWindow();
+    PasteTargetTracksEditsAndSelectionsInAWindow();
 }
 
 static void RunWindowTests() {
