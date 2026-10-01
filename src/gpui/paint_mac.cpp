@@ -601,6 +601,50 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     CGContextRestoreGState(cg);
 }
 
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                     roundCaps);
+        return;
+    }
+    CGContextRef cg = Cg(ctx);
+    if (!cg || !p || CGPathIsEmpty(p->path)) {
+        return;
+    }
+    from = PaintFade(ctx, from);
+    to = PaintFade(ctx, to);
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGFloat comps[8] = {from.r / 255.0, from.g / 255.0, from.b / 255.0,
+                        from.a / 255.0, to.r / 255.0,   to.g / 255.0,
+                        to.b / 255.0,   to.a / 255.0};
+    CGFloat stops[2] = {0.0, 1.0};
+    CGGradientRef grad =
+        CGGradientCreateWithColorComponents(space, comps, stops, 2);
+    CGColorSpaceRelease(space);
+    if (!grad) {
+        PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
+        return;
+    }
+    // Core Graphics strokes with a colour, not a gradient: turn the stroke
+    // into the area it covers, clip to that, and lay PathFillGradient's
+    // gradient over it.
+    CGContextSaveGState(cg);
+    CGContextTranslateCTM(cg, dx, dy);
+    CGContextSetLineWidth(cg, stroke);
+    CGContextSetLineCap(cg, roundCaps ? kCGLineCapRound : kCGLineCapButt);
+    CGContextSetLineJoin(cg, roundCaps ? kCGLineJoinRound : kCGLineJoinMiter);
+    CGContextAddPath(cg, p->path);
+    CGContextReplacePathWithStrokedPath(cg);
+    CGContextClip(cg);
+    CGContextDrawLinearGradient(
+        cg, grad, CGPointMake(x0, y0), CGPointMake(x1, y1),
+        kCGGradientDrawsBeforeStartLocation | kCGGradientDrawsAfterEndLocation);
+    CGContextRestoreGState(cg);
+    CGGradientRelease(grad);
+}
+
 // ─── utf-8 / utf-16 offsets ───────────────────────────────────────────────
 //
 // Str is UTF-8 and Core Text indexes UTF-16, so the two have to be mapped the

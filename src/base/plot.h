@@ -292,8 +292,8 @@ struct PlotAxis {
     PlotAxis* ShowYAxis(bool value);
     PlotAxis* YLabel(const AxisText* labels, int count);
     PlotAxis* YLabelSide(AxisLabelSide value);
-    // The stroke of the axis lines. The runtime draws a line with a solid
-    // brush, so a gradient strokes with its first stop.
+    // The stroke of the axis lines; a gradient runs over the box each line
+    // covers.
     PlotAxis* Stroke(Background value);
     // x_texts / y_texts: the labels placed against the line at `at`, in
     // `arena`. Exposed so the tests reach them the way Rust's do.
@@ -301,6 +301,18 @@ struct PlotAxis {
     ArenaVec<Text> YTexts(Arena* arena, float at) const;
     void Paint(PaintCtx* ctx, Bounds bounds) const;
 };
+
+// grid.rs line_bounds: the box a 1px stroke of the axis-aligned line
+// `start`-`end` covers, centred on the coordinate as PathBuilder::stroke(1)
+// draws it.
+Bounds GridLineBounds(Point start, Point end);
+// grid.rs dash_segments: the line `start`-`end` cut into the dashes of
+// `dash`, walked from `start` with the SVG stroke-dasharray rules: values
+// alternate dash and gap, and an odd-length array repeats to an even one.
+// Each dash is appended to `out` as its two ends; without a dash array the
+// whole line is one.
+void GridDashSegments(Arena* arena, Point start, Point end, const float* dash,
+                      int dashCount, ArenaVec<Point>* out);
 
 // Axis-aligned grid lines across a plot, at the given x and y positions.
 struct Grid {
@@ -315,7 +327,8 @@ struct Grid {
     static Grid New();
     Grid* X(const float* values, int count);
     Grid* Y(const float* values, int count);
-    // The stroke of the grid lines; a gradient strokes with its first stop.
+    // The stroke of the grid lines; a gradient runs over the 1px box of each
+    // line, or of each dash of one.
     Grid* Stroke(Background value);
     Grid* DashArray(const float* values, int count);
     void Paint(PaintCtx* ctx, Bounds bounds) const;

@@ -62,6 +62,9 @@ enum PrimKind : uint8_t {
     kPPathFill,
     kPPathGradient,
     kPPathStroke,
+    // A stroke with PathFillGradient's two points in e0..e3 and its width in
+    // g0, which a path primitive has no other use for.
+    kPPathStrokeGradient,
     kPImage,
     kPText,
     kPTextSpans
@@ -813,6 +816,26 @@ void RecPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
     }
 }
 
+void RecPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                           float y0, float x1, float y1, Rgba from, Rgba to,
+                           bool roundCaps) {
+    Prim* prim =
+        EmitPath(ctx, p, kPPathStrokeGradient, stroke > 0 ? stroke : 1);
+    if (!prim) {
+        return;
+    }
+    prim->g0 = stroke;
+    prim->e0 = x0;
+    prim->e1 = y0;
+    prim->e2 = x1;
+    prim->e3 = y1;
+    prim->color = PaintFade(ctx, from);
+    prim->color2 = PaintFade(ctx, to);
+    if (roundCaps) {
+        prim->flags |= kFRoundCaps;
+    }
+}
+
 void RecImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                   Bounds imageBounds, int frameIndex, float radius,
                   bool grayscale) {
@@ -1495,7 +1518,8 @@ bool FrameEnd(PaintCtx* ctx, Bounds* damage) {
     gStats.pathPrims = 0;
     gStats.pathVerbs = gVerbs.len;
     for (int i = 0; i < gCur.len; i++) {
-        if (gCur[i].kind >= kPPathFill && gCur[i].kind <= kPPathStroke) {
+        if (gCur[i].kind >= kPPathFill &&
+            gCur[i].kind <= kPPathStrokeGradient) {
             gStats.pathPrims++;
         }
     }
@@ -1685,7 +1709,8 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
                 break;
             case kPPathFill:
             case kPPathGradient:
-            case kPPathStroke: {
+            case kPPathStroke:
+            case kPPathStrokeGradient: {
                 MaskEntry* mask = MaskFor(ctx, p);
                 if (mask) {
                     RenderImageDraw(ctx, mask->image, mask->bounds);
@@ -1702,6 +1727,10 @@ void Replay(PaintCtx* ctx, const Bounds* damage) {
                 } else if (p.kind == kPPathGradient) {
                     PathFillGradient(ctx, path, p.e0 - dx, p.e1 - dy, p.e2 - dx,
                                      p.e3 - dy, p.color, p.color2, dx, dy);
+                } else if (p.kind == kPPathStrokeGradient) {
+                    PathStrokeGradient(ctx, path, p.g0, p.e0 - dx, p.e1 - dy,
+                                       p.e2 - dx, p.e3 - dy, p.color, p.color2,
+                                       (p.flags & kFRoundCaps) != 0, dx, dy);
                 } else {
                     PathStroke(ctx, path, p.e1, p.color,
                                (p.flags & kFRoundCaps) != 0, dx, dy);

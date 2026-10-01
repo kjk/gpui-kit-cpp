@@ -5251,6 +5251,31 @@ static void FillBackground(PaintCtx* ctx, float x, float y, float w, float h,
     PathFree(p);
 }
 
+void CanvasEllipseGradient(PaintCtx* ctx, float cx, float cy, float rx,
+                           float ry, float x0, float y0, float x1, float y1,
+                           Rgba from, Rgba to) {
+    if (rx <= 0 || ry <= 0) {
+        return;
+    }
+    Path* p = PathNew(ctx, true);
+    if (!p) {
+        return;
+    }
+    // Four quarter arcs as cubics, the control points kappa of the radius
+    // out along each tangent.
+    const float k = 0.5522847498f;
+    float kx = rx * k;
+    float ky = ry * k;
+    PathMoveTo(p, cx + rx, cy);
+    PathCubicTo(p, cx + rx, cy + ky, cx + kx, cy + ry, cx, cy + ry);
+    PathCubicTo(p, cx - kx, cy + ry, cx - rx, cy + ky, cx - rx, cy);
+    PathCubicTo(p, cx - rx, cy - ky, cx - kx, cy - ry, cx, cy - ry);
+    PathCubicTo(p, cx + kx, cy - ry, cx + rx, cy - ky, cx + rx, cy);
+    PathClose(p);
+    PathFillGradient(ctx, p, x0, y0, x1, y1, from, to);
+    PathFree(p);
+}
+
 static void StrokeCorners(PaintCtx* ctx, float x, float y, float w, float h,
                           const Corners& c, float stroke, Rgba col) {
     if (w <= 0 || h <= 0) {

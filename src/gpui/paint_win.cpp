@@ -1325,6 +1325,54 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     Rel(&ss);
 }
 
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                     roundCaps);
+        return;
+    }
+    if (PaintGpuOn()) {
+        gpuw::PathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                 roundCaps, dx, dy);
+        return;
+    }
+    ID2D1PathGeometry* g = PathSeal(p);
+    if (!g || !ctx || !ctx->rt) {
+        return;
+    }
+    // The brush PathFillGradient builds, handed to DrawGeometry.
+    D2D1_GRADIENT_STOP gs[2];
+    gs[0].position = 0.f;
+    gs[0].color = ToD2D(PaintFade(ctx, from));
+    gs[1].position = 1.f;
+    gs[1].color = ToD2D(PaintFade(ctx, to));
+    ID2D1GradientStopCollection* stops = nullptr;
+    ctx->rt->rt->CreateGradientStopCollection(gs, 2, &stops);
+    bool stroked = false;
+    if (stops) {
+        ID2D1LinearGradientBrush* gb = nullptr;
+        ctx->rt->rt->CreateLinearGradientBrush(
+            D2D1::LinearGradientBrushProperties(D2D1::Point2F(x0, y0),
+                                                D2D1::Point2F(x1, y1)),
+            stops, &gb);
+        if (gb) {
+            ID2D1StrokeStyle* ss = DashStyle(ctx, nullptr, roundCaps);
+            bool offset = PathOffsetBegin(ctx, dx, dy);
+            ctx->rt->rt->DrawGeometry(g, gb, stroke, ss);
+            PathOffsetEnd(ctx, offset);
+            Rel(&ss);
+            gb->Release();
+            stroked = true;
+        }
+        stops->Release();
+    }
+    if (!stroked) {
+        PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
+    }
+}
+
 // ─── shaped text ──────────────────────────────────────────────────────────
 
 static IDWriteTextFormat* FontFor(PaintApp* pa, float fontSize,

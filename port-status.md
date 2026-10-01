@@ -120,16 +120,16 @@ macOS font-kit requirement on the website only. The current update target is
   custom plot's (the story's stacked bars) are built and laid out over the
   plot while it paints (`plot::PlotOverlayAttach`, `src/ui/plot.h`). The
   tooltip closures receive the datum's index rather than the datum.
-- **Base plot values are float and gradient strokes are solid.** The scales
-  take `float` domains, so Rust's `PlotValue` bound (f32, f64, Decimal) has
-  no counterpart, and a range is a pointer and count read as its first two
-  entries. `PlotAxis` and `Grid` lines and a line's dots take a
-  `Background`, but the runtime draws lines and ellipses with one color, so
-  a gradient paints its first stop. There is no `PlotElement` or `Plot`
-  trait: charts track hover with `TrackHover` and their appear with
-  `TrackAppear` under their own id scope (`src/base/plot.cpp`), and
-  `Plot::interactive` / `appear_generation` are `PlotInteractive` /
-  `AppearGeneration` on each chart.
+- **Base plot values are float.** The scales take `float` domains, so
+  Rust's `PlotValue` bound (f32, f64, Decimal) has no counterpart, and a
+  range is a pointer and count read as its first two entries. There is no
+  `PlotElement` or `Plot` trait: charts track hover with `TrackHover` and
+  their appear with `TrackAppear` under their own id scope
+  (`src/base/plot.cpp`), and `Plot::interactive` / `appear_generation` are
+  `PlotInteractive` / `AppearGeneration` on each chart. A gradient stroke
+  on a line or area runs over the box of the points the path passes
+  through, where GPUI's spans the tessellated path's bounds; a natural
+  curve's overshoot between two points is outside it.
 - **The styled Popover takes its surface from the caller.** It has no
   `appearance`, `popover_style().p_3()` or child list; `Content` is the whole
   styled surface. So `arrow` fills with that surface's background and outlines

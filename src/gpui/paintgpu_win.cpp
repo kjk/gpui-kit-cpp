@@ -1762,11 +1762,40 @@ static void Quad(PaintCtx* ctx, int kind, float x, float y, float w, float h,
     Push(i);
 }
 
+// While PathStrokeGradient runs: the gradient its triangles take their
+// colour from. A linear gradient is linear in position, so a vertex coloured
+// by where it sits along the gradient line and interpolated across the
+// triangle is the gradient, as long as no triangle straddles an end the
+// colour clamps at, which a line over the stroke's own bounds keeps them from.
+struct StrokeGradient {
+    bool on = false;
+    float x0 = 0, y0 = 0, dx = 0, dy = 0, len2 = 0;
+    Rgba from = {};
+    Rgba to = {};
+};
+static StrokeGradient gStrokeGradient;
+
+static Rgba StrokeGradientAt(float x, float y) {
+    const StrokeGradient& g = gStrokeGradient;
+    float t =
+        g.len2 > 0 ? ((x - g.x0) * g.dx + (y - g.y0) * g.dy) / g.len2 : 0.f;
+    t = t < 0 ? 0 : (t > 1 ? 1 : t);
+    Rgba out;
+    out.r = (uint8_t)lroundf(g.from.r + (g.to.r - g.from.r) * t);
+    out.g = (uint8_t)lroundf(g.from.g + (g.to.g - g.from.g) * t);
+    out.b = (uint8_t)lroundf(g.from.b + (g.to.b - g.from.b) * t);
+    out.a = (uint8_t)lroundf(g.from.a + (g.to.a - g.from.a) * t);
+    return out;
+}
+
 static void TriVertex(float x, float y, Rgba c) {
     EnsureTriPhase();
     TriVert v = {};
     v.x = x;
     v.y = y;
+    if (gStrokeGradient.on) {
+        c = StrokeGradientAt(x, y);
+    }
     SetColor(v.color, c);
     memcpy(v.clip, gB.clip, sizeof(v.clip));
     VecAppend(gB.tris, v);
@@ -2845,6 +2874,38 @@ void PathStroke(PaintCtx* ctx, Path* path, float stroke, Rgba c, bool roundCaps,
     }
 }
 
+void PathStrokeGradient(PaintCtx* ctx, Path* path, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    from = PaintFade(ctx, from);
+    to = PaintFade(ctx, to);
+    if (from.a == 0 && to.a == 0) {
+        return;
+    }
+    // The stroke's triangles, each vertex coloured where it sits on the
+    // gradient (TriVertex). PathStroke fades and skips on the colour it is
+    // handed, so it gets an opaque stand-in; the faded stops are already in
+    // the gradient.
+    StrokeGradient& g = gStrokeGradient;
+    g.x0 = x0 + dx;
+    g.y0 = y0 + dy;
+    g.dx = x1 - x0;
+    g.dy = y1 - y0;
+    g.len2 = g.dx * g.dx + g.dy * g.dy;
+    g.from = from;
+    g.to = to;
+    g.on = true;
+    float opacity = ctx ? ctx->opacity : 1.f;
+    if (ctx) {
+        ctx->opacity = 1.f;
+    }
+    gpuw::PathStroke(ctx, path, stroke, Rgba{0, 0, 0, 255}, roundCaps, dx, dy);
+    if (ctx) {
+        ctx->opacity = opacity;
+    }
+    g.on = false;
+}
+
 // ─── images ──────────────────────────────────────────────────────────────
 //
 // The WIC decode is shared with the D2D backend; what is not shared is the
@@ -3624,6 +3685,8 @@ void PathFill(PaintCtx*, Path*, Rgba, float, float) {}
 void PathFillGradient(PaintCtx*, Path*, float, float, float, float, Rgba, Rgba,
                       float, float) {}
 void PathStroke(PaintCtx*, Path*, float, Rgba, bool, float, float) {}
+void PathStrokeGradient(PaintCtx*, Path*, float, float, float, float, float,
+                        Rgba, Rgba, bool, float, float) {}
 void PathRealize(PaintCtx*, Path*) {}
 void RenderImageDraw(PaintCtx*, RenderImage*, Bounds, Bounds, int, float,
                      bool) {}

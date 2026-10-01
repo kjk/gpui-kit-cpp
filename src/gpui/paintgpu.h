@@ -127,6 +127,9 @@ void PathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                       float y1, Rgba from, Rgba to, float dx, float dy);
 void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
                 float dx, float dy);
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy);
 void PathRealize(PaintCtx* ctx, Path* p);
 
 void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,

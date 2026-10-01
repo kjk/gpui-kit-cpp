@@ -300,14 +300,91 @@ static void PaintPathFill(PaintCtx* ctx, Path* path, Background fill,
                      fill.to.color);
 }
 
-// GPUI accepts Background for a path stroke. The portable backend's stroke
-// primitive is a solid brush, so the representative first stop is used for
-// gradient strokes; fills retain the complete two-stop gradient above.
+// window.paint_path(stroked, background): a gradient runs over the box the
+// stroke covers, which is GPUI's path bounds. `box` is that box; a solid
+// stroke does not read it.
 static void PaintPathStroke(PaintCtx* ctx, Path* path, float width,
-                            Background stroke) {
-    if (path) {
-        PathStroke(ctx, path, width, stroke.color);
+                            Background stroke, Bounds box) {
+    if (!path) {
+        return;
     }
+    if (!stroke.gradient) {
+        PathStroke(ctx, path, width, stroke.color);
+        return;
+    }
+    Point p0 = {}, p1 = {};
+    BackgroundLine(stroke, box, &p0, &p1);
+    PathStrokeGradient(ctx, path, width, p0.x, p0.y, p1.x, p1.y,
+                       stroke.from.color, stroke.to.color);
+}
+
+// The box a stroke `width` wide through `points` covers. Read off the points
+// the path runs through, so a natural curve's overshoot between two of them
+// is left out of the box its gradient spans.
+static Bounds StrokeBox(const Point* points, int count, float width) {
+    if (!points || count <= 0) {
+        return Bounds{};
+    }
+    float x0 = points[0].x, y0 = points[0].y, x1 = x0, y1 = y0;
+    for (int i = 1; i < count; i++) {
+        x0 = points[i].x < x0 ? points[i].x : x0;
+        y0 = points[i].y < y0 ? points[i].y : y0;
+        x1 = points[i].x > x1 ? points[i].x : x1;
+        y1 = points[i].y > y1 ? points[i].y : y1;
+    }
+    float half = width * 0.5f;
+    return Bounds{x0 - half, y0 - half, x1 - x0 + width, y1 - y0 + width};
+}
+
+// window.paint_quad(fill(box, background)): a solid rectangle, or one
+// filled with the gradient laid over its own box.
+static void PaintQuadFill(PaintCtx* ctx, Bounds box, Background fill) {
+    if (box.w <= 0 || box.h <= 0) {
+        return;
+    }
+    if (!fill.gradient) {
+        CanvasFillRect(ctx, box.x, box.y, box.w, box.h, fill.color);
+        return;
+    }
+    Path* path = PathNew(ctx, true);
+    if (!path) {
+        return;
+    }
+    PathMoveTo(path, box.x, box.y);
+    PathLineTo(path, box.x + box.w, box.y);
+    PathLineTo(path, box.x + box.w, box.y + box.h);
+    PathLineTo(path, box.x, box.y + box.h);
+    PathClose(path);
+    PaintPathFill(ctx, path, fill, box);
+    PathFree(path);
+}
+
+Bounds GridLineBounds(Point start, Point end) {
+    if (start.x == end.x) {
+        float top = start.y < end.y ? start.y : end.y;
+        float bottom = start.y > end.y ? start.y : end.y;
+        return Bounds{start.x - 0.5f, top, 1.f, bottom - top};
+    }
+    float left = start.x < end.x ? start.x : end.x;
+    float right = start.x > end.x ? start.x : end.x;
+    return Bounds{left, start.y - 0.5f, right - left, 1.f};
+}
+
+// axis.rs draw_axis: a 1px stroked path in `stroke`. A solid one is drawn
+// as a line, and a gradient runs over the box the line covers.
+static void PaintAxisLine(PaintCtx* ctx, Point a, Point b, Background stroke) {
+    if (!stroke.gradient) {
+        CanvasLine(ctx, a.x, a.y, b.x, b.y, 1, stroke.color);
+        return;
+    }
+    Path* path = PathNew(ctx, false);
+    if (!path) {
+        return;
+    }
+    PathMoveTo(path, a.x, a.y);
+    PathLineTo(path, b.x, b.y);
+    PaintPathStroke(ctx, path, 1, stroke, GridLineBounds(a, b));
+    PathFree(path);
 }
 
 Path* Polygon(PaintCtx* ctx, const Point* points, int count, Bounds bounds) {
@@ -564,8 +641,8 @@ void PlotAxis::Paint(PaintCtx* ctx, Bounds bounds) const {
     Arena* arena = a ? a : GetTempArena();
     if (hasX) {
         if (xAxis) {
-            CanvasLine(ctx, bounds.x, bounds.y + x, bounds.x + bounds.w,
-                       bounds.y + x, 1, stroke.color);
+            PaintAxisLine(ctx, {bounds.x, bounds.y + x},
+                          {bounds.x + bounds.w, bounds.y + x}, stroke);
         }
         PlotLabel label = PlotLabel::New(arena);
         label.items = XTexts(arena, x);
@@ -573,8 +650,8 @@ void PlotAxis::Paint(PaintCtx* ctx, Bounds bounds) const {
     }
     if (hasY) {
         if (yAxis) {
-            CanvasLine(ctx, bounds.x + y, bounds.y, bounds.x + y,
-                       bounds.y + bounds.h, 1, stroke.color);
+            PaintAxisLine(ctx, {bounds.x + y, bounds.y},
+                          {bounds.x + y, bounds.y + bounds.h}, stroke);
         }
         PlotLabel label = PlotLabel::New(arena);
         label.items = YTexts(arena, y);
@@ -609,47 +686,52 @@ Grid* Grid::DashArray(const float* values, int count) {
     return this;
 }
 
-static void PaintPlotLine(PaintCtx* ctx, Point a, Point b, Rgba color,
-                          const float* dash, int dashCount) {
-    if (!dash || dashCount <= 0) {
-        CanvasLine(ctx, a.x, a.y, b.x, b.y, 1, color);
-        return;
-    }
-    float dx = b.x - a.x;
-    float dy = b.y - a.y;
+void GridDashSegments(Arena* arena, Point start, Point end, const float* dash,
+                      int dashCount, ArenaVec<Point>* out) {
+    float dx = end.x - start.x;
+    float dy = end.y - start.y;
     float length = sqrtf(dx * dx + dy * dy);
-    float pattern = 0;
-    for (int i = 0; i < dashCount; i++) {
-        if (dash[i] > 0) {
-            pattern += dash[i];
-        }
+    bool anyDash = false;
+    for (int i = 0; dash && i < dashCount; i++) {
+        anyDash = anyDash || dash[i] > 0;
     }
-    if (length <= 0 || pattern <= 0) {
-        CanvasLine(ctx, a.x, a.y, b.x, b.y, 1, color);
+    if (!dash || dashCount <= 0 || length <= 0 || !anyDash) {
+        out->Append(arena, start);
+        out->Append(arena, end);
         return;
     }
-    float ux = dx / length;
-    float uy = dy / length;
-    float at = 0;
-    int ix = 0;
-    bool draw = true;
-    while (at < length) {
-        float run = dash[ix] > 0 ? dash[ix] : 0;
-        float end = at + run;
-        if (end > length) {
-            end = length;
+    int patternLen = dashCount % 2 == 1 ? dashCount * 2 : dashCount;
+    float position = 0;
+    int index = 0;
+    while (position < length) {
+        float run = dash[index % dashCount] > 0 ? dash[index % dashCount] : 0;
+        float next = position + run < length ? position + run : length;
+        if (index % 2 == 0 && next > position) {
+            out->Append(arena, Point{start.x + dx * position / length,
+                                     start.y + dy * position / length});
+            out->Append(arena, Point{start.x + dx * next / length,
+                                     start.y + dy * next / length});
         }
-        if (draw && end > at) {
-            CanvasLine(ctx, a.x + ux * at, a.y + uy * at, a.x + ux * end,
-                       a.y + uy * end, 1, color);
-        }
-        at = end;
-        ix = (ix + 1) % dashCount;
-        draw = !draw;
-        if (run <= 0) {
-            // A whole zero pattern was handled above; advancing the index is
-            // enough to avoid stalling on an individual zero entry.
-            continue;
+        position = next;
+        index = (index + 1) % patternLen;
+    }
+}
+
+// Each line, or each dash of one: drawn as a line when the stroke is solid,
+// and as the 1px quad grid.rs fills when it is a gradient, which runs over
+// that quad's own box.
+static void PaintGridLine(PaintCtx* ctx, Point a, Point b, Background stroke,
+                          const float* dash, int dashCount) {
+    Arena* arena = GetTempArena();
+    ArenaVec<Point> segments;
+    GridDashSegments(arena, a, b, dash, dashCount, &segments);
+    for (int i = 0; i + 1 < len(segments); i += 2) {
+        Point from = segments[i];
+        Point to = segments[i + 1];
+        if (!stroke.gradient) {
+            CanvasLine(ctx, from.x, from.y, to.x, to.y, 1, stroke.color);
+        } else {
+            PaintQuadFill(ctx, GridLineBounds(from, to), stroke);
         }
     }
 }
@@ -657,13 +739,13 @@ static void PaintPlotLine(PaintCtx* ctx, Point a, Point b, Rgba color,
 void Grid::Paint(PaintCtx* ctx, Bounds bounds) const {
     for (int i = 0; i < xCount; i++) {
         float px = bounds.x + x[i];
-        PaintPlotLine(ctx, {px, bounds.y}, {px, bounds.y + bounds.h},
-                      stroke.color, dashArray, dashCount);
+        PaintGridLine(ctx, {px, bounds.y}, {px, bounds.y + bounds.h}, stroke,
+                      dashArray, dashCount);
     }
     for (int i = 0; i < yCount; i++) {
         float py = bounds.y + y[i];
-        PaintPlotLine(ctx, {bounds.x, py}, {bounds.x + bounds.w, py},
-                      stroke.color, dashArray, dashCount);
+        PaintGridLine(ctx, {bounds.x, py}, {bounds.x + bounds.w, py}, stroke,
+                      dashArray, dashCount);
     }
 }
 
@@ -805,15 +887,23 @@ static Vec<Point> ResolveLinePoints(const Line& line, Bounds bounds) {
 
 // paint_dot: a round quad in the dot fill with a 1px border in the dot
 // stroke, which defaults to the fill when that is a solid color and to
-// nothing when it is a gradient. The runtime's ellipse takes one color, so a
-// gradient fill paints its first stop.
+// nothing when it is a gradient. A gradient fill runs over the dot's own box.
 static void PaintDot(PaintCtx* ctx, Point point, float size, Background fill,
                      bool hasStroke, Rgba stroke) {
     float radius = size * 0.5f;
     Rgba edge = hasStroke        ? stroke
                 : !fill.gradient ? fill.color
                                  : RgbaTransparent();
-    CanvasEllipse(ctx, point.x, point.y, radius, radius, 0, fill.color);
+    if (fill.gradient) {
+        Point p0 = {}, p1 = {};
+        BackgroundLine(fill,
+                       Bounds{point.x - radius, point.y - radius, size, size},
+                       &p0, &p1);
+        CanvasEllipseGradient(ctx, point.x, point.y, radius, radius, p0.x, p0.y,
+                              p1.x, p1.y, fill.from.color, fill.to.color);
+    } else {
+        CanvasEllipse(ctx, point.x, point.y, radius, radius, 0, fill.color);
+    }
     CanvasEllipse(ctx, point.x, point.y, radius, radius, 1, edge);
 }
 
@@ -822,7 +912,8 @@ void Line::Paint(PaintCtx* ctx, Bounds bounds) const {
     if (len(points) > 0) {
         Path* path = PathNew(ctx, false);
         PlotRun(path, points, curve);
-        PaintPathStroke(ctx, path, strokeWidth, stroke);
+        PaintPathStroke(ctx, path, strokeWidth, stroke,
+                        StrokeBox(points.els, len(points), strokeWidth));
         PathFree(path);
     }
     if (dot) {
@@ -910,7 +1001,8 @@ void Area::Paint(PaintCtx* ctx, Bounds bounds) const {
         PathClose(area);
     }
     PaintPathFill(ctx, area, fill, bounds);
-    PaintPathStroke(ctx, line, 1, stroke);
+    PaintPathStroke(ctx, line, 1, stroke,
+                    StrokeBox(points.els, len(points), 1));
     PathFree(area);
     PathFree(line);
 }
@@ -1372,7 +1464,8 @@ void RadialLine::Paint(PaintCtx* ctx, Bounds bounds) const {
         if (closed && len(points) > 2) {
             PathClose(path);
         }
-        PaintPathStroke(ctx, path, strokeWidth, stroke);
+        PaintPathStroke(ctx, path, strokeWidth, stroke,
+                        StrokeBox(points.els, len(points), strokeWidth));
         PathFree(path);
     }
     if (dot) {

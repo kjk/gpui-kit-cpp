@@ -272,6 +272,12 @@ void CanvasLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
 // stroke <= 0 fills the ellipse instead of stroking it.
 void CanvasEllipse(PaintCtx* ctx, float cx, float cy, float rx, float ry,
                    float stroke, Rgba c);
+// CanvasEllipse filled with a linear gradient from `from` at (x0, y0) to `to`
+// at (x1, y1). Portable: the ellipse is a path of four cubics, filled by
+// every backend's PathFillGradient (src/gpui/gpui.cpp).
+void CanvasEllipseGradient(PaintCtx* ctx, float cx, float cy, float rx,
+                           float ry, float x0, float y0, float x1, float y1,
+                           Rgba from, Rgba to);
 void CanvasPushClip(PaintCtx* ctx, float x, float y, float w, float h);
 void CanvasPopClip(PaintCtx* ctx);
 
@@ -308,6 +314,13 @@ void PathFillGradientV(PaintCtx* ctx, Path* p, float y0, float y1, Rgba top,
                        Rgba bot);
 void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
                 bool roundCaps = false, float dx = 0, float dy = 0);
+// PathStroke painted with a linear gradient from `from` at (x0, y0) to `to`
+// at (x1, y1), as PathFillGradient fills: what GPUI's paint_path does with a
+// stroked path and a gradient Background. The points are where the caller's
+// BackgroundLine put them over the stroke's bounds.
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps = false, float dx = 0, float dy = 0);
 // Say that `p` is about to be drawn more than once, so a backend that can
 // pay a tessellation forward does it now: D2D builds a geometry realization,
 // which is the one thing that makes a path cheap to fill twice. A backend

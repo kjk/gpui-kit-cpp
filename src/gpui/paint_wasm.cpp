@@ -542,6 +542,29 @@ EM_JS(void, GpJsPathStroke,
     c.restore();
 });
 
+EM_JS(void, GpJsPathStrokeGradient,
+      (int id, float stroke, float x0, float y0, float x1, float y1, int from,
+       int to, int roundCaps, float dx, float dy), {
+    const G = globalThis.__gpui;
+    const c = G.cur, e = G.paths[id];
+    if (!c || !e) {
+        return;
+    }
+    c.save();
+    c.translate(dx, dy);
+    const g = c.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, G.color(from));
+    g.addColorStop(1, G.color(to));
+    c.strokeStyle = g;
+    c.lineWidth = stroke;
+    c.lineCap = roundCaps ? "round" : "butt";
+    c.lineJoin = roundCaps ? "round" : "miter";
+    c.stroke(e.p);
+    c.lineCap = "butt";
+    c.lineJoin = "miter";
+    c.restore();
+});
+
 EM_JS(void, GpJsPathFree, (int id), {
     const G = globalThis.__gpui;
     G.release(G.paths, G.pathFree, id);
@@ -1402,6 +1425,22 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
         return;
     }
     GpJsPathStroke(id, stroke, (int)Packed(ctx, c), roundCaps ? 1 : 0, dx, dy);
+}
+
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                     roundCaps);
+        return;
+    }
+    int id = JsPath(p);
+    if (!id || !ctx || !ctx->rt) {
+        return;
+    }
+    GpJsPathStrokeGradient(id, stroke, x0, y0, x1, y1, (int)Packed(ctx, from),
+                           (int)Packed(ctx, to), roundCaps ? 1 : 0, dx, dy);
 }
 
 // ─── images ───────────────────────────────────────────────────────────────

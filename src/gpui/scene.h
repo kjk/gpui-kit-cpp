@@ -155,6 +155,9 @@ void RecPathFillGradient(PaintCtx* ctx, Path* p, float x0, float y0, float x1,
                          float y1, Rgba from, Rgba to);
 void RecPathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c,
                    bool roundCaps);
+void RecPathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                           float y0, float x1, float y1, Rgba from, Rgba to,
+                           bool roundCaps);
 
 void RecImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
                   Bounds imageBounds, int frameIndex, float radius,

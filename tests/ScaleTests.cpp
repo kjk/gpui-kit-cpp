@@ -927,6 +927,107 @@ static void PlotWithoutAScopeARemountReplays() {
     utassertnear(h.Frame(1.3, -1, true, 0), 0.f);
 }
 
+// grid.rs: solid_line_is_one_segment, dashes_alternate_and_clip_at_the_end,
+// odd_dash_array_repeats_like_svg and
+// line_box_is_one_pixel_centred_on_the_coordinate.
+static void PlotGridDashSegments() {
+    Arena* a = ArenaNew();
+    ArenaVec<Point> solid;
+    gpui::plot::GridDashSegments(a, {0, 5}, {10, 5}, nullptr, 0, &solid);
+    utassert(len(solid) == 2 && solid[0].x == 0 && solid[1].x == 10);
+    const float empty[1] = {0};
+    ArenaVec<Point> none;
+    gpui::plot::GridDashSegments(a, {0, 5}, {10, 5}, empty, 0, &none);
+    utassert(len(none) == 2 && none[0].x == 0 && none[1].x == 10);
+
+    const float dashes[2] = {4, 2};
+    ArenaVec<Point> clipped;
+    gpui::plot::GridDashSegments(a, {0, 5}, {11, 5}, dashes, 2, &clipped);
+    utassert(len(clipped) == 4);
+    utassertnear(clipped[0].x, 0);
+    utassertnear(clipped[1].x, 4);
+    utassertnear(clipped[2].x, 6);
+    utassertnear(clipped[3].x, 10);
+
+    // 5,3,2 is 5 on, 3 off, 2 on, 5 off, 3 on, 2 off.
+    const float odd[3] = {5, 3, 2};
+    ArenaVec<Point> svg;
+    gpui::plot::GridDashSegments(a, {0, 0}, {0, 20}, odd, 3, &svg);
+    const float want[6] = {0, 5, 8, 10, 15, 18};
+    utassert(len(svg) == 6);
+    for (int i = 0; i < 6 && i < len(svg); i++) {
+        utassertnear(svg[i].y, want[i]);
+    }
+
+    Bounds vertical = gpui::plot::GridLineBounds({10, 0}, {10, 40});
+    utassertnear(vertical.x, 9.5f);
+    utassertnear(vertical.y, 0);
+    utassertnear(vertical.w, 1);
+    utassertnear(vertical.h, 40);
+    Bounds horizontal = gpui::plot::GridLineBounds({40, 7}, {0, 7});
+    utassertnear(horizontal.x, 0);
+    utassertnear(horizontal.y, 6.5f);
+    utassertnear(horizontal.w, 40);
+    utassertnear(horizontal.h, 1);
+    ArenaDelete(a);
+}
+
+// A gradient stroke, grid line and dot paint the whole gradient rather than
+// its first stop: red at the left end, blue at the right. The pixels come
+// back premultiplied BGRA.
+static void PlotGradientStrokesAndDotsPaintBothStops() {
+#if !GPUI_OS_WASM
+    App* app = AppNew();
+    if (!app) {
+        return;
+    }
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    const int kW = 64;
+    const int kH = 48;
+    if (PaintTargetBeginOffscreen(&paint, kW, kH)) {
+        Rgba red = Rgba8(255, 0, 0, 255);
+        Rgba blue = Rgba8(0, 0, 255, 255);
+        // 90 degrees runs left to right.
+        Background ramp =
+            BackgroundLinear(90, ColorStopAt(red, 0), ColorStopAt(blue, 1));
+        // A 4px stroked path along y = 6.
+        Path* path = PathNew(&paint, false);
+        PathMoveTo(path, 4, 6);
+        PathLineTo(path, 60, 6);
+        PathStrokeGradient(&paint, path, 4, 4, 6, 60, 6, red, blue);
+        PathFree(path);
+        // A grid line along y = 20 across the whole width.
+        const float gridY[1] = {20};
+        gpui::plot::Grid::New().Y(gridY, 1)->Stroke(ramp)->Paint(
+            &paint, Bounds{0, 0, (float)kW, (float)kH});
+        // A 16px dot at (32, 36) filled with the same ramp.
+        CanvasEllipseGradient(&paint, 32, 36, 8, 8, 24, 36, 40, 36, red, blue);
+        uint8_t* px = (uint8_t*)Alloc(arena, kW * kH * 4);
+        utassert(PaintTargetEndOffscreen(&paint, px));
+        auto redish = [&](int x, int y) {
+            const uint8_t* p = px + (y * kW + x) * 4;
+            return p[3] > 100 && p[2] > p[0] + 60;
+        };
+        auto blueish = [&](int x, int y) {
+            const uint8_t* p = px + (y * kW + x) * 4;
+            return p[3] > 100 && p[0] > p[2] + 60;
+        };
+        utassert(redish(6, 6) && blueish(58, 6));
+        utassert(redish(2, 20) && blueish(61, 20));
+        utassert(redish(26, 36) && blueish(38, 36));
+        // Off the dot, nothing.
+        utassert(px[(36 * kW + 2) * 4 + 3] == 0);
+    }
+    TextMeasClear(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
 void TestScale() {
     TestSuite("scale/linear");
     ScaleLinearBasics();
@@ -975,6 +1076,8 @@ void TestScale() {
     PlotAxisBuilderOrderDoesNotMoveLabels();
     PlotAxisGutterFitsDefaultLabels();
     PlotBarAndAxisContracts();
+    PlotGridDashSegments();
+    PlotGradientStrokesAndDotsPaintBothStops();
 
     TestSuite("plot/appear");
     PlotCompleteAppear();

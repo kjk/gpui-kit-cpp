@@ -678,6 +678,50 @@ void PathStroke(PaintCtx* ctx, Path* p, float stroke, Rgba c, bool roundCaps,
     cairo_restore(cr);
 }
 
+void PathStrokeGradient(PaintCtx* ctx, Path* p, float stroke, float x0,
+                        float y0, float x1, float y1, Rgba from, Rgba to,
+                        bool roundCaps, float dx, float dy) {
+    if (scene::Recording()) {
+        scene::RecPathStrokeGradient(ctx, p, stroke, x0, y0, x1, y1, from, to,
+                                     roundCaps);
+        return;
+    }
+    cairo_t* cr = Cr(ctx);
+    if (!cr) {
+        return;
+    }
+    cairo_pattern_t* pat = cairo_pattern_create_linear(x0, y0, x1, y1);
+    if (!pat) {
+        PathStroke(ctx, p, stroke, from, roundCaps, dx, dy);
+        return;
+    }
+    cairo_save(cr);
+    cairo_translate(cr, dx, dy);
+    if (!Replay(cr, p)) {
+        cairo_pattern_destroy(pat);
+        cairo_restore(cr);
+        return;
+    }
+    // PathFillGradient's pattern as the source of PathStroke's stroke.
+    from = PaintFade(ctx, from);
+    to = PaintFade(ctx, to);
+    cairo_pattern_add_color_stop_rgba(pat, 0, from.r / 255.0, from.g / 255.0,
+                                      from.b / 255.0, from.a / 255.0);
+    cairo_pattern_add_color_stop_rgba(pat, 1, to.r / 255.0, to.g / 255.0,
+                                      to.b / 255.0, to.a / 255.0);
+    cairo_set_source(cr, pat);
+    cairo_set_line_width(cr, stroke);
+    cairo_set_line_cap(cr,
+                       roundCaps ? CAIRO_LINE_CAP_ROUND : CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(
+        cr, roundCaps ? CAIRO_LINE_JOIN_ROUND : CAIRO_LINE_JOIN_MITER);
+    cairo_stroke(cr);
+    cairo_set_line_cap(cr, CAIRO_LINE_CAP_BUTT);
+    cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+    cairo_pattern_destroy(pat);
+    cairo_restore(cr);
+}
+
 // ─── images ───────────────────────────────────────────────────────────────
 //
 // gdk-pixbuf is the system decoder (PNG, JPEG, GIF, WebP when the loader is
