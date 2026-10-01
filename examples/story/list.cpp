@@ -239,13 +239,13 @@ El* ListStory::Render(ListStory* self, Ctx* cx) {
 
     // The list is the component now: it owns the rows' identity, the search
     // field, and what a click does to the selection. Only the rows the frame
-    // can show are ever built, which is what the delegate is for.
+    // can show are ever built, which is what the delegate is for. It is
+    // `flex_1()` under the toolbar and fills what the toolbar leaves.
     if (st) {
         st->loading = self->loading;
     }
     component::List* list =
         component::List::New(cx, StrL("list-story"), self->list)
-            ->H(WindowSize(cx->win).dipH - 247)
             ->Padding(8)
             ->Headers(&SectionHeader, &SectionFooter)
             ->Items(self, &RenderQuote);

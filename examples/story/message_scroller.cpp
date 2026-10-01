@@ -7,12 +7,10 @@ static const float kMsSectionMaxW = 720;
 // preview_frame: w(rems(26.)) by h(rems(19.)), less its one-pixel border.
 static const float kMsPreviewW = 416;
 static const float kMsPreviewH = 304;
-// The main demo frame: w_96 by h(rems(35.)). The transcript is given the
-// height the header and composer leave it, because the virtual list here is
-// told how tall its viewport is rather than filling a flexible box.
+// The main demo frame: w_96 by h(rems(35.)). The transcript fills what the
+// header and the composer leave it.
 static const float kMsFrameW = 384;
 static const float kMsFrameH = 560;
-static const float kMsFrameListH = 360;
 
 static const int kMsInitialStreamMessageCount = 7;
 
@@ -507,8 +505,8 @@ static void MsCustomJumpButton(component::Button* button) {
 
 static El* MsSection(Ctx* cx, const char* title, const char* desc, float gap) {
     El* section = StorySection(cx, title, desc);
-    StorySectionBody(section)->FlexCol()->Gap(gap)->PadT(6)
-        ->MaxW(kMsSectionMaxW);
+    StorySectionBody(section)->FlexCol()->Gap(gap)->PadT(6)->MaxW(
+        kMsSectionMaxW);
     return section;
 }
 
@@ -616,13 +614,14 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
                         ->IntoEl()));
     Style listPad = {};
     listPad.pad = Edges::New(20, 20, 20, 20);
-    frame->Child(component::MessageScroller::New(
-                     cx, StrL("message-scroller-demo"), self->scroller, &MsRow,
-                     MsRowsOf(cx, &self->messages, self->unreadIndex))
-                     ->H(kMsFrameListH)
-                     ->WithListStyle(listPad, StyleFieldPad)
-                     ->WithBottomFade(th.background)
-                     ->IntoEl());
+    // div().flex_1().min_h_0().child(MessageScroller::new(..)).
+    frame->Child(Div(a)->W(kFill)->Flex1()->MinH(0)->Child(
+        component::MessageScroller::New(
+            cx, StrL("message-scroller-demo"), self->scroller, &MsRow,
+            MsRowsOf(cx, &self->messages, self->unreadIndex))
+            ->WithListStyle(listPad, StyleFieldPad)
+            ->WithBottomFade(th.background)
+            ->IntoEl()));
     frame->Child(Div(a)->W(kFill)->PadX(20)->PadB(20)->Child(
         Div(a)
             ->FlexCol()
@@ -703,7 +702,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
                                cx, StrL("message-scroller-streaming"),
                                self->streamScroller, &MsRow,
                                MsRowsOf(cx, &self->streamMessages, -1))
-                               ->H(kMsPreviewH - 2)
                                ->WithListStyle(previewPad, StyleFieldPad)
                                ->WithBottomFade(th.background)
                                ->IntoEl()));
@@ -747,7 +745,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
             cx, component::MessageScroller::New(
                     cx, StrL("message-scroller-history"), self->historyScroller,
                     &MsRow, MsRowsOf(cx, &self->historyMessages, -1))
-                    ->H(kMsPreviewH - 2)
                     ->WithListStyle(previewPad, StyleFieldPad)
                     ->WithBottomFade(th.background)
                     ->IntoEl()));
@@ -786,7 +783,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
                                cx, StrL("message-scroller-navigation"),
                                self->navigationScroller, &MsRow,
                                MsRowsOf(cx, &self->previewMessages, -1))
-                               ->H(kMsPreviewH - 2)
                                ->WithListStyle(previewPad, StyleFieldPad)
                                ->WithBottomFade(th.background)
                                ->IntoEl()));
@@ -835,7 +831,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
             ->Child(component::MessageScroller::New(
                         cx, StrL("message-scroller-empty"), self->emptyScroller,
                         &MsRow, MsRowsOf(cx, &self->emptyMessages, -1))
-                        ->H(222)
                         ->WithListStyle(previewPad, StyleFieldPad)
                         ->WithBottomFade(th.background)
                         ->IntoEl());
@@ -878,7 +873,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
                     cx, StrL("message-scroller-custom-control"),
                     self->customScroller, &MsRow,
                     MsRowsOf(cx, &self->previewMessages, -1))
-                    ->H(kMsPreviewH - 2)
                     ->WithContentStyle(customContent, StyleFieldBg)
                     ->WithListStyle(previewPad, StyleFieldPad)
                     ->WithRowStyle(customRow, StyleFieldPad)
@@ -922,7 +916,6 @@ El* MessageScrollerStory::Render(MessageScrollerStory* self, Ctx* cx) {
                                     "controls"),
                                self->applicationScroller, &MsRow,
                                MsRowsOf(cx, &self->previewMessages, -1))
-                               ->H(kMsPreviewH - 2)
                                ->JumpButton(false)
                                ->Scrollbar(false)
                                ->WithListStyle(previewPad, StyleFieldPad)

@@ -213,7 +213,7 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
                             "Place a scrollable selection list in the "
                             "popover.");
     // p_0().text_sm().w_64().h(px(200.)): the surface is the list's own, so
-    // the card has no padding of its own.
+    // the card has no padding of its own, and the list fills it.
     El* listCard = Div(a)
                        ->FlexCol()
                        ->W(256)
@@ -224,7 +224,6 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
                        ->ClipY();
     component::List* popList =
         component::List::New(cx, StrL("popover-list"), self->list)
-            ->H(198)
             ->Count(10)
             ->Items(self, &PopListItem)
             ->Searchable(&self->listSearch, Listen(cx, &FocusListSearch));

@@ -267,27 +267,21 @@ static El* MaterializeTree(MaterializeRequest* request) {
         }
         host->Remember(prints, total);
     }
-    // The tree builds the rows its viewport can show, so it needs the
-    // viewport's height as a number before layout, where GPUI's uniform_list
-    // reads its bounds at prepaint. The number is the height the tree was
-    // laid out at last frame (UseLaidOutHeight); the first frame takes a
-    // definite height from the script's style, or 320. The style then
-    // refines the root, which is `size_full()` beneath it as in Rust, so the
-    // box is laid out by its parent and the script rather than by the number.
+    // The tree builds the rows the box it was laid out in last frame can
+    // show (TreeList), where GPUI's uniform_list reads its bounds at
+    // prepaint. The first frame takes a definite height from the script's
+    // style; the root is `size_full()` otherwise, and the style refines it
+    // as in Rust.
     ElRefiner style = request->TakeStyle();
-    float h = 320;
+    float h = 0;
     if (style.IsSet()) {
         El* probe = Div(cx->a);
         style.Apply(probe);
         if (probe->style.height > 0 && probe->style.height != kAuto)
             h = probe->style.height;
     }
-    LaidOutHeight* laid = UseLaidOutHeight(cx, payload->id, h);
-    if (laid) h = laid->built;
     El* root = TreeList::New(cx, payload->id, host->native, h, &Row, nullptr);
-    root->H(kFill);
     style.Apply(root);
-    TrackLaidOutHeight(cx, root, laid);
     return root;
 }
 

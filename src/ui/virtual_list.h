@@ -15,7 +15,11 @@ struct VirtualList {
     Str id = StrL("vlist");
     int count = 0;
     float rowH = 32;
-    float viewH = 192;
+    // The viewport height. 0, the default, fills the box the list is given,
+    // as Rust's v_virtual_list does: the rows are bound at prepaint from the
+    // laid-out bounds, so no number is needed before layout. A positive one
+    // is a fixed height, for a caller that sizes the list itself.
+    float viewH = 0;
     float scrollY = 0;
     // The sideways offset, for a list whose rows are wider than the viewport.
     float scrollX = 0;

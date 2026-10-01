@@ -91,9 +91,10 @@ struct MessageScroller {
     Entity<MessageScrollerState> state = {};
     MessageScrollerRowFn renderer = nullptr;
     void* user = nullptr;
-    // The viewport height. GPUI's `list` fills whatever box it is given;
-    // the virtual list here is told how tall its viewport is, so a scroller
-    // in a flexible box is handed the height that box resolved to.
+    // A fixed height for the scroller's box. 0, the default, fills the box
+    // it is given, as GPUI's `list` does: the rows are bound at prepaint
+    // from the bounds the viewport was laid out at, so the scroller needs no
+    // number before layout either way.
     float h = 0;
     Style style = {};
     uint32_t styleSet = 0;
@@ -116,7 +117,7 @@ struct MessageScroller {
     static MessageScroller* New(Ctx* cx, Str id,
                                 Entity<MessageScrollerState> state,
                                 MessageScrollerRowFn renderer, void* user);
-    // The viewport height, in DIPs.
+    // A fixed height for the scroller, in DIPs; without one it fills.
     MessageScroller* H(float px);
     MessageScroller* Scrollbar(bool value);
     MessageScroller* JumpButton(bool value);

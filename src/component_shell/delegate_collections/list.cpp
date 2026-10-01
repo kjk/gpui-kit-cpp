@@ -111,29 +111,19 @@ static El* Render(MaterializeRequest* request, const Payload* payload,
     native.renderItem = &RenderItem;
     component::List* list = component::List::New(cx, payload->id, host->state)
                                 ->WithDelegate(native);
-    // The virtual list needs its viewport height as a number before it lays
-    // out, where GPUI's v_virtual_list reads its bounds at prepaint: the
-    // height the list's box was laid out at last frame, less its padding and
-    // border (UseLaidOutHeight), and on the first frame a definite height in
-    // the script's style or the list's own 320. The root is `size_full()`
-    // and the style refines it, as in Rust.
-    float h = list->h;
+    // The list fills its box and works out what it needs before layout from
+    // the height it was laid out at last frame, where GPUI's v_virtual_list
+    // reads its bounds at prepaint. A definite height in the script's style
+    // is what the first frame builds with; the root is `size_full()`
+    // otherwise, and the style refines it, as in Rust.
     if (style.IsSet()) {
         El* probe = Div(cx->a);
         style.Apply(probe);
         if (probe->style.height > 0 && probe->style.height != kAuto)
-            h = probe->style.height;
+            list->H(probe->style.height);
     }
-    LaidOutHeight* laid = UseLaidOutHeight(cx, payload->id, h);
-    if (laid) {
-        laid->contentBox = true;
-        h = laid->built;
-    }
-    list->H(h);
     El* root = list->IntoEl();
-    root->H(kFill);
     style.Apply(root);
-    TrackLaidOutHeight(cx, root, laid);
     return root;
 }
 

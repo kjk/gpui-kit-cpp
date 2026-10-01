@@ -375,8 +375,31 @@ static void LogicalOffsetIgnoresUnmeasuredItems() {
     utassertnear(into, 0.f);
 }
 
+// v_virtual_list is `size_full()` and binds its rows at prepaint from the
+// bounds layout gave it, so the themed list fills its box unless the caller
+// fixes a viewport height.
+static void TheThemedListFillsItsBox() {
+    App app = {};
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    El* fill = component::VirtualList::New(&cx, 100)->RowH(20)->IntoEl();
+    El* col = Div(a)->FlexCol()->W(200)->H(300)->Child(fill);
+    LayoutEl(nullptr, col, 0, 0, 200, 300, 14, Rgba{});
+    utassertnear(fill->h, 300.f);
+
+    El* fixed =
+        component::VirtualList::New(&cx, 100)->RowH(20)->ViewH(120)->IntoEl();
+    col = Div(a)->FlexCol()->W(200)->H(300)->Child(fixed);
+    LayoutEl(nullptr, col, 0, 0, 200, 300, 14, Rgba{});
+    utassertnear(fixed->h, 120.f);
+    ArenaDelete(a);
+}
+
 void TestVirtualList() {
     TestSuite("virtual_list");
+    TheThemedListFillsItsBox();
     TheTopOfTheListStartsAtZero();
     ScrollingMovesBothEdges();
     TheEndOfTheListStopsAtTheCount();

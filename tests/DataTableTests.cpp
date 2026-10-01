@@ -826,6 +826,72 @@ static void AStripedTableFillsTheBodyWithEmptyRows() {
     EntityDropAll(&app);
 }
 
+// GPUI's table is `size_full()` and its uniform_list virtualizes from the
+// bounds layout gave it. Without a height the table fills its box and builds
+// the rows its body was laid out to show last frame: the box less its border
+// and the head row. One with fewer rows than that is as tall as its rows
+// (ListSizingBehavior::Auto). A fixed height is the body's and the first
+// frame's.
+static void ATableWithoutAHeightFillsItsBox() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    Ctx cx = {&app, win, a, state.id};
+    PaintCtx paint = {};
+
+    auto frame = [&](Str name, int rows, float fixed) {
+        a->Reset();
+        component::DataTable* t = component::DataTable::New(&cx, name, state)
+                                      ->Columns(kDumpColumns, 2)
+                                      ->Rows(rows, nullptr, nullptr);
+        if (fixed > 0) {
+            t->H(fixed);
+        }
+        El* box = t->IntoEl();
+        El* col = Div(a)->FlexCol()->W(400)->H(500)->Child(box);
+        LayoutEl(nullptr, col, 0, 0, 400, 500, 14, Rgba{});
+        if (box->prePaint) {
+            box->prePaint(&paint, box, box->customUser);
+        }
+        return box;
+    };
+    // The body: the scrolling pane's last child.
+    auto bodyOf = [](El* box) {
+        El* main = box ? box->first : nullptr;
+        El* pane = main ? main->last : nullptr;
+        return pane ? pane->last : nullptr;
+    };
+
+    // A window that has not been sized has no height to start from, so the
+    // first frame builds every row; the next builds what the body can show.
+    El* box = frame(StrL("fill"), 1000, 0);
+    TableState* s = state.Get(&app);
+    utassertnear(box->h, 500.f);
+    frame(StrL("fill"), 1000, 0);
+    utassertnear(s->viewportH, 500.f - 2.f - 32.f);
+    El* body = bodyOf(frame(StrL("fill"), 1000, 0));
+    utassert(body && body->h > 465.f && body->h < 467.f);
+
+    // Three rows are as tall as three rows in the same box.
+    frame(StrL("short"), 3, 0);
+    body = bodyOf(frame(StrL("short"), 3, 0));
+    utassertnear(s->viewportH, 466.f);
+    utassert(body && body->h > 95.f && body->h < 97.f);
+
+    // A fixed body keeps the box to it.
+    box = frame(StrL("fixed"), 1000, 200);
+    utassertnear(s->viewportH, 200.f);
+    utassertnear(box->h, 32.f + 200.f + 2.f);
+    frame(StrL("fixed"), 1000, 200);
+    utassertnear(s->viewportH, 200.f);
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+}
+
 void TestDataTable() {
     AStripedTableFillsTheBodyWithEmptyRows();
     SourceColumnBuildersKeepEveryField();
@@ -852,4 +918,5 @@ void TestDataTable() {
     TheKeyTable();
     TheSortCycle();
     OnlyOneColumnCarriesTheSort();
+    ATableWithoutAHeightFillsItsBox();
 }

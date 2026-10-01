@@ -881,6 +881,26 @@ El* DataTable::BuildEl() {
     if (bordered) {
         box->Radius(th.radius)->Border(1, th.border);
     }
+    // The body's height. GPUI's table is `size_full()` and its uniform_list
+    // virtualizes at prepaint from the bounds layout gave it; the rows here
+    // are built before layout, so the body is what the table's box held last
+    // frame less its border and the head rows (UseLaidOutHeight). A fixed
+    // height is the first frame's and keeps the box to it; without one the
+    // box fills, and the first frame builds a window's worth of rows — or,
+    // with no window to ask, every row.
+    bool fill = h <= 0;
+    if (fill) {
+        box->H(kFill);
+    }
+    float headsH = (float)(groupHeaders.len + 1) * rowHeight;
+    float first = h > 0 ? h : (cx->win ? WindowSize(cx->win).dipH : 0.f);
+    LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
+    if (laid) {
+        laid->contentBox = true;
+        laid->inset = headsH;
+    }
+    float viewH = laid ? laid->built : first;
+    TrackLaidOutHeight(cx, box, laid);
 
     // render_loading stands in for the whole table, head and all — its first
     // row is the fake head, which is why that row is painted the head colour.
@@ -1112,7 +1132,7 @@ El* DataTable::BuildEl() {
                     : Div(a)
                           ->FlexCol()
                           ->W(kFill)
-                          ->H(h > 0 ? h : 160)
+                          ->H(viewH > 0 ? viewH : 160)
                           ->ItemsCenter()
                           ->JustifyCenter()
                           ->Child(IconEl(a, IconName::Inbox, 48)
@@ -1133,16 +1153,24 @@ El* DataTable::BuildEl() {
     // for the rest. Without one every row is built, which is what a short
     // table wants.
     VirtualRange range = {0, nRows};
-    if (s && h > 0) {
-        s->viewportH = h;
-        range = VirtualListVisibleRows(nRows, s->rowH, s->scrollY, h);
+    if (s && viewH > 0) {
+        s->viewportH = viewH;
+        range = VirtualListVisibleRows(nRows, s->rowH, s->scrollY, viewH);
+        // ListSizingBehavior::Auto: a table that fills its box and has fewer
+        // rows than it can show is as tall as its rows, unless stripes run
+        // on under them.
+        float bodyH = viewH;
+        float rowsH = (float)nRows * s->rowH;
+        if (fill && !stripe && rowsH < bodyH) {
+            bodyH = rowsH;
+        }
         // Both panes move down together off the one offset; only the wide one
         // takes the sideways wheel back.
-        bodyFixed->H(h)->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
+        bodyFixed->H(bodyH)->ClipY()->ScrollY(s->scrollY)->ScrollFromPath();
         bodyFixed->OnScroll(ListenTo(state, &TableState::OnScroll));
         bodyFixed->noScrollbar = true;
         ScrollableMask::Apply(bodyFixed, Axis::Vertical);
-        bodyScroll->H(h)
+        bodyScroll->H(bodyH)
             ->ClipY()
             ->ScrollY(s->scrollY)
             ->ScrollX(s->scrollX)
@@ -1196,7 +1224,7 @@ El* DataTable::BuildEl() {
             ->BorderB(1, th.tableRowBorder);
         El* rows[2] = {rowFixed, rowScroll};
         for (El* row : rows) {
-            if (s && h > 0) {
+            if (s && viewH > 0) {
                 // uniform_list: every row the same height, which is what lets
                 // the two spacers stand in for the ones that were not built.
                 row->H(s->rowH);
@@ -1289,7 +1317,7 @@ El* DataTable::BuildEl() {
         bodyFixed->Child(rowFixed);
         bodyScroll->Child(rowScroll);
     }
-    if (s && h > 0 && range.end < nRows) {
+    if (s && viewH > 0 && range.end < nRows) {
         float pad = (float)(nRows - range.end) * s->rowH;
         bodyFixed->Child(Div(a)->H(pad));
         bodyScroll->Child(Div(a)->W(kFill)->H(pad));
@@ -1303,8 +1331,8 @@ El* DataTable::BuildEl() {
     // the columns and the last empty column; here it is a bare row, since a
     // delegate here indexes its data by the row it is handed.
     int extraRows =
-        stripe && s && h > 0
-            ? TableExtraRowsNeeded(h, (float)nRows * s->rowH, s->rowH)
+        stripe && s && viewH > 0
+            ? TableExtraRowsNeeded(viewH, (float)nRows * s->rowH, s->rowH)
             : 0;
     float colsW = 0;
     for (int d = nFixed; extraRows > 0 && d < nColumns; d++) {

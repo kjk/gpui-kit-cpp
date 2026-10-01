@@ -204,8 +204,11 @@ using TreeRowFn = El* (*)(void* user, Ctx* cx, int entryIx,
                           const TreeEntry& entry, TreeEntryState state);
 
 struct TreeList {
-    // `h` is the height the list is laid out at, which is also what
-    // scroll_to_item measures against.
+    // `h` is a fixed height for the tree's box; 0 fills the box it is
+    // given, as uniform_list's `size_full()` does. Either way the rows are
+    // built for the height the tree was laid out at last frame, which is
+    // also what scroll_to_item measures against — `h` is only the first
+    // frame's.
     static El* New(Ctx* cx, Str id, Entity<TreeState> state, float h,
                    TreeRowFn row, void* user);
 };

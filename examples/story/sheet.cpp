@@ -381,15 +381,13 @@ El* SheetStory::Render(SheetStory* self, Ctx* cx) {
                 component::List::New(cx, StrL("sheet-foods"), self->foods)
                     ->Items(self, &SheetFoodRow)
                     ->Searchable(&self->foodSearch,
-                                 Listen(cx, &FocusSheetSearch))
-                    // The list virtualizes against a height it is told, so
-                    // it is what the sheet has left over its four controls
-                    // and the footer under them.
-                    ->H(size.dipH - 272);
+                                 Listen(cx, &FocusSheetSearch));
             list->Sections(counts, 1);
             if (self->nMatches == 0) {
                 list->Empty(SheetFoodsEmpty(cx));
             }
+            // It takes what the sheet has left over its four controls and
+            // virtualizes against the box it was laid out in.
             body->Child(list->IntoEl()
                             ->Flex1()
                             ->MinH(0)

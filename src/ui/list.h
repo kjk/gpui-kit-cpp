@@ -108,7 +108,12 @@ struct List {
     // Styled padding is extracted from the outer List and passed to the
     // virtual rows upstream, so it does not inset the search field.
     float padding = 0;
-    float h = 320;
+    // A fixed height for the rows' viewport. 0, the default, fills the box
+    // the list is given, as Rust's `size_full()` list does: the rows are
+    // bound at prepaint from the viewport's bounds, and what is worked out
+    // before layout (scroll_to_item, load_more) uses the height the list was
+    // laid out at last frame. A fixed height is also the first frame's.
+    float h = 0;
 
     static List* New(Ctx* cx, Str id, Entity<ListState> state);
     List* WithDelegate(const ListDelegate& value);

@@ -1628,12 +1628,11 @@ El* EditorApp::Render(EditorApp* self, Ctx* cx) {
             }
         }
     }
-    // p_1 on the tree wrapper, subtracted from the list height so the
-    // virtualized rows still fill the pane.
-    float treeH = bodyH > 8 ? bodyH - 8 : bodyH;
-    El* tree = TreeList::New(cx, StrL("files"), self->tree, treeH, &FileTreeRow,
-                             nullptr)
-                   ->Bg(th.sidebar);
+    // The tree fills the pane inside its p_1 wrapper and builds the rows the
+    // box it was laid out in can show.
+    El* tree =
+        TreeList::New(cx, StrL("files"), self->tree, 0, &FileTreeRow, nullptr)
+            ->Bg(th.sidebar);
     El* left = Div(a)
                    ->FlexCol()
                    ->SizeFull()

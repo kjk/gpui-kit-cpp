@@ -300,7 +300,6 @@ El* MessageScroller::IntoEl() {
     }
 
     int count = st->heights.len;
-    float viewH = h > 0 ? h : 192.f;
     // GPUI's `list` lays rows out at the full list width and offsets them
     // only by vertical padding, so the horizontal component of the list
     // style is carried by every row wrapper instead.
@@ -331,7 +330,6 @@ El* MessageScroller::IntoEl() {
                    ->Id(id)
                    ->Sizes(st->heights.els)
                    ->MeasureRows(st->needsMeasure.els)
-                   ->ViewH(viewH)
                    ->Handle(&st->handle)
                    ->Axis(ScrollAxis::Vertical)
                    ->Scroll(HashClickId(id),
@@ -372,7 +370,8 @@ El* MessageScroller::IntoEl() {
     El* viewport = Div(a)
                        ->Role(AccessibilityRole::Log)
                        ->W(kFill)
-                       ->H(viewH)
+                       ->H(kFill)
+                       ->MinH(0)
                        ->MinW(0)
                        ->Child(list);
     // The fade sits above the rows but below the scrollbar and the jump
@@ -395,8 +394,16 @@ El* MessageScroller::IntoEl() {
         viewport->Refine(contentStyle, contentStyleSet);
     }
 
-    El* root = Div(a)->PathId(id)->W(kFill)->H(viewH)->ClipX()->ClipY()->Child(
-        viewport);
+    // `size_full` unless the caller fixed the height; the viewport and the
+    // list fill it, and the list virtualizes against what layout gave it.
+    El* root = Div(a)
+                   ->PathId(id)
+                   ->W(kFill)
+                   ->H(h > 0 ? h : kFill)
+                   ->MinH(0)
+                   ->ClipX()
+                   ->ClipY()
+                   ->Child(viewport);
     if (jumpButton && jumpVisibility > 0) {
         // No explicit width or height: Button sizes an icon-only button as a
         // square on its own, and a renderer that adds a label or another

@@ -97,7 +97,7 @@ static El* TreeRow(void* user, Ctx* cx, int ix, const TreeEntry& entry,
 
 El* Tree::IntoEl() {
     if (!state.Get(cx)) {
-        return Div(a)->H(h);
+        return Div(a)->W(kFill)->H(h > 0 ? h : kFill);
     }
     return TreeList::New(cx, id, state, h, &TreeRow, this);
 }

@@ -132,14 +132,14 @@ static El* VlRow(Ctx* cx, int ix) {
 }
 
 El* VirtualListStory::Render(VirtualListStory* self, Ctx* cx) {
-    WinSize win = WindowSize(cx->win);
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     Listener openMenu = Listen(cx, &VlMenuOpen);
     Listener act = Listen(cx, &VlMenuAct);
     Listener scrollTo = Listen(cx, &VlScrollTo);
 
-    El* page = Div(a)->FlexCol()->Gap(16)->W(kFill);
+    // v_flex().size_full().gap_4(): the list takes what the toolbar leaves.
+    El* page = Div(a)->FlexCol()->Gap(16)->W(kFill)->H(kFill);
 
     // One toolbar group: the two dropdowns and the four scroll buttons.
     El* toolbarRow = Div(a)->FlexRow()->W(kFill)->JustifyEnd()->ItemsStart();
@@ -186,11 +186,9 @@ El* VirtualListStory::Render(VirtualListStory* self, Ctx* cx) {
 
     gVlColumns = self->columns;
     int rows = self->rows;
-    float viewH = win.dipH - 309;
     El* list = component::VirtualList::New(cx, rows)
                    ->Id(StrL("virtual-list-story"))
                    ->RowH(kRowH)
-                   ->ViewH(viewH)
                    ->Handle(&self->handle)
                    ->ScrollX(self->scrollX)
                    ->Axis(kVlAxisOf[self->axis])
@@ -205,9 +203,13 @@ El* VirtualListStory::Render(VirtualListStory* self, Ctx* cx) {
         cx,
         StoryFmt(cx, "Visible: %d..%d", self->visible.first, self->visible.end),
         16, th.foreground));
+    // div().w_full().flex_1().min_h_64(): the list fills the rest of the
+    // pane and is virtualized against the box it was laid out in.
     page->Child(Div(a)
                     ->FlexCol()
                     ->W(kFill)
+                    ->Flex1()
+                    ->MinH(256)
                     ->Pad(16)
                     ->Border(1, th.border)
                     ->Child(list));

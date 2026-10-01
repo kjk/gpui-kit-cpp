@@ -235,6 +235,66 @@ static void RevealingUnderALaterRootKeepsOtherSubtrees() {
     utassert(TreeIndexOf(&s, StrL("docs/guide/a")) == 2);
 }
 
+static El* PlainTreeRow(void*, Ctx* cx, int, const TreeEntry&, TreeEntryState) {
+    return Div(cx->a)->W(kFill)->H(24);
+}
+
+// uniform_list virtualizes at prepaint from the bounds layout gave it. The
+// tree builds its rows before layout, so it builds them for the height its
+// box was laid out at last frame: a tree with no height fills its box and
+// builds with 320 until it has been laid out, then with the box less its
+// padding; a fixed height is the box's and the first frame's.
+static void ATreeWithoutAHeightFillsItsBox() {
+    App app;
+    Window win;
+    win.app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx{&app, &win, a, {}};
+    Entity<TreeState> state = EntityNewState<TreeState>(&app);
+    TreeState* s = state.Get(&app);
+    for (int i = 0; i < 100; i++) {
+        char id[16];
+        snprintf(id, sizeof(id), "n%d", i);
+        TreeAddItem(s, Str(id), Str(id), -1);
+    }
+    TreeRebuild(s);
+
+    PaintCtx paint = {};
+    auto frame = [&](Str name, float fixed) {
+        a->Reset();
+        El* box = TreeList::New(&cx, name, state, fixed, &PlainTreeRow, nullptr)
+                      ->Pad(4);
+        El* col = Div(a)->FlexCol()->W(200)->H(400)->Child(box);
+        LayoutEl(nullptr, col, 0, 0, 200, 400, 14, Rgba{});
+        if (box->prePaint) {
+            box->prePaint(&paint, box, box->customUser);
+        }
+        return box;
+    };
+
+    El* box = frame(StrL("fill"), 0);
+    utassertnear(s->viewportH, 320.f);
+    utassertnear(box->h, 400.f);
+    frame(StrL("fill"), 0);
+    utassertnear(s->viewportH, 400.f - 8.f);
+
+    box = frame(StrL("fixed"), 200);
+    utassertnear(s->viewportH, 200.f);
+    utassertnear(box->h, 200.f);
+    frame(StrL("fixed"), 200);
+    utassertnear(s->viewportH, 200.f - 8.f);
+
+    // Without a window there is no last frame to read: the tree builds with
+    // the number it has.
+    Ctx bare{&app, nullptr, a, {}};
+    a->Reset();
+    TreeList::New(&bare, StrL("bare"), state, 0, &PlainTreeRow, nullptr);
+    utassertnear(s->viewportH, 320.f);
+
+    ArenaDelete(a);
+    EntityDropAll(&app);
+}
+
 void TestTree() {
     TestSuite("tree");
     TheKeyTable();
@@ -251,4 +311,5 @@ void TestTree() {
     ReplacingItemsResetsBothInteractionIndices();
     TheStateOwnsTheStringsItIsGiven();
     SelectingHiddenItemExpandsItsAncestors();
+    ATreeWithoutAHeightFillsItsBox();
 }

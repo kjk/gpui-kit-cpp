@@ -194,6 +194,12 @@ List* List::Empty(El* e) {
     empty = e;
     return this;
 }
+// The query row: the field with appearance(false) and its bottom border.
+// And the rows a list that fills its box builds with before it has been
+// laid out, the height a List had before it filled.
+static const float kListSearchRowH = 32;
+static const float kListDefaultH = 320;
+
 List* List::H(float px) {
     h = px;
     return this;
@@ -304,14 +310,41 @@ El* List::IntoEl() {
     // separates them.
     El* inner = Div(a)->FlexCol()->W(kFill);
     root->Child(inner);
+    // A list without a fixed height is `size_full()`, and its rows take
+    // what the query row leaves.
+    bool fill = h <= 0;
+    if (fill) {
+        // min_h_0 stands in for Rust's `overflow_hidden()` on the state's
+        // v_flex, which is what lets a size_full list that a caller made
+        // flex_1 shrink to what its siblings leave: a clipping box has no
+        // content-based minimum. The rows clip in the body as it is.
+        root->H(kFill)->MinH(0);
+        inner->Flex1()->MinH(0);
+    }
+    // The viewport the rows are worked out against before layout: what the
+    // list's box held last frame less the query row and the rows' padding
+    // (UseLaidOutHeight), and on the first frame the fixed height or 320.
+    float searchH = search ? kListSearchRowH : 0;
+    float first = h > 0 ? h : kListDefaultH;
+    LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
+    if (laid) {
+        laid->contentBox = true;
+        laid->inset = searchH + padding * 2;
+    }
+    float viewH = laid ? laid->built : first;
+    TrackLaidOutHeight(cx, root, laid);
     if (search) {
         // list.rs: `div().px_2().border_b_1().child(Input::new(..)
         // .prefix(Icon::new(Search)).cleanable(true).p_0().appearance(false))`
         // — the magnifier is the field's own prefix, so the gap between it
         // and the text is the input's, not a row's.
-        El* searchRow =
-            Div(a)->FlexRow()->W(kFill)->H(32)->ItemsCenter()->BorderB(
-                1, th.border);
+        El* searchRow = Div(a)
+                            ->FlexRow()
+                            ->W(kFill)
+                            ->H(kListSearchRowH)
+                            ->Shrink0()
+                            ->ItemsCenter()
+                            ->BorderB(1, th.border);
         // InputState::new(..).placeholder(t!("List.search_placeholder")),
         // which is "Search..." in the locale this tree ships. Rust sets it on
         // the state when the list makes it, so a caller that gave a field of
@@ -337,13 +370,13 @@ El* List::IntoEl() {
     }
     // The height the list was laid out at, which is what scroll_to_item and
     // the visible range are worked out against.
-    s->viewportH = h;
+    s->viewportH = viewH;
 
     if (s->loading) {
         El* loadingView = delegate.renderLoading
                               ? delegate.renderLoading(cx, delegate.data)
                               : loading;
-        inner->Child(loadingView ? loadingView : ListLoadingView(cx, h));
+        inner->Child(loadingView ? loadingView : ListLoadingView(cx, viewH));
         return root;
     }
     // render_initial: what the list shows before anything has been searched
@@ -362,7 +395,7 @@ El* List::IntoEl() {
         El* emptyView = delegate.renderEmpty
                             ? delegate.renderEmpty(cx, delegate.data)
                             : empty;
-        inner->Child(emptyView ? emptyView : DefaultEmpty(cx, h));
+        inner->Child(emptyView ? emptyView : DefaultEmpty(cx, viewH));
         return root;
     }
 
@@ -424,8 +457,8 @@ El* List::IntoEl() {
     int total = ListRowCount(s);
     const float* sizes = ListRowHeights(s);
     VirtualRange range =
-        sizes ? VirtualListVisibleRange(sizes, total, s->scrollY, h)
-              : VirtualListVisibleRows(total, s->rowH, s->scrollY, h);
+        sizes ? VirtualListVisibleRange(sizes, total, s->scrollY, viewH)
+              : VirtualListVisibleRows(total, s->rowH, s->scrollY, viewH);
     struct ListVirtualUser {
         ListState* s = nullptr;
         ListDelegate delegate = {};
@@ -440,7 +473,9 @@ El* List::IntoEl() {
     VirtualListOpts opts;
     opts.count = total;
     opts.rowH = s->rowH;
-    opts.viewH = h;
+    // A list that fills its box lets its body fill what is left of it; the
+    // rows are bound at prepaint from the body's bounds either way.
+    opts.viewH = fill ? 0 : viewH;
     opts.sizes = sizes;
     opts.scrollY = s->scrollY;
     opts.pad = padding;
@@ -477,7 +512,15 @@ El* List::IntoEl() {
     };
     opts.user = rows;
     opts.onScroll = ListenTo(state, &ListState::OnScroll);
-    El* body = gpui::VirtualList::New(cx, StrL("body"), opts)->ScrollFromPath();
+    // The wheel reaches a scroll box only through a handler of its own:
+    // VirtualList::New attaches `onScroll` only beside a numeric scroll id,
+    // and this body takes its id from its path.
+    El* body = gpui::VirtualList::New(cx, StrL("body"), opts)
+                   ->ScrollFromPath()
+                   ->OnScroll(opts.onScroll);
+    if (fill) {
+        body->Flex1()->MinH(0);
+    }
     if (!scrollbarVisible) {
         body->HideScrollbar();
     }

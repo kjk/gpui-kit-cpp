@@ -361,6 +361,104 @@ static void MeasuresAnExistingRowWhenTheRequestedItemIsAbsent() {
     EntityDropAll(&app);
 }
 
+// A List with no height is `size_full()`, as Rust's is: it fills the box it
+// is given, its rows take what the query row leaves, and what it works out
+// before layout (scroll_to_item, load_more) is the viewport it was laid out
+// at last frame — the box less the query row and the rows' padding. A fixed
+// height is only the first frame's, and keeps the box to it.
+static void AListWithoutAHeightFillsItsBox() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    win->frameArena = arena;
+    ThemeInstall(&app, ThemeMode::Light, ThemeLight());
+    Entity<ListState> state = EntityNewState<ListState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    MeasureProbe probe;
+    probe.counts[0] = 40;
+    probe.counts[1] = 40;
+    component::ListDelegate delegate;
+    delegate.data = &probe;
+    delegate.sectionsCount = &MeasureSections;
+    delegate.itemsCount = &MeasureItems;
+    delegate.renderItem = &MeasureItem;
+    InputState query;
+    ListState* list = state.Get(&app);
+
+    Str name = StrL("fill");
+    auto frame = [&](float fixed) {
+        arena->Reset();
+        component::List* l = component::List::New(&cx, name, state)
+                                 ->WithDelegate(delegate)
+                                 ->Searchable(&query, {})
+                                 ->Padding(8);
+        if (fixed > 0) {
+            l->H(fixed);
+        }
+        El* root = l->IntoEl();
+        El* col = Div(arena)->FlexCol()->W(300)->H(500)->Child(root);
+        LayoutEl(&win->paint, col, 0, 0, 300, 500, 14, Rgba{});
+        // The root's prepaint records the box it was laid out at.
+        if (root->prePaint) {
+            root->prePaint(&win->paint, root, root->customUser);
+        }
+        return root;
+    };
+
+    // The first frame builds with 320 and fills the 500 it was given; the
+    // body under the 32px query row takes the rest.
+    El* root = frame(0);
+    utassertnear(list->viewportH, 320.f);
+    utassertnear(root->h, 500.f);
+    El* inner = root->first;
+    El* body = inner && inner->first ? inner->first->next : nullptr;
+    utassert(body && body->h > 467.f && body->h < 469.f);
+    // The next one builds with what it got: 500 less the query row and the
+    // padding above and below the rows.
+    frame(0);
+    utassertnear(list->viewportH, 500.f - 32.f - 16.f);
+
+    // Made flex_1 under a toolbar in a size_full page, as the story does, the
+    // list takes what the toolbar and the gap leave and no more.
+    {
+        arena->Reset();
+        El* page = Div(arena)->FlexCol()->Gap(16)->W(kFill)->H(kFill);
+        page->Child(Div(arena)->W(kFill)->H(25));
+        El* listRoot = component::List::New(&cx, name, state)
+                           ->WithDelegate(delegate)
+                           ->Searchable(&query, {})
+                           ->Padding(8)
+                           ->IntoEl()
+                           ->Flex1()
+                           ->W(kFill)
+                           ->Border(1, Rgba8(0, 0, 0, 255));
+        page->Child(listRoot);
+        El* pane = Div(arena)->FlexCol()->SizeFull()->Pad(16)->Child(page);
+        LayoutEl(&win->paint, pane, 0, 0, 300, 500, 14, Rgba{});
+        utassertnear(page->h, 468.f);
+        utassertnear(listRoot->h, 468.f - 25.f - 16.f);
+    }
+
+    // A fixed height is the box's, and what the first frame builds with.
+    Entity<ListState> fixedState = EntityNewState<ListState>(&app);
+    name = StrL("fixed");
+    state = fixedState;
+    list = state.Get(&app);
+    root = frame(200);
+    utassertnear(list->viewportH, 200.f);
+    utassertnear(root->h, 32.f + 200.f + 16.f);
+    frame(200);
+    utassertnear(list->viewportH, 200.f);
+
+    WindowMotionFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+}
+
 // list_state_has_list_role (#3182): the List role is on the focusable
 // list-state element, not on the outer wrapper the caller styles, so the
 // element focus lands on is the one that carries the role, once.
@@ -525,4 +623,5 @@ void TestList() {
     TheDelegateTableOwnsTheWholeContract();
     MeasuresAnExistingRowWhenTheRequestedItemIsAbsent();
     ListStateHasListRole();
+    AListWithoutAHeightFillsItsBox();
 }

@@ -718,7 +718,8 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         self->seeded = true;
         self->table = EntityNewState<TableState>(cx->app);
     }
-    El* page = Div(a)->FlexCol()->Gap(16)->W(kFill);
+    // v_flex().size_full().gap_4(): the table takes what the toolbar leaves.
+    El* page = Div(a)->FlexCol()->Gap(16)->W(kFill)->H(kFill);
 
     // One group holding the size, rows, extra columns, options, go-to and
     // export controls.
@@ -908,11 +909,6 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
         component::DataTable::New(cx, StrL("data-table"), self->table)
             ->Columns(cols, nColumns)
             ->Rows(kRowCounts[self->rowCount], self, DtCellFor)
-            // The story's table is `v_flex().min_h_0().flex_1()`, so the body
-            // takes what the pane has left over the toolbar, the gap and the
-            // status line under it. Virtualization needs that as a number
-            // before the tree is laid out, so it comes off the window.
-            ->H(WindowSize(cx->win).dipH - 368)
             ->RowHeight(kSizeRowH[self->size])
             ->Stripe(self->options[DtOptStriped])
             ->ContextMenu(DtContextMenu)
@@ -984,7 +980,14 @@ El* DataTableStory::Render(DataTableStory* self, Ctx* cx) {
     status->Child(right);
     // The table and the line under it share one `v_flex().min_h_0().flex_1()`
     // with no gap of its own; the page's gap_4 is between the toolbar and it.
-    page->Child(Div(a)->FlexCol()->W(kFill)->Child(box)->Child(status));
+    // The table fills what the line leaves and virtualizes against it.
+    page->Child(Div(a)
+                    ->FlexCol()
+                    ->W(kFill)
+                    ->Flex1()
+                    ->MinH(0)
+                    ->Child(box->Flex1()->MinH(0))
+                    ->Child(status->Shrink0()));
     if (self->message.s) {
         page->Child(StoryTxt(cx, self->message, 14, th.mutedFg));
     }

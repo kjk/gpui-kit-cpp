@@ -27,7 +27,8 @@ struct Tree {
     Ctx* cx = nullptr;
     Str id = {};
     Entity<TreeState> state = {};
-    float h = 320;
+    // A fixed height; 0 fills the box the tree is given (TreeList::New).
+    float h = 0;
     // Whether a row shows a file / folder icon beside its chevron.
     bool icons = true;
     TreeContextMenuFn contextMenu = nullptr;

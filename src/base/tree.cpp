@@ -391,23 +391,36 @@ El* Tree::New(Ctx* cx) {
     return Div(a);
 }
 
+// The viewport a tree that fills its box builds with before it has been laid
+// out: Rust's tree story and the registered Tree's default.
+static const float kTreeDefaultH = 320;
+
 El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
                   TreeRowFn row, void* user) {
     Arena* a = cx->a;
     TreeState* s = state.Get(cx);
     if (!s || !row) {
-        return Div(a)->H(h);
+        return Div(a)->W(kFill)->H(h > 0 ? h : kFill);
     }
     s->self = state;
-    // The height the list was laid out at is what scroll_to_item measures
-    // against, and the caller is the one that knows it.
-    s->viewportH = h;
+    // uniform_list virtualizes at prepaint from the bounds layout gave it;
+    // the rows here are built before layout, so the viewport is the height
+    // the tree was laid out at last frame (UseLaidOutHeight). The first frame
+    // builds with the caller's height, or 320 for a tree that fills its box.
+    // It is also what scroll_to_item measures against.
+    float first = h > 0 ? h : kTreeDefaultH;
+    LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
+    if (laid) {
+        laid->contentBox = true;
+    }
+    float viewH = laid ? laid->built : first;
+    s->viewportH = viewH;
 
     // uniform_list: only the rows the viewport can show are built, and the
     // two spacers stand in for the rest so the scrollbar spans the whole
     // tree.
     VirtualRange range =
-        VirtualListVisibleRows(s->entries.len, s->rowH, s->scrollY, h);
+        VirtualListVisibleRows(s->entries.len, s->rowH, s->scrollY, viewH);
     El* list = Div(a)->FlexCol()->W(kFill);
     if (range.first > 0) {
         list->Child(Div(a)->W(kFill)->H((float)range.first * s->rowH));
@@ -444,7 +457,8 @@ El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
                   ->Id(id)
                   ->FlexCol()
                   ->W(kFill)
-                  ->H(h)
+                  // `size_full()` unless the caller fixed the height.
+                  ->H(h > 0 ? h : kFill)
                   ->ClipY()
                   ->ScrollY(s->scrollY)
                   ->ScrollFromPath()
@@ -455,6 +469,7 @@ El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
     // declares the context on.
     box->FocusId(HashClickId(id))->FocusRing(false)->FocusOnPress();
     TreeBindKeys(cx, box, state);
+    TrackLaidOutHeight(cx, box, laid);
     return box;
 }
 

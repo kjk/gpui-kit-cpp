@@ -139,8 +139,10 @@ struct DataTable {
     // group_headers: the extra head rows a caller stacks over the columns,
     // outermost first.
     ArenaVec<TableGroupHeader> groupHeaders;
-    // The height the body scrolls inside. 0 leaves every row built, which is
-    // what a table small enough not to need a viewport wants.
+    // A fixed height for the body the rows scroll inside. 0, the default,
+    // fills the box the table is given, as GPUI's `size_full()` table does,
+    // and the rows are built for the body it was laid out with last frame;
+    // one with fewer rows than that is as tall as its rows.
     float h = 0;
     // render_empty: what a table with no rows shows. Null takes Rust's own.
     El* empty = nullptr;

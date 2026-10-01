@@ -129,9 +129,58 @@ static void TheBuilderCarriesEveryOption() {
     ArenaDelete(a);
 }
 
+// GPUI's `list` fills whatever box it is given and virtualizes against its
+// bounds at prepaint. A scroller with no height is `size_full()`, its
+// viewport and list filling it; a fixed height is the box's, and the
+// viewport and list still fill that.
+static void AScrollerWithoutAHeightFillsItsBox() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    Entity<MessageScrollerState> state =
+        EntityNewState<MessageScrollerState>(&app);
+    MessageScrollerState::Init(state.Get(&app), 3);
+
+    auto build = [&](float fixed) {
+        MessageScroller* s =
+            MessageScroller::New(&cx, StrL("fill"), state, nullptr, nullptr)
+                ->JumpButton(false);
+        utassertnear(s->h, 0.f);
+        if (fixed > 0) {
+            s->H(fixed);
+        }
+        El* root = s->IntoEl();
+        El* col = Div(a)->FlexCol()->W(300)->H(500)->Child(root);
+        LayoutEl(nullptr, col, 0, 0, 300, 500, 14, Rgba{});
+        return root;
+    };
+    El* root = build(0);
+    El* viewport = root->first;
+    El* list = viewport ? viewport->first : nullptr;
+    utassertnear(root->h, 500.f);
+    utassert(viewport && list);
+    utassertnear(viewport->h, 500.f);
+    utassertnear(list->h, 500.f);
+
+    root = build(240);
+    viewport = root->first;
+    list = viewport ? viewport->first : nullptr;
+    utassertnear(root->h, 240.f);
+    utassert(viewport && list);
+    utassertnear(viewport->h, 240.f);
+    utassertnear(list->h, 240.f);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestMessageScroller() {
     TestSuite("message_scroller");
     TheStateSplicesScrollsAndFollowsItsTail();
     ASpliceKeepsTheSurvivingRowHeights();
     TheBuilderCarriesEveryOption();
+    AScrollerWithoutAHeightFillsItsBox();
 }
