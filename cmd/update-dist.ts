@@ -12,12 +12,13 @@
 // generated files are the same on every platform.
 //
 // A source file belongs to a platform by suffix: _win.cpp, _linux.cpp,
-// _mac.cpp, _ios.cpp, _android.cpp, _wasm.cpp, _mem_posix.cpp for hosted
-// POSIX targets, and _posix.cpp for every POSIX target. Each of those
-// goes into gpui.cpp inside its own `#if GPUI_OS_*`, so <windows.h>, <X11/*>
-// and <Cocoa/*> still never reach the same translation unit — the preprocessor
-// drops the two halves that are not this platform's before anything parses
-// them. On macOS the whole file is Objective-C++, because the mac half is.
+// _mac.cpp, _ios.cpp, _android.cpp, _wasm.cpp, _inotify.cpp for Linux and
+// Android, _mem_posix.cpp for hosted POSIX targets, and _posix.cpp for
+// every POSIX target. Each of those goes into gpui.cpp inside its own
+// `#if GPUI_OS_*`, so <windows.h>, <X11/*> and <Cocoa/*> still never reach
+// the same translation unit — the preprocessor drops the halves that are
+// not this platform's before anything parses them. On macOS the whole file
+// is Objective-C++, because the mac half is.
 //
 // The ported crates' implementation-private headers (markdown's tokenizer,
 // taffy's compute internals, autocorrect's internal.h) are inlined behind
@@ -120,13 +121,18 @@ export type MarkdownVariant = "full" | "mini";
 export type Html5everVariant = "full" | "mini";
 
 // Which platform halves a source file belongs to. Empty means it is portable
-// and goes in gpui.cpp; the two _posix suffixes belong to several targets.
+// and goes in gpui.cpp; _inotify and the two _posix suffixes belong to
+// several targets.
 function filePlatforms(rel: string): Platform[] {
   if (/_win\.cpp$/.test(rel)) {
     return ["win"];
   }
   if (/_linux\.cpp$/.test(rel)) {
     return ["linux"];
+  }
+  // An inotify half: Linux, and Android on the same kernel.
+  if (/_inotify\.cpp$/.test(rel)) {
+    return ["linux", "android"];
   }
   if (/_mac\.cpp$/.test(rel)) {
     return ["mac"];

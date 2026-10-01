@@ -21,13 +21,18 @@
    dispatch queue) that does nothing but wait and call DirWatchSignal:
 
    - Windows: ReadDirectoryChangesW, overlapped, on a thread per watch.
-   - Linux: inotify, one descriptor and a thread per watch.
+   - Linux and Android: inotify, one descriptor and a thread per watch
+     (dir_watch_inotify.cpp, one file for the one kernel).
    - macOS: an FSEvents stream on a dispatch queue, reporting file-level
      events, of which those whose parent is not the folder are dropped —
      FSEvents watches a tree and has no non-recursive switch.
-   - wasm, iOS, Android: none. DirWatchStart answers Unsupported, and a
-     caller carries on without hot reload, which is what Rust does on wasm
-     (it never compiles the watcher there). */
+   - iOS: kqueue, which is what notify uses there (FSEvents is not public
+     on iOS). A kqueue watches descriptors, so the folder and each entry
+     directly in it are opened, and re-opened when the folder changes; one
+     thread per watch waits in kevent.
+   - wasm: none. DirWatchStart answers Unsupported, and a caller carries on
+     without hot reload, which is what Rust does on wasm (it never compiles
+     the watcher there). */
 
 #include "base.h"
 
@@ -38,12 +43,13 @@ using DirWatchId = int;
 
 enum class DirWatchError {
     None = 0,
-    // This platform has no watcher (wasm, iOS, Android).
+    // This platform has no watcher (wasm).
     Unsupported,
     // The folder could not be made, opened, or watched.
     Failed,
     // The OS has no watches left to hand out — inotify's
-    // max_user_watches. notify reports this as ErrorKind::MaxFilesWatch
+    // max_user_watches or instances, or on iOS the descriptors a kqueue
+    // watch is made of. notify reports this as ErrorKind::MaxFilesWatch
     // and Rust logs it as its own case.
     Limit,
 };
@@ -88,20 +94,6 @@ void DirWatchSignal(DirWatchId id);
 // The OS half's own state for one watch; each platform file defines it.
 struct DirWatchPlat;
 
-#if GPUI_OS_IOS || GPUI_OS_ANDROID
-// The mobile hosts carry no watcher: an application that wants its themes
-// reloaded from disk has the host tell it so. Stubbed here, the way
-// platform.h stubs the reduce-motion listener, so the host adapter has
-// nothing to supply.
-inline DirWatchPlat* DirWatchPlatOpen(DirWatchId, const char*, bool,
-                                      DirWatchError* err) {
-    if (err) {
-        *err = DirWatchError::Unsupported;
-    }
-    return nullptr;
-}
-inline void DirWatchPlatClose(DirWatchPlat*) {}
-#else
 // Start the OS half for watch `id` on `dir` (a NUL-terminated path), calling
 // DirWatchSignal(id) from its own thread. Null with `err` filled on failure.
 DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
@@ -109,7 +101,6 @@ DirWatchPlat* DirWatchPlatOpen(DirWatchId id, const char* dir, bool create,
 // Ask it to stop. It may still be finishing on its own thread and free itself
 // there; the caller must not touch `plat` again.
 void DirWatchPlatClose(DirWatchPlat* plat);
-#endif
 
 } // namespace gpui
 #endif // GPUI_SYS_DIR_WATCH_H_

@@ -862,9 +862,9 @@ int ThemeRegistryLoadDir(App* app, Str dir);
 // it — is watched without its subfolders, then the registry is reloaded and
 // `onLoad` runs. After that, any change in the folder reloads the registry
 // on the main thread, once per burst. Answers whether the folder is being
-// watched: false on wasm, iOS and Android, which have no watcher, and when
-// the OS refused (logged). The themes are loaded either way. A second call
-// moves the watch to the new folder.
+// watched: false on wasm, which has no watcher, and when the OS refused
+// (logged). The themes are loaded either way. A second call moves the watch
+// to the new folder.
 bool ThemeRegistryWatchDir(App* app, Str dir, Func0 onLoad = Func0{});
 
 // reload_themes plus the observer Rust's `theme::init` puts on the

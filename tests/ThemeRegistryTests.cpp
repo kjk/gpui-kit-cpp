@@ -633,9 +633,10 @@ static void AReloadReappliesTheInstalledThemes() {
 // The real thing: a file written into the watched folder reaches the main
 // thread as a reload, which re-applies the theme. Bounded: the queue is
 // pumped for up to five seconds, which is two orders of magnitude more than
-// ReadDirectoryChangesW, inotify or FSEvents (50 ms latency) take.
+// ReadDirectoryChangesW, inotify, kqueue or FSEvents (50 ms latency) take.
+// Every platform but wasm has a watcher.
 static void AFileWrittenIntoTheFolderReloadsIt() {
-#if GPUI_OS_WINDOWS || GPUI_OS_LINUX || GPUI_OS_MAC
+#if !GPUI_OS_WASM
     ExecInit();
     App app;
     Str dir = WatchTempDir("gpui-theme-watch-test");

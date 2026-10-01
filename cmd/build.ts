@@ -444,7 +444,11 @@ function cppDir(rel: string): string[] {
 function sourcePlatform(rel: string, plat: Platform): boolean {
   if (/_win\.cpp$/.test(rel)) return plat === "win";
   if (/_linux\.cpp$/.test(rel)) return plat === "linux";
+  // inotify is Linux's, and Android's on the same kernel.
+  if (/_inotify\.cpp$/.test(rel)) return plat === "linux";
   if (/_mac\.cpp$/.test(rel)) return plat === "mac";
+  // The mobile halves compile only through cmd/mobile-build.ts's amalgam.
+  if (/_(ios|android)\.cpp$/.test(rel)) return false;
   if (/_wasm\.cpp$/.test(rel)) return plat === "wasm";
   if (/_mem_posix\.cpp$/.test(rel)) return plat === "linux" || plat === "mac";
   if (/_posix\.cpp$/.test(rel)) return plat === "linux" || plat === "mac" || plat === "wasm";

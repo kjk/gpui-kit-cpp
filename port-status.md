@@ -38,9 +38,6 @@ macOS font-kit requirement on the website only. The current update target is
   WindowState's `prepare` sets no rem size and its tooltip overlay is the
   window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **Theme hot reload is desktop-only.** Rust's `watch_dir` watches on every
-  non-wasm target; `src/sys/dir_watch.h` has no iOS or Android backend, so
-  there the folder is read once (`src/ui/theme.cpp`).
 - **Editor range decorations paint from the rows, not from one prepaint.**
   Rust projects each decoration through the shaped lines in prepaint and
   paints one path per decoration; the editor's rows are separate flex

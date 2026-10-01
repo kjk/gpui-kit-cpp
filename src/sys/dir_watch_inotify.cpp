@@ -1,4 +1,8 @@
-/* The directory watcher on Linux: inotify.
+/* The directory watcher on Linux and Android: inotify.
+
+   Android is the Linux kernel and its NDK libc has inotify from API 21, so
+   the one file serves both — the `_inotify.cpp` suffix puts it in each of
+   their builds. Rust's notify picks its inotify backend for both too.
 
    One inotify descriptor per watch, with one watch on the folder (inotify
    is non-recursive by nature), and a thread that polls it beside the read
