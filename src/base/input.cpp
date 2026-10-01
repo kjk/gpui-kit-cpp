@@ -940,11 +940,25 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
     }
     float numW = 0;
+    // The numbers are shaped at the editor's own text size and family, as
+    // layout_line_numbers shapes them with the text style.
+    uint16_t numWeight =
+        (uint16_t)(kFontWeightNormal | (style.mono ? kFontMono : 0));
     if (lineNumbers) {
-        // layout_line_numbers: line_number_len columns, 7px per digit at
-        // font-1 -- three for a small document, then the line count's own
-        // digits up to seven.
-        numW = 7.f * (float)InputLineNumberLen(rows);
+        // layout_line_numbers: the width of line_number_len "+" shaped in
+        // that font -- three for a small document, then the line count's
+        // own digits up to seven.
+        char plus[8] = {};
+        int digits = InputLineNumberLen(rows);
+        for (int i = 0; i < digits && i < 7; i++) {
+            plus[i] = '+';
+        }
+        numW = MeasureText(cx->win ? &cx->win->paint : nullptr,
+                           Str(plus, digits), font, 0, false, numWeight)
+                   .w;
+        if (numW <= 0) {
+            numW = 7.f * (float)digits;
+        }
     }
     // The fold gutter. Rust widens the line-number column by the hitbox and
     // lays the icons into the space it made; the column here is a flex row,
@@ -970,7 +984,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // caret sits at the head of the line the fold collapsed into rather than
     // vanishing with the text it is in.
     int caretRow = -1;
-    if (style.activeLine.a != 0 || folding) {
+    if (style.activeLine.a != 0 || folding || lineNumbers) {
         caretRow = InputOffsetToPoint(state, cursor).row;
         caretRow = FoldMapNearestVisibleLine(&state->folds, caretRow);
     }
@@ -1585,11 +1599,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         if (row == caretRow && style.activeLine.a != 0) {
             band->Bg(style.activeLine);
         }
+        // The caret's row is numbered in the foreground, the rest muted.
         El* num =
             TextEl(a, StrDup(a, fmt("%d", InputDisplayedLineNumber(row + 1))))
-                ->Font(font - 1)
+                ->Font(font)
                 ->LineHeight(lineMult)
-                ->Fg(style.mutedForeground);
+                ->Fg(row == caretRow ? style.foreground
+                                     : style.mutedForeground);
         if (style.mono) {
             num->Mono();
         }
@@ -1600,7 +1616,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // every row so entering the gutter from the text changes hover
             // id and rebuilds — otherwise the editor already owns hover and
             // a move over the numbers would not show the chevrons.
-            El* gutter = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->PathClick(
+            // The fold hitbox starts where the numbers end: Rust widens
+            // the column by FOLD_ICON_HITBOX_WIDTH and puts the icon in it.
+            El* gutter = Div(a)->FlexRow()->ItemsCenter()->PathClick(
                 StrDup(a, fmt("gutter-%d", row)));
             if (!wrap) {
                 gutter->H(lineH);
@@ -1642,8 +1660,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         // gutter and the fold strip are not part of it.
         float textLeft = 0;
         if (lineNumbers) {
-            textLeft =
-                numW + kLineNumberRightMargin + (folding ? foldW + 8.f : 0.f);
+            textLeft = numW + kLineNumberRightMargin + (folding ? foldW : 0.f);
         }
         // Where the caret was last painted, in the column's own coordinates.
         float gx = state->caretWinX - state->contentBox.x;

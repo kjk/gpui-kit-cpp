@@ -1113,10 +1113,24 @@ El* Highlighter::IntoEl() {
     // The rows are virtualized against the box they scroll in, and paint only
     // learns its height a frame later; the builder knows it now.
     if (state && h > 0) {
-        state->viewH = h;
+        state->viewH = h - editorPad.top - editorPad.bottom;
     }
     El* editor = gpui::Editor::New(cx, state, style);
+    bool padded = editorPad.left != 0 || editorPad.right != 0 ||
+                  editorPad.top != 0 || editorPad.bottom != 0;
     El* scroller = editor;
+    if (padded && h <= 0) {
+        // The rows' own column reports where the text is, so the room goes
+        // around it rather than into it.
+        scroller = Div(a)
+                       ->FlexCol()
+                       ->W(kFill)
+                       ->PadL(editorPad.left)
+                       ->PadR(editorPad.right)
+                       ->PadT(editorPad.top)
+                       ->PadB(editorPad.bottom)
+                       ->Child(editor);
+    }
     if (h > 0) {
         // The scroll handle is the editor's: the rows slide under this box as
         // the caret moves, and the wheel moves them too. ScrollFromPath is
@@ -1137,6 +1151,12 @@ El* Highlighter::IntoEl() {
             scroller->ScrollX(state->scrollX);
         }
         scroller->Child(editor);
+        if (padded) {
+            scroller->PadL(editorPad.left)
+                ->PadR(editorPad.right)
+                ->PadT(editorPad.top)
+                ->PadB(editorPad.bottom);
+        }
     }
     El* completionMenu = CompletionMenu::New(cx, state)->IntoEl();
     if (!completionMenu) {

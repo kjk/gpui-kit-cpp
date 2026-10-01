@@ -20,6 +20,10 @@ struct Highlighter {
     // content, which is what an editor inside something else that scrolls
     // wants.
     float h = 0;
+    // set_editor_paddings: the room between the box's edge and the rows,
+    // gutter included, inside whatever scrolls them. Zero by default; the
+    // component Editor asks for the Input's.
+    Edges editorPad = {};
     // theme.mono_font_size until a caller says otherwise.
     float fontSize = 0;
     // EditorState::language: what the rows are scanned as. None leaves them
