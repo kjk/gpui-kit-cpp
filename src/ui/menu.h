@@ -128,12 +128,17 @@ struct DropdownMenu {
     // Anchor::TopRight rather than TopLeft: the menu's right edge lines up
     // with the trigger's.
     bool anchorRight = false;
+    // Anchor::BottomLeft / BottomRight: the menu's bottom edge goes on the
+    // trigger's top, so it opens upward. Like the downward one it is clamped
+    // into the window, not flipped.
+    bool anchorAbove = false;
     float gap = 4;
 
     static DropdownMenu* New(Ctx* cx, Str id);
     DropdownMenu* Trigger(El* e);
     DropdownMenu* Menu(PopupMenu* m);
     DropdownMenu* AnchorRight(bool v = true);
+    DropdownMenu* AnchorAbove(bool v = true);
     El* IntoEl();
 };
 

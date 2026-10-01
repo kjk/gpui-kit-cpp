@@ -359,9 +359,11 @@ struct DropdownButton {
     ButtonCustomVariant customVariant = {};
     bool hasSize = false;
     UiSize size = UiSize::Medium;
-    // Anchor::TopRight by default; the story's first one asks for
-    // BottomRight, which lines the same edge up.
+    // dropdown_menu_with_anchor: Anchor::TopRight by default, which hangs
+    // the menu under the caret with the right edges lined up. A Bottom*
+    // anchor sets anchorAbove, and the menu opens upward instead.
     bool anchorRight = true;
+    bool anchorAbove = false;
 
     static DropdownButton* New(Ctx* cx, Str id);
     DropdownButton* Button_(component::Button* b);

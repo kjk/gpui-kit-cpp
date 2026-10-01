@@ -180,11 +180,13 @@ static El* Materialize(MaterializeRequest* request) {
                 cx, &RunItem, request->ResolveCallback(op.callback)));
         });
         dropdown->Menu(menu);
-        // DropdownMenu hangs its menu under the trigger and only chooses the
-        // edge it lines up with, as DropdownMenuPopover::Anchor does: the
-        // top/bottom half of the anchor is not honored.
+        // The anchor names the menu's own corner: a Top* one hangs it under
+        // the caret, a Bottom* one stands it on the caret, and the side is
+        // the edge the two line up on.
         dropdown->anchorRight = anchor == gpui::Anchor::TopRight ||
                                 anchor == gpui::Anchor::BottomRight;
+        dropdown->anchorAbove = anchor == gpui::Anchor::BottomRight ||
+                                anchor == gpui::Anchor::BottomLeft;
     }
     return request->ApplyStyle(dropdown->IntoEl());
 }

@@ -1361,6 +1361,17 @@ void DropdownButtonDescriptorIsClosed() {
     ArenaDelete(a);
 }
 
+// The first element placed against its parent's edge rather than in flow:
+// an open dropdown's menu.
+static El* FindAnchoredMenu(El* e) {
+    if (!e) return nullptr;
+    if (e->style.anchorBelow || e->style.anchorAbove) return e;
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = FindAnchoredMenu(c)) return found;
+    }
+    return nullptr;
+}
+
 // basic_public_host.rs: basic_text_and_dropdown_materialize_through_public
 // _host. Rust reads the recording back as a debug tree; here the element
 // tree is what is checked, and the clicks are the listeners the action half,
@@ -1405,6 +1416,14 @@ void BasicTextAndDropdownMaterializeThroughTheHost() {
     root = host.Render();
     El* open = ListenerAbove(root, StrL("Open"));
     utassert(open != nullptr);
+    // menu_anchor('bottom_right') names the menu's own corner: it stands on
+    // the caret and opens upward, right edges lined up.
+    El* menu = FindAnchoredMenu(root);
+    utassert(menu != nullptr);
+    if (menu) {
+        utassert(menu->style.anchorAbove && !menu->style.anchorBelow);
+        utassert(menu->style.absRight == 0);
+    }
     if (open) Click(host, open);
     root = host.Render();
     utassert(FindText(root, StrL("Counts: 1|1")) != nullptr);

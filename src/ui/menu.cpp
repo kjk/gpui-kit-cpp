@@ -535,6 +535,10 @@ DropdownMenu* DropdownMenu::AnchorRight(bool v) {
     anchorRight = v;
     return this;
 }
+DropdownMenu* DropdownMenu::AnchorAbove(bool v) {
+    anchorAbove = v;
+    return this;
+}
 
 El* DropdownMenu::IntoEl() {
     // The trigger and the open transition are named inside the dropdown, so
@@ -579,9 +583,15 @@ El* DropdownMenu::IntoEl() {
         // `anchored` clamps into the window rather than taking the other
         // side. `dropdown_positioner`, which does flip, is reached by the
         // three dropdowns and by nothing else.
-        El* el = DropdownOpen(cx, menu->IntoEl(), MotionName(cx, StrL("open")))
-                     ->AnchorBelow(gap)
-                     ->Deferred();
+        El* el = DropdownOpen(cx, menu->IntoEl(), MotionName(cx, StrL("open")));
+        // popup.rs anchor_position: a Top* anchor hangs the menu from the
+        // trigger's bottom edge, a Bottom* one stands it on the top edge.
+        if (anchorAbove) {
+            el->AnchorAbove(gap);
+        } else {
+            el->AnchorBelow(gap);
+        }
+        el->Deferred();
         if (anchorRight) {
             el->Right(0);
         } else {
@@ -604,6 +614,9 @@ DropdownMenuPopover* DropdownMenuPopover::New(Ctx* cx, Str id) {
 DropdownMenuPopover* DropdownMenuPopover::Anchor(gpui::Anchor value) {
     anchorRight =
         value == gpui::Anchor::TopRight || value == gpui::Anchor::BottomRight;
+    anchorAbove = value == gpui::Anchor::BottomLeft ||
+                  value == gpui::Anchor::BottomCenter ||
+                  value == gpui::Anchor::BottomRight;
     return this;
 }
 

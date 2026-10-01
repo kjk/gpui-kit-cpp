@@ -1301,6 +1301,7 @@ El* DropdownButton::IntoEl() {
                            ->Trigger(trigger)
                            ->Menu(menu)
                            ->AnchorRight(anchorRight)
+                           ->AnchorAbove(anchorAbove)
                            ->IntoEl());
         }
     }
