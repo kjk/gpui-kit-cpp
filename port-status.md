@@ -253,10 +253,6 @@ macOS font-kit requirement on the website only. The current update target is
   See the browser section of AGENTS.md.
 - **No webview on Linux or wasm.** `src/wry/wry_linux.cpp` and `wry_wasm.cpp`
   are stubs; `src/wry/readme.md` says what a real one would take.
-- **A TextView does not inherit its parent's text colour.** Rust's markdown
-  text takes the surrounding `text_color`; here it paints its
-  `TextViewStyle::foreground`, so a muted markdown description (the Settings
-  story's Documentation item) is handed a style with the muted colour.
 
 ## Not ported, on purpose
 

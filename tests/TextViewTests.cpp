@@ -1481,6 +1481,51 @@ static void TestTextViewDefaultsAndOptInHighlighting() {
     AppGlobalClear(&app);
 }
 
+// text_view.rs request_layout: `.text_color(text_view_style.foreground())`
+// on the root, then `.refine_style(&self.style)`. The view names its own
+// colour, so a parent's `text_color` stops at it — a muted description
+// around a markdown TextView still draws the body foreground — and only a
+// colour refined onto the view itself wins.
+static void TestTextViewRootNamesItsForeground() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+
+    TextViewStyle style = TextViewStyle::Default()
+                              .WithForeground(RgbaHex(0x112233));
+    El* view = TextView::New(&cx, StrL("plain words"))
+                   ->Selectable(false)
+                   ->Style(style)
+                   ->IntoEl();
+    utassert(view && view->style.hasColor &&
+             SameTextViewColor(view->style.color, RgbaHex(0x112233)));
+
+    gpui::Style muted = {};
+    muted.color = RgbaHex(0x445566);
+    muted.hasColor = true;
+    El* refined = TextView::New(&cx, StrL("plain words"))
+                      ->Selectable(false)
+                      ->Style(style)
+                      ->Refine(muted, StyleFieldColor)
+                      ->IntoEl();
+    // The refinement lands on the root over the foreground, and PrepareEl
+    // applies it before the colour cascades.
+    utassert(refined && refined->style.hasColor &&
+             SameTextViewColor(refined->style.color, RgbaHex(0x112233)));
+    utassert(refined && refined->StyleStates() &&
+             (refined->StyleStates()->refineSet & StyleFieldColor) &&
+             SameTextViewColor(refined->StyleStates()->refine.color,
+                               RgbaHex(0x445566)));
+
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // markdown_ext.rs has_same_parser_configuration, and the render loop it
 // exists to stop: a view that rebuilds equivalent plugins every frame must
 // reuse the parsed document — `stateless_markdown_with_rebuilt_parser_
@@ -3698,6 +3743,7 @@ void TestTextView() {
     TestEqualBlockCountReplacementRemeasures();
     TestTextViewStyleIsReadableWithoutATheme();
     TestTextViewDefaultsAndOptInHighlighting();
+    TestTextViewRootNamesItsForeground();
     TestMarkdownExtensionsParserConfiguration(a);
     TestMarkdownFrontmatter();
     TestMarkdownInlinePlugin();

@@ -309,11 +309,10 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
             StrL("Open the GitHub repository in your default browser."),
             OpenUrlButton(cx, StrL("open-url-repo"), StrL("Repository..."),
                           kUrlRepository, size));
-    // description(markdown(..)): the search reads the source text. Rust's
-    // TextView inherits the description's muted colour; this one is handed
-    // it.
-    TextViewStyle mutedText = component::UiTextViewStyle(th);
-    mutedText.WithForeground(th.mutedFg);
+    // description(markdown(..)): the search reads the source text. The
+    // TextView names its own foreground on its root (text_view.rs
+    // `.text_color(text_view_style.foreground())`), so the description's
+    // muted colour stops at it, as it does in Rust.
     s->Item(StrL("Documentation"),
             StrL("Rust doc for the `gpui-component` crate."),
             OpenUrlButton(cx, StrL("open-url-docs"), StrL("Rust Docs..."),
@@ -322,7 +321,6 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
             component::Markdown(
                 cx, StrL("Rust doc for the `gpui-component` crate."))
                 ->Font(14)
-                ->Style(mutedText)
                 ->IntoEl());
     s->Item(StrL("Website"),
             StrL("Official website and documentation for the GPUI Component."),
