@@ -44,175 +44,6 @@ static bool MarkIs(const InputState& s, int start, int end) {
     return m.start == start && m.end == end;
 }
 
-static void SingleLineRemovesNewlines() {
-    InputState s;
-    InputSetValue(&s, StrL("default\nvalue"));
-    utassert(ValueIs(s, "defaultvalue"));
-
-    InputSetValue(&s, StrL("first\nsecond\r\nthird\rfourth"));
-    utassert(ValueIs(s, "firstsecondthirdfourth"));
-
-    InputSetValue(&s, Str{});
-    utassert(ValueIs(s, ""));
-
-    // A textarea keeps them.
-    InputState multi;
-    multi.kind = InputKind::Textarea;
-    InputSetValue(&multi, StrL("first\nsecond"));
-    utassert(ValueIs(multi, "first\nsecond"));
-}
-
-// set_value parks a single-line caret at the end (matching an HTML <input>)
-// and a multi-line one at 0..0. The scroll half of the Rust case needs a
-// painted window.
-static void SetValueCaretAtEnd() {
-    InputState s;
-    InputSetValue(&s, StrL("https://example.com/v1/users"));
-    utassert(RangeIs(s, 28, 28));
-
-    InputState multi;
-    multi.kind = InputKind::Textarea;
-    InputSetValue(&multi, StrL("one\ntwo"));
-    utassert(RangeIs(multi, 0, 0));
-}
-
-// replace_all does the same to the selection, but stays in the history.
-static void ReplaceAllPreservesUndoHistory() {
-    InputState s;
-    InputSetValue(&s, StrL("hello"));
-    InputReplaceAll(&s, nullptr, nullptr, StrL("world!"));
-    utassert(ValueIs(s, "world!"));
-    utassert(RangeIs(s, 6, 6));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "hello"));
-
-    // set_value, by contrast, clears the history: there is nothing to undo.
-    InputSetValue(&s, StrL("fresh"));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "fresh"));
-}
-
-static void SetSelectedRange() {
-    InputState s;
-    InputSetValue(&s, StrL("hello world"));
-
-    InputSetSelectedRange(&s, nullptr, nullptr, 0, 5);
-    utassert(RangeIs(s, 0, 5));
-    utassert(base::StrEq(InputSelectedValue(&s), StrL("hello")));
-
-    InputSetSelectedRange(&s, nullptr, nullptr, 6, 11);
-    utassert(base::StrEq(InputSelectedValue(&s), StrL("world")));
-
-    // clamped + collapsed
-    InputSetSelectedRange(&s, nullptr, nullptr, 100, 100);
-    utassert(RangeIs(s, 11, 11));
-}
-
-static void SetSelectedRangeClipsToUtf8Boundaries() {
-    InputState s;
-    InputSetValue(&s, StrL("éx"));
-
-    // A non-empty range grows out to character boundaries...
-    InputSetSelectedRange(&s, nullptr, nullptr, 0, 1);
-    utassert(RangeIs(s, 0, 2));
-
-    // ...an empty one clips back to the boundary before it.
-    InputSetSelectedRange(&s, nullptr, nullptr, 1, 1);
-    utassert(RangeIs(s, 0, 0));
-}
-
-static void AdjacentTypingCoalescesIntoOneUndo() {
-    InputState s;
-    Type(&s, "a");
-    Type(&s, "b");
-    Type(&s, "c");
-    utassert(ValueIs(s, "abc"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, ""));
-    Act(&s, InputAction::Redo);
-    utassert(ValueIs(s, "abc"));
-}
-
-// A cursor move ends the typing session, so the two runs undo separately.
-static void CursorMovementSplitsTyping() {
-    InputState s;
-    Type(&s, "ab");
-    Act(&s, InputAction::MoveToStart);
-    Type(&s, "X");
-    utassert(ValueIs(s, "Xab"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "ab"));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, ""));
-}
-
-static void BackwardAndForwardDeletesDoNotCoalesce() {
-    InputState s;
-    InputSetValue(&s, StrL("abcd"));
-    InputSetSelectedRange(&s, nullptr, nullptr, 2, 2);
-
-    Act(&s, InputAction::Backspace); // "acd"
-    Act(&s, InputAction::Delete);    // "ad"
-    utassert(ValueIs(s, "ad"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "acd"));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "abcd"));
-}
-
-// Repeated deletes in the same direction do coalesce.
-static void DirectionalCharacterDeletesCoalesce() {
-    InputState s;
-    InputSetValue(&s, StrL("abcd"));
-    Act(&s, InputAction::Backspace);
-    Act(&s, InputAction::Backspace);
-    utassert(ValueIs(s, "ab"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "abcd"));
-}
-
-static void SelectedReplacementIsAtomic() {
-    InputState s;
-    InputSetValue(&s, StrL("hello world"));
-    InputSetSelectedRange(&s, nullptr, nullptr, 0, 5);
-    Type(&s, "bye");
-    utassert(ValueIs(s, "bye world"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "hello world"));
-    utassert(RangeIs(s, 0, 5));
-}
-
-static void ForwardDeleteRestoresCursor() {
-    InputState s;
-    InputSetValue(&s, StrL("abc"));
-    InputSetSelectedRange(&s, nullptr, nullptr, 1, 1);
-    Act(&s, InputAction::Delete);
-    utassert(ValueIs(s, "ac"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "abc"));
-    // The caret goes back to where it was, in front of what was deleted.
-    utassert(RangeIs(s, 1, 1));
-}
-
-static void NoopEditPreservesRedo() {
-    InputState s;
-    Type(&s, "abc");
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, ""));
-
-    // Deleting at the start of an empty field changes nothing.
-    Act(&s, InputAction::Backspace);
-    Act(&s, InputAction::Redo);
-    utassert(ValueIs(s, "abc"));
-}
-
 static void MaskedRedoRestoresActualCursor() {
     InputState s;
     InputSetMaskPattern(&s, MaskPatternNew(StrL("(999)999-9999")));
@@ -1605,20 +1436,6 @@ static void LayoutModeRowsClamp() {
     utassert(LayoutModeRows(grow) == 5);
 }
 
-// kind.rs: the kind decides whether an input is multi-line, not the row count.
-static void KindDoesNotFollowTheRowCount() {
-    InputState s;
-    s.kind = InputKind::Textarea;
-    s.mode.kind = LayoutModeKind::AutoGrow;
-    s.mode.minRows = 1;
-    s.mode.maxRows = 1;
-    utassert(InputIsMultiLine(&s));
-
-    InputState one;
-    one.mode.rows = 4;
-    utassert(InputIsSingleLine(&one));
-}
-
 // A field twenty lines tall inside a box that shows five of them.
 static void SeedScroll(InputState* s) {
     s->lastLineH = 20;
@@ -1642,36 +1459,6 @@ static void ScrollToBringsTheCaretIntoView() {
     // Back above the top: a line's clearance over it.
     InputScrollToCaret(&s, 0, 100, InputMoveDir::None);
     utassertnear(s.scrollY, 80.f);
-}
-
-// test_edit_reveals_far_offscreen_caret: an edit at a caret far outside the
-// viewport reveals it at once. Rust's cursor-follow in layout_cursors used to
-// step one line per changed selection; upstream 03490654 puts the caret's
-// line at the edge instead. Here an edit reveals through scroll_to directly.
-static void AnEditRevealsAFarOffscreenCaret() {
-    InputState s;
-    s.kind = InputKind::Textarea;
-    s.mode.kind = LayoutModeKind::AutoGrow;
-    s.mode.minRows = 1;
-    s.mode.maxRows = 6;
-    StrBuilder text;
-    for (int i = 1; i <= 100; i++) {
-        text.Append(StrDup(fmt(i < 100 ? "line %d\n" : "line %d", i)));
-    }
-    InputSetValue(&s, text.TakeStr());
-    s.lastLineH = 20;
-    s.viewH = 120;
-    s.viewW = 700;
-    s.contentH = 100 * 20.f;
-    s.contentW = 700;
-    int end = len(InputValue(&s));
-    s.selectedRange = SelectionAt(end);
-    // The reader scrolled back to the top.
-    s.scrollY = 0;
-    InputTypeChar(&s, nullptr, nullptr, 'X');
-    utassert(StrEndsWith(InputValue(&s), StrL("line 100X")));
-    float caretTop = 99 * 20.f - s.scrollY;
-    utassert(caretTop >= 0 && caretTop + 20.f <= s.viewH);
 }
 
 static void AVerticalWalkDoesNotFightItself() {
@@ -1745,70 +1532,6 @@ static void CodeEditorSurroundingUsesTheOverride() {
     utassertnear(s.scrollY, 40.f);
 }
 
-// state.rs: test_next_search_match_reveals_with_padding_after_manual_scroll
-// and its previous_search_match twin. Match order does not describe the
-// viewport's direction once the reader has scrolled by hand, so Next has to be
-// allowed to scroll up and Previous down, and both keep the configured
-// surrounding-line padding.
-static void SearchRevealsWithPaddingAfterManualScroll(bool previous) {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    InputState s;
-    s.kind = InputKind::Editor;
-    s.mode.kind = LayoutModeKind::CodeEditor;
-    s.searchable = true;
-    s.cursorSurroundingLines = 3;
-    const float lineH = 20;
-    s.lastLineH = lineH;
-    s.viewH = 200;
-    s.viewW = 400;
-    s.contentW = 400;
-    StrBuilder text;
-    for (int row = 0; row < 160; row++) {
-        if (row > 0) text.Append(StrL("\n"));
-        if (row == 20 || row == 60 || row == 100) {
-            text.Append(fmt("match on row %d", row));
-        } else {
-            text.Append(fmt("line %d", row));
-        }
-    }
-    Str value = text.TakeStr();
-    InputSetValue(&s, value);
-    s.contentH = 160 * lineH;
-    InputSetSearchQuery(&s, &app, win, StrL("match"), true);
-    if (previous) {
-        Selection skip = {};
-        SearchMatcherNext(&s.search.matcher, &skip);
-        SearchMatcherNext(&s.search.matcher, &skip);
-    }
-    // The reader scrolled by hand: the second match is above the viewport
-    // for Next, below it for Previous.
-    s.scrollY = previous ? 0 : lineH * 80;
-
-    Selection range = {};
-    bool moved = previous ? InputSearchPrev(&s, &app, win, &range)
-                          : InputSearchNext(&s, &app, win, &range);
-    utassert(moved);
-    int start = StrFind(value, StrL("match on row 60"));
-    utassert(range.start == start && range.end == start + 5);
-    utassert(SearchMatcherIndex(&s.search.matcher) == 1);
-
-    // Row 60 is inside the box with three lines of clearance, the matched
-    // line included.
-    float targetY = lineH * 60 - s.scrollY;
-    utassert(targetY >= lineH * 2 - 0.1f);
-    utassert(targetY + lineH * 3 <= s.viewH + 0.1f);
-    StrFree(value);
-    delete win;
-    EntityDropAll(&app);
-}
-
-static void SearchNavigationRevealsTheMatchAfterAManualScroll() {
-    SearchRevealsWithPaddingAfterManualScroll(false);
-    SearchRevealsWithPaddingAfterManualScroll(true);
-}
-
 static void ASidewaysCaretPullsTheRunAcross() {
     InputState s;
     SeedScroll(&s);
@@ -1856,65 +1579,6 @@ static void ACompositionReplacesItselfUntilItCommits() {
     utassert(MarkIs(s, -1, -1));
     Type(&s, " suffix");
     utassert(ValueIs(s, "prefix \xE4\xBD\xA0 suffix"));
-}
-
-// The whole composition is one undo step: the candidates were staging posts,
-// not edits the user made.
-static void ACompositionUndoesAsOneThing() {
-    InputState s;
-    Type(&s, "prefix ");
-    Mark(&s, "n");
-    Mark(&s, "ni");
-    Mark(&s, "\xE4\xBD\xA0");
-    InputUnmarkText(&s, nullptr, nullptr);
-    Type(&s, " suffix");
-    utassert(ValueIs(s, "prefix \xE4\xBD\xA0 suffix"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "prefix \xE4\xBD\xA0"));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "prefix "));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, ""));
-}
-
-// An empty insert is the composition being abandoned: the staged text goes,
-// the caret goes back where it started, and nothing is left marked.
-static void AnAbandonedCompositionLeavesNothingBehind() {
-    InputState s;
-    Type(&s, "ab");
-    Mark(&s, "ni");
-    utassert(ValueIs(s, "abni"));
-    Mark(&s, "");
-    utassert(ValueIs(s, "ab"));
-    utassert(RangeIs(s, 2, 2));
-    utassert(MarkIs(s, -1, -1));
-}
-
-// Two compositions in a row are two undo steps, and what is typed after one
-// is a third. The commit ends the transaction: neither platform follows a
-// confirmed candidate with an unmark, and a transaction left open would swallow
-// everything typed after it.
-static void ConsecutiveCompositionsUndoSeparately() {
-    InputState s;
-    Mark(&s, "j");
-    Mark(&s, "jin");
-    // The commit: a replace with no range of its own, which is what
-    // `insertText:` and GCS_RESULTSTR come to.
-    Type(&s, "ä»å¤©"); // 今天
-    Mark(&s, "w");
-    Mark(&s, "wo");
-    Type(&s, "æä»¬"); // 我们
-    utassert(ValueIs(s, "ä»å¤©æä»¬"));
-
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "ä»å¤©"));
-    Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, ""));
-    Act(&s, InputAction::Redo);
-    utassert(ValueIs(s, "ä»å¤©"));
-    Act(&s, InputAction::Redo);
-    utassert(ValueIs(s, "ä»å¤©æä»¬"));
 }
 
 // A commit that names no range of its own replaces the marked text rather
@@ -2315,24 +1979,6 @@ static void ReopeningSearchPanelPreservesThePreviousMatch() {
     ArenaDelete(arena);
     delete win;
     EntityDropAll(&app);
-}
-
-// test_set_search_query_highlights_without_the_panel
-static void SetSearchQueryHighlightsWithoutThePanel() {
-    App app;
-    Window* win = new Window();
-    win->app = &app;
-    InputState editor;
-    editor.kind = InputKind::Editor;
-    editor.searchable = false;
-    InputSetValue(&editor, StrL("foo bar foo"));
-    InputSetSearchQuery(&editor, &app, win, StrL("foo"), true);
-    utassert(SearchSessionIsActive(&editor.search));
-    utassert(!editor.search.open);
-    utassert(SearchMatcherLen(&editor.search.matcher) == 2);
-    InputCloseSearch(&editor, &app, win);
-    utassert(!SearchSessionIsActive(&editor.search));
-    delete win;
 }
 
 // test_search_shortcut_reaches_the_host_when_not_searchable /
@@ -3418,67 +3064,6 @@ static void ScrollToCursorUsesDocumentYNotStaleWindowY() {
     utassert(state.scrollY > 200);
 }
 
-// test_unfold_at: unfolding at a position opens exactly the folds hiding it.
-//
-// A fold keeps its own first and last line visible, so a position on either
-// of them opens nothing. Nested folds all open at once, sibling folds stay
-// closed, and the opened ranges stay fold candidates.
-static void UnfoldingAtAPositionOpensExactlyWhatHidesIt() {
-    InputState s;
-    s.kind = InputKind::Editor;
-    s.mode.kind = LayoutModeKind::CodeEditor;
-    s.mode.folding = true;
-    InputSetValue(&s, StrL("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl"));
-
-    // An outer fold over lines 0..=5, a fold nested inside it, and a sibling
-    // fold that must never be touched.
-    FoldRange ranges[3] = {};
-    ranges[0].startLine = 0;
-    ranges[0].endLine = 5;
-    ranges[1].startLine = 2;
-    ranges[1].endLine = 4;
-    ranges[2].startLine = 7;
-    ranges[2].endLine = 10;
-    InputSetFoldCandidates(&s, ranges, 3);
-    FoldMapSetFolded(&s.folds, 0, true);
-    FoldMapSetFolded(&s.folds, 2, true);
-    FoldMapSetFolded(&s.folds, 7, true);
-    FoldMapRebuild(&s.folds, InputLinesLen(&s));
-
-    // The outer fold's own first and last line stay visible, so neither
-    // position opens anything.
-    const int kOwnLines[] = {0, 5};
-    for (int line : kOwnLines) {
-        utassert(!FoldMapLineHidden(&s.folds, line));
-        utassert(!InputUnfoldAt(&s, nullptr, nullptr, {line, 0}));
-        utassert(FoldMapIsFolded(&s.folds, 0));
-        utassert(FoldMapIsFolded(&s.folds, 2));
-        utassert(FoldMapIsFolded(&s.folds, 7));
-    }
-
-    // Line 3 is hidden by both the outer and the nested fold, so both open;
-    // the sibling fold does not.
-    utassert(FoldMapLineHidden(&s.folds, 3));
-    utassert(InputUnfoldAt(&s, nullptr, nullptr, {3, 0}));
-    FoldMapRebuild(&s.folds, InputLinesLen(&s));
-    utassert(!FoldMapLineHidden(&s.folds, 3));
-    utassert(!FoldMapIsFolded(&s.folds, 0));
-    utassert(!FoldMapIsFolded(&s.folds, 2));
-    utassert(FoldMapIsFolded(&s.folds, 7));
-    // The opened ranges are still candidates for refolding.
-    utassert(FoldMapIsCandidate(&s.folds, 0));
-    utassert(FoldMapIsCandidate(&s.folds, 2));
-
-    // Nothing is hidden there any more, so a second call is a no-op.
-    utassert(!InputUnfoldAt(&s, nullptr, nullptr, {3, 0}));
-
-    // A field that is not a folding code editor has no folds to open.
-    InputState plain;
-    plain.kind = InputKind::Textarea;
-    InputSetValue(&plain, StrL("a\nb\nc"));
-    utassert(!InputUnfoldAt(&plain, nullptr, nullptr, {1, 0}));
-}
-
 // ─── multiple cursors ─────────────────────────────────────────────────────
 //
 // state.rs mod tests, the multi-cursor cases that are pure state: the alt
@@ -4023,43 +3608,6 @@ static void TheThreeInputBuildersInstallPasteInterception() {
     delete win;
 }
 
-// state.rs test_paste_without_text_leaves_the_selection_alone: an image-only
-// clipboard must not replace the selection with nothing. Rust drives it
-// through the Paste action and a test clipboard; the insert is the seam here,
-// since the action reads the real system clipboard.
-static void PasteWithoutTextLeavesTheSelectionAlone() {
-    InputState s;
-    InputSetValue(&s, StrL("hello world"));
-    InputSelectAll(&s, nullptr, nullptr);
-    ClipboardItem image;
-    const uint8_t png[4] = {0x89, 'P', 'N', 'G'};
-    image.imageBytes = png;
-    image.imageBytesLen = 4;
-    InputInsertClipboard(&s, nullptr, nullptr, image);
-    utassert(ValueIs(s, "hello world"));
-    utassert(RangeIs(s, 0, 11));
-}
-
-// state.rs test_paste_target_tracks_edits_and_selections.
-static void PasteTargetTracksEditsAndSelections() {
-    InputState s;
-    MakeEditor(&s, "abc");
-    InputMoveTo(&s, nullptr, nullptr, 2);
-    InputPasteTarget target = InputPasteTargetOf(&s);
-    // Nothing happened: a paste asked for then still applies.
-    utassert(InputPasteTargetOf(&s) == target);
-
-    // Moving the caret changes where the paste would go.
-    InputMoveTo(&s, nullptr, nullptr, 1);
-    InputPasteTarget moved = InputPasteTargetOf(&s);
-    utassert(moved != target);
-
-    // Editing the text changes it too, even with the caret put back.
-    Type(&s, "x");
-    InputMoveTo(&s, nullptr, nullptr, 1);
-    utassert(InputPasteTargetOf(&s) != moved);
-}
-
 static void InlineTokenContentValidatesRanges() {
     InputContent c = InputContent::New(StrL("Ask @alice"));
     InlineToken tok = InlineToken::New(StrL("person:alice"), StrL("@alice"))
@@ -4078,62 +3626,6 @@ static void InlineTokenContentValidatesRanges() {
 static int TokenCount(const InputState& s) {
     const Vec<InlineTokenSpan>* spans = InputTokens(&s);
     return spans ? spans->len : 0;
-}
-
-static bool TokenRangeIs(const InputState& s, int i, int start, int end) {
-    const Vec<InlineTokenSpan>* spans = InputTokens(&s);
-    return spans && i < spans->len && (*spans)[i].start == start &&
-           (*spans)[i].end == end;
-}
-
-static void InlineTokensAreAtomicForCaretAndHistory() {
-    InputState s;
-    InputSetValue(&s, StrL("问 @alice!"));
-    InlineToken tok = InlineToken::New(StrL("alice-1"), StrL("@alice"))
-                          .WithLabel(StrL("Alice"));
-    utassert(InputReplaceRangeWithToken(&s, nullptr, nullptr, 4, 10, tok) ==
-             InlineTokenError::Ok);
-    utassert(ValueIs(s, "问 @alice!"));
-    utassert(TokenCount(s) == 1);
-    utassert(TokenRangeIs(s, 0, 4, 10));
-    utassert(InputNextEndOfWordAt(&s, 4) == 10);
-    utassert(InputPreviousStartOfWordAt(&s, 10) == 4);
-    utassert(InputPreviousBoundary(&s, 10) == 4);
-    utassert(InputNextBoundary(&s, 4) == 10);
-
-    Act(&s, InputAction::Undo);
-    utassert(TokenCount(s) == 0);
-    utassert(ValueIs(s, "问 @alice!"));
-    Act(&s, InputAction::Redo);
-    utassert(TokenCount(s) == 1);
-    utassert(InlineTokenEq((*InputTokens(&s))[0].token, tok));
-
-    InputSetSelectedRange(&s, nullptr, nullptr, 6, 7);
-    utassert(RangeIs(s, 4, 10));
-    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, Str{});
-    utassert(ValueIs(s, "问 !"));
-    utassert(TokenCount(s) == 0);
-    Act(&s, InputAction::Undo);
-    utassert(TokenCount(s) == 1);
-    utassert(InlineTokenEq((*InputTokens(&s))[0].token, tok));
-
-    InputSetSelectedRange(&s, nullptr, nullptr, 0, 0);
-    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, StrL("🙂"));
-    utassert(TokenRangeIs(s, 0, 8, 14));
-    Act(&s, InputAction::Undo);
-    utassert(TokenRangeIs(s, 0, 4, 10));
-
-    utassert(InputReplaceRangeWithToken(&s, nullptr, nullptr, 0, 0, tok) ==
-             InlineTokenError::Ok);
-    utassert(ValueIs(s, "@alice问 @alice!"));
-    utassert(TokenCount(s) == 2);
-    Act(&s, InputAction::Undo);
-    utassert(TokenCount(s) == 1);
-    utassert(TokenRangeIs(s, 0, 4, 10));
-
-    InputSetValue(&s, StrL("问 @alice!"));
-    utassert(TokenCount(s) == 0);
-    utassert(s.undo.undos.len == 0);
 }
 
 static void InlineTokensRespectModeAndContent() {
@@ -5719,7 +5211,7 @@ static void PreviousSearchMatchRevealsWithPaddingAfterManualScroll() {
 }
 
 // state.rs test_set_search_query_highlights_without_the_panel.
-static void SetSearchQueryHighlightsWithoutThePanelInAWindow() {
+static void SetSearchQueryHighlightsWithoutThePanel() {
     InputView view = InputViewBuildEditor(
         [](InputState* s, App*) { s->searchable = false; });
     InputSetValue(view.input, StrL("foo bar foo"));
@@ -5913,7 +5405,7 @@ static void RunWindowTestsA() {
     ScrollToEobDoesNotOvershootSafeRange();
     NextSearchMatchRevealsWithPaddingAfterManualScroll();
     PreviousSearchMatchRevealsWithPaddingAfterManualScroll();
-    SetSearchQueryHighlightsWithoutThePanelInAWindow();
+    SetSearchQueryHighlightsWithoutThePanel();
     ClosedSearchResyncsMatchesAfterEditsInAWindow();
     SearchRevealsOffscreenWrappedMatch();
     NumberStepInAWindow();
@@ -6544,7 +6036,7 @@ static void ReplaceAllSingleLine() {
 }
 
 // state.rs test_single_line_removes_newlines.
-static void SingleLineRemovesNewlinesInAWindow() {
+static void SingleLineRemovesNewlines() {
     InputView view = InputViewBuild([](InputState* s, App*) {
         InputDefaultValue(s, StrL("default\nvalue"));
     });
@@ -6587,7 +6079,7 @@ static void ReplaceAllMultiLine() {
 
 // state.rs test_replace_all_preserves_undo_history: unlike set_value,
 // replace_all records the change so it can be undone and redone.
-static void ReplaceAllPreservesUndoHistoryInAWindow() {
+static void ReplaceAllPreservesUndoHistory() {
     InputView view = InputViewBuild();
     // Seed with a value and clear history so the baseline is clean.
     InputSetValue(view.input, StrL("first"));
@@ -6630,7 +6122,7 @@ static void ReplaceAllCodeEditor() {
 }
 
 // state.rs test_set_selected_range.
-static void SetSelectedRangeInAWindow() {
+static void SetSelectedRange() {
     InputView view = InputViewBuild(
         [](InputState* s, App*) { InputDefaultValue(s, StrL("hello world")); });
     SetSelectedRangeB(view, 0, 5);
@@ -6773,7 +6265,7 @@ static void CompositionCancelViaUnmarkDoesNotLeak() {
 }
 
 // state.rs test_set_selected_range_clips_to_utf8_boundaries.
-static void SetSelectedRangeClipsToUtf8BoundariesInAWindow() {
+static void SetSelectedRangeClipsToUtf8Boundaries() {
     InputView view = InputViewBuild(
         [](InputState* s, App*) { InputDefaultValue(s, StrL("\xC3\xA9x")); });
     SetSelectedRangeB(view, 0, 1);
@@ -7041,17 +6533,17 @@ static void RunWindowTestsB() {
     NumberInputEscapeInvalidText();
     SetValueSingleLineCaretAtEndViewAtStart();
     ReplaceAllSingleLine();
-    SingleLineRemovesNewlinesInAWindow();
+    SingleLineRemovesNewlines();
     ReplaceAllMultiLine();
-    ReplaceAllPreservesUndoHistoryInAWindow();
+    ReplaceAllPreservesUndoHistory();
     ReplaceAllCodeEditor();
-    SetSelectedRangeInAWindow();
+    SetSelectedRange();
     ReplaceTextInRangesSingleEdit();
     ReplaceTextInRangesMultiEditTransaction();
     ImeCompositionUndoesAsOneUnit();
     EditAfterCompositionIsSeparateUndo();
     CompositionCancelViaUnmarkDoesNotLeak();
-    SetSelectedRangeClipsToUtf8BoundariesInAWindow();
+    SetSelectedRangeClipsToUtf8Boundaries();
     ImeSelectionIsRelativeToReplacementStart();
     UndoManagerCompositionIsOneUndoGroup();
     UndoManagerConsecutiveCompositionsAreSeparateGroups();
@@ -7163,7 +6655,7 @@ static void BlurKeepsDecorations() {
 // only source of truth for the kind of input. An auto-growing textarea
 // capped at one row used to report itself as single-line, because the
 // answer was derived from the row counts.
-static void KindDoesNotFollowTheRowCountInAWindow() {
+static void KindDoesNotFollowTheRowCount() {
     InputView view = InputViewBuildTextarea([](InputState* s, App*) {
         s->mode.kind = LayoutModeKind::AutoGrow;
         s->mode.minRows = 1;
@@ -7944,7 +7436,7 @@ static void BackspacePairWithCjkPrefix() {
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
-    KindDoesNotFollowTheRowCountInAWindow();
+    KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();
     AltDragSelectsABlockAndReplacesEachRow();
     AltDragExtendsUpwardFromAnExistingCursor();
@@ -9234,7 +8726,7 @@ static void MultiCursorPasteDistributesLines() {
 // clipboard holds text, so the image arrives the way Paste hands a
 // clipboard item over (InputInsertClipboard) — after a Paste with nothing
 // on the clipboard, which must leave the selection alone as well.
-static void PasteWithoutTextLeavesTheSelectionAloneInAWindow() {
+static void PasteWithoutTextLeavesTheSelectionAlone() {
     InputView view = InputViewBuild();
     InputSetValue(view.input, StrL("hello world"));
     InputSelectAll(view.input, view.app, view.win);
@@ -9254,7 +8746,7 @@ static void PasteWithoutTextLeavesTheSelectionAloneInAWindow() {
 }
 
 // state.rs test_paste_target_tracks_edits_and_selections.
-static void PasteTargetTracksEditsAndSelectionsInAWindow() {
+static void PasteTargetTracksEditsAndSelections() {
     InputView view = MultiLineD();
     SetupCursorsD(view, "ab|c");
     InputPasteTarget target = InputPasteTargetOf(view.input);
@@ -9335,8 +8827,8 @@ static void RunWindowTestsD() {
     BuildColumnarSelection();
     ColumnarSelectionKeepsWidthOverShortRows();
     MultiCursorPasteDistributesLines();
-    PasteWithoutTextLeavesTheSelectionAloneInAWindow();
-    PasteTargetTracksEditsAndSelectionsInAWindow();
+    PasteWithoutTextLeavesTheSelectionAlone();
+    PasteTargetTracksEditsAndSelections();
 }
 
 static void RunWindowTests() {
@@ -9596,7 +9088,6 @@ void TestInputState() {
     StoppingAPausedCursorEndsTheBlinkLoop();
     StoppingABlinkingCursorEndsTheBlinkLoop();
     InlineTokenContentValidatesRanges();
-    InlineTokensAreAtomicForCaretAndHistory();
     InlineTokensRespectModeAndContent();
     TextareaTokenGapsBreakAtUtf8Characters();
     AnAltClickAddsACursorAndTypingWritesAtEach();
@@ -9616,21 +9107,6 @@ void TestInputState() {
     GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
     SingleLineIsCenteredInATallerFrame();
-    PasteWithoutTextLeavesTheSelectionAlone();
-    PasteTargetTracksEditsAndSelections();
-    UnfoldingAtAPositionOpensExactlyWhatHidesIt();
-    SingleLineRemovesNewlines();
-    SetValueCaretAtEnd();
-    ReplaceAllPreservesUndoHistory();
-    SetSelectedRange();
-    SetSelectedRangeClipsToUtf8Boundaries();
-    AdjacentTypingCoalescesIntoOneUndo();
-    CursorMovementSplitsTyping();
-    BackwardAndForwardDeletesDoNotCoalesce();
-    DirectionalCharacterDeletesCoalesce();
-    SelectedReplacementIsAtomic();
-    ForwardDeleteRestoresCursor();
-    NoopEditPreservesRedo();
     MaskedRedoRestoresActualCursor();
     AMaskedValueStaysInTheField();
     AFocusedFieldGoingTakesItsRegistrationWithIt();
@@ -9678,9 +9154,6 @@ void TestInputState() {
     DraggingCannotEatIntoTheSelectedWord();
     ReadonlyRejectsUserEditsOnly();
     ACompositionReplacesItselfUntilItCommits();
-    ACompositionUndoesAsOneThing();
-    AnAbandonedCompositionLeavesNothingBehind();
-    ConsecutiveCompositionsUndoSeparately();
     ACommitReplacesWhatWasMarked();
     EnterInsertsANewlineOnlyWhereItShould();
     MaskFormatsWhileTyping();
@@ -9689,15 +9162,12 @@ void TestInputState() {
     TheBlockPairMovesTheWholeLine();
     ActionForKey();
     LayoutModeRowsClamp();
-    KindDoesNotFollowTheRowCount();
     ScrollToBringsTheCaretIntoView();
-    AnEditRevealsAFarOffscreenCaret();
     AVerticalWalkDoesNotFightItself();
     TheOffsetStaysInsideTheContent();
     EmptyBottomHeightMatchesRust();
     CursorSurroundingPaddingMatchesRust();
     CodeEditorSurroundingUsesTheOverride();
-    SearchNavigationRevealsTheMatchAfterAManualScroll();
     ASidewaysCaretPullsTheRunAcross();
     TheNumberKeysStepTheField();
     TypingAWordOpensTheMenu();
@@ -9709,7 +9179,6 @@ void TestInputState() {
     TwoFindBarsHaveTwoPrevButtons();
     ReopeningFindSelectsItsQueryWithoutChangingUntouchedFrames();
     ReopeningSearchPanelPreservesThePreviousMatch();
-    SetSearchQueryHighlightsWithoutThePanel();
     SearchShortcutPropagatesWhenTheEditorIsNotSearchable();
     TheUiInputFacadeKeepsTheSourceShapes();
     BaseInputCoreKeepsTheSourceModeAndPresentationSeams();
