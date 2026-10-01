@@ -201,6 +201,8 @@ misses in non-`full` modules.
   <example>` for macOS if the remote Mac is reachable, `bun cmd/build.ts -wasm
   <example>` for the browser. Say which of those were not run.
 - Touched `src/taffy/` or `src/markdown/`? `bun cmd/bench.ts` (release only).
+- Touched `crates/story`? `bun cmd/story-parity.ts <slug>` lists the
+  sections and text Rust's page has that ours lacks (and the gallery order).
 - A visible change: `bun cmd/run.ts -rel -compare story` puts the Rust build
   beside ours; `cmd/compare-story.ts`, `cmd/shot.ts` and `cmd/imgdiff.ts`
   screenshot and diff. Warnings are errors; fix them, never suppress.

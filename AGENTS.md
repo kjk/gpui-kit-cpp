@@ -720,6 +720,8 @@ cmd/imgdiff.ts         compare two shots or two dirs, exit 1 on a difference;
                        -tol sets what counts as more than antialiasing
 cmd/compare-story.ts / compare-showcase.ts / compare-ui.ts
                        screenshot the Rust app and this one side by side
+cmd/story-parity.ts    the story gallery's order, titles, section("…") titles
+                       and visible text, Rust page against C++ page
 cmd/parity.ts          drive representative Rust/C++ interaction cases, check
                        visual budgets and write out/parity/{results.json,results.md}
 cmd/vec-log.ts         run with the debug Vec/ArenaVec instrument on and analyze
