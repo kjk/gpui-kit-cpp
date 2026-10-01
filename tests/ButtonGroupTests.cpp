@@ -567,6 +567,45 @@ static void PerSideBordersFollowRoundedCorners() {
 #endif
 }
 
+// Window::paint_quad snaps each edge of an element's quad to a device
+// pixel, so two boxes that meet at a fractional x share one pixel boundary.
+// Unsnapped, both antialiased the pixel they split and the background showed
+// through it as a seam — the line between a primary split button's halves.
+static void AdjacentBoxesMeetWithoutASeam() {
+#if !GPUI_OS_WASM
+    App* app = AppNew();
+    if (!app) {
+        return;
+    }
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    if (PaintTargetBeginOffscreen(&paint, 64, 16)) {
+        Rgba black = Rgba8(0, 0, 0, 255);
+        El* row = Div(arena)->FlexRow()->PadX(3.3f)->H(16);
+        row->Child(Div(arena)->W(20.4f)->H(16)->Bg(black)->Radius(4));
+        row->Child(Div(arena)->W(20.f)->H(16)->Bg(black)->Radius(4));
+        LayoutEl(nullptr, row, 0, 0, 64, 16, 14, Rgba{});
+        PaintEl(&paint, row);
+        uint8_t* px = (uint8_t*)Alloc(arena, 64 * 16 * 4);
+        utassert(PaintTargetEndOffscreen(&paint, px));
+        // The halves meet at x = 23.7: every pixel across the join, on the
+        // middle row, is fully covered.
+        for (int x = 21; x <= 26; x++) {
+            utassert(px[(8 * 64 + x) * 4 + 3] == 255);
+        }
+        // The outer edges land on whole pixels too: 3.3 rounds to 3.
+        utassert(px[(8 * 64 + 2) * 4 + 3] == 0);
+        utassert(px[(8 * 64 + 3) * 4 + 3] == 255);
+    }
+    TextMeasClear(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
 static void ClipboardButtonsAcceptTheSharedSizeContract() {
     App app;
     component::Init(&app);
@@ -625,6 +664,7 @@ void TestButtonGroup() {
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
     ASplitButtonBordersOnlyTheVariantsRustBorders();
     PerSideBordersFollowRoundedCorners();
+    AdjacentBoxesMeetWithoutASeam();
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
 }

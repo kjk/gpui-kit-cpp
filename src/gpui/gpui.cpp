@@ -5269,6 +5269,27 @@ static float EdgeEnd(PaintCtx* ctx, float v) {
     return floorf(v * scale + 0.5f) / scale;
 }
 
+// util.rs round_to_device_pixel: half-way rounds toward zero.
+static float SnapToDevice(float v, float scale) {
+    float px = v * scale;
+    float r = px >= 0 ? ceilf(px - 0.5f) : floorf(px + 0.5f);
+    return r / scale;
+}
+
+// Window::snap_bounds, which paint_quad puts every element's quad through:
+// each edge on its own rounded to a device pixel. Two boxes that meet at a
+// fractional x — the halves of a split button — then meet on one pixel
+// boundary rather than both antialiasing the pixel between them, which left
+// a seam of the background showing through.
+static Bounds SnapQuad(PaintCtx* ctx, Bounds b) {
+    float scale = ctx->dpi > 0 ? (float)ctx->dpi / 96.f : 1.f;
+    float l = SnapToDevice(b.x, scale);
+    float t = SnapToDevice(b.y, scale);
+    float r = std::max(SnapToDevice(b.x + b.w, scale), l);
+    float bt = std::max(SnapToDevice(b.y + b.h, scale), t);
+    return Bounds{l, t, r - l, bt - t};
+}
+
 static void DrawLine(PaintCtx* ctx, float x1, float y1, float x2, float y2,
                      float stroke, Rgba c) {
     CanvasLine(ctx, x1, y1, x2, y2, stroke, c);
@@ -6947,7 +6968,8 @@ static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
     if (c.tl <= 0 && c.tr <= 0 && c.br <= 0 && c.bl <= 0) {
         return false;
     }
-    float x = e->x, y = e->y, w = e->w, h = e->h;
+    Bounds q = SnapQuad(ctx, e->Bounds());
+    float x = q.x, y = q.y, w = q.w, h = q.h;
     if (w <= 0 || h <= 0) {
         return true;
     }
@@ -7001,16 +7023,20 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
                 CanvasLine(ctx, l, y0, l, y1, bw, bc, dash);
                 CanvasLine(ctx, r, y0, r, y1, bw, bc, dash);
             } else {
-                CanvasStrokeRound(ctx, e->x, e->y, e->w, e->h,
-                                  ClampRadius(e->style.radius, e->w, e->h),
+                Bounds q = SnapQuad(ctx, e->Bounds());
+                CanvasStrokeRound(ctx, q.x, q.y, q.w, q.h,
+                                  ClampRadius(e->style.radius, q.w, q.h),
                                   e->style.border, e->style.borderColor, dash);
             }
-        } else if (e->style.hasCorners) {
-            StrokeCorners(ctx, e->x, e->y, e->w, e->h, e->style.corners,
-                          e->style.border, e->style.borderColor);
         } else {
-            DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius,
-                            e->style.border, e->style.borderColor);
+            Bounds q = SnapQuad(ctx, e->Bounds());
+            if (e->style.hasCorners) {
+                StrokeCorners(ctx, q.x, q.y, q.w, q.h, e->style.corners,
+                              e->style.border, e->style.borderColor);
+            } else {
+                DrawRoundStroke(ctx, q.x, q.y, q.w, q.h, e->style.radius,
+                                e->style.border, e->style.borderColor);
+            }
         }
     }
     if (e->style.border <= 0 && PaintRoundEdgeBorder(ctx, e)) {
@@ -7261,7 +7287,8 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                               : fill == BoxFill::Hover ? e->style.hoverBg
                               : groupFill              ? e->style.groupHoverBg
                                                        : e->style.bg;
-        FillBackground(ctx, e->x, e->y, e->w, e->h, e->style.radius,
+        Bounds q = SnapQuad(ctx, e->Bounds());
+        FillBackground(ctx, q.x, q.y, q.w, q.h, e->style.radius,
                        e->style.hasCorners ? &e->style.corners : nullptr, b);
     }
     // Style::overflow_mask: what the children paint under is the box less its
