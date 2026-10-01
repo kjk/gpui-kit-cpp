@@ -4909,6 +4909,12 @@ struct InputState {
     // (base/input_editor.h), made on the first
     // InputCreateRangeDecorationsCollection and dropped with the state.
     RangeDecorationsState* rangeDecorations = nullptr;
+    // The rows the editor element painted last frame, for element.rs's
+    // geometry queries (InputLastRangeCorners and its siblings in
+    // base/input.h). Frame-arena memory, written while the frame is built
+    // and read only once it is over; `paintedRowsFrame` says which frame.
+    struct InputPaintedRows* paintedRows = nullptr;
+    uint64_t paintedRowsFrame = 0;
     // The code action menu, and who fills it — cmd-. / ctrl-. asks whatever
     // is selected. Rust asks every registered provider and puts the answers
     // in one list.

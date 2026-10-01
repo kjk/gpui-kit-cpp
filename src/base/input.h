@@ -121,5 +121,24 @@ struct Editor {
     static El* New(Ctx* cx, InputState* state);
     static El* New(Ctx* cx, InputState* state, const InputEditorStyle& style);
 };
+
+// element.rs's prepaint geometry, read back after the frame that laid it out
+// — what Rust's tests ask of `last_layout`. Each answers from the rows the
+// multi-line element painted in `win`'s last finished frame and answers
+// nothing (0, false) when it painted none there.
+//
+// The visible, unfolded rows in order, as their buffer ranges without the
+// newline: layout.visible_line_byte_offsets with each line's len().
+int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
+                         int cap);
+// layout_range_corners: the corners `range` takes through those rows, one
+// per visual row it touches, a line's newline as a space-wide cell. 0 when
+// none of it is visible — Rust's None.
+int InputLastRangeCorners(const InputState* s, Window* win, Selection range,
+                          Vec<RangeCorners>* out);
+// layout_range_decorations: how many fill and frame paths the last frame
+// built for the visible decorations.
+bool InputLastRangeDecorationPaths(const InputState* s, const Window* win,
+                                   int* fills, int* frames);
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_H_

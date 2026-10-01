@@ -766,6 +766,73 @@ static int RangeDecorationCorners(PaintCtx* ctx, const RangeDecorationPaint* p,
     return len(*out) - before;
 }
 
+// What InputLastRangeCorners and its siblings read: every row the element
+// built, whether or not a decoration lies over it, and the decorations' own
+// paint when there was one.
+struct InputPaintedRows {
+    RangeDecorationPaint geometry;
+    RangeDecorationPaint* decorations = nullptr;
+};
+
+static const InputPaintedRows* LastPaintedRows(const InputState* s,
+                                               const Window* win) {
+    // The frame counter moves on as a frame ends, so the rows are the last
+    // finished frame's exactly when it is one past the frame they were
+    // built in.
+    if (!s || !win || !s->paintedRows ||
+        s->paintedRowsFrame + 1 != win->frameSeq) {
+        return nullptr;
+    }
+    return s->paintedRows;
+}
+
+int InputLastPaintedRows(const InputState* s, const Window* win, Selection* out,
+                         int cap) {
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    if (!pr) {
+        return 0;
+    }
+    int n = 0;
+    for (int i = 0; i < pr->geometry.nRows; i++) {
+        const RangeDecorationRow& row = pr->geometry.rows[i];
+        if (n < cap && out) {
+            out[n] = Selection{row.start, row.start + row.len};
+        }
+        n++;
+    }
+    return n;
+}
+
+int InputLastRangeCorners(const InputState* s, Window* win, Selection range,
+                          Vec<RangeCorners>* out) {
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    if (!pr || !out) {
+        return 0;
+    }
+    return RangeDecorationCorners(&win->paint, &pr->geometry, range, out);
+}
+
+bool InputLastRangeDecorationPaths(const InputState* s, const Window* win,
+                                   int* fills, int* frames) {
+    int nFills = 0, nFrames = 0;
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    const RangeDecorationPaint* p = pr ? pr->decorations : nullptr;
+    for (int i = 0; p && i < p->nPaths; i++) {
+        if (p->paths[i].stroke > 0) {
+            nFrames++;
+        } else {
+            nFills++;
+        }
+    }
+    if (fills) {
+        *fills = nFills;
+    }
+    if (frames) {
+        *frames = nFrames;
+    }
+    return pr != nullptr;
+}
+
 static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
                                       Bounds contentMask) {
     p->built = true;
@@ -1297,6 +1364,18 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             rangePaint->arena = a;
         }
     }
+    InputPaintedRows* painted = ArenaNew<InputPaintedRows>(a);
+    state->paintedRows = painted;
+    state->paintedRowsFrame = cx->win ? cx->win->frameSeq : 0;
+    if (painted) {
+        painted->decorations = rangePaint;
+        painted->geometry.lineH = lineH;
+        painted->geometry.arena = a;
+        if (endRow > firstRow) {
+            painted->geometry.rows = (RangeDecorationRow*)Alloc(
+                a, (int)sizeof(RangeDecorationRow) * (endRow - firstRow));
+        }
+    }
     for (int row = firstRow; row < endRow; row++) {
         int start = lineStarts[row];
         int lineEnd =
@@ -1335,6 +1414,12 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         }
         bool tokenLine = LineHasVisibleTokens(state, start, start + len(line));
         El* el = nullptr;
+        RangeDecorationRow* paintedRow = nullptr;
+        if (painted && painted->geometry.rows) {
+            paintedRow = &painted->geometry.rows[painted->geometry.nRows++];
+            paintedRow->start = start;
+            paintedRow->len = len(line);
+        }
         if (tokenLine) {
             // Overlay chips instead of the raw token text, matching
             // Input::New. A logical line is a flex row. Each text character
@@ -1354,6 +1439,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             el = TextEl(a, line)->Font(font)->LineHeight(lineMult)->Fg(
                 style.foreground);
             InputFace(el, style);
+        }
+        if (paintedRow) {
+            paintedRow->text = el;
         }
         // element.rs MAX_HIGHLIGHT_LINE_LENGTH: a line longer than this —
         // minified output, generated code — draws in the default style
