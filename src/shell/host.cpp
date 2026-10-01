@@ -1,4 +1,4 @@
-// crates/shell/src/host.rs `parse`
+// crates/shell/src/host.rs: `parse`, and how the host opens its window
 
 #include "shell/host.h"
 
@@ -60,6 +60,24 @@ bool ShellParseInvocation(const char* const* arguments, int count,
         return false;
     }
     return true;
+}
+
+Window* ShellOpenWindow(App* app, const FrozenComponentRegistry* components,
+                        const ComponentWindowOptions& options,
+                        ComponentWindowBuild build, void* data) {
+    if (!app || !build) return nullptr;
+    // A catalog whose components require a particular window root opens the
+    // window itself. Everything after this only wants the window, so it is
+    // the same pointer either way.
+    ComponentWindowOpener open =
+        components ? components->WindowOpener() : nullptr;
+    if (open) return open(app, options, build, data);
+    Window* window = WindowOpen(app, options.title, options.dipW, options.dipH,
+                                options.opts);
+    if (!window) return nullptr;
+    window->root = build(window, app, data);
+    AppInvalidate(window);
+    return window;
 }
 
 } // namespace gpui::shell

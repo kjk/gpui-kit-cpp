@@ -352,6 +352,10 @@ void ComponentRegistry::WithInitializer(ComponentInitializer value) {
     initializer = value;
 }
 
+void ComponentRegistry::WithWindowOpener(ComponentWindowOpener value) {
+    windowOpener = value;
+}
+
 bool ComponentRegistry::HasExport(const char* name) const {
     for (int i = 0; i < len(exports); i++) {
         if (strcmp(exports[i], name) == 0) return true;
@@ -511,6 +515,7 @@ void ComponentRegistry::Freeze(FrozenComponentRegistry* out) {
     VecReset(out->states);
     out->moduleSpecifier = moduleSpecifier;
     out->initializer = initializer;
+    out->windowOpener = windowOpener;
     for (int i = 0; i < len(descriptors); i++)
         VecAppend(out->descriptors, descriptors[i]);
     for (int i = 0; i < len(states); i++) VecAppend(out->states, states[i]);
@@ -520,6 +525,7 @@ void ComponentRegistry::Freeze(FrozenComponentRegistry* out) {
     VecReset(stateKinds);
     moduleSpecifier = nullptr;
     initializer = nullptr;
+    windowOpener = nullptr;
 }
 
 FrozenComponentRegistry::~FrozenComponentRegistry() {

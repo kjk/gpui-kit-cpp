@@ -7044,6 +7044,73 @@ void TheFrozenCatalogCarriesItsOwnStartup() {
     AppGlobalClear(&plain);
 }
 
+struct OpenerBlank {
+    static El* Render(OpenerBlank*, Ctx* cx) { return Div(cx->a); }
+};
+
+struct OpenerDialog {
+    static El* Render(OpenerDialog*, Ctx* cx) {
+        return Div(cx->a)->Child(TextEl(cx->a, StrL("Project details")));
+    }
+};
+
+// What the host's builder answers: the runtime's ShellRoot, around content.
+static EntityId BuildOpenerShellRoot(Window*, App* app, void*) {
+    return ShellRoot::New(app, EntityNew<OpenerBlank>(app).id).id;
+}
+
+// the_catalog_opens_a_window_its_overlays_can_find: every gpui-component
+// overlay finds its host through the window's Root, so the catalog has to
+// open the window with one. The OS window is the opener's first half; the
+// root it mounts is the part a test can reach.
+void TheCatalogOpensAWindowItsOverlaysCanFind() {
+    const FrozenComponentRegistry* components = component_shell::Components();
+    utassert(components
+                 ->WindowOpener() == &component_shell::OpenWindowWithRoot);
+    // A catalog without one gets the ordinary window, rooted at ShellRoot.
+    FrozenComponentRegistry bare;
+    utassert(bare.WindowOpener() == nullptr);
+
+    App app;
+    Window window;
+    window.app = &app;
+    component_shell::Init(&app);
+    component_shell::MountWindowRoot(&app, &window, &BuildOpenerShellRoot,
+                                     nullptr);
+    utassert(Root::Read(&window) != nullptr);
+    // The ShellRoot keeps rendering inside it, and a script's overlays still
+    // find their host there.
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    utassert(EntityRender(&app, &window, frame, window.root) != nullptr);
+    utassert(ShellRootOf(&window, &app) != nullptr);
+    EntityDropAll(&app);
+    ArenaDelete(frame);
+    AppGlobalClear(&app);
+}
+
+// a_dialog_opened_through_the_catalog_window_is_drawn: drawn, not merely
+// opened — the Root renders the component library's dialog layer.
+void ADialogOpenedThroughTheCatalogWindowIsDrawn() {
+    App app;
+    Window window;
+    window.app = &app;
+    component_shell::Init(&app);
+    component_shell::MountWindowRoot(&app, &window, &BuildOpenerShellRoot,
+                                     nullptr);
+    Arena* frame = ArenaNew();
+    window.frameArena = frame;
+    Ctx cx = {&app, &window, frame, window.root};
+    utassert(!WindowHasActiveDialog(&cx));
+    WindowOpenDialog(&cx, EntityNew<OpenerDialog>(&app));
+    utassert(WindowHasActiveDialog(&cx));
+    El* root = EntityRender(&app, &window, frame, window.root);
+    utassert(root && FindText(root, StrL("Project details")) != nullptr);
+    EntityDropAll(&app);
+    ArenaDelete(frame);
+    AppGlobalClear(&app);
+}
+
 // Where src/shell is from the test's working directory, found the way
 // StoryRoot finds examples/js_story.
 const char* ShellSourceRoot() {
@@ -7625,6 +7692,8 @@ void TestComponentShell() {
     TestSuite("component-shell lib");
     InitInstallsTheComponentCatalogGlobals();
     TheFrozenCatalogCarriesItsOwnStartup();
+    TheCatalogOpensAWindowItsOverlaysCanFind();
+    ADialogOpenedThroughTheCatalogWindowIsDrawn();
     TheRuntimeDoesNotDependOnTheComponentCatalog();
 
     TestSuite("public_host");

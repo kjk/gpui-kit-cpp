@@ -357,6 +357,36 @@ Str RegistryErrorMessage(Arena* into, const RegistryError& error);
 // A catalog's startup, run once with the App: Rust's `with_initializer`.
 using ComponentInitializer = void (*)(App* app);
 
+// What a window is opened with: Rust's gpui::WindowOptions, as far as this
+// runtime's windows take one.
+struct ComponentWindowOptions {
+    Str title;
+    int dipW = 880;
+    int dipH = 720;
+    WinOpts opts = {};
+};
+
+// Builds the runtime's root view for a window that has just opened — the
+// closure Rust hands an opener. `data` is the host's.
+using ComponentWindowBuild = EntityId (*)(Window* window, App* app, void* data);
+
+// component_registry.rs ComponentWindowOpener: opens the window a catalog's
+// components need.
+//
+// A component library may require a particular view at the root of the
+// window — gpui-component's overlays find their host through the window's
+// Root, and draw nowhere when it is something else. The runtime installs its
+// own ShellRoot and cannot name such a type, so a catalog that needs one opens
+// the window itself: it is handed the options and a builder for the runtime's
+// root view, and answers the window, or null when it could not open one.
+//
+// A catalog that registers none gets the ordinary window, rooted at ShellRoot
+// (ShellOpenWindow, src/shell/host.h).
+using ComponentWindowOpener = Window* (*)(App * app,
+                                          const ComponentWindowOptions& options,
+                                          ComponentWindowBuild build,
+                                          void* data);
+
 class FrozenComponentRegistry;
 
 class ComponentRegistry {
@@ -371,6 +401,9 @@ class ComponentRegistry {
     bool Open(uint32_t apiVersion, const char* moduleSpecifier,
               RegistryError* error);
     void WithInitializer(ComponentInitializer initializer);
+    // Opens the window this catalog's components need. See
+    // ComponentWindowOpener.
+    void WithWindowOpener(ComponentWindowOpener opener);
 
     // The descriptor is borrowed and must outlive the frozen catalog — a
     // static table, in every adapter. Answers the component's id.
@@ -384,6 +417,7 @@ class ComponentRegistry {
   private:
     const char* moduleSpecifier = nullptr;
     ComponentInitializer initializer = nullptr;
+    ComponentWindowOpener windowOpener = nullptr;
     Vec<const ComponentDescriptor*> descriptors;
     Vec<const StateDescriptor*> states;
     Vec<const char*> exports;
@@ -403,6 +437,8 @@ class FrozenComponentRegistry {
     // module at all rather than an empty one.
     const char* ModuleSpecifier() const { return moduleSpecifier; }
     ComponentInitializer Initializer() const { return initializer; }
+    // The window opener this catalog registered, if any.
+    ComponentWindowOpener WindowOpener() const { return windowOpener; }
     int DescriptorCount() const { return len(descriptors); }
     const ComponentDescriptor* Descriptor(uint32_t id) const;
     int StateCount() const { return len(states); }
@@ -421,6 +457,7 @@ class FrozenComponentRegistry {
     friend class ComponentRegistry;
     const char* moduleSpecifier = nullptr;
     ComponentInitializer initializer = nullptr;
+    ComponentWindowOpener windowOpener = nullptr;
     Vec<const ComponentDescriptor*> descriptors;
     Vec<const StateDescriptor*> states;
 };

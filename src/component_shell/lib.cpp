@@ -2,6 +2,7 @@
 
 #include "component_shell/lib.h"
 #include "component_shell/families.h"
+#include "base/root.h"
 #include "ui/lib.h"
 
 namespace gpui::component_shell {
@@ -52,6 +53,25 @@ bool Register(shell::ComponentRegistry* registry, shell::RegistryError* error) {
     return true;
 }
 
+void MountWindowRoot(App* app, Window* window,
+                     shell::ComponentWindowBuild build, void* data) {
+    if (!app || !window || !build) return;
+    EntityId inner = build(window, app, data);
+    Entity<Root> root = Root::New(app, window, inner);
+    window->root = root.id;
+    AppInvalidate(window);
+}
+
+Window* OpenWindowWithRoot(App* app,
+                           const shell::ComponentWindowOptions& options,
+                           shell::ComponentWindowBuild build, void* data) {
+    Window* window = WindowOpen(app, options.title, options.dipW, options.dipH,
+                                options.opts);
+    if (!window) return nullptr;
+    MountWindowRoot(app, window, build, data);
+    return window;
+}
+
 // The catalog carries its own startup, so a host holding only the frozen
 // registry starts the components against the globals they need.
 static void Initializer(App* app) {
@@ -70,6 +90,7 @@ const shell::FrozenComponentRegistry* Components() {
         return &frozen;
     }
     registry.WithInitializer(&Initializer);
+    registry.WithWindowOpener(&OpenWindowWithRoot);
     if (!Register(&registry, &error)) {
         Arena* a = ArenaNew();
         logf("gpui-component-shell: %s\n",

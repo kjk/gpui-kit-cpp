@@ -1,7 +1,7 @@
 #ifndef GPUI_SHELL_HOST_H_
 #define GPUI_SHELL_HOST_H_
 
-#include "base.h"
+#include "shell/component_registry.h"
 
 // crates/shell/src/host.rs: the command line the shipped host (gpui_shell/
 // main.cpp) accepts, parsed without starting anything, so the host and its
@@ -34,6 +34,15 @@ struct Invocation {
 // cannot be acted on.
 bool ShellParseInvocation(const char* const* arguments, int count,
                           Invocation* out, Str* error);
+
+// host.rs, where the host opens its window: through the catalog's opener
+// when it registered one (ComponentWindowOpener), otherwise an ordinary
+// window whose root view is what `build` answers — the ShellRoot a script
+// application mounts in. `build` runs once, with the window already open.
+// Null when no window could be opened.
+Window* ShellOpenWindow(App* app, const FrozenComponentRegistry* components,
+                        const ComponentWindowOptions& options,
+                        ComponentWindowBuild build, void* data);
 
 } // namespace gpui::shell
 
