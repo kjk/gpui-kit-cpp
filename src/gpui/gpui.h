@@ -966,7 +966,12 @@ enum class FlexAlign : uint8_t {
     Center,
     End,
     Stretch,
-    Baseline
+    Baseline,
+    // Nothing named: gpui's `align_items: None`, which taffy reads per
+    // container — stretch in a flex line, `normal` in a grid (stretch, or
+    // start for an item with an aspect ratio). Only Style::align defaults to
+    // it; alignSelf is guarded by hasAlignSelf instead.
+    Normal
 };
 enum class Justify : uint8_t {
     Start,
@@ -974,7 +979,11 @@ enum class Justify : uint8_t {
     End,
     SpaceBetween,
     SpaceAround,
-    SpaceEvenly
+    SpaceEvenly,
+    // Nothing named: gpui's `justify_content: None`. Taffy reads it as
+    // flex-start in a flex container — the far end of a reversed one — and
+    // as `normal` in a grid, which stretches its auto tracks to fill it.
+    Normal
 };
 // gpui's Overflow, per axis: `overflow_hidden` clips and
 // `overflow_x_scroll` / `overflow_y_scroll` scroll.
@@ -1849,12 +1858,12 @@ struct Style {
     uint16_t fontWeight = 0;
     Display display = Display::Block;
     FlexDir dir = FlexDir::Row;
-    FlexAlign align = FlexAlign::Stretch;
+    FlexAlign align = FlexAlign::Normal;
     // align_self, which overrides the line's align_items for this item alone
     // — `self_start()` / `self_end()`, how a chat bubble sits at one edge of
     // a column that stretches everything else. Unset is "follow the line".
     FlexAlign alignSelf = FlexAlign::Stretch;
-    Justify justify = Justify::Start;
+    Justify justify = Justify::Normal;
     Overflow overflowY = Overflow::Visible;
     Overflow overflowX = Overflow::Visible;
     // ml_auto / mr_auto / mt_auto / mb_auto: the margin on that edge is CSS's

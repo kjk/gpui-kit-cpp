@@ -3470,19 +3470,28 @@ static taffy::Overflow ToTaffyOverflow(Overflow o) {
     }
 }
 
-static taffy::OptAlignItems ToTaffyAlignItems(FlexAlign a) {
+// `items_start` / `items_end` are FlexStart / FlexEnd in gpui's Styled,
+// while `self_start` / `self_end` are Start / End; the two differ in a
+// wrap-reverse line, so the item-level ones say which they are.
+static taffy::OptAlignItems ToTaffyAlignItems(FlexAlign a, bool self) {
     using K = taffy::AlignItemsKeyword;
     switch (a) {
         case FlexAlign::Start:
-            return taffy::OptAlignItems(taffy::AlignItems{K::Start});
+            return taffy::OptAlignItems(
+                taffy::AlignItems{self ? K::Start : K::FlexStart});
         case FlexAlign::Center:
             return taffy::OptAlignItems(taffy::AlignItems{K::Center});
         case FlexAlign::End:
-            return taffy::OptAlignItems(taffy::AlignItems{K::End});
+            return taffy::OptAlignItems(
+                taffy::AlignItems{self ? K::End : K::FlexEnd});
         case FlexAlign::Baseline:
             return taffy::OptAlignItems(taffy::AlignItems{K::Baseline});
-        default:
+        case FlexAlign::Stretch:
             return taffy::OptAlignItems(taffy::AlignItems{K::Stretch});
+        default:
+            // Unset is None, as gpui's to_taffy leaves it, so taffy applies
+            // the container's own default rather than an explicit stretch.
+            return taffy::OptAlignItems();
     }
 }
 
@@ -3515,8 +3524,13 @@ static taffy::OptJustifyContent ToTaffyJustify(Justify j) {
         case Justify::SpaceEvenly:
             return taffy::OptJustifyContent(
                 taffy::AlignContent{K::SpaceEvenly});
-        default:
+        case Justify::Start:
             return taffy::OptJustifyContent(taffy::AlignContent{K::Start});
+        default:
+            // Unset is None, not Start: a grid's `normal` stretches its
+            // auto tracks and a reversed flex line packs at its far end,
+            // which an explicit Start would undo in both.
+            return taffy::OptJustifyContent();
     }
 }
 
@@ -3546,9 +3560,9 @@ static taffy::Style ToTaffyStyle(const El* e) {
         t.alignContent = taffy::OptAlignContent(taffy::AlignContent{
             (taffy::AlignContentKeyword)(s.alignContent - 1)});
     }
-    t.alignItems = ToTaffyAlignItems(s.align);
+    t.alignItems = ToTaffyAlignItems(s.align, false);
     if (s.hasAlignSelf) {
-        t.alignSelf = ToTaffyAlignItems(s.alignSelf);
+        t.alignSelf = ToTaffyAlignItems(s.alignSelf, true);
     }
     t.justifyContent = ToTaffyJustify(s.justify);
     t.overflow = {ToTaffyOverflow(s.overflowX), ToTaffyOverflow(s.overflowY)};

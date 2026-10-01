@@ -90,8 +90,65 @@ static void AnAlignmentTurnsTheFlexModelOn() {
     ArenaDelete(a);
 }
 
+// gpui's Style leaves justify_content and align_items at None and its
+// to_taffy passes the None on, so taffy applies each container's own default.
+// In a grid that is `normal`: the implicit auto column stretches to the
+// grid's width. This tree used to send Start, which shrank the column to its
+// widest item.
+static void AnUnsetJustifyLetsAGridStretch() {
+    Arena* a = ArenaNew();
+    utassert(Div(a)->style.justify == Justify::Normal);
+    utassert(Div(a)->style.align == FlexAlign::Normal);
+
+    El* grid = Div(a)->W(300);
+    grid->style.display = Display::Grid;
+    El* cells[2] = {Div(a)->W(40)->H(10), Div(a)->H(10)};
+    grid->Child(cells[0])->Child(cells[1]);
+    LayoutEl(nullptr, grid, 0, 0, 700, 700, 14, Rgba{});
+    // The column is the grid's width, so the cell with no width of its own
+    // stretches across all of it; the 40-wide one keeps its width.
+    utassertnear(cells[0]->w, 40.f);
+    utassertnear(cells[1]->w, 300.f);
+
+    // An explicit start still packs the column to its widest item.
+    grid->JustifyStart();
+    grid->style.display = Display::Grid;
+    LayoutEl(nullptr, grid, 0, 0, 700, 700, 14, Rgba{});
+    utassertnear(cells[0]->w, 40.f);
+    utassertnear(cells[1]->w, 40.f);
+    ArenaDelete(a);
+}
+
+// The flex half of the same None: flex-start, which in a reversed line is its
+// far end. A row-reverse with nothing named packs to the right.
+static void AnUnsetJustifyPacksAReversedRowAtItsEnd() {
+    Arena* a = ArenaNew();
+    El* row = Div(a)->W(300)->FlexRowReverse();
+    El* first = Div(a)->W(40)->H(10);
+    El* second = Div(a)->W(60)->H(10);
+    row->Child(first)->Child(second);
+    LayoutEl(nullptr, row, 0, 0, 700, 700, 14, Rgba{});
+    utassertnear(first->x, 260.f);
+    utassertnear(second->x, 200.f);
+    // A plain row is unchanged: flex-start is the start.
+    El* plain = Div(a)->W(300)->FlexRow();
+    El* p0 = Div(a)->W(40)->H(10);
+    plain->Child(p0);
+    LayoutEl(nullptr, plain, 0, 0, 700, 700, 14, Rgba{});
+    utassertnear(p0->x, 0.f);
+    // And align_items left unset still stretches across a flex line.
+    El* col = Div(a)->W(300)->FlexCol();
+    El* c0 = Div(a)->H(10);
+    col->Child(c0);
+    LayoutEl(nullptr, col, 0, 0, 700, 700, 14, Rgba{});
+    utassertnear(c0->w, 300.f);
+    ArenaDelete(a);
+}
+
 void TestGpuiBlockLayout() {
     ABlockPageOverflowsInsteadOfSquashing();
     AFlexPageSharesTheDeficitOut();
     AnAlignmentTurnsTheFlexModelOn();
+    AnUnsetJustifyLetsAGridStretch();
+    AnUnsetJustifyPacksAReversedRowAtItsEnd();
 }
