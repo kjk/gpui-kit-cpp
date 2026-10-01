@@ -172,6 +172,16 @@ inline void InputSetContextMenuEnabled(InputState* state, bool enabled) {
 }
 bool InputPerformNativeMenuItem(InputState* state, App* app, Window* win,
                                 const NativeMenuItem& item);
+// InputState::on_context_menu: install what a right click shows.
+void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
+                        void* data, void (*drop)(void* data) = nullptr);
+// handle_right_click_menu: the right press at `offset` came back up. A
+// disabled field, or one inside a deferred context, shows nothing; otherwise
+// the caret moves to the press unless it is inside the selection, a code
+// editor asks what is defined there, and the handler runs deferred -- after
+// the event is over -- with an empty menu and what the field can do.
+void InputHandleRightClickMenu(InputState* state, App* app, Window* win,
+                               Point position, int offset);
 
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_CORE_H_

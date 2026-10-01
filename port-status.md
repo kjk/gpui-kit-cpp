@@ -208,11 +208,6 @@ macOS font-kit requirement on the website only. The current update target is
   touch selection is ported (`InputTouchSelection` and the edge-drag calls,
   `src/base/input.cpp`), but the styled layer draws handles and an edit menu
   only for the window's text selection (`src/ui/touch_selection.cpp`).
-- **The input's right-click menu belongs to the themed field.** Rust's state
-  carries `on_context_menu` and `handle_right_click_menu`, which defer the
-  handler and skip a disabled field; here `BindInputContextMenu` in
-  `src/ui/input.cpp` opens it, so state.rs's
-  `context_menu_handler_is_deferred_and_respects_disabled` is not ported.
 - **The highlighter is driven once a frame.** Rust drives `update` from each
   change and `update_batch` from each multi-edit change; here the text
   funnels log every edit with the bytes it removed, and the themed layer

@@ -211,69 +211,20 @@ bool AnyInputState::operator==(const AnyInputState& other) const {
     return kind == other.kind && text == other.text && otp.id == other.otp.id;
 }
 
-// The right-click menu every Input, Textarea and Editor has: the state's
-// on_mouse_down(Right) moves the caret to the press unless it landed in the
-// selection and holds the menu pending; on_mouse_up(Right) shows it
-// (handle_right_click_menu), unless the input is disabled or a deferred
-// layer is open. The menu is the caller's context_menu(..) if it set one,
-// and input.rs's built-in one otherwise.
+// The right-click menu every Input, Textarea and Editor has. input.rs hands
+// the state an on_context_menu handler, and the state does the rest: its
+// right press moves the caret unless it landed in the selection, and the
+// release runs the handler deferred, unless the field is disabled or a
+// deferred layer is open (InputHandleRightClickMenu). The menu is the
+// caller's context_menu(..) if it set one, and input.rs's built-in one
+// otherwise.
+
+// The built-in menu's selection comes back through a listener, which names
+// an entity: the field's element state, which knows the InputState. A
+// selection after the field stopped rendering finds no entity and is
+// dropped.
 struct InputContextMenuState {
     InputState* state = nullptr;
-    bool disabled = false;
-    EditorContextMenuFn build = nullptr;
-    void* data = nullptr;
-    bool pending = false;
-
-    static void OnMouseDown(InputContextMenuState* self, Ctx* cx,
-                            const MouseDownEvent* event) {
-        InputState* s = self->state;
-        if (!s || !event || event->button != MouseButton::Right ||
-            event->phase != DispatchPhase::Bubble || !s->enableContextMenu) {
-            return;
-        }
-        int offset =
-            InputIndexForPosition(s, &cx->win->paint, event->x, event->y);
-        if (!s->selectedRange.Contains(offset)) {
-            InputMoveTo(s, cx->app, cx->win, offset);
-        }
-        self->pending = true;
-    }
-
-    static void OnMouseUp(InputContextMenuState* self, Ctx* cx,
-                          const MouseUpEvent* event) {
-        if (!event || event->button != MouseButton::Right || !self->pending) {
-            return;
-        }
-        self->pending = false;
-        InputState* s = self->state;
-        if (!s || self->disabled || s->disabled ||
-            BaseIsInDeferredContext(cx->app)) {
-            return;
-        }
-        NativeMenu* menu = NativeMenu::New(cx);
-        if (self->build) {
-            menu = self->build(cx, menu, self->data);
-        } else {
-            // The built-in rows, translated; a row's id is its index + 1 in
-            // the menu InputDefaultNativeMenu builds, rebuilt on selection.
-            gpui::NativeMenu rows;
-            InputDefaultNativeMenu(s, &rows);
-            for (int i = 0; i < rows.items.len; i++) {
-                const gpui::NativeMenuItem& row = rows.items[i];
-                if (row.kind == gpui::NativeMenuItemKind::Separator) {
-                    menu->Separator();
-                    continue;
-                }
-                Str label = Tr(fmt("Input.%s", row.label).s);
-                menu->MenuWithDisabled(label, row.disabled, i + 1);
-            }
-            menu->OnSelect(Listen(cx, &InputContextMenuState::OnSelect));
-        }
-        if (menu && !menu->IsEmpty()) {
-            menu->Show(event->x, event->y);
-            WindowStopPropagation(cx);
-        }
-    }
 
     static void OnSelect(InputContextMenuState* self, Ctx* cx,
                          const ClickEvent*, intptr_t id) {
@@ -292,27 +243,84 @@ struct InputContextMenuState {
     }
 };
 
-// Wire the right-click menu onto the element an input draws, keyed on the
-// input's id so it outlives the frame.
+// What the handler captures, owned by the state the way Rust's closure is:
+// the state frees it when the handler is replaced or the state goes, and a
+// field that renders again updates it in place.
+struct InputContextMenu {
+    InputState* state = nullptr;
+    bool disabled = false;
+    EditorContextMenuFn build = nullptr;
+    void* data = nullptr;
+    EntityId selection = {};
+
+    static void Drop(void* user) { delete (InputContextMenu*)user; }
+
+    // The handler: the menu, built and shown where the press was.
+    static void Show(void* user, gpui::NativeMenu*,
+                     const InputContextMenuCapabilities&, Point position,
+                     App* app, Window* win) {
+        auto* self = (InputContextMenu*)user;
+        InputState* s = self ? self->state : nullptr;
+        if (!s || self->disabled || !win) {
+            return;
+        }
+        Ctx cx = {};
+        cx.app = app;
+        cx.win = win;
+        cx.a = win->frameArena;
+        cx.self = self->selection;
+        NativeMenu* menu = NativeMenu::New(&cx);
+        if (self->build) {
+            menu = self->build(&cx, menu, self->data);
+        } else {
+            // The built-in rows, translated; a row's id is its index + 1 in
+            // the menu InputDefaultNativeMenu builds, rebuilt on selection.
+            gpui::NativeMenu rows;
+            InputDefaultNativeMenu(s, &rows);
+            for (int i = 0; i < rows.items.len; i++) {
+                const gpui::NativeMenuItem& row = rows.items[i];
+                if (row.kind == gpui::NativeMenuItemKind::Separator) {
+                    menu->Separator();
+                    continue;
+                }
+                Str label = Tr(fmt("Input.%s", row.label).s);
+                menu->MenuWithDisabled(label, row.disabled, i + 1);
+            }
+            menu->OnSelect(Listen(&cx, &InputContextMenuState::OnSelect));
+        }
+        if (menu && !menu->IsEmpty()) {
+            menu->Show(position.x, position.y);
+        }
+    }
+};
+
+// Install the menu as the state's on_context_menu.
 static void BindInputContextMenu(Ctx* cx, El* e, Str id, InputState* state,
                                  bool disabled, EditorContextMenuFn build,
                                  void* data) {
-    if (!state || disabled) {
+    (void)e;
+    if (!state) {
         return;
     }
-    Entity<InputContextMenuState> menuState =
+    Entity<InputContextMenuState> selection =
         ElementStateEntity<InputContextMenuState>(
             cx, id, StrL("component::InputContextMenu"));
-    InputContextMenuState* menu = menuState.Get(cx);
+    if (InputContextMenuState* st = selection.Get(cx)) {
+        st->state = state;
+    }
+    auto* menu = state->contextMenuHandler == &InputContextMenu::Show
+                     ? (InputContextMenu*)state->contextMenuData
+                     : nullptr;
     if (!menu) {
-        return;
+        menu = new InputContextMenu();
+        InputOnContextMenu(state, &InputContextMenu::Show, menu,
+                           &InputContextMenu::Drop);
     }
     menu->state = state;
     menu->disabled = disabled;
     menu->build = build;
     menu->data = data;
-    e->OnMouseDown(ListenTo(menuState, &InputContextMenuState::OnMouseDown));
-    e->OnMouseUp(ListenTo(menuState, &InputContextMenuState::OnMouseUp));
+    menu->selection = selection.id;
 }
 
 Editor* Editor::New(Ctx* cx, InputState* state) {

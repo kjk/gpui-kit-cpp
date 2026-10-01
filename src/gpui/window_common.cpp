@@ -1356,6 +1356,24 @@ static void SliderPress(Window* win, const HitRect* hit, Point at) {
     AppInvalidate(win);
 }
 
+// InputState::on_mouse_down(Right): the right button selects nothing and
+// takes no focus. It moves the caret to the press unless the press is inside
+// the selection, and leaves the menu to the release (on_mouse_up's
+// handle_right_click_menu).
+static void InputRightPress(Window* win, const MouseDownEvent& in) {
+    InputState* s = InputAtPosition(&win->paint, in.x, in.y);
+    if (!s || s->disabled || !s->enableContextMenu) {
+        return;
+    }
+    int offset = InputIndexForPosition(s, &win->paint, in.x, in.y);
+    if (!s->selectedRange.Contains(offset)) {
+        InputMoveTo(s, win->app, win, offset);
+    }
+    s->hasPendingContextMenu = true;
+    s->pendingContextMenuAt = {in.x, in.y};
+    s->pendingContextMenuOffset = offset;
+}
+
 // InputState::on_mouse_down. A press focuses the field, puts the caret where
 // it landed and opens a drag; shift extends the selection instead of dropping
 // it, a second press takes the word and a third the line. A press anywhere
@@ -2227,6 +2245,11 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
         // wraps the table opens, both from the one press. That is why
         // `cx.stop_propagation()` exists on this path at all — a cell that
         // takes a secondary press keeps the row under it from taking it too.
+        // The field under the press is the innermost listener on the way out,
+        // so it has the press first.
+        if (in.button == MouseButton::Right) {
+            InputRightPress(win, in);
+        }
         Vec<int> chain;
         HitChain(win, x, y, &chain);
         MouseDownEvent ev = in;
@@ -2459,8 +2482,18 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
     win->activeDrag = {};
     win->dragOverId = 0;
     SliderRelease(win);
-    // InputState::on_mouse_up: the drag is over, and the word a double click
-    // pinned stops holding the selection open.
+    // InputState::on_mouse_up: a right press that is waiting opens the
+    // field's menu; the drag is over, and the word a double click pinned
+    // stops holding the selection open.
+    InputState* released = in.button == MouseButton::Right
+                               ? InputAtPosition(&win->paint, in.x, in.y)
+                               : nullptr;
+    if (released && released->hasPendingContextMenu) {
+        InputState* s = released;
+        s->hasPendingContextMenu = false;
+        InputHandleRightClickMenu(s, win->app, win, s->pendingContextMenuAt,
+                                  s->pendingContextMenuOffset);
+    }
     if (win->input && win->input->selecting) {
         if (win->input->selectedRange.IsEmpty()) {
             win->input->selectionReversed = false;

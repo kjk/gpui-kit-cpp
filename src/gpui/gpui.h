@@ -4803,6 +4803,14 @@ struct InputHighlighter {
 int InputComposeSpans(TextSpan* spans, int n, const TextSpan* decs, int nDecs,
                       int cap, TextSpan* tmp);
 
+struct NativeMenu;
+struct InputContextMenuCapabilities;
+// on_context_menu's handler: the native menu to fill (empty), what the field
+// can do, and where the press was. base/input_core.h.
+using InputContextMenuFn = void (*)(void* data, NativeMenu* menu,
+                                    const InputContextMenuCapabilities& caps,
+                                    Point position, App* app, Window* win);
+
 struct InputState {
     InputKind kind = InputKind::Input;
     LayoutMode mode = {};
@@ -4880,6 +4888,19 @@ struct InputState {
     // enable_context_menu: whether a right-click opens the context menu. On
     // by default; off turns the menu off entirely, a custom one included.
     bool enableContextMenu = true;
+    // on_context_menu: what a right click inside the field shows. The
+    // themed field installs its menu here; handle_right_click_menu runs it
+    // after the press is over.
+    InputContextMenuFn contextMenuHandler = nullptr;
+    void* contextMenuData = nullptr;
+    // Frees contextMenuData when the handler is replaced or the state goes:
+    // what the handler captured is the state's, as Rust's closure is.
+    void (*contextMenuDrop)(void* data) = nullptr;
+    // pending_context_menu: a right press waiting for its release, where it
+    // was and the offset it landed on.
+    bool hasPendingContextMenu = false;
+    Point pendingContextMenuAt = {};
+    int pendingContextMenuOffset = 0;
     bool loading = false;
     // NumberInput's current directional bounds. The themed facade refreshes
     // these every frame; blur uses them to clamp a completed numeric value

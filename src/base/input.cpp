@@ -2671,6 +2671,9 @@ InputState::~InputState() {
         gPendingPaste.state = nullptr;
     }
     InputDecorationsFree(this);
+    if (contextMenuDrop && contextMenuData) {
+        contextMenuDrop(contextMenuData);
+    }
     InputSyntaxCacheFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
@@ -6229,6 +6232,62 @@ void InputHoverDefinition(InputState* s, int offset) {
     for (int i = 0; i < n; i++) {
         VecAppend(s->hoverDef.locations, buf[i]);
     }
+}
+
+void InputOnContextMenu(InputState* state, InputContextMenuFn handler,
+                        void* data, void (*drop)(void* data)) {
+    if (!state) {
+        return;
+    }
+    if (state->contextMenuDrop && state->contextMenuData &&
+        state->contextMenuData != data) {
+        state->contextMenuDrop(state->contextMenuData);
+    }
+    state->contextMenuHandler = handler;
+    state->contextMenuData = data;
+    state->contextMenuDrop = drop;
+}
+
+// cx.defer_in: the handler with what it was captured with, run once the
+// event that asked for it is over.
+struct ContextMenuJob {
+    InputContextMenuFn handler = nullptr;
+    void* data = nullptr;
+    InputContextMenuCapabilities caps = {};
+    Point position = {};
+    App* app = nullptr;
+    Window* win = nullptr;
+};
+
+static void RunContextMenuJob(ContextMenuJob* job) {
+    NativeMenu menu;
+    job->handler(job->data, &menu, job->caps, job->position, job->app,
+                 job->win);
+    delete job;
+}
+
+void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
+                               Point position, int offset) {
+    if (!s || s->disabled || BaseIsInDeferredContext(app)) {
+        return;
+    }
+    if (!s->selectedRange.Contains(offset)) {
+        InputMoveTo(s, app, win, offset);
+    }
+    if (s->kind == InputKind::Editor) {
+        InputHoverDefinition(s, offset);
+    }
+    if (!s->contextMenuHandler) {
+        return;
+    }
+    auto* job = new ContextMenuJob();
+    job->handler = s->contextMenuHandler;
+    job->data = s->contextMenuData;
+    job->caps = InputContextMenuCapabilities::Of(s);
+    job->position = position;
+    job->app = app;
+    job->win = win;
+    ExecPost(MkFunc0(&RunContextMenuJob, job));
 }
 
 static bool DefinitionIsExternal(Str uri) {

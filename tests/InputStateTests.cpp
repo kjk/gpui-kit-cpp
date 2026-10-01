@@ -5023,10 +5023,57 @@ static void CursorLayoutConsumerUpdatesAfterSelection() {
 // this tree has no cached views: every frame rebuilds the whole element tree
 // (port-status.md "A repaint rebuilds the whole element tree").
 
-// state.rs context_menu_handler_is_deferred_and_respects_disabled: not
-// ported — the state has no on_context_menu handler or
-// handle_right_click_menu here; the right-click menu is bound by the themed
-// field (src/ui/input.cpp BindInputContextMenu), not by the state.
+// What an on_context_menu handler was handed, how often.
+static int gContextMenuCalls = 0;
+static int gContextMenuItems = -1;
+static Point gContextMenuAt = {};
+
+static void CountContextMenu(void*, NativeMenu* menu,
+                             const InputContextMenuCapabilities&,
+                             Point position, App*, Window*) {
+    gContextMenuCalls++;
+    gContextMenuItems = len(menu->items);
+    gContextMenuAt = position;
+}
+
+// state.rs context_menu_handler_is_deferred_and_respects_disabled: the
+// handler runs once the call that asked for it is over, with an empty menu,
+// and a disabled field asks for nothing. Rust's cx.update flushes the
+// deferred work at its end; TestRunUntilParked is that flush here.
+static void ContextMenuHandlerIsDeferredAndRespectsDisabled() {
+    gContextMenuCalls = 0;
+    gContextMenuItems = -1;
+    InputView view = InputViewNew();
+    InputOnContextMenu(view.input, &CountContextMenu, nullptr);
+    InputHandleRightClickMenu(view.input, view.app, view.win, {0, 0}, 0);
+    utassert(gContextMenuCalls == 0);
+    TestRunUntilParked(view.app);
+    utassert(gContextMenuCalls == 1);
+    utassert(gContextMenuItems == 0);
+
+    view.input->disabled = true;
+    InputHandleRightClickMenu(view.input, view.app, view.win, {0, 0}, 0);
+    TestRunUntilParked(view.app);
+    utassert(gContextMenuCalls == 1);
+
+    // A right click in the window is the press that holds the menu and the
+    // release that asks for it, at the press's position.
+    view.input->disabled = false;
+    InputSetValue(view.input, StrL("select 1"));
+    Flush(view);
+    TestDraw(view.win);
+    Point at = {};
+    utassert(InputLastCaretPoint(view.input, view.win, 3, &at));
+    at.y += view.input->lastLineH * 0.5f;
+    TestSimulateMouseDown(view.win, at, MouseButton::Right, {});
+    utassert(gContextMenuCalls == 1);
+    TestSimulateMouseUp(view.win, at, MouseButton::Right, {});
+    TestRunUntilParked(view.app);
+    utassert(gContextMenuCalls == 2);
+    utassert(gContextMenuAt.x == at.x && gContextMenuAt.y == at.y);
+    utassert(InputCursor(view.input) == 3);
+    InputViewFree(&view);
+}
 
 // line_and_position_for_offset's y plus the scroll offset: where the visual
 // row holding `offset` starts inside the field — the visual rows of the
@@ -7552,6 +7599,7 @@ static void BackspacePairWithCjkPrefix() {
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
+    ContextMenuHandlerIsDeferredAndRespectsDisabled();
     EditorDecorationsFollowTyping();
     KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();
