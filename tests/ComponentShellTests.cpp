@@ -714,13 +714,17 @@ struct Host {
         if (type) view = ScriptView::New(&app, runtime, type);
         ViewTypeRelease(type);
     }
+    // public_host.rs `mount`: load_application, then mount_application into
+    // the window.
     explicit Host(AppDir dir) {
         Start(nullptr);
-        ViewType* type =
-            runtime ? runtime->LoadApp(dir.directory, dir.entry, &error)
+        LoadedApplication* loaded =
+            runtime ? runtime->LoadApplication(dir.directory, dir.entry,
+                                               nullptr, &error)
                     : nullptr;
-        if (type) view = ScriptView::New(&app, runtime, type);
-        ViewTypeRelease(type);
+        if (loaded)
+            view = runtime->MountApplication(loaded, &window, &app, &error);
+        LoadedApplicationFree(loaded);
     }
     void Start(const FrozenComponentRegistry* catalog) {
         window.app = &app;
@@ -6734,13 +6738,55 @@ void RegisteredComponentArgumentErrorsAreReportedDuringRender() {
     utassert(StrContains(error, StrL("at render")));
 }
 
-// failed_owner_mount_consumes_the_loaded_application, its first half: an
-// application whose init throws fails its mount with that error. The second
-// half — a later mount of the same loaded application is refused as
-// "already been mounted" — has no C++ counterpart: a ViewType is a
-// refcounted class handle that any number of ScriptViews instantiate, with
-// no LoadedApplication wrapper to consume.
-void FailedMountReportsTheInitError() {
+// loaded_applications_are_single_mount_and_runtime_bound: another runtime
+// refuses the loaded application without consuming it, its owner mounts it
+// once, and a second mount is refused.
+void LoadedApplicationsAreSingleMountAndRuntimeBound() {
+    TempApp dir(
+        StrL("import { div, View } from 'gpui-kit';\n"
+             "export default class Reusable extends View { render() { return "
+             "div().child('ok'); } }\n"));
+    if (!Ready(dir)) return;
+    App app;
+    Window window;
+    window.app = &app;
+    component_shell::Init(&app);
+    ShellError error = {};
+    ShellRuntime* runtime =
+        ShellRuntime::New(&app, &error, component_shell::Components());
+    ShellRuntime* other =
+        ShellRuntime::New(&app, &error, component_shell::Components());
+    LoadedApplication* loaded =
+        runtime ? runtime->LoadApplication(dir.Directory(), StrL("main.js"),
+                                           nullptr, &error)
+                : nullptr;
+    utassert(loaded != nullptr && !error.IsSet());
+    if (loaded && other) {
+        Entity<ScriptView> foreign =
+            other->MountApplication(loaded, &window, &app, &error);
+        utassert(!foreign.IsValid());
+        utassert(StrContains(error.message, StrL("different ShellRuntime")));
+        // A foreign rejection does not consume the owner handle.
+        Entity<ScriptView> view =
+            runtime->MountApplication(loaded, &window, &app, &error);
+        utassert(view.IsValid() && !error.IsSet());
+        Entity<ScriptView> again =
+            runtime->MountApplication(loaded, &window, &app, &error);
+        utassert(!again.IsValid());
+        utassert(StrContains(error.message, StrL("already been mounted")));
+    }
+    LoadedApplicationFree(loaded);
+    EntityDropAll(&app);
+    if (other) other->Release();
+    if (runtime) runtime->Release();
+    ShellErrorClear(&error);
+    AppGlobalClear(&app);
+}
+
+// failed_owner_mount_consumes_the_loaded_application: an application whose
+// init throws fails its mount with that error, and the failed attempt
+// consumed the handle.
+void FailedOwnerMountConsumesTheLoadedApplication() {
     TempApp dir(
         StrL("import { View } from 'gpui-kit';\n"
              "export default class Broken extends View {\n"
@@ -6755,17 +6801,22 @@ void FailedMountReportsTheInitError() {
     ShellError error = {};
     ShellRuntime* runtime =
         ShellRuntime::New(&app, &error, component_shell::Components());
-    ViewType* type =
-        runtime ? runtime->LoadApp(dir.Directory(), StrL("main.js"), &error)
+    LoadedApplication* loaded =
+        runtime ? runtime->LoadApplication(dir.Directory(), StrL("main.js"),
+                                           nullptr, &error)
                 : nullptr;
-    utassert(type != nullptr && !error.IsSet());
-    ViewObject* object =
-        type ? runtime->Instantiate(type, &window, &app, nullptr, &error)
-             : nullptr;
-    utassert(object == nullptr);
-    utassert(StrContains(error.message, StrL("init failed")));
-    ViewObjectRelease(object);
-    ViewTypeRelease(type);
+    utassert(loaded != nullptr && !error.IsSet());
+    if (loaded) {
+        Entity<ScriptView> first =
+            runtime->MountApplication(loaded, &window, &app, &error);
+        utassert(!first.IsValid());
+        utassert(StrContains(error.message, StrL("init failed")));
+        Entity<ScriptView> second =
+            runtime->MountApplication(loaded, &window, &app, &error);
+        utassert(!second.IsValid());
+        utassert(StrContains(error.message, StrL("already been mounted")));
+    }
+    LoadedApplicationFree(loaded);
     EntityDropAll(&app);
     if (runtime) runtime->Release();
     ShellErrorClear(&error);
@@ -7699,7 +7750,8 @@ void TestComponentShell() {
     TestSuite("public_host");
     PublicHostApiMountsAndMaterializesRegisteredComponentJs();
     RegisteredComponentArgumentErrorsAreReportedDuringRender();
-    FailedMountReportsTheInitError();
+    LoadedApplicationsAreSingleMountAndRuntimeBound();
+    FailedOwnerMountConsumesTheLoadedApplication();
 
     TestSuite("check");
     CheckMaterializesValidTypedChildrenAndPreservesPrintSpec();

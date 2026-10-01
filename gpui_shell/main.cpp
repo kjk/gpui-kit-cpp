@@ -224,6 +224,53 @@ static Str WindowTitle(Str root) {
     return title.TakeStr();
 }
 
+// What the window shows when the application loaded but would not mount:
+// its init() threw. host.rs mounts a LoadFailure view in the ShellRoot for
+// the same case, so the window says why instead of closing.
+struct LoadFailure {
+    Str message;
+
+    ~LoadFailure() { StrFree(message); }
+
+    static El* Render(LoadFailure* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->SizeFull()
+            ->Pad(16)
+            ->Gap(8)
+            ->Child(TextEl(cx->a, StrL("JavaScript application error"))->Bold())
+            ->Child(TextEl(cx->a, self ? self->message : Str{})->Wrap());
+    }
+};
+
+// The window builder host.rs hands the catalog's opener: mounts the loaded
+// application in the window that just opened and answers the ShellRoot it
+// lives in.
+struct MountRequest {
+    ShellRuntime* runtime = nullptr;
+    LoadedApplication* application = nullptr;
+    Entity<ScriptView> view = {};
+};
+
+static EntityId BuildShellRoot(Window* window, App* app, void* data) {
+    MountRequest* request = (MountRequest*)data;
+    ShellError error = {};
+    request->view = request->runtime->MountApplication(request->application,
+                                                       window, app, &error);
+    EntityId content = request->view.id;
+    if (!request->view.IsValid()) {
+        fprintf(stderr, "gpui-shell: ");
+        Print(error.message, stderr);
+        fputc('\n', stderr);
+        Entity<LoadFailure> failure = EntityNew<LoadFailure>(app);
+        if (LoadFailure* state = failure.Get(app))
+            state->message = StrDup(error.message);
+        content = failure.id;
+    }
+    ShellErrorClear(&error);
+    return ShellRoot::New(app, content).id;
+}
+
 static int Run(Str root, Str entry, const Invocation& invocation,
                Policy* policy) {
     ShellSetDevelopmentMode(invocation.development);
@@ -235,13 +282,14 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         ShellSetDevelopmentMode(false);
         return 1;
     }
-    ShellInitWithComponents(app, component_shell::Components());
+    const FrozenComponentRegistry* components = component_shell::Components();
+    ShellInitWithComponents(app, components);
     ShellError error = {};
-    ShellRuntime* runtime =
-        ShellRuntime::New(app, &error, component_shell::Components());
-    ViewType* type =
-        runtime ? runtime->LoadApp(root, entry, policy, &error) : nullptr;
-    if (!type) {
+    ShellRuntime* runtime = ShellRuntime::New(app, &error, components);
+    LoadedApplication* application =
+        runtime ? runtime->LoadApplication(root, entry, policy, &error)
+                : nullptr;
+    if (!application) {
         fprintf(stderr, "gpui-shell: ");
         Print(error.message, stderr);
         fputc('\n', stderr);
@@ -252,24 +300,36 @@ static int Run(Str root, Str entry, const Invocation& invocation,
         return 1;
     }
     Str title = WindowTitle(root);
-    Window* window = WindowOpen(app, title, 880, 720, WinOpts{});
+    ComponentWindowOptions options;
+    options.title = title;
+    MountRequest request;
+    request.runtime = runtime;
+    request.application = application;
+    // A catalog whose components require a particular window root opens the
+    // window itself; see ComponentWindowOpener.
+    Window* window =
+        ShellOpenWindow(app, components, options, &BuildShellRoot, &request);
     StrFree(title);
+    LoadedApplicationFree(application);
     if (!window) {
         fprintf(stderr, "gpui-shell: could not open a window\n");
-        ViewTypeRelease(type);
         runtime->Release();
         AppFree(app);
         ShellSetDevelopmentMode(false);
         return 1;
     }
-    Entity<ScriptView> view = ScriptView::New(app, runtime, type, policy);
-    ViewTypeRelease(type);
-    Entity<ShellRoot> shellRoot = ShellRoot::New(app, view.id);
-    window->root = shellRoot.id;
-    AppInvalidate(window);
     RefreshTypes(root, policy, false);
     if (invocation.watch) {
-        ShellWatcher::Start(runtime, view, root, entry, window, app, &error);
+        if (request.view.IsValid()) {
+            ShellWatcher::Start(runtime, request.view, root, entry, window, app,
+                                &error);
+        } else {
+            // A failed mount never produced a view to reload into. Saying so
+            // is better than a --watch that looks armed and never fires.
+            ShellErrorSet(&error,
+                          StrL("the application did not mount, so there is "
+                               "no view to reload into"));
+        }
         if (error.IsSet()) {
             fprintf(stderr, "gpui-shell: --watch is inactive: ");
             Print(error.message, stderr);

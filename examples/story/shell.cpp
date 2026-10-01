@@ -330,10 +330,12 @@ void ShellStory::Load(Ctx* cx, bool isMotion) {
             StrCopyZ(errorText, 512, error.message.s ? error.message.s : "reload failed");
         }
     } else {
-        ViewType* type = runtime->LoadApp(path, StrL("main.js"), policy, &error);
-        if (type) {
-            *target = ScriptView::New(cx->app, runtime, type, policy);
-            ViewTypeRelease(type);
+        LoadedApplication* loaded = runtime->LoadApplication(path, StrL("main.js"), policy, &error);
+        Entity<ScriptView> view =
+            loaded ? runtime->MountApplication(loaded, cx->win, cx->app, &error) : Entity<ScriptView>{};
+        LoadedApplicationFree(loaded);
+        if (view.IsValid()) {
+            *target = view;
             errorText[0] = 0;
         } else {
             StrCopyZ(errorText, 512, error.message.s ? error.message.s : "load failed");

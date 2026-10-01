@@ -13333,6 +13333,75 @@ ViewType* ViewTypeRetain(ViewType* type) {
     return type;
 }
 
+// quickjs/mod.rs LoadedApplication: an application entry loaded by one
+// ShellRuntime. The JavaScript class stays opaque so hosts cannot bypass
+// initialization, policy, task ownership, or application-generation cleanup.
+// A single-mount handle: the owning runtime consumes it on its first mount
+// attempt, including one whose construction or initialization fails; a
+// foreign runtime is refused before that consumption.
+//
+// Rust holds the runtime weakly, beside a ViewType that keeps the engine
+// alive; here the ViewType holds its runtime, so the owner is the runtime the
+// type names.
+struct LoadedApplication {
+    ViewType* type = nullptr;
+    Policy* policy = nullptr;
+    bool mounted = false;
+};
+
+LoadedApplication* ShellRuntime::LoadApplication(Str directory, Str entry,
+                                                 Policy* policy,
+                                                 ShellError* error) {
+    Policy* authority = policy ? PolicyRetain(policy) : PolicyDefault();
+    ViewType* type = LoadApp(directory, entry, authority, error);
+    if (!type) {
+        PolicyRelease(authority);
+        return nullptr;
+    }
+    LoadedApplication* application = new LoadedApplication();
+    application->type = type;
+    application->policy = authority;
+    return application;
+}
+
+Entity<ScriptView> ShellRuntime::MountApplication(
+    LoadedApplication* application, Window* window, App* app,
+    ShellError* error) {
+    ShellErrorClear(error);
+    if (!application || !application->type ||
+        application->type->runtime != this) {
+        SetError(error, StrL("loaded application belongs to a different "
+                             "ShellRuntime"));
+        return {};
+    }
+    if (application->mounted) {
+        SetError(error, StrL("loaded application has already been mounted"));
+        return {};
+    }
+    application->mounted = true;
+    Entity<ScriptView> view =
+        ScriptView::New(app, this, application->type, application->policy);
+    ScriptView* state = view.Get(app);
+    if (!state) {
+        SetError(error, StrL("could not create the application view"));
+        return {};
+    }
+    state->object = Instantiate(state->type, window, app, application->policy,
+                                error, view.id);
+    if (!state->object) {
+        EntityDrop(app, view.id);
+        return {};
+    }
+    return view;
+}
+
+void LoadedApplicationFree(LoadedApplication* application) {
+    if (!application) return;
+    ViewTypeRelease(application->type);
+    PolicyRelease(application->policy);
+    delete application;
+}
+
 void ViewTypeRelease(ViewType* type) {
     if (!type || --type->refs != 0) return;
     JS_FreeValue(ShellRuntimeAccess::Impl(type->runtime)->context, type->value);

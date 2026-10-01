@@ -10,6 +10,8 @@ namespace gpui {
 
 struct ViewType;
 struct ViewObject;
+struct ScriptView;
+struct LoadedApplication;
 struct ShellRuntimeImpl;
 struct ShellRuntimeControl;
 struct ShellRuntimeAccess;
@@ -49,6 +51,35 @@ class ShellRuntime {
     ShellRuntime* Retain();
     void Release();
 
+    // Loads an application's JavaScript entry without exposing engine
+    // values: quickjs/mod.rs `load_application`, the host-facing load.
+    // Resolution, declaration refresh, module generations, capabilities and
+    // watcher-compatible module leases are those of LoadApp. Null with
+    // `error` set when the entry does not load. The answer is the caller's,
+    // freed with LoadedApplicationFree, mounted or not.
+    //
+    // Rust's mount always uses the default policy. C++ hosts thread the
+    // authority they granted through the load instead (the shipped host's
+    // local grant); null is the default policy, as in Rust.
+    LoadedApplication* LoadApplication(Str directory,
+                                       Str entry = StrL("main.js"),
+                                       Policy* policy = nullptr,
+                                       ShellError* error = nullptr);
+    // Creates, initializes and mounts a loaded application as a ScriptView:
+    // quickjs/mod.rs `mount_application`. Refuses an application another
+    // runtime loaded ("loaded application belongs to a different
+    // ShellRuntime"), without consuming it, and a second mount ("loaded
+    // application has already been mounted"). The owner consumes the handle
+    // before construction, so a failed attempt — an init() that throws — is
+    // terminal too. Invalid, with `error` set, on any failure.
+    Entity<ScriptView> MountApplication(LoadedApplication* application,
+                                        Window* window, App* app,
+                                        ShellError* error = nullptr);
+
+    // The engine-facing loads below are crate-internal in Rust
+    // (`pub(crate) load_app` and friends): hosts mount through
+    // LoadApplication; the runtime's own paths (reload, plugins) and its
+    // tests reach the refcounted ViewType directly.
     ViewType* LoadSource(Str name, Str source, ShellError* error = nullptr);
     ViewType* LoadSource(Str name, Str source, Policy* policy,
                          ShellError* error = nullptr);
@@ -193,6 +224,9 @@ class ShellRuntime {
     ShellRuntimeImpl* impl = nullptr;
     ShellRuntimeControl* control = nullptr;
 };
+
+// Frees a LoadedApplication, mounted or not.
+void LoadedApplicationFree(LoadedApplication* application);
 
 ViewType* ViewTypeRetain(ViewType* type);
 void ViewTypeRelease(ViewType* type);
