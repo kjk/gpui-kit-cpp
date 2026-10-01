@@ -5007,10 +5007,11 @@ static void SetValueOnUnfocusedInputStaysQuiet() {
 // state.rs textarea_cursor_treats_crlf_as_one_newline.
 static void TextareaCursorTreatsCrlfAsOneNewline() {
     InputView view = InputViewBuildTextarea();
-    const char* originals[] = {"\r\nlast",
-                               "\xEF\xBB\xBF"
-                               "first\r\nlast\n",
-                               "first\nlast\r\n"};
+    // U+FEFF and then "first": the hex escape stops at its literal's end.
+    const char* bomFirst =
+        "\xEF\xBB\xBF"
+        "first\r\nlast\n";
+    const char* originals[] = {"\r\nlast", bomFirst, "first\nlast\r\n"};
     for (const char* original : originals) {
         InputSetValue(view.input, Str(original));
         int n = (int)strlen(original);
