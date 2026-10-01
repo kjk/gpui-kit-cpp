@@ -2967,7 +2967,11 @@ static void InputScrollToSearchOffset(InputState* s, Window* win, int offset) {
         TextPointAt(&win->paint, line, s->lastFont, s->lastBounds.w, true,
                     std::max(0, offset - lineStart), &x, &localY, &h,
                     s->lastFontWord, lineH / s->lastFont, false);
-        y += localY;
+        // The display row the offset is on, not where its glyph box sits in
+        // that row: line_and_position_for_offset answers whole rows, and
+        // the platform's range rects put a run's glyphs a pixel or so below
+        // its row's top, which was enough to cost the padding a row.
+        y += floorf(localY / lineH + 0.5f) * lineH;
     }
     InputScrollToCaretWithPadding(s, -1, y, InputMoveDir::None,
                                   InputScrollPadding::SurroundingLines);
