@@ -1,7 +1,7 @@
 #include "shell/theme_tokens.h"
 
 #include "shell/scope.h"
-#include "ui/theme.h"
+#include "base/theme.h"
 
 namespace gpui::shell {
 
@@ -63,9 +63,11 @@ uint32_t ThemeTokensSync(const App* app) {
     if (!app) {
         return gThemeCache.revision;
     }
+    // Theme::global: gpui-base's active theme, or its default when none is
+    // installed. A component library that styles the window projects its
+    // palette onto this one; the runtime reads no library's theme itself.
     const BaseTheme* base = BaseThemeGlobal(app);
-    SemanticThemeTokens tokens =
-        base ? base->tokens : ThemeSemanticTokens(ThemeNow(app));
+    SemanticThemeTokens tokens = base ? base->tokens : SemanticThemeTokens{};
     BaseThemeAppearance appearance =
         base ? base->appearance : BaseThemeAppearance::Light;
     if (ThemeKeyEqual(gThemeCache, tokens, appearance)) {

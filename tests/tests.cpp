@@ -170,6 +170,7 @@ int GpuiMain(int argc, char** argv) {
     TestComponentShell();
     TestShellDependencies();
     TestShellDock();
+    TestShellRoot();
     TestScene();
     // Last because it deliberately changes the process-wide paint options.
     TestRuntimeArgs();

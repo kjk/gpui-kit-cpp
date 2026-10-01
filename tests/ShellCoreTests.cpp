@@ -1973,8 +1973,8 @@ static void ShellRootHostsDialogsSheetsAndToasts() {
     El* root = shellRoot.IsValid()
                    ? EntityRender(&app, &window, frame, shellRoot.id)
                    : nullptr;
-    // Base Root's surface: the window text-selection layer, then the
-    // content, then the plugins' overlays.
+    // The ShellRoot's surface: the window text-selection layer, then the
+    // content, then its own overlays.
     El* script = root && root->first ? root->first->next : nullptr;
     El* openDialog = script ? script->first : nullptr;
     El* closeDialog = openDialog ? openDialog->next : nullptr;
@@ -2015,12 +2015,11 @@ static void ShellRootHostsDialogsSheetsAndToasts() {
     utassert(ShellRootToastCount(&rootCx) == 1);
     if (removeToast && removeToast->listener.IsValid())
         ListenerCall(&app, &window, removeToast->listener, &click);
-    component::NotificationListState* notifications =
-        WindowNotifications(&rootCx).Get(&rootCx);
-    utassert(notifications && notifications->items.len == 1 &&
-             notifications->stack.entries.len == 1 &&
-             notifications->stack.entries[0]
-                     .status == ToastTransitionStatus::Ending);
+    // The root's own toast stack: still mounted, playing its exit.
+    ShellRoot* rootState = shellRoot.Get(&app);
+    utassert(ShellRootToastCount(&rootCx) == 1 && rootState &&
+             rootState->toasts.At(0) &&
+             rootState->toasts.At(0)->status == ToastTransitionStatus::Ending);
     ShellRootClearToasts(&rootCx);
     EntityDrop(&app, shellRoot.id);
     ArenaDelete(frame);

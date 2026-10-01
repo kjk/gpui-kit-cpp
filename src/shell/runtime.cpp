@@ -4229,9 +4229,9 @@ static JSValue NativeHasDialog(JSContext* ctx, JSValueConst, int,
 }
 
 static bool SheetPlacementFromJs(JSContext* ctx, JSValueConst value,
-                                 component::SheetPlacement* out) {
+                                 Placement* out) {
     if (JS_IsUndefined(value) || JS_IsNull(value)) {
-        *out = component::SheetPlacement::Right;
+        *out = Placement::Right;
         return true;
     }
     Arena* arena = ArenaNew();
@@ -4239,13 +4239,13 @@ static bool SheetPlacementFromJs(JSContext* ctx, JSValueConst value,
     bool ok = JsString(ctx, value, arena, &name);
     if (ok) {
         if (StrEq(name, StrL("left")))
-            *out = component::SheetPlacement::Left;
+            *out = Placement::Left;
         else if (StrEq(name, StrL("right")))
-            *out = component::SheetPlacement::Right;
+            *out = Placement::Right;
         else if (StrEq(name, StrL("top")))
-            *out = component::SheetPlacement::Top;
+            *out = Placement::Top;
         else if (StrEq(name, StrL("bottom")))
-            *out = component::SheetPlacement::Bottom;
+            *out = Placement::Bottom;
         else {
             JS_ThrowTypeError(ctx,
                               "unknown sheet placement `%.*s`; expected left, "
@@ -4264,7 +4264,7 @@ static JSValue NativeOpenSheet(JSContext* ctx, JSValueConst, int argc,
                           ? "window.open_sheet(content)"
                           : "window.open_sheet_at(placement, content)";
     if (!OverlayMutationAllowed(ctx, api)) return JS_EXCEPTION;
-    component::SheetPlacement placement;
+    Placement placement;
     uint32_t token = 0;
     if (!SheetPlacementFromJs(ctx, argc > 0 ? argv[0] : JS_UNDEFINED,
                               &placement) ||
@@ -4449,7 +4449,7 @@ static JSValue NativePushToast(JSContext* ctx, JSValueConst, int argc,
         if (JS_IsException(timeout))
             ok = false;
         else if (JS_IsNull(timeout))
-            toast.timeoutMs = 0;
+            toast.hasTimeout = false;
         else if (!JS_IsUndefined(timeout)) {
             double value = 0;
             if (JS_ToFloat64(ctx, &value, timeout) < 0 || !isfinite(value) ||

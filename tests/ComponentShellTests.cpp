@@ -7065,12 +7065,11 @@ const char* ShellSourceRoot() {
 }
 
 // the_runtime_does_not_depend_on_the_component_library. Rust reads
-// crates/shell's Cargo.toml; here the edge is an #include. The runtime names
-// no adapter: no file under src/shell includes a component_shell/ header.
-// (It does include some ui/ headers — ShellRoot hosts the themed dialog,
-// sheet and notification layers, and the inline-token Input and the theme
-// tokens read ui/ — so that half of Rust's rule does not hold here; see
-// port-status.md.)
+// crates/shell's Cargo.toml, whose dependencies are gpui, gpui-base and
+// gpui-fps; here the edge is an #include. The runtime names neither the
+// adapter nor the component library: no file under src/shell includes a
+// component_shell/ or a ui/ header. What the adapter needs from ui/ stays in
+// src/component_shell, which depends on both.
 void TheRuntimeDoesNotDependOnTheComponentCatalog() {
     const char* source = ShellSourceRoot();
     if (!source) return;
@@ -7096,6 +7095,11 @@ void TheRuntimeDoesNotDependOnTheComponentCatalog() {
             printf("src/shell/%.*s includes a component_shell/ header\n",
                    len(entry.name), entry.name.s);
         utassert(!includesAdapter);
+        bool includesLibrary = StrContains(file.bytes, StrL("#include \"ui/"));
+        if (includesLibrary)
+            printf("src/shell/%.*s includes a ui/ header\n", len(entry.name),
+                   entry.name.s);
+        utassert(!includesLibrary);
         file.Free();
         StrFree(readError);
     }

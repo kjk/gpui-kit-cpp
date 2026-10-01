@@ -32,7 +32,6 @@
 #include "base/text.h"
 #include "base/toggle.h"
 #include "base/toggle_group.h"
-#include "ui/input.h"
 #include "fps/fps.h"
 #include "shell/a11y.h"
 #include "shell/component_registry.h"
@@ -1013,12 +1012,15 @@ struct ShellTokenUser {
 static El* ShellRenderToken(Ctx* cx, const InlineTokenContext* ctx,
                             void* user) {
     ShellTokenUser* values = (ShellTokenUser*)user;
-    if (values && values->runtime && values->render) {
-        El* el = values->runtime->RenderInlineToken(
-            values->render, ctx, InputValue(values->state), cx);
-        if (el) return el;
-    }
-    return component::InputToken::New(cx, *ctx)->IntoEl();
+    // No script renderer: Base's own chip (input.rs's default), which a
+    // null answer asks for.
+    if (!values || !values->runtime || !values->render) return nullptr;
+    El* el = values->runtime->RenderInlineToken(values->render, ctx,
+                                                InputValue(values->state), cx);
+    if (el) return el;
+    // input_tokens.rs InlineTokenCallbacks: a renderer that failed falls back
+    // to the token's label, not to a component library's chip.
+    return Div(cx->a)->Child(TextEl(cx->a, ctx->span.token.label));
 }
 
 static void ShellClickToken(const InlineTokenClickEvent* ev, Ctx* cx,

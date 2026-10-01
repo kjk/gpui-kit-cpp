@@ -193,5 +193,6 @@ void AppendRustComponentDeclarations(StrBuilder* out);
 void AppendRustComponentElementUnion(StrBuilder* out);
 void TestShellDependencies();
 void TestShellDock();
+void TestShellRoot();
 void TestScene();
 void TestRuntimeArgs();
