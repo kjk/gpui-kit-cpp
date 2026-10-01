@@ -749,7 +749,13 @@ El* Button::IntoEl() {
         // is tall — which is what keeps a pagination page number square.
         e->MinW(h);
     }
-    if (bd.a) {
+    // button.rs gives a border width only to the Default variant and to an
+    // outlined one — `when(variant.is_default() || outline, border_*_1)`;
+    // every other variant names a border colour and has no border to paint
+    // it on. A state style that names a border brings its own width.
+    bool hasBorder = variant == ButtonVariant::Default || outline ||
+                     resolved.Has(StateFieldBorder);
+    if (bd.a && hasBorder) {
         if (joined) {
             // A joined child draws only the edges the group left it, and
             // keeps only the corner radii the group assigned it.
@@ -968,7 +974,8 @@ El* Toggle::IntoEl() {
     instance.Fg(th.foreground);
     if (variant == ToggleVariant::Outline && edgeL && edgeR && edgeT && edgeB) {
         // All four edges: one border, which follows the rounded corners the
-        // way Rust's four border_*_1 do; the per-side ones paint square.
+        // way Rust's four border_*_1 do. Fewer edges paint as per-side
+        // widths, which follow the corners as well.
         instance.Border(1, th.border);
         instance.Bg(th.tokens.background);
     } else if (variant == ToggleVariant::Outline) {

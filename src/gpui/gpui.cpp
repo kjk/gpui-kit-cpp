@@ -6928,6 +6928,50 @@ void PaintEl(PaintCtx* ctx, El* e) {
     ctx->paintLayer = kPaintLayerTree;
 }
 
+// Per-side border widths on a box with rounded corners: GPUI's quad draws
+// them as one shape, the rounded box less its content box — each side as
+// wide as its own width, each inner corner the outer radius less the wider
+// of the two sides that meet there — so a side with no border tapers off
+// round the corner instead of the corner going square. That is how the two
+// halves of a split button and the ends of a button group keep their outer
+// corners. The plain lines below stay for a box with square corners, where
+// they can land on whole device pixels. False when there is nothing round
+// to follow.
+static bool PaintRoundEdgeBorder(PaintCtx* ctx, El* e) {
+    const Style& s = e->style;
+    if (s.borderT <= 0 && s.borderB <= 0 && s.borderL <= 0 && s.borderR <= 0) {
+        return false;
+    }
+    Corners c = s.hasCorners ? s.corners
+                             : Corners{s.radius, s.radius, s.radius, s.radius};
+    if (c.tl <= 0 && c.tr <= 0 && c.br <= 0 && c.bl <= 0) {
+        return false;
+    }
+    float x = e->x, y = e->y, w = e->w, h = e->h;
+    if (w <= 0 || h <= 0) {
+        return true;
+    }
+    float lim = (w < h ? w : h) * 0.5f;
+    c.tl = std::min(c.tl, lim);
+    c.tr = std::min(c.tr, lim);
+    c.br = std::min(c.br, lim);
+    c.bl = std::min(c.bl, lim);
+    float t = s.borderT, b = s.borderB, l = s.borderL, r = s.borderR;
+    float iw = w - l - r, ih = h - t - b;
+    Path* p = PathNew(ctx, false);
+    CornersPath(p, x, y, w, h, c);
+    if (iw > 0 && ih > 0) {
+        Corners in = {std::max(0.f, c.tl - std::max(l, t)),
+                      std::max(0.f, c.tr - std::max(r, t)),
+                      std::max(0.f, c.br - std::max(r, b)),
+                      std::max(0.f, c.bl - std::max(l, b))};
+        CornersPath(p, x + l, y + t, iw, ih, in);
+    }
+    PathFill(ctx, p, s.borderColor);
+    PathFree(p);
+    return true;
+}
+
 // The border quad of Style::paint. GPUI paints it after the continuation —
 // the children, under the element's content mask — so it lands over them: a
 // child whose background runs to the box's edge does not hide its parent's
@@ -6968,6 +7012,9 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
             DrawRoundStroke(ctx, e->x, e->y, e->w, e->h, e->style.radius,
                             e->style.border, e->style.borderColor);
         }
+    }
+    if (e->style.border <= 0 && PaintRoundEdgeBorder(ctx, e)) {
+        return;
     }
     // An edge border sits inside the box and covers whole pixels: the line
     // goes half a stroke in from the edge, and lands on a device pixel.

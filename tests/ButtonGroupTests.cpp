@@ -452,6 +452,121 @@ static void ButtonGroupsAssignSourceCornersWithoutAWrapperClip() {
     AppGlobalClear(&app);
 }
 
+// dropdown_button.rs: the action half takes the left corners and all four
+// edges, the caret the right corners and every edge but the left. button.rs
+// gives the edges a width only on the Default variant or an outlined one, so
+// a primary split has no border at all — no seam between its halves.
+static void ASplitButtonBordersOnlyTheVariantsRustBorders() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, win, arena, {}};
+    float radius = ThemeNow(&app).radius;
+    auto split = [&](bool primary, bool outline) {
+        component::DropdownButton* d =
+            component::DropdownButton::New(&cx, StrL("split"))
+                ->Button_(component::Button::New(&cx, StrL("action"))
+                              ->Label(StrL("Actions")))
+                ->Menu(component::PopupMenu::New(&cx, StrL("split-menu")));
+        if (primary) {
+            d->WithVariant(component::ButtonVariant::Primary);
+        }
+        if (outline) {
+            d->Outline();
+        }
+        return d->IntoEl();
+    };
+    auto edges = [](const El* e) {
+        return (e->style.borderT > 0) + (e->style.borderR > 0) +
+               (e->style.borderB > 0) + (e->style.borderL > 0) +
+               (e->style.border > 0);
+    };
+    El* row = split(true, false);
+    utassert(ButtonChildCount(row) == 2);
+    const El* action = row->first;
+    // The caret sits inside the dropdown menu's trigger wrapper.
+    const El* caret = row->first->next;
+    while (caret && caret->first && !caret->style.hasCorners) {
+        caret = caret->first;
+    }
+    utassert(action && edges(action) == 0);
+    utassert(caret && edges(caret) == 0);
+    utassertnear(action->style.corners.tl, radius);
+    utassertnear(action->style.corners.bl, radius);
+    utassertnear(action->style.corners.tr, 0.f);
+    utassert(caret && caret->style.corners.tr == radius &&
+             caret->style.corners.br == radius && caret->style.corners.tl == 0);
+
+    for (int outline = 0; outline < 2; outline++) {
+        row = split(outline == 1, outline == 1);
+        action = row->first;
+        caret = row->first->next;
+        while (caret && caret->first && !caret->style.hasCorners) {
+            caret = caret->first;
+        }
+        utassert(action && edges(action) == 4 && action->style.borderL > 0);
+        utassert(caret && edges(caret) == 3 && caret->style.borderL == 0);
+    }
+    // A plain primary button has no border either; Default does.
+    utassert(edges(component::Button::New(&cx, StrL("p"))
+                       ->WithVariant(component::ButtonVariant::Primary)
+                       ->IntoEl()) == 0);
+    utassert(edges(component::Button::New(&cx, StrL("d"))->IntoEl()) > 0);
+
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// Per-side borders on a rounded box follow its corners, as GPUI's quad
+// draws them: a box bordered on three sides keeps a round corner on the
+// fourth side rather than having a straight line painted across it.
+static void PerSideBordersFollowRoundedCorners() {
+#if !GPUI_OS_WASM
+    App* app = AppNew();
+    if (!app) {
+        return;
+    }
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    if (PaintTargetBeginOffscreen(&paint, 64, 32)) {
+        Rgba red = Rgba8(255, 0, 0, 255);
+        El* box = Div(arena)->W(40)->H(24)->Radius(8);
+        box->BorderT(1, red)->BorderB(1, red)->BorderL(1, red);
+        LayoutEl(nullptr, box, 0, 0, 64, 32, 14, Rgba{});
+        PaintEl(&paint, box);
+        uint8_t* px = (uint8_t*)Alloc(arena, 64 * 32 * 4);
+        utassert(PaintTargetEndOffscreen(&paint, px));
+        auto alpha = [&](int x, int y) { return px[(y * 64 + x) * 4 + 3]; };
+        auto redAt = [&](int x, int y) {
+            const uint8_t* p = px + (y * 64 + x) * 4;
+            return p[3] > 200 && p[2] > 200 && p[1] < 60;
+        };
+        // Outside each rounded corner: nothing, including the top-right one
+        // whose side has no border.
+        utassert(alpha(0, 0) == 0);
+        utassert(alpha(39, 0) == 0);
+        utassert(alpha(39, 23) == 0);
+        // The bordered sides are drawn along their straight runs.
+        utassert(redAt(0, 12));
+        utassert(redAt(20, 0));
+        utassert(redAt(20, 23));
+        // And the side with no border is not.
+        utassert(!redAt(39, 12));
+    }
+    TextMeasClear(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
 static void ClipboardButtonsAcceptTheSharedSizeContract() {
     App app;
     component::Init(&app);
@@ -508,6 +623,8 @@ void TestButtonGroup() {
     GhostButtonsUseAccentHoverAndButtonActivePress();
     SourceToggleAndSegmentedGroupKeepStateAndGeometry();
     ButtonGroupsAssignSourceCornersWithoutAWrapperClip();
+    ASplitButtonBordersOnlyTheVariantsRustBorders();
+    PerSideBordersFollowRoundedCorners();
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
 }
