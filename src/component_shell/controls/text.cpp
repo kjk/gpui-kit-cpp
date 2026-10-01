@@ -151,10 +151,10 @@ static El* MaterializeLink(MaterializeRequest* request) {
     if (!request->TakeChildren(&children, &count)) return nullptr;
     for (int i = 0; i < count; i++) link->Child(children[i]);
     El* element = link->IntoEl();
-    // link.rs opens the href itself before running on_click. Base's Link
-    // leaves navigation to its caller, and a disabled one takes no click at
-    // all, where the Rust Link's `disabled` is inert.
-    if (link->href.s && !request->disabled) {
+    // link.rs opens the href itself before running on_click; base's Link
+    // leaves navigation to its caller. `disabled` is inert there, so a
+    // disabled link opens it too.
+    if (link->href.s) {
         OpenHref* open = ArenaNew<OpenHref>(cx->a);
         open->href = link->href;
         element->OnClick(MkFunc0(&RunOpenHref, open));

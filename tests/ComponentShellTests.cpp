@@ -1000,6 +1000,37 @@ void IdentityControlsRejectEmptyIds() {
     utassert(RendersCleanly("Link", "new Link('save').child('Save')", "Save"));
 }
 
+// link.rs legacy_link_preserves_disabled_behavior: `disabled` is stored
+// and inert, so a disabled Link still runs its handler, in the link colour.
+void ADisabledLinkStillTakesItsClick() {
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Link } from 'gpui-component';\n"
+             "export default class Main extends View {\n"
+             "  init() { this.hits = 0; }\n"
+             "  render() {\n"
+             "    return div()\n"
+             "      .child(new Link('legacy-link').disabled(true)\n"
+             "        .on_click((_event, cx) => { this.hits += 1; "
+             "cx.notify(); })\n"
+             "        .child('Visible link'))\n"
+             "      .child(`Hits: ${this.hits}`);\n"
+             "  }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+    El* link = ListenerAbove(root, StrL("Visible link"));
+    utassert(link != nullptr);
+    if (link) {
+        utassert(link->style.hasColor &&
+                 link->style.color.r == ThemeNow(&host.app).link.r &&
+                 link->style.color.b == ThemeNow(&host.app).link.b);
+        Click(host, link);
+    }
+    root = host.Render();
+    utassert(FindText(root, StrL("Hits: 1")) != nullptr);
+}
+
 // button_operations_replay_in_recorded_order_on_a_real_component
 void ButtonOperationsReplayInRecordedOrder() {
     Host host(
@@ -7262,6 +7293,7 @@ void TestComponentShell() {
     ControlsRegisterTheSupportedPublicExports();
     EveryControlDocumentsItsSurface();
     IdentityControlsRejectEmptyIds();
+    ADisabledLinkStillTakesItsClick();
     ButtonOperationsReplayInRecordedOrder();
     BadgeNumbersRejectFractionalNegativeAndOverflow();
     LaterTagVariantPreservesEarlierSizeOutlineAndRounding();

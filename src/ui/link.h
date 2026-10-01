@@ -14,6 +14,8 @@ struct Link {
     Str id = {};
     Str href = {};
     Str text = {};
+    // Stored and inert, as link.rs has it: a disabled Link still opens its
+    // href and runs its handler.
     bool disabled = false;
     Listener onOpen;
     // ParentElement: link.rs renders its children in place of any text.

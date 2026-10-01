@@ -156,8 +156,7 @@ macOS font-kit requirement on the website only. The current update target is
   (Badge, Rating, pagination, textarea rows, chart ticks, ...) are clamped
   to INT_MAX, OtpState is capped at 64 cells, and chart rows are narrowed to
   f32. Id checks trim ASCII whitespace only.
-- **Component-shell gaps against the Rust components.** A disabled Link
-  takes no click; MenuItem/Menu `disabled` and the retained forms' `disabled()` are inert
+- **Component-shell gaps against the Rust components.** MenuItem/Menu `disabled` and the retained forms' `disabled()` are inert
   (upstream records them as common behaviors and drops the op — ported
   as-is); Progress is 200 wide unless styled; a plain Textarea's height
   follows `rows`; the Editor's gutter is narrower; InputGroup lacks the
