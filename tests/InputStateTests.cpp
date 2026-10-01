@@ -7619,6 +7619,328 @@ static void MultiCursorAltClickDispatch() {
     InputViewFree(&view);
 }
 
+// state.rs test_word_delete_undo_restores_caret.
+static void WordDeleteUndoRestoresCaret() {
+    InputView view = InputViewBuildTextarea();
+    SetupCursorsC(view, "hello|");
+    ViewAct(view, InputAction::DeleteToPreviousWordStart);
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewRangeIs(view, 5, 5));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_merged_delete_undo_restores_all_carets.
+static void MergedDeleteUndoRestoresAllCarets() {
+    InputView view = InputViewBuildTextarea();
+    SetupCursorsC(view, "a|b|c");
+    ViewAct(view, InputAction::Backspace);
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreC(view, "a|b|c"));
+    InputViewFree(&view);
+}
+
+// state.rs test_shift_end_respects_soft_wrap_end: with the caret at the end
+// of a soft-wrapped row, shift-end selects to the end of the line. Rust
+// sets the wrap width to 60px on the display map; the rows here wrap by
+// the width the editor is laid out at, so the window is narrowed until the
+// text column is 60px wide, and the wrap boundary is where a press at the
+// right end of the first row lands.
+static void ShiftEndRespectsSoftWrapEnd() {
+    InputView view = InputViewNew();
+    InputState* s = view.input;
+    StrBuilder text;
+    for (int i = 0; i < 30; i++) {
+        text.Append(StrL("abcdef "));
+    }
+    Str value = text.TakeStr();
+    InputSetValue(s, value);
+    StrFree(value);
+    Flush(view);
+    float textLeft = s->lastBounds.x;
+    TestSimulateResize(view.win, textLeft + 60.f, 1080.f);
+    TestDraw(view.win);
+    bool affinity = false;
+    int boundary =
+        InputIndexForPosition(s, &view.win->paint, textLeft + 59.f,
+                              s->lastBounds.y + s->lastLineH * 0.5f, &affinity);
+    // assert!(line.wrapped_lines.len() > 1)
+    utassert(boundary > 0 && boundary < len(InputValue(s)));
+    InputMoveToWithAffinity(s, view.app, view.win, boundary, true);
+    ViewAct(view, InputAction::SelectToEndOfLine);
+    utassert(ViewRangeIs(view, boundary, len(InputValue(s))));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_outdent_unindented_unicode_is_unchanged: `outdent(false)` is
+// the inline outdent (shift-tab), `outdent(true)` the block one (ctrl-[).
+static void OutdentUnindentedUnicodeIsUnchanged() {
+    InputView view = InputViewBuildTextarea();
+    SetupCursorsC(view, "|\xE4\xBD\xA0\xE5\xA5\xBD\n|\xE4\xB8\x96\xE7\x95\x8C");
+    ViewAct(view, InputAction::OutdentInline);
+    ViewAct(view, InputAction::Outdent);
+    Flush(view);
+    utassert(CursorsAreC(
+        view, "|\xE4\xBD\xA0\xE5\xA5\xBD\n|\xE4\xB8\x96\xE7\x95\x8C"));
+    InputViewFree(&view);
+}
+
+static bool IsCharBoundaryC(Str text, int offset) {
+    if (offset <= 0 || offset >= len(text)) {
+        return offset == 0 || offset == len(text);
+    }
+    return ((uint8_t)text.s[offset] & 0xC0) != 0x80;
+}
+
+// state.rs test_column_selection_stays_on_unicode_boundaries.
+static void ColumnSelectionStaysOnUnicodeBoundaries() {
+    InputView view = InputViewBuildTextarea();
+    SetupCursorsC(view, "ab\n\xE4\xBD\xA0\xE5\xA5\xBD\ncd");
+    InputBuildColumnarSelection(view.input, view.app, view.win, {1, 0},
+                                {11, 0});
+    Str text = InputValue(view.input);
+    utassert(IsCharBoundaryC(text, view.input->selectedRange.start));
+    utassert(IsCharBoundaryC(text, view.input->selectedRange.end));
+    for (int i = 0; i < len(view.input->extraCursors); i++) {
+        const Selection& r = view.input->extraCursors[i].range;
+        utassert(IsCharBoundaryC(text, r.start));
+        utassert(IsCharBoundaryC(text, r.end));
+    }
+    ViewTypeText(view, "X");
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_editor_decorations_follow_typing: not ported — an editor's
+// TextDecoration collections are a DecorationCollections kept beside the
+// state, not the state's own `extras.decorations`, so an edit does not move
+// them; the owner calls AdjustForEdit (src/base/input_editor.h).
+
+// state.rs set_test_syntax_provider, with the provider answering one
+// context everywhere (StringAllProvider, CommentAllProvider) and counting
+// how often it was asked.
+struct SyntaxProbeC {
+    SyntaxContext answer = SyntaxContext::Code;
+    int queries = 0;
+};
+
+static SyntaxContext SyntaxProbeContextAtC(void* data, Str, int) {
+    SyntaxProbeC* probe = (SyntaxProbeC*)data;
+    probe->queries++;
+    return probe->answer;
+}
+
+static bool SyntaxProbeProviderC(void* data, Str, SyntaxContextProvider* out) {
+    out->data = data;
+    out->contextAt = &SyntaxProbeContextAtC;
+    return true;
+}
+
+static void SetTestSyntaxProviderC(App* app, SyntaxProbeC* probe) {
+    LanguageProvider provider;
+    provider.data = probe;
+    provider.syntaxContextProvider = &SyntaxProbeProviderC;
+    InputSetLanguageProvider(app, provider);
+}
+
+// state.rs test_backspace_preserves_escaped_quote_terminator.
+static void BackspacePreservesEscapedQuoteTerminator() {
+    InputView view = InputViewNew();
+    SyntaxProbeC strings;
+    strings.answer = SyntaxContext::String;
+    SetupCursorsC(view, "{\"s\":\"\\\"|\"}");
+    SetTestSyntaxProviderC(view.app, &strings);
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreC(view, "{\"s\":\"\\|\"}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_ordinary_typing_does_not_query_syntax: Rust's provider
+// panics when asked; this one counts, and the count must stay at zero.
+static void OrdinaryTypingDoesNotQuerySyntax() {
+    InputView view = InputViewNew();
+    SyntaxProbeC unexpected;
+    SetupCursorsC(view, "|");
+    SetTestSyntaxProviderC(view.app, &unexpected);
+    const char* typed[] = {"a", "b", "c"};
+    for (const char* c : typed) {
+        ViewTypeText(view, c);
+    }
+    Flush(view);
+    // "ordinary typing must not query syntax"
+    utassert(unexpected.queries == 0);
+    utassert(CursorsAreC(view, "abc|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_is_atomic_at_history_limit.
+static void AutoCloseIsAtomicAtHistoryLimit() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "|");
+    for (int i = 0; i < 999; i++) {
+        ViewTypeText(view, "a");
+    }
+    ViewTypeText(view, "(");
+    ViewAct(view, InputAction::Undo);
+    Str text = InputValue(view.input);
+    bool open = false;
+    bool close = false;
+    for (int i = 0; i < len(text); i++) {
+        open = open || text.s[i] == '(';
+        close = close || text.s[i] == ')';
+    }
+    utassert(!open);
+    utassert(!close);
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    StrBuilder want;
+    for (int i = 0; i < 999; i++) {
+        want.AppendChar('a');
+    }
+    want.Append(StrL("(|)"));
+    Str spec = want.TakeStr();
+    utassert(CursorsAreC(view, spec.s));
+    StrFree(spec);
+    InputViewFree(&view);
+}
+
+// state.rs test_comment_closer_is_inserted_literally.
+static void CommentCloserIsInsertedLiterally() {
+    InputView view = InputViewNew();
+    SyntaxProbeC comments;
+    comments.answer = SyntaxContext::Comment;
+    SetupCursorsC(view, "// (|)");
+    SetTestSyntaxProviderC(view.app, &comments);
+    ViewTypeText(view, ")");
+    Flush(view);
+    utassert(CursorsAreC(view, "// ()|)"));
+    InputViewFree(&view);
+}
+
+// state.rs test_explicit_range_skip_does_not_delete_existing_closer_on_undo.
+static void ExplicitRangeSkipDoesNotDeleteExistingCloserOnUndo() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "(a|)");
+    Str before = StrDup(InputValue(view.input));
+    Selection at = {2, 2};
+    InputReplaceTextInRange(view.input, view.app, view.win, &at, StrL(")"));
+    Flush(view);
+    utassert(CursorsAreC(view, "(a)|"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    // "skip must not remove an existing closer on undo"
+    utassert(base::StrEq(InputValue(view.input), before));
+    StrFree(before);
+    InputViewFree(&view);
+}
+
+// state.rs test_pair_redo_restores_interior_cursor.
+static void PairRedoRestoresInteriorCursor() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "|");
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreC(view, "(|)"));
+    ViewAct(view, InputAction::Undo);
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreC(view, "(|)"));
+    InputViewFree(&view);
+}
+
+// state.rs test_pair_enter_redo_restores_interior_cursor. Rust's code
+// editor indents by TabSize::default(), two columns; this tree's
+// LayoutMode defaults to four, so the editor is given Rust's two.
+static void PairEnterRedoRestoresInteriorCursor() {
+    InputView view = InputViewNew();
+    view.input->mode.tabSize = 2;
+    SetupCursorsC(view, "{|}");
+    ViewAct(view, InputAction::Enter);
+    Flush(view);
+    utassert(CursorsAreC(view, "{\n  |\n}"));
+    ViewAct(view, InputAction::Undo);
+    Flush(view);
+    utassert(CursorsAreC(view, "{|}"));
+    ViewAct(view, InputAction::Redo);
+    Flush(view);
+    utassert(CursorsAreC(view, "{\n  |\n}"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_parens: selection must be collapsed, so typing
+// next inserts rather than replaces.
+static void AutoCloseParens() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "|");
+    ViewTypeText(view, "(");
+    Flush(view);
+    utassert(CursorsAreC(view, "(|)"));
+    ViewTypeText(view, "x");
+    Flush(view);
+    utassert(CursorsAreC(view, "(x|)"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_skip_over_closer: no duplicate closer, the cursor
+// moves past the existing one, and the selection is collapsed.
+static void AutoCloseSkipOverCloser() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "(|)");
+    ViewTypeText(view, ")");
+    Flush(view);
+    utassert(CursorsAreC(view, "()|"));
+    utassert(view.input->selectedRange.IsEmpty());
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_no_pair_inside_word: a contraction, so no
+// auto-close.
+static void AutoCloseNoPairInsideWord() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "don|");
+    ViewTypeText(view, "'");
+    Flush(view);
+    utassert(CursorsAreC(view, "don'|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_quote_after_cjk: the previous-character lookup is
+// Unicode-safe, and CJK counts as word-like, so no pairing.
+static void AutoCloseQuoteAfterCjk() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "\xE4\xB8\xAD|");
+    ViewTypeText(view, "'");
+    Flush(view);
+    utassert(CursorsAreC(view, "\xE4\xB8\xAD'|"));
+    InputViewFree(&view);
+}
+
+// state.rs test_auto_close_closer_skips_at_string_end: the cursor before an
+// existing closing quote, so typing `"` skips past it.
+static void AutoCloseCloserSkipsAtStringEnd() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "\"hello|\"");
+    ViewTypeText(view, "\"");
+    Flush(view);
+    utassert(CursorsAreC(view, "\"hello\"|"));
+    utassert(view.input->selectedRange.IsEmpty());
+    InputViewFree(&view);
+}
+
+// state.rs test_backspace_pair_with_cjk_prefix: deleting `()` after CJK must
+// not touch the neighbours.
+static void BackspacePairWithCjkPrefix() {
+    InputView view = InputViewNew();
+    SetupCursorsC(view, "\xE4\xB8\xAD(|)abc");
+    ViewAct(view, InputAction::Backspace);
+    Flush(view);
+    utassert(CursorsAreC(view, "\xE4\xB8\xAD|abc"));
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
@@ -7634,6 +7956,24 @@ static void RunWindowTestsC() {
     MultiCursorPlatformWordSelectionDispatch();
     MultiCursorHorizontalSelectionDispatch();
     MultiCursorAltClickDispatch();
+    WordDeleteUndoRestoresCaret();
+    MergedDeleteUndoRestoresAllCarets();
+    ShiftEndRespectsSoftWrapEnd();
+    OutdentUnindentedUnicodeIsUnchanged();
+    ColumnSelectionStaysOnUnicodeBoundaries();
+    BackspacePreservesEscapedQuoteTerminator();
+    OrdinaryTypingDoesNotQuerySyntax();
+    AutoCloseIsAtomicAtHistoryLimit();
+    CommentCloserIsInsertedLiterally();
+    ExplicitRangeSkipDoesNotDeleteExistingCloserOnUndo();
+    PairRedoRestoresInteriorCursor();
+    PairEnterRedoRestoresInteriorCursor();
+    AutoCloseParens();
+    AutoCloseSkipOverCloser();
+    AutoCloseNoPairInsideWord();
+    AutoCloseQuoteAfterCjk();
+    AutoCloseCloserSkipsAtStringEnd();
+    BackspacePairWithCjkPrefix();
 }
 
 // ─── state.rs window tests, part D ──────────────────────────────────────
