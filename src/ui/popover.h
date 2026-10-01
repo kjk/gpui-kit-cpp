@@ -147,6 +147,11 @@ struct Popover {
 // Whether the popover of this id is showing, for a page that has to know
 // before it builds the content.
 bool PopoverOpen(Ctx* cx, Str id);
+// The keyed state itself, resolved while building (the key is the id under
+// the element path being built), for a handler that later has to close the
+// popover from inside its content: Rust's `cx.emit(DismissEvent)`, which here
+// is PopoverSetOpen(cx, state, false).
+Entity<PopoverState> PopoverStateOf(Ctx* cx, Str id);
 
 } // namespace component
 } // namespace gpui

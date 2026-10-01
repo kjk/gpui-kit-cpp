@@ -27,9 +27,23 @@ struct PopoverStory {
     // The Anchor section's Arrow checkbox, unchecked by default.
     bool arrow = false;
     bool seeded = false;
+    // The right-click popover's state, so its Dismiss button can close it.
+    Entity<PopoverState> rightPopover = {};
 
     static El* Render(PopoverStory* self, Ctx* cx);
 };
+
+// The right-click popover's Dismiss: push a notification, then
+// cx.emit(DismissEvent), which closes the popover it is in.
+static void OnRightDismiss(PopoverStory* self, Ctx* cx, const ClickEvent*) {
+    if (component::NotificationListState* st = StoryNotifications(cx).Get(cx)) {
+        component::Notification item = component::Notification::New();
+        item.Message(StrL("You have clicked dismiss via DismissEvent."));
+        NotificationPush(st, cx, item);
+    }
+    PopoverSetOpen(cx, self->rightPopover, false);
+    Notify(cx);
+}
 
 // render_item: `ListItem::new(ix).child(format!("Item {}", ix.row))`.
 static component::ListItem* PopListItem(Ctx* cx, void*, int, int row, int) {
@@ -237,10 +251,13 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
         rightCard->Child(
             PopText(cx, "Hello, this is a Popover on the Bottom Right."));
         rightCard->Child(component::Separator::Horizontal(cx)->IntoEl());
+        self->rightPopover = component::PopoverStateOf(cx, rightId);
         rightCard->Child(component::Button::New(cx, StrL("info1"))
-                             ->Label(StrL("Info"))
                              ->Primary()
-                             ->IntoEl());
+                             ->Label(StrL("Dismiss"))
+                             ->OnClick(Listen(cx, &OnRightDismiss))
+                             ->IntoEl()
+                             ->W(80));
     }
     StorySectionAdd(right,
                     component::Popover::New(cx, rightId)

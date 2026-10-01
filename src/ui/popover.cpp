@@ -140,6 +140,10 @@ bool PopoverOpen(Ctx* cx, Str id) {
     return PopoverIsOpen(cx, PopState(cx, id));
 }
 
+Entity<PopoverState> PopoverStateOf(Ctx* cx, Str id) {
+    return PopState(cx, id);
+}
+
 PopoverArrowAnchor ArrowAnchor(PopupAnchor anchor, Bounds t) {
     using gpui::Placement;
     switch (anchor) {
