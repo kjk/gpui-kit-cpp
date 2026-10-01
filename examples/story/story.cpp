@@ -1873,11 +1873,13 @@ static El* Footer(StoryApp* app, Ctx* cx) {
 // others keep their own height and scroll.
 static El* StoryContainerBody(StoryApp* app, Ctx* cx, Arena* frame) {
     if (app->story == StoryDock || app->story == StoryScrollbar ||
-        app->story == StoryEditor) {
+        app->story == StoryEditor || app->story == StorySettings) {
+        // DockStory and SettingsStory have paddings() of 0.
+        bool unpadded = app->story == StoryDock || app->story == StorySettings;
         return Div(frame)
             ->FlexCol()
             ->SizeFull()
-            ->Pad(app->story == StoryDock ? 0.0f : 16.0f)
+            ->Pad(unpadded ? 0.0f : 16.0f)
             ->Child(StoryRenderRegistered(app, cx));
     }
     return Div(frame)->Pad(16)->W(kFill)->Child(StoryRenderRegistered(app, cx));

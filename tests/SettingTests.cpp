@@ -540,6 +540,49 @@ static void ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged() {
     delete win;
 }
 
+// SettingItem::Element matches a query only by its keywords, and Reset All
+// leaves a typed field without a default_value alone.
+static void ElementItemsAndFieldsWithoutADefault() {
+    Arena* a = ArenaNew();
+    SettingItem element;
+    element.isElement = true;
+    element.title = StrL("hidden title");
+    utassert(SettingItemMatches(&element, {}));
+    utassert(!SettingItemMatches(&element, StrL("hidden")));
+    element.keywords.Append(a, StrL("bar"));
+    utassert(SettingItemMatches(&element, StrL("bar")));
+    ArenaDelete(a);
+
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    bool noDefault = true;
+    bool withDefault = true;
+    Settings::New(&cx, StrL("reset-defaults"), state)
+        ->Page(StrL("General"))
+        ->Group(StrL("Group"))
+        ->Item(StrL("No default"), {})
+        ->SwitchField(&noDefault)
+        ->Item(StrL("With default"), {})
+        ->SwitchField(&withDefault, false, true)
+        ->IntoEl();
+    SettingsState* settings = state.Get(&app);
+    utassert(settings && settings->fields.len == 2);
+    SettingsState::OnResetPage(settings, &cx, nullptr, 0);
+    utassert(noDefault);
+    utassert(!withDefault);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 static El* FindParentOf(El* root, const El* wanted) {
     if (!root) {
         return nullptr;
@@ -674,6 +717,7 @@ void TestSetting() {
     SearchRenderKeepsOriginalItemIndexes();
     FooterFollowsGroupSearchVisibility();
     ResetAllOnSearchResultsLeavesHiddenSettingsUnchanged();
+    ElementItemsAndFieldsWithoutADefault();
     GroupVariantOverridesTheSettingsDefault();
     SelectingAGroupFromAnotherPageScrollsToIt();
 }

@@ -3,6 +3,7 @@
 #include "ui/button.h"
 #include "ui/checkbox.h"
 #include "ui/input.h"
+#include "ui/menu.h"
 #include "ui/resizable.h"
 #include "ui/select.h"
 #include "ui/sidebar.h"
@@ -62,8 +63,9 @@ bool SettingItemMatches(const SettingItem* it, Str query) {
     if (len(query) <= 0) {
         return true;
     }
-    if (base::StrContainsI(it->title, query) ||
-        base::StrContainsI(it->description, query)) {
+    // A custom element has no text to match, only its keywords.
+    if (!it->isElement && (base::StrContainsI(it->title, query) ||
+                           base::StrContainsI(it->description, query))) {
         return true;
     }
     for (int i = 0; i < it->keywords.len; i++) {
@@ -283,6 +285,18 @@ void SettingsState::OnFieldClick(SettingsState* self, Ctx* cx,
     Notify(cx);
 }
 
+void SettingsState::OnDropdownPick(SettingsState* self, Ctx* cx,
+                                   const ClickEvent*, intptr_t packed) {
+    SettingBinding* f = FieldAt(self, packed / kDropdownOptionsMax);
+    if (!f || f->kind != SettingFieldKind::Dropdown) {
+        return;
+    }
+    if (SearchableListState* st = f->list.Get(cx)) {
+        SearchableListSelectOnly(st, (int)(packed % kDropdownOptionsMax));
+    }
+    Notify(cx);
+}
+
 void SettingsState::OnFieldReset(SettingsState* self, Ctx* cx,
                                  const ClickEvent*, intptr_t ix) {
     SettingBinding* f = FieldAt(self, ix);
@@ -313,13 +327,31 @@ void SettingsState::OnFieldReset(SettingsState* self, Ctx* cx,
     Notify(cx);
 }
 
+// SettingItem::reset: the on_reset an Element field or item gave, or the
+// typed field's default_value. A field with neither is left as it is.
+static void ResetBinding(SettingsState* self, Ctx* cx, const ClickEvent* ev,
+                         intptr_t ix) {
+    SettingBinding* f = FieldAt(self, ix);
+    if (!f) {
+        return;
+    }
+    if (f->onReset.IsValid()) {
+        ListenerCall(cx->app, cx->win, f->onReset, ev);
+        Notify(cx);
+        return;
+    }
+    if (f->hasDefault) {
+        SettingsState::OnFieldReset(self, cx, ev, ix);
+    }
+}
+
 void SettingsState::OnResetPage(SettingsState* self, Ctx* cx,
                                 const ClickEvent* ev, intptr_t) {
     if (!self) {
         return;
     }
     for (int i = 0; i < self->fields.len; i++) {
-        OnFieldReset(self, cx, ev, (intptr_t)i);
+        ResetBinding(self, cx, ev, (intptr_t)i);
     }
 }
 
@@ -409,6 +441,23 @@ Settings* Settings::Item(Str title, Str description, El* control) {
     it.description = description;
     it.control = control;
     g.items.Append(a, it);
+    return this;
+}
+
+Settings* Settings::ElementItem(El* content) {
+    Item({}, {}, content);
+    SettingItem* it = LastItem(this);
+    if (it) {
+        it->isElement = true;
+    }
+    return this;
+}
+
+Settings* Settings::DescriptionEl(El* e) {
+    SettingItem* it = LastItem(this);
+    if (it) {
+        it->descriptionEl = e;
+    }
     return this;
 }
 
@@ -596,8 +645,13 @@ Settings* Settings::H(float v) {
     h = v;
     return this;
 }
+Settings* Settings::WithGroupVariant(GroupBoxVariant v) {
+    groupVariant = v;
+    return this;
+}
+
 Settings* Settings::Bordered(bool v) {
-    bordered = v;
+    groupVariant = v ? GroupBoxVariant::Outline : GroupBoxVariant::Normal;
     return this;
 }
 
@@ -621,8 +675,16 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
                      ? it.fieldElement.Render(&options, cx)
                      : it.control;
         out.dirty = it.dirty;
-        out.resettable = it.onReset.IsValid();
+        out.resettable = it.onReset.IsValid() && pageResettable;
         out.onReset = it.onReset;
+        // An Element field resets only through its on_reset, which Reset
+        // All finds by the binding like any other field's.
+        if (st && it.onReset.IsValid()) {
+            SettingBinding b;
+            b.kind = SettingFieldKind::Element;
+            b.onReset = it.onReset;
+            VecAppend(st->fields, b);
+        }
         return out;
     }
 
@@ -655,14 +717,19 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     b.num = it.num;
     b.list = it.list;
     b.defIndex = it.defIndex;
+    b.hasDefault = it.hasDefault;
+    // SettingField::on_reset wins over default_value, as reset_handler does.
+    b.onReset = it.onReset;
     intptr_t ix = (intptr_t)st->fields.len;
     VecAppend(st->fields, b);
 
     Listener click = ListenTo(s->state, &SettingsState::OnFieldClick, ix);
-    // layout(Axis): a field beside the text is w_32, one under it fills.
-    float w = it.fieldW > 0
-                  ? it.fieldW
-                  : (options.layout == Axis::Horizontal ? 128.f : kFill);
+    // layout(Axis): a field beside the text is w_32 (number.rs) or w_64
+    // (string.rs); one under it fills.
+    float w = it.fieldW > 0 ? it.fieldW
+              : options.layout == Axis::Horizontal
+                  ? (it.field == SettingFieldKind::Input ? 256.f : 128.f)
+                  : kFill;
     switch (it.field) {
         case SettingFieldKind::Switch:
             out.el = Switch::New(cx, id)
@@ -705,13 +772,40 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
             out.dirty = input && !base::StrEq(InputValue(input), it.defStr);
             break;
         case SettingFieldKind::Dropdown: {
-            out.el = Select::New(cx, id, it.list)
-                         ->Items(it.items, it.nItems)
-                         ->W(w)
-                         ->Disabled(options.disabled)
-                         ->WithSize(options.size)
-                         ->OnToggle(click)
+            // fields/dropdown.rs: an outline Button with a caret, labelled
+            // with the current option, full width when stacked, and a
+            // dropdown menu anchored TopRight whose rows tick the current
+            // option and choose one on click.
+            int current = DropdownIndex(it.list.Get(cx));
+            Str label = current >= 0 && current < it.nItems
+                            ? it.items[current].title
+                            : Str{};
+            Button* btn = Button::New(cx, StrL("btn"))
+                              ->Label(label)
+                              ->DropdownCaret(true)
+                              ->Outline()
+                              ->Disabled(options.disabled)
+                              ->WithSize(options.size);
+            El* trigger = btn->IntoEl();
+            if (it.fieldW > 0) {
+                trigger->W(it.fieldW);
+            } else if (options.layout == Axis::Vertical) {
+                trigger->W(kFill);
+            }
+            PopupMenu* menu = PopupMenu::New(cx, StrL("menu"));
+            for (int k = 0; k < it.nItems; k++) {
+                menu->MenuWithCheck(it.items[k].title, k == current)
+                    ->OnClick(ListenTo(s->state, &SettingsState::OnDropdownPick,
+                                       ix * kDropdownOptionsMax + k));
+            }
+            out.el = DropdownMenu::New(cx, StrL("dropdown"))
+                         ->Trigger(trigger)
+                         ->Menu(menu)
+                         ->AnchorRight(true)
                          ->IntoEl();
+            if (options.layout == Axis::Vertical) {
+                out.el->W(kFill);
+            }
             out.dirty = DropdownIndex(it.list.Get(cx)) != it.defIndex;
             break;
         }
@@ -754,6 +848,27 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     if (it.disabled) {
         line->Opacity(0.5f);
     }
+    RenderOptions options = RenderOptions::New()
+                                .WithPageIx(pageIx)
+                                .WithGroupIx(groupIx)
+                                .WithItemIx(itemIx)
+                                .WithSize(s->size)
+                                .WithGroupVariant(s->groupVariant)
+                                .WithLayout(layout)
+                                .WithDisabled(it.disabled);
+    // SettingItem::Element: `div().w_full()` around whatever the caller
+    // rendered, which takes the row whole.
+    if (it.isElement) {
+        FieldEl f =
+            RenderField(cx, s, it, StrL("field"), pageResettable, options);
+        if (f.dirty && f.resettable && f.onReset.IsValid()) {
+            *anyDirty = true;
+        }
+        if (f.el) {
+            line->Child(f.el);
+        }
+        return line;
+    }
     if (layout == Axis::Horizontal) {
         line->FlexRow()->ItemsCenter()->JustifyBetween();
     } else {
@@ -768,43 +883,29 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
         text->W(kFill);
     }
     text->Child(TextEl(a, it.title)->Font(14)->Fg(th.foreground)->Wrap());
-    if (it.description.s) {
+    // `div().size_full().text_sm().text_color(muted_foreground)` around the
+    // description, which may be an element (a markdown TextView).
+    if (it.descriptionEl) {
+        text->Child(Div(a)
+                        ->W(kFill)
+                        ->Font(14)
+                        ->Fg(th.mutedFg)
+                        ->Child(it.descriptionEl));
+    } else if (it.description.s) {
         text->Child(
             TextEl(a, it.description)->Font(14)->Fg(th.mutedFg)->Wrap());
     }
     line->Child(text);
     // `div().id("field")`: a plain block, so a field stacked under its
-    // label is as wide as the item. The row is this port's, for the reset
-    // button it puts beside a changed field.
+    // label is as wide as the item. Rust puts no reset button beside a
+    // changed field; the page header's Reset All is the only one.
     El* right = Div(a);
-    RenderOptions options =
-        RenderOptions::New()
-            .WithPageIx(pageIx)
-            .WithGroupIx(groupIx)
-            .WithItemIx(itemIx)
-            .WithSize(s->size)
-            .WithGroupVariant(s->bordered ? GroupBoxVariant::Outline
-                                          : GroupBoxVariant::Normal)
-            .WithLayout(layout)
-            .WithDisabled(it.disabled);
     FieldEl f = RenderField(cx, s, it, StrL("field"), pageResettable, options);
     if (f.dirty && f.resettable && f.onReset.IsValid()) {
         *anyDirty = true;
     }
     if (f.el) {
         right->Child(f.el);
-    }
-    // The reset button, which is only there once the item has been changed.
-    if (f.dirty && f.resettable && f.onReset.IsValid()) {
-        right->FlexRow()->Gap(8)->ItemsCenter();
-        // Rust's reset button carries an Undo2 icon; the nearest one this
-        // tree has is the arrow that points back.
-        right->Child(Button::New(cx, StrL("reset"))
-                         ->Icon(IconName::ArrowLeft)
-                         ->Ghost()
-                         ->WithSize(UiSize::XSmall)
-                         ->OnClick(f.onReset)
-                         ->IntoEl());
     }
     line->Child(right);
     return line;
@@ -842,8 +943,12 @@ El* Settings::IntoEl() {
     // search field, the page rows, the group rows and every item under them —
     // and the states the fields keep, which is what the id stack is for.
     IdScope scope(cx, id);
-    float sideWidth =
-        std::max(sidebarMinWidth, std::min(sidebarWidth, sidebarMaxWidth));
+    // Rust's sidebar panel starts at sidebar_width, but the page panel beside
+    // it is size_full with no size of its own: from the second frame both
+    // shrink to fit, the sidebar's new width is fed back as its flex_basis,
+    // and it settles at the bottom of its size range. The panel opens at that
+    // width here, which is what gpui-kit shows; a drag still resizes it.
+    float sideWidth = sidebarMinWidth;
 
     // render_sidebar: a Sidebar the width of its panel, borderless and not
     // collapsible, with the search field as its header and one SidebarMenu
@@ -981,9 +1086,7 @@ El* Settings::IntoEl() {
             // group_variant())`: a group's own variant wins over the
             // settings-level one.
             GroupBoxVariant variant =
-                grp.hasVariant ? grp.variant
-                               : (bordered ? GroupBoxVariant::Outline
-                                           : GroupBoxVariant::Normal);
+                grp.hasVariant ? grp.variant : groupVariant;
             bool padded = variant != GroupBoxVariant::Normal;
             // The GroupBox root: v_flex w_full, gap_3 around a padded surface
             // and gap_4 around a plain one; the page gives each group `py_4`
@@ -1069,7 +1172,7 @@ El* Settings::IntoEl() {
         if (anyDirty) {
             titleRow->Child(
                 Button::New(cx, StrL("reset-all"))
-                    ->Icon(IconName::ArrowLeft)
+                    ->Icon(IconName::Undo2)
                     ->Tooltip(Tr("Settings.Reset All"))
                     ->Ghost()
                     ->WithSize(UiSize::Small)

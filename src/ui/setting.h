@@ -208,6 +208,14 @@ struct SelectIndex {
 struct SettingItem {
     Str title = {};
     Str description = {};
+    // description(impl Into<Text>): a description that is an element, such
+    // as a markdown TextView, rendered in place of `description`. The search
+    // still reads `description`, which is its source text.
+    El* descriptionEl = nullptr;
+    // SettingItem::Element (SettingItem::render): no title, no description
+    // and no field of its own; `control` is the whole row. It shows when
+    // nothing is being searched for, or when one of its keywords matches.
+    bool isElement = false;
     El* control = nullptr;
     SettingFieldElement fieldElement = {};
     ArenaVec<Str> keywords;
@@ -314,6 +322,10 @@ struct SettingBinding {
     NumberFieldOptions num = {};
     Entity<SearchableListState> list = {};
     int defIndex = 0;
+    // default_value: a typed field without one is left alone by Reset All.
+    bool hasDefault = false;
+    // An Element field's (or item's) on_reset, which Reset All calls.
+    Listener onReset = {};
 };
 
 // The field behind one string or number setting. `use_keyed_state("string-
@@ -321,6 +333,9 @@ struct SettingBinding {
 // .default_value(value))`: the input belongs to the row it is drawn on, and
 // the port's id stack is what folds the page, the group and the item into its
 // name. `seeded` is `default_value`, which only the first frame does.
+// How many options a dropdown field's menu rows can address.
+const intptr_t kDropdownOptionsMax = 4096;
+
 struct SettingFieldInput {
     InputState input;
     bool seeded = false;
@@ -370,6 +385,10 @@ struct SettingsState {
                              intptr_t ix);
     static void OnFieldReset(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                              intptr_t ix);
+    // A dropdown menu row: `packed` is the field's index times
+    // kDropdownOptionsMax plus the option's.
+    static void OnDropdownPick(SettingsState* self, Ctx* cx,
+                               const ClickEvent* ev, intptr_t packed);
     // reset_all: every field the page has built goes back to its default.
     static void OnResetPage(SettingsState* self, Ctx* cx, const ClickEvent* ev,
                             intptr_t unused);
@@ -387,6 +406,9 @@ struct Settings {
     // The three levels grow into the frame arena the builder is on, so a
     // page is as long as the caller makes it.
     ArenaVec<SettingPage> pages;
+    // sidebar_width. Rust's panel shrinks from it to sidebarMinWidth beside a
+    // size_full page within two frames, so the panel opens at the minimum;
+    // see Settings::IntoEl.
     float sidebarWidth = 250;
     float sidebarMinWidth = 160;
     float sidebarMaxWidth = 360;
@@ -394,9 +416,9 @@ struct Settings {
     float h = kFill;
     UiSize size = UiSize::Medium;
     SelectIndex defaultSelectedIndex = {};
-    // GroupBoxVariant: whether a group is a card with a border or a plain
-    // run of rows under a heading. GroupBoxVariant::default() is Normal.
-    bool bordered = false;
+    // with_group_variant: every group's surface unless the group names its
+    // own. GroupBoxVariant::default() is Normal.
+    GroupBoxVariant groupVariant = GroupBoxVariant::Normal;
 
     // The state is optional, as `use_keyed_state(self.id, ..)` is upstream:
     // a pane left to itself keys its own off the id.
@@ -412,6 +434,12 @@ struct Settings {
     // presents its items directly, without the card a bordered default draws.
     Settings* GroupVariant(GroupBoxVariant variant);
     Settings* Item(Str title, Str description, El* control = nullptr);
+    // SettingItem::render: an item that is only `content`, as wide as the
+    // group. Keywords, Disabled and Resettable apply to it as to any item.
+    Settings* ElementItem(El* content);
+    // description(markdown(..)): the item last added shows `e` as its
+    // description; its Str description stays what the search matches.
+    Settings* DescriptionEl(El* e);
     Settings* FieldElement(SettingFieldElement element);
     // The typed fields, each filling in the control of the item last added.
     // `defValue` is Rust's `default_value`: naming one is what puts the reset
@@ -446,6 +474,8 @@ struct Settings {
     Settings* WithSize(UiSize value);
     Settings* DefaultSelectedIndex(SelectIndex value);
     Settings* H(float v);
+    Settings* WithGroupVariant(GroupBoxVariant v);
+    // Compatibility spelling: true is WithGroupVariant(Outline), false Normal.
     Settings* Bordered(bool v);
     El* IntoEl();
 };
