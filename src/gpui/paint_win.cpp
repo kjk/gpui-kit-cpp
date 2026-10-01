@@ -1485,6 +1485,35 @@ static int Utf8ToWideN(Str s, WCHAR* wbuf, int cap) {
     return n;
 }
 
+// The UTF-16 of `s`, NUL-terminated: in `stack` when it fits, and in the
+// temp arena when it does not, so a paragraph of any length shapes. A fixed
+// buffer turned a run over 2047 UTF-16 units into no layout at all — the
+// conversion fails on a short buffer — and such a paragraph drew nothing.
+static WCHAR* Utf8ToWideAny(Str s, WCHAR* stack, int stackCap, int* outN) {
+    *outN = 0;
+    if (!s.s || len(s) <= 0) {
+        if (stack && stackCap > 0) {
+            stack[0] = 0;
+        }
+        return stack;
+    }
+    int need = MultiByteToWideChar(CP_UTF8, 0, s.s, len(s), nullptr, 0);
+    if (need <= 0) {
+        stack[0] = 0;
+        return stack;
+    }
+    WCHAR* buf = stack;
+    if (need + 1 > stackCap) {
+        buf = (WCHAR*)Alloc(GetTempArena(), (int)sizeof(WCHAR) * (need + 1));
+        if (!buf) {
+            stack[0] = 0;
+            return stack;
+        }
+    }
+    *outN = Utf8ToWideN(s, buf, need + 1);
+    return buf;
+}
+
 static int Utf8OffToWide(Str s, int u8off) {
     if (u8off <= 0 || !s.s) {
         return 0;
@@ -1499,8 +1528,9 @@ static int WideOffToUtf8(Str s, int woff) {
     if (woff <= 0 || !s.s) {
         return 0;
     }
-    WCHAR wbuf[2048];
-    int wn = Utf8ToWideN(s, wbuf, 2048);
+    WCHAR stack[2048];
+    int wn = 0;
+    WCHAR* wbuf = Utf8ToWideAny(s, stack, 2048, &wn);
     if (woff > wn) {
         woff = wn;
     }
@@ -1910,13 +1940,21 @@ static void ApplyLineHeight(IDWriteTextLayout* layout, float fontSize,
     if (n == 0) {
         return;
     }
+    // A run of more lines than the stack buffer holds is asked for in full
+    // too: a short buffer is the same E_NOT_SUFFICIENT_BUFFER, and a
+    // paragraph past 256 lines kept the font's natural leading.
     enum : uint16_t {
         kMaxLines = 256
     };
+    DWRITE_LINE_METRICS stack[kMaxLines] = {};
+    DWRITE_LINE_METRICS* lm = stack;
     if (n > kMaxLines) {
-        n = kMaxLines;
+        lm = (DWRITE_LINE_METRICS*)Alloc(
+            GetTempArena(), (int)(sizeof(DWRITE_LINE_METRICS) * n));
+        if (!lm) {
+            return;
+        }
     }
-    DWRITE_LINE_METRICS lm[kMaxLines] = {};
     UINT32 got = 0;
     if (FAILED(layout->GetLineMetrics(lm, n, &got)) || got == 0 ||
         lm[0].height <= 0) {
@@ -1947,8 +1985,9 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     if (!fmt) {
         return nullptr;
     }
-    WCHAR wbuf[2048];
-    int n = Utf8ToWideN(s, wbuf, 2048);
+    WCHAR stack[2048];
+    int n = 0;
+    WCHAR* wbuf = Utf8ToWideAny(s, stack, 2048, &n);
     if (n <= 0) {
         return nullptr;
     }
@@ -2153,8 +2192,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (!tl) {
         return 0;
     }
-    WCHAR wbuf[2048];
-    int wn = Utf8ToWideN(s, wbuf, 2048);
+    int wn = Utf8OffToWide(s, len(s));
     BOOL trailing = FALSE;
     BOOL inside = FALSE;
     DWRITE_HIT_TEST_METRICS m = {};
@@ -2203,19 +2241,38 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
     if (lineCount == 0) {
         return 0;
     }
-    DWRITE_LINE_METRICS lines[32] = {};
+    // Every line, however many the run wraps to: a range on the 33rd line of
+    // a long paragraph is as findable as one on the first. GetLineMetrics
+    // answers the full count even when the buffer is short, so a fixed
+    // buffer read past its end for any run longer than it.
+    DWRITE_LINE_METRICS stackLines[32] = {};
+    DWRITE_LINE_METRICS* lines = stackLines;
     if (lineCount > 32) {
-        lineCount = 32;
+        lines = (DWRITE_LINE_METRICS*)Alloc(
+            GetTempArena(), (int)(sizeof(DWRITE_LINE_METRICS) * lineCount));
+        if (!lines) {
+            return 0;
+        }
     }
     UINT32 actual = 0;
-    layout->GetLineMetrics(lines, lineCount, &actual);
+    if (FAILED(layout->GetLineMetrics(lines, lineCount, &actual)) ||
+        actual > lineCount) {
+        return 0;
+    }
     UINT32 pos = 0;
     int n = 0;
+    // Each rectangle is its line's box, from the line's top: the hit-test y
+    // is where the glyphs start, which under the phi line box is half the
+    // leading further down, and a rectangle from there reached that far into
+    // the line below.
+    float lineTop = tm.top;
     for (UINT32 i = 0; i < actual && n < max; i++) {
         int lineStart = (int)pos;
         int lineEnd = lineStart + (int)lines[i].length;
         int visEnd = lineEnd - (int)lines[i].newlineLength;
         pos = (UINT32)lineEnd;
+        float top = lineTop;
+        lineTop += lines[i].height;
         int lo = wa > lineStart ? wa : lineStart;
         int hi = wb < visEnd ? wb : visEnd;
         if (lo >= hi) {
@@ -2249,7 +2306,7 @@ int TextLayoutRangeRects(TextLayout* tl, Str s, int u8a, int u8b, Bounds* out,
             right = tm.layoutWidth;
         }
         out[n].x = left;
-        out[n].y = y0;
+        out[n].y = top;
         out[n].w = right - left;
         out[n].h = lines[i].height;
         n++;
