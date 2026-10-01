@@ -540,22 +540,22 @@ struct StockSearchDialog {
             self->focused = true;
             InputFocus(&state->query, cx);
         }
+        // `.min_h(px(320.))` keeps the dialog from jumping around as results
+        // arrive.
+        Style floor = {};
+        floor.minH = 320;
         El* palette =
             component::Command::New(cx, StrL("command-stocks"), story->search)
                 ->Entries(story->stockEntries, story->nStockEntries)
                 ->Bordered(false)
                 ->Placeholder(StrL("Search stocks..."))
                 ->Empty(StockEmpty(cx))
+                ->Refine(floor, StyleFieldMinHeight)
                 ->MaxH(320)
                 ->OnQuery(Listen(cx, &StockSearchDialog::OnQuery))
                 ->OnConfirm(Listen(cx, &StockSearchDialog::OnConfirm))
                 ->IntoEl();
-        // `.min_h(px(320.))` keeps the dialog from jumping around as results
-        // arrive. Command is not Styled here, so the floor goes on a box
-        // around it: the palette is borderless and shares the dialog's
-        // surface, so the two look the same.
-        return PaletteDialog(cx,
-                             Div(cx->a)->W(kFill)->MinH(320)->Child(palette),
+        return PaletteDialog(cx, palette,
                              Listen(cx, &StockSearchDialog::OnClose));
     }
 };

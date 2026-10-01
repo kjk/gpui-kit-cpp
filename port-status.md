@@ -136,11 +136,10 @@ macOS font-kit requirement on the website only. The current update target is
   styled surface. So `arrow` fills with that surface's background and outlines
   with its border, or with the ring `PopoverSurface` draws, instead of reading
   `appearance` (`src/ui/popover.cpp`).
-- **Command is not Styled, and a custom row states its height.** Rust's
-  `Command` takes `min_h`, `rounded` and the rest of `Styled`, and measures
-  each flattened row with `layout_as_root`; here a caller wraps the palette
-  for style (the stock search's `min_h`) and a custom row gives
-  `CommandItem::contentH` (`src/ui/command.h`).
+- **A Command's custom row states its height.** Rust measures each
+  flattened row with `layout_as_root` under the palette's text refinement;
+  here the two standard rows are their padding and line box and a custom
+  row gives `CommandItem::contentH` (`src/ui/command.h`).
 - **The shell's component catalog is not independent of the component
   library.** `src/component_shell` registers into the ported registry as
   crates/component-shell does, and `gpui_shell` is always the component

@@ -453,6 +453,12 @@ static bool StyleFieldsEqual(const gpui::Style& a, const gpui::Style& b,
     if ((fields & StyleFieldFontSize) && a.fontSize != b.fontSize) return false;
     if ((fields & StyleFieldWidth) && a.width != b.width) return false;
     if ((fields & StyleFieldHeight) && a.height != b.height) return false;
+    if ((fields & StyleFieldMinWidth) && a.minW != b.minW) return false;
+    if ((fields & StyleFieldMinHeight) && a.minH != b.minH) return false;
+    if ((fields & StyleFieldMaxWidth) &&
+        (a.maxW != b.maxW || a.maxWFrac != b.maxWFrac))
+        return false;
+    if ((fields & StyleFieldMaxHeight) && a.maxH != b.maxH) return false;
     if ((fields & StyleFieldOpacity) && a.opacity != b.opacity) return false;
     if ((fields & StyleFieldHoverBg) && !TextBackgroundEq(a.hoverBg, b.hoverBg))
         return false;

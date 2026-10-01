@@ -1411,6 +1411,22 @@ void StyleApplyFields(Style* into, const Style& over, uint32_t fields) {
     if (fields & StyleFieldHeight) {
         into->height = over.height;
     }
+    if (fields & StyleFieldMinWidth) {
+        into->minW = over.minW;
+        rel(kRelMinW);
+    }
+    if (fields & StyleFieldMinHeight) {
+        into->minH = over.minH;
+        rel(kRelMinH);
+    }
+    if (fields & StyleFieldMaxWidth) {
+        into->maxW = over.maxW;
+        into->maxWFrac = over.maxWFrac;
+    }
+    if (fields & StyleFieldMaxHeight) {
+        into->maxH = over.maxH;
+        rel(kRelMaxH);
+    }
     if (fields & StyleFieldOpacity) {
         into->opacity = over.opacity;
     }

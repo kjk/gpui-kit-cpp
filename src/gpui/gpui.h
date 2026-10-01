@@ -3416,7 +3416,13 @@ enum StyleField : uint32_t {
     StyleFieldBorderB = 1u << 15,
     StyleFieldBorderL = 1u << 16,
     StyleFieldBorderR = 1u << 17,
-    StyleFieldMargin = 1u << 18
+    StyleFieldMargin = 1u << 18,
+    // min_w / min_h / max_w / max_h, each with the relative(f) it may hold:
+    // a Styled component's `min_h(px(320.))` refines its root box.
+    StyleFieldMinWidth = 1u << 19,
+    StyleFieldMinHeight = 1u << 20,
+    StyleFieldMaxWidth = 1u << 21,
+    StyleFieldMaxHeight = 1u << 22
 };
 
 // StyleRefinement::refine, over the fields `fields` names and no others. The

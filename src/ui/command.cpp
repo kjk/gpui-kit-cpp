@@ -621,6 +621,11 @@ Command* Command::W(float v) {
     w = v;
     return this;
 }
+Command* Command::Refine(const Style& s, uint32_t fields) {
+    StyleApplyFields(&style, s, fields);
+    styleSet |= fields;
+    return this;
+}
 Command* Command::OnQuery(Listener fn) {
     onQuery = fn;
     return this;
@@ -756,10 +761,18 @@ static El* DefaultEmpty(Ctx* cx) {
 El* Command::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     CommandState* s = state.Get(cx);
-    El* box = Div(a)->FlexCol()->W(w)->ClipY()->Bg(th.tokens.popover);
+    El* box = Div(a)
+                  ->FlexCol()
+                  ->W(w)
+                  ->ClipY()
+                  ->Bg(th.tokens.popover)
+                  ->Fg(th.popoverFg);
     if (bordered) {
         box->Radius(th.radiusLg)->Border(1, th.border);
     }
+    // `.refine_style(&self.options.style)`: after the surface and the
+    // border, so a caller's `rounded` or `min_h` wins over them.
+    box->Refine(style, styleSet);
     if (!s) {
         return box;
     }

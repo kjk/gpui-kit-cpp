@@ -231,6 +231,11 @@ struct Command {
     float maxH = 300;
     bool bordered = true;
     float w = kFill;
+    // impl Styled for Command: the refinement Rust keeps in
+    // `CommandOptions::style` and lays over the palette's box after its
+    // surface and border (`.refine_style(&self.options.style)`).
+    Style style = {};
+    uint32_t styleSet = 0;
     Listener onQuery = {};
     Listener onSelect = {};
     Listener onConfirm = {};
@@ -254,6 +259,7 @@ struct Command {
     Command* MaxH(float v);
     Command* Bordered(bool v);
     Command* W(float v);
+    Command* Refine(const Style& s, uint32_t fields);
     Command* OnQuery(Listener fn);
     Command* OnSelect(Listener fn);
     Command* OnConfirm(Listener fn);

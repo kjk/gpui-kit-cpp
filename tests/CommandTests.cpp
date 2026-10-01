@@ -302,8 +302,60 @@ static void ReinstallingAnUnchangedModelKeepsItsRows() {
     utassertnear(s.rowSizes[0], 44.f);
 }
 
+// impl Styled for Command: `.refine_style(&self.options.style)` lands on the
+// palette's box after its popover surface and its border, so a caller's
+// `min_h` or `rounded` wins over what the palette chose. And
+// `.text_color(popover_foreground)` is what the rows inherit.
+static void ACommandIsStyled() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.app = &app;
+    cx.a = a;
+    const Theme& th = ThemeNow(&app);
+
+    Style refine = {};
+    refine.minH = 320;
+    refine.radius = 0;
+    El* box = Command::New(&cx, StrL("styled"), {})
+                  ->Refine(refine, StyleFieldMinHeight)
+                  ->Refine(refine, StyleFieldRadius)
+                  ->IntoEl();
+    utassert(box->style.hasColor && RgbaEq(box->style.color, th.popoverFg));
+    utassertnear(box->style.radius, th.radiusLg);
+    ElStyleStates* states = box->StyleStates();
+    utassert(states &&
+             states->refineSet == (StyleFieldMinHeight | StyleFieldRadius));
+    utassert(states && states->refine.minH == 320.f);
+    utassert(states && states->refine.radius == 0.f);
+
+    // Unstyled, the palette carries no refinement at all.
+    El* plain = Command::New(&cx, StrL("plain"), {})->IntoEl();
+    utassert(!plain->StyleStates() || plain->StyleStates()->refineSet == 0);
+
+    // The new size fields refine the way the rest do, fraction and all.
+    Style over = {};
+    over.minW = 10;
+    over.maxW = 20;
+    over.maxWFrac = 0.5f;
+    over.maxH = 30;
+    over.relLengths = kRelMinW;
+    Style into = {};
+    StyleApplyFields(
+        &into, over,
+        StyleFieldMinWidth | StyleFieldMaxWidth | StyleFieldMaxHeight);
+    utassert(into.minW == 10.f && into.maxW == 20.f && into.maxWFrac == 0.5f &&
+             into.maxH == 30.f);
+    utassert(into.minH == kAuto && into.relLengths == kRelMinW);
+
+    AppGlobalClear(&app);
+    ArenaDelete(a);
+}
+
 void TestCommand() {
     TestSuite("command");
+    ACommandIsStyled();
     TheQueryIsACaseInsensitiveSubstringOfTheLabelOrAKeyword();
     GroupsFlattenIntoHeadingsAndItems();
     ReinstallingAnUnchangedModelKeepsItsRows();
