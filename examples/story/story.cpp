@@ -1866,12 +1866,17 @@ static El* Footer(StoryApp* app, Ctx* cx) {
 }
 
 // StoryContainer::render: `div().size_full().p(paddings).child(story)` inside
-// the scrolling pane. Story::paddings is 16 unless a story asks for none,
-// and a story with none fills the pane, as the Dock page's area does.
+// the scrolling pane. Story::paddings is 16 unless a story asks for none. A
+// page that is itself size_full and hands the rest to a flex_1 child -- the
+// Dock's area, the Scrollbar page's list -- fills the pane; the others keep
+// their own height and scroll.
 static El* StoryContainerBody(StoryApp* app, Ctx* cx, Arena* frame) {
-    if (app->story == StoryDock) {
-        return Div(frame)->FlexCol()->SizeFull()->Child(
-            StoryRenderRegistered(app, cx));
+    if (app->story == StoryDock || app->story == StoryScrollbar) {
+        return Div(frame)
+            ->FlexCol()
+            ->SizeFull()
+            ->Pad(app->story == StoryDock ? 0.0f : 16.0f)
+            ->Child(StoryRenderRegistered(app, cx));
     }
     return Div(frame)->Pad(16)->W(kFill)->Child(StoryRenderRegistered(app, cx));
 }

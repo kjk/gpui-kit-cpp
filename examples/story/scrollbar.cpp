@@ -24,10 +24,6 @@ struct ScrollbarStory {
     int dataset = 0;
     bool menuOpen = false;
     float scrollY = 0;
-    // The grid below the list scrolls both ways, which is what
-    // ScrollbarAxis::Both is for.
-    float gridX = 0;
-    float gridY = 0;
 
     static El* Render(ScrollbarStory* self, Ctx* cx);
 };
@@ -37,14 +33,6 @@ struct ScrollbarStory {
 // instead, which comes to the same thing.
 static void ScrollTo(ScrollbarStory* self, Ctx* cx, const ScrollEvent* ev) {
     self->scrollY = ev->offsetY;
-    Notify(cx);
-}
-
-// Both offsets at once: the box reports where it should now be, whichever bar
-// or wheel moved it.
-static void ScrollGrid(ScrollbarStory* self, Ctx* cx, const ScrollEvent* ev) {
-    self->gridX = ev->offsetX;
-    self->gridY = ev->offsetY;
     Notify(cx);
 }
 
@@ -68,7 +56,9 @@ El* ScrollbarStory::Render(ScrollbarStory* self, Ctx* cx) {
     WinSize win = WindowSize(cx->win);
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    El* page = Div(a)->FlexCol()->Gap(16)->W(kFill);
+    // v_flex().size_full(): the story container gives this page the pane's
+    // height (StoryContainerBody), and the list takes what the toolbar leaves.
+    El* page = Div(a)->FlexCol()->Gap(16)->SizeFull();
 
     // story_toolbar_group() with the dataset dropdown.
     El* toolbarRow = Div(a)->FlexRow()->W(kFill)->JustifyEnd()->ItemsStart();
@@ -91,9 +81,8 @@ El* ScrollbarStory::Render(ScrollbarStory* self, Ctx* cx) {
     El* frame = Div(a)
                     ->FlexCol()
                     ->W(kFill)
-                    // flex_1 in a scrolling page: take what is left of the
-                    // window below the toolbar.
-                    ->H(win.dipH - 230)
+                    ->Flex1()
+                    ->MinH(0)
                     ->PadX(12)
                     ->PadY(4)
                     ->Border(1, th.border)
@@ -105,7 +94,9 @@ El* ScrollbarStory::Render(ScrollbarStory* self, Ctx* cx) {
     // The Rust list is virtualized, and so is this one: only the rows the
     // frame can show are built, with a spacer at each end standing in for the
     // rest — which is what makes half a million of them cost nothing.
-    float frameH = win.dipH - 230;
+    // The frame is never taller than the window, so building that many rows
+    // covers it.
+    float frameH = win.dipH;
     VirtualRange range =
         VirtualListVisibleRows(count, kItemHeight, self->scrollY, frameH);
     if (range.first > 0) {
@@ -137,37 +128,6 @@ El* ScrollbarStory::Render(ScrollbarStory* self, Ctx* cx) {
             Div(a)->W(kFill)->H((float)(count - range.end) * kItemHeight));
     }
     page->Child(frame);
-
-    // ScrollbarAxis::Both: a grid wider and taller than its frame, with a bar
-    // down the side and another along the bottom.
-    El* grid = Div(a)->FlexCol();
-    for (int r = 0; r < 20; r++) {
-        El* row = Div(a)->FlexRow()->Gap(4)->PadY(2);
-        for (int c = 0; c < 12; c++) {
-            row->Child(Div(a)
-                           ->W(120)
-                           ->H(28)
-                           ->ItemsCenter()
-                           ->JustifyCenter()
-                           ->Bg(th.tokens.secondary)
-                           ->Radius(th.radius)
-                           ->Child(StoryTxt(cx, StoryFmt(cx, "%d:%d", r, c), 13,
-                                            th.foreground)));
-        }
-        grid->Child(row);
-    }
-    El* both = StorySection(cx, "Both Axes",
-                            "A scroll area with a bar on each axis. The "
-                            "wheel scrolls whichever box it is over.");
-    StorySectionAdd(both, component::Scrollable::New(cx, StrL("scrollbar-grid"))
-                              ->Axis(component::ScrollAxis::Both)
-                              ->H(200)
-                              ->ScrollX(self->gridX)
-                              ->ScrollY(self->gridY)
-                              ->OnScroll(Listen(cx, &ScrollGrid))
-                              ->Child(grid)
-                              ->IntoEl());
-    page->Child(both);
 
     return page;
 }
