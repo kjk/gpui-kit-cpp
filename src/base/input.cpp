@@ -7113,6 +7113,15 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                     s->selectedRange = SelectionAt(oldCursor + caretInText);
                     s->selectionReversed = false;
                     UpdatePreferredColumn(s);
+                    // record_selections(cursors, cursors): the split leaves
+                    // the caret between the pair, and a redo puts it back
+                    // there rather than after the inserted text. Rust's
+                    // `before` only fills a gap the edit left, and the edit
+                    // here already recorded where the caret stood.
+                    int n = 0;
+                    CursorSelection* cursors =
+                        AllCursors(GetTempArena(), s, &n);
+                    UndoRecordSelections(&s->undo, nullptr, 0, cursors, n);
                 }
                 PauseBlink(s, app, win);
                 handled = true;
