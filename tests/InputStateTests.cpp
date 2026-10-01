@@ -5135,6 +5135,43 @@ static void SearchShortcutOpensThePanelWhenSearchable() {
     });
 }
 
+// ─── state.rs window tests, part A ──────────────────────────────────────
+//
+// From test_inline_token_wrap_and_size_refresh
+// up to test_undo_manager_coalesces_adjacent_typing_transactions, in the order
+// mod tests has them. Each port keeps the Rust test's name in the comment above
+// it.
+//
+
+static void RunWindowTestsA() {}
+
+// ─── state.rs window tests, part B ──────────────────────────────────────
+//
+// From test_undo_manager_coalesces_adjacent_typing_transactions
+// up to test_unfold_at, in the order mod tests has them.
+// Each port keeps the Rust test's name in the comment above it.
+//
+
+static void RunWindowTestsB() {}
+
+// ─── state.rs window tests, part C ──────────────────────────────────────
+//
+// From test_unfold_at
+// up to test_enter_split_respects_smart_indent_off, in the order mod tests has
+// them. Each port keeps the Rust test's name in the comment above it.
+//
+
+static void RunWindowTestsC() {}
+
+// ─── state.rs window tests, part D ──────────────────────────────────────
+//
+// From test_enter_split_respects_smart_indent_off
+// up to the end of mod tests, in the order mod tests has them.
+// Each port keeps the Rust test's name in the comment above it.
+//
+
+static void RunWindowTestsD() {}
+
 static void RunWindowTests() {
     InlineTokenClickSelectsIt();
     TextareaCursorTreatsCrlfAsOneNewline();
@@ -5142,6 +5179,10 @@ static void RunWindowTests() {
     ReadonlyRejectsUserEditsOnlyInAWindow();
     SearchShortcutReachesTheHostWhenNotSearchable();
     SearchShortcutOpensThePanelWhenSearchable();
+    RunWindowTestsA();
+    RunWindowTestsB();
+    RunWindowTestsC();
+    RunWindowTestsD();
 }
 
 void TestInputState() {
