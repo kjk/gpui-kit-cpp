@@ -756,6 +756,86 @@ static void GridPlacementApplies() {
     ArenaDelete(arena);
 }
 
+// styled.rs underline() and the text_decoration_* family build GPUI's
+// UnderlineStyle; text_bg is the text style's background; the three
+// ellipses pick the side of the cut. All of them cascade to the text under
+// the element, and an ellipsis at the start or in the middle is the string
+// LineWrapper::truncate_line makes.
+static void TextDecorationAndEllipsisApply() {
+    Arena* arena = ArenaNew();
+    El* e = Styled(arena, "text_decoration_2");
+    utassert(e->style.underlineSet && e->style.underline);
+    utassert(e->style.underlineThickness == 2 && !e->style.underlineWavy);
+    e = Styled(arena, "underline text_decoration_wavy");
+    utassert(e->style.underlineThickness == 1 && e->style.underlineWavy);
+    // UnderlineStyle::default() is zero thick: a wave alone paints nothing.
+    e = Styled(arena, "text_decoration_wavy");
+    utassert(e->style.underlineThickness == 0 && e->style.underlineWavy);
+    e = Styled(arena, "underline text_decoration_8 text_decoration_solid");
+    utassert(e->style.underlineThickness == 8 && !e->style.underlineWavy);
+    // text_decoration_none clears what this element named, nothing more.
+    e = Styled(arena, "underline text_decoration_none");
+    utassert(!e->style.underlineSet && !e->style.underline);
+    e = Styled(arena, "text_ellipsis_start");
+    utassert(e->style.truncate && e->style.textOverflow == 1);
+    e = Styled(arena, "text_ellipsis_middle truncate");
+    utassert(e->style.truncate && e->style.textOverflow == 0);
+    ShellError error = {};
+    e = Div(arena);
+    utassert(ApplyParamValue(e, StrL("text_bg"),
+                             Bridged::String(StrL("#00ff00")), &error));
+    utassert(e->style.hasTextBg && e->style.textBg.g == 255);
+
+    PaintApp* paint = PaintAppNew();
+    utassert(paint != nullptr);
+    if (!paint) {
+        ArenaDelete(arena);
+        return;
+    }
+    PaintCtx ctx;
+    ctx.pa = paint;
+    Str path = StrL("src/component_shell/navigation/sidebar.cpp");
+    const char* sides[] = {"text_ellipsis_start", "text_ellipsis_middle",
+                           "text_ellipsis"};
+    for (int side = 0; side < 3; side++) {
+        El* box = Styled(arena, "w_32 underline text_decoration_4");
+        utassert(ApplyNullaryStyle(box, Str(sides[side])));
+        utassert(ApplyParamValue(box, StrL("text_bg"),
+                                 Bridged::String(StrL("#ff0000")), &error));
+        El* text = TextEl(arena, path)->Wrap();
+        El* root = Div(arena)->Child(box->Child(text));
+        LayoutEl(&ctx, root, 0, 0, 400, 200, 14, Rgba{});
+        utassert(text->style.underlineSet && text->style.underline);
+        utassert(text->style.underlineThickness == 4);
+        utassert(text->style.hasTextBg && text->style.textBg.r == 255);
+        utassert(!text->style.wrap);
+        Str shown = text->text;
+        Str ellipsis = StrL("\xe2\x80\xa6");
+        if (side == 0) {
+            utassert(StrStartsWith(shown, ellipsis));
+            utassert(StrEndsWith(shown, "sidebar.cpp"));
+        } else if (side == 1) {
+            int at = StrFind(shown, ellipsis);
+            utassert(at > 0 && at < len(shown) - len(ellipsis));
+            utassert(StrStartsWith(shown, "src/"));
+            utassert(StrEndsWith(shown, ".cpp"));
+            // Two thirds of the room before the cut, one after.
+            utassert(at > len(shown) - at - len(ellipsis));
+        } else {
+            // The end is the backend's own ellipsis, drawn over the run.
+            utassert(StrEq(shown, path));
+        }
+        if (side < 2) {
+            utassert(len(shown) < len(path));
+            Size size = MeasureText(&ctx, shown, 14, 0);
+            utassert(size.w <= 128.5f);
+        }
+    }
+    TextMeasClear(&ctx);
+    PaintAppFree(paint);
+    ArenaDelete(arena);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -768,5 +848,6 @@ void TestShellStyle() {
     shell_style_tests::FractionsOfMinMaxPaddingMarginAndGapApply();
     shell_style_tests::ANegativeSizeLaysOutAsZero();
     shell_style_tests::GridPlacementApplies();
+    shell_style_tests::TextDecorationAndEllipsisApply();
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
 }

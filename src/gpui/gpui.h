@@ -1950,6 +1950,26 @@ struct Style {
     uint16_t relLengths = 0;
     // h_1_2 / h_2_3 / …: widthFrac's twin for the height. 0 = unset.
     float heightFrac = 0;
+
+    // The rest of GPUI's TextStyle a script can name, all of which cascade
+    // to the text under the element that names it (PrepareEl).
+    //
+    // text_bg: background_color, painted behind the glyphs of each run
+    // rather than behind the box. Read only when hasTextBg says it was named.
+    Rgba textBg = {0, 0, 0, 0};
+    // UnderlineStyle::thickness in DIPs, when underlineSet: 1 for
+    // `underline()`, 0 for a style the text_decoration_* setters made from
+    // UnderlineStyle::default(), which paints nothing.
+    uint8_t underlineThickness = 1;
+    uint8_t hasTextBg : 1 = false;
+    // The underline is the script's UnderlineStyle: it cascades, and it is
+    // painted with its thickness and wave rather than by the font. A native
+    // El::Underline() leaves this clear and keeps the font's own line.
+    uint8_t underlineSet : 1 = false;
+    uint8_t underlineWavy : 1 = false;
+    // text_overflow's side, read with `truncate` and cascaded with it: 0 the
+    // end (text_ellipsis, truncate), 1 the start, 2 the middle.
+    uint8_t textOverflow : 2 = 0;
 };
 
 enum : uint8_t {
@@ -1981,9 +2001,12 @@ enum : uint16_t {
 
 // 416 was full to the byte; heightFrac, which had nowhere else to go, opened
 // the next 8-byte unit, and alignContent, the bits beside it and relLengths
-// took the four bytes it left. Grow this only for a member that has nowhere
-// else to go, never to absorb padding.
-static_assert(sizeof(Style) <= 424, "keep Style members packed by alignment");
+// took the four bytes it left. 424 was full in turn, and the script's text
+// style — text_bg's colour, the underline's thickness, its wave and the side
+// an ellipsis goes on — opened the next unit, with a byte and three bits of
+// it to spare. Grow this only for a member that has nowhere else to go,
+// never to absorb padding.
+static_assert(sizeof(Style) <= 432, "keep Style members packed by alignment");
 
 // One `on_action` handler. The tree is frame-arena, so a handful of these
 // chained off an element costs a pointer each and dies with the frame.
@@ -3113,7 +3136,8 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-static_assert(sizeof(El) <= 1872,
+// Style's growth to 432, and nothing of El's own.
+static_assert(sizeof(El) <= 1880,
               "keep El flags packed and members alignment-ordered");
 
 enum class BtnKind : uint8_t {
@@ -5596,7 +5620,8 @@ void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color,
-                        bool wavy = false, TextAlign align = TextAlign::Left);
+                        bool wavy = false, TextAlign align = TextAlign::Left,
+                        float thickness = 1.f);
 // The taffy tree a window lays out in, kept between frames so taffy's own
 // per-node caches are. It is reconciled against the element tree rather than
 // rebuilt: an element whose style and content are the ones its node already

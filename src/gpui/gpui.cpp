@@ -2500,7 +2500,9 @@ static uint16_t ElTextWeight(const El* e) {
     if (e->style.fontMono) {
         w |= kFontMono;
     }
-    if (e->style.underline) {
+    // A script's underline is painted with its own thickness and wave
+    // (PaintScriptTextDecoration); the font draws only a native one.
+    if (e->style.underline && !e->style.underlineSet) {
         w |= kFontUnderline;
     }
     if (e->style.strike) {
@@ -2993,38 +2995,43 @@ int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 // from, one device pixel tall at the bottom of each. Rust hands the run an
 // UnderlineStyle instead, which the shaper draws; the rects land in the same
 // place and cost no new text machinery.
-// The squiggle a wavy underline is: a run of half-period diagonals under the
-// glyphs, drawn as one path so the joins are the stroke's own.
-static void PaintWavyRun(PaintCtx* ctx, float x, float y, float w, Rgba color) {
-    const float kPeriod = 4.f;
-    const float kAmp = 1.5f;
-    if (w <= 0) {
+// The squiggle a wavy underline is: GPUI's underline shader draws a sine
+// across a box three thicknesses tall, WAVE_FREQUENCY 2 and WAVE_HEIGHT_RATIO
+// 0.8 — a period of 9 thicknesses and an amplitude of 0.8 of one — stroked
+// at the thickness. Here it is a polyline through that sine, one path so the
+// joins are the stroke's own. `y` is the centre line of the wave.
+static void PaintWavyRun(PaintCtx* ctx, float x, float y, float w, Rgba color,
+                         float thickness = 1.f) {
+    const float kPeriod = 9.f * thickness;
+    const float kAmp = 0.8f * thickness;
+    if (w <= 0 || thickness <= 0) {
         return;
     }
     Path* p = PathNew(ctx, false);
     if (!p) {
         return;
     }
+    // A sample a pixel apart follows the curve closely enough at any
+    // thickness a text decoration has.
+    const float kTwoPi = 6.28318530718f;
     PathMoveTo(p, x, y);
-    bool up = true;
-    const float kHalfPeriod = kPeriod * 0.5f;
-    for (uint32_t i = 1;; ++i) {
-        const float at = static_cast<float>(i) * kHalfPeriod;
+    for (float at = 1.f;; at += 1.f) {
+        float t = at < w ? at : w;
+        PathLineTo(p, x + t, y + kAmp * sinf(kTwoPi * t / kPeriod));
         if (!(at < w)) {
             break;
         }
-        PathLineTo(p, x + at, y + (up ? -kAmp : kAmp));
-        up = !up;
     }
-    PathStroke(ctx, p, 1.f, color);
+    PathStroke(ctx, p, thickness, color);
     PathFree(p);
 }
 
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color, bool wavy,
-                        TextAlign align) {
-    if (!ctx || !ctx->rt || color.a == 0 || u8a >= u8b) {
+                        TextAlign align, float thickness) {
+    // A zero thickness is no line, as GPUI's snap_stroke keeps zero at zero.
+    if (!ctx || !ctx->rt || color.a == 0 || u8a >= u8b || thickness <= 0) {
         return;
     }
     TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
@@ -3042,9 +3049,13 @@ void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
         float ux = x + rects[i].x;
         float uy = y + rects[i].y + baseline + 1.f;
         if (wavy) {
-            PaintWavyRun(ctx, ux, uy + 1.f, rects[i].w, color);
+            // underline_bounds: a wavy line's box is three thicknesses tall
+            // from where a solid one starts, and the wave runs along its
+            // middle.
+            PaintWavyRun(ctx, ux, uy + 1.5f * thickness, rects[i].w, color,
+                         thickness);
         } else {
-            CanvasFillRect(ctx, ux, uy, rects[i].w, 1.f, color);
+            CanvasFillRect(ctx, ux, uy, rects[i].w, thickness, color);
         }
     }
     TextLayoutRelease(layout);
@@ -3927,7 +3938,27 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
             if (c->style.whiteSpaceSet) continue;
             c->style.wrap = e->style.wrap;
             c->style.truncate = e->style.truncate;
+            c->style.textOverflow = e->style.textOverflow;
             c->style.whiteSpaceSet = true;
+        }
+    }
+    // text_bg and a script's underline are GPUI text style as well. A child
+    // that named its own keeps it; `text_decoration_none` names none, so it
+    // takes the one above, as clearing a refinement does upstream.
+    if (e->style.hasTextBg) {
+        for (El* c = e->first; c; c = c->next) {
+            if (c->style.hasTextBg) continue;
+            c->style.textBg = e->style.textBg;
+            c->style.hasTextBg = true;
+        }
+    }
+    if (e->style.underlineSet) {
+        for (El* c = e->first; c; c = c->next) {
+            if (c->style.underlineSet) continue;
+            c->style.underline = e->style.underline;
+            c->style.underlineThickness = e->style.underlineThickness;
+            c->style.underlineWavy = e->style.underlineWavy;
+            c->style.underlineSet = true;
         }
     }
     // font_features too: TimeField's `font_features(tabular_figures())` on
@@ -4358,6 +4389,132 @@ static void ResolveRelLengths(El* e, const taffy::Layout& l) {
     s.relLengths &= (uint16_t)~bits;
 }
 
+// LineWrapper::truncate_line for TruncateFrom::Start and ::Middle, which
+// the paint backend's own ellipsis cannot draw: once the box is known, a run
+// that does not fit it is replaced by the kept part and the ellipsis, the
+// string GPUI shapes in its place. Character widths are read off the shaped
+// run (the gap between one character's left edge and the next's), where
+// Rust sums each character's advance, which differs only by kerning.
+static void TruncateTextStartOrMiddle(PaintCtx* ctx, El* e) {
+    const Style& s = e->style;
+    if (!s.truncate || s.wrap || s.textOverflow == 0 || e->nSpans > 0 ||
+        !e->arena || len(e->text) <= 0 || e->w <= 0) {
+        return;
+    }
+    Str text = e->text;
+    uint16_t weight = ElTextWeight(e);
+    TextLayout* whole =
+        TextMeasLayout(ctx, text, e->laidFont, 0, false, weight, s.lineHeight,
+                       nullptr, nullptr, TextAlign::Left);
+    if (!whole) {
+        return;
+    }
+    // The left edge of every character boundary, and the run's width.
+    int n = len(text);
+    float* edge =
+        (float*)Alloc(e->arena, (int)(sizeof(float) * (size_t)(n + 1)));
+    for (int i = 0; i <= n; i++) {
+        edge[i] = -1;
+    }
+    float total = TextLayoutSize(whole).w;
+    for (int i = 0; i < n;) {
+        int next = i + 1;
+        while (next < n && ((uint8_t)text.s[next] & 0xc0) == 0x80) {
+            next++;
+        }
+        Bounds r = {};
+        edge[i] = TextLayoutRangeRects(whole, text, 0, i, &r, 1) == 1 && i > 0
+                      ? r.w
+                      : 0.f;
+        i = next;
+    }
+    edge[n] = total;
+    TextLayoutRelease(whole);
+    Str ellipsis = StrL("\xe2\x80\xa6");
+    Size ellipsisSize = {};
+    if (TextLayout* tl = TextMeasLayout(ctx, ellipsis, e->laidFont, 0, false,
+                                        weight, s.lineHeight, &ellipsisSize,
+                                        nullptr, TextAlign::Left)) {
+        ellipsisSize = TextLayoutSize(tl);
+        TextLayoutRelease(tl);
+    }
+    float suffixWidth = ellipsisSize.w;
+    float truncateWidth = e->w;
+    auto charWidth = [&](int at) {
+        int next = at + 1;
+        while (next < n && edge[next] < 0) {
+            next++;
+        }
+        return edge[next] - edge[at];
+    };
+    int keepFrom = -1;
+    int keepTo = -1;
+    if (s.textOverflow == 1) {
+        // should_truncate_line, TruncateFrom::Start: walk back from the end;
+        // the kept tail starts after the last character that still left
+        // room for the ellipsis.
+        float width = 0;
+        int truncateIx = 0;
+        bool truncated = false;
+        for (int i = n - 1; i >= 0; i--) {
+            if (edge[i] < 0) continue;
+            if (width + suffixWidth < truncateWidth) truncateIx = i;
+            width += charWidth(i);
+            if (floorf(width) > truncateWidth) {
+                truncated = true;
+                break;
+            }
+        }
+        if (!truncated) return;
+        // ceil_char_boundary(truncate_ix + 1)
+        int from = truncateIx + 1;
+        while (from < n && edge[from] < 0) from++;
+        keepFrom = from;
+    } else {
+        // should_truncate_line_middle: two thirds of the room for the
+        // front, the rest for the back, the ellipsis between.
+        if (total <= truncateWidth) return;
+        float budget = truncateWidth - suffixWidth;
+        int frontEnd = 0;
+        int backStart = n;
+        if (budget > 0) {
+            float frontBudget = budget * (2.f / 3.f);
+            float backBudget = budget - frontBudget;
+            float front = 0;
+            for (int i = 0; i < n; i++) {
+                if (edge[i] < 0) continue;
+                float w = charWidth(i);
+                if (front + w > frontBudget) break;
+                front += w;
+                frontEnd = i + 1;
+                while (frontEnd < n && edge[frontEnd] < 0) frontEnd++;
+            }
+            float back = 0;
+            for (int i = n - 1; i >= 0; i--) {
+                if (edge[i] < 0) continue;
+                float w = charWidth(i);
+                if (back + w > backBudget) break;
+                back += w;
+                backStart = i;
+            }
+        }
+        if (budget <= 0 || frontEnd >= backStart) {
+            frontEnd = 0;
+            backStart = n;
+        }
+        keepTo = frontEnd;
+        keepFrom = backStart;
+    }
+    StrBuilder out;
+    if (keepTo > 0) out.Append(Str(text.s, keepTo));
+    out.Append(ellipsis);
+    if (keepFrom < n) out.Append(Str(text.s + keepFrom, n - keepFrom));
+    e->text = StrDup(e->arena, Str(out.els, out.len));
+    // The run now fits, and the backend's own end ellipsis would only get
+    // in its way.
+    e->style.truncate = false;
+}
+
 static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
                         float originY) {
     const taffy::Layout& l = lc->tree.GetLayout(taffy::NodeId{e->layoutNode});
@@ -4375,6 +4532,7 @@ static void WriteBackEl(LayoutCache* lc, PaintCtx* ctx, El* e, float originX,
     if (e->kind == ElKind::Text) {
         // An aligned run is laid out in its box even when it does not wrap,
         // since that box is what its line is aligned inside.
+        TruncateTextStartOrMiddle(ctx, e);
         bool constrain = e->style.wrap || e->style.truncate ||
                          ElTextAlign(e) != TextAlign::Left;
         float measW = constrain ? e->w : 0.0f;
@@ -7215,6 +7373,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         if (clipText) {
             CanvasPushClip(ctx, e->x, e->y - e->h, e->laidMaxW, e->h * 3.f);
         }
+        // text_bg: the run's background_color, behind everything the run
+        // paints, one rect per line as GPUI paints a run's background.
+        if (e->style.hasTextBg && e->style.textBg.a != 0 && len(e->text) > 0) {
+            PaintTextRange(ctx, e->text, font,
+                           e->laidMaxW > 0 ? e->laidMaxW : e->w, e->style.wrap,
+                           ElTextWeight(e), e->style.lineHeight, e->x, e->y, 0,
+                           len(e->text), e->style.textBg, ElTextAlign(e));
+        }
         // Under the selection quad as well as under the glyphs: a match the
         // caret happens to be inside still reads as selected.
         int nFades = 0;
@@ -7310,6 +7476,15 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 }
                 TextLayoutRelease(tl);
             }
+        }
+        // A script's UnderlineStyle, under the whole run in the text's own
+        // colour: its thickness, and a wave three thicknesses tall.
+        if (e->style.underline && e->style.underlineSet && len(e->text) > 0) {
+            PaintTextUnderline(
+                ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x, e->y,
+                0, len(e->text), c, e->style.underlineWavy, ElTextAlign(e),
+                (float)e->style.underlineThickness);
         }
         // The rules a diagnostic asked for, over whatever drew the glyphs.
         for (int i = 0; i < e->nUnderlines; i++) {

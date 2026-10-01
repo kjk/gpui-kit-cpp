@@ -837,10 +837,29 @@ static void SetShadows(El* e, const float (*rows)[5], int count) {
 // text_overflow: GPUI truncates the run to the width it is given (times any
 // line clamp) before it wraps, so the run is one truncated line whatever
 // white_space says.
-static void TextEllipsis(El* e) {
+static void TextEllipsis(El* e, uint8_t side) {
     e->style.wrap = false;
     e->style.truncate = true;
+    e->style.textOverflow = side;
     e->style.whiteSpaceSet = true;
+}
+
+// underline() and the text_decoration_* family build GPUI's UnderlineStyle:
+// the setters that adjust one part of it start from UnderlineStyle::default(),
+// thickness 0, when this element has not named one.
+static void EnsureUnderline(El* e) {
+    if (e->style.underlineSet) {
+        return;
+    }
+    e->style.underlineSet = true;
+    e->style.underline = true;
+    e->style.underlineThickness = 0;
+    e->style.underlineWavy = false;
+}
+
+static void UnderlineThickness(El* e, uint8_t thickness) {
+    EnsureUnderline(e);
+    e->style.underlineThickness = thickness;
 }
 
 static void DebugBorder(El* e, float h, float s, float l) {
@@ -1150,33 +1169,56 @@ static const Keyword kKeywords[] = {
          e->style.whiteSpaceSet = true;
      },
      0},
-    {"text_ellipsis", TextEllipsis, 0},
-    {"text_ellipsis_start", TextEllipsis, 0},
-    {"text_ellipsis_middle", TextEllipsis, 0},
+    {"text_ellipsis", [](El* e) { TextEllipsis(e, 0); }, 0},
+    {"text_ellipsis_start", [](El* e) { TextEllipsis(e, 1); }, 0},
+    {"text_ellipsis_middle", [](El* e) { TextEllipsis(e, 2); }, 0},
     {"truncate",
      [](El* e) {
          e->style.overflowX = Overflow::Hidden;
          e->style.overflowY = Overflow::Hidden;
-         e->style.wrap = false;
-         e->style.truncate = true;
-         e->style.whiteSpaceSet = true;
+         TextEllipsis(e, 0);
      },
      0},
-    // Font style and decoration. The underline here is a single straight
-    // line of the text's own weight: a thickness or a wavy line changes
-    // nothing, and a zero thickness is no line.
+    // Font style and decoration. The underline is GPUI's UnderlineStyle —
+    // a thickness and a wave, in the text's colour — and cascades.
     {"italic", [](El* e) { e->style.italic = true; }, 0},
     {"not_italic", [](El* e) { e->style.italic = false; }, 0},
-    {"underline", [](El* e) { e->style.underline = true; }, 0},
+    {"underline",
+     [](El* e) {
+         e->style.underlineSet = true;
+         e->style.underline = true;
+         e->style.underlineThickness = 1;
+         e->style.underlineWavy = false;
+     },
+     0},
     {"line_through", [](El* e) { e->style.strike = true; }, 0},
-    {"text_decoration_none", [](El* e) { e->style.underline = false; }, 0},
-    {"text_decoration_solid", [](El*) {}, 0},
-    {"text_decoration_wavy", [](El*) {}, 0},
-    {"text_decoration_0", [](El* e) { e->style.underline = false; }, 0},
-    {"text_decoration_1", [](El* e) { e->style.underline = true; }, 0},
-    {"text_decoration_2", [](El* e) { e->style.underline = true; }, 0},
-    {"text_decoration_4", [](El* e) { e->style.underline = true; }, 0},
-    {"text_decoration_8", [](El* e) { e->style.underline = true; }, 0},
+    // `underline = None`: this element names no underline, so what is
+    // above it shows through.
+    {"text_decoration_none",
+     [](El* e) {
+         e->style.underlineSet = false;
+         e->style.underline = false;
+         e->style.underlineThickness = 1;
+         e->style.underlineWavy = false;
+     },
+     0},
+    {"text_decoration_solid",
+     [](El* e) {
+         EnsureUnderline(e);
+         e->style.underlineWavy = false;
+     },
+     0},
+    {"text_decoration_wavy",
+     [](El* e) {
+         EnsureUnderline(e);
+         e->style.underlineWavy = true;
+     },
+     0},
+    {"text_decoration_0", [](El* e) { UnderlineThickness(e, 0); }, 0},
+    {"text_decoration_1", [](El* e) { UnderlineThickness(e, 1); }, 0},
+    {"text_decoration_2", [](El* e) { UnderlineThickness(e, 2); }, 0},
+    {"text_decoration_4", [](El* e) { UnderlineThickness(e, 4); }, 0},
+    {"text_decoration_8", [](El* e) { UnderlineThickness(e, 8); }, 0},
     // Font weight: gpui-base's font_weight! helpers (EXTRA_NULLARY).
     {"font_thin", [](El* e) { e->Weight(FontWeight::Thin); }, 0},
     {"font_extralight", [](El* e) { e->Weight(FontWeight::ExtraLight); }, 0},
@@ -1339,9 +1381,11 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         if (!Color(value, &color, error)) return false;
         e->Fg(color);
     } else if (StrEq(name, StrL("text_bg"))) {
-        // The text style's background_color: this tree paints no background
-        // behind a text run, so the colour is checked and goes nowhere.
+        // The text style's background_color, painted behind each run under
+        // this element.
         if (!Color(value, &color, error)) return false;
+        s.textBg = color;
+        s.hasTextBg = true;
     } else if (StrEq(name, StrL("text_size"))) {
         if (!ParseLength(value, name, &l, error) ||
             !NarrowLength(l, Arg::Absolute, name, error))

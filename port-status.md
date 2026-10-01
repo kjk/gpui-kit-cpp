@@ -163,10 +163,12 @@ macOS font-kit requirement on the website only. The current update target is
   as-is); Progress is 200 wide unless styled; a plain Textarea's height
   follows `rows`; the Editor's gutter is narrower; InputGroup lacks the
   inline-addon inset, border/background transitions and ghost colours.
-- **Some script style names apply partly or not at all.** Underline
-  thickness and wavy style, start/middle ellipsis and `debug*` are accepted
-  and ignored; `text_bg` is validated but not painted
-  (`src/shell/style.cpp`).
+- **A script's `debug()` and `debug_below()` paint nothing.** Upstream
+  has them only in a debug build, where GPUI outlines the element (or every
+  element under it) in red; here they are accepted in every build and change
+  nothing. A start or middle ellipsis measures characters off the shaped run
+  where Rust sums each one's advance, which differs only by kerning
+  (`src/shell/style.cpp`, `TruncateTextStartOrMiddle`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle
