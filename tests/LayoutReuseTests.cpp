@@ -317,7 +317,37 @@ static void ReuseOffRebuildsEveryFrame() {
     utassert(LayoutReuseOn());
 }
 
+// What a virtual list does at prepaint: lay out a row of its own, from inside
+// the write-back of the frame.
+static void LayOutARowAtPrepaint(PaintCtx* ctx, El*, void* user) {
+    Arena* a = (Arena*)user;
+    El* row = Div(a)->W(100)->H(20)->Child(TextEl(a, StrL("row")));
+    LayoutEl(ctx, row, 0, 0, 100, 20, 14, Rgba{}, nullptr);
+}
+
+// A layout nested in the write-back starts the fixed elements over; the
+// frame's own fixed overlay — a dialog over a page with a list in it — still
+// has to get its box.
+static void AFixedOverlayOutlivesANestedLayout() {
+    LayoutCache* lc = LayoutCacheNew();
+    Arena* a = ArenaNew();
+    El* root = Div(a)->FlexCol()->W(kFill)->H(kFill);
+    El* list = Div(a)->W(kFill)->H(40);
+    list->prePaint = &LayOutARowAtPrepaint;
+    list->customUser = a;
+    root->Child(list);
+    El* overlay = Div(a)->Fixed()->Left(10)->Top(10)->W(40)->H(20);
+    root->Child(overlay);
+    LayoutEl(nullptr, root, 0, 0, 400, 300, 14, Rgba{}, lc);
+    utassert(overlay->w == 40 && overlay->h == 20);
+    utassert(overlay->x == 10 && overlay->y == 10);
+
+    ArenaDelete(a);
+    LayoutCacheFree(lc);
+}
+
 void TestLayoutReuse() {
+    AFixedOverlayOutlivesANestedLayout();
     AChildOfAnotherKindIsStillLaidOut();
     APageSwitchLaysOutEveryBox();
     AParentThatLostAChildShrinks();

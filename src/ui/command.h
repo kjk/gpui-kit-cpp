@@ -223,6 +223,11 @@ struct Command {
     El* empty = nullptr;
     El* header = nullptr;
     El* footer = nullptr;
+    // The header built the way Rust builds it: from the state, once this
+    // render has installed the model — so a header that reports
+    // `matched_count` counts the matches for the query now in the field
+    // rather than the last frame's. Takes precedence over `header`.
+    El* (*headerFn)(Ctx* cx, const CommandState* s) = nullptr;
     float maxH = 300;
     bool bordered = true;
     float w = kFill;
@@ -244,6 +249,7 @@ struct Command {
     Command* Placeholder(Str s);
     Command* Empty(El* e);
     Command* Header(El* e);
+    Command* Header(El* (*build)(Ctx* cx, const CommandState* s));
     Command* Footer(El* e);
     Command* MaxH(float v);
     Command* Bordered(bool v);

@@ -4973,6 +4973,16 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
 
     lc->tree.EachUnreachable(root, LayoutDropUnreachable, lc);
 
+    // This pass's own copy of the fixed elements. A measure during the layout
+    // and a virtual list binding its rows at prepaint, in the write-back
+    // below, both run a layout of their own, which starts the shared list
+    // over — and a dialog opened over a page with a list in it then never
+    // had its box written back, so it was not drawn.
+    Vec<El*> fixed;
+    if (len(gLayoutFixed) > 0) {
+        fixed = gLayoutFixed;
+    }
+
     taffy::SizeAvail space;
     if (minContent) {
         space.width = taffy::AvailableSpace::MinContent();
@@ -4990,8 +5000,8 @@ static void LayoutElIn(LayoutCache* lc, PaintCtx* ctx, El* e, float x, float y,
     WriteBackEl(lc, ctx, e, x, y);
     // The fixed elements are laid out as children of the root, so their boxes
     // come out in window coordinates already.
-    for (int i = 0; i < len(gLayoutFixed); i++) {
-        WriteBackEl(lc, ctx, gLayoutFixed[i], 0, 0);
+    for (int i = 0; i < len(fixed); i++) {
+        WriteBackEl(lc, ctx, fixed[i], 0, 0);
     }
     Edges frame = {};
     if (ctx) {

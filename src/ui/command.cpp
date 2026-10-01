@@ -601,6 +601,10 @@ Command* Command::Header(El* e) {
     header = e;
     return this;
 }
+Command* Command::Header(El* (*build)(Ctx*, const CommandState*)) {
+    headerFn = build;
+    return this;
+}
 Command* Command::Footer(El* e) {
     footer = e;
     return this;
@@ -770,7 +774,9 @@ El* Command::IntoEl() {
                                        : Tr("Command.placeholder"));
     CommandInstall(s, cx, entries, nEntries, searchable, filterable);
 
-    if (header) {
+    if (headerFn) {
+        box->Child(headerFn(cx, s));
+    } else if (header) {
         box->Child(header);
     }
     if (searchable) {
