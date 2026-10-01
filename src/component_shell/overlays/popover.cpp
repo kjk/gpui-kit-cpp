@@ -27,28 +27,10 @@ struct PopoverOp {
     ComponentArgument callback = {};
 };
 
-// The content closure's captures and the surface parts Popover's render lays
-// on it.
-struct PopoverContent {
-    DeferredSlot* slot = nullptr;
-    bool appearance = true;
-    ElRefiner style = {};
-    El** children = nullptr;
-    int count = 0;
-};
-
-// Popover::render's content: v_flex().id("content"), popover_style + p_3
-// when `appearance`, the lazy content, the children and the style. Occlusion
-// and the tab group are component::Popover's own layering here.
+// Popover::content(closure): the lazy content slot. component::Popover lays
+// it in its surface ahead of the children, with `appearance` and the style.
 static El* BuildContent(void* user, Ctx* cx) {
-    PopoverContent* content = (PopoverContent*)user;
-    El* surface = Div(cx->a)->Id(StrL("content"))->FlexCol();
-    if (content->appearance) component::PopoverSurface(cx, surface)->Pad(12);
-    surface->Child(BuildDeferredSlot(content->slot, cx));
-    for (int i = 0; i < content->count; i++)
-        surface->Child(content->children[i]);
-    content->style.Apply(surface);
-    return surface;
+    return BuildDeferredSlot((DeferredSlot*)user, cx);
 }
 
 static void RunOpenChange(const shell::ComponentEventBinding* binding,
@@ -70,8 +52,7 @@ static El* Materialize(MaterializeRequest* request) {
     if (!factory.IsSet())
         return request->Fail(StrL("Popover requires content(element)"));
     Ctx* cx = request->cx;
-    PopoverContent* content = ArenaNew<PopoverContent>(cx->a);
-    content->slot =
+    DeferredSlot* slot =
         NewDeferredSlot(request, factory, "Failed to render Popover content");
     component::Popover* popover = component::Popover::New(cx, payload->id);
     popover
@@ -91,7 +72,7 @@ static El* Materialize(MaterializeRequest* request) {
                 popover->Open(op.value);
                 break;
             case PopoverOp::Appearance:
-                content->appearance = op.value;
+                popover->Appearance(op.value);
                 break;
             case PopoverOp::OverlayClosable:
                 popover->OverlayClosable(op.value);
@@ -102,12 +83,14 @@ static El* Materialize(MaterializeRequest* request) {
                 break;
         }
     });
-    popover->ContentBuilder(&BuildContent, content);
-    // request.finish(popover): its style and children belong to the content
-    // surface, which is built only while the popover is open.
-    content->style = request->TakeStyle();
-    if (!request->TakeChildren(&content->children, &content->count))
-        return nullptr;
+    popover->ContentBuilder(&BuildContent, slot);
+    // request.finish(popover): its style and children belong to the
+    // popover's surface, as Rust's Styled and ParentElement impls put them.
+    popover->RefineWith(request->TakeStyle());
+    El** children = nullptr;
+    int count = 0;
+    if (!request->TakeChildren(&children, &count)) return nullptr;
+    for (int i = 0; i < count; i++) popover->Child(children[i]);
     return popover->IntoEl();
 }
 

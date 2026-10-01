@@ -1,5 +1,13 @@
 #include "Story.h"
 
+// The error popover's .w_64().gap_2().
+static Style BubblePopoverStyle() {
+    Style s;
+    s.width = 256;
+    s.gapX = s.gapY = 8;
+    return s;
+}
+
 // crates/story/src/stories/bubble_story.rs
 
 // section(..).max_w(rems(42.5)) — 680 at the 16px root.
@@ -285,17 +293,12 @@ El* BubbleStory::Render(BubbleStory* self, Ctx* cx) {
                                           ->Rounded(th.radiusFull)
                                           ->Tooltip(StrL("Show error details"))
                                           ->IntoEl())
-                            ->Content(
-                                Div(a)
-                                    ->FlexCol()
-                                    ->W(256)
-                                    ->Gap(8)
-                                    ->Child(
-                                        BubbleText(cx, "Build command failed"))
-                                    ->Child(BubbleText(
-                                        cx,
-                                        "The workspace lockfile could not "
-                                        "be found.")))
+                            ->Refine(BubblePopoverStyle(),
+                                     StyleFieldWidth | StyleFieldGap)
+                            ->Child(BubbleText(cx, "Build command failed"))
+                            ->Child(BubbleText(cx,
+                                               "The workspace lockfile could "
+                                               "not be found."))
                             ->IntoEl()))
             ->IntoEl());
     page->Child(popover);

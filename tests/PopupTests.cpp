@@ -439,6 +439,19 @@ static void ThePopupSurfaceBlocksThePanelItCovers() {
     EntityDropAll(&app);
 }
 
+// The element whose child `child` is, found under `root`.
+static El* ParentOf(El* root, El* child) {
+    for (El* c = root ? root->first : nullptr; c; c = c->next) {
+        if (c == child) {
+            return root;
+        }
+        if (El* found = ParentOf(c, child)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 // crates/component/src/popover.rs, mod tests: the AnchorHarness. A 40 px
 // trigger in an absolutely placed box at `origin`, a 60 px surface, and the
 // popover open by default. The first frame captures the trigger; the second
@@ -464,10 +477,11 @@ static Bounds PositionedContent(PopupAnchor anchor, float offset, Point origin,
         component::Popover* popover =
             component::Popover::New(&cx, StrL("positioned-popover"))
                 ->DefaultOpen(true)
+                ->Appearance(false)
                 ->Arrow(arrow)
                 ->Anchor(anchor)
                 ->Trigger(Div(a)->W(40)->H(40))
-                ->Content(content);
+                ->Child(content);
         if (offset >= 0) {
             popover->Offset(offset);
         }
@@ -478,7 +492,10 @@ static Bounds PositionedContent(PopupAnchor anchor, float offset, Point origin,
     LayoutEl(&ctx, root, 0, 0, 1024, 768, 14, Rgba{});
     Bounds out = {content->x, content->y, content->w, content->h};
     if (hasArrowCanvas) {
-        *hasArrowCanvas = content->last && content->last->customPaint;
+        // The arrow's canvas is the surface's last child, after the content.
+        El* surface = ParentOf(root, content);
+        *hasArrowCanvas =
+            surface && surface->last && surface->last->customPaint;
     }
     WindowKeyedFree(win);
     delete win;
@@ -510,10 +527,11 @@ static Bounds TriggerStyledContent(bool styled) {
         component::Popover* popover =
             component::Popover::New(&cx, StrL("trigger-style-popover"))
                 ->DefaultOpen(true)
+                ->Appearance(false)
                 ->Offset(0)
                 ->Anchor(PopupAnchor::TopRight)
                 ->Trigger(Div(a)->W(40)->H(40))
-                ->Content(content);
+                ->Child(content);
         if (styled) {
             Style full;
             full.width = kFill;
@@ -530,6 +548,70 @@ static Bounds TriggerStyledContent(bool styled) {
     ArenaDelete(a);
     EntityDropAll(&app);
     return out;
+}
+
+// popover.rs Popover::render: the surface is a v_flex that takes
+// popover_style().p_3() while `appearance` is on, holds the content and the
+// children in that order, and takes the caller's refinement last; the arrow
+// fills with the refined background and is outlined only with appearance.
+static void TheSurfaceTakesAppearanceChildrenAndStyle() {
+    App app;
+    Window* win = new Window();
+    Arena* a = ArenaNew();
+    win->app = &app;
+    win->frameArena = a;
+    BaseGlobalStateInit(&app);
+    component::Init(&app);
+    Ctx cx = {&app, win, a, {}};
+    PaintCtx ctx = {};
+    ctx.viewW = 1024;
+    ctx.viewH = 768;
+    for (int pass = 0; pass < 2; pass++) {
+        bool appearance = pass == 0;
+        El* content = nullptr;
+        El* child = nullptr;
+        El* root = nullptr;
+        // The first frame captures the trigger; the second carries the
+        // surface.
+        for (int frame = 0; frame < 2; frame++) {
+            content = Div(a)->W(10)->H(10);
+            child = Div(a)->W(20)->H(20);
+            Style refined;
+            refined.width = 300;
+            refined.hasBg = true;
+            refined.bg = Rgba8(1, 2, 3, 255);
+            root = Div(a)->W(1024)->H(768)->Child(
+                component::Popover::New(
+                    &cx, appearance ? StrL("styled") : StrL("bare"))
+                    ->DefaultOpen(true)
+                    ->Appearance(appearance)
+                    ->Arrow(true)
+                    ->Trigger(Div(a)->W(40)->H(40))
+                    ->Content(content)
+                    ->Child(child)
+                    ->Refine(refined, StyleFieldWidth | StyleFieldBg)
+                    ->IntoEl());
+        }
+        LayoutEl(&ctx, root, 0, 0, 1024, 768, 14, Rgba{});
+        El* surface = ParentOf(root, content);
+        utassert(surface != nullptr);
+        if (!surface) {
+            continue;
+        }
+        utassert(surface->first == content && content->next == child);
+        utassert(surface->style.dir == FlexDir::Col);
+        utassertnear(surface->w, 300.f);
+        utassert(surface->style.bg.color.r == 1);
+        // p_3 and the popover ring come with appearance, and only with it.
+        utassertnear(content->x - surface->x, appearance ? 12.f : 0.f);
+        utassert((surface->style.shadowCount > 0) == appearance);
+        El* canvas = surface->last;
+        utassert(canvas && canvas->customPaint);
+    }
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(a);
+    EntityDropAll(&app);
 }
 
 static void TriggerStyleIsAppliedToTheTriggerContainer() {
@@ -688,6 +770,7 @@ void TestPopup() {
     TheSideAnchorsFallBackToTheOrigin();
     PopupContentUsesThePinnedCornerMarginAndDeferredLayer();
     AnchorAndOffsetPositionTheSurfaceOnEachTriggerEdge();
+    TheSurfaceTakesAppearanceChildrenAndStyle();
     TriggerStyleIsAppliedToTheTriggerContainer();
     ArrowReservesSpaceWithoutChangingAnchorAlignment();
     AnchorDoesNotFlipWhenOffsetOrArrowIsEnabled();

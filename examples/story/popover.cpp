@@ -1,19 +1,10 @@
 #include "Story.h"
 
-// Which popover is open; the default-open one starts that way.
-enum {
-    PopDefault = 0,
-    PopDefaultOpen,
-    PopForm,
-    PopList,
-    PopRightClick,
-    PopStyle,
-    PopAsync,
-    PopCount
-};
-
 struct PopoverStory {
-    int open = PopDefaultOpen;
+    // form_popover_open / list_popover_open: the two controlled popovers.
+    // The rest keep their own open state.
+    bool formOpen = false;
+    bool listOpen = false;
     InputState formInput;
     // The List section holds a real List, not a menu: ten rows behind a
     // search field, which is what `List::new(&self.list)` over
@@ -84,9 +75,15 @@ static void FocusListSearch(PopoverStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
-static void TogglePop(PopoverStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t which) {
-    self->open = self->open == (int)which ? -1 : (int)which;
+// on_open_change for the controlled popovers: the new state is theirs.
+static void FormOpenChange(PopoverStory* self, Ctx* cx,
+                           const PopoverOpenChangeEvent* ev) {
+    self->formOpen = ev && ev->open;
+    Notify(cx);
+}
+static void ListOpenChange(PopoverStory* self, Ctx* cx,
+                           const PopoverOpenChangeEvent* ev) {
+    self->listOpen = ev && ev->open;
     Notify(cx);
 }
 static void ToggleArrow(PopoverStory* self, Ctx* cx, const ClickEvent*,
@@ -95,7 +92,7 @@ static void ToggleArrow(PopoverStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void SubmitForm(PopoverStory* self, Ctx* cx, const ClickEvent*) {
-    self->open = -1;
+    self->formOpen = false;
     Notify(cx);
 }
 static void FocusFormInput(PopoverStory* self, Ctx* cx, const ClickEvent*) {
@@ -103,34 +100,39 @@ static void FocusFormInput(PopoverStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
-// The popover surface: p_3 over the background, bordered and rounded.
-static El* PopCard(Ctx* cx, float maxW) {
-    Arena* a = cx->a;
-    const Theme& th = ThemeNow(cx->app);
-    El* card = Div(a)
-                   ->FlexCol()
-                   ->Gap(8)
-                   ->Pad(12)
-                   ->Radius(th.radiusLg)
-                   ->Border(1, th.border)
-                   ->Bg(th.tokens.background);
-    if (maxW > 0) {
-        card->MaxW(maxW);
-    }
-    return card;
-}
-
+// A line of the popover's text, in its foreground.
 static El* PopText(Ctx* cx, const char* s) {
-    return StoryTxt(cx, Str(s), 14, ThemeNow(cx->app).foreground)->Wrap();
+    return StoryTxt(cx, Str(s), 14, ThemeNow(cx->app).popoverFg)->Wrap();
 }
 
-static El* PopTrigger(PopoverStory*, Ctx* cx, int which, const char* id,
-                      const char* label, Listener toggle) {
-    return component::Button::New(cx, Str(id))
-        ->Label(Str(label))
-        ->Outline()
-        ->OnClick(ListenerArg(toggle, which))
-        ->IntoEl();
+// Button::new(id).outline().label(label), handed over as the Selectable
+// trigger so it shows the popover open.
+static component::Button* PopTrigger(Ctx* cx, const char* id,
+                                     const char* label) {
+    return component::Button::New(cx, Str(id))->Label(Str(label))->Outline();
+}
+
+// The right-click popover's content closure, run only while it is open.
+static El* RightContent(void* user, Ctx* cx) {
+    PopoverStory* self = (PopoverStory*)user;
+    (void)self;
+    El* body = Div(cx->a)->FlexCol()->Gap(8);
+    body->Child(PopText(cx, "Hello, this is a Popover on the Bottom Right."));
+    body->Child(component::Separator::Horizontal(cx)->IntoEl());
+    body->Child(component::Button::New(cx, StrL("info1"))
+                    ->Primary()
+                    ->Label(StrL("Dismiss"))
+                    ->OnClick(Listen(cx, &OnRightDismiss))
+                    ->IntoEl()
+                    ->W(80));
+    return body;
+}
+
+// shadow_2xl: GPUI's one layer, 25px down, 50px blur, pulled in 12px, at a
+// quarter black.
+static void Shadow2xl(El* e, void*) {
+    BoxShadow shadow = {0, 25.f, 50.f, -12.f, Rgba8(0, 0, 0, 64), false};
+    e->Shadows(&shadow, 1);
 }
 
 El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
@@ -149,148 +151,139 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
     if (self->formInput.focused) {
         cx->win->input = &self->formInput;
     }
-    Listener toggle = Listen(cx, &TogglePop);
     // v_flex().size_full().gap_6()
     El* page = Div(a)->FlexCol()->Gap(24)->W(kFill);
 
     El* def =
         StorySection(cx, "Default", "Display lightweight contextual content.");
-    El* defCard = PopCard(cx, 600)->W(400);
-    defCard->Child(PopText(cx, "Hello, this is a Popover."));
-    defCard->Child(component::Separator::Horizontal(cx)->IntoEl());
-    defCard->Child(PopText(cx,
-                           "You can put any content here, including "
-                           "text, buttons, forms, and more."));
-    StorySectionAdd(def, component::Popover::New(cx)
-                             ->Trigger(PopTrigger(self, cx, PopDefault, "btn",
-                                                  "Popover", toggle))
-                             ->Content(defCard)
-                             ->Open(self->open == PopDefault)
-                             ->OnClose(ListenerArg(toggle, PopDefault))
-                             ->IntoEl());
-    // No .text_sm() on this one in Rust, so its text is the theme's own size.
-    El* openCard = PopCard(cx, 600);
-    openCard->Child(StoryTxt(cx,
-                             StrL("This popover is open by default when "
-                                  "first rendered."),
-                             16, th.foreground)
-                        ->Wrap());
-    StorySectionAdd(def, component::Popover::New(cx)
-                             ->Trigger(PopTrigger(self, cx, PopDefaultOpen,
-                                                  "default-open-btn",
-                                                  "Default Open", toggle))
-                             ->Content(openCard)
-                             ->Open(self->open == PopDefaultOpen)
-                             ->OnClose(ListenerArg(toggle, PopDefaultOpen))
-                             ->IntoEl());
+    // .max_w(px(600.)).gap_2().text_sm().w(px(400.)) on the surface.
+    Style defStyle;
+    defStyle.maxW = 600;
+    defStyle.gapX = defStyle.gapY = 8;
+    defStyle.fontSize = 14;
+    defStyle.width = 400;
+    StorySectionAdd(
+        def, component::Popover::New(cx, StrL("popover-0"))
+                 ->Refine(defStyle, StyleFieldMaxWidth | StyleFieldGap |
+                                        StyleFieldFontSize | StyleFieldWidth)
+                 ->Trigger(PopTrigger(cx, "btn", "Popover"))
+                 ->Child(PopText(cx, "Hello, this is a Popover."))
+                 ->Child(component::Separator::Horizontal(cx)->IntoEl())
+                 ->Child(PopText(cx,
+                                 "You can put any content here, including "
+                                 "text,buttons, forms, and more."))
+                 ->IntoEl());
+    // No .text_sm() on this one, so its text is the theme's own size.
+    StorySectionAdd(
+        def, component::Popover::New(cx, StrL("default-open-popover"))
+                 ->DefaultOpen(true)
+                 ->Trigger(PopTrigger(cx, "default-open-btn", "Default Open"))
+                 ->Child(StoryTxt(cx,
+                                  StrL("This popover is open by default when "
+                                       "first rendered."),
+                                  16, th.popoverFg)
+                             ->Wrap())
+                 ->IntoEl());
     page->Child(def);
 
+    // .p_0().text_sm() on the surface; the form pads itself.
+    Style flush;
+    flush.pad = {};
+    flush.fontSize = 14;
     El* form = StorySection(cx, "Form",
                             "Keep focus and controlled open state around a "
                             "form.");
-    El* formCard = PopCard(cx, 0)->W(280);
-    formCard->Child(PopText(cx, "This is a form container."));
-    formCard->Child(PopText(cx, "Click submit to dismiss the popover."));
-    formCard->Child(
+    El* formBody = Div(a)->FlexCol()->Gap(8)->Pad(12)->W(kFill)->H(kFill);
+    formBody->Child(PopText(cx, "This is a form container."));
+    formBody->Child(PopText(cx, "Click submit to dismiss the popover."));
+    formBody->Child(
         component::Input::New(cx, StrL("pop-form-input"), &self->formInput)
             ->OnFocus(Listen(cx, &FocusFormInput))
             ->IntoEl());
-    formCard->Child(component::Button::New(cx, StrL("submit"))
+    formBody->Child(component::Button::New(cx, StrL("submit"))
                         ->Label(StrL("Submit"))
                         ->Primary()
                         ->OnClick(Listen(cx, &SubmitForm))
                         ->IntoEl());
-    StorySectionAdd(form, component::Popover::New(cx)
-                              ->Trigger(PopTrigger(self, cx, PopForm, "pop",
-                                                   "Popup Form", toggle))
-                              ->Content(formCard)
-                              ->Open(self->open == PopForm)
-                              ->OnClose(ListenerArg(toggle, PopForm))
-                              ->IntoEl());
+    StorySectionAdd(form,
+                    component::Popover::New(cx, StrL("popover-form"))
+                        ->Refine(flush, StyleFieldPad | StyleFieldFontSize)
+                        ->Trigger(PopTrigger(cx, "pop", "Popup Form"))
+                        ->Open(self->formOpen)
+                        ->OnOpenChange(Listen(cx, &FormOpenChange))
+                        ->Child(formBody)
+                        ->IntoEl());
     page->Child(form);
 
     El* list = StorySection(cx, "List",
                             "Place a scrollable selection list in the "
                             "popover.");
-    // p_0().text_sm().w_64().h(px(200.)): the surface is the list's own, so
-    // the card has no padding of its own, and the list fills it.
-    El* listCard = Div(a)
-                       ->FlexCol()
-                       ->W(256)
-                       ->H(200)
-                       ->Radius(th.radiusLg)
-                       ->Border(1, th.border)
-                       ->Bg(th.tokens.background)
-                       ->ClipY();
+    // .p_0().text_sm() and .w_64().h(px(200.)): the list fills the surface.
+    Style listStyle = flush;
+    listStyle.width = 256;
+    listStyle.height = 200;
     component::List* popList =
         component::List::New(cx, StrL("popover-list"), self->list)
             ->Count(10)
             ->Items(self, &PopListItem)
             ->Searchable(&self->listSearch, Listen(cx, &FocusListSearch));
-    listCard->Child(popList->IntoEl());
-    StorySectionAdd(list,
-                    component::Popover::New(cx)
-                        ->Trigger(PopTrigger(self, cx, PopList, "pop-list",
-                                             "Popup List", toggle))
-                        ->Content(listCard)
-                        ->Open(self->open == PopList)
-                        ->OnClose(ListenerArg(toggle, PopList))
-                        ->IntoEl());
+    StorySectionAdd(
+        list, component::Popover::New(cx, StrL("popover-list"))
+                  ->Refine(listStyle, StyleFieldPad | StyleFieldFontSize |
+                                          StyleFieldWidth | StyleFieldHeight)
+                  ->Open(self->listOpen)
+                  ->OnOpenChange(Listen(cx, &ListOpenChange))
+                  ->Trigger(PopTrigger(cx, "pop", "Popup List"))
+                  ->Child(popList->IntoEl())
+                  ->IntoEl());
     page->Child(list);
 
     El* right = StorySection(cx, "Right click",
                              "Open from the secondary mouse button.");
     // Popover::mouse_button(Right), and uncontrolled: the popover keeps its
     // own open state and the secondary press on the trigger toggles it, so
-    // there is no listener on this trigger at all.
-    Str rightId = StrL("btn-right-popover");
-    El* rightCard = nullptr;
-    if (component::PopoverOpen(cx, rightId)) {
-        rightCard = PopCard(cx, 600);
-        rightCard->Child(
-            PopText(cx, "Hello, this is a Popover on the Bottom Right."));
-        rightCard->Child(component::Separator::Horizontal(cx)->IntoEl());
-        self->rightPopover = component::PopoverStateOf(cx, rightId);
-        rightCard->Child(component::Button::New(cx, StrL("info1"))
-                             ->Primary()
-                             ->Label(StrL("Dismiss"))
-                             ->OnClick(Listen(cx, &OnRightDismiss))
-                             ->IntoEl()
-                             ->W(80));
-    }
+    // there is no listener on this trigger at all. Its content closure runs
+    // only while it is open.
+    Str rightId = StrL("popover-right-click");
+    self->rightPopover = component::PopoverStateOf(cx, rightId);
+    Style rightStyle;
+    rightStyle.maxW = 600;
     StorySectionAdd(right,
                     component::Popover::New(cx, rightId)
                         ->Button(MouseButton::Right)
-                        ->Trigger(component::Button::New(cx, StrL("btn-right"))
-                                      ->Label(StrL("Right Click Popover"))
-                                      ->Outline()
-                                      ->IntoEl())
-                        ->Content(rightCard)
+                        ->Trigger(PopTrigger(cx, "btn", "Right Click Popover"))
+                        ->Refine(rightStyle, StyleFieldMaxWidth)
+                        ->ContentBuilder(&RightContent, self)
                         ->IntoEl());
     page->Child(right);
 
     El* style = StorySection(cx, "Custom style",
                              "Customize appearance, radius, and shadow.");
-    // appearance(false) with a primary background and half the radius.
-    El* styleCard = Div(a)
-                        ->MaxW(600)
-                        ->PadX(8)
-                        ->PadY(4)
-                        ->Radius(th.radius * 0.5f)
-                        ->Bg(th.tokens.primary)
-                        ->Child(StoryTxt(cx,
-                                         StrL("A styled Popover with custom "
-                                              "background and text color."),
-                                         14, th.primaryFg)
-                                    ->Wrap());
-    StorySectionAdd(style,
-                    component::Popover::New(cx)
-                        ->Trigger(PopTrigger(self, cx, PopStyle, "btn-style",
-                                             "Style Popover", toggle))
-                        ->Content(styleCard)
-                        ->Open(self->open == PopStyle)
-                        ->OnClose(ListenerArg(toggle, PopStyle))
-                        ->IntoEl());
+    // appearance(false), then .py_1().px_2().bg(primary)
+    // .text_color(primary_foreground).max_w(px(600.)).rounded(radius / 2)
+    // .text_sm().shadow_2xl().
+    Style custom;
+    custom.pad = Edges::New(8, 8, 4, 4);
+    custom.hasBg = true;
+    custom.bg = th.tokens.primary;
+    custom.color = th.primaryFg;
+    custom.maxW = 600;
+    custom.radius = th.radius * 0.5f;
+    custom.fontSize = 14;
+    StorySectionAdd(
+        style,
+        component::Popover::New(cx, StrL("popover-1"))
+            ->Trigger(PopTrigger(cx, "btn", "Style Popover"))
+            ->Appearance(false)
+            ->Refine(custom, StyleFieldPad | StyleFieldBg | StyleFieldColor |
+                                 StyleFieldMaxWidth | StyleFieldRadius |
+                                 StyleFieldFontSize)
+            ->RefineWith(ElRefiner{&Shadow2xl, nullptr})
+            ->Child(PopText(cx,
+                            "A styled Popover with custom background and "
+                            "text color.")
+                        ->Fg(th.primaryFg))
+            ->IntoEl());
     page->Child(style);
 
     // A Button with a dropdown_menu, not a Popover: Copy, a separator, and a
@@ -362,9 +355,6 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
         El* row = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
         for (int i = 0; i < r.n; i++) {
             Str label = Str(r.labels[i]);
-            El* surface = component::PopoverSurface(
-                cx, Div(a)->FlexCol()->Pad(12)->Child(StoryTxt(
-                        cx, StrL("Popover content"), 14, th.popoverFg)));
             row->Child(component::Popover::New(
                            cx, StoryFmt(cx, "anchor-%s", r.labels[i]))
                            ->Anchor(r.anchors[i])
@@ -372,9 +362,9 @@ El* PopoverStory::Render(PopoverStory* self, Ctx* cx) {
                            ->Trigger(component::Button::New(cx, StrL("trigger"))
                                          ->Label(label)
                                          ->WithSize(UiSize::Small)
-                                         ->Outline()
-                                         ->IntoEl())
-                           ->Content(surface)
+                                         ->Outline())
+                           ->Child(StoryTxt(cx, StrL("Popover content"), 16,
+                                            th.popoverFg))
                            ->IntoEl());
         }
         StorySectionAdd(anchor, row);

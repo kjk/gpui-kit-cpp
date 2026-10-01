@@ -130,11 +130,6 @@ macOS font-kit requirement on the website only. The current update target is
   on a line or area runs over the box of the points the path passes
   through, where GPUI's spans the tessellated path's bounds; a natural
   curve's overshoot between two points is outside it.
-- **The styled Popover takes its surface from the caller.** It has no
-  `appearance`, `popover_style().p_3()` or child list; `Content` is the whole
-  styled surface. So `arrow` fills with that surface's background and outlines
-  with its border, or with the ring `PopoverSurface` draws, instead of reading
-  `appearance` (`src/ui/popover.cpp`).
 - **The shell's component catalog is not independent of the component
   library.** `src/component_shell` registers into the ported registry as
   crates/component-shell does, and `gpui_shell` is always the component

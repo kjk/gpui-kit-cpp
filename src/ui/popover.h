@@ -75,6 +75,11 @@ Bounds ArrowJoinBounds(const Point points[3], gpui::Placement side,
 
 struct Button;
 
+// popover.rs Popover. Its surface is Rust's: a v_flex that takes
+// popover_style().p_3() while `appearance` is on, holds the content and then
+// the children, and takes the caller's refinement last -- so `Refine` styles
+// the surface the way Rust's Styled impl does, and `Appearance(false)`
+// leaves a bare box for the caller to dress.
 struct Popover {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
@@ -83,11 +88,21 @@ struct Popover {
     // trigger(Button): a Selectable trigger, built once the popover knows
     // whether it is open so it can show it (`trigger.open(open || is_open)`).
     component::Button* triggerButton = nullptr;
+    // content(..): the surface's first child. `Content` takes it built;
+    // `ContentBuilder` is Rust's closure, run only while the popover is open.
     El* content = nullptr;
-    // Popover::content(closure): built only while the popover is open, in
-    // place of `content`, which is built whether or not it shows.
     El* (*contentFn)(void* user, Ctx* cx) = nullptr;
     void* contentUser = nullptr;
+    // ParentElement: the surface's children after the content.
+    ArenaVec<El*> children;
+    // appearance(..): popover_style().p_3() on the surface, and the ring
+    // around the arrow. On by default.
+    bool appearance = true;
+    // Styled: the refinement laid on the surface, by field, and a caller's
+    // whole refinement (a script's style) applied after it.
+    Style style = {};
+    uint32_t styleSet = 0;
+    ElRefiner refiner = {};
     // Set only by Open(). Without it the popover keeps its own state and the
     // trigger's press toggles it, which is Rust's uncontrolled default;
     // Open() is Rust's `.open(Some(b))`.
@@ -117,6 +132,18 @@ struct Popover {
     Popover* Trigger(component::Button* triggerBtn);
     Popover* Content(El* e);
     Popover* ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user);
+    // child(..): another child of the surface, after the content.
+    Popover* Child(El* e);
+    // appearance(false): no popover_style or padding on the surface, and no
+    // ring around the arrow.
+    Popover* Appearance(bool v);
+    // Styled: refine the surface's `fields` from `s` (its width, padding,
+    // gap, text size, background ...). A background set here is also what
+    // the arrow fills with.
+    Popover* Refine(const Style& s, uint32_t fields);
+    // A refinement Style's fields cannot name (a shadow, a script's whole
+    // style), applied to the surface after Refine.
+    Popover* RefineWith(ElRefiner r);
     Popover* Open(bool v);
     Popover* DefaultOpen(bool v);
     Popover* Button(MouseButton b);
@@ -125,8 +152,9 @@ struct Popover {
     // Preserves the anchor and does not enable automatic flipping.
     Popover* Offset(float v);
     // Show an arrow pointing toward the trigger. Follows the anchor, with its
-    // base inset to avoid rounded corners, and uses the surface background,
-    // falling back to the theme's popover colour.
+    // base inset to avoid rounded corners, and uses the background Refine
+    // set, falling back to the theme's popover colour; outlined with the
+    // popover ring while `appearance` is on.
     Popover* Arrow(bool v);
     Popover* OverlayClosable(bool v);
     // Receives PopoverOpenChangeEvent with the new state for both opening and
@@ -140,7 +168,7 @@ struct Popover {
     // the parent and measured to anchor the popup — so this is where a full
     // width or flex_1 goes for the trigger to fill its slot. Only the fields
     // in `fields` apply.
-    Popover* TriggerStyle(const Style& style, uint32_t fields);
+    Popover* TriggerStyle(const Style& s, uint32_t fields);
     El* IntoEl();
 };
 

@@ -81,6 +81,25 @@ Popover* Popover::ContentBuilder(El* (*fn)(void* user, Ctx* cx), void* user) {
     contentUser = user;
     return this;
 }
+Popover* Popover::Child(El* e) {
+    if (e) {
+        children.Append(a, e);
+    }
+    return this;
+}
+Popover* Popover::Appearance(bool v) {
+    appearance = v;
+    return this;
+}
+Popover* Popover::Refine(const Style& s, uint32_t fields) {
+    StyleApplyFields(&style, s, fields);
+    styleSet |= fields;
+    return this;
+}
+Popover* Popover::RefineWith(ElRefiner r) {
+    refiner = r;
+    return this;
+}
 Popover* Popover::New(Ctx* cx, Str id) {
     Popover* p = New(cx);
     p->id = id;
@@ -99,8 +118,8 @@ Popover* Popover::OnClose(Listener fn) {
     onClose = fn;
     return this;
 }
-Popover* Popover::TriggerStyle(const Style& style, uint32_t fields) {
-    triggerStyle = style;
+Popover* Popover::TriggerStyle(const Style& s, uint32_t fields) {
+    triggerStyle = s;
     triggerStyleSet = fields;
     return this;
 }
@@ -297,37 +316,46 @@ El* Popover::IntoEl() {
     if (triggerButton) {
         trigger = triggerButton->Open(triggerButton->open || isOpen)->IntoEl();
     }
-    if (isOpen && contentFn) {
-        content = contentFn(contentUser, cx);
-    }
     const Theme& th = ThemeNow(cx->app);
     float arrowSize = arrow ? kPopoverArrowSize : 0.f;
     float gap = (hasOffset ? offset : kPopoverOffset) + arrowSize;
     PopoverArrowState* arrowState = nullptr;
-    if (isOpen && content && arrow) {
+    El* surface = nullptr;
+    if (isOpen) {
+        if (contentFn) {
+            content = contentFn(contentUser, cx);
+        }
+        // v_flex().id("content"), popover_style().p_3() when `appearance`,
+        // the content, the children, then the caller's refinement.
+        surface = Div(a)->Id(StrL("content"))->FlexCol();
+        if (appearance) {
+            PopoverSurface(cx, surface)->Pad(12);
+        }
+        surface->Child(content);
+        for (El* child : children) {
+            surface->Child(child);
+        }
+        if (styleSet) {
+            surface->Refine(style, styleSet);
+        }
+        refiner.Apply(surface);
+    }
+    if (surface && arrow) {
         arrowState = ArenaNew<PopoverArrowState>(a);
         arrowState->anchor = anchor;
         arrowState->size = arrowSize;
         arrowState->radius = th.radius;
-        // The surface's own background, falling back to the theme's popover
-        // colour.
-        bool solid = content->style.hasBg && !content->style.bg.gradient;
-        arrowState->background = solid ? content->style.bg.color : th.popover;
-        // Rust outlines the arrow with popover_ring when `appearance` gave
-        // the surface popover_style. The content here is styled by its
-        // caller, so the arrow follows what that surface draws: its border,
-        // or the ring PopoverSurface spends as a shadow.
-        if (content->style.border > 0) {
-            arrowState->outline = true;
-            arrowState->ring = content->style.borderColor;
-        } else if (content->style.shadowCount > 0) {
-            arrowState->outline = true;
-            arrowState->ring = RgbaOpacity(th.foreground, 0.1f);
-        }
+        // The background the caller's style set, falling back to the
+        // theme's popover colour.
+        bool solid = (styleSet & StyleFieldBg) && !style.bg.gradient;
+        arrowState->background = solid ? style.bg.color : th.popover;
+        // popover_ring, while `appearance` gave the surface popover_style.
+        arrowState->outline = appearance;
+        arrowState->ring = RgbaOpacity(th.foreground, 0.1f);
         El* canvas = Div(a)->Absolute()->Left(0)->Top(0)->W(kFill)->H(kFill);
         canvas->customPaint = &PaintPopoverArrow;
         canvas->customUser = arrowState;
-        content->Child(canvas);
+        surface->Child(canvas);
     }
     El* root = gpui::Popover::New(cx, popId, st, button)
                    ->Anchor(anchor)
@@ -338,7 +366,7 @@ El* Popover::IntoEl() {
                    ->OnOpenChange(onOpenChange)
                    ->OnDismiss(onClose)
                    ->Trigger(trigger)
-                   ->Content(isOpen ? content : nullptr)
+                   ->Content(surface)
                    ->IntoEl();
     // Base's Popover is Styled, and its style lands on the trigger
     // container; the returned root is that container here.

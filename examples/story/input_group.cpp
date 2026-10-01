@@ -715,25 +715,27 @@ static El* RenderPopover(InputGroupStory* self, Ctx* cx) {
     El* sec = StorySection(
         cx, "Popover",
         "A native popover keeps contextual details attached to its trigger.");
-    // Popover's surface: popover_style().p_3(), then .w(rems(18.)).gap_2()
-    // .text_sm() from the story.
-    El* content = component::PopoverSurface(
-        cx, Div(a)->FlexCol()->Pad(12)->W(288)->Gap(8)->Font(14));
-    content->Child(TextEl(a, StrL("Address details"))->Semibold());
-    content->Child(TextEl(a, StoryFmt(cx, "https://%s", address))->Wrap());
-    content->Child(
-        TextEl(a, StrL("The protocol prefix stays separate from the editable "
-                       "hostname."))
-            ->Wrap());
-    El* popover = component::Popover::New(cx, StrL("address-details"))
-                      ->Trigger(component::InputGroupButton::New(
-                                    cx, StrL("address-details-trigger"))
-                                    ->Icon(IconName::Info)
-                                    ->AriaLabel(StrL("Address details"))
-                                    ->Tooltip(StrL("Address details"))
-                                    ->IntoEl())
-                      ->Content(content)
-                      ->IntoEl();
+    // .w(rems(18.)).gap_2().text_sm() on the popover's surface.
+    Style surface;
+    surface.width = 288;
+    surface.gapX = surface.gapY = 8;
+    surface.fontSize = 14;
+    El* popover =
+        component::Popover::New(cx, StrL("address-details"))
+            ->Trigger(component::InputGroupButton::New(
+                          cx, StrL("address-details-trigger"))
+                          ->Icon(IconName::Info)
+                          ->AriaLabel(StrL("Address details"))
+                          ->Tooltip(StrL("Address details"))
+                          ->IntoEl())
+            ->Refine(surface,
+                     StyleFieldWidth | StyleFieldGap | StyleFieldFontSize)
+            ->Child(TextEl(a, StrL("Address details"))->Semibold())
+            ->Child(TextEl(a, StoryFmt(cx, "https://%s", address))->Wrap())
+            ->Child(TextEl(a, StrL("The protocol prefix stays separate from "
+                                   "the editable hostname."))
+                        ->Wrap())
+            ->IntoEl();
     El* col = IgColumn(cx);
     col->Child(IgExtraInput(cx, self, IgPopoverUrl, "popover-url",
                             "Website with details")
