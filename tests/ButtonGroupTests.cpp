@@ -682,6 +682,44 @@ static void AFilledButtonGivesItsFocusLineItsForeground() {
     AppGlobalClear(&app);
 }
 
+// style.rs Style::paint under debug_assertions: a debug_below box and an
+// unmarked child painted inside it are both outlined in red, 1px inside
+// their bounds, and nothing outside the outline is painted.
+static void DebugBelowOutlinesEveryElementUnderIt() {
+#if !GPUI_OS_WASM && !defined(NDEBUG)
+    App* app = AppNew();
+    if (!app) {
+        return;
+    }
+    Arena* arena = ArenaNew();
+    PaintCtx paint = {};
+    paint.pa = app->paint;
+    paint.app = app;
+    paint.opacity = 1;
+    if (PaintTargetBeginOffscreen(&paint, 64, 32)) {
+        El* child = Div(arena)->W(20)->H(10);
+        El* root = Div(arena)->W(48)->H(24)->Pad(4)->Child(child);
+        root->DebugBelow();
+        LayoutEl(nullptr, root, 0, 0, 64, 32, 14, Rgba{});
+        PaintEl(&paint, root);
+        uint8_t* px = (uint8_t*)Alloc(arena, 64 * 32 * 4);
+        utassert(PaintTargetEndOffscreen(&paint, px));
+        auto redAt = [&](int x, int y) {
+            const uint8_t* p = px + (y * 64 + x) * 4;
+            return p[3] > 200 && p[2] > 200 && p[1] < 60 && p[0] < 60;
+        };
+        utassert(redAt(0, 12) && redAt(47, 12));
+        utassert(redAt(4, 8) && redAt(14, 4));
+        utassert(px[(18 * 64 + 30) * 4 + 3] == 0);
+        utassert(px[(28 * 64 + 60) * 4 + 3] == 0);
+        utassert(paint.debugBelow == 0);
+    }
+    TextMeasClear(&paint);
+    ArenaDelete(arena);
+    AppFree(app);
+#endif
+}
+
 static void ClipboardButtonsAcceptTheSharedSizeContract() {
     App app;
     component::Init(&app);
@@ -743,6 +781,7 @@ void TestButtonGroup() {
     AdjacentBoxesMeetWithoutASeam();
     AnInsideFocusLineTakesTheColourItWasGiven();
     AFilledButtonGivesItsFocusLineItsForeground();
+    DebugBelowOutlinesEveryElementUnderIt();
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
 }

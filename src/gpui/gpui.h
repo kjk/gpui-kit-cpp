@@ -2774,6 +2774,12 @@ struct El {
     unsigned int caretLineEndAffinity : 1 = false;
     // StyledImage::grayscale.
     unsigned int imageGrayscale : 1 = false;
+    // Styled::debug / debug_below: a red outline around this element, or
+    // around it and every element painted under it. Read only by a debug
+    // build's paint, as GPUI's are (#[cfg(debug_assertions)]); El::Debug and
+    // El::DebugBelow exist only there.
+    unsigned int debug : 1 = false;
+    unsigned int debugBelow : 1 = false;
 
     // Byte-sized state stays last so none of it creates alignment holes.
     IconName icon = IconName::None;
@@ -3162,6 +3168,14 @@ struct El {
     El* FocusLineStyle(FocusLine line);
     // FocusLine::Inside(color): the line inset from the edge in `color`.
     El* FocusLineStyle(FocusLine line, Rgba color);
+#ifndef NDEBUG
+    // Styled::debug: a 1px red outline around this element, painted under
+    // its background. A debug build's only, as upstream's is.
+    El* Debug();
+    // Styled::debug_below: the same outline around this element and every
+    // element painted under it.
+    El* DebugBelow();
+#endif
     El* TrapId(int v);
     El* Tip(Str s);
     // managed_tooltip_with_placement's preferred side, as the value of base's
@@ -3554,6 +3568,9 @@ struct PaintCtx {
     // window.focus_generation: bumped every time the focus moves, so a
     // keystroke can tell that it stayed put without holding onto the element.
     int focusGen = 0;
+    // How many debug_below elements the paint walk is inside: GPUI's
+    // DebugBelow global, set while one of them and its children paint.
+    int debugBelow = 0;
     // Where the pointer is, which is what a Hover-mode scrollbar consults.
     float mouseX = -1;
     float mouseY = -1;

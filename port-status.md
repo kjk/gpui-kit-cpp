@@ -169,12 +169,15 @@ macOS font-kit requirement on the website only. The current update target is
 - **Component-shell gaps against the Rust components.** MenuItem/Menu
   `disabled` and the retained forms' `disabled()` are inert (upstream
   records them as common behaviors and drops the op — ported as-is).
-- **A script's `debug()` and `debug_below()` paint nothing.** Upstream
-  has them only in a debug build, where GPUI outlines the element (or every
-  element under it) in red; here they are accepted in every build and change
-  nothing. A start or middle ellipsis measures characters off the shaped run
-  where Rust sums each one's advance, which differs only by kerning
-  (`src/shell/style.cpp`, `TruncateTextStartOrMiddle`).
+- **A script's `debug()` outlines without the hovered element's id.** In a
+  debug build `debug()` / `debug_below()` outline the element (or every
+  element painted under it) in red, as GPUI's Style::paint does, and a
+  release build accepts them and changes nothing; GPUI's debug build also
+  prints a hovered debug element's GlobalElementId over it, which an
+  element here has no Debug form of. A start or middle ellipsis measures
+  characters off the shaped run where Rust sums each one's advance, which
+  differs only by kerning (`src/shell/style.cpp`,
+  `TruncateTextStartOrMiddle`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's field and its editor rows all track the state's handle, where
   upstream's frame has a handle of its own; Tab traversal counts a handle

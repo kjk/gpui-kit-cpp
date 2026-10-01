@@ -883,6 +883,20 @@ struct Keyword {
 // Every no-argument style method that is not a ramp. Where this tree's Style
 // has no field for what the method sets, the entry says so and changes
 // nothing.
+// debug() / debug_below(): the element's red outline in a debug build.
+static void ShellDebug(El* e, bool below) {
+#ifndef NDEBUG
+    if (below) {
+        e->DebugBelow();
+    } else {
+        e->Debug();
+    }
+#else
+    (void)e;
+    (void)below;
+#endif
+}
+
 static const Keyword kKeywords[] = {
     // Display.
     {"block", [](El* e) { e->style.display = Display::Block; }, 0},
@@ -1229,10 +1243,11 @@ static const Keyword kKeywords[] = {
     {"font_bold", [](El* e) { e->Weight(FontWeight::Bold); }, 0},
     {"font_extrabold", [](El* e) { e->Weight(FontWeight::ExtraBold); }, 0},
     {"font_black", [](El* e) { e->Weight(FontWeight::Black); }, 0},
-    // Debugging. gpui's debug borders are painted by its own debug build's
-    // renderer, which this tree does not have.
-    {"debug", [](El*) {}, 0},
-    {"debug_below", [](El*) {}, 0},
+    // Debugging. Styled::debug and debug_below exist only under
+    // debug_assertions, and so does what they set here: a release build
+    // accepts them and changes nothing.
+    {"debug", [](El* e) { ShellDebug(e, false); }, 0},
+    {"debug_below", [](El* e) { ShellDebug(e, true); }, 0},
     {"debug_red", [](El* e) { DebugBorder(e, 0.f, 72.2f, 50.6f); }, 0},
     {"debug_blue", [](El* e) { DebugBorder(e, 217.2f, 91.2f, 59.8f); }, 0},
     {"debug_yellow", [](El* e) { DebugBorder(e, 47.9f, 95.8f, 53.1f); }, 0},

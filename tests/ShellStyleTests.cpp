@@ -836,6 +836,26 @@ static void TextDecorationAndEllipsisApply() {
     ArenaDelete(arena);
 }
 
+// debug() and debug_below(): GPUI's Styled methods exist only under
+// debug_assertions, where Style::paint outlines the element (and, below a
+// debug_below one, every element painted inside it) in red. Here a release
+// build accepts both and sets nothing; a debug build sets the flags (its
+// paint is ButtonGroupTests' DebugBelowOutlinesEveryElementUnderIt).
+static void DebugOutlinesOnlyInADebugBuild() {
+    Arena* arena = ArenaNew();
+    El* one = Div(arena);
+    El* below = Div(arena);
+    utassert(ApplyNullaryStyle(one, StrL("debug")));
+    utassert(ApplyNullaryStyle(below, StrL("debug_below")));
+#ifdef NDEBUG
+    utassert(!one->debug && !below->debugBelow);
+#else
+    utassert(one->debug && !one->debugBelow);
+    utassert(below->debugBelow && !below->debug);
+#endif
+    ArenaDelete(arena);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -850,4 +870,5 @@ void TestShellStyle() {
     shell_style_tests::GridPlacementApplies();
     shell_style_tests::TextDecorationAndEllipsisApply();
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
+    shell_style_tests::DebugOutlinesOnlyInADebugBuild();
 }

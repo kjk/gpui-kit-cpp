@@ -2322,6 +2322,17 @@ El* El::FocusLineStyle(FocusLine line) {
     style.focusLine = (uint8_t)line;
     return this;
 }
+#ifndef NDEBUG
+El* El::Debug() {
+    debug = true;
+    return this;
+}
+El* El::DebugBelow() {
+    debugBelow = true;
+    return this;
+}
+#endif
+
 El* El::FocusLineStyle(FocusLine line, Rgba color) {
     FocusLineStyle(line);
     style.focusLineColor = color;
@@ -7236,6 +7247,13 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         (void)WindowPlotAppearScopeToken(ctx->window, e->plotAppearScope);
         VecAppend(ctx->window->plotAppearScopes, e->plotAppearScope);
     }
+#ifndef NDEBUG
+    // debug_below sets DebugBelow for as long as the element and what it
+    // holds paint, and takes it away again after.
+    if (e->debugBelow) {
+        ctx->debugBelow++;
+    }
+#endif
     if (e->style.opacity >= 1.f) {
         PaintElNodeInner(ctx, e, skipOverlay);
     } else {
@@ -7244,6 +7262,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         PaintElNodeInner(ctx, e, skipOverlay);
         ctx->opacity = prev;
     }
+#ifndef NDEBUG
+    if (e->debugBelow) {
+        ctx->debugBelow--;
+    }
+#endif
     if (appearScope) {
         ctx->window->plotAppearScopes.len--;
     }
@@ -7411,6 +7434,19 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->style.borderColor = RuntimeStyleNow(ctx->app).ring;
     }
 
+#ifndef NDEBUG
+    // Style::paint under debug_assertions: `debug`, or any element painted
+    // while a debug_below one is, is outlined in red -- a 1px border inside
+    // its bounds, before its background, which covers it where it fills.
+    if (e->debug || ctx->debugBelow > 0) {
+        Rgba red = Rgb(255, 0, 0);
+        Bounds b = e->Bounds();
+        CanvasFillRect(ctx, b.x, b.y, b.w, 1.f, red);
+        CanvasFillRect(ctx, b.x, b.y + b.h - 1.f, b.w, 1.f, red);
+        CanvasFillRect(ctx, b.x, b.y, 1.f, b.h, red);
+        CanvasFillRect(ctx, b.x + b.w - 1.f, b.y, 1.f, b.h, red);
+    }
+#endif
     BoxFill fill = BoxFillFor(e->style.hasActiveBg, e->style.hasHoverBg,
                               e->clickId, ctx->activeId, ctx->hoverId);
     // The group's hover is asked only when the element's own state has
