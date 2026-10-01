@@ -5058,7 +5058,8 @@ bool InputIsCopyable(const InputState* s);
 // cursor(): the caret offset, which end of the selection depends on which way
 // it was dragged.
 int InputCursor(const InputState* s);
-// cursor_position(): the row and column the caret is on.
+// cursor_position(): the row the caret is on, and its column counted in
+// characters (Position::character), not bytes; InputOffsetToPoint has bytes.
 RopePoint InputCursorPosition(const InputState* s);
 
 // set_value(): replaces the text, resets the selection to the end, and clears
@@ -5076,7 +5077,10 @@ void InputSetMaskPattern(InputState* s, MaskPattern pattern);
 // clean(): empties the field.
 void InputClean(InputState* s, App* app, Window* win);
 // insert() / replace(): a programmatic edit, recorded as one atomic step.
+// Insert puts the text at the caret; replace puts it over the selection (or
+// the input method's marked text). Either leaves the caret after it.
 void InputInsert(InputState* s, App* app, Window* win, Str value);
+void InputReplace(InputState* s, App* app, Window* win, Str value);
 
 // previous_boundary / next_boundary: one character either way.
 int InputPreviousBoundary(const InputState* s, int offset);

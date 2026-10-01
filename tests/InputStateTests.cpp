@@ -1312,6 +1312,21 @@ static void ReadonlyRejectsUserEditsOnly() {
     utassert(ValueIs(s, "set anyway"));
     InputInsert(&s, nullptr, nullptr, StrL("!"));
     utassert(ValueIs(s, "set anyway!"));
+
+    // replace() writes over the selection where insert() writes at the caret.
+    InputSetSelectedRange(&s, nullptr, nullptr, 0, 3);
+    InputReplace(&s, nullptr, nullptr, StrL("got"));
+    utassert(ValueIs(s, "got anyway!"));
+    utassert(InputCursor(&s) == 3);
+
+    // cursor_position() counts characters, where the point counts bytes.
+    InputState ta;
+    ta.kind = InputKind::Textarea;
+    InputSetValue(&ta, StrL("a\n\xE4\xBD\xA0\xE5\xA5\xBDx")); // "a\n你好x"
+    InputMoveTo(&ta, nullptr, nullptr, len(InputValue(&ta)));
+    RopePoint at = InputCursorPosition(&ta);
+    utassert(at.row == 1 && at.column == 3);
+    utassert(InputOffsetToPoint(&ta, InputCursor(&ta)).column == 7);
 }
 
 // Enter is a submit in a single-line field and a newline in a textarea,

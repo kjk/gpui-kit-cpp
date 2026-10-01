@@ -2362,8 +2362,20 @@ int InputCursor(const InputState* s) {
     return s->selectionReversed ? s->selectedRange.start : s->selectedRange.end;
 }
 
+// RopeExt::offset_to_position: the row, and the column counted in
+// characters rather than bytes.
 RopePoint InputCursorPosition(const InputState* s) {
-    return InputOffsetToPoint(s, InputCursor(s));
+    RopePoint p = InputOffsetToPoint(s, InputCursor(s));
+    Str line = InputSliceLine(s, p.row);
+    int n = p.column < len(line) ? p.column : len(line);
+    int chars = 0;
+    for (int i = 0; i < n; i++) {
+        if (((uint8_t)line.s[i] & 0xC0) != 0x80) {
+            chars++;
+        }
+    }
+    p.column = chars;
+    return p;
 }
 
 Str InputSelectedValue(const InputState* s) {
@@ -4419,6 +4431,14 @@ void InputInsert(InputState* s, App* app, Window* win, Str value) {
     s->undo.pendingIntent = EditIntent::Atomic;
     Selection at = SelectionAt(InputCursor(s));
     InputReplaceTextInRange(s, app, win, &at, value);
+    s->selectedRange = SelectionAt(s->selectedRange.end);
+}
+
+void InputReplace(InputState* s, App* app, Window* win, Str value) {
+    EditsAllowed allow(s);
+    s->undo.hasPendingIntent = true;
+    s->undo.pendingIntent = EditIntent::Atomic;
+    InputReplaceTextInRange(s, app, win, nullptr, value);
     s->selectedRange = SelectionAt(s->selectedRange.end);
 }
 
