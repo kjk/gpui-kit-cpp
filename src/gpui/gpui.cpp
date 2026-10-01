@@ -7046,12 +7046,17 @@ static void PaintCaretAt(PaintCtx* ctx, El* e, float font, int off,
     if (primary && e->caretOutY) {
         *e->caretOutY = y + h;
     }
-    CanvasFillRect(ctx, x, y, e->caretW, h, e->caretColor);
+    if (e->caretColor.a != 0) {
+        CanvasFillRect(ctx, x, y, e->caretW, h, e->caretColor);
+    }
 }
 
-// layout_cursors paints every cursor's caret; the active one first.
+// layout_cursors paints every cursor's caret; the active one first. A
+// transparent caret with somewhere to report to is measured and not drawn:
+// Rust lays the cursor out whether or not this half of the blink shows it,
+// and last_layout.cursor_bounds is read off that.
 static void PaintCaret(PaintCtx* ctx, El* e, float font) {
-    if (e->caretColor.a == 0) {
+    if (e->caretColor.a == 0 && !e->caretOutX && !e->caretOutY) {
         return;
     }
     if (e->caretOff >= 0) {

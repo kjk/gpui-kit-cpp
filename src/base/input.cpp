@@ -1632,6 +1632,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                       state->cursorLineEndAffinity);
             // Where it lands is the anchor a completion menu hangs off.
             el->CaretOut(&state->caretWinX, &state->caretWinY);
+        } else if (!tokenLine && !caretFolded && cursor >= start &&
+                   cursor <= start + len(line)) {
+            // cursor_bounds is laid out whether or not the caret shows —
+            // unfocused, or the dark half of the blink — so cursor_layout()
+            // follows the selection all the same. Measured, not drawn.
+            el->Caret(cursor - start, Rgba{0, 0, 0, 0}, 2,
+                      state->cursorLineEndAffinity);
+            el->CaretOut(&state->caretWinX, &state->caretWinY);
         }
         if (!tokenLine && state->extraCursors.len > 0) {
             RowExtraCursors(a, el, state, style, start, len(line), caret);
