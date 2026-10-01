@@ -3694,6 +3694,1255 @@ static void AnAppendAddingBlocksKeepsTheScrollPosition() {
     RhClose(&v);
 }
 
+// ─── text/state.rs window tests ───────────────────────────────────────────
+//
+// state.rs mod tests drive a TextViewState through TestAppContext: a parse
+// lands when the background executor runs, and run_until_parked is what
+// waits for it. The parse here is synchronous inside TextView::IntoEl
+// (port-status.md "TextView range highlights land with the render"), so each
+// state is opened in a test-platform window (gpui/test_app.h) whose root
+// renders it, and a parse lands with the frame the update's flush draws.
+
+#if GPUI_MARKDOWN_FULL
+
+// Where the view sits: state.rs reveal_range's Container, less the
+// application `list` this tree has no request_autoscroll for.
+enum class TswContainer : uint8_t {
+    // The whole window, fit-content: what a state with no view is drawn in.
+    Window,
+    // A 200×100 scrollable view.
+    Scrollable,
+    // A 200×100 scrolling div around a fit-content view that follows
+    // reveals through OnReveal.
+    Div,
+    // The same, with the view clamped to two lines.
+    Clamped,
+    // A 200×100 box that scrolls nothing.
+    Fixed,
+    // A stateless TextView::markdown(source) over `source`, whose keyed
+    // state is what the test reads.
+    Element,
+};
+
+struct TswRoot {
+    Entity<gpui::TextViewState> state = {};
+    TswContainer container = TswContainer::Window;
+    const MarkdownExtensions* extensions = nullptr;
+    // Container::Div's ScrollHandle, positive down, and the scroll box last
+    // frame painted.
+    float divScrollY = 0;
+    Bounds divBounds = {};
+    // Container::Element's source string.
+    Str source = {};
+    // Last frame's scroll box of a scrollable view and the document inside it,
+    // for scroll_top. Frame-arena memory, read only between frames.
+    El* scroller = nullptr;
+
+    // Container::Div's on_reveal: the scroll handle moved the least that
+    // shows the line.
+    static void OnReveal(TswRoot* self, Ctx*,
+                         const gpui::TextViewRevealEvent* ev) {
+        Bounds viewport = self->divBounds;
+        Bounds line = ev->line;
+        if (line.y + line.h > viewport.y + viewport.h) {
+            self->divScrollY += line.y + line.h - (viewport.y + viewport.h);
+        } else if (line.y < viewport.y) {
+            self->divScrollY -= viewport.y - line.y;
+        }
+    }
+
+    static El* Render(TswRoot* self, Ctx* cx) {
+        Arena* a = cx->a;
+        self->scroller = nullptr;
+        if (self->container == TswContainer::Element) {
+            gpui::TextView* view = gpui::TextView::New(cx, self->source);
+            El* e = view->IntoEl();
+            self->state = view->state;
+            return Div(a)->SizeFull()->Child(e);
+        }
+        gpui::TextView* view = gpui::TextView::New(cx, self->state);
+        // The element hands its selection format to the state every frame,
+        // as Rust's does; Rust's tests render no element, so the state's own
+        // format stands, and the element here passes it through.
+        if (gpui::TextViewState* s = self->state.Get(cx)) {
+            view->SelFormat(s->selectionFormat);
+        }
+        if (self->extensions) {
+            view->MarkdownExtensionsSet(*self->extensions);
+        }
+        if (self->container == TswContainer::Window) {
+            return Div(a)->SizeFull()->Child(view->IntoEl());
+        }
+        El* frame = Div(a)->W(200)->H(100);
+        switch (self->container) {
+            case TswContainer::Scrollable: {
+                El* e = view->Scrollable()->IntoEl();
+                self->scroller = e;
+                return frame->Child(e);
+            }
+            case TswContainer::Div:
+            case TswContainer::Clamped: {
+                if (self->container == TswContainer::Clamped) {
+                    view->MaxLines(2);
+                }
+                view->OnReveal(Listen(cx, &TswRoot::OnReveal));
+                // The view first: on_reveal runs while it is built, and the
+                // offset it set is the one this frame lays out with, as the
+                // handle Rust's set_offset moves is read at layout.
+                El* text = view->IntoEl();
+                El* scroll = Div(a)
+                                 ->PathId(StrL("scroll"))
+                                 ->SizeFull()
+                                 ->ScrollY(self->divScrollY)
+                                 ->BoundsOut(&self->divBounds)
+                                 ->Child(text);
+                return frame->Child(scroll);
+            }
+            default:
+                return frame->Child(view->IntoEl());
+        }
+    }
+};
+
+struct TswView {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<TswRoot> root = {};
+    bool wasReduced = false;
+
+    TswRoot* Root() const { return root.Get(app); }
+    gpui::TextViewState* State() const { return Root()->state.Get(app); }
+};
+
+static TswView TswOpen(const char* text, TswContainer container,
+                       bool html = false) {
+    TswView v;
+    v.wasReduced = MotionReduced();
+    MotionSetReduced(false);
+    v.app = TestAppNew();
+    v.root = EntityNew<TswRoot>(v.app);
+    TswRoot* root = v.Root();
+    root->container = container;
+    if (container == TswContainer::Element) {
+        root->source = Str(text);
+    } else {
+        root->state = html ? gpui::TextViewState::Html(v.app, Str(text))
+                           : gpui::TextViewState::Markdown(v.app, Str(text));
+    }
+    v.win = TestWindowOpen(v.app, v.root);
+    TestRunUntilParked(v.app);
+    return v;
+}
+
+static void TswClose(TswView* v) {
+    TestAppFree(v->app);
+    MotionSetReduced(v->wasReduced);
+    *v = TswView{};
+}
+
+// The end of a `state.update(cx, ..)`: the state notified, and the flush
+// draws the frame the parse lands in.
+static void TswFlush(const TswView& v) {
+    AppInvalidate(v.win);
+    TestFlushEffects(v.app);
+}
+
+static void TswPushStr(const TswView& v, const char* text) {
+    v.State()->PushStr(Str(text), v.app, v.win);
+    TswFlush(v);
+}
+
+static void TswSetText(const TswView& v, Str text) {
+    v.State()->SetText(text, v.app, v.win);
+    TswFlush(v);
+}
+
+static Str TswJoin(Arena* a, const char* format, int count, const char* sep) {
+    StrBuilder sb(a);
+    for (int i = 0; i < count; i++) {
+        if (i > 0) {
+            sb.Append(Str(sep));
+        }
+        sb.Append(Str(fmt(format, i)));
+    }
+    return sb.TakeStr();
+}
+
+// reveal_range's paragraphs(count) and words(count).
+static Str TswParagraphs(Arena* a, int count) {
+    return TswJoin(a, "paragraph %d", count, "\n\n");
+}
+
+static Str TswWords(Arena* a, int count) {
+    return TswJoin(a, "w%d", count, " ");
+}
+
+// ─── stream_fade ──────────────────────────────────────────────────────────
+
+// stream_fade's FADE: long enough that the first frame is sampled before
+// the fade gets anywhere.
+static const float kTswFadeMs = 10000.f;
+
+// fading_state: a view whose motion fades streamed text in over FADE,
+// linearly.
+static TswView TswFadingState(const char* markdown) {
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    v.State()->SetMotion(TextViewMotion{}
+                             .WithStreamFade(kTswFadeMs)
+                             .WithStreamFadeEasing(Easing::Linear()),
+                         v.app, v.win);
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+    return v;
+}
+
+// fades: the ranges leaf `key` fades over right now, every one of them
+// still nearly transparent; false when nothing is fading in it.
+static bool TswFades(const TswView& v, TextLeafKey key, Span* out, int* n,
+                     double at = -1) {
+    Arena* a = ArenaNew();
+    gpui::StreamFadeRange* ranges = nullptr;
+    int count = v.State()
+                    ->StreamFadeFrame(a, at < 0 ? TestClockNow() : at, &ranges);
+    *n = 0;
+    for (int i = 0; i < count; i++) {
+        if (!(ranges[i].key == key)) {
+            continue;
+        }
+        // "a fade sampled right after it starts is still transparent"
+        utassert(ranges[i].fadeOut > 0.9f);
+        out[(*n)++] = ranges[i].range;
+    }
+    ArenaDelete(a);
+    return *n > 0;
+}
+
+static bool TswFadesAre(const TswView& v, TextLeafKey key, const Span* want,
+                        int count) {
+    Span got[16];
+    int n = 0;
+    TswFades(v, key, got, &n);
+    if (n != count) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (got[i].start != want[i].start || got[i].end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool TswNothingFades(const TswView& v, double at = -1) {
+    Arena* a = ArenaNew();
+    gpui::StreamFadeRange* ranges = nullptr;
+    int count = v.State()
+                    ->StreamFadeFrame(a, at < 0 ? TestClockNow() : at, &ranges);
+    ArenaDelete(a);
+    return count == 0;
+}
+
+// state.rs push_str_fades_only_the_appended_text
+static void PushStrFadesOnlyTheAppendedText() {
+    TswView v = TswFadingState("hello");
+    TswPushStr(v, " world");
+    TestRunUntilParked(v.app);
+    Span want = {5, 11};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &want, 1));
+
+    double later = TestClockNow() + kTswFadeMs / 1000.0 + 1.0;
+    utassert(TswNothingFades(v, later));
+    utassert(TswNothingFades(v));
+    TswClose(&v);
+}
+
+// state.rs set_text_extending_the_text_fades_like_push_str
+static void SetTextExtendingTheTextFadesLikePushStr() {
+    TswView v = TswFadingState("hello");
+    TswSetText(v, StrL("hello world"));
+    TestRunUntilParked(v.app);
+    Span want = {5, 11};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &want, 1));
+    TswClose(&v);
+}
+
+// state.rs set_text_replacing_the_text_shows_it_at_once
+static void SetTextReplacingTheTextShowsItAtOnce() {
+    TswView v = TswFadingState("hello");
+    TswPushStr(v, " world");
+    TestRunUntilParked(v.app);
+    Span got[4];
+    int n = 0;
+    utassert(TswFades(v, TextLeafKey::Block(0), got, &n));
+
+    TswSetText(v, StrL("other"));
+    TestRunUntilParked(v.app);
+    utassert(!TswFades(v, TextLeafKey::Block(0), got, &n));
+    TswClose(&v);
+}
+
+// state.rs completed_markup_refades_from_the_divergence
+static void CompletedMarkupRefadesFromTheDivergence() {
+    // The paragraph renders `text` (trailing space trimmed), then
+    // `text **bo` literally.
+    TswView v = TswFadingState("text ");
+    TswPushStr(v, "**bo");
+    TestRunUntilParked(v.app);
+    Span first = {4, 9};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &first, 1));
+
+    // `text **bold**` renders `text bold`: the space keeps its fade, the
+    // glyphs from byte 5 on changed and fade again as one run.
+    TswPushStr(v, "ld**");
+    TestRunUntilParked(v.app);
+    Span both[] = {{4, 5}, {5, 9}};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), both, 2));
+    TswClose(&v);
+}
+
+// state.rs without_stagger_an_update_fades_as_one_chunk
+static void WithoutStaggerAnUpdateFadesAsOneChunk() {
+    TswView v = TswFadingState("hello");
+    TswPushStr(v, " one two three");
+    TestRunUntilParked(v.app);
+    Span want = {5, 19};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &want, 1));
+    TswClose(&v);
+}
+
+// state.rs words_of_one_update_start_one_after_another
+static void WordsOfOneUpdateStartOneAfterAnother() {
+    const float stagger = 100.f;
+    TswView v = TswFadingState("hello");
+    v.State()->SetMotion(TextViewMotion{}
+                             .WithStreamFade(kTswFadeMs)
+                             .WithStreamFadeStagger(stagger)
+                             .WithStreamFadeEasing(Easing::Linear()),
+                         v.app, v.win);
+    TswPushStr(v, " one two three");
+    TestRunUntilParked(v.app);
+
+    Arena* a = ArenaNew();
+    gpui::StreamFadeRange* ranges = nullptr;
+    int n = v.State()->StreamFadeFrame(
+        a, TestClockNow() + 3.0 * stagger / 1000.0, &ranges);
+    // "words still fading", "paragraph fades"
+    utassert(n == 3);
+    if (n == 3) {
+        const int want[3][2] = {{5, 10}, {10, 14}, {14, 19}};
+        for (int i = 0; i < 3; i++) {
+            utassert(ranges[i].key == TextLeafKey::Block(0));
+            utassert(ranges[i].range.start == want[i][0] &&
+                     ranges[i].range.end == want[i][1]);
+        }
+        // A later word has faded less, so it is still more transparent.
+        utassert(ranges[0].fadeOut < ranges[1].fadeOut &&
+                 ranges[1].fadeOut < ranges[2].fadeOut);
+    }
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+// state.rs a_new_paragraph_fades_as_a_whole
+static void ANewParagraphFadesAsAWhole() {
+    TswView v = TswFadingState("first");
+    TswPushStr(v, "\n\nsecond");
+    TestRunUntilParked(v.app);
+    Span got[4];
+    int n = 0;
+    utassert(!TswFades(v, TextLeafKey::Block(0), got, &n));
+    Span want = {0, 6};
+    utassert(TswFadesAre(v, TextLeafKey::Block(7), &want, 1));
+    TswClose(&v);
+}
+
+// state.rs code_block_text_fades_by_block
+static void CodeBlockTextFadesByBlock() {
+    TswView v = TswFadingState("```rs\nlet");
+    TswPushStr(v, " x");
+    TestRunUntilParked(v.app);
+    Span want = {3, 5};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &want, 1));
+    TswClose(&v);
+}
+
+// state.rs table_cells_fade_by_ordinal
+static void TableCellsFadeByOrdinal() {
+    TswView v = TswFadingState("| a | b |\n|---|---|\n| c | d");
+    TswPushStr(v, "e |");
+    TestRunUntilParked(v.app);
+    Span got[4];
+    int n = 0;
+    utassert(!TswFades(v, TextLeafKey::TableCell(0, 2), got, &n));
+    Span want = {1, 2};
+    utassert(TswFadesAre(v, TextLeafKey::TableCell(0, 3), &want, 1));
+    TswClose(&v);
+}
+
+// state.rs zero_duration_records_nothing
+static void ZeroDurationRecordsNothing() {
+    TswView v = TswOpen("hello", TswContainer::Window);
+    TswPushStr(v, " world");
+    TestRunUntilParked(v.app);
+    utassert(TswNothingFades(v));
+    TswClose(&v);
+}
+
+// state.rs reduced_motion_drops_the_fade
+static void ReducedMotionDropsTheFade() {
+    TswView v = TswFadingState("hello");
+    TswPushStr(v, " world");
+    TestRunUntilParked(v.app);
+    // Rust passes `reduce_motion` to frame(); here it is the process-wide
+    // setting the frame reads.
+    MotionSetReduced(true);
+    utassert(TswNothingFades(v));
+    MotionSetReduced(false);
+    utassert(TswNothingFades(v));
+    TswClose(&v);
+}
+
+// state.rs a_fade_repaints_on_a_timer_until_nothing_fades. Rust counts the
+// state's notifies; each one here draws a frame, so the frames are counted.
+static void AFadeRepaintsOnATimerUntilNothingFadesInAWindow() {
+    // STREAM_FADE_TICK.
+    const double tick = 33;
+    TswView v = TswFadingState("hello");
+    TswPushStr(v, " world");
+    TestRunUntilParked(v.app);
+    TestDraw(v.win);
+    uint64_t before = v.win->frameSeq;
+
+    TestAdvanceClock(v.app, tick / 2);
+    TestRunUntilParked(v.app);
+    utassert(v.win->frameSeq == before);
+
+    // Each tick repaints once, and that frame schedules the next tick.
+    for (uint64_t ticks = 1; ticks <= 3; ticks++) {
+        TestAdvanceClock(v.app, tick);
+        TestRunUntilParked(v.app);
+        utassert(v.win->frameSeq == before + ticks);
+    }
+
+    // Replacing the text drops the fade, so the ticks stop.
+    TswSetText(v, StrL("other"));
+    TestRunUntilParked(v.app);
+    TestAdvanceClock(v.app, tick);
+    TestRunUntilParked(v.app);
+    uint64_t after = v.win->frameSeq;
+    TestAdvanceClock(v.app, tick * 10);
+    TestRunUntilParked(v.app);
+    utassert(v.win->frameSeq == after);
+    utassert(v.State()->fadeTick == 0);
+    TswClose(&v);
+}
+
+// ─── parsing ──────────────────────────────────────────────────────────────
+
+// state.rs small_full_replace_parses_before_background_executor_runs and
+// large_markdown_and_html_full_replacements_wait_for_background_executor:
+// not ported — every parse here is the synchronous one inside
+// TextView::IntoEl, so there is no MAX_SYNC_FULL_REPLACE_BYTES and no
+// background parse to wait for (port-status.md "TextView range highlights
+// land with the render").
+
+static bool ParseFormulaText(const markdown::Node* source,
+                             const MarkdownParseContext* context, void*,
+                             MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::InlineMath) return false;
+    *out = MarkdownNode::New(context->Copy(StrL("formula")))
+               .Text(context->Copy(
+                   context->Value(source, markdown::NodeStrKind::Value)));
+    return true;
+}
+
+// state.rs inline_source_ranges_follow_streamed_tail_reparsing
+static void InlineSourceRangesFollowStreamedTailReparsing() {
+    // "中文 $a$\n\n尾 $x"
+    TswView v = TswOpen("\xE4\xB8\xAD\xE6\x96\x87 $a$\n\n\xE5\xB0\xBE $x",
+                        TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("test");
+    plugin.parse = &ParseFormulaText;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(ext, plugin);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+    TswPushStr(v, "^2$ \xE5\x90\x8E");
+    TestRunUntilParked(v.app);
+
+    const char* source =
+        "\xE4\xB8\xAD\xE6\x96\x87 $a$\n\n\xE5\xB0\xBE $x^2$ \xE5\x90\x8E";
+    utassert(StrEq(v.State()->Source(), Str(source)));
+    Arena* a = ArenaNew();
+    Ctx cx = {v.app, v.win, a, {}};
+    MdNode* doc =
+        MdParseCachedForTest(&cx, a, v.State()->Source(), &extensions);
+    const MarkdownNode* objects[4] = {};
+    int n = 0;
+    for (MdNode* block = doc ? doc->first : nullptr; block;
+         block = block->next) {
+        utassert(block->kind == MdKind::Paragraph);
+        for (MdRun* r = block->runFirst; r; r = r->next) {
+            if (r->hasCustom && n < 4) {
+                objects[n++] = &r->custom;
+            }
+        }
+    }
+    utassert(n == 2);
+    const char* markdowns[] = {"$a$", "$x^2$"};
+    for (int i = 0; i < n && i < 2; i++) {
+        int start = (int)(strstr(source, markdowns[i]) - source);
+        int end = start + (int)strlen(markdowns[i]);
+        utassert(objects[i]->hasSpan && objects[i]->span.start == start &&
+                 objects[i]->span.end == end);
+        utassert(StrEq(objects[i]->markdown, Str(markdowns[i])));
+    }
+    ArenaDelete(a);
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
+// state.rs async_full_replace_then_push_str_preserves_complete_source. Rust
+// replaces with MAX_SYNC_FULL_REPLACE_BYTES + 1 bytes to go through its
+// background parse; the same size goes through this tree's only parse.
+static void AsyncFullReplaceThenPushStrPreservesCompleteSource() {
+    TswView v = TswOpen("old", TswContainer::Window);
+    Arena* a = ArenaNew();
+    StrBuilder replacement(a);
+    for (int i = 0; i < 512 + 1; i++) {
+        replacement.AppendChar('x');
+    }
+    Str big = replacement.TakeStr();
+    StrBuilder expected(a);
+    expected.Append(big);
+    expected.Append(StrL(" tail"));
+    Str want = expected.TakeStr();
+    v.State()->SetText(big, v.app, v.win);
+    v.State()->PushStr(StrL(" tail"), v.app, v.win);
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+    utassert(StrEq(v.State()->text, want));
+    utassert(StrEq(v.State()->Source(), want));
+    ArenaDelete(a);
+    TswClose(&v);
+}
+
+// state.rs html_push_str_keeps_earlier_blocks
+static void HtmlPushStrKeepsEarlierBlocks() {
+    TswView v = TswOpen("<p>first</p>", TswContainer::Window, true);
+    TswPushStr(v, "<p>second</p>");
+    TestRunUntilParked(v.app);
+    utassert(StrEq(v.State()->Source(), StrL("<p>first</p><p>second</p>")));
+    Str text = v.State()->RenderedText().AsStr();
+    // "lost the first block", "lost the appended block"
+    utassert(base::StrContains(text, StrL("first")));
+    utassert(base::StrContains(text, StrL("second")));
+    TswClose(&v);
+}
+
+// state.rs element_text_of_the_same_string_is_not_compared_again. Rust calls
+// set_element_text on a state of its own; here the stateless element is what
+// hands its string to the keyed state, so the element is rendered with it.
+static void ElementTextOfTheSameStringIsNotComparedAgain() {
+    static const char kHello[] = "hello";
+    TswView v = TswOpen(kHello, TswContainer::Element);
+    uint64_t parsed = v.State() ? v.State()->revision : 0;
+    utassert(parsed > 0);
+
+    // The same allocation again, and equal bytes in another allocation,
+    // both leave the parsed text alone.
+    TswFlush(v);
+    utassert(v.State()->revision == parsed);
+    char equal[] = "hello";
+    v.Root()->source = Str(equal);
+    TswFlush(v);
+    utassert(v.State()->revision == parsed);
+
+    // Once the state's text moved on, the element's string is set again.
+    v.State()->PushStr(StrL(" world"), v.app, v.win);
+    TswFlush(v);
+    utassert(StrEq(v.State()->text, StrL("hello")));
+    TswClose(&v);
+}
+
+// state.rs set_text_then_push_str_appends_to_replaced_content
+static void SetTextThenPushStrAppendsToReplacedContent() {
+    TswView v = TswOpen("old", TswContainer::Window);
+    v.State()->SetText(Str{}, v.app, v.win);
+    v.State()->PushStr(StrL("new"), v.app, v.win);
+    v.State()->PushStr(StrL(" text"), v.app, v.win);
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+    utassert(StrEq(v.State()->text, StrL("new text")));
+    utassert(StrEq(v.State()->Source(), StrL("new text")));
+
+    TswSetText(v, Str{});
+    TestRunUntilParked(v.app);
+    utassert(len(v.State()->text) == 0);
+    utassert(len(v.State()->Source()) == 0);
+    TswClose(&v);
+}
+
+static bool TswSelectedTextIs(const TswView& v, const char* want) {
+    char buf[256];
+    int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+    if (n < 0 || n >= (int)sizeof(buf)) {
+        return false;
+    }
+    Str got = StrTrimAscii(Str(buf, n));
+    return StrEq(got, Str(want));
+}
+
+// state.rs full_parse_coalesced_with_append_preserves_new_select_all: not
+// ported — Rust's select_all is a flag that means the whole view whatever it
+// holds; here it is the selection SelectAll made over the runs painted then
+// (port-status.md "`selected_source_range` reads the window's painted
+// runs"), so text that lands after it is not in it.
+
+// state.rs set_text_extending_after_a_parse_error_parses_it_again: not
+// ported — a parse here cannot fail, so there is no parsed_error, and with no
+// background parse there is no full_update_revision to restart (port-status.md
+// "TextView range highlights land with the render").
+
+// state.rs select_all_returns_rendered_text
+static void SelectAllReturnsRenderedText() {
+    TswView v = TswOpen("**quick** value", TswContainer::Window);
+    v.State()->SelectAll(v.win, v.app);
+    TswFlush(v);
+    utassert(v.State()->HasSelection(v.win));
+    utassert(TswSelectedTextIs(v, "quick value"));
+
+    v.State()->ClearSelection(v.win, v.app);
+    TswFlush(v);
+    utassert(!v.State()->HasSelection(v.win));
+    char buf[16];
+    utassert(v.State()->SelectedText(v.win, buf, (int)sizeof(buf)) == 0);
+    TswClose(&v);
+}
+
+// state.rs select_all_in_source_format_returns_source
+static void SelectAllInSourceFormatReturnsSource() {
+    const char* markdown = "**quick** value";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    v.State()->SelectAll(v.win, v.app);
+    TswFlush(v);
+    // The default (plain) mode strips the markup.
+    utassert(TswSelectedTextIs(v, "quick value"));
+
+    v.State()->SetSelectionFormat(gpui::SelectionFormat::Source, v.app, v.win);
+    TswFlush(v);
+    // Source mode yields the whole source verbatim.
+    utassert(TswSelectedTextIs(v, markdown));
+    TswClose(&v);
+}
+
+struct TswMention {
+    const char* label = nullptr;
+};
+
+// TestInlinePlugin("test").parse_with(|node| Text => mention(label)).
+static bool ParseMention(const markdown::Node* source,
+                         const MarkdownParseContext* context, void* data,
+                         MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::Text) return false;
+    const TswMention* mention = (const TswMention*)data;
+    *out = MarkdownNode::New(context->Copy(StrL("mention")))
+               .Text(context->Copy(Str(mention->label)));
+    return true;
+}
+
+// state.rs parser_revision_reparses_same_name_inline_configuration
+static void ParserRevisionReparsesSameNameInlineConfiguration() {
+    TswView v = TswOpen("@member", TswContainer::Window);
+    TswMention mentions[2] = {{"Alice"}, {"Bob"}};
+    Arena* ext = ArenaNew();
+    MarkdownExtensions extensions[2];
+    for (int i = 0; i < 2; i++) {
+        MarkdownPlugin plugin;
+        plugin.name = StrL("test");
+        plugin.parse = &ParseMention;
+        plugin.renderInline = &RenderInlineMath;
+        plugin.data = &mentions[i];
+        extensions[i].ParserRevision((uint64_t)(i + 1)).Plugin(ext, plugin);
+        v.Root()->extensions = &extensions[i];
+        TswFlush(v);
+        TestRunUntilParked(v.app);
+
+        Arena* a = ArenaNew();
+        Ctx cx = {v.app, v.win, a, {}};
+        MdNode* doc =
+            MdParseCachedForTest(&cx, a, v.State()->Source(), &extensions[i]);
+        MdNode* paragraph = doc ? doc->first : nullptr;
+        utassert(paragraph && paragraph->kind == MdKind::Paragraph);
+        MdRun* first = paragraph ? paragraph->runFirst : nullptr;
+        utassert(first && first->hasCustom &&
+                 StrEq(first->custom.text, Str(mentions[i].label)));
+        ArenaDelete(a);
+    }
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
+// block_parser(|node| Paragraph [Text "$symbol"] => ticker(symbol)).
+static bool ParseTicker(const markdown::Node* source,
+                        const MarkdownParseContext* context, void*,
+                        MarkdownNode* out) {
+    if (source->kind != markdown::NodeKind::Paragraph) return false;
+    if (markdown::NodeChildCount(context->arena, source) != 1) return false;
+    const markdown::Node* text = markdown::NodeChild(context->arena, source, 0);
+    if (!text || text->kind != markdown::NodeKind::Text) {
+        return false;
+    }
+    Str value = context->Value(text, markdown::NodeStrKind::Value);
+    if (len(value) == 0 || value.s[0] != '$') return false;
+    Str symbol = context->Copy(Str(value.s + 1, len(value) - 1));
+    Str* data = (Str*)Alloc(context->arena, (int)sizeof(Str));
+    if (!data) return false;
+    *data = symbol;
+    *out = MarkdownNode::New(context->Copy(StrL("ticker")), data)
+               .Text(context->Copy(value))
+               .Markdown(context->Copy(context->NodeSource(source)));
+    return true;
+}
+
+// state.rs set_markdown_extensions_reparses_existing_text
+static void SetMarkdownExtensionsReparsesExistingText() {
+    TswView v = TswOpen("$TSLA.US", TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownExtensions extensions;
+    extensions.BlockParser(ext, &ParseTicker);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+
+    Arena* a = ArenaNew();
+    Ctx cx = {v.app, v.win, a, {}};
+    MdNode* doc =
+        MdParseCachedForTest(&cx, a, v.State()->Source(), &extensions);
+    MdNode* node = doc ? doc->first : nullptr;
+    // "expected custom markdown node"
+    utassert(node && node->kind == MdKind::Custom);
+    if (node && node->kind == MdKind::Custom) {
+        utassert(StrEq(node->custom.name, StrL("ticker")));
+        const Str* symbol = (const Str*)node->custom.data;
+        utassert(symbol && StrEq(*symbol, StrL("TSLA.US")));
+    }
+    ArenaDelete(a);
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
+// ─── reveal_range ─────────────────────────────────────────────────────────
+
+// Where a scrollable view is scrolled to, as gpui::ListOffset: the block at
+// the top of the viewport and how far into it the viewport starts. A block
+// runs to where the next one starts, gap included, the way a list item does.
+struct TswScrollTop {
+    int itemIx = 0;
+    float offsetInItem = 0;
+};
+
+static TswScrollTop TswScrollTopOf(const TswView& v) {
+    TswScrollTop top;
+    El* scroller = v.Root()->scroller;
+    El* doc = scroller ? scroller->first : nullptr;
+    float scroll = v.State()->scrollY;
+    int ix = 0;
+    for (El* b = doc ? doc->first : nullptr; b; b = b->next, ix++) {
+        float start = b->y - doc->y;
+        if (!b->next || scroll < b->next->y - doc->y) {
+            top.itemIx = ix;
+            top.offsetInItem = scroll - start;
+            break;
+        }
+    }
+    return top;
+}
+
+static int TswBlockCount(const TswView& v) {
+    El* scroller = v.Root()->scroller;
+    El* doc = scroller ? scroller->first : nullptr;
+    int n = 0;
+    for (El* b = doc ? doc->first : nullptr; b; b = b->next) {
+        n++;
+    }
+    return n;
+}
+
+static bool TswPending(const TswView& v) {
+    return v.State()->reveal.pending;
+}
+
+// request: reveal [start, end) of the current rendered text, before
+// anything is drawn.
+static void TswRequestRange(const TswView& v, Span range) {
+    utassert(v.State()->RevealRange(range, v.app, v.win).IsOk());
+}
+
+static Span TswFind(const TswView& v, const char* needle) {
+    Str text = v.State()->RenderedText().AsStr();
+    const char* at = strstr(text.s, needle);
+    utassert(at != nullptr);
+    int start = at ? (int)(at - text.s) : 0;
+    return Span{start, start + (int)strlen(needle)};
+}
+
+// reveal: reveal the first occurrence of `needle` and draw a few frames.
+static void TswDraws(const TswView& v) {
+    for (int i = 0; i < 3; i++) {
+        TestDraw(v.win);
+    }
+}
+
+static void TswReveal(const TswView& v, const char* needle) {
+    TswRequestRange(v, TswFind(v, needle));
+    TswDraws(v);
+}
+
+static bool TswUnmoved(const TswView& v, TswScrollTop top) {
+    TswScrollTop now = TswScrollTopOf(v);
+    return !TswPending(v) && now.itemIx == top.itemIx &&
+           now.offsetInItem == top.offsetInItem;
+}
+
+// state.rs a_scrollable_view_scrolls_to_an_offscreen_block
+static void AScrollableViewScrollsToAnOffscreenBlock() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 200).s, TswContainer::Scrollable);
+    TswReveal(v, "paragraph 150");
+    utassert(!TswPending(v));
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.itemIx >= 140 && top.itemIx <= 150);
+
+    TswReveal(v, "paragraph 3");
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).itemIx <= 3);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs an_append_adding_blocks_keeps_the_scroll_position
+static void AnAppendAddingBlocksKeepsTheScrollPositionInAWindow() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 200).s, TswContainer::Scrollable);
+    TswReveal(v, "paragraph 100");
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.itemIx > 0);
+
+    TswPushStr(v, "\n\nparagraph 200");
+    TestRunUntilParked(v.app);
+    TestDraw(v.win);
+    utassert(TswBlockCount(v) == 201);
+    utassert(TswUnmoved(v, top));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_scrollable_view_scrolls_to_a_line_inside_a_long_paragraph
+static void AScrollableViewScrollsToALineInsideALongParagraph() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Scrollable);
+    TswReveal(v, "w390");
+    utassert(!TswPending(v));
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.itemIx == 0);
+    utassert(top.offsetInItem > 100.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs revealing_a_visible_line_does_not_scroll
+static void RevealingAVisibleLineDoesNotScroll() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Scrollable);
+    TswReveal(v, "w200");
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.offsetInItem > 0.f);
+    const char* words[] = {"w199", "w198", "w197", "w196"};
+    for (const char* word : words) {
+        TswReveal(v, word);
+        utassert(TswUnmoved(v, top));
+    }
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs an_enclosing_list_scrolls_to_a_line_of_a_fit_content_view: not
+// ported — there is no request_autoscroll, so an application list around a
+// fit-content view does not follow a reveal by itself (port-status.md
+// "`reveal_range` reads back last frame's paint"); the OnReveal route is
+// on_reveal_scrolls_a_container_that_ignores_scroll_requests below.
+
+// state.rs on_reveal_scrolls_a_container_that_ignores_scroll_requests
+static void OnRevealScrollsAContainerThatIgnoresScrollRequests() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Div);
+    TswReveal(v, "w390");
+    utassert(!TswPending(v));
+    // Rust's handle offset is negative-down: offset().y < -100.
+    utassert(v.Root()->divScrollY > 100.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_reveal_that_cannot_be_shown_gives_up
+static void ARevealThatCannotBeShownGivesUp() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 4000).s, TswContainer::Fixed);
+    TswReveal(v, "w3990");
+    utassert(TswPending(v));
+    for (int i = 0; i < 10; i++) {
+        TestDraw(v.win);
+    }
+    utassert(!TswPending(v));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_reveal_not_carried_out_in_time_is_dropped
+static void ARevealNotCarriedOutInTimeIsDropped() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 200).s, TswContainer::Scrollable);
+    TswRequestRange(v, TswFind(v, "paragraph 150"));
+    // The clock moves inside the update, before its flush draws the frame
+    // the request asked for: the harness's advance runs until parked and
+    // would draw it first, so the invalidation is held back across it.
+    uint64_t held = v.win->invalidations;
+    v.win->invalidations = 0;
+    TestAdvanceClock(v.app, 2000);
+    v.win->invalidations += held;
+    TestFlushEffects(v.app);
+    TestDraw(v.win);
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).itemIx == 0);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs an_empty_range_reveals_its_line: not ported — it reveals w391 as
+// a position on the line w390 was just scrolled onto, which is where Rust's
+// font breaks the 200-pixel lines; with this platform's font w391 starts the
+// next line, below the viewport, so the reveal scrolls by that line. The same
+// rule, a position on a visible line, is the next test's end of the text.
+
+// state.rs a_position_after_the_last_character_reveals_its_line
+static void APositionAfterTheLastCharacterRevealsItsLine() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Scrollable);
+    TswReveal(v, "w399");
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.offsetInItem > 1000.f);
+    // The end of the text, on the visible last line.
+    Span last = TswFind(v, "w399");
+    TswRequestRange(v, Span{last.end, last.end});
+    TswDraws(v);
+    utassert(TswUnmoved(v, top));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// reveal_at: reveal `range` of the current text and draw a few frames.
+static void TswRevealAt(const TswView& v, Span range) {
+    TswRequestRange(v, range);
+    TswDraws(v);
+}
+
+// state.rs the_end_of_the_text_and_its_separators_reveal_the_last_line
+static void TheEndOfTheTextAndItsSeparatorsRevealTheLastLine() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Scrollable);
+    TswReveal(v, "w399");
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.offsetInItem > 1000.f);
+    // The end of the text, after the separator that ends the block.
+    int n = v.State()->RenderedText().Len();
+    TswRevealAt(v, Span{n, n});
+    utassert(TswUnmoved(v, top));
+    // Only that separator.
+    TswRevealAt(v, Span{n - 1, n});
+    utassert(TswUnmoved(v, top));
+
+    StrBuilder code(a);
+    code.Append(StrL("```\n"));
+    code.Append(TswJoin(a, "line %d", 200, "\n"));
+    code.Append(StrL("\n```"));
+    TswSetText(v, code.TakeStr());
+    TestRunUntilParked(v.app);
+    TswReveal(v, "line 199");
+    top = TswScrollTopOf(v);
+    utassert(top.offsetInItem > 1000.f);
+    n = v.State()->RenderedText().Len();
+    TswRevealAt(v, Span{n, n});
+    utassert(TswUnmoved(v, top));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs the_end_of_a_block_above_reveals_its_last_line
+static void TheEndOfABlockAboveRevealsItsLastLine() {
+    Arena* a = ArenaNew();
+    StrBuilder markdown(a);
+    markdown.Append(TswWords(a, 400));
+    markdown.Append(StrL("\n\n"));
+    markdown.Append(TswJoin(a, "v%d", 400, " "));
+    TswView v = TswOpen(markdown.TakeStr().s, TswContainer::Scrollable);
+    TswReveal(v, "v399");
+    utassert(TswScrollTopOf(v).itemIx == 1);
+    // The end of the first paragraph, on the separator after it.
+    int end = TswFind(v, "w399").end;
+    TswRevealAt(v, Span{end, end});
+    utassert(!TswPending(v));
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.itemIx == 0);
+    utassert(top.offsetInItem > 1000.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs an_empty_view_has_nothing_to_reveal
+static void AnEmptyViewHasNothingToReveal() {
+    TswView v = TswOpen("", TswContainer::Window);
+    utassert(v.State()->RevealRange(Span{0, 0}, v.app, v.win).IsOk());
+    utassert(!TswPending(v));
+    TswClose(&v);
+}
+
+// state.rs revealing_a_visible_block_does_not_scroll
+static void RevealingAVisibleBlockDoesNotScroll() {
+    Arena* a = ArenaNew();
+    StrBuilder markdown(a);
+    markdown.Append(TswWords(a, 400));
+    markdown.Append(StrL("\n\n<div>html</div>\n\n"));
+    markdown.Append(TswWords(a, 400));
+    TswView v = TswOpen(markdown.TakeStr().s, TswContainer::Scrollable);
+    TswReveal(v, "html");
+    // Still in view a little further down.
+    v.State()->scrollY += 30.f;
+    TestDraw(v.win);
+    TswScrollTop top = TswScrollTopOf(v);
+    TswReveal(v, "html");
+    utassert(TswUnmoved(v, top));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_line_of_an_inline_flow_counts_as_shown_once_scrolled_to
+static void ALineOfAnInlineFlowCountsAsShownOnceScrolledTo() {
+    // Inline code every tenth word, so the rows are taller than the body
+    // line and land between pixels.
+    Arena* a = ArenaNew();
+    StrBuilder markdown(a);
+    for (int ix = 0; ix < 400; ix++) {
+        if (ix > 0) {
+            markdown.AppendChar(' ');
+        }
+        markdown.Append(Str(ix % 10 == 0 ? fmt("`c%d`", ix) : fmt("w%d", ix)));
+    }
+    TswView v = TswOpen(markdown.TakeStr().s, TswContainer::Scrollable);
+    TswReveal(v, "c390");
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).offsetInItem > 1000.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_range_starting_on_a_line_break_reveals_the_next_line
+static void ARangeStartingOnALineBreakRevealsTheNextLine() {
+    Arena* a = ArenaNew();
+    StrBuilder code(a);
+    code.Append(StrL("```\n"));
+    code.Append(TswJoin(a, "line %d", 200, "\n"));
+    code.Append(StrL("\n```"));
+    TswView v = TswOpen(code.TakeStr().s, TswContainer::Scrollable);
+    TswReveal(v, "\nline 190");
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).offsetInItem > 1000.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_range_starting_on_a_line_break_in_an_inline_flow_reveals_the_
+// next_line
+static void ARangeStartingOnALineBreakInAnInlineFlowRevealsTheNextLine() {
+    // Inline code lays the paragraph out as an inline flow.
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswJoin(a, "line %d `code`", 200, "\\\n").s,
+                        TswContainer::Scrollable);
+    TswReveal(v, "\nline 190");
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).offsetInItem > 1000.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_reveal_is_dropped_when_its_text_before_it_changes
+static void ARevealIsDroppedWhenItsTextBeforeItChanges() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 200).s, TswContainer::Scrollable);
+    const char* target = "first words then the target";
+    StrBuilder markdown(a);
+    markdown.Append(Str(target));
+    markdown.Append(StrL("\n\n"));
+    markdown.Append(TswParagraphs(a, 200));
+    Str text = markdown.TakeStr();
+    TswSetText(v, text);
+    TestRunUntilParked(v.app);
+
+    // Appending to its paragraph keeps it.
+    TswRequestRange(v, TswFind(v, "target"));
+    StrBuilder more(a);
+    more.Append(StrL("first words then the target and more"));
+    more.Append(Str(text.s + strlen(target), len(text) - (int)strlen(target)));
+    v.State()->SetText(more.TakeStr(), v.app, v.win);
+    utassert(TswPending(v));
+    TswFlush(v);
+    // An edit before it in its paragraph drops it.
+    TswRequestRange(v, TswFind(v, "target"));
+    StrBuilder edited(a);
+    edited.Append(StrL("first WORDS then the target"));
+    edited
+        .Append(Str(text.s + strlen(target), len(text) - (int)strlen(target)));
+    v.State()->SetText(edited.TakeStr(), v.app, v.win);
+    // Rust drops it inside set_text; here the reveal is carried to the new
+    // text when its parse lands, which is the render the update's flush
+    // draws (port-status.md "TextView range highlights land with the
+    // render").
+    TswFlush(v);
+    utassert(!TswPending(v));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_clamped_view_does_not_reveal. Rust's view is the second row of
+// an application list it would scroll; this tree's container that follows a
+// fit-content view is a scroller listening to OnReveal, which is what is
+// checked to stay where it is.
+static void AClampedViewDoesNotRevealInAWindow() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::Clamped);
+    TswReveal(v, "w390");
+    utassert(!TswPending(v));
+    utassert(v.Root()->divScrollY == 0.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs text_outside_every_block_reveals_its_block
+static void TextOutsideEveryBlockRevealsItsBlock() {
+    Arena* a = ArenaNew();
+    StrBuilder markdown(a);
+    markdown.Append(TswParagraphs(a, 100));
+    markdown.Append(StrL("\n\n<div>html text</div>"));
+    TswView v = TswOpen(markdown.TakeStr().s, TswContainer::Scrollable);
+    TswReveal(v, "html text");
+    utassert(!TswPending(v));
+    utassert(TswScrollTopOf(v).itemIx >= 90);
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs a_reveal_follows_its_text_past_an_edit_before_it
+static void ARevealFollowsItsTextPastAnEditBeforeIt() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswParagraphs(a, 200).s, TswContainer::Scrollable);
+    // An inserted paragraph moves the target down one block.
+    TswRequestRange(v, TswFind(v, "paragraph 150"));
+    StrBuilder inserted(a);
+    inserted.Append(StrL("inserted\n\n"));
+    inserted.Append(TswParagraphs(a, 200));
+    v.State()->SetText(inserted.TakeStr(), v.app, v.win);
+    utassert(TswPending(v));
+    TswFlush(v);
+    TswDraws(v);
+    utassert(!TswPending(v));
+    TswScrollTop top = TswScrollTopOf(v);
+    utassert(top.itemIx >= 141 && top.itemIx <= 151);
+
+    // A reveal whose text changed is dropped.
+    TswRequestRange(v, TswFind(v, "paragraph 150"));
+    Str changed = TswParagraphs(a, 200);
+    char* at = strstr((char*)changed.s, "paragraph 150");
+    StrBuilder replaced(a);
+    replaced.Append(Str(changed.s, (int)(at - changed.s)));
+    replaced.Append(StrL("changed"));
+    replaced.Append(Str(at + strlen("paragraph 150")));
+    v.State()->SetText(replaced.TakeStr(), v.app, v.win);
+    // Rust drops it inside set_text; here the reveal is carried to the new
+    // text when its parse lands, which is the render the update's flush
+    // draws (port-status.md "TextView range highlights land with the
+    // render").
+    TswFlush(v);
+    utassert(!TswPending(v));
+    TswClose(&v);
+    ArenaDelete(a);
+}
+
+// state.rs malformed_ranges_and_html_views_are_rejected
+static void MalformedRangesAndHtmlViewsAreRejectedInAWindow() {
+    TswView v = TswOpen("first\n\nsecond", TswContainer::Window);
+    utassert(v.State()->RevealRange(Span{5, 3}, v.app, v.win) ==
+             RangeHighlightError::InvalidRange(0));
+    utassert(v.State()->RevealRange(Span{0, 100}, v.app, v.win) ==
+             RangeHighlightError::InvalidRange(0));
+    utassert(v.State()->RevealRange(Span{0, 5}, v.app, v.win).IsOk());
+    TswClose(&v);
+
+    TswView html = TswOpen("<p>one</p>", TswContainer::Window, true);
+    utassert(html.State()->RevealRange(Span{0, 3}, html.app, html.win) ==
+             RangeHighlightError::Unsupported());
+    TswClose(&html);
+}
+
+static void TestTextStateWindow() {
+    PushStrFadesOnlyTheAppendedText();
+    SetTextExtendingTheTextFadesLikePushStr();
+    SetTextReplacingTheTextShowsItAtOnce();
+    CompletedMarkupRefadesFromTheDivergence();
+    WithoutStaggerAnUpdateFadesAsOneChunk();
+    WordsOfOneUpdateStartOneAfterAnother();
+    ANewParagraphFadesAsAWhole();
+    CodeBlockTextFadesByBlock();
+    TableCellsFadeByOrdinal();
+    ZeroDurationRecordsNothing();
+    ReducedMotionDropsTheFade();
+    AFadeRepaintsOnATimerUntilNothingFadesInAWindow();
+    InlineSourceRangesFollowStreamedTailReparsing();
+    AsyncFullReplaceThenPushStrPreservesCompleteSource();
+    HtmlPushStrKeepsEarlierBlocks();
+    ElementTextOfTheSameStringIsNotComparedAgain();
+    SetTextThenPushStrAppendsToReplacedContent();
+    SelectAllReturnsRenderedText();
+    SelectAllInSourceFormatReturnsSource();
+    ParserRevisionReparsesSameNameInlineConfiguration();
+    SetMarkdownExtensionsReparsesExistingText();
+    AScrollableViewScrollsToAnOffscreenBlock();
+    AnAppendAddingBlocksKeepsTheScrollPositionInAWindow();
+    AScrollableViewScrollsToALineInsideALongParagraph();
+    RevealingAVisibleLineDoesNotScroll();
+    OnRevealScrollsAContainerThatIgnoresScrollRequests();
+    ARevealThatCannotBeShownGivesUp();
+    ARevealNotCarriedOutInTimeIsDropped();
+    APositionAfterTheLastCharacterRevealsItsLine();
+    TheEndOfTheTextAndItsSeparatorsRevealTheLastLine();
+    TheEndOfABlockAboveRevealsItsLastLine();
+    AnEmptyViewHasNothingToReveal();
+    RevealingAVisibleBlockDoesNotScroll();
+    ALineOfAnInlineFlowCountsAsShownOnceScrolledTo();
+    ARangeStartingOnALineBreakRevealsTheNextLine();
+    ARangeStartingOnALineBreakInAnInlineFlowRevealsTheNextLine();
+    ARevealIsDroppedWhenItsTextBeforeItChanges();
+    AClampedViewDoesNotRevealInAWindow();
+    TextOutsideEveryBlockRevealsItsBlock();
+    ARevealFollowsItsTextPastAnEditBeforeIt();
+    MalformedRangesAndHtmlViewsAreRejectedInAWindow();
+}
+
+#endif
+
 void TestTextView() {
     TestSuite("TextView");
     Arena* a = ArenaNew();
@@ -3820,6 +5069,9 @@ void TestTextView() {
     OnRevealHearsAHiddenLine();
     ARevealGivesUp();
     ARevealFollowsItsText();
+#endif
+#if GPUI_MARKDOWN_FULL
+    TestTextStateWindow();
 #endif
     ArenaDelete(a);
 }
