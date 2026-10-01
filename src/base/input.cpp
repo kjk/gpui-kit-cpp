@@ -1983,6 +1983,9 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
     if (a < 0) {
         a = 0;
     }
+    if (a > n) {
+        a = n;
+    }
     if (b > n) {
         b = n;
     }
@@ -3976,8 +3979,13 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
         InputNormalizeTokenRange(s, &r.start, &r.end);
     }
     Str before = InputValue(s);
+    // range_from_utf16 clamps both ends into the document: a stale or
+    // out-of-range edit lands at the end rather than past it.
     if (r.start < 0) {
         r.start = 0;
+    }
+    if (r.start > len(before)) {
+        r.start = len(before);
     }
     if (r.end > len(before)) {
         r.end = len(before);
