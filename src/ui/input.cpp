@@ -161,7 +161,7 @@ Str AnyInputState::Value(Arena* a, App* app) const {
     if (kind == AnyInputKind::Otp) {
         OtpState* state = otp.Get(app);
         if (!state) return {};
-        Str value(state->value, state->len);
+        Str value = OtpValue(state);
         return state->masked ? MaskedInputValue(a, value) : StrDup(a, value);
     }
     if (!text) return {};
@@ -1323,7 +1323,7 @@ OtpInput* OtpInput::New(Ctx* cx, Str id, Entity<OtpState> state) {
     o->id = id;
     o->state = state;
     if (OtpState* s = state.Get(cx)) {
-        o->value = s->value;
+        o->value = OtpValue(s).s;
         o->len = s->len;
         o->slots = s->length;
         o->masked = s->masked;

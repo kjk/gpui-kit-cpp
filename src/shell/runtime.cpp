@@ -5302,7 +5302,8 @@ static JSValue NativeOtpValue(JSContext* ctx, JSValueConst, int argc,
     OtpState* state = entry->otp.Get(entry->app);
     if (!state)
         return JS_ThrowTypeError(ctx, "this OTP state has been released");
-    return JS_NewStringLen(ctx, state->value, (size_t)state->len);
+    Str value = OtpValue(state);
+    return JS_NewStringLen(ctx, value.s, (size_t)len(value));
 }
 
 static JSValue NativeOtpSetValue(JSContext* ctx, JSValueConst, int argc,
@@ -5323,14 +5324,7 @@ static JSValue NativeOtpSetValue(JSContext* ctx, JSValueConst, int argc,
     Arena* arena = ArenaNew();
     Str value;
     bool ok = state && JsString(ctx, argv[1], arena, &value);
-    if (ok) {
-        int n = len(value);
-        if (n > (int)sizeof(state->value) - 1)
-            n = (int)sizeof(state->value) - 1;
-        if (n > 0) memcpy(state->value, value.s, (size_t)n);
-        state->len = n;
-        state->value[n] = 0;
-    }
+    if (ok) OtpSetValue(state, value);
     ArenaDelete(arena);
     if (!ok) return JS_EXCEPTION;
     AppInvalidate(host.GetWindow());

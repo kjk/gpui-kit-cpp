@@ -2429,8 +2429,7 @@ static void TheUiInputFacadeKeepsTheSourceShapes() {
 
     Entity<OtpState> otp = EntityNewState<OtpState>(&app);
     OtpState* otpState = otp.Get(&app);
-    memcpy(otpState->value, "42", 2);
-    otpState->len = 2;
+    OtpSetValue(otpState, StrL("42"));
     component::AnyInputState anyOtp = component::AnyInputState::FromOtp(otp);
     utassert(anyOtp.AsOtp().id == otp.id && !anyOtp.AsEditor());
     utassert(StrEqI(anyOtp.Value(a, &app), "42"));

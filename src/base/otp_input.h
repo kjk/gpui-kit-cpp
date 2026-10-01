@@ -23,10 +23,11 @@ struct OtpEvent {
 // an ASCII digit, so `len` counts characters and bytes alike.
 struct OtpState {
     Entity<OtpState> self = {};
-    // Shell exposes the upstream retained-state limit of 64 cells. Keep the
-    // terminating byte in the state so the native and script paths share one
-    // bound instead of silently truncating after the old story-only limit.
-    char value[65] = {};
+    // The value, `len` bytes of it followed by a NUL once there is any. It
+    // grows as needed: Rust's OtpState holds a SharedString and bounds its
+    // length nowhere (gpui-shell's own OtpState.new asks for 1 to 64; the
+    // component catalog's does not). Read it with OtpValue.
+    Vec<char> value;
     int len = 0;
     int length = 6;
     bool masked = false;
@@ -44,6 +45,12 @@ struct OtpState {
     // hashing the element's name a second time and comparing.
     FocusHandle focus = {};
 };
+
+// OtpState::value: the code so far.
+Str OtpValue(const OtpState* s);
+// OtpState::set_value: the whole of `value`, whatever it holds and however
+// long, as Rust stores the string it is handed.
+void OtpSetValue(OtpState* s, Str value);
 
 // to_digit_char: an ASCII digit, or a full-width one folded onto it. Answers 0
 // for anything else, which is what Rust's Option<char> None means here.

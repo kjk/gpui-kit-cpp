@@ -22,12 +22,12 @@ static void OnlyDigitsAreTaken() {
     OtpState s;
     utassert(OtpEditValue(&s, 0, '1'));
     utassert(OtpEditValue(&s, 0, '2'));
-    utassert(base::StrEqI(Str(s.value), "12"));
+    utassert(base::StrEqI(OtpValue(&s), "12"));
     // A letter, a space and a symbol all leave the value where it was.
     utassert(!OtpEditValue(&s, 0, 'a'));
     utassert(!OtpEditValue(&s, 0, ' '));
     utassert(!OtpEditValue(&s, 0, '-'));
-    utassert(base::StrEqI(Str(s.value), "12"));
+    utassert(base::StrEqI(OtpValue(&s), "12"));
 }
 
 static void FullWidthDigitsFoldOntoPlainOnes() {
@@ -35,7 +35,7 @@ static void FullWidthDigitsFoldOntoPlainOnes() {
     // U+FF13 and U+FF17, which an IME produces.
     utassert(OtpEditValue(&s, 0, 0xFF13));
     utassert(OtpEditValue(&s, 0, 0xFF17));
-    utassert(base::StrEqI(Str(s.value), "37"));
+    utassert(base::StrEqI(OtpValue(&s), "37"));
     utassert(OtpDigitChar(0xFF10) == '0');
     utassert(OtpDigitChar(0xFF19) == '9');
     utassert(OtpDigitChar(0xFF1A) == 0);
@@ -46,9 +46,9 @@ static void BackspacePopsTheLastDigit() {
     OtpEditValue(&s, 0, '4');
     OtpEditValue(&s, 0, '5');
     utassert(OtpEditValue(&s, KeyBack, 0));
-    utassert(base::StrEqI(Str(s.value), "4"));
+    utassert(base::StrEqI(OtpValue(&s), "4"));
     utassert(OtpEditValue(&s, KeyBack, 0));
-    utassert(base::StrEqI(Str(s.value), ""));
+    utassert(base::StrEqI(OtpValue(&s), ""));
     // Nothing left to pop.
     utassert(!OtpEditValue(&s, KeyBack, 0));
 }
@@ -60,11 +60,36 @@ static void AFullCodeRefusesMore() {
     utassert(OtpEditValue(&s, 0, '2'));
     utassert(OtpEditValue(&s, 0, '3'));
     utassert(OtpEditValue(&s, 0, '4'));
-    utassert(base::StrEqI(Str(s.value), "1234"));
+    utassert(base::StrEqI(OtpValue(&s), "1234"));
     // The run is not shifted along; the digit is simply dropped.
     utassert(!OtpEditValue(&s, 0, '5'));
-    utassert(base::StrEqI(Str(s.value), "1234"));
+    utassert(base::StrEqI(OtpValue(&s), "1234"));
     utassert(s.len == 4);
+}
+
+// OtpState::new takes any length and set_value any string: a code longer
+// than 64 cells fills to its own length, and set_value keeps the whole of
+// what it is handed.
+static void ALongCodeFillsToItsOwnLength() {
+    OtpState s;
+    s.length = 100;
+    for (int i = 0; i < 100; i++) {
+        utassert(OtpEditValue(&s, 0, (uint32_t)('0' + i % 10)));
+    }
+    utassert(!OtpEditValue(&s, 0, '1'));
+    utassert(s.len == 100 && len(OtpValue(&s)) == 100);
+    utassert(OtpValue(&s).s[99] == '9' && OtpValue(&s).s[100] == 0);
+    utassert(OtpEditValue(&s, KeyBack, 0));
+    utassert(len(OtpValue(&s)) == 99);
+
+    char big[200];
+    for (int i = 0; i < 200; i++) {
+        big[i] = (char)('0' + i % 10);
+    }
+    OtpSetValue(&s, Str(big, 200));
+    utassert(s.len == 200 && OtpValue(&s).s[199] == '9');
+    OtpSetValue(&s, Str{});
+    utassert(s.len == 0 && base::StrEqI(OtpValue(&s), ""));
 }
 
 static void EditingEmitsChangeAndThenComplete() {
@@ -102,5 +127,6 @@ void TestOtpInput() {
     FullWidthDigitsFoldOntoPlainOnes();
     BackspacePopsTheLastDigit();
     AFullCodeRefusesMore();
+    ALongCodeFillsToItsOwnLength();
     EditingEmitsChangeAndThenComplete();
 }

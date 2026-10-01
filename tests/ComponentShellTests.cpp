@@ -2675,6 +2675,21 @@ void RetainedOtpRejectsAnOrdinaryChild() {
                    StrL("OtpInput does not accept children")));
 }
 
+// OtpState(length): Rust's takes any positive length, so the catalog's is
+// not held to the 64 cells gpui-shell's own OtpState.new keeps.
+void RetainedOtpTakesMoreThanSixtyFourCells() {
+    Host host(
+        StrL("import { View } from 'gpui-kit';\n"
+             "import { OtpInput, OtpState } from 'gpui-component';\n"
+             "export default class LongOtp extends View {\n"
+             "  init() { this.otp = OtpState(80); }\n"
+             "  render() { return new OtpInput(this.otp); }\n"
+             "}\n"));
+    El* root = host.Render();
+    utassert(root && len(host.ViewError()) == 0);
+    utassert(!FindTextPrefix(root, StrL("Failed to render")));
+}
+
 // retained_state_constructor_rejects_rounded_overflow_from_js
 void RetainedStateConstructorRejectsRoundedOverflowFromJs() {
     Host host(
@@ -7516,6 +7531,7 @@ void TestComponentShell() {
     OtpLeafContractRejectsOrdinaryChildren();
     AllRetainedFormBindingsMaterializeAcrossFrames();
     RetainedOtpRejectsAnOrdinaryChild();
+    RetainedOtpTakesMoreThanSixtyFourCells();
     RetainedStateConstructorRejectsRoundedOverflowFromJs();
     ComponentStateExportsDoNotShadowGpuiBaseExports();
 

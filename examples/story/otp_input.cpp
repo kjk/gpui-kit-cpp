@@ -29,7 +29,7 @@ void OtpInputStory::OnOtp(OtpInputStory* self, Ctx* cx, const OtpEvent* ev) {
     int n = state->len < (int)sizeof(self->otpValue) - 1
                 ? state->len
                 : (int)sizeof(self->otpValue) - 1;
-    memcpy(self->otpValue, state->value, n);
+    memcpy(self->otpValue, OtpValue(state).s, n);
     self->otpValue[n] = 0;
     Notify(cx);
 }
@@ -39,9 +39,11 @@ static Entity<OtpState> SeedOtp(Ctx* cx, const char* value, int slots) {
     OtpState* s = e.Get(cx);
     if (s) {
         s->length = slots;
-        for (int i = 0; value && value[i] && s->len < slots; i++) {
-            s->value[s->len++] = value[i];
+        int n = 0;
+        while (value && value[n] && n < slots) {
+            n++;
         }
+        OtpSetValue(s, Str((char*)value, n));
     }
     return e;
 }

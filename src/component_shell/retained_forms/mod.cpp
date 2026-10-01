@@ -222,17 +222,16 @@ static bool NewOtpState(shell::StateBuild* build, const ComponentArgument* args,
     Str error;
     if (!PositiveUsize(args, count, "OtpState", &length, &error))
         return build->Fail(error);
-    // OtpState holds its cells inline, 64 at most (the limit gpui-base's own
-    // OtpState.new keeps); Rust's has no such bound.
-    if (length > 64)
-        return build->Fail(StrL("OtpState length cannot exceed 64 cells"));
+    // Rust's OtpState::new takes any length (gpui-shell's own OtpState.new
+    // keeps to 64; this one does not). The cells are counted in an int, and
+    // no window lays out more of them than that.
     EntityState<OtpState>* state = build->New<EntityState<OtpState>>();
     state->app = build->app;
     state->entity = EntityNewState<OtpState>(build->app);
     OtpState* otp = state->entity.Get(build->app);
     if (!otp) return build->Fail(StrL("OtpState could not be created"));
     otp->self = state->entity;
-    otp->length = (int)length;
+    otp->length = length > (uint64_t)INT32_MAX ? INT32_MAX : (int)length;
     otp->focus = FocusHandleNew(build->app);
     return true;
 }

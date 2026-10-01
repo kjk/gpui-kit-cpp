@@ -2226,7 +2226,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             if (i < state->len) {
                 cell->Child(TextEl(cx->a, state->masked
                                               ? StrL("•")
-                                              : Str(state->value + i, 1)));
+                                              : Str(state->value.els + i, 1)));
             } else if (i == active && caret && caretStyle) {
                 El* mark = Div(cx->a);
                 ApplyStyleNode(cx->a, caretStyle, mark, &ignored, error);

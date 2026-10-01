@@ -23,13 +23,39 @@ char OtpDigitChar(uint32_t c) {
     return 0;
 }
 
+Str OtpValue(const OtpState* s) {
+    if (!s || s->len <= 0 || !s->value.els) {
+        return StrL("");
+    }
+    return Str(s->value.els, s->len);
+}
+
+// `len` bytes and the NUL after them.
+static void OtpTerminate(OtpState* s) {
+    VecResize(s->value, s->len);
+    VecAppend(s->value, (char)0);
+}
+
+void OtpSetValue(OtpState* s, Str value) {
+    if (!s) {
+        return;
+    }
+    VecClear(s->value);
+    int n = len(value);
+    if (n > 0) {
+        VecAppendN(s->value, value.s, n);
+    }
+    s->len = n > 0 ? n : 0;
+    OtpTerminate(s);
+}
+
 bool OtpEditValue(OtpState* s, int key, uint32_t ch) {
     if (key == KeyBack) {
         if (s->len == 0) {
             return false;
         }
         s->len--;
-        s->value[s->len] = 0;
+        OtpTerminate(s);
         return true;
     }
     // Rust reads the keystroke's own name first — a digit key is called "4" —
@@ -44,14 +70,13 @@ bool OtpEditValue(OtpState* s, int key, uint32_t ch) {
     }
     // Rust returns None once the code is full, so a further digit is dropped
     // rather than shifting the run.
-    int cap = s->length < (int)sizeof(s->value) - 1 ? s->length
-                                                    : (int)sizeof(s->value) - 1;
-    if (s->len >= cap) {
+    if (s->len >= s->length) {
         return false;
     }
-    s->value[s->len] = digit;
+    VecResize(s->value, s->len);
+    VecAppend(s->value, digit);
     s->len++;
-    s->value[s->len] = 0;
+    OtpTerminate(s);
     return true;
 }
 
