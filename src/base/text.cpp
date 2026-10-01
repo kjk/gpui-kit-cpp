@@ -1530,6 +1530,20 @@ static void AddCustomInline(MdBuild* b, const MarkdownNode& custom,
     r->custom.name = StrDup(b->a, custom.name);
     r->custom.text = StrDup(b->a, custom.text);
     r->custom.markdown = StrDup(b->a, custom.markdown);
+    // with_inline_source: an object that names no text or Markdown of its
+    // own stands for the source it was parsed from — what as_markdown and
+    // the copy answer, `$x^2$` for a formula that only set its text.
+    Span span = r->custom.span;
+    if (r->custom.hasSpan && span.start >= 0 && span.start <= span.end &&
+        span.end <= len(b->source)) {
+        Str source = Str(b->source.s + span.start, span.end - span.start);
+        if (len(r->custom.text) == 0) {
+            r->custom.text = StrDup(b->a, source);
+        }
+        if (len(r->custom.markdown) == 0) {
+            r->custom.markdown = StrDup(b->a, source);
+        }
+    }
     // Paragraph::text includes an inline object's atomic plain-text value.
     // Keeping it on the run also makes table sizing, dumping and accessibility
     // see the same content as the renderer.
