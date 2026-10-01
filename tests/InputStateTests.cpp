@@ -4227,87 +4227,127 @@ static void TextareaTokenGapsBreakAtUtf8Characters() {
     delete win;
 }
 
-// blink_cursor.rs. The clock is the window's timer list here: a flip is the
-// armed interval firing, and a loop that has ended is one with nothing armed.
+// blink_cursor.rs mod tests, on the test platform: the cursor's timers are
+// the window's, and TestAdvanceClock is the executor's advance_clock. Rust
+// observes the cursor entity's notifies; a notify here repaints the window it
+// came from, so the frames drawn are what is counted.
 namespace {
+struct BlinkRoot {
+    static El* Render(BlinkRoot*, Ctx* cx) { return Div(cx->a); }
+};
+
 struct BlinkFixture {
-    App app;
+    App* app = nullptr;
     Window* win = nullptr;
     EntityId handle = {};
 
     BlinkFixture() {
-        win = new Window();
-        win->app = &app;
+        app = TestAppNew();
+        win = TestWindowOpen(app, EntityNew<BlinkRoot>(app));
     }
-    ~BlinkFixture() {
-        delete win;
-        EntityDropAll(&app);
+    ~BlinkFixture() { TestAppFree(app); }
+    bool Visible() const { return BlinkVisible(app, handle); }
+    void Start() {
+        BlinkStart(app, win, &handle);
+        TestRunUntilParked(app);
     }
-    BlinkCursor* Cursor() {
-        Entity<BlinkCursor> e;
-        e.id = handle;
-        return e.Get(&app);
+    void Pause() {
+        BlinkPause(app, win, &handle);
+        TestRunUntilParked(app);
     }
-    // One INTERVAL of the clock: the armed interval fires.
-    void Flip() {
-        Ctx cx = {&app, win, nullptr, handle};
-        TickEvent tick = {};
-        BlinkCursor::OnFlip(Cursor(), &cx, &tick);
+    void Stop() {
+        BlinkStop(app, win, &handle);
+        TestRunUntilParked(app);
+    }
+    void Advance(double ms) {
+        TestAdvanceClock(app, ms);
+        TestRunUntilParked(app);
     }
 };
+
+const double kIntervalMs = 500;
+const double kPauseDelayMs = 300;
 } // namespace
 
-// pausing_a_cursor_that_is_not_blinking_does_not_start_it
-static void PausingACursorThatIsNotBlinkingDoesNotStartIt() {
+// blink_cursor.rs repeated_pauses_keep_cursor_visible_until_idle
+static void RepeatedPausesKeepCursorVisibleUntilIdle() {
     BlinkFixture f;
-    // Never focused, so nothing started it: what a programmatic write to an
-    // unfocused input does.
-    BlinkPause(&f.app, f.win, &f.handle);
-    utassert(!BlinkVisible(&f.app, f.handle));
-    utassert(len(f.win->timers) == 0);
+    utassert(!f.Visible());
+    // Only a focused input blinks, and only a blinking cursor pauses.
+    f.Start();
+    for (int i = 0; i < 5; i++) {
+        f.Pause();
+        f.Advance(200);
+        utassert(f.Visible());
+    }
+    f.Advance(100);
+    utassert(!f.Visible());
+    f.Advance(kIntervalMs);
+    utassert(f.Visible());
 }
 
-// test_set_value_on_unfocused_input_stays_quiet: seeding a field that does
-// not have the keyboard arms no caret timer, so nothing repaints after it.
-// blurring_a_paused_cursor_leaves_the_next_focus_blinking
+// blink_cursor.rs pausing_a_cursor_that_is_not_blinking_does_not_start_it
+static void PausingACursorThatIsNotBlinkingDoesNotStartIt() {
+    // Never focused, so `start` was never called.
+    BlinkFixture f;
+    // What a programmatic `set_value` on an unfocused input does.
+    f.Pause();
+    f.Advance(kPauseDelayMs);
+    utassert(!f.Visible());
+
+    uint64_t frames = f.win->frameSeq;
+    f.Advance(kIntervalMs * 6);
+    // "a cursor that was never started is blinking, and every blink repaints
+    // the view"
+    utassert(f.win->frameSeq == frames);
+}
+
+// blink_cursor.rs blurring_a_paused_cursor_leaves_the_next_focus_blinking
 static void BlurringAPausedCursorLeavesTheNextFocusBlinking() {
     BlinkFixture f;
-    BlinkStart(&f.app, f.win, &f.handle);
+    f.Start();
     // Typing pauses the blink, then the input is blurred before the pause
     // elapses: tabbing away right after a keystroke does exactly this.
-    BlinkPause(&f.app, f.win, &f.handle);
-    BlinkStop(&f.app, f.win, &f.handle);
-    utassert(!BlinkVisible(&f.app, f.handle));
+    f.Pause();
+    f.Stop();
+    utassert(!f.Visible());
 
     // Focusing again shows the cursor and blinks it, rather than leaving a
     // stale pause to swallow the start.
-    BlinkStart(&f.app, f.win, &f.handle);
-    utassert(BlinkVisible(&f.app, f.handle));
-    f.Flip();
-    utassert(!BlinkVisible(&f.app, f.handle));
+    f.Start();
+    utassert(f.Visible());
+    f.Advance(kIntervalMs);
+    utassert(!f.Visible());
 }
 
-// stopping_a_paused_cursor_ends_the_blink_loop
+// blink_cursor.rs stopping_a_paused_cursor_ends_the_blink_loop
 static void StoppingAPausedCursorEndsTheBlinkLoop() {
     BlinkFixture f;
-    BlinkStart(&f.app, f.win, &f.handle);
-    BlinkPause(&f.app, f.win, &f.handle);
-    BlinkStop(&f.app, f.win, &f.handle);
-    // A stopped cursor keeps nothing armed that could blink it.
-    utassert(f.Cursor()->timer == 0 && len(f.win->timers) == 0);
-    utassert(!BlinkVisible(&f.app, f.handle));
+    f.Start();
+    f.Pause();
+    f.Stop();
 
-    BlinkStart(&f.app, f.win, &f.handle);
-    utassert(BlinkVisible(&f.app, f.handle));
+    uint64_t frames = f.win->frameSeq;
+    f.Advance(3000);
+    utassert(!f.Visible());
+    // "a stopped cursor kept blinking"
+    utassert(f.win->frameSeq == frames);
+
+    f.Start();
+    utassert(f.Visible());
 }
 
-// stopping_a_blinking_cursor_ends_the_blink_loop
+// blink_cursor.rs stopping_a_blinking_cursor_ends_the_blink_loop
 static void StoppingABlinkingCursorEndsTheBlinkLoop() {
     BlinkFixture f;
-    BlinkStart(&f.app, f.win, &f.handle);
-    BlinkStop(&f.app, f.win, &f.handle);
-    utassert(f.Cursor()->timer == 0 && len(f.win->timers) == 0);
-    utassert(!BlinkVisible(&f.app, f.handle));
+    f.Start();
+    f.Stop();
+
+    uint64_t frames = f.win->frameSeq;
+    f.Advance(3000);
+    utassert(!f.Visible());
+    // "a stopped cursor kept blinking"
+    utassert(f.win->frameSeq == frames);
 }
 
 // kit/tests/input_focus.rs (#3253): each input is one tab stop, so Tab and
@@ -5422,6 +5462,7 @@ void TestInputState() {
     WhitespaceMarksFollowTheShapedGlyphs();
     IndentGuidesStandAtTheMeasuredIndentWidth();
     EachRowCarriesItsIndentGuides();
+    RepeatedPausesKeepCursorVisibleUntilIdle();
     PausingACursorThatIsNotBlinkingDoesNotStartIt();
     SetValueOnUnfocusedInputStaysQuiet();
     BlurringAPausedCursorLeavesTheNextFocusBlinking();
