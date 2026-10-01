@@ -10,6 +10,11 @@ static void RemoveTip(TooltipStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
+static void RestoreTip(TooltipStory* self, Ctx* cx, const ClickEvent*) {
+    self->tipRemoved = false;
+    Notify(cx);
+}
+
 El* TooltipStory::Render(TooltipStory* self, Ctx* cx) {
     Arena* a = cx->a;
     El* page = Div(a)->FlexCol()->Gap(12)->W(kFill);
@@ -98,8 +103,11 @@ El* TooltipStory::Render(TooltipStory* self, Ctx* cx) {
     El* rem = StorySection(cx, "Removed trigger",
                            "Dismiss cleanly when the trigger leaves the view.");
     if (self->tipRemoved) {
-        StorySectionAdd(rem, StoryTxt(cx, StrL("Trigger removed"), 13,
-                                      ThemeNow(cx->app).mutedFg));
+        StorySectionAdd(
+            rem, component::Button::New(cx, StrL("restore-tooltip-trigger"))
+                     ->Label(StrL("Restore button"))
+                     ->OnClick(Listen(cx, &RestoreTip))
+                     ->IntoEl());
     } else {
         StorySectionAdd(
             rem,
