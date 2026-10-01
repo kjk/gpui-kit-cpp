@@ -771,10 +771,10 @@ static uint16_t InputFontWord(const InputEditorStyle& style) {
 
 // One text run between a row's chips: the whole gap, shaped as one fragment
 // the way Rust shapes it. Where the row breaks is the wrap map's business.
-static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
-                             const InputEditorStyle& style, float font,
-                             float lineMult, Str slice, int docStart,
-                             const Selection& sel, bool caret, int cursor) {
+static void EmitTokenTextRun(El* row, Arena* a, const InputEditorStyle& style,
+                             float font, float lineMult, Str slice,
+                             int docStart, const Selection& sel, bool caret,
+                             int cursor) {
     if (!row || len(slice) == 0) {
         return;
     }
@@ -782,10 +782,12 @@ static void EmitTokenTextRun(El* row, Arena* a, InputState* state,
                     ->Font(font)
                     ->LineHeight(lineMult)
                     ->Fg(style.foreground)
-                    ->BindInput(state)
                     // The wrap map already fit the row to the column; a run
                     // that shrank would slide under the chip beside it.
                     ->Shrink0();
+    // Not bound to the field: a run beside a chip is not where the line
+    // starts, so it must not be the box the field measures from. The row it
+    // is in takes the press.
     InputFace(piece, style);
     int lo = sel.start - docStart;
     int hi = sel.end - docStart;
@@ -827,7 +829,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                 break;
             }
             if (span.start > at) {
-                EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
+                EmitTokenTextRun(row, cx->a, style, font, lineMult,
                                  Str(run.s + (at - start), span.start - at), at,
                                  sel, caret, cursor);
             }
@@ -836,7 +838,7 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
         }
     }
     if (at < end) {
-        EmitTokenTextRun(row, cx->a, state, style, font, lineMult,
+        EmitTokenTextRun(row, cx->a, style, font, lineMult,
                          Str(run.s + (at - start), end - at), at, sel, caret,
                          cursor);
     }
@@ -915,10 +917,21 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         mark.start = MaskedOffset(text, mark.start);
         mark.end = MaskedOffset(text, mark.end);
     }
+    // The token row's own box is the field's lastBounds, where the line
+    // starts: the hit test and the caret walk its text runs and chips from
+    // there, since no one run's box says where the line is.
+    state->chipLine = false;
     if (InputTokensVisible(state) && !masked) {
-        AppendTokenPieces(row, cx, state, style, font, lineMult, kInputLineH,
+        // The chips' widths, which the hit test and the caret step over.
+        // One line does not wrap, so nothing caps them.
+        MeasureTokenWidths(cx, state, style, font, kInputLineH, 0);
+        state->chipLine = true;
+        state->lastFont = font;
+        El* line = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->BoundsOut(
+            &state->lastBounds);
+        AppendTokenPieces(line, cx, state, style, font, lineMult, kInputLineH,
                           run, 0, sel, caret, cursor);
-        return row;
+        return row->Child(line);
     }
     El* el = TextEl(a, run)
                  ->Font(font)
@@ -1320,22 +1333,63 @@ static void BuildRangeDecorationPaths(PaintCtx* ctx, RangeDecorationPaint* p,
 }
 
 // What the editor's column paints before its rows: the active line's wash and
-// then every range decoration, each path once for the whole editor.
+// then every range decoration, each path once for the whole editor. It also
+// keeps what the column was built from, for RewrapEditorColumn to build it
+// again.
 struct EditorUnderlay {
     InputState* state = nullptr;
     RangeDecorationPaint* decorations = nullptr;
     El* activeLine = nullptr; // the caret line's band, gutter and all
     Rgba activeColor = {};
     float activeBleedL = 0;
+    Ctx cx = {};
+    InputEditorStyle projected = {};
+    bool lineNumbers = false;
 };
+
+// element.rs prepaint: wrap_width comes off the bounds layout has just given
+// the editor, and the lines are wrapped to it in the frame that lays them
+// out. The rows here are elements, built before layout, so they are wrapped
+// to the column the last frame laid out. When this frame's column came out
+// another width -- the window was resized, or this is the field's first
+// frame -- the column is built again at prepaint, at the width it now has,
+// and its rows laid out inside its box. The box itself is the one layout
+// gave it: a column whose height moved asks for one more frame so that what
+// holds it can follow, which is the frame Rust's auto-grow takes as well
+// (request_layout sizes from mode.rows(), last frame's wrap).
+static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
+    EditorUnderlay* u = (EditorUnderlay*)user;
+    InputState* s = u ? u->state : nullptr;
+    if (!s || !s->softWrap || e->w <= 0 || e->w == s->wrap.measuredWidth ||
+        LayoutInScratchPass()) {
+        return;
+    }
+    s->contentBox = e->Bounds();
+    Ctx cx = u->cx;
+    El* fresh = Textarea::New(&cx, s, u->projected, u->lineNumbers);
+    if (!fresh || !fresh->first) {
+        return;
+    }
+    float was = e->h;
+    e->first = fresh->first;
+    e->last = fresh->last;
+    e->customPaint = fresh->customPaint;
+    e->customUser = fresh->customUser;
+    IdsCollectChildren(e);
+    LayoutEl(ctx, e, e->x, e->y, e->w, 0, e->laidFont, e->style.color);
+    if (e->h != was && ctx->window) {
+        AppInvalidate(ctx->window);
+    }
+}
 
 static void PaintEditorUnderlay(PaintCtx* ctx, El* e, void* user) {
     EditorUnderlay* u = (EditorUnderlay*)user;
     if (!u) {
         return;
     }
-    // The rows were wrapped to the column the frame before laid out; a
-    // column that came out another width wraps again in the next frame.
+    // RewrapEditorColumn has wrapped the rows to this column already, unless
+    // the column was laid out inside a measure, which it leaves alone; the
+    // frame after wraps to it then.
     InputState* s = u->state;
     if (s && s->softWrap && e->w > 0 && e->w != s->wrap.measuredWidth &&
         ctx->window) {
@@ -1478,8 +1532,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // RIGHT_MARGIN. Rust has the bounds in prepaint, the frame it wraps in;
     // the rows here are built before layout, so the bounds are the column
     // the last frame laid out, and a column that came out a different width
-    // asks for the frame after (PaintEditorUnderlay). Until the first frame
-    // has one, nothing wraps.
+    // is built again at prepaint (RewrapEditorColumn). Until the first frame
+    // has one, this build wraps nothing and that one does.
     bool wrap = false;
     {
         float colW = state->contentBox.w;
@@ -1850,8 +1904,14 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->decorations = rangePaint;
         underlay->activeColor = style.activeLine;
         underlay->activeBleedL = style.activeLineBleedL;
+        underlay->cx = *cx;
+        underlay->projected = projected;
+        underlay->lineNumbers = lineNumbers;
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
+        if (state->softWrap) {
+            col->prePaint = &RewrapEditorColumn;
+        }
         if (painted) {
             painted->underlay = underlay;
         }
@@ -1919,6 +1979,9 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
                 // Overlay chips instead of the raw token text, matching
                 // Input::New: the row's text runs and its atomic chips, one
                 // visual row of what the wrap map broke the line into.
+                // Its runs are not bound to the field, so none of them says
+                // what size the text is drawn at.
+                state->lastFont = font;
                 el = Div(a)->FlexRow()->ItemsCenter()->H(lineH);
                 AppendTokenPieces(el, cx, state, style, font, lineMult, lineH,
                                   line, start, sel, caret, cursor);
@@ -2095,6 +2158,11 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // against; every row below it is a whole lastLineH further down.
             if (row == 0 && firstSeg) {
                 el->BindInput(state);
+                if (tokenLine) {
+                    // A token row draws no run of its own to measure from;
+                    // its box starts where the text column does.
+                    el->BoundsOut(&state->lastBounds);
+                }
             }
             int lo = sel.start - start;
             int hi = sel.end - start;
@@ -7359,6 +7427,46 @@ static void PendingPasteResolved(void*, App* app, Window* win,
     }
 }
 
+// state.rs's ActivateToken listener: the token the selection is exactly,
+// handed to on_token_click as a keyboard click on the box it was drawn in
+// (token_activation). Nothing happens without one, or while the field is
+// disabled or its tokens are not shown.
+static void ActivateSelectedToken(InputState* s, App* app, Window* win) {
+    InlineTokenStore* store = s->tokens;
+    const Vec<InlineTokenSpan>* spans = InputTokens(s);
+    if (!store || !store->click || !spans || s->disabled ||
+        !InputTokensVisible(s)) {
+        return;
+    }
+    Selection sel = s->selectedRange;
+    if (sel.start > sel.end) {
+        sel = {sel.end, sel.start};
+    }
+    for (int i = 0; i < spans->len; i++) {
+        const InlineTokenSpan& span = (*spans)[i];
+        if (span.start != sel.start || span.end != sel.end) {
+            continue;
+        }
+        Bounds bounds = {};
+        if (!InputRangeToBounds(s, win, {span.start, span.end}, &bounds)) {
+            return;
+        }
+        InlineTokenClickEvent ev = {};
+        ev.span = span;
+        ev.bounds = bounds;
+        ev.click.keyboard = true;
+        ev.click.el = bounds;
+        Ctx cx = {};
+        cx.app = app;
+        cx.win = win;
+        cx.a = win ? win->frameArena : nullptr;
+        // The listener may write the field — a reentrant activation — so
+        // nothing of `s` is read after it.
+        store->click(&ev, &cx, store->clickUser);
+        return;
+    }
+}
+
 bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                   bool shift) {
     if (!s) {
@@ -7750,6 +7858,9 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             }
             InputToggleCodeActions(s, app, win);
             return true;
+        case InputAction::ActivateToken:
+            ActivateSelectedToken(s, app, win);
+            return true;
         case InputAction::Search:
         case InputAction::Replace:
             // on_action_search / on_action_replace. An input that is not
@@ -8101,6 +8212,13 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     }
     float font = s->lastFont > 0 ? s->lastFont : 14.f;
     if (InputIsSingleLine(s)) {
+        // A line with chips in it: a press on a chip lands before it on its
+        // left half and after it on its right, as in a wrapped row.
+        if (s->chipLine) {
+            WrapRowSpan r;
+            r.hi = len(t);
+            return WrapRowIndexAt(ctx, s, t, r, x - b.x);
+        }
         if (x <= b.x) {
             return 0;
         }
@@ -9436,6 +9554,13 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         if (b.w <= 0 && b.h <= 0) {
             return false;
         }
+        if (s->chipLine) {
+            WrapRowSpan r;
+            r.hi = len(text);
+            float x = WrapRowX(ctx, s, text, r, offset);
+            *out = {b.x + x, b.y + (b.h - lineH) * 0.5f};
+            return true;
+        }
         Str run = text;
         int at = offset;
         if (s->masked) {
@@ -9458,8 +9583,7 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
     }
     for (int i = 0; i < pr->geometry.nRows; i++) {
         const RangeDecorationRow& row = pr->geometry.rows[i];
-        if (offset < row.start || offset > row.start + row.len || !row.text ||
-            row.text->kind != ElKind::Text) {
+        if (offset < row.start || offset > row.start + row.len || !row.text) {
             continue;
         }
         // A soft-wrap boundary is the end of one visual row and the start of
@@ -9470,6 +9594,18 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         }
         if (offset == row.start && !row.first && affinity) {
             continue;
+        }
+        if (row.text->kind != ElKind::Text) {
+            // A row with chips in it is a row of fragments, walked the way
+            // the hit test walks it.
+            WrapRowSpan r;
+            r.lo = row.start - row.lineStart;
+            r.hi = r.lo + row.len;
+            r.lineStart = row.lineStart;
+            float x = WrapRowX(ctx, s, Str(text.s + row.lineStart, row.lineLen),
+                               r, offset - row.lineStart);
+            *out = {row.text->x + x, row.text->y};
+            return true;
         }
         Str line = Str(text.s + row.start, row.len);
         float lineMult = lineH / font;
@@ -9482,6 +9618,17 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
         return true;
     }
     return false;
+}
+
+bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
+                        Bounds* out) {
+    Point start = {}, end = {};
+    if (!s || !out || !InputLastCaretPoint(s, win, range.start, &start) ||
+        !InputLastCaretPoint(s, win, range.end, &end)) {
+        return false;
+    }
+    *out = {start.x, start.y, end.x - start.x, end.y + s->lastLineH - start.y};
+    return true;
 }
 
 // The active selection as the range a touch selection is matched against.

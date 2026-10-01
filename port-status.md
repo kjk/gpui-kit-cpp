@@ -38,18 +38,17 @@ macOS font-kit requirement on the website only. The current update target is
   WindowState's `prepare` sets no rem size and its tooltip overlay is the
   window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **The editor wraps before layout, to the column the frame before laid
-  out.** Rust wraps in prepaint, with the bounds it is painting into; the
-  visual rows here are elements built before layout, so the wrap width is
-  the text column the last frame laid out, and a column that came out
-  another width wraps again in the next frame (one frame of the old wrap
-  after a resize, and none on a first frame). The wrap map re-wraps the
-  whole document when the text, the width, the font or a chip's width moved,
-  where Rust's TextWrapper re-wraps only the lines an edit touched. Range
-  decorations are measured when the editor's column paints, from where each
-  visual row's run landed, and painted once from there under every row; the
-  collection methods do not notify the editor as Rust's do, the owning view
-  re-renders (`src/base/input.cpp` InputUpdateWrapMap, PaintEditorUnderlay).
+- **The editor re-wraps the whole document.** The wrap map re-wraps every
+  line when the text, the width, the font or a chip's width moved, where
+  Rust's TextWrapper re-wraps only the lines an edit touched. The visual rows
+  are elements built before layout, at the column the last frame laid out;
+  a column that comes out another width is built again at prepaint, so the
+  frame that resizes it already shows the new wrap, but that frame wraps the
+  document twice. Range decorations are measured when the editor's column
+  paints, from where each visual row's run landed, and painted once from
+  there under every row; the collection methods do not notify the editor as
+  Rust's do, the owning view re-renders (`src/base/input.cpp`
+  InputUpdateWrapMap, RewrapEditorColumn, PaintEditorUnderlay).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
@@ -202,13 +201,6 @@ macOS font-kit requirement on the website only. The current update target is
   `font-variant-numeric`, so in the browser the TimeField's digits stay
   proportional (`kFontTabularNums`, `src/gpui/paint.h`).
 
-- **Inline tokens have no keyboard activation or geometry query.** A
-  multi-line field wraps and hit-tests its chips as fragments of their
-  measured width, as Rust's display map does, but there is no `ActivateToken`
-  action and no `range_to_bounds`, so a chip is activated only by a click on
-  it (TokenChip), and a single-line field still hit-tests a token's own text
-  rather than its chip (`src/base/input.cpp`). state.rs's
-  `test_inline_token_geometry_and_reentrant_activation` is not ported.
 - **The input's touch handles and edit menu are not drawn.** touch.rs's
   touch selection is ported (`InputTouchSelection` and the edge-drag calls,
   `src/base/input.cpp`), but the styled layer draws handles and an edit menu

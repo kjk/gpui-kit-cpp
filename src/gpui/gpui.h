@@ -5037,6 +5037,10 @@ struct InputState {
     // The box the rows were laid out in as a whole, which is the scrolled
     // height once soft wrap has had its say.
     Bounds contentBox = {};
+    // A single-line field drew its inline tokens as chips this frame, in one
+    // row whose box is lastBounds: the hit test and the caret walk that row's
+    // text runs and chips rather than one shaped run.
+    bool chipLine = false;
     // input_bounds: the whole field, what a press outside the run maps against.
     Bounds inputBounds = {};
     // input/popovers::Popover's trigger and laid-out surface. RangeOut fills
@@ -5367,7 +5371,11 @@ enum class InputAction : uint8_t {
     Search,
     Replace,
     // cmd-. / ctrl-.: the code action menu over whatever is selected.
-    ToggleCodeActions
+    ToggleCodeActions,
+    // ActivateToken: the token the selection is exactly, handed to
+    // on_token_click as a keyboard click. Rust binds no key to it; an
+    // application that wants one binds it in the `Input` context.
+    ActivateToken
 };
 
 // `platform` is Command on macOS and the Windows key elsewhere;
@@ -5863,6 +5871,10 @@ Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont = 0,
                Rgba inheritFg = {});
 // Measure a row at the width its virtual-list viewport will give it.
 Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width);
+// Whether a MeasureEl or a cache-less LayoutEl is running. An element that
+// rebuilds its children at prepaint and lays them out again does it in that
+// same scratch cache, so it leaves them alone inside one.
+bool LayoutInScratchPass();
 void PaintEl(PaintCtx* ctx, El* e);
 // Where the bytes [lo, hi) of a laid-out text run landed, one rectangle per
 // visual line, in window coordinates — ShapedLine::x_for_index over each
@@ -7036,6 +7048,9 @@ bool WindowLastInputWasKeyboard(const Window* win);
 // Collect focusable click targets from last paint for Tab cycling.
 void FocusCollect(Window* win, El* root);
 void IdsCollect(El* root);
+// The same fold over children an element built after IdsCollect ran — at
+// prepaint, from its laid-out box — under the path it already has.
+void IdsCollectChildren(El* e);
 void AccessibilityCollect(El* root, Vec<AccessibilityNode>* out);
 const AccessibilityNode* WindowAccessibilityNode(const Window* win,
                                                  uint32_t nodeId);

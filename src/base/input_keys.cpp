@@ -25,6 +25,7 @@ namespace input {
         return id;                                    \
     }
 
+GPUI_INPUT_ACTION(ActivateToken, "input::ActivateToken")
 GPUI_INPUT_ACTION(AddCursorAbove, "input::AddCursorAbove")
 GPUI_INPUT_ACTION(AddCursorBelow, "input::AddCursorBelow")
 GPUI_INPUT_ACTION(Backspace, "input::Backspace")
@@ -359,6 +360,9 @@ InputAction InputActionOf(uint32_t id, intptr_t arg) {
     }
     if (id == input::ToggleCodeActions()) {
         return InputAction::ToggleCodeActions;
+    }
+    if (id == input::ActivateToken()) {
+        return InputAction::ActivateToken;
     }
     if (id == input::Search()) {
         return InputAction::Search;

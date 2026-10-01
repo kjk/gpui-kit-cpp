@@ -3389,6 +3389,15 @@ static Vec<El*> gLayoutFixed;
 // keeps the node slots and the records and nothing else.
 static LayoutCache gMeasureCache;
 
+// How many passes over gMeasureCache are under way. An element that rebuilds
+// part of itself at prepaint lays it out in that cache, and so must not do it
+// from inside a pass that is already using it.
+static int gMeasureDepth = 0;
+
+bool LayoutInScratchPass() {
+    return gMeasureDepth > 0;
+}
+
 // Move a laid-out subtree without re-running layout. Positions are absolute,
 // so shifting the origin shifts every descendant by the same delta; sizes are
 // unaffected.
@@ -5104,7 +5113,10 @@ void LayoutEl(PaintCtx* ctx, El* e, float x, float y, float availW,
         LayoutCacheReset(&gMeasureCache);
         lc = &gMeasureCache;
     }
+    bool scratch = lc == &gMeasureCache;
+    gMeasureDepth += scratch ? 1 : 0;
     LayoutElIn(lc, ctx, e, x, y, availW, availH, false, inheritFont, inheritFg);
+    gMeasureDepth -= scratch ? 1 : 0;
 }
 
 Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
@@ -5115,15 +5127,19 @@ Size MeasureEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
     // the last one, so its cache keeps the node slots and the records and
     // starts over on the tree.
     LayoutCacheReset(&gMeasureCache);
+    gMeasureDepth++;
     LayoutElIn(&gMeasureCache, ctx, e, 0, 0, 0, 0, true, inheritFont,
                inheritFg);
+    gMeasureDepth--;
     return Size{e->w, e->h};
 }
 
 Size MeasureElAtWidth(PaintCtx* ctx, El* e, float width) {
     if (!e) return Size{0, 0};
     LayoutCacheReset(&gMeasureCache);
+    gMeasureDepth++;
     LayoutElIn(&gMeasureCache, ctx, e, 0, 0, width, 0, false, 0, {});
+    gMeasureDepth--;
     return Size{e->w, e->h};
 }
 
@@ -9154,6 +9170,15 @@ void IdsCollect(El* root) {
     IdCollect(root, 0);
     if (IdCheckOn()) {
         IdCheck(root);
+    }
+}
+
+void IdsCollectChildren(El* e) {
+    if (!e) {
+        return;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        IdCollect(c, e->pathId);
     }
 }
 

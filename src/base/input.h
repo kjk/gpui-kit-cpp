@@ -147,6 +147,12 @@ bool InputLastRangeDecorationPaths(const InputState* s, const Window* win,
 // nothing has been painted yet.
 bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
                          Point* out);
+// range_to_bounds: the box `range` takes from the caret before its start to
+// the caret before its end, one line tall, as the last finished frame laid
+// it out. An inline token's range is its chip. False when either end was not
+// laid out.
+bool InputRangeToBounds(const InputState* s, Window* win, Selection range,
+                        Bounds* out);
 // last_layout.lines[..].wrapped_lines: every visual row the last frame
 // painted, in order. `text` is where the row's run landed and `width` its
 // shaped width; a continuation row's run starts its line's wrap_indent to

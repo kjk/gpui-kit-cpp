@@ -4398,6 +4398,86 @@ static void InlineTokenClickSelectsIt() {
     InputViewFree(&view);
 }
 
+// state.rs test_inline_token_geometry_and_reentrant_activation: the chip is
+// the token's box, a press on its left half lands before it and on its right
+// half after it, and ActivateToken over the selected token runs the click
+// listener, which may write the very field it is activated from.
+static El* HundredWideToken(Ctx* cx, const InlineTokenContext*, void*) {
+    return Div(cx->a)->W(100)->H(20);
+}
+
+static void ActivateSetsValue(const InlineTokenClickEvent*, Ctx* cx,
+                              void* user) {
+    InputSetValue((InputState*)user, StrL("activated"));
+    AppInvalidate(cx->win);
+}
+
+static void InlineTokenGeometryAndReentrantActivation() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetValue(s, StrL("before @alice after"));
+    });
+    utassert(InputReplaceRangeWithToken(
+                 view.input, view.app, view.win, 7, 13,
+                 InlineToken::New(StrL("a"), StrL("@alice"))) ==
+             InlineTokenError::Ok);
+    InputSetTokenPresentation(view.input, &HundredWideToken, nullptr,
+                              &ActivateSetsValue, view.input, false);
+    InputFocus(view.input, view.app, view.win);
+    InputSetSelectedRange(view.input, view.app, view.win, 7, 13);
+    Flush(view);
+    TestDraw(view.win);
+    Bounds bounds = {};
+    utassert(InputRangeToBounds(view.input, view.win, {7, 13}, &bounds));
+    utassert(fabsf(bounds.w - 100) < 1);
+    // The box is where the chip was drawn, after the run "before " and its
+    // trailing space.
+    const HitRect* chip = nullptr;
+    for (int i = 0; i < view.win->paint.hits.len; i++) {
+        const HitRect& hit = view.win->paint.hits[i];
+        if (hit.onClick.IsValid() && fabsf(hit.bounds.w - 100) < 1) {
+            chip = &hit;
+        }
+    }
+    utassert(chip && fabsf(chip->bounds.x - bounds.x) < 0.5f);
+    int left = InputIndexForPosition(view.input, &view.win->paint,
+                                     bounds.x + 10, bounds.y + 5);
+    int right = InputIndexForPosition(view.input, &view.win->paint,
+                                      bounds.x + 90, bounds.y + 5);
+    utassert(left == 7 && right == 13);
+    TestDispatchAction(view.win, input::ActivateToken());
+    utassert(base::StrEq(InputValue(view.input), StrL("activated")));
+    InputViewFree(&view);
+}
+
+// range_to_bounds in a textarea: a row with a chip in it is walked by its
+// fragments, so the token's range is the chip there too, and a press on
+// either half of it lands on that side.
+static void TextareaTokenRangeIsItsChip() {
+    InputView view = InputViewBuildTextarea([](InputState* s, App*) {
+        LayoutModeSetRows(&s->mode, 4);
+        InputSetValue(s, StrL("first line\nbefore @alice after"));
+    });
+    utassert(InputReplaceRangeWithToken(
+                 view.input, view.app, view.win, 18, 24,
+                 InlineToken::New(StrL("a"), StrL("@alice"))) ==
+             InlineTokenError::Ok);
+    InputSetTokenPresentation(view.input, &HundredWideToken, nullptr, nullptr,
+                              nullptr, false);
+    Flush(view);
+    TestDraw(view.win);
+    Bounds bounds = {};
+    utassert(InputRangeToBounds(view.input, view.win, {18, 24}, &bounds));
+    utassert(fabsf(bounds.w - 100) < 1);
+    Point lineStart = {};
+    utassert(InputLastCaretPoint(view.input, view.win, 11, &lineStart));
+    utassert(bounds.y == lineStart.y && bounds.x > lineStart.x);
+    utassert(InputIndexForPosition(view.input, &view.win->paint, bounds.x + 10,
+                                   bounds.y + 5) == 18);
+    utassert(InputIndexForPosition(view.input, &view.win->paint, bounds.x + 90,
+                                   bounds.y + 5) == 24);
+    InputViewFree(&view);
+}
+
 // state.rs single_line_is_centered_in_a_taller_frame: the frame is laid out
 // by the application, which should not have to center a single line in it.
 struct CenteredFrame {
@@ -8791,6 +8871,8 @@ static void RunWindowTestsD() {
 
 static void RunWindowTests() {
     InlineTokenClickSelectsIt();
+    InlineTokenGeometryAndReentrantActivation();
+    TextareaTokenRangeIsItsChip();
     TextareaCursorTreatsCrlfAsOneNewline();
     OnlyAMultiLineInputPaintsScrollbars();
     ReadonlyRejectsUserEditsOnlyInAWindow();
@@ -8942,8 +9024,6 @@ static void GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells() {
         "h\xC3\xA9llo world\n\nlast";
     int n = (int)strlen(text);
     DecorationEditor d = DecorationEditorOpen(text, true);
-    // The rows wrap to the column the frame before laid out.
-    TestDraw(d.win);
     InputPaintedVisualRow rows[16];
     int nRows = InputLastVisualRows(d.editor, d.win, rows, 16);
     utassert(nRows > 3 && nRows <= 16);
@@ -8999,6 +9079,50 @@ static void GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells() {
     if (len(last) == 1 && len(rest) > 0) {
         utassert(last[0].topLeft.y > rest[len(rest) - 1].topLeft.y);
     }
+    TestAppFree(d.app);
+}
+
+// The visual rows of the last frame, and whether every one of them ends
+// inside the column the editor was laid out in.
+static int VisualRowsInsideColumn(const DecorationEditor& d, bool* inside) {
+    InputPaintedVisualRow rows[64];
+    int n = InputLastVisualRows(d.editor, d.win, rows, 64);
+    float right = d.editor->contentBox.x + d.editor->contentBox.w;
+    *inside = n > 0 && n <= 64;
+    for (int i = 0; i < n && i < 64; i++) {
+        if (rows[i].text.x + rows[i].width > right + 0.5f) {
+            *inside = false;
+        }
+    }
+    return n;
+}
+
+// element.rs prepaint wraps to the bounds it has just been given, so neither
+// a field's first frame nor the frame a resize brings shows the lines wrapped
+// to some other width.
+static void SoftWrapFollowsTheColumnInTheFrameItIsLaidOut() {
+    const char* text =
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu "
+        "nu xi omicron pi rho sigma tau upsilon\nshort";
+    DecorationEditor d = DecorationEditorOpen(text, true);
+    // TestWindowOpen drew one frame, the field's first.
+    bool inside = false;
+    int narrow = VisualRowsInsideColumn(d, &inside);
+    utassert(narrow > 2);
+    utassert(inside);
+    utassert(d.editor->wrap.measuredWidth == d.editor->contentBox.w);
+
+    d.win->paint.viewW = 720;
+    TestDraw(d.win);
+    int wide = VisualRowsInsideColumn(d, &inside);
+    utassert(wide >= 2 && wide < narrow);
+    utassert(inside);
+    utassert(d.editor->wrap.measuredWidth == d.editor->contentBox.w);
+
+    d.win->paint.viewW = 240;
+    TestDraw(d.win);
+    utassert(VisualRowsInsideColumn(d, &inside) == narrow);
+    utassert(inside);
     TestAppFree(d.app);
 }
 
@@ -9096,6 +9220,7 @@ static void RunElementWindowTests() {
     EditorLineNumberGutterResizesWithDocumentLines();
     GeometricDecorationsClipScrolledViewportAndCullOffscreenRanges();
     GeometricDecorationsUseShapedWrapBoundariesAndNewlineCells();
+    SoftWrapFollowsTheColumnInTheFrameItIsLaidOut();
     GeometricDecorationsIncludeCrlfBoundaries();
     GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
 }

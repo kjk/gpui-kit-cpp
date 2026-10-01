@@ -10,6 +10,7 @@ namespace gpui {
 
 namespace input {
 
+uint32_t ActivateToken();
 uint32_t Backspace();
 uint32_t Copy();
 uint32_t Cut();
