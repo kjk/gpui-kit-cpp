@@ -222,12 +222,6 @@ macOS font-kit requirement on the website only. The current update target is
   one whole-document update. The state installs no highlighter factory: the
   themed layer installs the implementation itself (`src/base/input.cpp`,
   `src/ui/highlighter.cpp`).
-- **An editor's text decorations are kept beside the state.** Rust's
-  `create_decorations_collection` puts the collection in the editor state's
-  extras and every edit moves it; here a `DecorationCollections` is held next
-  to the `InputState` and its owner calls `AdjustForEdit`
-  (`src/base/input_editor.h`), so `test_editor_decorations_follow_typing` is
-  not ported.
 - **No language server.** Every seam in `input/editor/lsp` is ported —
   completion, resolve, ghost text, hover, code actions, document colours,
   semantic tokens, go-to-definition — but there is no JSON-RPC, no child

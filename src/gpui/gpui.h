@@ -190,6 +190,7 @@ inline bool BackgroundIsSolid(const Background& b) {
 struct InputState;
 // An editor's range decoration store, which base/input_editor.cpp defines.
 struct RangeDecorationsState;
+struct DecorationCollectionsState;
 // An editor's retained syntax context provider (base/input_editor.cpp).
 struct InputSyntaxCache;
 
@@ -5003,6 +5004,11 @@ struct InputState {
     // (base/input_editor.h), made on the first
     // InputCreateRangeDecorationsCollection and dropped with the state.
     RangeDecorationsState* rangeDecorations = nullptr;
+    // EditorExtras::decorations: the text decoration collections
+    // (base/input_editor.h), made on the first
+    // InputCreateDecorationsCollection and dropped with the state. Edits move
+    // both stores the same way (InputDecorationsAdjustForEdit).
+    DecorationCollectionsState* textDecorations = nullptr;
     // The rows the editor element painted last frame, for element.rs's
     // geometry queries (InputLastRangeCorners and its siblings in
     // base/input.h). Frame-arena memory, written while the frame is built

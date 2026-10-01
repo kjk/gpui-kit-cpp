@@ -605,8 +605,9 @@ DecorationCollections::~DecorationCollections() {
     DecorationsRelease(state);
 }
 
-TextDecorationCollection DecorationCollections::Create(
-    const TextDecoration* decorations, int n) {
+static TextDecorationCollection DecorationsCreate(
+    DecorationCollectionsState* state, const TextDecoration* decorations,
+    int n) {
     TextDecorationCollection result;
     if (!state || !state->ownerAlive) {
         return result;
@@ -641,8 +642,8 @@ static Selection AdjustDecorationRange(Selection range, Selection edit,
     return {start, end};
 }
 
-void DecorationCollections::AdjustForEdit(Selection editedRange,
-                                          int insertedLen) {
+static void DecorationsAdjust(DecorationCollectionsState* state,
+                              Selection editedRange, int insertedLen) {
     if (!state || !state->ownerAlive) {
         return;
     }
@@ -662,7 +663,7 @@ void DecorationCollections::AdjustForEdit(Selection editedRange,
     }
 }
 
-void DecorationCollections::Clear() {
+static void DecorationsClear(DecorationCollectionsState* state) {
     if (!state || !state->ownerAlive) {
         return;
     }
@@ -675,7 +676,8 @@ static bool SelectionOverlaps(Selection a, Selection b) {
     return a.start < b.end && b.start < a.end;
 }
 
-int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
+static int DecorationsBuildSpans(const DecorationCollectionsState* state,
+                                 TextSpan* out, int cap) {
     if (!state || !state->ownerAlive) {
         return 0;
     }
@@ -723,6 +725,40 @@ int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
         out[i] = accepted[i];
     }
     return len(accepted);
+}
+
+TextDecorationCollection DecorationCollections::Create(
+    const TextDecoration* decorations, int n) {
+    return DecorationsCreate(state, decorations, n);
+}
+
+void DecorationCollections::AdjustForEdit(Selection editedRange,
+                                          int insertedLen) {
+    DecorationsAdjust(state, editedRange, insertedLen);
+}
+
+void DecorationCollections::Clear() {
+    DecorationsClear(state);
+}
+
+int DecorationCollections::BuildSpans(TextSpan* out, int cap) const {
+    return DecorationsBuildSpans(state, out, cap);
+}
+
+TextDecorationCollection InputCreateDecorationsCollection(
+    InputState* s, const TextDecoration* decorations, int n) {
+    if (!s) {
+        return TextDecorationCollection{};
+    }
+    if (!s->textDecorations) {
+        s->textDecorations = new DecorationCollectionsState();
+        s->textDecorations->input = s;
+    }
+    return DecorationsCreate(s->textDecorations, decorations, n);
+}
+
+int InputDecorationSpans(const InputState* s, TextSpan* out, int cap) {
+    return s ? DecorationsBuildSpans(s->textDecorations, out, cap) : 0;
 }
 
 // ─── range decorations (decorations.rs) ────────────────────────────────────
@@ -1104,8 +1140,19 @@ int InputRangeDecorations(const InputState* s, const Selection* ranges,
         .Intersecting(ranges, nRanges, out, cap);
 }
 
-void InputRangeDecorationsFree(InputState* s) {
-    if (!s || !s->rangeDecorations) {
+void InputDecorationsFree(InputState* s) {
+    if (!s) {
+        return;
+    }
+    if (DecorationCollectionsState* text = s->textDecorations) {
+        // As DecorationCollections' destructor: a surviving handle finds no
+        // owner and does nothing.
+        text->ownerAlive = false;
+        text->input = nullptr;
+        DecorationsRelease(text);
+        s->textDecorations = nullptr;
+    }
+    if (!s->rangeDecorations) {
         return;
     }
     RangeDecorationsState* state = s->rangeDecorations;
@@ -1120,15 +1167,21 @@ void InputRangeDecorationsFree(InputState* s) {
     s->rangeDecorations = nullptr;
 }
 
-void InputRangeDecorationsAdjustForEdit(InputState* s, Selection editedRange,
-                                        int insertedLen) {
+void InputDecorationsAdjustForEdit(InputState* s, Selection editedRange,
+                                   int insertedLen) {
+    if (s) {
+        DecorationsAdjust(s->textDecorations, editedRange, insertedLen);
+    }
     if (s && s->rangeDecorations) {
         s->rangeDecorations->collections
             .AdjustForEdit(editedRange, insertedLen);
     }
 }
 
-void InputRangeDecorationsReset(InputState* s) {
+void InputDecorationsReset(InputState* s) {
+    if (s) {
+        DecorationsClear(s->textDecorations);
+    }
     if (s && s->rangeDecorations) {
         s->rangeDecorations->collections.Clear();
     }

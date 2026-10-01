@@ -6727,20 +6727,18 @@ static void UnfoldAt() {
 // state.rs test_blur_keeps_decorations: losing focus hides the hover popover
 // but keeps the decorations. Both used to be dropped by one call, so
 // clicking away threw away decorations the application had installed and
-// never asked to remove. The decorations here are a DecorationCollections
-// kept beside the state rather than inside it, which is the shape this
-// tree's editor gives them.
+// never asked to remove.
 static void BlurKeepsDecorations() {
     InputView view = InputViewNew();
     InputState* s = view.input;
     InputSetValue(s, StrL("select 1"));
-    DecorationCollections decorations(s);
     TextSpan bold;
     // HighlightStyle { font_weight: BOLD }. A TextSpan carries no weight (it
     // would reshape the run), so a colour stands in for the style.
     bold.color = Rgb(1, 2, 3);
     TextDecoration first = TextDecoration::New({0, 6}, bold);
-    TextDecorationCollection collection = decorations.Create(&first, 1);
+    TextDecorationCollection collection =
+        InputCreateDecorationsCollection(s, &first, 1);
     InputPresentHover(s, {0, 6}, StrL("docs"));
     utassert(len(s->hoverText) > 0);
 
@@ -6751,7 +6749,7 @@ static void BlurKeepsDecorations() {
     utassert(len(s->hoverText) == 0);
     // "blur must not discard decorations"
     TextSpan spans[4] = {};
-    utassert(decorations.BuildSpans(spans, 4) > 0);
+    utassert(InputDecorationSpans(s, spans, 4) > 0);
     Flush(view);
     InputViewFree(&view);
 }
@@ -7310,10 +7308,23 @@ static void ColumnSelectionStaysOnUnicodeBoundaries() {
     InputViewFree(&view);
 }
 
-// state.rs test_editor_decorations_follow_typing: not ported — an editor's
-// TextDecoration collections are a DecorationCollections kept beside the
-// state, not the state's own `extras.decorations`, so an edit does not move
-// them; the owner calls AdjustForEdit (src/base/input_editor.h).
+// state.rs test_editor_decorations_follow_typing: an editor's own text
+// decorations move with an edit before them.
+static void EditorDecorationsFollowTyping() {
+    InputView view = InputViewNew();
+    InputState* s = view.input;
+    InputSetValue(s, StrL("abc def"));
+    TextDecoration word = TextDecoration::New({4, 7}, TextSpan{});
+    TextDecorationCollection collection =
+        InputCreateDecorationsCollection(s, &word, 1);
+    InputSetSelectedRange(s, view.app, view.win, 0, 0);
+    InputReplaceTextInRange(s, view.app, view.win, nullptr, StrL("X"));
+    TextSpan layers[4] = {};
+    utassert(InputDecorationSpans(s, layers, 4) == 1);
+    utassert(layers[0].lo == 5 && layers[0].hi == 8);
+    Flush(view);
+    InputViewFree(&view);
+}
 
 // state.rs set_test_syntax_provider, with the provider answering one
 // context everywhere (StringAllProvider, CommentAllProvider) and counting
@@ -7541,6 +7552,7 @@ static void BackspacePairWithCjkPrefix() {
 static void RunWindowTestsC() {
     UnfoldAt();
     BlurKeepsDecorations();
+    EditorDecorationsFollowTyping();
     KindDoesNotFollowTheRowCount();
     SoftWrapIsEnabledByDefault();
     AltDragSelectsABlockAndReplacesEachRow();

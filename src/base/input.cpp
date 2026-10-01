@@ -1979,18 +1979,33 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         TextSpan* hl = nullptr;
         int nHl = state->highlighter
                       .Styles(vis, &style.highlightStyles, a, &hl);
-        if (style.nSpans > 0) {
+        // decoration_layers: the editor's own text decorations go over what
+        // the caller passed, as Rust composes the extras' layers last.
+        int nOwn = InputDecorationSpans(state, nullptr, 0);
+        TextSpan* own = nullptr;
+        if (nOwn > 0) {
+            own = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * nOwn);
+            nOwn = own ? InputDecorationSpans(state, own, nOwn) : 0;
+        }
+        if (style.nSpans > 0 || nOwn > 0) {
             // Compose in the arena: every decoration adds at most itself and
             // one split, so the bound is exact.
-            int cap = nHl + 2 * style.nSpans;
+            int cap = nHl + 2 * style.nSpans + 2 * nOwn;
             auto* buf = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             auto* tmp = (TextSpan*)Alloc(a, (int)sizeof(TextSpan) * cap);
             if (buf && tmp) {
                 if (nHl > 0) {
                     memcpy(buf, hl, (size_t)nHl * sizeof(TextSpan));
                 }
-                nDocSpans = InputComposeSpans(buf, nHl, style.spans,
-                                              style.nSpans, cap, tmp);
+                nDocSpans = nHl;
+                if (style.nSpans > 0) {
+                    nDocSpans = InputComposeSpans(buf, nDocSpans, style.spans,
+                                                  style.nSpans, cap, tmp);
+                }
+                if (nOwn > 0) {
+                    nDocSpans =
+                        InputComposeSpans(buf, nDocSpans, own, nOwn, cap, tmp);
+                }
                 docSpans = buf;
             }
         } else {
@@ -2655,7 +2670,7 @@ InputState::~InputState() {
     if (gPendingPaste.state == this) {
         gPendingPaste.state = nullptr;
     }
-    InputRangeDecorationsFree(this);
+    InputDecorationsFree(this);
     InputSyntaxCacheFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
@@ -4868,9 +4883,9 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // adjust_annotations, or reset_annotations when masking rewrote the
     // whole document and recorded ranges no longer point at anything.
     if (maskChanged) {
-        InputRangeDecorationsReset(s);
+        InputDecorationsReset(s);
     } else {
-        InputRangeDecorationsAdjustForEdit(s, r, len(text));
+        InputDecorationsAdjustForEdit(s, r, len(text));
     }
     if (maskChanged) {
         // Masking rewrites the whole document, so a segment-based entry no
@@ -5173,7 +5188,7 @@ void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
     if (!UndoIsIgnoring(&s->undo)) {
         AutoClosedAdjust(s->autoClosed, r.start, r.end, len(text));
     }
-    InputRangeDecorationsAdjustForEdit(s, r, len(text));
+    InputDecorationsAdjustForEdit(s, r, len(text));
     s->cursorLineEndAffinity = false;
     if (len(text) == 0) {
         // An empty insert is the composition being abandoned: the caret goes

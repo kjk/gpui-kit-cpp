@@ -49,8 +49,10 @@ struct TextDecorationCollection {
     bool IsValid() const;
 };
 
-// InputBaseState<EditorMode>::extras.decorations. This owner may be kept next
-// to an InputState; collection handles can be passed independently.
+// A store of text decoration collections with an owner of its own, for text
+// that is not an InputState's. An editor's are the state's own
+// (InputCreateDecorationsCollection), which every edit moves; this owner
+// moves only when it is told to (AdjustForEdit).
 struct DecorationCollections {
     DecorationCollectionsState* state = nullptr;
 
@@ -193,16 +195,25 @@ struct RangeDecorationCollection {
 // within each style later collections and items paint over earlier ones.
 RangeDecorationCollection InputCreateRangeDecorationsCollection(
     InputState* s, const RangeDecoration* decorations, int n);
+// EditorState::create_decorations_collection: an independently owned
+// collection of text decorations on this editor, moved by every edit as the
+// range decorations are and drawn over the highlighter's runs.
+TextDecorationCollection InputCreateDecorationsCollection(
+    InputState* s, const TextDecoration* decorations, int n);
+// EditorExtras::decoration_layers, flattened: the collections' runs, ordered
+// and non-overlapping, earlier collections winning. Empty for an input that
+// never created one.
+int InputDecorationSpans(const InputState* s, TextSpan* out, int cap);
 // InputExtras::range_decorations: decorations intersecting the visible,
 // non-folded buffer spans. Empty for an input that never created one.
 int InputRangeDecorations(const InputState* s, const Selection* ranges,
                           int nRanges, const RangeDecoration** out, int cap);
-// The editor's store, dropped with the InputState.
-void InputRangeDecorationsFree(InputState* s);
-void InputRangeDecorationsAdjustForEdit(InputState* s, Selection editedRange,
-                                        int insertedLen);
+// The editor's stores, text and range, dropped with the InputState.
+void InputDecorationsFree(InputState* s);
+void InputDecorationsAdjustForEdit(InputState* s, Selection editedRange,
+                                   int insertedLen);
 // reset_annotations: every collection emptied, still reusable.
-void InputRangeDecorationsReset(InputState* s);
+void InputDecorationsReset(InputState* s);
 
 // Corners<Point<Pixels>>: one visual row's box of a projected range.
 struct RangeCorners {
