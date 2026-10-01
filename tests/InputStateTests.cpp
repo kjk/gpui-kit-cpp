@@ -6238,6 +6238,242 @@ static void UndoManagerLongMultilineSequenceHasStructuralBoundaries() {
     InputViewFree(&view);
 }
 
+static bool ClipboardIsB(const char* want) {
+    return base::StrEq(TestReadFromClipboard(GetTempArena()), want);
+}
+
+// state.rs test_masked_input_keeps_its_value_out_of_the_clipboard.
+static void MaskedInputKeepsItsValueOutOfTheClipboard() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("hunter2"));
+    view.input->masked = true;
+    InputSelectAll(view.input, view.app, view.win);
+    TestWriteToClipboard(StrL("sentinel"));
+
+    ViewAct(view, InputAction::Copy);
+    utassert(ClipboardIsB("sentinel"));
+
+    // Cut neither copies nor deletes.
+    ViewAct(view, InputAction::Cut);
+    utassert(ViewValueIs(view, "hunter2"));
+    utassert(ClipboardIsB("sentinel"));
+
+    // Revealing the value restores both.
+    view.input->masked = false;
+    ViewAct(view, InputAction::Copy);
+    utassert(ClipboardIsB("hunter2"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_masked_input_collapses_word_boundaries.
+static void MaskedInputCollapsesWordBoundaries() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("aaa bbb ccc"));
+    view.input->masked = true;
+    SetSelectedRangeB(view, 7, 7);
+
+    // The mask hides word boundaries, so a word delete takes everything
+    // before the caret and leaves the rest.
+    ViewAct(view, InputAction::DeleteToPreviousWordStart);
+    utassert(ViewValueIs(view, " ccc"));
+    utassert(ViewRangeIs(view, 0, 0));
+
+    ViewAct(view, InputAction::DeleteToNextWordEnd);
+    utassert(ViewValueIs(view, ""));
+
+    // A double click takes the whole value, not one word.
+    InputSetValue(view.input, StrL("aaa bbb ccc"));
+    InputSelectWord(view.input, view.app, view.win, 9);
+    utassert(ViewRangeIs(view, 0, 11));
+
+    // Unmasked, the same delete only takes one word.
+    view.input->masked = false;
+    InputSetValue(view.input, StrL("aaa bbb ccc"));
+    SetSelectedRangeB(view, 11, 11);
+    ViewAct(view, InputAction::DeleteToPreviousWordStart);
+    utassert(ViewValueIs(view, "aaa bbb "));
+
+    InputSetValue(view.input, StrL("aaa bbb ccc"));
+    InputSelectWord(view.input, view.app, view.win, 9);
+    utassert(ViewRangeIs(view, 8, 11));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_masked_input_disables_the_copy_context_menu_items.
+static void MaskedInputDisablesTheCopyContextMenuItems() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("hunter2"));
+    InputSelectAll(view.input, view.app, view.win);
+    utassert(InputContextMenuCapabilities::Of(view.input).IsCopyable());
+
+    view.input->masked = true;
+    InputContextMenuCapabilities capabilities =
+        InputContextMenuCapabilities::Of(view.input);
+    utassert(capabilities.IsMasked());
+    utassert(capabilities.HasSelection());
+    utassert(!capabilities.IsCopyable());
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_cut_and_repeated_pastes_are_distinct_transactions.
+static void UndoManagerCutAndRepeatedPastesAreDistinctTransactions() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "alpha beta gamma");
+    SetSelectedRangeB(view, 6, 10);
+    ViewAct(view, InputAction::Cut);
+    utassert(ViewValueIs(view, "alpha  gamma"));
+
+    ViewAct(view, InputAction::Paste);
+    ViewAct(view, InputAction::Paste);
+    utassert(ViewValueIs(view, "alpha betabeta gamma"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "alpha beta gamma"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "alpha  gamma"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "alpha beta gamma"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_word_and_line_deletes_do_not_coalesce.
+static void UndoManagerWordAndLineDeletesDoNotCoalesce() {
+    InputView view = InputViewBuildTextarea();
+    InputSetValue(view.input, StrL("one two three\nfour five"));
+    SetSelectedRangeB(view, 13, 13);
+    ViewAct(view, InputAction::DeleteToPreviousWordStart);
+    utassert(ViewValueIs(view, "one two \nfour five"));
+    ViewAct(view, InputAction::DeleteToEndOfLine);
+    utassert(ViewValueIs(view, "one two four five"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "one two \nfour five"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "one two three\nfour five"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_multiline_replacement_is_one_atomic_transaction.
+static void UndoManagerMultilineReplacementIsOneAtomicTransaction() {
+    InputView view = InputViewBuildTextarea();
+    ViewTypeText(view, "before");
+    SetSelectedRangeB(view, 0, 6);
+    ViewTypeText(view,
+                 "line one\nline two\n\xE7\xAC\xAC\xE4\xB8\x89\xE8\xA1\x8C");
+    utassert(ViewValueIs(
+        view, "line one\nline two\n\xE7\xAC\xAC\xE4\xB8\x89\xE8\xA1\x8C"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "before"));
+    utassert(ViewRangeIs(view, 0, 6));
+    RedoB(view);
+    utassert(ViewValueIs(
+        view, "line one\nline two\n\xE7\xAC\xAC\xE4\xB8\x89\xE8\xA1\x8C"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// `state.replace_and_mark_text_in_range(None, text, None, window, cx)`.
+static void MarkB(const InputView& v, const char* text,
+                  const Selection* sel = nullptr) {
+    InputReplaceAndMarkText(v.input, v.app, v.win, nullptr, Str(text), sel);
+}
+
+// state.rs test_undo_manager_composition_isolated_from_long_typing.
+static void UndoManagerCompositionIsolatedFromLongTyping() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "prefix ");
+    MarkB(view, "n");
+    MarkB(view, "ni");
+    MarkB(view, "\xE4\xBD\xA0");
+    InputUnmarkText(view.input, view.app, view.win);
+    ViewTypeText(view, " suffix");
+    utassert(ViewValueIs(view, "prefix \xE4\xBD\xA0 suffix"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "prefix \xE4\xBD\xA0"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "prefix "));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_selected_replacement_is_atomic.
+static void UndoManagerSelectedReplacementIsAtomic() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "abc");
+    SetSelectedRangeB(view, 1, 2);
+    ViewTypeText(view, "X");
+    ViewTypeText(view, "z");
+    utassert(ViewValueIs(view, "aXzc"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "aXc"));
+    UndoB(view);
+    utassert(ViewValueIs(view, "abc"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// `state.replace_text_in_range(Some(range), text, window, cx)`. The ranges
+// these tests name are ASCII, where UTF-16 and byte offsets agree.
+static void ReplaceRangeB(const InputView& v, int start, int end,
+                          const char* text) {
+    Selection range = {start, end};
+    InputReplaceTextInRange(v.input, v.app, v.win, &range, Str(text));
+}
+
+// state.rs test_number_input_leading_dot_editable.
+static void NumberInputLeadingDotEditable() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(0));
+    });
+    ViewTypeText(view, "1.2");
+
+    // Delete the integer part "1": the value keeps the leading dot (".2"),
+    // not completed to "0.2", so the digits before the dot stay editable.
+    ReplaceRangeB(view, 0, 1, "");
+    utassert(ViewValueIs(view, ".2"));
+    utassert(ViewRangeIs(view, 0, 0));
+
+    // The user can type a new integer part.
+    ReplaceRangeB(view, 0, 0, "3");
+    utassert(ViewValueIs(view, "3.2"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_number_input_escape_invalid_text: a pre-existing invalid
+// text (a `default_value` that does not conform) must not trap the user;
+// the edit is allowed to fix it.
+static void NumberInputEscapeInvalidText() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetMaskPattern(s, MaskPatternNumber(0));
+        InputDefaultValue(s, StrL("1,234"));
+    });
+    // Delete the last char: the pending text "1,23" is still invalid, but
+    // the edit is allowed since the old text was already invalid.
+    ReplaceRangeB(view, 4, 5, "");
+    utassert(ViewValueIs(view, "1,23"));
+
+    // Once the text becomes valid, the validation works as usual.
+    ReplaceRangeB(view, 1, 2, "");
+    utassert(ViewValueIs(view, "123"));
+    ViewTypeText(view, "a");
+    utassert(ViewValueIs(view, "123"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsB() {
     UndoManagerCoalescesAdjacentTypingTransactions();
     UndoManagerCursorMovementSplitsTyping();
@@ -6253,6 +6489,16 @@ static void RunWindowTestsB() {
     UndoManagerKeepsRapidLinesInDistinctTransactions();
     UndoManagerCoalescesLongUnicodeTypingWithoutATimer();
     UndoManagerLongMultilineSequenceHasStructuralBoundaries();
+    MaskedInputKeepsItsValueOutOfTheClipboard();
+    MaskedInputCollapsesWordBoundaries();
+    MaskedInputDisablesTheCopyContextMenuItems();
+    UndoManagerCutAndRepeatedPastesAreDistinctTransactions();
+    UndoManagerWordAndLineDeletesDoNotCoalesce();
+    UndoManagerMultilineReplacementIsOneAtomicTransaction();
+    UndoManagerCompositionIsolatedFromLongTyping();
+    UndoManagerSelectedReplacementIsAtomic();
+    NumberInputLeadingDotEditable();
+    NumberInputEscapeInvalidText();
 }
 
 // ─── state.rs window tests, part C ──────────────────────────────────────
