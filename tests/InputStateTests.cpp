@@ -1373,8 +1373,8 @@ static void TabIndentsOnlyWhereThereIsSomethingToIndent() {
     InputSetSelectedRange(&s, nullptr, nullptr, 4, 4);
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
-    utassert(ValueIs(s, "one\n    two"));
-    utassert(RangeIs(s, 8, 8));
+    utassert(ValueIs(s, "one\n  two"));
+    utassert(RangeIs(s, 6, 6));
 
     // And back, from anywhere on the line.
     utassert(
@@ -1388,7 +1388,7 @@ static void TabIndentsOnlyWhereThereIsSomethingToIndent() {
 
     // Each of the two is one undo step, whole.
     Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "one\n    two"));
+    utassert(ValueIs(s, "one\n  two"));
     Act(&s, InputAction::Undo);
     utassert(ValueIs(s, "one\ntwo"));
 }
@@ -1404,8 +1404,8 @@ static void TabIndentsEveryLineOfASelection() {
     InputSetSelectedRange(&s, nullptr, nullptr, 1, 6);
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
-    utassert(ValueIs(s, "    one\n    two\nthree"));
-    utassert(RangeIs(s, 5, 14));
+    utassert(ValueIs(s, "  one\n  two\nthree"));
+    utassert(RangeIs(s, 3, 10));
 
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::OutdentInline, false));
@@ -1415,7 +1415,7 @@ static void TabIndentsEveryLineOfASelection() {
 
     // One undo step per indent, whatever it touched.
     Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "    one\n    two\nthree"));
+    utassert(ValueIs(s, "  one\n  two\nthree"));
     Act(&s, InputAction::Undo);
     utassert(ValueIs(s, "one\ntwo\nthree"));
 }
@@ -1429,9 +1429,9 @@ static void TheBlockPairMovesTheWholeLine() {
     InputSetValue(&s, StrL("one\ntwo"));
     InputSetSelectedRange(&s, nullptr, nullptr, 6, 6);
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Indent, false));
-    utassert(ValueIs(s, "one\n    two"));
+    utassert(ValueIs(s, "one\n  two"));
     // The caret rode along with the text it sits in.
-    utassert(RangeIs(s, 10, 10));
+    utassert(RangeIs(s, 8, 8));
 
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Outdent, false));
     utassert(ValueIs(s, "one\ntwo"));
@@ -1440,8 +1440,8 @@ static void TheBlockPairMovesTheWholeLine() {
     // A selection is the same for both pairs.
     InputSetSelectedRange(&s, nullptr, nullptr, 1, 6);
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Indent, false));
-    utassert(ValueIs(s, "    one\n    two"));
-    utassert(RangeIs(s, 5, 14));
+    utassert(ValueIs(s, "  one\n  two"));
+    utassert(RangeIs(s, 3, 10));
 
     // And a single-line field has nothing to indent, whichever pair asks.
     InputState one;
@@ -3764,10 +3764,10 @@ static void IndentMovesEveryCursorsLine() {
     InputAddCursorAt(&s, nullptr, nullptr, 3);
     InputAddCursorAt(&s, nullptr, nullptr, 6);
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Indent, false));
-    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
-    utassert(RangeIs(s, 4, 4));
-    utassert(ExtraIs(s, 0, 11, 11));
-    utassert(ExtraIs(s, 1, 18, 18));
+    utassert(ValueIs(s, "  ab\n  cd\n  ef"));
+    utassert(RangeIs(s, 2, 2));
+    utassert(ExtraIs(s, 0, 7, 7));
+    utassert(ExtraIs(s, 1, 12, 12));
     utassert(InputPerform(&s, nullptr, nullptr, InputAction::Outdent, false));
     utassert(ValueIs(s, "ab\ncd\nef"));
     utassert(RangeIs(s, 0, 0));
@@ -3777,16 +3777,16 @@ static void IndentMovesEveryCursorsLine() {
     // The inline pair, the same round trip, one undo step each way.
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::IndentInline, false));
-    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
-    utassert(ExtraIs(s, 1, 18, 18));
+    utassert(ValueIs(s, "  ab\n  cd\n  ef"));
+    utassert(ExtraIs(s, 1, 12, 12));
     utassert(
         InputPerform(&s, nullptr, nullptr, InputAction::OutdentInline, false));
     utassert(ValueIs(s, "ab\ncd\nef"));
     utassert(ExtraIs(s, 1, 6, 6));
     Act(&s, InputAction::Undo);
-    utassert(ValueIs(s, "    ab\n    cd\n    ef"));
+    utassert(ValueIs(s, "  ab\n  cd\n  ef"));
     utassert(InputCursorCount(&s) == 3);
-    utassert(ExtraIs(s, 1, 18, 18));
+    utassert(ExtraIs(s, 1, 12, 12));
     Act(&s, InputAction::Undo);
     utassert(ValueIs(s, "ab\ncd\nef"));
     utassert(InputCursorCount(&s) == 3);
@@ -3799,16 +3799,16 @@ static void IndentMovesEveryCursorsLine() {
     InputMoveTo(&mid, nullptr, nullptr, 1);
     InputAddCursorAt(&mid, nullptr, nullptr, 4);
     Act(&mid, InputAction::IndentInline);
-    utassert(ValueIs(mid, "1    2\n1    2"));
-    utassert(RangeIs(mid, 5, 5));
-    utassert(ExtraIs(mid, 0, 12, 12));
+    utassert(ValueIs(mid, "1  2\n1  2"));
+    utassert(RangeIs(mid, 3, 3));
+    utassert(ExtraIs(mid, 0, 8, 8));
     Act(&mid, InputAction::OutdentInline);
-    utassert(ValueIs(mid, "1    2\n1    2"));
+    utassert(ValueIs(mid, "1  2\n1  2"));
 
     // test_block_outdent_clamps_cursor_inside_indent.
     InputState inside;
-    MakeEditor(&inside, "ab\n    cd");
-    InputMoveTo(&inside, nullptr, nullptr, 5);
+    MakeEditor(&inside, "ab\n  cd");
+    InputMoveTo(&inside, nullptr, nullptr, 4);
     Act(&inside, InputAction::Outdent);
     utassert(ValueIs(inside, "ab\ncd"));
     utassert(RangeIs(inside, 3, 3));
@@ -3905,8 +3905,8 @@ static void LanguagePairsAndSmartIndent() {
     MakeEditor(&s, "{}");
     InputMoveTo(&s, nullptr, nullptr, 1);
     Act(&s, InputAction::Enter);
-    utassert(ValueIs(s, "{\n    \n}"));
-    utassert(RangeIs(s, 6, 6));
+    utassert(ValueIs(s, "{\n  \n}"));
+    utassert(RangeIs(s, 4, 4));
 
     InputSetSmartIndent(&s, false, nullptr);
     InputSetValue(&s, StrL("{"));
@@ -3941,7 +3941,7 @@ static void IndentationPatternsMatchPythonRules() {
     s.highlighter.language = PythonLanguage;
     InputMoveTo(&s, &app, nullptr, 11);
     InputPerform(&s, &app, nullptr, InputAction::Enter, false);
-    utassert(ValueIs(s, "if enabled:\n    "));
+    utassert(ValueIs(s, "if enabled:\n  "));
 }
 
 static void GeneratedPairsAreTrackedThroughEditsAndHistory() {

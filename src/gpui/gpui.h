@@ -3990,7 +3990,8 @@ struct LayoutMode {
     int rows = 1;
     int minRows = 1;
     int maxRows = 0; // 0 = usize::MAX
-    int tabSize = 4;
+    // TabSize::default(): two spaces, in every mode that indents.
+    int tabSize = 2;
     bool lineNumber = false;
     // LayoutMode::CodeEditor { folding }. Rust defaults it on and the story
     // turns it off; it is off here until something asks, because a plain

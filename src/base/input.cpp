@@ -6402,7 +6402,7 @@ static bool ModeIsIndentable(const InputState* s) {
 // TabSize::to_string. Soft tabs only: the mode carries a width, not the
 // hard_tabs flag Rust also has.
 static Str TabIndent(const InputState* s) {
-    int n = s->mode.tabSize > 0 ? s->mode.tabSize : 4;
+    int n = s->mode.tabSize > 0 ? s->mode.tabSize : 2;
     Str tab = AllocStrTemp(n);
     memset(tab.s, ' ', (size_t)n);
     return tab;
