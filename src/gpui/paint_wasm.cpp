@@ -212,13 +212,17 @@ EM_JS(void, GpJsInit, (), {
                         const parsed = marker > start
                             ? Number(font.slice(start, marker)) : 16;
                         const px = parsed > 0 ? parsed : 16;
+                        // A monospace face gives the space the same advance
+                        // as every other ASCII glyph, which is what a column
+                        // past the end of a short row is counted in.
+                        const mono = font.indexOf("monospace") >= 0;
                         let units = 0;
                         for (let i = 0; i < s.length; i++) {
                             const code = s.charCodeAt(i);
                             if (code === 9) {
                                 units += 4;
                             } else if (code === 32) {
-                                units += 0.33;
+                                units += mono ? 0.6 : 0.33;
                             } else if (code >= 0xd800 && code < 0xdc00) {
                                 units += 1;
                                 i++;
