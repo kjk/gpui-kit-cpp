@@ -78,10 +78,10 @@ static const StoryInfo kMeta[StoryCount] = {
      "A styleable chat surface for text, rich content, and reactions."},
     {"button", "Button",
      "Displays a button or a component that looks like a button."},
+    {"calendar", "Calendar", "A calendar to select a date or date range."},
     {"carousel", "Carousel",
      "A carousel for browsing a set of related items with keyboard and pointer "
      "navigation."},
-    {"calendar", "Calendar", "A calendar to select a date or date range."},
     {"chart", "Chart", "Beautiful Charts & Graphs."},
     {"checkbox", "Checkbox", "Select one or more independent options."},
     {"clipboard", "Clipboard",
@@ -129,9 +129,9 @@ static const StoryInfo kMeta[StoryCount] = {
     {"label", "Label",
      "Display concise text with hierarchy, highlighting, and masking."},
     {"list", "List", "A list displays a series of items."},
+    {"menu", "Menu", "Popup menu and context menu"},
     {"marker", "Marker",
      "A compact row for conversation status, notifications, and separators."},
-    {"menu", "Menu", "Popup menu and context menu"},
     {"message", "Message",
      "Compose sender identity, metadata, rich content, and message "
      "actions."},
