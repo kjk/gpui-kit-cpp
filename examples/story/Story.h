@@ -210,6 +210,8 @@ struct StoryToolbarOpt {
     bool plain = false;
     // separator() before this row.
     bool sep = false;
+    // label(): a muted heading that is not an item.
+    bool heading = false;
 };
 
 // For a page whose toolbar is not one size button plus one Options menu: the

@@ -60,6 +60,10 @@ macOS font-kit requirement on the website only. The current update target is
   its own, laid out with default `FieldProps` outside a form; `component::Field`
   has no `IntoEl`, so a lone field goes in a one-field `Form`
   (`examples/story/input_group.cpp` IgLabeled).
+- **One monospace face.** `Editor::font_family` and `Theme::mono_font_family`
+  name a family; the painters here draw every mono run in the platform's one
+  mono face (`kFontMono`), so the Editor story's Font family rows only keep
+  their check (`src/gpui/paint_*.cpp`, `examples/story/editor.cpp`).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell

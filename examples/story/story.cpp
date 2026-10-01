@@ -430,6 +430,24 @@ static El* ToolbarCheckRow(Ctx* cx, Listener onAct, int act, const char* label,
     return row;
 }
 
+// One row of a page's own menu: a check row, or PopupMenu::label's
+// heading -- the same row, muted, holding the gutter but taking no click.
+static El* ToolbarOptRow(Ctx* cx, Listener onAct, const StoryToolbarOpt& row,
+                         bool gutter) {
+    if (!row.heading) {
+        return ToolbarCheckRow(cx, onAct, row.act, row.label,
+                               row.checked && !row.plain, gutter);
+    }
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    El* el =
+        Div(a)->H(26)->MinW(120)->PadX(8)->FlexRow()->Gap(4)->ItemsCenter();
+    if (gutter) {
+        el->Child(Div(a)->W(12)->H(12)->Shrink0());
+    }
+    return el->Child(StoryTxt(cx, Str(row.label), 14, th.mutedFg));
+}
+
 // popover_style, plus PopupMenu's p_1 and gap_y_0p5 around the items.
 // PopupMenu::separator.
 static El* ToolbarMenuSep(Ctx* cx) {
@@ -583,9 +601,7 @@ El* StoryToolbarCore(Ctx* cx, StoryToolbarState* st,
                 if (rows[i].sep) {
                     optMenu->Child(ToolbarMenuSep(cx));
                 }
-                optMenu->Child(
-                    ToolbarCheckRow(cx, onAct, rows[i].act, rows[i].label,
-                                    rows[i].checked && !rows[i].plain, gutter));
+                optMenu->Child(ToolbarOptRow(cx, onAct, rows[i], gutter));
             }
         }
         group->Child(StoryToolbarDismissOnPressOut(
@@ -643,9 +659,7 @@ El* StoryToolbarDropdown(Ctx* cx, Str id, Str label, bool open, Listener onOpen,
             if (rows[i].sep) {
                 menu->Child(ToolbarMenuSep(cx));
             }
-            menu->Child(ToolbarCheckRow(cx, onAct, rows[i].act, rows[i].label,
-                                        rows[i].checked && !rows[i].plain,
-                                        gutter));
+            menu->Child(ToolbarOptRow(cx, onAct, rows[i], gutter));
         }
     }
     return StoryToolbarDismissOnPressOut(
@@ -1868,10 +1882,11 @@ static El* Footer(StoryApp* app, Ctx* cx) {
 // StoryContainer::render: `div().size_full().p(paddings).child(story)` inside
 // the scrolling pane. Story::paddings is 16 unless a story asks for none. A
 // page that is itself size_full and hands the rest to a flex_1 child -- the
-// Dock's area, the Scrollbar page's list -- fills the pane; the others keep
-// their own height and scroll.
+// Dock's area, the Scrollbar page's list, the Editor -- fills the pane; the
+// others keep their own height and scroll.
 static El* StoryContainerBody(StoryApp* app, Ctx* cx, Arena* frame) {
-    if (app->story == StoryDock || app->story == StoryScrollbar) {
+    if (app->story == StoryDock || app->story == StoryScrollbar ||
+        app->story == StoryEditor) {
         return Div(frame)
             ->FlexCol()
             ->SizeFull()
