@@ -139,6 +139,10 @@ void InputInitKeys() {
         {"shift-right", input::SelectRight(), ctx},
         {"shift-up", input::SelectUp(), ctx},
         {"shift-down", input::SelectDown(), ctx},
+#if !GPUI_OS_MAC && !GPUI_OS_LINUX
+        {"shift-alt-left", input::SelectLeft(), ctx},
+        {"shift-alt-right", input::SelectRight(), ctx},
+#endif
     // Avoid Ctrl+Alt+arrows on Linux, where desktops may reserve them.
 #if GPUI_OS_MAC
         {"cmd-alt-up", input::AddCursorAbove(), ctx},
@@ -160,12 +164,14 @@ void InputInitKeys() {
         {"ctrl-shift-e", input::SelectToEndOfLine(), ctx},
         {"shift-cmd-left", input::SelectToStartOfLine(), ctx},
         {"shift-cmd-right", input::SelectToEndOfLine(), ctx},
+#endif
+#if GPUI_OS_MAC || GPUI_OS_LINUX
         {"alt-shift-left", input::SelectToPreviousWordStart(), ctx},
 #endif
 #if !GPUI_OS_MAC
         {"ctrl-shift-left", input::SelectToPreviousWordStart(), ctx},
 #endif
-#if GPUI_OS_MAC
+#if GPUI_OS_MAC || GPUI_OS_LINUX
         {"alt-shift-right", input::SelectToNextWordEnd(), ctx},
 #endif
 #if !GPUI_OS_MAC
