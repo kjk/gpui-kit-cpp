@@ -390,6 +390,17 @@ El* Tooltip::IntoEl() {
     return root;
 }
 
+void PlotOverlayAttach(PaintCtx* ctx, El* plot, Bounds bounds, El* overlay) {
+    if (!ctx || !plot || !overlay) {
+        return;
+    }
+    // Laid out under the plot's own text style, as a virtual list lays out
+    // the rows it binds while it paints.
+    LayoutEl(ctx, overlay, bounds.x, bounds.y, bounds.w, bounds.h,
+             plot->laidFont, plot->style.color);
+    plot->Child(overlay);
+}
+
 } // namespace plot
 
 int ChartAxisPointCount(int pointCount, int dataLen) {

@@ -1411,11 +1411,16 @@ using ChartTooltipValueFn = Str (*)(Arena* a, int index, int row, double value,
                                     void* user);
 using ChartTooltipValueColorFn = Rgba (*)(int index, int row, double value,
                                           void* user);
+// tooltip_content: the tooltip box's content for datum `index`, drawn by the
+// caller in place of the title and rows. It is built while the chart paints,
+// in `cx`'s arena (the frame's), then laid out over the plot and painted
+// after it, the way PlotElement prepaints Plot::tooltip's overlay.
+using ChartTooltipContentFn = El* (*)(Ctx * cx, int index, void* user);
 
-// chart/mod.rs TooltipContent: what a series chart (LineChart, AreaChart,
-// BarChart, CandlestickChart) writes in its hover tooltip, and what the
-// charts' tooltip_title / tooltip_value / tooltip_value_color builders set.
-// Rust's `tooltip_content` closure returns an element; see port-status.md.
+// chart/mod.rs TooltipContent: what a chart (LineChart, AreaChart, BarChart,
+// CandlestickChart, RadarChart) writes in its hover tooltip, and what the
+// charts' tooltip_title / tooltip_value / tooltip_value_color /
+// tooltip_content builders set.
 struct ChartTooltipContent {
     ChartTooltipTitleFn title = nullptr;
     void* titleUser = nullptr;
@@ -1423,6 +1428,8 @@ struct ChartTooltipContent {
     void* valueUser = nullptr;
     ChartTooltipValueColorFn valueColor = nullptr;
     void* valueColorUser = nullptr;
+    ChartTooltipContentFn content = nullptr;
+    void* contentUser = nullptr;
 
     // title_text: the caller's title for datum `index`, or `fallback`, the
     // chart's own, which a chart may not have (`hasFallback` false). False
@@ -3183,6 +3190,12 @@ El* ProgressEl(Arena* a, float value01to100, float barW, float barH);
 // the extent of the data with zero in it for a bar or a radar, and the
 // extent with a little air for a candle.
 void ChartValueDomain(const ChartSeries& c, float* outMin, float* outMax);
+// radar_chart.rs scale: the radius scale's domain, ChartValueDomain with zero
+// chained in so non-negative data starts at the centre.
+void ChartRadarDomain(const ChartSeries& c, float* outMin, float* outMax);
+// The fraction of the outer radius value `v` sits at on that domain,
+// clamped to the rings.
+float ChartRadarFraction(float lo, float hi, float v);
 
 El* ChartEl(Arena* a, const float* ys, int n, Rgba stroke, Rgba fillTop,
             Rgba fillBot, int tickMargin);

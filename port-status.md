@@ -112,17 +112,14 @@ macOS font-kit requirement on the website only. The current update target is
   tree). `select_all` is the selection `SelectAll` made, for as long as the
   window still holds it. Under `-markdown=mini` the parser keeps no
   positions, so the answer is always None (`src/base/text.cpp`).
-- **A series chart paints its hover tooltip.** Line, area, bar and
-  candlestick charts are one custom-painted element, so their tooltip is
-  drawn in the paint pass (`PaintChartSeriesTooltip` in `src/gpui/gpui.cpp`)
-  with the rows `TooltipContent::apply` would build, not built as a
-  `plot::Tooltip`. `tooltip_content`, which hands back an element, has no
-  place to go there and is not ported; the story's "Revenue vs Last Year"
-  card keeps the default rows. The tooltip closures receive the datum's
-  index rather than the datum. The radar paints no hover at all — no dots,
-  no tooltip — so it has none of the tooltip builders, and the stacked bar
-  story is four overlaid BarCharts rather than a custom `Plot`, so it has no
-  `plain_row` total.
+- **A series chart paints its default hover tooltip.** Line, area, bar
+  and candlestick charts are one custom-painted element, so the title and
+  rows `TooltipContent::apply` would build are drawn in the paint pass
+  (`PaintChartSeriesTooltip` in `src/gpui/gpui.cpp`) rather than built as
+  a `plot::Tooltip`; `tooltip_content`, the radar's whole tooltip and a
+  custom plot's (the story's stacked bars) are built and laid out over the
+  plot while it paints (`plot::PlotOverlayAttach`, `src/ui/plot.h`). The
+  tooltip closures receive the datum's index rather than the datum.
 - **Base plot values are float and gradient strokes are solid.** The scales
   take `float` domains, so Rust's `PlotValue` bound (f32, f64, Decimal) has
   no counterpart, and a range is a pointer and count read as its first two

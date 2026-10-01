@@ -5452,6 +5452,22 @@ void ChartValueDomain(const ChartSeries& c, float* outMin, float* outMax) {
     *outMax = hi;
 }
 
+void ChartRadarDomain(const ChartSeries& c, float* outMin, float* outMax) {
+    float lo = 0;
+    float hi = 0;
+    ChartValueDomain(c, &lo, &hi);
+    // "The domain includes zero so non-negative data starts at the center"
+    // — radar_chart.rs chains a zero into the scale's domain, so the
+    // smallest value is a short spoke rather than a point on the hub.
+    *outMin = lo > 0 ? 0 : lo;
+    *outMax = hi < 0 ? 0 : hi;
+}
+
+float ChartRadarFraction(float lo, float hi, float v) {
+    float t = hi > lo ? (v - lo) / (hi - lo) : 0.f;
+    return t < 0 ? 0 : (t > 1 ? 1 : t);
+}
+
 // StrokeStyle, as the run of segments after the opening move_to. Natural is
 // the Catmull-Rom the plot draws by default, turned into the cubic Beziers a
 // path can carry; StepAfter holds each value until the next point's x, and
@@ -6059,7 +6075,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         }
         float lo = 0;
         float hi = 0;
-        ChartValueDomain(c, &lo, &hi);
+        ChartRadarDomain(c, &lo, &hi);
         float cx = x + w * 0.5f;
         float cy = y + h * 0.5f;
         // resolve_outer_radius: two fifths of the box's height, and the
@@ -6068,21 +6084,12 @@ static void DrawChart(PaintCtx* ctx, El* e) {
         if (c.radarRadius > 0) {
             radius = c.radarRadius;
         }
-        // "The domain includes zero so non-negative data starts at the
-        // center" — radar_chart.rs chains a zero into the scale's domain, so
-        // the smallest value is a short spoke rather than a point on the hub.
-        if (lo > 0) {
-            lo = 0;
-        }
-        if (hi < 0) {
-            hi = 0;
-        }
         if (radius < 8) {
             return;
         }
         int levels = c.gridLevels > 0 ? c.gridLevels : 4;
-        // The rings, and a spoke out to every axis. An overlaid series draws
-        // on the rings the first one put down.
+        // The rings, and a spoke out to every axis. A chart overlaid on
+        // another one draws on the rings the first one put down.
         for (int ring = 1; ring <= (c.overlay || !c.grid ? 0 : levels);
              ring++) {
             float rr = radius * (float)ring / (float)levels;
@@ -6108,42 +6115,47 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             DrawLine(ctx, cx, cy, cx + radius * cosf(a), cy + radius * sinf(a),
                      1.f, th.chartGrid);
         }
-        // The values themselves, as one closed shape. The series grow out
-        // of the center as the chart appears.
-        Path* shape = PathNew(ctx, true);
-        if (shape) {
-            for (int i = 0; i < n; i++) {
-                float t = hi > lo ? (ys[i] - lo) / (hi - lo) : 0.f;
-                if (t < 0) {
-                    t = 0;
-                }
-                if (t > 1) {
-                    t = 1;
-                }
-                t *= appearProgress;
-                float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
-                float px = cx + radius * t * cosf(a);
-                float py = cy + radius * t * sinf(a);
-                if (i == 0) {
-                    PathMoveTo(shape, px, py);
-                } else {
-                    PathLineTo(shape, px, py);
-                }
+        // Every series as one closed shape, in the order they were added:
+        // fill, then a 2px stroke, then (dot()) an 8px mark in the stroke's
+        // colour on every vertex. They grow out of the center as the chart
+        // appears.
+        for (int k = 0; k <= c.nMore; k++) {
+            const float* vs = k == 0 ? ys : c.more[k - 1].ys;
+            if (!vs) {
+                continue;
             }
-            PathClose(shape);
-            PathFill(ctx, shape, c.fillTop);
-            PathStroke(ctx, shape, 2.f, c.stroke);
-            PathFree(shape);
-        }
-        // dot(): a mark on every vertex of the ring.
-        if (c.dot) {
-            for (int i = 0; i < n; i++) {
-                float t = hi > lo ? (ys[i] - lo) / (hi - lo) : 0.f;
-                t = (t < 0 ? 0 : (t > 1 ? 1 : t)) * appearProgress;
-                float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
-                float px = cx + radius * t * cosf(a);
-                float py = cy + radius * t * sinf(a);
-                FillRound(ctx, px - 3.f, py - 3.f, 6.f, 6.f, 3.f, c.stroke);
+            Rgba stroke = k == 0 ? c.stroke : c.more[k - 1].stroke;
+            Rgba fill = k == 0 ? c.fillTop : c.more[k - 1].fillTop;
+            Path* shape = PathNew(ctx, true);
+            if (shape) {
+                for (int i = 0; i < n; i++) {
+                    float t =
+                        ChartRadarFraction(lo, hi, vs[i]) * appearProgress;
+                    float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
+                    float px = cx + radius * t * cosf(a);
+                    float py = cy + radius * t * sinf(a);
+                    if (i == 0) {
+                        PathMoveTo(shape, px, py);
+                    } else {
+                        PathLineTo(shape, px, py);
+                    }
+                }
+                PathClose(shape);
+                PathFill(ctx, shape, fill);
+                PathStroke(ctx, shape, 2.f, stroke);
+                PathFree(shape);
+            }
+            if (c.dot) {
+                const float kDot = 8.f;
+                for (int i = 0; i < n; i++) {
+                    float t =
+                        ChartRadarFraction(lo, hi, vs[i]) * appearProgress;
+                    float a = -1.5707963f + 6.2831853f * (float)i / (float)n;
+                    float px = cx + radius * t * cosf(a);
+                    float py = cy + radius * t * sinf(a);
+                    FillRound(ctx, px - kDot * 0.5f, py - kDot * 0.5f, kDot,
+                              kDot, kDot * 0.5f, stroke);
+                }
             }
         }
         if (c.labels && !c.overlay) {
@@ -6169,6 +6181,8 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                            th.mutedForeground, false);
             }
         }
+        // The hover is the themed RadarChart's, painted over its labels
+        // (component::RadarChart); a hand-built radar stays still.
         return;
     }
 
@@ -6643,8 +6657,28 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 }
             }
 
-            PaintChartSeriesTooltip(ctx, c, th, index, x, y, w, plotH,
-                                    lingerCursor, focus);
+            if (c.tooltipContent.content && ctx->window &&
+                ctx->window->frameArena) {
+                // tooltip_content: the caller's element in the box, which
+                // has to be built, laid out over the plot and painted after
+                // it, as PlotElement does with the overlay Plot::tooltip
+                // returns. The crosshair and dots above stay the chart's.
+                Ctx buildCx = hoverCx;
+                buildCx.a = ctx->window->frameArena;
+                component::plot::Tooltip* overlay =
+                    component::plot::Tooltip::New(&buildCx, lingerCursor,
+                                                  {w, plotH})
+                        ->Gap(8)
+                        ->Glide(false)
+                        ->Progress(focus);
+                component::ChartTooltipApply(c.tooltipContent, overlay, index,
+                                             {}, false, nullptr, 0);
+                component::plot::PlotOverlayAttach(ctx, e, {x, y, w, plotH},
+                                                   overlay->IntoEl());
+            } else {
+                PaintChartSeriesTooltip(ctx, c, th, index, x, y, w, plotH,
+                                        lingerCursor, focus);
+            }
         }
     }
 

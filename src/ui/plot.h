@@ -163,6 +163,17 @@ struct Tooltip {
     El* IntoEl();
 };
 
+// PlotElement's `overlay.prepaint_as_root(bounds.origin, bounds.size)` for a
+// plot the runtime paints (a chart's customPaint, or DrawChart): lay
+// `overlay` — what Plot::tooltip returned, Tooltip::IntoEl — out over
+// `bounds` and hand it to `plot` as its last child, so the paint walk
+// draws it after the plot's marks and the children it already has (a radar's
+// element labels). Its box is deferred and paints above sibling content.
+//
+// `bounds` is the plot's box in window coordinates (Plot::tooltip's
+// `bounds`): the overlay's cursor and `within` are relative to it.
+void PlotOverlayAttach(PaintCtx* ctx, El* plot, Bounds bounds, El* overlay);
+
 } // namespace plot
 
 // chart/mod.rs axis_point_count: how many points the x axis of a point chart

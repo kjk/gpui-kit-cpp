@@ -66,13 +66,6 @@ static const float kMonthlyDesktop[] = {186.f, 305.f, 237.f,
                                         73.f,  209.f, 214.f};
 static const float kMonthlyAlpha[] = {0.5f, 0.6f, 0.7f, 0.8f, 0.9f, 1.f};
 
-// radar-devices.json.
-static const int kRadarDeviceCount = 6;
-static const char* const kRadarMonth[] = {"January", "February", "March",
-                                          "April",   "May",      "June"};
-static const float kRadarDesktop[] = {186.f, 305.f, 237.f, 73.f, 209.f, 214.f};
-static const float kRadarMobile[] = {80.f, 200.f, 120.f, 190.f, 130.f, 140.f};
-
 // stock-prices.json: forty daily sessions.
 static const int kStockPriceCount = 40;
 static const char* const kStockDate[] = {

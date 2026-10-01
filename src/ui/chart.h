@@ -244,6 +244,10 @@ struct AreaChart {
     // its sign; the tooltip's text colour by default.
     AreaChart* TooltipValueColor(ChartTooltipValueColorFn fn,
                                  void* user = nullptr);
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The crosshair, the dots and where the box sits
+    // stay the chart's.
+    AreaChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -380,6 +384,10 @@ struct LineChart {
     // its sign; the tooltip's text colour by default.
     LineChart* TooltipValueColor(ChartTooltipValueColorFn fn,
                                  void* user = nullptr);
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The crosshair, the dots and where the box sits
+    // stay the chart's.
+    LineChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -540,6 +548,10 @@ struct BarChart {
     // its sign; the tooltip's text colour by default.
     BarChart* TooltipValueColor(ChartTooltipValueColorFn fn,
                                 void* user = nullptr);
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The crosshair, the dots and where the box sits
+    // stay the chart's.
+    BarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -686,6 +698,11 @@ struct CandlestickChart {
     // its sign; the tooltip's text colour by default.
     CandlestickChart* TooltipValueColor(ChartTooltipValueColorFn fn,
                                         void* user = nullptr);
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The crosshair, the dots and where the box sits
+    // stay the chart's.
+    CandlestickChart* TooltipContent(ChartTooltipContentFn fn,
+                                     void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -741,43 +758,85 @@ struct RadarLabel {
     static RadarLabel Element(El* element);
 };
 
-// RadarChart: one value per axis, plotted on rings around a centre.
+// radar_chart.rs DEFAULT_LABEL_GAP: the extra gap between the outer ring and
+// the labels.
+const float kRadarDefaultLabelGap = 10;
+
+// radar_chart.rs hovered_index: the spoke nearest the cursor at `position`
+// (relative to the chart's box of `size`), or -1 when the cursor is past the
+// labels' ring (`outerRadius` + `labelGap` from the centre) or there are no
+// spokes. Spoke 0 points at twelve o'clock and they run clockwise.
+int RadarHoveredIndex(int n, float outerRadius, float labelGap, Point position,
+                      Size size);
+
+// RadarChart: one value per axis, plotted on rings around a centre. Each
+// series is a closed polygon over every spoke; `New` takes the first, and
+// each `Value` adds one more, with the `Stroke`, `Fill` and `Tooltip` after
+// it belonging to that series, the way Rust's
+// `.value(..).stroke(..).fill(..).name(..)` chain does.
 struct RadarChart {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     const float* values = nullptr;
     int n = 0;
     const RadarLabel* labels = nullptr;
+    // The first series' colours; the stroke defaults to chart_1 and the fill
+    // to the stroke at 0.3, as series_stroke does.
     Rgba stroke = {};
     Rgba fill = {};
+    // The series after the first, in the order `Value` added them. Each one's
+    // stroke defaults to the next theme chart colour, cycled.
+    ArenaVec<ChartSeriesExtra> more;
+    // Whether the last series' fill was set, so a later Stroke leaves it.
+    bool lastFillSet = false;
     float domainMin = 0;
     float domainMax = 0;
-    // A second ring over the first one's grid, the way a stacked area chart
-    // overlays its series.
-    bool overlay = false;
     bool dot = false;
     float outerRadius = 0;
     int gridLevels = 4;
     // grid(..): the rings and spokes, on by default.
     bool grid = true;
-    float labelGap = 10;
+    float labelGap = kRadarDefaultLabelGap;
     Rgba labelColor = {};
     bool hasLabelColor = false;
+    // name(..) of the first series.
     Str tooltipName = {};
+    // chart/mod.rs TooltipContent: tooltip_title / tooltip_value /
+    // tooltip_value_color / tooltip_content.
+    ChartTooltipContent tooltipContent = {};
     // The chart's ElementId, folded onto the id stack it was built under: its
     // construction site unless Id renamed it (chart/mod.rs caller_id).
     uint32_t id = 0;
-    // interactive(..): the hitbox under the cursor and what it drives -- the
-    // hover emphasis and the tooltip. On by default.
+    // interactive(..): the hitbox under the cursor and what it drives -- a
+    // dot per series on the hovered dimension and the tooltip. On by default.
     bool interactive = true;
     // appear(..) / appear_key(..): whether the data draws in the first time
     // the chart is painted, and the key that replays it.
     ChartAppear appear = {};
+    // The element IntoEl made, which the hover paints over.
+    El* el = nullptr;
 
     static RadarChart* New(Ctx* cx, const float* values, int n,
                            const char* file = __builtin_FILE(),
                            int line = __builtin_LINE());
+    // value(..): another series over the same spokes.
+    RadarChart* Value(const float* ys);
+    // name(..): what the tooltip calls the series added last.
     RadarChart* Tooltip(Str name);
+    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // dimension's text label.
+    RadarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
+    // tooltip_value: each row's value text; the raw number by default. `row`
+    // is the series' index in the order `Value` added them.
+    RadarChart* TooltipValue(ChartTooltipValueFn fn, void* user = nullptr);
+    // tooltip_value_color: each row's value colour; the tooltip's text
+    // colour by default.
+    RadarChart* TooltipValueColor(ChartTooltipValueColorFn fn,
+                                  void* user = nullptr);
+    // tooltip_content: draw the box's content for a datum yourself, in place
+    // of the title and rows. The dots and where the box sits stay the
+    // chart's.
+    RadarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -805,19 +864,23 @@ struct RadarChart {
     bool AppearGeneration(uint64_t* out) const {
         return appear.Generation(out);
     }
+    // stroke(..) / fill(..) of the series added last.
     RadarChart* Stroke(Rgba c);
     RadarChart* Fill(Rgba c);
     RadarChart* Labels(const char* const* l);
     RadarChart* Labels(const RadarLabel* l);
     RadarChart* LabelColor(Rgba c);
     RadarChart* LabelGap(float v);
+    // max_value(..): the value at the outer ring, which is 0..v.
+    RadarChart* MaxValue(float v);
     RadarChart* Domain(float lo, float hi);
-    RadarChart* Overlay(bool v = true);
     RadarChart* Dot(bool v = true);
     RadarChart* OuterRadius(float v);
     RadarChart* GridLevels(int v);
     // grid(false): no rings or spokes.
     RadarChart* Grid(bool v);
+    // resolve_outer_radius: the caller's radius, or two fifths of `height`.
+    float ResolveOuterRadius(float height) const;
     El* IntoEl();
 };
 

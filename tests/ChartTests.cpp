@@ -651,8 +651,6 @@ static void TooltipTextFallsBackToTheChartOwn() {
 
 // chart/mod.rs: tooltip_fill_writes_each_row_with_the_value_color and
 // tooltip_fill_leaves_the_title_off_without_one.
-// tooltip_fill_renders_the_caller_content_without_building_rows has no
-// counterpart: tooltip_content is not ported (port-status.md).
 static void TooltipFillWritesEachRowWithTheValueColor() {
     Arena* a = ArenaNew();
     Ctx cx = {};
@@ -681,6 +679,111 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
     utassert(!untitled->hasTitle);
     utassert(StrEq(untitled->rows[0].value, StrL("80")) && !untitled->rows[0]
                                                                 .hasValueColor);
+    ArenaDelete(a);
+}
+
+static int gContentCalls = 0;
+static El* CallerContent(Ctx* cx, int index, void*) {
+    gContentCalls++;
+    return TextEl(cx->a, StrDup(cx->a, fmt("datum %d", index)));
+}
+
+// chart/mod.rs: tooltip_fill_renders_the_caller_content_without_building_rows.
+static void TooltipFillRendersTheCallerContentWithoutBuildingRows() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    ChartTooltipContent content;
+    content.title = &DayTitle;
+    content.content = &CallerContent;
+    ChartTooltipSeriesRow rows[1] = {{Rgb(0, 0, 255), StrL("Alpha"), 80.}};
+    gContentCalls = 0;
+    component::plot::Tooltip* tooltip = ChartTooltipApply(
+        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
+        StrL("Jan"), true, rows, 1);
+    utassert(gContentCalls == 1);
+    utassert(!tooltip->hasTitle);
+    utassert(tooltip->rows.len == 0);
+    utassert(tooltip->children.len == 1 &&
+             StrEq(tooltip->children[0]->text, StrL("datum 1")));
+    ArenaDelete(a);
+}
+
+// radar_chart.rs: test_radar_chart_hovered_index. Bounds 200x200 => center
+// (100, 100), default outer radius 80, hover region 80 + 10 (label gap).
+static void RadarChartHoveredIndex() {
+    Size bounds = {200, 200};
+    float r = 200 * 0.4f;
+    float gap = kRadarDefaultLabelGap;
+    // The four spokes point at 12, 3, 6 and 9 o'clock.
+    utassert(RadarHoveredIndex(4, r, gap, {100, 30}, bounds) == 0);
+    utassert(RadarHoveredIndex(4, r, gap, {170, 100}, bounds) == 1);
+    utassert(RadarHoveredIndex(4, r, gap, {100, 170}, bounds) == 2);
+    utassert(RadarHoveredIndex(4, r, gap, {30, 100}, bounds) == 3);
+    // Nearest spoke wins between two spokes.
+    utassert(RadarHoveredIndex(4, r, gap, {110, 40}, bounds) == 0);
+    utassert(RadarHoveredIndex(4, r, gap, {160, 90}, bounds) == 1);
+    // Outside the radar.
+    utassert(RadarHoveredIndex(4, r, gap, {100, 5}, bounds) == -1);
+    utassert(RadarHoveredIndex(4, r, gap, {5, 5}, bounds) == -1);
+    utassert(RadarHoveredIndex(0, r, gap, {100, 100}, bounds) == -1);
+}
+
+// radar_chart.rs: test_radar_chart_builder, plus series_stroke's defaults —
+// each series takes the next theme chart colour, and its fill the stroke at
+// 0.3 until it is given one.
+static void RadarChartBuilder() {
+    App app = {};
+    component::Init(&app);
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    cx.app = &app;
+    const Theme& th = ThemeNow(&app);
+    float as[2] = {80, 50};
+    float bs[2] = {60, 90};
+    Rgba red = RgbaHex(0xff0000);
+    RadarChart* chart = RadarChart::New(&cx, as, 2)
+                            ->Stroke(red)
+                            ->Fill(red)
+                            ->Tooltip(StrL("A"))
+                            ->Value(bs)
+                            ->MaxValue(100)
+                            ->OuterRadius(120)
+                            ->LabelGap(8)
+                            ->Grid(false)
+                            ->GridLevels(5)
+                            ->Dot()
+                            ->Id(StrL("radar"));
+    utassert(len(chart->more) == 1);
+    utassert(ChartColorEq(chart->stroke, red) &&
+             ChartColorEq(chart->fill, red));
+    utassert(StrEq(chart->tooltipName, StrL("A")));
+    utassert(!chart->more[0].name.s);
+    utassert(ChartColorEq(chart->more[0].stroke, th.chart2));
+    utassert(
+        ChartColorEq(chart->more[0].fillTop, RgbaOpacity(th.chart2, 0.3f)));
+    utassert(chart->domainMin == 0 && chart->domainMax == 100);
+    utassertnear(chart->outerRadius, 120);
+    utassertnear(chart->labelGap, 8);
+    utassert(!chart->grid && chart->gridLevels == 5 && chart->dot);
+    utassert(chart->id == IdFoldName(cx.path, StrL("radar")));
+    utassertnear(chart->ResolveOuterRadius(300), 120);
+
+    RadarChart* plain = RadarChart::New(&cx, as, 2);
+    utassert(ChartColorEq(plain->stroke, th.chart1));
+    utassert(ChartColorEq(plain->fill, RgbaOpacity(th.chart1, 0.3f)));
+    utassertnear(plain->ResolveOuterRadius(200), 80);
+    // A later stroke carries an unset fill with it, and a set one stays.
+    plain->Value(bs)->Stroke(red);
+    utassert(ChartColorEq(plain->more[0].fillTop, RgbaOpacity(red, 0.3f)));
+    plain->Fill(th.chart3)->Stroke(th.chart4);
+    utassert(ChartColorEq(plain->more[0].fillTop, th.chart3));
+    El* e = plain->IntoEl();
+    utassert(e->Chart()->nMore == 1 && e->Chart()->more[0].ys == bs);
+    utassert(e->customPaint != nullptr && plain->el == e);
+
+    AppGlobalClear(&app);
     ArenaDelete(a);
 }
 
@@ -738,4 +841,7 @@ void TestChart() {
     TooltipTextFallsBackToTheChartOwn();
     TooltipFillWritesEachRowWithTheValueColor();
     TheTooltipSwatchFollowsTheBarColor();
+    TooltipFillRendersTheCallerContentWithoutBuildingRows();
+    RadarChartHoveredIndex();
+    RadarChartBuilder();
 }

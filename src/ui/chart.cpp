@@ -50,6 +50,12 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
                                  plot::Tooltip* tooltip, int index, Str title,
                                  bool hasTitle,
                                  const ChartTooltipSeriesRow* rows, int count) {
+    // The caller's own content, when it renders one: neither the title nor
+    // the rows are built.
+    if (content.content) {
+        return tooltip
+            ->Child(content.content(tooltip->cx, index, content.contentUser));
+    }
     Str text = {};
     if (content.TitleText(tooltip->a, index, title, hasTitle, &text)) {
         tooltip->Title(text);
@@ -244,6 +250,11 @@ AreaChart* AreaChart::TooltipValueColor(ChartTooltipValueColorFn fn,
     tooltipContent.valueColorUser = user;
     return this;
 }
+AreaChart* AreaChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
+    tooltipContent.content = fn;
+    tooltipContent.contentUser = user;
+    return this;
+}
 
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
@@ -408,6 +419,11 @@ LineChart* LineChart::TooltipValueColor(ChartTooltipValueColorFn fn,
     tooltipContent.valueColorUser = user;
     return this;
 }
+LineChart* LineChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
+    tooltipContent.content = fn;
+    tooltipContent.contentUser = user;
+    return this;
+}
 
 El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
@@ -543,6 +559,11 @@ BarChart* BarChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
 BarChart* BarChart::TooltipValueColor(ChartTooltipValueColorFn fn, void* user) {
     tooltipContent.valueColor = fn;
     tooltipContent.valueColorUser = user;
+    return this;
+}
+BarChart* BarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
+    tooltipContent.content = fn;
+    tooltipContent.contentUser = user;
     return this;
 }
 
@@ -705,6 +726,12 @@ CandlestickChart* CandlestickChart::TooltipValueColor(
     tooltipContent.valueColorUser = user;
     return this;
 }
+CandlestickChart* CandlestickChart::TooltipContent(ChartTooltipContentFn fn,
+                                                   void* user) {
+    tooltipContent.content = fn;
+    tooltipContent.contentUser = user;
+    return this;
+}
 
 El* CandlestickChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
@@ -771,12 +798,49 @@ static void MoveRadarLabel(El* e, float x, float y) {
     }
 }
 
-static void PaintRadarLabels(PaintCtx* ctx, El* e, void* user) {
-    auto* c = (RadarChart*)user;
-    if (!c || !c->labels || c->n < 3 || c->overlay) {
+static Ctx ChartIdCtx(const PaintCtx* ctx, uint32_t id);
+template <typename C>
+static plot::PlotAppear ChartTrackAppear(const PaintCtx* ctx, const C* chart);
+
+// radar_chart.rs palette: the theme chart colours the series cycle through
+// by default.
+static Rgba RadarPaletteColor(const Theme& th, int ix) {
+    const Rgba palette[5] = {th.chart1, th.chart2, th.chart3, th.chart4,
+                             th.chart5};
+    return palette[ix % 5];
+}
+
+int RadarHoveredIndex(int n, float outerRadius, float labelGap, Point position,
+                      Size size) {
+    if (n <= 0) {
+        return -1;
+    }
+    float dx = position.x - size.w * 0.5f;
+    float dy = position.y - size.h * 0.5f;
+    if (sqrtf(dx * dx + dy * dy) > outerRadius + labelGap) {
+        return -1;
+    }
+    // Screen angle -> chart angle (0 at 12 o'clock, clockwise), rem_euclid.
+    const float kTau = 6.2831853f;
+    float angle = fmodf(atan2f(dy, dx) + kTau * 0.25f, kTau);
+    if (angle < 0) {
+        angle += kTau;
+    }
+    return (int)lroundf(angle * (float)n / kTau) % n;
+}
+
+float RadarChart::ResolveOuterRadius(float height) const {
+    return outerRadius > 0 ? outerRadius : height * 0.4f;
+}
+
+// The text labels outside the outer ring, and the element ones moved onto
+// their anchors (prepaint's half). Labels on the right are left-aligned, on
+// the left right-aligned, and near the vertical axis centred.
+static void PaintRadarLabels(PaintCtx* ctx, El* e, RadarChart* c) {
+    if (!c->labels || c->n < 3) {
         return;
     }
-    float radius = c->outerRadius > 0 ? c->outerRadius : e->h * 0.4f;
+    float radius = c->ResolveOuterRadius(e->h);
     float labelRadius = radius + c->labelGap;
     float centerX = e->x + e->w * 0.5f;
     float centerY = e->y + e->h * 0.5f;
@@ -812,6 +876,115 @@ static void PaintRadarLabels(PaintCtx* ctx, El* e, void* user) {
     }
 }
 
+// PlotElement's hover for a radar: tooltip_state finds the spoke nearest the
+// cursor and a dot per series on its vertex; tooltip builds the overlay (no
+// crosshair, since a radar has no cartesian axis to snap to; the dots; and a
+// box with the dimension's text label as the title and a row per series),
+// which is laid out over the chart and painted after its labels.
+static void PaintRadarHover(PaintCtx* ctx, El* e, RadarChart* c) {
+    const ChartSeries* chart = e->Chart();
+    if (!c->interactive || !chart || !ctx->window || !ctx->app ||
+        !ctx->window->frameArena || !c->values || c->n < 3) {
+        return;
+    }
+    int series = 1 + len(c->more);
+    Arena* scratch = GetTempArena();
+    float radius = c->ResolveOuterRadius(e->h);
+    float lo = 0;
+    float hi = 0;
+    ChartRadarDomain(*chart, &lo, &hi);
+    plot::PlotAppear appear = ChartTrackAppear(ctx, c);
+    Size size = {e->w, e->h};
+    Point cursor = {ctx->mouseX - e->x, ctx->mouseY - e->y};
+    bool inside = cursor.x >= 0 && cursor.y >= 0 && cursor.x <= size.w &&
+                  cursor.y <= size.h;
+    // No tooltip while the marks draw in: its dots would land on data not
+    // painted yet.
+    int index = inside && !appear.IsAppearing()
+                    ? RadarHoveredIndex(c->n, radius, c->labelGap, cursor, size)
+                    : -1;
+    plot::TooltipState live = {};
+    const plot::TooltipState* livePtr = nullptr;
+    if (index >= 0) {
+        // One dot per series at the hovered dimension's vertex.
+        Point* dots = (Point*)Alloc(scratch, (int)sizeof(Point) * series);
+        float angle = -1.5707963f + 6.2831853f * (float)index / (float)c->n;
+        for (int k = 0; k < series; k++) {
+            const float* vs = k == 0 ? c->values : c->more[k - 1].ys;
+            float r = radius * ChartRadarFraction(lo, hi, vs ? vs[index] : 0);
+            dots[k] = {size.w * 0.5f + r * cosf(angle),
+                       size.h * 0.5f + r * sinf(angle)};
+        }
+        live = plot::TooltipState::New(index, cursor, dots, series);
+        livePtr = &live;
+    }
+    Ctx idCx = ChartIdCtx(ctx, c->id);
+    plot::PlotHover hover = {};
+    Point linger = cursor;
+    if (!plot::TrackHover(&idCx, livePtr, index >= 0 ? &cursor : nullptr,
+                          &hover, &linger)) {
+        return;
+    }
+    const plot::TooltipState& held = hover.State();
+    if (held.index < 0 || held.index >= c->n) {
+        return;
+    }
+    const Theme& th = ThemeNow(ctx->app);
+    // The overlay is built in the frame's arena, as anything the paint walk
+    // goes on to lay out and draw has to be.
+    Ctx buildCx = idCx;
+    buildCx.a = ctx->window->frameArena;
+    plot::Tooltip* tooltip = plot::Tooltip::New(&buildCx, linger, size)->Gap(8);
+    plot::Dot* marks =
+        (plot::Dot*)Alloc(scratch, (int)sizeof(plot::Dot) * series);
+    int nMarks = 0;
+    for (int k = 0; held.dots && k < held.dotCount && k < series; k++) {
+        Rgba fill = k == 0 ? c->stroke : c->more[k - 1].stroke;
+        marks[nMarks] = plot::Dot::New(held.dots[k]);
+        marks[nMarks]
+            .Size(kChartHoverDotSize)
+            ->Halo(kChartHoverHaloSize)
+            ->Stroke(th.background)
+            ->Fill(fill);
+        nMarks++;
+    }
+    tooltip->Dots(marks, nMarks);
+    // The title is the dimension's text label; an element label leaves none.
+    Str title = {};
+    bool hasTitle = false;
+    if (c->labels && c->labels[held.index].kind == RadarLabel::Kind::Text &&
+        c->labels[held.index].text.s) {
+        title = c->labels[held.index].text;
+        hasTitle = true;
+    }
+    // One row per series: swatch + name + value.
+    ChartTooltipSeriesRow* rows = (ChartTooltipSeriesRow*)Alloc(
+        scratch, (int)sizeof(ChartTooltipSeriesRow) * series);
+    int nRows = 0;
+    for (int k = 0; k < series; k++) {
+        const float* vs = k == 0 ? c->values : c->more[k - 1].ys;
+        if (!vs) {
+            continue;
+        }
+        rows[nRows].swatch = k == 0 ? c->stroke : c->more[k - 1].stroke;
+        rows[nRows].name = k == 0 ? c->tooltipName : c->more[k - 1].name;
+        rows[nRows].value = vs[held.index];
+        nRows++;
+    }
+    ChartTooltipApply(c->tooltipContent, tooltip, held.index, title, hasTitle,
+                      rows, nRows);
+    plot::PlotOverlayAttach(ctx, e, e->Bounds(), tooltip->IntoEl());
+}
+
+static void PaintRadarChart(PaintCtx* ctx, El* e, void* user) {
+    auto* c = (RadarChart*)user;
+    if (!c) {
+        return;
+    }
+    PaintRadarLabels(ctx, e, c);
+    PaintRadarHover(ctx, e, c);
+}
+
 RadarChart* RadarChart::New(Ctx* cx, const float* values, int n,
                             const char* file, int line) {
     Arena* a = cx->a;
@@ -821,16 +994,47 @@ RadarChart* RadarChart::New(Ctx* cx, const float* values, int n,
     c->id = ChartCallerId(cx, file, line);
     c->values = values;
     c->n = n;
-    c->stroke = ThemeNow(cx->app).blue;
-    c->fill = RgbaOpacity(ThemeNow(cx->app).blue, 0.3f);
+    // series_stroke: the theme chart colours, cycled per series; the fill
+    // is the stroke at 0.3 until one is given.
+    c->stroke = RadarPaletteColor(ThemeNow(cx->app), 0);
+    c->fill = RgbaOpacity(c->stroke, 0.3f);
     return c;
 }
+RadarChart* RadarChart::Value(const float* ys) {
+    ChartSeriesExtra series = {};
+    series.ys = ys;
+    series.stroke = RadarPaletteColor(ThemeNow(cx->app), 1 + len(more));
+    series.fillTop = RgbaOpacity(series.stroke, 0.3f);
+    series.fillBot = series.fillTop;
+    more.Append(a, series);
+    lastFillSet = false;
+    return this;
+}
 RadarChart* RadarChart::Stroke(Rgba c) {
-    stroke = c;
+    // A series' fill follows its stroke until it is given one of its own.
+    if (len(more) > 0) {
+        ChartSeriesExtra& last = more[len(more) - 1];
+        last.stroke = c;
+        if (!lastFillSet) {
+            last.fillTop = RgbaOpacity(c, 0.3f);
+            last.fillBot = last.fillTop;
+        }
+    } else {
+        stroke = c;
+        if (!lastFillSet) {
+            fill = RgbaOpacity(c, 0.3f);
+        }
+    }
     return this;
 }
 RadarChart* RadarChart::Fill(Rgba c) {
-    fill = c;
+    if (len(more) > 0) {
+        more[len(more) - 1].fillTop = c;
+        more[len(more) - 1].fillBot = c;
+    } else {
+        fill = c;
+    }
+    lastFillSet = true;
     return this;
 }
 RadarChart* RadarChart::Labels(const char* const* l) {
@@ -858,13 +1062,12 @@ RadarChart* RadarChart::LabelGap(float v) {
     labelGap = v;
     return this;
 }
+RadarChart* RadarChart::MaxValue(float v) {
+    return Domain(0, v);
+}
 RadarChart* RadarChart::Domain(float lo, float hi) {
     domainMin = lo;
     domainMax = hi;
-    return this;
-}
-RadarChart* RadarChart::Overlay(bool v) {
-    overlay = v;
     return this;
 }
 RadarChart* RadarChart::Dot(bool v) {
@@ -884,7 +1087,32 @@ RadarChart* RadarChart::Grid(bool v) {
     return this;
 }
 RadarChart* RadarChart::Tooltip(Str name) {
-    tooltipName = name;
+    if (len(more) > 0) {
+        more[len(more) - 1].name = name;
+    } else {
+        tooltipName = name;
+    }
+    return this;
+}
+RadarChart* RadarChart::TooltipTitle(ChartTooltipTitleFn fn, void* user) {
+    tooltipContent.title = fn;
+    tooltipContent.titleUser = user;
+    return this;
+}
+RadarChart* RadarChart::TooltipValue(ChartTooltipValueFn fn, void* user) {
+    tooltipContent.value = fn;
+    tooltipContent.valueUser = user;
+    return this;
+}
+RadarChart* RadarChart::TooltipValueColor(ChartTooltipValueColorFn fn,
+                                          void* user) {
+    tooltipContent.valueColor = fn;
+    tooltipContent.valueColorUser = user;
+    return this;
+}
+RadarChart* RadarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
+    tooltipContent.content = fn;
+    tooltipContent.contentUser = user;
     return this;
 }
 RadarChart* RadarChart::Id(Str name) {
@@ -892,26 +1120,28 @@ RadarChart* RadarChart::Id(Str name) {
     return this;
 }
 El* RadarChart::IntoEl() {
-    Rgba none = {0, 0, 0, 0};
-    El* e = ChartEl(a, values, n, stroke, fill, none, 1);
+    El* e = ChartEl(a, values, n, stroke, fill, fill, 1);
     ChartSeries* chart = e->Chart();
     chart->kind = ChartKind::Radar;
-    chart->overlay = overlay;
     chart->dot = dot;
     chart->radarRadius = outerRadius;
     chart->gridLevels = gridLevels;
     chart->grid = grid;
     chart->domainMin = domainMin;
     chart->domainMax = domainMax;
-    // Every chart takes the pointer now that its id defaults (upstream
-    // a2d15b56); only a hand-built ChartEl stays a still picture.
-    chart->tooltip = interactive;
+    chart->more = more.Flatten(a);
+    chart->nMore = len(more);
+    // The labels and the hover are this builder's (PaintRadarChart); the
+    // runtime's own hover is for the cartesian charts.
+    chart->tooltip = false;
     chart->id = id;
     chart->appear = appear.Generation(&chart->appearGeneration);
     chart->name = tooltipName;
+    chart->tooltipContent = tooltipContent;
+    el = e;
+    e->customPaint = PaintRadarChart;
+    e->customUser = this;
     if (labels) {
-        e->customPaint = PaintRadarLabels;
-        e->customUser = this;
         for (int i = 0; i < n; i++) {
             if (labels[i].kind == RadarLabel::Kind::Element && labels[i]
                                                                    .element) {

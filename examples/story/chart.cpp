@@ -1,8 +1,8 @@
 #include "Story.h"
 #include "ChartFixtures.h"
 
-// cosf and sinf, for the radar chart's badge labels: MSVC hands them over
-// with the rest of the runtime, gcc does not.
+// lroundf and floorf: MSVC hands them over with the rest of the runtime, gcc
+// does not.
 #include <math.h>
 
 struct ChartStory {
@@ -114,6 +114,11 @@ static Str MoneyValue(Arena* a, int, int, double value, void*) {
 // tooltip_value(|_, _, value| format!("${value:.2}")): a price to the cent.
 static Str PriceValue(Arena* a, int, int, double value, void*) {
     return StrDup(a, fmt("$%.2f", value));
+}
+
+// tooltip_value(|_, _, value| format!("{value:.0} / 100")).
+static Str OutOfHundred(Arena* a, int, int, double value, void*) {
+    return StrDup(a, fmt("%.0f / 100", value));
 }
 
 // tooltip_title(|d| format!("{} 2025", d.month)).
@@ -277,6 +282,288 @@ static El* ChartCard(Ctx* cx, const char* title, El* chart, bool center) {
                      "Showing total visitors for the last 6 months");
 }
 
+// stacked_bar_chart.rs: "You can draw any chart you want by using the Plot."
+// A custom plot is an element that paints itself with the plot primitives
+// and, for a hover, tracks it under its own id and hands its tooltip overlay
+// back to the element it paints (plot::PlotOverlayAttach).
+struct StackedDevices {
+    const char* date;
+    float desktop;
+    float mobile;
+    float tablet;
+    float watch;
+};
+
+struct StackedBarPlot {
+    StackedDevices days[8] = {};
+    int n = 0;
+    // Plot::id: a single demo instance, so a fixed id is fine.
+    uint32_t id = 0;
+    ArenaVec<component::plot::StackSeries> series;
+};
+
+static const char* const kStackKeys[4] = {"desktop", "mobile", "tablet",
+                                          "watch"};
+
+static bool StackedValue(const void* item, int, Str key, void*, float* out) {
+    const StackedDevices* d = (const StackedDevices*)item;
+    if (StrEq(key, StrL("desktop"))) {
+        *out = d->desktop;
+    } else if (StrEq(key, StrL("mobile"))) {
+        *out = d->mobile;
+    } else if (StrEq(key, StrL("tablet"))) {
+        *out = d->tablet;
+    } else if (StrEq(key, StrL("watch"))) {
+        *out = d->watch;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// The height kept under the plot for the x-axis labels, drawn at the default
+// label size.
+static float StackedAxisGap() {
+    return component::plot::AxisGutter(component::plot::kPlotTextSize);
+}
+
+static component::plot::ScaleBand StackedBand(int n, float width) {
+    const float range[2] = {0.f, width};
+    component::plot::ScaleBand x = component::plot::ScaleBand::New(n, range, 2)
+                                       .MaxBandWidth(30.f);
+    x.paddingInner = 0.4f;
+    x.paddingOuter = 0.2f;
+    return x;
+}
+
+struct StackedScales {
+    component::plot::ScaleBand x;
+    component::plot::ScaleLinear y;
+    float height = 0;
+    const StackedDevices* first = nullptr;
+};
+
+static bool StackedCross(const void* item, int, void* user, float* out) {
+    const StackedScales* s = (const StackedScales*)user;
+    const auto* p = (const component::plot::StackPoint*)item;
+    int day = (int)((const StackedDevices*)p->data - s->first);
+    return s->x.Tick(day, out);
+}
+
+static bool StackedBase(const void* item, int, void* user, float* out) {
+    const StackedScales* s = (const StackedScales*)user;
+    const auto* p = (const component::plot::StackPoint*)item;
+    if (!s->y.Tick(p->y0, out)) {
+        *out = s->height;
+    }
+    return true;
+}
+
+static bool StackedTop(const void* item, int, void* user, float* out) {
+    const StackedScales* s = (const StackedScales*)user;
+    const auto* p = (const component::plot::StackPoint*)item;
+    return s->y.Tick(p->y1, out);
+}
+
+static Background StackedFill(const void*, int, Bounds,
+                              component::plot::BarAlignment, void* user) {
+    return Background(*(const Rgba*)user);
+}
+
+static void StackedColors(const Theme& th, Rgba out[4]) {
+    out[0] = th.chart4;
+    out[1] = th.chart3;
+    out[2] = th.chart2;
+    out[3] = th.chart1;
+}
+
+static void PaintStackedBars(PaintCtx* ctx, El* e, void* user) {
+    auto* p = (StackedBarPlot*)user;
+    if (!p || !ctx->app || p->n <= 0) {
+        return;
+    }
+    const Theme& th = ThemeNow(ctx->app);
+    Arena* scratch = GetTempArena();
+    Bounds bounds = e->Bounds();
+    float width = bounds.w;
+    float height = bounds.h - StackedAxisGap();
+
+    // 2. Calculate X/Y scales
+    StackedScales scales;
+    scales.x = StackedBand(p->n, width);
+    scales.height = height;
+    scales.first = p->days;
+    float bandWidth = scales.x.BandWidth();
+    float max = 0;
+    for (const component::plot::StackSeries& s : p->series) {
+        for (const component::plot::StackPoint& pt : s.points) {
+            max = pt.y1 > max ? pt.y1 : max;
+        }
+    }
+    const float domain[2] = {0.f, max};
+    const float range[2] = {height, 10.f};
+    scales.y = component::plot::ScaleLinear::New(domain, 2, range, 2);
+
+    // 3. Draw X axis labels
+    ArenaVec<component::plot::AxisText> labels;
+    for (int i = 0; i < p->n; i++) {
+        float tick = 0;
+        if (scales.x.Tick(i, &tick)) {
+            component::plot::AxisText text = component::plot::AxisText::New(
+                Str(p->days[i].date), tick + bandWidth / 2.f, th.mutedFg);
+            text.Align(component::plot::PlotTextAlign::Center);
+            labels.Append(scratch, text);
+        }
+    }
+    component::plot::PlotAxis::New(scratch)
+        .X(height)
+        ->XLabel(labels.Flatten(scratch), len(labels))
+        ->Stroke(th.border)
+        ->Paint(ctx, bounds);
+
+    // 4. Setup color scale
+    Rgba colors[4];
+    StackedColors(th, colors);
+
+    // 5. Draw grid lines
+    float gridY[4];
+    for (int i = 0; i < 4; i++) {
+        gridY[i] = height * (float)i / 4.f;
+    }
+    const float dash[2] = {4.f, 2.f};
+    component::plot::Grid::New()
+        .Y(gridY, 4)
+        ->Stroke(th.border)
+        ->DashArray(dash, 2)
+        ->Paint(ctx, bounds);
+
+    // 6. Draw stacked bars
+    for (const component::plot::StackSeries& s : p->series) {
+        component::plot::Bar::New()
+            .Data(s.points.Flatten(scratch), len(s.points),
+                  (int)sizeof(component::plot::StackPoint))
+            ->BandWidth(bandWidth)
+            ->Cross(StackedCross, &scales)
+            ->Base(StackedBase, &scales)
+            ->Value(StackedTop, &scales)
+            ->Fill(StackedFill, &colors[s.index % 4])
+            ->Paint(ctx, bounds);
+    }
+
+    // The hover: tooltip_state then tooltip, as PlotElement drives them.
+    if (!ctx->window || !ctx->window->frameArena) {
+        return;
+    }
+    Ctx idCx = {};
+    idCx.app = ctx->app;
+    idCx.win = ctx->window;
+    idCx.path = p->id;
+    Point cursor = {ctx->mouseX - bounds.x, ctx->mouseY - bounds.y};
+    bool inside = cursor.x >= 0 && cursor.y >= 0 && cursor.x <= bounds.w &&
+                  cursor.y <= bounds.h;
+    component::plot::TooltipState live = {};
+    const component::plot::TooltipState* livePtr = nullptr;
+    // Ignore the x-axis label gutter so hovering the labels doesn't show a
+    // tooltip.
+    if (inside && cursor.y <= height) {
+        int index = scales.x.NearestIndex(cursor.x);
+        float tick = 0;
+        if (index >= 0 && index < p->n && scales.x.Tick(index, &tick)) {
+            live = component::plot::TooltipState::New(
+                index, {tick + bandWidth / 2.f, cursor.y}, nullptr, 0);
+            livePtr = &live;
+        }
+    }
+    component::plot::PlotHover hover = {};
+    Point linger = cursor;
+    if (!component::plot::TrackHover(
+            &idCx, livePtr, livePtr ? &cursor : nullptr, &hover, &linger)) {
+        return;
+    }
+    const component::plot::TooltipState& held = hover.State();
+    if (held.index < 0 || held.index >= p->n) {
+        return;
+    }
+    Ctx buildCx = idCx;
+    buildCx.a = ctx->window->frameArena;
+    // Highlight the hovered column with a translucent band the width of the
+    // bars, confined to the plot height so it doesn't cover the x-axis
+    // labels. The overlay fades in and out with the hover, and the band
+    // glides between columns, on its own.
+    component::plot::CrossLine band =
+        component::plot::CrossLine::New(held.crossLine);
+    band.Height(height)->Band(bandWidth);
+    component::plot::Tooltip* tooltip =
+        component::plot::Tooltip::New(&buildCx, linger, {bounds.w, bounds.h})
+            ->Gap(8)
+            ->Cross(band)
+            ->Title(Str(p->days[held.index].date));
+    // One row per stacked series (its segment value at this band).
+    double total = 0;
+    for (const component::plot::StackSeries& s : p->series) {
+        float value = held.index < len(s.points)
+                          ? s.points[held.index].y1 - s.points[held.index].y0
+                          : 0.f;
+        total += value;
+        tooltip->Row(colors[s.index % 4], s.key,
+                     ChartFormatValue(buildCx.a, value));
+    }
+    tooltip->PlainRow(StrL("total"), ChartFormatValue(buildCx.a, total));
+    component::plot::PlotOverlayAttach(ctx, e, bounds, tooltip->IntoEl());
+}
+
+static El* StackedBarChartEl(Ctx* cx, int days) {
+    StackedBarPlot* p = ArenaNew<StackedBarPlot>(cx->a);
+    p->n = days < 8 ? days : 8;
+    for (int i = 0; i < p->n; i++) {
+        p->days[i] = {kDailyDate[i], kDailyDesktop[i], kDailyMobile[i],
+                      kDailyTablet[i], kDailyWatch[i]};
+    }
+    p->id = IdFoldName(cx->path, StrL("stacked-bar-chart"));
+    // 1. Calculate the stacked data
+    Str* keys = (Str*)Alloc(cx->a, (int)sizeof(Str) * 4);
+    for (int k = 0; k < 4; k++) {
+        keys[k] = Str(kStackKeys[k]);
+    }
+    component::plot::Stack::New()
+        .Data(p->days, p->n, (int)sizeof(StackedDevices))
+        ->Keys(keys, 4)
+        ->Value(StackedValue)
+        ->Series(cx->a, &p->series);
+    El* e = Div(cx->a)->W(kFill)->H(kFill);
+    e->customPaint = PaintStackedBars;
+    e->customUser = p;
+    return e;
+}
+
+// AreaGradient's tooltip_content: the month in semibold over this year, last
+// year and the change between them, the change in the bullish or bearish
+// colour by its sign.
+static El* RevenueVsLastYear(Ctx* cx, int index, void*) {
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    float revenue = kMetricRevenue[index];
+    float lastYear = kMetricLastYear[index];
+    float change = ChangePercent(revenue, lastYear);
+    Rgba changeColor = change >= 0 ? th.chartBullish : th.chartBearish;
+    auto row = [&](const char* label, Str value) {
+        return Div(a)
+            ->FlexRow()
+            ->JustifyBetween()
+            ->Gap(16)
+            ->Child(TextEl(a, Str(label))->Fg(th.mutedFg))
+            ->Child(TextEl(a, value));
+    };
+    return Div(a)
+        ->FlexCol()
+        ->Gap(4)
+        ->Child(TextEl(a, Str(kMetricMonth[index]))->Semibold())
+        ->Child(row("2025", Str(Money(cx, revenue))))
+        ->Child(row("2024", Str(Money(cx, lastYear))))
+        ->Child(row("Change", StrDup(a, fmt("%+.1f%%", (double)change)))
+                    ->Fg(changeColor));
+}
+
 static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -425,7 +712,12 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 cx, "Product Score", "Alpha, Q2 review",
                 component::RadarChart::New(cx, kScoreAlpha, kScoreCount)
                     ->Labels(kScoreDim)
-                    ->Domain(0, 100)
+                    ->Stroke(th.chart2)
+                    ->Fill(RgbaOpacity(th.chart2, 0.3f))
+                    ->Tooltip(StrL("Alpha"))
+                    ->MaxValue(100)
+                    ->TooltipValue(OutOfHundred)
+                    ->Id(StrL("radar-chart"))
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill),
@@ -434,40 +726,48 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
         }
 
         case 6: {
-            // Radar Chart - Multiple: a second ring over the first one's grid.
-            El* radarMulti = Div(a)->W(kFill)->H(kFill);
-            radarMulti->Child(
-                component::RadarChart::New(cx, kRadarDesktop, kRadarDeviceCount)
-                    ->Labels(kRadarMonth)
-                    ->IntoEl()
-                    ->W(kFill)
-                    ->H(kFill));
-            radarMulti->Child(
-                component::RadarChart::New(cx, kRadarMobile, kRadarDeviceCount)
+            float alpha = SumF(kScoreAlpha, kScoreCount);
+            float beta = SumF(kScoreBeta, kScoreCount);
+            const ChartLegend legend[] = {{th.chart2, "Alpha"},
+                                          {th.chart4, "Beta"}};
+            return ChartCard(
+                cx, "Alpha vs Beta", "Q2 review",
+                component::RadarChart::New(cx, kScoreAlpha, kScoreCount)
+                    ->Labels(kScoreDim)
                     ->Stroke(th.chart2)
-                    ->Fill(RgbaOpacity(th.chart2, 0.3f))
-                    ->Overlay()
+                    ->Fill(RgbaOpacity(th.chart2, 0.25f))
+                    ->Tooltip(StrL("Alpha"))
+                    ->Value(kScoreBeta)
+                    ->Stroke(th.chart4)
+                    ->Fill(RgbaOpacity(th.chart4, 0.25f))
+                    ->Tooltip(StrL("Beta"))
+                    ->MaxValue(100)
+                    ->Id(StrL("radar-chart-multiple"))
                     ->IntoEl()
-                    ->Absolute()
-                    ->Left(0)
-                    ->Top(0)
                     ->W(kFill)
-                    ->H(kFill));
-            return ChartCard(cx, "Radar Chart - Multiple", radarMulti, true);
+                    ->H(kFill),
+                true,
+                alpha >= beta
+                    ? StoryFmt(cx, "Alpha leads by %.0f points overall",
+                               (double)(alpha - beta))
+                          .s
+                    : StoryFmt(cx, "Beta leads by %.0f points overall",
+                               (double)(beta - alpha))
+                          .s,
+                "Alpha wins on usability, Beta on reliability", legend, 2);
         }
 
         case 7: {
-            // Radar Chart - Dots: an element label — the month over a grade
-            // badge — so the ring pulls in to outer_radius(64.) to leave it
-            // room.
+            // An element label: the dimension name over a grade badge, so the
+            // ring pulls in to outer_radius(64.) to leave it room.
             component::RadarLabel* radarLabels = (component::RadarLabel*)Alloc(
-                a, sizeof(component::RadarLabel) * kRadarDeviceCount);
-            for (int i = 0; i < kRadarDeviceCount; i++) {
-                const char* grade = kRadarDesktop[i] >= 250.f   ? "A"
-                                    : kRadarDesktop[i] >= 200.f ? "B"
-                                                                : "C";
+                a, sizeof(component::RadarLabel) * kScoreCount);
+            for (int i = 0; i < kScoreCount; i++) {
+                const char* grade = kScoreAlpha[i] >= 85.f   ? "A"
+                                    : kScoreAlpha[i] >= 70.f ? "B"
+                                                             : "C";
                 El* badge = Div(a)->FlexCol()->ItemsCenter()->Gap(4);
-                badge->Child(StoryTxt(cx, Str(kRadarMonth[i]), 12, th.mutedFg));
+                badge->Child(StoryTxt(cx, Str(kScoreDim[i]), 12, th.mutedFg));
                 badge->Child(Div(a)
                                  ->FlexRow()
                                  ->W(24)
@@ -477,38 +777,44 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                                  ->Radius(99)
                                  ->Bg(RgbaOpacity(th.chart2, 0.1f))
                                  ->Child(StoryTxt(cx, Str(grade), 14, th.chart2)
-                                             ->Semibold()
-                                             ->LineHeight(1.f)));
+                                             ->Semibold()));
                 radarLabels[i] = component::RadarLabel::Element(badge);
             }
             El* radarDots =
-                component::RadarChart::New(cx, kRadarDesktop, kRadarDeviceCount)
+                component::RadarChart::New(cx, kScoreAlpha, kScoreCount)
                     ->Labels(radarLabels)
+                    ->Tooltip(StrL("Alpha"))
                     ->Stroke(th.chart2)
-                    ->Fill(RgbaOpacity(th.chart2, 0.3f))
+                    ->Fill(RgbaOpacity(th.chart2, 0.25f))
+                    ->MaxValue(100)
                     ->Dot()
                     ->OuterRadius(64)
+                    ->Id(StrL("radar-chart-dots"))
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill);
-            return ChartCard(cx, "Radar Chart - Dots", radarDots, true);
+            return ChartCard(cx, "Review Grades", "Alpha, Q2 review", radarDots,
+                             true, "Two dimensions graded A",
+                             "A from 85, B from 70, C below");
         }
 
         case 8: {
-            // Radar Chart - Lines Only: max_value(400) and no fill under the
-            // ring.
+            const ChartLegend legend[] = {{th.chart4, "Beta"}};
             return ChartCard(
-                cx, "Radar Chart - Lines Only",
-                component::RadarChart::New(cx, kRadarDesktop, kRadarDeviceCount)
-                    ->Labels(kRadarMonth)
-                    ->Stroke(th.chart3)
+                cx, "Beta Profile", "Q2 review",
+                component::RadarChart::New(cx, kScoreBeta, kScoreCount)
+                    ->Labels(kScoreDim)
+                    ->Tooltip(StrL("Beta"))
+                    ->Stroke(th.chart4)
                     ->Fill(Rgba8(0, 0, 0, 0))
-                    ->Domain(0, 400)
+                    ->MaxValue(100)
                     ->GridLevels(5)
+                    ->Id(StrL("radar-chart-lines-only"))
                     ->IntoEl()
                     ->W(kFill)
                     ->H(kFill),
-                true);
+                true, "Strongest on reliability and support",
+                "Outline only, five grid rings", legend, 1);
         }
 
         case 9: {
@@ -591,55 +897,22 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
         }
 
         case 11: {
-            // Bar Chart - Stacked: Stack::keys(desktop, mobile, tablet, watch)
-            // over the first eight days, drawn as four series each sitting on
-            // the running total of the ones below it.
-            const int kStackDays = 8;
-            const float* kStackSeries[4] = {kDailyDesktop, kDailyMobile,
-                                            kDailyTablet, kDailyWatch};
-            Rgba kStackColors[4] = {th.chart4, th.chart3, th.chart2, th.chart1};
-            El* stacked = Div(a)->W(kFill)->H(kFill);
-            auto* bases = (float*)Alloc(a, (int)sizeof(float) * kStackDays * 5);
-            for (int d = 0; d < kStackDays; d++) {
-                bases[d] = 0;
+            // Visitors by Device: a custom Plot (stacked_bar_chart.rs) over
+            // the first eight days.
+            float total = 0;
+            for (int i = 0; i < 8; i++) {
+                total += kDailyDesktop[i] + kDailyMobile[i] + kDailyTablet[i] +
+                         kDailyWatch[i];
             }
-            for (int k = 0; k < 4; k++) {
-                float* base = bases + k * kStackDays;
-                float* next = bases + (k + 1) * kStackDays;
-                auto* tops = (float*)Alloc(a, (int)sizeof(float) * kStackDays);
-                for (int d = 0; d < kStackDays; d++) {
-                    tops[d] = base[d] + kStackSeries[k][d];
-                    next[d] = tops[d];
-                }
-                component::BarChart* bar =
-                    component::BarChart::New(cx, tops, kStackDays)
-                        ->Fill(kStackColors[k])
-                        ->Base(base)
-                        ->PaddingInner(0.4f)
-                        ->PaddingOuter(0.2f)
-                        ->Radius(0)
-                        ->TickMargin(1)
-                        ->Labels(kDailyDate);
-                // Every series is scaled against the full stack, so they line
-                // up.
-                bar->Domain(0, bases[4 * kStackDays]);
-                float top = 0;
-                for (int d = 0; d < kStackDays; d++) {
-                    if (bases[4 * kStackDays + d] > top) {
-                        top = bases[4 * kStackDays + d];
-                    }
-                }
-                bar->Domain(0, top);
-                if (k > 0) {
-                    bar->Overlay();
-                }
-                El* el = bar->IntoEl()->W(kFill)->H(kFill);
-                if (k > 0) {
-                    el->Absolute()->Left(0)->Top(0);
-                }
-                stacked->Child(el);
-            }
-            return ChartCard(cx, "Bar Chart - Stacked", stacked, false);
+            const ChartLegend legend[] = {{th.chart4, "Desktop"},
+                                          {th.chart3, "Mobile"},
+                                          {th.chart2, "Tablet"},
+                                          {th.chart1, "Watch"}};
+            return ChartCard(
+                cx, "Visitors by Device", "First week of April",
+                StackedBarChartEl(cx, 8), false,
+                StoryFmt(cx, "%s visitors in eight days", Compact(cx, total)).s,
+                "Stacked by device, a custom Plot", legend, 4);
         }
 
         case 12: {
@@ -809,9 +1082,36 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                              false);
         }
 
-        case 28:
-        case 29:
         case 30: {
+            float revenue = SumF(kMetricRevenue, kMetricCount);
+            float lastYear = SumF(kMetricLastYear, kMetricCount);
+            const ChartLegend legend[] = {{th.chart2, "2025"},
+                                          {th.chart1, "2024"}};
+            El* area =
+                component::AreaChart::New(cx, kMetricLastYear, kMetricCount)
+                    ->Labels(kMetricMonth)
+                    ->Stroke(th.chart1)
+                    ->Fill(RgbaOpacity(th.chart1, 0.45f),
+                           RgbaOpacity(th.chart1, 0.f))
+                    ->Tooltip(StrL("2024"))
+                    ->Y(kMetricRevenue)
+                    ->Stroke(th.chart2)
+                    ->Fill(RgbaOpacity(th.chart2, 0.45f),
+                           RgbaOpacity(th.chart2, 0.f))
+                    ->Tooltip(StrL("2025"))
+                    ->TooltipContent(RevenueVsLastYear)
+                    ->Id(StrL("area-chart-gradient"))
+                    ->IntoEl()
+                    ->W(kFill)
+                    ->H(kFill);
+            return ChartCard(cx, "Revenue vs Last Year", "2025", area, false,
+                             TrendLine(cx, ChangePercent(revenue, lastYear),
+                                       "year over year"),
+                             "Gradient fills fade to the baseline", legend, 2);
+        }
+
+        case 28:
+        case 29: {
             // The four single-series area charts, which differ only in how the
             // run of points is joined and what is under it.
             struct AreaCard {
@@ -824,7 +1124,6 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                 // 8ed5dd50).
                 {"Area Chart", 0, false},
                 {"Area Chart - Linear", 1, false},
-                {"Area Chart - Linear Gradient", 0, true},
             };
             const AreaCard& ac = kAreas[index - 28];
             {
