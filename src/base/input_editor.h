@@ -342,6 +342,16 @@ struct InputHighlighterFactory {
     bool Create(Str language, InputHighlighter* out) const;
 };
 
+// update_highlighter / update_highlighter_batch: hand the installed
+// highlighter the edits made since it was last driven -- one through
+// `update`, several as one `update_batch`, none (or more than the log keeps)
+// as the whole document -- and clear them. The themed layer drives it once a
+// frame, gated on docVersion, where Rust drives it from each change.
+void InputDriveHighlighter(InputState* s, bool folding);
+// The edits are answered some other way -- a background re-scan of the
+// whole document -- so the log is dropped without driving.
+void InputSkipHighlighterEdits(InputState* s);
+
 // input/editor/highlighting.rs and language_config.rs. Base's parser seam is
 // function-pointer based; a provider may answer Code everywhere and install
 // no parser, which is the dependency-free default.

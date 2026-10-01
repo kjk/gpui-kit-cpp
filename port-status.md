@@ -213,12 +213,15 @@ macOS font-kit requirement on the website only. The current update target is
   handler and skip a disabled field; here `BindInputContextMenu` in
   `src/ui/input.cpp` opens it, so state.rs's
   `context_menu_handler_is_deferred_and_respects_disabled` is not ported.
-- **The highlighter seam has no batch update.** Rust's
-  `InputHighlighter::update_batch` hands a multi-edit change over once, as
-  each edit and the text after it, and the state installs highlighters
-  through a factory. Here a second splice before the highlighter is asked
-  collapses into one whole-document edit (`TextSplice`, `src/base/input.cpp`),
-  so `test_replace_text_in_ranges_drives_the_highlighter_once` is not ported.
+- **The highlighter is driven once a frame.** Rust drives `update` from each
+  change and `update_batch` from each multi-edit change; here the text
+  funnels log every edit with the bytes it removed, and the themed layer
+  hands the log over once a frame (`InputDriveHighlighter`), so two
+  keystrokes inside one frame arrive as one batch of two where Rust makes
+  two calls. Past 64 edits, or 64 MB of rebuilt per-edit text, the log is
+  one whole-document update. The state installs no highlighter factory: the
+  themed layer installs the implementation itself (`src/base/input.cpp`,
+  `src/ui/highlighter.cpp`).
 - **An editor's text decorations are kept beside the state.** Rust's
   `create_decorations_collection` puts the collection in the editor state's
   extras and every edit moves it; here a `DecorationCollections` is held next

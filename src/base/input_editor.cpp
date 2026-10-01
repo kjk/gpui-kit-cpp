@@ -1620,6 +1620,18 @@ void InputHighlighter::Update(const InputEdit* edit, Str text,
     }
 }
 
+void InputHighlighter::UpdateBatch(const InputEditWithText* edits, int n,
+                                   bool folding) const {
+    if (updateBatch) {
+        updateBatch(data, edits, n, folding);
+        return;
+    }
+    // The default: each edit to `update` in turn, with the text after it.
+    for (int i = 0; i < n; i++) {
+        Update(&edits[i].edit, edits[i].text, folding);
+    }
+}
+
 int InputHighlighter::Styles(Selection range,
                              const HighlightStyleResolver* resolver, Arena* a,
                              TextSpan** out) const {

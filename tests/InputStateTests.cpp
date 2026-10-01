@@ -3969,27 +3969,6 @@ static void ClosedSearchResyncsMatchesAfterEdits() {
     utassert(SearchMatcherLen(&s.search.matcher) == 3);
 }
 
-// state.rs test_replace_text_in_ranges_drives_the_highlighter_once (#3260):
-// a multi-cursor keystroke reaches the highlighter as one update. Upstream
-// batches the per-edit envelopes into update_batch; the highlighter is driven
-// once per frame here, from the envelope the text funnel leaves, and more
-// than one splice collapses it to one whole-document update.
-static void MultiCursorTypingLeavesOneHighlighterUpdate() {
-    InputState s;
-    s.kind = InputKind::Editor;
-    InputSetValue(&s, StrL("ab\nab"));
-    s.hasPendingEdit = false;
-    InputSetSelectedRange(&s, nullptr, nullptr, 1, 1);
-    InputAddCursorAt(&s, nullptr, nullptr, 4);
-    uint64_t version = s.docVersion;
-    InputReplaceTextInRange(&s, nullptr, nullptr, nullptr, StrL("x"));
-    utassert(ValueIs(s, "axb\naxb"));
-    utassert(s.docVersion > version);
-    utassert(s.hasPendingEdit);
-    utassert(s.pendingEdit.oldEndByte == -1 &&
-             s.pendingEdit.newEndByte == len(InputValue(&s)));
-}
-
 // Offers one action named after the range it was asked about.
 static int RangeActions(void* data, Arena* a, Str text, Selection sel,
                         CodeActionItem* out, int cap) {
@@ -6229,12 +6208,99 @@ static void ReplaceTextInRangesMultiEditTransaction() {
     InputViewFree(&view);
 }
 
-// state.rs test_replace_text_in_ranges_drives_the_highlighter_once: not
-// ported — InputHighlighter has no `update_batch` and the state no
-// highlighter factory; the seam is `update` alone, and a second splice
-// before it is consumed collapses to one whole-document edit
-// (src/gpui/gpui.h InputHighlighter, TextSplice), so there is no batch of
-// per-edit texts to observe.
+// highlighting.rs's RecordingHighlighter: every update it is handed, as the
+// texts it was given -- one call per entry of `sizes`, its texts in order in
+// `texts`.
+struct RecordingHighlighter {
+    Vec<char*> texts;
+    Vec<int> sizes;
+
+    ~RecordingHighlighter() {
+        for (int i = 0; i < len(texts); i++) {
+            Free(nullptr, texts[i]);
+        }
+    }
+
+    void Record(const InputEditWithText* edits, int n) {
+        for (int i = 0; i < n; i++) {
+            Str t = edits[i].text;
+            char* copy = (char*)Alloc(nullptr, len(t) + 1);
+            memcpy(copy, t.s, (size_t)len(t));
+            copy[len(t)] = 0;
+            VecAppend(texts, copy);
+        }
+        VecAppend(sizes, n);
+    }
+
+    bool CallIs(int call, std::initializer_list<const char*> want) const {
+        if (call >= len(sizes) || sizes[call] != (int)want.size()) {
+            return false;
+        }
+        int at = 0;
+        for (int i = 0; i < call; i++) {
+            at += sizes[i];
+        }
+        for (const char* w : want) {
+            if (strcmp(texts[at++], w) != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    static void Update(void* data, const InputEdit* edit, Str text, bool) {
+        InputEditWithText one = {*edit, text};
+        ((RecordingHighlighter*)data)->Record(&one, 1);
+    }
+
+    static void UpdateBatch(void* data, const InputEditWithText* edits, int n,
+                            bool) {
+        ((RecordingHighlighter*)data)->Record(edits, n);
+    }
+
+    void InstallOn(InputState* s) {
+        s->highlighter.data = this;
+        s->highlighter.update = &Update;
+        s->highlighter.updateBatch = &UpdateBatch;
+    }
+};
+
+// state.rs test_replace_text_in_ranges_drives_the_highlighter_once:
+// replace_text_in_ranges hands its edits to the highlighter as one batch,
+// each with the text right after it, in the order they were applied --
+// back to front. The highlighter is driven once a frame here (the themed
+// layer calls InputDriveHighlighter), so the test drives it where the frame
+// would.
+static void ReplaceTextInRangesDrivesTheHighlighterOnce() {
+    InputView view = InputViewNew();
+    InputSetValue(view.input, StrL("aaa bbb ccc"));
+    RecordingHighlighter rec;
+    rec.InstallOn(view.input);
+    Selection ranges[] = {{0, 3}, {8, 11}};
+    Str texts[] = {StrL("X"), StrL("Y")};
+    InputReplaceTextInRanges(view.input, view.app, view.win, ranges, texts, 2);
+    InputDriveHighlighter(view.input, false);
+    utassert(len(rec.sizes) == 1);
+    utassert(rec.CallIs(0, {"aaa bbb Y", "X bbb Y"}));
+
+    // A single edit is an ordinary update, and a keystroke at two cursors
+    // is a batch of two.
+    Selection one = {0, 1};
+    Str z = StrL("Z");
+    InputReplaceTextInRanges(view.input, view.app, view.win, &one, &z, 1);
+    InputDriveHighlighter(view.input, false);
+    utassert(rec.CallIs(1, {"Z bbb Y"}));
+    InputSetSelectedRange(view.input, view.app, view.win, 1, 1);
+    InputAddCursorAt(view.input, view.app, view.win, 7);
+    InputReplaceTextInRange(view.input, view.app, view.win, nullptr, StrL("x"));
+    InputDriveHighlighter(view.input, false);
+    utassert(ValueIs(*view.input, "Zx bbb Yx"));
+    utassert(len(rec.sizes) == 3 && rec.sizes[2] == 2);
+    utassert(len(rec.texts) > 0 &&
+             strcmp(rec.texts[len(rec.texts) - 1], "Zx bbb Yx") == 0);
+    view.input->highlighter = {};
+    InputViewFree(&view);
+}
 
 // state.rs test_ime_composition_undoes_as_one_unit: marking, refining, then
 // committing undoes as a single unit.
@@ -6578,6 +6644,7 @@ static void RunWindowTestsB() {
     SetSelectedRange();
     ReplaceTextInRangesSingleEdit();
     ReplaceTextInRangesMultiEditTransaction();
+    ReplaceTextInRangesDrivesTheHighlighterOnce();
     ImeCompositionUndoesAsOneUnit();
     EditAfterCompositionIsSeparateUndo();
     CompositionCancelViaUnmarkDoesNotLeak();
@@ -9586,7 +9653,6 @@ void TestInputState() {
     AHandledConfirmClosesTheMenus();
     ACancelledPreeditSeparatesTyping();
     ClosedSearchResyncsMatchesAfterEdits();
-    MultiCursorTypingLeavesOneHighlighterUpdate();
     RequestingCodeActionsAgainReplacesTheOpenMenu();
     TheHostSeesTheDocumentFirst();
     DefinitionResponsesGrowPastTheOldBuffer();

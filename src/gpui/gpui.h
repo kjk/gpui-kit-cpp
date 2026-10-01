@@ -4710,6 +4710,22 @@ struct InputEdit {
     static InputEdit New(Str oldText, Selection range, Str inserted);
 };
 
+// One entry of InputHighlighter::update_batch: an edit, and the document as
+// it stood right after it.
+struct InputEditWithText {
+    InputEdit edit = {};
+    Str text = {};
+};
+
+// An edit the highlighter has not been handed yet: its envelope, and where
+// in InputState::highlightRemoved the bytes it took out are kept, which is
+// what turns the text after it back into the text before it.
+struct InputHighlightEdit {
+    InputEdit edit = {};
+    int removedAt = 0;
+    int removedLen = 0;
+};
+
 // highlighting.rs HighlightStyleResolver: semantic capture names resolved
 // into renderable styles. Base deliberately knows nothing about a concrete
 // syntax theme; the themed layer provides the resolver.
@@ -4747,6 +4763,12 @@ struct InputHighlighter {
     // spelling of upstream's `self.text.eq(text)` early-out.
     void (*update)(void* data, const InputEdit* edit, Str text,
                    bool folding) = nullptr;
+    // update_batch: several edits applied as one change -- a multi-cursor
+    // keystroke, replace_text_in_ranges -- each with the text right after it,
+    // in the order they were applied. Null replays them through `update` one
+    // at a time; an implementation sets it to reparse once for the change.
+    void (*updateBatch)(void* data, const InputEditWithText* edits, int n,
+                        bool folding) = nullptr;
     // Ordered, non-overlapping runs covering `range`, allocated from `a`;
     // answers how many. A gap between runs is unstyled text. Only ever asked
     // for the visible band — element.rs groups the visible lines and asks
@@ -4765,6 +4787,7 @@ struct InputHighlighter {
 
     Str Language() const;
     void Update(const InputEdit* edit, Str text, bool folding) const;
+    void UpdateBatch(const InputEditWithText* edits, int n, bool folding) const;
     int Styles(Selection range, const HighlightStyleResolver* resolver,
                Arena* a, TextSpan** out) const;
     int FoldRanges(Str text, Selection changedRange, Arena* a,
@@ -4812,11 +4835,15 @@ struct InputState {
     // it. The element queries it for the visible range every frame; the
     // implementation caches across frames and keys on docVersion.
     InputHighlighter highlighter = {};
-    // The edit envelope since the highlighter last updated, recorded by the
-    // text funnels — what Rust passes to `update` from on_text_changed. One
-    // splice is kept exactly; a second before it is consumed collapses it to
-    // the whole-document marker (oldEndByte -1).
-    InputEdit pendingEdit = {};
+    // The edits since the highlighter was last driven, in the order the text
+    // funnels applied them -- what Rust hands to `update` (one) or
+    // `update_batch` (several) from on_text_changed. Recorded only while a
+    // highlighter is installed; a whole-value set, or more edits than the
+    // log keeps, is highlightWhole, the whole-document update. hasPendingEdit
+    // is Rust's `_pending_update`: the text moved since the last drive.
+    Vec<InputHighlightEdit> highlightEdits;
+    Vec<char> highlightRemoved;
+    bool highlightWhole = false;
     bool hasPendingEdit = false;
     Selection selectedRange = {};
     bool selectionReversed = false;

@@ -670,6 +670,16 @@ static void SynHlUpdate(void* data, const InputEdit* edit, Str text,
     SynHlLexInto(hl->lang, text, &hl->runs, &hl->folds);
 }
 
+// update_batch, overridden as highlighting.rs suggests: the lexer re-scans
+// the document whole, so a batch is one scan of the text after its last
+// edit rather than one per edit.
+static void SynHlUpdateBatch(void* data, const InputEditWithText* edits, int n,
+                             bool folding) {
+    if (n > 0) {
+        SynHlUpdate(data, &edits[n - 1].edit, edits[n - 1].text, folding);
+    }
+}
+
 // The pool half and the landing half of the background lex. The worker
 // touches only the snapshot it was handed; the landing runs on the main
 // thread, swaps the answer in unless the implementation died first, and
@@ -868,6 +878,7 @@ static SyntaxInputHighlighter* SynHlEnsure(InputState* s, SyntaxLang lang) {
     s->highlighter.data = hl;
     s->highlighter.language = &SynHlLanguage;
     s->highlighter.update = &SynHlUpdate;
+    s->highlighter.updateBatch = &SynHlUpdateBatch;
     s->highlighter.styles = &SynHlStyles;
     s->highlighter.foldRanges = &SynHlFoldRanges;
     s->highlighter.drop = &SynHlDrop;
@@ -1019,12 +1030,7 @@ El* Highlighter::IntoEl() {
             hl->foreground = th.foreground;
             if (!hl->valid || hl->version != state->docVersion) {
                 if (len(text) <= kSyncLexMaxBytes) {
-                    InputEdit whole = {};
-                    whole.oldEndByte = -1;
-                    whole.newEndByte = len(text);
-                    const InputEdit* edit =
-                        state->hasPendingEdit ? &state->pendingEdit : &whole;
-                    state->highlighter.Update(edit, text, folding);
+                    InputDriveHighlighter(state, folding);
                     hl->valid = true;
                     hl->version = state->docVersion;
                 } else if (!hl->flight) {
@@ -1065,7 +1071,10 @@ El* Highlighter::IntoEl() {
                     }
                 }
             }
-            state->hasPendingEdit = false;
+            if (state->hasPendingEdit) {
+                // A re-scan in flight answers for these edits.
+                InputSkipHighlighterEdits(state);
+            }
             if (folding) {
                 FoldRange* ranges = nullptr;
                 int nRanges = state->highlighter.FoldRanges(

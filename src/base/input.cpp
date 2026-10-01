@@ -2709,6 +2709,116 @@ static void WrapMapNoteEdit(InputWrapMap* m, int a, int b, int insLen) {
     m->editNewEnd += insLen - (b - a);
 }
 
+// How many edits the highlighter log keeps before it gives up and asks for a
+// whole-document update. A frame drives the highlighter, so this is how many
+// splices one frame's input can make -- a multi-cursor keystroke is one per
+// cursor -- before the batch costs more to hand over than a re-scan.
+static const int kMaxHighlightEdits = 64;
+// And how many bytes of reconstructed text a batch may take: past it, a
+// large document edited at many cursors is handed over whole instead.
+static const int64_t kMaxHighlightBatchBytes = 64ll << 20;
+
+static void HighlightLogClear(InputState* s) {
+    VecClear(s->highlightEdits);
+    VecClear(s->highlightRemoved);
+    s->highlightWhole = false;
+}
+
+static void HighlightLogWhole(InputState* s) {
+    HighlightLogClear(s);
+    s->highlightWhole = true;
+}
+
+// on_text_changed's envelope for one splice of [a, b) into `insLen` bytes,
+// called before the splice so the bytes it removes can be kept. Only while
+// a highlighter is installed: nothing else reads the log.
+static void HighlightLogEdit(InputState* s, int a, int b, int insLen) {
+    if (!s->highlighter.update || s->highlightWhole) {
+        return;
+    }
+    if (len(s->highlightEdits) >= kMaxHighlightEdits) {
+        HighlightLogWhole(s);
+        return;
+    }
+    InputHighlightEdit e;
+    e.edit = InputEdit{a, b, a + insLen};
+    e.removedAt = len(s->highlightRemoved);
+    e.removedLen = b - a;
+    if (e.removedLen > 0) {
+        VecAppendN(s->highlightRemoved, s->text.els + a, e.removedLen);
+    }
+    VecAppend(s->highlightEdits, e);
+}
+
+void InputDriveHighlighter(InputState* s, bool folding) {
+    if (!s) {
+        return;
+    }
+    Str text = InputValue(s);
+    int n = len(s->highlightEdits);
+    bool tooBig =
+        (int64_t)(n - 1) * (int64_t)len(text) > kMaxHighlightBatchBytes;
+    if (s->highlightWhole || n == 0 || (n > 1 && tooBig)) {
+        // update(None): the text as a whole, the first time a highlighter
+        // sees it or when the log could not say what moved.
+        InputEdit whole = {};
+        whole.oldEndByte = -1;
+        whole.newEndByte = len(text);
+        s->highlighter.Update(&whole, text, folding);
+    } else if (n == 1) {
+        s->highlighter.Update(&s->highlightEdits[0].edit, text, folding);
+    } else {
+        // The text after each edit, from the last back: the one after the
+        // last is the document, and undoing edit k -- its inserted bytes
+        // back to the ones it removed -- is the text after edit k - 1.
+        Arena* a = GetTempArena();
+        auto* batch =
+            (InputEditWithText*)Alloc(a, (int)sizeof(InputEditWithText) * n);
+        if (batch) {
+            batch[n - 1].edit = s->highlightEdits[n - 1].edit;
+            batch[n - 1].text = text;
+            for (int k = n - 1; k > 0; k--) {
+                const InputHighlightEdit& e = s->highlightEdits[k];
+                Str after = batch[k].text;
+                int ins = e.edit.newEndByte - e.edit.startByte;
+                int outLen = len(after) - ins + e.removedLen;
+                char* buf = (char*)Alloc(a, outLen + 1);
+                if (!buf) {
+                    batch = nullptr;
+                    break;
+                }
+                memcpy(buf, after.s, (size_t)e.edit.startByte);
+                memcpy(buf + e.edit.startByte,
+                       s->highlightRemoved.els + e.removedAt,
+                       (size_t)e.removedLen);
+                memcpy(buf + e.edit.startByte + e.removedLen,
+                       after.s + e.edit.newEndByte,
+                       (size_t)(len(after) - e.edit.newEndByte));
+                buf[outLen] = 0;
+                batch[k - 1].edit = s->highlightEdits[k - 1].edit;
+                batch[k - 1].text = Str(buf, outLen);
+            }
+        }
+        if (batch) {
+            s->highlighter.UpdateBatch(batch, n, folding);
+        } else {
+            InputEdit whole = {};
+            whole.oldEndByte = -1;
+            whole.newEndByte = len(text);
+            s->highlighter.Update(&whole, text, folding);
+        }
+    }
+    InputSkipHighlighterEdits(s);
+}
+
+void InputSkipHighlighterEdits(InputState* s) {
+    if (!s) {
+        return;
+    }
+    HighlightLogClear(s);
+    s->hasPendingEdit = false;
+}
+
 // Rope::replace, over the flat buffer.
 static void TextSplice(InputState* s, int a, int b, Str ins) {
     int n = len(s->text);
@@ -2730,6 +2840,7 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
     if (!s->text.els) {
         return;
     }
+    HighlightLogEdit(s, a, b, insLen);
     memmove(s->text.els + a + insLen, s->text.els + b, (size_t)(n - b));
     if (insLen > 0) {
         memcpy(s->text.els + a, ins.s, (size_t)insLen);
@@ -2738,15 +2849,7 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
     s->text.els[out] = 0;
     s->docVersion++;
     WrapMapNoteEdit(&s->wrap, a, b, insLen);
-    // The envelope InputHighlighter::update is handed. One splice is exact;
-    // a second before the last was consumed is more than one envelope can
-    // say, so it collapses to the whole-document marker.
-    if (s->hasPendingEdit) {
-        s->pendingEdit = InputEdit{0, -1, len(s->text)};
-    } else {
-        s->pendingEdit = InputEdit{a, b, a + insLen};
-        s->hasPendingEdit = true;
-    }
+    s->hasPendingEdit = true;
 }
 
 static void TextSet(InputState* s, Str v) {
@@ -2762,7 +2865,7 @@ static void TextSet(InputState* s, Str v) {
     s->text.els[n] = 0;
     s->docVersion++;
     s->wrap.editWhole = true;
-    s->pendingEdit = InputEdit{0, -1, n};
+    HighlightLogWhole(s);
     s->hasPendingEdit = true;
 }
 
