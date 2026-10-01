@@ -9079,6 +9079,299 @@ static void RunElementWindowTests() {
     GeometricDecorationsProjectFoldsWithoutChangingTrackedRanges();
 }
 
+// ─── touch.rs window tests ────────────────────────────────────────────────
+//
+// input/base/touch.rs mod tests: a long press, a double tap and the handles,
+// on an input opened in a window. The long press is the platform's
+// LongPressEvent, dispatched the way a host's touch recognizer delivers it.
+
+// touch.rs open_input: a single-line input holding `value`, painted.
+static InputView OpenTouchInput(const char* value) {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, Str(value));
+    AppInvalidate(view.win);
+    TestFlushEffects(view.app);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    return view;
+}
+
+// touch.rs long_press: one phase of the gesture, and the frame after it.
+static void TouchLongPress(const InputView& view, TouchPhase phase, Point start,
+                           Point at) {
+    PlatformInput in = InputLongPress(phase, start, at);
+    WindowDispatchInput(view.win, &in);
+    TestFlushEffects(view.app);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+}
+
+// touch.rs caret_at: the window position of the caret before `offset`, half
+// a line down its row.
+static Point TouchCaretAt(const InputView& view, int offset) {
+    Point at = {};
+    utassert(InputLastCaretPoint(view.input, view.win, offset, &at));
+    at.y += view.input->lastLineH * 0.5f;
+    return at;
+}
+
+static bool TouchSelectedIs(const InputView& view, const char* want) {
+    return base::StrEq(InputSelectedValue(view.input), want);
+}
+
+static bool TouchSnapshot(const InputView& view, TouchSelectionSnapshot* out) {
+    return InputTouchSelection(view.input, view.win, out);
+}
+
+// touch.rs long_press_selects_word_then_release_opens_menu
+static void LongPressSelectsWordThenReleaseOpensMenu() {
+    InputView view = OpenTouchInput("quick select value");
+    Point start = TouchCaretAt(view, 8);
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchSelectionSnapshot snapshot;
+    utassert(TouchSelectedIs(view, "select"));
+    utassert(!InputIsEditMenuOpen(view.input));
+    // "touch selection is live"
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(!snapshot.IsEmpty());
+    utassert(!snapshot.menuOpen);
+
+    Point end = TouchCaretAt(view, 18);
+    TouchLongPress(view, TouchPhase::Moved, start, end);
+    utassert(TouchSelectedIs(view, "select value"));
+
+    TouchLongPress(view, TouchPhase::Ended, start, end);
+    utassert(TouchSelectedIs(view, "select value"));
+    utassert(InputIsEditMenuOpen(view.input));
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(snapshot.menuOpen);
+    utassert(snapshot.start.x < snapshot.end.x);
+    InputViewFree(&view);
+}
+
+// touch.rs double_tap_selects_word_with_handles_and_menu
+static void DoubleTapSelectsWordWithHandlesAndMenu() {
+    InputView view = OpenTouchInput("quick select value");
+    Point at = TouchCaretAt(view, 8);
+    // A tap arrives as mouse events; the touch that began it is what tells
+    // the input they came from a finger.
+    BaseNoteTouch(view.app);
+    for (int clickCount = 1; clickCount <= 2; clickCount++) {
+        PlatformInput down = InputMouseDown(MouseButton::Left, at.x, at.y, {},
+                                            clickCount, false);
+        WindowDispatchInput(view.win, &down);
+        TestFlushEffects(view.app);
+        PlatformInput up =
+            InputMouseUp(MouseButton::Left, at.x, at.y, {}, clickCount);
+        WindowDispatchInput(view.win, &up);
+        TestFlushEffects(view.app);
+    }
+    TestDraw(view.win);
+    utassert(TouchSelectedIs(view, "select"));
+    TouchSelectionSnapshot snapshot;
+    // "a double tap is a touch selection"
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(snapshot.menuOpen);
+    InputViewFree(&view);
+}
+
+// touch.rs long_press_on_empty_input_places_caret_with_menu
+static void LongPressOnEmptyInputPlacesCaretWithMenu() {
+    InputView view = OpenTouchInput("");
+    Point caret = TouchCaretAt(view, 0);
+    TouchLongPress(view, TouchPhase::Started, caret, caret);
+    TouchLongPress(view, TouchPhase::Ended, caret, caret);
+    utassert(ViewRangeIs(view, 0, 0));
+    TouchSelectionSnapshot snapshot;
+    // "caret still gets a menu"
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(snapshot.IsEmpty());
+    utassert(snapshot.menuOpen);
+    InputViewFree(&view);
+}
+
+// touch.rs dragging_a_handle_moves_that_end_only
+static void DraggingAHandleMovesThatEndOnly() {
+    InputView view = OpenTouchInput("quick select value");
+    Point start = TouchCaretAt(view, 8);
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchLongPress(view, TouchPhase::Ended, start, start);
+
+    // The finger holds the end knob, which hangs below the line.
+    Point endCaret = TouchCaretAt(view, 12);
+    Point finger = {endCaret.x, endCaret.y + 20};
+    InputBeginEdgeDrag(view.input, view.app, view.win, SelectionEdge::End,
+                       finger);
+    TouchSelectionSnapshot snapshot;
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(snapshot.hasDragging && snapshot.dragging == SelectionEdge::End);
+    utassert(!snapshot.menuOpen);
+
+    Point target = TouchCaretAt(view, 18);
+    InputUpdateEdgeDrag(view.input, view.app, view.win,
+                        {target.x, target.y + 20});
+    utassert(TouchSelectedIs(view, "select value"));
+
+    // Pull the start handle past the end: the ends swap, the finger keeps its
+    // handle.
+    InputEndEdgeDrag(view.input, view.app, view.win);
+    utassert(InputIsEditMenuOpen(view.input));
+    utassert(TouchSnapshot(view, &snapshot));
+    Bounds startCaret = snapshot.start;
+    InputBeginEdgeDrag(view.input, view.app, view.win, SelectionEdge::Start,
+                       {startCaret.x, startCaret.y});
+    target = TouchCaretAt(view, 0);
+    InputUpdateEdgeDrag(view.input, view.app, view.win, target);
+    utassert(TouchSelectedIs(view, "quick select value"));
+    Selection range = {};
+    utassert(InputTouchSelectionRange(view.input, &range));
+    utassert(range.start == 0 && range.end == 18);
+    InputViewFree(&view);
+}
+
+// touch.rs dragging_one_handle_past_the_other_swaps_them
+static void DraggingOneHandlePastTheOtherSwapsThem() {
+    InputView view = OpenTouchInput("quick select value");
+    Point start = TouchCaretAt(view, 8);
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchLongPress(view, TouchPhase::Ended, start, start);
+    utassert(TouchSelectedIs(view, "select"));
+
+    // Take the start handle and pull it past the end of "select" to the end
+    // of the text: the finger now holds the end handle, and the selection
+    // runs from the old end forward.
+    Point startCaret = TouchCaretAt(view, 6);
+    InputBeginEdgeDrag(view.input, view.app, view.win, SelectionEdge::Start,
+                       startCaret);
+    Point target = TouchCaretAt(view, 18);
+    InputUpdateEdgeDrag(view.input, view.app, view.win, target);
+    utassert(TouchSelectedIs(view, " value"));
+    TouchSelectionSnapshot snapshot;
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(snapshot.hasDragging && snapshot.dragging == SelectionEdge::End);
+
+    // And back across again: it is the start handle once more.
+    target = TouchCaretAt(view, 0);
+    InputUpdateEdgeDrag(view.input, view.app, view.win, target);
+    InputEndEdgeDrag(view.input, view.app, view.win);
+    utassert(TouchSelectedIs(view, "quick select"));
+    utassert(InputIsEditMenuOpen(view.input));
+    InputViewFree(&view);
+}
+
+// touch.rs touch_selection_goes_away_when_something_else_moves_the_selection
+static void TouchSelectionGoesAwayWhenSomethingElseMovesTheSelection() {
+    InputView view = OpenTouchInput("quick select value");
+    Point start = TouchCaretAt(view, 2);
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchLongPress(view, TouchPhase::Ended, start, start);
+    utassert(TouchSnapshot(view, nullptr));
+
+    // Select All from the menu keeps it, over the new range.
+    InputSelectAllFromEditMenu(view.input, view.app, view.win);
+    Flush(view);
+    utassert(ViewRangeIs(view, 0, 18));
+    utassert(TouchSnapshot(view, nullptr));
+    utassert(InputIsEditMenuOpen(view.input));
+
+    // Copy closes the menu but keeps the handles.
+    InputCloseEditMenu(view.input, view.app, view.win);
+    Flush(view);
+    TouchSelectionSnapshot snapshot;
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(!snapshot.menuOpen);
+
+    // Typing replaces the selection; nothing is left to hold a handle.
+    view.input->silentReplace = true;
+    ViewTypeText(view, "x");
+    view.input->silentReplace = false;
+    Flush(view);
+    utassert(!TouchSnapshot(view, nullptr));
+
+    // A press elsewhere drops it too.
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchLongPress(view, TouchPhase::Ended, start, start);
+    utassert(TouchSnapshot(view, nullptr));
+    Point elsewhere = TouchCaretAt(view, 0);
+    TestSimulateMouseDown(view.win, elsewhere);
+    utassert(!TouchSnapshot(view, nullptr));
+    InputViewFree(&view);
+}
+
+// touch.rs TextareaRoot: short enough that forty lines scroll.
+struct TouchTextareaRoot {
+    InputState textarea;
+
+    static El* Render(TouchTextareaRoot* self, Ctx* cx) {
+        return Div(cx->a)->W(300)->H(80)->Child(
+            InputStateFrame(cx, &self->textarea));
+    }
+};
+
+// touch.rs scrolling_closes_the_menu_and_keeps_the_handles
+static void ScrollingClosesTheMenuAndKeepsTheHandles() {
+    InputView view;
+    view.app = TestAppNew();
+    Entity<TouchTextareaRoot> root = EntityNew<TouchTextareaRoot>(view.app);
+    view.input = &root.Get(view.app)->textarea;
+    view.input->kind = InputKind::Textarea;
+    StrBuilder text;
+    for (int ix = 0; ix < 40; ix++) {
+        if (ix > 0) {
+            text.AppendChar('\n');
+        }
+        text.Append(fmt("line %d", ix));
+    }
+    Str joined = text.TakeStr();
+    InputSetValue(view.input, joined);
+    StrFree(joined);
+    view.win = TestWindowOpen(view.app, root);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    Point start = {};
+    utassert(InputLastCaretPoint(view.input, view.win, 2, &start));
+    start.y += 4;
+    TouchLongPress(view, TouchPhase::Started, start, start);
+    TouchLongPress(view, TouchPhase::Ended, start, start);
+    TouchSelectionSnapshot snapshot;
+    utassert(TouchSelectedIs(view, "line"));
+    utassert(TouchSnapshot(view, &snapshot) && snapshot.menuOpen);
+
+    Point offset = {0, 8};
+    InputUpdateScrollOffset(view.input, view.app, view.win, &offset);
+    InputCloseEditMenu(view.input, view.app, view.win);
+    Flush(view);
+    TestDraw(view.win);
+    // "handles follow the text"
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(!snapshot.menuOpen);
+    utassert(TouchSelectedIs(view, "line"));
+
+    // Scrolled far enough, the selection leaves the viewport: no handle for
+    // it, and no menu anchored to nothing.
+    offset = {0, 600};
+    InputUpdateScrollOffset(view.input, view.app, view.win, &offset);
+    Flush(view);
+    TestDraw(view.win);
+    // "the selection is still the touch one"
+    utassert(TouchSnapshot(view, &snapshot));
+    utassert(!snapshot.IsEdgeVisible(SelectionEdge::Start));
+    utassert(!snapshot.IsEdgeVisible(SelectionEdge::End));
+    Bounds bounds = {};
+    utassert(!snapshot.BoundsOfVisible(&bounds));
+    InputViewFree(&view);
+}
+
+static void RunTouchWindowTests() {
+    LongPressSelectsWordThenReleaseOpensMenu();
+    DoubleTapSelectsWordWithHandlesAndMenu();
+    LongPressOnEmptyInputPlacesCaretWithMenu();
+    DraggingAHandleMovesThatEndOnly();
+    DraggingOneHandlePastTheOtherSwapsThem();
+    TouchSelectionGoesAwayWhenSomethingElseMovesTheSelection();
+    ScrollingClosesTheMenuAndKeepsTheHandles();
+}
+
 void TestInputState() {
     TestSuite("input_state");
     WhitespaceMarksFollowTheShapedGlyphs();
@@ -9209,4 +9502,5 @@ void TestInputState() {
     InputFocusCyclesThroughInputsAndAddons();
     RunWindowTests();
     RunElementWindowTests();
+    RunTouchWindowTests();
 }
