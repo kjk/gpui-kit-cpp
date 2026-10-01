@@ -5184,7 +5184,337 @@ static void SearchShortcutOpensThePanelWhenSearchable() {
 // it.
 //
 
-static void RunWindowTestsA() {}
+// state.rs test_inline_token_wrap_and_size_refresh: not ported — a textarea's
+// tokens are flex items between per-character runs here, not inline
+// fragments in a display map, so there is no wrap_row_count or shaped
+// wrapped line to read back (port-status.md "Textarea tokens still use flex
+// wrapping instead of display-map inline metrics").
+
+// InputContent's PartialEq: the same text and the same token spans.
+static bool ContentEqA(const InputContent& a, const InputContent& b) {
+    if (!base::StrEq(a.text, b.text) || a.tokens.len != b.tokens.len) {
+        return false;
+    }
+    for (int i = 0; i < a.tokens.len; i++) {
+        const InlineTokenSpan& x = a.tokens[i];
+        const InlineTokenSpan& y = b.tokens[i];
+        if (x.start != y.start || x.end != y.end ||
+            !InlineTokenEq(x.token, y.token)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool ViewContentIsA(const InputView& v, const InputContent& want) {
+    InputContent now = InputGetContent(v.input);
+    bool eq = ContentEqA(now, want);
+    InputContentFree(&now);
+    return eq;
+}
+
+static int TokenCountA(const InputView& v) {
+    const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
+    return spans ? spans->len : 0;
+}
+
+static bool TokenIsA(const InputView& v, int i, const InlineToken& token) {
+    const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
+    return spans && i < spans->len && InlineTokenEq((*spans)[i].token, token);
+}
+
+static bool TokenRangeIsA(const InputView& v, int i, int start, int end) {
+    const Vec<InlineTokenSpan>* spans = InputTokens(v.input);
+    return spans && i < spans->len && (*spans)[i].start == start &&
+           (*spans)[i].end == end;
+}
+
+// state.rs test_inline_token_edit_history_and_validation.
+static void InlineTokenEditHistoryAndValidation() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("问 @alice!")); });
+    InlineToken token = InlineToken::New(StrL("alice-1"), StrL("@alice"))
+                            .WithLabel(StrL("Alice"));
+    utassert(InputReplaceRangeWithToken(view.input, view.app, view.win, 4, 10,
+                                        token) == InlineTokenError::Ok);
+    utassert(ViewValueIs(view, "问 @alice!"));
+    utassert(TokenRangeIsA(view, 0, 4, 10));
+    utassert(InputNextEndOfWordAt(view.input, 4) == 10);
+    utassert(InputPreviousStartOfWordAt(view.input, 10) == 4);
+    ViewAct(view, InputAction::Undo);
+    // "identity-only association is undoable"
+    utassert(TokenCountA(view) == 0);
+    utassert(ViewValueIs(view, "问 @alice!"));
+    ViewAct(view, InputAction::Redo);
+    utassert(TokenIsA(view, 0, token));
+    InputSetSelectedRange(view.input, view.app, view.win, 6, 7);
+    utassert(ViewRangeIs(view, 4, 10));
+    InputReplace(view.input, view.app, view.win, StrL(""));
+    utassert(ViewValueIs(view, "问 !"));
+    utassert(TokenCountA(view) == 0);
+    ViewAct(view, InputAction::Undo);
+    utassert(TokenIsA(view, 0, token));
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
+    InputReplace(view.input, view.app, view.win, StrL("🙂"));
+    utassert(TokenRangeIsA(view, 0, 8, 14));
+    ViewAct(view, InputAction::Undo);
+    utassert(TokenRangeIsA(view, 0, 4, 10));
+    InputContent before = InputGetContent(view.input);
+    // "the same reference may occur twice"
+    utassert(InputReplaceRangeWithToken(view.input, view.app, view.win, 0, 0,
+                                        token) == InlineTokenError::Ok);
+    utassert(ViewValueIs(view, "@alice问 @alice!"));
+    utassert(TokenCountA(view) == 2);
+    utassert(TokenIsA(view, 1, token));
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewContentIsA(view, before));
+    InputSetValue(view.input, before.text);
+    utassert(TokenCountA(view) == 0);
+    utassert(view.input->undo.undos.len == 0);
+    InputContentFree(&before);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_inline_token_textarea_ime_and_modes.
+static void InlineTokenTextareaImeAndModes() {
+    InputView view = InputViewBuildTextarea();
+    InputContent content = InputContent::New(StrL("@a@b\n后面"));
+    utassert(content.WithToken(0, 2, InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    utassert(content.WithToken(2, 4, InlineToken::New(StrL("b"), StrL("@b"))) ==
+             InlineTokenError::Ok);
+    InputSetValue(view.input, content);
+    InputSetSelectedRange(view.input, view.app, view.win, 2, 2);
+    utassert(InputPreviousBoundary(view.input, 2) == 0);
+    utassert(InputNextBoundary(view.input, 2) == 4);
+    // Rust's Some(1..1) counts UTF-16 units into the new text: past its one
+    // character, which is three bytes here.
+    Selection range = {1, 2};
+    Selection mark = {3, 3};
+    InputReplaceAndMarkText(view.input, view.app, view.win, &range, StrL("中"),
+                            &mark);
+    utassert(ViewValueIs(view, "中@b\n后面"));
+    utassert(TokenCountA(view) == 1);
+    utassert(InputReplaceWithToken(view.input, view.app, view.win,
+                                   InlineToken::New(StrL("x"), StrL("x"))) ==
+             InlineTokenError::CompositionActive);
+    ViewTypeText(view, "中文");
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewContentIsA(view, content));
+    ViewAct(view, InputAction::Redo);
+    utassert(ViewValueIs(view, "中文@b\n后面"));
+    ViewAct(view, InputAction::Undo);
+    InputReplaceAll(view.input, view.app, view.win, StrL("plain"));
+    utassert(TokenCountA(view) == 0);
+    ViewAct(view, InputAction::Undo);
+    utassert(ViewContentIsA(view, content));
+    Flush(view);
+    InputViewFree(&view);
+
+    InputView single = InputViewBuild();
+    InputContent combining = InputContent::New(StrL("a\xCC\x81"));
+    utassert(combining
+                 .WithToken(0, 1, InlineToken::New(StrL("bad"), StrL("a"))) ==
+             InlineTokenError::InvalidBoundary);
+    InputContent twice = InputContent::New(StrL("@a@a"));
+    utassert(twice.WithToken(0, 2, InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    utassert(twice.WithToken(1, 3, InlineToken::New(StrL("x"), StrL("a@"))) ==
+             InlineTokenError::OverlappingTokens);
+    utassert(InputReplaceWithToken(single.input, single.app, single.win,
+                                   InlineToken::New(StrL("a"), StrL("@a"))) ==
+             InlineTokenError::Ok);
+    InputContent before = InputGetContent(single.input);
+    single.input->masked = true;
+    utassert(!InputTokensVisible(single.input));
+    utassert(InputReplaceWithToken(single.input, single.app, single.win,
+                                   InlineToken::New(StrL("b"), StrL("b"))) ==
+             InlineTokenError::UnsupportedMode);
+    utassert(ViewContentIsA(single, before));
+    ViewAct(single, InputAction::Undo);
+    utassert(TokenCountA(single) == 0);
+    ViewAct(single, InputAction::Redo);
+    utassert(ViewContentIsA(single, before));
+    utassert(!InputTokensVisible(single.input));
+    InputContentFree(&before);
+    Flush(single);
+    InputViewFree(&single);
+}
+
+// state.rs test_inline_token_geometry_and_reentrant_activation: not ported —
+// the port has no ActivateToken action, and no range_to_bounds to measure a
+// token's laid-out box or a press inside it against.
+
+struct EmptyRootA {
+    static El* Render(EmptyRootA*, Ctx* cx) { return Div(cx->a); }
+};
+
+// A window whose root is gpui::EmptyView: the input is created beside it and
+// never rendered, as these tests open it.
+struct UnrenderedInputA {
+    App* app = nullptr;
+    Window* win = nullptr;
+    InputState input;
+};
+
+static void UnrenderedInputOpenA(UnrenderedInputA* u) {
+    u->app = TestAppNew();
+    u->win = TestWindowOpen(u->app, EntityNew<EmptyRootA>(u->app), 400, 100);
+}
+
+// cx.observe(&input, ..): a notify is what a state does to the windows it is
+// on, which is the window's invalidation count moving.
+static uint64_t NotificationsA(const UnrenderedInputA& u) {
+    return u.win->invalidations;
+}
+
+// state.rs test_noop_scroll_notifies_diagnostic_dismissal. The scroll size
+// and input bounds Rust seeds are the content and view extents the port
+// clamps against.
+static void NoopScrollNotifiesDiagnosticDismissal() {
+    UnrenderedInputA u;
+    UnrenderedInputOpenA(&u);
+    {
+        InputState* s = &u.input;
+        MakeCodeEditor(s);
+        s->inputBounds = {0, 0, 100, 20};
+        s->viewW = 100;
+        s->viewH = 20;
+        s->contentW = 100;
+        s->contentH = 20;
+        VecAppend(s->diagnostics, Diagnostic{});
+        InputPresentDiagnostic(s, 0);
+        uint64_t before = NotificationsA(u);
+
+        InputOnScrollWheel(s, u.app, u.win, 0, -40);
+        utassertnear(s->scrollX, 0.f);
+        utassertnear(s->scrollY, 0.f);
+        utassert(s->hoverDiagnostic < 0);
+        // "clearing a diagnostic must notify even when scrolling is clamped"
+        utassert(NotificationsA(u) - before == 1);
+        InputOnScrollWheel(s, u.app, u.win, 0, -40);
+        // "an unchanged input must stay quiet"
+        utassert(NotificationsA(u) - before == 1);
+    }
+    TestAppFree(u.app);
+}
+
+// state.rs test_input_scroll_offset_notifies_only_on_change. Rust's offsets
+// are negative-down; the port's are positive, so each point is negated.
+static void InputScrollOffsetNotifiesOnlyOnChange() {
+    UnrenderedInputA u;
+    UnrenderedInputOpenA(&u);
+    {
+        InputState* s = &u.input;
+        uint64_t before = NotificationsA(u);
+        s->inputBounds = {0, 0, 100, 20};
+        s->viewW = 100;
+        s->viewH = 20;
+        s->contentW = 300;
+        s->contentH = 20;
+        Point zero = {0, 0};
+        Point down = {-20, -50};
+        const Point* targets[] = {nullptr, &zero, &down};
+        for (const Point* target : targets) {
+            InputUpdateScrollOffset(s, u.app, u.win, target);
+            // "an unchanged clamped offset must stay quiet"
+            utassert(NotificationsA(u) - before == 0);
+        }
+        Point p = {40, 0};
+        InputUpdateScrollOffset(s, u.app, u.win, &p);
+        utassertnear(s->scrollX, 40.f);
+        utassertnear(s->scrollY, 0.f);
+        // "a scroll must notify"
+        utassert(NotificationsA(u) - before == 1);
+        p = {400, -50};
+        InputUpdateScrollOffset(s, u.app, u.win, &p);
+        utassertnear(s->scrollX, 200.f);
+        utassertnear(s->scrollY, 0.f);
+        utassert(NotificationsA(u) - before == 2);
+        p = {500, 0};
+        InputUpdateScrollOffset(s, u.app, u.win, &p);
+        // "clamping to the current offset must stay quiet"
+        utassert(NotificationsA(u) - before == 2);
+        s->contentW = 110;
+        InputUpdateScrollOffset(s, u.app, u.win, nullptr);
+        utassertnear(s->scrollX, 10.f);
+        utassertnear(s->scrollY, 0.f);
+        // "a smaller scroll range must clamp and notify"
+        utassert(NotificationsA(u) - before == 3);
+    }
+    TestAppFree(u.app);
+}
+
+// cursor_layout(): where the active caret was last laid out.
+struct CursorLayoutA {
+    float x = 0;
+    float y = 0;
+
+    bool operator==(const CursorLayoutA& o) const {
+        return x == o.x && y == o.y;
+    }
+    bool operator!=(const CursorLayoutA& o) const { return !(*this == o); }
+};
+
+static CursorLayoutA CursorLayoutOfA(const InputState* s) {
+    return {s->caretWinX, s->caretWinY};
+}
+
+// The Panel reads the input's caret geometry while it renders, which is
+// before the input paints in the same frame. Rust caches it under a Root;
+// this tree rebuilds the whole tree on every frame, so the Panel is the root
+// and renders on every invalidation, which the assertions do not depend on.
+struct CursorPanelA {
+    InputState input;
+    CursorLayoutA observed;
+
+    static El* Render(CursorPanelA* self, Ctx* cx) {
+        self->observed = CursorLayoutOfA(&self->input);
+        return Div(cx->a)->SizeFull()->Child(InputStateFrame(cx, &self->input));
+    }
+};
+
+// state.rs test_cursor_layout_consumer_updates_after_selection.
+static void CursorLayoutConsumerUpdatesAfterSelection() {
+    App* app = TestAppNew();
+    Entity<CursorPanelA> panel = EntityNew<CursorPanelA>(app);
+    CursorPanelA* p = panel.Get(app);
+    MakeCodeEditor(&p->input);
+    Window* win = TestWindowOpen(app, panel, 400, 100);
+    InputSetValue(&p->input, StrL("abcdefgh"));
+    AppInvalidate(win);
+    TestFlushEffects(app);
+    TestRunUntilParked(app);
+    CursorLayoutA before = CursorLayoutOfA(&p->input);
+    // The caret geometry only exists once the input has painted, and a
+    // notify sent from inside a draw marks the view dirty without asking
+    // for another frame, so the consumer reads the geometry on the next
+    // invalidation rather than during the paint that produced it.
+    AppInvalidate(win);
+    TestFlushEffects(app);
+    TestRunUntilParked(app);
+    utassert(p->observed == before);
+    InputSelectToWithAffinity(&p->input, app, win, 3, false);
+    TestFlushEffects(app);
+    TestRunUntilParked(app);
+    AppInvalidate(win);
+    TestFlushEffects(app);
+    CursorLayoutA after = CursorLayoutOfA(&p->input);
+    // "the caret must actually move"
+    utassert(after != before);
+    // "render consumers must receive the newly painted caret geometry"
+    utassert(p->observed == after);
+    TestAppFree(app);
+}
+
+static void RunWindowTestsA() {
+    CursorLayoutConsumerUpdatesAfterSelection();
+    InlineTokenEditHistoryAndValidation();
+    InlineTokenTextareaImeAndModes();
+    NoopScrollNotifiesDiagnosticDismissal();
+    InputScrollOffsetNotifiesOnlyOnChange();
+}
 
 // ─── state.rs window tests, part B ──────────────────────────────────────
 //
