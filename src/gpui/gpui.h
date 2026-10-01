@@ -4141,9 +4141,11 @@ bool SearchMatcherPrev(SearchMatcher* m, Selection* out);
    right by `indent` (WrappingIndent::Same's wrap_indent, the shaped width of
    the line's leading whitespace). The element builds one text element per
    visual row from it, and the hit test, the caret, Up/Down, Home/End and
-   scroll_to all walk it, so a row is a row everywhere. Rebuilt by
-   InputUpdateWrapMap (base/input.h) whenever the document, the width, the
-   font or an inline token's measured width moved. */
+   scroll_to all walk it, so a row is a row everywhere. Rebuilt whole by
+   InputUpdateWrapMap (base/input.h) when the width, the font or the wrapping
+   indent moved; an edit re-wraps only the lines it touched, and a chip that
+   measured another width only its own line, TextWrapper::update and
+   set_inline_metrics. */
 
 struct InputWrapLine {
     int firstStart = 0;
@@ -4180,6 +4182,17 @@ struct InputWrapMap {
     // measure_tokens' widths, one per inline token span in document order,
     // and the token revision they were measured at.
     Vec<float> tokenWidths;
+    // The text edited since the rows were wrapped, every splice merged into
+    // one: bytes [editStart, editOldEnd) of the document the rows were made
+    // for are [editStart, editNewEnd) of the current one. A whole-value set
+    // is editWhole, which re-wraps everything.
+    bool hasEdit = false;
+    bool editWhole = false;
+    int editStart = 0;
+    int editOldEnd = 0;
+    int editNewEnd = 0;
+    // Lines of the current document whose chips measured another width.
+    Vec<int> dirtyLines;
 };
 
 /* Port of crates/base/src/input/editor/display_map — the folding half.

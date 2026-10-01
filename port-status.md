@@ -38,17 +38,20 @@ macOS font-kit requirement on the website only. The current update target is
   WindowState's `prepare` sets no rem size and its tooltip overlay is the
   window's own; and WindowExt's layers still open in a
   window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **The editor re-wraps the whole document.** The wrap map re-wraps every
-  line when the text, the width, the font or a chip's width moved, where
-  Rust's TextWrapper re-wraps only the lines an edit touched. The visual rows
-  are elements built before layout, at the column the last frame laid out;
-  a column that comes out another width is built again at prepaint, so the
-  frame that resizes it already shows the new wrap, but that frame wraps the
-  document twice. Range decorations are measured when the editor's column
-  paints, from where each visual row's run landed, and painted once from
-  there under every row; the collection methods do not notify the editor as
-  Rust's do, the owning view re-renders (`src/base/input.cpp`
-  InputUpdateWrapMap, RewrapEditorColumn, PaintEditorUnderlay).
+- **The editor's wrap map is a flat list, not a sum tree.** An edit re-wraps
+  only the lines it touched, as Rust's TextWrapper does, but the rows sit in
+  one array, so the lines after the edit have their offsets and row counts
+  shifted one by one rather than through tree summaries: integer work,
+  nothing measured, about 1 ms per keystroke on a 100k-line document. The
+  visual rows are elements built before layout, at the column the last frame
+  laid out; a column that comes out another width is built again at
+  prepaint, so the frame that resizes it already shows the new wrap, but
+  that frame wraps the document twice. Range decorations are measured when
+  the editor's column paints, from where each visual row's run landed, and
+  painted once from there under every row; the collection methods do not
+  notify the editor as Rust's do, the owning view re-renders
+  (`src/base/input.cpp` WrapMapCatchUp, RewrapEditorColumn,
+  PaintEditorUnderlay).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell

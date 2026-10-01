@@ -188,9 +188,100 @@ static void WrappingIndentSameAndNone() {
     utassert(RowsAre(rows, {0}));
 }
 
+// The rows a whole re-wrap of `s`'s text gives, against the rows `s` holds.
+static bool WrapMatchesFreshWrap(const InputState& s, float width) {
+    InputState fresh;
+    fresh.kind = InputKind::Editor;
+    fresh.softWrap = true;
+    InputSetValue(&fresh, InputValue(&s));
+    InputUpdateWrapMap(&fresh, nullptr, width, 14, 0);
+    const InputWrapMap& a = s.wrap;
+    const InputWrapMap& b = fresh.wrap;
+    if (len(a.lines) != len(b.lines) || len(a.starts) != len(b.starts) ||
+        a.totalRows != b.totalRows) {
+        return false;
+    }
+    for (int i = 0; i < len(a.lines); i++) {
+        const InputWrapLine& x = a.lines[i];
+        const InputWrapLine& y = b.lines[i];
+        if (x.firstStart != y.firstStart || x.nRows != y.nRows ||
+            x.indent != y.indent || x.rowsAbove != y.rowsAbove) {
+            return false;
+        }
+    }
+    for (int i = 0; i < len(a.starts); i++) {
+        if (a.starts[i] != b.starts[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+struct WrapEdit {
+    int start;
+    int end;
+    const char* text;
+};
+
+// text_wrapper.rs `update`: an edit re-wraps the buffer rows it replaced and
+// keeps every other row's wrap. Whatever the edit -- inside a line, across
+// lines, adding or joining them, at either end, several before the rows are
+// asked for -- the rows come out as a whole re-wrap of the new text would
+// give them.
+static void EditsRewrapTheLinesTheyTouched() {
+    const float width = 120;
+    InputState s;
+    s.kind = InputKind::Editor;
+    s.softWrap = true;
+    InputSetValue(&s, StrL("fn main() {\n"
+                           "    let one = alpha + beta + gamma + delta;\n"
+                           "    short\n"
+                           "\n"
+                           "    let two = epsilon * zeta * eta * theta;\n"
+                           "}\n"
+                           "tail line with several words in it"));
+    InputUpdateWrapMap(&s, nullptr, width, 14, 0);
+    utassert(s.wrap.totalRows > len(s.wrap.lines));
+    // Each group is applied in full before the rows are brought up to date.
+    const WrapEdit groups[][3] = {
+        {{20, 20, "x"}, {-1, 0, nullptr}, {}},
+        {{12, 12, "split\nhere and there and everywhere "}, {-1, 0, nullptr}},
+        {{30, 70, ""}, {-1, 0, nullptr}},
+        {{0, 0, "new first line, long enough to wrap twice over\n"},
+         {-1, 0, nullptr}},
+        {{5, 6, ""}, {40, 41, "\n\n"}, {2, 2, "abc def ghi jkl mno"}},
+        {{60, 61, ""}, {-1, 0, nullptr}},
+    };
+    for (const auto& group : groups) {
+        for (const WrapEdit& e : group) {
+            if (!e.text) {
+                break;
+            }
+            int n = len(InputValue(&s));
+            Selection range = {e.start < n ? e.start : n,
+                               e.end < n ? e.end : n};
+            InputReplaceTextInRange(&s, nullptr, nullptr, &range, Str(e.text));
+        }
+        InputUpdateWrapMap(&s, nullptr, width, 14, 0);
+        utassert(WrapMatchesFreshWrap(s, width));
+    }
+    // An edit at the very end, and one that empties the document.
+    int n = len(InputValue(&s));
+    Selection end = {n, n};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &end, StrL("\nmore"));
+    InputUpdateWrapMap(&s, nullptr, width, 14, 0);
+    utassert(WrapMatchesFreshWrap(s, width));
+    Selection all = {0, len(InputValue(&s))};
+    InputReplaceTextInRange(&s, nullptr, nullptr, &all, Str{});
+    InputUpdateWrapMap(&s, nullptr, width, 14, 0);
+    utassert(WrapMatchesFreshWrap(s, width));
+    utassert(s.wrap.totalRows == 1);
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
     WrapLine();
     IsWordChar();
     WrappingIndentSameAndNone();
+    EditsRewrapTheLinesTheyTouched();
 }

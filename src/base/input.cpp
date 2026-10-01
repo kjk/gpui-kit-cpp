@@ -320,80 +320,214 @@ static void WrapLineFragments(void* user, Str slice, int base,
                         u->measure, out);
 }
 
+// One logical line's rows, as byte offsets into it, and the continuation
+// rows' indent: the body of TextWrapper::_update for a row.
+static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
+                        Vec<int>* rows, float* indentOut) {
+    InputWrapMap* m = &s->wrap;
+    const Vec<int>& lineStarts = InputLineStarts(s);
+    Str text = InputValue(s);
+    int nLines = len(lineStarts);
+    int start = lineStarts[line];
+    int end = line + 1 < nLines ? lineStarts[line + 1] - 1 : len(text);
+    Str str = Str(text.s + start, end - start);
+    WrapLineUser u;
+    u.measure = wm;
+    u.width = m->width;
+    u.lineStart = start;
+    const Vec<InlineTokenSpan>* spans =
+        InputTokensVisible(s) ? InputTokens(s) : nullptr;
+    int nSpans = spans ? len(*spans) : 0;
+    if (nSpans > 0) {
+        // The first span that ends inside or after the line, and how many
+        // start before its end.
+        int lo = 0, hi = nSpans;
+        while (lo < hi) {
+            int mid = (lo + hi) / 2;
+            if ((*spans)[mid].end <= start) {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        int count = 0;
+        while (lo + count < nSpans && (*spans)[lo + count].start < end) {
+            count++;
+        }
+        if (count > 0) {
+            const float* widths =
+                len(m->tokenWidths) == nSpans ? m->tokenWidths.els : nullptr;
+            u.spans = spans->els + lo;
+            u.widths = widths ? widths + lo : nullptr;
+            u.nSpans = count;
+        }
+    }
+    WrappingIndent indent =
+        m->wrappingIndent ? WrappingIndent::Same : WrappingIndent::None;
+    int indentChars = 0;
+    VecClear(*rows);
+    TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u, rows,
+                        &indentChars);
+    *indentOut = 0;
+    // Use the first visual row's indentation width for the rows after it:
+    // x_for_index of the indent's byte length in that row.
+    if (indentChars > 0 && len(*rows) > 1) {
+        int bytes = 0;
+        for (int k = 0; k < indentChars && bytes < len(str); k++) {
+            uint32_t c = 0;
+            int n = Utf8At(str, bytes, &c);
+            bytes += n > 0 ? n : 1;
+        }
+        float x = 0;
+        if (!WrapAdvance(wm, Str(str.s, bytes), &x)) {
+            x = m->spaceWidth * (float)indentChars;
+        }
+        *indentOut = x;
+    }
+}
+
+// The rows are the current document's now: no edit is waiting on them.
+static void WrapMapCaughtUp(InputState* s) {
+    InputWrapMap* m = &s->wrap;
+    m->docVersion = s->docVersion;
+    m->hasEdit = false;
+    m->editWhole = false;
+    m->valid = true;
+}
+
 static void WrapMapRebuild(InputState* s, PaintCtx* ctx) {
     InputWrapMap* m = &s->wrap;
     VecClear(m->lines);
     VecClear(m->starts);
+    VecClear(m->dirtyLines);
     m->totalRows = 0;
-    m->docVersion = s->docVersion;
-    m->valid = true;
-    const Vec<int>& lineStarts = InputLineStarts(s);
-    Str text = InputValue(s);
-    int nLines = len(lineStarts);
+    WrapMapCaughtUp(s);
+    int nLines = len(InputLineStarts(s));
     WrapMeasure wm;
     wm.map = m;
     wm.ctx = ctx;
     m->spaceWidth = WrapCharWidthOf(&wm, ' ');
-    const Vec<InlineTokenSpan>* spans =
-        InputTokensVisible(s) ? InputTokens(s) : nullptr;
-    int nSpans = spans ? len(*spans) : 0;
-    const float* widths = nSpans > 0 && len(m->tokenWidths) == nSpans
-                              ? m->tokenWidths.els
-                              : nullptr;
-    WrappingIndent indent =
-        m->wrappingIndent ? WrappingIndent::Same : WrappingIndent::None;
+    VecReserve(m->lines, nLines);
     Vec<int> rows;
-    int spanAt = 0;
     for (int line = 0; line < nLines; line++) {
-        int start = lineStarts[line];
-        int end = line + 1 < nLines ? lineStarts[line + 1] - 1 : len(text);
-        Str str = Str(text.s + start, end - start);
-        WrapLineUser u;
-        u.measure = &wm;
-        u.width = m->width;
-        u.lineStart = start;
-        while (spanAt < nSpans && (*spans)[spanAt].end <= start) {
-            spanAt++;
-        }
-        int firstSpan = spanAt;
-        int count = 0;
-        while (firstSpan + count < nSpans && (*spans)[firstSpan + count]
-                                                     .start < end) {
-            count++;
-        }
-        if (count > 0) {
-            u.spans = spans->els + firstSpan;
-            u.widths = widths ? widths + firstSpan : nullptr;
-            u.nSpans = count;
-        }
-        int indentChars = 0;
-        TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u,
-                            &rows, &indentChars);
         InputWrapLine item;
+        WrapOneLine(s, &wm, line, &rows, &item.indent);
         item.firstStart = len(m->starts);
         item.nRows = len(rows);
         item.rowsAbove = m->totalRows;
-        // Use the first visual row's indentation width for the rows after
-        // it: x_for_index of the indent's byte length in that row.
-        if (indentChars > 0 && item.nRows > 1) {
-            int bytes = 0;
-            for (int k = 0; k < indentChars && bytes < len(str); k++) {
-                uint32_t c = 0;
-                int n = Utf8At(str, bytes, &c);
-                bytes += n > 0 ? n : 1;
-            }
-            float x = 0;
-            if (!WrapAdvance(&wm, Str(str.s, bytes), &x)) {
-                x = m->spaceWidth * (float)indentChars;
-            }
-            item.indent = x;
-        }
-        for (int k = 0; k < len(rows); k++) {
-            VecAppend(m->starts, rows[k]);
-        }
+        VecAppendN(m->starts, rows.els, len(rows));
         m->totalRows += item.nRows;
         VecAppend(m->lines, item);
     }
+}
+
+// TextWrapper::_update's splice: the map's lines [first, first + oldCount)
+// become the current document's lines [first, first + newCount), wrapped
+// afresh, and every line after them keeps its rows. Only where each line's
+// rows sit in `starts` and how many rows are above it move along.
+static void WrapMapReplaceLines(InputState* s, WrapMeasure* wm, int first,
+                                int oldCount, int newCount) {
+    InputWrapMap* m = &s->wrap;
+    int nOld = len(m->lines);
+    int sFrom = first < nOld ? m->lines[first].firstStart : len(m->starts);
+    int sTo = first + oldCount < nOld ? m->lines[first + oldCount].firstStart
+                                      : len(m->starts);
+    Vec<InputWrapLine> items;
+    Vec<int> starts;
+    Vec<int> rows;
+    VecReserve(items, newCount);
+    for (int i = 0; i < newCount; i++) {
+        InputWrapLine item;
+        WrapOneLine(s, wm, first + i, &rows, &item.indent);
+        item.nRows = len(rows);
+        VecAppendN(starts, rows.els, len(rows));
+        VecAppend(items, item);
+    }
+    VecRemoveAtN(m->lines, first, oldCount);
+    if (newCount > 0) {
+        if (InputWrapLine* at = VecInsertSpace(m->lines, first, newCount)) {
+            memcpy((void*)at, (const void*)items.els,
+                   sizeof(InputWrapLine) * (size_t)newCount);
+        }
+    }
+    VecRemoveAtN(m->starts, sFrom, sTo - sFrom);
+    if (len(starts) > 0) {
+        if (int* at = VecInsertSpace(m->starts, sFrom, len(starts))) {
+            memcpy(at, starts.els, sizeof(int) * (size_t)len(starts));
+        }
+    }
+    // A sum tree carries these as summaries; a flat list walks the lines
+    // after the splice once, which is integer adds and nothing measured.
+    int firstStart = sFrom;
+    int above = 0;
+    if (first > 0) {
+        above = m->lines[first - 1].rowsAbove + m->lines[first - 1].nRows;
+    }
+    for (int i = first; i < len(m->lines); i++) {
+        InputWrapLine& item = m->lines[i];
+        item.firstStart = firstStart;
+        item.rowsAbove = above;
+        firstStart += item.nRows;
+        above += item.nRows;
+    }
+    m->totalRows = above;
+}
+
+// The line holding byte `offset` of the current document.
+static int WrapLineOfOffset(const Vec<int>& lineStarts, int offset) {
+    int lo = 0, hi = len(lineStarts) - 1;
+    while (lo < hi) {
+        int mid = (lo + hi + 1) / 2;
+        if (lineStarts[mid] <= offset) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    return lo;
+}
+
+// Bring a map wrapped at its own width and font up to the current document:
+// the lines the edit envelope covers, then the lines whose chips measured
+// another width. A map that cannot say what changed is wrapped whole.
+static void WrapMapCatchUp(InputState* s, PaintCtx* ctx) {
+    InputWrapMap* m = &s->wrap;
+    bool edited = m->docVersion != s->docVersion;
+    if (!edited && len(m->dirtyLines) == 0) {
+        return;
+    }
+    if (edited && (!m->hasEdit || m->editWhole)) {
+        WrapMapRebuild(s, ctx);
+        return;
+    }
+    WrapMeasure wm;
+    wm.map = m;
+    wm.ctx = ctx;
+    const Vec<int>& lineStarts = InputLineStarts(s);
+    int nNew = len(lineStarts);
+    int nOld = len(m->lines);
+    if (edited) {
+        // The lines after the one the envelope ends on are the same lines
+        // in both documents, so the old line it ended on is as far from the
+        // old end as the new one is from the new end.
+        int first = WrapLineOfOffset(lineStarts, m->editStart);
+        int lastNew = WrapLineOfOffset(lineStarts, m->editNewEnd);
+        int lastOld = nOld - (nNew - lastNew);
+        if (lastOld < first || lastNew < first || lastOld >= nOld) {
+            WrapMapRebuild(s, ctx);
+            return;
+        }
+        WrapMapReplaceLines(s, &wm, first, lastOld - first + 1,
+                            lastNew - first + 1);
+        WrapMapCaughtUp(s);
+    }
+    for (int i = 0; i < len(m->dirtyLines); i++) {
+        int line = m->dirtyLines[i];
+        if (line >= 0 && line < len(m->lines)) {
+            WrapMapReplaceLines(s, &wm, line, 1, 1);
+        }
+    }
+    VecClear(m->dirtyLines);
 }
 
 void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
@@ -405,11 +539,13 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
     if (width < 0) {
         width = 0;
     }
-    bool same = m->valid && m->docVersion == s->docVersion &&
-                m->width == width && m->fontSize == fontSize &&
+    // set_wrap_width, set_font and set_wrapping_indent re-wrap every line;
+    // an edit or a chip re-measured re-wraps the lines it touched.
+    bool same = m->valid && m->width == width && m->fontSize == fontSize &&
                 m->fontWord == fontWord &&
                 m->wrappingIndent == s->wrappingIndent;
     if (same) {
+        WrapMapCatchUp(s, ctx);
         return;
     }
     m->width = width;
@@ -420,7 +556,7 @@ void InputUpdateWrapMap(InputState* s, PaintCtx* ctx, float width,
 }
 
 // The map as of the current document. An edit since the element last built
-// it re-wraps at the width and font it last had.
+// it re-wraps the lines it touched, at the width and font the map last had.
 static const InputWrapMap* WrapMapOf(const InputState* s, PaintCtx* ctx) {
     if (!s || !s->softWrap || !InputIsMultiLine(s)) {
         return nullptr;
@@ -429,11 +565,12 @@ static const InputWrapMap* WrapMapOf(const InputState* s, PaintCtx* ctx) {
     if (!m->valid || m->width <= 0) {
         return nullptr;
     }
-    if (m->docVersion != s->docVersion ||
-        m->wrappingIndent != s->wrappingIndent) {
-        InputState* ms = const_cast<InputState*>(s);
+    InputState* ms = const_cast<InputState*>(s);
+    if (m->wrappingIndent != s->wrappingIndent) {
         ms->wrap.wrappingIndent = s->wrappingIndent;
         WrapMapRebuild(ms, ctx);
+    } else {
+        WrapMapCatchUp(ms, ctx);
     }
     return m;
 }
@@ -705,7 +842,22 @@ static void MeasureTokenWidths(Ctx* cx, InputState* state,
         if (visible.start < 0) {
             visible.start = 0;
         }
-    } else {
+    }
+    // set_inline_metrics: only the lines whose chips came out another width
+    // wrap again. When the chips are not the ones measured last -- one was
+    // added or removed -- every chip's line does, which is a line per token.
+    Vec<float> was;
+    bool sameChips = len(m->tokenWidths) == n;
+    bool wraps = state->softWrap && InputIsMultiLine(state);
+    if (!sameChips && m->docVersion == state->docVersion) {
+        // A token went or came with no edit to say where -- an association
+        // undone, say -- so the line that lost a chip is not known.
+        m->valid = false;
+    }
+    if (all) {
+        if (sameChips) {
+            VecAppendVec(was, m->tokenWidths);
+        }
         VecClear(m->tokenWidths);
         if (VecAppendBlanks(m->tokenWidths, n)) {
             for (int i = 0; i < n; i++) {
@@ -713,7 +865,6 @@ static void MeasureTokenWidths(Ctx* cx, InputState* state,
             }
         }
     }
-    bool changed = all;
     Selection none = {};
     for (int i = 0; i < n && i < len(m->tokenWidths); i++) {
         const InlineTokenSpan& span = (*spans)[i];
@@ -727,13 +878,17 @@ static void MeasureTokenWidths(Ctx* cx, InputState* state,
             w = width;
         }
         w = w > 1 ? w : 1.f;
-        changed |= m->tokenWidths[i] != w;
+        float before = all ? (sameChips ? was[i] : -1.f) : m->tokenWidths[i];
+        if (before != w && wraps) {
+            int line = WrapLineOfOffset(InputLineStarts(state), span.start);
+            if (len(m->dirtyLines) == 0 ||
+                m->dirtyLines[len(m->dirtyLines) - 1] != line) {
+                VecAppend(m->dirtyLines, line);
+            }
+        }
         m->tokenWidths[i] = w;
     }
     m->tokenKey = key;
-    if (changed) {
-        m->valid = false;
-    }
 }
 
 static bool LineHasVisibleTokens(const InputState* state, int start, int end) {
@@ -2528,6 +2683,32 @@ static void TextReserve(InputState* s, int want) {
     VecReserve(s->text, want + 1);
 }
 
+// The wrap map's edit envelope, grown by one splice of [a, b) of the current
+// text into `insLen` bytes. Before the envelope's start the two documents
+// agree byte for byte, and past its new end they differ by a constant shift,
+// so the merge is exact however many splices come before the rows are
+// wrapped again.
+static void WrapMapNoteEdit(InputWrapMap* m, int a, int b, int insLen) {
+    if (m->editWhole) {
+        return;
+    }
+    if (!m->hasEdit) {
+        m->hasEdit = true;
+        m->editStart = a;
+        m->editOldEnd = b;
+        m->editNewEnd = a + insLen;
+        return;
+    }
+    if (a < m->editStart) {
+        m->editStart = a;
+    }
+    if (b > m->editNewEnd) {
+        m->editOldEnd += b - m->editNewEnd;
+        m->editNewEnd = b;
+    }
+    m->editNewEnd += insLen - (b - a);
+}
+
 // Rope::replace, over the flat buffer.
 static void TextSplice(InputState* s, int a, int b, Str ins) {
     int n = len(s->text);
@@ -2556,6 +2737,7 @@ static void TextSplice(InputState* s, int a, int b, Str ins) {
     s->text.len = out;
     s->text.els[out] = 0;
     s->docVersion++;
+    WrapMapNoteEdit(&s->wrap, a, b, insLen);
     // The envelope InputHighlighter::update is handed. One splice is exact;
     // a second before the last was consumed is more than one envelope can
     // say, so it collapses to the whole-document marker.
@@ -2579,6 +2761,7 @@ static void TextSet(InputState* s, Str v) {
     s->text.len = n;
     s->text.els[n] = 0;
     s->docVersion++;
+    s->wrap.editWhole = true;
     s->pendingEdit = InputEdit{0, -1, n};
     s->hasPendingEdit = true;
 }
