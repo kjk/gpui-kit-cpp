@@ -62,6 +62,18 @@ bool BaseIsTextSelectionSuppressed(const App* app) {
     return state && state->suppressTextSelection;
 }
 
+void BaseNoteTouch(App* app) {
+    if (BaseGlobalState* state = BaseGlobalStateOf(app)) {
+        state->lastTouch = TimeNow();
+    }
+}
+
+bool BaseIsTouchPress(const App* app) {
+    BaseGlobalState* state = AppGlobalGet<BaseGlobalState>(app);
+    // A double tap takes up to twice the tap interval.
+    return state && state->lastTouch >= 0 && TimeNow() - state->lastTouch < 1.0;
+}
+
 static MenuRow* CopyMenuRows(Arena* a, const MenuRow* rows, int count) {
     if (!rows || count <= 0) {
         return nullptr;

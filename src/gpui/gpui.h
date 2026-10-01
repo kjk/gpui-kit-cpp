@@ -5031,6 +5031,17 @@ struct InputState {
     // offset alone cannot distinguish the previous row's end from the next
     // row's start.
     bool cursorLineEndAffinity = false;
+    // touch.rs TouchSelection: the range the last touch gesture left, the
+    // edit menu, and the handle a finger is dragging. `touchLive` is Rust's
+    // `range.is_some()`; the handles and the menu are gone the moment the
+    // selection is anything else (InputTouchSelection, base/input.h). The
+    // edge is a SelectionEdge (base/touch_selection.h): 0 start, 1 end.
+    bool touchLive = false;
+    Selection touchRange = {};
+    bool touchMenuOpen = false;
+    bool touchDragging = false;
+    uint8_t touchDragEdge = 0;
+    Point touchDragOffset = {};
 
     ~InputState();
 };
@@ -5092,8 +5103,10 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
 // update_scroll_offset. A diagnostic popover is put away (and notified) even
 // when the clamp kept the offset. True when the offset moved, which is when
 // the wheel stops at this field rather than going on to what is around it.
+// `phase` is the wheel's touch phase: a finger scrolling the field steps the
+// touch selection's edit menu aside until it lifts (edit_menu_on_scroll).
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
-                        float dy);
+                        float dy, TouchPhase phase = TouchPhase::Moved);
 void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
                                     InputScrollPadding padding);
 // The same, for wherever the caret is now: the row it is on and the x the
@@ -6227,6 +6240,10 @@ struct Window {
     Listener scrollDragNotifyListener = {};
     ScrollEvent scrollDragNotifyEvent = {};
     bool longPressSelection = false;
+    // The field that claimed the long press in progress (touch.rs
+    // on_long_press) and so takes its moves and its release. Only good while
+    // it is still `input`, the field the press focused.
+    InputState* longPressInput = nullptr;
     // WindowTouch*: a host-owned iOS/Android view feeds raw touches here.
     TouchHostKind touchHost = TouchHostKind::None;
     // SliderState::touch_drag: the slider a live TouchDrag was claimed by,

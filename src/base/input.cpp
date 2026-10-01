@@ -7,6 +7,7 @@
 
 #include "base/input.h"
 #include "base/element_ext.h"
+#include "base/global_state.h"
 #include "base/number_input.h"
 #include "base/text_boundary.h"
 #include "base/theme.h"
@@ -2917,7 +2918,7 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
 }
 
 bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
-                        float dy) {
+                        float dy, TouchPhase phase) {
     if (!s) {
         return false;
     }
@@ -2932,6 +2933,9 @@ bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
         s->hoverDiagnostic = -1;
         Notify(app, win);
     }
+    // The handles follow the text; the menu would sit over whatever scrolls
+    // underneath it, so it steps aside until the finger lifts.
+    InputEditMenuOnScroll(s, app, win, phase);
     return moved;
 }
 
@@ -4149,6 +4153,7 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     // update_search: every edit goes through here, so a find bar left open
     // follows what is typed.
     InputUpdateSearch(s);
+    InputDismissTouchSelection(s, app, win);
     if (InputIsMultiLine(s) && s->mode.kind == LayoutModeKind::AutoGrow) {
         LayoutModeSetRows(&s->mode, RopeLinesLen(InputValue(s)));
     }
@@ -7168,6 +7173,12 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
             }
             // A suggestion still being debounced is dropped too.
             InputClearInlineCompletion(s);
+            // The handles and the edit menu are the topmost surface to
+            // dismiss.
+            if (win ? InputTouchSelection(s, win, nullptr) : s->touchLive) {
+                InputDismissTouchSelection(s, app, win);
+                return true;
+            }
             if (s->cleanOnEscape) {
                 InputClean(s, app, win);
                 return true;
@@ -7515,6 +7526,7 @@ void InputBlur(InputState* s, App* app, Window* win) {
         s->hoverRange = Selection{};
         s->hoverDiagnostic = -1;
         InputClearInlineCompletion(s);
+        InputDismissTouchSelection(s, app, win);
     }
     // NumberInput tolerates an out-of-range value while it is being typed —
     // otherwise entering "12" with a minimum of 6 would rewrite the first
@@ -8901,6 +8913,396 @@ const UndoTransaction* UndoPopRedo(UndoManager* m) {
     VecAppend(m->undos, t);
     m->coalescingBoundary = true;
     return &m->undos[m->undos.len - 1];
+}
+
+// ─── touch selection (input/base/touch.rs) ────────────────────────────────
+
+bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
+                         Point* out) {
+    if (!s || !win || !out) {
+        return false;
+    }
+    PaintCtx* ctx = &win->paint;
+    float font = s->lastFont > 0 ? s->lastFont : 14.f;
+    float lineH = s->lastLineH;
+    if (lineH <= 0) {
+        return false;
+    }
+    Str text = InputValue(s);
+    offset = offset < 0 ? 0 : (offset > len(text) ? len(text) : offset);
+    if (InputIsSingleLine(s)) {
+        const Bounds& b = s->lastBounds;
+        if (len(text) == 0) {
+            // An empty field draws no run: the caret stands at the row's
+            // left edge, centred in the field the way the line would be.
+            if (s->inputBounds.w <= 0 && s->inputBounds.h <= 0) {
+                return false;
+            }
+            *out = {s->inputBounds.x,
+                    s->inputBounds.y + (s->inputBounds.h - lineH) * 0.5f};
+            return true;
+        }
+        if (b.w <= 0 && b.h <= 0) {
+            return false;
+        }
+        Str run = text;
+        int at = offset;
+        if (s->masked) {
+            run = MaskedRun(GetTempArena(), text);
+            at = MaskedOffset(text, offset);
+        }
+        float x = 0, y = 0, h = 0;
+        if (!TextPointAt(ctx, run, font, 0, false, at, &x, &y, &h,
+                         s->lastFontWord)) {
+            return false;
+        }
+        *out = {b.x + x, b.y + y};
+        return true;
+    }
+    // A multi-line field: the row the offset is on, if the last frame built
+    // it, measured from where its run landed.
+    const InputPaintedRows* pr = LastPaintedRows(s, win);
+    if (!pr) {
+        return false;
+    }
+    for (int i = 0; i < pr->geometry.nRows; i++) {
+        const RangeDecorationRow& row = pr->geometry.rows[i];
+        if (offset < row.start || offset > row.start + row.len || !row.text ||
+            row.text->kind != ElKind::Text) {
+            continue;
+        }
+        Str line = Str(text.s + row.start, row.len);
+        float maxW = s->softWrap ? row.text->w : 0;
+        float lineMult = lineH / font;
+        float x = 0, y = 0, h = 0;
+        if (!TextPointAt(ctx, line, font, maxW, s->softWrap, offset - row.start,
+                         &x, &y, &h, s->lastFontWord, lineMult,
+                         s->cursorLineEndAffinity)) {
+            return false;
+        }
+        *out = {row.text->x + x, row.text->y + y};
+        return true;
+    }
+    return false;
+}
+
+// The active selection as the range a touch selection is matched against.
+static Selection ActiveTouchRange(const InputState* s) {
+    Selection r = s->selectedRange;
+    if (r.start > r.end) {
+        int t = r.start;
+        r.start = r.end;
+        r.end = t;
+    }
+    return r;
+}
+
+// retain_touch_selection: the current selection is the one the gesture made.
+static void RetainTouchSelection(InputState* s) {
+    s->touchLive = true;
+    s->touchRange = ActiveTouchRange(s);
+}
+
+static void ResetTouchSelection(InputState* s) {
+    s->touchLive = false;
+    s->touchRange = {};
+    s->touchMenuOpen = false;
+    s->touchDragging = false;
+    s->touchDragEdge = 0;
+    s->touchDragOffset = {};
+}
+
+bool InputTouchSelection(const InputState* s, Window* win,
+                         TouchSelectionSnapshot* out) {
+    if (!s || !s->touchLive) {
+        return false;
+    }
+    Selection selection = ActiveTouchRange(s);
+    if (selection.start != s->touchRange.start || selection.end != s->touchRange
+                                                                       .end) {
+        return false;
+    }
+    float lineH = s->lastLineH;
+    if (!win || lineH <= 0) {
+        return false;
+    }
+    Bounds viewport = s->inputBounds;
+    // An end scrolled out of the input gets no handle. Its line may not even
+    // be laid out; it then stands just outside the viewport on its side,
+    // which is all the other end's drag needs to know about it.
+    auto caretBox = [&](int offset, float standInY) {
+        Point at = {};
+        if (InputLastCaretPoint(s, win, offset, &at)) {
+            return TouchCaretLineBox(at, lineH);
+        }
+        return TouchCaretLineBox({viewport.x, standInY}, lineH);
+    };
+    Bounds start = caretBox(s->touchRange.start, viewport.y - lineH);
+    Bounds end = caretBox(s->touchRange.end, viewport.y + viewport.h);
+    TouchSelectionSnapshot snapshot =
+        TouchSelectionSnapshot::New(start, end)
+            .WithEdgeVisible(SelectionEdge::Start,
+                             TouchCaretInView(start, viewport))
+            .WithEdgeVisible(SelectionEdge::End,
+                             TouchCaretInView(end, viewport))
+            .WithMenuOpen(s->touchMenuOpen);
+    if (s->touchDragging) {
+        snapshot = snapshot.WithDragging((SelectionEdge)s->touchDragEdge);
+    }
+    if (out) {
+        *out = snapshot;
+    }
+    return true;
+}
+
+void InputKeepTouchSelection(InputState* s, App* app, Window* win) {
+    if (!s) {
+        return;
+    }
+    RetainTouchSelection(s);
+    s->touchMenuOpen = true;
+    s->touchDragging = false;
+    Notify(app, win);
+}
+
+void InputDismissTouchSelection(InputState* s, App* app, Window* win) {
+    if (!s || !s->touchLive) {
+        return;
+    }
+    ResetTouchSelection(s);
+    Notify(app, win);
+}
+
+void InputCloseEditMenu(InputState* s, App* app, Window* win) {
+    if (!s || !s->touchMenuOpen) {
+        return;
+    }
+    s->touchMenuOpen = false;
+    Notify(app, win);
+}
+
+bool InputReopenEditMenuAt(InputState* s, App* app, Window* win, Point at) {
+    TouchSelectionSnapshot snapshot;
+    if (!s || !win || !InputTouchSelection(s, win, &snapshot) ||
+        snapshot.IsEmpty()) {
+        return false;
+    }
+    int offset = InputIndexForPosition(s, &win->paint, at.x, at.y);
+    Selection selection = ActiveTouchRange(s);
+    if (offset <= selection.start || offset >= selection.end) {
+        return false;
+    }
+    s->touchMenuOpen = true;
+    Notify(app, win);
+    return true;
+}
+
+void InputEditMenuOnScroll(InputState* s, App* app, Window* win,
+                           TouchPhase phase) {
+    if (!s || !s->touchLive) {
+        return;
+    }
+    if (phase == TouchPhase::Ended || phase == TouchPhase::Cancelled) {
+        if (!s->touchMenuOpen) {
+            s->touchMenuOpen = true;
+            Notify(app, win);
+        }
+        return;
+    }
+    InputCloseEditMenu(s, app, win);
+}
+
+void InputSelectAllFromEditMenu(InputState* s, App* app, Window* win) {
+    if (!s) {
+        return;
+    }
+    bool touch = s->touchLive;
+    InputSelectAll(s, app, win);
+    if (touch) {
+        RetainTouchSelection(s);
+        s->touchMenuOpen = true;
+        Notify(app, win);
+    }
+}
+
+static bool AllWhitespace(Str text) {
+    for (int i = 0; i < len(text); i++) {
+        char c = text.s[i];
+        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != '\f' &&
+            c != '\v') {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool InputOnLongPress(InputState* s, App* app, Window* win,
+                      const LongPressEvent& event) {
+    if (!s || !win) {
+        return false;
+    }
+    switch (event.phase) {
+        case TouchPhase::Started: {
+            if (s->disabled) {
+                return false;
+            }
+            if (!s->focused) {
+                InputFocus(s, app, win);
+            }
+            // The input selects on its own; keep the window text selection
+            // from starting a drag under it.
+            BaseSuppressTextSelection(app);
+            UndoBreakCoalescing(&s->undo);
+            InputClearInlineCompletion(s);
+            ResetTouchSelection(s);
+
+            bool affinity = false;
+            int offset =
+                InputIndexForPosition(s, &win->paint, event.startPosition.x,
+                                      event.startPosition.y, &affinity);
+            InputRemoveExtraCursors(s);
+            // set_cursor_to: the caret where the finger went down, which is
+            // what stays when there is no word there to select.
+            s->selectedRange = {offset, offset};
+            s->selectionReversed = false;
+            InputSelectWord(s, app, win, offset);
+            Selection selected = ActiveTouchRange(s);
+            bool pressedWord =
+                !selected.IsEmpty() && !AllWhitespace(InputSelectedValue(s));
+            if (!pressedWord) {
+                // Whitespace or an empty field: the press places the caret,
+                // and the menu offers Paste and Select All.
+                InputMoveToWithAffinity(s, app, win, offset, affinity);
+                s->hasSelectedWordRange = false;
+            }
+            s->selecting = true;
+            RetainTouchSelection(s);
+            Notify(app, win);
+            return true;
+        }
+        case TouchPhase::Moved: {
+            bool affinity = false;
+            int offset = InputIndexForPosition(s, &win->paint, event.position.x,
+                                               event.position.y, &affinity);
+            if (s->hasSelectedWordRange) {
+                // The press took a word; the sweep grows it a word at a time.
+                InputSelectToWithAffinity(s, app, win, offset, affinity);
+            } else {
+                // The press placed the caret; the sweep carries it.
+                InputMoveToWithAffinity(s, app, win, offset, affinity);
+            }
+            RetainTouchSelection(s);
+            return true;
+        }
+        case TouchPhase::Ended:
+        case TouchPhase::Cancelled:
+            s->selecting = false;
+            s->hasSelectedWordRange = false;
+            if (s->touchLive) {
+                s->touchMenuOpen = true;
+            }
+            Notify(app, win);
+            return true;
+    }
+    return false;
+}
+
+void InputBeginEdgeDrag(InputState* s, App* app, Window* win,
+                        SelectionEdge edge, Point finger) {
+    TouchSelectionSnapshot snapshot;
+    if (!s || !InputTouchSelection(s, win, &snapshot)) {
+        return;
+    }
+    UndoBreakCoalescing(&s->undo);
+    s->hasSelectedWordRange = false;
+    s->selectionReversed = edge == SelectionEdge::Start;
+    TouchEdgeDrag drag =
+        TouchEdgeDrag::Begin(edge, snapshot.Edge(edge), finger);
+    s->touchDragging = true;
+    s->touchDragEdge = (uint8_t)drag.edge;
+    s->touchDragOffset = drag.offset;
+    s->touchMenuOpen = false;
+    Notify(app, win);
+}
+
+void InputExtendEdgeDragTo(InputState* s, App* app, Window* win,
+                           Point position) {
+    if (!s->touchDragging || !win) {
+        return;
+    }
+    bool affinity = false;
+    int offset = InputIndexForPosition(s, &win->paint, position.x, position.y,
+                                       &affinity);
+    Selection before = s->selectedRange;
+    bool beforeReversed = s->selectionReversed;
+    InputSelectToWithAffinity(s, app, win, offset, affinity);
+    // A handle never collapses the selection: at the other end it stops, and
+    // the finger has to pass that end to swap the two.
+    if (s->selectedRange.IsEmpty()) {
+        s->selectedRange = before;
+        s->selectionReversed = beforeReversed;
+        return;
+    }
+    // Dragging one end past the other swaps them: the selection now runs the
+    // other way and the finger holds what became the other handle.
+    SelectionEdge edge =
+        s->selectionReversed ? SelectionEdge::Start : SelectionEdge::End;
+    s->touchDragEdge = (uint8_t)edge;
+    RetainTouchSelection(s);
+    Notify(app, win);
+}
+
+void InputUpdateEdgeDrag(InputState* s, App* app, Window* win, Point finger) {
+    if (!s || !s->touchDragging) {
+        return;
+    }
+    TouchEdgeDrag drag;
+    drag.edge = (SelectionEdge)s->touchDragEdge;
+    drag.offset = s->touchDragOffset;
+    Point position = drag.TextPosition(finger);
+    InputExtendEdgeDragTo(s, app, win, position);
+    if (InputIsSingleLine(s)) {
+        return;
+    }
+    // Past the top or bottom of a multi-line input the content scrolls under
+    // the finger. The frame is this tree's auto-scroll clock (see
+    // WindowDrawFrame), which re-runs the selection at the last position.
+    s->autoScroll.lastDrag = position;
+    s->autoScroll.hasLastDrag = true;
+    float delta = 0;
+    if (AutoScrollComputeDelta(position.y, s->inputBounds, &delta)) {
+        s->autoScroll.Set(delta);
+        WindowRequestAnimationFrame(win);
+    } else {
+        s->autoScroll.SetNone();
+    }
+}
+
+void InputEndEdgeDrag(InputState* s, App* app, Window* win) {
+    if (!s || !s->touchDragging) {
+        return;
+    }
+    s->touchDragging = false;
+    s->autoScroll.Stop();
+    if (s->selectedRange.IsEmpty()) {
+        s->selectionReversed = false;
+    }
+    s->touchMenuOpen = true;
+    Notify(app, win);
+}
+
+bool InputIsEditMenuOpen(const InputState* s) {
+    return s && s->touchMenuOpen;
+}
+
+bool InputTouchSelectionRange(const InputState* s, Selection* out) {
+    if (!s || !s->touchLive) {
+        return false;
+    }
+    if (out) {
+        *out = s->touchRange;
+    }
+    return true;
 }
 
 } // namespace gpui

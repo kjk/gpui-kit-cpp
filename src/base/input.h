@@ -10,6 +10,7 @@
 #include "base/input_lsp.h"
 #include "base/input_rope.h"
 #include "base/input_tokens.h"
+#include "base/touch_selection.h"
 
 namespace gpui {
 
@@ -140,5 +141,64 @@ int InputLastRangeCorners(const InputState* s, Window* win, Selection range,
 // built for the visible decorations.
 bool InputLastRangeDecorationPaths(const InputState* s, const Window* win,
                                    int* fills, int* frames);
+// line_and_position_for_offset, in window coordinates: the top-left of the
+// caret before `offset` as the last finished frame laid it out. False when
+// the offset's row was not laid out (scrolled out of the built band) or
+// nothing has been painted yet.
+bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
+                         Point* out);
+
+// ─── touch selection (input/base/touch.rs) ───────────────────────────────
+//
+// A long press selects the word under the finger and keeps following the
+// finger while it stays down, like the double-click-and-drag it stands in
+// for. Releasing opens the edit menu; from then on the selection carries a
+// handle at each end, which drags through InputBeginEdgeDrag. The touch
+// selection remembers the range it made: as soon as the selection is
+// something else — the caret moved, text was typed, a cursor was added — the
+// handles and the menu are gone without anyone hiding them.
+
+// touch_selection(): the live touch selection, laid out for the handles and
+// the edit menu from what `win` last painted. False when it has since become
+// something else or nothing is laid out.
+bool InputTouchSelection(const InputState* s, Window* win,
+                         TouchSelectionSnapshot* out);
+// keep_touch_selection: the current selection becomes a touch selection with
+// its menu open — a double tap's word.
+void InputKeepTouchSelection(InputState* s, App* app, Window* win);
+// dismiss_touch_selection: the handles and the menu go.
+void InputDismissTouchSelection(InputState* s, App* app, Window* win);
+// close_edit_menu: the menu closes; the selection keeps its handles.
+void InputCloseEditMenu(InputState* s, App* app, Window* win);
+// reopen_edit_menu_at: a tap inside the touch selection brings its menu
+// back. True when it did.
+bool InputReopenEditMenuAt(InputState* s, App* app, Window* win, Point at);
+// edit_menu_on_scroll: a scrolling finger steps the menu aside, and lifting
+// it brings the menu back over the handles.
+void InputEditMenuOnScroll(InputState* s, App* app, Window* win,
+                           TouchPhase phase);
+// select_all_from_edit_menu: Select All, keeping a live touch selection's
+// handles and menu over the new range.
+void InputSelectAllFromEditMenu(InputState* s, App* app, Window* win);
+// on_long_press: one phase of a long press inside the field. True when the
+// field claimed it; the window then routes the gesture's moves and release
+// here even after the finger leaves the field.
+bool InputOnLongPress(InputState* s, App* app, Window* win,
+                      const LongPressEvent& event);
+// begin/update/end_edge_drag: one end of the touch selection follows the
+// finger while the other stays put. Dragging an end past the other swaps
+// them, and the finger keeps the handle that became the other one.
+void InputBeginEdgeDrag(InputState* s, App* app, Window* win,
+                        SelectionEdge edge, Point finger);
+void InputUpdateEdgeDrag(InputState* s, App* app, Window* win, Point finger);
+// extend_edge_drag_to: the dragged end to the text at `position` (already
+// moved off the finger by the drag's offset). What the frame's auto-scroll
+// tick re-runs while the content scrolls under a held handle.
+void InputExtendEdgeDragTo(InputState* s, App* app, Window* win,
+                           Point position);
+void InputEndEdgeDrag(InputState* s, App* app, Window* win);
+// Rust's #[cfg(test)] is_edit_menu_open / touch_selection_range.
+bool InputIsEditMenuOpen(const InputState* s);
+bool InputTouchSelectionRange(const InputState* s, Selection* out);
 } // namespace gpui
 #endif // GPUI_BASE_INPUT_H_

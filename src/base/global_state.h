@@ -20,6 +20,9 @@ struct BaseGlobalState {
     Arena* appMenuArena = nullptr;
     Vec<MenuDef> appMenus;
     bool suppressTextSelection = false;
+    // last_touch: when a finger last went down, on TimeNow's clock; negative
+    // for never.
+    double lastTouch = -1;
 
     ~BaseGlobalState() {
         VecReset(textViewStateStack);
@@ -42,6 +45,12 @@ void BaseGlobalStateInit(App* app);
 void BaseSuppressTextSelection(App* app);
 void BaseResetTextSelectionSuppression(App* app);
 bool BaseIsTextSelectionSuppressed(const App* app);
+// GlobalState::note_touch / is_touch_press: a finger went down, and whether
+// the press being handled came from one — a touch recent enough (a second)
+// that the mouse events of its tap, a double tap included, are still
+// arriving.
+void BaseNoteTouch(App* app);
+bool BaseIsTouchPress(const App* app);
 
 // GlobalState::app_menus / set_app_menus. The setter retains a deep copy and
 // installs that same copy into the platform menu seam.

@@ -16,6 +16,7 @@
 #include "sys/sysinfo.h"
 #include "base/focus_trap.h"
 #include "base/global_state.h"
+#include "base/input.h"
 #include "base/text_selection.h"
 #include "base/tooltip.h"
 
@@ -504,7 +505,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // the next keeps it running while the pointer stays out at the edge. The
     // selection is re-run at the pointer's last place, since the content has
     // moved under it.
-    if (win->input && win->input->autoScroll.IsActive() && win->mouseDown) {
+    // A held touch handle scrolls the same way (touch.rs update_edge_drag),
+    // with no button down.
+    if (win->input && win->input->autoScroll.IsActive() &&
+        (win->mouseDown || win->input->touchDragging)) {
         InputState* s = win->input;
         float was = s->scrollY;
         s->scrollY += s->autoScroll.delta;
@@ -518,7 +522,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         if (s->scrollY > most) {
             s->scrollY = most;
         }
-        if (s->scrollY != was && s->autoScroll.hasLastDrag) {
+        if (s->scrollY != was && s->autoScroll.hasLastDrag &&
+            s->touchDragging) {
+            InputExtendEdgeDragTo(s, win->app, win, s->autoScroll.lastDrag);
+        } else if (s->scrollY != was && s->autoScroll.hasLastDrag) {
             bool affinity = false;
             int columns = 0;
             int offset = InputIndexForPosition(
@@ -1374,6 +1381,14 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
     }
     // "Clear inline completion on any mouse interaction."
     InputClearInlineCompletion(s);
+    // A tap on the touch selection asks for its menu back. Any other press
+    // places the caret or starts a new drag, and the handles and the menu no
+    // longer belong to what is selected.
+    if (in.button == MouseButton::Left && in.clickCount == 1 &&
+        InputReopenEditMenuAt(s, win->app, win, {in.x, in.y})) {
+        return;
+    }
+    InputDismissTouchSelection(s, win->app, win);
     if (!s->focused) {
         InputFocus(s, win->app, win);
     }
@@ -1392,6 +1407,11 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         InputSelectLine(s, win->app, win, offset);
     } else if (in.clickCount == 2) {
         InputSelectWord(s, win->app, win, offset);
+        // A double tap is touch's other way to select a word, and it gets the
+        // handles and the menu like a long press does.
+        if (BaseIsTouchPress(win->app)) {
+            InputKeepTouchSelection(s, win->app, win);
+        }
     } else if (InputIsMultiLine(s) && in.button == MouseButton::Left &&
                in.modifiers.alt) {
         // Multi-cursor placement, multi-line only. Alt+Shift starts a block;
@@ -2643,7 +2663,7 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
         }
         // on_scroll_wheel: the field keeps the wheel only when its offset
         // moved; a clamped one lets it on to what is around the field.
-        if (InputOnScrollWheel(field, win->app, win, dx, dy)) {
+        if (InputOnScrollWheel(field, win->app, win, dx, dy, in.phase)) {
             AppInvalidate(win);
             return;
         }
@@ -2766,6 +2786,10 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         case PlatformInputKind::TouchDrag: {
             const TouchDragEvent& touch = input->touchDrag;
             if (touch.phase == TouchPhase::Started) {
+                // GlobalState::note_touch: every touch is offered as a drag
+                // first, which is how a tap's mouse events are later told
+                // apart from a mouse's.
+                BaseNoteTouch(win->app);
                 win->touchPressPending = true;
                 win->touchScrollbarDrag = false;
                 win->scrollDragId = 0;
@@ -2853,6 +2877,33 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
         }
         case PlatformInputKind::LongPress: {
             const LongPressEvent& touch = input->longPress;
+            // A field under the finger selects on its own (touch.rs
+            // on_long_press), and claiming the press keeps the rest of the
+            // gesture its own and out of the window's text selection.
+            if (touch.phase == TouchPhase::Started) {
+                win->longPressInput = nullptr;
+                InputState* field = InputAtPosition(
+                    &win->paint, touch.startPosition.x, touch.startPosition.y);
+                if (field && InputOnLongPress(field, win->app, win, touch)) {
+                    win->longPressInput = field;
+                    win->longPressSelection = false;
+                    AppInvalidate(win);
+                    break;
+                }
+            } else if (win->longPressInput) {
+                InputState* field = win->longPressInput;
+                if (touch.phase == TouchPhase::Ended ||
+                    touch.phase == TouchPhase::Cancelled) {
+                    win->longPressInput = nullptr;
+                }
+                // The press focused it; a field that has since gone is no
+                // longer the window's input.
+                if (field == win->input) {
+                    InputOnLongPress(field, win->app, win, touch);
+                }
+                AppInvalidate(win);
+                break;
+            }
             if (touch.phase == TouchPhase::Started) {
                 if (win->sel) {
                     win->sel->touchMenuOpen = false;
