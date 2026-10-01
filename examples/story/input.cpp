@@ -110,6 +110,9 @@ struct InputStory {
     StoryToolbarState toolbar;
     bool seeded = false;
     EntityId tokens;
+    // The custom context menu's rows report here; bound each render, since
+    // the menu is built later, under the input's own menu state.
+    Listener customMenuSelect = {};
 
     static El* Render(InputStory* self, Ctx* cx);
     static void OnKey(InputStory* self, Ctx* cx, const KeyEvent* ev);
@@ -142,6 +145,24 @@ static component::Input* Field(InputStory* self, Ctx* cx, int slot,
         ->WithSize(self->toolbar.size)
         ->OnFocus(ListenerArg(focus, slot))
         ->OnClear(ListenerArg(clear, slot));
+}
+
+// context_menu(..) on the "Context menu" field: Custom Action (which is
+// SelectAll), a separator, then Copy and Paste. A row's id is its action.
+static void OnCustomMenuSelect(InputStory* self, Ctx* cx, const ClickEvent*,
+                               intptr_t action) {
+    InputPerform(&self->fields[InCustomMenu], cx, (InputAction)action, false);
+    Notify(cx);
+}
+
+static component::NativeMenu* CustomInputMenu(Ctx*, component::NativeMenu* menu,
+                                              void* data) {
+    InputStory* self = (InputStory*)data;
+    return menu->Menu(StrL("Custom Action"), (intptr_t)InputAction::SelectAll)
+        ->Separator()
+        ->Menu(StrL("Copy"), (intptr_t)InputAction::Copy)
+        ->Menu(StrL("Paste"), (intptr_t)InputAction::Paste)
+        ->OnSelect(self->customMenuSelect);
 }
 
 // section() is a justify_center wrapping row, so a readout that wraps under
@@ -393,8 +414,11 @@ El* InputStory::Render(InputStory* self, Ctx* cx) {
     El* menu =
         StorySection(cx, "Context menu", "Add actions to the editing menu.");
     StorySectionBody(menu)->W(512);
-    StorySectionAdd(
-        menu, Field(self, cx, InCustomMenu, focus, clear)->IntoEl()->W(512));
+    self->customMenuSelect = Listen(cx, &OnCustomMenuSelect);
+    StorySectionAdd(menu, Field(self, cx, InCustomMenu, focus, clear)
+                              ->ContextMenu(&CustomInputMenu, self)
+                              ->IntoEl()
+                              ->W(512));
     page->Child(menu);
 
     El* color = StorySection(cx, "Text color", "Apply a semantic text color.");
