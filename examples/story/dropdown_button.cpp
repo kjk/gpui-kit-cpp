@@ -1,13 +1,24 @@
 #include "Story.h"
 
-// ButtonAction: the four toggles this page keeps, which both its Options
-// dropdown and every dropdown button's own menu drive.
+// ButtonAction: the five toggles of this page's Options dropdown, then the
+// rows of the three split buttons' menus, each of which reports itself as
+// the page's last action.
 enum {
     DropActDisabled = 3300,
     DropActLoading,
     DropActSelected,
     DropActCompact,
     DropActShadow,
+    DropActExportCsv,
+    DropActExportPdf,
+    DropActSaveCopy,
+    DropActSaveTemplate,
+    DropActOpenQuarterlyReport,
+    DropActOpenWatchlistLayout,
+    // The inner buttons' own on_click handlers.
+    DropActExportDefault,
+    DropActSaveDefault,
+    DropActRecentDefault,
 };
 
 struct DropdownButtonStory {
@@ -15,6 +26,7 @@ struct DropdownButtonStory {
     bool loading = false;
     bool selected = false;
     bool compact = false;
+    const char* lastAction = "Nothing yet";
     StoryToolbarState toolbar;
 
     static El* Render(DropdownButtonStory* self, Ctx* cx);
@@ -36,7 +48,34 @@ static void DropAct(DropdownButtonStory* self, Ctx* cx, const ClickEvent*,
             self->compact = !self->compact;
             break;
         case DropActShadow:
-            // There is no Theme::shadow here to turn on.
+            ThemeUpdate(cx->app, [](Theme* t) { t->shadow = !t->shadow; });
+            break;
+        case DropActExportCsv:
+            self->lastAction = "Exported as CSV";
+            break;
+        case DropActExportPdf:
+            self->lastAction = "Exported as PDF";
+            break;
+        case DropActSaveCopy:
+            self->lastAction = "Saved as a new file";
+            break;
+        case DropActSaveTemplate:
+            self->lastAction = "Saved as a template";
+            break;
+        case DropActOpenQuarterlyReport:
+            self->lastAction = "Opened Quarterly Report.gpui";
+            break;
+        case DropActOpenWatchlistLayout:
+            self->lastAction = "Opened Watchlist Layout.gpui";
+            break;
+        case DropActExportDefault:
+            self->lastAction = "Exported current view";
+            break;
+        case DropActSaveDefault:
+            self->lastAction = "Saved document";
+            break;
+        case DropActRecentDefault:
+            self->lastAction = "Opened latest file";
             break;
         default:
             StoryToolbarApply(&self->toolbar, nullptr, (int)act);
@@ -45,82 +84,118 @@ static void DropAct(DropdownButtonStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 
-// The menu reports which row was confirmed; the four rows are the four
-// toggles, in order.
-static void DropMenuPick(DropdownButtonStory* self, Ctx* cx,
+// Each split's menu is two rows; the menu reports the confirmed row, which
+// maps onto the pair of actions starting at `first`.
+static void DropExportPick(DropdownButtonStory* self, Ctx* cx,
+                           const ClickEvent* ev, intptr_t ix) {
+    DropAct(self, cx, ev, DropActExportCsv + ix);
+}
+static void DropSavePick(DropdownButtonStory* self, Ctx* cx,
                          const ClickEvent* ev, intptr_t ix) {
-    if (ix >= 0 && ix < 4) {
-        DropAct(self, cx, ev, DropActDisabled + ix);
-    }
+    DropAct(self, cx, ev, DropActSaveCopy + ix);
+}
+static void DropRecentPick(DropdownButtonStory* self, Ctx* cx,
+                           const ClickEvent* ev, intptr_t ix) {
+    DropAct(self, cx, ev, DropActOpenQuarterlyReport + ix);
 }
 
-// The menu every dropdown button carries: the same four checked rows, wired
-// to the same four toggles.
-static component::PopupMenu* DropMenu(DropdownButtonStory* self, Ctx* cx,
-                                      Str id) {
+using DropPickFn = void (*)(DropdownButtonStory*, Ctx*, const ClickEvent*,
+                            intptr_t);
+
+static component::PopupMenu* DropMenu(Ctx* cx, Str id, DropPickFn pick,
+                                      const char* first, const char* second) {
     Entity<PopupMenuState> st = component::PopupMenuStateFor(cx, id);
     if (PopupMenuState* s = st.Get(cx)) {
-        s->onConfirm = Listen(cx, &DropMenuPick);
+        s->onConfirm = Listen(cx, pick);
     }
     return component::PopupMenu::New(cx, id, st)
-        ->MenuWithCheck(StrL("Disabled"), self->disabled)
-        ->MenuWithCheck(StrL("Loading"), self->loading)
-        ->MenuWithCheck(StrL("Selected"), self->selected)
-        ->MenuWithCheck(StrL("Compact"), self->compact);
-}
-
-static component::DropdownButton* DropBtn(DropdownButtonStory* self, Ctx* cx,
-                                          Str id, Str label) {
-    // Loading and compact are the action button's own: a loading action stays
-    // inert while the menu is still there to open. Disabled is the split's.
-    component::Button* action = component::Button::New(cx, StrL("btn"))
-                                    ->Label(label)
-                                    ->Loading(self->loading);
-    if (self->compact) {
-        action->Compact();
-    }
-    return component::DropdownButton::New(cx, id)
-        ->Button_(action)
-        ->Menu(DropMenu(self, cx, StoryFmt(cx, "%s-menu", id)))
-        ->WithSize(self->toolbar.size)
-        ->Disabled(self->disabled)
-        ->Selected(self->selected);
+        ->Menu(StoryDup(cx, first))
+        ->Menu(StoryDup(cx, second));
 }
 
 El* DropdownButtonStory::Render(DropdownButtonStory* self, Ctx* cx) {
     Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+    UiSize size = self->toolbar.size;
     El* page = Div(a)->FlexCol()->Gap(24)->W(kFill);
     StoryToolbarOpt opts[5] = {
         {"Disabled", self->disabled, DropActDisabled},
         {"Loading", self->loading, DropActLoading},
         {"Selected", self->selected, DropActSelected},
         {"Compact", self->compact, DropActCompact},
-        {"Shadow", false, DropActShadow},
+        {"Shadow", th.shadow, DropActShadow},
     };
     page->Child(StoryToolbarOptions(cx, self, opts, 5, Listen(cx, &DropAct)));
 
-    El* def =
-        StorySection(cx, "Default", "A primary action with an attached menu.");
-    StorySectionAdd(def,
-                    DropBtn(self, cx, StrL("btn0"), StrL("Primary Dropdown"))
-                        ->WithVariant(component::ButtonVariant::Primary)
-                        ->IntoEl());
-    page->Child(def);
+    // h_flex().gap_1().text_sm().text_color(muted_foreground)
+    page->Child(Div(a)
+                    ->FlexRow()
+                    ->Gap(4)
+                    ->Child(StoryTxt(cx, StrL("Last action:"), 14, th.mutedFg))
+                    ->Child(StoryTxt(cx, StoryDup(cx, self->lastAction), 14,
+                                     th.mutedFg)));
 
-    El* out = StorySection(cx, "Outline", nullptr);
+    El* basic = StorySection(cx, "Basic split", nullptr);
+    component::Button* exportBtn =
+        component::Button::New(cx, StrL("export-default"))
+            ->Label(StrL("Export"))
+            ->OnClick(Listen(cx, &DropAct, DropActExportDefault));
+    if (self->compact) {
+        exportBtn->Compact();
+    }
+    // dropdown_menu_with_anchor(Anchor::TopRight, ..), which is also
+    // DropdownButton's default anchor.
     StorySectionAdd(
-        out, DropBtn(self, cx, StrL("btn-outline"), StrL("Outline Dropdown"))
-                 ->WithVariant(component::ButtonVariant::Danger)
-                 ->Outline()
-                 ->IntoEl());
-    page->Child(out);
+        basic,
+        component::DropdownButton::New(cx, StrL("export"))
+            ->WithSize(size)
+            ->Primary()
+            ->Button_(exportBtn)
+            ->Disabled(self->disabled)
+            ->Selected(self->selected)
+            ->Menu(DropMenu(cx, StrL("export-menu"), &DropExportPick,
+                            "Export all rows (.csv)", "Download report (.pdf)"))
+            ->IntoEl());
+    page->Child(basic);
 
-    El* ghost = StorySection(cx, "Ghost", nullptr);
-    StorySectionAdd(ghost,
-                    DropBtn(self, cx, StrL("btn-ghost"), StrL("Ghost Dropdown"))
-                        ->WithVariant(component::ButtonVariant::Ghost)
-                        ->IntoEl());
-    page->Child(ghost);
+    El* inner = StorySection(cx, "Inner button options", nullptr);
+    component::Button* saveBtn =
+        component::Button::New(cx, StrL("save-default"))
+            ->Label(StrL("Save"))
+            ->Tooltip(StrL("Save the current document"))
+            ->Loading(self->loading)
+            ->OnClick(Listen(cx, &DropAct, DropActSaveDefault));
+    if (self->compact) {
+        saveBtn->Compact();
+    }
+    StorySectionAdd(
+        inner, component::DropdownButton::New(cx, StrL("save"))
+                   ->WithSize(size)
+                   ->Outline()
+                   ->Button_(saveBtn)
+                   ->Disabled(self->disabled)
+                   ->Menu(DropMenu(cx, StrL("save-menu"), &DropSavePick,
+                                   "Save as new file…", "Save as template…"))
+                   ->IntoEl());
+    page->Child(inner);
+
+    // The split sets no variant or size of its own, so the caret takes the
+    // inner button's ghost and small.
+    El* inherited = StorySection(cx, "Inherited styling", nullptr);
+    StorySectionAdd(
+        inherited,
+        component::DropdownButton::New(cx, StrL("recent"))
+            ->Button_(component::Button::New(cx, StrL("recent-default"))
+                          ->Label(StrL("Open latest"))
+                          ->Ghost()
+                          ->WithSize(UiSize::Small)
+                          ->OnClick(Listen(cx, &DropAct, DropActRecentDefault)))
+            ->Selected(self->selected)
+            ->Disabled(self->disabled)
+            ->Menu(DropMenu(cx, StrL("recent-menu"), &DropRecentPick,
+                            "Quarterly Report.gpui", "Watchlist Layout.gpui"))
+            ->IntoEl());
+    page->Child(inherited);
     return page;
 }
 

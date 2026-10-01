@@ -1,12 +1,12 @@
 #include "Story.h"
 
-// ButtonAction: the rows of this page's Options dropdown. Shadow is not one
-// of them — there is no Theme::shadow here for it to turn on.
+// ButtonAction: the rows of this page's Options dropdown.
 enum {
     BtnActDisabled = 3100,
     BtnActLoading,
     BtnActSelected,
     BtnActCompact,
+    BtnActShadow,
     BtnActMultiple,
 };
 
@@ -35,6 +35,9 @@ static void OnOption(ButtonStory* self, Ctx* cx, const ClickEvent*,
             break;
         case BtnActCompact:
             self->compact = !self->compact;
+            break;
+        case BtnActShadow:
+            ThemeUpdate(cx->app, [](Theme* t) { t->shadow = !t->shadow; });
             break;
         case BtnActMultiple:
             self->toggleMultiple = !self->toggleMultiple;
@@ -98,15 +101,16 @@ El* ButtonStory::Render(ButtonStory* self, Ctx* cx) {
     UiSize size = self->toolbar.size;
     El* page = Div(a)->FlexCol()->Gap(24)->W(kFill);
 
-    StoryToolbarOpt opts[5] = {
+    StoryToolbarOpt opts[6] = {
         {"Disabled", self->disabled, BtnActDisabled},
         {"Loading", self->loading, BtnActLoading},
         {"Selected", self->selected, BtnActSelected},
         {"Compact", self->compact, BtnActCompact},
+        {"Shadow", th.shadow, BtnActShadow},
         {"Multiple selection", self->toggleMultiple, BtnActMultiple, false,
          true},
     };
-    page->Child(StoryToolbarOptions(cx, self, opts, 5, Listen(cx, &OnOption)));
+    page->Child(StoryToolbarOptions(cx, self, opts, 6, Listen(cx, &OnOption)));
 
     Listener click = Listen(cx, &OnButtonClick);
 
