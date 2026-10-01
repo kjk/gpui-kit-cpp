@@ -108,7 +108,9 @@ static bool DrawDirty(App* app) {
     bool drew = false;
     for (int i = 0; i < app->windows.len; i++) {
         Window* win = app->windows[i];
-        if (win && win->invalidations > 0) {
+        // A window WindowClosed has let go of — window.remove_window() —
+        // draws no more frames.
+        if (win && win->running && win->invalidations > 0) {
             TestDraw(win);
             drew = true;
         }

@@ -1881,8 +1881,12 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         AppInvalidate(win);
     }
     // The drag half of the window's selection, before the view's own handler
-    // so a page that watches moves sees the selection already extended.
-    WindowSelectionDrag(win, x, y);
+    // so a page that watches moves sees the selection already extended. A
+    // drag and drop in flight owns the pointer: text_selection.rs
+    // update_in_window does nothing while `cx.has_active_drag()`.
+    if (!win->activeDrag.IsValid()) {
+        WindowSelectionDrag(win, x, y);
+    }
     if (win->onMouseMove.IsValid()) {
         ListenerCall(win->app, win, win->onMouseMove, &in);
     }
@@ -3456,6 +3460,10 @@ void WindowClosed(Window* win) {
     }
     win->input = nullptr;
     win->prevInput = nullptr;
+    // text_selection.rs drops a window's WindowSelectionState from its
+    // registry when the window goes, clearing what it held; a participant in
+    // another window keeps its own.
+    WindowSelectionFree(win);
     // Rust's element state goes with its window, and with it every keyed
     // entity only the window's elements held: an open popover's state, the
     // dropdown's PopupMenu. Here the app owns those entities, so the window
