@@ -54,6 +54,8 @@ jobs:
       # X11, cairo and Pango are to Linux what Direct2D and DirectWrite are to
       # Windows: system libraries, found through pkg-config. --build-only is
       # the subset a compile needs, so this and a developer setup cannot drift.
+      # It includes the soft dependencies, WebKitGTK among them, so this job
+      # builds the real Linux webview; linux-clang-mini builds without it.
       - name: Install Linux dependencies
         if: matrix.name == 'linux'
         run: bash cmd/ubuntu-install-deps.sh --build-only
@@ -141,9 +143,11 @@ jobs:
         with:
           bun-version: latest
 
+      # Without WebKitGTK, so the soft-dependency path (wry_linux.cpp's
+      # no-webview half) keeps compiling and testing too.
       - name: Install Linux dependencies
         if: matrix.name == 'linux-clang-mini'
-        run: bash cmd/ubuntu-install-deps.sh --build-only
+        run: bash cmd/ubuntu-install-deps.sh --build-only --without-webkit
 
       # windows-latest carries clang 20.1.8, which miscompiles the shell's
       # suspend_never coroutines at /O2 and strands their task registry slots.

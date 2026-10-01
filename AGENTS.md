@@ -61,8 +61,10 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
 3. **Six targets, no third-party C++ libraries.** Windows: MSVC `cl.exe`,
    static CRT (`/MT`, `/MTd`) — no redistributable DLLs — plus WinHTTP. Linux:
    g++/clang++ with system X11, cairo, Pango and gdk-pixbuf via `pkg-config`,
-   and libcurl the same way when installed (the one soft dependency; without
-   it the tree builds and only loses remote images). macOS: clang++ with
+   and two soft dependencies found the same way when installed: libcurl
+   (without it the tree builds and only loses remote images) and WebKitGTK
+   4.1 (`webkit2gtk-4.1`, the webview; without it a webview stays an empty
+   box). macOS: clang++ with
    Cocoa, Core Graphics, ImageIO, Core Text, IOKit, CoreServices (FSEvents),
    NSURLSession. iOS: the Xcode iPhoneOS SDK and a UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
    24 or newer, and an app-owned native host. Mobile builds are static

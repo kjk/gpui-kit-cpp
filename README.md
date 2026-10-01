@@ -185,7 +185,8 @@ its `vcvars64.bat` is read for the environment, so a plain shell builds.
 toolset instead.
 
 **Linux** needs g++ (or clang++), pkg-config and the X11 / cairo / pango dev
-packages. On Ubuntu or Debian:
+packages. libcurl (remote images) and WebKitGTK 4.1 (the webview) are used
+when installed and skipped when not. On Ubuntu or Debian:
 
 ```
 bash cmd/ubuntu-install-deps.sh

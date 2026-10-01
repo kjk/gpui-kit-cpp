@@ -5,6 +5,7 @@
 #
 #   bash cmd/ubuntu-install-deps.sh
 #   bash cmd/ubuntu-install-deps.sh --build-only   # just what a compile needs
+#   bash cmd/ubuntu-install-deps.sh --without-webkit  # leave WebKitGTK out
 #
 # Installs:
 #   build-essential, clang, lld, pkg-config  — the C++ toolchain
@@ -13,6 +14,7 @@
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
 #   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
+#   libwebkit2gtk-4.1-dev                    — the webview (wry/wry_linux.cpp)
 #   xvfb, xauth                              — a display for headless UI tests
 #   fonts-dejavu-core, fonts-noto-cjk        — the Sans / Monospace families
 #   git, curl, unzip                         — fetching the Rust spec tree
@@ -24,16 +26,22 @@
 # --build-only stops after the apt packages a compile needs: no debuggers, no
 # CJK fonts, no bun, no rustup. That is what CI runs, so the compile
 # dependencies have one source of truth.
+#
+# libcurl and WebKitGTK are soft dependencies: cmd/build.ts compiles without
+# either. --without-webkit leaves WebKitGTK (and the GTK 3 it pulls in) out,
+# which is how CI keeps the build without a webview compiling too.
 
 set -euo pipefail
 
 BUILD_ONLY=0
+WEBKIT=1
 for arg in "$@"; do
   case "$arg" in
   --build-only | -build-only) BUILD_ONLY=1 ;;
+  --without-webkit | -without-webkit) WEBKIT=0 ;;
   *)
     echo "unknown option: $arg" >&2
-    echo "usage: bash cmd/ubuntu-install-deps.sh [--build-only]" >&2
+    echo "usage: bash cmd/ubuntu-install-deps.sh [--build-only] [--without-webkit]" >&2
     exit 1
     ;;
   esac
@@ -78,6 +86,11 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   git \
   unzip \
   xz-utils
+
+if [ "$WEBKIT" = "1" ]; then
+  echo "==> WebKitGTK (the webview)"
+  $SUDO apt-get install $APT_FLAGS --no-install-recommends libwebkit2gtk-4.1-dev
+fi
 
 if [ "$BUILD_ONLY" = "1" ]; then
   echo ""

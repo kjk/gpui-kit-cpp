@@ -18,6 +18,7 @@ First install [bun](https://bun.sh/), then a compiler:
 - **Windows** — Visual Studio 2026; the free Community edition is fine, and
   2022 works too. `build.ts` finds it with vswhere, so no developer prompt.
 - **Linux** — `g++` or `clang++`, plus `pkg-config`, X11, cairo, pangocairo and gdk-pixbuf.
+  Optional: libcurl (remote images) and WebKitGTK 4.1 (the webview).
 - **macOS** — the Xcode command line tools (`xcode-select --install`).
 
 Then:
@@ -102,6 +103,8 @@ guards, so the same source set builds on all four:
   three. The custom backends already contain their shader bytecode and do not
   require `d3dcompiler.lib` or `D3DCompiler_47.dll`.
 - **Linux** — `g++ -std=c++20` with `pkg-config --cflags --libs x11 cairo pangocairo gdk-pixbuf-2.0`.
+  Add `libcurl` and `-DGPUI_HAVE_CURL=1` for remote images, and
+  `webkit2gtk-4.1` and `-DGPUI_HAVE_WEBKITGTK=1` for the webview.
 - **macOS** — `clang++ -std=c++20 -x objective-c++` with the Cocoa, CoreText and
   IOKit frameworks. The file is Objective-C++ because the mac half is.
 - **wasm** — `em++ -std=c++20` with `-sALLOW_MEMORY_GROWTH`; the browser half

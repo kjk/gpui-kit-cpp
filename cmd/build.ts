@@ -1019,7 +1019,8 @@ function winLibs(f: BuildFlags): string[] {
 // CoreServices is FSEvents, the directory watcher in sys/dir_watch_mac.cpp.
 const macFrameworks = ["Cocoa", "CoreServices", "CoreText", "CoreGraphics", "ImageIO", "IOKit", "WebKit"];
 
-// x11 for the window, cairo + pangocairo for everything drawn in it.
+// x11 for the window, cairo + pangocairo for everything drawn in it. The two
+// soft dependencies, libcurl and WebKitGTK, are probed in linuxDeps below.
 const linuxPkgs = ["x11", "cairo", "pangocairo", "gdk-pixbuf-2.0", "gio-2.0"];
 
 function pkgConfig(names: string[], kind: "--cflags" | "--libs", fail: (msg: string) => never): string[] {
@@ -1043,17 +1044,30 @@ function linuxDeps(fail: (msg: string) => never): LinuxDeps {
   }
   const cflags = pkgConfig(linuxPkgs, "--cflags", fail);
   const libs = pkgConfig(linuxPkgs, "--libs", fail);
-  // libcurl is sys/http_linux.cpp's client, and the only soft dependency
-  // here: a machine without libcurl4-openssl-dev still builds, it just cannot
-  // fetch, and a remote image renders as its alt text the way it did before
-  // there was an HTTP client at all. GPUI_HAVE_CURL is what the source
-  // switches on.
+  // libcurl is sys/http_linux.cpp's client, and the first of two soft
+  // dependencies here: a machine without libcurl4-openssl-dev still builds,
+  // it just cannot fetch, and a remote image renders as its alt text the way
+  // it did before there was an HTTP client at all. GPUI_HAVE_CURL is what the
+  // source switches on.
   const curl = Bun.spawnSync(["pkg-config", "--exists", "libcurl"], { stdout: "pipe", stderr: "pipe" });
   if ((curl.exitCode ?? 1) === 0) {
     cflags.push(...pkgConfig(["libcurl"], "--cflags", fail), "-DGPUI_HAVE_CURL=1");
     libs.push(...pkgConfig(["libcurl"], "--libs", fail));
   } else {
     console.log("libcurl not found: remote images will not load. Install it with: bash cmd/ubuntu-install-deps.sh");
+  }
+  // WebKitGTK is wry/wry_linux.cpp's webview, and the second soft dependency,
+  // found the same way: without libwebkit2gtk-4.1-dev the tree still builds
+  // and a webview is the empty box it was before there was a backend.
+  // GPUI_HAVE_WEBKITGTK is what the source switches on. 4.1 and not 6.0:
+  // 6.0 is GTK 4, which has no X11 foreign-window embedding to put a page
+  // inside this tree's own X11 window.
+  const webkit = Bun.spawnSync(["pkg-config", "--exists", "webkit2gtk-4.1"], { stdout: "pipe", stderr: "pipe" });
+  if ((webkit.exitCode ?? 1) === 0) {
+    cflags.push(...pkgConfig(["webkit2gtk-4.1"], "--cflags", fail), "-DGPUI_HAVE_WEBKITGTK=1");
+    libs.push(...pkgConfig(["webkit2gtk-4.1"], "--libs", fail));
+  } else {
+    console.log("webkit2gtk-4.1 not found: webviews will be empty. Install it with: bash cmd/ubuntu-install-deps.sh");
   }
   linuxDepsMemo = { cflags, libs };
   return linuxDepsMemo;
