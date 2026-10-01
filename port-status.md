@@ -84,17 +84,15 @@ macOS font-kit requirement on the website only. The current update target is
   against the content mask. Here the view marks the text the range starts in
   (`El::RangeOut`, a whole block through `BoundsOut`), and the next frame
   reads where it was painted: a scrollable view scrolls its own offset the
-  least that shows it, and anything else calls `OnReveal`. There is no
-  request_autoscroll, so an application list around a fit-content view does
-  not follow by itself — hand it the line through `OnReveal`, as the
-  markdown example does for its preview panel. Visibility for a fit-content
-  view is the window cut down to the scroll boxes last frame painted around
-  the view, which is what this runtime can read back of the clip. The
-  handler runs while the view is built, so a container following a
-  fit-content view through `OnReveal` reads its offset after building it.
-  text/state.rs's `an_enclosing_list_scrolls_to_a_line_of_a_fit_content_view`
-  is not ported, and neither are the background-parse tests: a parse here
-  happens with the render.
+  least that shows it, and anything else asks for it through
+  `WindowRequestAutoscroll`, which a `VirtualList` with a scroll handle takes
+  after binding its rows, and calls `OnReveal`. The request is that last
+  frame's box, so the list reads it against where its content was then.
+  Visibility for a fit-content view is the window cut down to the scroll
+  boxes last frame painted around the view, which is what this runtime can
+  read back of the clip. The handler runs while the view is built, so a
+  container following a fit-content view through `OnReveal` reads its offset
+  after building it.
 - **`selected_source_range` reads the window's painted runs.** Rust walks
   each inline state's selection; here the selection is the window's, so the
   view maps the runs it painted, which takes an inline image in whenever the

@@ -4832,10 +4832,15 @@ void TextView::RevealFrame(TextViewState* managed) {
                 }
                 float maxY = std::max(viewport->contentH - visible.h, 0.f);
                 managed->scrollY = std::min(std::max(y, 0.f), maxY);
-            } else if (onReveal.IsValid()) {
-                TextViewRevealEvent ev;
-                ev.line = line;
-                ListenerCall(cx->app, cx->win, onReveal, &ev);
+            } else {
+                // inline.rs request_autoscroll: an enclosing list brings the
+                // line in once it has bound its rows, this one among them.
+                WindowRequestAutoscroll(cx->win, line);
+                if (onReveal.IsValid()) {
+                    TextViewRevealEvent ev;
+                    ev.line = line;
+                    ListenerCall(cx->app, cx->win, onReveal, &ev);
+                }
             }
             if (reveal.block) {
                 // A block has no line to wait for.

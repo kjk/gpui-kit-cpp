@@ -546,6 +546,9 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // every registered run.
     WindowSelectionApply(win);
 
+    // A request no scroller took last frame is not this frame's.
+    win->hasAutoscroll = false;
+
     // The three phases, timed apart, for GPUI_FRAME_BENCH.
     double tBuild0 = TimeNow();
     // The views this frame is made of, collected as they render: what a
@@ -3703,6 +3706,24 @@ void WindowRequestAnimationFrame(Window* win) {
     // Nothing else may be keeping the window awake: arm the clock now, the
     // way AppRequestAnim does.
     PlatSetTimer(win, WindowTimerMs(win));
+}
+
+void WindowRequestAutoscroll(Window* win, Bounds bounds) {
+    if (win) {
+        win->hasAutoscroll = true;
+        win->autoscroll = bounds;
+    }
+}
+
+bool WindowTakeAutoscroll(Window* win, Bounds* out) {
+    if (!win || !win->hasAutoscroll) {
+        return false;
+    }
+    win->hasAutoscroll = false;
+    if (out) {
+        *out = win->autoscroll;
+    }
+    return true;
 }
 
 // The teardowns src/base and src/ui have registered, in the order they came.

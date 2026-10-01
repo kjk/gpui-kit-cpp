@@ -6235,6 +6235,12 @@ struct Window {
     // painting around the one painting now, innermost last.
     // with_text_selection_scope pushes and pops it.
     Vec<uint64_t> textSelectionScopes;
+    // window.request_autoscroll: a box, in window coordinates, that what is
+    // being built wants scrolled into view. An enclosing list takes it once it
+    // has bound its rows (WindowTakeAutoscroll); one nobody took is dropped
+    // when the next frame starts.
+    bool hasAutoscroll = false;
+    Bounds autoscroll = {};
     // The scroll boxes the frame before this one painted, swapped out of
     // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
     // answers with the box the last layout gave it. Virtual lists bind rows
@@ -7117,6 +7123,12 @@ void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
 // One more frame, rather than every frame. Safe to call from inside a render.
 void WindowRequestAnimationFrame(Window* win);
+// window.request_autoscroll / take_autoscroll: ask an enclosing scroller to
+// bring `bounds` into view, and, from the scroller, take the request if one
+// is waiting. A request is in last frame's window coordinates here, since
+// what asks reads where it was last painted.
+void WindowRequestAutoscroll(Window* win, Bounds bounds);
+bool WindowTakeAutoscroll(Window* win, Bounds* out);
 // window.last_input_was_keyboard(): whether the last input was a key press
 // rather than the pointer. What focus_visible reads, so a control focused by
 // a click does not show the focus a Tab to it would.

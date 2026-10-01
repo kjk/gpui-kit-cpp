@@ -3705,8 +3705,7 @@ static void AnAppendAddingBlocksKeepsTheScrollPosition() {
 
 #if GPUI_MARKDOWN_FULL
 
-// Where the view sits: state.rs reveal_range's Container, less the
-// application `list` this tree has no request_autoscroll for.
+// Where the view sits: state.rs reveal_range's Container.
 enum class TswContainer : uint8_t {
     // The whole window, fit-content: what a state with no view is drawn in.
     Window,
@@ -3719,6 +3718,9 @@ enum class TswContainer : uint8_t {
     Clamped,
     // A 200×100 box that scrolls nothing.
     Fixed,
+    // A 200×100 list of two items, a 40px box and the fit-content view,
+    // which follows a reveal through request_autoscroll.
+    List,
     // A stateless TextView::markdown(source) over `source`, whose keyed
     // state is what the test reads.
     Element,
@@ -3734,6 +3736,11 @@ struct TswRoot {
     Bounds divBounds = {};
     // Container::Element's source string.
     Str source = {};
+    // Container::List's ListState: the two items' heights, the view's
+    // measured as it is first bound, and where the list has scrolled.
+    float listSizes[2] = {40, 0};
+    uint8_t listMeasure[2] = {0, 1};
+    VirtualListScrollHandle listHandle = {};
     // Last frame's scroll box of a scrollable view and the document inside it,
     // for scroll_top. Frame-arena memory, read only between frames.
     El* scroller = nullptr;
@@ -3751,9 +3758,28 @@ struct TswRoot {
         }
     }
 
+    static El* ListRow(void* user, Ctx* cx, int ix) {
+        auto* self = (TswRoot*)user;
+        if (ix == 0) {
+            return Div(cx->a)->H(40);
+        }
+        return gpui::TextView::New(cx, self->state)->IntoEl();
+    }
+
     static El* Render(TswRoot* self, Ctx* cx) {
         Arena* a = cx->a;
         self->scroller = nullptr;
+        if (self->container == TswContainer::List) {
+            gpui::VirtualListOpts o;
+            o.count = 2;
+            o.sizes = self->listSizes;
+            o.needsMeasure = self->listMeasure;
+            o.handle = &self->listHandle;
+            o.row = &TswRoot::ListRow;
+            o.user = self;
+            return Div(a)->W(200)->H(100)->Child(
+                gpui::VirtualList::New(cx, StrL("list"), o));
+        }
         if (self->container == TswContainer::Element) {
             gpui::TextView* view = gpui::TextView::New(cx, self->source);
             El* e = view->IntoEl();
@@ -4571,11 +4597,24 @@ static void RevealingAVisibleLineDoesNotScroll() {
     ArenaDelete(a);
 }
 
-// state.rs an_enclosing_list_scrolls_to_a_line_of_a_fit_content_view: not
-// ported — there is no request_autoscroll, so an application list around a
-// fit-content view does not follow a reveal by itself (port-status.md
-// "`reveal_range` reads back last frame's paint"); the OnReveal route is
-// on_reveal_scrolls_a_container_that_ignores_scroll_requests below.
+// state.rs an_enclosing_list_scrolls_to_a_line_of_a_fit_content_view: the
+// view asks for its line through request_autoscroll, and the list it is an
+// item of scrolls to it.
+static void AnEnclosingListScrollsToALineOfAFitContentView() {
+    Arena* a = ArenaNew();
+    TswView v = TswOpen(TswWords(a, 400).s, TswContainer::List);
+    TswReveal(v, "w390");
+    utassert(!TswPending(v));
+    TswRoot* root = v.Root();
+    int item = 0;
+    float into = 0;
+    VirtualListLogicalFromPixel(root->listSizes, 2, 0, root->listHandle.offset,
+                                &item, &into);
+    utassert(item == 1);
+    utassert(into > 100.f);
+    TswClose(&v);
+    ArenaDelete(a);
+}
 
 // state.rs on_reveal_scrolls_a_container_that_ignores_scroll_requests
 static void OnRevealScrollsAContainerThatIgnoresScrollRequests() {
@@ -4923,6 +4962,7 @@ static void TestTextStateWindow() {
     AnAppendAddingBlocksKeepsTheScrollPositionInAWindow();
     AScrollableViewScrollsToALineInsideALongParagraph();
     RevealingAVisibleLineDoesNotScroll();
+    AnEnclosingListScrollsToALineOfAFitContentView();
     OnRevealScrollsAContainerThatIgnoresScrollRequests();
     ARevealThatCannotBeShownGivesUp();
     ARevealNotCarriedOutInTimeIsDropped();

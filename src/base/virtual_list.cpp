@@ -514,6 +514,41 @@ static void VirtualListPrePaint(PaintCtx* ctx, El* e, void* user) {
     }
     VirtualListBindRows(ctx, e, paint, &layout, offset, viewport, pad, innerW,
                         innerH);
+    // List::prepaint's take_autoscroll: a row that asked, while it was being
+    // bound, for a box to be shown -- a TextView revealing a line -- has it
+    // scrolled in by the least that does, and the rows are bound again
+    // there. The box is where the row was last painted, so it is read
+    // against where the content was then.
+    Bounds want = {};
+    if (o.handle && !o.logicalScroll && axis == Axis::Vertical &&
+        WindowTakeAutoscroll(paint->win, &want)) {
+        float top = e->y + pad;
+        float bottom = top + innerH;
+        float contentTop = top - offset;
+        float extent = layout.contentSize.h;
+        bool inside = want.x < e->x + e->w && want.x + want.w > e->x &&
+                      want.y >= contentTop - 0.5f &&
+                      want.y + want.h <= contentTop + extent + 0.5f;
+        float delta = 0;
+        if (inside && want.h <= innerH) {
+            if (want.y < top) {
+                delta = want.y - top;
+            } else if (want.y + want.h > bottom) {
+                delta = want.y + want.h - bottom;
+            }
+        } else if (inside) {
+            delta = want.y - top;
+        }
+        float most = extent > innerH ? extent - innerH : 0.f;
+        float next = std::min(std::max(offset + delta, 0.f), most);
+        if (next != offset) {
+            offset = next;
+            o.handle->offset = next;
+            e->scrollY = next;
+            VirtualListBindRows(ctx, e, paint, &layout, offset, viewport, pad,
+                                innerW, innerH);
+        }
+    }
     if (o.logicalScroll && o.sizes) {
         float measured = VirtualListContentSize(o.sizes, o.count);
         if (axis == Axis::Horizontal) {
