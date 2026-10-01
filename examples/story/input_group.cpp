@@ -212,14 +212,13 @@ static El* IgNote(Ctx* cx, Str s, Rgba c) {
     return StoryTxt(cx, s, 14, c);
 }
 
-// labeled(): Field::new().label(..).description(..).child(control). A Field
-// renders only inside a Form here, so it is given a one-field vertical Form,
-// which lays it out with the default FieldProps a bare Rust Field uses.
+// labeled(): Field::new().label(..).description(..).child(control), a Field
+// on its own with the default FieldProps.
 static El* IgLabeled(Ctx* cx, const char* label, const char* description,
                      El* control) {
     component::Field field = component::Field::New(control);
     field.Label(Str(label)).Description(Str(description));
-    return component::Form::New(cx)->Child(field)->IntoEl();
+    return field.IntoEl(cx);
 }
 
 static component::Input* IgInput(Ctx* cx, InputGroupStory* self, int field,

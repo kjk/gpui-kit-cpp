@@ -172,17 +172,104 @@ Form* Form::LabelWidth(float w) {
     return this;
 }
 
-El* Form::IntoEl() {
+// field.rs's FieldProps: what a Form hands each of its fields. A Field
+// rendered on its own takes the defaults — vertical, Medium, a 140 px label
+// column and text_sm labels.
+struct FieldProps {
+    UiSize size = UiSize::Medium;
+    bool horizontal = false;
+    float labelWidth = 140.f;
+    // label_text_size. 0 keeps text_sm.
+    float labelTextSize = 0;
+};
+
+// impl RenderOnce for Field.
+static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
+    Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    // The gap comes from the size: eight at Large, four otherwise, and a
-    // vertical field halves it between the label and the control.
+    // Large gaps by eight, everything else by four, and a vertical field
+    // halves it between its parts.
+    float fieldGap = props.size == UiSize::Large ? 8.f : 4.f;
+    float inner = props.horizontal ? fieldGap : fieldGap * 0.5f;
+    float labelFont = props.labelTextSize > 0 ? props.labelTextSize : 14.f;
+    float lw = props.labelWidth;
+
+    El* f = Div(a)->FlexCol()->W(kFill)->Gap(fieldGap * 0.5f);
+    fld.refiner.Apply(f);
+
+    El* head = Div(a)->W(kFill)->Gap(inner);
+    if (props.horizontal) {
+        head->FlexRow();
+        if (fld.align == FieldAlign::Start) {
+            head->ItemsStart();
+        } else if (fld.align == FieldAlign::End) {
+            head->ItemsEnd();
+        } else {
+            head->ItemsCenter();
+        }
+    } else {
+        head->FlexCol();
+    }
+    bool hasLabel = fld.labelIndent;
+    if (hasLabel) {
+        El* label = Div(a)->FlexRow()->Gap(4)->ItemsCenter();
+        if (props.horizontal) {
+            label->W(lw);
+            label->style.flexShrink = 0;
+        }
+        if (fld.label.kind == FieldBuilderKind::Element) {
+            label->Child(fld.label.element);
+        } else if (fld.label.kind == FieldBuilderKind::String) {
+            label->Child(TextEl(a, fld.label.string)
+                             ->Font(labelFont)
+                             ->Medium()
+                             ->Fg(th.foreground));
+        }
+        if (fld.required && fld.label.IsSet()) {
+            label->Child(TextEl(a, StrL("*"))->Font(labelFont)->Fg(th.danger));
+        }
+        head->Child(label);
+    }
+    El* control = Div(a)->W(kFill)->Flex1();
+    if (fld.control) {
+        control->Child(fld.control);
+    }
+    for (int j = 0; j < fld.childCount; j++) {
+        control->Child(fld.children[j]);
+    }
+    head->Child(control);
+    f->Child(head);
+
+    // Rust always adds the description row, so a field without one is
+    // still a half-gap taller.
+    El* desc = Div(a)->FlexRow()->W(kFill)->Gap(inner);
+    if (fld.description.IsSet()) {
+        // Horizontal, the description lines up under the control.
+        if (props.horizontal && hasLabel) {
+            desc->Child(Div(a)->W(lw));
+        }
+        if (fld.description.kind == FieldBuilderKind::Element) {
+            desc->Child(fld.description.element);
+        } else {
+            desc->Child(
+                TextEl(a, fld.description.string)->Font(12)->Fg(th.mutedFg));
+        }
+    }
+    f->Child(desc);
+    return f;
+}
+
+El* Form::IntoEl() {
     float formGap = size == UiSize::Large                               ? 12.f
                     : (size == UiSize::XSmall || size == UiSize::Small) ? 6.f
                                                                         : 8.f;
-    float fieldGap = size == UiSize::Large ? 8.f : 4.f;
-    float inner = horizontal ? fieldGap : fieldGap * 0.5f;
-    float labelFont = labelTextSize > 0 ? labelTextSize : 14.f;
-    float lw = labelWidth > 0 ? labelWidth : 140.f;
+    // `field.props(ix, props)`: the form's layout, size and label column,
+    // handed to every field it renders.
+    FieldProps props;
+    props.size = size;
+    props.horizontal = horizontal;
+    props.labelWidth = labelWidth > 0 ? labelWidth : 140.f;
+    props.labelTextSize = labelTextSize;
 
     El* col = Div(a)->FlexCol()->W(kFill)->GapX(formGap * 3.f)->GapY(formGap);
     El* row = nullptr; // the row being filled, when the form has columns
@@ -193,70 +280,7 @@ El* Form::IntoEl() {
         if (!fld.visible) {
             continue;
         }
-        El* f = Div(a)->FlexCol()->W(kFill)->Gap(fieldGap * 0.5f);
-        fld.refiner.Apply(f);
-
-        El* head = Div(a)->W(kFill)->Gap(inner);
-        if (horizontal) {
-            head->FlexRow();
-            if (fld.align == FieldAlign::Start) {
-                head->ItemsStart();
-            } else if (fld.align == FieldAlign::End) {
-                head->ItemsEnd();
-            } else {
-                head->ItemsCenter();
-            }
-        } else {
-            head->FlexCol();
-        }
-        bool hasLabel = fld.labelIndent;
-        if (hasLabel) {
-            El* label = Div(a)->FlexRow()->Gap(4)->ItemsCenter();
-            if (horizontal) {
-                label->W(lw);
-                label->style.flexShrink = 0;
-            }
-            if (fld.label.kind == FieldBuilderKind::Element) {
-                label->Child(fld.label.element);
-            } else if (fld.label.kind == FieldBuilderKind::String) {
-                label->Child(TextEl(a, fld.label.string)
-                                 ->Font(labelFont)
-                                 ->Medium()
-                                 ->Fg(th.foreground));
-            }
-            if (fld.required && fld.label.IsSet()) {
-                label->Child(
-                    TextEl(a, StrL("*"))->Font(labelFont)->Fg(th.danger));
-            }
-            head->Child(label);
-        }
-        El* control = Div(a)->W(kFill)->Flex1();
-        if (fld.control) {
-            control->Child(fld.control);
-        }
-        for (int j = 0; j < fld.childCount; j++) {
-            control->Child(fld.children[j]);
-        }
-        head->Child(control);
-        f->Child(head);
-
-        // Rust always adds the description row, so a field without one is
-        // still a half-gap taller.
-        El* desc = Div(a)->FlexRow()->W(kFill)->Gap(inner);
-        if (fld.description.IsSet()) {
-            // Horizontal, the description lines up under the control.
-            if (horizontal && hasLabel) {
-                desc->Child(Div(a)->W(lw));
-            }
-            if (fld.description.kind == FieldBuilderKind::Element) {
-                desc->Child(fld.description.element);
-            } else {
-                desc->Child(TextEl(a, fld.description.string)
-                                ->Font(12)
-                                ->Fg(th.mutedFg));
-            }
-        }
-        f->Child(desc);
+        El* f = FieldRender(cx, fld, props);
 
         if (columns <= 1) {
             col->Child(f);
@@ -310,6 +334,16 @@ Form* v_form(Ctx* cx) {
 
 Form* h_form(Ctx* cx) {
     return Form::New(cx)->Horizontal(true);
+}
+
+El* Field::IntoEl(Ctx* cx) const {
+    El* f = FieldRender(cx, *this, FieldProps{});
+    // `.when(!self.visible, |this| this.hidden())`: a Form leaves a hidden
+    // field out; on its own it is still built, as display: none.
+    if (!visible) {
+        f->style.display = Display::None;
+    }
+    return f;
 }
 
 component::Field field(El* control) {

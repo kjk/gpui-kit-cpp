@@ -72,6 +72,9 @@ struct Field {
     Field& ColStart(int value);
     Field& ColEnd(int value);
     Field& Children(El* const* elements, int count);
+    // A Field outside a Form: laid out with field.rs's default FieldProps —
+    // vertical, Medium, text_sm label.
+    El* IntoEl(Ctx* cx) const;
 };
 
 using FormField = Field;

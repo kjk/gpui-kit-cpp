@@ -56,10 +56,6 @@ macOS font-kit requirement on the website only. The current update target is
   a handle here knows containment only through a focus trap, which would
   also keep Tab inside, so the toolbar records its laid-out bounds and roves
   among the tab stops whose centre lies within them (`src/base/toolbar.cpp`).
-- **A Field renders only inside a Form.** Rust's `Field` is an element of
-  its own, laid out with default `FieldProps` outside a form; `component::Field`
-  has no `IntoEl`, so a lone field goes in a one-field `Form`
-  (`examples/story/input_group.cpp` IgLabeled).
 - **One monospace face.** `Editor::font_family` and `Theme::mono_font_family`
   name a family; the painters here draw every mono run in the platform's one
   mono face (`kFontMono`), so the Editor story's Font family rows only keep

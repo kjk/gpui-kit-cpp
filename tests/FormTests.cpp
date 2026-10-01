@@ -202,6 +202,59 @@ static void HiddenFieldsAreNotRendered() {
     AppGlobalClear(&app);
 }
 
+// field.rs: Field is an element of its own. Outside a Form it renders with
+// FieldProps::default() — vertical, Medium (a 4 px gap, halved between the
+// parts), a text_sm label — which is the field a one-field v_form draws.
+static void AFieldRendersOutsideAForm() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    Arena* arena = ArenaNew();
+    win->app = &app;
+    Ctx cx = {&app, win, arena, {}};
+
+    El* loneControl = Div(arena)->W(kFill)->H(20);
+    El* lone = field(loneControl)
+                   .Label(StrL("Name"))
+                   .Description(StrL("Help"))
+                   .Required()
+                   .IntoEl(&cx);
+    El* formControl = Div(arena)->W(kFill)->H(20);
+    El* form = v_form(&cx)
+                   ->Child(field(formControl)
+                               .Label(StrL("Name"))
+                               .Description(StrL("Help"))
+                               .Required())
+                   ->IntoEl();
+    utassert(lone && lone->style.display != Display::None);
+    utassertnear(lone->style.gapY, 2.f);
+    El* head = lone->first;
+    El* label = head ? head->first : nullptr;
+    El* text = label ? label->first : nullptr;
+    utassert(head && head->style.gapY == 2.f);
+    utassert(label && label->style.width == kAuto);
+    utassert(text && text->style.fontSize == 14.f);
+    // The asterisk follows the label.
+    utassert(text && text->next && text->next->kind == ElKind::Text);
+    utassert(Holds(lone, loneControl));
+    El* desc = head ? head->next : nullptr;
+    utassert(desc && desc->first && desc->first->style.fontSize == 12.f);
+
+    El* page = Div(arena)->W(400)->FlexCol()->Child(lone)->Child(form);
+    LayoutEl(nullptr, page, 0, 0, 400, 400, 14, Rgba{});
+    // Same place inside its own box as inside the form's.
+    utassertnear(loneControl->y - lone->y, formControl->y - form->y);
+    utassertnear(lone->h, form->h);
+
+    // visible(false) on its own is display: none, Rust's `.hidden()`.
+    El* hidden = field(Div(arena)).Visible(false).IntoEl(&cx);
+    utassert(hidden->style.display == Display::None);
+
+    delete win;
+    ArenaDelete(arena);
+    AppGlobalClear(&app);
+}
+
 void TestForm() {
     TestSuite("form");
     FieldBuilderAndStandaloneFieldKeepSourceState();
@@ -210,4 +263,5 @@ void TestForm() {
     FormConventionsExposeLabelLayoutAndFooter();
     FormAppliesStyledRefinements();
     HiddenFieldsAreNotRendered();
+    AFieldRendersOutsideAForm();
 }

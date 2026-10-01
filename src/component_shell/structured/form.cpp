@@ -79,10 +79,9 @@ static El* MaterializeField(MaterializeRequest* request) {
     int count = 0;
     if (!request->TakeChildren(&children, &count)) return nullptr;
     field->Children(children, count);
-    // A Field renders on its own when an ordinary parent holds it; the port's
-    // Field is drawn by its Form, so the standalone rendering is the field in
-    // a vertical form of its own, which is the props a lone Rust Field has.
-    El* rendered = component::v_form(cx)->Child(*field)->IntoEl();
+    // A Field renders on its own when an ordinary parent holds it, with the
+    // default props; a Form takes the field itself and renders it again.
+    El* rendered = field->IntoEl(cx);
     return TypedChildElement(cx, shell::PayloadTag<component::Field>(), field,
                              rendered);
 }
