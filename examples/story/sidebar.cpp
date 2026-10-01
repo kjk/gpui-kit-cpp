@@ -156,9 +156,21 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
                          ->Shrink0());
     }
 
+    // SidebarHeader::dropdown_menu(..): the header opens a company menu.
+    // SelectCompany has no handler in the story, so the rows only close it.
+    El* header =
+        component::DropdownMenu::New(cx, StrL("sidebar-company-dropdown"))
+            ->Trigger(brand)
+            ->Menu(component::PopupMenu::New(cx, StrL("sidebar-company-menu"))
+                       ->Menu(StrL("Twitter Inc."))
+                       ->Menu(StrL("Meta Platforms"))
+                       ->Menu(StrL("Google Inc.")))
+            ->IntoEl()
+            ->W(kFill);
+
     // The story's two Styled demonstrations: the active item outlines itself
     // (`.when(is_active, |this| this.border_1().border_color(Hsla::white()))`)
-    // and every sub item's label is `red_500()` through `label_style`.
+    // and the first sub item's label is `red_500()` through `label_style`.
     Style outlined = {};
     outlined.border = 1;
     outlined.borderColor = Rgb(0xff, 0xff, 0xff);
@@ -175,6 +187,13 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
                 ->DefaultOpen(i == 0)
                 ->ClickToOpen(self->clickToOpen)
                 ->OnClick(ListenerArg(pick, i));
+        if (i == 0) {
+            // context_menu(|this, ..| this.link("About", ..)).
+            item->ContextMenu(
+                component::PopupMenu::New(cx, StrL("sidebar-platform-menu"))
+                    ->Link(StrL("About"),
+                           StrL("https://github.com/longbridge/gpui-kit")));
+        }
         if (isActive) {
             item->Refine(outlined, StyleFieldBorder | StyleFieldBorderColor);
         }
@@ -184,8 +203,16 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
                     ->Active(self->active == i && self->activeSub == j)
                     // SubItem::Quantum is the disabled one.
                     ->Disabled(i == 1 && j == 2)
-                    ->LabelStyle(redLabel, StyleFieldColor)
                     ->OnClick(ListenerArg(pickSub, (i << 8) | j));
+            if (j == 0) {
+                // .when(ix == 0, ..): the first child's red label and its
+                // one-row context menu.
+                sub->LabelStyle(redLabel, StyleFieldColor)
+                    ->ContextMenu(
+                        component::PopupMenu::New(
+                            cx, StoryFmt(cx, "sidebar-sub-menu-%d", i))
+                            ->Label(StrL("This is a label")));
+            }
             if (i == 0 && j == 0) {
                 // The first child carries a switch, as the Rust story shows.
                 sub->Suffix(component::Switch::New(cx, StrL("sidebar-history"))
@@ -224,14 +251,6 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
             }
         } else if (i == 1) {
             item->Suffix(IconEl(a, IconName::Settings2, 16));
-            // context_menu(..): the row's own right-click actions, which the
-            // Rust story hangs off this item too.
-            item->ContextMenu(
-                component::PopupMenu::New(cx, StrL("sidebar-project-menu"))
-                    ->Menu(StrL("Rename"))
-                    ->Menu(StrL("Duplicate"))
-                    ->Separator()
-                    ->Menu(StrL("Delete")));
         }
         projects->Child(item);
     }
@@ -249,7 +268,7 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
                       ->Collapsible(collapsible)
                       ->Collapsed(self->collapsed)
                       ->W(220)
-                      ->Header(component::SidebarHeader::New(cx)->Child(brand))
+                      ->Header(component::SidebarHeader::New(cx)->Child(header))
                       ->Footer(component::SidebarFooter::New(cx)->Child(user))
                       ->Child(component::SidebarGroup::New(cx, StrL("Platform"))
                                   ->Child(platform))
@@ -263,7 +282,17 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
 
     // The content pane: breadcrumb, heading with the Options menu, metric
     // cards and the activity list.
-    El* content = Div(a)->FlexCol()->Flex1()->H(kFill)->Pad(16)->Gap(16);
+    // v_flex().h_full().flex_1().min_w_0().overflow_hidden().gap_4().p_4():
+    // the column gives way to the sidebar rather than pushing past the frame.
+    El* content = Div(a)
+                      ->FlexCol()
+                      ->Flex1()
+                      ->MinW(0)
+                      ->ClipX()
+                      ->ClipY()
+                      ->H(kFill)
+                      ->Pad(16)
+                      ->Gap(16);
     El* crumbs = Div(a)->FlexRow()->W(kFill)->Gap(8)->ItemsCenter();
     // .when(side.is_right() && collapsible != None, flex_row_reverse()
     // .justify_between()): the toggle button leads the row on the side the
@@ -302,7 +331,7 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
         {"Icon mode", self->collapsible == 0, SidebarOptIcon},
         {"Offcanvas mode", self->collapsible == 1, SidebarOptOffcanvas},
         {"Fixed mode", self->collapsible == 2, SidebarOptFixed},
-        {"Right Side", self->rightSide, SidebarOptRight},
+        {"Right Side", self->rightSide, SidebarOptRight, false, true},
         {"Click to Open", self->clickToOpen, SidebarOptClickToOpen},
         {"Dynamic Children", self->dynamicChildren, SidebarOptDynamic},
     };
@@ -327,12 +356,14 @@ El* SidebarStory::Render(SidebarStory* self, Ctx* cx) {
     for (int i = 0; i < 3; i++) {
         El* card = Div(a)
                        ->FlexCol()
+                       ->MinW(0)
                        ->Flex1()
                        ->Gap(8)
                        ->Pad(16)
                        ->Radius(th.radiusLg)
                        ->Border(1, th.border);
-        card->Child(StoryTxt(cx, Str(kMetrics[i].label), 16, th.mutedFg));
+        card->Child(StoryTxt(cx, Str(kMetrics[i].label), 14, th.mutedFg)
+                        ->Wrap());
         card->Child(StoryTxt(cx, Str(kMetrics[i].value), 24, th.foreground)
                         ->Semibold());
         card->Child(StoryTxt(cx, Str(kMetrics[i].detail), 12, th.mutedFg));
