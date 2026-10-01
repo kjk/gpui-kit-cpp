@@ -6474,6 +6474,338 @@ static void NumberInputEscapeInvalidText() {
     InputViewFree(&view);
 }
 
+// "https://example.com/v1/users?" followed by "x=1&" 120 times: long enough
+// to overflow any reasonable single-line input width.
+static Str LongUrlB(Arena* a) {
+    StrBuilder sb;
+    sb.Append(StrL("https://example.com/v1/users?"));
+    for (int i = 0; i < 120; i++) {
+        sb.Append(StrL("x=1&"));
+    }
+    return StrDup(a, Str(sb.els, sb.len));
+}
+
+// state.rs test_set_value_single_line_caret_at_end_view_at_start: after
+// set_value on a single-line input the caret sits at the end (like an HTML
+// <input>), yet the view is scrolled back to the start so a long value shows
+// its beginning instead of its tail. Rust checks the deferred offset the
+// next paint consumes; this tree has no deferred offset, the reset is the
+// state's scroll itself, so that is what is read before the paint.
+static void SetValueSingleLineCaretAtEndViewAtStart() {
+    InputView view = InputViewBuild();
+    Arena* a = ArenaNew();
+    Str value = LongUrlB(a);
+    int n = len(value);
+
+    InputSetValue(view.input, value);
+    // "single-line caret should be at the end after set_value"
+    utassert(ViewRangeIs(view, n, n));
+    // "the view should be forced back to the start"
+    utassert(view.input->scrollX == 0);
+    Flush(view);
+
+    // After a paint, the steady-state view stays at the start even though
+    // the caret is at the far end.
+    TestRunUntilParked(view.app);
+    // "value must overflow the input width or this test is vacuous"
+    utassert(view.input->lastBounds.w > view.input->inputBounds.w);
+    // "long value should display from its start, not its tail"
+    utassert(view.input->scrollX == 0);
+    ArenaDelete(a);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_all_single_line: replace_all on a single-line input
+// replaces the text, puts the caret at the end, and — like set_value — snaps
+// the view back to the start. The deferred offset Rust also checks has no
+// counterpart; the scroll the state holds is the reset.
+static void ReplaceAllSingleLine() {
+    InputView view = InputViewBuild();
+    Arena* a = ArenaNew();
+    Str value = LongUrlB(a);
+    int n = len(value);
+
+    InputSetValue(view.input, StrL("hello"));
+    InputReplaceAll(view.input, view.app, view.win, value);
+    utassert(base::StrEq(InputValue(view.input), value));
+    // "single-line caret should be at the end after replace_all"
+    utassert(ViewRangeIs(view, n, n));
+    // "the scroll offset should be reset to the start"
+    utassert(view.input->scrollX == 0 && view.input->scrollY == 0);
+    Flush(view);
+
+    TestRunUntilParked(view.app);
+    // "value must overflow the input width or this test is vacuous"
+    utassert(view.input->lastBounds.w > view.input->inputBounds.w);
+    // "long value should display from its start, not its tail"
+    utassert(view.input->scrollX == 0);
+    ArenaDelete(a);
+    InputViewFree(&view);
+}
+
+// state.rs test_single_line_removes_newlines.
+static void SingleLineRemovesNewlinesInAWindow() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputDefaultValue(s, StrL("default\nvalue"));
+    });
+    utassert(ViewValueIs(view, "defaultvalue"));
+
+    InputSetValue(view.input, StrL("first\nsecond\r\nthird\rfourth"));
+    utassert(ViewValueIs(view, "firstsecondthirdfourth"));
+
+    InputSetValue(view.input, StrL(""));
+    InputInsert(view.input, view.app, view.win, StrL("a\nb"));
+    utassert(ViewValueIs(view, "ab"));
+    Flush(view);
+
+    TestWriteToClipboard(StrL("a\r\nb\nc\rd"));
+    InputSetValue(view.input, StrL(""));
+    ViewAct(view, InputAction::Paste);
+    utassert(ViewValueIs(view, "abcd"));
+    Flush(view);
+
+    TestRunUntilParked(view.app);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_all_multi_line: replace_all on a multi-line (not a
+// code editor) input clears the selection to 0..0 and resets the scroll
+// offset. Rust also checks no deferred offset was set, which is single-line
+// only there and does not exist here.
+static void ReplaceAllMultiLine() {
+    InputView view = InputViewBuildTextarea();
+    InputSetValue(view.input, StrL("foo\nbar"));
+    InputReplaceAll(view.input, view.app, view.win, StrL("baz\nqux"));
+    utassert(ViewValueIs(view, "baz\nqux"));
+    // "multi-line selection should be cleared after replace_all"
+    utassert(ViewRangeIs(view, 0, 0));
+    // "the scroll offset should be reset to the start"
+    utassert(view.input->scrollX == 0 && view.input->scrollY == 0);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_all_preserves_undo_history: unlike set_value,
+// replace_all records the change so it can be undone and redone.
+static void ReplaceAllPreservesUndoHistoryInAWindow() {
+    InputView view = InputViewBuild();
+    // Seed with a value and clear history so the baseline is clean.
+    InputSetValue(view.input, StrL("first"));
+    // "history should be empty after set_value"
+    utassert(len(view.input->undo.undos) == 0);
+
+    // replace_all records a single undoable change.
+    InputReplaceAll(view.input, view.app, view.win, StrL("second"));
+    utassert(ViewValueIs(view, "second"));
+    // "replace_all should record an undo step"
+    utassert(len(view.input->undo.undos) > 0);
+
+    // Undo restores the previous text.
+    UndoB(view);
+    utassert(ViewValueIs(view, "first"));
+
+    // Redo reapplies the replacement.
+    RedoB(view);
+    utassert(ViewValueIs(view, "second"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_all_code_editor: replace_all on a code editor marks
+// a pending update, so the highlighter and the language features refresh
+// against the new text. Rust's `_pending_update` is the pending edit the
+// highlighter is handed here.
+static void ReplaceAllCodeEditor() {
+    InputView view = InputViewNew();
+    // Plant a cleared pending-update flag to verify it is set again.
+    InputSetValue(view.input, StrL("select 1"));
+    view.input->hasPendingEdit = false;
+
+    InputReplaceAll(view.input, view.app, view.win, StrL("select 2"));
+    utassert(ViewValueIs(view, "select 2"));
+    // "replace_all on a code editor should request a pending update"
+    utassert(view.input->hasPendingEdit);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_set_selected_range.
+static void SetSelectedRangeInAWindow() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("hello world")); });
+    SetSelectedRangeB(view, 0, 5);
+    utassert(ViewRangeIs(view, 0, 5));
+    utassert(base::StrEq(InputSelectedValue(view.input), "hello"));
+
+    SetSelectedRangeB(view, 6, 11);
+    utassert(base::StrEq(InputSelectedValue(view.input), "world"));
+
+    // clamped + collapsed
+    SetSelectedRangeB(view, 100, 100);
+    utassert(ViewRangeIs(view, 11, 11));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_text_in_ranges_single_edit: a single-edit batch
+// round-trips through undo/redo.
+static void ReplaceTextInRangesSingleEdit() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("hello world")); });
+    Selection range = {0, 5};
+    Str text = StrL("HELLO");
+    InputReplaceTextInRanges(view.input, view.app, view.win, &range, &text, 1);
+    utassert(ViewValueIs(view, "HELLO world"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "hello world"));
+
+    RedoB(view);
+    utassert(ViewValueIs(view, "HELLO world"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_text_in_ranges_multi_edit_transaction: one undo
+// restores the exact original text and one redo re-applies every edit,
+// which is the back-to-front application order at work.
+static void ReplaceTextInRangesMultiEditTransaction() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("aaa bbb ccc")); });
+    // Two edits at different positions, given in pre-edit coordinates.
+    Selection ranges[] = {{0, 3}, {8, 11}};
+    Str texts[] = {StrL("X"), StrL("Y")};
+    InputReplaceTextInRanges(view.input, view.app, view.win, ranges, texts, 2);
+    utassert(ViewValueIs(view, "X bbb Y"));
+
+    // One collapsed cursor per edit, at the end of each inserted text.
+    utassert(InputCursorCount(view.input) == 2);
+    utassert(ViewRangeIs(view, 1, 1));
+    utassert(len(view.input->extraCursors) == 1 &&
+             view.input->extraCursors[0].range.start == 7 &&
+             view.input->extraCursors[0].range.end == 7);
+
+    // The whole batch is a single undo transaction.
+    utassert(len(view.input->undo.undos) == 1);
+
+    // One undo restores the exact original text.
+    UndoB(view);
+    utassert(ViewValueIs(view, "aaa bbb ccc"));
+
+    // One redo re-applies all edits.
+    RedoB(view);
+    utassert(ViewValueIs(view, "X bbb Y"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_replace_text_in_ranges_drives_the_highlighter_once: not
+// ported — InputHighlighter has no `update_batch` and the state no
+// highlighter factory; the seam is `update` alone, and a second splice
+// before it is consumed collapses to one whole-document edit
+// (src/gpui/gpui.h InputHighlighter, TextSplice), so there is no batch of
+// per-edit texts to observe.
+
+// state.rs test_ime_composition_undoes_as_one_unit: marking, refining, then
+// committing undoes as a single unit.
+static void ImeCompositionUndoesAsOneUnit() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("")); });
+    Selection one = {1, 1};
+    Selection two = {2, 2};
+    MarkB(view, "n", &one);
+    MarkB(view, "ni", &two);
+    ViewTypeText(view, "\xE4\xBD\xA0");
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0"));
+
+    // The entire composition is one undo transaction.
+    utassert(len(view.input->undo.undos) == 1);
+
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+
+    RedoB(view);
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0"));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_edit_after_composition_is_separate_undo: a keystroke right
+// after a committed composition is its own undo entry.
+static void EditAfterCompositionIsSeparateUndo() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("")); });
+    Selection one = {1, 1};
+    MarkB(view, "n", &one);
+    ViewTypeText(view, "\xE4\xBD\xA0");
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0"));
+    utassert(len(view.input->undo.undos) == 1);
+
+    // Typing after the commit is a distinct transaction.
+    ViewTypeText(view, "x");
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0x"));
+    utassert(len(view.input->undo.undos) == 2);
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_composition_cancel_via_unmark_does_not_leak: cancelling a
+// composition with unmark_text closes its transaction, so it cannot
+// swallow a later edit.
+static void CompositionCancelViaUnmarkDoesNotLeak() {
+    InputView view = InputViewBuildTextarea(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("")); });
+    Selection one = {1, 1};
+    MarkB(view, "n", &one);
+    InputUnmarkText(view.input, view.app, view.win);
+    int afterCancel = len(view.input->undo.undos);
+
+    // A later edit is recorded independently.
+    ViewTypeText(view, "x");
+    utassert(len(view.input->undo.undos) == afterCancel + 1);
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_set_selected_range_clips_to_utf8_boundaries.
+static void SetSelectedRangeClipsToUtf8BoundariesInAWindow() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputDefaultValue(s, StrL("\xC3\xA9x")); });
+    SetSelectedRangeB(view, 0, 1);
+    utassert(ViewRangeIs(view, 0, 2));
+    ViewAct(view, InputAction::Copy);
+
+    SetSelectedRangeB(view, 1, 1);
+    utassert(ViewRangeIs(view, 0, 0));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_ime_selection_is_relative_to_replacement_start.
+static void ImeSelectionIsRelativeToReplacementStart() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputDefaultValue(s, StrL("\xE4\xBD\xA0\xE5\xA5\xBD "));
+    });
+    SetSelectedRangeB(view, 7, 7);
+    Selection one = {1, 1};
+    Selection two = {2, 2};
+    MarkB(view, "s", &one);
+    MarkB(view, "sh", &two);
+
+    utassert(ViewValueIs(view, "\xE4\xBD\xA0\xE5\xA5\xBD sh"));
+    utassert(ViewRangeIs(view, 9, 9));
+    Selection marked = {};
+    utassert(InputMarkedRange(view.input, &marked));
+    utassert(marked.start == 7 && marked.end == 9);
+    Flush(view);
+    InputViewFree(&view);
+}
+
 static void RunWindowTestsB() {
     UndoManagerCoalescesAdjacentTypingTransactions();
     UndoManagerCursorMovementSplitsTyping();
@@ -6499,6 +6831,20 @@ static void RunWindowTestsB() {
     UndoManagerSelectedReplacementIsAtomic();
     NumberInputLeadingDotEditable();
     NumberInputEscapeInvalidText();
+    SetValueSingleLineCaretAtEndViewAtStart();
+    ReplaceAllSingleLine();
+    SingleLineRemovesNewlinesInAWindow();
+    ReplaceAllMultiLine();
+    ReplaceAllPreservesUndoHistoryInAWindow();
+    ReplaceAllCodeEditor();
+    SetSelectedRangeInAWindow();
+    ReplaceTextInRangesSingleEdit();
+    ReplaceTextInRangesMultiEditTransaction();
+    ImeCompositionUndoesAsOneUnit();
+    EditAfterCompositionIsSeparateUndo();
+    CompositionCancelViaUnmarkDoesNotLeak();
+    SetSelectedRangeClipsToUtf8BoundariesInAWindow();
+    ImeSelectionIsRelativeToReplacementStart();
 }
 
 // ─── state.rs window tests, part C ──────────────────────────────────────
