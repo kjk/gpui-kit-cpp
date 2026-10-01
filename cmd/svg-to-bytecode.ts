@@ -180,6 +180,16 @@ class Scan {
     this.i += m[0].length;
     return parseFloat(m[0]);
   }
+
+  // An arc flag is one character and may run into the next number:
+  // "a2 2 0 0022 17" is flags 0 and 0, then 22. ParseFlag in svg.cpp.
+  flag(): number | null {
+    this.skipWs();
+    const ch = this.s[this.i];
+    if (ch !== "0" && ch !== "1") return null;
+    this.i++;
+    return ch === "1" ? 1 : 0;
+  }
 }
 
 function angleBetween(ux: number, uy: number, vx: number, vy: number): number {
@@ -457,8 +467,8 @@ function parsePathD(ic: SvgIcon, d: string): void {
       const rx = s.num(),
         ry = s.num(),
         rot = s.num(),
-        fA = s.num(),
-        fS = s.num();
+        fA = s.flag(),
+        fS = s.flag();
       let x = s.num(),
         y = s.num();
       if (rx === null || ry === null || rot === null || fA === null || fS === null || x === null || y === null) break;

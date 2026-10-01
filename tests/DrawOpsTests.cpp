@@ -494,6 +494,23 @@ static void GeneratedTableMatchesReader() {
     utassert(checked == 0 || checked == kAssetIconsCount);
 }
 
+// An arc's two flags are single characters that may run into the number
+// after them, as Lucide's book-open.svg writes "a2 2 0 0022 17"; read as
+// numbers, "0022" swallowed the end point and the path stopped there.
+static void ArcFlagsMayRunIntoTheNextNumber() {
+    DrawOpsBuilder packed;
+    utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\"><path "
+                               "d=\"M20 19a2 2 0 0022 17V5\"/></svg>"),
+                          &packed));
+    DrawOpsBuilder spaced;
+    utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\"><path "
+                               "d=\"M20 19a2 2 0 0 0 22 17V5\"/></svg>"),
+                          &spaced));
+    utassert(spaced.data.len > 0);
+    utassert(SameOps(spaced.data.els, spaced.data.len, packed.data.els,
+                     packed.data.len, "arc flags"));
+}
+
 void TestDrawOps() {
     TestSuite("DrawOps");
     BuilderRoundTrip();
@@ -502,5 +519,6 @@ void TestDrawOps() {
     AnEllipseIsDrawnAndIsNotAStadium();
     AShapeKeepsTheColourItIsStrokedWith();
     ATextRunIsReadAndPlaced();
+    ArcFlagsMayRunIntoTheNextNumber();
     GeneratedTableMatchesReader();
 }

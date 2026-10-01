@@ -208,6 +208,19 @@ static bool ParseNum(PathScan* s, float* out) {
     return true;
 }
 
+// An arc's large-arc and sweep flags are one character each, and SVG lets
+// them run into what follows: "a2 2 0 0022 17" is the flags 0 and 0, then
+// 22. Reading them as numbers would take "0022" whole.
+static bool ParseFlag(PathScan* s, float* out) {
+    SkipWs(s);
+    if (s->p >= s->end || (*s->p != '0' && *s->p != '1')) {
+        return false;
+    }
+    *out = *s->p == '1' ? 1.f : 0.f;
+    s->p++;
+    return true;
+}
+
 static float Angle(float ux, float uy, float vx, float vy) {
     float dot = ux * vx + uy * vy;
     float nu = sqrtf(ux * ux + uy * uy);
@@ -495,8 +508,8 @@ static void ParsePathD(SvgIcon* ic, Str d) {
             float rx, ry, rot, x, y;
             float fA, fS;
             if (!ParseNum(&s, &rx) || !ParseNum(&s, &ry) ||
-                !ParseNum(&s, &rot) || !ParseNum(&s, &fA) ||
-                !ParseNum(&s, &fS) || !ParseNum(&s, &x) || !ParseNum(&s, &y)) {
+                !ParseNum(&s, &rot) || !ParseFlag(&s, &fA) ||
+                !ParseFlag(&s, &fS) || !ParseNum(&s, &x) || !ParseNum(&s, &y)) {
                 break;
             }
             if (rel) {
