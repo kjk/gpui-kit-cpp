@@ -110,6 +110,42 @@ static void LoadDir(TreeState* s, Str path, int parent, int depth) {
     Free(nullptr, found);
 }
 
+// on_action_open / on_action_rename / on_action_delete: each names the
+// selected entry, as Rust's println! does.
+static void OnTreeMenu(TreeStory* self, Ctx* cx, const ClickEvent*,
+                       intptr_t row) {
+    TreeState* s = self->tree.Get(cx);
+    const TreeItem* it = s ? TreeEntryItem(s, s->selected) : nullptr;
+    if (!it) {
+        return;
+    }
+    // The rows a file's menu has: Open, Rename, Delete. A folder's has no
+    // Open, so its rows start one later.
+    static const char* const kVerbs[] = {"Opening", "Renaming", "Deleting"};
+    logf("%s item: %s (%s)\n", Str(kVerbs[row]), it->label, it->id);
+}
+
+static void OnFolderMenu(TreeStory* self, Ctx* cx, const ClickEvent* ev,
+                         intptr_t row) {
+    OnTreeMenu(self, cx, ev, row + 1);
+}
+
+// context_menu(|_ix, entry, menu, ..|): Open (files only), Rename, a
+// separator, Delete.
+static component::PopupMenu* TreeContextMenu(void*, Ctx* cx, int,
+                                             const TreeEntry& entry,
+                                             component::PopupMenu* menu) {
+    bool folder = entry.item && entry.item->folder;
+    if (PopupMenuState* st = menu->state.Get(cx)) {
+        st->onConfirm =
+            folder ? Listen(cx, &OnFolderMenu) : Listen(cx, &OnTreeMenu);
+    }
+    if (!folder) {
+        menu->Menu(StrL("Open"));
+    }
+    return menu->Menu(StrL("Rename"))->Separator()->Menu(StrL("Delete"));
+}
+
 El* TreeStory::Render(TreeStory* self, Ctx* cx) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
@@ -153,8 +189,10 @@ El* TreeStory::Render(TreeStory* self, Ctx* cx) {
         1, th.border);
     // `.p_1().border_1().rounded(radius).h(px(540.))` is on the tree itself
     // in Rust, so the 540 takes the padding and the border with it.
-    box->Child(
-        component::Tree::New(cx, StrL("tree"), self->tree)->H(530)->IntoEl());
+    box->Child(component::Tree::New(cx, StrL("tree"), self->tree)
+                   ->H(530)
+                   ->ContextMenu(&TreeContextMenu)
+                   ->IntoEl());
     col->Child(box);
 
     El* status = Div(a)->FlexRow()->W(kFill)->Gap(12)->JustifyBetween();

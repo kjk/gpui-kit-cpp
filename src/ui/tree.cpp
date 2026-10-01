@@ -1,5 +1,6 @@
 #include "ui/tree.h"
 #include "base/list_settings.h"
+#include "ui/menu.h"
 
 namespace gpui {
 
@@ -22,11 +23,16 @@ Tree* Tree::Icons(bool v) {
     icons = v;
     return this;
 }
+Tree* Tree::ContextMenu(TreeContextMenuFn fn, void* user) {
+    contextMenu = fn;
+    contextMenuUser = user;
+    return this;
+}
 
 // The themed row — crates/ui/src/tree.rs. tree_story.rs's row is an icon and
 // a label and nothing else: File for a leaf, FolderOpen for an open folder
 // and Folder for a shut one.
-static El* TreeRow(void* user, Ctx* cx, int, const TreeEntry& entry,
+static El* TreeRow(void* user, Ctx* cx, int ix, const TreeEntry& entry,
                    TreeEntryState entryState) {
     Tree* self = (Tree*)user;
     const Theme& th = ThemeNow(cx->app);
@@ -73,6 +79,19 @@ static El* TreeRow(void* user, Ctx* cx, int, const TreeEntry& entry,
     row->Child(TextEl(a, it->label)
                    ->Font(16)
                    ->Fg(it->disabled ? th.mutedFg : th.foreground));
+    // div().child(item).context_menu(..): the builder sees the row's entry,
+    // and a disabled row has no menu.
+    if (self->contextMenu && !it->disabled) {
+        PopupMenu* menu = PopupMenu::New(
+            cx, StrDup(a, fmt("%s-context-menu-%d", self->id, ix)));
+        menu = self->contextMenu(self->contextMenuUser, cx, ix, entry, menu);
+        if (menu) {
+            return ContextMenuExt::Wrap(
+                       cx, StrDup(a, fmt("%s-context-%d", self->id, ix)), row,
+                       menu)
+                ->IntoEl();
+        }
+    }
     return row;
 }
 
