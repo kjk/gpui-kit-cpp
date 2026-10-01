@@ -420,6 +420,12 @@ void InputSetLanguageConfig(App* app, Str language,
                             const LanguageConfig& config);
 LanguageConfig InputLanguageConfig(App* app, Str language);
 SyntaxContextProvider InputSyntaxContextProvider(App* app, Str language);
+// EditorLanguage::context_at: the context at `offset`, asked of the provider
+// this editor retains. The LanguageProvider is asked for one again only when
+// it is replaced or the editor's language changes.
+SyntaxContext InputSyntaxContextAt(InputState* s, App* app, Str text,
+                                   int offset);
+void InputSyntaxCacheFree(InputState* s);
 
 struct FoldIconRenderer {
     void* data = nullptr;

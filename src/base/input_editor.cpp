@@ -254,6 +254,9 @@ struct RegisteredLanguageConfig {
 struct LanguageSettings {
     Arena* arena = nullptr;
     LanguageProvider provider = {};
+    // Bumped by every set_language_provider: Rust compares the provider's
+    // Rc by pointer, and a replaced provider is a new one.
+    uint64_t providerGeneration = 0;
     ArenaVec<RegisteredLanguageConfig> configs;
 
     LanguageSettings() { arena = ArenaNew(); }
@@ -317,7 +320,9 @@ static LanguageConfig LanguageConfigCopy(Arena* a,
 
 void InputSetLanguageProvider(App* app, const LanguageProvider& provider) {
     if (app) {
-        AppGlobalEnsure<LanguageSettings>(app)->provider = provider;
+        LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
+        settings->provider = provider;
+        settings->providerGeneration++;
     }
 }
 
@@ -374,6 +379,46 @@ SyntaxContextProvider InputSyntaxContextProvider(App* app, Str language) {
             .syntaxContextProvider(settings->provider.data, canonical, &out);
     }
     return out;
+}
+
+struct InputSyntaxCache {
+    App* app = nullptr;
+    uint64_t generation = 0;
+    Str language = {}; // owned
+    SyntaxContextProvider provider = {};
+};
+
+SyntaxContext InputSyntaxContextAt(InputState* s, App* app, Str text,
+                                   int offset) {
+    if (!s || !app) {
+        return SyntaxContext::Code;
+    }
+    LanguageSettings* settings = AppGlobalEnsure<LanguageSettings>(app);
+    Str language = s->highlighter.Language();
+    InputSyntaxCache* cache = s->syntaxCache;
+    if (!cache) {
+        cache = new InputSyntaxCache();
+        s->syntaxCache = cache;
+    } else if (cache->app == app &&
+               cache->generation == settings->providerGeneration &&
+               StrEq(cache->language, language)) {
+        return cache->provider.ContextAt(text, offset);
+    }
+    cache->app = app;
+    cache->generation = settings->providerGeneration;
+    StrFree(cache->language);
+    cache->language = StrDup(language);
+    cache->provider = InputSyntaxContextProvider(app, language);
+    return cache->provider.ContextAt(text, offset);
+}
+
+void InputSyntaxCacheFree(InputState* s) {
+    if (!s || !s->syntaxCache) {
+        return;
+    }
+    StrFree(s->syntaxCache->language);
+    delete s->syntaxCache;
+    s->syntaxCache = nullptr;
 }
 
 Str TabSize::ToString(Arena* a) const {

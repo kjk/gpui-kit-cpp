@@ -1951,6 +1951,7 @@ InputState::~InputState() {
         gPendingPaste.state = nullptr;
     }
     InputRangeDecorationsFree(this);
+    InputSyntaxCacheFree(this);
     // A field removed from the tree while it had the keyboard: the window
     // still points at it, and nothing would ever render it again to say
     // otherwise. Rust drops that registration the next time it is read; here
@@ -3731,9 +3732,7 @@ static bool InputAutoCloseBefore(const LanguageConfig& config, Str all,
 }
 
 static SyntaxContext InputEditingContext(InputState* s, App* app, int at) {
-    SyntaxContextProvider provider =
-        InputSyntaxContextProvider(app, s->highlighter.Language());
-    return provider.ContextAt(InputValue(s), at);
+    return InputSyntaxContextAt(s, app, InputValue(s), at);
 }
 
 static bool AutoClosedContains(const Vec<AutoClosedPairRange>& pairs,

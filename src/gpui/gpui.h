@@ -190,6 +190,8 @@ inline bool BackgroundIsSolid(const Background& b) {
 struct InputState;
 // An editor's range decoration store, which base/input_editor.cpp defines.
 struct RangeDecorationsState;
+// An editor's retained syntax context provider (base/input_editor.cpp).
+struct InputSyntaxCache;
 
 constexpr float kAuto = -1.f;
 constexpr float kFill = -2.f;
@@ -4916,6 +4918,11 @@ struct InputState {
     // and read only once it is over; `paintedRowsFrame` says which frame.
     struct InputPaintedRows* paintedRows = nullptr;
     uint64_t paintedRowsFrame = 0;
+    // EditorLanguage::syntax: the SyntaxContextProvider this editor's
+    // language answered, kept while neither the language nor the
+    // LanguageProvider changes — the provider owns a parse of this document.
+    // Made on the first question, dropped with the state.
+    InputSyntaxCache* syntaxCache = nullptr;
     // The code action menu, and who fills it — cmd-. / ctrl-. asks whatever
     // is selected. Rust asks every registered provider and puts the answers
     // in one list.
