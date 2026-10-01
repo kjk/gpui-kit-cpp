@@ -82,6 +82,25 @@ InlineTokenError InlineToken::Validate() const {
     return InlineTokenError::Ok;
 }
 
+// Grapheme_Extend, the part of it text actually carries: the combining
+// diacritical blocks, the variation selectors and ZWJ/ZWNJ. A character of
+// these is never the start of a grapheme cluster (UAX #29 GB9).
+static bool IsGraphemeExtend(uint32_t c) {
+    return (c >= 0x0300 && c <= 0x036F) || (c >= 0x0483 && c <= 0x0489) ||
+           (c >= 0x0591 && c <= 0x05BD) || (c >= 0x0610 && c <= 0x061A) ||
+           (c >= 0x064B && c <= 0x065F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+           (c >= 0x1DC0 && c <= 0x1DFF) || c == 0x200C || c == 0x200D ||
+           (c >= 0x20D0 && c <= 0x20FF) || (c >= 0x302A && c <= 0x302F) ||
+           (c >= 0x3099 && c <= 0x309A) || (c >= 0xFE00 && c <= 0xFE0F) ||
+           (c >= 0xFE20 && c <= 0xFE2F) || (c >= 0x1F3FB && c <= 0x1F3FF) ||
+           (c >= 0xE0020 && c <= 0xE007F) || (c >= 0xE0100 && c <= 0xE01EF);
+}
+
+// validate_range's boundary: `text.grapheme_indices(true)` names `off`.
+// Rust segments with unicode-segmentation; there is no segmenter in this
+// tree, so this is the subset of UAX #29 a token edge can meet in practice:
+// a character boundary that is not inside CR LF (GB3), not before an extend
+// character (GB9) and not after a ZWJ (GB11, the emoji joiner).
 static bool IsCharBoundary(Str text, int off) {
     if (off < 0 || off > len(text)) {
         return false;
@@ -89,7 +108,20 @@ static bool IsCharBoundary(Str text, int off) {
     if (off == 0 || off == len(text)) {
         return true;
     }
-    return Utf8ClipLeft(text, off) == off;
+    if (Utf8ClipLeft(text, off) != off) {
+        return false;
+    }
+    if (text.s[off - 1] == '\r' && text.s[off] == '\n') {
+        return false;
+    }
+    uint32_t next = 0;
+    Utf8At(text, off, &next);
+    if (IsGraphemeExtend(next)) {
+        return false;
+    }
+    uint32_t prev = 0;
+    Utf8At(text, Utf8Prev(text, off), &prev);
+    return prev != 0x200D;
 }
 
 InputContent InputContent::New(Str text) {
