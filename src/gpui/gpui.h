@@ -2789,6 +2789,9 @@ struct El {
     // El::DebugBelow exist only there.
     unsigned int debug : 1 = false;
     unsigned int debugBelow : 1 = false;
+    // The washes are range highlights, painted as inline.rs's glyph boxes
+    // (PaintTextRangeBoxes) rather than with the selection's painter.
+    unsigned int glyphWashes : 1 = false;
 
     // Byte-sized state stays last so none of it creates alignment holes.
     IconName icon = IconName::None;
@@ -5869,6 +5872,35 @@ int TextIndexAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
 void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
                     uint16_t weight, float lineH, float x, float y, int u8a,
                     int u8b, Rgba color, TextAlign align = TextAlign::Left);
+// inline.rs GlyphBox: where one character of laid-out text paints -- its
+// row, its horizontal extent from the text's origin with alignment applied,
+// and the top and height of that row -- and [lo, hi), the text it draws. A
+// character with no glyph of its own (a line break) is drawn by the one
+// before it. Rust reads glyphs off the shaped lines; the backends here
+// answer per character, which is the same boxes but for a ligature.
+struct TextGlyphBox {
+    int lo = 0;
+    int hi = 0;
+    int row = 0;
+    float left = 0;
+    float right = 0;
+    float top = 0;
+    float h = 0;
+};
+// glyph_boxes: every character's box, in text order, appended to `out`.
+int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out);
+// aligned_row_left: where a row `width` wide starts in `alignWidth`.
+float TextAlignedRowLeft(TextAlign align, float alignWidth, float width);
+// range_boxes: the boxes behind [lo, hi) -- every glyph drawing some of it,
+// joined where they touch on a row -- by row, left to right.
+int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
+                   Vec<TextGlyphBox>* out);
+// A range highlight painted the way inline.rs paints it: its range boxes,
+// each the height of its row. PaintTextRange is the selection's painter.
+void PaintTextRangeBoxes(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                         bool wrap, uint16_t weight, float lineH, float x,
+                         float y, int lo, int hi, Rgba color,
+                         TextAlign align = TextAlign::Left);
 void PaintTextUnderline(PaintCtx* ctx, Str s, float fontSize, float maxW,
                         bool wrap, uint16_t weight, float lineH, float x,
                         float y, int u8a, int u8b, Rgba color,

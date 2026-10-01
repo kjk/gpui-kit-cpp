@@ -2808,13 +2808,199 @@ static void TestSourceRangeSelectAllAndHtml() {
 // parse through TestAppContext and read the resolved frame; the parse lands
 // here when the view renders, so each fixture renders once after every
 // change, where Rust runs until parked.
+
+// ─── inline.rs highlight geometry ─────────────────────────────────────────
 //
-// inline.rs's glyph_boxes / range_boxes tests (rows_align_the_way_gpui_paints_
-// them, range_boxes_*, a_highlight_starting_a_wrapped_row_paints_only_that_
-// row, highlights_after_a_hard_line_break_start_on_its_row,
-// highlights_follow_centered_and_right_aligned_rows) check Rust's own paint
-// geometry. The washes here go through PaintTextRange, the painter the
-// selection uses, so they wrap and align the way the selection does.
+// glyph_boxes / range_boxes: where a range highlight paints. Rust's layout
+// tests measure the test text system's fixed-width font; these shape in the
+// platform's monospace face, which keeps the same arithmetic.
+
+static TextGlyphBox GlyphAt(int lo, int hi, int row, float left, float right) {
+    TextGlyphBox g;
+    g.lo = lo;
+    g.hi = hi;
+    g.row = row;
+    g.left = left;
+    g.right = right;
+    return g;
+}
+
+static bool BoxesAre(const Vec<TextGlyphBox>& got,
+                     std::initializer_list<TextGlyphBox> want) {
+    if (len(got) != (int)want.size()) {
+        return false;
+    }
+    int i = 0;
+    for (const TextGlyphBox& w : want) {
+        const TextGlyphBox& g = got[i++];
+        if (g.row != w.row || g.left != w.left || g.right != w.right) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// inline.rs rows_align_the_way_gpui_paints_them.
+static void RowsAlignTheWayGpuiPaintsThem() {
+    utassert(TextAlignedRowLeft(TextAlign::Left, 100, 40) == 0);
+    utassert(TextAlignedRowLeft(TextAlign::Center, 100, 40) == 30);
+    utassert(TextAlignedRowLeft(TextAlign::Right, 100, 40) == 60);
+}
+
+// inline.rs range_boxes_join_the_glyphs_of_a_range_on_each_row.
+static void RangeBoxesJoinTheGlyphsOfARangeOnEachRow() {
+    // "ab cd" wrapped after the space, glyphs 8px wide.
+    TextGlyphBox glyphs[] = {
+        GlyphAt(0, 1, 0, 0, 8),   GlyphAt(1, 2, 0, 8, 16),
+        GlyphAt(2, 3, 0, 16, 24), GlyphAt(3, 4, 1, 0, 8),
+        GlyphAt(4, 5, 1, 8, 16),
+    };
+    auto boxes = [&](int lo, int hi) {
+        Vec<TextGlyphBox> out;
+        TextRangeBoxes(glyphs, 5, lo, hi, &out);
+        return out;
+    };
+    utassert(BoxesAre(boxes(1, 2), {GlyphAt(0, 0, 0, 8, 16)}));
+    utassert(BoxesAre(boxes(0, 5),
+                      {GlyphAt(0, 0, 0, 0, 24), GlyphAt(0, 0, 1, 0, 16)}));
+    // Starting at the wrap paints the next row only.
+    utassert(BoxesAre(boxes(3, 5), {GlyphAt(0, 0, 1, 0, 16)}));
+    utassert(len(boxes(2, 2)) == 0);
+}
+
+// inline.rs range_boxes_follow_right_to_left_glyphs.
+static void RangeBoxesFollowRightToLeftGlyphs() {
+    // Three two-byte letters painted right to left: the first letter's glyph
+    // is the rightmost.
+    TextGlyphBox glyphs[] = {GlyphAt(0, 2, 0, 16, 24), GlyphAt(2, 4, 0, 8, 16),
+                             GlyphAt(4, 6, 0, 0, 8)};
+    Vec<TextGlyphBox> first;
+    TextRangeBoxes(glyphs, 3, 0, 2, &first);
+    utassert(BoxesAre(first, {GlyphAt(0, 0, 0, 16, 24)}));
+    Vec<TextGlyphBox> rest;
+    TextRangeBoxes(glyphs, 3, 2, 6, &rest);
+    utassert(BoxesAre(rest, {GlyphAt(0, 0, 0, 0, 16)}));
+}
+
+// inline.rs range_boxes_cover_a_glyph_drawing_part_of_the_range.
+static void RangeBoxesCoverAGlyphDrawingPartOfTheRange() {
+    // A ligature drawing "fi" in one glyph.
+    TextGlyphBox glyphs[] = {GlyphAt(0, 2, 0, 0, 10), GlyphAt(2, 3, 0, 10, 15)};
+    Vec<TextGlyphBox> out;
+    TextRangeBoxes(glyphs, 2, 1, 2, &out);
+    utassert(BoxesAre(out, {GlyphAt(0, 0, 0, 0, 10)}));
+}
+
+// A window to shape in.
+struct GeometryView {
+    static El* Render(GeometryView*, Ctx* cx) { return Div(cx->a); }
+};
+
+// inline.rs's `boxes`: `text` laid out `width` wide, its range boxes.
+struct GeometryFixture {
+    App* app = nullptr;
+    Window* win = nullptr;
+
+    GeometryFixture() {
+        app = TestAppNew();
+        win = TestWindowOpen(app, EntityNew<GeometryView>(app), 400, 200);
+    }
+    ~GeometryFixture() { TestAppFree(app); }
+
+    float CharWidth() {
+        Size size = {};
+        TextLayout* tl = TextLayoutNew(&win->paint, StrL("aaaa"), 16, 0, false,
+                                       kFontMono, 0, &size);
+        if (tl) TextLayoutRelease(tl);
+        return size.w / 4;
+    }
+
+    Vec<TextGlyphBox> Boxes(Str text, float width, TextAlign align, int lo,
+                            int hi) {
+        Vec<TextGlyphBox> out;
+        Size size = {};
+        TextLayout* tl = TextLayoutNew(&win->paint, text, 16, width, true,
+                                       kFontMono, 0, &size, align);
+        if (!tl) return out;
+        Vec<TextGlyphBox> glyphs;
+        TextGlyphBoxes(tl, text, &glyphs);
+        TextRangeBoxes(glyphs.els, len(glyphs), lo, hi, &out);
+        TextLayoutRelease(tl);
+        return out;
+    }
+};
+
+// inline.rs a_highlight_starting_a_wrapped_row_paints_only_that_row.
+static void AHighlightStartingAWrappedRowPaintsOnlyThatRow() {
+    GeometryFixture f;
+    // Three rows of "aaaa ", "bbbb ", "cccc": five characters fit, six do not.
+    float width = f.CharWidth() * 5.5f;
+    Str text = StrL("aaaa bbbb cccc");
+    Vec<TextGlyphBox> rows =
+        f.Boxes(text, width, TextAlign::Left, 0, len(text));
+    utassert(len(rows) == 3);
+    Vec<TextGlyphBox> highlight = f.Boxes(text, width, TextAlign::Left, 5, 9);
+    utassert(len(highlight) == 1);
+    if (len(highlight) == 1) {
+        utassert(highlight[0].left == 0 && highlight[0].row == 1);
+    }
+    // Across the wrap, each row only as far as its text.
+    Vec<TextGlyphBox> across = f.Boxes(text, width, TextAlign::Left, 2, 7);
+    utassert(len(across) == 2);
+    if (len(across) == 2 && len(rows) == 3) {
+        utassert(fabsf(across[0].right - rows[0].right) < 0.5f);
+        utassert(across[1].left == 0 && across[1].row == 1);
+    }
+}
+
+// inline.rs highlights_after_a_hard_line_break_start_on_its_row.
+static void HighlightsAfterAHardLineBreakStartOnItsRow() {
+    GeometryFixture f;
+    // Rows "aa", "bbb cc": the break is one byte of the text, not a glyph.
+    Str text = StrL("aa\nbbb cc");
+    Vec<TextGlyphBox> aa = f.Boxes(text, 1000, TextAlign::Left, 0, 2);
+    Vec<TextGlyphBox> highlight = f.Boxes(text, 1000, TextAlign::Left, 3, 6);
+    utassert(len(highlight) == 1 && len(aa) == 1);
+    if (len(highlight) == 1 && len(aa) == 1) {
+        utassert(highlight[0].left == 0 && highlight[0].row == 1);
+        // Three glyphs as wide as the two of "aa" and a half.
+        float two = aa[0].right - aa[0].left;
+        utassert(fabsf(highlight[0].right - two * 1.5f) < 0.5f);
+    }
+}
+
+// inline.rs highlights_follow_centered_and_right_aligned_rows.
+static void HighlightsFollowCenteredAndRightAlignedRows() {
+    GeometryFixture f;
+    // Rows "aaaa ", "bbbb ", "cc": the last is narrower than the text, so
+    // alignment moves it.
+    float width = f.CharWidth() * 5.5f;
+    Str text = StrL("aaaa bbbb cc");
+    int cc = 10;
+    Vec<TextGlyphBox> widest = f.Boxes(text, width, TextAlign::Left, 0, 5);
+    Vec<TextGlyphBox> left =
+        f.Boxes(text, width, TextAlign::Left, cc, len(text));
+    Vec<TextGlyphBox> center =
+        f.Boxes(text, width, TextAlign::Center, cc, len(text));
+    Vec<TextGlyphBox> right =
+        f.Boxes(text, width, TextAlign::Right, cc, len(text));
+    utassert(len(widest) == 1 && len(left) == 1 && len(center) == 1 &&
+             len(right) == 1);
+    if (len(widest) != 1 || len(left) != 1 || len(center) != 1 ||
+        len(right) != 1) {
+        return;
+    }
+    float w = left[0].right - left[0].left;
+    utassert(w > 0 && w < widest[0].right);
+    // GPUI aligns each row in the width of the laid-out text, the wrap width
+    // here.
+    utassert(left[0].left == 0);
+    float centerLeft = TextAlignedRowLeft(TextAlign::Center, width, w);
+    float rightLeft = TextAlignedRowLeft(TextAlign::Right, width, w);
+    utassert(fabsf(center[0].left - centerLeft) < 0.5f);
+    utassert(fabsf(right[0].left - rightLeft) < 0.5f);
+    utassert(center[0].row == 2 && right[0].row == 2);
+}
 
 // range_highlight.rs: range_highlight_requires_a_background.
 static void RangeHighlightRequiresABackground() {
@@ -5075,6 +5261,13 @@ void TestTextView() {
     TestSourceRangeSelectAllAndHtml();
 #endif
 #if !GPUI_MARKDOWN_MINI
+    RowsAlignTheWayGpuiPaintsThem();
+    RangeBoxesJoinTheGlyphsOfARangeOnEachRow();
+    RangeBoxesFollowRightToLeftGlyphs();
+    RangeBoxesCoverAGlyphDrawingPartOfTheRange();
+    AHighlightStartingAWrappedRowPaintsOnlyThatRow();
+    HighlightsAfterAHardLineBreakStartOnItsRow();
+    HighlightsFollowCenteredAndRightAlignedRows();
     RangeHighlightRequiresABackground();
     RenderedTextIsThePlainCopyText();
     AMatchAcrossMarksPaintsInItsParagraph();

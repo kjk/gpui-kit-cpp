@@ -4754,6 +4754,8 @@ El* TextView::RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
         t->style.hasBg = false;
         at++;
     }
+    // Painted as inline.rs paints a highlight: its glyphs' boxes.
+    t->glyphWashes = true;
     return t->Washes(washes, at);
 }
 

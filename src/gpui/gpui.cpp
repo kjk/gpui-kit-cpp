@@ -3291,6 +3291,144 @@ void PaintTextRange(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
     TextLayoutRelease(layout);
 }
 
+float TextAlignedRowLeft(TextAlign align, float alignWidth, float width) {
+    switch (align) {
+        case TextAlign::Center:
+            return (alignWidth - width) / 2.f;
+        case TextAlign::Right:
+            return alignWidth - width;
+        default:
+            return 0.f;
+    }
+}
+
+int TextGlyphBoxes(TextLayout* layout, Str text, Vec<TextGlyphBox>* out) {
+    if (!out) {
+        return 0;
+    }
+    int before = len(*out);
+    if (!layout) {
+        return 0;
+    }
+    // Each character's box as the backend shaped it -- aligned already, since
+    // the layout was made with its alignment -- and the rows by their tops.
+    Vec<float> rowTops;
+    for (int at = 0; at < len(text);) {
+        uint32_t cp = 0;
+        int bytes = Utf8At(text, at, &cp);
+        bytes = bytes > 0 ? bytes : 1;
+        Bounds rect = {};
+        int n = TextLayoutRangeRects(layout, text, at, at + bytes, &rect, 1);
+        if (n < 1 || rect.w <= 0) {
+            // Text with no glyph of its own, a line break most often, is
+            // drawn by the glyph before it.
+            if (len(*out) > before) {
+                (*out)[len(*out) - 1].hi = at + bytes;
+            }
+            at += bytes;
+            continue;
+        }
+        int row = -1;
+        for (int r = 0; r < len(rowTops); r++) {
+            if (fabsf(rowTops[r] - rect.y) < 0.5f) {
+                row = r;
+                break;
+            }
+        }
+        if (row < 0) {
+            row = len(rowTops);
+            VecAppend(rowTops, rect.y);
+        }
+        TextGlyphBox g;
+        g.lo = at;
+        g.hi = at + bytes;
+        g.row = row;
+        g.left = rect.x;
+        g.right = rect.x + rect.w;
+        g.top = rect.y;
+        g.h = rect.h;
+        VecAppend(*out, g);
+        at += bytes;
+    }
+    // Rows in the order they stand, top down.
+    int nRows = len(rowTops);
+    for (int i = before; i < len(*out); i++) {
+        int below = 0;
+        for (int r = 0; r < nRows; r++) {
+            if (rowTops[r] < (*out)[i].top - 0.5f) {
+                below++;
+            }
+        }
+        (*out)[i].row = below;
+    }
+    return len(*out) - before;
+}
+
+int TextRangeBoxes(const TextGlyphBox* glyphs, int n, int lo, int hi,
+                   Vec<TextGlyphBox>* out) {
+    if (!out) {
+        return 0;
+    }
+    int before = len(*out);
+    for (int i = 0; i < n; i++) {
+        const TextGlyphBox& g = glyphs[i];
+        if (g.hi > lo && g.lo < hi) {
+            VecAppend(*out, g);
+        }
+    }
+    TextGlyphBox* hits = out->els + before;
+    int nHits = len(*out) - before;
+    // By row, then left to right, which is how right-to-left text that paints
+    // in the reverse order of its text joins up.
+    for (int i = 1; i < nHits; i++) {
+        TextGlyphBox key = hits[i];
+        int j = i - 1;
+        while (j >= 0 && (hits[j].row > key.row || (hits[j].row == key.row &&
+                                                    hits[j].left > key.left))) {
+            hits[j + 1] = hits[j];
+            j--;
+        }
+        hits[j + 1] = key;
+    }
+    int write = 0;
+    for (int i = 0; i < nHits; i++) {
+        if (write > 0 && hits[write - 1].row == hits[i].row &&
+            hits[i].left <= hits[write - 1].right) {
+            TextGlyphBox& last = hits[write - 1];
+            last.right = std::max(last.right, hits[i].right);
+            last.lo = std::min(last.lo, hits[i].lo);
+            last.hi = std::max(last.hi, hits[i].hi);
+            continue;
+        }
+        hits[write++] = hits[i];
+    }
+    out->len = before + write;
+    return write;
+}
+
+void PaintTextRangeBoxes(PaintCtx* ctx, Str s, float fontSize, float maxW,
+                         bool wrap, uint16_t weight, float lineH, float x,
+                         float y, int lo, int hi, Rgba color, TextAlign align) {
+    if (!ctx || !ctx->rt || color.a == 0 || hi <= lo) {
+        return;
+    }
+    TextLayout* layout = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
+                                        lineH, nullptr, nullptr, align);
+    if (!layout) {
+        return;
+    }
+    Vec<TextGlyphBox> glyphs;
+    Vec<TextGlyphBox> boxes;
+    TextGlyphBoxes(layout, s, &glyphs);
+    TextRangeBoxes(glyphs.els, len(glyphs), lo, hi, &boxes);
+    for (int i = 0; i < len(boxes); i++) {
+        const TextGlyphBox& b = boxes[i];
+        CanvasFillRect(ctx, x + b.left, y + b.top, b.right - b.left, b.h,
+                       color);
+    }
+    TextLayoutRelease(layout);
+}
+
 // ─── layout ───────────────────────────────────────────────────────────────
 //
 // The element tree is laid out by src/taffy — the C++ port of the taffy crate
@@ -7715,11 +7853,12 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
                 if (parts[p].hi <= w.lo) {
                     continue;
                 }
-                PaintTextRange(
-                    ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
-                    e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
-                    e->y, std::max(parts[p].lo, w.lo), parts[p].hi, parts[p].bg,
-                    ElTextAlign(e));
+                auto paint =
+                    e->glyphWashes ? &PaintTextRangeBoxes : &PaintTextRange;
+                paint(ctx, e->text, font, e->laidMaxW > 0 ? e->laidMaxW : e->w,
+                      e->style.wrap, ElTextWeight(e), e->style.lineHeight, e->x,
+                      e->y, std::max(parts[p].lo, w.lo), parts[p].hi,
+                      parts[p].bg, ElTextAlign(e));
             }
         }
         if (lo >= 0 && hi > lo) {

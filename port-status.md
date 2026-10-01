@@ -76,9 +76,7 @@ macOS font-kit requirement on the website only. The current update target is
   snapshot's text and only compare old ones. Every parse is a full one, so
   `remap` always compares every leaf rather than Rust's `tail_only` fast
   path, and the Rust-only `an_append_after_a_full_update…` case collapses
-  into the append test. The washes go through the selection painter
-  (`PaintTextRange`), so inline.rs's `glyph_boxes`/`range_boxes` geometry
-  tests have no C++ counterpart (`src/base/text.cpp`).
+  into the append test (`src/base/text.cpp`).
 - **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
   enclosing `gpui::list` to autoscroll during prepaint and checks the line
   against the content mask. Here the view marks the text the range starts in
