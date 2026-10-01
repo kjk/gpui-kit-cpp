@@ -124,7 +124,8 @@ static const StoryInfo kMeta[StoryCount] = {
      "Capture and validate short-form text, credentials, "
      "identifiers, and formatted values."},
     {"input-group", "Input Group",
-     "A shared frame around one text control and its addons."},
+     "Compose inputs and textareas with icons, text, actions, and toolbars "
+     "in one frame."},
     {"kbd", "Kbd", "A tag style to display keyboard shortcuts"},
     {"label", "Label",
      "Display concise text with hierarchy, highlighting, and masking."},

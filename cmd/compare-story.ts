@@ -160,6 +160,9 @@ function rustStoryArg(slug: string): string {
   if (slug === "theme-colors") {
     return "Theme Colors";
   }
+  if (slug === "input-group") {
+    return "Input Group";
+  }
   if (slug === "introduction") {
     return "Introduction";
   }

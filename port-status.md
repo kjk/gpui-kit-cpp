@@ -56,6 +56,10 @@ macOS font-kit requirement on the website only. The current update target is
   a handle here knows containment only through a focus trap, which would
   also keep Tab inside, so the toolbar records its laid-out bounds and roves
   among the tab stops whose centre lies within them (`src/base/toolbar.cpp`).
+- **A Field renders only inside a Form.** Rust's `Field` is an element of
+  its own, laid out with default `FieldProps` outside a form; `component::Field`
+  has no `IntoEl`, so a lone field goes in a one-field `Form`
+  (`examples/story/input_group.cpp` IgLabeled).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
