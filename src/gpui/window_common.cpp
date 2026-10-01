@@ -2631,15 +2631,9 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
             dx = dy;
             dy = 0;
         }
-        if (canY) {
-            field->scrollY =
-                ClampScroll(field->scrollY - dy, field->contentH, field->viewH);
-        }
-        if (canX) {
-            field->scrollX =
-                ClampScroll(field->scrollX - dx, field->contentW, field->viewW);
-        }
-        if (canX || canY) {
+        // on_scroll_wheel: the field keeps the wheel only when its offset
+        // moved; a clamped one lets it on to what is around the field.
+        if (InputOnScrollWheel(field, win->app, win, dx, dy)) {
             AppInvalidate(win);
             return;
         }

@@ -2862,6 +2862,67 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     InputScrollToCaret(s, s->caretX, caretY, dir);
 }
 
+// blink_cursor.rs CURSOR_WIDTH: a whole pixel off the Mac, so the caret is
+// never blurred.
+#if GPUI_OS_MAC
+static const float kInputCursorWidth = 1.5f;
+#else
+static const float kInputCursorWidth = 2.f;
+#endif
+
+bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
+                             const Point* offset) {
+    (void)app;
+    if (!s) {
+        return false;
+    }
+    // Rust keeps the offset negative-down on its ScrollHandle; the state here
+    // keeps it positive, so each range is Rust's negated.
+    Point want = offset ? *offset : Point{s->scrollX, s->scrollY};
+    // A right- or centre-aligned run keeps a caret's width spare on the
+    // right, which the left edge does not need.
+    float safeX = s->align == 0 ? 0.f : kInputCursorWidth;
+    float mostY = s->contentH - s->viewH;
+    float mostX = s->contentW - s->viewW + safeX;
+    if (mostY < 0) {
+        mostY = 0;
+    }
+    if (mostX < safeX) {
+        mostX = safeX;
+    }
+    float y = 0;
+    if (!InputIsSingleLine(s)) {
+        y = want.y < 0 ? 0 : (want.y > mostY ? mostY : want.y);
+    }
+    float x = want.x < 0 ? 0 : (want.x > mostX ? mostX : want.x);
+    if (x == s->scrollX && y == s->scrollY) {
+        return false;
+    }
+    s->scrollX = x;
+    s->scrollY = y;
+    Notify(app, win);
+    return true;
+}
+
+bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
+                        float dy) {
+    if (!s) {
+        return false;
+    }
+    float oldX = s->scrollX;
+    float oldY = s->scrollY;
+    Point want = {oldX - dx, oldY - dy};
+    InputUpdateScrollOffset(s, app, win, &want);
+    bool moved = s->scrollX != oldX || s->scrollY != oldY;
+    // diagnostic_popover.take(): a popover over text that may have moved is
+    // put away, and that is a change even when the clamp kept the offset.
+    if (s->hoverDiagnostic >= 0) {
+        s->hoverDiagnostic = -1;
+        Notify(app, win);
+    }
+    return moved;
+}
+
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir) {
     InputScrollToOffsetWithPadding(s, offset, dir,
                                    dir != InputMoveDir::None

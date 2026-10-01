@@ -5074,6 +5074,18 @@ float InputCursorSurroundingPadding(bool isAutoGrow, int overrideLines,
 // row to bring into view, and how far across it sits is not measurable
 // outside a paint.
 void InputScrollToOffset(InputState* s, int offset, InputMoveDir dir);
+// update_scroll_offset: clamp `offset` (null is the current one) into what
+// the content leaves to scroll — a single line never scrolls down — and
+// store it. Notifies, and answers true, only when the offset moved.
+// Positive-down here, where Rust's ScrollHandle is negative-down.
+bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
+                             const Point* offset);
+// on_scroll_wheel: the wheel's delta in pixels, applied through
+// update_scroll_offset. A diagnostic popover is put away (and notified) even
+// when the clamp kept the offset. True when the offset moved, which is when
+// the wheel stops at this field rather than going on to what is around it.
+bool InputOnScrollWheel(InputState* s, App* app, Window* win, float dx,
+                        float dy);
 void InputScrollToOffsetWithPadding(InputState* s, int offset, InputMoveDir dir,
                                     InputScrollPadding padding);
 // The same, for wherever the caret is now: the row it is on and the x the
