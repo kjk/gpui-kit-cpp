@@ -8627,6 +8627,13 @@ static void CollectFocus(El* e, Window* win, int trap, Listener increment,
     if (e->style.trapId) {
         trap = e->style.trapId;
     }
+    // text_selection_scope covers the subtree it wraps, so a selectable run
+    // anywhere under a trap is in that trap's TextSelectionScopeId — the
+    // scope its TextHit is collected with when the run paints, which this
+    // walk comes before.
+    if (e->selectable && trap) {
+        e->style.trapId = trap;
+    }
     if (e->accessibilityIncrement.IsValid()) {
         increment = e->accessibilityIncrement;
     }
