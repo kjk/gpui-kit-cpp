@@ -7238,6 +7238,21 @@ static void PaintElBorder(PaintCtx* ctx, El* e) {
 
 static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay);
 
+// The selection scope a run painting now belongs to: the innermost
+// text_selection_scope around it (current_text_selection_scope), as the
+// runtime int TextSelectionScopeId::RuntimeScope makes of it, or else the
+// focus trap it is in, which is what confines a dialog's text that names no
+// scope of its own.
+static int ElSelectionScope(PaintCtx* ctx, const El* e) {
+    Window* win = ctx ? ctx->window : nullptr;
+    if (win && win->textSelectionScopes.len > 0) {
+        uint64_t raw =
+            win->textSelectionScopes[win->textSelectionScopes.len - 1];
+        return (int)(raw & 0x7fffffffU);
+    }
+    return e->style.trapId;
+}
+
 // with_element_opacity: the opacity in force while this element and its
 // children paint is the one around it times its own, and it goes back to what
 // it was afterwards.
@@ -7268,6 +7283,11 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
         (void)WindowPlotAppearScopeToken(ctx->window, e->plotAppearScope);
         VecAppend(ctx->window->plotAppearScopes, e->plotAppearScope);
     }
+    // with_text_selection_scope around the element's whole paint.
+    bool selectionScope = e->selectionScope != 0 && ctx->window;
+    if (selectionScope) {
+        VecAppend(ctx->window->textSelectionScopes, e->selectionScope);
+    }
 #ifndef NDEBUG
     // debug_below sets DebugBelow for as long as the element and what it
     // holds paint, and takes it away again after.
@@ -7290,6 +7310,9 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
 #endif
     if (appearScope) {
         ctx->window->plotAppearScopes.len--;
+    }
+    if (selectionScope) {
+        ctx->window->textSelectionScopes.len--;
     }
     ctx->groupHovered = prevGroup;
     scene::ContextPop(ctx, parentContext);
@@ -7584,7 +7607,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         th.map = e->selMap;
         th.join = e->selJoin;
         th.atom = true;
-        th.scope = e->style.trapId;
+        th.scope = ElSelectionScope(ctx, e);
         th.paintLayer = ctx->paintLayer;
         VecAppend(ctx->texts, th);
         ctx->textDocLen += 1;
@@ -7617,13 +7640,14 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
             th.join = e->selJoin;
             // The trap this run sits in — a dialog, a sheet — which is the
             // TextSelectionScopeId a gesture inside it stays within.
-            th.scope = e->style.trapId;
+            th.scope = ElSelectionScope(ctx, e);
             th.paintLayer = ctx->paintLayer;
             VecAppend(ctx->texts, th);
             ctx->textDocLen += len(e->text) + 1;
             int a = ctx->selA;
             int b = ctx->selB;
-            if (ctx->selScope >= 0 && ctx->selScope != e->style.trapId) {
+            if (ctx->selScope >= 0 &&
+                ctx->selScope != ElSelectionScope(ctx, e)) {
                 a = -1;
                 b = -1;
             }

@@ -103,14 +103,16 @@ macOS font-kit requirement on the website only. The current update target is
   tree). `select_all` is the selection `SelectAll` made, for as long as the
   window still holds it. Under `-markdown=mini` the parser keeps no
   positions, so the answer is always None (`src/base/text.cpp`).
-- **The window owns its text selection; the layer element is a marker.**
-  `TextSelectionLayer` creates and gates nothing: `WindowSelectionOf` makes
-  the state on first use, the frame sweeps registrations itself, and a
-  registered participant's local selection answers queries whether or not a
-  layer rendered. A scope is an element's trap id, not a stack, and a run's
-  selection range cannot detect a layout shaped from different text, since
-  paint.h's `TextLayout` carries no length (`src/base/text_selection.cpp`).
-  Five text_selection.rs tests that turn on those are not ported.
+- **The window's selection of painted text needs no layer.** A participant
+  registers only while a `TextSelectionLayer` is rendering, as Rust's
+  `WindowSelectionState::existing` asks, but the selection of the runs the
+  frame paints is the window's own and works in a window with no layer,
+  which Rust's would not. Participants register as their view builds rather
+  than at prepaint, so a registration made before the layer renders on a
+  window's first frame is dropped. A run under no `text_selection_scope`
+  takes its focus trap as its scope, which is what confines a dialog's text:
+  the dialogs name no scope of their own (`src/base/text_selection.cpp`,
+  `ElSelectionScope` in `src/gpui/gpui.cpp`).
 - **A series chart paints its default hover tooltip.** Line, area, bar
   and candlestick charts are one custom-painted element, so the title and
   rows `TooltipContent::apply` would build are drawn in the paint pass

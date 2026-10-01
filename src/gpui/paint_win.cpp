@@ -1966,6 +1966,8 @@ static void ApplyLineHeight(IDWriteTextLayout* layout, float fontSize,
 }
 
 struct TextLayout {
+    // The byte length of the text it was shaped from (TextLayoutTextLen).
+    int textLen = 0;
     IDWriteTextLayout* layout = nullptr;
     uint64_t generation = 0;
     int refs = 1;
@@ -2052,6 +2054,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         outSize->h = m.height;
     }
     auto* tl = new TextLayout();
+    tl->textLen = len(s);
     tl->layout = layout;
     tl->generation = PaintResourceGenerationNew();
     return tl;
@@ -2086,6 +2089,10 @@ void TextLayoutRelease(TextLayout* tl) {
 
 uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
+}
+
+int TextLayoutTextLen(const TextLayout* tl) {
+    return tl ? tl->textLen : 0;
 }
 
 void* PaintTextLayoutNative(TextLayout* tl) {

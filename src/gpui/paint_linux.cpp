@@ -1110,6 +1110,8 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 // DirectWrite backend nothing has to convert offsets.
 
 struct TextLayout {
+    // The byte length of the text it was shaped from (TextLayoutTextLen).
+    int textLen = 0;
     uint64_t generation = 0;
     PangoLayout* layout = nullptr;
     // What TextLayoutNew reported, kept so TextLayoutSize can answer without
@@ -1232,6 +1234,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
+    tl->textLen = len(s);
     tl->width = pango_layout_get_width(l);
     tl->generation = PaintResourceGenerationNew();
     tl->layout = l;
@@ -1297,6 +1300,10 @@ void TextLayoutRelease(TextLayout* tl) {
 
 uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
+}
+
+int TextLayoutTextLen(const TextLayout* tl) {
+    return tl ? tl->textLen : 0;
 }
 
 // Where the glyphs sit inside the phi-tall line box.

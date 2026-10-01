@@ -419,6 +419,9 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
     SelectionParticipantHarness* observed = harness.Get(&app);
     Arena* arena = ArenaNew();
     Ctx cx = {&app, &win, arena, harness.id};
+    // The layer that keeps the window's selection, which a registration
+    // needs (WindowSelectionState::existing).
+    TextSelectionLayer::New(&cx);
 
     TextSelectionScopeId one = TextSelectionScopeId::New();
     TextSelectionScopeId two = TextSelectionScopeId::New();
@@ -519,7 +522,7 @@ static void SourceParticipantContractsProjectAcrossAWindow() {
     El* layer = TextSelectionLayer::New(&cx);
     El* scoped = TextSelectionScope(Div(arena), one);
     utassert(base::StrEq(layer->id, StrL("window-text-selection")));
-    utassert(scoped->style.trapId == one.RuntimeScope());
+    utassert(scoped->selectionScope == (uint32_t)one.RuntimeScope());
 
     WindowSelectionFree(&win);
     ArenaDelete(arena);
@@ -539,6 +542,9 @@ static void FrameSweepDropsOnlyRegistrationsNotRenewed() {
     SelectionParticipantHarness* observed = harness.Get(&app);
     Arena* arena = ArenaNew();
     Ctx cx = {&app, &win, arena, harness.id};
+    // The layer that keeps the window's selection, which a registration
+    // needs (WindowSelectionState::existing).
+    TextSelectionLayer::New(&cx);
 
     TextSelectionHandle current =
         TextSelectionHandle::New(StrL("current"), &app);
@@ -660,6 +666,9 @@ static void DragAutoScrollStopsWhenTheContentMaskCollapses() {
     AutoScrollObserver* observed = viewer.Get(&app);
     TextSelectionHandle handle = TextSelectionHandle::New(StrL("text"), &app);
     Ctx cx = {&app, &win, arena, viewer.id};
+    // The layer that keeps the window's selection, which a registration
+    // needs (WindowSelectionState::existing).
+    TextSelectionLayer::New(&cx);
     Subscription sub = handle.Subscribe(&cx, &AutoScrollObserver::OnEvent);
     (void)sub;
 
@@ -1018,17 +1027,6 @@ bool MultiClickRange(const char* const* texts, int n, const char* text,
 }
 } // namespace
 
-// text_selection.rs scope_stack_is_cleaned_after_panicking_subtree: not
-// ported — there is no scope stack to unwind. A scope here is the element's
-// trap id (TextSelectionScope), carried down the tree as the frame is built,
-// and the tree builds with no exceptions, so no subtree can panic out of one.
-
-// text_selection.rs reentrant_scope_from_one_window_does_not_pollute_another:
-// not ported — with_text_selection_scope / current_text_selection_scope have
-// no counterpart; the scope is a property of the element, read per window as
-// that window's frame collects its runs, so there is no shared stack to leak
-// across windows.
-
 // text_selection.rs selection_callback_can_reenter_its_selection_state.
 static void SelectionCallbackCanReenterItsSelectionState() {
     SelectionFixture f;
@@ -1336,10 +1334,23 @@ static void PlainProjectionOrdersCachedRunsByFrameOrderNotInputOrder() {
 }
 
 // text_selection.rs plain_projection_safely_rejects_a_text_layout_length_
-// mismatch: not ported — the platform's TextLayout does not report the
-// length of the text it was shaped from (paint.h has no such query), so a run
-// cannot compare it with its own text the way selection_range_for_run's
-// `run.text.len() != run.layout.len()` guard does.
+// mismatch: a run whose text is not what its layout was shaped from selects
+// nothing, and the projection is still active.
+static void PlainProjectionSafelyRejectsATextLayoutLengthMismatch() {
+    SelectionFixture f;
+    PlainRun laid = LaidOutRun(f.win, "short", 0);
+    TextSelectionSnapshot snapshot =
+        PlainSnapshot(PositionForIndex(laid, 0), PositionForIndex(laid, 5));
+    PlainRun longer = laid;
+    longer.text = StrL("longer");
+    TextSelectionRun run = TextRun(0, longer);
+    TextSelectionProjection states =
+        TextSelectionProjectRanges(&snapshot, &run, 1);
+    utassert(states.Len() == 1 && !states.Ranges()[0].selected);
+    utassert(states.IsActive());
+    states.Reset();
+    PlainRunFree(&laid);
+}
 
 // text_selection.rs begin_update_and_end_publish_a_cross_participant_
 // selection.
@@ -1776,12 +1787,6 @@ static void UnitSelectionElementSupportsScopeAndRegistrationOnTheFirstFrame() {
     TestAppFree(app);
 }
 
-// text_selection.rs lazy_registration_does_not_enable_queries_without_the_
-// element: not ported — the window owns its selection unconditionally here
-// (WindowSelectionOf makes it on first use), and TextSelectionLayer is an
-// empty marker element, so a registered participant's local selection is
-// answered whether or not a layer was rendered.
-
 // ToggleSelectionElementView: the layer and a registered participant while
 // enabled, nothing otherwise.
 struct ToggleSelectionElementView {
@@ -1841,12 +1846,6 @@ static void RetainedSelectionStateReleasesAndDoesNotResurrectSelection() {
     TestAppFree(app);
 }
 
-// text_selection.rs mounted_selection_element_does_not_keep_an_idle_frame_
-// queue_alive: not ported — there is no next-frame callback queue for the
-// layer to schedule a sweep on (the frame calls WindowSelectionFinishFrame
-// itself), and the window's selection state is made on first use rather
-// than by the layer, so neither count has a counterpart.
-
 // SelectionElementOnlyView: the layer, and a box that suppresses text
 // selection while a press bubbles through it.
 struct SelectionElementOnlyView {
@@ -1863,6 +1862,97 @@ struct SelectionElementOnlyView {
                 Listen(cx, &SelectionElementOnlyView::OnPress)));
     }
 };
+
+// text_selection.rs scope_stack_is_cleaned_after_panicking_subtree: the
+// scope is popped however the subtree it wraps is left. This tree builds
+// with no exceptions, so the subtree that gives up here returns early from
+// the middle of its scope instead of panicking out of it.
+static bool BailOutOfScope(Window* win, TextSelectionScopeId scope) {
+    return WithTextSelectionScope(win, scope, [&] {
+        TextSelectionScopeId inner = {};
+        if (!CurrentTextSelectionScope(win, &inner) || !(inner == scope)) {
+            return false;
+        }
+        return true; // "subtree failed": leaves before its end
+    });
+}
+
+static void ScopeStackIsCleanedAfterABailingSubtree() {
+    App* app = TestAppNew();
+    Entity<SelectionElementOnlyView> view =
+        EntityNew<SelectionElementOnlyView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100);
+    TextSelectionScopeId scope = TextSelectionScopeId::FromRaw(41);
+    utassert(BailOutOfScope(win, scope));
+    utassert(!CurrentTextSelectionScope(win, nullptr));
+    TestAppFree(app);
+}
+
+// text_selection.rs reentrant_scope_from_one_window_does_not_pollute_another.
+static void ReentrantScopeFromOneWindowDoesNotPolluteAnother() {
+    App* app = TestAppNew();
+    Entity<SelectionElementOnlyView> first =
+        EntityNew<SelectionElementOnlyView>(app);
+    Entity<SelectionElementOnlyView> second =
+        EntityNew<SelectionElementOnlyView>(app);
+    Window* firstWin = TestWindowOpen(app, first, 200, 100);
+    Window* secondWin = TestWindowOpen(app, second, 200, 100);
+    TextSelectionScopeId scope = TextSelectionScopeId::FromRaw(42);
+    WithTextSelectionScope(firstWin, scope, [&] {
+        utassert(!CurrentTextSelectionScope(secondWin, nullptr));
+        TextSelectionScopeId current = {};
+        utassert(CurrentTextSelectionScope(firstWin, &current) &&
+                 current == scope);
+    });
+    TestAppFree(app);
+}
+
+// WindowSelectionView: a registered participant and no layer.
+struct NoLayerSelectionView {
+    static El* Render(NoLayerSelectionView*, Ctx* cx) {
+        return Div(cx->a)->SizeFull();
+    }
+};
+
+// text_selection.rs lazy_registration_does_not_enable_queries_without_the_
+// element: with no TextSelectionLayer rendered there is no selection to
+// register with, so a participant's local selection answers nothing.
+static void LazyRegistrationDoesNotEnableQueriesWithoutTheElement() {
+    App* app = TestAppNew();
+    Entity<NoLayerSelectionView> view = EntityNew<NoLayerSelectionView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100);
+    TextSelectionHandle selection =
+        TextSelectionHandle::New(StrL("registered"), app);
+    selection.SetLocalSelection(true, app);
+    Bounds bounds = {0, 0, 100, 20};
+    selection.Register(TextSelectionRegistration::New(bounds, bounds)
+                           .WithTextBounds(&bounds, 1),
+                       win, app);
+    char buf[16] = {};
+    utassert(TextSelection::SelectedText(win, app, buf, 16) == 0);
+    utassert(!TextSelection::HasSelection(win, app));
+    TextSelection::Clear(win, app);
+    utassert(TextSelection::SelectedText(win, app, buf, 16) == 0);
+    TestAppFree(app);
+}
+
+// text_selection.rs mounted_selection_element_does_not_keep_an_idle_frame_
+// queue_alive: a window with the layer and nothing selected asks for no
+// further frame, and its selection stays alive. Rust counts next-frame
+// callbacks; the frame sweep here is the frame's own, so what is counted is
+// whether anything asked to be drawn again.
+static void MountedSelectionElementDoesNotKeepAnIdleFrameQueueAlive() {
+    App* app = TestAppNew();
+    Entity<SelectionElementOnlyView> view =
+        EntityNew<SelectionElementOnlyView>(app);
+    Window* win = TestWindowOpen(app, view, 200, 100);
+    for (int frame = 0; frame < 2; frame++) {
+        TestDraw(win);
+        utassert(win->invalidations == 0 && !win->animFrame);
+    }
+    utassert(WindowSelectionLayerLive(win));
+    TestAppFree(app);
+}
 
 // text_selection.rs selection_element_initializes_suppression_and_respects_
 // bubble_suppression.
@@ -2062,6 +2152,11 @@ static void TestTextSelectionWindow() {
     PlainProjectionCachesMultipleParticipantCopiesInDocumentOrder();
     PlainProjectionInvalidatesCachedCopyWhenTheSnapshotChanges();
     PlainProjectionOrdersCachedRunsByFrameOrderNotInputOrder();
+    PlainProjectionSafelyRejectsATextLayoutLengthMismatch();
+    ScopeStackIsCleanedAfterABailingSubtree();
+    ReentrantScopeFromOneWindowDoesNotPolluteAnother();
+    LazyRegistrationDoesNotEnableQueriesWithoutTheElement();
+    MountedSelectionElementDoesNotKeepAnIdleFrameQueueAlive();
     BeginUpdateAndEndPublishACrossParticipantSelection();
     ShiftExtensionKeepsItsOriginalAnchorWhenReversed();
     ContentKeyResolverRunsOutsideTheWindowStateLease();

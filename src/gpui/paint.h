@@ -414,6 +414,9 @@ Size TextLayoutSize(TextLayout* tl);
 void TextLayoutAddRef(TextLayout* tl);
 void TextLayoutRelease(TextLayout* tl);
 uint64_t TextLayoutGeneration(const TextLayout* tl);
+// How many bytes of text the run was shaped from: what a caller holding
+// the run beside a string checks the two still agree with.
+int TextLayoutTextLen(const TextLayout* tl);
 // `clip` cuts the run at `clipW` — GPUI's `truncate()`, which is
 // `text_overflow: Ellipsis`, so what the backend draws is the run trimmed with
 // an ellipsis rather than cut through a glyph. A non-wrapping run is shaped

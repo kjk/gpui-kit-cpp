@@ -1612,6 +1612,8 @@ void RenderImageDraw(PaintCtx* ctx, RenderImage* img, Bounds bounds,
 // ─── shaped text ──────────────────────────────────────────────────────────
 
 struct TextLayout {
+    // The byte length of the text it was shaped from (TextLayoutTextLen).
+    int textLen = 0;
     uint64_t generation = 0;
     int js = 0;
     int refs = 1;
@@ -1642,6 +1644,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
         outSize->h = size[1];
     }
     auto* tl = new TextLayout();
+    tl->textLen = len(s);
     tl->generation = PaintResourceGenerationNew();
     tl->js = id;
     tl->size = Size{size[2], size[1]};
@@ -1673,6 +1676,10 @@ void TextLayoutRelease(TextLayout* tl) {
 
 uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
+}
+
+int TextLayoutTextLen(const TextLayout* tl) {
+    return tl ? tl->textLen : 0;
 }
 
 bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,

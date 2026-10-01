@@ -275,10 +275,36 @@ struct TextSelectionLayer {
     static El* New(Ctx* cx);
 };
 
-// pub(crate) text_selection_scope. Rust carries the scope through every
-// element phase; the flat runtime carries the same value in the inherited
-// trap id used when selectable TextHits are collected.
+// pub(crate) text_selection_scope: `element` and everything under it paint
+// with `scope` as the window's current selection scope, so the runs in it
+// select only with each other. A run under no scope falls back to the focus
+// trap it is in.
 El* TextSelectionScope(El* element, TextSelectionScopeId scope);
+
+// current_text_selection_scope: the innermost scope painting now in `win`.
+// False outside every one -- Rust's None.
+bool CurrentTextSelectionScope(const Window* win, TextSelectionScopeId* out);
+
+// push_text_selection_scope / pop_text_selection_scope as a guard: `scope`
+// is the window's current one for as long as the guard lives, and it is
+// popped however the block it guards is left -- what Rust's catch_unwind
+// around the callback is for.
+struct TextSelectionScopeGuard {
+    Window* win = nullptr;
+
+    TextSelectionScopeGuard(Window* window, TextSelectionScopeId scope);
+    ~TextSelectionScopeGuard();
+    TextSelectionScopeGuard(const TextSelectionScopeGuard&) = delete;
+    TextSelectionScopeGuard& operator=(const TextSelectionScopeGuard&) = delete;
+};
+
+// with_text_selection_scope.
+template <typename F>
+auto WithTextSelectionScope(Window* win, TextSelectionScopeId scope, F&& fn)
+    -> decltype(fn()) {
+    TextSelectionScopeGuard guard(win, scope);
+    return fn();
+}
 
 // ─── the window's selection ───────────────────────────────────────────────
 //
@@ -313,6 +339,10 @@ struct WindowSelection {
     bool publishing = false;
     bool clearing = false;
     uint64_t frameGeneration = 0;
+    // The frame a TextSelectionLayer last rendered in, plus one: 0 is never.
+    // Rust's state lives in the layer element's keyed state, so it exists
+    // while a layer keeps rendering (WindowSelectionLayerLive).
+    uint64_t layerFrame = 0;
     // Stable handles registered in this window. The participant state owns
     // its frame geometry; this list only lets window gestures publish events.
     Vec<EntityId> participants;
@@ -382,5 +412,10 @@ bool WindowSelectionCopy(Window* win);
 void WindowSelectionApply(Window* win);
 // Sweeps participant registrations not renewed while this frame rendered.
 void WindowSelectionFinishFrame(Window* win);
+// WindowSelectionState::existing: whether a TextSelectionLayer rendered in
+// this frame or the last, which is what a participant's registration needs.
+// The window's own selection of painted runs does not: it works in a window
+// with no layer, which Rust's would not.
+bool WindowSelectionLayerLive(const Window* win);
 } // namespace gpui
 #endif // GPUI_BASE_TEXT_SELECTION_H_

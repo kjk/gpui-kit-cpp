@@ -2481,6 +2481,12 @@ struct El {
     // paint, it is the innermost scope plot::TrackAppear remembers finished
     // appears in. 0 is none.
     uint32_t plotAppearScope = 0;
+    // text_selection_scope(scope): while this element and what it holds
+    // paint, the window's current selection scope is `selectionScope`, so
+    // the runs under it select only with each other. 0 is no scope of its
+    // own. The runtime int a TextSelectionScopeId makes (RuntimeScope); see
+    // base/text_selection.h TextSelectionScope.
+    uint32_t selectionScope = 0;
     Func0 onClick;
 
     // Keep every entity Listener together. El is copied and walked as
@@ -6225,6 +6231,10 @@ struct Window {
     // plot/appear.rs SCOPES: the PlotAppearScope keys being painted,
     // innermost last. Only non-empty while a scope paints its subtree.
     Vec<uint32_t> plotAppearScopes;
+    // TextSelectionScopeStacks, for this window: the scopes of the elements
+    // painting around the one painting now, innermost last.
+    // with_text_selection_scope pushes and pops it.
+    Vec<uint64_t> textSelectionScopes;
     // The scroll boxes the frame before this one painted, swapped out of
     // `paint.scrolls` as the frame starts. Rust's `ScrollHandle::bounds()`
     // answers with the box the last layout gave it. Virtual lists bind rows

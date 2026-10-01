@@ -469,6 +469,14 @@ void TextSelectionHandle::Register(TextSelectionRegistration value,
                                    Window* window, App* app) const {
     TextSelectionParticipantState* participant = ParticipantState(*this, app);
     if (!participant || !window) return;
+    // WindowSelectionState::existing: with no layer keeping the window's
+    // selection alive, there is nothing to register with.
+    if (!WindowSelectionLayerLive(window)) return;
+    // A registration made while a text_selection_scope paints takes it.
+    TextSelectionScopeId current = {};
+    if (CurrentTextSelectionScope(window, &current)) {
+        value.scope = current;
+    }
     participant->window = window;
     participant->registered = true;
     participant->registration = value;
@@ -569,6 +577,9 @@ static TextSelectionRange ProjectRun(const TextSelectionRun& run,
         return out;
     }
     if (!snapshot.hasWindowPoints) return out;
+    // A layout shaped from other text than the run says it holds cannot map
+    // the run's offsets: `run.text.len() != run.layout.len()`.
+    if (TextLayoutTextLen(run.layout) != len(run.text)) return out;
     // selection_range_for_run: each character is tested with its row's top
     // and height, so a run whose rows all miss the band, or all lie strictly
     // inside it with no endpoint on any row, has the same answer for every
@@ -764,11 +775,42 @@ El* TextSelection::New(Ctx* cx, Str id, int clickId) {
 }
 
 El* TextSelectionLayer::New(Ctx* cx) {
+    if (cx->win) {
+        WindowSelectionOf(cx->win)->layerFrame = cx->win->frameSeq + 1;
+    }
     return Div(cx->a)->Id(StrL("window-text-selection"))->W(0)->H(0);
 }
 
 El* TextSelectionScope(El* element, TextSelectionScopeId scope) {
-    return element ? element->TrapId(scope.RuntimeScope()) : nullptr;
+    if (element) {
+        element->selectionScope = (uint32_t)scope.RuntimeScope();
+    }
+    return element;
+}
+
+bool CurrentTextSelectionScope(const Window* win, TextSelectionScopeId* out) {
+    if (!win || win->textSelectionScopes.len == 0) {
+        return false;
+    }
+    if (out) {
+        *out = TextSelectionScopeId::FromRaw(
+            win->textSelectionScopes[win->textSelectionScopes.len - 1]);
+    }
+    return true;
+}
+
+TextSelectionScopeGuard::TextSelectionScopeGuard(Window* window,
+                                                 TextSelectionScopeId scope)
+    : win(window) {
+    if (win) {
+        VecAppend(win->textSelectionScopes, scope.Value());
+    }
+}
+
+TextSelectionScopeGuard::~TextSelectionScopeGuard() {
+    if (win && win->textSelectionScopes.len > 0) {
+        win->textSelectionScopes.len--;
+    }
 }
 
 // ─── the window's selection ───────────────────────────────────────────────
@@ -1341,6 +1383,13 @@ void WindowSelectionApply(Window* win) {
 // because Entity::cached replays a frame without painting it. This runtime has
 // no cached-view replay: every element on screen paints, and re-registers,
 // each frame, so a missed generation always means the element is gone.
+bool WindowSelectionLayerLive(const Window* win) {
+    // Rendered in the frame being built (layerFrame == frameSeq + 1) or in
+    // the one before it, whose frame has since ended.
+    return win && win->sel && win->sel->layerFrame != 0 &&
+           win->sel->layerFrame >= win->frameSeq;
+}
+
 void WindowSelectionFinishFrame(Window* win) {
     WindowSelection* selection = win ? win->sel : nullptr;
     if (selection) {

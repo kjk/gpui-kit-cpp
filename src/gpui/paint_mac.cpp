@@ -1036,6 +1036,8 @@ struct MacLine {
 };
 
 struct TextLayout {
+    // The byte length of the text it was shaped from (TextLayoutTextLen).
+    int textLen = 0;
     uint64_t generation = 0;
     int refs = 1;
     // What TextLayoutNew reported, kept so TextLayoutSize can answer without
@@ -1280,6 +1282,7 @@ TextLayout* TextLayoutNew(PaintCtx* ctx, Str s, float fontSize, float maxW,
     }
 
     auto* tl = new TextLayout();
+    tl->textLen = len(s);
     tl->generation = PaintResourceGenerationNew();
     tl->attr = attr;
     tl->lines = lines;
@@ -1357,6 +1360,10 @@ void TextLayoutRelease(TextLayout* tl) {
 
 uint64_t TextLayoutGeneration(const TextLayout* tl) {
     return tl ? tl->generation : 0;
+}
+
+int TextLayoutTextLen(const TextLayout* tl) {
+    return tl ? tl->textLen : 0;
 }
 
 bool PaintTextLayoutSpans(PaintCtx* ctx, TextLayout* tl, Str text, float x,
