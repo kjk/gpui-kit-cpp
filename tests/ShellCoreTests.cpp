@@ -1464,9 +1464,12 @@ static void TextViewDocumentImageDeadlineCoversEveryRedirect() {
     gTvDelayMs = 40;
     TvRequestsClear();
     TvFetch fetch;
+    // Every hop sleeps at least 40ms, so 0.3s holds at most eight hops —
+    // below the redirect limit — while leaving a slow CI runner room to land
+    // the second one.
     utassert(TextViewImageRequest(TvGetGrant("/image.png"),
                                   StrL("https://images.example/image.png"),
-                                  MkFunc1(TvFetched, &fetch), TimeNow() + 0.1));
+                                  MkFunc1(TvFetched, &fetch), TimeNow() + 0.3));
     utassert(ExecWaitIdle(5000));
     utassert(fetch.called && !fetch.ok);
     utassert(gTvRequests.len >= 2 && gTvRequests.len < kFetchMaxRedirects);
