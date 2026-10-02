@@ -7,10 +7,13 @@
    `window.open_dialog(cx, ..)` pushes onto them, so any handler anywhere can
    raise a dialog without the view rendering the page knowing about it.
 
-   Here they are a per-window store, reached the way Rust reaches its
-   WindowState plugin, and Component's Root plugin (`ui/root.h`) renders
-   what it holds over the page. The text-selection forwarding methods are
-   gone, as they are in Rust: `TextSelection` in base answers for them.
+   Here they are the state of Component's WindowState plugin (`ui/root.h`),
+   which the window's Base Root holds and renders over the page. A window
+   whose root view is not a Base Root has none: Rust panics there
+   (`ROOT_MISSING`), and since nothing in this tree takes the process down,
+   an operation on such a window does nothing and a query answers empty. The
+   text-selection forwarding methods are gone, as they are in Rust:
+   `TextSelection` in base answers for them.
 
    A layer is an entity, as it is in Rust: `WindowOpenDialog` takes the entity
    whose `Render` builds the dialog, and closing it lets the entity go. That
@@ -58,8 +61,8 @@ struct WindowLayers {
     ~WindowLayers();
 };
 
-// The store for this window, created on first ask. Null only for a null
-// window.
+// WindowState::entity: the store the window's Base Root holds. Null when the
+// window's root view is not a Base Root.
 WindowLayers* WindowLayersOf(Window* win);
 
 // open_dialog. The entity's Render builds the dialog; it draws over

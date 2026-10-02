@@ -7,8 +7,8 @@
    registered by component::Init as a Root plugin: the notifications, the
    sheet and the stack of dialogs over the page, the touch-selection menu,
    the theme's defaults for the root surface, and the window border around
-   it. The layers themselves are kept on the window (`WindowLayersOf`), which
-   is where WindowExt's operations put them. */
+   it. The layers are WindowState's, the plugin instance the window's Root
+   holds (`WindowLayersOf`), which is where WindowExt's operations put them. */
 
 #include "base/root.h"
 #include "ui/sizing.h"
@@ -35,7 +35,7 @@ Edges RootNotificationInsets(bool hasSheet, SheetPlacement placement,
                              float size);
 
 // WindowState's RootPlugin table. Its per-window state is the window's
-// WindowLayers.
+// WindowLayers, made with the window's Root and dropped with it.
 extern const RootPlugin kWindowStatePlugin;
 
 // root::init: register WindowState as a Root plugin.

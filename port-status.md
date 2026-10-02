@@ -28,16 +28,17 @@ macOS font-kit requirement on the website only. The current update target is
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
   The GPUI reference is `gpui-pre` 0.3.7 (Zed `1a28cff4b409`); the five ported
   dependency versions are unchanged.
-- **Base Root keeps its plugins on the window.** Rust's `Root` entity owns
-  each plugin's entity and observes it; here `RootPlugin` is a function table
-  whose per-window state lives in the window's keyed state, so a view that
-  renders the surface itself through `RootSurface` finds the same
-  instances. Root's Tab / shift-Tab / copy actions are the
-  runtime's for every window (`FocusNext`, `WindowSelectionCopy`); the
-  surface carries no `id("root")`, which would re-key every element's state;
-  WindowState's `prepare` sets no rem size and its tooltip overlay is the
-  window's own; and WindowExt's layers still open in a
-  window with no Root (Rust panics) (`src/base/root.cpp`, `src/ui/root.cpp`).
+- **A window's rem size scales font sizes only.** WindowState's `prepare`
+  sets the window's rem size from the theme, as Rust's does, and
+  `window.rem_size()` / `set_rem_size()` read and write it; but this tree
+  resolves rem lengths (`p_4`, a script's `"1rem"`) to 16 DIPs as it builds,
+  so the rem size moves the text's size and not those lengths
+  (`WindowRemSize`, `src/gpui/gpui.h`). Base Root's Tab / shift-Tab / copy
+  actions are the runtime's for every window (`FocusNext`,
+  `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's
+  own. Where Rust panics because a window has no Base Root (`ROOT_MISSING`),
+  WindowExt's operations do nothing and its queries answer empty
+  (`src/base/root.cpp`, `src/ui/root.cpp`, `src/ui/window_ext.cpp`).
 - **The editor's wrap map is a flat list, not a sum tree.** An edit re-wraps
   only the lines it touched, as Rust's TextWrapper does, but the rows sit in
   one array, so the lines after the edit have their offsets and row counts

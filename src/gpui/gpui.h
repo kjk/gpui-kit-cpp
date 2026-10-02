@@ -6324,6 +6324,11 @@ struct Window {
     // a pointer move or press. A modifier on its own is not a key press, as
     // GPUI reads it as ModifiersChanged.
     bool lastInputKeyboard = false;
+    // Window::rem_size: what one rem is, in DIPs -- GPUI's default 16 until
+    // something (Component's WindowState, every frame) sets it. It is the
+    // font size the window's text starts at, and what an explicit font size,
+    // written against a 16 px rem, scales with.
+    float remSize = 16;
     int focusId = 0;
     // window.focus_generation: bumped every time the focus moves, so a
     // keystroke can tell that it stayed put without holding onto the element.
@@ -7223,6 +7228,10 @@ void AppSetTitle(Window* win, Str title);
 void AppRequestAnim(Window* win, bool on);
 // One more frame, rather than every frame. Safe to call from inside a render.
 void WindowRequestAnimationFrame(Window* win);
+// window.rem_size / set_rem_size. Setting a new one lays the window out
+// again; it is safe to call while the window renders, before its layout.
+float WindowRemSize(const Window* win);
+void WindowSetRemSize(Window* win, float size);
 // window.request_autoscroll / take_autoscroll: ask an enclosing scroller to
 // bring `bounds` into view, and, from the scroller, take the request if one
 // is waiting. A request is in last frame's window coordinates here, since

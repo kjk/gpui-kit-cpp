@@ -9303,20 +9303,13 @@ static bool WindowHost(JSContext* ctx, const char* api, bool mutation,
     return true;
 }
 
-// The port's rem is fixed at 16, which is what a `1rem` length resolves to
-// everywhere in this tree; there is no `Window::rem_size` to move, so
-// `set_rem_size` has nothing to set and is not bound. Reported here rather
-// than left out of the prelude, so a script that asks gets the number the
-// lengths it writes are actually resolved against.
-static const float kShellRemSize = 16.f;
-
 static JSValue NativeWindowRemSize(JSContext* ctx, JSValueConst, int,
                                    JSValueConst*) {
     Window* window = nullptr;
     App* app = nullptr;
     if (!WindowHost(ctx, "window.rem_size()", false, &window, &app))
         return JS_EXCEPTION;
-    return JS_NewFloat64(ctx, kShellRemSize);
+    return JS_NewFloat64(ctx, WindowRemSize(window));
 }
 
 static JSValue NativeWindowLineHeight(JSContext* ctx, JSValueConst, int,
@@ -9325,7 +9318,7 @@ static JSValue NativeWindowLineHeight(JSContext* ctx, JSValueConst, int,
     App* app = nullptr;
     if (!WindowHost(ctx, "window.line_height()", false, &window, &app))
         return JS_EXCEPTION;
-    return JS_NewFloat64(ctx, kShellRemSize * kLineHeight);
+    return JS_NewFloat64(ctx, WindowRemSize(window) * kLineHeight);
 }
 
 static JSValue JsSize(JSContext* ctx, float width, float height) {
@@ -9411,6 +9404,21 @@ static JSValue NativeWindowIsMaximized(JSContext* ctx, JSValueConst, int,
     if (!WindowHost(ctx, "window.is_maximized()", false, &window, &app))
         return JS_EXCEPTION;
     return JS_NewBool(ctx, AppIsMaximized(window));
+}
+
+// The mutations. Refused from `render` for the reason `cx.notify()` is: a
+// frame that changes the window it is drawing into is a frame arguing with
+// itself.
+static JSValue NativeWindowSetRemSize(JSContext* ctx, JSValueConst, int argc,
+                                      JSValueConst* argv) {
+    Window* window = nullptr;
+    App* app = nullptr;
+    if (!WindowHost(ctx, "window.set_rem_size()", true, &window, &app))
+        return JS_EXCEPTION;
+    double size = 0;
+    if (argc < 1 || JS_ToFloat64(ctx, &size, argv[0]) < 0) return JS_EXCEPTION;
+    WindowSetRemSize(window, (float)size);
+    return JS_UNDEFINED;
 }
 
 static JSValue NativeWindowRefresh(JSContext* ctx, JSValueConst, int,
@@ -10716,6 +10724,8 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
                       NativeWindowRemSize, 0);
     SetGlobalFunction(impl->context, global, "__window_line_height",
                       NativeWindowLineHeight, 0);
+    SetGlobalFunction(impl->context, global, "__window_set_rem_size",
+                      NativeWindowSetRemSize, 1);
     SetGlobalFunction(impl->context, global, "__window_viewport_size",
                       NativeWindowViewportSize, 0);
     SetGlobalFunction(impl->context, global, "__window_bounds",

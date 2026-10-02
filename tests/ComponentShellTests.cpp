@@ -5549,6 +5549,13 @@ bool EffectBuilt(const char* label) {
     return false;
 }
 
+// The window's Base Root around the script view, which is what holds the
+// layers a window effect opens: WindowState is its plugin.
+void MountBaseRoot(Host& host) {
+    Entity<Root> root = Root::New(&host.app, &host.window, host.view.id);
+    host.window.root = root.id;
+}
+
 // The window's layers, which a Root would draw over the page: each open
 // dialog and the sheet, rendered into the host's frame the way the Root
 // renders them after the page.
@@ -5659,6 +5666,7 @@ void RealClickEventsOpenNativeSurfacesAndBuildLazyContent() {
             "\n }\n"
             "}\n"),
         &catalog.frozen);
+    MountBaseRoot(host);
     Ctx cx = HostCtx(host);
     El* root = DrawWindow(host);
     root = DrawWindow(host);
@@ -5811,6 +5819,7 @@ void DialogAndSheetDuplicateContentIsLastCallWins() {
                 "%s; } }\n",
                 Str(c[0]));
         Host host(source, &catalog.frozen);
+        MountBaseRoot(host);
         El* root = DrawWindow(host);
         root = DrawWindow(host);
         utassert(gEffectBuildCount == 0);
@@ -5851,6 +5860,7 @@ void FailedFactoryAndFailedReporterAreBothDiagnosed() {
                        "Error('reporter exploded'); }).content(new "
                        "EffectMarker('fail')); } }\n"),
                   &catalog.frozen);
+        MountBaseRoot(host);
         El* root = DrawWindow(host);
         gReporterFailureCount = 0;
         ClickLabel(host, root, "Fail");

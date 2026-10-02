@@ -86,13 +86,22 @@ El* WindowStateLayers(Ctx* cx) {
     return layers;
 }
 
-static void* WindowStateBuild(Window* window, App*) {
-    return WindowLayersOf(window);
+// WindowState::new: the window's layers, owned by its Root.
+static void* WindowStateBuild(Window* window, App* app) {
+    WindowLayers* layers = new WindowLayers();
+    layers->app = app;
+    layers->win = window;
+    return layers;
 }
 
-// prepare: the active text-selection scope. Rust also sets the window's rem
-// size from the theme; the runtime reads the theme's font size itself.
+static void WindowStateDrop(void* state) {
+    delete (WindowLayers*)state;
+}
+
+// prepare: the window's rem size from the theme, and the active
+// text-selection scope.
 static void WindowStatePrepare(void*, Ctx* cx) {
+    WindowSetRemSize(cx->win, ThemeNow(cx->app).fontSize);
     UiSelectionFrameBegin(cx->app);
 }
 
@@ -129,9 +138,8 @@ static El* WindowStateRender(void*, Ctx* cx) {
 }
 
 const RootPlugin kWindowStatePlugin = {
-    &WindowStateBuild,    nullptr,
-    &WindowStatePrepare,  &WindowStateStyle,
-    &WindowStateDecorate, &WindowStateRender,
+    &WindowStateBuild, &WindowStateDrop,     &WindowStatePrepare,
+    &WindowStateStyle, &WindowStateDecorate, &WindowStateRender,
 };
 
 void RootInit(App* app) {

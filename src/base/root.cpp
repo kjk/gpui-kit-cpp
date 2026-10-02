@@ -12,20 +12,10 @@ struct BaseRootPluginRegistry {
     ~BaseRootPluginRegistry() { VecReset(plugins); }
 };
 
-// What Rust keeps on the Root entity: this window's plugin instances, and
-// which entity is its Base Root.
+// window.root::<Root>(): which entity is this window's Base Root, kept on
+// the window so a Root can be told from any other root view.
 struct BaseRootWindowState {
-    bool captured = false;
-    Vec<RootPluginInstance> plugins;
     EntityId root = {};
-    ~BaseRootWindowState() {
-        for (int i = 0; i < plugins.len; i++) {
-            if (plugins[i].type->drop && plugins[i].state) {
-                plugins[i].type->drop(plugins[i].state);
-            }
-        }
-        VecReset(plugins);
-    }
 };
 
 BaseRootWindowState* BaseRootWindowStateOf(Window* window) {
@@ -38,7 +28,42 @@ BaseRootWindowState* BaseRootWindowStateOf(Window* window) {
         &EntityDropT<BaseRootWindowState>);
 }
 
+// Root::new's `factories.map(|build| build(window, cx))`: factories are
+// captured when the window's Root is made, so a registration after that
+// affects only future windows.
+void RootCapturePlugins(Root* root, Window* window) {
+    if (!root || root->captured || !window) {
+        return;
+    }
+    root->captured = true;
+    BaseRootPluginRegistry* registry =
+        AppGlobalGet<BaseRootPluginRegistry>(root->app);
+    for (int i = 0; registry && i < registry->plugins.len; i++) {
+        RootPluginInstance instance;
+        instance.type = registry->plugins[i];
+        if (instance.type->build) {
+            instance.state = instance.type->build(window, root->app);
+        }
+        VecAppend(root->plugins, instance);
+    }
+}
+
+void RootMount(Window* window, EntityId root) {
+    if (BaseRootWindowState* state = BaseRootWindowStateOf(window)) {
+        state->root = root;
+    }
+}
+
 } // namespace
+
+Root::~Root() {
+    for (int i = 0; i < plugins.len; i++) {
+        if (plugins[i].type->drop && plugins[i].state) {
+            plugins[i].type->drop(plugins[i].state);
+        }
+    }
+    VecReset(plugins);
+}
 
 void Root::RegisterPlugin(App* app, const RootPlugin* plugin) {
     if (!app || !plugin) {
@@ -54,51 +79,21 @@ void Root::RegisterPlugin(App* app, const RootPlugin* plugin) {
     VecAppend(registry->plugins, plugin);
 }
 
-const RootPluginInstance* RootPlugins(Window* window, int* n) {
-    *n = 0;
-    BaseRootWindowState* state = BaseRootWindowStateOf(window);
-    if (!state) {
-        return nullptr;
-    }
-    if (!state->captured) {
-        // Factories are captured when the window's root is created, so a
-        // registration after that affects only future windows.
-        state->captured = true;
-        BaseRootPluginRegistry* registry =
-            AppGlobalGet<BaseRootPluginRegistry>(window->app);
-        for (int i = 0; registry && i < registry->plugins.len; i++) {
-            RootPluginInstance instance;
-            instance.type = registry->plugins[i];
-            if (instance.type->build) {
-                instance.state = instance.type->build(window, window->app);
-            }
-            VecAppend(state->plugins, instance);
-        }
-    }
-    *n = state->plugins.len;
-    return state->plugins.els;
-}
-
 Entity<Root> Root::New(App* app, Window* window, EntityId view) {
     Entity<Root> e = EntityNew<Root>(app);
     if (Root* root = e.Get(app)) {
         root->app = app;
         root->view = view;
-    }
-    if (window) {
-        int n = 0;
-        (void)RootPlugins(window, &n);
-        if (BaseRootWindowState* state = BaseRootWindowStateOf(window)) {
-            state->root = e.id;
+        if (window) {
+            RootCapturePlugins(root, window);
+            RootMount(window, e.id);
         }
     }
     return e;
 }
 
-void* Root::Plugin(Window* window, const RootPlugin* type) {
-    int n = 0;
-    const RootPluginInstance* plugins = RootPlugins(window, &n);
-    for (int i = 0; i < n; i++) {
+void* Root::Plugin(const RootPlugin* type) const {
+    for (int i = 0; i < plugins.len; i++) {
         if (plugins[i].type == type) {
             return plugins[i].state;
         }
@@ -120,10 +115,13 @@ Root* Root::Refine(const Style& s, uint32_t fields) {
     return this;
 }
 
-El* RootSurface(Ctx* cx, const Root* root, El* content) {
+El* RootSurface(Ctx* cx, Root* root, El* content) {
     Arena* a = cx->a;
-    int n = 0;
-    const RootPluginInstance* plugins = RootPlugins(cx->win, &n);
+    if (root) {
+        RootCapturePlugins(root, cx->win);
+    }
+    int n = root ? root->plugins.len : 0;
+    const RootPluginInstance* plugins = root ? root->plugins.els : nullptr;
     for (int i = 0; i < n; i++) {
         if (plugins[i].type->prepare) {
             plugins[i].type->prepare(plugins[i].state, cx);
@@ -131,10 +129,12 @@ El* RootSurface(Ctx* cx, const Root* root, El* content) {
     }
     // div().id("root").key_context("Root").relative().size_full(). A column,
     // so content that asks for the full size gets it the way it did when the
-    // page was the window's root. No `id`: ids here fold every ancestor's
-    // name into their own, and "root" would re-key every element's state
-    // under a window that gained a Root.
-    El* surface = Div(a)->KeyContext(StrL("Root"))->FlexCol()->SizeFull();
+    // page was the window's root.
+    El* surface = Div(a)
+                      ->Id(StrL("root"))
+                      ->KeyContext(StrL("Root"))
+                      ->FlexCol()
+                      ->SizeFull();
     surface->Child(TextSelectionLayer::New(cx));
     if (content) {
         surface->Child(content);
@@ -190,17 +190,16 @@ El* Root::Render(Root* self, Ctx* cx) {
 
 Window* KitOpenWindow(App* app, Str title, int dipW, int dipH, EntityId content,
                       WinOpts opts) {
+    // The window takes its root view as it opens; the Root captures its
+    // plugins for the window right after, before anything renders.
     Entity<Root> root = Root::New(app, nullptr, content);
     Window* win = WindowOpenView(app, title, dipW, dipH, root.id, opts);
     if (!win) {
         EntityDrop(app, root.id);
         return nullptr;
     }
-    int n = 0;
-    (void)RootPlugins(win, &n);
-    if (BaseRootWindowState* state = BaseRootWindowStateOf(win)) {
-        state->root = root.id;
-    }
+    RootCapturePlugins(root.Get(app), win);
+    RootMount(win, root.id);
     return win;
 }
 

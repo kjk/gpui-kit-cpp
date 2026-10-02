@@ -584,7 +584,8 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
         if (!win->layout) {
             win->layout = LayoutCacheNew();
         }
-        LayoutEl(&win->paint, root, 0, 0, dipW, dipH, th.fontSize,
+        // The window's text style: one rem, in the theme's foreground.
+        LayoutEl(&win->paint, root, 0, 0, dipW, dipH, WindowRemSize(win),
                  th.foreground, win->layout);
         FocusCollect(win, root);
         AccessibilityCollect(root, &win->accessibility);
@@ -3764,6 +3765,18 @@ void WindowRequestAnimationFrame(Window* win) {
     // Nothing else may be keeping the window awake: arm the clock now, the
     // way AppRequestAnim does.
     PlatSetTimer(win, WindowTimerMs(win));
+}
+
+float WindowRemSize(const Window* win) {
+    return win && win->remSize > 0 ? win->remSize : 16.f;
+}
+
+void WindowSetRemSize(Window* win, float size) {
+    if (!win || !(size > 0) || win->remSize == size) {
+        return;
+    }
+    win->remSize = size;
+    AppInvalidate(win);
 }
 
 void WindowRequestAutoscroll(Window* win, Bounds bounds) {

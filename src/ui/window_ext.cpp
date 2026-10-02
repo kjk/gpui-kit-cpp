@@ -1,4 +1,5 @@
 #include "ui/window_ext.h"
+#include "ui/root.h"
 
 namespace gpui {
 
@@ -24,20 +25,12 @@ WindowLayers::~WindowLayers() {
 }
 
 WindowLayers* WindowLayersOf(Window* win) {
-    if (!win) {
+    // `window.root::<Root>()??.read(cx).plugin::<WindowState>()`.
+    Root* root = Root::Read(win);
+    if (!root) {
         return nullptr;
     }
-    // window.use_keyed_state, which is the same lifetime Rust's Root has: the
-    // window's, dropped with it.
-    uint32_t key = (uint32_t)HashClickId(StrL("gpui-window-layers"));
-    void* p = WindowKeyedState(win, key, new WindowLayers(),
-                               &EntityDropT<WindowLayers>);
-    WindowLayers* layers = (WindowLayers*)p;
-    if (layers && !layers->win) {
-        layers->app = win->app;
-        layers->win = win;
-    }
-    return layers;
+    return (WindowLayers*)root->Plugin(&component::kWindowStatePlugin);
 }
 
 static WindowLayers* LayersOf(Ctx* cx) {

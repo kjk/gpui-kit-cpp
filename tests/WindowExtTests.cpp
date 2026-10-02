@@ -17,6 +17,14 @@ int ExtLayer::dropped = 0;
 struct ExtNotice {};
 } // namespace
 
+// A window with a Base Root around nothing, which is what holds the layers:
+// WindowState is its plugin, registered by RootInit.
+static void MountRoot(App* app, Window* window) {
+    RootInit(app);
+    Entity<gpui::Root> root = gpui::Root::New(app, window, {});
+    window->root = root.id;
+}
+
 static ToastStatus NotificationStatus(const NotificationListState* state,
                                       int id) {
     for (int i = 0; state && i < state->stack.entries.len; i++) {
@@ -31,6 +39,7 @@ static void WindowOwnsDialogAndSheetEntities() {
     App app;
     Window* window = new Window();
     window->app = &app;
+    MountRoot(&app, window);
     Arena* arena = ArenaNew();
     Ctx cx = {&app, window, arena, {}};
     ExtLayer::dropped = 0;
@@ -54,22 +63,53 @@ static void WindowOwnsDialogAndSheetEntities() {
     utassert(!firstSheet.Get(&app));
     utassert(ExtLayer::dropped == 2);
 
-    // The remaining dialog and sheet are Root-owned handles. Window teardown
-    // releases both, as dropping Rust's Root does.
-    WindowKeyedFree(window);
+    // The remaining dialog and sheet are Root-owned handles: dropping the
+    // Root releases both, as dropping Rust's Root does.
+    EntityDrop(&app, window->root);
     utassert(!firstDialog.Get(&app));
     utassert(!secondSheet.Get(&app));
     utassert(ExtLayer::dropped == 4);
 
+    WindowKeyedFree(window);
     ArenaDelete(arena);
-    delete window;
+    // The Root's layers name their window, so they go before it does, as
+    // AppRelease drops the entities before the windows.
     EntityDropAll(&app);
+    delete window;
+}
+
+// A window whose root view is not a Base Root has no WindowState: Rust
+// panics on ROOT_MISSING, and here nothing opens and the queries answer
+// empty.
+static void AWindowWithoutARootOpensNoLayers() {
+    App app;
+    Window* window = new Window();
+    window->app = &app;
+    RootInit(&app);
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, window, arena, {}};
+    ExtLayer::dropped = 0;
+    utassert(WindowLayersOf(window) == nullptr);
+    WindowOpenDialog(&cx, EntityNew<ExtLayer>(&app));
+    utassert(!WindowHasActiveDialog(&cx));
+    utassert(WindowDialogCount(&cx) == 0);
+    WindowOpenSheet(&cx, EntityNew<ExtLayer>(&app), 320);
+    utassert(!WindowHasActiveSheet(&cx));
+    WindowPushNotification(&cx, StrL("lost"));
+    utassert(WindowNotificationCount(&cx) == 0);
+    WindowKeyedFree(window);
+    ArenaDelete(arena);
+    // The Root's layers name their window, so they go before it does, as
+    // AppRelease drops the entities before the windows.
+    EntityDropAll(&app);
+    delete window;
 }
 
 static void TypedRemovalAndForwardingMethodsUseWindowState() {
     App app;
     Window* window = new Window();
     window->app = &app;
+    MountRoot(&app, window);
     Arena* arena = ArenaNew();
     Ctx cx = {&app, window, arena, {}};
 
@@ -116,12 +156,15 @@ static void TypedRemovalAndForwardingMethodsUseWindowState() {
     WindowClearNotifications(&cx);
     WindowKeyedFree(window);
     ArenaDelete(arena);
-    delete window;
+    // The Root's layers name their window, so they go before it does, as
+    // AppRelease drops the entities before the windows.
     EntityDropAll(&app);
+    delete window;
 }
 
 void TestWindowExt() {
     TestSuite("window ext");
     WindowOwnsDialogAndSheetEntities();
+    AWindowWithoutARootOpensNoLayers();
     TypedRemovalAndForwardingMethodsUseWindowState();
 }

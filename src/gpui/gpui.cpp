@@ -4098,14 +4098,15 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
         ResolveImageReplacement(ctx, e);
     }
 
-    // An explicit size is in DIPs at the default font size and scales with
-    // it; an inherited one has been scaled already, by the root or by
-    // whichever ancestor set it.
+    // An explicit size is in DIPs at a 16 px rem and scales with the
+    // window's rem size; an inherited one has been scaled already, by the
+    // root or by whichever ancestor set it. Laid out with no window, the
+    // theme's font size stands for the rem.
+    float rem = ctx && ctx->window
+                    ? WindowRemSize(ctx->window)
+                    : RuntimeStyleNow(ctx ? ctx->app : nullptr).fontSize;
     float font =
-        e->style.fontSize > 0
-            ? e->style.fontSize *
-                  (RuntimeStyleNow(ctx ? ctx->app : nullptr).fontSize / 16.f)
-            : inheritFont;
+        e->style.fontSize > 0 ? e->style.fontSize * (rem / 16.f) : inheritFont;
     Rgba fg = e->style.hasColor ? e->style.color : inheritFg;
     // Like HoverBg, this needs a click id of its own: without one the element
     // would match hoverId 0, which means nothing is hovered.

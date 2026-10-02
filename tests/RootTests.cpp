@@ -56,13 +56,11 @@ static void PluginRegistrationIsIdempotentAndStateIsPerWindow() {
         Entity<Content> content = EntityNew<Content>(&app);
         Entity<gpui::Root> root = gpui::Root::New(&app, wins[i], content.id);
         wins[i]->root = root.id;
-        int n = 0;
-        RootPlugins(wins[i], &n);
-        utassert(n == 1);
-        states[i] = gpui::Root::Plugin(wins[i], &kLayer);
-        utassert(states[i] != nullptr);
         const gpui::Root* read = gpui::Root::Read(wins[i]);
         utassert(read && read->View() == content.id);
+        utassert(read && read->plugins.len == 1);
+        states[i] = read ? read->Plugin(&kLayer) : nullptr;
+        utassert(states[i] != nullptr);
     }
     utassert(states[0] != states[1]);
     utassert(((LayerState*)states[0])->id != ((LayerState*)states[1])->id);
@@ -80,6 +78,47 @@ static void PluginRegistrationIsIdempotentAndStateIsPerWindow() {
     }
     ArenaDelete(arena);
     EntityDropAll(&app);
+}
+
+static El* FindRootId(El* e, Str id) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->id.s && base::StrEq(e->id, id)) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = FindRootId(c, id)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
+// base root.rs render: the surface is `div().id("root")`, and component
+// root.rs WindowState::prepare sets the window's rem size from the theme
+// before anything is built.
+static void TheSurfaceIsRootAndTheRemSizeIsTheThemes() {
+    App app;
+    component::Init(&app);
+    ThemeSetFontSize(&app, 18);
+    Window* win = new Window();
+    win->app = &app;
+    Entity<Content> content = EntityNew<Content>(&app);
+    Entity<gpui::Root> root = gpui::Root::New(&app, win, content.id);
+    win->root = root.id;
+    utassert(WindowRemSize(win) == 16.f);
+    Arena* arena = ArenaNew();
+    Ctx cx = {&app, win, arena, {}};
+    El* surface = gpui::Root::Render(root.Get(&app), &cx);
+    El* rootEl = FindRootId(surface, StrL("root"));
+    utassert(rootEl && FindRootId(rootEl, StrL("content")));
+    utassert(WindowRemSize(win) == 18.f);
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    WindowKeyedFree(win);
+    delete win;
+    AppGlobalClear(&app);
 }
 
 static void TheLastDialogThatWantsAnOverlayShowsIt() {
@@ -120,4 +159,5 @@ void TestRoot() {
     PluginRegistrationIsIdempotentAndStateIsPerWindow();
     TheLastDialogThatWantsAnOverlayShowsIt();
     AnOpenSheetPushesTheNotificationsIn();
+    TheSurfaceIsRootAndTheRemSizeIsTheThemes();
 }

@@ -11,10 +11,8 @@
    Rust's `trait RootPlugin: Render` becomes a function table, and the
    table's address is the plugin's TypeId: registering the same table again
    replaces its factory for future windows instead of mounting it twice.
-   Rust keeps each window's plugin instances on its Root entity; here they
-   are kept on the window (window.use_keyed_state), captured the first time
-   a Root renders in it, so a view that renders a Root surface of its own
-   (`RootSurface`) finds the same instances the Root entity would.
+   Each window's plugin instances are its Root entity's, made when the Root
+   is created in the window and dropped with it.
 
    Tab / shift-tab and ctrl-c (cmd-c) are Root's key bindings in Rust. The
    runtime already walks focus (FocusNext, which honors focus traps) and
@@ -61,19 +59,27 @@ struct Root {
     // defaults.
     Style style = {};
     uint32_t styleFields = 0;
+    // This window's plugin instances, in registration order. Captured from
+    // the registry when the Root is made in a window -- or, for one made
+    // before its window opened, when it first renders there.
+    Vec<RootPluginInstance> plugins;
+    bool captured = false;
+
+    ~Root();
 
     // Root::register_plugin, once per application, before creating windows.
     // Registration does not retrofit windows whose plugins were already
     // captured.
     static void RegisterPlugin(App* app, const RootPlugin* plugin);
 
-    // Root::new. Captures the window's plugins; the entity is what a window
-    // mounts as its root view.
+    // Root::new. Captures the registered plugins for `window`; the entity is
+    // what a window mounts as its root view. A null `window` leaves that to
+    // the first render.
     static Entity<Root> New(App* app, Window* window, EntityId view);
 
     EntityId View() const { return view; }
     // Root::plugin::<V>: this window's instance of `type`, or null.
-    static void* Plugin(Window* window, const RootPlugin* type);
+    void* Plugin(const RootPlugin* type) const;
 
     // Root::read / Root::update: the window's Base Root. Null when the
     // window's root view is not one.
@@ -84,14 +90,10 @@ struct Root {
     static El* Render(Root* self, Ctx* cx);
 };
 
-// The per-window plugin instances, captured on first ask. Count in *n.
-const RootPluginInstance* RootPlugins(Window* window, int* n);
-
 // Root's render around content already built: prepare, the surface with the
 // content and every plugin's overlay, the plugins' styles, `root`'s
-// refinement, then each plugin's decoration. `root` may be null for a view
-// that hosts its own content.
-El* RootSurface(Ctx* cx, const Root* root, El* content);
+// refinement, then each plugin's decoration.
+El* RootSurface(Ctx* cx, Root* root, El* content);
 
 // gpui_kit::open_window: open a window whose root view is a Base Root around
 // `content`, the application content the caller built. The kit crate has no
