@@ -354,6 +354,9 @@ struct MdNode {
     // it has none, which leaves the text out of every range highlight.
     int leafStart = -1;
     int leafOrdinal = 0;
+    // A top-level block's source start (BlockNode::span), what an append
+    // parses again from; -1 for a block whose source is not known.
+    int blockStart = -1;
     MarkdownNode custom = {};
 };
 
@@ -754,10 +757,13 @@ RangeHighlightError RangeHighlightFrameNew(const RenderedIndex* index,
                                            int count,
                                            RangeHighlightFrame** out);
 // RangeHighlightFrame::remap: the highlights that still describe `next`, the
-// parse after `prev`. Null when none do.
+// parse after `prev`. Null when none do. `tailOnly` is an append that kept
+// every block before `tailStart` as it was.
 RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
                                               const RenderedIndex* prev,
-                                              const RenderedIndex* next);
+                                              const RenderedIndex* next,
+                                              bool tailOnly = false,
+                                              int tailStart = -1);
 void RangeHighlightFrameFree(RangeHighlightFrame* frame);
 
 // range_highlight.rs PendingReveal: a range TextViewState::RevealRange is
@@ -799,6 +805,9 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
 // state.rs TextViewState. Parsing remains synchronous behind the existing
 // per-window LRU because this runtime has no cancellable Task<T>; ownership,
 // mutation revisions, selection and managed-view identity are retained.
+struct TextViewParse;
+struct TextViewParseJob;
+
 struct TextViewState {
     EntityId self = {};
     Str text = {};
@@ -834,24 +843,54 @@ struct TextViewState {
     // state.rs fade_tick: the pending repaint of a streamed fade, a
     // WindowSetTimeout handle, or 0.
     int fadeTick = 0;
-    // state.rs rendered_index / committed_revision / range_highlights. The
-    // parse lands when the view renders — this runtime parses synchronously
-    // inside TextView::IntoEl — so that is where ReconcileRangeHighlights
-    // builds the index. `renderedRevision` counts the parses that landed
-    // with a different result; `indexedRevision` and `indexedExtensions`
-    // are the `revision` and parser fingerprint last checked against.
+    // state.rs rendered_index / committed_revision / range_highlights: the
+    // index of the parse that landed last, which ReconcileRangeHighlights
+    // builds as it lands. `renderedRevision` counts the parses that landed.
     RenderedIndex* renderedIndex = nullptr;
     uint64_t renderedRevision = 0;
-    uint64_t indexedRevision = ~(uint64_t)0;
-    uint64_t indexedExtensions = 0;
     RangeHighlightFrame* rangeHighlights = nullptr;
     // state.rs pending_reveal.
     TextViewReveal reveal = {};
+    // state.rs parsed_content and its background parser. What renders is
+    // `parsed`, the last parse that landed, which owns the source its nodes
+    // point into. A replacement of at most kMaxSyncFullReplaceBytes parses
+    // at once; a larger one, and an append, parse in `parseFlight` while the
+    // view keeps rendering `parsed`. An append parses the last block again
+    // with the new text and keeps the blocks before it. A parser plugin
+    // needs the UI thread and a Ctx, so a view that has one parses as it
+    // renders. updateRevision counts text updates, fullUpdateRevision is the
+    // last to replace the text, committedRevision the one `parsed` is of.
+    TextViewParse* parsed = nullptr;
+    TextViewParseJob* parseFlight = nullptr;
+    // Parses that are no longer current, newest first, kept while the
+    // runs last painted may still point into them (TextViewParseRetire).
+    TextViewParse* retiredParses[4] = {};
+    // A parse to start once the one in flight lands.
+    bool parseQueued = false;
+    // The background parser has not yet taken in a small replacement that
+    // parsed at once, so an append before it does merges into one full parse
+    // (UpdateOptions::merge over a BaselineAck).
+    bool baselinePending = false;
+    uint64_t updateRevision = 0;
+    uint64_t fullUpdateRevision = 0;
+    uint64_t committedRevision = 0;
+    // What the view last parsed with: its parser fingerprint, the two flags
+    // a parse off the UI thread needs, and whether it has a parser plugin.
+    uint64_t parserFingerprint = 0;
+    bool parserFrontmatter = false;
+    bool parserMdx = false;
+    bool parserPlugins = false;
 
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
     static Entity<TextViewState> Html(App* app, Str text);
-    Str Source() const { return text; }
+    // state.rs source(): the text of the parse that landed last, which is
+    // what renders. Text set since then is not in it until its parse lands;
+    // `text` is the latest.
+    Str Source() const;
+    // parsed_content.document.blocks.len(): how many top-level blocks the
+    // parse that landed has.
+    int ParsedBlockCount() const;
     void SetText(Str value, App* app, Window* window = nullptr);
     void PushStr(Str value, App* app, Window* window = nullptr);
     void SetSelectable(bool value, App* app, Window* window = nullptr);
@@ -904,13 +943,26 @@ struct TextViewState {
     // scrolled.
     RangeHighlightError RevealRange(Span range, App* app,
                                     Window* window = nullptr);
-    // state.rs reconcile_range_highlights: `doc`, parsed from the current
-    // text with parser fingerprint `extensions`, has landed. Rebuilds the
-    // rendered index when the parse is a new one and carries the highlights
-    // over to it. Called by TextView::IntoEl.
-    // `now` is when the parse landed, for the stream fade it records.
-    void ReconcileRangeHighlights(const MdNode* doc, uint64_t extensions,
-                                  double now = 0);
+    // state.rs reconcile_range_highlights: `doc`, parsed from `source`, has
+    // landed. Rebuilds the rendered index and carries the highlights and a
+    // pending reveal over to it. `tailOnly` is an append whose parse kept
+    // every block that starts before `tailStart` as it was, which are then
+    // kept without comparing them. `now` is when the parse landed, for the
+    // stream fade it records.
+    void ReconcileRangeHighlights(const MdNode* doc, Str source, double now,
+                                  bool tailOnly = false, int tailStart = -1);
+    // increment_update's parse: parse the text as it now is -- at once for a
+    // small replacement, or on the background executor -- with the parser
+    // the view last rendered with, or with `extensions` when the view is
+    // rendering and passes its own. Rendering asks for it when the text has
+    // no parse yet or the parser changed.
+    // `now` parses on this thread whatever the size: a view rendered with no
+    // window has a fresh state each time, which a later parse never reaches.
+    void StartParse(App* app, Window* window,
+                    const MarkdownExtensions* extensions = nullptr,
+                    bool now = false);
+    // The parse a TextViewParseJob made, landing on the UI thread.
+    static void ParseLanded(TextViewParseJob* job);
     // StreamFadeTracker::record: what `next` renders that `prev` did not,
     // for the update noted since the last parse, as segments that start
     // fading at `now` — word by word when the motion staggers.

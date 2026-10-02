@@ -525,10 +525,20 @@ void TextViewState::OnFadeTick(TextViewState* self, Ctx* cx, const TickEvent*) {
     NotifyEntity(cx->app, self->self, cx->win);
 }
 
+// The parse pipeline's own, further down.
+static void TextViewParseFree(TextViewParse* p);
+static void TextViewParseDetach(TextViewParseJob* job);
+
 TextViewState::~TextViewState() {
     StrFree(text);
     RenderedIndexFree(renderedIndex);
     RangeHighlightFrameFree(rangeHighlights);
+    // A parse in flight lands on nothing.
+    TextViewParseDetach(parseFlight);
+    TextViewParseFree(parsed);
+    for (TextViewParse* p : retiredParses) {
+        TextViewParseFree(p);
+    }
 }
 
 static Entity<TextViewState> NewTextViewState(App* app, Str text,
@@ -540,6 +550,9 @@ static Entity<TextViewState> NewTextViewState(App* app, Str text,
         state->self = entity.id;
         state->text = StrDup(text);
         state->format = format;
+        state->updateRevision = 1;
+        state->fullUpdateRevision = 1;
+        state->StartParse(app, nullptr);
     }
     return entity;
 }
@@ -582,6 +595,9 @@ void TextViewState::SetText(Str value, App* app, Window* window) {
     StrFree(text);
     text = replacement;
     Changed(app, window, false);
+    updateRevision++;
+    fullUpdateRevision = updateRevision;
+    StartParse(app, window);
 }
 
 void TextViewState::PushStr(Str value, App* app, Window* window) {
@@ -599,6 +615,8 @@ void TextViewState::PushStr(Str value, App* app, Window* window) {
     StrFree(text);
     text = Str(joined, oldLen + len(value));
     Changed(app, window, true);
+    updateRevision++;
+    StartParse(app, window);
 }
 
 void TextViewState::SetSelectable(bool value, App* app, Window* window) {
@@ -976,6 +994,10 @@ struct MdBuild {
     // inside an unclaimed math span re-parsed as prose, whose own parse
     // measured from the start of the span (markdown.rs shift_positions).
     int32_t posShift = 0;
+    // What `positions` measures from: `source` itself, or, for the tail an
+    // append parses again, the part of it from where that starts. A plugin's
+    // context reads node sources out of it.
+    Str parsed = {};
     MdNode* cur = nullptr;
     // The marks in effect, from the enclosing inline nodes.
     uint8_t marks = 0;
@@ -1880,7 +1902,7 @@ static bool MdClaimedInline(MdBuild* b, const md::Node* n, MarkdownNode* out) {
     }
     MarkdownParseContext context;
     context.arena = b->a;
-    context.source = b->source;
+    context.source = b->parsed;
     context.positions = b->positions;
     for (int i = 0; i < b->extensions->inlineParsers.len; i++) {
         const MarkdownBlockParser& parser = b->extensions->inlineParsers[i];
@@ -2033,8 +2055,20 @@ static void MdInline(MdBuild* b, const md::Node* n) {
 static void MdBlockNode(MdBuild* b, const md::Node* n);
 
 static void MdBlockChildren(MdBuild* b, const md::Node* n) {
+    // A top-level block remembers where its source starts, which is what an
+    // append parses again from (BlockNode::span on the document's blocks).
+    MdNode* parent = b->cur;
+    bool top = parent && parent->kind == MdKind::Doc;
     for (const md::Node* child : md::NodeKids(b->a, n)) {
+        MdNode* before = top ? parent->last : nullptr;
         MdBlockNode(b, child);
+        Span span;
+        if (top && MdNodeSpan(b, child, &span)) {
+            for (MdNode* c = before ? before->next : parent->first; c;
+                 c = c->next) {
+                c->blockStart = span.start;
+            }
+        }
     }
 }
 
@@ -2115,7 +2149,7 @@ static void MdBlockNode(MdBuild* b, const md::Node* n) {
     if (b->extensions) {
         MarkdownParseContext context;
         context.arena = b->a;
-        context.source = b->source;
+        context.source = b->parsed;
         context.positions = b->positions;
         for (int i = 0; i < b->extensions->blockParsers.len; i++) {
             const MarkdownBlockParser& parser = b->extensions->blockParsers[i];
@@ -2285,11 +2319,18 @@ static void MdExpandHtml(Arena* a, MdNode* n) {
     HtmlParseInto(a, n, Str(buf, at));
 }
 
+// `source` from byte `from` on, with every span measured in all of
+// `source`: what an append parses again (parse_content's `node_cx.offset`).
 static MdNode* MdParseWithExtensions(Arena* a, Str source,
-                                     const MarkdownExtensions* extensions) {
+                                     const MarkdownExtensions* extensions,
+                                     int from = 0) {
     MdNode* doc = ArenaNew<MdNode>(a);
     doc->kind = MdKind::Doc;
-    if (!source.s || len(source) <= 0) {
+    if (from < 0 || from > len(source)) {
+        from = 0;
+    }
+    Str parsed = Str(source.s + from, len(source) - from);
+    if (!source.s || len(parsed) <= 0) {
         return doc;
     }
 
@@ -2307,11 +2348,13 @@ static MdNode* MdParseWithExtensions(Arena* a, Str source,
     // The positions are what the runs' source segments are measured from;
     // the table is the parse's own and is gone once the tree is folded.
     md::NodePositions positions;
-    md::Node* root = md::ToMdast(a, source, options, &positions);
+    md::Node* root = md::ToMdast(a, parsed, options, &positions);
 
     MdBuild b;
     b.a = a;
     b.source = source;
+    b.parsed = parsed;
+    b.posShift = from;
     b.extensions = extensions;
     b.positions = &positions;
     b.cur = doc;
@@ -4292,12 +4335,9 @@ static Str LeafText(const RenderedIndex* index, const RenderedLeafSpan* leaf) {
 // offset moved by the change in length; a block that starts between them is
 // gone. A leaf keeps its text up to where it first differs from before.
 //
-// Rust has a second mode, `tail_only`, for a parse that appended to the
-// last one and re-parsed only its last block, keeping the others without
-// comparing them. This runtime parses the whole document every time, so
-// every leaf is compared: the same answer wherever the earlier blocks' text
-// did not change, and the right one where it did (a definition appended
-// after its reference).
+// With `tail_only`, the new parse appended to the old one and parsed only
+// its last block again, from `tailStart`: every block before that was kept
+// as it was, so its leaves are kept without comparing them.
 struct LeafRemap {
     const RenderedIndex* prev = nullptr;
     const RenderedIndex* next = nullptr;
@@ -4305,8 +4345,10 @@ struct LeafRemap {
     int newLen = 0;
     int unchangedPrefix = 0;
     int unchangedSuffix = 0;
+    int tailStart = -1;
 
-    static LeafRemap New(const RenderedIndex* prev, const RenderedIndex* next) {
+    static LeafRemap New(const RenderedIndex* prev, const RenderedIndex* next,
+                         bool tailOnly = false, int tailStart = -1) {
         LeafRemap r;
         r.prev = prev;
         r.next = next;
@@ -4314,6 +4356,11 @@ struct LeafRemap {
         Str newSource = next->source;
         r.oldLen = len(oldSource);
         r.newLen = len(newSource);
+        if (tailOnly) {
+            r.tailStart = tailStart >= 0 ? tailStart : r.oldLen;
+            r.unchangedPrefix = r.oldLen;
+            return r;
+        }
         int shorter = std::min(r.oldLen, r.newLen);
         int prefix = 0;
         while (prefix < shorter && oldSource.s[prefix] == newSource.s[prefix]) {
@@ -4341,6 +4388,11 @@ struct LeafRemap {
     // unchanged; false when it is gone.
     bool Leaf(TextLeafKey key, TextLeafKey* newKey, int* unchanged) const {
         int start = key.BlockStart();
+        if (tailStart >= 0 && start < tailStart) {
+            *newKey = key;
+            *unchanged = 0x7fffffff;
+            return true;
+        }
         int moved = -1;
         if (start < unchangedPrefix) {
             moved = start;
@@ -4378,11 +4430,12 @@ struct LeafRemap {
 // with a leaf that is gone.
 RangeHighlightFrame* RangeHighlightFrameRemap(const RangeHighlightFrame* frame,
                                               const RenderedIndex* prev,
-                                              const RenderedIndex* next) {
+                                              const RenderedIndex* next,
+                                              bool tailOnly, int tailStart) {
     if (!frame || !prev || !next) {
         return nullptr;
     }
-    LeafRemap remap = LeafRemap::New(prev, next);
+    LeafRemap remap = LeafRemap::New(prev, next, tailOnly, tailStart);
     Vec<RangePiece> pieces;
     for (const RangeHighlightFrame::Leaf& leaf : frame->leaves) {
         TextLeafKey newKey = {};
@@ -4549,28 +4602,315 @@ void TextViewState::ClearRangeHighlights(App* app, Window* window) {
     if (app && self.IsValid()) NotifyEntity(app, self, window);
 }
 
-void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
-                                             uint64_t extensions, double now) {
-    if (renderedIndex && indexedRevision == revision &&
-        indexedExtensions == extensions) {
+// ─── parsing (state.rs increment_update / parse_content) ──────────────────
+
+// MAX_SYNC_FULL_REPLACE_BYTES: a replacement this small parses at once, so
+// its first layout has the exact content height.
+static const int kMaxSyncFullReplaceBytes = 4 * 1024;
+
+// A fade recorded as a parse lands starts on the first frame that shows it:
+// it is stamped with this, plus its stagger, and the frame that samples it
+// first puts its own time in its place.
+static const double kFadeAtFirstFrame = -1e12;
+
+// ParsedContent: the parse that landed. Its nodes point into `source`, which
+// it owns, and live in `arenas` -- more than one after an append, which
+// keeps the blocks before its tail in the arenas they were made in.
+struct TextViewParse {
+    Vec<Arena*> arenas;
+    MdNode* doc = nullptr;
+    Str source = {};
+    bool html = false;
+    uint64_t fingerprint = 0;
+};
+
+static void TextViewParseFree(TextViewParse* p) {
+    if (!p) {
         return;
     }
-    indexedRevision = revision;
-    // A revision that left the text alone (selectable, motion) parses
-    // nothing new.
-    if (renderedIndex && indexedExtensions == extensions &&
-        base::StrEq(renderedIndex->source, text)) {
+    for (int i = 0; i < len(p->arenas); i++) {
+        ArenaDelete(p->arenas[i]);
+    }
+    StrFree(p->source);
+    delete p;
+}
+
+// The last painted frame's runs point into the parse it rendered, and so
+// do the window's selection and any copy until the next frame paints. A
+// parse that is no longer current is kept a while, the way the parse cache
+// kept its last few documents.
+static void TextViewParseRetire(TextViewState* s, TextViewParse* p) {
+    if (!p) {
         return;
     }
-    indexedExtensions = extensions;
-    RenderedIndex* next = RenderedIndexNew(doc, text);
+    const int n = (int)dimof(s->retiredParses);
+    TextViewParseFree(s->retiredParses[n - 1]);
+    for (int i = n - 1; i > 0; i--) {
+        s->retiredParses[i] = s->retiredParses[i - 1];
+    }
+    s->retiredParses[0] = p;
+}
+
+// One parse off the UI thread: the whole text, or for an append the part
+// from `from` on, into an arena of its own. `state` is cleared if the state
+// goes before it lands.
+struct TextViewParseJob {
+    TextViewState* state = nullptr;
+    Str source = {};
+    int from = 0;
+    bool append = false;
+    bool html = false;
+    bool frontmatter = false;
+    bool mdx = false;
+    uint64_t fingerprint = 0;
+    uint64_t revision = 0;
+    App* app = nullptr;
+    Arena* arena = nullptr;
+    MdNode* doc = nullptr;
+};
+
+// parse_content: markdown from `from` on with its spans measured in all of
+// `source`, or the HTML from `from` on (HTML blocks carry no spans, so an
+// append parses only the new text).
+static MdNode* TextViewParseSource(Arena* a, Str source, int from, bool html,
+                                   const MarkdownExtensions* extensions) {
+    if (html) {
+        return HtmlParse(a, Str(source.s + from, len(source) - from));
+    }
+    return MdParseWithExtensions(a, source, extensions, from);
+}
+
+static void TextViewParseDetach(TextViewParseJob* job) {
+    if (job) {
+        job->state = nullptr;
+    }
+}
+
+static void TextViewParseWork(TextViewParseJob* job) {
+    job->arena = ArenaNew();
+    // Only the flags: a view with a parser plugin parses on the UI thread.
+    MarkdownExtensions flags;
+    flags.enableFrontmatter = job->frontmatter;
+    flags.enableMdx = job->mdx;
+    job->doc = TextViewParseSource(job->arena, job->source, job->from,
+                                   job->html, &flags);
+}
+
+// What an update parses: the text from where an append parses again, or
+// from the start. `append` is false when the text was replaced since the
+// committed parse, or an append comes before the background parser took in
+// a small replacement (UpdateOptions::merge into a full parse).
+static bool TextViewParseAppend(const TextViewState* s, uint64_t fingerprint,
+                                int* from) {
+    const TextViewParse* p = s->parsed;
+    bool html = s->format == TextViewFormat::Html;
+    if (!p || p->fingerprint != fingerprint || p->html != html ||
+        s->fullUpdateRevision > s->committedRevision || s->baselinePending ||
+        len(s->text) <= len(p->source) || !StrStartsWith(s->text, p->source)) {
+        *from = 0;
+        return false;
+    }
+    // The last block parses again with the appended text, so a block the
+    // new text continues (an unclosed list, a fence) is not split in two.
+    const MdNode* last = p->doc ? p->doc->last : nullptr;
+    *from = !html && last && last->blockStart >= 0 ? last->blockStart
+                                                   : len(p->source);
+    return true;
+}
+
+// The parse of `revision` lands: `doc`, in `arena`, parsed from `source`
+// (handed over) from `from` on. An append replaces the committed parse's
+// last block, if it parsed it again, and keeps the ones before it.
+static void TextViewCommit(TextViewState* s, App* app, Arena* arena,
+                           MdNode* doc, Str source, bool append, int from,
+                           uint64_t revision, uint64_t fingerprint,
+                           double now) {
+    bool tailOnly = append && s->fullUpdateRevision <= s->committedRevision;
+    TextViewParse* p = s->parsed;
+    if (append && p && p->doc) {
+        if (p->doc->last && from < len(p->source)) {
+            // The last block was parsed again; drop the old one.
+            MdNode* prev = nullptr;
+            for (MdNode* c = p->doc->first; c && c != p->doc->last;
+                 c = c->next) {
+                prev = c;
+            }
+            if (prev) {
+                prev->next = nullptr;
+            } else {
+                p->doc->first = nullptr;
+            }
+            p->doc->last = prev;
+        }
+        for (MdNode* c = doc ? doc->first : nullptr; c;) {
+            MdNode* next = c->next;
+            c->parent = p->doc;
+            c->next = nullptr;
+            if (p->doc->last) {
+                p->doc->last->next = c;
+            } else {
+                p->doc->first = c;
+            }
+            p->doc->last = c;
+            c = next;
+        }
+        VecAppend(p->arenas, arena);
+        // The runs last painted point into the old source: retire it.
+        TextViewParse* old = new TextViewParse();
+        old->source = p->source;
+        TextViewParseRetire(s, old);
+        p->source = source;
+    } else {
+        TextViewParse* next = new TextViewParse();
+        VecAppend(next->arenas, arena);
+        next->doc = doc;
+        next->source = source;
+        TextViewParseRetire(s, p);
+        s->parsed = next;
+        p = next;
+    }
+    p->html = s->format == TextViewFormat::Html;
+    p->fingerprint = fingerprint;
+    s->committedRevision = revision;
+    s->ReconcileRangeHighlights(p->doc, p->source, now, tailOnly,
+                                tailOnly ? from : -1);
+    if (app && s->self.IsValid()) {
+        NotifyEntity(app, s->self, nullptr);
+    }
+}
+
+// The background parser takes in a small replacement that parsed at once
+// (BaselineAck): until it has, an append merges into one full parse.
+struct TextViewBaselineAck {
+    App* app = nullptr;
+    EntityId self = {};
+};
+
+static void TextViewBaselineAcked(TextViewBaselineAck* ack) {
+    if (auto* s = (TextViewState*)EntityGet(ack->app, ack->self)) {
+        s->baselinePending = false;
+    }
+    delete ack;
+}
+
+Str TextViewState::Source() const {
+    return parsed ? parsed->source : Str{};
+}
+
+int TextViewState::ParsedBlockCount() const {
+    int n = 0;
+    for (const MdNode* c = parsed && parsed->doc ? parsed->doc->first : nullptr;
+         c; c = c->next) {
+        n++;
+    }
+    return n;
+}
+
+void TextViewState::StartParse(App* app, Window* window,
+                               const MarkdownExtensions* extensions, bool now) {
+    (void)window;
+    bool html = format == TextViewFormat::Html;
+    if (extensions && !html) {
+        parserFingerprint = extensions->ParserFingerprint();
+        parserFrontmatter = extensions->enableFrontmatter;
+        parserMdx = extensions->enableMdx;
+        parserPlugins = extensions->blockParsers.len > 0 ||
+                        extensions->inlineParsers.len > 0;
+    }
+    uint64_t fingerprint = html ? 0 : parserFingerprint;
+    if (parseFlight) {
+        parseQueued = true;
+        return;
+    }
+    if (parsed && committedRevision == updateRevision &&
+        parsed->fingerprint == fingerprint && parsed->html == html) {
+        return;
+    }
+    int from = 0;
+    bool append = TextViewParseAppend(this, fingerprint, &from);
+    // With no main thread for the executor to land a parse on -- no app has
+    // started one -- the parse happens here.
+    bool sync = (!append && len(text) <= kMaxSyncFullReplaceBytes) ||
+                !ExecOnMainThread() || now;
+    if (parserPlugins && !html) {
+        // A plugin parses with the view's own registrations, on this thread.
+        if (!extensions) {
+            return;
+        }
+        sync = true;
+    }
+    if (sync) {
+        Arena* arena = ArenaNew();
+        Str source = StrDup(text);
+        MarkdownExtensions flags;
+        flags.enableFrontmatter = parserFrontmatter;
+        flags.enableMdx = parserMdx;
+        MdNode* doc = TextViewParseSource(arena, source, from, html,
+                                          extensions ? extensions : &flags);
+        TextViewCommit(this, app, arena, doc, source, append, from,
+                       updateRevision, fingerprint, kFadeAtFirstFrame);
+        if (!append && app && self.IsValid()) {
+            baselinePending = true;
+            auto* ack = new TextViewBaselineAck();
+            ack->app = app;
+            ack->self = self;
+            ExecPost(MkFunc0(&TextViewBaselineAcked, ack));
+        }
+        return;
+    }
+    auto* job = new TextViewParseJob();
+    job->state = this;
+    job->app = app;
+    job->source = StrDup(text);
+    job->from = from;
+    job->append = append;
+    job->html = html;
+    job->frontmatter = parserFrontmatter;
+    job->mdx = parserMdx;
+    job->fingerprint = fingerprint;
+    job->revision = updateRevision;
+    parseFlight = job;
+    if (!ExecSpawn(MkFunc0(&TextViewParseWork, job),
+                   MkFunc0(&TextViewState::ParseLanded, job))) {
+        // No executor to run it on: the parse happens here instead.
+        TextViewParseWork(job);
+        ParseLanded(job);
+    }
+}
+
+void TextViewState::ParseLanded(TextViewParseJob* job) {
+    TextViewState* s = job->state;
+    if (!s) {
+        if (job->arena) ArenaDelete(job->arena);
+        StrFree(job->source);
+        delete job;
+        return;
+    }
+    s->parseFlight = nullptr;
+    // An append is of the parse it was started from, which is still the
+    // committed one: nothing commits while a parse is in flight.
+    TextViewCommit(s, job->app, job->arena, job->doc, job->source, job->append,
+                   job->from, job->revision, job->fingerprint,
+                   kFadeAtFirstFrame);
+    App* app = job->app;
+    delete job;
+    if (s->parseQueued || s->committedRevision != s->updateRevision) {
+        s->parseQueued = false;
+        s->StartParse(app, nullptr);
+    }
+}
+
+void TextViewState::ReconcileRangeHighlights(const MdNode* doc, Str source,
+                                             double now, bool tailOnly,
+                                             int tailStart) {
+    RenderedIndex* next = RenderedIndexNew(doc, source);
     // The tracker compares rendered text, not source, so `**bo` completing
     // into bold `bold` fades the changed glyphs rather than mapping source
     // bytes.
     RecordStreamFade(renderedIndex, next, now);
     if (rangeHighlights) {
-        RangeHighlightFrame* moved =
-            RangeHighlightFrameRemap(rangeHighlights, renderedIndex, next);
+        RangeHighlightFrame* moved = RangeHighlightFrameRemap(
+            rangeHighlights, renderedIndex, next, tailOnly, tailStart);
         RangeHighlightFrameFree(rangeHighlights);
         rangeHighlights = moved;
     }
@@ -4580,7 +4920,7 @@ void TextViewState::ReconcileRangeHighlights(const MdNode* doc,
         TextLeafKey key = {};
         int unchanged = 0;
         if (!reveal.block && renderedIndex &&
-            LeafRemap::New(renderedIndex, next)
+            LeafRemap::New(renderedIndex, next, tailOnly, tailStart)
                 .Leaf(reveal.key, &key, &unchanged) &&
             reveal.offset < unchanged) {
             reveal.key = key;
@@ -4658,6 +4998,12 @@ int TextViewState::StreamFadeFrame(Arena* a, double now,
     if (MotionReduced() || motion.streamFadeMs <= 0) {
         VecClear(fadeSegments);
         return 0;
+    }
+    for (int i = 0; i < len(fadeSegments); i++) {
+        StreamFadeSegment& s = fadeSegments[i];
+        if (s.startedAt < kFadeAtFirstFrame / 2) {
+            s.startedAt = now + (s.startedAt - kFadeAtFirstFrame);
+        }
     }
     Timing timing = Timing::New(motion.streamFadeMs)
                         .Ease(motion.streamFadeEasing);
@@ -5165,6 +5511,8 @@ El* TextView::IntoEl() {
                 managed->text = StrDup(source);
                 managed->revision++;
                 managed->selectionRevision++;
+                managed->updateRevision++;
+                managed->fullUpdateRevision = managed->updateRevision;
             }
             managed->elementTextPtr = source.s;
             managed->elementTextLen = len(source);
@@ -5199,9 +5547,36 @@ El* TextView::IntoEl() {
     }
 
     BaseTextViewStatePush(cx->app, state.id);
-    MdNode* doc = MdParseCached(cx, a, source, html,
-                                html ? nullptr : &markdownExtensions);
-    // The parse has landed: carry the range highlights over to it.
+    // A state renders the parse that landed last. One that has none for its
+    // text yet, or whose parser changed, starts one here: at once when it is
+    // small or the view has a parser plugin, which needs this view's
+    // registrations, and otherwise in the background while the last
+    // document stays up. A state-less caller parses through the cache.
+    MdNode* doc = nullptr;
+    if (managed) {
+        uint64_t fingerprint =
+            html ? 0 : markdownExtensions.ParserFingerprint();
+        bool stale = !managed->parsed ||
+                     managed->parsed->fingerprint != fingerprint ||
+                     managed->committedRevision != managed->updateRevision;
+        if (stale && !managed->parseFlight) {
+            if (managed->parsed && managed->parsed
+                                           ->fingerprint != fingerprint) {
+                // A new parser parses everything again.
+                managed->fullUpdateRevision = ++managed->updateRevision;
+            }
+            managed
+                ->StartParse(cx->app, cx->win, &markdownExtensions, !cx->win);
+        }
+        doc = managed->parsed ? managed->parsed->doc : nullptr;
+    } else {
+        doc = MdParseCached(cx, a, source, html,
+                            html ? nullptr : &markdownExtensions);
+    }
+    if (!doc) {
+        doc = ArenaNew<MdNode>(a);
+        doc->kind = MdKind::Doc;
+    }
     rangeHighlights = nullptr;
     revealTarget = nullptr;
     revealOut = nullptr;
@@ -5210,11 +5585,6 @@ El* TextView::IntoEl() {
     nStreamFades = 0;
     if (managed) {
         double now = MotionNow(cx);
-        managed->ReconcileRangeHighlights(
-            doc, html ? 0 : markdownExtensions.ParserFingerprint(), now);
-        // An update whose parse changed nothing rendered has nothing to fade.
-        managed->streamFadePending = false;
-        managed->streamFadeReplace = false;
         rangeHighlights = managed->rangeHighlights;
         RevealFrame(managed);
         StreamFadeRange* fades = nullptr;

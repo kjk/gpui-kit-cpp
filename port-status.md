@@ -67,16 +67,22 @@ macOS font-kit requirement on the website only. The current update target is
   Enter and Tab. X11 marks the press after a dropped auto-repeat release as
   held, where Zed's X11 client drops the same release but reports every
   press as fresh (`KeyDownFlags`, `src/gpui/platform.h`).
-- **TextView range highlights land with the render.** Rust parses in the
-  background and rebuilds `RenderedText` when a parse lands; the parse here
-  is synchronous inside `TextView::IntoEl`, so `RenderedText()` and the
-  validation `SetRangeHighlights` does describe the last rendered text until
-  the view renders again. `RenderedText::text` is borrowed from the view's
-  index (Rust's snapshot holds the parsed document), so read a fresh
-  snapshot's text and only compare old ones. Every parse is a full one, so
-  `remap` always compares every leaf rather than Rust's `tail_only` fast
-  path, and the Rust-only `an_append_after_a_full_update…` case collapses
-  into the append test (`src/base/text.cpp`).
+- **A TextView's parser plugins are the view's, so it parses as it
+  renders.** Parsing follows state.rs: a small replacement parses at once,
+  a larger one and an append parse on the background executor while the
+  last document stays up, and an append parses its last block again and
+  keeps the rest (`tail_only`). But markdown extensions are set on the
+  `TextView` each frame rather than on the state, and a plugin takes a
+  `Ctx`, so a view with a parser plugin parses on the UI thread when it
+  renders, and a state parses with the parser flags its view last rendered
+  with. Updates that arrive during a parse are taken up when it lands
+  rather than merged by `MAX_COALESCED_UPDATES_PER_PARSE`; a parse cannot
+  fail, so there is no `parsed_error` (state.rs
+  `set_text_extending_after_a_parse_error_parses_it_again` is not ported);
+  and a streamed fade starts on the first frame that shows it.
+  `RenderedText::text` is borrowed from the view's index (Rust's snapshot
+  holds the parsed document), so read a fresh snapshot's text and only
+  compare old ones (`src/base/text.cpp`).
 - **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
   enclosing `gpui::list` to autoscroll during prepaint and checks the line
   against the content mask. Here the view marks the text the range starts in

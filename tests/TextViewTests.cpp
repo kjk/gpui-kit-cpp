@@ -4,6 +4,19 @@
 
 #include "Test.h"
 
+// run_until_parked for a fixture with no test platform: every parse in
+// flight lands, and whatever it posted back runs.
+static void RhPark() {
+    for (int round = 0; round < 64; round++) {
+        if (ExecPending() > 0) {
+            ExecWaitIdle(10000);
+        }
+        if (ExecDrain() == 0 && ExecPending() == 0 && ExecQueued() == 0) {
+            return;
+        }
+    }
+}
+
 using namespace gpui::component;
 
 // The n-th child of `n`, or null.
@@ -1225,6 +1238,7 @@ static void TestEqualBlockCountReplacementRemeasures() {
             }
         }
         state.Get(&app)->SetText(source.TakeStr(), &app, win);
+        RhPark();
         El* view = TextView::New(&cx, state)->IntoEl();
         LayoutEl(&win->paint, view, 0, 0, 400, 200, 16, Rgba{}, layout);
         heights[pass] = TextViewSubtreeBottom(view);
@@ -2043,6 +2057,7 @@ static void SetTextStreamingMarkdownMatchesAFullParse() {
         state->SetText(Str(text.els, text.len), &app);
     }
     utassert(state->selectionRevision == selection);
+    RhPark();
     utassert(base::StrEq(state->Source(), Str(text.els, text.len)));
     EntityDropAll(&app);
     AppGlobalClear(&app);
@@ -2161,6 +2176,7 @@ static void StreamedWordsFadeInOneAfterAnother() {
     TextView::New(&cx, entity)->IntoEl();
 
     state->PushStr(StrL(" one two  three"), &app, win);
+    RhPark();
     TextView::New(&cx, entity)->IntoEl();
     utassert(len(state->fadeSegments) == 3);
     if (len(state->fadeSegments) == 3) {
@@ -2805,9 +2821,8 @@ static void TestSourceRangeSelectAllAndHtml() {
 // ─── range highlights ─────────────────────────────────────────────────────
 //
 // range_highlight.rs and state.rs `mod range_highlights`. Rust's tests run a
-// parse through TestAppContext and read the resolved frame; the parse lands
-// here when the view renders, so each fixture renders once after every
-// change, where Rust runs until parked.
+// parse through TestAppContext and read the resolved frame; each fixture
+// here runs until parked and renders after every change (RhRender).
 
 // ─── inline.rs highlight geometry ─────────────────────────────────────────
 //
@@ -2997,8 +3012,10 @@ static void HighlightsFollowCenteredAndRightAlignedRows() {
     utassert(left[0].left == 0);
     float centerLeft = TextAlignedRowLeft(TextAlign::Center, width, w);
     float rightLeft = TextAlignedRowLeft(TextAlign::Right, width, w);
-    utassert(fabsf(center[0].left - centerLeft) < 0.5f);
-    utassert(fabsf(right[0].left - rightLeft) < 0.5f);
+    // Within a pixel: Pango places a centered row on a whole pixel, where
+    // half the spare width can fall between two.
+    utassert(fabsf(center[0].left - centerLeft) < 1.f);
+    utassert(fabsf(right[0].left - rightLeft) < 1.f);
     utassert(center[0].row == 2 && right[0].row == 2);
 }
 
@@ -3022,12 +3039,21 @@ struct RhView {
     const MarkdownExtensions* extensions = nullptr;
 };
 
-static void RhRender(RhView* v) {
+static void RhRenderOnce(RhView* v) {
     gpui::TextView* view = gpui::TextView::New(&v->cx, v->state);
     if (v->extensions) {
         view->MarkdownExtensionsSet(*v->extensions);
     }
     view->IntoEl();
+}
+
+// The update parks before it renders, as Rust's tests run until parked,
+// and a parse the render started lands before the frame after it.
+static void RhRender(RhView* v) {
+    RhPark();
+    RhRenderOnce(v);
+    RhPark();
+    RhRenderOnce(v);
 }
 
 static void RhOpen(RhView* v, const char* markdown, bool html = false) {
@@ -3526,9 +3552,12 @@ static void StreamingThroughSetTextKeepsHighlights() {
     RhClose(&v);
 }
 
-// a_full_parse_merged_with_an_append_compares_every_block, and
-// an_append_after_a_full_update_compares_every_block: this runtime parses
-// the whole document every time, so an append compares every block too.
+// a_full_parse_merged_with_an_append_compares_every_block: the small text
+// parses at once, and the append that comes before the background parser
+// took it in merges with it into one full parse, in which the definition
+// turns the earlier `[foo]` into the link text `foo`. (Rust's
+// an_append_after_a_full_update_compares_every_block drives the same
+// reconcile with internal revisions this tree keeps inside the commit.)
 static void AnAppendComparesEveryBlock() {
     RhView v;
     RhOpen(&v, "");
@@ -3884,10 +3913,9 @@ static void AnAppendAddingBlocksKeepsTheScrollPosition() {
 //
 // state.rs mod tests drive a TextViewState through TestAppContext: a parse
 // lands when the background executor runs, and run_until_parked is what
-// waits for it. The parse here is synchronous inside TextView::IntoEl
-// (port-status.md "TextView range highlights land with the render"), so each
-// state is opened in a test-platform window (gpui/test_app.h) whose root
-// renders it, and a parse lands with the frame the update's flush draws.
+// waits for it. Each state here is opened in a test-platform window
+// (gpui/test_app.h) whose root renders it, and an update's flush runs until
+// parked (TswFlush), so the parse has landed and the frame after it drawn.
 
 #if GPUI_MARKDOWN_FULL
 
@@ -4057,6 +4085,9 @@ static void TswClose(TswView* v) {
 static void TswFlush(const TswView& v) {
     AppInvalidate(v.win);
     TestFlushEffects(v.app);
+    // Rust's tests run until parked, which is when a background parse
+    // lands.
+    TestRunUntilParked(v.app);
 }
 
 static void TswPushStr(const TswView& v, const char* text) {
@@ -4351,12 +4382,58 @@ static void AFadeRepaintsOnATimerUntilNothingFadesInAWindow() {
 
 // ─── parsing ──────────────────────────────────────────────────────────────
 
-// state.rs small_full_replace_parses_before_background_executor_runs and
-// large_markdown_and_html_full_replacements_wait_for_background_executor:
-// not ported — every parse here is the synchronous one inside
-// TextView::IntoEl, so there is no MAX_SYNC_FULL_REPLACE_BYTES and no
-// background parse to wait for (port-status.md "TextView range highlights
-// land with the render").
+// state.rs MAX_SYNC_FULL_REPLACE_BYTES.
+static const int kMaxSyncFullReplaceBytes = 4 * 1024;
+
+// state.rs small_full_replace_parses_before_background_executor_runs.
+static void SmallFullReplaceParsesBeforeBackgroundExecutorRuns() {
+    App* app = TestAppNew();
+    const char* markdown = "# ready";
+    Entity<gpui::TextViewState> state =
+        gpui::TextViewState::Markdown(app, Str(markdown));
+    gpui::TextViewState* s = state.Get(app);
+    utassert(StrEq(s->Source(), Str(markdown)));
+    utassert(s->ParsedBlockCount() == 1);
+    TestAppFree(app);
+}
+
+// state.rs large_markdown_and_html_full_replacements_wait_for_background_
+// executor.
+static void LargeMarkdownAndHtmlFullReplacementsWaitForBackgroundExecutor() {
+    App* app = TestAppNew();
+    StrBuilder markdown;
+    for (int i = 0; i < kMaxSyncFullReplaceBytes / 5 + 1; i++) {
+        markdown.Append(StrL("# x\n\n"));
+    }
+    StrBuilder html;
+    html.Append(StrL("<p>"));
+    for (int i = 0; i < kMaxSyncFullReplaceBytes + 1; i++) {
+        html.AppendChar('x');
+    }
+    html.Append(StrL("</p>"));
+    Str md = markdown.TakeStr();
+    Str ht = html.TakeStr();
+    utassert(len(md) > kMaxSyncFullReplaceBytes);
+    utassert(len(ht) > kMaxSyncFullReplaceBytes);
+
+    Entity<gpui::TextViewState> mdState =
+        gpui::TextViewState::Markdown(app, md);
+    Entity<gpui::TextViewState> htState = gpui::TextViewState::Html(app, ht);
+    gpui::TextViewState* m = mdState.Get(app);
+    gpui::TextViewState* h = htState.Get(app);
+    utassert(StrEq(m->text, md) && len(m->Source()) == 0);
+    utassert(m->ParsedBlockCount() == 0);
+    utassert(StrEq(h->text, ht) && len(h->Source()) == 0);
+    utassert(h->ParsedBlockCount() == 0);
+
+    TestRunUntilParked(app);
+
+    utassert(StrEq(m->Source(), md) && m->ParsedBlockCount() > 0);
+    utassert(StrEq(h->Source(), ht) && h->ParsedBlockCount() > 0);
+    StrFree(md);
+    StrFree(ht);
+    TestAppFree(app);
+}
 
 static bool ParseFormulaText(const markdown::Node* source,
                              const MarkdownParseContext* context, void*,
@@ -4516,9 +4593,8 @@ static bool TswSelectedTextIs(const TswView& v, const char* want) {
 // runs"), so text that lands after it is not in it.
 
 // state.rs set_text_extending_after_a_parse_error_parses_it_again: not
-// ported — a parse here cannot fail, so there is no parsed_error, and with no
-// background parse there is no full_update_revision to restart (port-status.md
-// "TextView range highlights land with the render").
+// ported — a parse here cannot fail, so there is no parsed_error to parse
+// again after (port-status.md "A TextView's parser plugins are the view's").
 
 // state.rs select_all_returns_rendered_text
 static void SelectAllReturnsRenderedText() {
@@ -5135,6 +5211,8 @@ static void TestTextStateWindow() {
     ZeroDurationRecordsNothing();
     ReducedMotionDropsTheFade();
     AFadeRepaintsOnATimerUntilNothingFadesInAWindow();
+    SmallFullReplaceParsesBeforeBackgroundExecutorRuns();
+    LargeMarkdownAndHtmlFullReplacementsWaitForBackgroundExecutor();
     InlineSourceRangesFollowStreamedTailReparsing();
     AsyncFullReplaceThenPushStrPreservesCompleteSource();
     HtmlPushStrKeepsEarlierBlocks();
