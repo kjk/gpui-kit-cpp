@@ -689,6 +689,21 @@ static Str TitleHovered(Arena*, const void* d, void*) {
     return Str(gTitledDatum->month);
 }
 
+static El* FindChartEl(El* e) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->kind == ElKind::Chart) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* found = FindChartEl(c)) {
+            return found;
+        }
+    }
+    return nullptr;
+}
+
 struct HoveredLineView {
     static El* Render(HoveredLineView*, Ctx* cx) {
         static const float sales[] = {10, 20, 30};
@@ -719,6 +734,24 @@ static void AHoveredSeriesChartBuildsItsTooltipFromTheDatum() {
     TestAdvanceClock(app, 500);
     TestDraw(win);
     utassert(gTitledDatum && StrEq(Str(gTitledDatum->month), StrL("Mar")));
+
+    // The overlay is the Tooltip's whole: the crosshair, the series' dot and
+    // the box, as children of the overlay the chart hangs over its plot,
+    // and the chart paints none of them itself. One frame built and painted
+    // here, where the tree can be read after.
+    Entity<HoveredLineView> view = {};
+    view.id = win->root;
+    El* root = EntityRender(app, win, win->frameArena, view.id);
+    const RuntimeStyle& th = RuntimeStyleNow(app);
+    LayoutEl(&win->paint, root, 0, 0, 300, 200, th.fontSize, th.foreground);
+    PaintEl(&win->paint, root);
+    El* chart = FindChartEl(root);
+    El* overlay = chart ? chart->last : nullptr;
+    int parts = 0;
+    for (El* c = overlay ? overlay->first : nullptr; c; c = c->next) {
+        parts++;
+    }
+    utassert(parts == 3);
     TestAppFree(app);
 }
 

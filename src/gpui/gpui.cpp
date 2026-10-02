@@ -6778,81 +6778,66 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             for (int k = 0; held.dots && k < held.dotCount && k < nDotAt; k++) {
                 dotAt[k] = {x + held.dots[k].x, y + held.dots[k].y};
             }
-            float drawX = targetX;
-            if (ctx->window && ctx->app) {
-                // Tooltip::glide: on the pointer spring, adopting the datum on
-                // the frame the cursor lands rather than travelling from where
-                // the last hover ended. A crosshair glides along the axis it
-                // marks only, so it keeps up with a cursor it also follows;
-                // each dot glides on both axes. A bar's highlighted band is
-                // PlotHover::glide, the one position it springs.
-                Spring policy = plot::PointerSpring(ctx->app)
-                                    .WithTravel(!hover.IsEntering());
-                drawX = motion::spring(
-                    &hoverCx,
-                    motion::TransitionId(StrL("__plot-hover"),
-                                         bandHover ? StrL("band") : StrL("x")),
-                    targetX, policy);
-                for (int k = 0; !bandHover && k < nDotAt; k++) {
-                    dotAt[k].x = motion::spring(
-                        &hoverCx,
-                        motion::TransitionId(StrL("__plot-hover-dot-x"),
-                                             Str(fmt("%d", k))),
-                        dotAt[k].x, policy);
-                    dotAt[k].y = motion::spring(
-                        &hoverCx,
-                        motion::TransitionId(StrL("__plot-hover-dot-y"),
-                                             Str(fmt("%d", k))),
-                        dotAt[k].y, policy);
-                }
-            }
-            const float kCrossDash[2] = {4.f, 3.f};
-            Rgba hair =
-                RgbaOpacity(RgbaMixHsl(th.border, th.foreground, 0.8f), focus);
-            if (bandHover) {
-                const float range[2] = {0.f, w};
-                component::ScaleBand band =
-                    component::ScaleBand::New(n, range, 2)
-                        .BandCount(c.bandCount)
-                        .MaxBandWidth(c.maxBandWidth);
-                band.paddingInner = c.bandPadding;
-                band.paddingOuter = c.bandPaddingOuter;
-                float bw = band.BandWidth();
-                CanvasFillRect(ctx, drawX - bw * 0.5f, y, bw, plotH,
-                               RgbaOpacity(th.foreground, 0.08f * focus));
-            } else {
-                CanvasLine(ctx, drawX, y, drawX, y + plotH, 1.f, hair,
-                           kCrossDash);
-                // The ring grows out of the first dot as the hover fades in.
-                float halo = component::kChartHoverHaloSize * focus;
-                if (halo > 0) {
-                    FillRound(ctx, dotAt[0].x - halo * 0.5f,
-                              dotAt[0].y - halo * 0.5f, halo, halo, halo * 0.5f,
-                              RgbaOpacity(c.stroke, 0.2f * focus));
-                }
-                float ds = component::kChartHoverDotSize;
-                for (int k = 0; k < nDotAt; k++) {
-                    float dx = dotAt[k].x - ds * 0.5f;
-                    float dy = dotAt[k].y - ds * 0.5f;
-                    FillRound(ctx, dx, dy, ds, ds, ds * 0.5f, dotInk[k]);
-                    DrawRoundStroke(ctx, dx, dy, ds, ds, ds * 0.5f, 1.f,
-                                    th.background);
-                }
-            }
-
             if (ctx->window && ctx->window->frameArena) {
-                // Plot::tooltip: the box is a plot::Tooltip, built here,
-                // laid out over the plot and painted after it, as
-                // PlotElement does with the overlay Plot::tooltip returns.
-                // The crosshair and dots above stay the chart's.
+                // Plot::tooltip: a plot::Tooltip with the crosshair -- a
+                // band the width of the slot for a bar or a candle -- and a
+                // dot per series, built here, laid out over the plot and
+                // painted after it, as PlotElement does with the overlay
+                // Plot::tooltip returns. Positions are the plot's.
                 Ctx buildCx = hoverCx;
                 buildCx.a = ctx->window->frameArena;
                 component::plot::Tooltip* overlay =
                     component::plot::Tooltip::New(&buildCx, lingerCursor,
                                                   {w, plotH})
                         ->Gap(8)
-                        ->Glide(false)
                         ->Progress(focus);
+                if (bandHover) {
+                    const float range[2] = {0.f, w};
+                    component::ScaleBand band =
+                        component::ScaleBand::New(n, range, 2)
+                            .BandCount(c.bandCount)
+                            .MaxBandWidth(c.maxBandWidth);
+                    band.paddingInner = c.bandPadding;
+                    band.paddingOuter = c.bandPaddingOuter;
+                    float bandX = targetX - x;
+                    if (c.kind == ChartKind::Bar) {
+                        // bar_chart.rs: the band sits where PlotHover::glide
+                        // has taken it, which the tooltip must not glide
+                        // again (`.glide(false)`).
+                        Spring policy = plot::PointerSpring(ctx->app)
+                                            .WithTravel(!hover.IsEntering());
+                        bandX = motion::spring(
+                                    &hoverCx,
+                                    motion::TransitionId(StrL("__plot-hover"),
+                                                         StrL("band")),
+                                    targetX, policy) -
+                                x;
+                        overlay->Glide(false);
+                    }
+                    component::plot::CrossLine cross =
+                        component::plot::CrossLine::New({bandX, 0});
+                    cross.Span(0, plotH)->Band(band.BandWidth());
+                    overlay->Cross(cross);
+                } else {
+                    // area_chart.rs / line_chart.rs: the crosshair confined
+                    // to the plot, and each series' dot with its halo.
+                    component::plot::CrossLine cross =
+                        component::plot::CrossLine::New(
+                            {targetX - x, held.crossLine.y});
+                    cross.Height(plotH);
+                    overlay->Cross(cross);
+                    component::plot::Dot dots[5];
+                    for (int k = 0; k < nDotAt; k++) {
+                        dots[k] = component::plot::Dot::New(
+                            {dotAt[k].x - x, dotAt[k].y - y});
+                        dots[k]
+                            .Size(component::kChartHoverDotSize)
+                            ->Halo(component::kChartHoverHaloSize)
+                            ->Stroke(th.background)
+                            ->Fill(dotInk[k]);
+                    }
+                    overlay->Dots(dots, nDotAt);
+                }
                 component::ChartTooltipSeriesRow rows[5] = {};
                 int nRows = ChartSeriesTooltipRows(c, index, rows, 5);
                 Str own = c.labels ? Str(c.labels[index])

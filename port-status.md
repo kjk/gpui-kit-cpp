@@ -114,16 +114,11 @@ macOS font-kit requirement on the website only. The current update target is
   takes its focus trap as its scope, which is what confines a dialog's text:
   the dialogs name no scope of their own (`src/base/text_selection.cpp`,
   `ElSelectionScope` in `src/gpui/gpui.cpp`).
-- **A series chart paints its own crosshair and dots.** Line, area, bar
-  and candlestick charts are one custom-painted element: their tooltip box
-  is a `plot::Tooltip` built while the chart paints and laid out over the
-  plot (`plot::PlotOverlayAttach`, `src/ui/plot.h`), but the crosshair,
-  the hovered band and the dots that Rust hands the Tooltip
-  (`cross_line`, `dots`) are painted by the chart under it
-  (`DrawChart` in `src/gpui/gpui.cpp`). The charts hold numbers rather
-  than mapping a `data: Vec<T>`, so the datum the tooltip closures
-  receive is an item of what `Data(..)` gave the chart, or the chart's
-  own number for the point.
+- **A chart's tooltip datum is what `Data(..)` gave it.** The charts hold
+  numbers rather than mapping a `data: Vec<T>`, so the datum the tooltip
+  closures receive is an item of what `Data(..)` gave the chart, or the
+  chart's own number for the point (`ChartTooltipContent::Datum`,
+  `src/gpui/gpui.h`).
 - **Base plot values are float.** The scales take `float` domains, so
   Rust's `PlotValue` bound (f32, f64, Decimal) has no counterpart, and a
   range is a pointer and count read as its first two entries. There is no
