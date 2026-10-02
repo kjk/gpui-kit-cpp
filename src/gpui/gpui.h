@@ -3555,6 +3555,20 @@ namespace scene {
 struct State;
 }
 
+// One element id on the path the paint walk is down: the ids of the
+// elements around the one painting, innermost first. GPUI keeps them as the
+// element id stack a GlobalElementId is taken from; this tree folds them into
+// `El::pathId`, so a debug build keeps the names while it paints.
+struct PaintIdLink {
+    Str id = {};
+    const PaintIdLink* parent = nullptr;
+};
+
+// `format!("{global_id:?}")`: the path `chain` names, outermost first, in
+// GlobalElementId's Debug form -- `GlobalElementId([Name("a"), Name("b")])`.
+// Every id here is a name. In `a`.
+Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain);
+
 struct PaintCtx {
     App* app = nullptr;
     Window* window = nullptr;
@@ -3601,6 +3615,9 @@ struct PaintCtx {
     // How many debug_below elements the paint walk is inside: GPUI's
     // DebugBelow global, set while one of them and its children paint.
     int debugBelow = 0;
+    // The ids around the element painting, in a debug build, for the id a
+    // hovered debug element prints over itself.
+    const PaintIdLink* idChain = nullptr;
     // Where the pointer is, which is what a Hover-mode scrollbar consults.
     float mouseX = -1;
     float mouseY = -1;

@@ -171,15 +171,18 @@ macOS font-kit requirement on the website only. The current update target is
 - **Component-shell gaps against the Rust components.** MenuItem/Menu
   `disabled` and the retained forms' `disabled()` are inert (upstream
   records them as common behaviors and drops the op — ported as-is).
-- **A script's `debug()` outlines without the hovered element's id.** In a
+- **A hovered `debug()` element's id is spelled from its names.** In a
   debug build `debug()` / `debug_below()` outline the element (or every
-  element painted under it) in red, as GPUI's Style::paint does, and a
-  release build accepts them and changes nothing; GPUI's debug build also
-  prints a hovered debug element's GlobalElementId over it, which an
-  element here has no Debug form of. A start or middle ellipsis measures
-  characters off the shaped run where Rust sums each one's advance, which
-  differs only by kerning (`src/shell/style.cpp`,
-  `TruncateTextStartOrMiddle`).
+  element painted under it) in red, as GPUI's Style::paint does, and print
+  a hovered one's GlobalElementId over it; a release build accepts them and
+  changes nothing. The id is the names of the elements with an id around
+  it, as `Name(..)`s, since this tree folds the id stack into a hash and
+  keeps no view or integer ids; it shows while the pointer is in the
+  element's hitbox, which an element painted over it does not take away,
+  and has no cmd-click to its source location (`PaintDebugInfo` in
+  `src/gpui/gpui.cpp`). A start or middle ellipsis measures characters off
+  the shaped run where Rust sums each one's advance, which differs only by
+  kerning (`src/shell/style.cpp`, `TruncateTextStartOrMiddle`).
 - **A focus handle is one tab stop however many elements track it.** An
   input's editor rows each track the state's handle, where upstream's state
   is one element, and so does a bare field bound to it (the code editor's,

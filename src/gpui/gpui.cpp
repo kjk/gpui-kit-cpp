@@ -6073,6 +6073,46 @@ static int ChartSeriesTooltipRows(const ChartSeries& c, int index,
     return nRows;
 }
 
+Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain) {
+    const PaintIdLink* ids[64];
+    int n = 0;
+    for (const PaintIdLink* l = chain; l && n < 64; l = l->parent) {
+        ids[n++] = l;
+    }
+    StrBuilder b(a);
+    b.Append(StrL("GlobalElementId(["));
+    for (int i = n - 1; i >= 0; i--) {
+        b.Append(StrL("Name(\""));
+        b.Append(ids[i]->id);
+        b.Append(i > 0 ? StrL("\"), ") : StrL("\")"));
+    }
+    b.Append(StrL("])"));
+    return b.TakeStr();
+}
+
+#ifndef NDEBUG
+// Interactivity::paint_debug_info: a debug element with an id, while the
+// pointer is over its hitbox, prints its GlobalElementId at its origin in
+// 10 px red on white. GPUI asks whether the hitbox is hovered, which an
+// element painted over it can deny; this asks whether the pointer is in the
+// part of the box the content mask leaves, and not in keyboard modality.
+static void PaintDebugInfo(PaintCtx* ctx, const El* e, Bounds hit) {
+    if (!e->debug && ctx->debugBelow == 0) {
+        return;
+    }
+    if (!ctx->window || ctx->window->lastInputKeyboard || hit.w <= 0 ||
+        hit.h <= 0 || !hit.Contains({ctx->mouseX, ctx->mouseY})) {
+        return;
+    }
+    const float kFontSize = 10.f;
+    Str text = PaintIdChainDebug(GetTempArena(), ctx->idChain);
+    Size size = MeasureText(ctx, text, kFontSize, 100000.f);
+    CanvasFillRect(ctx, e->x, e->y, size.w, kFontSize, Rgb(255, 255, 255));
+    DrawTextAt(ctx, text, e->x, e->y, size.w, kFontSize, kFontSize,
+               Rgb(255, 0, 0), false, false, -1.f, 0, kFontSize);
+}
+#endif
+
 static void DrawChart(PaintCtx* ctx, El* e) {
     const RuntimeStyle& th = RuntimeStyleNow(ctx->app);
     float x = e->x;
@@ -7359,6 +7399,15 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->debugBelow) {
         ctx->debugBelow++;
     }
+    // with_element_id: an element with an id is on the stack while it and
+    // what it holds paint.
+    const PaintIdLink* outerIdChain = ctx->idChain;
+    PaintIdLink idLink;
+    if (e->id.s) {
+        idLink.id = e->id;
+        idLink.parent = outerIdChain;
+        ctx->idChain = &idLink;
+    }
 #endif
     if (e->style.opacity >= 1.f) {
         PaintElNodeInner(ctx, e, skipOverlay);
@@ -7372,6 +7421,7 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->debugBelow) {
         ctx->debugBelow--;
     }
+    ctx->idChain = outerIdChain;
 #endif
     if (appearScope) {
         ctx->window->plotAppearScopes.len--;
@@ -7451,14 +7501,16 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     // What this element's children name as their ancestor: this element if it
     // recorded a hit rect, and whatever was around it if it did not.
     int outerHitParent = ctx->hitParent;
-    if (e->clickId || e->onClick.IsValid() || e->listener.IsValid() ||
+    bool hasHitbox =
+        e->clickId || e->onClick.IsValid() || e->listener.IsValid() ||
         e->clickAction || e->onHover.IsValid() || e->onMouseMove.IsValid() ||
         e->onMouseDown.IsValid() || e->onMouseUp.IsValid() ||
         e->onDragMove.IsValid() || e->onMouseDownOut.IsValid() ||
         e->onMouseUpOut.IsValid() || e->onScrollWheel.IsValid() ||
         e->drag.IsValid() || e->onDrop.IsValid() ||
         e->cursor != CursorKind::Arrow || e->slider || e->stopMouseDown ||
-        e->suppressTextSelection || e->scrollMaskAxes) {
+        e->suppressTextSelection || e->scrollMaskAxes;
+    if (hasHitbox) {
         HitRect hr;
         hr.id = e->clickId;
         hr.focusId = e->style.focusId;
@@ -7983,6 +8035,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     if (e->customPaint) {
         e->customPaint(ctx, e, e->customUser);
     }
+#ifndef NDEBUG
+    if (hasHitbox && e->id.s) {
+        PaintDebugInfo(ctx, e, maskedBounds);
+    }
+#endif
 
     ctx->paintDepth++;
     bool pushed =

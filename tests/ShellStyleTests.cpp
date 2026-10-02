@@ -856,6 +856,23 @@ static void DebugOutlinesOnlyInADebugBuild() {
     ArenaDelete(arena);
 }
 
+// Interactivity::paint_debug_info prints `format!("{global_id:?}")`: the
+// ids from the root down to the element, each a name.
+static void AHoveredDebugElementPrintsItsGlobalId() {
+    Arena* arena = ArenaNew();
+    PaintIdLink outer;
+    outer.id = StrL("root");
+    PaintIdLink inner;
+    inner.id = StrL("item-3");
+    inner.parent = &outer;
+    utassert(
+        StrEq(PaintIdChainDebug(arena, &inner),
+              StrL("GlobalElementId([Name(\"root\"), Name(\"item-3\")])")));
+    utassert(
+        StrEq(PaintIdChainDebug(arena, nullptr), StrL("GlobalElementId([])")));
+    ArenaDelete(arena);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -871,4 +888,5 @@ void TestShellStyle() {
     shell_style_tests::TextDecorationAndEllipsisApply();
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
     shell_style_tests::DebugOutlinesOnlyInADebugBuild();
+    shell_style_tests::AHoveredDebugElementPrintsItsGlobalId();
 }
