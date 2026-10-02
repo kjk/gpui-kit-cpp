@@ -242,12 +242,7 @@ int ScaleBand::NearestIndex(float tick) const {
         return 0;
     }
     int index = (int)lroundf((tick - rangeStart - outer) / step);
-    if (index < 0) {
-        index = 0;
-    }
-    if (index > domainLen - 1) {
-        index = domainLen - 1;
-    }
+    index = ClampI(index, 0, domainLen - 1);
     return index;
 }
 

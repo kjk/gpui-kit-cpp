@@ -146,12 +146,7 @@ static void AddEllipse(SvgIcon* ic, float cx, float cy, float rx, float ry) {
 
 static void AddRoundRect(SvgIcon* ic, float x, float y, float w, float h,
                          float rx) {
-    if (rx < 0) {
-        rx = 0;
-    }
-    if (rx > w * 0.5f) {
-        rx = w * 0.5f;
-    }
+    rx = ClampF(rx, 0, w * 0.5f);
     if (rx > h * 0.5f) {
         rx = h * 0.5f;
     }
@@ -226,12 +221,7 @@ static float Angle(float ux, float uy, float vx, float vy) {
     float nu = sqrtf(ux * ux + uy * uy);
     float nv = sqrtf(vx * vx + vy * vy);
     float c = (nu > 0 && nv > 0) ? dot / (nu * nv) : 1;
-    if (c < -1) {
-        c = -1;
-    }
-    if (c > 1) {
-        c = 1;
-    }
+    c = ClampF(c, -1, 1);
     float a = acosf(c);
     if (ux * vy - uy * vx < 0) {
         a = -a;
@@ -288,12 +278,7 @@ static void AddArc(SvgIcon* ic, float x1, float y1, float rx, float ry,
         dtheta += 2 * kPi;
     }
     int segs = (int)ceilf(fabsf(dtheta) / (kPi * 0.5f + 1e-6f));
-    if (segs < 1) {
-        segs = 1;
-    }
-    if (segs > 8) {
-        segs = 8;
-    }
+    segs = ClampI(segs, 1, 8);
     float dt = dtheta / (float)segs;
     for (int i = 0; i < segs; i++) {
         float t0 = theta1 + dt * (float)i;
@@ -913,12 +898,7 @@ static SvgCtx RefineCtx(const SvgIcon* ic, const SvgCtx& outer, Str tag) {
     value = GetAttrTemp(tag, "fill-opacity");
     if (value) {
         float o = StrToFloatUnchecked(value);
-        if (o < 0) {
-            o = 0;
-        }
-        if (o > 1) {
-            o = 1;
-        }
+        o = ClampF(o, 0, 1);
         cur.fill.a = (uint8_t)lroundf(o * 255.f);
         cur.hasFill = cur.hasFill || o < 1.f;
     }
@@ -1110,12 +1090,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
                     stop = GetAttrTemp(tag, "stop-opacity");
                     if (stop) {
                         float o = StrToFloatUnchecked(stop);
-                        if (o < 0) {
-                            o = 0;
-                        }
-                        if (o > 1) {
-                            o = 1;
-                        }
+                        o = ClampF(o, 0, 1);
                         c.a = (uint8_t)lroundf(o * 255.f);
                     }
                     ic->gradients[gradIx].color = c;

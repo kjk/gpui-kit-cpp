@@ -1431,12 +1431,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
         index = (int)(g_utf8_next_char(text + index) - text);
         trailing--;
     }
-    if (index < 0) {
-        index = 0;
-    }
-    if (index > len(s)) {
-        index = len(s);
-    }
+    index = ClampI(index, 0, len(s));
     return index;
 }
 

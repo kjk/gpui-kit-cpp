@@ -310,12 +310,7 @@ static void OnMouseMove(FpsApp* app, Ctx* cx, const MouseMoveEvent* ev) {
 static void StepCurves(FpsApp* app, Ctx* cx, const ClickEvent*,
                        intptr_t delta) {
     int n = app->curves + (int)delta * kCurveStep;
-    if (n < 1) {
-        n = 1;
-    }
-    if (n > kMaxCurves) {
-        n = kMaxCurves;
-    }
+    n = ClampI(n, 1, kMaxCurves);
     app->curves = n;
     Notify(cx);
 }

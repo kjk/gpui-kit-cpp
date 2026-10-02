@@ -119,8 +119,7 @@ float VirtualListContentSize(const float* sizes, int count) {
 
 float VirtualListPixelFromLogical(const float* sizes, int count, int item,
                                   float into) {
-    if (item < 0) item = 0;
-    if (item > count) item = count;
+    item = ClampI(item, 0, count);
     float pixel = 0;
     if (sizes) {
         for (int i = 0; i < item && i < count; i++) {

@@ -2856,12 +2856,7 @@ void InputSkipHighlighterEdits(InputState* s) {
 // Rope::replace, over the flat buffer.
 static void TextSplice(InputState* s, int a, int b, Str ins) {
     int n = len(s->text);
-    if (a < 0) {
-        a = 0;
-    }
-    if (a > n) {
-        a = n;
-    }
+    a = ClampI(a, 0, n);
     if (b > n) {
         b = n;
     }
@@ -4786,12 +4781,7 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     Str before = InputValue(s);
     // range_from_utf16 clamps both ends into the document: a stale or
     // out-of-range edit lands at the end rather than past it.
-    if (r.start < 0) {
-        r.start = 0;
-    }
-    if (r.start > len(before)) {
-        r.start = len(before);
-    }
+    r.start = ClampI(r.start, 0, len(before));
     if (r.end > len(before)) {
         r.end = len(before);
     }
@@ -6928,12 +6918,7 @@ static VerticalTarget VerticalTargetFor(const InputState* s, Window* win,
     int column = s->preferredColumn >= 0 ? s->preferredColumn : p.column;
     int maxRow = RopeLinesLen(t) - 1;
     int row = p.row + lines;
-    if (row < 0) {
-        row = 0;
-    }
-    if (row > maxRow) {
-        row = maxRow;
-    }
+    row = ClampI(row, 0, maxRow);
     out.noFurtherRow = row == p.row;
     int lineLen = RopeLineLen(t, row);
     int want = column < lineLen ? column : lineLen;

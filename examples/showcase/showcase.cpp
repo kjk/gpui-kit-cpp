@@ -350,12 +350,7 @@ void ShowcaseWheel(ShowcaseApp* app, float x, float y, float delta) {
     (void)x;
     (void)y;
     app->scrollY -= delta;
-    if (app->scrollY < 0) {
-        app->scrollY = 0;
-    }
-    if (app->scrollY > 4000) {
-        app->scrollY = 4000;
-    }
+    app->scrollY = ClampF(app->scrollY, 0, 4000);
 }
 
 // The text-selection page keeps no offsets of its own any more: its runs

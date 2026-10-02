@@ -31,23 +31,13 @@ static uint8_t ToByte(float v01) {
 }
 
 Rgba RgbaOpacity(Rgba c, float a01) {
-    if (a01 < 0) {
-        a01 = 0;
-    }
-    if (a01 > 1) {
-        a01 = 1;
-    }
+    a01 = ClampF(a01, 0, 1);
     c.a = (uint8_t)((float)c.a * a01);
     return c;
 }
 
 Rgba RgbaMix(Rgba a, Rgba b, float t) {
-    if (t < 0) {
-        t = 0;
-    }
-    if (t > 1) {
-        t = 1;
-    }
+    t = ClampF(t, 0, 1);
     Rgba o;
     o.r = (uint8_t)lroundf((float)a.r * t + (float)b.r * (1 - t));
     o.g = (uint8_t)lroundf((float)a.g * t + (float)b.g * (1 - t));
@@ -599,12 +589,7 @@ El* ButtonSmall(Arena* a, int clickId, Str label, BtnKind kind, bool selected) {
 El* ProgressEl(Arena* a, float value01to100, float barW, float barH) {
     El* e = NewEl(a, ElKind::Progress);
     e->progress = value01to100;
-    if (e->progress < 0) {
-        e->progress = 0;
-    }
-    if (e->progress > 100) {
-        e->progress = 100;
-    }
+    e->progress = ClampF(e->progress, 0, 100);
     e->style.width = barW;
     e->style.height = barH;
     e->style.flexShrink = 0;
@@ -3092,12 +3077,7 @@ bool TextPointAt(PaintCtx* ctx, Str s, float fontSize, float maxW, bool wrap,
         return true;
     }
     uint16_t weight = font;
-    if (off < 0) {
-        off = 0;
-    }
-    if (off > len(s)) {
-        off = len(s);
-    }
+    off = ClampI(off, 0, len(s));
     TextLayout* tl = TextMeasLayout(ctx, s, fontSize, maxW, wrap, weight,
                                     lineHeight, nullptr);
     if (!tl) {
@@ -5585,12 +5565,7 @@ static void PaintBoxShadow(PaintCtx* ctx, const El* e,
         return;
     }
     int steps = (int)ceilf(blur);
-    if (steps < 2) {
-        steps = 2;
-    }
-    if (steps > 32) {
-        steps = 32;
-    }
+    steps = ClampI(steps, 2, 32);
     float previous = 0;
     for (int i = steps; i >= 0; i--) {
         float distance = blur * (float)i / (float)steps;
@@ -6610,12 +6585,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             return y + at;
         }
         float t = hi > lo ? (v - lo) / (hi - lo) : 0.f;
-        if (t < 0) {
-            t = 0;
-        }
-        if (t > 1) {
-            t = 1;
-        }
+        t = ClampF(t, 0, 1);
         return y + 10.f + (1.f - t) * (plotH - 10.f);
     };
 
@@ -6815,12 +6785,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 float step = pointRange[1] / (float)(n - 1);
                 float t = n > 1 && step > 0 ? (ctx->mouseX - x) / step : 0.f;
                 index = (int)lroundf(t);
-                if (index < 0) {
-                    index = 0;
-                }
-                if (index > n - 1) {
-                    index = n - 1;
-                }
+                index = ClampI(index, 0, n - 1);
                 lineX = Xat(index);
             }
         }
@@ -6855,12 +6820,7 @@ static void DrawChart(PaintCtx* ctx, El* e) {
             if (show) {
                 focus = hover.Progress();
                 index = hover.State().index;
-                if (index < 0) {
-                    index = 0;
-                }
-                if (index > n - 1) {
-                    index = n - 1;
-                }
+                index = ClampI(index, 0, n - 1);
                 lineX = x + hover.State().crossLine.x;
                 if (hover.State().dotCount > 0 && hover.State().dots) {
                     lineX = x + hover.State().dots[0].x;
@@ -8588,12 +8548,7 @@ static int TextHitLocal(PaintCtx* ctx, const TextHit* h, Point rel) {
     int local =
         TextIndexAt(ctx, h->text, h->font, h->maxW > 0 ? h->maxW : h->bounds.w,
                     h->wrap, rel.x, rel.y, false, 0, h->align);
-    if (local < 0) {
-        local = 0;
-    }
-    if (local > len(h->text)) {
-        local = len(h->text);
-    }
+    local = ClampI(local, 0, len(h->text));
     return local;
 }
 

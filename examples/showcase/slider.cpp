@@ -14,22 +14,12 @@ static void OnSlider(ShowcaseApp* app, Ctx* cx, const SliderEvent*) {
 El* ShowcaseSlider(ShowcaseApp* app, Ctx* cx) {
     Arena* a = cx->a;
     float p = app->slider.pctHi;
-    if (p < 0) {
-        p = 0;
-    }
-    if (p > 1) {
-        p = 1;
-    }
+    p = ClampF(p, 0, 1);
     float trackW = 224;
     float thumb = 14;
     float fillW = trackW * p;
     float thumbX = fillW - thumb / 2;
-    if (thumbX < 0) {
-        thumbX = 0;
-    }
-    if (thumbX > trackW - thumb) {
-        thumbX = trackW - thumb;
-    }
+    thumbX = ClampF(thumbX, 0, trackW - thumb);
 
     // The track is what a press lands on, so the state is bound here and the
     // window moves it — SliderTrack::on_mouse_down and its on_drag_move.

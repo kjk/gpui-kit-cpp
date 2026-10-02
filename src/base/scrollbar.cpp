@@ -141,13 +141,6 @@ static El* ApplyScrollbarTheme(Ctx* cx, El* box) {
 // Rust's floor on the thumb: below this there is nothing left to aim at.
 static const float kMinThumb = 48.f;
 
-static float ClampF(float v, float lo, float hi) {
-    if (v < lo) {
-        return lo;
-    }
-    return v > hi ? hi : v;
-}
-
 ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
                                          float content, float marginEnd,
                                          float inset, float minLength) {
@@ -156,8 +149,7 @@ ScrollbarThumbGeometry ScrollbarGeometry(float origin, float container,
     float track = container - marginEnd;
     if (track < 0) track = 0;
     float logical = content > 0 ? container / content * container : 0;
-    if (logical < minLength) logical = minLength;
-    if (logical > track) logical = track;
+    logical = ClampF(logical, minLength, track);
     float maxInset = logical * .5f;
     out.inset = ClampF(inset, 0, maxInset);
     out.length = logical - out.inset * 2.f;

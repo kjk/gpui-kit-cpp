@@ -223,12 +223,7 @@ static float GpuUsagePercentLocked() {
     // total with it, which can walk the sum backwards.
     uint64_t busy = used >= previous ? used - previous : 0;
     double percent = (double)busy / (double)elapsed * 100.0;
-    if (percent < 0) {
-        percent = 0;
-    }
-    if (percent > 100) {
-        percent = 100;
-    }
+    percent = ClampD(percent, 0, 100);
     return (float)percent;
 }
 

@@ -179,22 +179,12 @@ static void PaintCircleProgress(PaintCtx* ctx, El* e, void* user) {
     Rgba col = p->hasColor ? p->color : ThemeNow(ctx->app).foreground;
     CanvasEllipse(ctx, cx, cy, r, r, sw, RgbaOpacity(col, 0.2f));
     float v = p->value;
-    if (v < 0) {
-        v = 0;
-    }
-    if (v > 100) {
-        v = 100;
-    }
+    v = ClampF(v, 0, 100);
     if (v <= 0) {
         return;
     }
     float from = p->startValue;
-    if (from < 0) {
-        from = 0;
-    }
-    if (from > v) {
-        from = v;
-    }
+    from = ClampF(from, 0, v);
     // render_circle(start, end): twelve o'clock is zero, and the arc runs
     // clockwise from wherever it starts.
     float start = -kPi * 0.5f + 2.f * kPi * (from / 100.f);

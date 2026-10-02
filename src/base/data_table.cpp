@@ -400,13 +400,6 @@ static int CellColNext(const TableState* s) {
     return s->loopSelection ? 0 : last;
 }
 
-static int Clamp(int v, int lo, int hi) {
-    if (v < lo) {
-        return lo;
-    }
-    return v > hi ? hi : v;
-}
-
 void TablePerform(TableState* s, Ctx* cx, TableAction act) {
     if (act == TableAction::Cancel) {
         // action_cancel: Escape gives up the selection, and where there is
@@ -478,21 +471,21 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
         case TableAction::SelectPageUp:
             if (cellMode) {
                 TableSetSelectedCell(
-                    s, cx, Clamp(s->selectedCellRow - s->pageRows, 0, last),
+                    s, cx, ClampI(s->selectedCellRow - s->pageRows, 0, last),
                     s->selectedCellCol);
             } else {
                 int cur = s->selectedRow < 0 ? 0 : s->selectedRow;
-                TableSetSelectedRow(s, cx, Clamp(cur - s->pageRows, 0, last));
+                TableSetSelectedRow(s, cx, ClampI(cur - s->pageRows, 0, last));
             }
             break;
         case TableAction::SelectPageDown:
             if (cellMode) {
                 TableSetSelectedCell(
-                    s, cx, Clamp(s->selectedCellRow + s->pageRows, 0, last),
+                    s, cx, ClampI(s->selectedCellRow + s->pageRows, 0, last),
                     s->selectedCellCol);
             } else {
                 int cur = s->selectedRow < 0 ? 0 : s->selectedRow;
-                TableSetSelectedRow(s, cx, Clamp(cur + s->pageRows, 0, last));
+                TableSetSelectedRow(s, cx, ClampI(cur + s->pageRows, 0, last));
             }
             break;
         default:
@@ -633,12 +626,7 @@ bool TableMoveColumn(TableState* s, int from, int to) {
 
 int TableDragGapAt(const Bounds* colBounds, int n, float x, int dragCol,
                    int fixedCount) {
-    if (fixedCount < 0) {
-        fixedCount = 0;
-    }
-    if (fixedCount > n) {
-        fixedCount = n;
-    }
+    fixedCount = ClampI(fixedCount, 0, n);
     // A column can only be reordered within its own region: rendering pins
     // the first `fixedCount` columns, so a cross-region move would change
     // which columns are pinned without updating their `fixed` flags.

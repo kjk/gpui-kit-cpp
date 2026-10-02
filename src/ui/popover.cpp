@@ -197,12 +197,7 @@ void ArrowPoints(Bounds surface, Bounds trigger, gpui::Placement side,
     float half = depth < span ? depth : span;
     float inset = radius + half < span ? radius + half : span;
     float center = target;
-    if (center < start + inset) {
-        center = start + inset;
-    }
-    if (center > end - inset) {
-        center = end - inset;
-    }
+    center = ClampF(center, start + inset, end - inset);
     switch (side) {
         case Placement::Bottom:
             out[0] = {center - half, surface.y};

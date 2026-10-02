@@ -1108,9 +1108,8 @@ static CTFontRef FontFor(PaintApp* pa, float fontSize, uint16_t weight) {
         if (name) {
             // NSFontManager's weight scale runs 0-15 with 5 regular and 9
             // bold; NSFontWeight runs -1 to 1 with 0 regular.
-            NSInteger managerWeight = (NSInteger)lround(5.0 + (double)w * 8.0);
-            if (managerWeight < 0) managerWeight = 0;
-            if (managerWeight > 15) managerWeight = 15;
+            NSInteger managerWeight =
+                ClampI((int)lround(5.0 + (double)w * 8.0), 0, 15);
             font =
                 [[NSFontManager sharedFontManager] fontWithFamily:name
                                                            traits:0

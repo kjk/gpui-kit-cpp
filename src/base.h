@@ -185,6 +185,24 @@ inline void ZeroStruct(T* s) {
     memset((void*)s, 0, sizeof(T));
 }
 
+// `x` held to [lo, hi]. The low bound is tested first, so when lo > hi the
+// answer is hi.
+constexpr int ClampI(int x, int lo, int hi) {
+    if (x < lo) x = lo;
+    if (x > hi) x = hi;
+    return x;
+}
+constexpr float ClampF(float x, float lo, float hi) {
+    if (x < lo) x = lo;
+    if (x > hi) x = hi;
+    return x;
+}
+constexpr double ClampD(double x, double lo, double hi) {
+    if (x < lo) x = lo;
+    if (x > hi) x = hi;
+    return x;
+}
+
 struct Func0 {
     // Even sentinel: Func1 steals bit 0 of userData.
     static constexpr uintptr_t kFuncNoArg = ~(uintptr_t)1;

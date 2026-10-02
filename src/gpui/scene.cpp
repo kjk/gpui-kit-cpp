@@ -908,8 +908,10 @@ static void FlattenContext(int context, Vec<Prim>& out, int* nextRank);
 
 static void FlattenEntry(int index, Vec<Prim>& out, int* nextRank) {
     const StackEntry& e = gEntries[index];
-    if (e.prim >= 0) VecAppend(out, gCur[e.prim]);
-    else if (e.context >= 0) FlattenContext(e.context, out, nextRank);
+    if (e.prim >= 0)
+        VecAppend(out, gCur[e.prim]);
+    else if (e.context >= 0)
+        FlattenContext(e.context, out, nextRank);
 }
 
 static void FlattenContext(int context, Vec<Prim>& out, int* nextRank) {
@@ -918,7 +920,10 @@ static void FlattenContext(int context, Vec<Prim>& out, int* nextRank) {
     int lastZ = 0;
     bool first = true;
     for (int e = gContexts[context].first; e >= 0; e = gEntries[e].next) {
-        if (!first && gEntries[e].z < lastZ) { mixed = true; break; }
+        if (!first && gEntries[e].z < lastZ) {
+            mixed = true;
+            break;
+        }
         first = false;
         lastZ = gEntries[e].z;
     }
@@ -947,8 +952,8 @@ static void OrderHits(PaintCtx* ctx) {
     if (!ctx || ctx->hits.len < 2) return;
     bool mixed = false;
     for (int i = 1; i < ctx->hits.len; i++) {
-        if (gContexts[ctx->hits[i].sceneContext].rank <
-            gContexts[ctx->hits[i - 1].sceneContext].rank) {
+        if (gContexts[ctx->hits[i].sceneContext]
+                .rank < gContexts[ctx->hits[i - 1].sceneContext].rank) {
             mixed = true;
             break;
         }
@@ -959,8 +964,8 @@ static void OrderHits(PaintCtx* ctx) {
         int rank = gContexts[ctx->hits[i].sceneContext].rank;
         int at = order.len;
         VecAppend(order, i);
-        while (at > 0 &&
-               gContexts[ctx->hits[order[at - 1]].sceneContext].rank > rank) {
+        while (at > 0 && gContexts[ctx->hits[order[at - 1]].sceneContext]
+                                 .rank > rank) {
             order[at] = order[at - 1];
             at--;
         }
@@ -1237,8 +1242,7 @@ static void MaskLine(Vec<MaskEdge>& edges, float x0, float y0, float x1,
     if (x0 != x1 || y0 != y1) VecAppend(edges, MaskEdge{x0, y0, x1, y1});
 }
 
-static void MaskEdges(const PathRec& pr, bool closeOpen,
-                      Vec<MaskEdge>& edges) {
+static void MaskEdges(const PathRec& pr, bool closeOpen, Vec<MaskEdge>& edges) {
     int vi = pr.verbFirst, pi = pr.ptFirst;
     float x = 0, y = 0, sx = 0, sy = 0;
     bool open = false;
@@ -1251,17 +1255,27 @@ static void MaskEdges(const PathRec& pr, bool closeOpen,
             open = true;
         } else if ((v & 0x7f) == kVLine) {
             float nx = gPts[pi++], ny = gPts[pi++];
-            if (open) MaskLine(edges, x, y, nx, ny);
-            else { sx = nx; sy = ny; open = true; }
-            x = nx; y = ny;
+            if (open)
+                MaskLine(edges, x, y, nx, ny);
+            else {
+                sx = nx;
+                sy = ny;
+                open = true;
+            }
+            x = nx;
+            y = ny;
         } else if ((v & 0x7f) == kVCubic) {
             float ax = gPts[pi++], ay = gPts[pi++];
             float bx = gPts[pi++], by = gPts[pi++];
             float nx = gPts[pi++], ny = gPts[pi++];
-            if (!open) { x = sx = nx; y = sy = ny; open = true; continue; }
-            float extent = fabsf(ax - x) + fabsf(ay - y) +
-                           fabsf(bx - ax) + fabsf(by - ay) +
-                           fabsf(nx - bx) + fabsf(ny - by);
+            if (!open) {
+                x = sx = nx;
+                y = sy = ny;
+                open = true;
+                continue;
+            }
+            float extent = fabsf(ax - x) + fabsf(ay - y) + fabsf(bx - ax) +
+                           fabsf(by - ay) + fabsf(nx - bx) + fabsf(ny - by);
             int steps = (int)(extent / 2.f) + 4;
             if (steps > 64) steps = 64;
             float ox = x, oy = y;
@@ -1272,9 +1286,11 @@ static void MaskEdges(const PathRec& pr, bool closeOpen,
                 float py = u * u * u * y + 3.f * u * u * t * ay +
                            3.f * u * t * t * by + t * t * t * ny;
                 MaskLine(edges, ox, oy, px, py);
-                ox = px; oy = py;
+                ox = px;
+                oy = py;
             }
-            x = nx; y = ny;
+            x = nx;
+            y = ny;
         } else if ((v & 0x7f) == kVArc) {
             float cx = gPts[pi++], cy = gPts[pi++], r = gPts[pi++];
             float a0 = gPts[pi++], a1 = gPts[pi++];
@@ -1284,18 +1300,26 @@ static void MaskEdges(const PathRec& pr, bool closeOpen,
             int steps = (int)(fabsf(sweep) / (kMaskPi / 30.f)) + 2;
             if (steps > 256) steps = 256;
             float ax = cx + cosf(a0) * r, ay = cy + sinf(a0) * r;
-            if (open) MaskLine(edges, x, y, ax, ay);
-            else { sx = ax; sy = ay; open = true; }
-            x = ax; y = ay;
+            if (open)
+                MaskLine(edges, x, y, ax, ay);
+            else {
+                sx = ax;
+                sy = ay;
+                open = true;
+            }
+            x = ax;
+            y = ay;
             for (int j = 1; j <= steps; j++) {
                 float a = a0 + sweep * ((float)j / steps);
                 float nx = cx + cosf(a) * r, ny = cy + sinf(a) * r;
                 MaskLine(edges, x, y, nx, ny);
-                x = nx; y = ny;
+                x = nx;
+                y = ny;
             }
         } else if ((v & 0x7f) == kVClose && open) {
             MaskLine(edges, x, y, sx, sy);
-            x = sx; y = sy;
+            x = sx;
+            y = sy;
             open = false;
         }
     }
@@ -1322,8 +1346,7 @@ static bool MaskStrokeContains(const Vec<MaskEdge>& edges, float x, float y,
         float dx = e.x1 - e.x0, dy = e.y1 - e.y0;
         float d = dx * dx + dy * dy;
         float t = d > 0 ? ((x - e.x0) * dx + (y - e.y0) * dy) / d : 0;
-        if (t < 0) t = 0;
-        if (t > 1) t = 1;
+        t = ClampF(t, 0, 1);
         float px = x - (e.x0 + t * dx), py = y - (e.y0 + t * dy);
         if (px * px + py * py <= limit) return true;
     }
@@ -1339,8 +1362,8 @@ static void MaskDrop(int slot) {
 }
 
 static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
-    if (SceneLevelOn() < kSceneCache || !ctx || !ctx->pa ||
-        prim.path < 0 || prim.path >= gPaths.len ||
+    if (SceneLevelOn() < kSceneCache || !ctx || !ctx->pa || prim.path < 0 ||
+        prim.path >= gPaths.len ||
         (prim.kind != kPPathFill &&
          !(prim.kind == kPPathStroke && (prim.flags & kFRoundCaps)))) {
         return nullptr;
@@ -1379,7 +1402,10 @@ static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
     gStats.maskCacheMisses++;
     int bytes = w * h * 4;
     uint8_t* pixels = (uint8_t*)Alloc(nullptr, bytes);
-    if (!pixels) { VecReset(edges); return nullptr; }
+    if (!pixels) {
+        VecReset(edges);
+        return nullptr;
+    }
     for (int py = 0; py < h; py++) {
         for (int px = 0; px < w; px++) {
             int cover = 0;
@@ -1387,9 +1413,10 @@ static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
                 for (int sx = 0; sx < 4; sx++) {
                     float fx = (x0 + px + (sx + .5f) / 4.f) / scale;
                     float fy = (y0 + py + (sy + .5f) / 4.f) / scale;
-                    cover += prim.kind == kPPathFill
-                        ? MaskContains(edges, fx, fy, pr.winding)
-                        : MaskStrokeContains(edges, fx, fy, prim.e1 * .5f);
+                    cover +=
+                        prim.kind == kPPathFill
+                            ? MaskContains(edges, fx, fy, pr.winding)
+                            : MaskStrokeContains(edges, fx, fy, prim.e1 * .5f);
                 }
             }
             int a = (prim.color.a * cover + 8) / 16;
@@ -1407,8 +1434,9 @@ static MaskEntry* MaskFor(PaintCtx* ctx, const Prim& prim) {
     while (gMaskBytes + bytes > kMaskBudget) {
         int victim = -1;
         for (int i = 0; i < kMaskSlots; i++) {
-            if (gMasks[i].image && (victim < 0 ||
-                gMasks[i].lastFrame < gMasks[victim].lastFrame)) victim = i;
+            if (gMasks[i].image &&
+                (victim < 0 || gMasks[i].lastFrame < gMasks[victim].lastFrame))
+                victim = i;
         }
         if (victim < 0) break;
         MaskDrop(victim);

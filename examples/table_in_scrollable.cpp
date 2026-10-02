@@ -80,12 +80,7 @@ static void OnWheel(TableApp* app, Ctx* cx, const ScrollWheelEvent* ev) {
     } else {
         app->pageScroll -= delta;
     }
-    if (app->pageScroll < 0) {
-        app->pageScroll = 0;
-    }
-    if (app->pageScroll > maxP) {
-        app->pageScroll = maxP;
-    }
+    app->pageScroll = ClampF(app->pageScroll, 0, maxP);
 }
 
 static El* Filler(Arena* a, Str label, float h, const Theme& th) {
@@ -167,12 +162,7 @@ El* TableApp::Render(TableApp* app, Ctx* cx) {
     float bodyH = BodyH();
     float rowsH = RowsH();
     float tThumbH = rowsH > 0 ? bodyH * bodyH / rowsH : bodyH;
-    if (tThumbH < 24) {
-        tThumbH = 24;
-    }
-    if (tThumbH > bodyH) {
-        tThumbH = bodyH;
-    }
+    tThumbH = ClampF(tThumbH, 24, bodyH);
     float tThumbY =
         maxT > 0 ? (app->tableScroll / maxT) * (bodyH - tThumbH) : 0;
     table->Child(Thumb(frame, kHeadH + tThumbY, tThumbH,
@@ -186,12 +176,7 @@ El* TableApp::Render(TableApp* app, Ctx* cx) {
     float viewH = size.dipH;
     float contentH = PageContentH();
     float pThumbH = contentH > 0 ? viewH * viewH / contentH : viewH;
-    if (pThumbH < 32) {
-        pThumbH = 32;
-    }
-    if (pThumbH > viewH) {
-        pThumbH = viewH;
-    }
+    pThumbH = ClampF(pThumbH, 32, viewH);
     float pThumbY = maxP > 0 ? (app->pageScroll / maxP) * (viewH - pThumbH) : 0;
 
     El* root = Div(frame)

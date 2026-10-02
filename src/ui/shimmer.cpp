@@ -55,12 +55,7 @@ ShimmerStyle ShimmerStyle::Spread(ShimmerSpread value) const {
     }
     if (value.kind == ShimmerSpread::Kind::Relative) {
         float f = value.value;
-        if (f < 0.05f) {
-            f = 0.05f;
-        }
-        if (f > 1.f) {
-            f = 1.f;
-        }
+        f = ClampF(f, 0.05f, 1.f);
         out.spread = ShimmerSpread::Relative(f);
         return out;
     }

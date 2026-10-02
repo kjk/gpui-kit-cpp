@@ -263,12 +263,7 @@ Tooltip* Tooltip::Child(El* value) {
 }
 
 Tooltip* Tooltip::Progress(float value) {
-    if (value < 0) {
-        value = 0;
-    }
-    if (value > 1) {
-        value = 1;
-    }
+    value = ClampF(value, 0, 1);
     progress = value;
     return this;
 }

@@ -12,10 +12,6 @@ namespace gpui {
 
 // The same three-line clamp scrollbar.cpp and slider.cpp each keep: base has
 // no float clamp of its own, and one header for one expression is worse.
-static float ClampF(float v, float lo, float hi) {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
 float CubicBezier(float x1, float y1, float x2, float y2, float t) {
     t = ClampF(t, 0.f, 1.f);
     // Polynomial form of the unit bezier, where p0 = (0, 0) and p3 = (1, 1).

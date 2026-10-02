@@ -196,12 +196,7 @@ float Easing::Sample(float progress) const {
                     break;
             }
             float step = floorf(progress * steps) + offset;
-            if (step < 0.f) {
-                step = 0.f;
-            }
-            if (step > jumps) {
-                step = jumps;
-            }
+            step = ClampF(step, 0.f, jumps);
             return jumps > 0.f ? step / jumps : 0.f;
         }
         case EasingKind::LinearStops: {

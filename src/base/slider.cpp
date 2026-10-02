@@ -5,13 +5,6 @@
 
 namespace gpui {
 
-static float ClampF(float v, float lo, float hi) {
-    if (v < lo) {
-        return lo;
-    }
-    return v > hi ? hi : v;
-}
-
 SliderValue SliderValueClamp(SliderValue v, float min, float max) {
     v.hi = ClampF(v.hi, min, max);
     if (v.range) {

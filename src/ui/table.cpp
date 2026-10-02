@@ -504,12 +504,7 @@ void DataTable::DumpRange(int lo, int hi, Vec<Str>* heads, Vec<Str>* cells) {
     if (!cells) {
         return;
     }
-    if (lo < 0) {
-        lo = 0;
-    }
-    if (lo > nRows) {
-        lo = nRows;
-    }
+    lo = ClampI(lo, 0, nRows);
     if (hi > nRows) {
         hi = nRows;
     }

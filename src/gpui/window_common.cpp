@@ -1371,20 +1371,10 @@ bool WindowAccessibilitySetNumericValue(Window* win, uint32_t nodeId,
     AccessibilityNode node = *found;
     SliderState* slider = node.slider;
     float lo = slider->value.range ? slider->value.lo : slider->min;
-    if (value < lo) {
-        value = lo;
-    }
-    if (value > slider->max) {
-        value = slider->max;
-    }
+    value = ClampF(value, lo, slider->max);
     if (slider->step > 0) {
         value = roundf(value / slider->step) * slider->step;
-        if (value < lo) {
-            value = lo;
-        }
-        if (value > slider->max) {
-            value = slider->max;
-        }
+        value = ClampF(value, lo, slider->max);
     }
     if (value == slider->value.End()) {
         return true;

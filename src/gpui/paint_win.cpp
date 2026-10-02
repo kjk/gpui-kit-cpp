@@ -2208,12 +2208,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
     if (trailing) {
         wpos += (int)m.length;
     }
-    if (wpos < 0) {
-        wpos = 0;
-    }
-    if (wpos > wn) {
-        wpos = wn;
-    }
+    wpos = ClampI(wpos, 0, wn);
     return WideOffToUtf8(s, wpos);
 }
 

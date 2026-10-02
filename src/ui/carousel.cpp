@@ -36,12 +36,6 @@ static float AxisEnd(Bounds b, Axis axis) {
 static Point AxisPoint(Axis axis, float value) {
     return axis == Axis::Horizontal ? Point{value, 0} : Point{0, value};
 }
-static float Clampf(float v, float lo, float hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
-
 CarouselState CarouselState::New(int count) {
     CarouselState state;
     state.itemCount = std::max(0, count);
@@ -197,7 +191,7 @@ static Point SnapOffset(const CarouselState* s, Bounds viewport, Bounds item) {
         }
         target += contentInset;
     } else {
-        target = Clampf(target, -MaxSnapOffset(s), 0.f);
+        target = ClampF(target, -MaxSnapOffset(s), 0.f);
     }
     SetAxisValue(&out, s->axis, target);
     return out;
@@ -261,7 +255,7 @@ Point CarouselState::LoopItemOffset(int index) const {
         cycles = floorf(cycles + 0.5f);
     else
         cycles = ceilf(cycles - 0.5f);
-    cycles = Clampf(cycles, -1.f, 1.f);
+    cycles = ClampF(cycles, -1.f, 1.f);
     return AxisPoint(axis, loopLayout.cycleExtent * cycles);
 }
 
@@ -609,7 +603,7 @@ int CarouselState::NearestIndex(Point at) const {
 
 static float ClampedOffset(const CarouselState* s, float value) {
     float bound = std::max(MaxSnapOffset(s), 0.f);
-    return Clampf(value, -bound, 0.f);
+    return ClampF(value, -bound, 0.f);
 }
 
 bool CarouselState::NormalizeLoopCoordinate() {

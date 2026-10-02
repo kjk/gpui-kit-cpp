@@ -54,12 +54,7 @@ void FrameSamplerReset(FrameSampler* s) {
 }
 
 void FrameSamplerSetCapacity(FrameSampler* s, int capacity) {
-    if (capacity < 1) {
-        capacity = 1;
-    }
-    if (capacity > kFpsCapacity) {
-        capacity = kFpsCapacity;
-    }
+    capacity = ClampI(capacity, 1, kFpsCapacity);
     s->capacity = capacity;
     if (s->n > capacity) {
         int drop = s->n - capacity;
@@ -236,12 +231,7 @@ float FrameSamplerPercentileDraw(const FrameSampler* s, float percentile) {
         }
         draws[j + 1] = v;
     }
-    if (percentile < 0) {
-        percentile = 0;
-    }
-    if (percentile > 1) {
-        percentile = 1;
-    }
+    percentile = ClampF(percentile, 0, 1);
     int last = s->n - 1;
     int rank = (int)lroundf(percentile * (float)last);
     if (rank > last) {
@@ -721,12 +711,7 @@ static void PaintFpsTrace(PaintCtx* ctx, El* e, void* user) {
     for (int i = 0; i < s->n; i++) {
         float secs = s->samples[i].drawSecs;
         float ratio = secs / axisMax;
-        if (ratio < 0) {
-            ratio = 0;
-        }
-        if (ratio > 1) {
-            ratio = 1;
-        }
+        ratio = ClampF(ratio, 0, 1);
         px[i] = e->x + slot * (float)(leading + i) + slot * 0.5f;
         py[i] = e->y + e->h * (1.f - ratio);
         colors[i] = RgbaOpacity(FpsLevelColor(style, secs, self->frameBudget),

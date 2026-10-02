@@ -37,12 +37,7 @@ El* ShowcasePagination(ShowcaseApp* app, Ctx* cx) {
     constexpr int n = 8;
     constexpr int maxVis = 5;
     int cur = app->page;
-    if (cur < 1) {
-        cur = 1;
-    }
-    if (cur > n) {
-        cur = n;
-    }
+    cur = ClampI(cur, 1, n);
     El* row = Pagination::New(cx, StrL("example-pagination"))
                   ->FlexRow()
                   ->ItemsCenter()

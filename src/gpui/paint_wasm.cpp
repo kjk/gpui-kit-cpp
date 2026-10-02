@@ -1717,12 +1717,7 @@ int TextLayoutHitPoint(TextLayout* tl, Str s, float relX, float relY) {
         return 0;
     }
     int at = GpJsTextHit(tl->js, relX, relY);
-    if (at < 0) {
-        at = 0;
-    }
-    if (at > len(s)) {
-        at = len(s);
-    }
+    at = ClampI(at, 0, len(s));
     return at;
 }
 

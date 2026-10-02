@@ -3656,12 +3656,7 @@ El* TextView::ScrollTable(MdNode* n) {
     }
     for (int i = 0; i < nCols; i++) {
         float floorW = colW[i] / kWrapLines;
-        if (floorW < kWrapMin) {
-            floorW = kWrapMin;
-        }
-        if (floorW > kWrapMax) {
-            floorW = kWrapMax;
-        }
+        floorW = ClampF(floorW, kWrapMin, kWrapMax);
         colMin[i] = floorW < colW[i] ? floorW : colW[i];
         minTotal += colMin[i];
     }
