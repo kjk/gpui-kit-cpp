@@ -385,6 +385,9 @@ static uint64_t AccessibilityTreeHash(const Vec<AccessibilityNode>& nodes) {
     return hash;
 }
 
+// The hit rects under a point, innermost first; defined with the dispatch.
+static void HitChain(Window* win, float x, float y, Vec<int>* out);
+
 // `headless` is the test platform's frame (gpui/test_app.h): the whole
 // pipeline runs — render, layout, prepaint, paint — with no target bound, so
 // every backend's drawing call finds no surface and draws nothing, the way
@@ -428,6 +431,22 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     ResetTempArena();
     // element_opacity starts at 1 each frame, the way GPUI's window does.
     win->paint.opacity = 1.f;
+#ifndef NDEBUG
+    // window.mouse_hit_test, taken from the hitboxes the last frame painted
+    // before they go: what this frame's paint_debug_info asks is hovered.
+    {
+        VecClear(win->debugHoveredPaths);
+        Vec<int> chain;
+        HitChain(win, win->mouseX, win->mouseY, &chain);
+        for (int i = 0; i < chain.len; i++) {
+            uint32_t path = win->paint.hits[chain[i]].pathId;
+            if (path) {
+                VecAppend(win->debugHoveredPaths, path);
+            }
+        }
+        VecReset(chain);
+    }
+#endif
     VecClear(win->paint.hits);
     // Last frame's scroll boxes are kept one frame more, for a lazy list to
     // read the viewport it was given before it decides how many rows to
@@ -554,6 +573,7 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     // The views this frame is made of, collected as they render: what a
     // notify aims at. GPUI's Window::dirty_views is filled the same way.
     win->rendered.len = 0;
+    VecClear(win->debugViewRoots);
     El* root = EntityRender(win->app, win, win->frameArena, win->root);
     if (win->tooltip.IsValid()) {
         El* tooltip =
@@ -3726,6 +3746,8 @@ static void AppRelease(App* app, bool platform) {
         VecReset(w->timers);
         VecReset(w->imageCacheStack);
         VecReset(w->plotAppearScopes);
+        VecReset(w->debugViewRoots);
+        VecReset(w->debugHoveredPaths);
         WindowKeyedFree(w);
         WindowMotionFree(w);
         delete w;

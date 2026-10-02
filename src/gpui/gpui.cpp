@@ -6088,26 +6088,42 @@ Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain) {
     StrBuilder b(a);
     b.Append(StrL("GlobalElementId(["));
     for (int i = n - 1; i >= 0; i--) {
-        b.Append(StrL("Name(\""));
-        b.Append(ids[i]->id);
-        b.Append(i > 0 ? StrL("\"), ") : StrL("\")"));
+        if (ids[i]->view.IsValid()) {
+            // ElementId::View(EntityId), whose Debug is the slotmap key's
+            // `{index}v{version}`.
+            b.Append(Str(fmt("View(EntityId(%dv%u))", ids[i]->view.index,
+                             ids[i]->view.gen)));
+        } else {
+            b.Append(StrL("Name(\""));
+            b.Append(ids[i]->id);
+            b.Append(StrL("\")"));
+        }
+        if (i > 0) {
+            b.Append(StrL(", "));
+        }
     }
     b.Append(StrL("])"));
     return b.TakeStr();
 }
 
 #ifndef NDEBUG
-// Interactivity::paint_debug_info: a debug element with an id, while the
-// pointer is over its hitbox, prints its GlobalElementId at its origin in
-// 10 px red on white. GPUI asks whether the hitbox is hovered, which an
-// element painted over it can deny; this asks whether the pointer is in the
-// part of the box the content mask leaves, and not in keyboard modality.
-static void PaintDebugInfo(PaintCtx* ctx, const El* e, Bounds hit) {
+// Interactivity::paint_debug_info: a debug element with an id, while its
+// hitbox is hovered, prints its GlobalElementId at its origin in 10 px red
+// on white. Hovered is what last frame's hit test found under the pointer,
+// as GPUI's Hitbox::is_hovered reads it, and nothing in keyboard modality.
+static void PaintDebugInfo(PaintCtx* ctx, const El* e) {
     if (!e->debug && ctx->debugBelow == 0) {
         return;
     }
-    if (!ctx->window || ctx->window->lastInputKeyboard || hit.w <= 0 ||
-        hit.h <= 0 || !hit.Contains({ctx->mouseX, ctx->mouseY})) {
+    Window* win = ctx->window;
+    if (!win || win->lastInputKeyboard || !e->pathId) {
+        return;
+    }
+    bool hovered = false;
+    for (int i = 0; i < win->debugHoveredPaths.len && !hovered; i++) {
+        hovered = win->debugHoveredPaths[i] == e->pathId;
+    }
+    if (!hovered) {
         return;
     }
     const float kFontSize = 10.f;
@@ -7408,10 +7424,22 @@ static void PaintElNode(PaintCtx* ctx, El* e, bool skipOverlay) {
     // with_element_id: an element with an id is on the stack while it and
     // what it holds paint.
     const PaintIdLink* outerIdChain = ctx->idChain;
+    PaintIdLink viewLink;
+    if (ctx->window) {
+        const Vec<Window::DebugViewRoot>& views = ctx->window->debugViewRoots;
+        for (int i = 0; i < views.len; i++) {
+            if (views[i].el == e) {
+                viewLink.view = views[i].view;
+                viewLink.parent = ctx->idChain;
+                ctx->idChain = &viewLink;
+                break;
+            }
+        }
+    }
     PaintIdLink idLink;
     if (e->id.s) {
         idLink.id = e->id;
-        idLink.parent = outerIdChain;
+        idLink.parent = ctx->idChain;
         ctx->idChain = &idLink;
     }
 #endif
@@ -7520,6 +7548,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         HitRect hr;
         hr.id = e->clickId;
         hr.focusId = e->style.focusId;
+        hr.pathId = e->pathId;
         hr.bounds = maskedBounds;
         hr.onClick = e->onClick;
         hr.clickAction = e->clickAction;
@@ -8043,7 +8072,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
 #ifndef NDEBUG
     if (hasHitbox && e->id.s) {
-        PaintDebugInfo(ctx, e, maskedBounds);
+        PaintDebugInfo(ctx, e);
     }
 #endif
 

@@ -3262,6 +3262,9 @@ struct HitRect {
     // differ.
     int focusId = 0;
     int id = 0;
+    // The element's GlobalElementId (El::pathId), which names its hitbox
+    // from one frame to the next.
+    uint32_t pathId = 0;
     Bounds bounds = {};
     Func0 onClick;
     Listener listener;
@@ -3566,13 +3569,16 @@ struct State;
 // element id stack a GlobalElementId is taken from; this tree folds them into
 // `El::pathId`, so a debug build keeps the names while it paints.
 struct PaintIdLink {
+    // A name, or with `view` valid ElementId::View for the view whose
+    // element this is.
     Str id = {};
+    EntityId view = {};
     const PaintIdLink* parent = nullptr;
 };
 
 // `format!("{global_id:?}")`: the path `chain` names, outermost first, in
-// GlobalElementId's Debug form -- `GlobalElementId([Name("a"), Name("b")])`.
-// Every id here is a name. In `a`.
+// GlobalElementId's Debug form --
+// `GlobalElementId([View(EntityId(1v1)), Name("a"), Name("b")])`. In `a`.
 Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain);
 
 struct PaintCtx {
@@ -6297,6 +6303,16 @@ struct Window {
     // built — GPUI's `Window::dirty_views`, and what makes `Notify` name a
     // window rather than every window. Rebuilt each frame.
     Vec<EntityId> rendered;
+    // A debug build's paint_debug_info. The element each view rendered this
+    // frame, which is where GPUI's ViewElement puts ElementId::View on the
+    // id stack; and the elements whose hitboxes last frame's hit test found
+    // under the pointer -- Hitbox::is_hovered -- by path.
+    struct DebugViewRoot {
+        const El* el = nullptr;
+        EntityId view = {};
+    };
+    Vec<DebugViewRoot> debugViewRoots;
+    Vec<uint32_t> debugHoveredPaths;
     // Window::image_cache_stack. `image_cache(entity)` / El::WithImageCache
     // on a container pushes for the layout and paint of its descendants.
     Vec<EntityId> imageCacheStack;

@@ -177,7 +177,18 @@ El* EntityRender(App* app, Window* win, Arena* a, EntityId id) {
     if (win) {
         VecAppend(win->rendered, id);
     }
-    return s.render(s.ptr, &cx);
+    El* e = s.render(s.ptr, &cx);
+#ifndef NDEBUG
+    // ViewElement::id: the view's element carries ElementId::View, which a
+    // debug element's label spells out.
+    if (win && e) {
+        Window::DebugViewRoot root;
+        root.el = e;
+        root.view = id;
+        VecAppend(win->debugViewRoots, root);
+    }
+#endif
+    return e;
 }
 
 static void InvalidateForNotify(Window* win) {

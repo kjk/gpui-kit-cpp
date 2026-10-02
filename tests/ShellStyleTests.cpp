@@ -868,6 +868,13 @@ static void AHoveredDebugElementPrintsItsGlobalId() {
     utassert(
         StrEq(PaintIdChainDebug(arena, &inner),
               StrL("GlobalElementId([Name(\"root\"), Name(\"item-3\")])")));
+    // ViewElement's ElementId::View, spelled as its entity id's slotmap key.
+    PaintIdLink view;
+    view.view = EntityId{4, 2};
+    outer.parent = &view;
+    utassert(StrEq(PaintIdChainDebug(arena, &inner),
+                   StrL("GlobalElementId([View(EntityId(4v2)), "
+                        "Name(\"root\"), Name(\"item-3\")])")));
     utassert(
         StrEq(PaintIdChainDebug(arena, nullptr), StrL("GlobalElementId([])")));
     ArenaDelete(arena);
@@ -895,6 +902,18 @@ static void DrawingAHoveredDebugElement() {
     TestSimulateMouseMove(win, {20, 20});
     TestDraw(win);
     utassert(win->mouseX == 20);
+#ifndef NDEBUG
+    // Hitbox::is_hovered: last frame's hit test found the item's hitbox under
+    // the pointer, and the view it is in is on the id stack.
+    TestDraw(win);
+    utassert(win->debugHoveredPaths.len == 1);
+    utassert(win->debugViewRoots.len >= 1);
+    // Off the item there is no hitbox under the pointer: the list has none.
+    TestSimulateMouseMove(win, {250, 150});
+    TestDraw(win);
+    TestDraw(win);
+    utassert(win->debugHoveredPaths.len == 0);
+#endif
     TestAppFree(app);
 }
 
