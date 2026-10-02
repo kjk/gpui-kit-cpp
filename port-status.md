@@ -184,13 +184,6 @@ macOS font-kit requirement on the website only. The current update target is
   `src/gpui/gpui.cpp`). A start or middle ellipsis measures characters off
   the shaped run where Rust sums each one's advance, which differs only by
   kerning (`src/shell/style.cpp`, `TruncateTextStartOrMiddle`).
-- **A focus handle is one tab stop however many elements track it.** An
-  input's editor rows each track the state's handle, where upstream's state
-  is one element, and so does a bare field bound to it (the code editor's,
-  the shell's); Tab traversal counts a handle once, at its last element
-  (`FocusNext`, `src/gpui/gpui.cpp`). The component Input's frame tracks a
-  handle of its own, as upstream's does, but stays the element bound to the
-  state, since its box is the field's geometry and accessibility node.
 - **Font features are one flag, and the browser ignores it.** GPUI's
   `FontFeatures` is any list of OpenType (tag, value) pairs; here it is
   `FontFeatures::TabularFigures` or none — `tnum`, the one gpui-kit names —

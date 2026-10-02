@@ -1159,7 +1159,7 @@ El* Highlighter::IntoEl() {
         // longest row, the way Textarea::IntoEl hangs ScrollX off !softWrap.
         scroller =
             InputBase::New(cx, id, true, AccessibilityRole::MultilineTextInput)
-                ->BindInput(state)
+                ->BindInputText(state)
                 ->FlexCol()
                 ->W(kFill)
                 ->H(h)

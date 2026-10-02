@@ -1092,7 +1092,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
                  ->Font(font)
                  ->LineHeight(lineMult)
                  ->Fg(style.foreground)
-                 ->BindInput(state);
+                 ->BindInputText(state);
     // A single-line field is one row, so the whole document is its slice.
     // A masked one is not searched: what it holds is not what it shows.
     if (!masked) {
@@ -2327,7 +2327,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // The first line's first row is the one the state measures
             // against; every row below it is a whole lastLineH further down.
             if (row == 0 && firstSeg) {
-                el->BindInput(state);
+                el->BindInputText(state);
                 if (tokenLine) {
                     // A token row draws no run of its own to measure from;
                     // its box starts where the text column does.
@@ -8482,11 +8482,13 @@ void InputFocus(InputState* s, App* app, Window* win) {
     if (!s->focus.IsValid()) {
         s->focus = FocusHandleNew(app);
     }
-    FocusHandleFocus(win, s->focus);
+    // The field is the window's before the focus moves, so the move finds
+    // it already there (WindowSetFocusId hands the field over otherwise).
     s->focused = true;
     s->focusWin = win;
     win->input = s;
     win->prevInput = s;
+    FocusHandleFocus(win, s->focus);
     BlinkStart(app, win, &s->blink);
     Emit(s, app, win, InputEvent{InputEventKind::Focus});
     Notify(app, win);
@@ -8535,12 +8537,12 @@ void InputBlur(InputState* s, App* app, Window* win) {
     s->focusWin = nullptr;
     if (win) {
         BlinkStop(app, win, &s->blink);
-        if (FocusHandleIsFocused(win, s->focus)) {
-            WindowSetFocusId(win, 0);
-        }
         if (win->input == s) {
             win->input = nullptr;
             win->prevInput = nullptr;
+        }
+        if (FocusHandleIsFocused(win, s->focus)) {
+            WindowSetFocusId(win, 0);
         }
     }
     Emit(s, app, win, InputEvent{InputEventKind::Blur});

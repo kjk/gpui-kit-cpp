@@ -3810,6 +3810,15 @@ static void InputFocusCyclesThroughInputsAndAddons() {
         int third = InputFocusIdOf(root, &states[2]);
         utassert(first && second && third);
         utassert(first != second && second != third && first != third);
+        // One element tracks each state's handle, as upstream's state is one
+        // element: the editor's rows bind the state without tracking it.
+        for (int i = 0; i < 3; i++) {
+            int tracked = 0;
+            for (int k = 0; k < win->focusEls.len; k++) {
+                if (win->focusEls[k].id == states[i].focus.id) tracked++;
+            }
+            utassert(tracked == 1);
+        }
         int order[5] = {first, second, third};
         int stops = 3;
         if (buttons) {
@@ -3850,6 +3859,44 @@ static void InputFocusCyclesThroughInputsAndAddons() {
         ArenaDelete(arena);
         AppGlobalClear(&app);
     }
+}
+
+struct TwoInputsView {
+    InputState first;
+    InputState second;
+    static El* Render(TwoInputsView* self, Ctx* cx) {
+        return Div(cx->a)
+            ->FlexCol()
+            ->Pad(16)
+            ->Gap(16)
+            ->Child(component::Input::New(cx, StrL("first"), &self->first)
+                        ->W(300)
+                        ->IntoEl())
+            ->Child(component::Input::New(cx, StrL("second"), &self->second)
+                        ->W(300)
+                        ->IntoEl());
+    }
+};
+
+// Tab from a field the pointer focused moves the keyboard to the next one:
+// the first lets go of its caret and the typing lands in the second.
+static void TabLeavesTheFieldThePressFocused() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<TwoInputsView> view = EntityNew<TwoInputsView>(app);
+    Window* win = TestWindowOpen(app, view, 400, 200);
+    TwoInputsView* v = view.Get(app);
+    TestDraw(win);
+    TestSimulateClick(win, {100, 32});
+    TestDraw(win);
+    utassert(v->first.focused && !v->second.focused);
+    TestSimulateKeystrokes(win, "tab");
+    TestDraw(win);
+    utassert(!v->first.focused && v->second.focused);
+    TestSimulateInput(win, StrL("x"));
+    utassert(StrEq(InputValue(&v->second), StrL("x")));
+    utassert(len(InputValue(&v->first)) == 0);
+    TestAppFree(app);
 }
 
 // ─── kit/tests/input (#3256) ─────────────────────────────────────────────
@@ -4159,16 +4206,18 @@ static void EachRowCarriesItsIndentGuides() {
 // calls below followed by Flush, which is the effect flush that ends it and
 // the frame it draws.
 
-// InputBaseState's Render: the frame — the input's key context and focus,
-// the whole height, a single line centred in it — around the TextElement,
-// which is Input, Textarea or Editor here by mode. A multi-line state
+// InputBaseState's Render: the frame — the whole height, a single line
+// centred in it — around the TextElement, which is Input, Textarea or Editor
+// here by mode. The editor's root is the element that tracks the state's
+// handle and carries its key context, so the frame binds the state for its
+// geometry only. A multi-line state
 // scrolls under the frame: Rust's TextElement offsets its rows by the
 // scroll handle, and in this tree the frame carries the offset, the way the
 // themed Textarea's box does.
 static El* InputStateFrame(Ctx* cx, InputState* s) {
     bool interactive = !s->disabled;
     El* frame = InputBase::New(cx, StrL("input-state"), interactive)
-                    ->BindInput(interactive ? s : nullptr)
+                    ->BindInputText(interactive ? s : nullptr)
                     ->Flex1()
                     ->W(kFill)
                     ->H(kFill);
@@ -9843,6 +9892,7 @@ void TestInputState() {
     AClickInAWrappedScrolledEditorIgnoresStaleWindowY();
     ScrollToCursorUsesDocumentYNotStaleWindowY();
     InputFocusCyclesThroughInputsAndAddons();
+    TabLeavesTheFieldThePressFocused();
     RunWindowTests();
     RunElementWindowTests();
     RunTouchWindowTests();

@@ -1923,7 +1923,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 InputBase::New(cx, nativeId, !behavior.disabled,
                                textarea ? AccessibilityRole::MultilineTextInput
                                         : AccessibilityRole::TextInput)
-                    ->BindInput(behavior.disabled ? nullptr : state)
+                    ->BindInputText(behavior.disabled ? nullptr : state)
                     ->Flex()
                     ->W(kFill);
             if (textarea) {

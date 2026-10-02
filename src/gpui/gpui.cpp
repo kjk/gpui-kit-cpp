@@ -1880,6 +1880,11 @@ El* El::BindInput(InputState* s) {
     }
     return this;
 }
+El* El::BindInputText(InputState* s) {
+    input = s;
+    return this;
+}
+
 // InputElement paints the selection as a quad under the run and the caret as
 // one on top of it. Both are measured against the shaped line, so a caret
 // appearing and disappearing cannot shift the glyphs beside it.
@@ -8840,6 +8845,9 @@ static void CollectFocus(El* e, Window* win, int trap, Listener increment,
         fr.tabIndex = e->style.tabIndex;
         fr.tabStop = e->style.tabStop;
         fr.focusOnPress = e->style.focusOnPress;
+        if (e->input && e->input->focus.id == e->style.focusId) {
+            fr.input = e->input;
+        }
         // A marker of its own, so the element has a position inside its own
         // subtree whether or not it declared a context or a handler. Without
         // one, an element that declares neither would share an index with the
@@ -9644,6 +9652,27 @@ static void WindowFireBlur(Window* win, int was) {
     }
 }
 
+// InputState's on_focus / on_blur, which GPUI runs off the state's handle:
+// the field that had the keyboard lets go of it when the focus leaves its
+// handle, and the field whose handle the focus reached -- by Tab, say --
+// takes it. InputFocus and InputBlur point win->input before they move the
+// focus, so their own moves find nothing to hand over.
+static void WindowSyncFocusedInput(Window* win, int id) {
+    if (win->input && win->input->focus.id != id) {
+        InputBlur(win->input, win->app, win);
+    }
+    if (!id || win->input) {
+        return;
+    }
+    for (int i = 0; i < win->focusEls.len; i++) {
+        InputState* s = win->focusEls[i].input;
+        if (win->focusEls[i].id == id && s && !s->disabled) {
+            InputFocus(s, win->app, win);
+            return;
+        }
+    }
+}
+
 void WindowSetFocusId(Window* win, int id) {
     if (!win || win->focusId == id) {
         return;
@@ -9655,6 +9684,7 @@ void WindowSetFocusId(Window* win, int id) {
     win->focusGen++;
     PlatAccessibilityFocusChanged(win, id);
     WindowFireBlur(win, was);
+    WindowSyncFocusedInput(win, id);
 }
 
 Subscription WindowOnBlur(Window* win, FocusHandle h, Listener handler) {
@@ -9779,35 +9809,12 @@ bool WindowRestoreFocus(Window* win, int id) {
     return false;
 }
 
-// A focus handle is one tab stop however many elements track it. Every
-// editor row bound to an input tracks the input's handle where Rust's state
-// is one element, and so does a bare field bound to it (the code editor's,
-// the shell's), the way upstream's frame and editor briefly did (#3246,
-// reverted by #3253 because Shift-Tab then stuck on the focused editor). The
-// stop sits where the handle's last element does, which is the editor's
-// place, after a prefix addon painted before it; whether it is a stop at all
-// is the outermost element's say, since that is the one a caller's TabStop
-// lands on.
-static bool FocusIsLastOfItsHandle(const Window* win, int i) {
-    for (int j = i + 1; j < win->focusEls.len; j++) {
-        if (win->focusEls[j].id == win->focusEls[i].id) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool FocusHandleIsTabStop(const Window* win, int id) {
-    for (int i = 0; i < win->focusEls.len; i++) {
-        if (win->focusEls[i].id == id) {
-            return win->focusEls[i].tabStop;
-        }
-    }
-    return false;
-}
-
 // The tab stop after (or before) `fromId`, the walk FocusNext takes, without
 // moving the focus.
+// TabStopMap: every element that tracks a handle is a node in paint order
+// (sorted by tab index), and the walk starts at the node the handle last
+// inserted -- `by_id` keeps the latest -- so a handle tracked by one element
+// is one stop, as the input's state element is.
 static bool FocusNextStop(const Window* win, int fromId, int trapId,
                           bool backward, int* out) {
     int n = win->focusEls.len;
@@ -9821,10 +9828,7 @@ static bool FocusNextStop(const Window* win, int fromId, int trapId,
     int i = cur;
     for (int k = 0; k < n; k++) {
         i = (i + step + n) % n;
-        if (!FocusIsLastOfItsHandle(win, i)) {
-            continue;
-        }
-        if (!FocusHandleIsTabStop(win, win->focusEls[i].id)) {
+        if (!win->focusEls[i].tabStop) {
             // Focusable, but not somewhere Tab stops.
             continue;
         }

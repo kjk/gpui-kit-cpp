@@ -3047,6 +3047,12 @@ struct El {
     El* BindSlider(SliderState* s, Axis axis = Axis::Horizontal);
     El* BindSliderBounds(SliderState* s);
     El* BindInput(InputState* s);
+    // BindInput without the field's focus: the element is part of the field's
+    // text (a run the caret is measured against, a box around the editor)
+    // but not the element that tracks the state's handle, so it adds no tab
+    // stop and no key context of its own. GPUI's state is one element
+    // tracking its handle; the runs inside it and a frame around it are not.
+    El* BindInputText(InputState* s);
     // The selection quad and the caret an input's text run paints over itself.
     El* SelRange(int lo, int hi, Rgba color);
     // The selections and carets of the cursors other than the active one.
@@ -3699,6 +3705,10 @@ struct FocusRect {
     int tabIndex = 0;
     bool tabStop = true;
     bool focusOnPress = false;
+    // The text field whose handle this is: the element tracks its state's
+    // handle and is bound to the state, which is upstream's InputState
+    // element. Moving the focus here is what InputState::on_focus hears.
+    InputState* input = nullptr;
     // Where this element sits in the frame's dispatch list. Rust walks the
     // real tree to find what is above a focused handle; the tree here is gone
     // by the time a key arrives, so the walk is recorded while it is still
