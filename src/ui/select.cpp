@@ -570,8 +570,12 @@ El* Select::IntoEl() {
                   ->Gap(Rems(cx, 0.25f))
                   ->ItemsCenter()
                   ->JustifyBetween();
-    if (triggerBoundsOut) {
-        box->BoundsOut(triggerBoundsOut);
+    // The trigger's laid-out box, which the menu's Length::Auto width reads;
+    // a caller that asked for it gets it in its own place.
+    Bounds* triggerOut =
+        triggerBoundsOut ? triggerBoundsOut : (s ? &s->triggerBounds : nullptr);
+    if (triggerOut) {
+        box->BoundsOut(triggerOut);
     }
     if (triggerStyleSet) {
         box->Refine(triggerStyle, triggerStyleSet);
@@ -635,6 +639,11 @@ El* Select::IntoEl() {
         }
     }
 
+    // The trigger is laid out by the time a press opens the menu; before then
+    // its own width stands in, when it has a definite one.
+    float autoMenuW = triggerOut && triggerOut->w > 0 ? triggerOut->w
+                      : width > 0                     ? width
+                                                      : Rems(cx, 15.f);
     El* menu = nullptr;
     if (open) {
         // The list is the whole dropdown: the query, the sections, the checks
@@ -643,10 +652,10 @@ El* Select::IntoEl() {
             SearchableList::New(cx, StrL("list"), state, query)
                 ->InSelect(true)
                 ->Items(items, nItems)
-                // Length::Auto is the trigger's own width: the popover ring
-                // is drawn outside the surface, so the surface no longer
-                // widens by 2 to cover a border of its own.
-                ->W(menuWidth > 0 ? menuWidth : (width > 0 ? width : 240))
+                // Length::Auto is the trigger's own laid-out width: the
+                // popover ring is drawn outside the surface, so the surface
+                // no longer widens by 2 to cover a border of its own.
+                ->W(menuWidth > 0 ? menuWidth : autoMenuW)
                 ->CheckIcon(checkIcon)
                 ->WithSize(size);
         if (sections) {
@@ -655,9 +664,8 @@ El* Select::IntoEl() {
         if (query) {
             list->OnQueryFocus(onQueryFocus);
         }
-        if (menuMaxH > 0) {
-            list->MaxH(menuMaxH);
-        }
+        // menu_max_h: rems(20.) unless the caller set one.
+        list->MaxH(menuMaxH > 0 ? menuMaxH : Rems(cx, 20.f));
         if (footer) {
             list->Footer(footer);
         }

@@ -227,6 +227,9 @@ struct SearchableListState {
     // multi-select one can have all of it picked.
     Vec<int> selected;
     bool open = false;
+    // Where a Select's trigger was laid out last, which its menu takes its
+    // width from when the caller names none (menu_width's Length::Auto).
+    Bounds triggerBounds = {};
     // Set while onChange hears a confirm that just closed an open list, so a
     // Select can emit DismissEvent after its SelectEvent.
     bool closedByConfirm = false;

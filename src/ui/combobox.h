@@ -109,7 +109,8 @@ struct Combobox {
     IconName icon = IconName::None;
     // Combobox::check_icon: what marks a selected row.
     IconName checkIcon = IconName::Check;
-    float width = 280;
+    // `w_full()`: the trigger fills what holds it.
+    float width = kFill;
     float menuWidth = 0;
     float menuMaxH = 0;
     UiSize size = UiSize::Medium;
