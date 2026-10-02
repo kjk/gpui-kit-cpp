@@ -23,11 +23,11 @@ bool ChartTooltipContent::TitleText(Arena* a, const void* d, Str fallback,
 }
 
 Str ChartTooltipContent::ValueText(Arena* a, const void* d, int row,
-                                   double number) const {
+                                   double number, bool f64) const {
     if (value) {
         return value(a, d, row, number, valueUser);
     }
-    return ChartFormatValue(a, number);
+    return ChartFormatValue(a, number, f64);
 }
 
 bool ChartTooltipContent::ValueColor(const void* d, int row, double number,
@@ -39,12 +39,14 @@ bool ChartTooltipContent::ValueColor(const void* d, int row, double number,
     return true;
 }
 
-Str ChartFormatValue(Arena* a, double value) {
-    char buf[64];
+Str ChartFormatValue(Arena* a, double value, bool f64) {
+    // Room for the largest double written out in full.
+    char buf[400];
     float want = (float)value;
-    for (int decimals = 0; decimals <= 9; decimals++) {
+    for (int decimals = 0; decimals <= (f64 ? 17 : 9); decimals++) {
         snprintf(buf, sizeof(buf), "%.*f", decimals, value);
-        if ((float)strtod(buf, nullptr) == want) {
+        double back = strtod(buf, nullptr);
+        if (f64 ? back == value : (float)back == want) {
             break;
         }
     }
@@ -68,8 +70,9 @@ plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
         tooltip->Title(text);
     }
     for (int i = 0; i < count; i++) {
-        tooltip->Row(rows[i].swatch, rows[i].name,
-                     content.ValueText(tooltip->a, d, i, rows[i].value));
+        tooltip->Row(
+            rows[i].swatch, rows[i].name,
+            content.ValueText(tooltip->a, d, i, rows[i].value, rows[i].f64));
         Rgba color = {};
         if (content.ValueColor(d, i, rows[i].value, &color)) {
             tooltip->ValueColor(color);
@@ -93,6 +96,16 @@ uint32_t ChartCallerId(const Ctx* cx, const char* file, int line) {
     return IdFoldName(site, fmt("%d", line));
 }
 
+AreaChart* AreaChart::New(Ctx* cx, const double* ys, int n, const char* file,
+                          int line) {
+    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        narrow[i] = (float)ys[i];
+    }
+    AreaChart* c = New(cx, narrow, n, file, line);
+    c->exact = ys;
+    return c;
+}
 AreaChart* AreaChart::New(Ctx* cx, const float* ys, int n, const char* file,
                           int line) {
     Arena* a = cx->a;
@@ -272,6 +285,7 @@ AreaChart* AreaChart::Data(const void* items, int stride) {
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
+    chart->exact = exact;
     chart->labels = labels;
     chart->strokeStyle = strokeStyle;
     chart->overlay = overlay;
@@ -296,6 +310,16 @@ El* AreaChart::IntoEl() {
     return e;
 }
 
+LineChart* LineChart::New(Ctx* cx, const double* ys, int n, const char* file,
+                          int line) {
+    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        narrow[i] = (float)ys[i];
+    }
+    LineChart* c = New(cx, narrow, n, file, line);
+    c->exact = ys;
+    return c;
+}
 LineChart* LineChart::New(Ctx* cx, const float* ys, int n, const char* file,
                           int line) {
     Arena* a = cx->a;
@@ -448,6 +472,7 @@ El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, stroke, none, none, tickMargin);
     ChartSeries* chart = e->Chart();
+    chart->exact = exact;
     chart->kind = ChartKind::Line;
     chart->labels = labels;
     chart->xAxis = xAxis;
@@ -469,6 +494,16 @@ El* LineChart::IntoEl() {
     return e;
 }
 
+BarChart* BarChart::New(Ctx* cx, const double* ys, int n, const char* file,
+                        int line) {
+    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        narrow[i] = (float)ys[i];
+    }
+    BarChart* c = New(cx, narrow, n, file, line);
+    c->exact = ys;
+    return c;
+}
 BarChart* BarChart::New(Ctx* cx, const float* ys, int n, const char* file,
                         int line) {
     Arena* a = cx->a;
@@ -596,6 +631,7 @@ El* BarChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, fill, none, none, tickMargin);
     ChartSeries* chart = e->Chart();
+    chart->exact = exact;
     chart->kind = ChartKind::Bar;
     chart->labels = labels;
     chart->xAxis = labelAxis;
@@ -1000,6 +1036,10 @@ static void PaintRadarHover(PaintCtx* ctx, El* e, RadarChart* c) {
         rows[nRows].swatch = k == 0 ? c->stroke : c->more[k - 1].stroke;
         rows[nRows].name = k == 0 ? c->tooltipName : c->more[k - 1].name;
         rows[nRows].value = vs[held.index];
+        if (k == 0 && c->exact) {
+            rows[nRows].value = c->exact[held.index];
+            rows[nRows].f64 = true;
+        }
         nRows++;
     }
     ChartTooltipApply(c->tooltipContent, tooltip,
@@ -1017,6 +1057,16 @@ static void PaintRadarChart(PaintCtx* ctx, El* e, void* user) {
     PaintRadarHover(ctx, e, c);
 }
 
+RadarChart* RadarChart::New(Ctx* cx, const double* values, int n,
+                            const char* file, int line) {
+    float* narrow = (float*)Alloc(cx->a, (int)sizeof(float) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) {
+        narrow[i] = (float)values[i];
+    }
+    RadarChart* c = New(cx, narrow, n, file, line);
+    c->exact = values;
+    return c;
+}
 RadarChart* RadarChart::New(Ctx* cx, const float* values, int n,
                             const char* file, int line) {
     Arena* a = cx->a;

@@ -19,6 +19,8 @@ struct ChartTooltipSeriesRow {
     Rgba swatch = {};
     Str name = {};
     double value = 0;
+    // `value` is the caller's double, so it reads in f64's Display.
+    bool f64 = false;
 };
 
 // chart/mod.rs TooltipContent::apply: write `tooltip` for datum `d` — the
@@ -202,6 +204,10 @@ struct AreaChart {
     ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
+    // The values as the caller gave them, when it gave doubles (the New
+    // overload): what the chart writes out -- a tooltip's numbers, a bar's
+    // label -- reads them, in f64's Display. Its geometry stays float.
+    const double* exact = nullptr;
     int n = 0;
     const char* const* labels = nullptr;
     // tick_margin: 1, every point named, as Rust's charts default to.
@@ -226,6 +232,11 @@ struct AreaChart {
     bool grid = true;
 
     static AreaChart* New(Ctx* cx, const float* ys, int n,
+                          const char* file = __builtin_FILE(),
+                          int line = __builtin_LINE());
+    // The same over doubles, which the chart keeps for the numbers it
+    // writes out (`exact`); it draws them as floats.
+    static AreaChart* New(Ctx* cx, const double* ys, int n,
                           const char* file = __builtin_FILE(),
                           int line = __builtin_LINE());
     // `.y(..)`: another series over the same axes. The `Stroke`, `Fill` and
@@ -361,6 +372,10 @@ struct LineChart {
     ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
+    // The values as the caller gave them, when it gave doubles (the New
+    // overload): what the chart writes out -- a tooltip's numbers, a bar's
+    // label -- reads them, in f64's Display. Its geometry stays float.
+    const double* exact = nullptr;
     int n = 0;
     const char* const* labels = nullptr;
     // tick_margin: 1, every point named, as Rust's charts default to.
@@ -378,6 +393,11 @@ struct LineChart {
     bool grid = true;
 
     static LineChart* New(Ctx* cx, const float* ys, int n,
+                          const char* file = __builtin_FILE(),
+                          int line = __builtin_LINE());
+    // The same over doubles, which the chart keeps for the numbers it
+    // writes out (`exact`); it draws them as floats.
+    static LineChart* New(Ctx* cx, const double* ys, int n,
                           const char* file = __builtin_FILE(),
                           int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
@@ -505,6 +525,10 @@ struct BarChart {
     ChartAppear appear = {};
     Ctx* cx = nullptr;
     const float* ys = nullptr;
+    // The values as the caller gave them, when it gave doubles (the New
+    // overload): what the chart writes out -- a tooltip's numbers, a bar's
+    // label -- reads them, in f64's Display. Its geometry stays float.
+    const double* exact = nullptr;
     int n = 0;
     const char* const* labels = nullptr;
     int tickMargin = 1;
@@ -551,6 +575,11 @@ struct BarChart {
     bool grid = true;
 
     static BarChart* New(Ctx* cx, const float* ys, int n,
+                         const char* file = __builtin_FILE(),
+                         int line = __builtin_LINE());
+    // The same over doubles, which the chart keeps for the numbers it
+    // writes out (`exact`); it draws them as floats.
+    static BarChart* New(Ctx* cx, const double* ys, int n,
                          const char* file = __builtin_FILE(),
                          int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
@@ -813,6 +842,10 @@ struct RadarChart {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     const float* values = nullptr;
+    // The values as the caller gave them, when it gave doubles (the New
+    // overload): what the chart writes out -- a tooltip's numbers, a bar's
+    // label -- reads them, in f64's Display. Its geometry stays float.
+    const double* exact = nullptr;
     int n = 0;
     const RadarLabel* labels = nullptr;
     // The first series' colours; the stroke defaults to chart_1 and the fill
@@ -852,6 +885,11 @@ struct RadarChart {
     El* el = nullptr;
 
     static RadarChart* New(Ctx* cx, const float* values, int n,
+                           const char* file = __builtin_FILE(),
+                           int line = __builtin_LINE());
+    // The same over doubles, which the chart keeps for the numbers it
+    // writes out (`exact`); it draws them as floats.
+    static RadarChart* New(Ctx* cx, const double* values, int n,
                            const char* file = __builtin_FILE(),
                            int line = __builtin_LINE());
     // value(..): another series over the same spokes.

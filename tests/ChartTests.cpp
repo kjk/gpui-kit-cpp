@@ -652,6 +652,29 @@ static void TooltipTextFallsBackToTheChartOwn() {
     ArenaDelete(a);
 }
 
+// The shell's charts read `row.value` as f64: a chart given doubles draws
+// them as floats and writes them out as the doubles they are, so a tooltip
+// or a bar label says 1234567.89 where the float would say 1234567.9.
+static void AChartGivenDoublesWritesThemOutAsDoubles() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    utassert(StrEq(ChartFormatValue(a, 1234567.89, true), StrL("1234567.89")));
+    utassert(StrEq(ChartFormatValue(a, 1234567.89), StrL("1234567.9")));
+    utassert(StrEq(ChartFormatValue(a, 2.5, true), StrL("2.5")));
+    utassert(StrEq(ChartFormatValue(a, 0.1, true), StrL("0.1")));
+    utassert(StrEq(ChartFormatValue(a, 3, true), StrL("3")));
+    static const double values[] = {1234567.89, 2.5};
+    BarChart* bar = BarChart::New(&cx, values, 2);
+    utassert(bar->exact == values);
+    utassert(bar->ys && bar->ys[0] == (float)values[0]);
+    El* e = bar->IntoEl();
+    utassert(e && e->Chart() && e->Chart()->exact == values);
+    LineChart* line = LineChart::New(&cx, values, 2);
+    utassert(line->exact == values);
+    ArenaDelete(a);
+}
+
 // The closures receive the datum: an item of what Data(..) gave the chart,
 // or the chart's own number for the point.
 struct SalesDatum {
@@ -948,6 +971,7 @@ void TestChart() {
     APlainRowHasNoSwatchAndTakesAValueColor();
     TooltipTextFallsBackToTheChartOwn();
     TooltipClosuresReceiveTheDatum();
+    AChartGivenDoublesWritesThemOutAsDoubles();
     AHoveredSeriesChartBuildsItsTooltipFromTheDatum();
     TooltipFillWritesEachRowWithTheValueColor();
     TheTooltipSwatchFollowsTheBarColor();

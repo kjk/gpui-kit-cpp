@@ -5906,8 +5906,10 @@ static void DrawBar(PaintCtx* ctx, const ChartSeries& c, int i, float bx,
         return;
     }
     // label(..): the value at the end the bar grew to, just inside it, in
-    // the foreground unless label_color gave each bar its own.
-    Str text = fmt("%.0f", (double)c.ys[i]);
+    // the foreground unless label_color gave each bar its own. Its text is
+    // the value's Display -- f64's for a caller's doubles.
+    Str text = c.exact ? ChartFormatValue(GetTempArena(), c.exact[i], true)
+                       : ChartFormatValue(GetTempArena(), c.ys[i]);
     Rgba ink = c.barLabelColors ? c.barLabelColors[i] : th.foreground;
     // A value label rides the end of its bar and fades in with it.
     ink = RgbaOpacity(ink, appear);
@@ -6113,6 +6115,13 @@ static int ChartSeriesTooltipRows(const ChartSeries& c, int index,
             rows[nRows++] = {swatch, name, value};
         }
     };
+    // The first series' row, from the caller's doubles when it gave some.
+    auto exactFirst = [&]() {
+        if (c.exact && nRows > 0) {
+            rows[0].value = c.exact[index];
+            rows[0].f64 = true;
+        }
+    };
     if (c.kind == ChartKind::Candlestick) {
         double open = c.opens ? c.opens[index] : c.ys[index];
         double close = c.ys[index];
@@ -6125,8 +6134,10 @@ static int ChartSeriesTooltipRows(const ChartSeries& c, int index,
         addRow(color, component::Tr("Chart.close"), close);
     } else if (c.kind == ChartKind::Bar) {
         addRow(ChartBarTooltipColor(c, index), c.name, c.ys[index]);
+        exactFirst();
     } else {
         addRow(c.stroke, c.name, c.ys[index]);
+        exactFirst();
         for (int k = 0; k < c.nMore; k++) {
             if (c.more[k].ys) {
                 addRow(c.more[k].stroke, c.more[k].name, c.more[k].ys[index]);

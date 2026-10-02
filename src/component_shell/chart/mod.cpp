@@ -94,12 +94,14 @@ static bool Rows(MaterializeRequest* request, shell::ComponentCallback callback,
     return true;
 }
 
-// The charts here hold arrays: the rows' values as floats and their labels
-// as a `const char*` array, where Rust's take the rows and closures over
-// them. The values narrow from f64 to f32, as the C++ charts paint floats.
-static const float* Values(Arena* a, const Row* rows, int n) {
-    float* values = (float*)Alloc(a, (int)sizeof(float) * (n > 0 ? n : 1));
-    for (int i = 0; i < n; i++) values[i] = (float)rows[i].value;
+// The charts here hold arrays: the rows' values and their labels as a
+// `const char*` array, where Rust's take the rows and closures over them.
+// The values stay f64, as `.value(|row| row.value)` reads them: the charts
+// draw them as floats and write them out as the doubles they are. Only the
+// pie narrows, as Rust's `row.value as f32` does.
+static const double* Values(Arena* a, const Row* rows, int n) {
+    double* values = (double*)Alloc(a, (int)sizeof(double) * (n > 0 ? n : 1));
+    for (int i = 0; i < n; i++) values[i] = rows[i].value;
     return values;
 }
 static const char* const* Labels(Arena* a, const Row* rows, int n) {
@@ -130,11 +132,11 @@ static El* Render(MaterializeRequest* request, const char* kind,
             ->Child(TextEl(a, StrDup(a, fmt("Failed to build %s data: %s",
                                             Str(kind), error))));
     }
-    const float* values = Values(a, data, n);
+    const double* values = Values(a, data, n);
     Str id = request->elementId;
     if (strcmp(kind, "BarChart") == 0) {
         // .band(label).value(value).label(value.to_string()): the value
-        // written at each bar's end, in the chart's own float Display.
+        // written at each bar's end, in f64's Display.
         component::BarChart* chart = component::BarChart::New(cx, values, n)
                                          ->Id(id)
                                          ->Labels(Labels(a, data, n))
@@ -227,7 +229,7 @@ static El* Render(MaterializeRequest* request, const char* kind,
         // theme's chart_2, which is Rust's slice_color with no color set.
         component::PieChart* chart = component::PieChart::New(cx)->Id(id);
         Rgba color = ThemeNow(cx->app).chart2;
-        for (int i = 0; i < n; i++) chart->Slice(values[i], color);
+        for (int i = 0; i < n; i++) chart->Slice((float)values[i], color);
         bool labels = false;
         EachMethod<Op>(request, [&](const Op& op) {
             switch (op.kind) {

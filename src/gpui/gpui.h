@@ -1448,17 +1448,18 @@ struct ChartTooltipContent {
     bool TitleText(Arena* a, const void* d, Str fallback, bool hasFallback,
                    Str* out) const;
     // value_text: the caller's text for row `row`, or the raw number.
-    Str ValueText(Arena* a, const void* d, int row, double value) const;
+    Str ValueText(Arena* a, const void* d, int row, double value,
+                  bool f64 = false) const;
     // The caller's colour for row `row`'s value; false for the tooltip's
     // text colour.
     bool ValueColor(const void* d, int row, double value, Rgba* out) const;
 };
 
 // `format!("{}", value)` for the chart's numbers: the fewest decimals that
-// read back as the same float, never in exponent form. The data here is
-// float, so this is Rust's f32 Display rather than f64's, which would spell
-// out the float's binary expansion. In `a`.
-Str ChartFormatValue(Arena* a, double value);
+// read back as the same number, never in exponent form. A chart's data is
+// float, so that is f32's Display unless the caller gave the chart doubles
+// (`f64`, its `exact` values), which read back as f64's. In `a`.
+Str ChartFormatValue(Arena* a, double value, bool f64 = false);
 
 struct ChartSeries;
 // bar_chart.rs bar_color: the colour a bar chart's tooltip row shows for bar
@@ -1469,6 +1470,9 @@ Rgba ChartBarTooltipColor(const ChartSeries& c, int index);
 struct ChartSeries {
     ChartKind kind = ChartKind::Area;
     const float* ys = nullptr;
+    // The first series as the caller gave it, when it gave doubles: what the
+    // chart writes out reads these, in f64's Display. Null for float data.
+    const double* exact = nullptr;
     int n = 0;
     // The series after the first. They share `n`, the domain and the axes.
     const ChartSeriesExtra* more = nullptr;
