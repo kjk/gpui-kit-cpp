@@ -264,7 +264,7 @@ struct MessageScrollerRowCtx {
 static El* MessageScrollerRow(void* user, Ctx* cx, int index) {
     MessageScrollerRowCtx* rc = (MessageScrollerRowCtx*)user;
     Arena* a = cx->a;
-    El* row = Div(a)->W(kFill)->MinW(0)->PadX(12);
+    El* row = Div(a)->W(kFill)->MinW(0)->PadX(Rems(cx, 0.75f));
     if (rc->insetL > 0) {
         // Rust's .pl(left) overrides .px_3 rather than adding to it.
         row->PadL(rc->insetL);
@@ -275,7 +275,7 @@ static El* MessageScrollerRow(void* user, Ctx* cx, int index) {
     // Spacing between rows only, like a CSS gap: the list's own bottom
     // padding owns the gap after the last row.
     if (index + 1 < rc->count) {
-        row->PadB(32);
+        row->PadB(Rems(cx, 2.f));
     }
     if (index == 0 && rc->padTop > 0) {
         row->PadT(rc->padTop);
@@ -303,13 +303,14 @@ El* MessageScroller::IntoEl() {
     // GPUI's `list` lays rows out at the full list width and offsets them
     // only by vertical padding, so the horizontal component of the list
     // style is carried by every row wrapper instead.
-    float insetL = 0, insetR = 0, padTop = 8, padBottom = 8;
+    float py2 = Rems(cx, 0.5f);
+    float insetL = 0, insetR = 0, padTop = py2, padBottom = py2;
     if (listStyleSet & StyleFieldPad) {
         insetL = listStyle.pad.left;
         insetR = listStyle.pad.right;
         // py_2 plus whatever the caller added.
-        padTop = 8 + listStyle.pad.top;
-        padBottom = 8 + listStyle.pad.bottom;
+        padTop = py2 + listStyle.pad.top;
+        padBottom = py2 + listStyle.pad.bottom;
     }
 
     // Following the tail is a standing request to sit at the newest row, so
@@ -383,8 +384,7 @@ El* MessageScroller::IntoEl() {
                 ->Left(0)
                 ->Right(0)
                 ->Bottom(0)
-                // h(rems(3.)) at the 16px root.
-                ->H(48)
+                ->H(Rems(cx, 3.f))
                 ->Opacity(fadeVisibility)
                 ->Bg(BackgroundLinear(
                     180.f, ColorStopAt(RgbaOpacity(bottomFade, 0.f), 0.f),
@@ -433,7 +433,7 @@ El* MessageScroller::IntoEl() {
                         ->Left(0)
                         ->Right(0)
                         // bottom(rems(0.5 + visibility * 0.5))
-                        ->Bottom(8 + jumpVisibility * 8)
+                        ->Bottom(Rems(cx, 0.5f + jumpVisibility * 0.5f))
                         ->Flex()
                         ->JustifyCenter()
                         ->Opacity(jumpVisibility)

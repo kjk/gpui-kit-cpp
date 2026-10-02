@@ -2830,6 +2830,13 @@ El* TextView::SrcImage(El* e, MdRun* r) {
 static const Rgba kMarkBg = {0xfe, 0xf0, 0x8a, 0xff};
 static const Rgba kMarkFg = {0x0a, 0x0a, 0x0a, 0xff};
 
+// A length measured off a font size: font sizes here are written at a 16 px
+// rem and layout scales them by the window's rem, so a line height or a box
+// taken from one has to scale the same way to stay in step with the text.
+static float FontLen(const Ctx* cx, float v) {
+    return Rems(cx, v / 16.f);
+}
+
 // node.rs puts an img() element in the flow beside the words: its own size
 // unless the document gave one, never wider than the space it has, and — for
 // an image inside a link — the hand and the click the link's words get.
@@ -2848,7 +2855,7 @@ El* TextView::ImageRun(MdRun* r, float font, Rgba color, bool inFlow) {
     // a plate. Only the height is named here; the layout takes the width from
     // the picture's aspect, which is the one it knows and this does not.
     if (inFlow && w <= 0 && h <= 0) {
-        h = font * kLineHeight * 0.75f;
+        h = FontLen(cx, font * kLineHeight * 0.75f);
     }
     // A vector picture knows its own shape, so a document that gave only one
     // dimension gets the other rather than a run of text's line height. A
@@ -3020,7 +3027,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         } else if (align == MdAlignRight) {
             t->TextRight();
         }
-        return t->W(kFill)->ReportLineSpan(font * kLineHeight);
+        return t->W(kFill)->ReportLineSpan(FontLen(cx, font * kLineHeight));
     }
     // Otherwise the flow is a column of wrapping rows — a hard break ends a
     // row — and each row is a run of styled words. Every word carries its own
@@ -3174,7 +3181,7 @@ El* TextView::Inline(MdNode* n, float font, Rgba color, int weight,
         RevealMark(lastWord, lastWordLo, revealOffset);
     }
     col->Child(row);
-    return col->ReportLineSpan(font * kLineHeight);
+    return col->ReportLineSpan(FontLen(cx, font * kLineHeight));
 }
 
 static int RunsLen(MdNode* n) {
@@ -3363,8 +3370,13 @@ El* TextView::CodeBlock(MdNode* n) {
     // block sits under has to start the first code line again.
     SrcOpen(SrcCat(a, StrL("```"), n->lang, StrL("\n"), srcLinePre),
             SrcCat(a, StrL("\n"), srcLinePre, StrL("```")));
-    El* box = Div(a)->FlexCol()->W(kFill)->Pad(12)->Radius(radius)->Bg(
-        textViewStyle.codeBackground);
+    // p_3.
+    El* box = Div(a)
+                  ->FlexCol()
+                  ->W(kFill)
+                  ->Pad(Rems(cx, 0.75f))
+                  ->Radius(radius)
+                  ->Bg(textViewStyle.codeBackground);
     if (textViewStyle.codeBlockFields) {
         box->Refine(textViewStyle.codeBlock, textViewStyle.codeBlockFields);
     }
@@ -3431,7 +3443,7 @@ El* TextView::CodeBlock(MdNode* n) {
         if (RevealIn(n, &reveal)) {
             RevealMark(t, 0, reveal);
         }
-        box->Child(t->ReportLineSpan(codeFont * kLineHeight));
+        box->Child(t->ReportLineSpan(FontLen(cx, codeFont * kLineHeight)));
     }
     if (codeActions) {
         // `div().id("actions").absolute().top_2().right_2().bg(muted)
@@ -3440,8 +3452,8 @@ El* TextView::CodeBlock(MdNode* n) {
         if (actions) {
             box->Child(Div(a)
                            ->Absolute()
-                           ->Top(8)
-                           ->Right(8)
+                           ->Top(Rems(cx, 0.5f))
+                           ->Right(Rems(cx, 0.5f))
                            ->Radius(radius)
                            ->Bg(textViewStyle.codeBackground)
                            ->Child(actions));
@@ -3460,7 +3472,7 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
                         const MdNode* leaf) {
     const int count = len(spans);
     El* col = Div(a)->FlexCol()->W(kFill);
-    float lineH = codeFont * kLineHeight;
+    float lineH = FontLen(cx, codeFont * kLineHeight);
     El* row = Div(a)->FlexRow()->H(lineH);
     // The run being gathered: adjacent tokens of one color are one element,
     // which keeps a line of code down to a handful.
@@ -3683,8 +3695,8 @@ El* TextView::ScrollTable(MdNode* n) {
                            ->Grow(colW[col])
                            ->MinW(colMin[col])
                            ->ClipX()
-                           ->PadX(8)
-                           ->PadY(4);
+                           ->PadX(Rems(cx, 0.5f))
+                           ->PadY(Rems(cx, 0.25f));
             if (textViewStyle.tableCellFields) {
                 cell->Refine(textViewStyle.tableCell, textViewStyle
                                                           .tableCellFields);
@@ -3735,7 +3747,13 @@ El* TextView::ScrollTable(MdNode* n) {
     }
     // A small gap, so the buttons' hover backgrounds stay clear of the
     // table's border. Where they sit along the row is the caller's business.
-    return Div(a)->FlexCol()->W(kFill)->Gap(4)->Child(scroller)->Child(actions);
+    // mt_1 on the actions row.
+    return Div(a)
+        ->FlexCol()
+        ->W(kFill)
+        ->Gap(Rems(cx, 0.25f))
+        ->Child(scroller)
+        ->Child(actions);
 }
 
 // node.rs render_wrap_table proportions the columns by content length and
@@ -3811,7 +3829,11 @@ El* TextView::Table(MdNode* n) {
         int ix = 0;
         for (MdNode* c = r->first; c; c = c->next, ix++) {
             float frac = ix < nCols ? (float)colLen[ix] / total : 1.f / total;
-            El* cell = Div(a)->WFrac(frac)->MinW(tableColW)->PadX(8)->PadY(4);
+            El* cell = Div(a)
+                           ->WFrac(frac)
+                           ->MinW(tableColW > 0 ? tableColW : Rems(cx, 4.f))
+                           ->PadX(Rems(cx, 0.5f))
+                           ->PadY(Rems(cx, 0.25f));
             if (textViewStyle.tableCellFields) {
                 cell->Refine(textViewStyle.tableCell, textViewStyle
                                                           .tableCellFields);
@@ -3834,7 +3856,12 @@ El* TextView::Table(MdNode* n) {
     if (!actions) {
         return table;
     }
-    return Div(a)->FlexCol()->W(kFill)->Gap(4)->Child(table)->Child(actions);
+    return Div(a)
+        ->FlexCol()
+        ->W(kFill)
+        ->Gap(Rems(cx, 0.25f))
+        ->Child(table)
+        ->Child(actions);
 }
 
 Rgba TextView::BlockFg() const {
@@ -3851,12 +3878,12 @@ Rgba TextView::BlockFg() const {
 // box is centred in a cell as tall as the line rather than nudged down by a
 // fixed `rems(0.4)`, which is what keeps it on the first line at any text
 // size, and `mr_1p5` sits in front of it.
-static El* TaskBox(Arena* a, const TextViewStyle& style, float lineHeight,
-                   bool on) {
+static El* TaskBox(const Ctx* cx, Arena* a, const TextViewStyle& style,
+                   float lineHeight, bool on) {
     El* box = Div(a)
                   ->Flex()
-                  ->W(14)
-                  ->H(14)
+                  ->W(Rems(cx, 0.875f))
+                  ->H(Rems(cx, 0.875f))
                   ->Shrink0()
                   ->ItemsCenter()
                   ->JustifyCenter()
@@ -3868,7 +3895,7 @@ static El* TaskBox(Arena* a, const TextViewStyle& style, float lineHeight,
         // is the one that reads against a foreground-filled box.
         Rgba tick = style.isDark ? RgbaHex(0x000000) : RgbaHex(0xffffff);
         box->Bg(style.foreground)
-            ->Child(IconEl(a, IconName::Check, 10)->Fg(tick));
+            ->Child(IconEl(a, IconName::Check, Rems(cx, 0.625f))->Fg(tick));
     }
     // There are no margins in this tree, so the row's `mr_1p5` is padding on
     // the cell that holds the box.
@@ -3877,7 +3904,7 @@ static El* TaskBox(Arena* a, const TextViewStyle& style, float lineHeight,
         ->H(lineHeight)
         ->Flex()
         ->ItemsCenter()
-        ->PadR(6)
+        ->PadR(Rems(cx, 0.375f))
         ->Child(box);
 }
 
@@ -3913,8 +3940,8 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     srcLinePre = savedPre;
     El* row = Div(a)->FlexRow()->W(kFill)->ItemsStart();
     if (n->hasCheck) {
-        row->Child(
-            TaskBox(a, textViewStyle, baseFont * kLineHeight, n->checked));
+        row->Child(TaskBox(cx, a, textViewStyle,
+                           FontLen(cx, baseFont * kLineHeight), n->checked));
     } else if (len(marker) > 0) {
         // list_item_prefix is a plain string child: it takes the color the
         // list inherits, so a bullet inside a red alert is red.
@@ -5324,8 +5351,10 @@ El* TextView::PluginBlock(MdNode* n) {
 }
 
 El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
+    // paragraph_gap is rems(1.) by default, held as DIPs at a 16 px rem.
+    float gap = Rems(cx, paragraphGap / 16.f);
     if (n->kind == MdKind::Custom) {
-        float pad = (inList || isLast) ? 0.f : paragraphGap;
+        float pad = (inList || isLast) ? 0.f : gap;
         const struct MarkdownBlockRenderer* renderer =
             markdownExtensions.Renderer(n->custom.name);
         El* content = renderer && renderer->fn
@@ -5344,13 +5373,13 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
     // A plugin's block stands in for whatever markdown made of it, and takes
     // the paragraph gap the block it replaced would have carried.
     if (El* claimed = PluginBlock(n)) {
-        float pad = (inList || isLast) ? 0.f : paragraphGap;
+        float pad = (inList || isLast) ? 0.f : gap;
         return Div(a)->W(kFill)->PadB(pad)->Child(claimed);
     }
     // node.rs render_block: every block but the last one in its container
     // carries the paragraph gap below it, and a block inside a list item
     // carries none.
-    float mb = (inList || isLast) ? 0.f : paragraphGap;
+    float mb = (inList || isLast) ? 0.f : gap;
     switch (n->kind) {
         case MdKind::Paragraph:
             SrcOpen({}, {});
@@ -5367,6 +5396,9 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             if ((refineFields & StyleFieldFontSize) && refine.fontSize > 0) {
                 font = refine.fontSize;
             }
+            // `rems(..).to_pixels(px(14.))`: a heading's size is in pixels,
+            // and so is the one the compat refinement resolves.
+            font = FontPx(cx, font);
             // node.rs prefixes the heading marker in source mode so a
             // selected heading round-trips as `## Title`.
             char hashes[8] = {};
@@ -5376,8 +5408,11 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             }
             SrcOpen(SrcCat(a, Str(hashes, nh), StrL(" ")), {});
             // Headings use their own 0.3rem bottom padding, not the gap.
-            El* box = Div(a)->W(kFill)->PadB(5)->Child(
-                Inline(n, font, BlockFg(), HeadingWeight(n->level)));
+            El* box = Div(a)
+                          ->W(kFill)
+                          ->PadB(Rems(cx, 0.3f))
+                          ->Child(Inline(n, font, BlockFg(),
+                                         HeadingWeight(n->level)));
             StyleApplyFields(&box->style, refine,
                              refineFields & ~(uint32_t)StyleFieldFontSize);
             return box;
@@ -5391,7 +5426,7 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                             ->W(kFill)
                             ->Fg(textViewStyle.mutedForeground)
                             ->BorderL(3, textViewStyle.border)
-                            ->PadX(16);
+                            ->PadX(Rems(cx, 1.f));
             // text_color(muted_foreground) on the quote, and nothing inside
             // it naming a colour of its own: the paragraphs and headings it
             // holds inherit the grey rather than painting themselves black.
@@ -5620,7 +5655,7 @@ El* TextView::IntoEl() {
     // subtree laid out underneath, then let paint snap the mask to a whole
     // Inline boundary. A zero count intentionally produces an empty box.
     if (!scrollable && maxLines >= 0) {
-        float cap = baseFont * kLineHeight * (float)maxLines;
+        float cap = FontLen(cx, baseFont * kLineHeight) * (float)maxLines;
         element->LineClamp(
             cap, state.IsValid() ? ListenTo(state, &TextViewState::OnLineClamp)
                                  : Listener{});

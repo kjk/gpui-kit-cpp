@@ -199,15 +199,15 @@ static El* TooltipTextView(Ctx* cx, Str text) {
     return Tooltip::New(cx, StrL("tooltip-popup"))
         ->FlexRow()
         ->ItemsCenter()
-        ->Margin(12)
+        ->Margin(Rems(cx, 0.75f))
         ->Bg(theme.popover)
         ->Fg(theme.popoverForeground)
         ->Border(1, theme.border)
         ->Radius(6)
-        ->PadX(8)
-        ->PadY(2)
+        ->PadX(Rems(cx, 0.5f))
+        ->PadY(Rems(cx, 0.125f))
         ->Font(14)
-        ->Gap(12)
+        ->Gap(Rems(cx, 0.75f))
         ->Child(TextEl(cx->a, text));
 }
 

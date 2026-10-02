@@ -12,7 +12,11 @@ namespace component {
 
 static const float kPointerAxisLock = 2.f;
 static const int kScrollSettleMs = 28;
-static const float kItemGap = 16.f;
+// The items' spacing: the track's ml_neg_4 / mt_neg_4 against each item's
+// pl_4 / pt_4.
+static float ItemGap(const Ctx* cx) {
+    return Rems(cx, 1.f);
+}
 
 static float AxisValue(Point p, Axis axis) {
     return axis == Axis::Horizontal ? p.x : p.y;
@@ -1060,7 +1064,7 @@ El* Carousel::IntoEl() {
         Div(a)
             ->Id(id)
             ->FlexCol()
-            ->Gap(16)
+            ->Gap(Rems(cx, 1.f))
             ->Role(AccessibilityRole::Region)
             ->AriaLabel(accessibilityLabel.s ? accessibilityLabel
                                              : Tr("Carousel.label"))
@@ -1157,10 +1161,10 @@ El* CarouselContent::IntoEl() {
 
     El* track = Div(a)->Id(StrL("content"))->Flex1()->MinW(0)->MinH(0);
     if (axis == Axis::Vertical) {
-        track->FlexCol()->MarginT(-kItemGap);
+        track->FlexCol()->MarginT(-ItemGap(cx));
         track->ScrollY(-drawn.y);
     } else {
-        track->FlexRow()->MarginL(-kItemGap);
+        track->FlexRow()->MarginL(-ItemGap(cx));
         track->ScrollX(-drawn.x);
     }
     track->HideScrollbar();
@@ -1279,9 +1283,9 @@ El* CarouselItem::IntoEl() {
                    ->Refine(style, styleSet);
     refiner.Apply(root);
     if (axis == Axis::Vertical)
-        root->H(kFill)->PadT(kItemGap);
+        root->H(kFill)->PadT(ItemGap(cx));
     else
-        root->W(kFill)->PadL(kItemGap);
+        root->W(kFill)->PadL(ItemGap(cx));
     CarouselChildren(root, children);
     return root;
 }
@@ -1338,17 +1342,17 @@ El* CarouselControl::IntoEl() {
         btn->Top(0)->Bottom(0);
         btn->style.marginAuto |= kMarginAutoT | kMarginAutoB;
         if (next) {
-            btn->LeftRel(1.f)->MarginL(16);
+            btn->LeftRel(1.f)->MarginL(Rems(cx, 1.f));
         } else {
-            btn->RightRel(1.f)->MarginR(16);
+            btn->RightRel(1.f)->MarginR(Rems(cx, 1.f));
         }
     } else {
         btn->Left(0)->Right(0);
         btn->style.marginAuto |= kMarginAutoL | kMarginAutoR;
         if (next) {
-            btn->TopRel(1.f)->MarginT(16);
+            btn->TopRel(1.f)->MarginT(Rems(cx, 1.f));
         } else {
-            btn->BottomRel(1.f)->MarginB(16);
+            btn->BottomRel(1.f)->MarginB(Rems(cx, 1.f));
         }
     }
     btn->Refine(style, styleSet);
@@ -1379,6 +1383,7 @@ CarouselNext* CarouselNext::New(Ctx* cx, Entity<CarouselState> state) {
 CarouselPagination* CarouselPagination::New(Ctx* cx) {
     CarouselPagination* value = ArenaNew<CarouselPagination>(cx->a);
     value->a = cx->a;
+    value->cx = cx;
     return value;
 }
 CarouselPagination* CarouselPagination::AccessibilityLabel(Str value) {
@@ -1402,7 +1407,7 @@ El* CarouselPagination::IntoEl() {
                    ->FlexRow()
                    ->ItemsCenter()
                    ->JustifyCenter()
-                   ->Gap(8)
+                   ->Gap(Rems(cx, 0.5f))
                    ->Refine(style, styleSet);
     refiner.Apply(root);
     CarouselChildren(root, children);

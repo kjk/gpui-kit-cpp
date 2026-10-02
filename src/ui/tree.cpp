@@ -50,9 +50,9 @@ static El* TreeRow(void* user, Ctx* cx, int ix, const TreeEntry& entry,
                   // `pl(px(16.) * entry.depth() + px(12.))` on top of it,
                   // which is the whole of the indent: there is no spacer
                   // child and no chevron column.
-                  ->PadR(12)
+                  ->PadR(Rems(cx, 0.75f))
                   ->PadL(12 + (float)it->depth * 16)
-                  ->Gap(8)
+                  ->Gap(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->Radius(th.radius);
     // The story's row is a ListItem: no hover background while it is
@@ -72,7 +72,7 @@ static El* TreeRow(void* user, Ctx* cx, int ix, const TreeEntry& entry,
         IconName ic = !it->folder    ? IconName::File
                       : it->expanded ? IconName::FolderOpen
                                      : IconName::Folder;
-        row->Child(IconEl(a, ic, 16)
+        row->Child(IconEl(a, ic, Rems(cx, 1.f))
                        ->Fg(it->disabled ? th.mutedFg : th.foreground));
     }
     // ListItem is text_base, not text_sm.

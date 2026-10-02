@@ -95,10 +95,13 @@ El* Rating::IntoEl() {
         // A hovered star and everything before it previews the value the
         // pointer is offering, without committing to it.
         bool lit = filled || hovered >= i;
-        El* star = Div(a)->Pad(2)->Shrink0()->Child(
-            IconEl(a, filled ? IconName::StarFill : IconName::Star,
-                   UiIconPx(cx, size))
-                ->Fg(lit ? activeC : th.foreground));
+        El* star =
+            Div(a)
+                ->Pad(Rems(cx, 0.125f))
+                ->Shrink0()
+                ->Child(IconEl(a, filled ? IconName::StarFill : IconName::Star,
+                               UiIconPx(cx, size))
+                            ->Fg(lit ? activeC : th.foreground));
         if (!disabled) {
             // `div().id(ix)`: the star is named by its number alone, which
             // the row's own id scopes.

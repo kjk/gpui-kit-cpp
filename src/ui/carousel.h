@@ -241,6 +241,7 @@ struct CarouselNext : CarouselControl {
 
 struct CarouselPagination {
     Arena* a = nullptr;
+    Ctx* cx = nullptr;
     Str accessibilityLabel = StrL("Carousel pagination");
     ArenaVec<El*> children;
     Style style = {};

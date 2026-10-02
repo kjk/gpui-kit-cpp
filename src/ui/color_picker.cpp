@@ -143,8 +143,8 @@ static El* Swatch(Ctx* cx, Entity<ColorPickerState> st, Str id, uint32_t hex) {
                             ListenTo(st, &ColorPickerState::OnSwatchClick, hex),
                             ListenTo(st, &ColorPickerState::OnSwatchHover, hex),
                             hex, selected)
-        ->W(20)
-        ->H(20)
+        ->W(Rems(cx, 1.25f))
+        ->H(Rems(cx, 1.25f))
         ->Shrink0()
         ->Bg(c)
         ->Border(1, RgbaDarken(c, 0.1f));
@@ -163,18 +163,18 @@ static El* PalettePanel(Ctx* cx, Entity<ColorPickerState> st,
     const uint32_t* row = featured ? featured : owned;
     int n = featured ? nFeatured : 12;
 
-    El* panel = Div(a)->FlexCol()->Gap(12);
-    El* top = Div(a)->FlexRow()->Gap(4);
+    El* panel = Div(a)->FlexCol()->Gap(Rems(cx, 0.75f));
+    El* top = Div(a)->FlexRow()->Gap(Rems(cx, 0.25f));
     for (int i = 0; i < n; i++) {
         top->Child(
             Swatch(cx, st, StrDup(a, fmt("cp-f%d", i)), row[i] & 0xffffffu));
     }
     panel->Child(top);
     panel->Child(Separator::Horizontal(cx)->IntoEl());
-    El* grid = Div(a)->FlexCol()->Gap(4);
+    El* grid = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f));
     for (int r = 0; r <= kNumPaletteHues; r++) {
         const uint32_t* scale = PaletteRow(r);
-        El* line = Div(a)->FlexRow()->Gap(4);
+        El* line = Div(a)->FlexRow()->Gap(Rems(cx, 0.25f));
         // `.rev()`: the darkest end leads each row.
         for (int i = kNumShadcnColumns - 1; i >= 0; i--) {
             line->Child(Swatch(cx, st, StrDup(a, fmt("cp-%d-%d", r, i)),
@@ -229,14 +229,15 @@ static El* SliderRow(Ctx* cx, Entity<ColorPickerState> st, Str label, El* track,
     const Theme& th = ThemeNow(cx->app);
     Rgba labelColor = RgbaOpacity(th.foreground, 0.7f);
     ColorPickerState* s = st.Get(cx);
-    El* row = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
-    row->Child(
-        Div(a)->MinW(64)->Child(TextEl(a, label)->Font(12)->Fg(labelColor)));
+    El* row = Div(a)->FlexRow()->Gap(Rems(cx, 0.5f))->ItemsCenter();
+    row->Child(Div(a)
+                   ->MinW(Rems(cx, 4.f))
+                   ->Child(TextEl(a, label)->Font(12)->Fg(labelColor)));
     // div().relative().flex().items_center().flex_1().h_8(): the track lies
     // under the slider, and the slider is what takes the pointer.
     // div().relative(): taffy lays an absolute child out against its parent
     // box, so the strip under the slider needs nothing said here.
-    El* mid = Div(a)->FlexRow()->ItemsCenter()->Flex1()->H(32);
+    El* mid = Div(a)->FlexRow()->ItemsCenter()->Flex1()->H(Rems(cx, 2.f));
     mid->Child(track);
     mid->Child(Slider::New(cx, StrDup(a, fmt("cp-sl%d", slot)),
                            s ? s->sliders.At(slot) : nullptr)
@@ -247,8 +248,11 @@ static El* SliderRow(Ctx* cx, Entity<ColorPickerState> st, Str label, El* track,
     row->Child(mid);
     // text_align(Right) in a w_10 box, which a row that justifies to its end
     // comes to.
-    row->Child(Div(a)->FlexRow()->W(40)->JustifyEnd()->Child(
-        TextEl(a, value)->Font(12)->Fg(labelColor)));
+    row->Child(Div(a)
+                   ->FlexRow()
+                   ->W(Rems(cx, 2.5f))
+                   ->JustifyEnd()
+                   ->Child(TextEl(a, value)->Font(12)->Fg(labelColor)));
     return row;
 }
 
@@ -263,7 +267,7 @@ static El* SliderPanel(Ctx* cx, Entity<ColorPickerState> st) {
     float l = s->sliders.lightness.value.End();
     float alpha = s->sliders.alpha.value.End();
 
-    El* panel = Div(a)->FlexCol()->Gap(8);
+    El* panel = Div(a)->FlexCol()->Gap(Rems(cx, 0.5f));
     panel->Child(SliderRow(cx, st, Tr("ColorPicker.Hue"),
                            StripeTrack(cx, HueAt, h), 0,
                            StrDup(a, fmt("%.0f", (double)(h * 360.f)))));
@@ -294,19 +298,20 @@ static El* ColorFieldTrigger(Ctx* cx, const ColorPickerState* s, UiSize size,
                     ->FlexRow()
                     ->ItemsCenter()
                     ->W(kFill)
-                    ->Gap(8)
+                    ->Gap(Rems(cx, 0.5f))
                     ->Bg(th.inputBg)
                     ->Fg(th.foreground)
                     ->Radius(th.radius)
                     ->Border(1, outlineVisible ? th.ring : th.inputBorder);
     UiInputTextSize(UiInputSize(cx, field, size), size);
-    float sw = 16;
+    // size_3 / size_3p5 / size_4 / size_5.
+    float sw = Rems(cx, 1.f);
     if (size == UiSize::XSmall) {
-        sw = 12;
+        sw = Rems(cx, 0.75f);
     } else if (size == UiSize::Small) {
-        sw = 14;
+        sw = Rems(cx, 0.875f);
     } else if (size == UiSize::Large) {
-        sw = 20;
+        sw = Rems(cx, 1.25f);
     }
     El* swatch = Div(a)->W(sw)->H(sw)->Shrink0()->Radius(th.radius / 2.f);
     if (s->hasValue) {
@@ -355,22 +360,15 @@ El* ColorPicker::IntoEl() {
     Rgba shown = RgbaHex(shownHex);
 
     // ColorPickerButton: the icon if there is one, else a square of the value
-    // sized with the picker.
-    float sq = 32;
-    if (size == UiSize::Large) {
-        sq = 44;
-    } else if (size == UiSize::Small) {
-        sq = 20;
-    } else if (size == UiSize::XSmall) {
-        sq = 16;
-    }
+    // sized with the picker (size_with).
+    float sq = UiSizeWithPx(cx, size);
     bool focused =
         s->focus.IsValid() && FocusHandleIsFocused(cx->win, s->focus);
     El* trigger = nullptr;
     if (field) {
         trigger = ColorFieldTrigger(cx, s, size, placeholder, focused);
     } else {
-        trigger = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+        trigger = Div(a)->FlexRow()->Gap(Rems(cx, 0.5f))->ItemsCenter();
     }
     if (field) {
         // The field is the whole trigger.
@@ -400,9 +398,9 @@ El* ColorPicker::IntoEl() {
         // Popover::w_72() over v_flex().p_0p5().gap_3().
         pop = Div(a)
                   ->FlexCol()
-                  ->W(288)
-                  ->Gap(12)
-                  ->Pad(2)
+                  ->W(Rems(cx, 18.f))
+                  ->Gap(Rems(cx, 0.75f))
+                  ->Pad(Rems(cx, 0.125f))
                   ->Radius(th.radiusLg)
                   ->Border(1, th.border)
                   ->Bg(th.tokens.background);
@@ -425,10 +423,10 @@ El* ColorPicker::IntoEl() {
         if (s->hasPreview) {
             Rgba hovered = RgbaHex(s->preview);
             pop->Child(Separator::Horizontal(cx)->IntoEl());
-            El* row = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
+            El* row = Div(a)->FlexRow()->Gap(Rems(cx, 0.5f))->ItemsCenter();
             row->Child(Div(a)
-                           ->W(20)
-                           ->H(20)
+                           ->W(Rems(cx, 1.25f))
+                           ->H(Rems(cx, 1.25f))
                            ->Shrink0()
                            ->Radius(th.radius)
                            ->Bg(hovered)

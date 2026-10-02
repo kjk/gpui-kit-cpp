@@ -443,6 +443,8 @@ struct TextViewStyle {
     Rgba codeBackground = {};
     // Rules, table borders and the bar down the side of a blockquote.
     Rgba border = {};
+    // rems(1.), held as DIPs at a 16 px rem: the view resolves it against
+    // the window's rem size.
     float paragraphGap = 16;
     // Unset, every level's refinement is empty.
     HeadingStyleFn heading = nullptr;
@@ -1030,7 +1032,8 @@ struct TextView {
     // theme.mono_font_size — fenced code blocks. Inline code follows Rust's
     // relative 0.875 scale so it stays proportional inside headings too.
     float codeFont = 13;
-    // TextViewStyle::paragraph_gap, rems(1.).
+    // TextViewStyle::paragraph_gap, rems(1.), at a 16 px rem like the
+    // style's.
     float paragraphGap = 16;
     // Whether the text can be dragged over. Rust's TextView is selectable
     // through its own selection machinery; here it is El::Selectable. Every
@@ -1058,8 +1061,9 @@ struct TextView {
     ArenaVec<MdPlugin> plugins{};
     // node.rs min_w_16: the floor a table column shrinks to. Above the floor
     // a column's width is a fraction of the table, proportional to the length
-    // of its content, the way render_wrap_table distributes the space.
-    float tableColW = 64;
+    // of its content, the way render_wrap_table distributes the space. Zero
+    // is min_w_16 itself, four of the window's rems.
+    float tableColW = 0;
     // TextViewStyle::table with overflow-x: scroll. A table laid out this way
     // takes its column widths from the measured text rather than from a
     // character count, and scrolls sideways once the columns are down to

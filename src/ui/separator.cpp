@@ -63,7 +63,7 @@ El* Separator::IntoEl() {
         }
         root->Child(lineEl);
     } else {
-        root->FlexRow()->W(kFill)->H(label.s ? 24.f : 1.f);
+        root->FlexRow()->W(kFill)->H(label.s ? Rems(cx, 1.5f) : 1.f);
         // With a label beside it the rule gives way, so the pair together is
         // as wide as the separator and no wider.
         El* lineEl = Div(a)->H(1);
@@ -85,7 +85,7 @@ El* Separator::IntoEl() {
                         ->Font(12)
                         ->Fg(th.mutedFg)
                         ->Bg(th.tokens.background)
-                        ->PadX(8));
+                        ->PadX(Rems(cx, 0.5f)));
     }
     return root;
 }

@@ -1812,9 +1812,11 @@ static void HeadingRefinementChangesRenderedHeadingGeometry() {
         TextView::New(&cx, StrL("# Heading"))->Style(custom)->IntoEl();
     El* customH2 =
         TextView::New(&cx, StrL("## Heading"))->Style(custom)->IntoEl();
-    utassert(!HasBottomPad(defaultH1, 32.f) && HasBottomPad(defaultH1, 5.f));
+    utassert(!HasBottomPad(defaultH1, 32.f) &&
+             HasBottomPad(defaultH1, Rems(&cx, 0.3f)));
     utassert(HasBottomPad(customH1, 32.f));
-    utassert(!HasBottomPad(customH2, 32.f) && HasBottomPad(customH2, 5.f));
+    utassert(!HasBottomPad(customH2, 32.f) &&
+             HasBottomPad(customH2, Rems(&cx, 0.3f)));
     WindowKeyedFree(win);
     ArenaDelete(a);
     delete win;

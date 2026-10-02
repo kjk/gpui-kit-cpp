@@ -24,30 +24,30 @@ static float AccordionFontPx(UiSize s) {
 
 // The trigger's py_1/px_1p5 … py_3/px_4 ladder. The panel uses the same x and
 // the same number for its pb, so one table serves both.
-static void AccordionPad(UiSize s, float* padY, float* padX) {
+static void AccordionPad(const Ctx* cx, UiSize s, float* padY, float* padX) {
     switch (s) {
         case UiSize::XSmall:
-            *padY = 4;
-            *padX = 6;
+            *padY = Rems(cx, 0.25f);
+            *padX = Rems(cx, 0.375f);
             return;
         case UiSize::Small:
-            *padY = 6;
-            *padX = 8;
+            *padY = Rems(cx, 0.375f);
+            *padX = Rems(cx, 0.5f);
             return;
         case UiSize::Large:
-            *padY = 12;
-            *padX = 16;
+            *padY = Rems(cx, 0.75f);
+            *padX = Rems(cx, 1.f);
             return;
         default:
-            *padY = 8;
-            *padX = 12;
+            *padY = Rems(cx, 0.5f);
+            *padX = Rems(cx, 0.75f);
             return;
     }
 }
 
 // The gap between the icon and the title: gap_1 while small, gap_2 above.
-static float AccordionTitleGap(UiSize s) {
-    return (s == UiSize::XSmall || s == UiSize::Small) ? 4.f : 8.f;
+static float AccordionTitleGap(const Ctx* cx, UiSize s) {
+    return Rems(cx, (s == UiSize::XSmall || s == UiSize::Small) ? 0.25f : 0.5f);
 }
 
 // StyleRefinement::refine over the fields AccordionStyle names.
@@ -172,7 +172,7 @@ El* AccordionItem::IntoEl() {
     IdScope scope(cx, StrDup(a, fmt("%d", index)));
     float font = AccordionFontPx(size);
     float padY = 0, padX = 0;
-    AccordionPad(size, &padY, &padX);
+    AccordionPad(cx, size, &padY, &padX);
     El* trig = AccordionTrigger::New(
         cx, ElementIdNamed(a, StrL("trigger"), (uint64_t)index), open, disabled,
         onToggle);
@@ -181,7 +181,7 @@ El* AccordionItem::IntoEl() {
     trig->FlexRow()
         ->ItemsCenter()
         ->JustifyBetween()
-        ->Gap(12)
+        ->Gap(Rems(cx, 0.75f))
         ->PadX(padX)
         ->PadY(padY)
         ->W(kFill)
@@ -194,7 +194,7 @@ El* AccordionItem::IntoEl() {
     El* left = Div(a)
                    ->FlexRow()
                    ->ItemsCenter()
-                   ->Gap(AccordionTitleGap(size))
+                   ->Gap(AccordionTitleGap(cx, size))
                    ->Flex1()
                    ->MinW(0);
     if (icon != IconName::None) {

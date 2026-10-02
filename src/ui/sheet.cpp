@@ -141,9 +141,9 @@ El* Sheet::IntoEl(WinSize win) {
                    ->FlexRow()
                    ->W(kFill)
                    ->Shrink0()
-                   ->PadL(16)
-                   ->PadR(12)
-                   ->PadY(8)
+                   ->PadL(Rems(cx, 1.f))
+                   ->PadR(Rems(cx, 0.75f))
+                   ->PadY(Rems(cx, 0.5f))
                    ->ItemsCenter()
                    ->JustifyBetween();
     head->Child(
@@ -185,8 +185,8 @@ El* Sheet::IntoEl(WinSize win) {
                            ->FlexRow()
                            ->W(kFill)
                            ->Shrink0()
-                           ->PadX(16)
-                           ->PadY(12)
+                           ->PadX(Rems(cx, 1.f))
+                           ->PadY(Rems(cx, 0.75f))
                            ->ItemsCenter()
                            ->JustifyBetween()
                            ->Child(footer));
