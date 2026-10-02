@@ -407,7 +407,9 @@ struct ElementIdRec {
 // Only a debug build fills it, and a frame's worth at most: a run with no
 // frames (a test building trees) starts over once it holds this many.
 Vec<ElementIdRec> gElementIds;
+#ifndef NDEBUG
 const int kElementIdCap = 8192;
+#endif
 } // namespace
 
 static void ElementIdRemember(Str id, int kind, int nameLen) {

@@ -3244,8 +3244,14 @@ El* ButtonSmall(Arena* a, int clickId, Str label, BtnKind kind, bool selected);
 
 // div(). The call site is recorded in a debug build, as div()'s
 // #[track_caller] does, for the debug label's secondary-click.
+// GCC has no __builtin_COLUMN, so a column there is 0.
+#if defined(__clang__) || defined(_MSC_VER)
+#define GPUI_CALLER_COLUMN() __builtin_COLUMN()
+#else
+#define GPUI_CALLER_COLUMN() 0
+#endif
 El* Div(Arena* a, const char* file = __builtin_FILE(),
-        int line = __builtin_LINE(), int column = __builtin_COLUMN());
+        int line = __builtin_LINE(), int column = GPUI_CALLER_COLUMN());
 El* TextEl(Arena* a, Str s);
 
 // ElementId::NamedInteger(name, ix) and ElementId::Integer(ix), as this
