@@ -873,6 +873,31 @@ static void AHoveredDebugElementPrintsItsGlobalId() {
     ArenaDelete(arena);
 }
 
+struct DebugHoverView {
+    static El* Render(DebugHoverView*, Ctx* cx) {
+        El* item = Div(cx->a)
+                       ->Id(StrL("item"))
+                       ->W(100)
+                       ->H(40)
+                       ->Cursor(CursorKind::Pointer);
+        item->debug = true;
+        return Div(cx->a)->Id(StrL("list"))->SizeFull()->Child(item);
+    }
+};
+
+// The label paints in a debug build while the pointer is over the element's
+// hitbox; in a release build there is nothing to paint.
+static void DrawingAHoveredDebugElement() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win = TestWindowOpen(app, EntityNew<DebugHoverView>(app), 300, 200);
+    TestDraw(win);
+    TestSimulateMouseMove(win, {20, 20});
+    TestDraw(win);
+    utassert(win->mouseX == 20);
+    TestAppFree(app);
+}
+
 } // namespace shell_style_tests
 
 void TestShellStyle() {
@@ -889,4 +914,5 @@ void TestShellStyle() {
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
     shell_style_tests::DebugOutlinesOnlyInADebugBuild();
     shell_style_tests::AHoveredDebugElementPrintsItsGlobalId();
+    shell_style_tests::DrawingAHoveredDebugElement();
 }

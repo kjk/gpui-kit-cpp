@@ -3710,6 +3710,8 @@ static void AppRelease(App* app, bool platform) {
     // a request still inside the OS client owns only its job and static slot.
     ImageCacheClear();
     ExecShutdown();
+    // A fetch that lands from here on has no App to tell.
+    HttpSetOnFetchDone(Func0{});
     EntityDropAll(app);
     for (int i = 0; i < app->windows.len; i++) {
         Window* w = app->windows[i];

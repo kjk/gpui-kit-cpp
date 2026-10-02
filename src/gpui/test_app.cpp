@@ -20,6 +20,10 @@ struct TestPlatform {
 };
 
 static TestPlatform gTestPlatform;
+// Whether the executor was running when the test app was made. Freeing an
+// App stops it (AppRelease's ExecShutdown), and the tests after this one --
+// a plain `App` that drains what it posts -- want it as they left it.
+static bool gTestExecWasRunning = false;
 static const double kTestClockStart = 1000.0;
 // A run that has not settled after this many rounds is a frame or a timer
 // asking for itself forever, which no test means to wait out.
@@ -62,6 +66,7 @@ double TestClockNow() {
 }
 
 App* TestAppNew() {
+    gTestExecWasRunning = ExecOnMainThread();
     App* app = AppNewHeadless();
     if (!app) {
         return nullptr;
@@ -77,6 +82,9 @@ void TestAppFree(App* app) {
     AppFreeHeadless(app);
     StrFree(gTestPlatform.clipboard);
     gTestPlatform = TestPlatform{};
+    if (gTestExecWasRunning) {
+        ExecInit();
+    }
 }
 
 Window* TestWindowOpen(App* app, EntityId root, float w, float h, float scale) {

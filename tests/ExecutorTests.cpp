@@ -201,6 +201,18 @@ static void AJobThatHasNotStartedCanBeCalledOff() {
     utassert(gDone == 0);
 }
 
+// A test app frees like any App, and freeing one stops the executor; the
+// suites after it run without an App of their own and still post and drain,
+// so TestAppFree leaves the executor running as TestAppNew found it.
+static void ATestAppLeavesTheExecutorAsItFoundIt() {
+    App* app = TestAppNew();
+    TestAppFree(app);
+    Reset();
+    ExecPost(MkFunc0Void(Bump));
+    utassert(ExecDrain() == 1);
+    utassert(gRan == 1);
+}
+
 void TestExecutor() {
     TestSuite("executor");
     // The suite has no App, so this is where the main thread is named.
@@ -226,4 +238,5 @@ void TestExecutor() {
     utassert(gRan == 1);
     ExecShutdown();
     ExecInit();
+    ATestAppLeavesTheExecutorAsItFoundIt();
 }

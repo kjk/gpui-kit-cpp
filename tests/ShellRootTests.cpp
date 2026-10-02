@@ -429,33 +429,6 @@ static void TheRootReadsOnlyBaseTokens() {
              root->style.bg.color.g == 2 && root->style.bg.color.b == 3);
 }
 
-struct DebugHoverView {
-    static El* Render(DebugHoverView*, Ctx* cx) {
-        El* item = Div(cx->a)
-                       ->Id(StrL("item"))
-                       ->W(100)
-                       ->H(40)
-                       ->Cursor(CursorKind::Pointer);
-        item->debug = true;
-        return Div(cx->a)->Id(StrL("list"))->SizeFull()->Child(item);
-    }
-};
-
-// A script's debug(): the label paints in a debug build while the pointer is
-// over the element's hitbox; in a release build there is nothing to paint.
-// Here rather than beside the style tests because TestAppFree stops the
-// executor the component shell's tests drain.
-static void DrawingAHoveredDebugElement() {
-    App* app = TestAppNew();
-    component::Init(app);
-    Window* win = TestWindowOpen(app, EntityNew<DebugHoverView>(app), 300, 200);
-    TestDraw(win);
-    TestSimulateMouseMove(win, {20, 20});
-    TestDraw(win);
-    utassert(win->mouseX == 20);
-    TestAppFree(app);
-}
-
 void TestShellRoot() {
     TestSuite("shell_root");
     APressOnTheBackgroundClearsTheKeyboard();
@@ -478,5 +451,4 @@ void TestShellRoot() {
     AToastRequestDefaultsToTheStandardTimeout();
     DialogOptionsDefaultToDismissable();
     TheRootReadsOnlyBaseTokens();
-    DrawingAHoveredDebugElement();
 }
