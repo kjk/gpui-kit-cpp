@@ -208,10 +208,6 @@ macOS font-kit requirement on the website only. The current update target is
   `font-variant-numeric`, so in the browser the TimeField's digits stay
   proportional (`kFontTabularNums`, `src/gpui/paint.h`).
 
-- **The input's touch handles and edit menu are not drawn.** touch.rs's
-  touch selection is ported (`InputTouchSelection` and the edge-drag calls,
-  `src/base/input.cpp`), but the styled layer draws handles and an edit menu
-  only for the window's text selection (`src/ui/touch_selection.cpp`).
 - **The highlighter is driven once a frame.** Rust drives `update` from each
   change and `update_batch` from each multi-edit change; here the text
   funnels log every edit with the bytes it removed, and the themed layer

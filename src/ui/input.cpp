@@ -3,6 +3,7 @@
 #include "ui/button.h"
 #include "ui/highlighter.h"
 #include "ui/native_menu.h"
+#include "ui/touch_selection.h"
 #include "base/input.h"
 #include "base/motion.h"
 
@@ -323,6 +324,202 @@ static void BindInputContextMenu(Ctx* cx, El* e, Str id, InputState* state,
     menu->selection = selection.id;
 }
 
+// input.rs render_touch_selection: the field's touch selection drawn -- its
+// handles, floated above the field so its own clip does not cut the knobs,
+// and its edit menu. Cut, Copy and Paste go through the field's actions, so
+// an open completion menu sees them the same way a key binding would.
+struct InputTouchSelectionState {
+    InputState* state = nullptr;
+
+    static void Act(InputTouchSelectionState* self, Ctx* cx,
+                    InputAction action) {
+        if (self->state) {
+            InputPerform(self->state, cx->app, cx->win, action, false);
+            Notify(cx);
+        }
+    }
+    static void OnCut(InputTouchSelectionState* self, Ctx* cx,
+                      const ClickEvent*) {
+        Act(self, cx, InputAction::Cut);
+    }
+    static void OnCopy(InputTouchSelectionState* self, Ctx* cx,
+                       const ClickEvent*) {
+        Act(self, cx, InputAction::Copy);
+        if (self->state) {
+            InputCloseEditMenu(self->state, cx->app, cx->win);
+        }
+    }
+    static void OnPaste(InputTouchSelectionState* self, Ctx* cx,
+                        const ClickEvent*) {
+        Act(self, cx, InputAction::Paste);
+    }
+    static void OnSelectAll(InputTouchSelectionState* self, Ctx* cx,
+                            const ClickEvent*) {
+        if (self->state) {
+            InputSelectAllFromEditMenu(self->state, cx->app, cx->win);
+            Notify(cx);
+        }
+    }
+
+    // SelectionHandles::listen: the drag begins on the handle under the
+    // pointer, which takes the press from the text underneath, and its moves
+    // and its release follow it wherever it goes.
+    static void Press(InputTouchSelectionState* self, Ctx* cx,
+                      const MouseDownEvent* ev, SelectionEdge edge) {
+        if (!self->state || !ev || ev->button != MouseButton::Left) {
+            return;
+        }
+        WindowPreventDefault(cx);
+        WindowStopPropagation(cx);
+        InputBeginEdgeDrag(self->state, cx->app, cx->win, edge, {ev->x, ev->y});
+        Notify(cx);
+    }
+    static void OnStartDown(InputTouchSelectionState* self, Ctx* cx,
+                            const MouseDownEvent* ev) {
+        Press(self, cx, ev, SelectionEdge::Start);
+    }
+    static void OnEndDown(InputTouchSelectionState* self, Ctx* cx,
+                          const MouseDownEvent* ev) {
+        Press(self, cx, ev, SelectionEdge::End);
+    }
+    static void OnDragMove(InputTouchSelectionState* self, Ctx* cx,
+                           const DragMoveEvent* ev) {
+        if (self->state && ev && self->state->touchDragging) {
+            InputUpdateEdgeDrag(self->state, cx->app, cx->win,
+                                {ev->event.x, ev->event.y});
+            Notify(cx);
+        }
+    }
+    static void OnUp(InputTouchSelectionState* self, Ctx* cx,
+                     const MouseUpEvent*) {
+        if (self->state && self->state->touchDragging) {
+            InputEndEdgeDrag(self->state, cx->app, cx->win);
+            Notify(cx);
+        }
+    }
+};
+
+// SelectionHandles::paint: each handle as the frame paints it, read from
+// the selection then, so it sits on the text as it is now.
+struct InputTouchHandlesPaint {
+    InputState* state = nullptr;
+    Rgba color = {};
+};
+
+static void PaintInputTouchHandles(PaintCtx* ctx, El*, void* user) {
+    auto* p = (InputTouchHandlesPaint*)user;
+    TouchSelectionSnapshot snap = {};
+    if (!p || !ctx->window ||
+        !InputTouchSelection(p->state, ctx->window, &snap) || snap.IsEmpty()) {
+        return;
+    }
+    Rgba c = PaintFade(ctx, p->color);
+    for (SelectionEdge edge : {SelectionEdge::Start, SelectionEdge::End}) {
+        if (!snap.IsEdgeVisible(edge)) {
+            continue;
+        }
+        Bounds caret = snap.Edge(edge);
+        Bounds bar = TouchHandle::BarBounds(caret);
+        Bounds knob = TouchHandle::KnobBounds(edge, caret);
+        FillRound(ctx, bar.x, bar.y, bar.w, bar.h, 0, c);
+        FillRound(ctx, knob.x, knob.y, knob.w, knob.h,
+                  TouchHandle::kKnobSize * 0.5f, c);
+    }
+}
+
+static void InputTouchSelectionLayer(Ctx* cx, El* e, Str id,
+                                     InputState* state) {
+    TouchSelectionSnapshot snap = {};
+    if (!state || !cx->win || !InputTouchSelection(state, cx->win, &snap)) {
+        return;
+    }
+    Entity<InputTouchSelectionState> ent =
+        ElementStateEntity<InputTouchSelectionState>(
+            cx, id, StrL("component::InputTouchSelection"));
+    InputTouchSelectionState* st = ent.Get(cx);
+    if (!st) {
+        return;
+    }
+    st->state = state;
+    Arena* a = cx->a;
+    const Theme& th = ThemeNow(cx->app);
+
+    if (!snap.IsEmpty()) {
+        auto* paint = ArenaNew<InputTouchHandlesPaint>(a);
+        paint->state = state;
+        paint->color = th.selection;
+        paint->color.a = 255;
+        WinSize size = WindowSize(cx->win);
+        Bounds window = {0, 0, size.dipW, size.dipH};
+        El* handles =
+            Div(a)->Fixed()->Left(0)->Top(0)->W(window.w)->H(window.h);
+        handles->customPaint = &PaintInputTouchHandles;
+        handles->customUser = paint;
+        for (SelectionEdge edge : {SelectionEdge::Start, SelectionEdge::End}) {
+            Bounds caret = snap.Edge(edge);
+            if (!snap.IsEdgeVisible(edge) ||
+                !window.Contains({caret.x, caret.y})) {
+                continue;
+            }
+            Bounds hit = TouchHandle::HitBounds(edge, caret);
+            bool start = edge == SelectionEdge::Start;
+            El* knob = Div(a)
+                           ->Fixed()
+                           ->Left(hit.x)
+                           ->Top(hit.y)
+                           ->W(hit.w)
+                           ->H(hit.h)
+                           ->PathClick(start ? StrL("touch-handle-start")
+                                             : StrL("touch-handle-end"))
+                           ->SuppressTextSelection()
+                           ->StopMouseDown();
+            knob->OnMouseDown(
+                start ? ListenTo(ent, &InputTouchSelectionState::OnStartDown)
+                      : ListenTo(ent, &InputTouchSelectionState::OnEndDown));
+            knob->OnDragMove(
+                ListenTo(ent, &InputTouchSelectionState::OnDragMove));
+            knob->OnMouseUp(ListenTo(ent, &InputTouchSelectionState::OnUp));
+            knob->OnMouseUpOut(ListenTo(ent, &InputTouchSelectionState::OnUp));
+            handles->Child(knob);
+        }
+        e->Child(handles->DeferredLayer(kPaintLayerPopup));
+    }
+
+    InputContextMenuCapabilities caps = InputContextMenuCapabilities::Of(state);
+    bool editable = caps.IsEditable();
+    bool copyable = caps.IsCopyable();
+    // Offered whenever the text can change, without peeking at the
+    // clipboard: an empty clipboard pastes nothing.
+    bool pasteable = editable;
+    Str text = InputValue(state);
+    Selection sel = state->selectedRange;
+    bool allSelected =
+        sel.start == 0 && sel.end == len(text) && state->extraCursors.len == 0;
+    bool selectable = len(text) > 0 && !allSelected;
+    TouchSelectionOverlay* overlay =
+        TouchSelectionOverlay::New(cx, StrL("input-touch-selection"))
+            ->Snapshot(snap);
+    if (editable && copyable) {
+        overlay->Item(Tr("Input.Cut"),
+                      ListenTo(ent, &InputTouchSelectionState::OnCut));
+    }
+    if (copyable) {
+        overlay->Item(Tr("Input.Copy"),
+                      ListenTo(ent, &InputTouchSelectionState::OnCopy));
+    }
+    if (pasteable) {
+        overlay->Item(Tr("Input.Paste"),
+                      ListenTo(ent, &InputTouchSelectionState::OnPaste));
+    }
+    if (selectable) {
+        overlay->Item(Tr("Input.Select All"),
+                      ListenTo(ent, &InputTouchSelectionState::OnSelectAll));
+    }
+    if (El* menu = overlay->IntoEl()) {
+        e->Child(menu);
+    }
+}
+
 Editor* Editor::New(Ctx* cx, InputState* state) {
     return New(cx, StrL("editor"), state);
 }
@@ -488,6 +685,7 @@ El* Editor::IntoEl() {
     if (disabled) element->Opacity(0.5f);
     if (styleFields) element->Refine(style, styleFields);
 
+    InputTouchSelectionLayer(cx, element, id, state);
     BindInputContextMenu(cx, element, id, state, disabled, contextMenu,
                          contextMenuData);
     return element;
@@ -926,6 +1124,7 @@ El* Input::IntoEl() {
             field->OnClick(onChange);
         }
     }
+    InputTouchSelectionLayer(cx, field, id, state);
     BindInputContextMenu(cx, field, id, state, disabled, contextMenu,
                          contextMenuData);
     if (!col) {
@@ -1111,6 +1310,7 @@ El* Textarea::IntoEl() {
     if (ariaLabel.s) {
         box->AriaLabel(ariaLabel);
     }
+    InputTouchSelectionLayer(cx, box, id, state);
     BindInputContextMenu(cx, box, id, state, disabled, contextMenu,
                          contextMenuData);
     // `Scrollbar::new(..)` against `Scrollbar::vertical(..)`: a field that

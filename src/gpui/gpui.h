@@ -6339,6 +6339,10 @@ struct Window {
     bool mouseDown = false;
     // cx.stop_propagation(): set by a handler, read by the chain it is in.
     bool stopPropagation = false;
+    // window.prevent_default for the press being dispatched: a listener that
+    // took it says the default -- a field placing its caret -- must not
+    // happen. Cleared as each press starts.
+    bool defaultPrevented = false;
     // OngoingScroll is keyed by (mask axis, scroll id) upstream. Only one
     // pointer gesture can be active per axis in a window, so two slots retain
     // the same state without a map.
@@ -6405,6 +6409,10 @@ struct Window {
     // not.
     InputState* scrollDragInput = nullptr;
     bool touchScrollbarDrag = false;
+    // A touch drag that began on a handle of the focused field's touch
+    // selection: its moves and its end go to the field (touch.rs
+    // update_edge_drag / end_edge_drag).
+    bool touchInputHandle = false;
     // A platform offers a finger as TouchDrag before synthesizing its mouse
     // press. The next down can therefore distinguish a tap from a mouse.
     bool touchPressPending = false;
@@ -6957,6 +6965,9 @@ int WindowDragOverId(Ctx* cx);
 // cx.stop_propagation(): the rest of the chain does not hear the event the
 // handler is in. Only an element's mouse handler has a chain to stop.
 void WindowStopPropagation(Ctx* cx);
+// window.prevent_default / default_prevented, for the press in flight.
+void WindowPreventDefault(Ctx* cx);
+bool WindowDefaultPrevented(const Window* win);
 // The same cursor offset, for whoever draws the thing being dragged.
 Point WindowDragOffset(Ctx* cx);
 // One subscription per event type, which is what window.on_mouse_event::<T>

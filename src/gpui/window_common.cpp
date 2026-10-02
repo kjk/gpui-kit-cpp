@@ -1382,6 +1382,11 @@ static void InputRightPress(Window* win, const MouseDownEvent& in) {
 // it, a second press takes the word and a third the line. A press anywhere
 // else blurs whatever had focus, which is what GPUI's focus handle does.
 static void InputPress(Window* win, const MouseDownEvent& in) {
+    // A press a listener took -- a selection handle's, a token's -- places
+    // no caret: on_mouse_down's `window.default_prevented()`.
+    if (win->defaultPrevented) {
+        return;
+    }
     InputState* s = InputAtPosition(&win->paint, in.x, in.y);
     if (!s) {
         if (win->input) {
@@ -2071,6 +2076,16 @@ void WindowStopPropagation(Ctx* cx) {
     }
 }
 
+void WindowPreventDefault(Ctx* cx) {
+    if (cx && cx->win) {
+        cx->win->defaultPrevented = true;
+    }
+}
+
+bool WindowDefaultPrevented(const Window* win) {
+    return win && win->defaultPrevented;
+}
+
 // The chain of hit rects the pointer is inside, leaf first. Not every box
 // that contains the point: two absolutely placed siblings can overlap without
 // either being inside the other, so the chain is the one the paint recorded.
@@ -2222,6 +2237,7 @@ static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
 
 static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     win->touchPress = win->touchPressPending;
+    win->defaultPrevented = false;
     win->touchPressPending = false;
     float x = in.x;
     float y = in.y;
@@ -2871,11 +2887,35 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                         }
                     }
                 }
+                // A handle of the focused field's touch selection, which
+                // SelectionHandles offers the drag to before the window can
+                // take it for a pan.
+                win->touchInputHandle = false;
+                if (!win->touchScrollbarDrag && win->input &&
+                    !(win->sel && win->sel->hasTouchEdgeDrag)) {
+                    TouchSelectionSnapshot snap = {};
+                    if (InputTouchSelection(win->input, win, &snap) &&
+                        !snap.IsEmpty()) {
+                        for (int edge = 0; edge < 2; edge++) {
+                            SelectionEdge which = edge == 0
+                                                      ? SelectionEdge::Start
+                                                      : SelectionEdge::End;
+                            if (snap.IsEdgeVisible(which) &&
+                                TouchHandle::HitBounds(which, snap.Edge(which))
+                                    .Contains(touch.position)) {
+                                InputBeginEdgeDrag(win->input, win->app, win,
+                                                   which, touch.position);
+                                win->touchInputHandle = true;
+                                break;
+                            }
+                        }
+                    }
+                }
                 // The scrollbar and a selection handle claim first; what
                 // neither took may be a slider's.
                 (void)SliderTouchDrag(
                     win, touch,
-                    !win->touchScrollbarDrag &&
+                    !win->touchScrollbarDrag && !win->touchInputHandle &&
                         !(win->sel && win->sel->hasTouchEdgeDrag));
             } else if (win->touchSlider) {
                 (void)SliderTouchDrag(win, touch, false);
@@ -2893,6 +2933,19 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                     win->scrollDragGrab = 0;
                     win->scrollDragInput = nullptr;
                 }
+            } else if (win->touchInputHandle) {
+                if (win->input && touch.phase == TouchPhase::Moved) {
+                    InputUpdateEdgeDrag(win->input, win->app, win,
+                                        touch.position);
+                }
+                if (touch.phase == TouchPhase::Ended ||
+                    touch.phase == TouchPhase::Cancelled) {
+                    if (win->input) {
+                        InputEndEdgeDrag(win->input, win->app, win);
+                    }
+                    win->touchInputHandle = false;
+                }
+                AppInvalidate(win);
             } else if (win->sel && win->sel->hasTouchEdgeDrag) {
                 if (touch.phase == TouchPhase::Moved) {
                     Point at = win->sel->touchEdgeDrag

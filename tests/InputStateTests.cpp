@@ -9358,6 +9358,76 @@ static void RunElementWindowTests() {
 // on an input opened in a window. The long press is the platform's
 // LongPressEvent, dispatched the way a host's touch recognizer delivers it.
 
+// The themed field, for what input.rs draws over a touch selection.
+struct ThemedTouchRoot {
+    InputState input;
+
+    static El* Render(ThemedTouchRoot* self, Ctx* cx) {
+        return Div(cx->a)
+            ->Pad(20)
+            ->Child(component::Input::New(cx, StrL("field"), &self->input)
+                        ->W(300)
+                        ->IntoEl());
+    }
+};
+
+// Whether the last frame has an accessible element labelled `want` -- a
+// button of the edit menu.
+static bool PaintedTextIs(Window* win, const char* want) {
+    for (int i = 0; i < win->accessibility.len; i++) {
+        if (base::StrEq(win->accessibility[i].info.label, Str(want))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// input.rs render_touch_selection: a field's touch selection shows its
+// handles and an edit menu of what the field can do, and a handle dragged
+// moves its end of the selection.
+static void ThemedInputDrawsTouchHandlesAndEditMenu() {
+    App* app = TestAppNew();
+    Entity<ThemedTouchRoot> root = EntityNew<ThemedTouchRoot>(app);
+    InputState* input = &root.Get(app)->input;
+    InputSetValue(input, StrL("alpha beta gamma"));
+    Window* win = TestWindowOpen(app, root, 400, 200);
+    TestDraw(win);
+    Point beta = {};
+    utassert(InputLastCaretPoint(input, win, 7, &beta));
+    beta.y += input->lastLineH * 0.5f;
+    for (TouchPhase phase : {TouchPhase::Started, TouchPhase::Ended}) {
+        PlatformInput in = InputLongPress(phase, beta, beta);
+        WindowDispatchInput(win, &in);
+        TestFlushEffects(app);
+        TestRunUntilParked(app);
+        TestDraw(win);
+    }
+    utassert(base::StrEq(InputSelectedValue(input), "beta"));
+    TouchSelectionSnapshot snap = {};
+    utassert(InputTouchSelection(input, win, &snap) && snap.menuOpen);
+
+    // The menu offers what an editable field with a selection can do.
+    utassert(PaintedTextIs(win, "Cut"));
+    utassert(PaintedTextIs(win, "Copy"));
+    utassert(PaintedTextIs(win, "Paste"));
+    utassert(PaintedTextIs(win, "Select All"));
+
+    // Dragging the end handle to the end of the text takes the selection
+    // with it.
+    Bounds knob = TouchHandle::HitBounds(SelectionEdge::End,
+                                         snap.Edge(SelectionEdge::End));
+    Point grab = {knob.CenterX(), knob.CenterY()};
+    Point end = {};
+    utassert(InputLastCaretPoint(input, win, 16, &end));
+    end.y += input->lastLineH * 0.5f;
+    TestSimulateMouseDown(win, grab);
+    TestSimulateMouseMove(win, {end.x + (grab.x - snap.end.x), grab.y}, true);
+    TestSimulateMouseUp(win, {end.x + (grab.x - snap.end.x), grab.y});
+    TestRunUntilParked(app);
+    utassert(base::StrEq(InputSelectedValue(input), "beta gamma"));
+    TestAppFree(app);
+}
+
 // touch.rs open_input: a single-line input holding `value`, painted.
 static InputView OpenTouchInput(const char* value) {
     InputView view = InputViewBuild();
@@ -9637,6 +9707,7 @@ static void ScrollingClosesTheMenuAndKeepsTheHandles() {
 
 static void RunTouchWindowTests() {
     LongPressSelectsWordThenReleaseOpensMenu();
+    ThemedInputDrawsTouchHandlesAndEditMenu();
     DoubleTapSelectsWordWithHandlesAndMenu();
     LongPressOnEmptyInputPlacesCaretWithMenu();
     DraggingAHandleMovesThatEndOnly();
