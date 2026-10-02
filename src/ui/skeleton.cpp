@@ -13,6 +13,7 @@ Skeleton* Skeleton::New(Ctx* cx) {
     Skeleton* s = ArenaNew<Skeleton>(a);
     s->a = a;
     s->cx = cx;
+    s->h = Rems(cx, 1.f); // h_4
     return s;
 }
 

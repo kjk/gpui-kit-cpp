@@ -86,7 +86,7 @@ El* DockInvalidPanelRender(Ctx* cx, void* data) {
     // my_6, centred, muted: Rust's sentence, with the name it was asked for.
     return Div(a)
         ->SizeFull()
-        ->PadY(24)
+        ->PadY(Rems(cx, 1.5f))
         ->FlexCol()
         ->ItemsCenter()
         ->JustifyCenter()
@@ -154,9 +154,10 @@ El* DragPanelPreview::IntoEl() {
         ->Id(StrL("drag-panel"))
         // The runtime has no grab cursor yet; Arrow is the portable fallback.
         ->Cursor(CursorKind::Arrow)
-        ->W(kDockDragPreviewW)
-        ->PadY(4)
-        ->PadX(12)
+        // w_24 py_1 px_3; the drag's own preview size stays px(96.).
+        ->W(Rems(cx, 6.f))
+        ->PadY(Rems(cx, 0.25f))
+        ->PadX(Rems(cx, 0.75f))
         ->ClipX()
         ->Radius(th.radius)
         ->Border(1, th.border)
@@ -184,7 +185,8 @@ static El* ToggleButton(const DockTabGroup* g, DockPlacement p, IconName icon) {
 static El* RenderToggles(const DockTabGroup* g, bool trailing) {
     Arena* a = g->cx->a;
     DockState* s = g->state.Get(g->cx);
-    El* row = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(4);
+    El* row =
+        Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(g->cx, 0.25f));
     if (trailing) {
         if (DockGroupHasToggle(g, DockPlacement::Right)) {
             row->Child(ToggleButton(g, DockPlacement::Right,
@@ -219,7 +221,7 @@ static El* RenderTools(const DockTabGroup* g) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     DockState* s = g->state.Get(cx);
-    El* row = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(4);
+    El* row = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(cx, 0.25f));
     int activeIx = DockGroupActiveIx(g);
     if (g->collapsed || activeIx < 0) {
         return row;
@@ -310,9 +312,9 @@ static El* RenderTitleRow(const DockTabGroup* g) {
                   ->JustifyBetween()
                   ->W(kFill)
                   ->H(30)
-                  ->PadY(8)
-                  ->PadL(leading ? 8.f : 12.f)
-                  ->PadR(8);
+                  ->PadY(Rems(cx, 0.5f))
+                  ->PadL(Rems(cx, leading ? 0.5f : 0.75f))
+                  ->PadR(Rems(cx, 0.5f));
     if (hasTitleStyle) {
         row->Bg(titleStyle.background)->Fg(titleStyle.foreground);
     }
@@ -327,7 +329,7 @@ static El* RenderTitleRow(const DockTabGroup* g) {
     El* title =
         Div(a)
             ->Flex1()
-            ->MinW(64)
+            ->MinW(Rems(cx, 4.f))
             ->ClipX()
             ->Fg(titleColor)
             ->Child(PanelTitle(cx, def, titleColor)->Font(14)->Truncate());
@@ -337,7 +339,8 @@ static El* RenderTitleRow(const DockTabGroup* g) {
             row->Child(suffix->Shrink0());
         }
     }
-    El* tools = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(4);
+    El* tools =
+        Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(cx, 0.25f));
     tools->Child(RenderTools(g));
     if (trailing) {
         tools->Child(RenderToggles(g, true));
@@ -372,7 +375,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
                   ->Bg(th.tokens.tabBar)
                   ->BorderB(1, th.border);
     if (HasLeadingToggles(g)) {
-        bar->Child(RenderToggles(g, false)->PadX(8));
+        bar->Child(RenderToggles(g, false)->PadX(Rems(cx, 0.5f)));
     }
     // TabBar::track_scroll: a row of tabs wider than the bar scrolls sideways
     // rather than being squeezed, and the wheel over it moves it.
@@ -454,14 +457,15 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
             // matches the label's 12px leading padding. Offset the label's
             // own 12px right padding and the tab's 4px gap so the
             // text-to-icon distance is also 12px.
-            close->MarginL(-8)->MarginR(8);
+            close->MarginL(-8)->MarginR(Rems(cx, 0.5f));
             tab->Child(DockBindClose(g, i, close));
         }
         strip->Child(tab);
     }
     // last_empty_space: the run of bar past the last tab, which takes a drop
     // as "put it at the end" and lights up while a panel is over it.
-    El* rest = DockBindTabRest(g, Div(a)->Flex1()->H(kFill)->MinW(64));
+    El* rest =
+        DockBindTabRest(g, Div(a)->Flex1()->H(kFill)->MinW(Rems(cx, 4.f)));
     if (DockGroupDroppable(g)) {
         rest->DragOver(kDockPanelDrag, StateStyle().Bg(th.tokens.dropTarget));
     }
@@ -478,7 +482,7 @@ static El* SkinTabBar(Ctx* cx, void*, const DockTabGroup* g) {
         }
         bar->Child(RenderTools(g));
         if (DockGroupHasToggle(g, DockPlacement::Right)) {
-            bar->Child(RenderToggles(g, true)->PadX(8));
+            bar->Child(RenderToggles(g, true)->PadX(Rems(cx, 0.5f)));
         }
     }
     return bar;
@@ -497,7 +501,7 @@ static El* SkinTabContent(Ctx* cx, void*, const DockTabGroup* g) {
                     ->Bg(ThemeNow(cx->app).tokens.background);
     const DockPanelDef* active = DockGroupPanel(g, DockGroupActiveIx(g));
     if (DockGroupCount(g) > 1 && (!active || active->innerPadding)) {
-        frame->PadT(8);
+        frame->PadT(Rems(cx, 0.5f));
     }
     return frame;
 }

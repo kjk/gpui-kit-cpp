@@ -99,15 +99,24 @@ El* Toolbar::IntoEl() {
     switch (size.kind) {
         case UiSize::Kind::XSmall:
             // h_7 p_1 gap_1 text_xs
-            root->H(28)->Pad(4)->Gap(4)->Font(12);
+            root->H(Rems(cx, 1.75f))
+                ->Pad(Rems(cx, 0.25f))
+                ->Gap(Rems(cx, 0.25f))
+                ->Font(12);
             break;
         case UiSize::Kind::Small:
             // h_8 p_1 gap_1 text_sm
-            root->H(32)->Pad(4)->Gap(4)->Font(14);
+            root->H(Rems(cx, 2.f))
+                ->Pad(Rems(cx, 0.25f))
+                ->Gap(Rems(cx, 0.25f))
+                ->Font(14);
             break;
         default:
             // h_12 p_2 gap_2 text_sm
-            root->H(48)->Pad(8)->Gap(8)->Font(14);
+            root->H(Rems(cx, 3.f))
+                ->Pad(Rems(cx, 0.5f))
+                ->Gap(Rems(cx, 0.5f))
+                ->Font(14);
             break;
     }
     for (const ToolbarItem& item : items) {

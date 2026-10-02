@@ -758,7 +758,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     // (string.rs); one under it fills.
     float w = it.fieldW > 0 ? it.fieldW
               : options.layout == Axis::Horizontal
-                  ? (it.field == SettingFieldKind::Input ? 256.f : 128.f)
+                  ? Rems(cx, it.field == SettingFieldKind::Input ? 16.f : 8.f)
                   : kFill;
     switch (it.field) {
         case SettingFieldKind::Switch:
@@ -874,7 +874,7 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     // A stacked page (the container query's Vertical) stacks every item;
     // otherwise the item's own layout stands.
     Axis layout = pageLayout == Axis::Vertical ? Axis::Vertical : it.layout;
-    El* line = Div(a)->Id(id)->W(kFill)->Gap(12);
+    El* line = Div(a)->Id(id)->W(kFill)->Gap(Rems(cx, 0.75f));
     if (it.disabled) {
         line->Opacity(0.5f);
     }
@@ -965,7 +965,7 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
             ->W(kFill)
             ->Flex1()
             ->MinH(0)
-            ->PadX(16)
+            ->PadX(Rems(cx, 1.f))
             ->ClipY()
             ->ScrollY(st ? st->scrollY : 0)
             ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
@@ -984,13 +984,19 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
         // The GroupBox root: v_flex w_full, gap_3 around a padded surface
         // and gap_4 around a plain one; the page gives each group `py_4`
         // and the group's own style refines it last.
-        El* box =
-            Div(a)->FlexCol()->W(kFill)->Gap(padded ? 12.f : 16.f)->PadY(16);
+        El* box = Div(a)
+                      ->FlexCol()
+                      ->W(kFill)
+                      ->Gap(Rems(cx, padded ? 0.75f : 1.f))
+                      ->PadY(Rems(cx, 1.f));
         if (grp.title.s) {
             // The title slot: muted, line_height 1.25, holding
             // `v_flex().gap_1()` of the title and a text_sm description.
-            El* title =
-                Div(a)->FlexCol()->Gap(4)->Fg(th.mutedFg)->LineHeight(1.25f);
+            El* title = Div(a)
+                            ->FlexCol()
+                            ->Gap(Rems(cx, 0.25f))
+                            ->Fg(th.mutedFg)
+                            ->LineHeight(1.25f);
             title->Child(TextEl(a, grp.title)->Wrap());
             if (grp.description.s) {
                 title->Child(TextEl(a, grp.description)
@@ -1002,12 +1008,16 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
         }
         // The surface: gap_4, rounded, p_4 and a border (Outline) or a
         // fill (Fill), in group_box_foreground.
-        El* card = Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius)->Fg(
-            th.groupBoxFg);
+        El* card = Div(a)
+                       ->FlexCol()
+                       ->W(kFill)
+                       ->Gap(Rems(cx, 1.f))
+                       ->Radius(th.radius)
+                       ->Fg(th.groupBoxFg);
         if (variant == GroupBoxVariant::Outline) {
-            card->Pad(16)->Border(1, th.border);
+            card->Pad(Rems(cx, 1.f))->Border(1, th.border);
         } else if (variant == GroupBoxVariant::Fill) {
-            card->Pad(16)->Bg(th.groupBox);
+            card->Pad(Rems(cx, 1.f))->Bg(th.groupBox);
         }
         int itemIx = -1;
         for (const SettingItem& it : grp.items) {
@@ -1021,7 +1031,8 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
         }
         // The surface and the footer share a `v_flex().gap_2()`, so the
         // footer's 8 px is its own and not the root's gap.
-        El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(card);
+        El* slot =
+            Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f))->Child(card);
         if (grp.footer) {
             slot->Child(Div(a)->Font(14)->Fg(th.mutedFg)->Child(grp.footer));
         }
@@ -1036,10 +1047,14 @@ static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
     // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and
     // the title sits in an `h_flex().gap_1()` with whatever `title_suffix`
     // the caller gave beside it.
-    El* head =
-        Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(12)->BorderB(1, th.border);
+    El* head = Div(a)
+                   ->FlexCol()
+                   ->W(kFill)
+                   ->Pad(Rems(cx, 1.f))
+                   ->Gap(Rems(cx, 0.75f))
+                   ->BorderB(1, th.border);
     El* titleRow = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
-    El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
+    El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.25f));
     // page.rs puts the title in the header with no styling of its own,
     // so it is the page's own text and not a heading.
     titleCell->Child(TextEl(a, p.title)->Fg(th.foreground));

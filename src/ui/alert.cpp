@@ -169,8 +169,10 @@ El* Alert::IntoEl() {
         col->Child(content);
     } else if (markdown) {
         // TextViewStyle::default().paragraph_gap(rems(0.2)).
-        col->Child(
-            TextView::New(cx, message)->Font(14)->ParagraphGap(3.2f)->IntoEl());
+        col->Child(TextView::New(cx, message)
+                       ->Font(14)
+                       ->ParagraphGap(Rems(cx, 0.2f))
+                       ->IntoEl());
     } else {
         col->Child(TextEl(a, message)->Wrap());
     }
@@ -181,7 +183,7 @@ El* Alert::IntoEl() {
         float closeIcon =
             UiIconPx(cx, size < UiSize::Medium ? UiSize(UiSize::Medium) : size);
         El* x = Div(a)
-                    ->Pad(2)
+                    ->Pad(Rems(cx, 0.125f))
                     ->Radius(th.radius)
                     ->ItemsCenter()
                     ->JustifyCenter()

@@ -317,8 +317,8 @@ El* Popover::IntoEl() {
         trigger = triggerButton->Open(triggerButton->open || isOpen)->IntoEl();
     }
     const Theme& th = ThemeNow(cx->app);
-    float arrowSize = arrow ? kPopoverArrowSize : 0.f;
-    float gap = (hasOffset ? offset : kPopoverOffset) + arrowSize;
+    float arrowSize = arrow ? Rems(cx, kPopoverArrowRems) : 0.f;
+    float gap = (hasOffset ? offset : Rems(cx, kPopoverOffsetRems)) + arrowSize;
     PopoverArrowState* arrowState = nullptr;
     El* surface = nullptr;
     if (isOpen) {
@@ -329,7 +329,7 @@ El* Popover::IntoEl() {
         // the content, the children, then the caller's refinement.
         surface = Div(a)->Id(StrL("content"))->FlexCol();
         if (appearance) {
-            PopoverSurface(cx, surface)->Pad(12);
+            PopoverSurface(cx, surface)->Pad(Rems(cx, 0.75f));
         }
         surface->Child(content);
         for (El* child : children) {

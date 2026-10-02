@@ -62,10 +62,12 @@ Breadcrumb* Breadcrumb::Child(Str label) {
 
 El* Breadcrumb::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    El* row = Div(a)->FlexRow()->ItemsCenter()->Gap(6);
+    El* row =
+        Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.375f)); // gap_1p5
     for (int i = 0; i < items.len; i++) {
         if (i) {
-            row->Child(IconEl(a, IconName::ChevronRight, 14)->Fg(th.mutedFg));
+            row->Child(IconEl(a, IconName::ChevronRight, Rems(cx, 0.875f))
+                           ->Fg(th.mutedFg));
         }
         BreadcrumbItem* it = items[i];
         it->ix = i;

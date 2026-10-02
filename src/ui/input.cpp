@@ -67,8 +67,8 @@ El* InputToken::IntoEl() {
         Div(a)
             ->FlexRow()
             ->ItemsCenter()
-            ->Gap(4)
-            ->PadX(4)
+            ->Gap(Rems(cx, 0.25f))
+            ->PadX(Rems(cx, 0.25f))
             ->H(context.lineHeight > 0 ? context.lineHeight : 20.f)
             ->MaxW(context.availableWidth > 0 ? context.availableWidth : kFill)
             ->Radius(th.radius)
@@ -80,7 +80,7 @@ El* InputToken::IntoEl() {
         el->Opacity(0.5f);
     }
     if (hasIcon) {
-        el->Child(IconEl(a, icon, 12)->Shrink0());
+        el->Child(IconEl(a, icon, Rems(cx, 0.75f))->Shrink0()); // size_3
     }
     el->Child(TextEl(a, context.Token().label)->MinW(0));
     return el;
@@ -818,32 +818,33 @@ Input* Input::OnToggleMask(Listener fn) {
     return this;
 }
 
-// Size::Medium, the default: input_h is h_8, input_px 10, input_py 8,
-// input_text_size text_sm, gap 6 (crates/ui/src/sizing.rs).
-static const float kInputHeight = 32;
+// Size::Medium, the default: input_h is h_8 (2 rems), input_px 10, input_py
+// 8, input_text_size text_sm, gap 6 (crates/ui/src/sizing.rs).
+static const float kInputHeightRems = 2;
 static const float kInputPadX = 10;
 static const float kInputPadY = 8;
 static const float kInputGap = 6;
 static const float kInputTextSize = 14;
 
-// input_h / input_px / input_py / input_text_size, by size.
-static void InputSizeMetrics(UiSize size, float* h, float* padX, float* padY,
-                             float* font) {
-    *h = kInputHeight;
+// input_h / input_px / input_py / input_text_size, by size. input_h is in
+// rems at the window's rem size; the paddings are pixels.
+static void InputSizeMetrics(const Ctx* cx, UiSize size, float* h, float* padX,
+                             float* padY, float* font) {
+    *h = Rems(cx, kInputHeightRems);
     *padX = kInputPadX;
     *padY = kInputPadY;
     *font = kInputTextSize;
     if (size == UiSize::Large) {
-        *h = 44;
+        *h = Rems(cx, 2.75f);
         *padX = 12;
         *padY = 10;
         *font = 16;
     } else if (size == UiSize::Small) {
-        *h = 24;
+        *h = Rems(cx, 1.5f);
         *padX = 8;
         *padY = 2;
     } else if (size == UiSize::XSmall) {
-        *h = 20;
+        *h = Rems(cx, 1.25f);
         *padX = 4;
         *padY = 0;
         *font = 12;
@@ -1007,7 +1008,7 @@ El* Input::IntoEl() {
             cx->win, InputNativeContentType(hasContentType, contentType));
     }
     float h = 0, padX = 0, padY = 0, font = 0;
-    InputSizeMetrics(size, &h, &padX, &padY, &font);
+    InputSizeMetrics(cx, size, &h, &padX, &padY, &font);
     InputEditorStyle editor;
     editor.foreground = hasTextColor ? textColor : th.foreground;
     editor.mutedForeground = th.mutedFg;
@@ -1222,7 +1223,7 @@ El* Textarea::IntoEl() {
     // The Input a Textarea wraps: a multi-line field takes input_py above and
     // below the rows and input_px beside them, and input_text_size for them.
     float inputH = 0, padX = 0, padY = 0, font = 0;
-    InputSizeMetrics(size, &inputH, &padX, &padY, &font);
+    InputSizeMetrics(cx, size, &inputH, &padX, &padY, &font);
     InputEditorStyle editor;
     editor.foreground = th.foreground;
     editor.mutedForeground = th.mutedFg;
@@ -1415,17 +1416,18 @@ NumberInput* NumberInput::OnDec(Listener fn) {
 }
 El* NumberInput::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    float h = 32, btn = 32, font = 14;
+    // input_h for the frame, min_w_8 / min_w_6 for the step buttons: rems.
+    float h = Rems(cx, 2.f), btn = Rems(cx, 2.f), font = 14;
     if (size == UiSize::Large) {
-        h = 44;
-        btn = 32;
+        h = Rems(cx, 2.75f);
+        btn = Rems(cx, 2.f);
         font = 16;
     } else if (size == UiSize::Small) {
-        h = 24;
-        btn = 24;
+        h = Rems(cx, 1.5f);
+        btn = Rems(cx, 1.5f);
     } else if (size == UiSize::XSmall) {
-        h = 20;
-        btn = 24;
+        h = Rems(cx, 1.25f);
+        btn = Rems(cx, 1.5f);
         font = 12;
     }
     Rgba border = disabled ? RgbaOpacity(th.inputBorder, 0.5f) : th.inputBorder;
@@ -1609,14 +1611,16 @@ El* OtpInput::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // otp_input.rs: input_text_size, the Input/Select ladder, and half the
     // cell for a custom Size. The masked icon follows the same size.
-    float cell = 32, text = UiInputFontPx(size);
+    // The cell is w_8 h_8 / w_11 h_11 / w_6 h_6, in rems; a custom Size is
+    // pixels, and so is its text_size(v * 0.5).
+    float cell = Rems(cx, 2.f), text = UiInputFontPx(size);
     if (cellPx > 0) {
         cell = cellPx;
         text = cellPx * 0.5f;
     } else if (size == UiSize::Large) {
-        cell = 44;
+        cell = Rems(cx, 2.75f);
     } else if (size == UiSize::Small || size == UiSize::XSmall) {
-        cell = 24;
+        cell = Rems(cx, 1.5f);
     }
     int nGroups = groups < 1 ? 1 : (groups > slots ? slots : groups);
     int per = (slots + nGroups - 1) / nGroups;
@@ -1631,14 +1635,14 @@ El* OtpInput::IntoEl() {
                   ->FocusRing(focusRing)
                   ->FlexRow()
                   ->ItemsCenter()
-                  ->Gap(20);
+                  ->Gap(Rems(cx, 1.25f));
     if (onFocus.IsValid() && !disabled) {
         row->OnClick(onFocus);
     }
     El* group = nullptr;
     for (int i = 0; i < slots; i++) {
         if (i % per == 0) {
-            group = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
+            group = Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.25f));
             row->Child(group);
         }
         El* box = Div(a)
@@ -1662,7 +1666,7 @@ El* OtpInput::IntoEl() {
             } else {
                 Str ch(value + i, 1);
                 box->Child(TextEl(a, StrDup(a, ch))
-                               ->Font(text)
+                               ->Font(cellPx > 0 ? FontPx(cx, text) : text)
                                ->LineHeight(1.f)
                                ->Fg(fg));
             }
@@ -1891,15 +1895,15 @@ El* SearchPanel::IntoEl() {
                     ->Id(id)
                     ->FlexCol()
                     ->W(kFill)
-                    ->PadY(8)
-                    ->PadX(12)
-                    ->Gap(4)
+                    ->PadY(Rems(cx, 0.5f))
+                    ->PadX(Rems(cx, 0.75f))
+                    ->Gap(Rems(cx, 0.25f))
                     ->Bg(th.tokens.popover)
                     ->BorderB(1, th.border)
                     ->Radius(th.radius * 0.5f)
                     ->OnKeyDown(ListenTo(ent, &SearchPanelState::OnKey));
 
-    El* row = Div(a)->FlexRow()->W(kFill)->Gap(8)->ItemsCenter();
+    El* row = Div(a)->FlexRow()->W(kFill)->Gap(Rems(cx, 0.5f))->ItemsCenter();
     El* caseBtn = Button::New(cx, StrL("case-insensitive"))
                       ->Text()
                       ->Compact()
@@ -1908,7 +1912,7 @@ El* SearchPanel::IntoEl() {
                       ->Selected(!ss->caseInsensitive)
                       ->OnClick(ListenTo(ent, &SearchPanelState::OnToggleCase))
                       ->IntoEl();
-    El* queryBox = Div(a)->FlexRow()->Flex1()->Gap(4);
+    El* queryBox = Div(a)->FlexRow()->Flex1()->Gap(Rems(cx, 0.25f));
     queryBox->Child(Input::New(cx, StrL("q"), &st->query)
                         ->WithSize(UiSize::Small)
                         ->FocusRing(false)
@@ -1942,10 +1946,10 @@ El* SearchPanel::IntoEl() {
                    ->IntoEl());
     row->Child(TextEl(a, SearchMatcherLabel(a, &ss->matcher))
                    ->Font(14)
-                   ->MinW(64)
+                   ->MinW(Rems(cx, 4.f))
                    ->Fg(hasMatches ? th.foreground : th.mutedFg));
     // div().w_7(): the gap that keeps the close button off the counter.
-    row->Child(Div(a)->W(28));
+    row->Child(Div(a)->W(Rems(cx, 1.75f)));
     row->Child(Button::New(cx, StrL("close"))
                    ->Ghost()
                    ->WithSize(UiSize::XSmall)
@@ -1955,7 +1959,8 @@ El* SearchPanel::IntoEl() {
     panel->Child(row);
 
     if (ss->replaceMode && allowReplace) {
-        El* row2 = Div(a)->FlexRow()->W(kFill)->Gap(8)->ItemsCenter();
+        El* row2 =
+            Div(a)->FlexRow()->W(kFill)->Gap(Rems(cx, 0.5f))->ItemsCenter();
         // The replacement field is as wide as the query field above it,
         // which is what Rust's `input_width` is for. Zero on the first frame,
         // before the query field has been laid out; growing stands in.
@@ -2131,10 +2136,13 @@ El* InputGroupButton::RenderInGroup(bool disabled) {
         // gap_1p5, and the icon one size up from the group's.
         button->WithSize(UiSize::Medium);
         button->contentTextPx = 14.f;
+        // A line height over the text size, so it follows the rem with it.
         button->contentLineH = 20.f;
-        button->contentGap = size == UiSize::XSmall ? 4.f : 6.f;
+        button->contentGap = Rems(cx, size == UiSize::XSmall ? 0.25f : 0.375f);
         // icon_size: XSmall -> Small, Small -> Medium.
-        button->contentIconPx = size == UiSize::XSmall ? 14.f : 16.f;
+        button->contentIconPx =
+            UiIconPx(cx, size == UiSize::XSmall ? UiSize(UiSize::Small)
+                                                : UiSize(UiSize::Medium));
     } else {
         button->WithSize(size);
     }
@@ -2170,13 +2178,14 @@ El* InputGroupButton::RenderInGroup(bool disabled) {
         el->Border(1, th.transparent);
     }
     if (compact) {
-        float side = size == UiSize::XSmall ? 24.f : 32.f;
+        // h_6 / h_8 (size_6 / size_8 alone) and px_2 / px_2p5: rems.
+        float side = Rems(cx, size == UiSize::XSmall ? 1.5f : 2.f);
         float radius = size == UiSize::XSmall ? th.radius * 0.5f : th.radius;
         el->H(side)->Radius(radius);
         if (iconOnly) {
             el->W(side)->Pad(0);
         } else {
-            el->PadX(size == UiSize::XSmall ? 8.f : 10.f);
+            el->PadX(Rems(cx, size == UiSize::XSmall ? 0.5f : 0.625f));
         }
     }
     refiner.Apply(el);
@@ -2211,8 +2220,12 @@ static El* InputGroupAddonChildEl(Arena* a, El* child) {
 El* InputGroupText::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // h_flex().gap_2().text_sm() in the muted foreground.
-    El* row =
-        Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Font(14)->Fg(th.mutedFg);
+    El* row = Div(a)
+                  ->FlexRow()
+                  ->Gap(Rems(cx, 0.5f))
+                  ->ItemsCenter()
+                  ->Font(14)
+                  ->Fg(th.mutedFg);
     refiner.Apply(row);
     for (El* c : children) {
         if (c) {
@@ -2261,13 +2274,13 @@ El* InputGroupAddon::IntoEl() {
 El* InputGroupAddon::RenderInGroup(bool disabled) {
     const Theme& th = ThemeNow(cx->app);
     float inputH = 0, inputPx = 0, inputPy = 0, inputFont = 0;
-    InputSizeMetrics(size, &inputH, &inputPx, &inputPy, &inputFont);
+    InputSizeMetrics(cx, size, &inputH, &inputPx, &inputPy, &inputFont);
     // flex_none, gap_2, py_1p5, justify_center, font_medium, the input's
     // text size, muted, and the text cursor.
     El* row = Div(a)
                   ->Id(id)
                   ->FlexRow()
-                  ->Gap(8)
+                  ->Gap(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->Shrink0()
                   ->JustifyCenter()
@@ -2276,20 +2289,20 @@ El* InputGroupAddon::RenderInGroup(bool disabled) {
                   ->Fg(th.mutedFg)
                   ->Cursor(CursorKind::IBeam);
     bool compact = size == UiSize::XSmall || size == UiSize::Small;
-    row->PadY(compact ? 0.f : 6.f);
+    row->PadY(compact ? 0.f : Rems(cx, 0.375f));
     switch (alignment) {
         case InputGroupAddonAlignment::InlineStart:
-            row->PadL(6);
+            row->PadL(Rems(cx, 0.375f));
             break;
         case InputGroupAddonAlignment::InlineEnd:
-            row->PadR(6);
+            row->PadR(Rems(cx, 0.375f));
             break;
         // Block addons share the control's horizontal inset.
         case InputGroupAddonAlignment::BlockStart:
-            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadT(8);
+            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadT(Rems(cx, 0.5f));
             break;
         case InputGroupAddonAlignment::BlockEnd:
-            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadB(8);
+            row->W(kFill)->JustifyStart()->PadX(inputPx)->PadB(Rems(cx, 0.5f));
             break;
     }
     refiner.Apply(row);
@@ -2448,11 +2461,12 @@ El* InputGroup::IntoEl() {
         frame->AriaLabel(ariaLabel);
     }
     if (!multiline && !blockStart && !blockEnd) {
-        float h = size == UiSize::Large    ? 44.f
-                  : size == UiSize::Small  ? 24.f
-                  : size == UiSize::XSmall ? 20.f
-                                           : 32.f;
-        frame->H(h);
+        // input_h, in rems.
+        float h = size == UiSize::Large    ? 2.75f
+                  : size == UiSize::Small  ? 1.5f
+                  : size == UiSize::XSmall ? 1.25f
+                                           : 2.f;
+        frame->H(Rems(cx, h));
     }
     refiner.Apply(frame);
     if (groupDisabled) {
@@ -2498,16 +2512,16 @@ El* InputGroup::IntoEl() {
         // horizontal inset — pl_2 / pr_2 in place of input_px on that side —
         // and the caller's own style still wins.
         if (inlineStart) {
-            controlEl->PadL(8);
+            controlEl->PadL(Rems(cx, 0.5f));
         }
         if (inlineEnd) {
-            controlEl->PadR(8);
+            controlEl->PadR(Rems(cx, 0.5f));
         }
         controlStyle.Apply(controlEl);
         row->Child(controlEl);
     } else if (textarea) {
         controlEl = textarea->IntoEl();
-        controlEl->Flex1()->MinH(64);
+        controlEl->Flex1()->MinH(Rems(cx, 4.f)); // min_h_16
         controlStyle.Apply(controlEl);
         row->Child(controlEl);
     }

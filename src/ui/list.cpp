@@ -51,7 +51,7 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
                   ->FlexRow()
                   ->W(kFill)
                   ->PadX(8)
-                  ->PadY(4)
+                  ->PadY(Rems(cx, 0.25f)) // py_1
                   ->Gap(8)
                   ->ItemsCenter()
                   ->JustifyBetween()
@@ -194,10 +194,11 @@ List* List::Empty(El* e) {
     empty = e;
     return this;
 }
-// The query row: the field with appearance(false) and its bottom border.
-// And the rows a list that fills its box builds with before it has been
-// laid out, the height a List had before it filled.
-static const float kListSearchRowH = 32;
+// The query row, in rems: the field with appearance(false), the Medium
+// input's h_8, and its bottom border. And the rows a list that fills its box
+// builds with before it has been laid out, the height a List had before it
+// filled.
+static const float kListSearchRowRems = 2;
 static const float kListDefaultH = 320;
 
 List* List::H(float px) {
@@ -210,25 +211,35 @@ List* List::H(float px) {
 // padding; the shape is the same either way.
 El* ListLoadingView(Ctx* cx, float h) {
     Arena* a = cx->a;
-    El* body = Div(a)->FlexCol()->W(kFill)->PadY(10)->Gap(12);
+    // py_2p5 gap_3 around the rows; gap_1p5, h_5 w_48 and h_3 w_64 in them.
+    El* body = Div(a)
+                   ->FlexCol()
+                   ->W(kFill)
+                   ->PadY(Rems(cx, 0.625f))
+                   ->Gap(Rems(cx, 0.75f));
     if (h > 0) {
         body->H(h);
     }
     for (int i = 0; i < 3; i++) {
-        body->Child(
-            Div(a)
-                ->FlexCol()
-                ->W(kFill)
-                ->PadX(8)
-                ->Gap(6)
-                // max_w_full: the bars keep their own widths and a
-                // list narrower than they are clips them rather than
-                // letting them hang over its edge.
-                ->ItemsStart()
-                ->ClipX()
-                ->Child(Skeleton::New(cx)->W(192)->H(20)->IntoEl())
-                ->Child(
-                    Skeleton::New(cx)->Secondary()->W(256)->H(12)->IntoEl()));
+        body->Child(Div(a)
+                        ->FlexCol()
+                        ->W(kFill)
+                        ->PadX(8)
+                        ->Gap(Rems(cx, 0.375f))
+                        // max_w_full: the bars keep their own widths and a
+                        // list narrower than they are clips them rather than
+                        // letting them hang over its edge.
+                        ->ItemsStart()
+                        ->ClipX()
+                        ->Child(Skeleton::New(cx)
+                                    ->W(Rems(cx, 12.f))
+                                    ->H(Rems(cx, 1.25f))
+                                    ->IntoEl())
+                        ->Child(Skeleton::New(cx)
+                                    ->Secondary()
+                                    ->W(Rems(cx, 16.f))
+                                    ->H(Rems(cx, 0.75f))
+                                    ->IntoEl()));
     }
     return body;
 }
@@ -246,8 +257,10 @@ static El* DefaultEmpty(Ctx* cx, float h) {
     } else {
         box->Flex1()->MinH(0);
     }
-    return box->ItemsCenter()->JustifyCenter()->Child(
-        IconEl(a, IconName::Inbox, 48)->Fg(RgbaOpacity(th.mutedFg, 0.6f)));
+    return box->ItemsCenter()
+        ->JustifyCenter()
+        ->Child(IconEl(a, IconName::Inbox, Rems(cx, 3.f)) // size_12
+                    ->Fg(RgbaOpacity(th.mutedFg, 0.6f)));
 }
 
 // The list as its box is laid out: the viewport scroll_to_item measures
@@ -346,7 +359,7 @@ El* List::IntoEl() {
     // on the first frame the fixed height or 320. A box laid out at another
     // height corrects it at prepaint (ListViewportAt), and the rows are bound
     // there by the VirtualList body from the bounds it was given.
-    float searchH = search ? kListSearchRowH : 0;
+    float searchH = search ? Rems(cx, kListSearchRowRems) : 0;
     float first = h > 0 ? h : kListDefaultH;
     LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
     if (laid) {
@@ -367,7 +380,7 @@ El* List::IntoEl() {
         El* searchRow = Div(a)
                             ->FlexRow()
                             ->W(kFill)
-                            ->H(kListSearchRowH)
+                            ->H(searchH)
                             ->Shrink0()
                             ->ItemsCenter()
                             ->BorderB(1, th.border);

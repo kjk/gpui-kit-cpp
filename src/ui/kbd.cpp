@@ -297,9 +297,9 @@ El* Kbd::IntoEl() {
     // The plain chip is a muted wash with no border; outline swaps to the
     // window background inside one. px_1 / py_0p5 / min_w_5 / radius half.
     El* e = Div(a)
-                ->PadX(4)
-                ->PadY(2)
-                ->MinW(20)
+                ->PadX(Rems(cx, 0.25f))
+                ->PadY(Rems(cx, 0.125f))
+                ->MinW(Rems(cx, 1.25f))
                 ->ItemsCenter()
                 ->JustifyCenter()
                 ->Radius(th.radius * 0.5f)

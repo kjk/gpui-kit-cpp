@@ -49,9 +49,9 @@ El* DropdownOpen(Ctx* cx, El* surface, uint32_t key);
 El* DropdownPlaceContent(El* content, float gap = 4);
 
 // popover.rs: the default trigger-to-surface gap, 0.25rem, and how far an
-// arrow reaches past the surface, 0.375rem (the port's rem is 16 px).
-const float kPopoverOffset = 4.f;
-const float kPopoverArrowSize = 6.f;
+// arrow reaches past the surface, 0.375rem, in rems at the window's rem size.
+const float kPopoverOffsetRems = 0.25f;
+const float kPopoverArrowRems = 0.375f;
 
 // popover.rs arrow_anchor: the side of the surface the arrow sits on and the
 // trigger point it aims at. The arrow follows the named anchor instead of
@@ -112,7 +112,7 @@ struct Popover {
     // Popover::anchor, default TopLeft.
     PopupAnchor anchor = PopupAnchor::TopLeft;
     // Popover::offset, None until set: the gap from the trigger to the
-    // surface (or the arrow tip), kPopoverOffset by default.
+    // surface (or the arrow tip), kPopoverOffsetRems by default.
     float offset = 0;
     bool hasOffset = false;
     // Popover::arrow: an arrow pointing toward the trigger. Default false.

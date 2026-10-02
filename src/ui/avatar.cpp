@@ -288,7 +288,7 @@ El* AvatarGroup::IntoEl() {
     float step = sz - sz * 0.3f;
     int shown = avatars.len < limit ? avatars.len : limit;
     bool more = ellipsis && avatars.len > limit;
-    float chipLeft = (float)shown * step + 4;
+    float chipLeft = (float)shown * step + Rems(cx, 0.25f);
     float w =
         more ? chipLeft + sz : sz + (shown > 0 ? (float)(shown - 1) * step : 0);
     El* box = Div(a)->H(sz)->W(w);
