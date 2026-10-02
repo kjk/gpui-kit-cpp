@@ -28,16 +28,10 @@ macOS font-kit requirement on the website only. The current update target is
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
   The GPUI reference is `gpui-pre` 0.3.7 (Zed `1a28cff4b409`); the five ported
   dependency versions are unchanged.
-- **Native components' spacing is in DIPs, not rems.** WindowState's
-  `prepare` sets the window's rem size from the theme, as Rust's does, and
-  a script's rem lengths (`p_4`, `rounded_md`, `"1rem"`) resolve against it
-  (`src/shell/style.cpp`). The C++ components write their spacing, sizes
-  and corners as DIPs transcribed at a 16 px rem (`Pad(16)` for `p_4`), so
-  a rem size other than 16 moves their text, whose sizes are rem-relative
-  here, but not their boxes. Base Root's Tab / shift-Tab / copy actions are
-  the runtime's for every window (`FocusNext`, `WindowSelectionCopy`), and
-  WindowState's tooltip overlay is the window's own (`src/base/root.cpp`,
-  `src/ui/root.cpp`).
+- **Base Root's Tab and copy actions are the runtime's.** Base Root's Tab /
+  shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
+  `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's
+  own (`src/base/root.cpp`, `src/ui/root.cpp`).
 - **The editor's wrap map is a flat list, not a sum tree.** An edit re-wraps
   only the lines it touched, as Rust's TextWrapper does, but the rows sit in
   one array, so the lines after the edit have their offsets and row counts
