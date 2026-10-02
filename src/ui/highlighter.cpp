@@ -198,14 +198,17 @@ El* CompletionMenu::IntoEl() {
 
     El* list = PopoverSurface(
         cx,
-        Div(a)->FlexCol()->MinW(120)->MaxW(maxW)->MaxH(240)->ClipY()->Pad(4));
+        // editor_popover: p_1.
+        Div(a)->FlexCol()->MinW(120)->MaxW(maxW)->MaxH(240)->ClipY()->Pad(
+            Rems(cx, 0.25f)));
     for (int i = 0; i < editor->completion.items.len; i++) {
         const CompletionItem& item = editor->completion.items[i];
         bool selected = i == editor->completion.selected;
         El* row = Div(a)
                       ->FlexRow()
-                      ->Gap(8)
-                      ->Pad(4)
+                      // gap_2 / p_1
+                      ->Gap(Rems(cx, 0.5f))
+                      ->Pad(Rems(cx, 0.25f))
                       ->ItemsCenter()
                       ->Radius(theme.radius * 0.5f)
                       ->Font(12)
@@ -251,16 +254,20 @@ El* CompletionMenu::IntoEl() {
             }
         }
         TextViewStyle textStyle = TextViewStyle::Default();
-        textStyle.WithParagraphGap(8);
-        menu->Child(
-            PopoverSurface(
-                cx,
-                Div(a)->W(configuredMax)->MaxH(240)->ClipY()->PadX(8)->PadY(4))
-                ->Child(TextView::New(cx, documentation)
-                            ->Font(12)
-                            ->Style(textStyle)
-                            ->Selectable()
-                            ->IntoEl()));
+        textStyle.WithParagraphGap(Rems(cx, 0.5f)); // rems(0.5)
+        menu->Child(PopoverSurface(cx,
+                                   // editor_popover's p_1 under px_2.
+                                   Div(a)
+                                       ->W(configuredMax)
+                                       ->MaxH(240)
+                                       ->ClipY()
+                                       ->PadX(Rems(cx, 0.5f))
+                                       ->PadY(Rems(cx, 0.25f)))
+                        ->Child(TextView::New(cx, documentation)
+                                    ->Font(12)
+                                    ->Style(textStyle)
+                                    ->Selectable()
+                                    ->IntoEl()));
     }
     return Div(a)
         ->Fixed()
@@ -310,7 +317,9 @@ El* CodeActionMenu::IntoEl() {
     if (maxW < 120.f) maxW = 120.f;
     El* list = PopoverSurface(
         cx,
-        Div(a)->FlexCol()->MinW(120)->MaxW(maxW)->MaxH(480)->ClipY()->Pad(4));
+        // editor_popover: p_1.
+        Div(a)->FlexCol()->MinW(120)->MaxW(maxW)->MaxH(480)->ClipY()->Pad(
+            Rems(cx, 0.25f)));
     Entity<InputMenuViewState> view =
         InputMenuView(cx, state, "code-action-menu");
     for (int i = 0; i < state->codeActions.items.len; i++) {
@@ -318,8 +327,9 @@ El* CodeActionMenu::IntoEl() {
         El* row = Div(a)
                       ->FlexRow()
                       ->W(kFill)
-                      ->Gap(8)
-                      ->Pad(4)
+                      // gap_2 / p_1
+                      ->Gap(Rems(cx, 0.5f))
+                      ->Pad(Rems(cx, 0.25f))
                       ->ItemsCenter()
                       ->Radius(theme.radius * 0.5f)
                       ->Font(12)
@@ -365,7 +375,7 @@ El* DiagnosticPopover::IntoEl() {
         foreground = theme.cyan;
     Rgba background = RgbaMix(theme.background, foreground, 0.8f);
     TextViewStyle textStyle = TextViewStyle::Default();
-    textStyle.WithParagraphGap(8);
+    textStyle.WithParagraphGap(Rems(cx, 0.5f)); // rems(0.5)
     El* body = TextView::New(cx, item.message)
                    ->Font(12)
                    ->Style(textStyle)
@@ -376,8 +386,9 @@ El* DiagnosticPopover::IntoEl() {
                       ->MaxW(500)
                       ->MaxH(320)
                       ->ClipY()
-                      ->PadX(4)
-                      ->PadY(2)
+                      // px_1 / py_0p5
+                      ->PadX(Rems(cx, 0.25f))
+                      ->PadY(Rems(cx, 0.125f))
                       ->Radius(theme.radius)
                       ->Bg(background)
                       ->Fg(foreground)
@@ -415,9 +426,14 @@ El* HoverPopover::IntoEl() {
     if (!editor || len(hover) <= 0) return nullptr;
     const Theme& theme = ThemeNow(cx->app);
     TextViewStyle textStyle = TextViewStyle::Default();
-    textStyle.WithParagraphGap(8);
-    El* surface = PopoverSurface(
-        cx, Div(a)->MinW(200)->MaxW(500)->MaxH(320)->ClipY()->PadX(8)->PadY(4));
+    textStyle.WithParagraphGap(Rems(cx, 0.5f)); // rems(0.5)
+    El* surface = PopoverSurface(cx, Div(a)
+                                         ->MinW(200)
+                                         ->MaxW(500)
+                                         ->MaxH(320)
+                                         ->ClipY()
+                                         ->PadX(Rems(cx, 0.5f))
+                                         ->PadY(Rems(cx, 0.25f)));
     surface
         ->Child(TextView::New(cx, hover)
                     ->Font(12)

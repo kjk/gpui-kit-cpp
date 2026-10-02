@@ -250,25 +250,36 @@ El* PopupMenu::IntoEl() {
     // present and let a context menu or submenu grow up to Rust's default
     // 500px maximum. Custom rows in the story already carry an explicit
     // 250px minimum, so their own content fits within that floor.
-    float menuW = minW;
+    // `min_w(rems(8.))` unless the caller set one.
+    float menuW = minW > 0 ? minW : Rems(cx, 8.f);
+    // The rem lengths the rows below are built from: the icon and the gap
+    // after it, and the kbd's padding and floor.
+    float icon = Rems(cx, 0.875f);
+    float gap = Rems(cx, 0.25f);
+    float kbdPadX = Rems(cx, 0.25f);
+    float kbdMinW = Rems(cx, 1.25f);
     if (cx->win) {
         for (const MenuItem& it : items) {
             if (!it.label.s || it.kind == MenuItemKind::Separator) {
                 continue;
             }
-            Size label = MeasureText(&cx->win->paint, it.label, 14, 0);
-            // Border + item-list padding + row padding.
-            float need = 26 + label.w;
+            // text_sm / text_xs, at the window's rem.
+            Size label =
+                MeasureText(&cx->win->paint, it.label, Rems(cx, 0.875f), 0);
+            // Border + item-list padding (p_1) + row padding (px(8.)).
+            float need = 2 + Rems(cx, 0.5f) + 16 + label.w;
             if (leftGutter) {
-                need += 18;
+                need += icon + gap;
             }
             if (it.kbd.s) {
-                Size key = MeasureText(&cx->win->paint, it.kbd, 12, 0);
-                need += (key.w + 8 > 20 ? key.w + 8 : 20) + 4;
+                Size key =
+                    MeasureText(&cx->win->paint, it.kbd, Rems(cx, 0.75f), 0);
+                float kbdW = key.w + kbdPadX * 2;
+                need += (kbdW > kbdMinW ? kbdW : kbdMinW) + gap;
             }
             if ((!SideIsLeft(checkSide) && it.checked) || it.submenu ||
                 (it.isLink && externalLinkIcon)) {
-                need += 18;
+                need += icon + gap;
             }
             if (need > menuW) {
                 menuW = need;
@@ -344,7 +355,13 @@ El* PopupMenu::IntoEl() {
         row.handler = it.onClick;
         PopupMenuAddRow(s, row);
     }
-    El* rows = Div(a)->Id(StrL("items"))->FlexCol()->W(kFill)->Pad(4)->Gap(2);
+    // p_1().gap_y_0p5()
+    El* rows = Div(a)
+                   ->Id(StrL("items"))
+                   ->FlexCol()
+                   ->W(kFill)
+                   ->Pad(Rems(cx, 0.25f))
+                   ->Gap(Rems(cx, 0.125f));
     if (scrollable) {
         rows->ClipY()
             ->MaxH(maxH)
@@ -365,8 +382,10 @@ El* PopupMenu::IntoEl() {
                 continue;
             }
             // my_0p5 border_b(2): a rule with a little air around it.
-            rows->Child(Div(a)->W(kFill)->PadY(2)->Child(
-                Div(a)->W(kFill)->H(2)->Bg(th.border)));
+            rows->Child(Div(a)
+                            ->W(kFill)
+                            ->PadY(Rems(cx, 0.125f))
+                            ->Child(Div(a)->W(kFill)->H(2)->Bg(th.border)));
             continue;
         }
         bool lit =
@@ -381,7 +400,7 @@ El* PopupMenu::IntoEl() {
                 ->W(kFill)
                 ->MinH(itemH)
                 ->PadX(8)
-                ->Gap(4)
+                ->Gap(gap) // gap_x_1
                 ->ItemsCenter()
                 ->JustifyBetween()
                 ->Radius(radius)
@@ -398,12 +417,12 @@ El* PopupMenu::IntoEl() {
         // gutter keeps its width so the labels still line up.
         bool muted = it.disabled || it.kind == MenuItemKind::Label;
         Rgba fg = muted ? th.mutedFg : th.foreground;
-        El* left = Div(a)->FlexRow()->Flex1()->Gap(4)->ItemsCenter();
+        El* left = Div(a)->FlexRow()->Flex1()->Gap(gap)->ItemsCenter();
         if (leftGutter) {
             // The gutter is the icon's, or the check's, or empty — but it is
             // always the same width, so the labels line up.
             if (it.icon != IconName::None || it.iconSvg.s || it.iconPath.s) {
-                El* ic = IconEl(a, it.icon, 14)->Fg(fg);
+                El* ic = IconEl(a, it.icon, icon)->Fg(fg);
                 if (it.iconSvg.s) {
                     ic->iconSvg = it.iconSvg;
                 } else if (it.iconPath.s) {
@@ -411,9 +430,9 @@ El* PopupMenu::IntoEl() {
                 }
                 left->Child(ic);
             } else if (SideIsLeft(checkSide) && it.checked) {
-                left->Child(IconEl(a, IconName::Check, 14)->Fg(fg));
+                left->Child(IconEl(a, IconName::Check, icon)->Fg(fg));
             } else {
-                left->Child(Div(a)->W(14)->H(14)->Shrink0());
+                left->Child(Div(a)->W(icon)->H(icon)->Shrink0());
             }
         }
         if (it.element) {
@@ -452,21 +471,23 @@ El* PopupMenu::IntoEl() {
             // PopupMenu clears Kbd's background and border while retaining
             // its compact padding and minimum width.
             row->Child(Div(a)
-                           ->PadX(4)
-                           ->PadY(2)
-                           ->MinW(20)
+                           // px_1 / py_0p5 / min_w_5
+                           ->PadX(kbdPadX)
+                           ->PadY(Rems(cx, 0.125f))
+                           ->MinW(kbdMinW)
                            ->ItemsCenter()
                            ->JustifyCenter()
                            ->Child(kbdEl));
         }
         if (it.isLink && externalLinkIcon) {
-            row->Child(IconEl(a, IconName::ExternalLink, 12)->Fg(th.mutedFg));
+            row->Child(IconEl(a, IconName::ExternalLink, Rems(cx, 0.75f))
+                           ->Fg(th.mutedFg));
         }
         if (!SideIsLeft(checkSide) && it.checked) {
-            row->Child(IconEl(a, IconName::Check, 14)->Fg(fg));
+            row->Child(IconEl(a, IconName::Check, icon)->Fg(fg));
         }
         if (it.submenu) {
-            row->Child(IconEl(a, IconName::ChevronRight, 14)->Fg(fg));
+            row->Child(IconEl(a, IconName::ChevronRight, icon)->Fg(fg));
         }
         if (it.kind != PopupMenuItem::Label && !it.disabled) {
             if (it.submenu) {
@@ -500,7 +521,7 @@ El* PopupMenu::IntoEl() {
                 subState->side = s->side;
             }
             El* sub = it.submenu->IntoEl();
-            sub->Absolute()->Top(-4);
+            sub->Absolute()->Top(-Rems(cx, 0.25f)); // top_neg_1
             if (s && SideIsLeft(s->side)) {
                 sub->Right(menuW - 8);
             } else {
@@ -816,7 +837,8 @@ El* AppMenuBar::IntoEl() {
                        ->AriaLabel(items[i].title)
                        ->AriaSelected(isOpen)
                        ->FlexRow()
-                       ->H(24)
+                       // A small Button: h_6.
+                       ->H(Rems(cx, 1.5f))
                        ->PadX(8)
                        ->ItemsCenter()
                        ->Radius(th.radius)

@@ -63,7 +63,8 @@ struct PopupMenu {
     // As many items as the caller adds; the builder is on the frame arena.
     ArenaVec<MenuItem> items;
     UiSize size = UiSize::Medium;
-    float minW = 128;
+    // 0 is Rust's default, min_w(rems(8.)).
+    float minW = 0;
     float maxH = 450;
     bool scrollable = false;
     bool externalLinkIcon = true;

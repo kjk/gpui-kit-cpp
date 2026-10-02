@@ -177,8 +177,9 @@ El* SidebarMenuItem::IntoEl(Str id) {
                   ->FlexRow()
                   ->W(kFill)
                   ->Shrink0()
-                  ->Pad(8)
-                  ->Gap(8)
+                  // p_2 / gap_x_2
+                  ->Pad(Rems(cx, 0.5f))
+                  ->Gap(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->Radius(th.radius)
                   ->Font(14)
@@ -213,8 +214,9 @@ El* SidebarMenuItem::IntoEl(Str id) {
             row->Tip(label);
         }
     } else {
-        row->H(28);
-        El* mid = Div(a)->FlexRow()->Flex1()->Gap(8)->JustifyBetween();
+        row->H(Rems(cx, 1.75f)); // h_7
+        El* mid =
+            Div(a)->FlexRow()->Flex1()->Gap(Rems(cx, 0.5f))->JustifyBetween();
         // refine_style(&self.label_style) on the label's own box. The text
         // takes the row's colour unless the refinement names one.
         El* labelBox = Div(a)->FlexRow()->Flex1();
@@ -260,15 +262,20 @@ El* SidebarMenuItem::IntoEl(Str id) {
     root->Child(row);
 
     if (isOpen) {
-        El* sub = Div(a)->FlexCol()->Gap(4)->PadY(2)->PadL(10)->BorderL(
-            1, th.sidebarBorder);
+        // gap_1 / py_0p5 / pl_2p5
+        El* sub = Div(a)
+                      ->FlexCol()
+                      ->Gap(Rems(cx, 0.25f))
+                      ->PadY(Rems(cx, 0.125f))
+                      ->PadL(Rems(cx, 0.625f))
+                      ->BorderL(1, th.sidebarBorder);
         for (int i = 0; i < children.len; i++) {
             children[i]->collapsed = collapsed;
             sub->Child(children[i]->IntoEl(StrDup(a, fmt("%d", i))));
         }
         // ml_3p5: the rule down the submenu sits in from the parent's edge,
         // under the icon column rather than beside it.
-        root->Child(Div(a)->PadL(14)->W(kFill)->Child(sub));
+        root->Child(Div(a)->PadL(Rems(cx, 0.875f))->W(kFill)->Child(sub));
     }
     return root;
 }
@@ -299,7 +306,7 @@ SidebarMenu* SidebarMenu::Refine(const Style& v, uint32_t fields) {
 
 El* SidebarMenu::IntoEl(Str id) {
     IdScope scope(cx, id);
-    El* col = Div(a)->FlexCol()->W(kFill)->Gap(8);
+    El* col = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
     StyleApplyFields(&col->style, style, styleSet);
     refiner.Apply(col);
     for (int i = 0; i < items.len; i++) {
@@ -342,14 +349,15 @@ El* SidebarGroup::IntoEl(Str id) {
         col->Child(Div(a)
                        ->FlexRow()
                        ->Shrink0()
-                       ->H(32)
-                       ->PadX(8)
+                       // h_8 / px_2
+                       ->H(Rems(cx, 2.f))
+                       ->PadX(Rems(cx, 0.5f))
                        ->ItemsCenter()
                        ->Radius(th.radius)
                        ->Child(TextEl(a, label)->Font(12)->Fg(
                            RgbaOpacity(th.sidebarFg, 0.7f))));
     }
-    El* inner = Div(a)->FlexCol()->W(kFill)->Gap(8);
+    El* inner = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f)); // gap_2
     for (int i = 0; i < children.len; i++) {
         inner
             ->Child(children[i].Render(cx, StrDup(a, fmt("%d", i)), collapsed));
@@ -366,8 +374,9 @@ static El* SidebarBand(Ctx* cx, const ArenaVec<El*>& children, bool selected,
     El* row = Div(a)
                   ->FlexRow()
                   ->W(kFill)
-                  ->Gap(8)
-                  ->Pad(8)
+                  // gap_2 / p_2
+                  ->Gap(Rems(cx, 0.5f))
+                  ->Pad(Rems(cx, 0.5f))
                   ->ItemsCenter()
                   ->JustifyBetween()
                   ->Radius(th.radius)
@@ -450,7 +459,7 @@ SidebarFooter* SidebarFooter::Refine(const Style& v, uint32_t fields) {
 El* SidebarFooter::IntoEl() {
     // Footer's Styled/InteractiveElement implementation belongs to `base`,
     // which the themed outer row wraps as one child upstream.
-    El* base = Div(a)->FlexRow()->Gap(8)->W(kFill);
+    El* base = Div(a)->FlexRow()->Gap(Rems(cx, 0.5f))->W(kFill);
     StyleApplyFields(&base->style, style, styleSet);
     refiner.Apply(base);
     for (int i = 0; i < len(children); i++) {
@@ -679,15 +688,18 @@ El* Sidebar::IntoEl() {
     if (iconCollapsed) {
         root->W(kSidebarCollapsedWidth);
     }
+    // The rem steps the bands are spaced by: _2 and _3.
+    float r2 = Rems(cx, 0.5f);
+    float r3 = Rems(cx, 0.75f);
     if (iconCollapsed) {
-        root->Gap(8);
+        root->Gap(r2);
     }
     if (header) {
-        El* box = Div(a)->FlexRow()->W(kFill)->Gap(8);
+        El* box = Div(a)->FlexRow()->W(kFill)->Gap(r2);
         if (iconCollapsed) {
-            box->PadT(8)->PadX(8);
+            box->PadT(r2)->PadX(r2);
         } else {
-            box->PadT(12)->PadX(12);
+            box->PadT(r3)->PadX(r3);
         }
         box->Child(header);
         root->Child(box);
@@ -695,9 +707,9 @@ El* Sidebar::IntoEl() {
     El* body = Div(a)->FlexCol()->W(kFill)->Flex1()->MinH(0);
     El* inner = Div(a)->FlexCol()->W(kFill)->Shrink0();
     if (iconCollapsed) {
-        inner->Pad(8);
+        inner->Pad(r2);
     } else {
-        inner->PadX(12);
+        inner->PadX(r3);
     }
     for (int i = 0; i < this->content.len; i++) {
         // The groups are rows of a `list(..)` in Rust, which has no gap of
@@ -707,10 +719,10 @@ El* Sidebar::IntoEl() {
         El* box = Div(a)->FlexCol()->W(kFill)->Child(this->content[i].Render(
             cx, StrDup(a, fmt("%d", i)), iconCollapsed));
         if (i == 0) {
-            box->PadT(12);
+            box->PadT(r3);
         }
         if (i + 1 == this->content.len) {
-            box->PadB(12);
+            box->PadB(r3);
         }
         inner->Child(box);
     }
@@ -727,11 +739,11 @@ El* Sidebar::IntoEl() {
     body->Child(viewport);
     root->Child(body);
     if (footer) {
-        El* box = Div(a)->FlexRow()->W(kFill)->PadX(iconCollapsed ? 8.f : 12.f);
+        El* box = Div(a)->FlexRow()->W(kFill)->PadX(iconCollapsed ? r2 : r3);
         if (iconCollapsed) {
-            box->PadT(8);
+            box->PadT(r2);
         }
-        box->PadB(12);
+        box->PadB(r3);
         box->Child(footer);
         root->Child(box);
     }

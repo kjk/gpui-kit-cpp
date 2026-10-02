@@ -206,7 +206,8 @@ El* DescriptionList::IntoEl() {
         for (int k = 0; k < count; k++) {
             const DescriptionItem& it = items[itemAt++];
             if (it.separator) {
-                El* separator = Div(a)->H(8)->W(kFill);
+                // h_2().w_full()
+                El* separator = Div(a)->H(Rems(cx, 0.5f))->W(kFill);
                 if (bordered) {
                     separator->Bg(th.descListLabel);
                 }

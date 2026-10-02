@@ -966,9 +966,10 @@ El* NotificationList::IntoEl() {
                            ->FlexRow()
                            ->Group()
                            ->W(kFill)
-                           ->Gap(12)
-                           ->PadY(14)
-                           ->PadX(16)
+                           // gap_3 / py_3p5 / px_4
+                           ->Gap(Rems(cx, 0.75f))
+                           ->PadY(Rems(cx, 0.875f))
+                           ->PadX(Rems(cx, 1.f))
                            ->Border(1, th.border)
                            ->Bg(th.tokens.popover)
                            ->Radius(th.radiusLg)
@@ -1000,12 +1001,17 @@ El* NotificationList::IntoEl() {
             }
             bool hasIcon = iconName != IconName::None;
             if (hasIcon) {
-                card->Child(Div(a)->Absolute()->Top(18)->Left(16)->Child(
-                    IconEl(a, iconName, 16)->Fg(iconFg)));
+                // top(px(18.)).left_4(); the icon is the 1rem text size.
+                card->Child(Div(a)
+                                ->Absolute()
+                                ->Top(18)
+                                ->Left(Rems(cx, 1.f))
+                                ->Child(IconEl(a, iconName, Rems(cx, 1.f))
+                                            ->Fg(iconFg)));
             }
             El* body = Div(a)->FlexCol()->Flex1()->ClipX()->ClipY();
             if (hasIcon) {
-                body->PadL(24);
+                body->PadL(Rems(cx, 1.5f)); // pl_6
             }
             if (len(item.title) > 0) {
                 body->Child(TextEl(a, item.title)
@@ -1034,7 +1040,7 @@ El* NotificationList::IntoEl() {
                 if (action) {
                     // The source's generated small action has mr_3p5 so it
                     // stays clear of the hover-only close control.
-                    card->Child(Div(a)->PadR(14)->Child(action));
+                    card->Child(Div(a)->PadR(Rems(cx, 0.875f))->Child(action));
                 }
             }
             El* closeButton = component::Button::New(cx, StrL("close"))
@@ -1046,8 +1052,9 @@ El* NotificationList::IntoEl() {
                                   ->StopClick();
             card->Child(Div(a)
                             ->Absolute()
-                            ->Top(4)
-                            ->Right(4)
+                            // top_1 / right_1
+                            ->Top(Rems(cx, 0.25f))
+                            ->Right(Rems(cx, 0.25f))
                             ->GroupHoverVisible()
                             ->Child(closeButton));
             layer->Child(Div(a)

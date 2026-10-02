@@ -290,7 +290,7 @@ TabBar* TabBar::New(Ctx* cx, Str id) {
     t->a = a;
     t->cx = cx;
     t->id = id;
-    t->lastEmptySpace = Div(a)->W(12)->Shrink0();
+    t->lastEmptySpace = Div(a)->W(Rems(cx, 0.75f))->Shrink0(); // w_3
     return t;
 }
 TabBar* TabBar::Child(component::Tab* child) {
@@ -561,7 +561,7 @@ static El* TabMenuButton(TabBar* tabs, const Theme&, float) {
         if (it.label.s) {
             menu->MenuWithCheck(it.label, i == tabs->selected);
         } else if (it.icon != IconName::None) {
-            menu->Element(IconEl(cx->a, it.icon, 16));
+            menu->Element(IconEl(cx->a, it.icon, Rems(cx, 1.f)));
             menu->Checked(i == tabs->selected);
         } else {
             menu->MenuWithCheck(Tr("Dock.Unnamed"), i == tabs->selected);
@@ -721,7 +721,7 @@ El* TabBar::IntoEl() {
                       ->JustifyCenter()
                       ->Shrink0()
                       ->H(kFill)
-                      ->Gap(4)
+                      ->Gap(Rems(cx, 0.25f)) // gap_1
                       ->Radius(radius);
         // The instance refinement is applied before selected/disabled state,
         // the same order gpui-base::Tab resolves its StateStyle.

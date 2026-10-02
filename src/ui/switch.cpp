@@ -180,7 +180,7 @@ El* Switch::IntoEl() {
                           nullptr, name, tabIndex, tabStop, focus)
             ->FlexRow()
             ->ItemsCenter()
-            ->Gap(8);
+            ->Gap(Rems(cx, 0.5f));
     root->Child(track);
     if (label.s) {
         // input_text_size: the Input/Select ladder, Medium's for a custom
@@ -192,8 +192,9 @@ El* Switch::IntoEl() {
         // there, rather than pushing past the container.
         root->Child(TextEl(a, label)
                         ->Font(labelFont)
-                        // line_height(bg_height): one line is the track tall.
-                        ->LineHeight(trackH / labelFont)
+                        // line_height(bg_height): one line is the track tall,
+                        // in pixels while the font follows the rem.
+                        ->LineHeight(FontPx(cx, trackH) / labelFont)
                         ->MinW(0)
                         ->Wrap()
                         ->Fg(disabled ? th.mutedFg : th.foreground));

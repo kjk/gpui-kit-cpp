@@ -81,10 +81,11 @@ Checkbox* Checkbox::OnChange(Listener fn) {
 
 El* Checkbox::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    float box = size == UiSize::XSmall  ? 12.f
-                : size == UiSize::Small ? 14.f
-                : size == UiSize::Large ? 18.f
-                                        : 16.f;
+    // indicator_size: rems(0.75 / 0.875 / 1.125 / 1).
+    float box = Rems(cx, size == UiSize::XSmall  ? 0.75f
+                         : size == UiSize::Small ? 0.875f
+                         : size == UiSize::Large ? 1.125f
+                                                 : 1.f);
     // An unchecked box carries the input border, a checked one the primary
     // color, and a disabled one either at half strength.
     Rgba mark = checked ? th.primary : th.inputBorder;
@@ -118,7 +119,10 @@ El* Checkbox::IntoEl() {
     }
     if (on > 0.01f) {
         Rgba tick = disabled ? RgbaOpacity(th.primaryFg, 0.5f) : th.primaryFg;
-        ind->Child(IconEl(a, IconName::Check, box - 4)->Fg(tick)->Opacity(on));
+        // size_2 / size_2p5 / size_3 / size_3p5: a quarter rem under the box.
+        ind->Child(IconEl(a, IconName::Check, box - Rems(cx, 0.25f))
+                       ->Fg(tick)
+                       ->Opacity(on));
     }
     // gpui_base::Checkbox owns identity, focus and activation. It hands the
     // handler the state the activation produces; the themed checkbox is
@@ -135,7 +139,7 @@ El* Checkbox::IntoEl() {
                   ->FocusRing(focusRing)
                   ->FlexRow()
                   ->ItemsStart()
-                  ->Gap(8);
+                  ->Gap(Rems(cx, 0.5f));
     // The explicit name wins over the visible label, and only the name
     // changes: what is drawn stays the label.
     Str name = accessibilityLabel.s ? accessibilityLabel : label;
@@ -155,7 +159,7 @@ El* Checkbox::IntoEl() {
         // flex_1 on this column; here that would make every checkbox row
         // claim the whole width of whatever holds it, which lays a row of
         // them out as a column, so the label measures itself instead.
-        El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
+        El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
         if (label.s) {
             // input_text_size: the Input/Select ladder. A custom Size sets
             // no size and inherits.

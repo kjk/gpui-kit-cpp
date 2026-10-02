@@ -87,9 +87,10 @@ El* Pagination::IntoEl() {
     st.disabled = disabled;
     El* row = gpui::Pagination::New(cx, base)
                   ->FlexRow()
-                  ->PadX(8)
-                  ->PadY(8)
-                  ->Gap(4)
+                  // px_2 / py_2 / gap_1
+                  ->PadX(Rems(cx, 0.5f))
+                  ->PadY(Rems(cx, 0.5f))
+                  ->Gap(Rems(cx, 0.25f))
                   ->ItemsCenter();
     // The nav buttons are ghost and compact; only the icon shows when compact.
     int prevPage = PaginationPrevPage(&st);
