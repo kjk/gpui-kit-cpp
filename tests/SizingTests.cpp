@@ -144,6 +144,26 @@ static void HFlexCentersAndVFlexStretchesOnTheCrossAxis() {
     ArenaDelete(a);
 }
 
+// GPUI's rem utilities resolve against window.rem_size(): at the theme's 20
+// px a size table's rem rows grow by a quarter and its pixel rows do not, and
+// a pixel font size is held so the layout's rem scaling lands back on it.
+static void RemRowsFollowTheWindowsRemSize() {
+    App app;
+    Window win;
+    win.app = &app;
+    Ctx cx = {&app, &win, nullptr, {}};
+    utassertnear(Rems(&cx, 1.f), 16.f);
+    utassertnear(Rems(nullptr, 1.f), 16.f);
+    WindowSetRemSize(&win, 20);
+    utassertnear(Rems(&cx, 1.f), 20.f);
+    utassertnear(UiInputHeight(&cx, UiSize::Medium), 40.f);
+    utassertnear(UiIconPx(&cx, UiSize::Medium), 20.f);
+    utassertnear(UiIconPx(&cx, UiSize::Custom(13)), 13.f);
+    utassertnear(UiInputPadX(UiSize::Medium), 10.f);
+    utassertnear(UiTableRowHeight(UiSize::Medium), 32.f);
+    utassertnear(FontPx(&cx, 10.f) * 20.f / 16.f, 10.f);
+}
+
 void TestSizing() {
     TestSuite("sizing");
     HFlexCentersAndVFlexStretchesOnTheCrossAxis();
@@ -151,4 +171,5 @@ void TestSizing() {
     MinMaxAndStepsMatchThePinnedDirection();
     TableAndInputConstantsAreExact();
     StyleSizedHelpersRefineTheElement();
+    RemRowsFollowTheWindowsRemSize();
 }
