@@ -49,8 +49,8 @@ struct DatePickerKeys {
 void DatePickerBindKeys(Ctx* cx, El* root, Str name, Listener onToggle,
                         Listener onClear, bool open, bool disabled);
 
-intptr_t DatePickerDateKey(LocalDate date);
-LocalDate DatePickerDateFromKey(intptr_t key);
+int64_t DatePickerDateKey(LocalDate date);
+LocalDate DatePickerDateFromKey(int64_t key);
 
 enum class DateSelectionResult : uint8_t {
     Rejected,

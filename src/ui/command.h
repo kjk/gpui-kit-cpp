@@ -34,7 +34,7 @@ struct CommandItem {
     // row shows at its trailing end. An action here is the hash of its name
     // and `actionArg` is the rest of it — ActionEvent::arg.
     uint32_t action = 0;
-    intptr_t actionArg = 0;
+    int64_t actionArg = 0;
     // The context the binding is looked up in, for a chord bound under one.
     const char* actionContext = nullptr;
     // A check at the right end of the row. A resolved binding takes that
@@ -50,7 +50,7 @@ struct CommandItem {
     El* (*content)(Ctx* cx, const CommandItem* item) = nullptr;
     // What the caller knows the row by, for one that would rather not map an
     // IndexPath back to its own model. Rides along on every event.
-    intptr_t data = 0;
+    int64_t data = 0;
 };
 
 // A titled section of items. The heading is hidden while every item in the
@@ -111,7 +111,7 @@ struct CommandMatch {
     IndexPath path = {};
     int row = 0;
     bool disabled = false;
-    intptr_t data = 0;
+    int64_t data = 0;
 };
 
 enum class CommandEventKind : uint8_t {
@@ -125,7 +125,7 @@ struct CommandEvent {
     CommandEventKind kind = CommandEventKind::Select;
     IndexPath path = {};
     Str query = {};
-    intptr_t data = 0;
+    int64_t data = 0;
 };
 
 // command/state.rs CONTEXT and init: escape, enter, up and down under
@@ -196,9 +196,9 @@ struct CommandState {
     Listener onCancel = {};
 
     static void OnRowClick(CommandState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t match);
+                           int64_t match);
     static void OnRowHover(CommandState* self, Ctx* cx, const HoverEvent* ev,
-                           intptr_t match);
+                           int64_t match);
     static void OnAction(CommandState* self, Ctx* cx, const ActionEvent* ev);
 
     ~CommandState() {

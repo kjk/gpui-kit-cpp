@@ -123,7 +123,7 @@ float ResizablePanelSize(const ResizableState* s, int ix, float declared) {
 }
 
 void ResizableState::OnHandleDown(ResizableState* self, Ctx* cx,
-                                  const MouseDownEvent* ev, intptr_t ix) {
+                                  const MouseDownEvent* ev, int64_t ix) {
     if (ev->button != MouseButton::Left) {
         return;
     }

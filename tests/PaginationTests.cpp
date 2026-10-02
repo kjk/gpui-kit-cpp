@@ -130,7 +130,7 @@ static void AScopeIsWhatMakesALocalNameItsOwn() {
 
 struct PgSink {
     int page = 0;
-    static void OnPage(PgSink* self, Ctx*, const ClickEvent*, intptr_t p) {
+    static void OnPage(PgSink* self, Ctx*, const ClickEvent*, int64_t p) {
         self->page = (int)p;
     }
 };

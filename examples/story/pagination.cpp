@@ -10,17 +10,17 @@ struct PaginationStory {
 };
 
 static void SetPage(PaginationStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t p) {
+                    int64_t p) {
     self->page = (int)p;
     Notify(cx);
 }
 static void SetPageMany(PaginationStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t p) {
+                        int64_t p) {
     self->pageMany = (int)p;
     Notify(cx);
 }
 static void SetPageCompact(PaginationStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t p) {
+                           int64_t p) {
     self->pageCompact = (int)p;
     Notify(cx);
 }

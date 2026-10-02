@@ -68,10 +68,10 @@ void InputInitKeys();
 
 // The edit an action names. `arg` is the action's payload — for
 // `input::Enter` it is bit 0 `secondary`, bit 1 `shift`.
-InputAction InputActionOf(uint32_t id, intptr_t arg = 0);
+InputAction InputActionOf(uint32_t id, int64_t arg = 0);
 
 // Whether `arg` on an `input::Enter` says the shift variant.
-constexpr bool InputEnterShift(intptr_t arg) {
+constexpr bool InputEnterShift(int64_t arg) {
     return (arg & 2) != 0;
 }
 

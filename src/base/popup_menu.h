@@ -111,13 +111,13 @@ struct PopupMenuState {
     static void OnAction(PopupMenuState* self, Ctx* cx, const ActionEvent* ev);
 
     static void OnItemClick(PopupMenuState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t ix);
+                            int64_t ix);
     static void OnItemHover(PopupMenuState* self, Ctx* cx, const HoverEvent* ev,
-                            intptr_t ix);
+                            int64_t ix);
     static void OnSubmenuClick(PopupMenuState* self, Ctx* cx,
-                               const ClickEvent* ev, intptr_t ix);
+                               const ClickEvent* ev, int64_t ix);
     static void OnSubmenuHover(PopupMenuState* self, Ctx* cx,
-                               const HoverEvent* ev, intptr_t ix);
+                               const HoverEvent* ev, int64_t ix);
     static void OnScroll(PopupMenuState* self, Ctx* cx, const ScrollEvent* ev);
     // A trigger that opens and closes the menu, and a right press that opens
     // it where the pointer is — the two ways Rust puts a PopupMenu on screen
@@ -126,7 +126,7 @@ struct PopupMenuState {
     // Rust's `state.set_open(open)` before `toggle_open`, where `open` was
     // read at render time.
     static void OnTriggerClick(PopupMenuState* self, Ctx* cx,
-                               const ClickEvent* ev, intptr_t wasOpen);
+                               const ClickEvent* ev, int64_t wasOpen);
     // on_mouse_down_out: the press that lands past the menu closes it. Here
     // it is the release rather than the press, because that is the outside
     // event this tree reports, and it runs before the click the same release

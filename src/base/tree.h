@@ -127,9 +127,9 @@ struct TreeState {
     Entity<TreeState> self = {};
 
     static void OnRowClick(TreeState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t entryIx);
+                           int64_t entryIx);
     static void OnRowMouseDown(TreeState* self, Ctx* cx,
-                               const MouseDownEvent* ev, intptr_t entryIx);
+                               const MouseDownEvent* ev, int64_t entryIx);
     static void OnScroll(TreeState* self, Ctx* cx, const ScrollEvent* ev);
 
     ~TreeState() {

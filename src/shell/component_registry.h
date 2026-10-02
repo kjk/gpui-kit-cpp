@@ -703,18 +703,18 @@ struct ComponentEventBinding {
     ComponentEventRun run = nullptr;
     ComponentCallback callback = {};
     void* user = nullptr;
-    intptr_t value = 0;
+    int64_t value = 0;
 };
 
 // Listen(cx, &ScriptView::OnComponentEvent, binding) for `cx`'s ScriptView.
 Listener ComponentListener(Ctx* cx, ComponentEventRun run,
                            ComponentCallback callback, void* user = nullptr,
-                           intptr_t value = 0);
+                           int64_t value = 0);
 
 // The same, for a component that supplies the value itself when the event
 // happens — the star a rating click lands on — and hands it over with
 // ListenerFill. Rust's closure captures the callback and receives the value
-// beside it; a Listener carries one intptr_t, so the callback waits in a
+// beside it; a Listener carries one int64_t, so the callback waits in a
 // keyed relay named `key` (unique among its siblings, like an element id)
 // and the listener is left for the component to fill. `run` sees the filled
 // value as `binding->value`.

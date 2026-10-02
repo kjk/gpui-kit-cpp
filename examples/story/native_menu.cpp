@@ -65,7 +65,7 @@ static component::NativeMenu* DemoMenu(Ctx* cx, NativeMenuStory* self) {
 
 // on_click: only "Word Wrap" changes anything; open_github opens the site.
 static void OnMenuSelect(NativeMenuStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t id) {
+                         int64_t id) {
     if (id == NmWordWrap) {
         self->wordWrap = !self->wordWrap;
     } else if (id == NmGithub) {
@@ -91,7 +91,7 @@ static component::NativeMenu* EditMenu(Ctx* cx) {
 // nudged right so the pointer does not land on the first row. The OS draws
 // it where it has a menu of its own; elsewhere Show draws the same rows.
 static void OnTriggerDown(NativeMenuStory* self, Ctx* cx,
-                          const MouseDownEvent* ev, intptr_t which) {
+                          const MouseDownEvent* ev, int64_t which) {
     if (ev->button != MouseButton::Right) {
         return;
     }

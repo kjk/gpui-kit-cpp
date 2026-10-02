@@ -817,7 +817,7 @@ static El* RowHeaderCell(Ctx* cx, Entity<TableState> state, int row,
         e->Bg(th.tokens.tableActive);
     }
     BindPathClick(e, ElementIdNamed(a, StrL("row-header"), (uint64_t)row),
-                  ListenTo(state, &TableState::OnRowClick, (intptr_t)row));
+                  ListenTo(state, &TableState::OnRowClick, (int64_t)row));
     return e;
 }
 

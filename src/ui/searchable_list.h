@@ -277,7 +277,7 @@ struct SearchableListState {
     void SetSelectedIndices(const IndexPath* indices, int n);
 
     static void OnRowClick(SearchableListState* self, Ctx* cx,
-                           const ClickEvent* ev, intptr_t match);
+                           const ClickEvent* ev, int64_t match);
 
     // The Select's five bindings, arriving as actions. Rust's Select root
     // hears Confirm and Cancel and hands the arrows to the content it

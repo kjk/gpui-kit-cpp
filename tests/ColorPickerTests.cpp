@@ -114,8 +114,7 @@ struct ColorSink {
         self->color = ev->color;
     }
 
-    static void OnOpen(ColorSink* self, Ctx*, const ClickEvent*,
-                       intptr_t open) {
+    static void OnOpen(ColorSink* self, Ctx*, const ClickEvent*, int64_t open) {
         self->openChanges++;
         self->open = open != 0;
     }

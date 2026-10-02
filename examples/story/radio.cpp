@@ -10,12 +10,12 @@ struct RadioStory {
 
 // RadioGroup::on_click(&usize): the index the click landed on.
 static void SetDelivery(RadioStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t ix) {
+                        int64_t ix) {
     self->delivery = (int)ix;
     Notify(cx);
 }
 static void SetBilling(RadioStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+                       int64_t ix) {
     self->billing = (int)ix;
     Notify(cx);
 }

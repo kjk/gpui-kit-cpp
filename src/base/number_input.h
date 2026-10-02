@@ -22,16 +22,16 @@ enum class NumberStepKind : uint8_t {
 };
 
 using NumberStepByValueFn = double (*)(double current, StepAction action,
-                                       App* app, intptr_t arg);
+                                       App* app, int64_t arg);
 
 struct NumberStep {
     NumberStepKind kind = NumberStepKind::Fixed;
     double fixed = 1;
     NumberStepByValueFn byValue = nullptr;
-    intptr_t arg = 0;
+    int64_t arg = 0;
 
     static NumberStep Fixed(double value);
-    static NumberStep ByValue(NumberStepByValueFn fn, intptr_t arg = 0);
+    static NumberStep ByValue(NumberStepByValueFn fn, int64_t arg = 0);
     double Value(double current, StepAction action, App* app) const;
 };
 

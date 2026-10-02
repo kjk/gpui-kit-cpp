@@ -8,8 +8,8 @@ static bool CalendarDateValid(LocalDate date) {
 }
 
 static int CalendarDateCompare(LocalDate a, LocalDate b) {
-    intptr_t ka = DatePickerDateKey(a);
-    intptr_t kb = DatePickerDateKey(b);
+    int64_t ka = DatePickerDateKey(a);
+    int64_t kb = DatePickerDateKey(b);
     return ka < kb ? -1 : (ka > kb ? 1 : 0);
 }
 
@@ -291,7 +291,7 @@ bool CalendarNextYearPage(CalendarState* s) {
 }
 
 void CalendarState::OnDate(CalendarState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t dateKey) {
+                           int64_t dateKey) {
     CalendarStateSelectDate(self, DatePickerDateFromKey(dateKey), cx, true);
 }
 
@@ -328,14 +328,14 @@ void CalendarState::OnYearToggle(CalendarState* self, Ctx* cx,
 }
 
 void CalendarState::OnMonth(CalendarState* self, Ctx* cx, const ClickEvent*,
-                            intptr_t month) {
+                            int64_t month) {
     self->currentMonth = (int)month;
     self->view = CalendarView::Day;
     Notify(cx);
 }
 
 void CalendarState::OnYear(CalendarState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t year) {
+                           int64_t year) {
     self->currentYear = (int)year;
     self->view = CalendarView::Day;
     Notify(cx);

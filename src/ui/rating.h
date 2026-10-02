@@ -22,9 +22,9 @@ struct RatingState {
     Listener onClick = {};
 
     static void OnStarHover(RatingState* self, Ctx* cx, const HoverEvent* ev,
-                            intptr_t ix);
+                            int64_t ix);
     static void OnStarClick(RatingState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t ix);
+                            int64_t ix);
 };
 
 struct Rating {

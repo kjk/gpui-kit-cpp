@@ -246,7 +246,7 @@ static void DateTimePickerReportsEachEditAndStaysOpen() {
         cx.self = state->timeField.id;
         MouseDownEvent press = {};
         TimeFieldState::OnSegmentDown(field, &cx, &press,
-                                      (intptr_t)TimeSegment::Minute);
+                                      (int64_t)TimeSegment::Minute);
         KeyEvent key = {};
         key.vk = '4';
         TimeFieldState::OnKeyDown(field, &cx, &key);
@@ -312,7 +312,7 @@ static void TwelveHourPickerTypesThePeriod() {
         cx.self = state->timeField.id;
         MouseDownEvent press = {};
         TimeFieldState::OnSegmentDown(field, &cx, &press,
-                                      (intptr_t)TimeSegment::Hour);
+                                      (int64_t)TimeSegment::Hour);
         const int keys[] = {'0', '9', '3', '0', 'P'};
         for (int k : keys) {
             KeyEvent key = {};

@@ -43,7 +43,7 @@ struct DialogStory {
 static component::SearchableItem gDialogOptions[3];
 
 static void DlgToolbarAct(DialogStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t act) {
+                          int64_t act) {
     switch (act) {
         case DlgOptOverlay:
             self->overlay = !self->overlay;
@@ -65,7 +65,7 @@ static void DlgToolbarAct(DialogStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OpenDialog(DialogStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     self->open = (int)which;
     self->otherOpen = false;
     Notify(cx);
@@ -141,7 +141,7 @@ static void ToggleBasicDate(DialogStory* self, Ctx* cx, const ClickEvent*) {
 }
 
 static void PickBasicDate(DialogStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t day) {
+                          int64_t day) {
     self->basicDate.day = (int)day;
     self->basicDateOpen = false;
     Notify(cx);

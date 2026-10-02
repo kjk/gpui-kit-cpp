@@ -910,7 +910,7 @@ static Str RowsLabel(Arena* a, int v) {
 }
 
 static void OnToggle(EditorApp* self, Ctx* cx, const ClickEvent*,
-                     intptr_t which) {
+                     int64_t which) {
     switch (which) {
         case kToggleLineNumbers:
             self->lineNumbers = !self->lineNumbers;
@@ -940,7 +940,7 @@ static void OnToggle(EditorApp* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OnCycleRows(EditorApp* self, Ctx* cx, const ClickEvent*,
-                        intptr_t which) {
+                        int64_t which) {
     if (which == kCycleScrollBeyond) {
         self->scrollBeyondLastLine = CycleRows(self->scrollBeyondLastLine);
         self->editor.scrollBeyondLastLine = self->scrollBeyondLastLine;
@@ -1002,7 +1002,7 @@ static void ConfirmGoTo(EditorApp* self, Ctx* cx, const ClickEvent* ev) {
 // the label rather than with a pressed look: `.when(on, |this|
 // this.icon(IconName::Check))`.
 static El* ToggleButton(Ctx* cx, Str id, Str label, bool on, Listener toggle,
-                        intptr_t which) {
+                        int64_t which) {
     component::Button* b = component::Button::New(cx, id)
                                ->Ghost()
                                ->WithSize(UiSize::XSmall)
@@ -1490,7 +1490,7 @@ static El* EditorAppearanceMenu(EditorApp* self, Ctx* cx) {
                 break;
             default:
                 menu->MenuWithAction(Str(r.label), ApAction(r.kind),
-                                     (intptr_t)r.value);
+                                     (int64_t)r.value);
                 menu->Checked(ApChecked(self, cx, r));
                 break;
         }

@@ -129,7 +129,7 @@ El* ScComingSoon(Ctx* cx, const char* name) {
 
 // Gallery navigation: the tile knows which component it opens.
 static void OpenComp(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                     intptr_t comp) {
+                     int64_t comp) {
     app->component = (int)comp;
     app->scrollY = 0;
     Notify(cx);

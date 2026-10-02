@@ -468,7 +468,7 @@ void TimeFieldState::OnKeyDown(TimeFieldState* self, Ctx* cx,
 }
 
 void TimeFieldState::OnSegmentDown(TimeFieldState* self, Ctx* cx,
-                                   const MouseDownEvent*, intptr_t segment) {
+                                   const MouseDownEvent*, int64_t segment) {
     if (!self) {
         return;
     }
@@ -575,7 +575,7 @@ El* TimeField::IntoEl() {
                        ->Child(TextEl(a, editor.Label(a, s)));
         if (!disabled) {
             item->OnMouseDown(
-                ListenTo(state, &TimeFieldState::OnSegmentDown, (intptr_t)s));
+                ListenTo(state, &TimeFieldState::OnSegmentDown, (int64_t)s));
         }
         if (segment) {
             item = segment(segmentUser, item, &segmentState, cx);

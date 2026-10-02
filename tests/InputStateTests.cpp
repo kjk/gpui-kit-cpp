@@ -228,7 +228,7 @@ static int ManyActions(void* data, Arena* a, Str text, Selection sel,
                        CodeActionItem* out, int cap) {
     (void)a;
     (void)text;
-    int total = (int)(intptr_t)data;
+    int total = (int)(int64_t)data;
     for (int i = 0; i < total && i < cap; i++) {
         out[i].title = StrL("action");
         out[i].range = sel;
@@ -270,7 +270,7 @@ static void CodeActionCollectionsGrowToTheirAnswers() {
     InputState manyAnswers;
     manyAnswers.kind = InputKind::Editor;
     manyAnswers.codeActionProvider = &ManyActions;
-    manyAnswers.codeActionData = (void*)(intptr_t)73;
+    manyAnswers.codeActionData = (void*)(int64_t)73;
     InputSetValue(&manyAnswers, StrL("hello"));
     InputSetSelectedRange(&manyAnswers, nullptr, nullptr, 0, 5);
     Act(&manyAnswers, InputAction::ToggleCodeActions);
@@ -514,7 +514,7 @@ static int ManyCompletions(void* data, Str text, int offset, Str query,
     (void)text;
     (void)offset;
     (void)query;
-    int total = (int)(intptr_t)data;
+    int total = (int)(int64_t)data;
     for (int i = 0; i < total && i < cap; i++) {
         out[i].label = StrL("candidate");
     }
@@ -525,7 +525,7 @@ static void CompletionResponsesGrowPastTheOldBuffer() {
     InputState s;
     s.kind = InputKind::Editor;
     s.completionProvider = &ManyCompletions;
-    s.completionData = (void*)(intptr_t)257;
+    s.completionData = (void*)(int64_t)257;
     InputSetValue(&s, StrL("c"));
     InputShowCompletions(&s, nullptr, nullptr);
     utassert(s.completion.open);
@@ -625,7 +625,7 @@ static Str TestInlineCompletion(void* data, Arena* a, Str text, int offset) {
 static Str LongInlineCompletion(void* data, Arena* a, Str text, int offset) {
     (void)text;
     (void)offset;
-    int n = (int)(intptr_t)data;
+    int n = (int)(int64_t)data;
     char* out = (char*)Alloc(a, n);
     if (!out) {
         return {};
@@ -730,7 +730,7 @@ static void ALongInlineCompletionSurvivesAcceptance() {
     InputState s;
     s.kind = InputKind::Editor;
     s.inlineCompletionProvider = &LongInlineCompletion;
-    s.inlineCompletionData = (void*)(intptr_t)700;
+    s.inlineCompletionData = (void*)(int64_t)700;
     Type(&s, "a");
     s.inlineCompletion.dueAt = 0;
     InputUpdateInlineCompletion(&s, false);
@@ -807,7 +807,7 @@ static int ManySemanticTokens(void* data, Str text, Selection range,
                               SemanticToken* out, int cap) {
     (void)text;
     (void)range;
-    int total = (int)(intptr_t)data;
+    int total = (int)(int64_t)data;
     for (int i = 0; i < total && i < cap; i++) {
         out[i] = {0, (uint32_t)(i == 0 ? 0 : 1), 1, 0, 0};
     }
@@ -825,7 +825,7 @@ static void SemanticTokenResponsesGrowPastTheOldBuffer() {
     s.kind = InputKind::Editor;
     InputSetValue(&s, Str(text.els, len(text)));
     s.semanticTokensProvider = &ManySemanticTokens;
-    s.semanticTokensData = (void*)(intptr_t)total;
+    s.semanticTokensData = (void*)(int64_t)total;
     s.semanticLegend = kSemanticLegend;
     s.nSemanticLegend = 2;
     InputUpdateSemanticTokens(&s);
@@ -874,7 +874,7 @@ static int ManyDefinitions(void* data, Arena* a, Str text, int offset,
     (void)a;
     (void)text;
     (void)offset;
-    int total = (int)(intptr_t)data;
+    int total = (int)(int64_t)data;
     for (int i = 0; i < total && i < cap; i++) {
         out[i].origin = {0, 4};
         out[i].target = {i, i + 1};
@@ -887,7 +887,7 @@ static void DefinitionResponsesGrowPastTheOldBuffer() {
     s.kind = InputKind::Editor;
     InputSetValue(&s, StrL("word"));
     s.definitionProvider = &ManyDefinitions;
-    s.definitionData = (void*)(intptr_t)19;
+    s.definitionData = (void*)(int64_t)19;
     InputHoverDefinition(&s, 1);
     utassert(s.hoverDef.locations.len == 19);
     utassert(s.hoverDef.locations[18].target.start == 18);
@@ -5396,7 +5396,7 @@ static void SearchRevealsOffscreenWrappedMatch() {
     InputViewFree(&view);
 }
 
-static double BoundaryStepA(double value, StepAction action, App*, intptr_t) {
+static double BoundaryStepA(double value, StepAction action, App*, int64_t) {
     bool below = action == StepAction::Increment ? value < 1.0 : value <= 1.0;
     return below ? 0.1 : 0.5;
 }

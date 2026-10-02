@@ -124,12 +124,12 @@ struct EditorStory {
 };
 
 static void SetEditorTab(EditorStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t ix) {
+                         int64_t ix) {
     self->tab = (int)ix;
     Notify(cx);
 }
 static void EditorAct(EditorStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t act) {
+                      int64_t act) {
     if (act == EditorActReadonly) {
         self->readOnly = !self->readOnly;
     } else if (act >= EditorActSize && act < EditorActSize + 4) {

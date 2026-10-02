@@ -439,7 +439,7 @@ static bool PlotDouble(const void* item, int, void*, float* out) {
 }
 
 static bool RadialAngle(const void*, int index, void* user, float* out) {
-    int count = (int)(intptr_t)user;
+    int count = (int)(int64_t)user;
     *out = (float)index * 2.f * kPi / (float)count;
     return true;
 }
@@ -475,7 +475,7 @@ static void PlotShapeGeometry() {
     float radialValues[] = {1, 1, 1, 1};
     component::plot::RadialLine radial = component::plot::RadialLine::New();
     radial.Data(radialValues, 4, sizeof(float))
-        ->Angle(RadialAngle, (void*)(intptr_t)4)
+        ->Angle(RadialAngle, (void*)(int64_t)4)
         ->Radius(PlotFloat);
     Point radialPoints[4] = {};
     utassert(radial.Points({0, 0, 100, 100}, radialPoints, 4) == 4);

@@ -10,7 +10,7 @@ struct BreadcrumbStory {
 };
 
 static void OnCrumb(BreadcrumbStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t i) {
+                    int64_t i) {
     self->clickedItem = (int)i;
     Notify(cx);
 }

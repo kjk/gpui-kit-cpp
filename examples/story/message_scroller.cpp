@@ -453,7 +453,7 @@ enum MsNav {
 };
 
 static void MsNavigate(MessageScrollerStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     switch (which) {
         case MsNavHistoryOldest:
             if (auto* st = MsState(cx, self->historyScroller)) {

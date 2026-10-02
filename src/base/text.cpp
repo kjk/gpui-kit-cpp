@@ -2484,12 +2484,12 @@ static void MdOpenHref(char* href) {
 
 Listener TextView::LinkListener(Str href) {
     if (!onLinkHasContext) {
-        return ListenerArg(onLink, (intptr_t)href.s);
+        return ListenerArg(onLink, (int64_t)href.s);
     }
     TextViewLinkBinding* binding = ArenaNew<TextViewLinkBinding>(a);
     binding->context = onLinkContext;
     binding->href = href.s;
-    return ListenerArg(onLink, (intptr_t)binding);
+    return ListenerArg(onLink, (int64_t)binding);
 }
 
 // node.rs 2258: h1 2.0/BOLD, h2 1.5, h3 1.25, h4 1.125, h5 1.0/SEMIBOLD,
@@ -5792,7 +5792,7 @@ TextView* TextView::OnLink(Listener fn) {
     return this;
 }
 
-TextView* TextView::OnLinkWithContext(Listener fn, intptr_t context) {
+TextView* TextView::OnLinkWithContext(Listener fn, int64_t context) {
     onLink = fn;
     onLinkContext = context;
     onLinkHasContext = true;

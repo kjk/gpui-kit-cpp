@@ -87,7 +87,7 @@ El* Checkbox::New(Ctx* cx, Str id, CheckboxState state, bool disabled,
     }
     e->TabIndex(tabIndex)->TabStop(tabStop);
     if (onChange.IsValid()) {
-        e->OnClick(ListenerFill(onChange, (intptr_t)CheckboxActivated(state)));
+        e->OnClick(ListenerFill(onChange, (int64_t)CheckboxActivated(state)));
     }
     return e;
 }

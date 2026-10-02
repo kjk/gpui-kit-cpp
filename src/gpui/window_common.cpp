@@ -886,7 +886,7 @@ static bool WindowKeyDownDispatch(Window* win, int key, bool shift, bool ctrl,
     // The chord, resolved once. The matcher holds a half-finished sequence on
     // itself, so asking it twice for one keystroke would append the chord
     // twice; the answer is taken here and handed to whoever wants it.
-    intptr_t actionArg = 0;
+    int64_t actionArg = 0;
     bool actionPending = false;
     uint32_t action = 0;
     if (!held) {
@@ -4086,7 +4086,7 @@ bool AppIsMaximized(Window* win) {
 
 struct AppMenuBinding {
     uint32_t action = 0;
-    intptr_t arg = 0;
+    int64_t arg = 0;
 };
 
 struct AppMenuState {
@@ -4196,11 +4196,11 @@ void AppSetMenus(App* app, const MenuDef* menus, int n) {
     PlatSetAppMenu(app, bar, n);
 }
 
-bool AppMenuRowForId(int id, uint32_t* action, intptr_t* arg) {
+bool AppMenuRowForId(int id, uint32_t* action, int64_t* arg) {
     return AppMenuRowForId(gAppMenuApp, id, action, arg);
 }
 
-bool AppMenuRowForId(const App* app, int id, uint32_t* action, intptr_t* arg) {
+bool AppMenuRowForId(const App* app, int id, uint32_t* action, int64_t* arg) {
     AppMenuState* state = AppGlobalGet<AppMenuState>(app);
     if (!state || id <= 0 || id > state->rows.len) {
         return false;
@@ -4227,7 +4227,7 @@ void AppMenuClear(App* app) {
 
 void AppMenuChosen(int id) {
     uint32_t action = 0;
-    intptr_t arg = 0;
+    int64_t arg = 0;
     if (!gAppMenuApp || !AppMenuRowForId(gAppMenuApp, id, &action, &arg) ||
         !action) {
         return;

@@ -53,7 +53,7 @@ enum {
 };
 
 static void OtpToolbarAct(OtpInputStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t act) {
+                          int64_t act) {
     if (act == OtpOptMasked) {
         self->masked = !self->masked;
     } else {

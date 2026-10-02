@@ -253,7 +253,7 @@ static void EmitChange(ColorPickerState* s, Ctx* cx, Hsla color,
     if (s->onChange.IsValid()) {
         ClickEvent ev = {};
         ListenerCall(cx->app, cx->win,
-                     ListenerFill(s->onChange, (intptr_t)s->value), &ev);
+                     ListenerFill(s->onChange, (int64_t)s->value), &ev);
     }
 }
 
@@ -267,7 +267,7 @@ void ColorPickerState::OnToggleOpen(ColorPickerState* s, Ctx* cx,
 }
 
 void ColorPickerState::OnOpenChange(ColorPickerState* s, Ctx* cx,
-                                    const ClickEvent*, intptr_t open) {
+                                    const ClickEvent*, int64_t open) {
     bool next = open != 0;
     if (s->open == next) {
         return;
@@ -280,7 +280,7 @@ void ColorPickerState::OnOpenChange(ColorPickerState* s, Ctx* cx,
 }
 
 void ColorPickerState::OnTab(ColorPickerState* s, Ctx* cx, const ClickEvent*,
-                             intptr_t ix) {
+                             int64_t ix) {
     if (s->activeTab == (int)ix) {
         return;
     }
@@ -289,14 +289,14 @@ void ColorPickerState::OnTab(ColorPickerState* s, Ctx* cx, const ClickEvent*,
 }
 
 void ColorPickerState::OnSwatchClick(ColorPickerState* s, Ctx* cx,
-                                     const ClickEvent*, intptr_t hex) {
+                                     const ClickEvent*, int64_t hex) {
     ColorPickerSelect(s, (uint32_t)hex);
     EmitChange(s, cx, HslaFromRgba(RgbaHex((uint32_t)hex)));
     Notify(cx);
 }
 
 void ColorPickerState::OnSwatchHover(ColorPickerState* s, Ctx* cx,
-                                     const HoverEvent* ev, intptr_t hex) {
+                                     const HoverEvent* ev, int64_t hex) {
     if (ev->hovered) {
         ColorPickerPreview(s, (uint32_t)hex);
     } else if (!ColorPickerClearPreview(s)) {

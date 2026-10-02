@@ -41,7 +41,7 @@ struct MenuItem {
     // upstream wires a menu: the row carries no handler and the same
     // `on_action` the keyboard reaches is what runs.
     uint32_t action = 0;
-    intptr_t actionArg = 0;
+    int64_t actionArg = 0;
     // PopupMenuItem::on_click: runs instead of the action when the row is
     // chosen, by a click or by Enter.
     Listener onClick = {};
@@ -88,9 +88,9 @@ struct PopupMenu {
     // `menu(label, action)`: choosing the row dispatches the action, and the
     // shortcut shown beside it is whatever the keymap has bound to it — so
     // the hint cannot drift from the binding and follows a rebinding.
-    PopupMenu* MenuWithAction(Str label, uint32_t action, intptr_t arg = 0);
+    PopupMenu* MenuWithAction(Str label, uint32_t action, int64_t arg = 0);
     // Applies to the last row added, for the builders that add one first.
-    PopupMenu* Action(uint32_t action, intptr_t arg = 0);
+    PopupMenu* Action(uint32_t action, int64_t arg = 0);
     // Applies to the last row added: PopupMenuItem::on_click.
     PopupMenu* OnClick(Listener l);
     PopupMenu* Link(Str label, Str href, IconName icon = IconName::None);
@@ -193,11 +193,11 @@ struct AppMenuBarState {
     FocusHandle previousFocus = {};
 
     static void OnMenuClick(AppMenuBarState* self, Ctx* cx,
-                            const ClickEvent* ev, intptr_t ix);
+                            const ClickEvent* ev, int64_t ix);
     // Once one menu is open, moving over another switches to it, which is
     // what a menu bar does everywhere.
     static void OnMenuHover(AppMenuBarState* self, Ctx* cx,
-                            const HoverEvent* ev, intptr_t ix);
+                            const HoverEvent* ev, int64_t ix);
     static void OnAction(AppMenuBarState* self, Ctx* cx, const ActionEvent* ev);
 };
 

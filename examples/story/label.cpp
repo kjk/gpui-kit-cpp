@@ -18,7 +18,7 @@ struct LabelStory {
 };
 
 static void LabelAct(LabelStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t act) {
+                     int64_t act) {
     if (act == LabelActPrefix) {
         self->prefix = !self->prefix;
     } else {
@@ -34,7 +34,7 @@ static void FocusSearch(LabelStory* self, Ctx* cx, const ClickEvent*) {
 
 // The Highlighting section's Mask toggle hands over the state it lands on.
 static void SetMask(LabelStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t checked) {
+                    int64_t checked) {
     self->labelMasked = checked != 0;
     Notify(cx);
 }

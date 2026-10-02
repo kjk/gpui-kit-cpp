@@ -238,7 +238,7 @@ struct ResizableState {
     }
 
     static void OnHandleDown(ResizableState* self, Ctx* cx,
-                             const MouseDownEvent* ev, intptr_t ix);
+                             const MouseDownEvent* ev, int64_t ix);
     static void OnHandleDrag(ResizableState* self, Ctx* cx,
                              const DragMoveEvent* ev);
     static void OnHandleUp(ResizableState* self, Ctx* cx,

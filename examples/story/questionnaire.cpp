@@ -536,7 +536,7 @@ enum {
 };
 
 static void ControlAction(QuestionnaireStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t action) {
+                          int64_t action) {
     QuestionnaireState* s = self->controlState.Get(cx->app);
     if (!s) {
         return;

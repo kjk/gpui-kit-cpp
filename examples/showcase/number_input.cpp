@@ -32,7 +32,7 @@ static void FocusNum(ShowcaseApp* app, Ctx* cx, const ClickEvent*) {
 }
 
 static void StepNum(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                    intptr_t delta) {
+                    int64_t delta) {
     int n = 0;
     if (!ParseNum(InputCStr(&app->input), &n)) {
         n = 0;

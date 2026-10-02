@@ -393,7 +393,7 @@ Button* Button::OnHover(Listener l) {
     onHover = l;
     return this;
 }
-Button* Button::OnClickAction(uint32_t action, intptr_t arg) {
+Button* Button::OnClickAction(uint32_t action, int64_t arg) {
     clickAction = action;
     clickActionArg = arg;
     return this;
@@ -1086,7 +1086,7 @@ struct ToggleGroupState {
     ~ToggleGroupState() { VecReset(checked); }
 
     static void OnChildClick(ToggleGroupState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t ix) {
+                             int64_t ix) {
         if (ix < 0 || ix >= len(self->checked)) return;
         self->checked[(int)ix] = !self->checked[(int)ix];
         ToggleGroupEvent event{self->checked.els, len(self->checked)};
@@ -1436,7 +1436,7 @@ struct ButtonGroupState {
     Listener onClick;
 
     static void OnChildClick(ButtonGroupState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t childIndex) {
+                             int64_t childIndex) {
         if (self->disabled) return;
         Vec<int> next = self->selected;
         int at = -1;

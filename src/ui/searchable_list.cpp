@@ -683,7 +683,7 @@ bool SearchableListClick(SearchableListState* s, int index) {
 }
 
 void SearchableListState::OnRowClick(SearchableListState* self, Ctx* cx,
-                                     const ClickEvent*, intptr_t match) {
+                                     const ClickEvent*, int64_t match) {
     int m = (int)match;
     if (m < 0 || m >= self->matches.len) {
         return;

@@ -108,7 +108,7 @@ static void OnToggle(RichApp* self, Ctx* cx, const ClickEvent*) {
 }
 
 // text_view.rs LinkClickHandlerFn: the href arrives as the listener's value.
-static void OnLink(RichApp* self, Ctx* cx, const ClickEvent*, intptr_t href) {
+static void OnLink(RichApp* self, Ctx* cx, const ClickEvent*, int64_t href) {
     StrCopyZ(self->lastLink, (int)sizeof(self->lastLink),
              href ? (const char*)href : "");
     Notify(cx);

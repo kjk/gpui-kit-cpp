@@ -11,13 +11,13 @@ struct CheckboxStory {
 // The checkbox fills the listener's value with the state it lands on, so
 // which box it was has to come from the handler — one per box, the way each
 // Rust closure names its own field.
-static void SetCheck(CheckboxStory* self, Ctx* cx, int ix, intptr_t v) {
+static void SetCheck(CheckboxStory* self, Ctx* cx, int ix, int64_t v) {
     self->checks[ix] = v != 0;
     Notify(cx);
 }
 #define STORY_CHECK_HANDLER(N)                                               \
     static void SetCheck##N(CheckboxStory* self, Ctx* cx, const ClickEvent*, \
-                            intptr_t v) {                                    \
+                            int64_t v) {                                     \
         SetCheck(self, cx, N, v);                                            \
     }
 STORY_CHECK_HANDLER(0)

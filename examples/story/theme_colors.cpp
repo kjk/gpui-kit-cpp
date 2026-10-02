@@ -77,7 +77,7 @@ static void ThemeOptionsToggle(ThemeColorsStory* self, Ctx* cx,
     Notify(cx);
 }
 static void ThemeOptionAct(ThemeColorsStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t act) {
+                           int64_t act) {
     if (act == ThemeActInherited) {
         self->showInherited = !self->showInherited;
     } else if (act == ThemeActExpandAll) {
@@ -87,7 +87,7 @@ static void ThemeOptionAct(ThemeColorsStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void ToggleColorGroup(ThemeColorsStory* self, Ctx* cx, const ClickEvent*,
-                             intptr_t ix) {
+                             int64_t ix) {
     self->openGroup = self->openGroup == (int)ix ? -1 : (int)ix;
     Notify(cx);
 }

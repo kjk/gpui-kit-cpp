@@ -692,7 +692,7 @@ static bool StoryMatches(const StoryInfo* m, const char* q) {
 
 // Gallery::set_active_story
 static void OpenStory(StoryApp* app, Ctx* cx, const ClickEvent*,
-                      intptr_t story) {
+                      int64_t story) {
     app->search.focused = false;
     cx->win->input = nullptr;
     app->story = (int)story;
@@ -1191,7 +1191,7 @@ static El* AppearanceMenu(StoryApp* app, Ctx* cx) {
             default: {
                 component::PopupMenu* into = sub ? sub : menu;
                 into->MenuWithAction(Str(r.label), ApAction(r.kind),
-                                     (intptr_t)r.value);
+                                     (int64_t)r.value);
                 into->Checked(ApChecked(app, cx, r));
                 break;
             }

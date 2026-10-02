@@ -39,7 +39,7 @@ void HoverCardState::OnClose(HoverCardState* self, Ctx* cx, const TickEvent*) {
 }
 
 void HoverCardState::OnTap(HoverCardState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t open) {
+                           int64_t open) {
     HoverCardCancel(self, cx);
     HoverCardSetOpen(self, cx, open != 0);
 }

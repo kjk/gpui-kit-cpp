@@ -494,7 +494,7 @@ void TablePerform(TableState* s, Ctx* cx, TableAction act) {
 }
 
 void TableState::OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t row) {
+                            int64_t row) {
     TableSetSelectedRow(self, cx, (int)row);
     if (ev->clickCount == 2) {
         TableEmit(self, cx, TableEventKind::DoubleClickedRow, (int)row, -1,
@@ -503,7 +503,7 @@ void TableState::OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
 }
 
 void TableState::OnCellClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t packed) {
+                             int64_t packed) {
     if (!self->cellSelectable) {
         return;
     }
@@ -525,7 +525,7 @@ void TableState::OnCellClick(TableState* self, Ctx* cx, const ClickEvent* ev,
 }
 
 void TableState::OnRowMouseDown(TableState* self, Ctx* cx,
-                                const MouseDownEvent* ev, intptr_t row) {
+                                const MouseDownEvent* ev, int64_t row) {
     if (ev->button != MouseButton::Right) {
         return;
     }
@@ -540,7 +540,7 @@ void TableState::OnRowMouseDown(TableState* self, Ctx* cx,
 }
 
 void TableState::OnCellMouseDown(TableState* self, Ctx* cx,
-                                 const MouseDownEvent* ev, intptr_t packed) {
+                                 const MouseDownEvent* ev, int64_t packed) {
     if (ev->button != MouseButton::Right || !self->cellSelectable) {
         return;
     }
@@ -558,14 +558,14 @@ void TableState::OnCellMouseDown(TableState* self, Ctx* cx,
 }
 
 void TableState::OnHeadClick(TableState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t col) {
+                             int64_t col) {
     // on_col_head_click selects the column; the sort icon beside it is what
     // sorts, and it is its own hit box.
     TableSetSelectedCol(self, cx, (int)col);
 }
 
 void TableState::OnSortClick(TableState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t col) {
+                             int64_t col) {
     TablePerformSort(self, cx, (int)col);
 }
 

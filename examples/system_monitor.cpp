@@ -85,7 +85,7 @@ static void OnWheel(MonitorApp* app, Ctx* cx, const ScrollWheelEvent* ev) {
     }
 }
 
-static void PickTab(MonitorApp* app, Ctx* cx, const ClickEvent*, intptr_t ix) {
+static void PickTab(MonitorApp* app, Ctx* cx, const ClickEvent*, int64_t ix) {
     app->tab = (int)ix;
     Notify(cx);
 }
@@ -95,8 +95,7 @@ static void PickTab(MonitorApp* app, Ctx* cx, const ClickEvent*, intptr_t ix) {
 // and every other column drops back to Default, since only one column carries
 // the sort. A two-state toggle here was the difference from Rust: the third
 // press had nowhere to go, so the column could never be given up.
-static void SortBy(MonitorApp* app, Ctx* cx, const ClickEvent*,
-                   intptr_t which) {
+static void SortBy(MonitorApp* app, Ctx* cx, const ClickEvent*, int64_t which) {
     ProcessSort field = (ProcessSort)which;
     ColumnSort was = app->sort == field ? app->sortOrder : ColumnSort::Default;
     app->sort = field;
@@ -257,7 +256,7 @@ static El* ProcTableHeader(Ctx* cx, MonitorApp* app) {
         // perform_sort off the icon and leaves the head to the column itself,
         // and component::Table does the same.
         El* icon = SortIcon(a, th, sort)
-                       ->OnClick(Listen(cx, &SortBy, (intptr_t)fields[i]));
+                       ->OnClick(Listen(cx, &SortBy, (int64_t)fields[i]));
         row->Child(
             Div(a)
                 ->W(kColW[i])

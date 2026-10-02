@@ -268,7 +268,7 @@ void InputInitKeys() {
 
 // The action the keymap resolved, read as the edit it names. Rust dispatches
 // the type; this is the same table, spelled out once.
-InputAction InputActionOf(uint32_t id, intptr_t arg) {
+InputAction InputActionOf(uint32_t id, int64_t arg) {
     (void)arg;
     if (!id) {
         return InputAction::None;

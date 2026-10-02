@@ -51,7 +51,7 @@ struct SidebarStory {
 };
 
 static void SidebarPick(SidebarStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t ix) {
+                        int64_t ix) {
     self->active = (int)ix;
     self->activeSub = -1;
     Notify(cx);
@@ -59,7 +59,7 @@ static void SidebarPick(SidebarStory* self, Ctx* cx, const ClickEvent*,
 // A sub-item click carries both which item and which child, which is the pair
 // Rust's SubItem::handler captures.
 static void SidebarPickSub(SidebarStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t v) {
+                           int64_t v) {
     self->active = (int)(v >> 8);
     self->activeSub = (int)(v & 0xff);
     Notify(cx);
@@ -74,7 +74,7 @@ static void ToggleCollapsed(SidebarStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 static void SidebarOptionAct(SidebarStory* self, Ctx* cx, const ClickEvent*,
-                             intptr_t act) {
+                             int64_t act) {
     switch (act) {
         case SidebarOptIcon:
             self->collapsible = 0;

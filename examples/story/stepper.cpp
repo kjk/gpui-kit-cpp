@@ -12,22 +12,22 @@ struct StepperStory {
 // One handler per stepper, which is what the Rust story's four closures are:
 // the argument is the step the stepper reports.
 static void SetStep0(StepperStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t step) {
+                     int64_t step) {
     self->step[0] = (int)step;
     Notify(cx);
 }
 static void SetStep1(StepperStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t step) {
+                     int64_t step) {
     self->step[1] = (int)step;
     Notify(cx);
 }
 static void SetStep2(StepperStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t step) {
+                     int64_t step) {
     self->step[2] = (int)step;
     Notify(cx);
 }
 static void SetStep3(StepperStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t step) {
+                     int64_t step) {
     self->step[3] = (int)step;
     Notify(cx);
 }
@@ -38,7 +38,7 @@ enum {
 };
 
 static void StepperAct(StepperStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t act) {
+                       int64_t act) {
     if (act == StepperActDisabled) {
         self->disabled = !self->disabled;
     } else {

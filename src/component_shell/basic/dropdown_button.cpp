@@ -118,7 +118,7 @@ static El* Materialize(MaterializeRequest* request) {
                                     ->Label(payload->label);
     if (request->onClick)
         action->OnClick(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     component::DropdownButton* dropdown =
         component::DropdownButton::New(cx, payload->id)
             ->Button_(action)

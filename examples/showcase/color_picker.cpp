@@ -31,7 +31,7 @@ static uint32_t DisplayedColor(ShowcaseApp* app) {
 // on_hover on the swatch, with the color it stands for bound to the handler
 // the way Rust's closure captures it — entering previews, leaving restores.
 static void PreviewSwatch(ShowcaseApp* app, Ctx* cx, const HoverEvent* ev,
-                          intptr_t ix) {
+                          int64_t ix) {
     if (ev->hovered) {
         app->colorPreview = kSwatches[ix];
         app->colorHasPreview = true;
@@ -56,7 +56,7 @@ static void FocusHex(ShowcaseApp* app, Ctx* cx, const ClickEvent*) {
 }
 
 static void PickSwatch(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+                       int64_t ix) {
     app->colorHex = kSwatches[ix];
     // update_value: what was transient is now what the picker holds.
     app->colorHasPreview = false;

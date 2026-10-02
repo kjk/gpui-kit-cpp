@@ -8,13 +8,13 @@ namespace gpui {
 namespace component {
 
 void PaginationMenuState::OnItem(PaginationMenuState* self, Ctx* cx,
-                                 const ClickEvent* ev, intptr_t ix) {
+                                 const ClickEvent* ev, int64_t ix) {
     if (!self->onChange.IsValid()) {
         return;
     }
     ListenerCall(
         cx->app, cx->win,
-        ListenerFill(self->onChange, (intptr_t)(self->firstPage + (int64_t)ix)),
+        ListenerFill(self->onChange, (int64_t)(self->firstPage + (int64_t)ix)),
         ev);
 }
 
@@ -120,10 +120,10 @@ El* Pagination::IntoEl() {
         next->Label(Tr("Pagination.next"))->IconRight(IconName::ChevronRight);
     }
     if (hasPrev && onChange.IsValid()) {
-        prev->OnClick(ListenerArg(onChange, (intptr_t)prevPage));
+        prev->OnClick(ListenerArg(onChange, (int64_t)prevPage));
     }
     if (hasNext && onChange.IsValid()) {
-        next->OnClick(ListenerArg(onChange, (intptr_t)nextPage));
+        next->OnClick(ListenerArg(onChange, (int64_t)nextPage));
     }
     row->Child(prev->IntoEl());
     if (!compact) {
@@ -198,7 +198,7 @@ El* Pagination::IntoEl() {
             }
             if (onChange.IsValid() &&
                 PaginationCanRequest(&st, items[i].page)) {
-                b->OnClick(ListenerArg(onChange, (intptr_t)items[i].page));
+                b->OnClick(ListenerArg(onChange, (int64_t)items[i].page));
             }
             row->Child(b->IntoEl());
         }

@@ -166,18 +166,18 @@ struct NotificationListState {
     bool IsExpanded() const;
 
     static void OnCloseClick(NotificationListState* self, Ctx* cx,
-                             const ClickEvent* ev, intptr_t id);
+                             const ClickEvent* ev, int64_t id);
     static void OnItemClick(NotificationListState* self, Ctx* cx,
-                            const ClickEvent* ev, intptr_t id);
+                            const ClickEvent* ev, int64_t id);
     static void OnHover(NotificationListState* self, Ctx* cx,
-                        const HoverEvent* ev, intptr_t anchor);
+                        const HoverEvent* ev, int64_t anchor);
     static void OnTick(NotificationListState* self, Ctx* cx,
                        const TickEvent* ev);
     // The user clicked the system notification for `id`: the in-app
     // counterpart closes and on_click fires, on the main thread and after the
     // platform's own event is over.
     static void OnSystemResponse(NotificationListState* self, Ctx* cx,
-                                 const ClickEvent* ev, intptr_t id);
+                                 const ClickEvent* ev, int64_t id);
 };
 
 // push(): add a notification and answer its id. `timeoutMs` of 0 is Rust's

@@ -218,7 +218,7 @@ struct MotionExample {
     // ─── spring ──────────────────────────────────────────────────────────
 
     static void OnSpringOption(MotionExample* self, Ctx* cx, const ClickEvent*,
-                               intptr_t selected) {
+                               int64_t selected) {
         self->springSelected = selected != 0;
         Notify(cx);
     }
@@ -418,7 +418,7 @@ struct MotionExample {
     // ─── the shell ───────────────────────────────────────────────────────
 
     static void OnPickDemo(MotionExample* self, Ctx* cx, const ClickEvent*,
-                           intptr_t ix) {
+                           int64_t ix) {
         self->demo = kDemos[ix];
         Notify(cx);
     }

@@ -116,7 +116,7 @@ static component::ListItem* SheetFoodRow(Ctx* cx, void* data, int, int row,
 }
 
 static void SheetToolbarAct(SheetStory* self, Ctx* cx, const ClickEvent*,
-                            intptr_t act) {
+                            int64_t act) {
     if (act == SheetOptOverlay) {
         self->overlay = !self->overlay;
     } else if (act == SheetOptOverlayClosable) {
@@ -128,7 +128,7 @@ static void SheetToolbarAct(SheetStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OpenSheet(SheetStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t which) {
+                      int64_t which) {
     self->open = (int)which;
     Notify(cx);
 }
@@ -166,7 +166,7 @@ static void ToggleSheetBirthday(SheetStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 static void PickSheetBirthday(SheetStory* self, Ctx* cx, const ClickEvent*,
-                              intptr_t day) {
+                              int64_t day) {
     self->birthday.day = (int)day;
     self->birthdayOpen = false;
     Notify(cx);

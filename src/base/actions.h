@@ -24,7 +24,7 @@ namespace action {
 uint32_t Confirm();
 // The payload `ui::Confirm { secondary: true }` carries. A binding writes it
 // as its `arg`; a handler reads `ev->arg == kConfirmSecondary`.
-constexpr intptr_t kConfirmSecondary = 1;
+constexpr int64_t kConfirmSecondary = 1;
 uint32_t Cancel();
 uint32_t SelectUp();
 uint32_t SelectDown();

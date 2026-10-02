@@ -22,7 +22,7 @@ struct AlertDialogStory {
 };
 
 static void OpenAlert(AlertDialogStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t which) {
+                      int64_t which) {
     self->open = (int)which;
     Notify(cx);
 }

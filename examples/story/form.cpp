@@ -32,7 +32,7 @@ struct FormStory {
 };
 
 static void FormToolbarAct(FormStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t act) {
+                           int64_t act) {
     if (act == FormOptHorizontal) {
         self->horizontal = !self->horizontal;
     } else if (act == FormOptColumns) {

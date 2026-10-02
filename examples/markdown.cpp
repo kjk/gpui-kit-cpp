@@ -674,7 +674,7 @@ static El* MathBlockRender(Ctx* cx, const MarkdownNode* node, void*) {
 }
 
 static void OnLink(MarkdownApp* self, Ctx* cx, const ClickEvent*,
-                   intptr_t href) {
+                   int64_t href) {
     StrCopyZ(self->lastLink, (int)sizeof(self->lastLink),
              href ? (const char*)href : "");
     Notify(cx);
@@ -755,7 +755,7 @@ static void OnPreviewScroll(MarkdownApp* self, Ctx* cx, const ScrollEvent* ev) {
 static const char* const kRunnable[] = {"rust", "python"};
 
 static void OnRunCode(MarkdownApp* self, Ctx* cx, const ClickEvent*,
-                      intptr_t which) {
+                      int64_t which) {
     // `println!("Running {} code: {}", lang, code)` — the example's own
     // placeholder for a terminal, which this tree does not have either.
     Str lang = Str(kRunnable[which == 1 ? 1 : 0]);

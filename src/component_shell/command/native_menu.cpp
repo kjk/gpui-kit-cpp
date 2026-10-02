@@ -124,7 +124,7 @@ static bool ShowMenu(void* user, Window*, App*, Str* error, Arena* a) {
             menu->Separator();
             continue;
         }
-        intptr_t action = (intptr_t)shell::ShellActionOf(entry.item.action);
+        int64_t action = (int64_t)shell::ShellActionOf(entry.item.action);
         if (entry.item.disabled)
             menu->MenuWithDisabled(entry.item.label, true, action);
         else if (entry.item.checked)

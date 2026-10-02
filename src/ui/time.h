@@ -167,11 +167,11 @@ struct DateRangePreset {
     // uses `value`; old aggregate initialization continues to render.
     LocalDate start = {};
     LocalDate end = {};
-    intptr_t arg = 0;
+    int64_t arg = 0;
 
-    static DateRangePreset Single(Str label, LocalDate date, intptr_t arg = 0);
+    static DateRangePreset Single(Str label, LocalDate date, int64_t arg = 0);
     static DateRangePreset Range(Str label, LocalDate start, LocalDate end,
-                                 intptr_t arg = 0);
+                                 int64_t arg = 0);
     // DateRangePreset::date_time: a preset with a date and time, or a range
     // of them.
     static DateRangePreset WithDateTime(Str label,
@@ -222,7 +222,7 @@ struct DatePickerState {
                             const TimeFieldEvent* ev);
     static void OnToggle(DatePickerState* self, Ctx* cx, const ClickEvent* ev);
     static void OnOpenChange(DatePickerState* self, Ctx* cx,
-                             const ClickEvent* ev, intptr_t open);
+                             const ClickEvent* ev, int64_t open);
     static void OnDismiss(DatePickerState* self, Ctx* cx,
                           const MouseUpEvent* ev);
     static void OnClear(DatePickerState* self, Ctx* cx, const ClickEvent* ev);

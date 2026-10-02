@@ -32,7 +32,7 @@ struct HoverCardState {
     static void OnOpen(HoverCardState* self, Ctx* cx, const TickEvent* ev);
     static void OnClose(HoverCardState* self, Ctx* cx, const TickEvent* ev);
     static void OnTap(HoverCardState* self, Ctx* cx, const ClickEvent* ev,
-                      intptr_t open);
+                      int64_t open);
     static void OnDismiss(HoverCardState* self, Ctx* cx,
                           const MouseUpEvent* ev);
 };

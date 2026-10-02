@@ -200,7 +200,7 @@ static El* MaterializeButton(MaterializeRequest* request,
     });
     if (request->onClick)
         button->OnClick(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     // Rust returns the button itself, an element an addon recognizes as one;
     // here that is the typed part element carrying it.
     button->refiner = request->TakeStyle();

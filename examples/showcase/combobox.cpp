@@ -23,7 +23,7 @@ static void FocusComboQuery(ShowcaseApp* app, Ctx* cx, const ClickEvent*) {
 }
 
 static void PickCombo(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                      intptr_t ix) {
+                      int64_t ix) {
     StrCopyZ(app->comboboxSel, (int)sizeof(app->comboboxSel), kFwCombo[ix]);
     app->comboboxOpen = false;
     app->comboQuery.focused = false;

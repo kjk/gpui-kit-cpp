@@ -9,13 +9,13 @@ struct ToggleStory {
 };
 
 static void OnPreview(ToggleStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t checked) {
+                      int64_t checked) {
     self->toggleSel = checked ? 1 : 0;
     Notify(cx);
 }
 
 static void OnFavorite(ToggleStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t checked) {
+                       int64_t checked) {
     self->toggles[0] = checked != 0;
     Notify(cx);
 }

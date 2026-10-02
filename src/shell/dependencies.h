@@ -97,7 +97,7 @@ class GitDependencyStore {
 struct DependencyLock {
     // A HANDLE on Windows, a file descriptor plus one on POSIX; zero when the
     // lock is not held.
-    intptr_t handle = 0;
+    int64_t handle = 0;
 };
 
 bool DependencyMakeDirectories(Str path, Str* error);

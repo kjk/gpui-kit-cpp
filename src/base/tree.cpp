@@ -364,12 +364,12 @@ void TreePerform(TreeState* s, Ctx* cx, TreeAction act) {
 }
 
 void TreeState::OnRowClick(TreeState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t entryIx) {
+                           int64_t entryIx) {
     TreeClickEntry(self, cx, (int)entryIx);
 }
 
 void TreeState::OnRowMouseDown(TreeState* self, Ctx* cx,
-                               const MouseDownEvent* ev, intptr_t entryIx) {
+                               const MouseDownEvent* ev, int64_t entryIx) {
     if (ev->button != MouseButton::Right) {
         return;
     }

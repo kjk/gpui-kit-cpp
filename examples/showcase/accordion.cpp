@@ -3,8 +3,7 @@
 
 using namespace gpui;
 
-static void ToggleAcc(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                      intptr_t i) {
+static void ToggleAcc(ShowcaseApp* app, Ctx* cx, const ClickEvent*, int64_t i) {
     app->accordionOpen[i] = !app->accordionOpen[i];
     Notify(cx);
 }

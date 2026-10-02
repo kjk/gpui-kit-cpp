@@ -1031,7 +1031,7 @@ void DockToggleZoom(DockState* s, Ctx* cx, int panelIx) {
 }
 
 void DockState::OnTabClick(DockState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t nodeAndIx) {
+                           int64_t nodeAndIx) {
     int node = DockUnpackNode(nodeAndIx);
     DockSetActive(self, cx, node, DockUnpackIx(nodeAndIx));
     // "Open dock if clicked on the collapsed bottom dock": its tab bar is all
@@ -1044,18 +1044,18 @@ void DockState::OnTabClick(DockState* self, Ctx* cx, const ClickEvent*,
 }
 
 void DockState::OnCloseClick(DockState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t nodeAndIx) {
+                             int64_t nodeAndIx) {
     DockClosePanel(self, cx, DockUnpackNode(nodeAndIx),
                    DockUnpackIx(nodeAndIx));
 }
 
 void DockState::OnZoomClick(DockState* self, Ctx* cx, const ClickEvent*,
-                            intptr_t panelIx) {
+                            int64_t panelIx) {
     DockToggleZoom(self, cx, (int)panelIx);
 }
 
 void DockState::OnToggleSide(DockState* self, Ctx* cx, const ClickEvent*,
-                             intptr_t placement) {
+                             int64_t placement) {
     DockToggleSide(self, cx, (DockPlacement)placement);
 }
 
@@ -1116,7 +1116,7 @@ static bool DockOwnsDrag(const DockState* self, const DragPayload& drag) {
 }
 
 void DockState::OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
-                            intptr_t node) {
+                            int64_t node) {
     if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
@@ -1126,7 +1126,7 @@ void DockState::OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
 }
 
 void DockState::OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
-                          intptr_t nodeAndIx) {
+                          int64_t nodeAndIx) {
     if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
@@ -1138,7 +1138,7 @@ void DockState::OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
 }
 
 void DockState::OnDropTabBar(DockState* self, Ctx* cx, const DropEvent* ev,
-                             intptr_t node) {
+                             int64_t node) {
     if (!DockOwnsDrag(self, ev->drag)) {
         return;
     }
@@ -1155,7 +1155,7 @@ void DockState::OnDropTabBar(DockState* self, Ctx* cx, const DropEvent* ev,
 }
 
 void DockState::OnMenuItem(DockState* self, Ctx* cx, const ClickEvent*,
-                           intptr_t item) {
+                           int64_t item) {
     // The menu reports which of its rows was taken; which panel that is about
     // is the group whose menu was open when it did.
     int node = self->menuNode;
@@ -1176,7 +1176,7 @@ void DockState::OnMenuItem(DockState* self, Ctx* cx, const ClickEvent*,
 }
 
 void DockState::OnTabBarScroll(DockState* self, Ctx* cx, const ScrollEvent* ev,
-                               intptr_t nodeArg) {
+                               int64_t nodeArg) {
     int node = (int)nodeArg;
     if (node < 0 || node >= self->nodes.len || !self->nodes[node].used) {
         return;

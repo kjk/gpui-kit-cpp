@@ -276,13 +276,13 @@ void PopupMenuState::OnAction(PopupMenuState* self, Ctx* cx,
 }
 
 void PopupMenuState::OnItemClick(PopupMenuState* self, Ctx* cx,
-                                 const ClickEvent*, intptr_t ix) {
+                                 const ClickEvent*, int64_t ix) {
     self->selected = (int)ix;
     PopupMenuConfirm(self, cx, (int)ix);
 }
 
 void PopupMenuState::OnTriggerClick(PopupMenuState* self, Ctx* cx,
-                                    const ClickEvent*, intptr_t wasOpen) {
+                                    const ClickEvent*, int64_t wasOpen) {
     // `state.set_open(open); state.toggle_open()`: the toggle is computed
     // from the menu as it was *drawn*, not from what the state has become
     // since the release began. The trigger sits outside the menu, so the
@@ -330,7 +330,7 @@ void PopupMenuState::OnContextDown(PopupMenuState* self, Ctx* cx,
 }
 
 void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
-                                 const HoverEvent* ev, intptr_t ix) {
+                                 const HoverEvent* ev, int64_t ix) {
     // The hovered row is the selected one; leaving it deselects, unless it is
     // a submenu row, which stays selected while the pointer travels into the
     // submenu it opened.
@@ -347,14 +347,14 @@ void PopupMenuState::OnItemHover(PopupMenuState* self, Ctx* cx,
 }
 
 void PopupMenuState::OnSubmenuClick(PopupMenuState* self, Ctx* cx,
-                                    const ClickEvent*, intptr_t ix) {
+                                    const ClickEvent*, int64_t ix) {
     self->selected = (int)ix;
     self->openSubmenu = (int)ix;
     Notify(cx);
 }
 
 void PopupMenuState::OnSubmenuHover(PopupMenuState* self, Ctx* cx,
-                                    const HoverEvent* ev, intptr_t ix) {
+                                    const HoverEvent* ev, int64_t ix) {
     // Rust renders a submenu as soon as its row becomes selected. Keep it
     // selected while the pointer crosses from the row into the child menu.
     if (ev->hovered) {

@@ -106,9 +106,9 @@ static El* MaterializeItem(MaterializeRequest* request) {
         // The palette measures the row it builds, as Rust's layout_as_root
         // does, so a shell row may be any height.
         item->content = &BuildItemContent;
-        item->data = (intptr_t)NewDeferredSlot(request, content,
-                                               "Failed to render CommandItem "
-                                               "content");
+        item->data = (int64_t)NewDeferredSlot(request, content,
+                                              "Failed to render CommandItem "
+                                              "content");
     }
     shell::ComponentChild* children = nullptr;
     int count = 0;

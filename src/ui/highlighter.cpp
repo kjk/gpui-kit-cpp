@@ -16,7 +16,7 @@ struct InputMenuViewState {
     InputState* input = nullptr;
 
     static void CompletionClick(InputMenuViewState* self, Ctx* cx,
-                                const ClickEvent*, intptr_t ix) {
+                                const ClickEvent*, int64_t ix) {
         if (!self || !self->input || ix < 0 ||
             ix >= self->input->completion.items.len) {
             return;
@@ -27,7 +27,7 @@ struct InputMenuViewState {
     }
 
     static void CompletionHover(InputMenuViewState* self, Ctx* cx,
-                                const HoverEvent* event, intptr_t ix) {
+                                const HoverEvent* event, int64_t ix) {
         if (!self || !self->input || !event || !event->hovered || ix < 0 ||
             ix >= self->input->completion.items.len ||
             self->input->completion.selected == ix) {
@@ -45,7 +45,7 @@ struct InputMenuViewState {
     }
 
     static void CodeActionClick(InputMenuViewState* self, Ctx* cx,
-                                const ClickEvent*, intptr_t ix) {
+                                const ClickEvent*, int64_t ix) {
         if (!self || !self->input || ix < 0 ||
             ix >= self->input->codeActions.items.len) {
             return;
@@ -56,7 +56,7 @@ struct InputMenuViewState {
     }
 
     static void CodeActionHover(InputMenuViewState* self, Ctx* cx,
-                                const HoverEvent* event, intptr_t ix) {
+                                const HoverEvent* event, int64_t ix) {
         if (!self || !self->input || !event || !event->hovered || ix < 0 ||
             ix >= self->input->codeActions.items.len ||
             self->input->codeActions.selected == ix) {

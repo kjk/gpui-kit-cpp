@@ -38,7 +38,7 @@ struct ToolbarStory {
 
 // ChangeStorySize / ToggleDisabled, and the dropdown's own open and close.
 static void OnToolbarAct(ToolbarStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t act) {
+                         int64_t act) {
     switch (act) {
         case ToolbarOpenOpts:
             self->menuOpen = !self->menuOpen;
@@ -71,7 +71,7 @@ static void OnToolbarAct(ToolbarStory* self, Ctx* cx, const ClickEvent*,
 // Toggle's on_click hands over the new checked state.
 template <int Ix>
 static void OnFormat(ToolbarStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t checked) {
+                     int64_t checked) {
     self->formats[Ix] = checked != 0;
     Notify(cx);
 }

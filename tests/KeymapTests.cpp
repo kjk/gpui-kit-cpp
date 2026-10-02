@@ -317,7 +317,7 @@ static void AnActionIsItsName() {
 
 static int gCalls = 0;
 static uint32_t gSeen[8];
-static intptr_t gLastArg = 0;
+static int64_t gLastArg = 0;
 
 // A listener needs a live view to call into, the way GPUI's does; the test
 // makes one so the dispatch is exercised end to end rather than stopping at
@@ -614,7 +614,7 @@ static void AFieldsChordsResolveInItsOwnContext() {
     FocusCollect(win, root);
     win->focusId = 9;
 
-    intptr_t arg = 0;
+    int64_t arg = 0;
     bool pending = false;
     auto resolve = [&](int vk, bool shift, bool ctrl, bool alt, bool plat) {
         arg = 0;

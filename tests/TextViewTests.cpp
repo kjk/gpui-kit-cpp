@@ -895,10 +895,10 @@ static void TestTextCollectionsGrowWithTheDocument(Arena* a) {
     TextView* plugins = TextView::New(&cx, StrL("plain"));
     for (int i = 0; i < 20; i++) {
         plugins->Plugin(StrL("test"), &NeverClaimPlugin, &NeverRenderPlugin,
-                        (void*)(intptr_t)(i + 1));
+                        (void*)(int64_t)(i + 1));
     }
     utassert(plugins->plugins.len == 20);
-    utassert(plugins->plugins[19].data == (void*)(intptr_t)20);
+    utassert(plugins->plugins[19].data == (void*)(int64_t)20);
 
     // A marked word and a highlighted code token both used 512-byte scratch
     // arrays. Render enough bytes to cross those arrays and count the text in

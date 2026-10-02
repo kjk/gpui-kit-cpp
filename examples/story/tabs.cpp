@@ -32,12 +32,12 @@ struct TabsStory {
 };
 
 static void TabsMenuOpen(TabsStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t which) {
+                         int64_t which) {
     self->openMenu = self->openMenu == (int)which ? 0 : (int)which;
     Notify(cx);
 }
 static void TabsMenuAct(TabsStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t act) {
+                        int64_t act) {
     if (act >= TabsActMaxWidth) {
         self->maxWidthIx = (int)(act - TabsActMaxWidth);
     } else if (act == TabsActMoreMenu) {
@@ -49,12 +49,12 @@ static void TabsMenuAct(TabsStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 
-static void SetTab(TabsStory* self, Ctx* cx, const ClickEvent*, intptr_t ix) {
+static void SetTab(TabsStory* self, Ctx* cx, const ClickEvent*, int64_t ix) {
     self->tab = (int)ix;
     Notify(cx);
 }
 static void SetDynamicTab(TabsStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t ix) {
+                          int64_t ix) {
     self->dynamicTab = (int)ix;
     Notify(cx);
 }
@@ -80,7 +80,7 @@ static void RemoveDynamicTab(TabsStory* self, Ctx* cx, const ClickEvent*) {
 }
 // The close button on a tab drops that one rather than the last.
 static void CloseDynamicTab(TabsStory* self, Ctx* cx, const ClickEvent*,
-                            intptr_t ix) {
+                            int64_t ix) {
     int i = (int)ix;
     if (i < 0 || i >= self->dynamicCount) {
         return;

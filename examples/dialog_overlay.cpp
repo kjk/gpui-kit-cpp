@@ -58,7 +58,7 @@ static void OnMouseDown(DialogApp* app, Ctx* cx, const MouseDownEvent* ev) {
 }
 
 static void OpenOverlay(DialogApp* app, Ctx* cx, const ClickEvent*,
-                        intptr_t kind) {
+                        int64_t kind) {
     app->overlay = (int)kind;
     app->menuOpen = false;
     Notify(cx);
@@ -69,8 +69,7 @@ static void CloseOverlay(DialogApp* app, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
-static void MenuPicked(DialogApp* app, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+static void MenuPicked(DialogApp* app, Ctx* cx, const ClickEvent*, int64_t ix) {
     logf("menu %d", (int)ix);
     app->menuOpen = false;
     Notify(cx);

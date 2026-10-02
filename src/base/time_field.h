@@ -121,7 +121,7 @@ struct TimeFieldState {
     static void OnKeyDown(TimeFieldState* self, Ctx* cx, const KeyEvent* ev);
     // A press on a segment focuses the field and selects that segment.
     static void OnSegmentDown(TimeFieldState* self, Ctx* cx,
-                              const MouseDownEvent* ev, intptr_t segment);
+                              const MouseDownEvent* ev, int64_t segment);
 };
 
 // TimeFieldState::new, with the precision and hour cycle builders folded in.

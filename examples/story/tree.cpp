@@ -113,7 +113,7 @@ static void LoadDir(TreeState* s, Str path, int parent, int depth) {
 // on_action_open / on_action_rename / on_action_delete: each names the
 // selected entry, as Rust's println! does.
 static void OnTreeMenu(TreeStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t row) {
+                       int64_t row) {
     TreeState* s = self->tree.Get(cx);
     const TreeItem* it = s ? TreeEntryItem(s, s->selected) : nullptr;
     if (!it) {
@@ -126,7 +126,7 @@ static void OnTreeMenu(TreeStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OnFolderMenu(TreeStory* self, Ctx* cx, const ClickEvent* ev,
-                         intptr_t row) {
+                         int64_t row) {
     OnTreeMenu(self, cx, ev, row + 1);
 }
 

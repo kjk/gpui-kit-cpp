@@ -153,7 +153,7 @@ El* DockBindTabRest(const DockTabGroup* g, El* rest) {
     }
     BindId(rest, DockElId(g->cx, "tabrest", g->node, 0));
     rest->OnDrop(kDockPanelDrag, ListenTo(g->state, &DockState::OnDropTabBar,
-                                          (intptr_t)g->node));
+                                          (int64_t)g->node));
     return rest;
 }
 
@@ -180,7 +180,7 @@ El* DockBindTabStrip(const DockTabGroup* g, El* strip) {
         ->ScrollX(n.tabScrollX)
         ->ScrollFromPath()
         ->OnScroll(
-            ListenTo(g->state, &DockState::OnTabBarScroll, (intptr_t)g->node))
+            ListenTo(g->state, &DockState::OnTabBarScroll, (int64_t)g->node))
         ->BoundsOut(&n.tabStripBounds);
     return strip;
 }
@@ -212,7 +212,7 @@ El* DockBindToggle(const DockTabGroup* g, DockPlacement p, El* e) {
         return e;
     }
     BindId(e, DockElId(g->cx, "toggle", g->node, (int)p), true);
-    e->OnClick(ListenTo(g->state, &DockState::OnToggleSide, (intptr_t)p));
+    e->OnClick(ListenTo(g->state, &DockState::OnToggleSide, (int64_t)p));
     // tab_panel.rs marks every tool on the bar `.tab_stop(false)`: the panel
     // is what Tab moves between, not the buttons hung off its edge.
     e->TabStop(false);
@@ -224,7 +224,7 @@ El* DockBindZoom(const DockTabGroup* g, int panelIx, El* e) {
         return e;
     }
     BindId(e, DockElId(g->cx, "zoom", g->node, panelIx), true);
-    e->OnClick(ListenTo(g->state, &DockState::OnZoomClick, (intptr_t)panelIx));
+    e->OnClick(ListenTo(g->state, &DockState::OnZoomClick, (int64_t)panelIx));
     e->TabStop(false);
     return e;
 }
@@ -380,7 +380,7 @@ El* RenderTabs(const AreaCtx& ac, int node) {
     // the five zones a drop landed in — so the box has to be reported back.
     box->BoundsOut(&n.bounds);
     box->OnDrop(kDockPanelDrag,
-                ListenTo(ac.state, &DockState::OnDropPanel, (intptr_t)node));
+                ListenTo(ac.state, &DockState::OnDropPanel, (int64_t)node));
 
     if (ac.r->tabBar) {
         if (El* bar = ac.r->tabBar(cx, ac.r->data, &g)) {

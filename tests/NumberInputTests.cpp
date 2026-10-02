@@ -73,7 +73,7 @@ static void AStepThatDoesNotMoveIsNoStep() {
 }
 
 static double BoundaryStep(double current, StepAction action, App*,
-                           intptr_t scale) {
+                           int64_t scale) {
     double fineStep = (double)scale / 100.0;
     if (action == StepAction::Increment) {
         return current < 1 ? fineStep : 0.5;
@@ -106,7 +106,7 @@ struct NumberEventSink {
     static El* Render(NumberEventSink*, Ctx* cx) { return Div(cx->a); }
 };
 
-static bool RejectFour(Str value, intptr_t) {
+static bool RejectFour(Str value, int64_t) {
     return !StrEqI(value, "4");
 }
 

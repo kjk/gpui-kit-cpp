@@ -826,7 +826,7 @@ struct LineClampEvent {
 // hand out element ids and decode them again in one big switch.
 using ListenerFn = void (*)(void* self, Ctx* cx, const void* ev);
 using ListenerArgFn = void (*)(void* self, Ctx* cx, const void* ev,
-                               intptr_t arg);
+                               int64_t arg);
 
 struct Listener {
     // User-space code addresses and wasm table indexes leave the top two bits
@@ -839,7 +839,9 @@ struct Listener {
 
     uintptr_t fn = 0;
     EntityId view = {};
-    intptr_t arg = 0;
+    // 64 bits on every target, wasm32 included, so a usize a component hands
+    // its listener -- a page, a count -- arrives whole.
+    int64_t arg = 0;
 
     template <typename F>
     void SetFn(F value) {
@@ -2070,7 +2072,7 @@ struct ActionEvent {
     // hash of its name, and this is the rest of it. A number, a bool or an
     // enum is itself; anything larger is a pointer to something that outlives
     // the dispatch, which for a binding means a literal.
-    intptr_t arg = 0;
+    int64_t arg = 0;
     // cx.propagate(): the handler looked and did not want it, so the search
     // carries on outwards. Not setting it is Rust's default, which stops.
     bool propagate = false;
@@ -2558,7 +2560,7 @@ struct El {
     // InputState rather than to the view that happened to render them.
     Func0 accessibilityIncrementDirect;
     Func0 accessibilityDecrementDirect;
-    intptr_t clickActionArg = 0;
+    int64_t clickActionArg = 0;
     ActionSlot* actions = nullptr;
     // `div().hover(|this| ..)` and `div().drag_over::<T>(|this, ..| ..)`:
     // refinements that hold only while the pointer is over the box, or while
@@ -3174,8 +3176,8 @@ struct El {
     // rather than the caller passing the same handler to both. The dispatch
     // starts at the focused element, not at this one, which is what makes a
     // dialog's Cancel button and its escape key one handler.
-    El* OnClickAction(uint32_t action, intptr_t arg = 0);
-    El* OnClickActionAt(uint32_t action, FocusHandle focus, intptr_t arg = 0);
+    El* OnClickAction(uint32_t action, int64_t arg = 0);
+    El* OnClickActionAt(uint32_t action, FocusHandle focus, int64_t arg = 0);
     // div().on_key_down(..): the raw keystroke, offered to the focused element
     // and then out through the elements above it, before the keymap resolves
     // the chord to an action. It is what a field that is not a text editor
@@ -3344,7 +3346,7 @@ struct HitRect {
     InputState* input = nullptr;
     // El::OnClickAction: the action a click dispatches, and what it carries.
     uint32_t clickAction = 0;
-    intptr_t clickActionArg = 0;
+    int64_t clickActionArg = 0;
     int clickActionFocusId = 0;
     // El::StopClick: the click stops here rather than carrying on outwards.
     // `cx.stop_propagation()` in a handler, said on the element instead —
@@ -3381,7 +3383,7 @@ struct AccessibilityNode {
     Func0 accessibilityIncrementDirect = {};
     Func0 accessibilityDecrementDirect = {};
     uint32_t clickAction = 0;
-    intptr_t clickActionArg = 0;
+    int64_t clickActionArg = 0;
     int clickActionFocusId = 0;
     SliderState* slider = nullptr;
     InputState* input = nullptr;
@@ -5068,8 +5070,8 @@ struct InputState {
     Listener onChange = {};
     // validate: `Fn(&str, &mut App) -> bool`. A plain function pointer plus
     // its captured value, the way Listener carries one.
-    bool (*validate)(Str text, intptr_t arg) = nullptr;
-    intptr_t validateArg = 0;
+    bool (*validate)(Str text, int64_t arg) = nullptr;
+    int64_t validateArg = 0;
     // The text run the element last painted, so a press can be turned into an
     // offset. Rust keeps `last_bounds` + `last_layout` for the same reason;
     // in a multi-line field this is the *first* row, and the ones under it are
@@ -6715,8 +6717,7 @@ Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*)) {
 
 // cx.listener(move |this, ...| ... ix ...): same, carrying a captured value.
 template <typename T, typename E>
-Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, intptr_t),
-                intptr_t arg) {
+Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, int64_t), int64_t arg) {
     Listener l;
     l.SetFn(fn);
     l.view = cx->self;
@@ -6728,7 +6729,7 @@ Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, intptr_t),
 // A handler that takes a value the component supplies: which day of the
 // calendar, which combobox row. The component fills it with ListenerArg.
 template <typename T, typename E>
-Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, intptr_t)) {
+Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, int64_t)) {
     Listener l;
     l.SetFn(fn);
     l.view = cx->self;
@@ -6738,7 +6739,7 @@ Listener Listen(Ctx* cx, void (*fn)(T*, Ctx*, const E*, intptr_t)) {
 
 // Bind the value a component hands its caller. This is what a Rust closure
 // gets as its event payload: `.on_click(cx.listener(|this, day, _, cx| ...))`.
-inline Listener ListenerArg(Listener l, intptr_t arg) {
+inline Listener ListenerArg(Listener l, int64_t arg) {
     if (l.IsValid()) {
         l.arg = arg;
         l.SetArgBound();
@@ -6750,7 +6751,7 @@ inline Listener ListenerArg(Listener l, intptr_t arg) {
 // which day of the calendar, the state a checkbox activation lands on. Rust
 // passes that beside whatever the closure captured, so a caller that already
 // bound its own — which of ten toggles this is — keeps it.
-inline Listener ListenerFill(Listener l, intptr_t v) {
+inline Listener ListenerFill(Listener l, int64_t v) {
     if (l.IsValid() && !l.ArgBound()) {
         l.arg = v;
         l.SetHasArg();
@@ -6771,7 +6772,7 @@ Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*)) {
 // entity: the component supplies the value — which menu row was taken —
 // rather than the caller having captured one.
 template <typename T, typename E>
-Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*, intptr_t)) {
+Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*, int64_t)) {
     Listener l;
     l.SetFn(fn);
     l.view = e.id;
@@ -6780,8 +6781,8 @@ Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*, intptr_t)) {
 }
 
 template <typename T, typename E>
-Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*, intptr_t),
-                  intptr_t arg) {
+Listener ListenTo(Entity<T> e, void (*fn)(T*, Ctx*, const E*, int64_t),
+                  int64_t arg) {
     Listener l;
     l.SetFn(fn);
     l.view = e.id;
@@ -6904,7 +6905,7 @@ requires EmitsEvent<T, E> Subscription SubscribeTo(App* app, Entity<T> emitter,
 template <typename T, typename S, typename E>
 requires EmitsEvent<T, E> Subscription
 SubscribeTo(App* app, Entity<T> emitter, Entity<S> subscriber,
-            void (*fn)(S*, Ctx*, const E*, intptr_t), intptr_t arg) {
+            void (*fn)(S*, Ctx*, const E*, int64_t), int64_t arg) {
     Listener l = ListenTo(subscriber, fn, arg);
     return EntitySubscribeRaw(app, emitter.id, EntityEventType<E>(), l);
 }
@@ -7437,7 +7438,7 @@ bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
 // sequence and belongs to nobody else.
 uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
                                 bool alt, bool platform, bool function,
-                                intptr_t* arg, bool* pending);
+                                int64_t* arg, bool* pending);
 // Whether the shortcut modifier is down — `secondary-` in a binding spec:
 // Command on macOS, Control everywhere else. The two are separate modifiers
 // now, so the code that means "the copy chord" has to say which.
@@ -7452,12 +7453,12 @@ constexpr bool KeySecondary(bool ctrl, bool platform) {
 }
 // The same, for an action already in hand rather than one a keystroke
 // resolved to. `arg` is what the action carries.
-bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg = 0);
+bool WindowDispatchAction(Window* win, uint32_t action, int64_t arg = 0);
 // Dispatch from an arbitrary rendered focus node rather than whichever node
 // currently owns focus. Falls back to ordinary focused dispatch when the
 // handle is absent from the last frame.
 bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
-                                 uint32_t action, intptr_t arg = 0);
+                                 uint32_t action, int64_t arg = 0);
 // The `El::OnKeyDown` handlers over the focused element, innermost first.
 // Answers true when one of them stopped propagating.
 bool WindowDispatchKeyEvent(Window* win, KeyEvent* ev);
@@ -7524,7 +7525,7 @@ struct MenuRow {
     // Zero is a row that does nothing, which is what a separator, a submenu
     // and a placeholder row all are.
     uint32_t action = 0;
-    intptr_t arg = 0;
+    int64_t arg = 0;
     bool separator = false;
     bool disabled = false;
     bool checked = false;
@@ -7552,8 +7553,8 @@ void AppSetMenus(App* app, const MenuDef* menus, int n);
 // What row `id` names, `id` being what a platform menu answers with. The
 // numbering is the contract between the two halves — the selectable rows in
 // preorder, from 1 — so it is worth being able to ask.
-bool AppMenuRowForId(int id, uint32_t* action, intptr_t* arg);
-bool AppMenuRowForId(const App* app, int id, uint32_t* action, intptr_t* arg);
+bool AppMenuRowForId(int id, uint32_t* action, int64_t* arg);
+bool AppMenuRowForId(const App* app, int id, uint32_t* action, int64_t* arg);
 // Drops the menu model owned by this App. AppFree calls it before globals are
 // destroyed so the platform callback cannot retain a stale App pointer.
 void AppMenuClear(App* app);

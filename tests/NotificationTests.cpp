@@ -292,8 +292,7 @@ static void PerNotificationPlacementsBuildIndependentStableStacks() {
 
     HoverEvent hover = {};
     hover.hovered = true;
-    NotificationListState::OnHover(s, &cx, &hover,
-                                   (intptr_t)Anchor::BottomLeft);
+    NotificationListState::OnHover(s, &cx, &hover, (int64_t)Anchor::BottomLeft);
     utassert(s->stackHovered[(int)Anchor::BottomLeft]);
     utassert(!s->stackHovered[(int)Anchor::TopRight]);
     utassert(s->IsExpanded());

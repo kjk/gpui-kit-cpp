@@ -377,7 +377,7 @@ Date DateRangePresetValue::IntoDate() const {
 }
 
 DateRangePreset DateRangePreset::Single(Str label, LocalDate date,
-                                        intptr_t arg) {
+                                        int64_t arg) {
     DateRangePreset out;
     out.label = label;
     out.value = DateRangePresetValue::Single(date);
@@ -387,7 +387,7 @@ DateRangePreset DateRangePreset::Single(Str label, LocalDate date,
 }
 
 DateRangePreset DateRangePreset::Range(Str label, LocalDate start,
-                                       LocalDate end, intptr_t arg) {
+                                       LocalDate end, int64_t arg) {
     DateRangePreset out;
     out.label = label;
     out.value = DateRangePresetValue::Range(start, end);
@@ -1112,7 +1112,7 @@ void DatePickerState::OnToggle(DatePickerState* self, Ctx* cx,
 }
 
 void DatePickerState::OnOpenChange(DatePickerState* self, Ctx* cx,
-                                   const ClickEvent*, intptr_t open) {
+                                   const ClickEvent*, int64_t open) {
     SetOpen(self, open != 0, cx);
 }
 

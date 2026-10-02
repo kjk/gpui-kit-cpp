@@ -34,14 +34,14 @@ struct NotificationStory {
 };
 
 static void NotifMenuOpen(NotificationStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t which) {
+                          int64_t which) {
     self->openMenu = self->openMenu == (int)which ? 0 : (int)which;
     Notify(cx);
 }
 
 // Both dropdowns write Theme::notification, where Rust keeps them.
 static void NotifMenuAct(NotificationStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t act) {
+                         int64_t act) {
     ThemeUpdate(cx->app, [&](Theme* theme) {
         if (!theme) {
             return;
@@ -249,7 +249,7 @@ static void CloseNote(NotificationStory*, Ctx*, const ClickEvent*) {
 }
 
 static void ShowNotify(NotificationStory*, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     component::NotificationListState* st = StoryNotifications(cx).Get(cx);
     if (!st) {
         return;

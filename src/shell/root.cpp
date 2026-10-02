@@ -603,7 +603,7 @@ static bool DismissToastKey(ShellRoot* root, uint32_t key, int64_t nowMs) {
 }
 
 void ShellRoot::OnToastClick(ShellRoot* self, Ctx* cx, const ClickEvent*,
-                             intptr_t key) {
+                             int64_t key) {
     if (self && DismissToastKey(self, (uint32_t)key, ShellRootNowMs()))
         NotifyRoot(cx->app, self, cx->win);
 }
@@ -691,20 +691,20 @@ static El* ToastLayer(ShellRoot* self, Ctx* cx, const SemanticThemeTokens& t) {
         const ShellToastId& id = *visible[i].id;
         const ShellToastValue& toast = *visible[i].value;
         Str name = StrDup(cx->a, id.text);
-        El* body = Toast::New(cx, name)
-                       ->TransitionStatus(visible[i].status)
-                       ->IntoEl()
-                       ->StopMouseDown()
-                       ->OnClick(Listen(cx, &ShellRoot::OnToastClick,
-                                        (intptr_t)id.key))
-                       ->FlexCol()
-                       ->Gap(t.spacing.xxs)
-                       ->Pad(t.spacing.md)
-                       ->Radius(t.radius.md)
-                       ->Bg(t.colors.surface)
-                       ->Fg(t.colors.surfaceForeground)
-                       ->Border(1, LevelColor(toast.level, t.colors))
-                       ->Child(TextEl(cx->a, StrDup(cx->a, toast.title)));
+        El* body =
+            Toast::New(cx, name)
+                ->TransitionStatus(visible[i].status)
+                ->IntoEl()
+                ->StopMouseDown()
+                ->OnClick(Listen(cx, &ShellRoot::OnToastClick, (int64_t)id.key))
+                ->FlexCol()
+                ->Gap(t.spacing.xxs)
+                ->Pad(t.spacing.md)
+                ->Radius(t.radius.md)
+                ->Bg(t.colors.surface)
+                ->Fg(t.colors.surfaceForeground)
+                ->Border(1, LevelColor(toast.level, t.colors))
+                ->Child(TextEl(cx->a, StrDup(cx->a, toast.title)));
         if (toast.description) {
             body->Child(
                 Div(cx->a)

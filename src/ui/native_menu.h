@@ -36,7 +36,7 @@ struct NativeMenuItem {
     Str iconSvg = {};
     // What choosing this row reports — Rust dispatches the row's Action, and
     // this is the value handed to onSelect in its place.
-    intptr_t id = 0;
+    int64_t id = 0;
     NativeMenu* submenu = nullptr;
 };
 
@@ -50,14 +50,14 @@ struct NativeMenu {
     Listener onSelect = {};
 
     static NativeMenu* New(Ctx* cx);
-    NativeMenu* Menu(Str label, intptr_t id);
-    NativeMenu* MenuWithDisabled(Str label, bool disabled, intptr_t id);
-    NativeMenu* MenuWithCheck(Str label, bool checked, intptr_t id);
-    NativeMenu* MenuWithIcon(Str label, IconName icon, intptr_t id);
+    NativeMenu* Menu(Str label, int64_t id);
+    NativeMenu* MenuWithDisabled(Str label, bool disabled, int64_t id);
+    NativeMenu* MenuWithCheck(Str label, bool checked, int64_t id);
+    NativeMenu* MenuWithIcon(Str label, IconName icon, int64_t id);
     // menu_with_icon(label, impl Into<Icon>, action): a path or `Data` icon.
     // Icons created with `Icon::Data` use their SVG bytes directly, without
     // an asset lookup.
-    NativeMenu* MenuWithIcon(Str label, component::Icon* icon, intptr_t id);
+    NativeMenu* MenuWithIcon(Str label, component::Icon* icon, int64_t id);
     NativeMenu* Separator();
     NativeMenu* Submenu(Str label, NativeMenu* menu);
     NativeMenu* OnSelect(Listener l);

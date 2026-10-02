@@ -29,7 +29,7 @@ struct IconStory {
         Notify(cx);
     }
     static void OnMenuPick(IconStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t) {
+                           int64_t) {
         self->message = "Search selected from the menu.";
         Notify(cx);
     }

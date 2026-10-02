@@ -899,7 +899,7 @@ enum class QuestionnaireAction : uint8_t {
 };
 
 static void ActionClick(QuestionnaireState* self, Ctx* cx, const ClickEvent*,
-                        intptr_t action) {
+                        int64_t action) {
     switch ((QuestionnaireAction)action) {
         case QuestionnaireAction::Previous:
             self->GoPrevious(cx);
@@ -952,7 +952,7 @@ static El* ActionPart(QuestionnairePart* part, QuestionnaireAction action,
     Button* button =
         Button::New(cx, ElementId(cx, part->state, Str(name)))
             ->WithSize(QuestionnaireResolveSize(cx->app, part))
-            ->OnClick(ListenTo(part->state, &ActionClick, (intptr_t)action));
+            ->OnClick(ListenTo(part->state, &ActionClick, (int64_t)action));
     if (outline) {
         button->Outline();
     }

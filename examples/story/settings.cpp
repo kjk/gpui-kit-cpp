@@ -69,7 +69,7 @@ struct SettingsStory {
     static El* Render(SettingsStory* self, Ctx* cx);
 };
 
-static void OpenUrlAt(SettingsStory*, Ctx*, const ClickEvent*, intptr_t ix) {
+static void OpenUrlAt(SettingsStory*, Ctx*, const ClickEvent*, int64_t ix) {
     OpenUrl(Str(kUrls[ix]));
 }
 
@@ -87,7 +87,7 @@ static void ResetDarkMode(SettingsStory*, Ctx* cx, const ClickEvent*) {
 }
 
 static void OnDensity(SettingsStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t ix) {
+                      int64_t ix) {
     self->density = (int)ix;
     Notify(cx);
 }
@@ -109,7 +109,7 @@ static El* OpenUrlButton(Ctx* cx, Str id, Str label, int url, UiSize size) {
         ->Outline()
         ->Label(label)
         ->WithSize(size)
-        ->OnClick(Listen(cx, &OpenUrlAt, (intptr_t)url))
+        ->OnClick(Listen(cx, &OpenUrlAt, (int64_t)url))
         ->IntoEl();
 }
 
@@ -153,7 +153,7 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
                 ->Icon(IconName::Info)
                 ->Ghost()
                 ->WithSize(UiSize::XSmall)
-                ->OnClick(Listen(cx, &OpenUrlAt, (intptr_t)kUrlWebsite))
+                ->OnClick(Listen(cx, &OpenUrlAt, (int64_t)kUrlWebsite))
                 ->IntoEl());
 
     s->Group(StrL("Appearance"));
@@ -232,7 +232,7 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
                                   ->WithSize(size)
                                   ->Disabled(disabled)
                                   ->OnClick(Listen(cx, &OpenUrlAt,
-                                                   (intptr_t)kUrlRepository))
+                                                   (int64_t)kUrlRepository))
                                   ->IntoEl());
         if (disabled) {
             row->Opacity(0.5f);
@@ -248,7 +248,7 @@ El* SettingsStory::Render(SettingsStory* self, Ctx* cx) {
                 component::Button::New(cx, Str(kDensities[i]))
                     ->Label(Str(kDensities[i]))
                     ->WithSize(size)
-                    ->OnClick(Listen(cx, &OnDensity, (intptr_t)i));
+                    ->OnClick(Listen(cx, &OnDensity, (int64_t)i));
             if (self->density == i) {
                 b->Primary();
             } else {

@@ -246,7 +246,7 @@ static void OnTableEvent(DataTableStory* self, Ctx* cx, const TableEvent* ev) {
 }
 
 static void DtMenuOpen(DataTableStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     self->openMenu = self->openMenu == (int)which ? 0 : (int)which;
     Notify(cx);
 }
@@ -260,7 +260,7 @@ static void DtExport(DataTableStory* self, Ctx* cx, const ClickEvent*) {
 }
 
 static void DtMenuAct(DataTableStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t act) {
+                      int64_t act) {
     if (act >= DtActGoTo) {
         // Top and Bottom scroll_to_row; the other two set_selected_cell.
         TableState* st = self->table.Get(cx);
@@ -298,7 +298,7 @@ static void DtMenuAct(DataTableStory* self, Ctx* cx, const ClickEvent*,
 // also offers. The row line carries `OpenDetail(row_ix)` in Rust, which
 // nothing handles, so it does nothing here either.
 static void OnDtContextItem(DataTableStory* self, Ctx* cx, const ClickEvent*,
-                            intptr_t ix) {
+                            int64_t ix) {
     // 0 is the row line, 1 the separator, and the sizes follow.
     int size = (int)ix - 2;
     if (size >= 0 && size < kNSizes) {

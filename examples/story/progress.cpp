@@ -47,13 +47,13 @@ static void ProgPlay(ProgressStory* self, Ctx* cx, const ClickEvent*) {
 }
 
 static void ProgMenuOpen(ProgressStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t which) {
+                         int64_t which) {
     self->openMenu = self->openMenu == (int)which ? ProgMenuNone : (int)which;
     Notify(cx);
 }
 
 static void ProgMenuAct(ProgressStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t act) {
+                        int64_t act) {
     switch (act) {
         case ProgActValue0:
             self->value = 0;

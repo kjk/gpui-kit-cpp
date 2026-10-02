@@ -176,7 +176,7 @@ struct ComboboxStory {
 };
 
 static void ToggleCombo(ComboboxStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t which) {
+                        int64_t which) {
     for (int i = 0; i < kNSpecs; i++) {
         component::ComboboxState* owner = self->combo[i].Get(cx);
         component::SearchableListState* s = owner ? owner->List() : nullptr;
@@ -192,7 +192,7 @@ static void ToggleCombo(ComboboxStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void ClearCombo(ComboboxStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     component::ComboboxState* s = self->combo[which].Get(cx);
     if (s) {
         s->ClearSelection(cx);
@@ -201,7 +201,7 @@ static void ClearCombo(ComboboxStory* self, Ctx* cx, const ClickEvent*,
 // The badge trigger's ✕: remove_selected_index on the one it sits on, which
 // is always the first of the selection here.
 static void RemoveComboBadge(ComboboxStory* self, Ctx* cx, const ClickEvent*,
-                             intptr_t which) {
+                             int64_t which) {
     component::ComboboxState* owner = self->combo[which].Get(cx);
     component::SearchableListState* s = owner ? owner->List() : nullptr;
     if (!s || s->selected.len == 0) {
@@ -317,7 +317,7 @@ static El* ComboTriggerEl(ComboboxStory* self, Ctx* cx, int i) {
                             ->WithSize(UiSize::XSmall)
                             ->Icon(IconName::X)
                             ->OnClick(ListenerArg(Listen(cx, &RemoveComboBadge),
-                                                  (intptr_t)i))
+                                                  (int64_t)i))
                             ->IntoEl());
             left->Child(chip);
             if (n > 1) {
@@ -416,8 +416,8 @@ El* ComboboxStory::Render(ComboboxStory* self, Ctx* cx) {
                 ->SearchPlaceholder(StrL("Search…"))
                 ->CheckIcon(s.checkIcon)
                 ->W(280)
-                ->OnToggle(ListenerArg(toggle, (intptr_t)i))
-                ->OnClear(ListenerArg(clear, (intptr_t)i));
+                ->OnToggle(ListenerArg(toggle, (int64_t)i))
+                ->OnClear(ListenerArg(clear, (int64_t)i));
         if (s.groups) {
             cb->Sections(s.groups, s.nGroups);
         }

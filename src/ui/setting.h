@@ -334,7 +334,7 @@ struct SettingBinding {
 // the port's id stack is what folds the page, the group and the item into its
 // name. `seeded` is `default_value`, which only the first frame does.
 // How many options a dropdown field's menu rows can address.
-const intptr_t kDropdownOptionsMax = 4096;
+const int64_t kDropdownOptionsMax = 4096;
 
 struct SettingFieldInput {
     InputState input;
@@ -374,24 +374,24 @@ struct SettingsState {
     ~SettingsState() { VecReset(fields); }
 
     static void OnPageClick(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t page);
+                            int64_t page);
     static void OnGroupClick(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t packed);
+                             int64_t packed);
     // The page's own scrolling: the wheel and the scrollbar.
     static void OnPageScroll(SettingsState* self, Ctx* cx,
                              const ScrollEvent* ev);
     // A typed field's own handlers. `ix` is into `fields`.
     static void OnFieldClick(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t ix);
+                             int64_t ix);
     static void OnFieldReset(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t ix);
+                             int64_t ix);
     // A dropdown menu row: `packed` is the field's index times
     // kDropdownOptionsMax plus the option's.
     static void OnDropdownPick(SettingsState* self, Ctx* cx,
-                               const ClickEvent* ev, intptr_t packed);
+                               const ClickEvent* ev, int64_t packed);
     // reset_all: every field the page has built goes back to its default.
     static void OnResetPage(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t unused);
+                            int64_t unused);
     // A click in the search field, which is where the window's keystrokes go
     // from then on.
     static void OnSearchFocus(SettingsState* self, Ctx* cx,

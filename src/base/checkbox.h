@@ -44,7 +44,7 @@ struct CheckboxIndicatorStyles {
 // owns identity, focus and activation; the caller owns every pixel of it.
 // `onChange` is handed the state the activation produces, the way Rust hands
 // its handler `next_state` — read it with a
-// `void On(T*, Ctx*, const ClickEvent*, intptr_t next)` and compare against
+// `void On(T*, Ctx*, const ClickEvent*, int64_t next)` and compare against
 // CheckboxState. A disabled box keeps its id, so it still hit-tests and
 // hovers, but takes neither focus nor the click.
 struct Checkbox {

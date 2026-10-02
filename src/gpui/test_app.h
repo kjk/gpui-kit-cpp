@@ -90,7 +90,7 @@ void TestSimulateClick(Window* win, Point position, Modifiers modifiers = {});
 // cx.dispatch_action(action): to whatever has the focus, the way a key bound
 // to it would — the focused field first, then the element chain out from the
 // focus, then the application's handlers. True when something took it.
-bool TestDispatchAction(Window* win, uint32_t action, intptr_t arg = 0);
+bool TestDispatchAction(Window* win, uint32_t action, int64_t arg = 0);
 
 // cx.write_to_clipboard / cx.read_from_clipboard.
 void TestWriteToClipboard(Str text);

@@ -146,7 +146,7 @@ static El* MaterializeButton(MaterializeRequest* request) {
     });
     if (request->onClick)
         button->OnClick(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     // request.finish(component): the children go into the button, the style
     // onto the element it renders.
     El** children = nullptr;

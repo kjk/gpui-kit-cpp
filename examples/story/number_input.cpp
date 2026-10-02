@@ -37,7 +37,7 @@ static void StepSlot(NumberInputStory* self, Ctx* cx, int slot,
 }
 
 static void StepNum(NumberInputStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t packed) {
+                    int64_t packed) {
     StepSlot(self, cx, (int)(packed >> 1),
              (packed & 1) ? StepAction::Increment : StepAction::Decrement);
 }
@@ -62,7 +62,7 @@ void NumberInputStory::OnKey(NumberInputStory* self, Ctx* cx,
 }
 
 static void FocusNum(NumberInputStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t slot) {
+                     int64_t slot) {
     for (int i = 0; i < NumCount; i++) {
         self->fields[i].focused = false;
     }

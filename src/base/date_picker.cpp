@@ -21,15 +21,15 @@ static int DateCompare(LocalDate a, LocalDate b) {
     return 0;
 }
 
-intptr_t DatePickerDateKey(LocalDate date) {
-    intptr_t key = date.year;
-    intptr_t month = date.month;
-    intptr_t day = date.day;
+int64_t DatePickerDateKey(LocalDate date) {
+    int64_t key = date.year;
+    int64_t month = date.month;
+    int64_t day = date.day;
     key = key * 10000 + month * 100 + day;
     return key;
 }
 
-LocalDate DatePickerDateFromKey(intptr_t key) {
+LocalDate DatePickerDateFromKey(int64_t key) {
     int value = (int)key;
     LocalDate date;
     date.year = value / 10000;

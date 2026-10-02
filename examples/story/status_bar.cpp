@@ -7,7 +7,7 @@ struct StatusBarStory {
 // Every button on the two real bars answers with a notification, which is
 // what `on_click(|_, window, cx| window.push_notification(..))` does.
 static void OnBarClick(StatusBarStory*, Ctx* cx, const ClickEvent*,
-                       intptr_t which);
+                       int64_t which);
 
 enum {
     BarBranch = 0,
@@ -18,7 +18,7 @@ enum {
 };
 
 static void OnBarClick(StatusBarStory*, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     static const char* kMsg[] = {"Switch branch", "Go to Line/Column",
                                  "Select encoding", "Select language",
                                  "3 notifications"};

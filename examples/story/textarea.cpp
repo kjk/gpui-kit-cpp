@@ -154,7 +154,7 @@ static bool OnComposerPaste(void* data, const ClipboardItem& item, App* app,
 }
 
 static void OnRemovePasted(TextareaStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t id) {
+                           int64_t id) {
     for (int i = 0; i < self->attachments.len; i++) {
         if (self->attachments[i].id == (uint64_t)id) {
             StrFree(self->attachments[i].title);
@@ -316,7 +316,7 @@ El* TextareaStory::Render(TextareaStory* self, Ctx* cx) {
                             ->WithSize(UiSize::XSmall)
                             ->Icon(IconName::Close)
                             ->OnClick(
-                                Listen(cx, &OnRemovePasted, (intptr_t)att.id))
+                                Listen(cx, &OnRemovePasted, (int64_t)att.id))
                             ->IntoEl()));
             group->Child(
                 component::HoverCard::New(cx,

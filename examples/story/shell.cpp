@@ -96,16 +96,15 @@ struct ShellStory {
     static El* Render(ShellStory* self, Ctx* cx);
     static void FeedTick(ShellStory* self, Ctx* cx, const TickEvent*);
     static void SampleTick(ShellStory* self, Ctx* cx, const TickEvent*);
-    static void Watch(ShellStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t ix);
+    static void Watch(ShellStory* self, Ctx* cx, const ClickEvent*, int64_t ix);
     static void WatchAll(ShellStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t on);
+                         int64_t on);
     static void FeedSelect(ShellStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t ix);
+                           int64_t ix);
     static void Pause(ShellStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t side);
+                      int64_t side);
     static void Reload(ShellStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t side);
+                       int64_t side);
     void Changed(Ctx* cx);
     void SetFeed(Ctx* cx, int value);
     void Load(Ctx* cx, bool isMotion);
@@ -332,7 +331,7 @@ void ShellStory::SampleTick(ShellStory* self, Ctx* cx, const TickEvent*) {
 }
 
 void ShellStory::Watch(ShellStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+                       int64_t ix) {
     ShellMarket* market = self->market.Get(cx);
     if (!market || ix < 0 || ix >= kShellQuoteCount) return;
     market->quotes[ix].watched = !market->quotes[ix].watched;
@@ -340,7 +339,7 @@ void ShellStory::Watch(ShellStory* self, Ctx* cx, const ClickEvent*,
 }
 
 void ShellStory::WatchAll(ShellStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t on) {
+                          int64_t on) {
     ShellMarket* market = self->market.Get(cx);
     if (!market) return;
     for (ShellQuote& quote : market->quotes) quote.watched = on != 0;
@@ -348,12 +347,12 @@ void ShellStory::WatchAll(ShellStory* self, Ctx* cx, const ClickEvent*,
 }
 
 void ShellStory::FeedSelect(ShellStory* self, Ctx* cx, const ClickEvent*,
-                            intptr_t ix) {
+                            int64_t ix) {
     if (ix >= 0 && ix <= 3) self->SetFeed(cx, (int)ix);
 }
 
 void ShellStory::Pause(ShellStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t side) {
+                       int64_t side) {
     if (side == 0) {
         self->rustPaused = !self->rustPaused;
         if (self->rustPaused) {
@@ -405,7 +404,7 @@ void ShellStory::Load(Ctx* cx, bool isMotion) {
 }
 
 void ShellStory::Reload(ShellStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t side) {
+                        int64_t side) {
     if (self->runtime) self->Load(cx, side != 0);
 }
 

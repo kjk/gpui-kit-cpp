@@ -287,7 +287,7 @@ enum {
     kMenuToggleButton
 };
 
-static void OnMenuItem(DockApp* self, Ctx* cx, const ClickEvent*, intptr_t ix) {
+static void OnMenuItem(DockApp* self, Ctx* cx, const ClickEvent*, int64_t ix) {
     // The rows in the order they are built below; a separator is a row too.
     switch (ix) {
         case 0:

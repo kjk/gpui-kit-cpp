@@ -89,7 +89,7 @@ void PopoverSetOpenFocused(PopoverState* s, Ctx* cx, bool open) {
 // press does not also reach whatever the popover sits in; the hit test only
 // reports the innermost rect, so that is already true.
 void PopoverToggle(PopoverState* self, Ctx* cx, const MouseDownEvent* ev,
-                   intptr_t button) {
+                   int64_t button) {
     if (ev->button != (MouseButton)button) {
         return;
     }
@@ -202,7 +202,7 @@ Popover* Popover::Trigger(El* e) {
         // A press, not a click: Rust hangs the toggle off on_mouse_down so the
         // popover is up before the button comes back. The handler reads the
         // event's own button, since one element hears every press it is over.
-        e->OnMouseDown(ListenTo(state, &PopoverToggle, (intptr_t)button));
+        e->OnMouseDown(ListenTo(state, &PopoverToggle, (int64_t)button));
     }
     trigger = e;
     return this;

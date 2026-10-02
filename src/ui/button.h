@@ -194,7 +194,7 @@ struct Button {
     Listener onClick;
     Listener onHover;
     uint32_t clickAction = 0;
-    intptr_t clickActionArg = 0;
+    int64_t clickActionArg = 0;
     // ButtonStyles: what the caller wants a selected or a disabled button to
     // look like, over what the variant computed. resolve_style's order is
     // fixed — the value state first, disabled last.
@@ -265,7 +265,7 @@ struct Button {
     Button* Toggled(bool v = true);
     Button* OnClick(Listener l);
     Button* OnHover(Listener l);
-    Button* OnClickAction(uint32_t action, intptr_t arg = 0);
+    Button* OnClickAction(uint32_t action, int64_t arg = 0);
     El* IntoEl();
 };
 

@@ -96,7 +96,7 @@ static El* MaterializeMenuItem(MaterializeRequest* request) {
     item->Active(request->selected)->Disabled(request->disabled);
     if (request->onClick)
         item->OnClick(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     shell::ComponentChild* children = nullptr;
     int count = 0;
     if (!request->TakeTypedChildren(&children, &count)) return nullptr;
@@ -231,7 +231,7 @@ static El* MaterializeToggle(MaterializeRequest* request) {
     });
     if (request->onClick)
         toggle->OnClick(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     El** children = nullptr;
     int count = 0;
     if (!request->TakeChildren(&children, &count)) return nullptr;

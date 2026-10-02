@@ -31,7 +31,7 @@ static CalendarState CalStateOf(const CalMonthState& m) {
     return s;
 }
 static void CalPrev(CalendarStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t which) {
+                    int64_t which) {
     CalMonthState& m = self->cal[which];
     CalendarState s = CalStateOf(m);
     CalendarPrevMonth(&s);
@@ -40,7 +40,7 @@ static void CalPrev(CalendarStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void CalNext(CalendarStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t which) {
+                    int64_t which) {
     CalMonthState& m = self->cal[which];
     CalendarState s = CalStateOf(m);
     CalendarNextMonth(&s);
@@ -51,20 +51,20 @@ static void CalNext(CalendarStory* self, Ctx* cx, const ClickEvent*,
 // The calendar fills the listener's value with the day it was given, so
 // which calendar asked has to come from the handler itself — one per section,
 // the way Rust's three closures each capture their own entity.
-static void CalDayInto(CalendarStory* self, Ctx* cx, int which, intptr_t d) {
+static void CalDayInto(CalendarStory* self, Ctx* cx, int which, int64_t d) {
     self->cal[which].day = (int)d;
     Notify(cx);
 }
 static void CalDaySingle(CalendarStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t d) {
+                         int64_t d) {
     CalDayInto(self, cx, CalSingle, d);
 }
 static void CalDayWide(CalendarStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t d) {
+                       int64_t d) {
     CalDayInto(self, cx, CalWide, d);
 }
 static void CalDayDisabled(CalendarStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t d) {
+                           int64_t d) {
     CalDayInto(self, cx, CalDisabled, d);
 }
 

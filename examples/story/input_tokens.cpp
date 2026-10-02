@@ -14,14 +14,14 @@ struct TokenExample {
     ~TokenExample();
     static El* Render(TokenExample* self, Ctx* cx);
     static void OnInsert(TokenExample* self, Ctx* cx, const ClickEvent*,
-                         intptr_t kind);
+                         int64_t kind);
     static void OnSend(TokenExample* self, Ctx* cx, const ClickEvent*);
     static void OnSave(TokenExample* self, Ctx* cx, const ClickEvent*);
     static void OnRestore(TokenExample* self, Ctx* cx, const ClickEvent*);
     static void OnReadonly(TokenExample* self, Ctx* cx, const ClickEvent*,
-                           intptr_t checked);
+                           int64_t checked);
     static void OnDisabled(TokenExample* self, Ctx* cx, const ClickEvent*,
-                           intptr_t checked);
+                           int64_t checked);
 };
 
 EntityId TokenExampleNew(App* app, bool multiline) {
@@ -187,7 +187,7 @@ TokenExample::~TokenExample() {
 }
 
 void TokenExample::OnInsert(TokenExample* self, Ctx* cx, const ClickEvent*,
-                            intptr_t kind) {
+                            int64_t kind) {
     if (kind < 0 || kind >= RefCount || self->readonly || self->disabled) {
         return;
     }
@@ -238,13 +238,13 @@ void TokenExample::OnRestore(TokenExample* self, Ctx* cx, const ClickEvent*) {
 }
 
 void TokenExample::OnReadonly(TokenExample* self, Ctx* cx, const ClickEvent*,
-                              intptr_t checked) {
+                              int64_t checked) {
     self->readonly = checked != 0;
     Notify(cx);
 }
 
 void TokenExample::OnDisabled(TokenExample* self, Ctx* cx, const ClickEvent*,
-                              intptr_t checked) {
+                              int64_t checked) {
     self->disabled = checked != 0;
     Notify(cx);
 }

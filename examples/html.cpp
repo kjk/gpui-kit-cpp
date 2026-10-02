@@ -26,7 +26,7 @@ struct HtmlApp {
     static El* Render(HtmlApp* self, Ctx* cx);
 };
 
-static void OnLink(HtmlApp* self, Ctx* cx, const ClickEvent*, intptr_t href) {
+static void OnLink(HtmlApp* self, Ctx* cx, const ClickEvent*, int64_t href) {
     StrCopyZ(self->lastLink, (int)sizeof(self->lastLink),
              href ? (const char*)href : "");
     Notify(cx);

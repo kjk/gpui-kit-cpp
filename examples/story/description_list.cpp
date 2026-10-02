@@ -15,7 +15,7 @@ struct DescriptionListStory {
 };
 
 static void OnDlOption(DescriptionListStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t act) {
+                       int64_t act) {
     if (act == DlActVertical) {
         self->vertical = !self->vertical;
     } else if (act == DlActBordered) {

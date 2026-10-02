@@ -56,7 +56,7 @@ static const SyntaxLangDef kLangs[] = {
      "throw true try typedef typeid typename union using virtual volatile "
      "while NULL",
      "auto bool char char8_t char16_t char32_t double float int long short "
-     "signed unsigned void wchar_t size_t ssize_t ptrdiff_t intptr_t uintptr_t "
+     "signed unsigned void wchar_t size_t ssize_t ptrdiff_t int64_t uintptr_t "
      "int8_t int16_t int32_t int64_t uint8_t uint16_t uint32_t uint64_t",
      "//", true, false, false, false, false, true, false, false, false, false},
 

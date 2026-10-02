@@ -78,7 +78,7 @@ Str ListContext();
 // names here and the flag comes back beside the answer.
 // `arg` is the action's payload — `ActionEvent::arg`, which for Confirm is
 // `action::kConfirmSecondary` or 0.
-ListKeyAction ListActionOf(uint32_t id, intptr_t arg = 0);
+ListKeyAction ListActionOf(uint32_t id, int64_t arg = 0);
 
 // RowEntry, from crates/ui/src/list/cache.rs: what one row of the flattened
 // list is. A section contributes a header, its items and a footer, and a
@@ -186,9 +186,9 @@ struct ListState {
     // capture it; here the row elements name these handlers instead, so a
     // page holds an Entity<ListState> and the list binds to it.
     static void OnRowClick(ListState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t ix);
+                           int64_t ix);
     static void OnRowMouseDown(ListState* self, Ctx* cx,
-                               const MouseDownEvent* ev, intptr_t ix);
+                               const MouseDownEvent* ev, int64_t ix);
     static void OnScroll(ListState* self, Ctx* cx, const ScrollEvent* ev);
     static void OnQueryInput(ListState* self, Ctx* cx, const InputEvent* ev);
     static void OnMouseDownOut(ListState* self, Ctx* cx,

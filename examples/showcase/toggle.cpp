@@ -6,7 +6,7 @@ using namespace gpui;
 // The toggle reports the value its activation produces, the way Rust's
 // on_change hands the handler `!pressed`.
 static void ToggleBold(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                       intptr_t next) {
+                       int64_t next) {
     app->toggleOn = next != 0;
     Notify(cx);
 }
@@ -14,14 +14,14 @@ static void ToggleBold(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
 // The group's two other cells are bits of one selection, which is Rust's
 // `toggle_group_selection: u8` and its `|= 1` / `&= !1` pair.
 static void ToggleItalic(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                         intptr_t next) {
+                         int64_t next) {
     app->toggleGroup = next ? (uint8_t)(app->toggleGroup | 1)
                             : (uint8_t)(app->toggleGroup & ~1);
     Notify(cx);
 }
 
 static void ToggleUnderline(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                            intptr_t next) {
+                            int64_t next) {
     app->toggleGroup = next ? (uint8_t)(app->toggleGroup | 2)
                             : (uint8_t)(app->toggleGroup & ~2);
     Notify(cx);

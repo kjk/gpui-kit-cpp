@@ -187,7 +187,7 @@ static void OnToggleGrid(BrushApp* self, Ctx* cx, const ClickEvent*) {
 }
 
 static void OnPickColor(BrushApp* self, Ctx* cx, const ClickEvent*,
-                        intptr_t ix) {
+                        int64_t ix) {
     if (ix >= 0 && ix < kNColors) {
         self->brushColor = kColors[ix];
     }

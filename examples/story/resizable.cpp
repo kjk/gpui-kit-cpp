@@ -24,7 +24,7 @@ static void ToggleFlexNone(ResizableStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 static void SetPanelSize(ResizableStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t packed) {
+                         int64_t packed) {
     // The low bit picks the panel, the rest is the new size.
     float size = (float)(packed >> 1);
     if (packed & 1) {

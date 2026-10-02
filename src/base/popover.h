@@ -62,7 +62,7 @@ void PopoverSetOpen(Ctx* cx, Entity<PopoverState> state, bool open);
 // `button` is which press this popover answers to: one element hears every
 // press it is under, so the filter Rust does at registration is done here.
 void PopoverToggle(PopoverState* self, Ctx* cx, const MouseDownEvent* ev,
-                   intptr_t button);
+                   int64_t button);
 void PopoverConfirm(PopoverState* self, Ctx* cx, const ActionEvent* ev);
 void PopoverDismiss(PopoverState* self, Ctx* cx, const ClickEvent* ev);
 void PopoverDismissOnMouseDown(PopoverState* self, Ctx* cx,

@@ -576,7 +576,7 @@ struct NumberInput {
     NumberInput* TextColor(Rgba c);
     // InputState::step / step_by / set_step and its directional bounds.
     NumberInput* Step(double value);
-    NumberInput* StepBy(NumberStepByValueFn fn, intptr_t arg = 0);
+    NumberInput* StepBy(NumberStepByValueFn fn, int64_t arg = 0);
     NumberInput* NoStep();
     NumberInput* Min(double value);
     NumberInput* Max(double value);

@@ -228,7 +228,7 @@ struct InputContextMenuState {
     InputState* state = nullptr;
 
     static void OnSelect(InputContextMenuState* self, Ctx* cx,
-                         const ClickEvent*, intptr_t id) {
+                         const ClickEvent*, int64_t id) {
         InputState* s = self->state;
         if (!s) {
             return;
@@ -1375,7 +1375,7 @@ NumberInput* NumberInput::Step(double value) {
     hasNumberStep = true;
     return this;
 }
-NumberInput* NumberInput::StepBy(NumberStepByValueFn fn, intptr_t arg) {
+NumberInput* NumberInput::StepBy(NumberStepByValueFn fn, int64_t arg) {
     numberStep = NumberStep::ByValue(fn, arg);
     hasNumberStep = true;
     return this;

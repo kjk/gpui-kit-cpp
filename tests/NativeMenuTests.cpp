@@ -163,11 +163,11 @@ static void IconDataReplacesThePathAndTravelsWithTheRow() {
 // menu would have. Rust builds a window for this; the seams here are the
 // overlay's copy of the rows and the confirm each drawn menu reports.
 struct FallbackRecorder {
-    intptr_t chosen = 0;
+    int64_t chosen = 0;
     int calls = 0;
     static El* Render(FallbackRecorder*, Ctx* cx) { return Div(cx->a); }
     static void OnSelect(FallbackRecorder* self, Ctx*, const ClickEvent*,
-                         intptr_t id) {
+                         int64_t id) {
         self->chosen = id;
         self->calls++;
     }

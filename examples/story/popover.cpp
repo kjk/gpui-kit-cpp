@@ -87,7 +87,7 @@ static void ListOpenChange(PopoverStory* self, Ctx* cx,
     Notify(cx);
 }
 static void ToggleArrow(PopoverStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t checked) {
+                        int64_t checked) {
     self->arrow = checked != 0;
     Notify(cx);
 }

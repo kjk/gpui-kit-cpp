@@ -115,7 +115,7 @@ struct CalendarState {
     Matcher disabledMatcher = {};
 
     static void OnDate(CalendarState* self, Ctx* cx, const ClickEvent* ev,
-                       intptr_t dateKey);
+                       int64_t dateKey);
     static void OnPrev(CalendarState* self, Ctx* cx, const ClickEvent* ev);
     static void OnNext(CalendarState* self, Ctx* cx, const ClickEvent* ev);
     static void OnMonthToggle(CalendarState* self, Ctx* cx,
@@ -123,9 +123,9 @@ struct CalendarState {
     static void OnYearToggle(CalendarState* self, Ctx* cx,
                              const ClickEvent* ev);
     static void OnMonth(CalendarState* self, Ctx* cx, const ClickEvent* ev,
-                        intptr_t month);
+                        int64_t month);
     static void OnYear(CalendarState* self, Ctx* cx, const ClickEvent* ev,
-                       intptr_t year);
+                       int64_t year);
 };
 
 void CalendarStateInit(CalendarState* s, Ctx* cx, Date date = Date::Single());

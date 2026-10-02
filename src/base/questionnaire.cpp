@@ -442,7 +442,7 @@ QuestionnaireSchemaError QuestionnaireStateNew(
                 SetOwned(&r.freeform, value);
             }
             input->onChange =
-                ListenTo(e, &QuestionnaireState::OnInputChange, (intptr_t)i);
+                ListenTo(e, &QuestionnaireState::OnInputChange, (int64_t)i);
         }
         for (int c = 0; c < nc; c++) {
             r.initialSelected[c] = r.selected[c];
@@ -1020,7 +1020,7 @@ static void SyncInputAnswer(QuestionnaireState* s, int ix, bool emit, Ctx* cx) {
 }
 
 void QuestionnaireState::OnInputChange(QuestionnaireState* self, Ctx* cx,
-                                       const InputEvent* ev, intptr_t itemIx) {
+                                       const InputEvent* ev, int64_t itemIx) {
     if (!ev || ev->kind != InputEventKind::Change || itemIx < 0 ||
         itemIx >= self->nItems) {
         return;
@@ -1544,16 +1544,16 @@ bool QuestionnaireState::MoveCurrentRadio(int direction, Ctx* cx) {
 // ─── control.rs ───────────────────────────────────────────────────────────
 
 // The two halves of an (item, choice) pair a control's listeners carry.
-static intptr_t PackChoice(int itemIx, int choiceIx) {
-    return (intptr_t)itemIx << 16 | (intptr_t)(choiceIx & 0xffff);
+static int64_t PackChoice(int itemIx, int choiceIx) {
+    return (int64_t)itemIx << 16 | (int64_t)(choiceIx & 0xffff);
 }
 
-static void UnpackChoice(intptr_t v, int* itemIx, int* choiceIx) {
+static void UnpackChoice(int64_t v, int* itemIx, int* choiceIx) {
     *itemIx = (int)(v >> 16);
     *choiceIx = (int)(v & 0xffff);
 }
 
-static bool ChoiceAt(const QuestionnaireState* s, intptr_t packed, Str* item,
+static bool ChoiceAt(const QuestionnaireState* s, int64_t packed, Str* item,
                      Str* value) {
     int ix = 0;
     int c = 0;
@@ -1574,7 +1574,7 @@ static int KeyModifierCount(const KeyEvent* ev) {
 // Enter confirms an answer that is already selected; an unselected control
 // keeps Enter for activation.
 static void ChoiceConfirmKey(QuestionnaireState* self, Ctx* cx,
-                             const KeyEvent* ev, intptr_t packed) {
+                             const KeyEvent* ev, int64_t packed) {
     Str item;
     Str value;
     if (!ev || !ev->propagate || ev->held || ev->vk != KeyReturn ||
@@ -1591,7 +1591,7 @@ static void ChoiceConfirmKey(QuestionnaireState* self, Ctx* cx,
 }
 
 static void ChoiceChange(QuestionnaireState* self, Ctx* cx, const ClickEvent*,
-                         intptr_t packed) {
+                         int64_t packed) {
     Str item;
     Str value;
     if (!ChoiceAt(self, packed, &item, &value)) {
@@ -1624,7 +1624,7 @@ bool QuestionnaireChoiceControl::New(Ctx* cx, Entity<QuestionnaireState> state,
     int total = 0;
     bool hasPosition = s->ChoicePosition(item, value, &position, &total);
     FocusHandle focus = s->runtime[ix].choiceFocus[c];
-    intptr_t packed = PackChoice(ix, c);
+    int64_t packed = PackChoice(ix, c);
     Listener change = ListenTo(state, &ChoiceChange, packed);
 
     El* e = nullptr;

@@ -451,7 +451,7 @@ struct QuestionnaireState {
     // The subscription each freeform InputState is given; the argument is
     // the item's index.
     static void OnInputChange(QuestionnaireState* self, Ctx* cx,
-                              const InputEvent* ev, intptr_t itemIx);
+                              const InputEvent* ev, int64_t itemIx);
 };
 
 // QuestionnaireState::new: validates the schema, copies it into the state

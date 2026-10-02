@@ -30,7 +30,7 @@ struct CollapsibleStory {
 };
 
 static void OnColl(CollapsibleStory* self, Ctx* cx, const ClickEvent*,
-                   intptr_t ix) {
+                   int64_t ix) {
     if (ix >= 0 && ix < CollCount) {
         self->open[ix] = !self->open[ix];
     }
@@ -39,20 +39,20 @@ static void OnColl(CollapsibleStory* self, Ctx* cx, const ClickEvent*,
 
 // One handler per settings row: the checkbox fills the listener's value with
 // the state it lands on, so the row has to come from the handler.
-static void SetNote(CollapsibleStory* self, Ctx* cx, int ix, intptr_t v) {
+static void SetNote(CollapsibleStory* self, Ctx* cx, int ix, int64_t v) {
     self->checked[ix] = v != 0;
     Notify(cx);
 }
 static void SetPush(CollapsibleStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t v) {
+                    int64_t v) {
     SetNote(self, cx, CollPush, v);
 }
 static void SetEmail(CollapsibleStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t v) {
+                     int64_t v) {
     SetNote(self, cx, CollEmail, v);
 }
 static void SetSms(CollapsibleStory* self, Ctx* cx, const ClickEvent*,
-                   intptr_t v) {
+                   int64_t v) {
     SetNote(self, cx, CollSms, v);
 }
 

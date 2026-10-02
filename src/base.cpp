@@ -1871,7 +1871,7 @@ static int64_t argToI64(const FmtArg& arg) {
         case FmtArg::Kind::Char:
             return (int64_t)arg.c;
         case FmtArg::Kind::Ptr:
-            return (int64_t)(intptr_t)arg.ptr;
+            return (int64_t)(int64_t)arg.ptr;
         default:
             return arg.i;
     }
@@ -1915,7 +1915,7 @@ static bool evalPercInst(Fmt& fmt, const Inst& inst, const FmtArg& arg) {
     if (inst.conv == 'p') {
         const void* pv = arg.t == FmtArg::Kind::Ptr
                              ? arg.ptr
-                             : (const void*)(intptr_t)argToI64(arg);
+                             : (const void*)(int64_t)argToI64(arg);
         return appendConv(fmt, "%p", pv);
     }
 

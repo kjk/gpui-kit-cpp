@@ -1014,7 +1014,7 @@ Str ListItemPrefix(Arena* a, int ix, int start, bool ordered, int depth);
 // The payload OnLinkWithContext supplies to its listener. It is owned by the
 // current frame arena and valid only for that call.
 struct TextViewLinkBinding {
-    intptr_t context = 0;
+    int64_t context = 0;
     const char* href = nullptr;
 };
 
@@ -1044,7 +1044,7 @@ struct TextView {
     bool html = false;
     // text_view.rs link_click_handler.
     Listener onLink;
-    intptr_t onLinkContext = 0;
+    int64_t onLinkContext = 0;
     bool onLinkHasContext = false;
     CodeBlockActionsFn codeActions = nullptr;
     // text_view.rs code_block_highlighter. Unset falls back to the one
@@ -1135,7 +1135,7 @@ struct TextView {
     // Component compat's stream_fade(true): Claude-like 280 ms ease-out with
     // a 10 ms word stagger.
     TextView* StreamFade(bool value = true);
-    // text_view::LinkClickHandlerFn. The handler's intptr_t is the link's
+    // text_view::LinkClickHandlerFn. The handler's int64_t is the link's
     // href as a NUL-terminated `const char*`; it points into the parse the
     // frame was built from and is good for the length of the call, which is
     // the same rule every other hit-test payload follows. Without a handler
@@ -1150,7 +1150,7 @@ struct TextView {
     // Shell has to retain both its callback route and the href TextView
     // supplies. WithContext wraps those two values in a frame-arena pair and
     // hands its address to the listener.
-    TextView* OnLinkWithContext(Listener fn, intptr_t context);
+    TextView* OnLinkWithContext(Listener fn, int64_t context);
     // code_block_actions(..): the row is absolutely placed at the block's
     // top right, over a muted plate, exactly where node.rs puts it.
     TextView* CodeBlockActions(CodeBlockActionsFn fn, void* data = nullptr);

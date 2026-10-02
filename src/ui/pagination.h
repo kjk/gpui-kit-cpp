@@ -17,7 +17,7 @@ struct PaginationMenuState {
     Listener onChange = {};
 
     static void OnItem(PaginationMenuState* self, Ctx* cx, const ClickEvent* ev,
-                       intptr_t ix);
+                       int64_t ix);
 };
 
 // pagination.rs MAX_ELLIPSIS_MENU_PAGES: the most pages an ellipsis menu

@@ -180,7 +180,7 @@ bool SettingGroupIsResettable(const SettingGroup* g, Str query) {
 }
 
 void SettingsState::OnPageClick(SettingsState* self, Ctx* cx, const ClickEvent*,
-                                intptr_t page) {
+                                int64_t page) {
     self->page = (int)page;
     self->group = -1;
     self->deferredScrollGroup = -1;
@@ -188,7 +188,7 @@ void SettingsState::OnPageClick(SettingsState* self, Ctx* cx, const ClickEvent*,
 }
 
 void SettingsState::OnGroupClick(SettingsState* self, Ctx* cx,
-                                 const ClickEvent*, intptr_t packed) {
+                                 const ClickEvent*, int64_t packed) {
     self->page = (int)(packed / 64);
     self->group = (int)(packed % 64);
     self->deferredScrollGroup = self->group;
@@ -291,7 +291,7 @@ static int DropdownIndex(const SearchableListState* st) {
     return st && st->selected.len > 0 ? st->selected[0] : -1;
 }
 
-static SettingBinding* FieldAt(SettingsState* self, intptr_t ix) {
+static SettingBinding* FieldAt(SettingsState* self, int64_t ix) {
     if (!self || ix < 0 || ix >= self->fields.len) {
         return nullptr;
     }
@@ -299,7 +299,7 @@ static SettingBinding* FieldAt(SettingsState* self, intptr_t ix) {
 }
 
 void SettingsState::OnFieldClick(SettingsState* self, Ctx* cx,
-                                 const ClickEvent*, intptr_t ix) {
+                                 const ClickEvent*, int64_t ix) {
     SettingBinding* f = FieldAt(self, ix);
     if (!f) {
         return;
@@ -316,7 +316,7 @@ void SettingsState::OnFieldClick(SettingsState* self, Ctx* cx,
 }
 
 void SettingsState::OnDropdownPick(SettingsState* self, Ctx* cx,
-                                   const ClickEvent*, intptr_t packed) {
+                                   const ClickEvent*, int64_t packed) {
     SettingBinding* f = FieldAt(self, packed / kDropdownOptionsMax);
     if (!f || f->kind != SettingFieldKind::Dropdown) {
         return;
@@ -328,7 +328,7 @@ void SettingsState::OnDropdownPick(SettingsState* self, Ctx* cx,
 }
 
 void SettingsState::OnFieldReset(SettingsState* self, Ctx* cx,
-                                 const ClickEvent*, intptr_t ix) {
+                                 const ClickEvent*, int64_t ix) {
     SettingBinding* f = FieldAt(self, ix);
     if (!f) {
         return;
@@ -360,7 +360,7 @@ void SettingsState::OnFieldReset(SettingsState* self, Ctx* cx,
 // SettingItem::reset: the on_reset an Element field or item gave, or the
 // typed field's default_value. A field with neither is left as it is.
 static void ResetBinding(SettingsState* self, Ctx* cx, const ClickEvent* ev,
-                         intptr_t ix) {
+                         int64_t ix) {
     SettingBinding* f = FieldAt(self, ix);
     if (!f) {
         return;
@@ -376,12 +376,12 @@ static void ResetBinding(SettingsState* self, Ctx* cx, const ClickEvent* ev,
 }
 
 void SettingsState::OnResetPage(SettingsState* self, Ctx* cx,
-                                const ClickEvent* ev, intptr_t) {
+                                const ClickEvent* ev, int64_t) {
     if (!self) {
         return;
     }
     for (int i = 0; i < self->fields.len; i++) {
-        ResetBinding(self, cx, ev, (intptr_t)i);
+        ResetBinding(self, cx, ev, (int64_t)i);
     }
 }
 
@@ -750,7 +750,7 @@ static FieldEl RenderField(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     b.hasDefault = it.hasDefault;
     // SettingField::on_reset wins over default_value, as reset_handler does.
     b.onReset = it.onReset;
-    intptr_t ix = (intptr_t)st->fields.len;
+    int64_t ix = (int64_t)st->fields.len;
     VecAppend(st->fields, b);
 
     Listener click = ListenTo(s->state, &SettingsState::OnFieldClick, ix);
@@ -1166,7 +1166,7 @@ El* Settings::IntoEl() {
                 ->DefaultOpen(p.defaultOpen)
                 ->Active(pageActive)
                 ->OnClick(
-                    ListenTo(state, &SettingsState::OnPageClick, (intptr_t)i));
+                    ListenTo(state, &SettingsState::OnPageClick, (int64_t)i));
         if (p.icon != IconName::None) {
             item->Icon(p.icon);
         }
@@ -1184,7 +1184,7 @@ El* Settings::IntoEl() {
                     SidebarMenuItem::New(cx, group.title)
                         ->Active(i == selected && selectedGroup == g)
                         ->OnClick(ListenTo(state, &SettingsState::OnGroupClick,
-                                           (intptr_t)i * 64 + (intptr_t)g)));
+                                           (int64_t)i * 64 + (int64_t)g)));
             }
         }
         menu->Child(item);

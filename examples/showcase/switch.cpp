@@ -6,7 +6,7 @@ using namespace gpui;
 // The switch reports the value its activation produces, the way Rust's
 // on_change hands the handler `!checked`.
 static void OnSwitch(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                     intptr_t next) {
+                     int64_t next) {
     app->switchOn = next != 0;
     Notify(cx);
 }

@@ -7,7 +7,7 @@ using namespace gpui;
 // on_change reports `next_state`. The page stores what it is told instead of
 // flipping its own copy.
 static void OnCheckbox(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                       intptr_t next) {
+                       int64_t next) {
     app->checkboxOn = (CheckboxState)next == CheckboxState::Checked;
     Notify(cx);
 }

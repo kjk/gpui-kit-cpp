@@ -980,7 +980,7 @@ static El* NumberStepButton(Ctx* cx, ShellRuntime* runtime,
 }
 
 static Listener ClickListener(Ctx* cx, shell::CallbackId callback) {
-    return callback ? Listen(cx, &ScriptView::OnClick, (intptr_t)callback)
+    return callback ? Listen(cx, &ScriptView::OnClick, (int64_t)callback)
                     : Listener{};
 }
 
@@ -1129,7 +1129,7 @@ static uint32_t LazyListKey(Str id) {
 // window has already asked for a repaint; the description is untouched, so
 // the next frame re-materializes the same snapshot at the new offset.
 static void OnLazyListScroll(ScriptView*, Ctx* cx, const ScrollEvent* event,
-                             intptr_t key) {
+                             int64_t key) {
     LazyListState* state = KeyedState<LazyListState>(cx, (uint32_t)key);
     if (!state || !event) return;
     state->offset = event->offsetY;
@@ -1165,7 +1165,7 @@ static El* LazyListElement(Ctx* cx, ShellRuntime* runtime,
     int count = spec->itemCount;
     int scrollId = HashClickId(spec->id);
     PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
-    Listener onScroll = Listen(cx, &OnLazyListScroll, (intptr_t)key);
+    Listener onScroll = Listen(cx, &OnLazyListScroll, (int64_t)key);
 
     MaterialVirtualUser* user = ArenaNew<MaterialVirtualUser>(cx->a);
     user->runtime = runtime;
@@ -1338,7 +1338,7 @@ static El* WireDockCommands(Ctx* cx, El* element,
                 // carries.
                 element
                     ->OnClick(ListenTo(region->state, &DockState::OnToggleSide,
-                                       (intptr_t)placement));
+                                       (int64_t)placement));
                 element->TabStop(false);
             }
         } else if (StrEq(op.name, StrL("resize_dock")) && region) {
@@ -1700,7 +1700,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             if (behavior.hasTextScrollable)
                 view->Scrollable(behavior.textScrollable);
             view->OnLinkWithContext(Listen(cx, &ScriptView::OnTextLink),
-                                    (intptr_t)behavior.onLinkClick);
+                                    (int64_t)behavior.onLinkClick);
             // text_view::with_policy: every document image, embedded data
             // URLs included, loads under the describing script's grant.
             view->ImageSource(DocumentImageSource,
@@ -1843,7 +1843,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 root->TrackFocus(binding->triggerFocus);
             SelectInitKeys();
             Listener action =
-                Listen(cx, &ScriptView::OnSelectAction, (intptr_t)binding);
+                Listen(cx, &ScriptView::OnSelectAction, (int64_t)binding);
             root->KeyContext(SelectContext())
                 ->OnAction(action::SelectUp(), action)
                 ->OnAction(action::SelectDown(), action)
@@ -1854,7 +1854,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             // same steps Cancel takes.
             if (!behavior.disabled && behavior.onOpenChange)
                 root->OnAccessibilityDefault(Listen(
-                    cx, &ScriptView::OnSelectActivate, (intptr_t)binding));
+                    cx, &ScriptView::OnSelectActivate, (int64_t)binding));
             return root;
         }
         case shell::ComponentKind::DatePicker: {
@@ -1869,7 +1869,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                 toggle->value = !open;
                 DatePickerBindKeys(
                     cx, root, id,
-                    Listen(cx, &ScriptView::OnBoundBool, (intptr_t)toggle),
+                    Listen(cx, &ScriptView::OnBoundBool, (int64_t)toggle),
                     Listener{}, open, behavior.disabled);
             }
             return root;
@@ -1895,7 +1895,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                     : nullptr;
             if (state && !behavior.disabled) {
                 state->onChange = Listen(cx, &ScriptView::OnSliderEvent,
-                                         (intptr_t)(uint32_t)retained->id);
+                                         (int64_t)(uint32_t)retained->id);
             }
             if (component.kind == shell::ComponentKind::Slider)
                 return Slider::New(cx, behavior.disabled ? nullptr : state,
@@ -1922,7 +1922,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             state->disabled = behavior.disabled;
             InstallShellTokens(cx, runtime, state, behavior, false);
             state->onChange = Listen(cx, &ScriptView::OnInputEvent,
-                                     (intptr_t)(uint32_t)retained->id);
+                                     (int64_t)(uint32_t)retained->id);
             Str nativeId =
                 StrDup(cx->a, fmt("gpui-shell-%s-%u",
                                   textarea ? StrL("textarea") : StrL("input"),
@@ -1951,7 +1951,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             if (!state) return Div(cx->a);
             state->disabled = behavior.disabled;
             state->onChange = Listen(cx, &ScriptView::OnInputEvent,
-                                     (intptr_t)(uint32_t)retained->id);
+                                     (int64_t)(uint32_t)retained->id);
             Str nativeId =
                 StrDup(cx->a, fmt("gpui-shell-number-input-%u", retained->id));
             return NumberInput::New(cx, nativeId, state);
@@ -1965,7 +1965,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
             if (!state) return Div(cx->a);
             state->disabled = behavior.disabled;
             state->onChange = Listen(cx, &ScriptView::OnOtpEvent,
-                                     (intptr_t)(uint32_t)retained->id);
+                                     (int64_t)(uint32_t)retained->id);
             Str nativeId =
                 StrDup(cx->a, fmt("gpui-shell-otp-%u", retained->id));
             return OtpInput::New(cx, nativeId, retained->otp);
@@ -2014,7 +2014,7 @@ static El* Construct(Ctx* cx, ShellRuntime* runtime,
                     opts.scrollY = at->y;
                     opts.scrollId = HashClickId(list->id);
                     opts.onScroll =
-                        Listen(cx, &ScriptView::OnScrollPosition, (intptr_t)at);
+                        Listen(cx, &ScriptView::OnScrollPosition, (int64_t)at);
                 }
             }
             return VirtualList::New(cx, list->id, opts);
@@ -2210,7 +2210,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         if (!state) return Div(cx->a);
         state->disabled = behavior.disabled;
         state->onChange = Listen(cx, &ScriptView::OnOtpEvent,
-                                 (intptr_t)(uint32_t)retained->id);
+                                 (int64_t)(uint32_t)retained->id);
         Str nativeId = StrDup(cx->a, fmt("gpui-shell-otp-%u", retained->id));
         element = OtpInput::New(cx, nativeId, retained->otp);
         const shell::SpecNode* cellStyle =
@@ -2257,12 +2257,12 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         if (!state) return Div(cx->a);
         state->disabled = behavior.disabled;
         state->onChange = Listen(cx, &ScriptView::OnInputEvent,
-                                 (intptr_t)(uint32_t)retained->id);
+                                 (int64_t)(uint32_t)retained->id);
         Str nativeId =
             StrDup(cx->a, fmt("gpui-shell-number-input-%u", retained->id));
         Listener onStep = behavior.onStep
                               ? Listen(cx, &ScriptView::OnNumberStep,
-                                       (intptr_t)behavior.onStep)
+                                       (int64_t)behavior.onStep)
                               : Listener{};
         NumberStep amount = NumberStep::Fixed(retained->number.step);
         const NumberStep* step =
@@ -2306,7 +2306,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         element->TrackFocus(state->focus)
             ->OnAccessibilityDecrement(decrement)
             ->OnAccessibilityIncrement(increment)
-            ->OnKeyDown(Listen(cx, &ScriptView::OnNumberKey, (intptr_t)key));
+            ->OnKeyDown(Listen(cx, &ScriptView::OnNumberKey, (int64_t)key));
         double numeric = 0;
         if (NumberParseValue(InputValue(state), &numeric))
             element->AriaNumericValue((float)numeric);
@@ -2328,7 +2328,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             ResizablePanelGroup::New(cx, node->component.text, {}, axis);
         if (behavior.onResize) {
             group->OnResize(
-                Listen(cx, &ScriptView::OnResize, (intptr_t)behavior.onResize));
+                Listen(cx, &ScriptView::OnResize, (int64_t)behavior.onResize));
         }
         for (shell::SpecId childId : node->children) {
             const shell::SpecNode* childNode = specs->Node(childId);
@@ -2398,10 +2398,10 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             if (open && content) popover->Content(content);
             if (behavior.onOpenChange)
                 popover->OnOpenChange(Listen(cx, &ScriptView::OnOpenChange,
-                                             (intptr_t)behavior.onOpenChange));
+                                             (int64_t)behavior.onOpenChange));
             if (behavior.onDismiss)
                 popover->OnDismiss(Listen(cx, &ScriptView::OnClick,
-                                          (intptr_t)behavior.onDismiss));
+                                          (int64_t)behavior.onDismiss));
             element = popover->IntoEl();
             if (open)
                 CancelBindKeys(cx, element, "Popover", node->component.text,
@@ -2512,7 +2512,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         HoverCard* card = HoverCard::New(cx, node->component.text, state);
         if (behavior.onOpenChange)
             card->OnOpenChange(Listen(cx, &ScriptView::OnOpenChange,
-                                      (intptr_t)behavior.onOpenChange));
+                                      (int64_t)behavior.onOpenChange));
         if (trigger) card->Trigger(trigger);
         if (content && card->IsOpen()) {
             PopupPlaceContent(content, behavior.hasAnchor
@@ -2644,7 +2644,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
             element->ScrollY(at ? at->y : 0);
         if (at)
             element->OnScroll(
-                Listen(cx, &ScriptView::OnScrollPosition, (intptr_t)at));
+                Listen(cx, &ScriptView::OnScrollPosition, (int64_t)at));
         // overflow_*_scrollbar: materialize.rs hands the element to a
         // Scrollable, whose root is size_full refined by the element's own
         // size, so a side the script left unsized fills its parent rather
@@ -2677,10 +2677,10 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     }
     if (behavior.onHover)
         element->OnHover(
-            Listen(cx, &ScriptView::OnHover, (intptr_t)behavior.onHover));
+            Listen(cx, &ScriptView::OnHover, (int64_t)behavior.onHover));
     if (behavior.onMouseMove)
         element->OnMouseMove(Listen(cx, &ScriptView::OnMouseMove,
-                                    (intptr_t)behavior.onMouseMove));
+                                    (int64_t)behavior.onMouseMove));
     // GPUI's own input listeners. Every node here is an El, so unlike Rust —
     // where each component builds its own base type and only a plain div,
     // h_flex or v_flex carries the family — there is no component that has to
@@ -2691,28 +2691,28 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
     if (behavior.keyContext) element->KeyContext(behavior.keyContext);
     if (behavior.onKeyDown)
         element->OnKeyDown(
-            Listen(cx, &ScriptView::OnScriptKey, (intptr_t)behavior.onKeyDown));
+            Listen(cx, &ScriptView::OnScriptKey, (int64_t)behavior.onKeyDown));
     if (behavior.onKeyUp)
         element->OnKeyUp(
-            Listen(cx, &ScriptView::OnScriptKey, (intptr_t)behavior.onKeyUp));
+            Listen(cx, &ScriptView::OnScriptKey, (int64_t)behavior.onKeyUp));
     if (behavior.hasMouseDown) {
         auto* buttons = ArenaNew<ShellMouseButtonBinding>(cx->a);
         *buttons = behavior.mouseDown;
         element->OnMouseDown(
-            Listen(cx, &ScriptView::OnScriptMouseDown, (intptr_t)buttons));
+            Listen(cx, &ScriptView::OnScriptMouseDown, (int64_t)buttons));
     }
     if (behavior.hasMouseUp) {
         auto* buttons = ArenaNew<ShellMouseButtonBinding>(cx->a);
         *buttons = behavior.mouseUp;
         element->OnMouseUp(
-            Listen(cx, &ScriptView::OnScriptMouseUp, (intptr_t)buttons));
+            Listen(cx, &ScriptView::OnScriptMouseUp, (int64_t)buttons));
     }
     if (behavior.onMouseDownOut)
         element->OnMouseDownOut(Listen(cx, &ScriptView::OnScriptMouseDownOut,
-                                       (intptr_t)behavior.onMouseDownOut));
+                                       (int64_t)behavior.onMouseDownOut));
     if (behavior.onScrollWheel)
         element->OnScrollWheel(Listen(cx, &ScriptView::OnScriptScrollWheel,
-                                      (intptr_t)behavior.onScrollWheel));
+                                      (int64_t)behavior.onScrollWheel));
     for (int i = 0; i < behavior.actionCount; i++) {
         // One listener per action rather than one per element. GPUI matches by
         // the action's type and stops at the first listener that claims it,
@@ -2722,7 +2722,7 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         auto* bound = ArenaNew<ShellActionBinding>(cx->a);
         *bound = behavior.actions[i];
         element->OnAction(bound->action, Listen(cx, &ScriptView::OnScriptAction,
-                                                (intptr_t)bound));
+                                                (int64_t)bound));
     }
     element = WireDockCommands(cx, element, behavior);
     bool lazyList =

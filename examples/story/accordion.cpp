@@ -12,11 +12,11 @@ struct AccordionStory {
 
 static void ToggleOpen(bool* flags, int n, int i, bool multiple);
 static void OnAccDefault(AccordionStory* self, Ctx*, const ClickEvent*,
-                         intptr_t i) {
+                         int64_t i) {
     ToggleOpen(self->accordionOpen, 3, (int)i, self->options.multiple);
 }
 static void OnAccStyled(AccordionStory* self, Ctx*, const ClickEvent*,
-                        intptr_t i) {
+                        int64_t i) {
     ToggleOpen(self->accordionStyledOpen, 3, (int)i, self->options.multiple);
 }
 

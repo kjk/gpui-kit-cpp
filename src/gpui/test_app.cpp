@@ -416,7 +416,7 @@ void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
 
 // ─── actions, clipboard, focus ────────────────────────────────────────────
 
-bool TestDispatchAction(Window* win, uint32_t action, intptr_t arg) {
+bool TestDispatchAction(Window* win, uint32_t action, int64_t arg) {
     if (!win || !action) {
         return false;
     }

@@ -22,7 +22,7 @@ struct ButtonStory {
 };
 
 static void OnOption(ButtonStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t act) {
+                     int64_t act) {
     switch ((int)act) {
         case BtnActDisabled:
             self->disabled = !self->disabled;

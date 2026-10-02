@@ -128,7 +128,7 @@ struct CarouselState {
                            const ClickEvent* event);
     static void OnNext(CarouselState* self, Ctx* cx, const ClickEvent* event);
     static void OnSelect(CarouselState* self, Ctx* cx, const ClickEvent* event,
-                         intptr_t index);
+                         int64_t index);
     static void OnPointerDown(CarouselState* self, Ctx* cx,
                               const MouseDownEvent* event);
     static void OnPointerMove(CarouselState* self, Ctx* cx,
@@ -138,11 +138,11 @@ struct CarouselState {
     static void OnWheel(CarouselState* self, Ctx* cx,
                         const ScrollWheelEvent* event);
     static void OnScrollSettle(CarouselState* self, Ctx* cx,
-                               const TickEvent* event, intptr_t epoch);
+                               const TickEvent* event, int64_t epoch);
     static void OnIgnoredScrollRecovery(CarouselState* self, Ctx* cx,
-                                        const TickEvent* event, intptr_t epoch);
+                                        const TickEvent* event, int64_t epoch);
     static void OnWheelBurstEnd(CarouselState* self, Ctx* cx,
-                                const TickEvent* event, intptr_t epoch);
+                                const TickEvent* event, int64_t epoch);
     static void OnRootMouseDown(CarouselState* self, Ctx* cx,
                                 const MouseDownEvent* event);
 };

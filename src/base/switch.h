@@ -33,7 +33,7 @@ struct SwitchThumbStyles {
 // Rust's `Switch::new(id).checked(..).disabled(..).on_change(..)`. The checked
 // value is the caller's; an activation reports the next one through
 // `onChange`, which a
-// `void On(T*, Ctx*, const ClickEvent*, intptr_t next)` reads as a bool. A
+// `void On(T*, Ctx*, const ClickEvent*, int64_t next)` reads as a bool. A
 // disabled switch keeps its element id but takes neither focus nor the click.
 struct Switch {
     static El* New(Ctx* cx, Str id, bool checked = false, bool disabled = false,

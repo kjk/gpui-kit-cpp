@@ -18,7 +18,7 @@ struct ToggleStyles {
 // controlled toggle button that owns identity, focus and activation and
 // leaves every pixel to the caller. `onChange` is handed the value the
 // activation produces — `!pressed` — which a
-// `void On(T*, Ctx*, const ClickEvent*, intptr_t next)` reads as a bool. A
+// `void On(T*, Ctx*, const ClickEvent*, int64_t next)` reads as a bool. A
 // disabled toggle keeps its element id but takes neither focus nor the click.
 struct Toggle {
     static El* New(Ctx* cx, Str id, bool pressed = false, bool disabled = false,

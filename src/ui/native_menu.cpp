@@ -21,11 +21,10 @@ static NativeMenuItem* PushItem(NativeMenu* m) {
     return &m->items[m->items.len - 1];
 }
 
-NativeMenu* NativeMenu::Menu(Str label, intptr_t id) {
+NativeMenu* NativeMenu::Menu(Str label, int64_t id) {
     return MenuWithDisabled(label, false, id);
 }
-NativeMenu* NativeMenu::MenuWithDisabled(Str label, bool disabled,
-                                         intptr_t id) {
+NativeMenu* NativeMenu::MenuWithDisabled(Str label, bool disabled, int64_t id) {
     NativeMenuItem* it = PushItem(this);
     if (it) {
         it->kind = NativeMenuItemKind::Item;
@@ -35,7 +34,7 @@ NativeMenu* NativeMenu::MenuWithDisabled(Str label, bool disabled,
     }
     return this;
 }
-NativeMenu* NativeMenu::MenuWithCheck(Str label, bool checked, intptr_t id) {
+NativeMenu* NativeMenu::MenuWithCheck(Str label, bool checked, int64_t id) {
     NativeMenuItem* it = PushItem(this);
     if (it) {
         it->kind = NativeMenuItemKind::Item;
@@ -45,7 +44,7 @@ NativeMenu* NativeMenu::MenuWithCheck(Str label, bool checked, intptr_t id) {
     }
     return this;
 }
-NativeMenu* NativeMenu::MenuWithIcon(Str label, IconName icon, intptr_t id) {
+NativeMenu* NativeMenu::MenuWithIcon(Str label, IconName icon, int64_t id) {
     NativeMenuItem* it = PushItem(this);
     if (it) {
         it->kind = NativeMenuItemKind::Item;
@@ -56,7 +55,7 @@ NativeMenu* NativeMenu::MenuWithIcon(Str label, IconName icon, intptr_t id) {
     return this;
 }
 NativeMenu* NativeMenu::MenuWithIcon(Str label, component::Icon* icon,
-                                     intptr_t id) {
+                                     int64_t id) {
     NativeMenuItem* it = PushItem(this);
     if (it) {
         it->kind = NativeMenuItemKind::Item;
@@ -178,11 +177,11 @@ static bool ShowNative(NativeMenu* m, float x, float y) {
     // Snapshot ids before PlatShowMenu: the OS tracking loop can paint, which
     // resets the frame arena this menu lives on.
     int count = NativeMenuSelectable(m, nullptr, 1 << 20);
-    intptr_t* ids = nullptr;
+    int64_t* ids = nullptr;
     if (count > 0) {
         auto** table =
             (const NativeMenuItem**)malloc((size_t)count * sizeof(void*));
-        ids = (intptr_t*)malloc((size_t)count * sizeof(intptr_t));
+        ids = (int64_t*)malloc((size_t)count * sizeof(int64_t));
         if (!table || !ids) {
             free(table);
             free(ids);
@@ -196,7 +195,7 @@ static bool ShowNative(NativeMenu* m, float x, float y) {
     }
 
     int chosen = PlatShowMenu(win, plat, nItems, x, y, dark);
-    intptr_t command = 0;
+    int64_t command = 0;
     if (chosen > 0 && chosen <= count && ids) {
         command = ids[chosen - 1];
     }
@@ -344,13 +343,13 @@ const NativeMenuItem* NativeMenuFallbackRow(const NativeMenuFallback* f,
 // the row's action to the focus the menu was opened over, which dismissal
 // has just given back.
 static void OnFallbackConfirm(PopupMenuState* self, Ctx* cx, const ClickEvent*,
-                              intptr_t row) {
+                              int64_t row) {
     NativeMenuFallback* f = NativeMenuFallbackOf(cx->win);
     const NativeMenuItem* it = NativeMenuFallbackRow(f, cx->self, (int)row);
     if (!it) {
         return;
     }
-    intptr_t id = it->id;
+    int64_t id = it->id;
     Listener select = f->onSelect;
     PopupMenuDismissAll(self, cx);
     f->open = false;

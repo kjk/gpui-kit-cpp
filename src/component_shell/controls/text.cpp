@@ -145,7 +145,7 @@ static El* MaterializeLink(MaterializeRequest* request) {
     EachMethod<LinkOp>(request, [&](const LinkOp& op) { link->Href(op.href); });
     if (request->onClick)
         link->OnOpen(
-            Listen(cx, &ScriptView::OnClick, (intptr_t)request->onClick));
+            Listen(cx, &ScriptView::OnClick, (int64_t)request->onClick));
     El** children = nullptr;
     int count = 0;
     if (!request->TakeChildren(&children, &count)) return nullptr;

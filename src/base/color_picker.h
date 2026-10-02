@@ -73,13 +73,13 @@ struct ColorPickerState {
     // the entity — a widget rebuilt every frame has nothing to bind to.
     static void OnToggleOpen(ColorPickerState* s, Ctx* cx, const ClickEvent*);
     static void OnOpenChange(ColorPickerState* s, Ctx* cx, const ClickEvent*,
-                             intptr_t open);
+                             int64_t open);
     static void OnTab(ColorPickerState* s, Ctx* cx, const ClickEvent*,
-                      intptr_t ix);
+                      int64_t ix);
     static void OnSwatchClick(ColorPickerState* s, Ctx* cx, const ClickEvent*,
-                              intptr_t hex);
+                              int64_t hex);
     static void OnSwatchHover(ColorPickerState* s, Ctx* cx,
-                              const HoverEvent* ev, intptr_t hex);
+                              const HoverEvent* ev, int64_t hex);
     static void OnSlider(ColorPickerState* s, Ctx* cx, const SliderEvent*);
     static void OnHexChange(ColorPickerState* s, Ctx* cx, const InputEvent* ev);
     static void OnHexFocus(ColorPickerState* s, Ctx* cx, const ClickEvent*);

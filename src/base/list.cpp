@@ -27,7 +27,7 @@ void ListInitKeys() {
     KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
 }
 
-ListKeyAction ListActionOf(uint32_t id, intptr_t arg) {
+ListKeyAction ListActionOf(uint32_t id, int64_t arg) {
     ListKeyAction out;
     if (id == action::SelectUp()) {
         out.action = ListAction::SelectPrev;
@@ -470,7 +470,7 @@ void ListState::OnMouseDownOut(ListState* self, Ctx* cx,
 }
 
 void ListState::OnRowClick(ListState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t ix) {
+                           int64_t ix) {
     ListClickRow(self, cx, (int)ix, ev->modifiers.Secondary());
 }
 
@@ -480,7 +480,7 @@ void ListState::OnScroll(ListState* self, Ctx* cx, const ScrollEvent* ev) {
 }
 
 void ListState::OnRowMouseDown(ListState* self, Ctx* cx,
-                               const MouseDownEvent* ev, intptr_t ix) {
+                               const MouseDownEvent* ev, int64_t ix) {
     // on_mouse_down(MouseButton::Right): the row under a secondary press is
     // marked, and the left button is left to the click path above.
     if (ev->button == MouseButton::Right) {

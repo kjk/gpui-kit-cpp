@@ -127,7 +127,7 @@ struct ShellTaskDriver {
     ShellRuntime* runtime = nullptr;
 
     static void OnTimer(ShellTaskDriver* self, Ctx* cx, const TickEvent*,
-                        intptr_t id) {
+                        int64_t id) {
         if (self && self->runtime) {
             self->runtime->ResumeTask((uint32_t)id, cx);
         }
@@ -6584,7 +6584,7 @@ static JSValue NativeSleep(JSContext* ctx, JSValueConst, int argc,
     ShellTask* task = FindTask(impl, id);
     task->timer = WindowSetTimeout(
         host.GetWindow(), ms,
-        ListenTo(driver, &ShellTaskDriver::OnTimer, (intptr_t)id));
+        ListenTo(driver, &ShellTaskDriver::OnTimer, (int64_t)id));
     if (!task->timer) {
         ForgetTask(impl, id, false);
         JS_FreeValue(ctx, promise);
@@ -6622,7 +6622,7 @@ static JSValue NativeTimer(JSContext* ctx, JSValueConst, int argc,
             ctx, "the runtime reached its 1024 outstanding task limit");
     ShellTask* task = FindTask(impl, id);
     Listener listener =
-        ListenTo(driver, &ShellTaskDriver::OnTimer, (intptr_t)id);
+        ListenTo(driver, &ShellTaskDriver::OnTimer, (int64_t)id);
     task->timer = magic ? WindowSetInterval(host.GetWindow(), ms, listener)
                         : WindowSetTimeout(host.GetWindow(), ms, listener);
     if (!task->timer) {
@@ -9913,7 +9913,7 @@ static JSValue NativeCalendarOn(JSContext* ctx, JSValueConst, int argc,
     }
     entry->subscription = SubscribeTo(
         app, entry->calendar, Entity<ScriptView>{shell::ScopeCurrentView()},
-        &ScriptView::OnCalendarEvent, (intptr_t)handle);
+        &ScriptView::OnCalendarEvent, (int64_t)handle);
     return JS_NewBool(ctx, true);
 }
 
@@ -10640,7 +10640,7 @@ static JSValue NativeDockOn(JSContext* ctx, JSValueConst, int argc,
                                callback, true, &replaced);
     if (replaced) impl->callbacks.RetireId(ctx, replaced);
     state->onEvent = ListenTo(Entity<ScriptView>{shell::ScopeCurrentView()},
-                              &ScriptView::OnDockEvent, (intptr_t)callback);
+                              &ScriptView::OnDockEvent, (int64_t)callback);
     return JS_NewBool(ctx, true);
 }
 
@@ -12434,7 +12434,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
                     binding->value = itemKeys[i];
                     row->OnClick(ListenTo(Entity<ScriptView>{render->view},
                                           &ScriptView::OnBoundString,
-                                          (intptr_t)binding));
+                                          (int64_t)binding));
                 }
                 if (onItemSecondaryClick) {
                     ShellStringBinding* binding =
@@ -12443,7 +12443,7 @@ void ShellRuntime::RenderVirtualItems(shell::CallbackId renderId,
                     binding->value = itemKeys[i];
                     row->OnMouseDown(ListenTo(Entity<ScriptView>{render->view},
                                               &ScriptView::OnItemSecondaryPress,
-                                              (intptr_t)binding));
+                                              (int64_t)binding));
                 }
                 out[i] = row;
             }
@@ -12983,14 +12983,14 @@ El* shell::ComponentCallback::BuildInteractiveWith(
 
 Listener shell::ComponentListener(Ctx* cx, shell::ComponentEventRun run,
                                   shell::ComponentCallback callback, void* user,
-                                  intptr_t value) {
+                                  int64_t value) {
     shell::ComponentEventBinding* binding =
         ArenaNew<shell::ComponentEventBinding>(cx->a);
     binding->run = run;
     binding->callback = callback;
     binding->user = user;
     binding->value = value;
-    return Listen(cx, &ScriptView::OnComponentEvent, (intptr_t)binding);
+    return Listen(cx, &ScriptView::OnComponentEvent, (int64_t)binding);
 }
 
 // What ComponentValueListener binds to: the callback a frame last gave it,
@@ -13003,7 +13003,7 @@ struct ShellComponentValueRelay {
     void* user = nullptr;
 
     static void OnValue(ShellComponentValueRelay* self, Ctx* cx,
-                        const void* event, intptr_t value) {
+                        const void* event, int64_t value) {
         if (!self || !self->run) return;
         Entity<ScriptView> handle;
         handle.id = self->view;
@@ -13249,7 +13249,7 @@ bool ShellRuntime::ScheduleComponentAppEffect(
     Entity<ScriptView> owner;
     owner.id = view;
     WindowPost(window, ListenTo(owner, &ScriptView::OnComponentAppEffect,
-                                (intptr_t)deferred.token));
+                                (int64_t)deferred.token));
     return true;
 }
 

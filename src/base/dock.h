@@ -389,31 +389,31 @@ struct DockState {
     Listener onEvent;
 
     static void OnTabClick(DockState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t nodeAndIx);
+                           int64_t nodeAndIx);
     static void OnCloseClick(DockState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t nodeAndIx);
+                             int64_t nodeAndIx);
     static void OnZoomClick(DockState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t panelIx);
+                            int64_t panelIx);
     static void OnToggleSide(DockState* self, Ctx* cx, const ClickEvent* ev,
-                             intptr_t placement);
+                             int64_t placement);
     static void OnTabDragMove(DockState* self, Ctx* cx,
                               const DragMoveEvent* ev);
     static void OnTabDragEnd(DockState* self, Ctx* cx, const MouseUpEvent* ev);
     static void OnDropPanel(DockState* self, Ctx* cx, const DropEvent* ev,
-                            intptr_t node);
+                            int64_t node);
     // A drop on a tab, which names the place in the row the panel takes, and
     // one on the empty space past the last tab, which appends. Rust's two
     // `on_drop` closures on the tab bar.
     static void OnDropTab(DockState* self, Ctx* cx, const DropEvent* ev,
-                          intptr_t nodeAndIx);
+                          int64_t nodeAndIx);
     static void OnDropTabBar(DockState* self, Ctx* cx, const DropEvent* ev,
-                             intptr_t node);
+                             int64_t node);
     // The ⋯ menu: Zoom In / Zoom Out and Close, over the active panel.
     static void OnMenuItem(DockState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t nodeAndIx);
+                           int64_t nodeAndIx);
     // The tab bar scrolled sideways, which a row of tabs too wide for it does.
     static void OnTabBarScroll(DockState* self, Ctx* cx, const ScrollEvent* ev,
-                               intptr_t node);
+                               int64_t node);
     static void OnResizeDrag(DockState* self, Ctx* cx, const DragMoveEvent* ev);
     static void OnResizeEnd(DockState* self, Ctx* cx, const MouseUpEvent* ev);
 
@@ -428,15 +428,15 @@ struct DockState {
     }
 };
 
-// A node index and a slot inside it, packed into the one intptr_t a listener
+// A node index and a slot inside it, packed into the one int64_t a listener
 // carries. Rust's closure captures both outright.
-inline intptr_t DockPack(int node, int ix) {
-    return (intptr_t)(node * 64 + ix);
+inline int64_t DockPack(int node, int ix) {
+    return (int64_t)(node * 64 + ix);
 }
-inline int DockUnpackNode(intptr_t v) {
+inline int DockUnpackNode(int64_t v) {
     return (int)(v / 64);
 }
-inline int DockUnpackIx(intptr_t v) {
+inline int DockUnpackIx(int64_t v) {
     return (int)(v % 64);
 }
 

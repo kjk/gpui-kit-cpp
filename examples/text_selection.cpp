@@ -54,7 +54,7 @@ static void OnKey(SelApp* app, Ctx* cx, const KeyEvent* ev) {
     }
 }
 
-static void PickBubble(SelApp* app, Ctx* cx, const ClickEvent*, intptr_t ix) {
+static void PickBubble(SelApp* app, Ctx* cx, const ClickEvent*, int64_t ix) {
     app->in.focused = false;
     if (app->selFrom < 0) {
         app->selFrom = (int)ix;

@@ -3,8 +3,7 @@
 
 using namespace gpui;
 
-static void GoPage(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                   intptr_t page) {
+static void GoPage(ShowcaseApp* app, Ctx* cx, const ClickEvent*, int64_t page) {
     app->page = (int)page;
     Notify(cx);
 }

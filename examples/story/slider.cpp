@@ -63,7 +63,7 @@ static void OnTemperatureChange(SliderStory* self, Ctx* cx,
 }
 
 static void SliderAct(SliderStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t act) {
+                      int64_t act) {
     if (act == SliderActDisabled) {
         self->disabled = !self->disabled;
     }

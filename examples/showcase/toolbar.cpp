@@ -10,7 +10,7 @@ using namespace gpui;
 static const char* const kToolbarCommands[] = {"New", "Save", "Undo", "Redo"};
 
 static void OnToolbarCommand(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                             intptr_t ix) {
+                             int64_t ix) {
     app->toolbarAction = (int)ix;
     Notify(cx);
 }
@@ -24,7 +24,7 @@ static El* ToolbarCommand(ShowcaseApp*, Ctx* cx, const char* id, int ix) {
     Arena* a = cx->a;
     Str label = Str(kToolbarCommands[ix]);
     return ScButton(cx, Str(id))
-        ->OnClick(Listen(cx, &OnToolbarCommand, (intptr_t)ix))
+        ->OnClick(Listen(cx, &OnToolbarCommand, (int64_t)ix))
         ->H(28)
         ->PadX(8)
         ->Border(1, ScBorder())

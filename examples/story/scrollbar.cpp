@@ -42,7 +42,7 @@ static void ToggleDatasetMenu(ScrollbarStory* self, Ctx* cx,
     Notify(cx);
 }
 static void PickDataset(ScrollbarStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t act) {
+                        int64_t act) {
     // ToolbarCloseAll names no row: it only wants the menu shut.
     if (act >= ScrollActDataset) {
         self->dataset = (int)(act - ScrollActDataset);

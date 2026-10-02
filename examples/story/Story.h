@@ -233,13 +233,13 @@ El* StoryToolbarCore(Ctx* cx, StoryToolbarState* st,
                      bool withSize = true);
 
 template <typename T>
-void StoryToolbarAct(T* self, Ctx* cx, const ClickEvent*, intptr_t act) {
+void StoryToolbarAct(T* self, Ctx* cx, const ClickEvent*, int64_t act) {
     StoryToolbarApply(&self->toolbar, nullptr, (int)act);
     Notify(cx);
 }
 
 template <typename T>
-void StoryToolbarActOpts(T* self, Ctx* cx, const ClickEvent*, intptr_t act) {
+void StoryToolbarActOpts(T* self, Ctx* cx, const ClickEvent*, int64_t act) {
     StoryToolbarApply(&self->toolbar, &self->options, (int)act);
     Notify(cx);
 }

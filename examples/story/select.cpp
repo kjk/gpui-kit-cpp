@@ -355,7 +355,7 @@ enum {
 };
 
 static void SelToolbarAct(SelectStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t act) {
+                          int64_t act) {
     if (act == SelOptDisabled) {
         self->disabled = !self->disabled;
     } else {
@@ -366,7 +366,7 @@ static void SelToolbarAct(SelectStory* self, Ctx* cx, const ClickEvent*,
 
 // Only one select is open at a time, which is what closing the rest does.
 static void ToggleSel(SelectStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t which) {
+                      int64_t which) {
     for (int i = 0; i < SelCount; i++) {
         component::SelectState* s = self->sel[i].Get(cx);
         if (!s) {
@@ -381,7 +381,7 @@ static void ToggleSel(SelectStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void ClearSel(SelectStory* self, Ctx* cx, const ClickEvent*,
-                     intptr_t which) {
+                     int64_t which) {
     component::SelectClear(self->sel[which].Get(cx), cx);
 }
 static void SelBlurAll(SelectStory* self) {
@@ -396,7 +396,7 @@ static void FocusPhone(SelectStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 static void FocusSearch(SelectStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t which) {
+                        int64_t which) {
     SelBlurAll(self);
     self->search[which].focused = true;
     Notify(cx);

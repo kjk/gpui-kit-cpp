@@ -160,7 +160,7 @@ struct TabCallbackRecorder {
         self->child++;
     }
     static void Group(TabCallbackRecorder* self, Ctx*, const ClickEvent*,
-                      intptr_t ix) {
+                      int64_t ix) {
         self->group = (int)ix + 1;
     }
     static void Scroll(TabCallbackRecorder* self, Ctx*, const ScrollEvent*) {

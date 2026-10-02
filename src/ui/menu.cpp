@@ -169,12 +169,12 @@ PopupMenu* PopupMenu::ActionContext(const char* ctx) {
     return this;
 }
 
-PopupMenu* PopupMenu::MenuWithAction(Str label, uint32_t action, intptr_t arg) {
+PopupMenu* PopupMenu::MenuWithAction(Str label, uint32_t action, int64_t arg) {
     Menu(label);
     return Action(action, arg);
 }
 
-PopupMenu* PopupMenu::Action(uint32_t action, intptr_t arg) {
+PopupMenu* PopupMenu::Action(uint32_t action, int64_t arg) {
     if (items.len > 0) {
         MenuItem* it = &items[items.len - 1];
         it->action = action;
@@ -222,7 +222,7 @@ PopupMenu* PopupMenu::ExternalLinkIcon(bool v) {
 }
 
 static void OnPopupLinkClick(PopupMenuState* state, Ctx* cx, const ClickEvent*,
-                             intptr_t hrefPtr) {
+                             int64_t hrefPtr) {
     const Str* href = (const Str*)hrefPtr;
     if (href && href->s) {
         OpenUrl(*href);
@@ -498,7 +498,7 @@ El* PopupMenu::IntoEl() {
                 row->OnHover(ListenerArg(submenuHover, i));
             } else if (it.isLink && it.href.s) {
                 BindClick(row, StrDup(a, fmt("%d", i)),
-                          ListenerArg(linkClick, (intptr_t)&it.href));
+                          ListenerArg(linkClick, (int64_t)&it.href));
                 row->OnHover(ListenerArg(hover, i));
             } else {
                 BindClick(row, StrDup(a, fmt("%d", i)), ListenerArg(click, i));
@@ -595,7 +595,7 @@ El* DropdownMenu::IntoEl() {
             // the trigger's press.
             trigger
                 ->OnClick(ListenTo(menu->state, &PopupMenuState::OnTriggerClick,
-                                   (intptr_t)st->open));
+                                   (int64_t)st->open));
         }
         wrap->Child(trigger);
     }
@@ -753,13 +753,13 @@ void AppMenuBarSelect(AppMenuBarState* s, Ctx* cx, int ix) {
 }
 
 void AppMenuBarState::OnMenuClick(AppMenuBarState* self, Ctx* cx,
-                                  const ClickEvent*, intptr_t ix) {
+                                  const ClickEvent*, int64_t ix) {
     // A second click on the open menu closes it.
     AppMenuBarSelect(self, cx, self->selected == (int)ix ? -1 : (int)ix);
 }
 
 void AppMenuBarState::OnMenuHover(AppMenuBarState* self, Ctx* cx,
-                                  const HoverEvent* ev, intptr_t ix) {
+                                  const HoverEvent* ev, int64_t ix) {
     if (!ev->hovered || self->selected < 0 || self->selected == (int)ix) {
         return;
     }

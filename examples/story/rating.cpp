@@ -8,7 +8,7 @@ struct RatingStory {
 };
 
 static void SetRating(RatingStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t v) {
+                      int64_t v) {
     self->rating = (int)v;
     Notify(cx);
 }

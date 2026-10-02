@@ -3911,7 +3911,7 @@ void NativeMenuTriggerRunsOneKeyedShowEffectPerClick() {
         if (gNativeMenuRows == 3) {
             utassert(StrEq(gNativeMenuRow[0].label, "Open"));
             utassert(gNativeMenuRow[0]
-                         .id == (intptr_t)shell::ShellActionOf(StrL("open")));
+                         .id == (int64_t)shell::ShellActionOf(StrL("open")));
             utassert(!gNativeMenuRow[0].disabled);
             utassert(gNativeMenuRow[1]
                          .kind == component::NativeMenuItemKind::Separator);
@@ -3965,7 +3965,7 @@ void NativeMenuItemOperationsAreLastCallWins() {
         if (gNativeMenuRows == 1) {
             utassert(gNativeMenuRow[0].checked);
             utassert(gNativeMenuRow[0]
-                         .id == (intptr_t)shell::ShellActionOf(StrL("last")));
+                         .id == (int64_t)shell::ShellActionOf(StrL("last")));
         }
     }
     component_shell::SetNativeMenuShowProbe(nullptr);

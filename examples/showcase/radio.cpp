@@ -4,7 +4,7 @@
 using namespace gpui;
 
 static void PickRadio(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                      intptr_t ix) {
+                      int64_t ix) {
     app->radioSel = (int)ix;
     Notify(cx);
 }

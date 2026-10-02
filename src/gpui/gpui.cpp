@@ -2352,13 +2352,13 @@ El* El::OnScrollWheel(Listener fn) {
     return this;
 }
 
-El* El::OnClickAction(uint32_t action, intptr_t arg) {
+El* El::OnClickAction(uint32_t action, int64_t arg) {
     clickAction = action;
     clickActionArg = arg;
     clickActionFocusId = 0;
     return this;
 }
-El* El::OnClickActionAt(uint32_t action, FocusHandle focus, intptr_t arg) {
+El* El::OnClickActionAt(uint32_t action, FocusHandle focus, int64_t arg) {
     clickAction = action;
     clickActionArg = arg;
     clickActionFocusId = focus.id;
@@ -9175,7 +9175,7 @@ bool WindowDispatchKeyCaptureEvent(Window* win, KeyEvent* ev) {
 
 uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
                                 bool alt, bool platform, bool function,
-                                intptr_t* arg, bool* pending) {
+                                int64_t* arg, bool* pending) {
     if (arg) {
         *arg = 0;
     }
@@ -9224,7 +9224,7 @@ uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
 
 bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
                              bool alt, bool platform, bool function) {
-    intptr_t arg = 0;
+    int64_t arg = 0;
     bool pending = false;
     uint32_t action = WindowResolveKeyAction(
         win, vk, shift, ctrl, alt, platform, function, &arg, &pending);
@@ -9242,7 +9242,7 @@ bool WindowDispatchKeyAction(Window* win, int vk, bool shift, bool ctrl,
 // button that runs the same thing the escape key does, without a keystroke to
 // resolve first.
 static bool WindowDispatchActionFrom(Window* win, int ix, uint32_t action,
-                                     intptr_t arg) {
+                                     int64_t arg) {
     // A handler that propagates lets the search carry on outwards.
     for (int i = ix - 1; i >= 0; i--) {
         if (win->dispatch[i].subtreeEnd <= ix ||
@@ -9277,7 +9277,7 @@ static bool WindowDispatchActionFrom(Window* win, int ix, uint32_t action,
     return false;
 }
 
-bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg) {
+bool WindowDispatchAction(Window* win, uint32_t action, int64_t arg) {
     if (!win || !action) {
         return false;
     }
@@ -9285,7 +9285,7 @@ bool WindowDispatchAction(Window* win, uint32_t action, intptr_t arg) {
 }
 
 bool WindowDispatchActionAtFocus(Window* win, FocusHandle focus,
-                                 uint32_t action, intptr_t arg) {
+                                 uint32_t action, int64_t arg) {
     if (!win || !action) {
         return false;
     }

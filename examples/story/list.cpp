@@ -99,12 +99,12 @@ static void OnListEvent(ListStory* self, Ctx* cx, const ListEvent* ev) {
 }
 
 static void ListMenuOpen(ListStory* self, Ctx* cx, const ClickEvent*,
-                         intptr_t which) {
+                         int64_t which) {
     self->openMenu = self->openMenu == (int)which ? 0 : (int)which;
     Notify(cx);
 }
 static void ListMenuAct(ListStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t act) {
+                        int64_t act) {
     switch (act) {
         case ListActSelectable:
             self->selectable = !self->selectable;

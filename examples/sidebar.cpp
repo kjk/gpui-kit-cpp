@@ -36,14 +36,12 @@ static void ToggleCollapse(SidebarApp* app, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 
-static void SetMode(SidebarApp* app, Ctx* cx, const ClickEvent*,
-                    intptr_t mode) {
+static void SetMode(SidebarApp* app, Ctx* cx, const ClickEvent*, int64_t mode) {
     app->mode = (int)mode;
     Notify(cx);
 }
 
-static void SetActive(SidebarApp* app, Ctx* cx, const ClickEvent*,
-                      intptr_t ix) {
+static void SetActive(SidebarApp* app, Ctx* cx, const ClickEvent*, int64_t ix) {
     app->active = (int)ix;
     Notify(cx);
 }

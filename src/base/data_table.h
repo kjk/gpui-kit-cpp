@@ -235,23 +235,23 @@ struct TableState {
     void (*delegateLoadMore)(Ctx* cx, void* data) = nullptr;
 
     static void OnRowClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                           intptr_t row);
+                           int64_t row);
     // A click on one cell, when the table is cell-selectable: `packed` is the
     // row and the column together, the way every listener that carries two
     // numbers does here. A second click on the same cell is
     // `DoubleClickedCell`, which `state.rs` emits beside the row's.
     static void OnCellClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t packed);
+                            int64_t packed);
     static void OnRowMouseDown(TableState* self, Ctx* cx,
-                               const MouseDownEvent* ev, intptr_t row);
+                               const MouseDownEvent* ev, int64_t row);
     // on_cell_right_click, when the table is cell-selectable. It stops the
     // press, so the row under it does not also mark itself.
     static void OnCellMouseDown(TableState* self, Ctx* cx,
-                                const MouseDownEvent* ev, intptr_t packed);
+                                const MouseDownEvent* ev, int64_t packed);
     static void OnHeadClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t col);
+                            int64_t col);
     static void OnSortClick(TableState* self, Ctx* cx, const ClickEvent* ev,
-                            intptr_t col);
+                            int64_t col);
     // Which column the drag moves is the payload's, the way Rust reads it out
     // of the ResizeColumn it matched on.
     static void OnResizeDrag(TableState* self, Ctx* cx,
@@ -296,13 +296,13 @@ void TableEnsureCols(TableState* s, int n);
 // Twelve bits of column and the rest of the word for the row: every row a
 // 64-bit target can index, and half a million on a 32-bit one, which is more
 // than a wasm page has the memory to hold anyway.
-inline intptr_t TableCellPack(int row, int col) {
-    return ((intptr_t)row << 12) | (intptr_t)(col & 0xfff);
+inline int64_t TableCellPack(int row, int col) {
+    return ((int64_t)row << 12) | (int64_t)(col & 0xfff);
 }
-inline int TableCellRow(intptr_t packed) {
+inline int TableCellRow(int64_t packed) {
     return (int)(packed >> 12);
 }
-inline int TableCellCol(intptr_t packed) {
+inline int TableCellCol(int64_t packed) {
     return (int)(packed & 0xfff);
 }
 // update_visible_range_if_need, one axis at a time: the range is written

@@ -11,7 +11,7 @@ NumberStep NumberStep::Fixed(double value) {
     return step;
 }
 
-NumberStep NumberStep::ByValue(NumberStepByValueFn fn, intptr_t value) {
+NumberStep NumberStep::ByValue(NumberStepByValueFn fn, int64_t value) {
     NumberStep step;
     step.kind = NumberStepKind::ByValue;
     step.byValue = fn;

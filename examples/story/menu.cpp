@@ -91,7 +91,7 @@ static El* SectionColumn(Ctx* cx, float width) {
 }
 
 static void OnPopupItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t ix) {
+                        int64_t ix) {
     switch (ix) {
         case 2:
             SetMessage(self, cx, StrL("You have clicked Handle Click"));
@@ -219,7 +219,7 @@ static void OnInfo(MenuStory* self, Ctx* cx, int info) {
 }
 
 static void OnSettingsItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t ix) {
+                           int64_t ix) {
     if (ix == 0) {
         OnInfo(self, cx, 0);
     } else if (ix == 2) {
@@ -230,7 +230,7 @@ static void OnSettingsItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OnMoreItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+                       int64_t ix) {
     if (ix == 0) {
         OnInfo(self, cx, 1);
     } else if (ix == 1) {
@@ -239,12 +239,12 @@ static void OnMoreItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OnEvenMoreItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                           intptr_t ix) {
+                           int64_t ix) {
     OnMoreItem(self, cx, nullptr, ix);
 }
 
 static void OnDeepestItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                          intptr_t ix) {
+                          int64_t ix) {
     if (ix == 0) {
         OnInfo(self, cx, 1);
     } else if (ix == 1) {
@@ -300,7 +300,7 @@ static component::PopupMenu* SettingsMenu(MenuStory*, Ctx* cx) {
 }
 
 static void OnContextMainItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                              intptr_t ix) {
+                              int64_t ix) {
     switch (ix) {
         case 2:
             SetClickedMessage(self, cx, "cut");
@@ -351,7 +351,7 @@ static component::PopupMenu* MainContextMenu(MenuStory* self, Ctx* cx) {
 }
 
 static void OnOtherContextItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                               intptr_t ix) {
+                               int64_t ix) {
     if (ix == 2) {
         OnInfo(self, cx, 1);
     }
@@ -399,7 +399,7 @@ static El* ContextArea(Ctx* cx, Str id, Str title, Str hint,
 }
 
 static void OnScrollableItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                             intptr_t ix) {
+                             int64_t ix) {
     for (int item = 0; item < 100; item++) {
         int row = 2 + item + item / 5;
         if (row == ix) {
@@ -410,7 +410,7 @@ static void OnScrollableItem(MenuStory* self, Ctx* cx, const ClickEvent*,
 }
 
 static void OnShortScrollableItem(MenuStory* self, Ctx* cx, const ClickEvent*,
-                                  intptr_t ix) {
+                                  int64_t ix) {
     if (ix >= 1 && ix <= 5) {
         OnInfo(self, cx, (int)ix - 1);
     }

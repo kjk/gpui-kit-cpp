@@ -392,26 +392,26 @@ static void InvalidateScrollSettle(CarouselState* s) {
 
 static void ScheduleTimeout(CarouselState* s, Ctx* cx, int* epoch,
                             void (*fn)(CarouselState*, Ctx*, const TickEvent*,
-                                       intptr_t)) {
+                                       int64_t)) {
     if (!cx || !cx->win) return;
     *epoch = *epoch + 1;
     WindowSetTimeout(cx->win, kScrollSettleMs, ListenTo(s->self, fn, *epoch));
 }
 
 void CarouselState::OnScrollSettle(CarouselState* self, Ctx* cx,
-                                   const TickEvent*, intptr_t epoch) {
+                                   const TickEvent*, int64_t epoch) {
     if (self->scrollSettleEpoch == (int)epoch && self->scrollGesture.active) {
         self->FinishScroll(false, cx);
     }
 }
 void CarouselState::OnIgnoredScrollRecovery(CarouselState* self, Ctx*,
-                                            const TickEvent*, intptr_t epoch) {
+                                            const TickEvent*, int64_t epoch) {
     if (self->scrollSettleEpoch == (int)epoch) {
         self->ignoreScrollUntilQuiet = false;
     }
 }
 void CarouselState::OnWheelBurstEnd(CarouselState* self, Ctx*, const TickEvent*,
-                                    intptr_t epoch) {
+                                    int64_t epoch) {
     if (self->wheelBurstEpoch == (int)epoch) {
         self->wheelBurstActive = false;
     }
@@ -896,7 +896,7 @@ void CarouselState::OnNext(CarouselState* state, Ctx* cx, const ClickEvent*) {
     state->SelectNext(cx);
 }
 void CarouselState::OnSelect(CarouselState* state, Ctx* cx, const ClickEvent*,
-                             intptr_t index) {
+                             int64_t index) {
     state->SelectIndex((int)index, cx);
 }
 
@@ -1449,7 +1449,7 @@ El* CarouselPaginationItem::IntoEl() {
     for (El* child : children) button->Child(child);
     if (!disabled)
         button->OnClick(
-            ListenTo(state, &CarouselState::OnSelect, (intptr_t)index));
+            ListenTo(state, &CarouselState::OnSelect, (int64_t)index));
     El* root = button->IntoEl()->Refine(style, styleSet);
     refiner.Apply(root);
     return root;

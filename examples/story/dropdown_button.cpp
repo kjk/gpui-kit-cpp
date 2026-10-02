@@ -33,7 +33,7 @@ struct DropdownButtonStory {
 };
 
 static void DropAct(DropdownButtonStory* self, Ctx* cx, const ClickEvent*,
-                    intptr_t act) {
+                    int64_t act) {
     switch (act) {
         case DropActDisabled:
             self->disabled = !self->disabled;
@@ -87,20 +87,20 @@ static void DropAct(DropdownButtonStory* self, Ctx* cx, const ClickEvent*,
 // Each split's menu is two rows; the menu reports the confirmed row, which
 // maps onto the pair of actions starting at `first`.
 static void DropExportPick(DropdownButtonStory* self, Ctx* cx,
-                           const ClickEvent* ev, intptr_t ix) {
+                           const ClickEvent* ev, int64_t ix) {
     DropAct(self, cx, ev, DropActExportCsv + ix);
 }
 static void DropSavePick(DropdownButtonStory* self, Ctx* cx,
-                         const ClickEvent* ev, intptr_t ix) {
+                         const ClickEvent* ev, int64_t ix) {
     DropAct(self, cx, ev, DropActSaveCopy + ix);
 }
 static void DropRecentPick(DropdownButtonStory* self, Ctx* cx,
-                           const ClickEvent* ev, intptr_t ix) {
+                           const ClickEvent* ev, int64_t ix) {
     DropAct(self, cx, ev, DropActOpenQuarterlyReport + ix);
 }
 
 using DropPickFn = void (*)(DropdownButtonStory*, Ctx*, const ClickEvent*,
-                            intptr_t);
+                            int64_t);
 
 static component::PopupMenu* DropMenu(Ctx* cx, Str id, DropPickFn pick,
                                       const char* first, const char* second) {

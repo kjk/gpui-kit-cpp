@@ -55,14 +55,14 @@ static void CalYearToggle(ShowcaseApp* app, Ctx* cx, const ClickEvent*) {
 }
 
 static void CalPickMonth(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                         intptr_t m) {
+                         int64_t m) {
     app->cal.currentMonth = (int)m;
     app->cal.view = CalendarView::Day;
     Notify(cx);
 }
 
 static void CalPickYear(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                        intptr_t y) {
+                        int64_t y) {
     app->cal.currentYear = (int)y;
     app->cal.view = CalendarView::Day;
     Notify(cx);
@@ -72,7 +72,7 @@ static void CalPickYear(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
 // flanking month carries the neighbouring month's date, so nothing here has
 // to work out which month a click landed in.
 static void CalPickDate(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                        intptr_t key) {
+                        int64_t key) {
     LocalDate d = DatePickerDateFromKey(key);
     app->cal.currentYear = d.year;
     app->cal.currentMonth = d.month;

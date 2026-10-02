@@ -204,7 +204,7 @@ static void TheStateEmitsUserEditsOnly() {
 
         MouseDownEvent press = {};
         TimeFieldState::OnSegmentDown(s, &cx, &press,
-                                      (intptr_t)TimeSegment::Minute);
+                                      (int64_t)TimeSegment::Minute);
         utassert(s->SelectedSegment() == TimeSegment::Minute);
         KeyEvent four = {};
         four.vk = '4';

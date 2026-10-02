@@ -57,7 +57,7 @@ static void OnlyTheRowsThatCanBeChosenAreNumbered() {
     AppSetMenus(kApp, menus, 1);
 
     uint32_t action = 0;
-    intptr_t arg = -1;
+    int64_t arg = -1;
     utassert(AppMenuRowForId(1, &action, &arg) && action == about && arg == 0);
     // The submenu's rows come where the row that opens them was, and in their
     // own order — preorder, not the top level first.
@@ -140,7 +140,7 @@ static void MenusAreAppOwnedAndUnbounded() {
     }
     MenuDef menu = {StrL("Many"), rows, n};
     AppSetMenus(kApp, &menu, 1);
-    intptr_t arg = -1;
+    int64_t arg = -1;
     utassert(AppMenuRowForId(kApp, n, nullptr, &arg) && arg == n - 1);
 
     App other = {};

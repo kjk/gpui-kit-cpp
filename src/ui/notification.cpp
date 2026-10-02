@@ -362,12 +362,12 @@ void NotificationSystemResponse(Str tag) {
     Entity<NotificationListState> e;
     e.id = list;
     WindowPost(win, ListenTo(e, &NotificationListState::OnSystemResponse,
-                             (intptr_t)id));
+                             (int64_t)id));
 }
 
 void NotificationListState::OnSystemResponse(NotificationListState* self,
                                              Ctx* cx, const ClickEvent*,
-                                             intptr_t idArg) {
+                                             int64_t idArg) {
     int id = (int)idArg;
     Listener onClick = {};
     NotificationSystemState* state = SysState(cx->app);
@@ -705,13 +705,13 @@ bool NotificationAdvance(NotificationListState* s, Ctx* cx, int deltaMs) {
 }
 
 void NotificationListState::OnCloseClick(NotificationListState* self, Ctx* cx,
-                                         const ClickEvent*, intptr_t id) {
+                                         const ClickEvent*, int64_t id) {
     NotificationDismiss(self, cx, (int)id);
     Notify(cx);
 }
 
 void NotificationListState::OnItemClick(NotificationListState* self, Ctx* cx,
-                                        const ClickEvent* ev, intptr_t id) {
+                                        const ClickEvent* ev, int64_t id) {
     int at = NotificationIndexOf(self, (int)id);
     if (at < 0 || !ev) {
         return;
@@ -734,7 +734,7 @@ void NotificationListState::OnItemClick(NotificationListState* self, Ctx* cx,
 }
 
 void NotificationListState::OnHover(NotificationListState* self, Ctx* cx,
-                                    const HoverEvent* ev, intptr_t anchor) {
+                                    const HoverEvent* ev, int64_t anchor) {
     // is_expanded: the pointer over the stack opens it out, and holds every
     // timeout while it is there.
     int ix = (int)anchor;
@@ -957,9 +957,9 @@ El* NotificationList::IntoEl() {
             }
 
             Listener close = ListenTo(
-                state, &NotificationListState::OnCloseClick, (intptr_t)item.id);
+                state, &NotificationListState::OnCloseClick, (int64_t)item.id);
             Listener click = ListenTo(
-                state, &NotificationListState::OnItemClick, (intptr_t)item.id);
+                state, &NotificationListState::OnItemClick, (int64_t)item.id);
             El* card = gpui::Toast::New(cx, StrL("notification"))
                            ->TransitionStatus(entry.status)
                            ->IntoEl()

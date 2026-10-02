@@ -134,14 +134,14 @@ bool ScriptView::Reload(ScriptView* self, Ctx* cx, Str directory, Str entry,
 }
 
 void ScriptView::OnClick(ScriptView* self, Ctx* cx, const ClickEvent* event,
-                         intptr_t callback) {
+                         int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime
         ->DispatchClick((shell::CallbackId)callback, *event, cx->win, cx->app);
 }
 
 void ScriptView::OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent*,
-                            intptr_t value) {
+                            int64_t value) {
     TextViewLinkBinding* binding = (TextViewLinkBinding*)value;
     if (!self || !self->runtime || !binding || !binding->href) {
         return;
@@ -156,21 +156,21 @@ void ScriptView::OnTextLink(ScriptView* self, Ctx* cx, const ClickEvent*,
 }
 
 void ScriptView::OnChange(ScriptView* self, Ctx* cx, const ClickEvent* event,
-                          intptr_t value) {
+                          int64_t value) {
     if (!self || !self->runtime || !event || event->id <= 0) return;
     self->runtime->DispatchChange((shell::CallbackId)(uint32_t)event->id,
                                   value != 0, cx->win, cx->app);
 }
 
 void ScriptView::OnHover(ScriptView* self, Ctx* cx, const HoverEvent* event,
-                         intptr_t callback) {
+                         int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchChange((shell::CallbackId)callback, event->hovered,
                                   cx->win, cx->app);
 }
 
 void ScriptView::OnScrollPosition(ScriptView*, Ctx* cx,
-                                  const ScrollEvent* event, intptr_t position) {
+                                  const ScrollEvent* event, int64_t position) {
     auto* at = (ShellScrollPosition*)position;
     if (!at || !event) return;
     at->x = event->offsetX;
@@ -181,7 +181,7 @@ void ScriptView::OnScrollPosition(ScriptView*, Ctx* cx,
 }
 
 void ScriptView::OnMouseMove(ScriptView* self, Ctx* cx,
-                             const MouseMoveEvent* event, intptr_t callback) {
+                             const MouseMoveEvent* event, int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchMouseMove((shell::CallbackId)callback, *event,
                                      cx->win, cx->app);
@@ -189,7 +189,7 @@ void ScriptView::OnMouseMove(ScriptView* self, Ctx* cx,
 
 void ScriptView::OnOpenChange(ScriptView* self, Ctx* cx,
                               const PopoverOpenChangeEvent* event,
-                              intptr_t callback) {
+                              int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchChange((shell::CallbackId)callback, event->open,
                                   cx->win, cx->app);
@@ -200,14 +200,14 @@ void ScriptView::OnImageDeadline(ScriptView* self, Ctx* cx, const TickEvent*) {
 }
 
 void ScriptView::OnResize(ScriptView* self, Ctx* cx,
-                          const ResizablePanelEvent* event, intptr_t callback) {
+                          const ResizablePanelEvent* event, int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchNumbers((shell::CallbackId)callback, event->sizes,
                                    event->count, cx->win, cx->app);
 }
 
 void ScriptView::OnBoundBool(ScriptView* self, Ctx* cx, const void*,
-                             intptr_t binding) {
+                             int64_t binding) {
     ShellBoolBinding* value = (ShellBoolBinding*)binding;
     if (!self || !self->runtime || !value || !value->callback) return;
     self->runtime
@@ -215,7 +215,7 @@ void ScriptView::OnBoundBool(ScriptView* self, Ctx* cx, const void*,
 }
 
 void ScriptView::OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
-                                  intptr_t binding) {
+                                  int64_t binding) {
     const shell::ComponentEventBinding* bound =
         (const shell::ComponentEventBinding*)binding;
     if (!self || !self->runtime || !bound || !bound->run) return;
@@ -223,19 +223,19 @@ void ScriptView::OnComponentEvent(ScriptView* self, Ctx* cx, const void* event,
 }
 
 void ScriptView::OnComponentAppEffect(ScriptView* self, Ctx* cx, const void*,
-                                      intptr_t token) {
+                                      int64_t token) {
     if (!self || !self->runtime) return;
     self->runtime->ApplyComponentAppEffect((uint64_t)token, cx->app);
 }
 
 void ScriptView::OnDispatchAction(ScriptView* self, Ctx* cx, const ClickEvent*,
-                                  intptr_t action) {
+                                  int64_t action) {
     if (!self || !action) return;
     WindowDispatchAction(cx->win, (uint32_t)action);
 }
 
 void ScriptView::OnBoundString(ScriptView* self, Ctx* cx, const ClickEvent*,
-                               intptr_t binding) {
+                               int64_t binding) {
     ShellStringBinding* value = (ShellStringBinding*)binding;
     if (!self || !self->runtime || !value || !value->callback) return;
     self->runtime
@@ -246,7 +246,7 @@ void ScriptView::OnBoundString(ScriptView* self, Ctx* cx, const ClickEvent*,
 // on_item_click, and a left press here would report the same interaction twice.
 void ScriptView::OnItemSecondaryPress(ScriptView* self, Ctx* cx,
                                       const MouseDownEvent* event,
-                                      intptr_t binding) {
+                                      int64_t binding) {
     ShellStringBinding* value = (ShellStringBinding*)binding;
     if (!self || !self->runtime || !event || !value || !value->callback) return;
     if (event->button != MouseButton::Right) return;
@@ -279,7 +279,7 @@ static void ShellSelectOpen(ScriptView* self, Ctx* cx,
 }
 
 void ScriptView::OnSelectAction(ScriptView* self, Ctx* cx,
-                                const ActionEvent* event, intptr_t binding) {
+                                const ActionEvent* event, int64_t binding) {
     ShellSelectBinding* value = (ShellSelectBinding*)binding;
     if (!self || !self->runtime || !event || !value) return;
     switch (SelectActionOf(event->action, value->open, value->disabled)) {
@@ -301,7 +301,7 @@ void ScriptView::OnSelectAction(ScriptView* self, Ctx* cx,
 }
 
 void ScriptView::OnSelectActivate(ScriptView* self, Ctx* cx, const ClickEvent*,
-                                  intptr_t binding) {
+                                  int64_t binding) {
     ShellSelectBinding* value = (ShellSelectBinding*)binding;
     if (!self || !self->runtime || !value || value->disabled) return;
     if (value->open) {
@@ -312,8 +312,7 @@ void ScriptView::OnSelectActivate(ScriptView* self, Ctx* cx, const ClickEvent*,
 }
 
 void ScriptView::OnNumberStep(ScriptView* self, Ctx* cx,
-                              const NumberInputEvent* event,
-                              intptr_t callback) {
+                              const NumberInputEvent* event, int64_t callback) {
     if (!self || !self->runtime || !event || !callback) return;
     self->runtime->DispatchString((shell::CallbackId)callback,
                                   event->action == StepAction::Increment
@@ -323,13 +322,13 @@ void ScriptView::OnNumberStep(ScriptView* self, Ctx* cx,
 }
 
 void ScriptView::OnNumberKey(ScriptView* self, Ctx* cx, const KeyEvent* event,
-                             intptr_t binding) {
+                             int64_t binding) {
     ShellNumberBinding* value = (ShellNumberBinding*)binding;
     if (!self || !event || !value) return;
     StepAction action;
     if (!NumberStepForKey(event->vk, &action)) return;
     Listener onStep = value->onStep ? Listen(cx, &ScriptView::OnNumberStep,
-                                             (intptr_t)value->onStep)
+                                             (int64_t)value->onStep)
                                     : Listener{};
     const NumberStep* step =
         value->onStep || !value->hasStep ? nullptr : &value->step;
@@ -342,35 +341,35 @@ void ScriptView::OnNumberKey(ScriptView* self, Ctx* cx, const KeyEvent* event,
 }
 
 void ScriptView::OnInputEvent(ScriptView* self, Ctx* cx,
-                              const InputEvent* event, intptr_t handle) {
+                              const InputEvent* event, int64_t handle) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchInputEvent((shell::EntityHandle)handle, *event,
                                       cx->win, cx->app);
 }
 
 void ScriptView::OnSliderEvent(ScriptView* self, Ctx* cx,
-                               const SliderEvent* event, intptr_t handle) {
+                               const SliderEvent* event, int64_t handle) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchSliderEvent((shell::EntityHandle)handle, *event,
                                        cx->win, cx->app);
 }
 
 void ScriptView::OnOtpEvent(ScriptView* self, Ctx* cx, const OtpEvent* event,
-                            intptr_t handle) {
+                            int64_t handle) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchOtpEvent((shell::EntityHandle)handle, *event,
                                     cx->win, cx->app);
 }
 
 void ScriptView::OnCalendarEvent(ScriptView* self, Ctx* cx,
-                                 const CalendarEvent* event, intptr_t handle) {
+                                 const CalendarEvent* event, int64_t handle) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchCalendarEvent((shell::EntityHandle)handle, *event,
                                          cx->win, cx->app);
 }
 
 void ScriptView::OnDockEvent(ScriptView* self, Ctx* cx, const DockEvent* event,
-                             intptr_t callback) {
+                             int64_t callback) {
     if (!self || !self->runtime || !event ||
         event->kind != DockEventKind::LayoutChanged) {
         return;
@@ -382,7 +381,7 @@ void ScriptView::OnDockEvent(ScriptView* self, Ctx* cx, const DockEvent* event,
 }
 
 void ScriptView::OnScriptKey(ScriptView* self, Ctx* cx, const KeyEvent* event,
-                             intptr_t callback) {
+                             int64_t callback) {
     if (!self || !self->runtime || !event) return;
     // A handler that leaves `propagate` set passes the keystroke on outwards,
     // which is cx.propagate(); clearing it is cx.stop_propagation().
@@ -402,7 +401,7 @@ static shell::CallbackId MouseButtonCallback(
 
 void ScriptView::OnScriptMouseDown(ScriptView* self, Ctx* cx,
                                    const MouseDownEvent* event,
-                                   intptr_t binding) {
+                                   int64_t binding) {
     auto* buttons = (const ShellMouseButtonBinding*)binding;
     shell::CallbackId callback =
         event ? MouseButtonCallback(buttons, event->button) : 0;
@@ -413,7 +412,7 @@ void ScriptView::OnScriptMouseDown(ScriptView* self, Ctx* cx,
 }
 
 void ScriptView::OnScriptMouseUp(ScriptView* self, Ctx* cx,
-                                 const MouseUpEvent* event, intptr_t binding) {
+                                 const MouseUpEvent* event, int64_t binding) {
     auto* buttons = (const ShellMouseButtonBinding*)binding;
     shell::CallbackId callback =
         event ? MouseButtonCallback(buttons, event->button) : 0;
@@ -425,7 +424,7 @@ void ScriptView::OnScriptMouseUp(ScriptView* self, Ctx* cx,
 
 void ScriptView::OnScriptMouseDownOut(ScriptView* self, Ctx* cx,
                                       const MouseDownEvent* event,
-                                      intptr_t callback) {
+                                      int64_t callback) {
     if (!self || !self->runtime || !event) return;
     self->runtime->DispatchMouseButton(
         (shell::CallbackId)callback, event->button, event->x, event->y,
@@ -434,7 +433,7 @@ void ScriptView::OnScriptMouseDownOut(ScriptView* self, Ctx* cx,
 
 void ScriptView::OnScriptScrollWheel(ScriptView* self, Ctx* cx,
                                      const ScrollWheelEvent* event,
-                                     intptr_t callback) {
+                                     int64_t callback) {
     if (!self || !self->runtime || !event) return;
     bool propagate = true;
     self->runtime
@@ -444,7 +443,7 @@ void ScriptView::OnScriptScrollWheel(ScriptView* self, Ctx* cx,
 }
 
 void ScriptView::OnScriptAction(ScriptView* self, Ctx* cx,
-                                const ActionEvent* event, intptr_t binding) {
+                                const ActionEvent* event, int64_t binding) {
     auto* bound = (const ShellActionBinding*)binding;
     if (!self || !self->runtime || !event || !bound) return;
     Str id = shell::ShellActionScriptId(event->action);

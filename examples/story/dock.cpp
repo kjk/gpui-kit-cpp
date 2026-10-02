@@ -47,7 +47,7 @@ static El* RenderPanel(Ctx* cx, void* data) {
 }
 
 // DockSkin::set_close_button_visible.
-static void DockAct(DockStory* self, Ctx* cx, const ClickEvent*, intptr_t act) {
+static void DockAct(DockStory* self, Ctx* cx, const ClickEvent*, int64_t act) {
     if (act == DockActCloseButtons) {
         self->closeButtonVisible = !self->closeButtonVisible;
         component::DockSkin::New(self->dock)

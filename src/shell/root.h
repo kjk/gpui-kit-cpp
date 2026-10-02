@@ -151,7 +151,7 @@ struct ShellRoot {
     static void BlurOnBackgroundPress(ShellRoot* self, Ctx* cx,
                                       const MouseDownEvent* event);
     static void OnToastClick(ShellRoot* self, Ctx* cx, const ClickEvent* event,
-                             intptr_t key);
+                             int64_t key);
 };
 
 // ShellRoot::update: the root of the window a call is happening in, which is

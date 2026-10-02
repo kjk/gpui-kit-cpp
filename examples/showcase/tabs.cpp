@@ -3,7 +3,7 @@
 
 using namespace gpui;
 
-static void PickTab(ShowcaseApp* app, Ctx* cx, const ClickEvent*, intptr_t i) {
+static void PickTab(ShowcaseApp* app, Ctx* cx, const ClickEvent*, int64_t i) {
     app->tab = (int)i;
     Notify(cx);
 }

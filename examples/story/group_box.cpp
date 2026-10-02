@@ -11,7 +11,7 @@ struct GroupBoxStory {
 };
 
 static void ToggleEmail(GroupBoxStory* self, Ctx* cx, const ClickEvent*,
-                        intptr_t i) {
+                        int64_t i) {
     if (i >= 0 && i < 3) {
         self->email[i] = !self->email[i];
     }
@@ -30,7 +30,7 @@ static void ToggleCompact(GroupBoxStory* self, Ctx* cx, const ClickEvent*) {
     Notify(cx);
 }
 static void PickTheme(GroupBoxStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t i) {
+                      int64_t i) {
     self->theme = (int)i;
     Notify(cx);
 }

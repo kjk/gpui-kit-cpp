@@ -119,7 +119,7 @@ struct InputStory {
 };
 
 static void FocusField(InputStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t slot) {
+                       int64_t slot) {
     for (int i = 0; i < InCount; i++) {
         self->fields[i].focused = false;
     }
@@ -128,12 +128,12 @@ static void FocusField(InputStory* self, Ctx* cx, const ClickEvent*,
     Notify(cx);
 }
 static void ClearField(InputStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t slot) {
+                       int64_t slot) {
     InputSetValue(&self->fields[slot], Str{});
     Notify(cx);
 }
 static void ToggleMask(InputStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t slot) {
+                       int64_t slot) {
     self->revealed[slot] = !self->revealed[slot];
     Notify(cx);
 }
@@ -150,7 +150,7 @@ static component::Input* Field(InputStory* self, Ctx* cx, int slot,
 // context_menu(..) on the "Context menu" field: Custom Action (which is
 // SelectAll), a separator, then Copy and Paste. A row's id is its action.
 static void OnCustomMenuSelect(InputStory* self, Ctx* cx, const ClickEvent*,
-                               intptr_t action) {
+                               int64_t action) {
     InputPerform(&self->fields[InCustomMenu], cx, (InputAction)action, false);
     Notify(cx);
 }
@@ -158,10 +158,10 @@ static void OnCustomMenuSelect(InputStory* self, Ctx* cx, const ClickEvent*,
 static component::NativeMenu* CustomInputMenu(Ctx*, component::NativeMenu* menu,
                                               void* data) {
     InputStory* self = (InputStory*)data;
-    return menu->Menu(StrL("Custom Action"), (intptr_t)InputAction::SelectAll)
+    return menu->Menu(StrL("Custom Action"), (int64_t)InputAction::SelectAll)
         ->Separator()
-        ->Menu(StrL("Copy"), (intptr_t)InputAction::Copy)
-        ->Menu(StrL("Paste"), (intptr_t)InputAction::Paste)
+        ->Menu(StrL("Copy"), (int64_t)InputAction::Copy)
+        ->Menu(StrL("Paste"), (int64_t)InputAction::Paste)
         ->OnSelect(self->customMenuSelect);
 }
 

@@ -5,7 +5,7 @@ namespace gpui {
 namespace component {
 
 void RatingState::OnStarHover(RatingState* self, Ctx* cx, const HoverEvent* ev,
-                              intptr_t ix) {
+                              int64_t ix) {
     // Rust sets this from each star's on_mouse_move and clears it from the
     // row's on_hover. A hover here is reported as a leave on the star being
     // left before the enter on the one being reached, so the star can do
@@ -19,7 +19,7 @@ void RatingState::OnStarHover(RatingState* self, Ctx* cx, const HoverEvent* ev,
 }
 
 void RatingState::OnStarClick(RatingState* self, Ctx* cx, const ClickEvent*,
-                              intptr_t ix) {
+                              int64_t ix) {
     // Clicking the star the rating already reaches gives up that star, which
     // is the only way to get back to none.
     int v = self->value >= (int)ix ? (int)ix - 1 : (int)ix;

@@ -656,8 +656,8 @@ static void SelectionContainersExposeTheirSelectedItems() {
 // the trigger's projected disabled state and its missing click are the seam.
 struct AccordionToggleView {
     static El* Render(AccordionToggleView*, Ctx* cx) { return Div(cx->a); }
-    static void Toggle(AccordionToggleView*, Ctx*, const ClickEvent*,
-                       intptr_t) {}
+    static void Toggle(AccordionToggleView*, Ctx*, const ClickEvent*, int64_t) {
+    }
 };
 
 static void AccordionPreservesDisabledItemsWhenTheGroupIsEnabled() {

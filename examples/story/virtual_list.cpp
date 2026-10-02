@@ -65,12 +65,12 @@ struct VirtualListStory {
 };
 
 static void VlMenuOpen(VirtualListStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     self->openMenu = self->openMenu == (int)which ? 0 : (int)which;
     Notify(cx);
 }
 static void VlMenuAct(VirtualListStory* self, Ctx* cx, const ClickEvent*,
-                      intptr_t act) {
+                      int64_t act) {
     if (act >= VlActAxis) {
         self->axis = (int)(act - VlActAxis);
     } else if (act >= VlActDataset) {
@@ -87,7 +87,7 @@ static void VlMenuAct(VirtualListStory* self, Ctx* cx, const ClickEvent*,
 // The buttons ask the handle, not the list: nothing here knows where a row is
 // until the list is laid out, which is exactly what Rust defers.
 static void VlScrollTo(VirtualListStory* self, Ctx* cx, const ClickEvent*,
-                       intptr_t which) {
+                       int64_t which) {
     const VlScrollBtn& b = kVlScrollBtns[which];
     if (b.row < 0) {
         VirtualListScrollToBottomDeferred(&self->handle);

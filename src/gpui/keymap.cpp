@@ -609,7 +609,7 @@ struct BoundKey {
     KeyChord strokes[kMaxStrokes] = {};
     int nStrokes = 0;
     uint32_t action = 0;
-    intptr_t arg = 0;
+    int64_t arg = 0;
     int pred = -1; // -1: anywhere
 };
 
@@ -766,7 +766,7 @@ static bool BindingApplies(const BoundKey& b, const CtxLevel* levels, int n) {
 // action of a binding this chord completes, and notes on the way whether one
 // it only begins is left waiting.
 static uint32_t MatchIn(const CtxLevel* levels, int n, bool* pending,
-                        intptr_t* arg) {
+                        int64_t* arg) {
     for (int i = gNBindings - 1; i >= 0; i--) {
         const BoundKey& b = gBindings[i];
         if (!BindingApplies(b, levels, n) || b.nStrokes < gNPending) {
@@ -797,7 +797,7 @@ static uint32_t MatchIn(const CtxLevel* levels, int n, bool* pending,
 // The whole stack, innermost level first and the unscoped bindings last.
 // `pending` comes back set when nothing completed but something was begun.
 static uint32_t MatchStack(const CtxLevel* levels, int n, bool* pending,
-                           intptr_t* arg) {
+                           int64_t* arg) {
     for (int lvl = 0; lvl < n; lvl++) {
         uint32_t action = MatchIn(levels + lvl, n - lvl, pending, arg);
         if (action) {

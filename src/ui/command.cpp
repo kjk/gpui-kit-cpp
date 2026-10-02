@@ -593,7 +593,7 @@ static void ConfirmMatch(CommandState* s, Ctx* cx, int matchIx) {
         return;
     }
     IndexPath path = s->matched[matchIx].path;
-    intptr_t data = s->matched[matchIx].data;
+    int64_t data = s->matched[matchIx].data;
     // The Action first, as Rust dispatches it before deferring the callback.
     if (item->action && cx->win) {
         WindowDispatchAction(cx->win, item->action, item->actionArg);
@@ -608,7 +608,7 @@ static void ConfirmMatch(CommandState* s, Ctx* cx, int matchIx) {
 }
 
 void CommandState::OnRowClick(CommandState* self, Ctx* cx, const ClickEvent*,
-                              intptr_t match) {
+                              int64_t match) {
     if (!self) {
         return;
     }
@@ -617,7 +617,7 @@ void CommandState::OnRowClick(CommandState* self, Ctx* cx, const ClickEvent*,
 }
 
 void CommandState::OnRowHover(CommandState* self, Ctx* cx, const HoverEvent* ev,
-                              intptr_t match) {
+                              int64_t match) {
     if (!self || !ev || !ev->hovered) {
         return;
     }

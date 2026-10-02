@@ -226,6 +226,16 @@ static void LongLabelsPreserveTrackSizeInNarrowContainers() {
     ArenaDelete(a);
 }
 
+// A listener's argument is 64 bits on every target: a page or a count past
+// 2^31 that a component hands it arrives whole, wasm32 included.
+static void AListenerArgumentIsSixtyFourBits() {
+    static_assert(sizeof(Listener{}.arg) == 8, "listener argument width");
+    Listener l;
+    l.SetFn(&AListenerArgumentIsSixtyFourBits);
+    Listener bound = ListenerArg(l, 5000000000LL);
+    utassert(bound.arg == 5000000000LL && bound.ArgBound());
+}
+
 void TestClick() {
     TestSuite("click");
     AReleaseOnTheElementThatTookThePressIsAClick();
@@ -241,4 +251,5 @@ void TestClick() {
     CheckboxActivationProducesTheControlledNextState();
     SwitchActivationProducesTheControlledNextValue();
     LongLabelsPreserveTrackSizeInNarrowContainers();
+    AListenerArgumentIsSixtyFourBits();
 }

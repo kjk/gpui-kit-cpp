@@ -11,7 +11,7 @@ static void ToggleSelect(ShowcaseApp* app, Ctx* cx, const ClickEvent*) {
 }
 
 static void PickOption(ShowcaseApp* app, Ctx* cx, const ClickEvent*,
-                       intptr_t ix) {
+                       int64_t ix) {
     app->selectIx = (int)ix;
     app->selectOpen = false;
     Notify(cx);
