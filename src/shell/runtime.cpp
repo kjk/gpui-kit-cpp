@@ -13350,9 +13350,8 @@ struct LoadedApplication {
 };
 
 LoadedApplication* ShellRuntime::LoadApplication(Str directory, Str entry,
-                                                 Policy* policy,
                                                  ShellError* error) {
-    Policy* authority = policy ? PolicyRetain(policy) : PolicyDefault();
+    Policy* authority = PolicyDefault();
     ViewType* type = LoadApp(directory, entry, authority, error);
     if (!type) {
         PolicyRelease(authority);

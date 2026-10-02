@@ -719,8 +719,7 @@ struct Host {
     explicit Host(AppDir dir) {
         Start(nullptr);
         LoadedApplication* loaded =
-            runtime ? runtime->LoadApplication(dir.directory, dir.entry,
-                                               nullptr, &error)
+            runtime ? runtime->LoadApplication(dir.directory, dir.entry, &error)
                     : nullptr;
         if (loaded)
             view = runtime->MountApplication(loaded, &window, &app, &error);
@@ -6757,9 +6756,9 @@ void LoadedApplicationsAreSingleMountAndRuntimeBound() {
     ShellRuntime* other =
         ShellRuntime::New(&app, &error, component_shell::Components());
     LoadedApplication* loaded =
-        runtime ? runtime->LoadApplication(dir.Directory(), StrL("main.js"),
-                                           nullptr, &error)
-                : nullptr;
+        runtime
+            ? runtime->LoadApplication(dir.Directory(), StrL("main.js"), &error)
+            : nullptr;
     utassert(loaded != nullptr && !error.IsSet());
     if (loaded && other) {
         Entity<ScriptView> foreign =
@@ -6802,9 +6801,9 @@ void FailedOwnerMountConsumesTheLoadedApplication() {
     ShellRuntime* runtime =
         ShellRuntime::New(&app, &error, component_shell::Components());
     LoadedApplication* loaded =
-        runtime ? runtime->LoadApplication(dir.Directory(), StrL("main.js"),
-                                           nullptr, &error)
-                : nullptr;
+        runtime
+            ? runtime->LoadApplication(dir.Directory(), StrL("main.js"), &error)
+            : nullptr;
     utassert(loaded != nullptr && !error.IsSet());
     if (loaded) {
         Entity<ScriptView> first =
@@ -7129,12 +7128,13 @@ void TheCatalogOpensAWindowItsOverlaysCanFind() {
     component_shell::MountWindowRoot(&app, &window, &BuildOpenerShellRoot,
                                      nullptr);
     utassert(Root::Read(&window) != nullptr);
-    // The ShellRoot keeps rendering inside it, and a script's overlays still
-    // find their host there.
+    // The ShellRoot keeps rendering inside it, but it is not the window's
+    // first view, so `window.root::<ShellRoot>()` -- ShellRootOf -- does not
+    // find it there, as in Rust.
     Arena* frame = ArenaNew();
     window.frameArena = frame;
     utassert(EntityRender(&app, &window, frame, window.root) != nullptr);
-    utassert(ShellRootOf(&window, &app) != nullptr);
+    utassert(ShellRootOf(&window, &app) == nullptr);
     EntityDropAll(&app);
     ArenaDelete(frame);
     AppGlobalClear(&app);

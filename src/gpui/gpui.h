@@ -2792,6 +2792,9 @@ struct El {
     // The washes are range highlights, painted as inline.rs's glyph boxes
     // (PaintTextRangeBoxes) rather than with the selection's painter.
     unsigned int glyphWashes : 1 = false;
+    // The tooltip (El::Tip) shows in the overlay the window's root view
+    // owns, Window::rootTooltip, rather than the window's own.
+    unsigned int rootTooltip : 1 = false;
 
     // Byte-sized state stays last so none of it creates alignment holes.
     IconName icon = IconName::None;
@@ -3274,6 +3277,8 @@ struct HitRect {
     // survive the hit test rather than only the paint that drew it.
     Str tooltip = {};
     int8_t tooltipPlacement = -1;
+    // El::rootTooltip: the root view's own overlay shows it.
+    bool rootTooltip = false;
     SliderState* slider = nullptr;
     Axis sliderAxis = Axis::Horizontal;
     InputState* input = nullptr;
@@ -6343,6 +6348,10 @@ struct Window {
     // took it says the default -- a field placing its caret -- must not
     // happen. Cleared as each press starts.
     bool defaultPrevented = false;
+    // The press focused what it landed on, which GPUI's focusable element
+    // answers by preventing the default too. Kept apart from a listener's
+    // prevent_default: the field the press is on still places its caret.
+    bool pressTookFocus = false;
     // OngoingScroll is keyed by (mask axis, scroll id) upstream. Only one
     // pointer gesture can be active per axis in a window, so two slots retain
     // the same state without a map.
@@ -6446,6 +6455,11 @@ struct Window {
     // This window's one TooltipOverlay. Created on first use, the way a
     // field's blink cursor is.
     EntityId tooltip = {};
+    // The TooltipOverlay the window's root view owns, when it has one of its
+    // own -- ShellRoot::tooltip_overlay. A trigger that root drew
+    // (El::rootTooltip) shows there, with the root's look; every other one
+    // shows in `tooltip`.
+    EntityId rootTooltip = {};
     Overlay overlay = {};
     InspectorState inspector = {};
     MenuState menu = {};

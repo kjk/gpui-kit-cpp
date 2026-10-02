@@ -7545,6 +7545,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.onMouseMove = e->onMouseMove;
         hr.tooltip = e->style.tooltip;
         hr.tooltipPlacement = e->style.tooltipPlacement;
+        hr.rootTooltip = e->rootTooltip;
         hr.onMouseDown = e->onMouseDown;
         hr.onMouseUp = e->onMouseUp;
         hr.mouseDownPhase = e->mouseDownPhase;

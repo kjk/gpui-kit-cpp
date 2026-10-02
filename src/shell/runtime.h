@@ -58,12 +58,11 @@ class ShellRuntime {
     // `error` set when the entry does not load. The answer is the caller's,
     // freed with LoadedApplicationFree, mounted or not.
     //
-    // Rust's mount always uses the default policy. C++ hosts thread the
-    // authority they granted through the load instead (the shipped host's
-    // local grant); null is the default policy, as in Rust.
+    // The load and the mount use the default policy, as Rust's do: a host
+    // grants authority by updating it (ShellExportModule,
+    // PolicyUpdateDefaultCapabilities) before it loads.
     LoadedApplication* LoadApplication(Str directory,
                                        Str entry = StrL("main.js"),
-                                       Policy* policy = nullptr,
                                        ShellError* error = nullptr);
     // Creates, initializes and mounts a loaded application as a ScriptView:
     // quickjs/mod.rs `mount_application`. Refuses an application another

@@ -133,21 +133,16 @@ macOS font-kit requirement on the website only. The current update target is
   on a line or area runs over the box of the points the path passes
   through, where GPUI's spans the tessellated path's bounds; a natural
   curve's overshoot between two points is outside it.
-- **The shell's window host differs from root.rs in four places.**
-  `src/shell` includes no `ui/` header (a test enforces it), ShellRoot is
-  its own overlay host over gpui-base, the catalog's window opener roots a
-  `gpui_shell` window at the component library's Root, and hosts mount
-  through a single-mount `LoadedApplication`, all as in Rust. What still
-  differs: `ShellRootOf` also finds the ShellRoot as the content of that
-  Base Root, where Rust's `window.root::<ShellRoot>()` would not and a
-  script's `open_dialog` in an opened component-shell window would have no
-  host; the tooltip is the window's one overlay, so the shell's enter and
-  switch transition dresses a component's tooltip too; a press on the
-  background does not blur the focused field (`blur_on_background_press`
-  needs GPUI's `default_prevented`); and `LoadApplication` takes the host's
-  policy where Rust's mount always uses the default. A template still
-  refuses a registered component, whose payload lives in the arena that
-  recorded it (`src/shell/component_registry.h`).
+- **A shell template refuses a registered component.** The registered
+  component's payload lives in the arena that recorded it, so a template
+  cannot keep it past that description (`src/shell/component_registry.h`).
+  The window host is otherwise root.rs's: `ShellRootOf` is
+  `window.root::<ShellRoot>()`, the root owns its own tooltip layer
+  (`Window::rootTooltip`), a background press blurs the focused field, and
+  an application mounts with the default policy. A focusable element taking
+  a press marks it `pressTookFocus`, which `WindowDefaultPrevented` reports
+  as GPUI's focus handler preventing the default does, but which still
+  lets the field under it place its caret.
 - **Registered components render within one frame's description.** A typed
   part is rendered standalone and again by its parent; deferred slots,
   delegate rows and window-effect surfaces (Dialog, Sheet, ...) are rebuilt

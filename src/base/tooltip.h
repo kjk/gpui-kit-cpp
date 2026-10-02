@@ -107,8 +107,11 @@ struct TooltipPositioner {
 // `placement` is the trigger's preferred side as the value of `Placement`,
 // or -1 for none — El::TipPlacement's spelling, since the trigger is a style
 // flag below this header. managed_tooltip_with_placement's `Option`.
+// `rootLayer` is a trigger the window's root view drew (El::RootTooltip),
+// which asks the overlay that view owns (Window::rootTooltip) when it has
+// one.
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
-                        int placement = -1);
+                        int placement = -1, bool rootLayer = false);
 void TooltipRequestHide(Window* win);
 void TooltipHide(Window* win);
 const TooltipOverlay* TooltipShowing(Window* win);

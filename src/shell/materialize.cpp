@@ -2604,7 +2604,12 @@ static El* MaterializeNode(Ctx* cx, ShellRuntime* runtime,
         if (focus && focus->kind == shell::RetainedKind::Focus)
             element->TrackFocus(focus->focus);
     }
-    if (behavior.tooltip) element->Tip(behavior.tooltip);
+    if (behavior.tooltip) {
+        // ShellRoot::tooltip_overlay: a script's tooltip shows in the shell
+        // root's own layer, with its look, not in the window's.
+        element->Tip(behavior.tooltip);
+        element->rootTooltip = true;
+    }
     element->TabIndex(behavior.tabIndex)->TabStop(behavior.tabStop);
     if (behavior.scrollX || behavior.scrollY ||
         node->component.kind == shell::ComponentKind::Scrollbar) {

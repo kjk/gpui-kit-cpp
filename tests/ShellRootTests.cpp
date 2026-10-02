@@ -3,10 +3,10 @@
  * Upstream's `#[gpui::test]`s drive a ShellRoot in a real window. What stands
  * in here is a window struct with no OS window behind it, the root rendered
  * into a frame arena, and the root's own entry points — the same calls the
- * script bindings make. Three are not ported: the two background-press focus
- * tests and Escape on the stack, which need simulated input through a laid-out
- * frame. The toast clock is driven through ShellRootAdvanceToasts where Rust
- * advances the executor's clock. */
+ * script bindings make. The tests that need input through a laid-out frame --
+ * the two background presses and Escape on the stack -- open a test-platform
+ * window instead. The toast clock is driven through ShellRootAdvanceToasts
+ * where Rust advances the executor's clock. */
 
 #include "Test.h"
 
@@ -65,6 +65,149 @@ struct RootFixture {
 };
 
 } // namespace
+
+// root.rs Field: a focusable box in the top-left corner; everything else in
+// the window is background that wants nothing.
+struct RootFieldContent {
+    FocusHandle handle = {};
+
+    static El* Render(RootFieldContent* self, Ctx* cx) {
+        if (!self->handle.IsValid()) self->handle = FocusHandleNew(cx->app);
+        return Div(cx->a)->SizeFull()->Child(Div(cx->a)
+                                                 ->PathClick(StrL("field"))
+                                                 ->TrackFocus(self->handle)
+                                                 ->FocusOnPress()
+                                                 ->W(100)
+                                                 ->H(50));
+    }
+};
+
+// shell_root_with_field / shell_root: a test-platform window whose first
+// view is a ShellRoot around `content`.
+struct RootWindow {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Entity<ShellRoot> root = {};
+    EntityId content = {};
+
+    explicit RootWindow(bool field) {
+        app = TestAppNew();
+        BaseInit(app);
+        content = field ? EntityNew<RootFieldContent>(app).id
+                        : EntityNew<RootTestContent>(app).id;
+        root = ShellRoot::New(app, content);
+        win = TestWindowOpen(app, root, 800, 600);
+        TestDraw(win);
+    }
+    ~RootWindow() { TestAppFree(app); }
+
+    FocusHandle Field() {
+        RootFieldContent* f = Entity<RootFieldContent>{content}.Get(app);
+        return f ? f->handle : FocusHandle{};
+    }
+    Ctx Cx() { return Ctx{app, win, win->frameArena, root.id}; }
+};
+
+// root.rs a_press_on_the_background_clears_the_keyboard.
+static void APressOnTheBackgroundClearsTheKeyboard() {
+    RootWindow w(true);
+    FocusHandle field = w.Field();
+    FocusHandleFocus(w.win, field);
+    TestDraw(w.win);
+    utassert(FocusHandleIsFocused(w.win, field));
+    // Well clear of the field, on nothing that tracks focus.
+    TestSimulateClick(w.win, {400, 400});
+    // "a press on the background must not leave a caret blinking in a field
+    // the pointer has left"
+    utassert(!FocusHandleIsFocused(w.win, field));
+}
+
+// root.rs a_press_on_a_focusable_element_does_not_clear_it.
+static void APressOnAFocusableElementDoesNotClearIt() {
+    RootWindow w(true);
+    FocusHandle field = w.Field();
+    // Pressing the field focuses it, and pressing it again while it is
+    // already focused must not blur and refocus it.
+    TestSimulateClick(w.win, {10, 10});
+    utassert(FocusHandleIsFocused(w.win, field));
+    TestSimulateClick(w.win, {20, 20});
+    // "the root must leave focus alone when the press landed on something
+    // that took it"
+    utassert(FocusHandleIsFocused(w.win, field));
+}
+
+// root.rs escape_closes_only_the_topmost_dialog.
+static void EscapeClosesOnlyTheTopmostDialog() {
+    RootWindow w(false);
+    Ctx cx = w.Cx();
+    EntityId first = EntityNew<RootTestContent>(w.app).id;
+    EntityId second = EntityNew<RootTestContent>(w.app).id;
+    ShellRootOpenDialogView(&cx, first);
+    ShellRootOpenDialogView(&cx, second);
+    TestDraw(w.win);
+    TestSimulateKeystrokes(w.win, "escape");
+    utassert(ShellRootDialogCount(&cx) == 1);
+    utassert(ShellRootTopmostDialog(&cx) == first);
+}
+
+// root.rs a_dialog_that_refuses_escape_stays_open.
+static void ADialogThatRefusesEscapeStaysOpen() {
+    RootWindow w(false);
+    Ctx cx = w.Cx();
+    EntityId content = EntityNew<RootTestContent>(w.app).id;
+    ShellRootOpenDialogView(&cx, content,
+                            DialogOptions{}.EscapeDismissable(false));
+    TestDraw(w.win);
+    TestSimulateKeystrokes(w.win, "escape");
+    utassert(ShellRootDialogCount(&cx) == 1);
+}
+
+// Two tooltip triggers: one a script drew, whose tooltip is the shell
+// root's, and one any other view drew, whose tooltip is the window's.
+struct RootTipContent {
+    static El* Render(RootTipContent*, Ctx* cx) {
+        El* script = Div(cx->a)
+                         ->PathClick(StrL("script-tip"))
+                         ->W(100)
+                         ->H(40)
+                         ->Tip(StrL("from a script"));
+        script->rootTooltip = true;
+        El* other = Div(cx->a)
+                        ->PathClick(StrL("other-tip"))
+                        ->W(100)
+                        ->H(40)
+                        ->Tip(StrL("from elsewhere"));
+        return Div(cx->a)->SizeFull()->Child(script)->Child(other);
+    }
+};
+
+// ShellRoot::tooltip_overlay: a script's tooltip shows in the root's own
+// layer, with its look, and any other tooltip in the window's.
+static void AScriptTooltipShowsInTheRootsOwnLayer() {
+    App* app = TestAppNew();
+    BaseInit(app);
+    Entity<ShellRoot> root =
+        ShellRoot::New(app, EntityNew<RootTipContent>(app).id);
+    Window* win = TestWindowOpen(app, root, 800, 600);
+    TestDraw(win);
+    ShellRoot* shell = root.Get(app);
+    utassert(shell && win->rootTooltip == shell->tooltipOverlay);
+
+    TestSimulateMouseMove(win, {20, 20});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 50);
+    const TooltipOverlay* showing = TooltipShowing(win);
+    utassert(showing && showing->hasContent &&
+             base::StrEq(showing->content.text, StrL("from a script")));
+    utassert(showing == EntityGet(app, shell->tooltipOverlay));
+
+    TestSimulateMouseMove(win, {20, 60});
+    TestAdvanceClock(app, kTooltipShowDelayMs + 50);
+    showing = TooltipShowing(win);
+    utassert(showing && showing->hasContent &&
+             base::StrEq(showing->content.text, StrL("from elsewhere")));
+    utassert(showing == EntityGet(app, win->tooltip));
+    TestAppFree(app);
+}
 
 static void ClosingTheTopDialogLeavesTheOneBelow() {
     RootFixture f;
@@ -288,6 +431,11 @@ static void TheRootReadsOnlyBaseTokens() {
 
 void TestShellRoot() {
     TestSuite("shell_root");
+    APressOnTheBackgroundClearsTheKeyboard();
+    APressOnAFocusableElementDoesNotClearIt();
+    EscapeClosesOnlyTheTopmostDialog();
+    ADialogThatRefusesEscapeStaysOpen();
+    AScriptTooltipShowsInTheRootsOwnLayer();
     ClosingTheTopDialogLeavesTheOneBelow();
     ClosingADialogRestoresThePreviousFocus();
     ANestedDialogRestoresFocusToTheOneBelow();

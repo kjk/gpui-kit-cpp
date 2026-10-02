@@ -1913,6 +1913,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         Str tip = now ? now->tooltip : Str{};
         Bounds tipAt = now ? now->bounds : Bounds{};
         int tipPlacement = now ? now->tooltipPlacement : -1;
+        bool tipRoot = now && now->rootTooltip;
         WindowHoverChanged(win, win->hoverId, id);
         win->hoverId = id;
         // El::Tip is a tooltip trigger. Rust's triggers call request_show and
@@ -1920,7 +1921,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         // that happens here, since the trigger is a style flag rather than an
         // element that could carry handlers of its own.
         if (tip.s) {
-            TooltipRequestShow(win, tip, tipAt, tipPlacement);
+            TooltipRequestShow(win, tip, tipAt, tipPlacement, tipRoot);
         } else {
             TooltipRequestHide(win);
         }
@@ -2083,7 +2084,7 @@ void WindowPreventDefault(Ctx* cx) {
 }
 
 bool WindowDefaultPrevented(const Window* win) {
-    return win && win->defaultPrevented;
+    return win && (win->defaultPrevented || win->pressTookFocus);
 }
 
 // The chain of hit rects the pointer is inside, leaf first. Not every box
@@ -2236,6 +2237,7 @@ static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
 }
 
 static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
+    win->pressTookFocus = false;
     win->touchPress = win->touchPressPending;
     win->defaultPrevented = false;
     win->touchPressPending = false;
@@ -2357,6 +2359,9 @@ static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
     }
     if (focusTarget) {
         WindowSetFocusId(win, focusTarget);
+        // GPUI's focusable element prevents the default as it takes focus,
+        // so what the press bubbles through next knows it was taken.
+        win->pressTookFocus = true;
     }
     // on_mouse_down, ahead of the click: an element that wants the press
     // itself — a slider jumping to it — gets the whole event, not the

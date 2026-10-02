@@ -756,19 +756,6 @@ static El* RenderTooltip(Ctx* cx, El* view, const TooltipTransition& transition,
                                   (unsigned long long)transition.epoch)));
 }
 
-// The window's one tooltip layer. Rust's root owns a TooltipOverlay of its
-// own; the runtime here already keeps one per window (an El::Tip trigger
-// reaches it without knowing what roots the window), so the root owns only
-// the decision to have one, and what an appearing tooltip looks like.
-static void InstallTooltipLook(Window* win, App* app) {
-    if (!win || !app) return;
-    if (!win->tooltip.IsValid())
-        win->tooltip = EntityNew<TooltipOverlay>(app).id;
-    TooltipOverlay* overlay = Entity<TooltipOverlay>{win->tooltip}.Get(app);
-    if (overlay && overlay->renderer != &RenderTooltip)
-        overlay->RenderWith(&RenderTooltip);
-}
-
 // ─── the root ──────────────────────────────────────────────────────────────
 
 ShellRoot::~ShellRoot() {
@@ -784,6 +771,23 @@ ShellRoot::~ShellRoot() {
     VecReset(toastState.entries);
     VecReset(toastState.heights);
     if (app && content.IsValid()) EntityDrop(app, content);
+    if (app && tooltipOverlay.IsValid()) EntityDrop(app, tooltipOverlay);
+}
+
+void ShellRoot::BlurOnBackgroundPress(ShellRoot*, Ctx* cx,
+                                      const MouseDownEvent* event) {
+    Window* win = cx ? cx->win : nullptr;
+    if (!win || !event || event->button != MouseButton::Left) return;
+    // Whatever took the press -- a focusable control focusing itself, a
+    // handle -- prevented this.
+    if (WindowDefaultPrevented(win)) return;
+    // A field takes the focus after the press has bubbled past here.
+    InputState* field = InputAtPosition(&win->paint, event->x, event->y);
+    if (field && !field->disabled) return;
+    if (!win->focusId && !win->input) return;
+    if (FocusTrapActive(win)) return;
+    if (win->input) InputBlur(win->input, cx->app, win);
+    WindowSetFocusId(win, 0);
 }
 
 Entity<ShellRoot> ShellRoot::New(App* app, EntityId content) {
@@ -794,6 +798,12 @@ Entity<ShellRoot> ShellRoot::New(App* app, EntityId content) {
         state->toasts = ToastManager<ShellToastId, ShellToastValue>::New(
             ToastMotion::Sonner());
         state->toastFocus = FocusHandleNew(app);
+        // ShellRoot::tooltip_overlay: the root's own layer, with the look a
+        // script's tooltip has on its way in.
+        Entity<TooltipOverlay> tooltip = EntityNew<TooltipOverlay>(app);
+        if (TooltipOverlay* overlay = tooltip.Get(app))
+            overlay->RenderWith(&RenderTooltip);
+        state->tooltipOverlay = tooltip.id;
     }
     return root;
 }
@@ -802,7 +812,6 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
     if (!self) return Div(cx->a)->SizeFull();
     if (ShellRootWindowState* state = RootWindowState(cx->win))
         state->root = cx->self;
-    InstallTooltipLook(cx->win, cx->app);
     SemanticThemeTokens tokens = RootTokens(cx->app);
     // The window's base text size, from the theme rather than from the
     // runtime's default rem. Everything this root draws itself — toasts, the
@@ -819,6 +828,7 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
                    ->Font(tokens.typography.md.size)
                    ->Bg(tokens.colors.background)
                    ->Fg(tokens.colors.foreground);
+    root->OnMouseDown(Listen(cx, &ShellRoot::BlurOnBackgroundPress));
     // Painted back to front; see the stacking order in root.h.
     root->Child(TextSelectionLayer::New(cx));
     if (El* content = self->content.IsValid()
@@ -859,22 +869,26 @@ El* ShellRoot::Render(ShellRoot* self, Ctx* cx) {
             root->Child(FpsOverlayEl(cx, *slot, opts));
         }
     }
+    // The tooltip layer, above everything: ShellRoot::tooltip_overlay, the
+    // root's own, which a script's triggers show in. It is the window's
+    // root overlay only while this root is the window's first view, as
+    // `ShellRoot::tooltip_overlay` answers.
+    if (self->tooltipOverlay.IsValid() && cx->win &&
+        cx->win->root == cx->self) {
+        cx->win->rootTooltip = self->tooltipOverlay;
+        if (El* tooltip =
+                EntityRender(cx->app, cx->win, cx->a, self->tooltipOverlay))
+            root->Child(tooltip);
+    }
     return root;
 }
 
 ShellRoot* ShellRootOf(Window* window, App* app) {
     ShellRootWindowState* state = RootWindowState(window);
     if (!state || !state->root.IsValid()) return nullptr;
-    // The window's first view, or — when a catalog's window opener wrapped
-    // the window in the Base Root its components need — that Root's content.
-    // Rust asks `window.root::<ShellRoot>()` alone, which a wrapped window
-    // never answers; the overlays a script opens would then have no host.
-    bool rooted = state->root == window->root;
-    if (!rooted) {
-        Root* base = Root::Read(window);
-        rooted = base && base->view == state->root;
-    }
-    if (!rooted) return nullptr;
+    // `window.root::<ShellRoot>()`: the window's first view, and nothing
+    // else. A window a catalog's opener wrapped in a Base Root has none.
+    if (state->root != window->root) return nullptr;
     return Entity<ShellRoot>{state->root}.Get(app);
 }
 

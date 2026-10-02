@@ -272,20 +272,53 @@ static TooltipOverlay* TooltipGet(Window* win) {
     return (TooltipOverlay*)EntityGet(win->app, win->tooltip);
 }
 
-static Ctx TooltipContext(Window* win) {
+static Ctx TooltipContext(Window* win, EntityId self) {
     Ctx cx;
     cx.app = win->app;
     cx.win = win;
     cx.a = win->frameArena;
-    cx.self = win->tooltip;
+    cx.self = self;
     return cx;
 }
 
+// The overlay the window's root view owns (ShellRoot::tooltip_overlay), while
+// it has one and it is alive.
+static TooltipOverlay* TooltipRootOverlay(Window* win) {
+    if (!win || !win->app || !win->rootTooltip.IsValid()) {
+        return nullptr;
+    }
+    return (TooltipOverlay*)EntityGet(win->app, win->rootTooltip);
+}
+
+static TooltipOverlay* TooltipWindowOverlay(Window* win) {
+    if (!win || !win->app || !win->tooltip.IsValid()) {
+        return nullptr;
+    }
+    return (TooltipOverlay*)EntityGet(win->app, win->tooltip);
+}
+
 void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
-                        int placement) {
-    TooltipOverlay* overlay = TooltipGet(win);
+                        int placement, bool rootLayer) {
+    // A trigger the root view drew asks the root's overlay; any other, or one
+    // in a window whose root has none, the window's.
+    TooltipOverlay* overlay = rootLayer ? TooltipRootOverlay(win) : nullptr;
+    EntityId id = overlay ? win->rootTooltip : EntityId{};
+    if (!overlay) {
+        overlay = TooltipGet(win);
+        id = win ? win->tooltip : EntityId{};
+    }
     if (!overlay) {
         return;
+    }
+    // One tooltip at a time: the other layer lets go of whatever it held.
+    TooltipOverlay* other = overlay == TooltipRootOverlay(win)
+                                ? TooltipWindowOverlay(win)
+                                : TooltipRootOverlay(win);
+    if (other && (other->hasContent || other->hasPending)) {
+        EntityId otherId =
+            other == TooltipRootOverlay(win) ? win->rootTooltip : win->tooltip;
+        Ctx otherCx = TooltipContext(win, otherId);
+        other->Hide(&otherCx);
     }
     // Re-entering the same visible trigger only cancels its pending hide.
     if (overlay->hasContent && overlay->content.text.s &&
@@ -297,7 +330,7 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
         TooltipCancelHide(win, overlay);
         return;
     }
-    Ctx cx = TooltipContext(win);
+    Ctx cx = TooltipContext(win, id);
     TooltipRequest request = TooltipRequest::Text(triggerBounds, text);
     // managed_tooltip_with_placement: `Some(placement)` is the trigger's
     // preferred side, `None` leaves the overlay's own placement.
@@ -309,36 +342,34 @@ void TooltipRequestShow(Window* win, Str text, Bounds triggerBounds,
 }
 
 void TooltipRequestHide(Window* win) {
-    if (!win || !win->app || !win->tooltip.IsValid()) {
-        return;
+    if (TooltipOverlay* overlay = TooltipWindowOverlay(win)) {
+        Ctx cx = TooltipContext(win, win->tooltip);
+        overlay->RequestHide(win, &cx);
     }
-    TooltipOverlay* overlay =
-        (TooltipOverlay*)EntityGet(win->app, win->tooltip);
-    if (!overlay) {
-        return;
+    if (TooltipOverlay* overlay = TooltipRootOverlay(win)) {
+        Ctx cx = TooltipContext(win, win->rootTooltip);
+        overlay->RequestHide(win, &cx);
     }
-    Ctx cx = TooltipContext(win);
-    overlay->RequestHide(win, &cx);
 }
 
 void TooltipHide(Window* win) {
-    if (!win || !win->app || !win->tooltip.IsValid()) {
-        return;
+    if (TooltipOverlay* overlay = TooltipWindowOverlay(win)) {
+        Ctx cx = TooltipContext(win, win->tooltip);
+        overlay->Hide(&cx);
     }
-    TooltipOverlay* overlay =
-        (TooltipOverlay*)EntityGet(win->app, win->tooltip);
-    if (!overlay) {
-        return;
+    if (TooltipOverlay* overlay = TooltipRootOverlay(win)) {
+        Ctx cx = TooltipContext(win, win->rootTooltip);
+        overlay->Hide(&cx);
     }
-    Ctx cx = TooltipContext(win);
-    overlay->Hide(&cx);
 }
 
 const TooltipOverlay* TooltipShowing(Window* win) {
-    if (!win || !win->app || !win->tooltip.IsValid()) {
-        return nullptr;
+    // The root's overlay when it holds a tooltip, the window's otherwise.
+    const TooltipOverlay* root = TooltipRootOverlay(win);
+    if (root && (root->hasContent || root->hasPending)) {
+        return root;
     }
-    return (const TooltipOverlay*)EntityGet(win->app, win->tooltip);
+    return TooltipWindowOverlay(win);
 }
 
 } // namespace gpui

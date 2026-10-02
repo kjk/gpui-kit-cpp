@@ -122,6 +122,9 @@ struct ShellRoot {
     // Open dialogs, oldest first. The last is the topmost and the only
     // interactive one.
     Vec<ShellDialogEntry> dialogs;
+    // ShellRoot::tooltip_overlay: the tooltip layer a script's triggers show
+    // in, the root's own rather than the window's.
+    EntityId tooltipOverlay = {};
     // The open sheet's layer entity, or invalid. At most one at a time: a
     // sheet is a region of the window rather than a stack of them.
     EntityId sheet = {};
@@ -143,13 +146,16 @@ struct ShellRoot {
     static Entity<ShellRoot> New(App* app, EntityId content);
     static El* Render(ShellRoot* self, Ctx* cx);
     static void OnToastTick(ShellRoot* self, Ctx* cx, const TickEvent* event);
+    // blur_on_background_press: a press nothing took leaves no field or
+    // control focused, unless a focus trap holds the focus.
+    static void BlurOnBackgroundPress(ShellRoot* self, Ctx* cx,
+                                      const MouseDownEvent* event);
     static void OnToastClick(ShellRoot* self, Ctx* cx, const ClickEvent* event,
                              intptr_t key);
 };
 
-// ShellRoot::update: the root of the window a call is happening in. The
-// window's root view, or the content of the Base Root a catalog's window
-// opener mounted around it. Null when neither is a ShellRoot, which is a host
+// ShellRoot::update: the root of the window a call is happening in, which is
+// the window's first view. Null when that is not a ShellRoot, which is a host
 // wiring mistake rather than a script error.
 ShellRoot* ShellRootOf(Window* window, App* app);
 
