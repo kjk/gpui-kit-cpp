@@ -78,29 +78,34 @@ static void WindowOwnsDialogAndSheetEntities() {
     delete window;
 }
 
-// A window whose root view is not a Base Root has no WindowState: Rust
-// panics on ROOT_MISSING, and here nothing opens and the queries answer
-// empty.
-static void AWindowWithoutARootOpensNoLayers() {
+static int gPanics = 0;
+static void CountPanic(const char*) {
+    gPanics++;
+}
+
+// root.rs ROOT_MISSING: a window whose root view is not a Base Root has no
+// WindowState, and every operation on its layers panics.
+static void AWindowWithoutARootPanics() {
     App app;
     Window* window = new Window();
     window->app = &app;
     RootInit(&app);
     Arena* arena = ArenaNew();
     Ctx cx = {&app, window, arena, {}};
-    ExtLayer::dropped = 0;
+    PanicHook was = SetPanicHook(&CountPanic);
+    gPanics = 0;
     utassert(WindowLayersOf(window) == nullptr);
     WindowOpenDialog(&cx, EntityNew<ExtLayer>(&app));
+    utassert(gPanics == 1);
     utassert(!WindowHasActiveDialog(&cx));
-    utassert(WindowDialogCount(&cx) == 0);
+    utassert(gPanics == 2);
     WindowOpenSheet(&cx, EntityNew<ExtLayer>(&app), 320);
-    utassert(!WindowHasActiveSheet(&cx));
+    utassert(gPanics == 3);
     WindowPushNotification(&cx, StrL("lost"));
-    utassert(WindowNotificationCount(&cx) == 0);
+    utassert(gPanics == 4);
+    SetPanicHook(was);
     WindowKeyedFree(window);
     ArenaDelete(arena);
-    // The Root's layers name their window, so they go before it does, as
-    // AppRelease drops the entities before the windows.
     EntityDropAll(&app);
     delete window;
 }
@@ -165,6 +170,6 @@ static void TypedRemovalAndForwardingMethodsUseWindowState() {
 void TestWindowExt() {
     TestSuite("window ext");
     WindowOwnsDialogAndSheetEntities();
-    AWindowWithoutARootOpensNoLayers();
+    AWindowWithoutARootPanics();
     TypedRemovalAndForwardingMethodsUseWindowState();
 }

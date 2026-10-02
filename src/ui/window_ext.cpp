@@ -33,8 +33,15 @@ WindowLayers* WindowLayersOf(Window* win) {
     return (WindowLayers*)root->Plugin(&component::kWindowStatePlugin);
 }
 
+// WindowState::update / read: `Self::entity(window, cx).expect(ROOT_MISSING)`.
 static WindowLayers* LayersOf(Ctx* cx) {
-    return cx ? WindowLayersOf(cx->win) : nullptr;
+    WindowLayers* layers = cx ? WindowLayersOf(cx->win) : nullptr;
+    if (!layers) {
+        Panic(
+            "component window state is missing; call component::Init "
+            "before KitOpenWindow");
+    }
+    return layers;
 }
 
 // ─── dialogs ─────────────────────────────────────────────────────────────

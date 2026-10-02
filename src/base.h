@@ -119,6 +119,16 @@ float StrToFloatUnchecked(Str s);
 
 void log(Str s);
 
+// Rust's panic!: a broken contract the program cannot carry on from, such as
+// an `.expect(..)` on something the caller had to set up. Logs `msg` and
+// aborts the process. A hook (SetPanicHook) is told instead and nothing
+// aborts, so a test can see that a call panics; the caller then returns as
+// if the call had not been made.
+using PanicHook = void (*)(const char* msg);
+// Installs `hook` (null for none) and answers the one it replaced.
+PanicHook SetPanicHook(PanicHook hook);
+void Panic(const char* msg);
+
 using TempStr = Str;
 
 #define StrL(lit) ::base::Str{(char*)(lit), (int)dimof(lit) - 1}

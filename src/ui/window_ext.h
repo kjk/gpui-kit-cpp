@@ -9,9 +9,8 @@
 
    Here they are the state of Component's WindowState plugin (`ui/root.h`),
    which the window's Base Root holds and renders over the page. A window
-   whose root view is not a Base Root has none: Rust panics there
-   (`ROOT_MISSING`), and since nothing in this tree takes the process down,
-   an operation on such a window does nothing and a query answers empty. The
+   whose root view is not a Base Root has none, and an operation on such a
+   window panics, as Rust's does (`ROOT_MISSING`). The
    text-selection forwarding methods are gone, as they are in Rust:
    `TextSelection` in base answers for them.
 
@@ -62,7 +61,7 @@ struct WindowLayers {
 };
 
 // WindowState::entity: the store the window's Base Root holds. Null when the
-// window's root view is not a Base Root.
+// window's root view is not a Base Root; the operations below panic then.
 WindowLayers* WindowLayersOf(Window* win);
 
 // open_dialog. The entity's Render builds the dialog; it draws over

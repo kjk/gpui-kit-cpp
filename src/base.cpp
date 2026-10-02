@@ -15,6 +15,23 @@ namespace base {
 static int VsnprintfUtf8(Str buf, const char* fmt, va_list args);
 static int VscprintfUtf8(const char* fmt, va_list args);
 
+static PanicHook gPanicHook = nullptr;
+
+PanicHook SetPanicHook(PanicHook hook) {
+    PanicHook was = gPanicHook;
+    gPanicHook = hook;
+    return was;
+}
+
+void Panic(const char* msg) {
+    if (gPanicHook) {
+        gPanicHook(msg);
+        return;
+    }
+    log(Str(msg ? msg : "panic"));
+    abort();
+}
+
 float StrToFloatUnchecked(Str s) {
     if (!s.s || len(s) <= 0) {
         return 0;

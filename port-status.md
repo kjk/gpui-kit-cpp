@@ -36,9 +36,7 @@ macOS font-kit requirement on the website only. The current update target is
   (`WindowRemSize`, `src/gpui/gpui.h`). Base Root's Tab / shift-Tab / copy
   actions are the runtime's for every window (`FocusNext`,
   `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's
-  own. Where Rust panics because a window has no Base Root (`ROOT_MISSING`),
-  WindowExt's operations do nothing and its queries answer empty
-  (`src/base/root.cpp`, `src/ui/root.cpp`, `src/ui/window_ext.cpp`).
+  own (`src/base/root.cpp`, `src/ui/root.cpp`).
 - **The editor's wrap map is a flat list, not a sum tree.** An edit re-wraps
   only the lines it touched, as Rust's TextWrapper does, but the rows sit in
   one array, so the lines after the edit have their offsets and row counts
