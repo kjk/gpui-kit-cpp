@@ -866,7 +866,8 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
             line->Child(kbd->IntoEl());
         } else if (item->checked) {
             line->Child(Div(a)->Flex1());
-            line->Child(IconEl(a, IconName::Check, 14)
+            // `Icon::new(IconName::Check).xsmall()`.
+            line->Child(IconEl(a, IconName::Check, UiIconPx(cx, UiSize::XSmall))
                             ->Fg(selected ? th.accentFg : th.foreground));
         }
     }

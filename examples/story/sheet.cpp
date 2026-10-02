@@ -111,6 +111,7 @@ static component::ListItem* SheetFoodRow(Ctx* cx, void* data, int, int row,
                     ->Icon(IconName::Heart)
                     ->IntoEl());
     return component::ListItem::New(cx, line)
+        ->CheckIcon(IconName::Check)
         ->Confirmed(self->confirmedFood == entry);
 }
 

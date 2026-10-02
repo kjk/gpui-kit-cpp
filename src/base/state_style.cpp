@@ -44,6 +44,11 @@ StateStyle& StateStyle::BorderB(float w, Rgba c) {
     set |= StateFieldBorderB;
     return *this;
 }
+StateStyle& StateStyle::Pad(float x, float y) {
+    style.pad = Edges::New(x, x, y, y);
+    set |= StateFieldPad;
+    return *this;
+}
 StateStyle& StateStyle::Radius(float v) {
     style.radius = v;
     set |= StateFieldRadius;
@@ -76,6 +81,10 @@ StateStyle& StateStyle::Opacity(float v) {
 }
 
 void StateStyleRefine(StateStyle* into, const StateStyle& over) {
+    if (over.Has(StateFieldPad)) {
+        into->style.pad = over.style.pad;
+        into->set |= StateFieldPad;
+    }
     if (over.Has(StateFieldBg)) {
         into->Bg(over.style.bg);
     }

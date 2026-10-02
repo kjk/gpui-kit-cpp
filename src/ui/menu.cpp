@@ -254,7 +254,9 @@ El* PopupMenu::IntoEl() {
     float menuW = minW > 0 ? minW : Rems(cx, 8.f);
     // The rem lengths the rows below are built from: the icon and the gap
     // after it, and the kbd's padding and floor.
-    float icon = Rems(cx, 0.875f);
+    // Every icon a row shows -- its own, the check, the submenu's chevron --
+    // is `.xsmall()`, size_3.
+    float icon = UiIconPx(cx, UiSize::XSmall);
     float gap = Rems(cx, 0.25f);
     float kbdPadX = Rems(cx, 0.25f);
     float kbdMinW = Rems(cx, 1.25f);
@@ -487,7 +489,7 @@ El* PopupMenu::IntoEl() {
             row->Child(IconEl(a, IconName::Check, icon)->Fg(fg));
         }
         if (it.submenu) {
-            row->Child(IconEl(a, IconName::ChevronRight, icon)->Fg(fg));
+            row->Child(IconEl(a, IconName::ChevronRight, icon)->Fg(th.mutedFg));
         }
         if (it.kind != PopupMenuItem::Label && !it.disabled) {
             if (it.submenu) {

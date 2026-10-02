@@ -176,11 +176,12 @@ static component::ListItem* RenderQuote(Ctx* cx, void* data, int section,
         StoryTxt(cx, Str(r.change), 12, r.up ? th.green : th.red)->PadX(4)));
     line->Child(right);
     // list_story.rs refines the row with `.px_2().py_1().border_1()
-    // .rounded(radius)` — the padding is `ListItem`'s own here, and the
-    // border is transparent until the selection colours it. It is two of the
-    // pixels the list measures the row at, which is what makes it the 36 of
-    // upstream's rather than 34.
+    // .rounded(radius)` -- px_2 over ListItem's own px_3, and a border that is
+    // transparent until the selection colours it. It is two of the pixels the
+    // list measures the row at, which is what makes it the 36 of upstream's
+    // rather than 34.
     StateStyle rowStyle;
+    rowStyle.Pad(Rems(cx, 0.5f), Rems(cx, 0.25f));
     rowStyle.Border(1, Rgba8(0, 0, 0, 0));
     return component::ListItem::New(cx, line)
         ->Style(rowStyle)

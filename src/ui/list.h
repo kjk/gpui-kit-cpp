@@ -23,6 +23,9 @@ struct ListItem {
     bool secondarySelected = false;
     bool confirmed = false;
     bool disabled = false;
+    // check_icon: the mark a confirmed row shows, in a slot every row given
+    // one keeps so their content lines up. None shows no mark at all.
+    IconName checkIcon = IconName::None;
     // `impl Styled for ListItem`, landed by `refine_style(&self.style)`. It
     // goes on before the selection does, which is where list_item.rs puts it:
     // a selected row's own fill and ring still win over what a caller
@@ -36,6 +39,7 @@ struct ListItem {
     ListItem* Selected(bool v);
     ListItem* SecondarySelected(bool v);
     ListItem* Confirmed(bool v);
+    ListItem* CheckIcon(IconName icon);
     ListItem* Disabled(bool v);
     ListItem* Style(const StateStyle& s);
     ListItem* AccessibilityLabel(Str label);

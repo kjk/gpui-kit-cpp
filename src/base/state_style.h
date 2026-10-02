@@ -39,6 +39,7 @@ enum StateField : uint32_t {
     StateFieldActiveBg = StyleFieldActiveBg,
     // What Rust's own `disabled(|style| style.opacity(0.5))` names.
     StateFieldOpacity = StyleFieldOpacity,
+    StateFieldPad = StyleFieldPad,
 };
 
 struct StateStyle {
@@ -57,6 +58,8 @@ struct StateStyle {
     StateStyle& HoverFg(Rgba c);
     StateStyle& ActiveBg(Background c);
     StateStyle& Opacity(float v);
+    // px(x).py(y): the four edges, horizontal and vertical.
+    StateStyle& Pad(float x, float y);
 
     // Some fields name a value and its shared colour bit. All of the bits
     // must be present: testing for any bit makes BorderL look like BorderB

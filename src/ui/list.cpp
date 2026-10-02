@@ -28,6 +28,10 @@ ListItem* ListItem::Confirmed(bool v) {
     confirmed = v;
     return this;
 }
+ListItem* ListItem::CheckIcon(IconName icon) {
+    checkIcon = icon;
+    return this;
+}
 ListItem* ListItem::Disabled(bool v) {
     disabled = v;
     return this;
@@ -50,9 +54,11 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
                   ->AriaDisabled(disabled)
                   ->FlexRow()
                   ->W(kFill)
-                  ->PadX(8)
+                  ->PadX(Rems(cx, 0.75f)) // px_3
                   ->PadY(Rems(cx, 0.25f)) // py_1
-                  ->Gap(8)
+                  ->Gap(Rems(cx, 0.25f))  // gap_x_1
+                  ->Font(16)              // text_base
+                  ->Fg(disabled ? th.mutedFg : th.foreground)
                   ->ItemsCenter()
                   ->JustifyBetween()
                   ->Radius(th.radius);
@@ -82,12 +88,31 @@ El* ListItem::IntoEl(Str id, Listener onClick, Listener onMouseDown) {
                               th.listActiveBorder, th.tokens.accent, true);
         row->Bg(st.bg);
     }
+    // `h_flex().w_full().justify_between().gap_x_1()`: the children take
+    // the row, beside the check slot when the item has a check icon --
+    // `div().w_5()`, holding the small muted mark once it is confirmed.
+    El* content =
+        Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween()->Gap(
+            Rems(cx, 0.25f));
+    El* children = Div(a)->W(kFill);
     if (child) {
-        row->Child(child);
+        children->Child(child);
     }
-    if (confirmed) {
-        row->Child(IconEl(a, IconName::Check, 16)->Fg(th.foreground));
+    content->Child(children);
+    if (checkIcon != IconName::None) {
+        El* slot = Div(a)
+                       ->FlexRow()
+                       ->W(Rems(cx, 1.25f))
+                       ->ItemsCenter()
+                       ->JustifyCenter()
+                       ->Shrink0();
+        if (confirmed) {
+            slot->Child(IconEl(a, checkIcon, UiIconPx(cx, UiSize::Small))
+                            ->Fg(th.mutedFg));
+        }
+        content->Child(slot);
     }
+    row->Child(content);
     if (!disabled && secondarySelected) {
         // list_item.rs: a right-clicked item is outlined in `selection`, the
         // token Table uses for its right-clicked row, on top of whatever
@@ -224,7 +249,9 @@ El* ListLoadingView(Ctx* cx, float h) {
         body->Child(Div(a)
                         ->FlexCol()
                         ->W(kFill)
-                        ->PadX(8)
+                        // The disabled ListItem around it: px_3 py_1.
+                        ->PadX(Rems(cx, 0.75f))
+                        ->PadY(Rems(cx, 0.25f))
                         ->Gap(Rems(cx, 0.375f))
                         // max_w_full: the bars keep their own widths and a
                         // list narrower than they are clips them rather than
