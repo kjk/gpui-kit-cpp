@@ -37,18 +37,11 @@ struct DropdownOp {
 };
 
 static bool IsBlank(Str text) {
-    for (int i = 0; i < len(text); i++) {
-        char c = text.s[i];
-        if (c != ' ' && c != '\t' && c != '\n' && c != '\r' && c != '\f' &&
-            c != '\v')
-            return false;
-    }
-    return true;
+    return len(StrTrim(text)) == 0;
 }
 
 static bool Construct(PayloadBuild* build, const ComponentArgument* args, int) {
-    // `id.trim().is_empty()`; Rust trims Unicode whitespace, of which an id
-    // is in practice only ever the ASCII kind.
+    // `id.trim().is_empty()`, Unicode whitespace and all.
     if (IsBlank(args[0].string))
         return build->Fail(StrL("DropdownButton id must not be empty"));
     DropdownPayload* payload = build->New<DropdownPayload>();

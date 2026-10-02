@@ -325,7 +325,7 @@ template <Part P, const char* Name>
 static bool ConstructId(PayloadBuild* build, const ComponentArgument* args,
                         int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build->Fail(fmt("%s expects one nonempty string id", Str(Name)));
     }
     PartPayload* payload = build->New<PartPayload>();

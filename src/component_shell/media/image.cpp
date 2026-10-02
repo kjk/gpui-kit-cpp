@@ -27,7 +27,7 @@ static bool EscapesRoot(Str path) {
 bool AssetPath(Str path, Str* out, Str* error) {
     // Rust's `str::trim` trims Unicode whitespace; a path's is in practice
     // only ever the ASCII kind.
-    path = StrTrimAscii(path);
+    path = StrTrim(path);
     if (len(path) == 0) {
         *error = StrL("Image path must not be empty");
         return false;

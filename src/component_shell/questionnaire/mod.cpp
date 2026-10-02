@@ -397,7 +397,7 @@ static El* MaterializeRoot(MaterializeRequest* request) {
 
 static bool NonBlank(const ComponentArgument& argument) {
     return argument.kind == shell::ComponentArgumentKind::String &&
-           len(StrTrimAscii(argument.string)) != 0;
+           len(StrTrim(argument.string)) != 0;
 }
 
 static bool ConstructChoice(PayloadBuild* build, const ComponentArgument* args,

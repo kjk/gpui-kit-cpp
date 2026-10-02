@@ -509,7 +509,7 @@ static El* MaterializeNotification(MaterializeRequest* request) {
 
 static bool IsNonEmptyText(const ComponentArgument& arg) {
     return arg.kind == shell::ComponentArgumentKind::String &&
-           len(StrTrimAscii(arg.string)) != 0;
+           len(StrTrim(arg.string)) != 0;
 }
 
 // descriptor(name, ..)'s constructor.

@@ -94,10 +94,10 @@ static int IndexInt(double value) {
     return value >= (double)INT_MAX ? INT_MAX : (int)value;
 }
 
-// id_constructor: `id.trim().is_empty()` refuses. Rust trims Unicode
-// whitespace; an id's is in practice only ever the ASCII kind.
+// id_constructor: `id.trim().is_empty()` refuses, Unicode whitespace and
+// all.
 static bool NonemptyId(PayloadBuild* build, Str id, const char* callable) {
-    if (len(StrTrimAscii(id)) > 0) return true;
+    if (len(StrTrim(id)) > 0) return true;
     return build
         ->Fail(fmt("%s(id) expects a nonempty string id", Str(callable)));
 }

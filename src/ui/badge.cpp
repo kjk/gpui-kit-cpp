@@ -14,11 +14,11 @@ Badge* Badge::New(Ctx* cx) {
 
 // Only dot() and icon() pick the variant; count() sets the value the Number
 // variant shows and leaves a dot a dot, as the Dot story asks for.
-Badge* Badge::Count(int n) {
+Badge* Badge::Count(uint64_t n) {
     count = n;
     return this;
 }
-Badge* Badge::Max(int n) {
+Badge* Badge::Max(uint64_t n) {
     max = n;
     return this;
 }
@@ -86,9 +86,10 @@ El* Badge::IntoEl() {
             ->Border(1, th.background)
             ->Child(IconEl(a, icon, box * 0.6f));
     } else {
-        int shown = count > max ? max : count;
-        Str txt = count > max ? StrDup(a, fmt("%d+", shown))
-                              : StrDup(a, fmt("%d", shown));
+        uint64_t shown = count > max ? max : count;
+        Str txt = count > max
+                      ? StrDup(a, fmt("%llu+", (unsigned long long)shown))
+                      : StrDup(a, fmt("%llu", (unsigned long long)shown));
         // The chip hangs off the corner by a step per digit, so a longer
         // count grows leftwards rather than pushing past the child.
         float step = 3, top = -3;

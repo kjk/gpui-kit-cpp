@@ -132,7 +132,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String)
         return build->Fail(StrL("HoverCard(id) expects a string"));
     // non_empty_id.
-    if (len(StrTrimAscii(args[0].string)) == 0)
+    if (len(StrTrim(args[0].string)) == 0)
         return build->Fail(StrL("HoverCard id must not be empty"));
     build->New<HoverCardPayload>()->id = args[0].string;
     return true;

@@ -131,7 +131,7 @@ static El* MaterializeGroup(MaterializeRequest* request) {
 static bool ConstructGroup(PayloadBuild* build, const ComponentArgument* args,
                            int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build->Fail(StrL("Resizable expects a non-empty id"));
     }
     build->New<Id>()->value = args[0].string;

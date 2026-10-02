@@ -113,10 +113,9 @@ static bool RecordTagFlag(PayloadBuild* build, const ComponentArgument*, int) {
     return true;
 }
 
-// component::Badge counts in an int; a count past INT_MAX shows the same
-// `max+` any count past the max does.
-static int BadgeCount(double value) {
-    return value > (double)INT_MAX ? INT_MAX : (int)value;
+// badge.rs's usize, which the registry has already checked is one.
+static uint64_t BadgeCount(double value) {
+    return value >= 18446744073709551616.0 ? UINT64_MAX : (uint64_t)value;
 }
 
 static El* MaterializeBadge(MaterializeRequest* request) {

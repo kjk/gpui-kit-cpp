@@ -64,7 +64,7 @@ Str PolicyApplication(const Policy* policy) {
 
 void PolicySetApplication(Policy* policy, Str name) {
     if (!policy) return;
-    Str trimmed = StrTrimAscii(name);
+    Str trimmed = StrTrim(name);
     StrFree(policy->application);
     policy->application = StrDup(
         trimmed && len(trimmed) > 0 ? trimmed : Str(kDefaultApplication));

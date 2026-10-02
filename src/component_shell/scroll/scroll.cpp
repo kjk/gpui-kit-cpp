@@ -157,7 +157,7 @@ static bool ConstructScrollbar(PayloadBuild* build,
                                const ComponentArgument* args, int count) {
     if (count != 2 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::Entity ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build
             ->Fail(StrL("Scrollbar expects a non-empty window-unique id and "
                         "ScrollbarHandle"));

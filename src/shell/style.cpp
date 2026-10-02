@@ -1301,7 +1301,7 @@ static bool IsOtherParam(Str name) {
 }
 
 static bool ParseNumber(Str text, float* out) {
-    text = StrTrimAscii(text);
+    text = StrTrim(text);
     if (len(text) <= 0 || len(text) >= 64) {
         return false;
     }
@@ -1322,7 +1322,7 @@ static bool ParseNumber(Str text, float* out) {
 static bool ParseLength(const Bridged& value, Str method, Len* out,
                         ShellError* error) {
     if (value.kind == BridgedKind::String) {
-        Str text = StrTrimAscii(value.string);
+        Str text = StrTrim(value.string);
         if (StrEq(text, StrL("auto"))) {
             *out = Len{LenKind::Auto, 0};
             return true;

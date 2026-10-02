@@ -84,7 +84,7 @@ static bool NonnegativeUsize(const ComponentArgument& argument, double* out) {
 
 static bool NonemptyId(const ComponentArgument& argument) {
     return argument.kind == shell::ComponentArgumentKind::String &&
-           len(StrTrimAscii(argument.string)) != 0;
+           len(StrTrim(argument.string)) != 0;
 }
 
 // ─── Materializer ─────────────────────────────────────────────────────────

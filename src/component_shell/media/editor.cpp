@@ -121,7 +121,7 @@ static bool RecordBool(PayloadBuild* build, const ComponentArgument* args,
 static bool RecordAriaLabel(PayloadBuild* build, const ComponentArgument* args,
                             int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build->Fail(StrL("Editor.aria_label expects non-empty text"));
     }
     Op* op = build->New<Op>();

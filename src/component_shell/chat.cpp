@@ -245,7 +245,7 @@ static El* Materialize(MaterializeRequest* request) {
 // ─── Recorders ─────────────────────────────────────────────────────────────
 
 static bool NonEmptyId(Str id) {
-    return len(StrTrimAscii(id)) > 0;
+    return len(StrTrim(id)) > 0;
 }
 
 static bool ConstructAttachment(PayloadBuild* build,
@@ -460,7 +460,7 @@ static bool RecordScrollerJumpButton(PayloadBuild* b,
 static bool RecordJumpButtonLabel(PayloadBuild* build,
                                   const ComponentArgument* args, int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build->Fail(
             StrL("MessageScroller.jump_button_label expects non-empty text"));
     }

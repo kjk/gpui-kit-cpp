@@ -150,7 +150,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
     if (count != 3 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::Callback ||
         args[2].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build
             ->Fail(StrL("List expects a non-empty id, rows callback, and row "
                         "renderer"));

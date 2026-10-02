@@ -117,13 +117,13 @@ static El* Materialize(MaterializeRequest* request) {
     EachMethod<PaginationOp>(request, [&](const PaginationOp& op) {
         switch (op.kind) {
             case PaginationOp::Current:
-                pagination->CurrentPage(common::UsizeInt(op.value));
+                pagination->CurrentPage(common::UsizeInt64(op.value));
                 break;
             case PaginationOp::Total:
-                pagination->TotalPages(common::UsizeInt(op.value));
+                pagination->TotalPages(common::UsizeInt64(op.value));
                 break;
             case PaginationOp::Visible:
-                pagination->VisiblePages(common::UsizeInt(op.value));
+                pagination->VisiblePages(common::UsizeInt64(op.value));
                 break;
             case PaginationOp::Compact:
                 pagination->Compact();

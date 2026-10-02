@@ -247,7 +247,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
         args[1].kind != shell::ComponentArgumentKind::Callback ||
         args[2].kind != shell::ComponentArgumentKind::Callback ||
         args[3].kind != shell::ComponentArgumentKind::Callback ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build
             ->Fail(StrL("Combobox expects id, rows, on_change, and on_confirm "
                         "callbacks"));

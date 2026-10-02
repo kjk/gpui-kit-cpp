@@ -146,17 +146,18 @@ macOS font-kit requirement on the website only. The current update target is
   paints its own bar from the ScrollbarHandle entity, and a Scrollbar
   placed after its viewport takes effect a frame later
   (`src/component_shell/scroll/`).
-- **Registered-component numbers are ints.** The registry reads a usize as
-  64 bits and checks it as Rust does, but the C++ components it hands the
-  number to count in `int`, as this tree indexes everywhere: Badge's count
-  and max, Rating, Pagination's pages, textarea rows, chart ticks and grid
-  levels, the Carousel, Settings and typed-compound indices,
-  description-list and table spans, OTP groups, calendar months and
-  OtpState's length are clamped to INT_MAX, and a MessageScrollerState
-  count past it is refused (Rust would allocate a row height for each).
-  Only a Badge max or a page number past 2^31 would read differently; the
-  rest count things no window lays out that many of.
-  Chart rows are narrowed to f32. Id checks trim ASCII whitespace only.
+- **Registered-component counts past INT_MAX are clamped.** The registry
+  reads a usize as 64 bits and checks it as Rust does, and the numbers a
+  script can see are 64-bit: a Badge's count and max, Pagination's pages,
+  and a chart's values, which stay f64 for its tooltip and labels. The
+  counts of things no window lays out that many of -- Rating, textarea
+  rows, chart ticks and grid levels, the Carousel, Settings and
+  typed-compound indices, description-list and table spans, OTP groups,
+  calendar months and OtpState's length -- are clamped to INT_MAX, and a
+  MessageScrollerState count past it is refused (Rust would allocate a row
+  height for each). A clicked page reaches its listener as a pointer-sized
+  argument, so on wasm32 a page past 2^31 does not
+  (`src/component_shell/compound/common.cpp`, `src/ui/pagination.h`).
 - **Component-shell gaps against the Rust components.** MenuItem/Menu
   `disabled` and the retained forms' `disabled()` are inert (upstream
   records them as common behaviors and drops the op — ported as-is).

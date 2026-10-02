@@ -101,8 +101,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
     if (count != 2 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::String)
         return build->Fail(StrL("Popover(id, label) expects two strings"));
-    if (len(StrTrimAscii(args[0].string)) == 0 ||
-        len(StrTrimAscii(args[1].string)) == 0)
+    if (len(StrTrim(args[0].string)) == 0 || len(StrTrim(args[1].string)) == 0)
         return build->Fail(StrL("Popover id and label must not be empty"));
     PopoverPayload* payload = build->New<PopoverPayload>();
     payload->id = args[0].string;

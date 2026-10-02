@@ -13,7 +13,7 @@ namespace component {
 // once the range's first page is beside it, which is what this keyed state
 // carries between the frame that built the menu and the click that runs.
 struct PaginationMenuState {
-    int firstPage = 1;
+    int64_t firstPage = 1;
     Listener onChange = {};
 
     static void OnItem(PaginationMenuState* self, Ctx* cx, const ClickEvent* ev,
@@ -28,30 +28,33 @@ constexpr int kMaxEllipsisMenuPages = 100;
 // ellipsis_menu_pages: the pages an ellipsis menu lists — the hidden pages
 // [hiddenStart, hiddenEnd) closest to the current page, at most
 // kMaxEllipsisMenuPages of them — as [*start, *end).
-void PaginationEllipsisMenuPages(int hiddenStart, int hiddenEnd,
-                                 int currentPage, int* start, int* end);
+void PaginationEllipsisMenuPages(int64_t hiddenStart, int64_t hiddenEnd,
+                                 int64_t currentPage, int64_t* start,
+                                 int64_t* end);
 
 struct Pagination {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     Str id = {};
-    int page = 1;
-    int total = 1;
+    // Rust's usize pages, in 64 bits. A page reaches onChange as the
+    // listener's argument, which is as wide as a pointer.
+    int64_t page = 1;
+    int64_t total = 1;
     // How many page buttons stay visible before the list collapses to
     // ellipses; crates/base clamps this to 5.
-    int visiblePages = 5;
+    int64_t visiblePages = 5;
     bool compact = false;
     bool disabled = false;
     UiSize size = UiSize::Medium;
     Listener onChange;
 
-    static Pagination* New(Ctx* cx, int page, int total);
+    static Pagination* New(Ctx* cx, int64_t page, int64_t total);
     Pagination* Id(Str s);
     // current_page: at least 1.
-    Pagination* CurrentPage(int page);
+    Pagination* CurrentPage(int64_t page);
     // total_pages: at least 1, and the current page no further than it.
-    Pagination* TotalPages(int pages);
-    Pagination* VisiblePages(int n);
+    Pagination* TotalPages(int64_t pages);
+    Pagination* VisiblePages(int64_t n);
     Pagination* Compact(bool v = true);
     Pagination* Disabled(bool v);
     Pagination* WithSize(UiSize s);

@@ -288,7 +288,7 @@ static bool IsText(const ComponentArgument* args, int count) {
     return count == 1 && args[0].kind == shell::ComponentArgumentKind::String;
 }
 static bool IsNonEmptyText(const ComponentArgument* args, int count) {
-    return IsText(args, count) && len(StrTrimAscii(args[0].string)) != 0;
+    return IsText(args, count) && len(StrTrim(args[0].string)) != 0;
 }
 
 static bool ConstructItem(PayloadBuild* build, const ComponentArgument* args,

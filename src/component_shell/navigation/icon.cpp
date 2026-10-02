@@ -52,7 +52,7 @@ static bool EscapesRoot(Str path) {
 bool IconPath(Str path, Str* error) {
     // Rust's `str::trim` trims Unicode whitespace; a path's is in practice
     // only ever the ASCII kind.
-    if (len(StrTrimAscii(path)) == 0) {
+    if (len(StrTrim(path)) == 0) {
         *error = StrL("Icon path must not be empty");
         return false;
     }

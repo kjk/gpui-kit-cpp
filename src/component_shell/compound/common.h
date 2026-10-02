@@ -25,6 +25,8 @@ bool FiniteF32(double value, Str label, float* out, Str* error);
 
 // A usize as the int the components count in.
 int UsizeInt(uint64_t value);
+// A usize for a component that counts in 64 bits: Pagination's pages.
+int64_t UsizeInt64(uint64_t value);
 
 } // namespace gpui::component_shell::compound::common
 #endif // GPUI_COMPONENT_SHELL_COMPOUND_COMMON_H_

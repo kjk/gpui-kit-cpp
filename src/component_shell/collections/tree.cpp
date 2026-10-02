@@ -291,8 +291,7 @@ static bool ConstructItem(PayloadBuild* build, const ComponentArgument* args,
                           int count) {
     if (count != 2 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0 ||
-        len(StrTrimAscii(args[1].string)) == 0)
+        len(StrTrim(args[0].string)) == 0 || len(StrTrim(args[1].string)) == 0)
         return build->Fail(StrL("TreeItem expects non-empty id and label"));
     ItemPayload* payload = build->New<ItemPayload>();
     payload->id = args[0].string;
@@ -312,7 +311,7 @@ static bool RecordExpanded(PayloadBuild* build, const ComponentArgument* args,
 static bool ConstructTree(PayloadBuild* build, const ComponentArgument* args,
                           int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0)
+        len(StrTrim(args[0].string)) == 0)
         return build->Fail(StrL("Tree expects non-empty id"));
     build->New<TreePayload>()->id = args[0].string;
     return true;

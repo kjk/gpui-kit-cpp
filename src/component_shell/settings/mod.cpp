@@ -289,7 +289,7 @@ template <int Which>
 static bool ConstructText(PayloadBuild* build, const ComponentArgument* args,
                           int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build
             ->Fail(Which == 0   ? StrL("SettingItem expects non-empty "
                                        "title")
@@ -355,7 +355,7 @@ template <TextOp::Kind K>
 static bool RecordText(PayloadBuild* build, const ComponentArgument* args,
                        int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0) {
+        len(StrTrim(args[0].string)) == 0) {
         return build
             ->Fail(fmt("%s expects non-empty text",
                        Str(K == TextOp::Title ? "title" : "description")));

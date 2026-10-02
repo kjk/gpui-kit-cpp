@@ -215,11 +215,11 @@ static const char* ValidateSchema(const ArgumentSchema& schema, bool topLevel) {
         case SchemaKind::Element:
             return nullptr;
         case SchemaKind::Entity:
-            if (len(StrTrimAscii(S(schema.text))) == 0)
+            if (len(StrTrim(S(schema.text))) == 0)
                 return "entity kind must not be empty";
             return nullptr;
         case SchemaKind::Callback:
-            if (len(StrTrimAscii(S(schema.text))) == 0)
+            if (len(StrTrim(S(schema.text))) == 0)
                 return "callback signature must not be empty";
             return nullptr;
         case SchemaKind::Enum: {
@@ -338,7 +338,7 @@ bool ComponentRegistry::Open(uint32_t apiVersion, const char* module,
     for (const char* name : kRuntimeModuleSpecifiers) {
         if (module && strcmp(name, module) == 0) reserved = true;
     }
-    if (!module || len(StrTrimAscii(Str(module))) == 0 || reserved) {
+    if (!module || len(StrTrim(Str(module))) == 0 || reserved) {
         RegistryError e;
         e.kind = RegistryErrorKind::InvalidModuleSpecifier;
         e.component = module;

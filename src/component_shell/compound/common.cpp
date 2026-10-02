@@ -9,7 +9,7 @@
 namespace gpui::component_shell::compound::common {
 
 bool NonemptyId(Str id, const char* component, Str* error) {
-    if (len(StrTrimAscii(id)) > 0) return true;
+    if (len(StrTrim(id)) > 0) return true;
     *error = fmt("%s(id) expects a nonempty string id", Str(component));
     return false;
 }
@@ -38,6 +38,10 @@ bool FiniteF32(double value, Str label, float* out, Str* error) {
 
 int UsizeInt(uint64_t value) {
     return value > (uint64_t)INT_MAX ? INT_MAX : (int)value;
+}
+
+int64_t UsizeInt64(uint64_t value) {
+    return value > (uint64_t)INT64_MAX ? INT64_MAX : (int64_t)value;
 }
 
 } // namespace gpui::component_shell::compound::common

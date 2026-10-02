@@ -72,8 +72,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
     if (count != 2 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::String)
         return build->Fail(StrL("DropdownMenu(id, label) expects two strings"));
-    if (len(StrTrimAscii(args[0].string)) == 0 ||
-        len(StrTrimAscii(args[1].string)) == 0)
+    if (len(StrTrim(args[0].string)) == 0 || len(StrTrim(args[1].string)) == 0)
         return build->Fail(StrL("DropdownMenu id and label must not be empty"));
     DropdownMenuPayload* payload = build->New<DropdownMenuPayload>();
     payload->id = args[0].string;
@@ -88,7 +87,7 @@ static bool RecordItem(PayloadBuild* build, const ComponentArgument* args,
         return build
             ->Fail(StrL("DropdownMenu.item(label, callback) expects a "
                         "string and callback"));
-    if (len(StrTrimAscii(args[0].string)) == 0)
+    if (len(StrTrim(args[0].string)) == 0)
         return build->Fail(StrL("DropdownMenu.item label must not be empty"));
     MenuItemOp* op = build->New<MenuItemOp>();
     op->label = args[0].string;

@@ -196,10 +196,10 @@ static void TwoPaginationsHaveTwoEllipsisMenus() {
     EntityDropAll(&app);
 }
 
-static bool MenuPagesAre(int hiddenStart, int hiddenEnd, int current,
-                         int wantStart, int wantEnd) {
-    int start = -1;
-    int end = -1;
+static bool MenuPagesAre(int64_t hiddenStart, int64_t hiddenEnd,
+                         int64_t current, int64_t wantStart, int64_t wantEnd) {
+    int64_t start = -1;
+    int64_t end = -1;
     component::PaginationEllipsisMenuPages(hiddenStart, hiddenEnd, current,
                                            &start, &end);
     return start == wantStart && end == wantEnd;
@@ -213,9 +213,52 @@ static void EllipsisMenuPagesStayNearTheCurrentPage() {
 
     // Long gaps keep the pages next to the current page.
     utassert(MenuPagesAre(4, 10000, 1, 4, 104));
+    // Pages are usize: a gap past 2^31 is counted as it is.
+    utassert(MenuPagesAre(2, 5000000000LL, 5000000001LL, 4999999900LL,
+                          5000000000LL));
     utassert(MenuPagesAre(2, 9997, 10000, 9897, 9997));
     utassert(MenuPagesAre(5003, 10000, 5000, 5003, 5103));
     utassert(MenuPagesAre(2, 4998, 5000, 4898, 4998));
+}
+
+// The pages are usize: a control five billion pages long lays out its
+// window and ellipses over pages past 2^31 as Rust's does.
+static void PagesPastTwoToTheThirtyFirstAreCounted() {
+    PaginationState st = PaginationStateNew(4000000000LL, 5000000000LL);
+    utassert(st.currentPage == 4000000000LL && st.totalPages == 5000000000LL);
+    utassert(PaginationNextPage(&st) == 4000000001LL);
+    PaginationItem items[9];
+    int n = PaginationItems(&st, items, 9);
+    utassert(n == 7);
+    utassert(items[0].page == 1);
+    utassert(items[1].page == 0 && items[1].from == 2 &&
+             items[1].to == 3999999998LL);
+    utassert(items[3].page == 4000000000LL);
+    utassert(items[6].page == 5000000000LL);
+}
+
+// badge.rs's usize count and max: a count past 2^31 is written out, and one
+// past the max shows the max and a plus.
+static void ABadgeCountsInSixtyFourBits() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    auto shown = [&](uint64_t count, uint64_t max) {
+        El* root = component::Badge::New(&cx)->Count(count)->Max(max)->IntoEl();
+        El* mark = root ? root->last : nullptr;
+        El* text = mark ? mark->first : nullptr;
+        return text ? text->text : Str{};
+    };
+    utassert(StrEq(shown(3000000000ULL, 4000000000ULL), StrL("3000000000")));
+    utassert(StrEq(shown(5000000000ULL, 4000000000ULL), StrL("4000000000+")));
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    EntityDropAll(&app);
+    delete win;
+    AppGlobalClear(&app);
 }
 
 void TestPagination() {
@@ -227,4 +270,6 @@ void TestPagination() {
     AScopeIsWhatMakesALocalNameItsOwn();
     TwoPaginationsHaveTwoEllipsisMenus();
     EllipsisMenuPagesStayNearTheCurrentPage();
+    PagesPastTwoToTheThirtyFirstAreCounted();
+    ABadgeCountsInSixtyFourBits();
 }

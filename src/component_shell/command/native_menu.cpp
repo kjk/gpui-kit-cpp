@@ -212,7 +212,7 @@ static El* MaterializeTrigger(MaterializeRequest* request) {
 
 static bool IsNonEmptyText(const ComponentArgument& arg) {
     return arg.kind == shell::ComponentArgumentKind::String &&
-           len(StrTrimAscii(arg.string)) != 0;
+           len(StrTrim(arg.string)) != 0;
 }
 
 static bool ConstructItem(PayloadBuild* build, const ComponentArgument* args,

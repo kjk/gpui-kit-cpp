@@ -1199,6 +1199,11 @@ inline bool StrContainsI(Str s, Str sub) {
     return StrFindI(s, sub) >= 0;
 }
 Str StrTrimAscii(Str s);
+// str::trim: without the leading and trailing Unicode White_Space -- the
+// ASCII kind, and NEL, NBSP, the ogham mark, the en through hair spaces,
+// the line and paragraph separators, the narrow no-break, medium
+// mathematical and ideographic spaces. `s` is UTF-8.
+Str StrTrim(Str s);
 Str StrReplaceAll(Str value, Str from, Str to);
 
 // Concatenated C strings, ended by an empty one.

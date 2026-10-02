@@ -175,6 +175,25 @@ static void TrimAsciiReturnsASlice() {
     utassert(base::StrEq(base::StrTrimAscii(StrL(" \t\r\n")), StrL("")));
 }
 
+// str::trim: Unicode White_Space comes off both ends, and only it -- a
+// zero-width space is not whitespace, nor is a broken sequence.
+static void TrimTakesUnicodeWhiteSpace() {
+    // NBSP, "id", ideographic space.
+    char text[] = "\xC2\xA0id\xE3\x80\x80";
+    Str trimmed = base::StrTrim(Str(text, (int)sizeof(text) - 1));
+    utassert(base::StrEq(trimmed, StrL("id")));
+    utassert(trimmed.s == text + 2);
+    // Ogham space mark, en quad, line separator, NEL, tab: all of it.
+    utassert(len(base::StrTrim(
+                 StrL("\xE1\x9A\x80\xE2\x80\x80\xE2\x80\xA8\xC2\x85\t"))) == 0);
+    // Zero-width space (U+200B) stays.
+    utassert(base::StrEq(base::StrTrim(StrL(" \xE2\x80\x8Bx ")),
+                         StrL("\xE2\x80\x8Bx")));
+    // A lone continuation byte is not whitespace.
+    utassert(base::StrEq(base::StrTrim(StrL("\x80 ")), StrL("\x80")));
+    utassert(base::StrEq(base::StrTrim(StrL("  plain  ")), StrL("plain")));
+}
+
 static void BuilderBorrowsThenGrowsLikeAVec() {
     TempStr scratch = AllocStrTemp(4);
     StrBuilder b;
@@ -276,6 +295,7 @@ static void StartsWithAnyChecksFirstCharInSet() {
 void TestStr() {
     TestSuite("str");
     CaseInsensitiveEqualityRejectsLengthFirst();
+    TrimTakesUnicodeWhiteSpace();
     CaseInsensitiveEqualityKeepsEmptySliceSemantics();
     ComparisonUsesBytesThenLength();
     SequentialStringLookupsAvoidLengthPrepass();

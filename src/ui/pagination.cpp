@@ -12,12 +12,15 @@ void PaginationMenuState::OnItem(PaginationMenuState* self, Ctx* cx,
     if (!self->onChange.IsValid()) {
         return;
     }
-    ListenerCall(cx->app, cx->win,
-                 ListenerFill(self->onChange, self->firstPage + (int)ix), ev);
+    ListenerCall(
+        cx->app, cx->win,
+        ListenerFill(self->onChange, (intptr_t)(self->firstPage + (int64_t)ix)),
+        ev);
 }
 
-void PaginationEllipsisMenuPages(int hiddenStart, int hiddenEnd,
-                                 int currentPage, int* start, int* end) {
+void PaginationEllipsisMenuPages(int64_t hiddenStart, int64_t hiddenEnd,
+                                 int64_t currentPage, int64_t* start,
+                                 int64_t* end) {
     if (hiddenEnd - hiddenStart <= kMaxEllipsisMenuPages) {
         *start = hiddenStart;
         *end = hiddenEnd;
@@ -30,7 +33,7 @@ void PaginationEllipsisMenuPages(int hiddenStart, int hiddenEnd,
     }
 }
 
-Pagination* Pagination::New(Ctx* cx, int page, int total) {
+Pagination* Pagination::New(Ctx* cx, int64_t page, int64_t total) {
     Arena* a = cx->a;
     Pagination* p = ArenaNew<Pagination>(a);
     p->a = a;
@@ -43,18 +46,18 @@ Pagination* Pagination::Id(Str s) {
     id = s;
     return this;
 }
-Pagination* Pagination::CurrentPage(int value) {
+Pagination* Pagination::CurrentPage(int64_t value) {
     page = value < 1 ? 1 : value;
     return this;
 }
-Pagination* Pagination::TotalPages(int value) {
+Pagination* Pagination::TotalPages(int64_t value) {
     total = value < 1 ? 1 : value;
     if (page > total) {
         page = total;
     }
     return this;
 }
-Pagination* Pagination::VisiblePages(int n) {
+Pagination* Pagination::VisiblePages(int64_t n) {
     visiblePages = n;
     return this;
 }
@@ -93,8 +96,8 @@ El* Pagination::IntoEl() {
                   ->Gap(Rems(cx, 0.25f))
                   ->ItemsCenter();
     // The nav buttons are ghost and compact; only the icon shows when compact.
-    int prevPage = PaginationPrevPage(&st);
-    int nextPage = PaginationNextPage(&st);
+    int64_t prevPage = PaginationPrevPage(&st);
+    int64_t nextPage = PaginationNextPage(&st);
     bool hasPrev = prevPage != 0;
     bool hasNext = nextPage != 0;
     Button* prev = Button::New(cx, StrL("prev"))
@@ -117,16 +120,18 @@ El* Pagination::IntoEl() {
         next->Label(Tr("Pagination.next"))->IconRight(IconName::ChevronRight);
     }
     if (hasPrev && onChange.IsValid()) {
-        prev->OnClick(ListenerArg(onChange, prevPage));
+        prev->OnClick(ListenerArg(onChange, (intptr_t)prevPage));
     }
     if (hasNext && onChange.IsValid()) {
-        next->OnClick(ListenerArg(onChange, nextPage));
+        next->OnClick(ListenerArg(onChange, (intptr_t)nextPage));
     }
     row->Child(prev->IntoEl());
     if (!compact) {
-        int visible = st.visiblePages < 5 ? 5 : st.visiblePages;
-        int64_t wanted = (int64_t)visible + 2;
-        int cap = st.totalPages < wanted ? st.totalPages : (int)wanted;
+        int64_t visible = st.visiblePages < 5 ? 5 : st.visiblePages;
+        int64_t wanted = visible + 2;
+        // The buttons built: no more than the pages, nor than the window.
+        int64_t buttons = st.totalPages < wanted ? st.totalPages : wanted;
+        int cap = buttons > INT_MAX ? INT_MAX : (int)buttons;
         PaginationItem* items =
             (PaginationItem*)Alloc(a, (int)sizeof(PaginationItem) * cap);
         int n = PaginationItems(&st, items, cap);
@@ -153,12 +158,13 @@ El* Pagination::IntoEl() {
                                       ->MinW(55)
                                       ->MaxH(240)
                                       ->Scrollable();
-                int first = 0;
-                int end = 0;
+                int64_t first = 0;
+                int64_t end = 0;
                 PaginationEllipsisMenuPages(items[i].from, items[i].to + 1,
                                             page, &first, &end);
-                for (int p = first; p < end; p++) {
-                    menu->MenuWithCheck(StrDup(a, fmt("%d", p)), p == page);
+                for (int64_t p = first; p < end; p++) {
+                    menu->MenuWithCheck(StrDup(a, fmt("%lld", (long long)p)),
+                                        p == page);
                 }
                 Entity<PaginationMenuState> ment =
                     ElementStateEntity<PaginationMenuState>(
@@ -179,11 +185,12 @@ El* Pagination::IntoEl() {
             }
             bool selected = items[i].page == page;
             // `Button::new(page)`: the page number is the whole name.
-            Button* b = Button::New(cx, StrDup(a, fmt("%d", items[i].page)))
-                            ->Label(StrDup(a, fmt("%d", items[i].page)))
-                            ->Compact()
-                            ->WithSize(size)
-                            ->Disabled(disabled);
+            Button* b =
+                Button::New(cx, ElementIdInteger(a, (uint64_t)items[i].page))
+                    ->Label(StrDup(a, fmt("%lld", (long long)items[i].page)))
+                    ->Compact()
+                    ->WithSize(size)
+                    ->Disabled(disabled);
             if (selected) {
                 b->Outline();
             } else {
@@ -191,7 +198,7 @@ El* Pagination::IntoEl() {
             }
             if (onChange.IsValid() &&
                 PaginationCanRequest(&st, items[i].page)) {
-                b->OnClick(ListenerArg(onChange, items[i].page));
+                b->OnClick(ListenerArg(onChange, (intptr_t)items[i].page));
             }
             row->Child(b->IntoEl());
         }

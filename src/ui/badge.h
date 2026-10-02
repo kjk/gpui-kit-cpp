@@ -17,8 +17,9 @@ enum class BadgeKind : uint8_t {
 struct Badge {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
-    int count = 0;
-    int max = 99;
+    // badge.rs's usize count and max, in 64 bits.
+    uint64_t count = 0;
+    uint64_t max = 99;
     BadgeKind kind = BadgeKind::Number;
     IconName icon = IconName::None;
     Rgba color = {};
@@ -29,8 +30,8 @@ struct Badge {
     ArenaVec<El*> children;
 
     static Badge* New(Ctx* cx);
-    Badge* Count(int n);
-    Badge* Max(int n);
+    Badge* Count(uint64_t n);
+    Badge* Max(uint64_t n);
     Badge* Dot();
     Badge* Icon(IconName n);
     Badge* Color(Rgba c);

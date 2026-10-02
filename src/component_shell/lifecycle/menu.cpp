@@ -328,8 +328,7 @@ static bool ConstructItem(PayloadBuild* build, const ComponentArgument* args,
                           int count) {
     if (count != 2 || args[0].kind != shell::ComponentArgumentKind::String ||
         args[1].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0 ||
-        len(StrTrimAscii(args[1].string)) == 0)
+        len(StrTrim(args[0].string)) == 0 || len(StrTrim(args[1].string)) == 0)
         return build->Fail(StrL("MenuItem expects non-empty label and action"));
     ItemSpec* item = build->New<ItemSpec>();
     item->label = args[0].string;
@@ -349,7 +348,7 @@ template <int Which>
 static bool ConstructLabel(PayloadBuild* build, const ComponentArgument* args,
                            int count) {
     if (count != 1 || args[0].kind != shell::ComponentArgumentKind::String ||
-        len(StrTrimAscii(args[0].string)) == 0)
+        len(StrTrim(args[0].string)) == 0)
         return build->Fail(Which == 0 ? StrL("Menu expects a non-empty label")
                                       : StrL("MenuBar expects a non-empty "
                                              "label"));

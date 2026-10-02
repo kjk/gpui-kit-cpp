@@ -320,7 +320,7 @@ static bool NewState(shell::StateBuild* build, const ComponentArgument* args,
     for (int i = 0; i < columns.count; i++) {
         const ComponentArgument& column = columns.items[i];
         if (column.kind != shell::ComponentArgumentKind::String ||
-            len(StrTrimAscii(column.string)) == 0)
+            len(StrTrim(column.string)) == 0)
             return build->Fail(
                 StrL("DataTableState columns must be non-empty strings"));
     }

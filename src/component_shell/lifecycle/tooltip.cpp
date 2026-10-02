@@ -24,7 +24,7 @@ static bool Construct(PayloadBuild* build, const ComponentArgument* args,
             ->Fail(StrL("Tooltip(id, label, text) expects three "
                         "strings"));
     for (int i = 0; i < 3; i++) {
-        if (len(StrTrimAscii(args[i].string)) == 0)
+        if (len(StrTrim(args[i].string)) == 0)
             return build
                 ->Fail(StrL("Tooltip id, label, and text must not be "
                             "empty"));
