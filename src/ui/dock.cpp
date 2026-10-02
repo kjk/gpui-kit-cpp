@@ -168,17 +168,21 @@ El* DragPanelPreview::IntoEl() {
 }
 
 // The three toggle buttons Rust hangs off the tab panel it picked for each
-// edge (DockArea::toggle_button_panels).
-static El* ToggleButton(const DockTabGroup* g, DockPlacement p, IconName icon) {
+// edge (DockArea::toggle_button_panels): an xsmall ghost Button with the
+// edge's icon and a Collapse / Expand tooltip.
+static El* ToggleButton(const DockTabGroup* g, DockPlacement p, IconName icon,
+                        bool open) {
     Ctx* cx = g->cx;
     Arena* a = cx->a;
-    const Theme& th = ThemeNow(cx->app);
-    return DockBindToggle(g, p,
-                          Div(a)
-                              ->Pad(4)
-                              ->Radius(th.radius * 0.5f)
-                              ->HoverBg(th.tokens.secondary)
-                              ->Child(IconEl(a, icon, 14)->Fg(th.mutedFg)));
+    return DockBindToggle(
+        g, p,
+        component::Button::New(cx, StrDup(a, fmt("toggle-dock-%d", (int)p)))
+            ->Icon(icon)
+            ->WithSize(UiSize::XSmall)
+            ->Ghost()
+            ->TabStop(false)
+            ->Tooltip(open ? Tr("Dock.Collapse") : Tr("Dock.Expand"))
+            ->IntoEl());
 }
 
 // The leading pair — left and bottom — or the trailing one, right.
@@ -189,21 +193,24 @@ static El* RenderToggles(const DockTabGroup* g, bool trailing) {
         Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(g->cx, 0.25f));
     if (trailing) {
         if (DockGroupHasToggle(g, DockPlacement::Right)) {
-            row->Child(ToggleButton(g, DockPlacement::Right,
-                                    s->right.open ? IconName::PanelRight
-                                                  : IconName::PanelRightOpen));
+            row->Child(ToggleButton(
+                g, DockPlacement::Right,
+                s->right.open ? IconName::PanelRight : IconName::PanelRightOpen,
+                s->right.open));
         }
         return row;
     }
     if (DockGroupHasToggle(g, DockPlacement::Left)) {
         row->Child(ToggleButton(
             g, DockPlacement::Left,
-            s->left.open ? IconName::PanelLeft : IconName::PanelLeftOpen));
+            s->left.open ? IconName::PanelLeft : IconName::PanelLeftOpen,
+            s->left.open));
     }
     if (DockGroupHasToggle(g, DockPlacement::Bottom)) {
-        row->Child(ToggleButton(g, DockPlacement::Bottom,
-                                s->bottom.open ? IconName::PanelBottom
-                                               : IconName::PanelBottomOpen));
+        row->Child(ToggleButton(
+            g, DockPlacement::Bottom,
+            s->bottom.open ? IconName::PanelBottom : IconName::PanelBottomOpen,
+            s->bottom.open));
     }
     return row;
 }
@@ -219,7 +226,6 @@ static bool HasLeadingToggles(const DockTabGroup* g) {
 static El* RenderTools(const DockTabGroup* g) {
     Ctx* cx = g->cx;
     Arena* a = cx->a;
-    const Theme& th = ThemeNow(cx->app);
     DockState* s = g->state.Get(cx);
     El* row = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->Gap(Rems(cx, 0.25f));
     int activeIx = DockGroupActiveIx(g);
@@ -238,16 +244,19 @@ static El* RenderTools(const DockTabGroup* g) {
     // `zoomable_toolbar_visible`: a zoomed panel always shows the way back
     // out, and Zoom In is on the bar only for Toolbar and Both.
     if (zoomed || DockPanelControlToolbar(def.zoomable)) {
+        // An xsmall ghost Button, selected while zoomed, with the way it
+        // goes as its tooltip.
         row->Child(DockBindZoom(
             g, panelIx,
-            Div(a)
-                ->Pad(4)
-                ->Radius(th.radius * 0.5f)
-                ->HoverBg(th.tokens.secondary)
-                ->Child(IconEl(a,
-                               zoomed ? IconName::Minimize : IconName::Maximize,
-                               14)
-                            ->Fg(th.mutedFg))));
+            component::Button::New(cx,
+                                   zoomed ? StrL("zoom-out") : StrL("zoom-in"))
+                ->Icon(zoomed ? IconName::Minimize : IconName::Maximize)
+                ->WithSize(UiSize::XSmall)
+                ->Ghost()
+                ->TabStop(false)
+                ->Selected(zoomed)
+                ->Tooltip(zoomed ? Tr("Dock.Zoom Out") : Tr("Dock.Zoom In"))
+                ->IntoEl()));
     }
     // The menu button: the same two actions, where a narrow bar can still
     // reach them.
