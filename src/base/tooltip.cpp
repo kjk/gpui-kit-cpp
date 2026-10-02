@@ -194,6 +194,12 @@ void TooltipOverlay::OnHide(TooltipOverlay* self, Ctx* cx, const TickEvent*) {
     Notify(cx);
 }
 
+// shadow_md, which tooltip.rs puts on the popup.
+static const BoxShadow kTooltipShadowMd[2] = {
+    {0, 4.f, 6.f, -1.f, {0, 0, 0, 26}, false},
+    {0, 2.f, 4.f, -2.f, {0, 0, 0, 26}, false},
+};
+
 static El* TooltipTextView(Ctx* cx, Str text) {
     const RuntimeStyle& theme = RuntimeStyleNow(cx->app);
     return Tooltip::New(cx, StrL("tooltip-popup"))
@@ -203,7 +209,8 @@ static El* TooltipTextView(Ctx* cx, Str text) {
         ->Bg(theme.popover)
         ->Fg(theme.popoverForeground)
         ->Border(1, theme.border)
-        ->Radius(6)
+        ->Shadows(kTooltipShadowMd, 2)
+        ->Radius(theme.radius)
         ->PadX(Rems(cx, 0.5f))
         ->PadY(Rems(cx, 0.125f))
         ->Font(14)
