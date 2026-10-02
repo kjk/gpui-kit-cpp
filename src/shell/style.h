@@ -25,12 +25,15 @@ bool IsParamStyleName(Str name);
 bool IsNullaryStyleName(Str name);
 
 // `apply_nullary`. False when `name` is not a no-argument style method.
-bool ApplyNullaryStyle(El* element, Str name);
+// `remSize` is the window's rem (WindowRemSize), which a rems(..) length
+// resolves against, as GPUI's does at layout.
+bool ApplyNullaryStyle(El* element, Str name, float remSize = 16);
 
 // `apply_param`. False when `op.name` is not a parametric style method (the
 // error is left alone) or when its argument is refused (`error` carries
 // Rust's message).
-bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error);
+bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error,
+                     float remSize = 16);
 
 // The StyleField bits a style method names, for a hover/active/focus
 // refinement that must copy only what it set. Zero for a method whose field

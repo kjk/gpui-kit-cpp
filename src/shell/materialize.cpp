@@ -478,12 +478,19 @@ static Str TrimSpace(Str value) {
 }
 
 // The style vocabulary is shell/style.cpp, Rust's style.rs.
+// The rem a script's rems(..) lengths resolve against: the window it is
+// rendering into, or GPUI's default outside one.
+static float ShellRemSize() {
+    shell::ScopeHostContext host = shell::ScopeCurrentHost();
+    return host.IsSet() ? WindowRemSize(host.GetWindow()) : 16.f;
+}
+
 static bool ApplyNullary(El* element, Str name) {
-    return shell::ApplyNullaryStyle(element, name);
+    return shell::ApplyNullaryStyle(element, name, ShellRemSize());
 }
 
 static bool ApplyParam(El* e, const shell::SpecOp& op, ShellError* error) {
-    return shell::ApplyParamStyle(e, op, error);
+    return shell::ApplyParamStyle(e, op, error, ShellRemSize());
 }
 
 static uint32_t StyleFieldsFor(Str name) {

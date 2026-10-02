@@ -856,6 +856,47 @@ static void DebugOutlinesOnlyInADebugBuild() {
     ArenaDelete(arena);
 }
 
+// Rems resolve against the window's rem size, as GPUI's do at layout: a
+// spacing step, a corner and a "rem" string scale with it, pixels do not,
+// and a font size stays on the 16 px base the layout scales itself.
+static void RemLengthsFollowTheWindowsRemSize() {
+    Arena* arena = ArenaNew();
+    El* e = Div(arena);
+    utassert(ApplyNullaryStyle(e, StrL("p_4"), 20));
+    utassertnear(e->style.pad.left, 20.f);
+    utassert(ApplyNullaryStyle(e, StrL("gap_2"), 20));
+    utassertnear(e->style.gapX, 10.f);
+    utassert(ApplyNullaryStyle(e, StrL("m_px"), 20));
+    utassertnear(e->style.margin.top, 1.f);
+    utassert(ApplyNullaryStyle(e, StrL("rounded_md"), 20));
+    utassertnear(e->style.radius, 7.5f);
+    utassert(ApplyNullaryStyle(e, StrL("rounded_full"), 20));
+    utassertnear(e->style.radius, 9999.f);
+    utassert(ApplyNullaryStyle(e, StrL("p_4")));
+    utassertnear(e->style.pad.left, 16.f);
+    utassert(ApplyNullaryStyle(e, StrL("text_sm"), 20));
+    utassertnear(e->style.fontSize, 14.f);
+    ShellError error;
+    Bridged twoRem = Bridged::String(StrL("2rem"));
+    SpecOp op = ParamOp(StrL("w"), &twoRem, 1);
+    utassert(ApplyParamStyle(e, op, &error, 20));
+    utassertnear(e->style.width, 40.f);
+    Bridged twelve = Bridged::Number(12);
+    op = ParamOp(StrL("w"), &twelve, 1);
+    utassert(ApplyParamStyle(e, op, &error, 20));
+    utassertnear(e->style.width, 12.f);
+    // text_size(px(12)): held so the layout's rem scaling lands on 12.
+    Bridged twelvePx = Bridged::String(StrL("12px"));
+    op = ParamOp(StrL("text_size"), &twelvePx, 1);
+    utassert(ApplyParamStyle(e, op, &error, 20));
+    utassertnear(e->style.fontSize * 20.f / 16.f, 12.f);
+    Bridged oneRem = Bridged::String(StrL("1rem"));
+    op = ParamOp(StrL("text_size"), &oneRem, 1);
+    utassert(ApplyParamStyle(e, op, &error, 20));
+    utassertnear(e->style.fontSize, 16.f);
+    ArenaDelete(arena);
+}
+
 // Interactivity::paint_debug_info prints `format!("{global_id:?}")`: the
 // ids from the root down to the element, each a name.
 static void AHoveredDebugElementPrintsItsGlobalId() {
@@ -933,5 +974,6 @@ void TestShellStyle() {
     shell_style_tests::AnUnknownStyleMethodSuggestsTheClosestName();
     shell_style_tests::DebugOutlinesOnlyInADebugBuild();
     shell_style_tests::AHoveredDebugElementPrintsItsGlobalId();
+    shell_style_tests::RemLengthsFollowTheWindowsRemSize();
     shell_style_tests::DrawingAHoveredDebugElement();
 }

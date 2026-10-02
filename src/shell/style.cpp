@@ -28,14 +28,30 @@ enum class LenKind : uint8_t {
 struct Len {
     LenKind kind = LenKind::Px;
     float v = 0;
+    // rems(..): `v` is DIPs at a 16 px rem and scales with the window's
+    // rem size when the length lands on a box (ApplyFamily).
+    bool rem = false;
 };
 
 static Len Px(float v) {
     return Len{LenKind::Px, v};
 }
 
-// rems(r) at GPUI's default 16px rem, which is the only rem this tree has.
+// rems(r) is written here at GPUI's default 16 px rem; a length that is one
+// is marked (Len::rem) and scaled to the window's rem size as it is applied,
+// as GPUI resolves rems against window.rem_size(). Font sizes stay on the
+// 16 px base, since layout scales every font size by the rem itself.
 static constexpr float kRem = 16.f;
+
+// The rem size of the window the styles are being applied for, set for the
+// length of one ApplyNullaryStyle / ApplyParamStyle call.
+static float gRemSize = kRem;
+
+static Len Rem(float v) {
+    Len l{LenKind::Px, v};
+    l.rem = true;
+    return l;
+}
 
 // ─── families ────────────────────────────────────────────────────────────
 
@@ -311,7 +327,7 @@ static bool ParseBoxSuffix(Str text, bool autoAllowed, Len* out) {
         return false;
     }
     float steps = (float)n + (half ? 0.5f : 0.f);
-    *out = Px(sign * steps * 0.25f * kRem);
+    *out = Rem(sign * steps * 0.25f * kRem);
     return true;
 }
 
@@ -327,7 +343,8 @@ static bool ParseCornerSuffix(Str text, Len* out) {
     };
     for (const auto& c : corners) {
         if (StrEq(text, c.name)) {
-            *out = Px(c.px);
+            // `full` is px(9999.), the rest rems.
+            *out = c.px < 9999.f ? Rem(c.px) : Px(c.px);
             return true;
         }
     }
@@ -599,6 +616,9 @@ static void SetBorderEdges(Style& s, float v, bool t, bool r, bool b,
 
 static void ApplyFamily(El* e, Fam fam, Len l) {
     Style& s = e->style;
+    if (l.rem) {
+        l.v *= gRemSize / kRem;
+    }
     switch (fam) {
         case Fam::W:
             SetWidth(s, l);
@@ -1309,6 +1329,7 @@ static bool ParseLength(const Bridged& value, Str method, Len* out,
         }
         Str number = text;
         float scale = 0;
+        bool rem = false;
         LenKind kind = LenKind::Px;
         if (StrEndsWith(text, "%")) {
             number.len -= 1;
@@ -1317,6 +1338,7 @@ static bool ParseLength(const Bridged& value, Str method, Len* out,
         } else if (StrEndsWith(text, "rem")) {
             number.len -= 3;
             scale = kRem;
+            rem = true;
         } else if (StrEndsWith(text, "px")) {
             number.len -= 2;
             scale = 1;
@@ -1335,7 +1357,7 @@ static bool ParseLength(const Bridged& value, Str method, Len* out,
                                      method, text));
             return false;
         }
-        *out = Len{kind, v * scale};
+        *out = Len{kind, v * scale, rem};
         return true;
     }
     float v = 0;
@@ -1405,7 +1427,10 @@ static bool ApplyOtherParam(El* e, Str name, const Bridged& value,
         if (!ParseLength(value, name, &l, error) ||
             !NarrowLength(l, Arg::Absolute, name, error))
             return false;
-        s.fontSize = l.v;
+        // Layout scales a font size by the window's rem over 16, which is
+        // rems(..) and not px(..): a size in pixels is held at what that
+        // scaling turns back into the pixels it names.
+        s.fontSize = l.rem ? l.v : l.v * kRem / gRemSize;
     } else if (StrEq(name, StrL("font_family"))) {
         Str family;
         if (!BridgedAsString(value, &family, error)) return false;
@@ -1603,7 +1628,19 @@ bool IsNullaryStyleName(Str name) {
     return style::ParseFamily(name, &l) != nullptr;
 }
 
-bool ApplyNullaryStyle(El* element, Str name) {
+namespace {
+// gRemSize for one call, put back after.
+struct RemScope {
+    float was;
+    explicit RemScope(float rem) : was(style::gRemSize) {
+        style::gRemSize = rem > 0 ? rem : style::kRem;
+    }
+    ~RemScope() { style::gRemSize = was; }
+};
+} // namespace
+
+bool ApplyNullaryStyle(El* element, Str name, float remSize) {
+    RemScope scope(remSize);
     if (const style::Keyword* keyword = style::FindKeyword(name)) {
         if (element) {
             keyword->apply(element);
@@ -1621,7 +1658,9 @@ bool ApplyNullaryStyle(El* element, Str name) {
     return true;
 }
 
-bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error) {
+bool ApplyParamStyle(El* element, const SpecOp& op, ShellError* error,
+                     float remSize) {
+    RemScope scope(remSize);
     const style::Family* family = style::FindFamily(op.name);
     if (!family && !style::IsOtherParam(op.name)) {
         return false;
