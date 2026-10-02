@@ -86,12 +86,19 @@ jobs:
           if not defined VSPATH (echo could not find a VC toolset & exit /b 1)
           call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" || exit /b 1
           bun cmd/build.ts -rel -all || exit /b 1
+          bun cmd/build.ts -rel gpui_shell || exit /b 1
           bun cmd/test.ts -rel || exit /b 1
           bun cmd/build-no-amalgam.ts -rel
 
       - name: Build (Linux / macOS)
         if: matrix.name == 'linux' || matrix.name == 'macos'
         run: bun cmd/build.ts -rel -all
+
+      # -all builds the examples only. The shell CLI is a console target, and
+      # nothing else compiles it, so an API change can break it unnoticed.
+      - name: Build gpui_shell (Linux / macOS)
+        if: matrix.name == 'linux' || matrix.name == 'macos'
+        run: bun cmd/build.ts -rel gpui_shell
 
       # Linux AppNew opens X11 even for tests that never create a window.
       - name: Test (Linux)
