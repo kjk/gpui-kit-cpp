@@ -69,7 +69,7 @@ El* InputToken::IntoEl() {
             ->ItemsCenter()
             ->Gap(Rems(cx, 0.25f))
             ->PadX(Rems(cx, 0.25f))
-            ->H(context.lineHeight > 0 ? context.lineHeight : 20.f)
+            ->H(context.lineHeight > 0 ? context.lineHeight : Rems(cx, 1.25f))
             ->MaxW(context.availableWidth > 0 ? context.availableWidth : kFill)
             ->Radius(th.radius)
             ->Border(1, context.selected ? RgbaOpacity(th.selection, 1.f)
@@ -1264,7 +1264,7 @@ El* Textarea::IntoEl() {
     // is what asks for it. Everything else is `rows` line boxes.
     float h = (height > 0 || height == kFill)
                   ? height
-                  : (float)shownRows * 20.f + 2 * padY + 2;
+                  : (float)shownRows * Rems(cx, 1.25f) + 2 * padY + 2;
     // The rows are virtualized against this, and paint only learns it after
     // the frame it measured — so the first frame of a long document would
     // build every row of it. The builder knows the box it is about to make,
