@@ -56,7 +56,7 @@ El* Spinner::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // Spinner::with_size sizes the Icon inside it, so it walks the icon
     // scale — 12 / 14 / 16 / 24 — and not the control-height one.
-    float dim = px > 0 ? px : UiIconPx(size);
+    float dim = px > 0 ? px : UiIconPx(cx, size);
     // Animation::new(speed).repeat(), whose delta is a whole turn:
     // `Transformation::rotate(percentage(delta))`.
     //

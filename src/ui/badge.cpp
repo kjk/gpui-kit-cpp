@@ -99,12 +99,13 @@ El* Badge::IntoEl() {
             step = 4;
             top = -4;
         }
+        // py_0p5 / px_0p5 / min_w_3p5 are rems; text_size(px(10.)) is not.
         mark->Top(top)
             ->Right(-step * (float)len(txt))
-            ->Pad(2)
-            ->MinW(14)
+            ->Pad(Rems(cx, 0.125f))
+            ->MinW(Rems(cx, 0.875f))
             ->Radius(7)
-            ->Child(TextEl(a, txt)->Font(10)->LineHeight(1.f));
+            ->Child(TextEl(a, txt)->Font(FontPx(cx, 10))->LineHeight(1.f));
     }
     root->Child(mark);
     return root;

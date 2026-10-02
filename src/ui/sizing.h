@@ -200,20 +200,21 @@ inline float UiSizePx(UiSize s) {
     }
 }
 
-// Icon::with_size, crates/ui/src/icon.rs: size_3 / size_3p5 / size_4 / size_6.
-// Not the control-height scale above — an icon inside a Medium control is 16.
-inline float UiIconPx(UiSize s) {
+// Icon::with_size, crates/ui/src/icon.rs: size_3 / size_3p5 / size_4 / size_6,
+// rems at the window's rem size; a custom Size is pixels. Not the
+// control-height scale above — an icon inside a Medium control is size_4.
+inline float UiIconPx(const Ctx* cx, UiSize s) {
     switch (s) {
         case UiSize::Size:
             return s.pixels;
         case UiSize::XSmall:
-            return 12;
+            return Rems(cx, 0.75f);
         case UiSize::Small:
-            return 14;
+            return Rems(cx, 0.875f);
         case UiSize::Large:
-            return 24;
+            return Rems(cx, 1.5f);
         default:
-            return 16;
+            return Rems(cx, 1.f);
     }
 }
 
@@ -311,18 +312,19 @@ inline float UiInputPadY(UiSize s) {
     }
 }
 
-inline float UiInputHeight(UiSize s) {
+// input_h: h_11 / h_8 / h_6 / h_5, rems at the window's rem size.
+inline float UiInputHeight(const Ctx* cx, UiSize s) {
     switch (s) {
         case UiSize::Large:
-            return 44;
+            return Rems(cx, 2.75f);
         case UiSize::Medium:
-            return 32;
+            return Rems(cx, 2.f);
         case UiSize::Small:
-            return 24;
+            return Rems(cx, 1.5f);
         case UiSize::XSmall:
-            return 20;
+            return Rems(cx, 1.25f);
         default:
-            return 24;
+            return Rems(cx, 1.5f);
     }
 }
 
@@ -338,29 +340,32 @@ inline float UiListPadX(UiSize s) {
     return UiInputPadX(s) + 1.f - kDropdownListPadding;
 }
 
-inline float UiListPadY(UiSize s) {
+// list_py: py_2 / py_0p5 / py_1, rems at the window's rem size.
+inline float UiListPadY(const Ctx* cx, UiSize s) {
     switch (s) {
         case UiSize::Large:
-            return 8;
+            return Rems(cx, 0.5f);
         case UiSize::Small:
-            return 2;
+            return Rems(cx, 0.125f);
         default:
-            return 4;
+            return Rems(cx, 0.25f);
     }
 }
 
-inline float UiSizeWithPx(UiSize s) {
+// size_with: size_11 / size_8 / size_5 / size_4, rems at the window's rem
+// size; a custom Size is pixels.
+inline float UiSizeWithPx(const Ctx* cx, UiSize s) {
     switch (s) {
         case UiSize::Size:
             return s.pixels;
         case UiSize::Large:
-            return 44;
+            return Rems(cx, 2.75f);
         case UiSize::Medium:
-            return 32;
+            return Rems(cx, 2.f);
         case UiSize::Small:
-            return 20;
+            return Rems(cx, 1.25f);
         default:
-            return 16;
+            return Rems(cx, 1.f);
     }
 }
 
@@ -381,23 +386,23 @@ inline El* UiInputPadX(El* e, UiSize s) {
 inline El* UiInputPadY(El* e, UiSize s) {
     return e->PadY(UiInputPadY(s));
 }
-inline El* UiInputH(El* e, UiSize s) {
-    return e->H(UiInputHeight(s));
+inline El* UiInputH(const Ctx* cx, El* e, UiSize s) {
+    return e->H(UiInputHeight(cx, s));
 }
-inline El* UiInputSize(El* e, UiSize s) {
-    return UiInputH(UiInputPadY(UiInputPadX(e, s), s), s);
+inline El* UiInputSize(const Ctx* cx, El* e, UiSize s) {
+    return UiInputH(cx, UiInputPadY(UiInputPadX(e, s), s), s);
 }
 inline El* UiListPadX(El* e, UiSize s) {
     return e->PadX(UiListPadX(s));
 }
-inline El* UiListPadY(El* e, UiSize s) {
-    return e->PadY(UiListPadY(s));
+inline El* UiListPadY(const Ctx* cx, El* e, UiSize s) {
+    return e->PadY(UiListPadY(cx, s));
 }
-inline El* UiListSize(El* e, UiSize s) {
-    return UiInputTextSize(UiListPadY(UiListPadX(e, s), s), s);
+inline El* UiListSize(const Ctx* cx, El* e, UiSize s) {
+    return UiInputTextSize(UiListPadY(cx, UiListPadX(e, s), s), s);
 }
-inline El* UiSizeWith(El* e, UiSize s) {
-    float px = UiSizeWithPx(s);
+inline El* UiSizeWith(const Ctx* cx, El* e, UiSize s) {
+    float px = UiSizeWithPx(cx, s);
     return e->W(px)->H(px);
 }
 // table_cell_size's text: text_xs / text_sm / text_sm / text_base, the

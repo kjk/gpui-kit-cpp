@@ -67,29 +67,29 @@ static void TableAndInputConstantsAreExact() {
 
     utassertnear(UiInputPadX(UiSize::Large), 12);
     utassertnear(UiInputPadY(UiSize::Large), 10);
-    utassertnear(UiInputHeight(UiSize::XSmall), 20);
-    utassertnear(UiInputHeight(UiSize::Custom(70)), 24);
+    utassertnear(UiInputHeight(nullptr, UiSize::XSmall), 20);
+    utassertnear(UiInputHeight(nullptr, UiSize::Custom(70)), 24);
     utassertnear(UiInputFontPx(UiSize::XSmall), 12);
     utassertnear(UiInputFontPx(UiSize::Custom(40)), 35);
-    utassertnear(UiSizeWithPx(UiSize::Large), 44);
-    utassertnear(UiSizeWithPx(UiSize::Custom(37)), 37);
+    utassertnear(UiSizeWithPx(nullptr, UiSize::Large), 44);
+    utassertnear(UiSizeWithPx(nullptr, UiSize::Custom(37)), 37);
 }
 
 static void StyleSizedHelpersRefineTheElement() {
     Arena* a = ArenaNew();
-    El* input = UiInputSize(Div(a), UiSize::Small);
+    El* input = UiInputSize(nullptr, Div(a), UiSize::Small);
     utassertnear(input->style.pad.left, 8);
     utassertnear(input->style.pad.right, 8);
     utassertnear(input->style.pad.top, 2);
     utassertnear(input->style.pad.bottom, 2);
     utassertnear(input->style.height, 24);
 
-    El* list = UiListSize(Div(a), UiSize::Large);
+    El* list = UiListSize(nullptr, Div(a), UiSize::Large);
     utassertnear(list->style.pad.left, 9);
     utassertnear(list->style.pad.top, 8);
     utassertnear(list->style.fontSize, 16);
 
-    El* custom = UiSizeWith(Div(a), UiSize::Custom(37));
+    El* custom = UiSizeWith(nullptr, Div(a), UiSize::Custom(37));
     utassertnear(custom->style.width, 37);
     utassertnear(custom->style.height, 37);
 

@@ -36,13 +36,13 @@ El* BadgeStory::Render(BadgeStory* self, Ctx* cx) {
                     component::Badge::New(cx)
                         ->WithSize(size)
                         ->Count(3)
-                        ->Child(IconEl(a, IconName::Bell, UiIconPx(size)))
+                        ->Child(IconEl(a, IconName::Bell, UiIconPx(cx, size)))
                         ->IntoEl());
     StorySectionAdd(icons,
                     component::Badge::New(cx)
                         ->WithSize(size)
                         ->Count(103)
-                        ->Child(IconEl(a, IconName::Inbox, UiIconPx(size)))
+                        ->Child(IconEl(a, IconName::Inbox, UiIconPx(cx, size)))
                         ->IntoEl());
     page->Child(icons);
 

@@ -407,7 +407,7 @@ El* SearchableListItemElement::IntoEl() {
             ->Fg(disabled ? th.mutedFg : th.foreground)
             ->ItemsCenter()
             ->JustifyBetween();
-    UiListSize(row, size);
+    UiListSize(cx, row, size);
     if (!disabled && !selected) {
         row->HoverBg(BackgroundOpacity(th.tokens.accent, 0.7f));
     }
@@ -432,7 +432,7 @@ El* SearchableListItemElement::IntoEl() {
                     ->ItemsCenter()
                     ->JustifyBetween()
                     ->Child(left);
-    El* check = IconEl(a, checkIcon, UiIconPx(UiSize::XSmall))
+    El* check = IconEl(a, checkIcon, UiIconPx(cx, UiSize::XSmall))
                     ->Shrink0()
                     ->Fg(th.foreground);
     if (!checked) {
@@ -899,7 +899,7 @@ El* SearchableList::IntoEl() {
         // gave one.
         El* label = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->MinW(0);
         if (it.icon != IconName::None) {
-            label->Child(IconEl(a, it.icon, UiIconPx(UiSize::Small))
+            label->Child(IconEl(a, it.icon, UiIconPx(cx, UiSize::Small))
                              ->Fg(th.mutedFg));
         }
         // adapter.rs `div().min_w_0().truncate()` around the item: an

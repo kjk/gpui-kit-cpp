@@ -179,7 +179,7 @@ El* Alert::IntoEl() {
     if (onClose.IsValid()) {
         // p_0p5 + rounded, icon at max(size, Medium) in the alert's color.
         float closeIcon =
-            UiIconPx(size < UiSize::Medium ? UiSize(UiSize::Medium) : size);
+            UiIconPx(cx, size < UiSize::Medium ? UiSize(UiSize::Medium) : size);
         El* x = Div(a)
                     ->Pad(2)
                     ->Radius(th.radius)

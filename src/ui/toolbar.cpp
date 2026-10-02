@@ -9,7 +9,8 @@ El* ToolbarItem::IntoEl(Ctx* cx, UiSize size) const {
         return content;
     }
     El* built = build(control, size);
-    return UiInputH(Div(cx->a)->FlexRow()->ItemsCenter(), size)->Child(built);
+    return UiInputH(cx, Div(cx->a)->FlexRow()->ItemsCenter(), size)
+        ->Child(built);
 }
 
 ToolbarGroup* ToolbarGroup::New(Ctx* cx, Str id) {

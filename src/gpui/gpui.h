@@ -7305,6 +7305,19 @@ void WindowRequestAnimationFrame(Window* win);
 // again; it is safe to call while the window renders, before its layout.
 float WindowRemSize(const Window* win);
 void WindowSetRemSize(Window* win, float size);
+// rems(r) for a native component: `r` rems, in DIPs at the rem size of the
+// window it is building for -- GPUI's 16 with no window. What Rust writes
+// as p_4 or rems(1.) is Rems(cx, 1); what it writes as px(..) stays DIPs.
+inline float Rems(const Ctx* cx, float r) {
+    return r * WindowRemSize(cx ? cx->win : nullptr);
+}
+// text_size(px(n)) for a native element. Font sizes here are written at a
+// 16 px rem and layout scales them by the window's rem (text_sm is
+// rems(0.875)), so a size Rust gives in pixels is held at what that scaling
+// turns back into `px`.
+inline float FontPx(const Ctx* cx, float px) {
+    return px * 16.f / WindowRemSize(cx ? cx->win : nullptr);
+}
 // window.request_autoscroll / take_autoscroll: ask an enclosing scroller to
 // bring `bounds` into view, and, from the scroller, take the request if one
 // is waiting. A request is in last frame's window coordinates here, since

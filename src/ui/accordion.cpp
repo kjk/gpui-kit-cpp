@@ -198,7 +198,7 @@ El* AccordionItem::IntoEl() {
                    ->Flex1()
                    ->MinW(0);
     if (icon != IconName::None) {
-        left->Child(IconEl(a, icon, UiIconPx(size)));
+        left->Child(IconEl(a, icon, UiIconPx(cx, size)));
     }
     if (title) {
         left->Child(title);
@@ -207,10 +207,11 @@ El* AccordionItem::IntoEl() {
     // A disabled item has no chevron at all — Rust skips the whole
     // `when(!disabled)` block, the change handler with it.
     if (!disabled) {
-        trig->Child(IconEl(a, IconName::ChevronDown, UiIconPx(UiSize::XSmall))
-                        ->Shrink0()
-                        ->Fg(th.mutedFg)
-                        ->Rotate(open ? 0.5f : 0.f));
+        trig->Child(
+            IconEl(a, IconName::ChevronDown, UiIconPx(cx, UiSize::XSmall))
+                ->Shrink0()
+                ->Fg(th.mutedFg)
+                ->Rotate(open ? 0.5f : 0.f));
     }
     gpui::AccordionItem* it = gpui::AccordionItem::New(cx)->Open(open)->Header(
         gpui::AccordionHeader::New(cx, trig));

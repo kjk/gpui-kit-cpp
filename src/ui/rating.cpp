@@ -97,7 +97,7 @@ El* Rating::IntoEl() {
         bool lit = filled || hovered >= i;
         El* star = Div(a)->Pad(2)->Shrink0()->Child(
             IconEl(a, filled ? IconName::StarFill : IconName::Star,
-                   UiIconPx(size))
+                   UiIconPx(cx, size))
                 ->Fg(lit ? activeC : th.foreground));
         if (!disabled) {
             // `div().id(ix)`: the star is named by its number alone, which

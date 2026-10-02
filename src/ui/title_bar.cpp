@@ -25,7 +25,7 @@ static El* ControlIcon(Ctx* cx, IconName icon, int clickId) {
         ->Click(clickId)
         ->HoverBg(isClose ? th.danger : th.secondaryHover)
         ->HoverFg(isClose ? th.dangerFg : th.secondaryFg)
-        ->Child(IconEl(a, icon, UiIconPx(UiSize::Small)));
+        ->Child(IconEl(a, icon, UiIconPx(cx, UiSize::Small)));
 }
 
 // WindowControls: nothing on macOS, where the native traffic lights sit over

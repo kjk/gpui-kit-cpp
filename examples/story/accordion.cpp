@@ -44,17 +44,17 @@ static component::AccordionItem* SettingsItem(Ctx* cx, IconName icon,
     const Theme& th = ThemeNow(cx->app);
     Rgba iconBg = RgbaOpacity(th.secondary, 0.5f);
     El* head = Div(a)->FlexRow()->Gap(8)->ItemsCenter();
-    head->Child(
-        Div(a)
-            ->FlexNone()
-            ->W(32)
-            ->H(32)
-            ->FlexRow()
-            ->ItemsCenter()
-            ->JustifyCenter()
-            ->Radius(8)
-            ->Bg(iconBg)
-            ->Child(IconEl(a, icon, UiIconPx(UiSize::Small))->Fg(th.mutedFg)));
+    head->Child(Div(a)
+                    ->FlexNone()
+                    ->W(32)
+                    ->H(32)
+                    ->FlexRow()
+                    ->ItemsCenter()
+                    ->JustifyCenter()
+                    ->Radius(8)
+                    ->Bg(iconBg)
+                    ->Child(IconEl(a, icon, UiIconPx(cx, UiSize::Small))
+                                ->Fg(th.mutedFg)));
     head->Child(TextEl(a, StoryDup(cx, title))->Semibold());
     if (tag.s) {
         head->Child(component::Tag::New(cx, tag)

@@ -299,7 +299,7 @@ static El* ColorFieldTrigger(Ctx* cx, const ColorPickerState* s, UiSize size,
                     ->Fg(th.foreground)
                     ->Radius(th.radius)
                     ->Border(1, outlineVisible ? th.ring : th.inputBorder);
-    UiInputTextSize(UiInputSize(field, size), size);
+    UiInputTextSize(UiInputSize(cx, field, size), size);
     float sw = 16;
     if (size == UiSize::XSmall) {
         sw = 12;
@@ -375,7 +375,7 @@ El* ColorPicker::IntoEl() {
     if (field) {
         // The field is the whole trigger.
     } else if (icon != IconName::None) {
-        trigger->Child(IconEl(a, icon, UiIconPx(size)));
+        trigger->Child(IconEl(a, icon, UiIconPx(cx, size)));
     } else {
         trigger->Child(Div(a)
                            ->W(sq)

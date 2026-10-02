@@ -50,7 +50,7 @@ Icon* Icon::Size(float v) {
 }
 
 Icon* Icon::Size(UiSize v) {
-    size = UiIconPx(v);
+    size = UiIconPx(cx, v);
     hasSize = true;
     return this;
 }

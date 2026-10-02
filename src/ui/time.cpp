@@ -577,7 +577,7 @@ El* TimeField::IntoEl() {
         ->Radius(th.radius)
         ->PadX(4);
     UiInputTextSize(root, size);
-    UiInputH(root, size);
+    UiInputH(cx, root, size);
     if (disabled) {
         root->Opacity(0.5f);
     }
