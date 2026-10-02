@@ -771,6 +771,22 @@ static El* WrapContextMenu(Ctx* cx, Str id, El* box, const TableState* s,
         ->IntoEl();
 }
 
+// The table's uniform_list virtualizes at prepaint from the bounds layout
+// gave it. The body here is built before layout with the height the box had
+// last frame; a box laid out at another height builds the table again, with
+// that height (UseLaidOutHeight now answers it), and takes its parts.
+static bool DataTableAt(void* data, Ctx* cx, El* box, float) {
+    auto* table = (DataTable*)data;
+    table->cx = cx;
+    El* fresh = table->IntoEl();
+    if (!fresh) {
+        return false;
+    }
+    box->first = fresh->first;
+    box->last = fresh->last;
+    return true;
+}
+
 El* DataTable::IntoEl() {
     El* box = BuildEl();
     if (!contextMenu) {
@@ -884,7 +900,9 @@ El* DataTable::BuildEl() {
     // The body's height. GPUI's table is `size_full()` and its uniform_list
     // virtualizes at prepaint from the bounds layout gave it; the rows here
     // are built before layout, so the body is what the table's box held last
-    // frame less its border and the head rows (UseLaidOutHeight). A fixed
+    // frame less its border and the head rows (UseLaidOutHeight), and a box
+    // laid out at another height builds the table again at prepaint
+    // (DataTableAt). A fixed
     // height is the first frame's and keeps the box to it; without one the
     // box fills, and the first frame builds a window's worth of rows — or,
     // with no window to ask, every row.
@@ -900,7 +918,7 @@ El* DataTable::BuildEl() {
         laid->inset = headsH;
     }
     float viewH = laid ? laid->built : first;
-    TrackLaidOutHeight(cx, box, laid);
+    TrackLaidOutHeight(cx, box, laid, &DataTableAt, this);
 
     // render_loading stands in for the whole table, head and all — its first
     // row is the fake head, which is why that row is painted the head colour.

@@ -395,33 +395,20 @@ El* Tree::New(Ctx* cx) {
 // out: Rust's tree story and the registered Tree's default.
 static const float kTreeDefaultH = 320;
 
-El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
-                  TreeRowFn row, void* user) {
+// uniform_list: only the rows a viewport `viewH` tall can show are built,
+// and the two spacers stand in for the rest so the scrollbar spans the whole
+// tree.
+static El* TreeRows(Ctx* cx, Entity<TreeState> state, TreeRowFn row, void* user,
+                    float viewH) {
     Arena* a = cx->a;
     TreeState* s = state.Get(cx);
-    if (!s || !row) {
-        return Div(a)->W(kFill)->H(h > 0 ? h : kFill);
+    El* list = Div(a)->FlexCol()->W(kFill);
+    if (!s) {
+        return list;
     }
-    s->self = state;
-    // uniform_list virtualizes at prepaint from the bounds layout gave it;
-    // the rows here are built before layout, so the viewport is the height
-    // the tree was laid out at last frame (UseLaidOutHeight). The first frame
-    // builds with the caller's height, or 320 for a tree that fills its box.
-    // It is also what scroll_to_item measures against.
-    float first = h > 0 ? h : kTreeDefaultH;
-    LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
-    if (laid) {
-        laid->contentBox = true;
-    }
-    float viewH = laid ? laid->built : first;
     s->viewportH = viewH;
-
-    // uniform_list: only the rows the viewport can show are built, and the
-    // two spacers stand in for the rest so the scrollbar spans the whole
-    // tree.
     VirtualRange range =
         VirtualListVisibleRows(s->entries.len, s->rowH, s->scrollY, viewH);
-    El* list = Div(a)->FlexCol()->W(kFill);
     if (range.first > 0) {
         list->Child(Div(a)->W(kFill)->H((float)range.first * s->rowH));
     }
@@ -450,6 +437,45 @@ El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
         list->Child(
             Div(a)->W(kFill)->H((float)(s->entries.len - range.end) * s->rowH));
     }
+    return list;
+}
+
+// What TreeRows is built from again when the box comes out another height.
+struct TreeRowsRebuild {
+    Entity<TreeState> state = {};
+    TreeRowFn row = nullptr;
+    void* user = nullptr;
+};
+
+static bool TreeRowsAt(void* data, Ctx* cx, El* box, float height) {
+    auto* r = (TreeRowsRebuild*)data;
+    box->first = nullptr;
+    box->last = nullptr;
+    box->Child(TreeRows(cx, r->state, r->row, r->user, height));
+    return true;
+}
+
+El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
+                  TreeRowFn row, void* user) {
+    Arena* a = cx->a;
+    TreeState* s = state.Get(cx);
+    if (!s || !row) {
+        return Div(a)->W(kFill)->H(h > 0 ? h : kFill);
+    }
+    s->self = state;
+    // uniform_list virtualizes at prepaint from the bounds layout gave it.
+    // The rows here are built with the height the tree was laid out at last
+    // frame (UseLaidOutHeight) -- the caller's height, or 320 for a tree that
+    // fills its box, on the first -- and a box that comes out another height
+    // builds them again at prepaint (TreeRowsAt). It is also what
+    // scroll_to_item measures against.
+    float first = h > 0 ? h : kTreeDefaultH;
+    LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
+    if (laid) {
+        laid->contentBox = true;
+    }
+    float viewH = laid ? laid->built : first;
+    El* list = TreeRows(cx, state, row, user, viewH);
 
     El* box = Tree::New(cx)
                   // The tree's own name, so its rows are `("row", ix)` rather
@@ -469,7 +495,13 @@ El* TreeList::New(Ctx* cx, Str id, Entity<TreeState> state, float h,
     // declares the context on.
     box->FocusId(HashClickId(id))->FocusRing(false)->FocusOnPress();
     TreeBindKeys(cx, box, state);
-    TrackLaidOutHeight(cx, box, laid);
+    auto* rebuild = ArenaNew<TreeRowsRebuild>(a);
+    if (rebuild) {
+        rebuild->state = state;
+        rebuild->row = row;
+        rebuild->user = user;
+    }
+    TrackLaidOutHeight(cx, box, laid, rebuild ? &TreeRowsAt : nullptr, rebuild);
     return box;
 }
 

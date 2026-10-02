@@ -235,17 +235,37 @@ El* ListLoadingView(Ctx* cx, float h) {
 
 // render_empty: an Inbox icon in muted_foreground at 60%, centred in what the
 // list would have filled.
+// render_empty is `size_full()`: a fixed list's rows area, or what a list
+// that fills its box leaves under the query row (`h` 0).
 static El* DefaultEmpty(Ctx* cx, float h) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    return Div(a)
-        ->FlexCol()
-        ->W(kFill)
-        ->H(h)
-        ->ItemsCenter()
-        ->JustifyCenter()
-        ->Child(IconEl(a, IconName::Inbox, 48)
-                    ->Fg(RgbaOpacity(th.mutedFg, 0.6f)));
+    El* box = Div(a)->FlexCol()->W(kFill);
+    if (h > 0) {
+        box->H(h);
+    } else {
+        box->Flex1()->MinH(0);
+    }
+    return box->ItemsCenter()->JustifyCenter()->Child(
+        IconEl(a, IconName::Inbox, 48)->Fg(RgbaOpacity(th.mutedFg, 0.6f)));
+}
+
+// The list as its box is laid out: the viewport scroll_to_item measures
+// against and load_more looks past, taken from the bounds layout gave it.
+// The rows themselves are bound at prepaint by the VirtualList body.
+static bool ListViewportAt(void* data, Ctx* cx, El*, float height) {
+    auto* s = (ListState*)data;
+    s->viewportH = height;
+    int total = ListRowCount(s);
+    const float* sizes = ListRowHeights(s);
+    VirtualRange range =
+        sizes ? VirtualListVisibleRange(sizes, total, s->scrollY, height)
+              : VirtualListVisibleRows(total, s->rowH, s->scrollY, height);
+    if (!s->loading && s->count > 0 && ListShouldLoadMore(s, range.end) &&
+        s->onLoadMore.IsValid()) {
+        ListRequestLoadMore(s, cx);
+    }
+    return false;
 }
 
 El* List::IntoEl() {
@@ -321,9 +341,11 @@ El* List::IntoEl() {
         root->H(kFill)->MinH(0);
         inner->Flex1()->MinH(0);
     }
-    // The viewport the rows are worked out against before layout: what the
-    // list's box held last frame less the query row and the rows' padding
-    // (UseLaidOutHeight), and on the first frame the fixed height or 320.
+    // The viewport worked out before layout: what the list's box held last
+    // frame less the query row and the rows' padding (UseLaidOutHeight), and
+    // on the first frame the fixed height or 320. A box laid out at another
+    // height corrects it at prepaint (ListViewportAt), and the rows are bound
+    // there by the VirtualList body from the bounds it was given.
     float searchH = search ? kListSearchRowH : 0;
     float first = h > 0 ? h : kListDefaultH;
     LaidOutHeight* laid = UseLaidOutHeight(cx, id, first);
@@ -332,7 +354,11 @@ El* List::IntoEl() {
         laid->inset = searchH + padding * 2;
     }
     float viewH = laid ? laid->built : first;
-    TrackLaidOutHeight(cx, root, laid);
+    if (s) {
+        TrackLaidOutHeight(cx, root, laid, &ListViewportAt, s);
+    } else {
+        TrackLaidOutHeight(cx, root, laid);
+    }
     if (search) {
         // list.rs: `div().px_2().border_b_1().child(Input::new(..)
         // .prefix(Icon::new(Search)).cleanable(true).p_0().appearance(false))`
@@ -376,7 +402,8 @@ El* List::IntoEl() {
         El* loadingView = delegate.renderLoading
                               ? delegate.renderLoading(cx, delegate.data)
                               : loading;
-        inner->Child(loadingView ? loadingView : ListLoadingView(cx, viewH));
+        inner->Child(loadingView ? loadingView
+                                 : ListLoadingView(cx, fill ? 0 : viewH));
         return root;
     }
     // render_initial: what the list shows before anything has been searched
@@ -395,7 +422,8 @@ El* List::IntoEl() {
         El* emptyView = delegate.renderEmpty
                             ? delegate.renderEmpty(cx, delegate.data)
                             : empty;
-        inner->Child(emptyView ? emptyView : DefaultEmpty(cx, viewH));
+        inner
+            ->Child(emptyView ? emptyView : DefaultEmpty(cx, fill ? 0 : viewH));
         return root;
     }
 

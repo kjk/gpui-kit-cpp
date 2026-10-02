@@ -240,10 +240,10 @@ static El* PlainTreeRow(void*, Ctx* cx, int, const TreeEntry&, TreeEntryState) {
 }
 
 // uniform_list virtualizes at prepaint from the bounds layout gave it. The
-// tree builds its rows before layout, so it builds them for the height its
-// box was laid out at last frame: a tree with no height fills its box and
-// builds with 320 until it has been laid out, then with the box less its
-// padding; a fixed height is the box's and the first frame's.
+// tree builds its rows before layout with the height its box had last frame
+// -- 320 for a tree with no height before it has been laid out -- and a box
+// that comes out another height binds its rows again at prepaint, so even
+// the first frame's rows are the ones the box less its padding shows.
 static void ATreeWithoutAHeightFillsItsBox() {
     App app;
     Window win;
@@ -273,13 +273,13 @@ static void ATreeWithoutAHeightFillsItsBox() {
     };
 
     El* box = frame(StrL("fill"), 0);
-    utassertnear(s->viewportH, 320.f);
+    utassertnear(s->viewportH, 400.f - 8.f);
     utassertnear(box->h, 400.f);
     frame(StrL("fill"), 0);
     utassertnear(s->viewportH, 400.f - 8.f);
 
     box = frame(StrL("fixed"), 200);
-    utassertnear(s->viewportH, 200.f);
+    utassertnear(s->viewportH, 200.f - 8.f);
     utassertnear(box->h, 200.f);
     frame(StrL("fixed"), 200);
     utassertnear(s->viewportH, 200.f - 8.f);

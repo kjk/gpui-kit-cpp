@@ -150,18 +150,7 @@ macOS font-kit requirement on the website only. The current update target is
   shows the current render's content and callbacks. A retained InputState
   hands a change to at most 16 components rendering it in one frame
   (`src/component_shell/`).
-- **Components that need a number before layout take last frame's.**
-  Rust's uniform_list and list virtualize at prepaint from the bounds
-  layout gave them; this tree's Tree (TreeList) and DataTable build their
-  rows before layout, and List works out scroll_to_item and load_more
-  before it. Those, native and registered, are `size_full()` as upstream
-  and build with the height they were laid out at last frame
-  (`UseLaidOutHeight`, `src/gpui/gpui.h`): the first frame uses the
-  caller's height (a definite height in a script's style) or a default —
-  320, or the window's height for a DataTable — and a change in the
-  laid-out height costs one extra frame. VirtualList and MessageScroller
-  bind their rows at prepaint, as upstream, and need no number. Settings
-  picks its stacked layout from last frame's width the same way.
+- **A shell Scrollbar placed after its viewport lags a frame.**
   Scroll/Scrollbar has no overlay bar reading a shared handle: the viewport
   paints its own bar from the ScrollbarHandle entity, and a Scrollbar
   placed after its viewport takes effect a frame later

@@ -231,28 +231,58 @@ static void SettingsPageScrollPaint(PaintCtx* ctx, El* e, void* user) {
 // narrower lays every item out stacked.
 static const float kStackedLayoutMaxWidth = 480;
 
-// What the page panel's prepaint needs: the state the width is kept in, and
-// the layout this frame was built with.
+// What the page panel's prepaint needs: the state the width is kept in, the
+// layout this frame was built with, and what the page was built from.
 struct SettingsContainerQuery {
     Entity<SettingsState> state = {};
     Axis layout = Axis::Horizontal;
+    // Null when there is no page to build.
+    Settings* settings = nullptr;
+    Ctx cx = {};
+    int selected = -1;
+    Str query = {};
+    int scrollGroup = -1;
+    // The field bindings before the page's: a page built again binds its
+    // fields again, at the same indices.
+    int fieldsLen = 0;
 };
 
+static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
+                              Str query, Axis pageLayout, int scrollGroup);
+
 // container_query's size, once layout has given the panel one. A width on
-// the other side of the line from the layout this frame used asks for one
-// more frame, built with it.
+// the other side of the line from the layout this frame used builds the page
+// again with the other layout, inside the panel it already has.
 static void SettingsContainerPrePaint(PaintCtx* ctx, El* e, void* user) {
     auto* q = (SettingsContainerQuery*)user;
     SettingsState* st = q ? q->state.Get(ctx->app) : nullptr;
     if (!st) {
         return;
     }
+    // Not inside a measure, which uses the scratch cache this lays out in.
+    if (LayoutInScratchPass()) {
+        return;
+    }
     st->containerWidth = e->w;
     Axis want =
         e->w <= kStackedLayoutMaxWidth ? Axis::Vertical : Axis::Horizontal;
-    if (want != q->layout && ctx->window) {
-        WindowRequestAnimationFrame(ctx->window);
+    if (want == q->layout) {
+        return;
     }
+    q->layout = want;
+    if (!q->settings) {
+        return;
+    }
+    if (st->fields.len > q->fieldsLen) {
+        VecRemoveAtN(st->fields, q->fieldsLen, st->fields.len - q->fieldsLen);
+    }
+    e->first = nullptr;
+    e->last = nullptr;
+    Ctx cx = q->cx;
+    SettingsBuildPage(&cx, q->settings, e, q->selected, q->query, want,
+                      q->scrollGroup);
+    IdsCollectChildren(e);
+    LayoutEl(ctx, e, e->x, e->y, e->w, e->h, e->laidFont, e->style.color);
 }
 
 // The one selected index, or -1. A setting dropdown is single-select, which
@@ -911,8 +941,141 @@ static El* RenderItem(Ctx* cx, Settings* s, const SettingItem& it, Str id,
     return line;
 }
 
-El* Settings::IntoEl() {
+// The selected page, built into `pane` with the layout the container query
+// chose. Built again at prepaint, inside the same pane, when the width
+// layout gave the panel puts it on the other side of the line.
+static void SettingsBuildPage(Ctx* cx, Settings* s, El* pane, int selected,
+                              Str query, Axis pageLayout, int scrollGroup) {
+    Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
+    Entity<SettingsState> state = s->state;
+    SettingsState* st = state.Get(cx);
+    GroupBoxVariant groupVariant = s->groupVariant;
+    const SettingPage& p = s->pages[selected];
+    // The body first: whether the page offers Reset All is whether
+    // anything on it came out dirty, which only the fields know.
+    bool anyDirty = false;
+    SettingsPageScroll* scroll = ArenaNew<SettingsPageScroll>(a);
+    scroll->state = state;
+    // `div().px_4().flex_1().w_full()` around the list of groups.
+    El* body =
+        Div(a)
+            ->Id(StrL("page-body"))
+            ->FlexCol()
+            ->W(kFill)
+            ->Flex1()
+            ->MinH(0)
+            ->PadX(16)
+            ->ClipY()
+            ->ScrollY(st ? st->scrollY : 0)
+            ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
+            ->OnScroll(ListenTo(state, &SettingsState::OnPageScroll));
+    int g = -1;
+    for (const SettingGroup& grp : p.groups) {
+        g++;
+        if (!SettingGroupMatches(&grp, query)) {
+            continue;
+        }
+        // group.rs renders a GroupBox; `self.variant.unwrap_or(options.
+        // group_variant())`: a group's own variant wins over the
+        // settings-level one.
+        GroupBoxVariant variant = grp.hasVariant ? grp.variant : groupVariant;
+        bool padded = variant != GroupBoxVariant::Normal;
+        // The GroupBox root: v_flex w_full, gap_3 around a padded surface
+        // and gap_4 around a plain one; the page gives each group `py_4`
+        // and the group's own style refines it last.
+        El* box =
+            Div(a)->FlexCol()->W(kFill)->Gap(padded ? 12.f : 16.f)->PadY(16);
+        if (grp.title.s) {
+            // The title slot: muted, line_height 1.25, holding
+            // `v_flex().gap_1()` of the title and a text_sm description.
+            El* title =
+                Div(a)->FlexCol()->Gap(4)->Fg(th.mutedFg)->LineHeight(1.25f);
+            title->Child(TextEl(a, grp.title)->Wrap());
+            if (grp.description.s) {
+                title->Child(TextEl(a, grp.description)
+                                 ->Font(14)
+                                 ->Fg(th.mutedFg)
+                                 ->Wrap());
+            }
+            box->Child(title);
+        }
+        // The surface: gap_4, rounded, p_4 and a border (Outline) or a
+        // fill (Fill), in group_box_foreground.
+        El* card = Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius)->Fg(
+            th.groupBoxFg);
+        if (variant == GroupBoxVariant::Outline) {
+            card->Pad(16)->Border(1, th.border);
+        } else if (variant == GroupBoxVariant::Fill) {
+            card->Pad(16)->Bg(th.groupBox);
+        }
+        int itemIx = -1;
+        for (const SettingItem& it : grp.items) {
+            itemIx++;
+            if (!SettingItemMatches(&it, query)) {
+                continue;
+            }
+            card->Child(RenderItem(
+                cx, s, it, StrDup(a, fmt("%d-%d-%d", selected, g, itemIx)),
+                selected, g, itemIx, pageLayout, p.resettable, &anyDirty));
+        }
+        // The surface and the footer share a `v_flex().gap_2()`, so the
+        // footer's 8 px is its own and not the root's gap.
+        El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(card);
+        if (grp.footer) {
+            slot->Child(Div(a)->Font(14)->Fg(th.mutedFg)->Child(grp.footer));
+        }
+        box->Child(slot);
+        grp.refiner.Apply(box);
+        if (g == scrollGroup) {
+            scroll->target = box;
+        }
+        body->Child(box);
+    }
+
+    // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and
+    // the title sits in an `h_flex().gap_1()` with whatever `title_suffix`
+    // the caller gave beside it.
+    El* head =
+        Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(12)->BorderB(1, th.border);
+    El* titleRow = Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
+    El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
+    // page.rs puts the title in the header with no styling of its own,
+    // so it is the page's own text and not a heading.
+    titleCell->Child(TextEl(a, p.title)->Fg(th.foreground));
+    if (p.titleSuffix) {
+        titleCell->Child(p.titleSuffix);
+    } else if (p.titleSuffixFn) {
+        if (El* suffix = p.titleSuffixFn(p.titleSuffixUser, cx))
+            titleCell->Child(suffix);
+    }
+    titleRow->Child(titleCell);
+    // reset_all: the page's own button, there once anything on it has
+    // left its default.
+    if (anyDirty) {
+        titleRow->Child(
+            Button::New(cx, StrL("reset-all"))
+                ->Icon(IconName::Undo2)
+                ->Tooltip(Tr("Settings.Reset All"))
+                ->Ghost()
+                ->WithSize(UiSize::Small)
+                ->OnClick(ListenTo(state, &SettingsState::OnResetPage, 0))
+                ->IntoEl());
+    }
+    head->Child(titleRow);
+    if (p.description.s) {
+        head->Child(TextEl(a, p.description)->Font(14)->Fg(th.mutedFg)->Wrap());
+    }
+    if (st && scroll->target) {
+        st->pendingScrollGroup = scrollGroup;
+    }
+    body->customPaint = &SettingsPageScrollPaint;
+    body->customUser = scroll;
+    pane->Child(head);
+    pane->Child(body);
+}
+
+El* Settings::IntoEl() {
     SettingsState* st = state.Get(cx);
     Str query = st ? InputValue(&st->search) : Str{};
     // The bindings are this frame's, in the order the fields paint. The
@@ -1023,9 +1186,9 @@ El* Settings::IntoEl() {
     El* pane = Div(a)->FlexCol()->SizeFull()->ClipY();
     // container_query: the page is laid out stacked when the panel it is in
     // is at most STACKED_LAYOUT_MAX_WIDTH wide. GPUI builds the page after
-    // the panel has its size; this tree builds before layout, so the width
-    // is the one the panel had last frame, and a frame that finds it on the
-    // other side of the line asks for another.
+    // the panel has its size. This builds it with the width the panel had
+    // last frame, and the panel's prepaint builds it again, in the same
+    // frame, when layout put the width on the other side of the line.
     Axis pageLayout = Axis::Horizontal;
     if (st && st->containerWidth >= 0 &&
         st->containerWidth <= kStackedLayoutMaxWidth) {
@@ -1038,17 +1201,11 @@ El* Settings::IntoEl() {
     pane->customUser = query_;
     if (selected >= 0 && selected < pages.len &&
         PageHasMatchingGroup(pages[selected], query)) {
-        const SettingPage& p = pages[selected];
-        // The body first: whether the page offers Reset All is whether
-        // anything on it came out dirty, which only the fields know.
-        bool anyDirty = false;
         // The page's list state is its own and starts over whenever the page
         // or the groups the query leaves on it change; the group to scroll
         // to is the one a click deferred, or on such a change the selected
         // one.
         int scrollGroup = -1;
-        SettingsPageScroll* scroll = ArenaNew<SettingsPageScroll>(a);
-        scroll->state = state;
         if (st) {
             uint32_t queryKey = IdFoldName(0, query);
             bool changed =
@@ -1063,134 +1220,14 @@ El* Settings::IntoEl() {
                               : (changed ? st->group : -1);
             st->deferredScrollGroup = -1;
         }
-        // `div().px_4().flex_1().w_full()` around the list of groups.
-        El* body =
-            Div(a)
-                ->Id(StrL("page-body"))
-                ->FlexCol()
-                ->W(kFill)
-                ->Flex1()
-                ->MinH(0)
-                ->PadX(16)
-                ->ClipY()
-                ->ScrollY(st ? st->scrollY : 0)
-                ->ScrollId((int)IdFoldName(cx->path, fmt("page-%d", selected)))
-                ->OnScroll(ListenTo(state, &SettingsState::OnPageScroll));
-        int g = -1;
-        for (const SettingGroup& grp : p.groups) {
-            g++;
-            if (!SettingGroupMatches(&grp, query)) {
-                continue;
-            }
-            // group.rs renders a GroupBox; `self.variant.unwrap_or(options.
-            // group_variant())`: a group's own variant wins over the
-            // settings-level one.
-            GroupBoxVariant variant =
-                grp.hasVariant ? grp.variant : groupVariant;
-            bool padded = variant != GroupBoxVariant::Normal;
-            // The GroupBox root: v_flex w_full, gap_3 around a padded surface
-            // and gap_4 around a plain one; the page gives each group `py_4`
-            // and the group's own style refines it last.
-            El* box = Div(a)
-                          ->FlexCol()
-                          ->W(kFill)
-                          ->Gap(padded ? 12.f : 16.f)
-                          ->PadY(16);
-            if (grp.title.s) {
-                // The title slot: muted, line_height 1.25, holding
-                // `v_flex().gap_1()` of the title and a text_sm description.
-                El* title = Div(a)
-                                ->FlexCol()
-                                ->Gap(4)
-                                ->Fg(th.mutedFg)
-                                ->LineHeight(1.25f);
-                title->Child(TextEl(a, grp.title)->Wrap());
-                if (grp.description.s) {
-                    title->Child(TextEl(a, grp.description)
-                                     ->Font(14)
-                                     ->Fg(th.mutedFg)
-                                     ->Wrap());
-                }
-                box->Child(title);
-            }
-            // The surface: gap_4, rounded, p_4 and a border (Outline) or a
-            // fill (Fill), in group_box_foreground.
-            El* card =
-                Div(a)->FlexCol()->W(kFill)->Gap(16)->Radius(th.radius)->Fg(
-                    th.groupBoxFg);
-            if (variant == GroupBoxVariant::Outline) {
-                card->Pad(16)->Border(1, th.border);
-            } else if (variant == GroupBoxVariant::Fill) {
-                card->Pad(16)->Bg(th.groupBox);
-            }
-            int itemIx = -1;
-            for (const SettingItem& it : grp.items) {
-                itemIx++;
-                if (!SettingItemMatches(&it, query)) {
-                    continue;
-                }
-                card->Child(RenderItem(
-                    cx, this, it,
-                    StrDup(a, fmt("%d-%d-%d", selected, g, itemIx)), selected,
-                    g, itemIx, pageLayout, p.resettable, &anyDirty));
-            }
-            // The surface and the footer share a `v_flex().gap_2()`, so the
-            // footer's 8 px is its own and not the root's gap.
-            El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(card);
-            if (grp.footer) {
-                slot->Child(
-                    Div(a)->Font(14)->Fg(th.mutedFg)->Child(grp.footer));
-            }
-            box->Child(slot);
-            grp.refiner.Apply(box);
-            if (g == scrollGroup) {
-                scroll->target = box;
-            }
-            body->Child(box);
-        }
-
-        // page.rs: the header is `v_flex().p_4().gap_3().border_b_1()`, and
-        // the title sits in an `h_flex().gap_1()` with whatever `title_suffix`
-        // the caller gave beside it.
-        El* head = Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(12)->BorderB(
-            1, th.border);
-        El* titleRow =
-            Div(a)->FlexRow()->W(kFill)->ItemsCenter()->JustifyBetween();
-        El* titleCell = Div(a)->FlexRow()->ItemsCenter()->Gap(4);
-        // page.rs puts the title in the header with no styling of its own,
-        // so it is the page's own text and not a heading.
-        titleCell->Child(TextEl(a, p.title)->Fg(th.foreground));
-        if (p.titleSuffix) {
-            titleCell->Child(p.titleSuffix);
-        } else if (p.titleSuffixFn) {
-            if (El* suffix = p.titleSuffixFn(p.titleSuffixUser, cx))
-                titleCell->Child(suffix);
-        }
-        titleRow->Child(titleCell);
-        // reset_all: the page's own button, there once anything on it has
-        // left its default.
-        if (anyDirty) {
-            titleRow->Child(
-                Button::New(cx, StrL("reset-all"))
-                    ->Icon(IconName::Undo2)
-                    ->Tooltip(Tr("Settings.Reset All"))
-                    ->Ghost()
-                    ->WithSize(UiSize::Small)
-                    ->OnClick(ListenTo(state, &SettingsState::OnResetPage, 0))
-                    ->IntoEl());
-        }
-        head->Child(titleRow);
-        if (p.description.s) {
-            head->Child(
-                TextEl(a, p.description)->Font(14)->Fg(th.mutedFg)->Wrap());
-        }
-        if (st && scroll->target) {
-            st->pendingScrollGroup = scrollGroup;
-        }
-        body->customPaint = &SettingsPageScrollPaint;
-        body->customUser = scroll;
-        pane->Child(head);
-        pane->Child(body);
+        query_->settings = this;
+        query_->cx = *cx;
+        query_->selected = selected;
+        query_->query = query;
+        query_->scrollGroup = scrollGroup;
+        query_->fieldsLen = st ? st->fields.len : 0;
+        SettingsBuildPage(cx, this, pane, selected, query, pageLayout,
+                          scrollGroup);
     }
 
     // h_resizable(id): the sidebar's panel at its width, kept inside its

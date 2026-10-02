@@ -409,15 +409,16 @@ static void AListWithoutAHeightFillsItsBox() {
     };
 
     // The first frame builds with 320 and fills the 500 it was given; the
-    // body under the 32px query row takes the rest.
+    // body under the 32px query row takes the rest, and prepaint takes the
+    // viewport from that: 500 less the query row and the padding above and
+    // below the rows.
     El* root = frame(0);
-    utassertnear(list->viewportH, 320.f);
+    utassertnear(list->viewportH, 500.f - 32.f - 16.f);
     utassertnear(root->h, 500.f);
     El* inner = root->first;
     El* body = inner && inner->first ? inner->first->next : nullptr;
     utassert(body && body->h > 467.f && body->h < 469.f);
-    // The next one builds with what it got: 500 less the query row and the
-    // padding above and below the rows.
+    // The next one builds with it.
     frame(0);
     utassertnear(list->viewportH, 500.f - 32.f - 16.f);
 

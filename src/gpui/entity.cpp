@@ -592,15 +592,47 @@ static void LaidOutHeightPrePaint(PaintCtx* ctx, El* e, void* user) {
                                                       : e->style.borderB;
         boxH -= e->style.pad.top + e->style.pad.bottom + bt + bb;
     }
+    // uniform_list binds its rows from the bounds it has just been given:
+    // a box laid out at another height than it was built with is built again
+    // here, inside the box it already has, rather than on the frame after.
+    // Not inside a measure, which uses the scratch cache this lays out in.
+    if (slot && slot->rebuild && !LayoutInScratchPass()) {
+        float h = boxH - slot->inset;
+        if (h < 0) {
+            h = 0;
+        }
+        slot->measured = h;
+        if (fabsf(h - slot->built) > 0.5f) {
+            slot->built = h;
+            slot->chase = 0;
+            Ctx cx = slot->cx;
+            if (slot->rebuild(slot->rebuildUser, &cx, e, h)) {
+                IdsCollectChildren(e);
+                LayoutEl(ctx, e, e->x, e->y, e->w, e->h, e->laidFont,
+                         e->style.color);
+            }
+        }
+        return;
+    }
     if (LaidOutHeightObserve(slot, boxH) && ctx && ctx->window) {
         WindowRequestAnimationFrame(ctx->window);
     }
 }
 
-bool TrackLaidOutHeight(Ctx*, El* e, LaidOutHeight* slot) {
+bool TrackLaidOutHeight(Ctx* cx, El* e, LaidOutHeight* slot) {
+    return TrackLaidOutHeight(cx, e, slot, nullptr, nullptr);
+}
+
+bool TrackLaidOutHeight(Ctx* cx, El* e, LaidOutHeight* slot,
+                        bool (*rebuild)(void* user, Ctx* cx, El* box,
+                                        float height),
+                        void* user) {
     if (!e || !slot || e->prePaint || e->customPaint) {
         return false;
     }
+    slot->rebuild = rebuild;
+    slot->rebuildUser = user;
+    slot->cx = cx ? *cx : Ctx{};
     e->prePaint = &LaidOutHeightPrePaint;
     e->customUser = slot;
     return true;

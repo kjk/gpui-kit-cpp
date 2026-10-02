@@ -668,6 +668,68 @@ static El* DrawTallColors(Ctx* cx, Window* win, Entity<SettingsState> state) {
     return root;
 }
 
+// Every prepaint hook in the tree, parents before children, as the frame's
+// write-back runs them after layout.
+static void PrePaintAll(PaintCtx* paint, El* e) {
+    if (!e) {
+        return;
+    }
+    if (e->prePaint) {
+        e->prePaint(paint, e, e->customUser);
+    }
+    for (El* child = e->first; child; child = child->next) {
+        PrePaintAll(paint, child);
+    }
+}
+
+// settings.rs: container_query builds the page from the size layout gave its
+// panel, so a page panel no wider than STACKED_LAYOUT_MAX_WIDTH stacks its
+// items on the first frame, and one that widens lays them out in a row on
+// the frame it widens.
+static void ANarrowPageStacksOnTheFrameItIsLaidOut() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    win->paint.app = &app;
+    win->paint.window = win;
+    Arena* arena = ArenaNew();
+    Entity<SettingsState> state = EntityNewState<SettingsState>(&app);
+    Ctx cx = {&app, win, arena, {}};
+    auto frame = [&](float w) {
+        arena->Reset();
+        El* root = Settings::New(&cx, StrL("stack-test"), state)
+                       ->Page(StrL("General"))
+                       ->Group(StrL("First"))
+                       ->Item(StrL("Language"), StrL("The language"),
+                              Div(arena)->W(80)->H(20))
+                       ->IntoEl();
+        const RuntimeStyle& th = RuntimeStyleNow(&app);
+        LayoutEl(&win->paint, root, 0, 0, w, 400, th.fontSize, th.foreground);
+        PrePaintAll(&win->paint, root);
+        return FindSettingElement(root, "0-0-0");
+    };
+    // 600 less the 160 sidebar leaves the page 440.
+    El* row = frame(600);
+    utassert(row && row->style.dir == FlexDir::Col);
+    row = frame(900);
+    utassert(row && row->style.dir == FlexDir::Row);
+    row = frame(900);
+    utassert(row && row->style.dir == FlexDir::Row);
+    // A page built again binds its fields again, in the same places.
+    SettingsState* st = state.Get(&app);
+    int fields = st ? st->fields.len : -1;
+    row = frame(600);
+    utassert(row && row->style.dir == FlexDir::Col);
+    utassert(st && st->fields.len == fields);
+
+    WindowKeyedFree(win);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+    ArenaDelete(arena);
+    delete win;
+}
+
 // tests.rs: selecting_a_group_from_another_page_scrolls_to_it. Leaving the
 // page drops its scroll state; the jump back must not land at the top.
 static void SelectingAGroupFromAnotherPageScrollsToIt() {
@@ -720,4 +782,5 @@ void TestSetting() {
     ElementItemsAndFieldsWithoutADefault();
     GroupVariantOverridesTheSettingsDefault();
     SelectingAGroupFromAnotherPageScrollsToIt();
+    ANarrowPageStacksOnTheFrameItIsLaidOut();
 }

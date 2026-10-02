@@ -6917,11 +6917,12 @@ Entity<T> ElementStateEntity(Ctx* cx, Str name, Str kind) {
 // number while it builds. Rust's uniform_list and list virtualize at
 // prepaint from the bounds layout gave them; this tree builds its rows
 // before layout, so the number is the one the element was laid out at last
-// frame — what Settings already does with its panel's width. The first
-// frame has none and builds with `fallback`; a frame whose laid-out height
-// differs from the one it was built with asks for one more frame, built with
-// the new one. The slot is GPUI's element state: keyed by the name under the
-// current id scope, and dropped the first frame that does not ask for it.
+// frame. The first frame has none and builds with `fallback`; a frame whose
+// laid-out height differs from the one it was built with builds the box
+// again at prepaint when the tracker has a rebuild, and otherwise asks for
+// one more frame, built with the new one. The slot is GPUI's element state:
+// keyed by the name under the current id scope, and dropped the first frame
+// that does not ask for it.
 struct LaidOutHeight {
     // What the element measured last frame, or -1 before it has been laid
     // out. `built` is what this frame's build used.
@@ -6936,6 +6937,14 @@ struct LaidOutHeight {
     // read after layout, so a script's p_4 is accounted for whatever it is.
     float inset = 0;
     bool contentBox = false;
+    // What builds the virtualized part of the box again for a height, set
+    // each frame by TrackLaidOutHeight. With one, a frame laid out at another
+    // height than it was built with is built again at prepaint -- uniform_list
+    // binding its rows from the bounds layout gave it -- rather than a frame
+    // later.
+    bool (*rebuild)(void* user, Ctx* cx, El* box, float height) = nullptr;
+    void* rebuildUser = nullptr;
+    Ctx cx = {};
 };
 
 // This frame's slot under `name`, with `built` set to the height to build
@@ -6945,6 +6954,15 @@ LaidOutHeight* UseLaidOutHeight(Ctx* cx, Str name, float fallback);
 // `e` must not already carry a prepaint or a custom paint of its own, which
 // is when this returns false and records nothing.
 bool TrackLaidOutHeight(Ctx* cx, El* e, LaidOutHeight* slot);
+// The same, with what builds `e` again for a height: called at prepaint when
+// `e` is laid out at another height than the frame was built with. True when
+// it replaced the box's children, which are then laid out again inside it;
+// false when it only took the number in (a list whose rows a VirtualList
+// binds at prepaint anyway).
+bool TrackLaidOutHeight(Ctx* cx, El* e, LaidOutHeight* slot,
+                        bool (*rebuild)(void* user, Ctx* cx, El* box,
+                                        float height),
+                        void* user);
 // The prepaint half without a window: take a laid-out box height into the
 // slot and answer whether one more frame should be built with it.
 bool LaidOutHeightObserve(LaidOutHeight* slot, float boxHeight);
