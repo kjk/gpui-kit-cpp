@@ -918,6 +918,25 @@ static void AHoveredDebugElementPrintsItsGlobalId() {
                         "Name(\"root\"), Name(\"item-3\")])")));
     utassert(
         StrEq(PaintIdChainDebug(arena, nullptr), StrL("GlobalElementId([])")));
+    // ("row", 3) and 7 keep their Display spelling as the id's name, and a
+    // debug build prints their Debug form.
+    PaintIdLink row;
+    row.id = ElementIdNamed(arena, StrL("row"), 3);
+    PaintIdLink seven;
+    seven.id = ElementIdInteger(arena, 7);
+    seven.parent = &row;
+    utassert(StrEq(row.id, StrL("row-3")) && StrEq(seven.id, StrL("7")));
+#ifndef NDEBUG
+    utassert(StrEq(PaintIdChainDebug(arena, &seven),
+                   StrL("GlobalElementId([NamedInteger(\"row\", 3), "
+                        "Integer(7)])")));
+#endif
+    utassert(
+        StrEq(DebugSourceMessage(arena, StrL("C:/work"), "src/ui/x.cpp", 3, 5),
+              StrL("This element was created at:\nC:/work/src/ui/x.cpp:3:5")));
+    utassert(
+        StrEq(DebugSourceMessage(arena, StrL("C:/work"), "/abs/x.cpp", 3, 5),
+              StrL("This element was created at:\n/abs/x.cpp:3:5")));
     ArenaDelete(arena);
 }
 
@@ -954,6 +973,28 @@ static void DrawingAHoveredDebugElement() {
     TestDraw(win);
     TestDraw(win);
     utassert(win->debugHoveredPaths.len == 0);
+
+    // The label sits at the item's origin. Over it with the secondary
+    // modifier held, a press prints where the item's div() was called and
+    // goes no further; without the modifier it is an ordinary press.
+    Modifiers secondary;
+#if GPUI_OS_MAC
+    secondary.platform = true;
+#else
+    secondary.control = true;
+#endif
+    TestSimulateMouseMove(win, {4, 4}, false, MouseButton::Left, secondary);
+    TestDraw(win);
+    TestDraw(win);
+    utassert(win->debugLabelShown && win->hasDebugSource);
+    TestSimulateMouseDown(win, {4, 4}, MouseButton::Left, secondary);
+    utassert(win->debugSourcePrints == 1);
+    TestSimulateMouseUp(win, {4, 4}, MouseButton::Left, secondary);
+    TestSimulateMouseMove(win, {4, 4});
+    TestDraw(win);
+    utassert(!win->hasDebugSource);
+    TestSimulateMouseDown(win, {4, 4});
+    utassert(win->debugSourcePrints == 1);
 #endif
     TestAppFree(app);
 }

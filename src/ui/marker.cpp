@@ -116,7 +116,8 @@ El* MarkerContent::IntoEl() {
         if (animate) {
             ShimmerText* text = ShimmerText::New(cx, child.text);
             // ("marker-loading-text", index)
-            text->Id(fmt("marker-loading-text-%d", i));
+            text->Id(ElementIdNamed(cx->a, StrL("marker-loading-text"),
+                                    (uint64_t)i));
             text->WithShimmerStyle(shimmerStyle);
             if (hasFg) {
                 text->Fg(fg);

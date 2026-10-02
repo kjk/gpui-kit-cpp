@@ -2470,6 +2470,14 @@ struct El {
     // The frame arena this was built on, so a builder that has to allocate —
     // an action handler's slot — has one without being handed it again.
     Arena* arena = nullptr;
+#ifndef NDEBUG
+    // Interactivity::source_location: where div() was called, which
+    // #[track_caller] records in a debug build. A secondary-click on a
+    // debug element's id label prints it.
+    const char* sourceFile = nullptr;
+    int sourceLine = 0;
+    int sourceColumn = 0;
+#endif
     Style style;
     Str id;
     Str text;
@@ -3215,9 +3223,15 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-// Style's growth to 432, and nothing of El's own.
+// Style's growth to 432, and nothing of El's own. A debug build adds the
+// source location div() records.
+#ifdef NDEBUG
 static_assert(sizeof(El) <= 1880,
               "keep El flags packed and members alignment-ordered");
+#else
+static_assert(sizeof(El) <= 1896,
+              "keep El flags packed and members alignment-ordered");
+#endif
 
 enum class BtnKind : uint8_t {
     Default,
@@ -3228,8 +3242,27 @@ enum class BtnKind : uint8_t {
 El* ButtonEl(Arena* a, int clickId, Str label, BtnKind kind = BtnKind::Default);
 El* ButtonSmall(Arena* a, int clickId, Str label, BtnKind kind, bool selected);
 
-El* Div(Arena* a);
+// div(). The call site is recorded in a debug build, as div()'s
+// #[track_caller] does, for the debug label's secondary-click.
+El* Div(Arena* a, const char* file = __builtin_FILE(),
+        int line = __builtin_LINE(), int column = __builtin_COLUMN());
 El* TextEl(Arena* a, Str s);
+
+// ElementId::NamedInteger(name, ix) and ElementId::Integer(ix), as this
+// tree spells every id: a name, here `name-ix` and `ix`, their Display
+// forms, in `a`. A debug build remembers which strings were made so for
+// the frame, so a debug element's label prints the id's Debug form.
+Str ElementIdNamed(Arena* a, Str name, uint64_t ix);
+Str ElementIdInteger(Arena* a, uint64_t ix);
+// What ElementIdNamed / ElementIdInteger made `id` as this frame, in a debug
+// build: 1 Integer, 2 NamedInteger (`*nameLen` the name's length), 0 a name.
+int ElementIdKindOf(Str id, int* nameLen);
+// Forget the frame's ids; the window does it as a frame starts.
+void ElementIdFrameBegin();
+// paint_debug_info's eprintln: "This element was created at:" and the call
+// site, joined onto `cwd` when it is relative. In `a`.
+Str DebugSourceMessage(Arena* a, Str cwd, const char* file, int line,
+                       int column);
 El* IconEl(Arena* a, IconName name);
 El* IconEl(Arena* a, IconName name, float size);
 // gpui's img(src): `alt` is what paints when the source will not decode.
@@ -6313,6 +6346,20 @@ struct Window {
     };
     Vec<DebugViewRoot> debugViewRoots;
     Vec<uint32_t> debugHoveredPaths;
+    // Whether a debug label painted this frame, which a change of the
+    // secondary modifier repaints; and the label the pointer is over while
+    // that modifier is held, whose press prints where the element was made.
+    bool debugLabelShown = false;
+    bool hasDebugSource = false;
+    Bounds debugSourceBounds = {};
+    const char* debugSourceFile = nullptr;
+    int debugSourceLine = 0;
+    int debugSourceColumn = 0;
+    // How many times a press printed a source location, for the tests.
+    int debugSourcePrints = 0;
+    // window.modifiers(): what is held now, from the last key or pointer
+    // event, a modifier key on its own included.
+    Modifiers modifiers = {};
     // Window::image_cache_stack. `image_cache(entity)` / El::WithImageCache
     // on a container pushes for the layout and paint of its descendants.
     Vec<EntityId> imageCacheStack;

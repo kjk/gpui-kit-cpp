@@ -38,7 +38,7 @@ El* BreadcrumbItem::IntoEl() {
         // breadcrumb.rs asks for the hand in the same `when_some(on_click)`
         // that binds the click: a level with nowhere to go is not a link.
         el->Cursor(CursorKind::Pointer);
-        BindClick(el, StrDup(a, fmt("%d", ix)), onClick);
+        BindClick(el, ElementIdInteger(a, (uint64_t)ix), onClick);
     }
     return el;
 }

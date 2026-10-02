@@ -173,8 +173,9 @@ El* AccordionItem::IntoEl() {
     float font = AccordionFontPx(size);
     float padY = 0, padX = 0;
     AccordionPad(size, &padY, &padX);
-    El* trig = AccordionTrigger::New(cx, StrDup(a, fmt("trigger-%d", index)),
-                                     open, disabled, onToggle);
+    El* trig = AccordionTrigger::New(
+        cx, ElementIdNamed(a, StrL("trigger"), (uint64_t)index), open, disabled,
+        onToggle);
     // AccordionTrigger: h_flex justify_between gap_3 font_medium, and the
     // open one paints its title in foreground.
     trig->FlexRow()

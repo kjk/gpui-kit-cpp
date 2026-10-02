@@ -732,10 +732,11 @@ El* ResizablePanelGroup::IntoEl() {
         // which is where Rust puts it and what a clip would cut off.
         // `div().id(("resizable-panel", panel_ix))`: the panel names itself,
         // which is what the handle drawn inside it folds under.
-        El* box = Div(a)
-                      ->Id(StrDup(a, fmt("resizable-panel-%d", i)))
-                      ->FlexCol()
-                      ->Shrink0();
+        El* box =
+            Div(a)
+                ->Id(ElementIdNamed(a, StrL("resizable-panel"), (uint64_t)i))
+                ->FlexCol()
+                ->Shrink0();
         // What the handle is measured against: the panel's own size along
         // the axis. Across it the handle fills the panel — the group's
         // measured box would do as well, but not on the frame that measures

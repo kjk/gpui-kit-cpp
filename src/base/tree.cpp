@@ -420,7 +420,7 @@ static El* TreeRows(Ctx* cx, Entity<TreeState> state, TreeRowFn row, void* user,
         if (!it) {
             break;
         }
-        El* wrap = TreeItemEl::New(cx, StrDup(a, fmt("row-%d", i)),
+        El* wrap = TreeItemEl::New(cx, ElementIdInteger(a, (uint64_t)i),
                                    ListenerArg(click, i))
                        ->FlexCol()
                        ->W(kFill);

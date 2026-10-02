@@ -166,18 +166,9 @@ macOS font-kit requirement on the website only. The current update target is
 - **Component-shell gaps against the Rust components.** MenuItem/Menu
   `disabled` and the retained forms' `disabled()` are inert (upstream
   records them as common behaviors and drops the op — ported as-is).
-- **A `debug()` element's label has no source link, and its ids are
-  names.** In a debug build `debug()` / `debug_below()` outline the element
-  (or every element painted under it) in red, as GPUI's Style::paint does,
-  and print a hovered one's GlobalElementId over it -- each view's
-  `View(EntityId(..))` and each id's `Name(..)` -- while last frame's hit
-  test has its hitbox under the pointer; a release build accepts them and
-  changes nothing. An element id here is always a name, so one Rust gives
-  as `("row", 3)` prints as `Name("row-3")`, not `NamedInteger("row", 3)`;
-  and with no source location on an element there is no cmd-click to print
-  where it was made (`PaintDebugInfo` in `src/gpui/gpui.cpp`). A start or
-  middle ellipsis measures characters off the shaped run where Rust sums
-  each one's advance, which differs only by kerning (`src/shell/style.cpp`,
+- **A start or middle ellipsis measures off the shaped run.** It measures
+  characters off the shaped run where Rust sums each one's advance, which
+  differs only by kerning (`src/shell/style.cpp`,
   `TruncateTextStartOrMiddle`).
 - **Font features are one flag, and the browser ignores it.** GPUI's
   `FontFeatures` is any list of OpenType (tag, value) pairs; here it is

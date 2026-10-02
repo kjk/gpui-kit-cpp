@@ -146,7 +146,7 @@ static El* StepperTrigger(Arena* a, const Theme& th, StepperItem* it) {
 El* StepperItem::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     El* root = Div(a)
-                   ->Id(StrDup(a, fmt("stepper-item-%d", step)))
+                   ->Id(ElementIdNamed(a, StrL("stepper-item"), (uint64_t)step))
                    ->Role(AccessibilityRole::ListItem)
                    ->AriaPositionInSet(step + 1)
                    ->AriaDisabled(disabled);
@@ -166,7 +166,7 @@ El* StepperItem::IntoEl() {
     refiner.Apply(root);
     El* trig = StepperTrigger(a, th, this);
     if (!disabled) {
-        BindClick(trig, StrDup(a, fmt("trigger-%d", step)),
+        BindClick(trig, ElementIdNamed(a, StrL("trigger"), (uint64_t)step),
                   ListenerFill(onClick, step));
     }
     root->Child(trig);

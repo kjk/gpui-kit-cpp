@@ -431,7 +431,10 @@ static void DrawFrame(Window* win, void* native, int pxW, int pxH, float dipW,
     ResetTempArena();
     // element_opacity starts at 1 each frame, the way GPUI's window does.
     win->paint.opacity = 1.f;
+    ElementIdFrameBegin();
 #ifndef NDEBUG
+    win->debugLabelShown = false;
+    win->hasDebugSource = false;
     // window.mouse_hit_test, taken from the hitboxes the last frame painted
     // before they go: what this frame's paint_debug_info asks is hovered.
     {
@@ -1075,11 +1078,41 @@ static bool IsModifierKey(int key) {
            (key >= 0xA0 && key <= 0xA5);
 }
 
+// window.modifiers() after a key: what the event says is held, with a
+// modifier key's own state taken from whether it went down or up. A change
+// of the secondary modifier repaints a debug label, as paint_debug_info's
+// ModifiersChanged listener refreshes the window.
+static void WindowTrackModifiers(Window* win, int key, bool down, bool shift,
+                                 bool ctrl, bool alt, bool platform,
+                                 bool function) {
+    Modifiers m;
+    m.shift = shift;
+    m.control = ctrl;
+    m.alt = alt;
+    m.platform = platform;
+    m.function = function;
+    if (key == KeyShift || key == 0xA0 || key == 0xA1) {
+        m.shift = down;
+    } else if (key == KeyControl || key == 0xA2 || key == 0xA3) {
+        m.control = down;
+    } else if (key == KeyAlt || key == 0xA4 || key == 0xA5) {
+        m.alt = down;
+    } else if (key == 0x5B || key == 0x5C) {
+        m.platform = down;
+    }
+    bool secondaryChanged = m.Secondary() != win->modifiers.Secondary();
+    win->modifiers = m;
+    if (secondaryChanged && win->debugLabelShown) {
+        AppInvalidate(win);
+    }
+}
+
 bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
                    bool platform, bool function, KeyDownFlags flags) {
     if (!win) {
         return false;
     }
+    WindowTrackModifiers(win, key, true, shift, ctrl, alt, platform, function);
     // Window::dispatch_event: a KeyDown puts the window in keyboard modality
     // before anything handles it. `Hitbox::is_hovered` answers false from
     // then on, so the hovered element hears on_hover(false) once the key has
@@ -1111,6 +1144,7 @@ void WindowKeyUp(Window* win, int key, bool shift, bool ctrl, bool alt,
     if (!win) {
         return;
     }
+    WindowTrackModifiers(win, key, false, shift, ctrl, alt, platform, function);
     // div().on_key_up: the focused element's own listener and the ones above
     // it, before the release is read as a keyboard activation. It never eats
     // the activation — GPUI's `on_key_up` observes the release rather than
@@ -1880,6 +1914,7 @@ static void DispatchMouseMove(Window* win, const MouseMoveEvent& in) {
         AppInvalidate(win);
     }
     win->mouseModifiers = in.modifiers;
+    win->modifiers = in.modifiers;
     // The hand over a symbol a secondary-hover found a definition for, which
     // is the hitbox `hover_definition_hitbox` inserts. The bounds are last
     // frame's, measured where the symbol was painted.
@@ -2258,6 +2293,21 @@ static void DispatchMouseDownOut(Window* win, const MouseDownEvent& in) {
 }
 
 static void DispatchMouseDown(Window* win, const MouseDownEvent& in) {
+    win->modifiers = in.modifiers;
+#ifndef NDEBUG
+    // paint_debug_info's capture-phase listener: a press on a debug label,
+    // the secondary modifier held, prints where its element was made and
+    // goes no further.
+    if (win->hasDebugSource && in.modifiers.Secondary() &&
+        win->debugSourceBounds.Contains({in.x, in.y})) {
+        char cwd[1024] = {};
+        PlatGetCwd(cwd, (int)sizeof(cwd));
+        log(DebugSourceMessage(GetTempArena(), Str(cwd), win->debugSourceFile,
+                               win->debugSourceLine, win->debugSourceColumn));
+        win->debugSourcePrints++;
+        return;
+    }
+#endif
     win->pressTookFocus = false;
     win->touchPress = win->touchPressPending;
     win->defaultPrevented = false;

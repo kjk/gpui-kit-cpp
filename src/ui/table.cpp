@@ -221,7 +221,7 @@ TableRow* TableRow::Child(TableCellEl* c) {
 
 El* TableRow::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
-    Str rowId = StrDup(a, fmt("row-%d", ix));
+    Str rowId = ElementIdNamed(a, StrL("row"), (uint64_t)ix);
     El* row = gpui::TableRow::New(cx, rowId, ix + 1)->W(kFill)->FlexRow();
     if (hasBg) {
         row->Bg(bg);
@@ -269,7 +269,8 @@ El* TableGroup::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     El* g = nullptr;
     if (kind == TableGroupKind::Header) {
-        g = gpui::TableHeader::New(cx, StrDup(a, fmt("header-%d", ix)))
+        g = gpui::TableHeader::New(
+                cx, ElementIdNamed(a, StrL("table-header"), (uint64_t)ix))
                 ->W(kFill)
                 ->FlexCol()
                 ->Bg(th.tokens.tableHead)
@@ -279,7 +280,7 @@ El* TableGroup::IntoEl() {
     } else if (kind == TableGroupKind::Footer) {
         // A footer is a plain div in Rust, not one of the semantic parts.
         g = Div(a)
-                ->Id(StrDup(a, fmt("footer-%d", ix)))
+                ->Id(ElementIdNamed(a, StrL("table-footer"), (uint64_t)ix))
                 ->W(kFill)
                 ->FlexCol()
                 ->Bg(th.tokens.tableFoot)
@@ -287,7 +288,8 @@ El* TableGroup::IntoEl() {
                 ->BorderT(1, th.tableRowBorder);
         refiner.Apply(g);
     } else {
-        g = gpui::TableBody::New(cx, StrDup(a, fmt("body-%d", ix)))
+        g = gpui::TableBody::New(
+                cx, ElementIdNamed(a, StrL("table-body"), (uint64_t)ix))
                 ->W(kFill)
                 ->FlexCol();
         refiner.Apply(g);
@@ -314,7 +316,8 @@ TableCaption* TableCaption::Child(El* e) {
 
 El* TableCaption::IntoEl() {
     Edges p = UiTableCellPadding(size);
-    El* e = gpui::TableCaption::New(cx, StrDup(a, fmt("caption-%d", ix)))
+    El* e = gpui::TableCaption::New(
+                cx, ElementIdNamed(a, StrL("table-caption"), (uint64_t)ix))
                 ->W(kFill)
                 ->FlexRow()
                 ->JustifyCenter()
@@ -817,7 +820,7 @@ static El* RowHeaderCell(Ctx* cx, Entity<TableState> state, int row,
     if (TableSelectedRow(s) == row) {
         e->Bg(th.tokens.tableActive);
     }
-    BindPathClick(e, StrDup(a, fmt("row-header-%d", row)),
+    BindPathClick(e, ElementIdNamed(a, StrL("row-header"), (uint64_t)row),
                   ListenTo(state, &TableState::OnRowClick, (intptr_t)row));
     return e;
 }
@@ -1097,7 +1100,8 @@ El* DataTable::BuildEl() {
                                                    : 14.f)
                                         ->LineHeight(1.f));
         if (col.selectable) {
-            BindPathClick(content, StrDup(a, fmt("col-header-%d", c)),
+            BindPathClick(content,
+                          ElementIdNamed(a, StrL("col-header"), (uint64_t)c),
                           ListenerArg(headClick, c));
         }
         // on_drag(DragColumn(..)): a press on the head picks the column up,
@@ -1113,7 +1117,8 @@ El* DataTable::BuildEl() {
             // The sort icon is its own hit box inside the head, so clicking it
             // sorts rather than selecting the column.
             El* icon = SortIcon(a, th, TableSortOf(s, c));
-            BindPathClick(icon, StrDup(a, fmt("icon-sort-%d", c)),
+            BindPathClick(icon,
+                          ElementIdNamed(a, StrL("icon-sort"), (uint64_t)c),
                           ListenerArg(sortClick, c));
             content->Child(icon);
         }
@@ -1231,10 +1236,10 @@ El* DataTable::BuildEl() {
                             ? delegate.renderTr(cx, data, r)
                             : nullptr;
         if (!rowScroll) {
-            rowScroll =
-                gpui::TableRow::New(cx, StrDup(a, fmt("row-%d", r)), r + 1);
+            rowScroll = gpui::TableRow::New(
+                cx, ElementIdNamed(a, StrL("row"), (uint64_t)r), r + 1);
         }
-        rowScroll->PathClick(StrDup(a, fmt("row-%d", r)))
+        rowScroll->PathClick(ElementIdNamed(a, StrL("row"), (uint64_t)r))
             ->Role(AccessibilityRole::Row)
             ->AriaRowIndex(r + 1)
             ->FlexRow()
@@ -1325,7 +1330,8 @@ El* DataTable::BuildEl() {
         }
         rowScroll->Child(LastEmptyColEl(cx, lastEmptyCol, data));
         if (s && s->rowSelectable && !s->cellSelectable) {
-            BindPathClick(rowScroll, StrDup(a, fmt("row-%d", r)),
+            BindPathClick(rowScroll,
+                          ElementIdNamed(a, StrL("row"), (uint64_t)r),
                           ListenerArg(rowClick, r));
             rowScroll->OnMouseDown(ListenerArg(rowDown, r));
             BindPathClick(rowFixed, StrDup(a, fmt("row-fixed-%d", r)),
@@ -1365,7 +1371,7 @@ El* DataTable::BuildEl() {
                             ->H(s->rowH)
                             ->BorderB(1, th.tableRowBorder);
         El* fillScroll = Div(a)
-                             ->Id(StrDup(a, fmt("row-%d", r)))
+                             ->Id(ElementIdNamed(a, StrL("row"), (uint64_t)r))
                              ->FlexRow()
                              ->Shrink0()
                              ->H(s->rowH)

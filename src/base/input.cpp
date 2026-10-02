@@ -1180,7 +1180,7 @@ static El* FoldChevron(Arena* a, InputState* state,
                    ->Radius(4)
                    ->ItemsCenter()
                    ->JustifyCenter()
-                   ->PathClick(StrDup(a, fmt("fold-%d", row)))
+                   ->PathClick(ElementIdNamed(a, StrL("fold"), (uint64_t)row))
                    ->HoverBg(RgbaOpacity(style.mutedForeground, 0.25f))
                    ->Cursor(CursorKind::Pointer)
                    ->Child(IconEl(a,

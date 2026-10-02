@@ -186,7 +186,8 @@ ToastStack* ToastStack::Item(Str value, El* child) {
 }
 
 ToastStack* ToastStack::Child(El* child) {
-    Str childId = StrDup(arena, fmt("toast-stack-child-%d", children.len));
+    Str childId = ElementIdNamed(arena, StrL("toast-stack-child"),
+                                 (uint64_t)children.len);
     return Item(childId, child);
 }
 

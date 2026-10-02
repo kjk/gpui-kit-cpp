@@ -384,8 +384,88 @@ static El* NewEl(Arena* a, ElKind k) {
     return e;
 }
 
-El* Div(Arena* a) {
-    return NewEl(a, ElKind::Div);
+El* Div(Arena* a, const char* file, int line, int column) {
+    El* e = NewEl(a, ElKind::Div);
+#ifndef NDEBUG
+    e->sourceFile = file;
+    e->sourceLine = line;
+    e->sourceColumn = column;
+#else
+    (void)file;
+    (void)line;
+    (void)column;
+#endif
+    return e;
+}
+
+namespace {
+struct ElementIdRec {
+    const char* s = nullptr;
+    int kind = 0;
+    int nameLen = 0;
+};
+// Only a debug build fills it, and a frame's worth at most: a run with no
+// frames (a test building trees) starts over once it holds this many.
+Vec<ElementIdRec> gElementIds;
+const int kElementIdCap = 8192;
+} // namespace
+
+static void ElementIdRemember(Str id, int kind, int nameLen) {
+#ifndef NDEBUG
+    if (gElementIds.len >= kElementIdCap) {
+        VecClear(gElementIds);
+    }
+    ElementIdRec rec;
+    rec.s = id.s;
+    rec.kind = kind;
+    rec.nameLen = nameLen;
+    VecAppend(gElementIds, rec);
+#else
+    (void)id;
+    (void)kind;
+    (void)nameLen;
+#endif
+}
+
+Str ElementIdNamed(Arena* a, Str name, uint64_t ix) {
+    Str id = StrDup(a, fmt("%s-%llu", name, (unsigned long long)ix));
+    ElementIdRemember(id, 2, len(name));
+    return id;
+}
+
+Str ElementIdInteger(Arena* a, uint64_t ix) {
+    Str id = StrDup(a, fmt("%llu", (unsigned long long)ix));
+    ElementIdRemember(id, 1, 0);
+    return id;
+}
+
+int ElementIdKindOf(Str id, int* nameLen) {
+    for (int i = gElementIds.len - 1; id.s && i >= 0; i--) {
+        if (gElementIds[i].s == id.s) {
+            if (nameLen) {
+                *nameLen = gElementIds[i].nameLen;
+            }
+            return gElementIds[i].kind;
+        }
+    }
+    return 0;
+}
+
+void ElementIdFrameBegin() {
+    VecClear(gElementIds);
+}
+
+Str DebugSourceMessage(Arena* a, Str cwd, const char* file, int line,
+                       int column) {
+    Str f = Str(file ? file : "");
+    bool absolute = len(f) > 0 && (f.s[0] == '/' || f.s[0] == '\\' ||
+                                   (len(f) > 1 && f.s[1] == ':'));
+    if (absolute || len(cwd) == 0) {
+        return StrDup(
+            a, fmt("This element was created at:\n%s:%d:%d", f, line, column));
+    }
+    return StrDup(a, fmt("This element was created at:\n%s/%s:%d:%d", cwd, f,
+                         line, column));
 }
 
 El* TextEl(Arena* a, Str s) {
@@ -6094,9 +6174,26 @@ Str PaintIdChainDebug(Arena* a, const PaintIdLink* chain) {
             b.Append(Str(fmt("View(EntityId(%dv%u))", ids[i]->view.index,
                              ids[i]->view.gen)));
         } else {
-            b.Append(StrL("Name(\""));
-            b.Append(ids[i]->id);
-            b.Append(StrL("\")"));
+            // ElementId's Debug: Integer(3), NamedInteger("row", 3) or
+            // Name("row").
+            Str id = ids[i]->id;
+            int nameLen = 0;
+            int kind = ElementIdKindOf(id, &nameLen);
+            if (kind == 1) {
+                b.Append(StrL("Integer("));
+                b.Append(id);
+                b.Append(StrL(")"));
+            } else if (kind == 2 && nameLen < len(id)) {
+                b.Append(StrL("NamedInteger(\""));
+                b.Append(Str{id.s, nameLen});
+                b.Append(StrL("\", "));
+                b.Append(Str{id.s + nameLen + 1, len(id) - nameLen - 1});
+                b.Append(StrL(")"));
+            } else {
+                b.Append(StrL("Name(\""));
+                b.Append(id);
+                b.Append(StrL("\")"));
+            }
         }
         if (i > 0) {
             b.Append(StrL(", "));
@@ -6132,6 +6229,20 @@ static void PaintDebugInfo(PaintCtx* ctx, const El* e) {
     CanvasFillRect(ctx, e->x, e->y, size.w, kFontSize, Rgb(255, 255, 255));
     DrawTextAt(ctx, text, e->x, e->y, size.w, kFontSize, kFontSize,
                Rgb(255, 0, 0), false, false, -1.f, 0, kFontSize);
+    win->debugLabelShown = true;
+    // With the secondary modifier held over the label, it is underlined and
+    // a press on it prints where div() was called (DispatchMouseDown).
+    Bounds textBounds = {e->x, e->y, size.w, kFontSize};
+    if (e->sourceFile && win->modifiers.Secondary() &&
+        textBounds.Contains({ctx->mouseX, ctx->mouseY})) {
+        CanvasFillRect(ctx, e->x, e->y + kFontSize - 2.f, size.w, 1.f,
+                       Rgb(255, 0, 0));
+        win->hasDebugSource = true;
+        win->debugSourceBounds = textBounds;
+        win->debugSourceFile = e->sourceFile;
+        win->debugSourceLine = e->sourceLine;
+        win->debugSourceColumn = e->sourceColumn;
+    }
 }
 #endif
 
