@@ -1404,21 +1404,22 @@ enum class AxisLabelPlacement : uint8_t {
 // The text lives in `a`, the frame's scratch arena.
 using ChartTickFormatFn = Str (*)(Arena* a, double value, void* user);
 
-// chart/mod.rs TooltipContent's closures. Rust's receive the datum; the
-// charts here hold arrays, so they receive its index. `row` is the tooltip
-// row — a series, in the order the chart added them, or open, high, low and
-// close — and `value` the number it reads. Text lives in `a`, the frame's
-// scratch arena.
-using ChartTooltipTitleFn = Str (*)(Arena* a, int index, void* user);
-using ChartTooltipValueFn = Str (*)(Arena* a, int index, int row, double value,
-                                    void* user);
-using ChartTooltipValueColorFn = Rgba (*)(int index, int row, double value,
+// chart/mod.rs TooltipContent's closures, which receive the datum `d`: an
+// item of what the chart's Data(..) gave it, or without that the chart's own
+// number for the point (a `const float*` into the first series). `row` is
+// the tooltip row -- a series, in the order the chart added them, or open,
+// high, low and close -- and `value` the number it reads. Text lives in `a`,
+// the frame's scratch arena.
+using ChartTooltipTitleFn = Str (*)(Arena* a, const void* d, void* user);
+using ChartTooltipValueFn = Str (*)(Arena* a, const void* d, int row,
+                                    double value, void* user);
+using ChartTooltipValueColorFn = Rgba (*)(const void* d, int row, double value,
                                           void* user);
-// tooltip_content: the tooltip box's content for datum `index`, drawn by the
+// tooltip_content: the tooltip box's content for datum `d`, drawn by the
 // caller in place of the title and rows. It is built while the chart paints,
 // in `cx`'s arena (the frame's), then laid out over the plot and painted
 // after it, the way PlotElement prepaints Plot::tooltip's overlay.
-using ChartTooltipContentFn = El* (*)(Ctx * cx, int index, void* user);
+using ChartTooltipContentFn = El* (*)(Ctx * cx, const void* d, void* user);
 
 // chart/mod.rs TooltipContent: what a chart (LineChart, AreaChart, BarChart,
 // CandlestickChart, RadarChart) writes in its hover tooltip, and what the
@@ -1433,17 +1434,24 @@ struct ChartTooltipContent {
     void* valueColorUser = nullptr;
     ChartTooltipContentFn content = nullptr;
     void* contentUser = nullptr;
+    // The chart's `data`: `dataStride` bytes per item, one item per point.
+    // Null when the chart was given its numbers alone.
+    const void* data = nullptr;
+    int dataStride = 0;
 
-    // title_text: the caller's title for datum `index`, or `fallback`, the
+    // The datum the closures receive for point `index`: the item of `data`,
+    // or `own`, the chart's number for it.
+    const void* Datum(int index, const float* own) const;
+    // title_text: the caller's title for datum `d`, or `fallback`, the
     // chart's own, which a chart may not have (`hasFallback` false). False
     // when there is none.
-    bool TitleText(Arena* a, int index, Str fallback, bool hasFallback,
+    bool TitleText(Arena* a, const void* d, Str fallback, bool hasFallback,
                    Str* out) const;
     // value_text: the caller's text for row `row`, or the raw number.
-    Str ValueText(Arena* a, int index, int row, double value) const;
+    Str ValueText(Arena* a, const void* d, int row, double value) const;
     // The caller's colour for row `row`'s value; false for the tooltip's
     // text colour.
-    bool ValueColor(int index, int row, double value, Rgba* out) const;
+    bool ValueColor(const void* d, int row, double value, Rgba* out) const;
 };
 
 // `format!("{}", value)` for the chart's numbers: the fewest decimals that

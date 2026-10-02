@@ -21,13 +21,12 @@ struct ChartTooltipSeriesRow {
     double value = 0;
 };
 
-// chart/mod.rs TooltipContent::apply: write `tooltip` for datum `index` —
-// the chart's title, when it has one (`hasTitle`) or the caller gave one,
-// and one row per series with the caller's value text and colour. The
-// painted series tooltip (gpui.cpp) lays out the same content.
+// chart/mod.rs TooltipContent::apply: write `tooltip` for datum `d` — the
+// chart's title, when it has one (`hasTitle`) or the caller gave one, and
+// one row per series with the caller's value text and colour.
 plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
-                                 plot::Tooltip* tooltip, int index, Str title,
-                                 bool hasTitle,
+                                 plot::Tooltip* tooltip, const void* d,
+                                 Str title, bool hasTitle,
                                  const ChartTooltipSeriesRow* rows, int count);
 
 // chart/mod.rs MAX_BAND_WIDTH: the widest a bar or candle is by default, in
@@ -234,7 +233,7 @@ struct AreaChart {
     AreaChart* Y(const float* ys);
     // name(..): what the tooltip calls the series.
     AreaChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // tooltip_title: the tooltip's title for the datum, instead of its
     // label.
     AreaChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
     // tooltip_value: each row's value text; the raw number by default. `row`
@@ -248,6 +247,15 @@ struct AreaChart {
     // of the title and rows. The crosshair, the dots and where the box sits
     // stay the chart's.
     AreaChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    AreaChart* Data(const void* items, int stride);
+    template <typename T>
+    AreaChart* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -374,7 +382,7 @@ struct LineChart {
                           int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
     LineChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // tooltip_title: the tooltip's title for the datum, instead of its
     // label.
     LineChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
     // tooltip_value: each row's value text; the raw number by default. `row`
@@ -388,6 +396,15 @@ struct LineChart {
     // of the title and rows. The crosshair, the dots and where the box sits
     // stay the chart's.
     LineChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    LineChart* Data(const void* items, int stride);
+    template <typename T>
+    LineChart* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -538,7 +555,7 @@ struct BarChart {
                          int line = __builtin_LINE());
     // name(..): what the tooltip calls the series.
     BarChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // tooltip_title: the tooltip's title for the datum, instead of its
     // label.
     BarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
     // tooltip_value: each row's value text; the raw number by default. `row`
@@ -552,6 +569,15 @@ struct BarChart {
     // of the title and rows. The crosshair, the dots and where the box sits
     // stay the chart's.
     BarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    BarChart* Data(const void* items, int stride);
+    template <typename T>
+    BarChart* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -686,7 +712,7 @@ struct CandlestickChart {
                                  const char* file = __builtin_FILE(),
                                  int line = __builtin_LINE());
     CandlestickChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // tooltip_title: the tooltip's title for the datum, instead of its
     // label.
     CandlestickChart* TooltipTitle(ChartTooltipTitleFn fn,
                                    void* user = nullptr);
@@ -703,6 +729,15 @@ struct CandlestickChart {
     // stay the chart's.
     CandlestickChart* TooltipContent(ChartTooltipContentFn fn,
                                      void* user = nullptr);
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    CandlestickChart* Data(const void* items, int stride);
+    template <typename T>
+    CandlestickChart* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.
@@ -823,7 +858,7 @@ struct RadarChart {
     RadarChart* Value(const float* ys);
     // name(..): what the tooltip calls the series added last.
     RadarChart* Tooltip(Str name);
-    // tooltip_title: the tooltip's title for datum `index`, instead of its
+    // tooltip_title: the tooltip's title for the datum, instead of its
     // dimension's text label.
     RadarChart* TooltipTitle(ChartTooltipTitleFn fn, void* user = nullptr);
     // tooltip_value: each row's value text; the raw number by default. `row`
@@ -837,6 +872,15 @@ struct RadarChart {
     // of the title and rows. The dots and where the box sits stay the
     // chart's.
     RadarChart* TooltipContent(ChartTooltipContentFn fn, void* user = nullptr);
+    // data(..): the items the chart's points are, one per point, which the
+    // tooltip closures above receive as their datum in place of the chart's
+    // own number. Rust's charts hold `data` and map it; these hold the
+    // numbers, and this is what Rust's closures would have read them from.
+    RadarChart* Data(const void* items, int stride);
+    template <typename T>
+    RadarChart* Data(const T* items) {
+        return Data((const void*)items, (int)sizeof(T));
+    }
     // id(..): rename the chart's ElementId, replacing the construction site.
     // Needed where one site builds several of these as siblings, which would
     // otherwise share one hover state. Unique among those siblings.

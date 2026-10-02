@@ -612,19 +612,20 @@ static void APlainRowHasNoSwatchAndTakesAValueColor() {
     ArenaDelete(a);
 }
 
-static Str DayTitle(Arena* a, int index, void*) {
-    return StrDup(a, fmt("Day %d", index));
+// TooltipContent::<f64>: the datum is a double.
+static Str DayTitle(Arena* a, const void* d, void*) {
+    return StrDup(a, fmt("Day %g", *(const double*)d));
 }
 
-static Str DollarValue(Arena* a, int, int, double value, void*) {
+static Str DollarValue(Arena* a, const void*, int, double value, void*) {
     return StrDup(a, fmt("$%.2f", value));
 }
 
-static Str SignedValue(Arena* a, int, int row, double value, void*) {
+static Str SignedValue(Arena* a, const void*, int row, double value, void*) {
     return StrDup(a, fmt("%d: %+g", row, value));
 }
 
-static Rgba GreenOrRed(int, int, double value, void*) {
+static Rgba GreenOrRed(const void*, int, double value, void*) {
     return value >= 0 ? Rgb(0, 255, 0) : Rgb(255, 0, 0);
 }
 
@@ -632,21 +633,93 @@ static Rgba GreenOrRed(int, int, double value, void*) {
 static void TooltipTextFallsBackToTheChartOwn() {
     Arena* a = ArenaNew();
     ChartTooltipContent content;
+    const double one = 1.;
+    const double three = 3.;
     Str title = {};
-    utassert(content.TitleText(a, 1, StrL("Jan"), true, &title) &&
+    utassert(content.TitleText(a, &one, StrL("Jan"), true, &title) &&
              StrEq(title, StrL("Jan")));
-    utassert(!content.TitleText(a, 1, {}, false, &title));
-    utassert(StrEq(content.ValueText(a, 1, 0, 1234.5), StrL("1234.5")));
+    utassert(!content.TitleText(a, &one, {}, false, &title));
+    utassert(StrEq(content.ValueText(a, &one, 0, 1234.5), StrL("1234.5")));
 
     content.title = &DayTitle;
     content.value = &DollarValue;
-    utassert(content.TitleText(a, 3, {}, false, &title) &&
+    utassert(content.TitleText(a, &three, {}, false, &title) &&
              StrEq(title, StrL("Day 3")));
-    utassert(StrEq(content.ValueText(a, 3, 0, 1234.5), StrL("$1234.50")));
+    utassert(StrEq(content.ValueText(a, &three, 0, 1234.5), StrL("$1234.50")));
     // The raw number is the float's own, not its binary expansion.
     utassert(StrEq(ChartFormatValue(a, (double)0.1f), StrL("0.1")));
     utassert(StrEq(ChartFormatValue(a, 3), StrL("3")));
     ArenaDelete(a);
+}
+
+// The closures receive the datum: an item of what Data(..) gave the chart,
+// or the chart's own number for the point.
+struct SalesDatum {
+    const char* month;
+    float sales;
+};
+
+static Str SalesMonth(Arena*, const void* d, void*) {
+    return Str(((const SalesDatum*)d)->month);
+}
+
+static void TooltipClosuresReceiveTheDatum() {
+    Arena* a = ArenaNew();
+    Ctx cx = {};
+    cx.a = a;
+    static const float sales[] = {10, 20, 30};
+    static const SalesDatum data[] = {{"Jan", 10}, {"Feb", 20}, {"Mar", 30}};
+    BarChart* own = BarChart::New(&cx, sales, 3);
+    utassert(own->tooltipContent.Datum(1, sales) == &sales[1]);
+    BarChart* chart =
+        BarChart::New(&cx, sales, 3)->Data(data)->TooltipTitle(&SalesMonth);
+    const void* d = chart->tooltipContent.Datum(2, sales);
+    utassert(d == &data[2]);
+    Str title = {};
+    utassert(chart->tooltipContent.TitleText(a, d, {}, false, &title) &&
+             StrEq(title, StrL("Mar")));
+    ArenaDelete(a);
+}
+
+// The month the hovered line chart's tooltip was last titled with.
+static const SalesDatum* gTitledDatum = nullptr;
+
+static Str TitleHovered(Arena*, const void* d, void*) {
+    gTitledDatum = (const SalesDatum*)d;
+    return Str(gTitledDatum->month);
+}
+
+struct HoveredLineView {
+    static El* Render(HoveredLineView*, Ctx* cx) {
+        static const float sales[] = {10, 20, 30};
+        static const SalesDatum data[] = {
+            {"Jan", 10}, {"Feb", 20}, {"Mar", 30}};
+        return Div(cx->a)->SizeFull()->Child(LineChart::New(cx, sales, 3)
+                                                 ->Data(data)
+                                                 ->TooltipTitle(&TitleHovered)
+                                                 ->Id(StrL("hovered-line"))
+                                                 ->Appear(false)
+                                                 ->IntoEl()
+                                                 ->W(300)
+                                                 ->H(200));
+    }
+};
+
+// line_chart.rs Plot::tooltip: hovering a point builds the plot::Tooltip,
+// whose title closure is handed the hovered item of the chart's data.
+static void AHoveredSeriesChartBuildsItsTooltipFromTheDatum() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Window* win =
+        TestWindowOpen(app, EntityNew<HoveredLineView>(app), 300, 200);
+    TestDraw(win);
+    gTitledDatum = nullptr;
+    // The last of three points sits at the right edge.
+    TestSimulateMouseMove(win, {295, 80});
+    TestAdvanceClock(app, 500);
+    TestDraw(win);
+    utassert(gTitledDatum && StrEq(Str(gTitledDatum->month), StrL("Mar")));
+    TestAppFree(app);
 }
 
 // chart/mod.rs: tooltip_fill_writes_each_row_with_the_value_color and
@@ -656,13 +729,14 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
     Ctx cx = {};
     cx.a = a;
     Rgba blue = Rgb(0, 0, 255);
+    const double one = 1.;
     ChartTooltipContent content;
     content.value = &SignedValue;
     content.valueColor = &GreenOrRed;
     ChartTooltipSeriesRow rows[2] = {{blue, StrL("Open"), 2.},
                                      {blue, StrL("Close"), -1.}};
     component::plot::Tooltip* tooltip = ChartTooltipApply(
-        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
+        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), &one,
         StrL("Jan"), true, rows, 2);
     utassert(tooltip->hasTitle && StrEq(tooltip->title, StrL("Jan")));
     utassert(tooltip->rows.len == 2);
@@ -674,7 +748,7 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
     ChartTooltipContent plain;
     ChartTooltipSeriesRow alpha[1] = {{blue, StrL("Alpha"), 80.}};
     component::plot::Tooltip* untitled = ChartTooltipApply(
-        plain, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1, {},
+        plain, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), &one, {},
         false, alpha, 1);
     utassert(!untitled->hasTitle);
     utassert(StrEq(untitled->rows[0].value, StrL("80")) && !untitled->rows[0]
@@ -683,9 +757,9 @@ static void TooltipFillWritesEachRowWithTheValueColor() {
 }
 
 static int gContentCalls = 0;
-static El* CallerContent(Ctx* cx, int index, void*) {
+static El* CallerContent(Ctx* cx, const void* d, void*) {
     gContentCalls++;
-    return TextEl(cx->a, StrDup(cx->a, fmt("datum %d", index)));
+    return TextEl(cx->a, StrDup(cx->a, fmt("datum %g", *(const double*)d)));
 }
 
 // chart/mod.rs: tooltip_fill_renders_the_caller_content_without_building_rows.
@@ -693,13 +767,14 @@ static void TooltipFillRendersTheCallerContentWithoutBuildingRows() {
     Arena* a = ArenaNew();
     Ctx cx = {};
     cx.a = a;
+    const double one = 1.;
     ChartTooltipContent content;
     content.title = &DayTitle;
     content.content = &CallerContent;
     ChartTooltipSeriesRow rows[1] = {{Rgb(0, 0, 255), StrL("Alpha"), 80.}};
     gContentCalls = 0;
     component::plot::Tooltip* tooltip = ChartTooltipApply(
-        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), 1,
+        content, component::plot::Tooltip::New(&cx, {0, 0}, {100, 100}), &one,
         StrL("Jan"), true, rows, 1);
     utassert(gContentCalls == 1);
     utassert(!tooltip->hasTitle);
@@ -839,6 +914,8 @@ void TestChart() {
     AValueColorColorsOnlyTheRowAddedLast();
     APlainRowHasNoSwatchAndTakesAValueColor();
     TooltipTextFallsBackToTheChartOwn();
+    TooltipClosuresReceiveTheDatum();
+    AHoveredSeriesChartBuildsItsTooltipFromTheDatum();
     TooltipFillWritesEachRowWithTheValueColor();
     TheTooltipSwatchFollowsTheBarColor();
     TooltipFillRendersTheCallerContentWithoutBuildingRows();

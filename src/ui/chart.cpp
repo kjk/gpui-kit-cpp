@@ -5,30 +5,37 @@
 
 namespace gpui {
 
-bool ChartTooltipContent::TitleText(Arena* a, int index, Str fallback,
+const void* ChartTooltipContent::Datum(int index, const float* own) const {
+    if (data) {
+        return (const uint8_t*)data + (size_t)index * (size_t)dataStride;
+    }
+    return own ? own + index : nullptr;
+}
+
+bool ChartTooltipContent::TitleText(Arena* a, const void* d, Str fallback,
                                     bool hasFallback, Str* out) const {
     if (title) {
-        *out = title(a, index, titleUser);
+        *out = title(a, d, titleUser);
         return true;
     }
     *out = fallback;
     return hasFallback;
 }
 
-Str ChartTooltipContent::ValueText(Arena* a, int index, int row,
+Str ChartTooltipContent::ValueText(Arena* a, const void* d, int row,
                                    double number) const {
     if (value) {
-        return value(a, index, row, number, valueUser);
+        return value(a, d, row, number, valueUser);
     }
     return ChartFormatValue(a, number);
 }
 
-bool ChartTooltipContent::ValueColor(int index, int row, double number,
+bool ChartTooltipContent::ValueColor(const void* d, int row, double number,
                                      Rgba* out) const {
     if (!valueColor) {
         return false;
     }
-    *out = valueColor(index, row, number, valueColorUser);
+    *out = valueColor(d, row, number, valueColorUser);
     return true;
 }
 
@@ -47,24 +54,24 @@ Str ChartFormatValue(Arena* a, double value) {
 namespace component {
 
 plot::Tooltip* ChartTooltipApply(const ChartTooltipContent& content,
-                                 plot::Tooltip* tooltip, int index, Str title,
-                                 bool hasTitle,
+                                 plot::Tooltip* tooltip, const void* d,
+                                 Str title, bool hasTitle,
                                  const ChartTooltipSeriesRow* rows, int count) {
     // The caller's own content, when it renders one: neither the title nor
     // the rows are built.
     if (content.content) {
         return tooltip
-            ->Child(content.content(tooltip->cx, index, content.contentUser));
+            ->Child(content.content(tooltip->cx, d, content.contentUser));
     }
     Str text = {};
-    if (content.TitleText(tooltip->a, index, title, hasTitle, &text)) {
+    if (content.TitleText(tooltip->a, d, title, hasTitle, &text)) {
         tooltip->Title(text);
     }
     for (int i = 0; i < count; i++) {
         tooltip->Row(rows[i].swatch, rows[i].name,
-                     content.ValueText(tooltip->a, index, i, rows[i].value));
+                     content.ValueText(tooltip->a, d, i, rows[i].value));
         Rgba color = {};
-        if (content.ValueColor(index, i, rows[i].value, &color)) {
+        if (content.ValueColor(d, i, rows[i].value, &color)) {
             tooltip->ValueColor(color);
         }
     }
@@ -256,6 +263,12 @@ AreaChart* AreaChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
     return this;
 }
 
+AreaChart* AreaChart::Data(const void* items, int stride) {
+    tooltipContent.data = items;
+    tooltipContent.dataStride = stride;
+    return this;
+}
+
 El* AreaChart::IntoEl() {
     El* e = ChartEl(a, ys, n, stroke, fill, fillBottom, tickMargin);
     ChartSeries* chart = e->Chart();
@@ -425,6 +438,12 @@ LineChart* LineChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
     return this;
 }
 
+LineChart* LineChart::Data(const void* items, int stride) {
+    tooltipContent.data = items;
+    tooltipContent.dataStride = stride;
+    return this;
+}
+
 El* LineChart::IntoEl() {
     Rgba none = {0, 0, 0, 0};
     El* e = ChartEl(a, ys, n, stroke, none, none, tickMargin);
@@ -564,6 +583,12 @@ BarChart* BarChart::TooltipValueColor(ChartTooltipValueColorFn fn, void* user) {
 BarChart* BarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
     tooltipContent.content = fn;
     tooltipContent.contentUser = user;
+    return this;
+}
+
+BarChart* BarChart::Data(const void* items, int stride) {
+    tooltipContent.data = items;
+    tooltipContent.dataStride = stride;
     return this;
 }
 
@@ -730,6 +755,12 @@ CandlestickChart* CandlestickChart::TooltipContent(ChartTooltipContentFn fn,
                                                    void* user) {
     tooltipContent.content = fn;
     tooltipContent.contentUser = user;
+    return this;
+}
+
+CandlestickChart* CandlestickChart::Data(const void* items, int stride) {
+    tooltipContent.data = items;
+    tooltipContent.dataStride = stride;
     return this;
 }
 
@@ -971,8 +1002,9 @@ static void PaintRadarHover(PaintCtx* ctx, El* e, RadarChart* c) {
         rows[nRows].value = vs[held.index];
         nRows++;
     }
-    ChartTooltipApply(c->tooltipContent, tooltip, held.index, title, hasTitle,
-                      rows, nRows);
+    ChartTooltipApply(c->tooltipContent, tooltip,
+                      c->tooltipContent.Datum(held.index, c->values), title,
+                      hasTitle, rows, nRows);
     plot::PlotOverlayAttach(ctx, e, e->Bounds(), tooltip->IntoEl());
 }
 
@@ -1113,6 +1145,12 @@ RadarChart* RadarChart::TooltipValueColor(ChartTooltipValueColorFn fn,
 RadarChart* RadarChart::TooltipContent(ChartTooltipContentFn fn, void* user) {
     tooltipContent.content = fn;
     tooltipContent.contentUser = user;
+    return this;
+}
+
+RadarChart* RadarChart::Data(const void* items, int stride) {
+    tooltipContent.data = items;
+    tooltipContent.dataStride = stride;
     return this;
 }
 RadarChart* RadarChart::Id(Str name) {

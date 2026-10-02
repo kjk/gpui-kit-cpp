@@ -6038,37 +6038,17 @@ Rgba ChartBarTooltipColor(const ChartSeries& c, int index) {
     return c.barFills ? c.barFills[index] : c.stroke;
 }
 
-struct ChartTooltipRow {
-    Rgba swatch = {};
-    Str label = {};
-    Str value = {};
-    Rgba valueColor = {};
-    bool hasValueColor = false;
-};
-
-static void PaintChartSeriesTooltip(PaintCtx* ctx, const ChartSeries& c,
-                                    const RuntimeStyle& th, int index, float x,
-                                    float y, float w, float plotH, Point cursor,
-                                    float focus) {
-    Arena* a = GetTempArena();
-    const ChartTooltipContent& content = c.tooltipContent;
-    const float kFont = 12.f;
-    const float kPad = 8.f;
-    const float kSwatch = 8.f;
-    const float kRowGap = 4.f;
-    ChartTooltipRow rows[5] = {};
+// The rows TooltipContent::apply writes for a series chart's point `index`:
+// open, high, low and close for a candle, the bar for a bar chart, and one
+// per series otherwise, in the order the chart added them.
+static int ChartSeriesTooltipRows(const ChartSeries& c, int index,
+                                  component::ChartTooltipSeriesRow* rows,
+                                  int cap) {
     int nRows = 0;
-    auto addRow = [&](Rgba swatch, Str label, double value) {
-        if (nRows >= 5) {
-            return;
+    auto addRow = [&](Rgba swatch, Str name, double value) {
+        if (nRows < cap) {
+            rows[nRows++] = {swatch, name, value};
         }
-        ChartTooltipRow& row = rows[nRows];
-        row.swatch = swatch;
-        row.label = label;
-        row.value = content.ValueText(a, index, nRows, value);
-        row.hasValueColor =
-            content.ValueColor(index, nRows, value, &row.valueColor);
-        nRows++;
     };
     if (c.kind == ChartKind::Candlestick) {
         double open = c.opens ? c.opens[index] : c.ys[index];
@@ -6090,62 +6070,7 @@ static void PaintChartSeriesTooltip(PaintCtx* ctx, const ChartSeries& c,
             }
         }
     }
-    Str title = {};
-    Str own = c.labels ? Str(c.labels[index]) : Str(fmt("%d", index));
-    bool hasTitle = content.TitleText(a, index, own, true, &title);
-
-    Size titleSz = hasTitle ? MeasureText(ctx, title, kFont, 240) : Size{};
-    float innerW = titleSz.w;
-    float innerH = hasTitle ? titleSz.h : 0.f;
-    float rowH[5] = {};
-    float labelW[5] = {};
-    float valueW[5] = {};
-    for (int k = 0; k < nRows; k++) {
-        Size label = rows[k].label.s
-                         ? MeasureText(ctx, rows[k].label, kFont, 240)
-                         : Size{};
-        Size value = MeasureText(ctx, rows[k].value, kFont, 240);
-        labelW[k] = label.w;
-        valueW[k] = value.w;
-        rowH[k] = label.h > value.h ? label.h : value.h;
-        float rowW = kSwatch + 6.f + label.w + 12.f + value.w;
-        innerW = rowW > innerW ? rowW : innerW;
-        innerH += (innerH > 0 ? kRowGap : 0.f) + rowH[k];
-    }
-    float boxW = innerW + kPad * 2;
-    if (boxW < 150.f) {
-        boxW = 150.f;
-    }
-    innerW = boxW - kPad * 2;
-    float boxH = innerH + kPad * 2;
-    Point at =
-        component::PlotTooltipPlace(cursor, {w, plotH}, {boxW, boxH}, 8.f);
-    float bx = x + at.x;
-    float by = y + at.y;
-    FillRound(ctx, bx, by, boxW, boxH, 6.f, RgbaOpacity(th.background, focus));
-    DrawRoundStroke(ctx, bx, by, boxW, boxH, 6.f, 1.f,
-                    RgbaOpacity(th.border, focus));
-    float rowY = by + kPad;
-    if (hasTitle) {
-        DrawTextAt(ctx, title, bx + kPad, rowY, innerW, titleSz.h, kFont,
-                   RgbaOpacity(th.foreground, focus), false, false, -1.f,
-                   kFontWeightSemibold);
-        rowY += titleSz.h + kRowGap;
-    }
-    for (int k = 0; k < nRows; k++) {
-        const ChartTooltipRow& row = rows[k];
-        FillRound(ctx, bx + kPad, rowY + (rowH[k] - kSwatch) * 0.5f, kSwatch,
-                  kSwatch, th.radius * .5f, RgbaOpacity(row.swatch, focus));
-        if (row.label.s) {
-            DrawTextAt(ctx, row.label, bx + kPad + kSwatch + 6.f, rowY,
-                       labelW[k], rowH[k], kFont,
-                       RgbaOpacity(th.mutedForeground, focus), false);
-        }
-        Rgba ink = row.hasValueColor ? row.valueColor : th.foreground;
-        DrawTextAt(ctx, row.value, bx + boxW - kPad - valueW[k], rowY,
-                   valueW[k], rowH[k], kFont, RgbaOpacity(ink, focus), false);
-        rowY += rowH[k] + kRowGap;
-    }
+    return nRows;
 }
 
 static void DrawChart(PaintCtx* ctx, El* e) {
@@ -6853,12 +6778,11 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                 }
             }
 
-            if (c.tooltipContent.content && ctx->window &&
-                ctx->window->frameArena) {
-                // tooltip_content: the caller's element in the box, which
-                // has to be built, laid out over the plot and painted after
-                // it, as PlotElement does with the overlay Plot::tooltip
-                // returns. The crosshair and dots above stay the chart's.
+            if (ctx->window && ctx->window->frameArena) {
+                // Plot::tooltip: the box is a plot::Tooltip, built here,
+                // laid out over the plot and painted after it, as
+                // PlotElement does with the overlay Plot::tooltip returns.
+                // The crosshair and dots above stay the chart's.
                 Ctx buildCx = hoverCx;
                 buildCx.a = ctx->window->frameArena;
                 component::plot::Tooltip* overlay =
@@ -6867,13 +6791,16 @@ static void DrawChart(PaintCtx* ctx, El* e) {
                         ->Gap(8)
                         ->Glide(false)
                         ->Progress(focus);
-                component::ChartTooltipApply(c.tooltipContent, overlay, index,
-                                             {}, false, nullptr, 0);
+                component::ChartTooltipSeriesRow rows[5] = {};
+                int nRows = ChartSeriesTooltipRows(c, index, rows, 5);
+                Str own = c.labels ? Str(c.labels[index])
+                                   : StrDup(buildCx.a, Str(fmt("%d", index)));
+                component::ChartTooltipApply(c.tooltipContent, overlay,
+                                             c.tooltipContent
+                                                 .Datum(index, c.ys),
+                                             own, true, rows, nRows);
                 component::plot::PlotOverlayAttach(ctx, e, {x, y, w, plotH},
                                                    overlay->IntoEl());
-            } else {
-                PaintChartSeriesTooltip(ctx, c, th, index, x, y, w, plotH,
-                                        lingerCursor, focus);
             }
         }
     }

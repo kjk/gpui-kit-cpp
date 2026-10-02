@@ -107,28 +107,29 @@ static Str MoneyTick(Arena* a, double value, void*) {
 }
 
 // tooltip_value(|_, value| money(value)): a tooltip row's value in money.
-static Str MoneyValue(Arena* a, int, int, double value, void*) {
+static Str MoneyValue(Arena* a, const void*, int, double value, void*) {
     return MoneyTick(a, value, nullptr);
 }
 
 // tooltip_value(|_, _, value| format!("${value:.2}")): a price to the cent.
-static Str PriceValue(Arena* a, int, int, double value, void*) {
+static Str PriceValue(Arena* a, const void*, int, double value, void*) {
     return StrDup(a, fmt("$%.2f", value));
 }
 
 // tooltip_value(|_, _, value| format!("{value:.0} / 100")).
-static Str OutOfHundred(Arena* a, int, int, double value, void*) {
+static Str OutOfHundred(Arena* a, const void*, int, double value, void*) {
     return StrDup(a, fmt("%.0f / 100", value));
 }
 
-// tooltip_title(|d| format!("{} 2025", d.month)).
-static Str MonthOf2025(Arena* a, int index, void*) {
-    return StrDup(a, fmt("%s 2025", Str(kMonthlyMonth[index])));
+// tooltip_title(|d| format!("{} 2025", d.month)): the chart's data is the
+// month names, so the datum is one.
+static Str MonthOf2025(Arena* a, const void* d, void*) {
+    return StrDup(a, fmt("%s 2025", Str(*(const char* const*)d)));
 }
 
 // tooltip_value_color: the bullish colour for a gain, the bearish one for a
 // loss; `user` is the pair.
-static Rgba SignColor(int, int, double value, void* user) {
+static Rgba SignColor(const void*, int, double value, void* user) {
     const Rgba* colors = (const Rgba*)user;
     return value >= 0 ? colors[0] : colors[1];
 }
@@ -539,11 +540,19 @@ static El* StackedBarChartEl(Ctx* cx, int days) {
 // AreaGradient's tooltip_content: the month in semibold over this year, last
 // year and the change between them, the change in the bullish or bearish
 // colour by its sign.
-static El* RevenueVsLastYear(Ctx* cx, int index, void*) {
+// One month of the metrics, the datum the gradient chart's tooltip reads.
+struct MetricDatum {
+    const char* month = nullptr;
+    float revenue = 0;
+    float lastYear = 0;
+};
+
+static El* RevenueVsLastYear(Ctx* cx, const void* d, void*) {
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
-    float revenue = kMetricRevenue[index];
-    float lastYear = kMetricLastYear[index];
+    const MetricDatum* m = (const MetricDatum*)d;
+    float revenue = m->revenue;
+    float lastYear = m->lastYear;
     float change = ChangePercent(revenue, lastYear);
     Rgba changeColor = change >= 0 ? th.chartBullish : th.chartBearish;
     auto row = [&](const char* label, Str value) {
@@ -557,7 +566,7 @@ static El* RevenueVsLastYear(Ctx* cx, int index, void*) {
     return Div(a)
         ->FlexCol()
         ->Gap(4)
-        ->Child(TextEl(a, Str(kMetricMonth[index]))->Semibold())
+        ->Child(TextEl(a, Str(m->month))->Semibold())
         ->Child(row("2025", Str(Money(cx, revenue))))
         ->Child(row("2024", Str(Money(cx, lastYear))))
         ->Child(row("Change", StrDup(a, fmt("%+.1f%%", (double)change)))
@@ -864,6 +873,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     ->LabelColors(signs)
                     ->Labels(kMonthlyMonth)
                     ->Tooltip(StrL("Variation"))
+                    ->Data(kMonthlyMonth)
                     ->TooltipTitle(&MonthOf2025)
                     ->TooltipValue(&MoneyValue)
                     ->TooltipValueColor(&SignColor, signColors)
@@ -1087,6 +1097,12 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
             float lastYear = SumF(kMetricLastYear, kMetricCount);
             const ChartLegend legend[] = {{th.chart2, "2025"},
                                           {th.chart1, "2024"}};
+            MetricDatum* metrics =
+                (MetricDatum*)Alloc(a, (int)sizeof(MetricDatum) * kMetricCount);
+            for (int i = 0; i < kMetricCount; i++) {
+                metrics[i] = {kMetricMonth[i], kMetricRevenue[i],
+                              kMetricLastYear[i]};
+            }
             El* area =
                 component::AreaChart::New(cx, kMetricLastYear, kMetricCount)
                     ->Labels(kMetricMonth)
@@ -1099,6 +1115,7 @@ static El* RenderChartCard(Ctx* cx, ChartStory* self, int index) {
                     ->Fill(RgbaOpacity(th.chart2, 0.45f),
                            RgbaOpacity(th.chart2, 0.f))
                     ->Tooltip(StrL("2025"))
+                    ->Data(metrics)
                     ->TooltipContent(RevenueVsLastYear)
                     ->Id(StrL("area-chart-gradient"))
                     ->IntoEl()
