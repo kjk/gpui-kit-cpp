@@ -27,7 +27,7 @@ MessageGroup* MessageGroup::Refine(const Style& s, uint32_t fields) {
 }
 
 El* MessageGroup::IntoEl() {
-    El* column = Div(a)->FlexCol()->MinW(0)->Gap(8);
+    El* column = Div(a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
     if (styleSet) {
         column->Refine(style, styleSet);
     }
@@ -63,7 +63,7 @@ El* MessageAvatar::IntoEl() {
     El* slot = Div(a)
                    ->FlexRow()
                    ->ItemsCenter()
-                   ->MinW(32)
+                   ->MinW(Rems(cx, 2))
                    ->FlexNone()
                    ->JustifyCenter()
                    ->SelfEnd()
@@ -126,13 +126,13 @@ static El* MessageMetaRow(Arena* a, Ctx* cx, bool contentInset,
                   ->ItemsCenter()
                   ->MaxW(kFill)
                   ->MinW(0)
-                  ->Gap(4)
+                  ->Gap(Rems(cx, 0.25f))
                   ->Font(12)
                   ->LineHeight(1.25f)
                   ->Medium()
                   ->Fg(th.mutedFg);
     if (!hasContentInset || contentInset) {
-        row->PadX(12);
+        row->PadX(Rems(cx, 0.75f));
     }
     if (styleSet) {
         row->Refine(style, styleSet);
@@ -183,13 +183,8 @@ MessageContent* MessageContent::Refine(const Style& s, uint32_t fields) {
 }
 
 El* MessageContent::IntoEl() {
-    El* column = Div(a)
-                     ->FlexCol()
-                     ->W(kFill)
-                     ->MaxW(kFill)
-                     ->MinW(0)
-                     // gap(rems(0.625)) at the 16px root.
-                     ->Gap(10);
+    El* column = Div(a)->FlexCol()->W(kFill)->MaxW(kFill)->MinW(0)->Gap(
+        Rems(cx, 0.625f));
     column->ItemsStart();
     if (alignment == MessageAlignment::End) {
         column->ItemsEnd();
@@ -310,12 +305,7 @@ El* Message::IntoEl() {
 
     // No text size or line height here: the header and footer set their own,
     // and content typography belongs to the bubble or the caller.
-    El* root = Div(a)
-                   ->FlexCol()
-                   ->W(kFill)
-                   ->MinW(0)
-                   // gap(rems(0.625)) at the 16px root.
-                   ->Gap(10);
+    El* root = Div(a)->FlexCol()->W(kFill)->MinW(0)->Gap(Rems(cx, 0.625f));
     root->ItemsStart();
     if (alignment == MessageAlignment::End) {
         root->ItemsEnd();
@@ -326,14 +316,15 @@ El* Message::IntoEl() {
 
     // The footer lives outside this row so the bottom-anchored avatar always
     // sits flush with the content's bottom edge, whatever the footer holds.
-    El* row = Div(a)->FlexRow()->W(kFill)->MinW(0)->ItemsEnd()->Gap(8);
+    El* row =
+        Div(a)->FlexRow()->W(kFill)->MinW(0)->ItemsEnd()->Gap(Rems(cx, 0.5f));
     if (alignment == MessageAlignment::End) {
         row->FlexRowReverse();
     }
     if (avatar) {
         row->Child(avatar->IntoEl());
     }
-    El* stack = Div(a)->FlexCol()->W(kFill)->MinW(0)->Gap(10);
+    El* stack = Div(a)->FlexCol()->W(kFill)->MinW(0)->Gap(Rems(cx, 0.625f));
     stack->ItemsStart();
     if (alignment == MessageAlignment::End) {
         stack->ItemsEnd();
@@ -354,12 +345,12 @@ El* Message::IntoEl() {
     if (footer) {
         El* el = footer->WithInheritedContentInset(!hasGhostBubble)->IntoEl();
         // Align the footer with the content column: the avatar's shared
-        // `size-8` baseline plus the row gap, rems(2.5) at the 16px root.
+        // `size-8` baseline plus the row gap, rems(2.5).
         if (hasAvatar && alignment == MessageAlignment::Start) {
-            el->MarginL(40);
+            el->MarginL(Rems(cx, 2.5f));
         }
         if (hasAvatar && alignment == MessageAlignment::End) {
-            el->MarginR(40);
+            el->MarginR(Rems(cx, 2.5f));
         }
         root->Child(el);
     }

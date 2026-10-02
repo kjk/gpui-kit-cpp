@@ -141,7 +141,7 @@ El* GroupBox::IntoEl() {
                   ->FlexCol()
                   ->Id(id)
                   ->W(kFill)
-                  ->Gap(padded ? 12.f : 16.f)
+                  ->Gap(Rems(cx, padded ? 0.75f : 1.f))
                   ->Refine(rootStyle, rootStyleSet);
     if (hasTitle) {
         El* titleContent = titleEl ? titleEl : TextEl(a, title);
@@ -158,7 +158,8 @@ El* GroupBox::IntoEl() {
         }
         box->Child(titleBox);
     }
-    El* content = Div(a)->FlexCol()->W(kFill)->Gap(16)->Fg(th.groupBoxFg);
+    El* content =
+        Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 1))->Fg(th.groupBoxFg);
     content->Radius(contentRadius >= 0 ? contentRadius : th.radius);
     if (variant == GroupBoxVariant::Fill) {
         content->Bg(th.groupBox);
@@ -167,7 +168,7 @@ El* GroupBox::IntoEl() {
         content->Border(1, th.border);
     }
     if (padded) {
-        content->Pad(16);
+        content->Pad(Rems(cx, 1));
     }
     if (hasContentBg) {
         content->Bg(contentBg);
@@ -182,9 +183,9 @@ El* GroupBox::IntoEl() {
     for (El* child : children) {
         content->Child(child);
     }
-    // The footer sits inside the surface's slot so its 8 px gap is
+    // The footer sits inside the surface's slot so its gap_2 is
     // independent of the root gap between the title and the surface.
-    El* slot = Div(a)->FlexCol()->W(kFill)->Gap(8)->Child(content);
+    El* slot = Div(a)->FlexCol()->W(kFill)->Gap(Rems(cx, 0.5f))->Child(content);
     if (footer) {
         slot->Child(Div(a)->Font(14)->Fg(th.mutedFg)->Child(footer));
     }

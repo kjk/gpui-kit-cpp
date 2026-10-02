@@ -538,7 +538,8 @@ DataTable* DataTable::GroupHeader(const TableGroupCell* cells, int n) {
 // render_sort_icon: which way the column is sorted, and half-lit when it is
 // not sorted at all. Rust has SortAscending / SortDescending glyphs; the two
 // chevrons stand in for them here.
-static El* SortIcon(Arena* a, const Theme& th, ColumnSort sort) {
+static El* SortIcon(Ctx* cx, const Theme& th, ColumnSort sort) {
+    Arena* a = cx->a;
     IconName name = IconName::ChevronsUpDown;
     bool on = true;
     switch (sort) {
@@ -557,7 +558,7 @@ static El* SortIcon(Arena* a, const Theme& th, ColumnSort sort) {
         ->Radius(th.radius * 0.5f)
         ->HoverBg(th.tokens.secondary)
         ->Child(
-            IconEl(a, name, 12)
+            IconEl(a, name, Rems(cx, 0.75f))
                 ->Fg(on ? th.secondaryFg : RgbaOpacity(th.secondaryFg, 0.5f)));
 }
 
@@ -693,7 +694,7 @@ static El* LoadingRow(Ctx* cx, UiSize size, bool header) {
     El* row = Div(a)
                   ->FlexRow()
                   ->W(kFill)
-                  ->Gap(12)
+                  ->Gap(Rems(cx, 0.75f))
                   ->H(rowH)
                   ->ClipX()
                   ->PadT(pad.top)
@@ -711,13 +712,13 @@ static El* LoadingRow(Ctx* cx, UiSize size, bool header) {
     // description and a number rather than three of the same thing.
     row->Child(Div(a)
                    ->FlexRow()
-                   ->Gap(12)
+                   ->Gap(Rems(cx, 0.75f))
                    ->Flex1()
                    ->ItemsCenter()
-                   ->Child(bar(96))
-                   ->Child(bar(192))
-                   ->Child(bar(64)));
-    row->Child(bar(96));
+                   ->Child(bar(Rems(cx, 6)))
+                   ->Child(bar(Rems(cx, 12)))
+                   ->Child(bar(Rems(cx, 4))));
+    row->Child(bar(Rems(cx, 6)));
     return row;
 }
 
@@ -740,7 +741,7 @@ static El* LastEmptyColEl(Ctx* cx, El* (*fn)(Ctx*, void*), void* data) {
             return e;
         }
     }
-    return Div(cx->a)->FlexRow()->W(12)->Shrink0();
+    return Div(cx->a)->FlexRow()->W(Rems(cx, 0.75f))->Shrink0();
 }
 
 // `.context_menu(..)` on the inner table: the menu is built from the row the
@@ -806,7 +807,7 @@ static El* RowHeaderCell(Ctx* cx, Entity<TableState> state, int row,
     Arena* a = cx->a;
     const Theme& th = ThemeNow(cx->app);
     El* e = Div(a)
-                ->W(12)
+                ->W(Rems(cx, 0.75f))
                 ->H(kFill)
                 ->Shrink0()
                 ->BorderR(1, th.tableRowBorder)
@@ -1116,7 +1117,7 @@ El* DataTable::BuildEl() {
         if (col.sortable && s && s->sortable) {
             // The sort icon is its own hit box inside the head, so clicking it
             // sorts rather than selecting the column.
-            El* icon = SortIcon(a, th, TableSortOf(s, c));
+            El* icon = SortIcon(cx, th, TableSortOf(s, c));
             BindPathClick(icon,
                           ElementIdNamed(a, StrL("icon-sort"), (uint64_t)c),
                           ListenerArg(sortClick, c));
@@ -1158,7 +1159,7 @@ El* DataTable::BuildEl() {
                           ->H(viewH > 0 ? viewH : 160)
                           ->ItemsCenter()
                           ->JustifyCenter()
-                          ->Child(IconEl(a, IconName::Inbox, 48)
+                          ->Child(IconEl(a, IconName::Inbox, Rems(cx, 3))
                                       ->Fg(RgbaOpacity(th.mutedFg, 0.6f))));
         return box;
     }

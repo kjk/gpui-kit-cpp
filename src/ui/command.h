@@ -162,14 +162,16 @@ struct CommandState {
     // render, so the previous model is kept as its hash rather than itself.
     // 0 is a model that is never equal to another.
     uint64_t layoutKey = 0;
-    // ListMeasurementKey: the list's content width and the font its rows
-    // inherit where it was laid out last frame, and the ones the sizes were
-    // measured with. A width of -1 is not laid out yet, which measures at
-    // MinContent as Rust does before the list's first prepaint.
+    // ListMeasurementKey: the list's content width, the rem size and the
+    // font its rows inherit where it was laid out last frame, and the ones the
+    // sizes were measured with. A width of -1 is not laid out yet, which
+    // measures at MinContent as Rust does before the list's first prepaint.
     float listW = -1;
     float listFont = 0;
     float measuredW = -1;
     float measuredFont = 0;
+    // The rem size the rows were measured at: their padding is in rems.
+    float measuredRem = 0;
     // Rust remeasures when a visible row's keybinding hint is no longer the
     // one it was measured with; a hint here is the keymap's, so a new keymap
     // generation is that.
@@ -252,7 +254,8 @@ struct Command {
     // `matched_count` counts the matches for the query now in the field
     // rather than the last frame's. Takes precedence over `header`.
     El* (*headerFn)(Ctx* cx, const CommandState* s) = nullptr;
-    float maxH = 300;
+    // CommandOptions::max_h; below 0 is the default, rems(18.75).
+    float maxH = -1;
     bool bordered = true;
     float w = kFill;
     // impl Styled for Command: the refinement Rust keeps in

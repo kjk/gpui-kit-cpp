@@ -153,7 +153,7 @@ El* DialogContent::IntoEl() {
 
 DialogHeader* DialogHeader::New(Ctx* cx) {
     DialogHeader* part = ArenaNew<DialogHeader>(cx->a);
-    part->root = Div(cx->a)->FlexCol()->Gap(8);
+    part->root = Div(cx->a)->FlexCol()->Gap(Rems(cx, 0.5f));
     return part;
 }
 DialogHeader* DialogHeader::Child(El* child) {
@@ -196,9 +196,12 @@ El* DialogDescription::IntoEl() {
 DialogFooter* DialogFooter::New(Ctx* cx) {
     DialogFooter* part = ArenaNew<DialogFooter>(cx->a);
     float radius = ThemeNow(cx->app).radiusLg;
-    part->root =
-        Div(cx->a)->FlexRow()->Gap(8)->JustifyEnd()->LineHeight(1.25f)->Corners(
-            0, 0, radius, radius);
+    part->root = Div(cx->a)
+                     ->FlexRow()
+                     ->Gap(Rems(cx, 0.5f))
+                     ->JustifyEnd()
+                     ->LineHeight(1.25f)
+                     ->Corners(0, 0, radius, radius);
     return part;
 }
 DialogFooter* DialogFooter::Child(El* child) {
@@ -410,7 +413,7 @@ Dialog* Dialog::OnOk(Listener fn) {
 // there is an icon above them.
 El* Dialog::Header() {
     const Theme& th = ThemeNow(cx->app);
-    El* head = Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(8);
+    El* head = Div(a)->FlexCol()->W(kFill)->Pad(16)->Gap(Rems(cx, 0.5f));
     El* ic = nullptr;
     if (icon != IconName::None) {
         ic = IconEl(a, icon, iconSize)->Shrink0();
@@ -429,8 +432,12 @@ El* Dialog::Header() {
         El* text = TextEl(a, title)->Font(16)->Semibold()->Fg(th.foreground);
         El* line = text;
         if (ic) {
-            line = Div(a)->FlexRow()->Gap(8)->ItemsCenter()->Child(ic)->Child(
-                text);
+            line = Div(a)
+                       ->FlexRow()
+                       ->Gap(Rems(cx, 0.5f))
+                       ->ItemsCenter()
+                       ->Child(ic)
+                       ->Child(text);
         }
         head->Child(DialogTitle::New(cx)->Child(line)->IntoEl());
     } else if (ic) {
@@ -460,7 +467,7 @@ Str Dialog::LayerId(Str base) const {
 // DialogFooter: the action row, or whatever the caller put in its place.
 El* Dialog::Actions() {
     const Theme& th = ThemeNow(cx->app);
-    El* row = Div(a)->W(kFill)->Pad(16)->Gap(8);
+    El* row = Div(a)->W(kFill)->Pad(16)->Gap(Rems(cx, 0.5f));
     if (footerVertical) {
         row->FlexCol();
     } else {
@@ -528,7 +535,7 @@ El* Dialog::IntoEl(WinSize size) {
                     ->W(panelW)
                     ->MaxH(panelMaxH)
                     ->FlexCol()
-                    ->MinH(96)
+                    ->MinH(Rems(cx, 6))
                     ->Bg(hasBackground ? background : th.background)
                     ->Border(1, th.border)
                     ->Radius(radius > 0 ? radius : th.radiusLg)

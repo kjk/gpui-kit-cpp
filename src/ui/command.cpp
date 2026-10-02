@@ -387,20 +387,22 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
 // list's content had last frame (MinContent before it has been laid out) and
 // under the font its rows inherit there, before the sizes go to the virtual
 // list. Nothing is done while the sizes are still those of the rows, the
-// width, the font and the keymap they were measured with. Without a Ctx the
-// rows cannot be built and take the standard heights.
+// width, the rem size, the font and the keymap they were measured with. Without
+// a Ctx the rows cannot be built and take the standard heights.
 static void MeasureRows(CommandState* s, Ctx* cx) {
     float font = s->listFont > 0
                      ? s->listFont
                      : RuntimeStyleNow(cx ? cx->app : nullptr).fontSize;
     uint32_t keymap = KeymapGeneration();
+    float rem = Rems(cx, 1);
     if (!s->needsMeasure && s->rowSizes.len == s->rows.len &&
-        s->measuredW == s->listW && s->measuredFont == font &&
-        s->measuredKeymap == keymap) {
+        s->measuredW == s->listW && s->measuredRem == rem &&
+        s->measuredFont == font && s->measuredKeymap == keymap) {
         return;
     }
     s->needsMeasure = false;
     s->measuredW = s->listW;
+    s->measuredRem = rem;
     s->measuredFont = font;
     s->measuredKeymap = keymap;
     s->measureCount++;
@@ -773,12 +775,12 @@ struct CommandRowContext {
 // (plus the border when bordered) sits between a row and the frame's
 // corner. A borderless command keeps the theme radius, since its frame
 // belongs to the host. Command has no `.rounded(..)` here (it is not
-// Styled), so Rust's own-radius arms never apply, and rem is the fixed 16px.
-static float CommandItemRadius(const Theme& th, bool bordered) {
+// Styled), so Rust's own-radius arms never apply.
+static float CommandItemRadius(const Ctx* cx, const Theme& th, bool bordered) {
     if (!bordered) {
         return th.radius;
     }
-    float r = th.radiusLg - 16.f * 0.25f - 1.f;
+    float r = th.radiusLg - Rems(cx, 0.25f) - 1.f;
     return r > 0 ? r : 0;
 }
 
@@ -805,8 +807,11 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
             Div(a)->W(kFill)->H(1)->Bg(th.border));
     }
     if (row.kind == CommandRowKind::Heading) {
-        return Div(a)->W(kFill)->PadX(8)->PadY(6)->Child(
-            TextEl(a, row.heading)->Font(12)->Medium()->Fg(th.mutedFg));
+        return Div(a)
+            ->W(kFill)
+            ->PadX(Rems(cx, 0.5f))
+            ->PadY(Rems(cx, 0.375f))
+            ->Child(TextEl(a, row.heading)->Font(12)->Medium()->Fg(th.mutedFg));
     }
 
     int matchIx = row.match;
@@ -824,9 +829,9 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
                    ->FlexRow()
                    ->W(kFill)
                    ->ItemsCenter()
-                   ->Gap(8)
-                   ->PadX(8)
-                   ->PadY(6)
+                   ->Gap(Rems(cx, 0.5f))
+                   ->PadX(Rems(cx, 0.5f))
+                   ->PadY(Rems(cx, 0.375f))
                    ->Radius(itemRadius >= 0 ? itemRadius : th.radius);
     if (selected) {
         line->Bg(th.tokens.accent);
@@ -834,10 +839,14 @@ static El* BuildCommandRow(Ctx* cx, CommandState* s, int rowIx,
     if (item->content) {
         line->Child(item->content(cx, item));
     } else {
-        El* content =
-            Div(a)->FlexRow()->Flex1()->Gap(8)->ItemsCenter()->MinW(0);
+        El* content = Div(a)
+                          ->FlexRow()
+                          ->Flex1()
+                          ->Gap(Rems(cx, 0.5f))
+                          ->ItemsCenter()
+                          ->MinW(0);
         if (item->icon != IconName::None) {
-            content->Child(IconEl(a, item->icon, 16)->Fg(iconFg));
+            content->Child(IconEl(a, item->icon, Rems(cx, 1))->Fg(iconFg));
         }
         if (len(item->label) > 0) {
             content->Child(
@@ -886,7 +895,7 @@ static void CommandListPrePaint(PaintCtx* ctx, El* e, void* user) {
     if (!s) {
         return;
     }
-    float w = e->w - 8.f;
+    float w = e->w - WindowRemSize(ctx->window) * 0.5f;
     if (w < 0) {
         w = 0;
     }
@@ -909,7 +918,7 @@ static El* DefaultEmpty(Ctx* cx) {
     const Theme& th = ThemeNow(cx->app);
     return Div(a)
         ->W(kFill)
-        ->PadY(24)
+        ->PadY(Rems(cx, 1.5f))
         ->ItemsCenter()
         ->JustifyCenter()
         ->TextCenter()
@@ -957,7 +966,7 @@ El* Command::IntoEl() {
                         ->FlexRow()
                         ->W(kFill)
                         ->Shrink0()
-                        ->PadX(12)
+                        ->PadX(Rems(cx, 0.75f))
                         ->Gap(8)
                         ->ItemsCenter()
                         ->BorderB(1, th.border);
@@ -978,11 +987,14 @@ El* Command::IntoEl() {
         box->Child(field);
     }
 
+    // The list's p_1, on the virtual list or, empty, on the box around it.
+    float inset = Rems(cx, 0.25f);
+    float listMaxH = maxH >= 0 ? maxH : Rems(cx, 18.75f);
     El* listBox = Div(a)
                       ->Role(AccessibilityRole::ListBox)
                       ->FlexCol()
                       ->W(kFill)
-                      ->MaxH(maxH)
+                      ->MaxH(listMaxH)
                       ->ClipY();
     CommandListProbe* probe = ArenaNew<CommandListProbe>(a);
     probe->state = state;
@@ -991,7 +1003,7 @@ El* Command::IntoEl() {
     if (s->rows.len == 0) {
         // The inset is the list's own; only the empty slot needs it from the
         // box around it.
-        listBox->Pad(4);
+        listBox->Pad(inset);
         // While a search is in flight the list is empty because the answer
         // has not arrived, which is not the same as no match.
         if (!s->loading) {
@@ -999,7 +1011,8 @@ El* Command::IntoEl() {
         }
     } else {
         float content = VirtualListContentSize(s->rowSizes.els, s->rows.len);
-        float viewH = content < maxH - 8 ? content : maxH - 8;
+        float viewMax = listMaxH - inset * 2;
+        float viewH = content < viewMax ? content : viewMax;
         if (s->pendingScroll >= 0) {
             VirtualListScrollToItemDeferred(&s->scroll, s->pendingScroll,
                                             ScrollStrategy::Top);
@@ -1007,14 +1020,14 @@ El* Command::IntoEl() {
         }
         CommandRowContext* rowCx = ArenaNew<CommandRowContext>(a);
         rowCx->state = state;
-        rowCx->itemRadius = CommandItemRadius(th, bordered);
+        rowCx->itemRadius = CommandItemRadius(cx, th, bordered);
         El* list = VirtualList::New(cx, s->rows.len)
                        ->Id(StrL("list"))
                        ->Sizes(s->rowSizes.els)
                        ->ViewH(viewH)
                        ->Handle(&s->scroll)
                        ->Axis(ScrollAxis::Vertical)
-                       ->Pad(4)
+                       ->Pad(inset)
                        ->Row(CommandRowEl, rowCx)
                        ->IntoEl();
         listBox->Child(list);

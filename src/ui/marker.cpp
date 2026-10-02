@@ -32,8 +32,8 @@ El* MarkerIcon::IntoEl() {
     // h_flex().size_4().flex_none().items_center().justify_center()
     El* row = Div(a)
                   ->FlexRow()
-                  ->W(16)
-                  ->H(16)
+                  ->W(Rems(cx, 1))
+                  ->H(Rems(cx, 1))
                   ->FlexNone()
                   ->ItemsCenter()
                   ->JustifyCenter();
@@ -250,8 +250,8 @@ El* Marker::IntoEl() {
                   ->FlexRow()
                   ->ItemsCenter()
                   ->W(kFill)
-                  ->MinH(16)
-                  ->Gap(8)
+                  ->MinH(Rems(cx, 1))
+                  ->Gap(Rems(cx, 0.5f))
                   ->Font(14)
                   ->LineHeight(1.5f)
                   ->Fg(th.mutedFg);
@@ -268,11 +268,16 @@ El* Marker::IntoEl() {
             break;
     }
     if (variant == MarkerVariant::Border) {
-        row->BorderB(1, th.border)->PadB(8);
+        row->BorderB(1, th.border)->PadB(Rems(cx, 0.5f));
     }
     if (variant == MarkerVariant::Separator &&
         align != MarkerAlignment::Start) {
-        El* rule = Div(a)->Flex1()->MinW(0)->H(1)->MarginR(4)->Bg(th.border);
+        El* rule = Div(a)
+                       ->Flex1()
+                       ->MinW(0)
+                       ->H(1)
+                       ->MarginR(Rems(cx, 0.25f))
+                       ->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);
         }
@@ -302,7 +307,12 @@ El* Marker::IntoEl() {
         }
     }
     if (variant == MarkerVariant::Separator && align != MarkerAlignment::End) {
-        El* rule = Div(a)->Flex1()->MinW(0)->H(1)->MarginL(4)->Bg(th.border);
+        El* rule = Div(a)
+                       ->Flex1()
+                       ->MinW(0)
+                       ->H(1)
+                       ->MarginL(Rems(cx, 0.25f))
+                       ->Bg(th.border);
         if (separatorStyleSet) {
             rule->Refine(separatorStyle, separatorStyleSet);
         }
