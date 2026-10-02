@@ -39,6 +39,7 @@
 #include "shell/dock.h"
 #include "shell/fetch.h"
 #include "shell/policy.h"
+#include "shell/scope.h"
 #include "shell/style.h"
 #include "shell/view.h"
 
