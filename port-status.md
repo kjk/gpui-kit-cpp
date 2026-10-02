@@ -155,9 +155,7 @@ macOS font-kit requirement on the website only. The current update target is
   typed-compound indices, description-list and table spans, OTP groups,
   calendar months and OtpState's length -- are clamped to INT_MAX, and a
   MessageScrollerState count past it is refused (Rust would allocate a row
-  height for each). A clicked page reaches its listener as a pointer-sized
-  argument, so on wasm32 a page past 2^31 does not
-  (`src/component_shell/compound/common.cpp`, `src/ui/pagination.h`).
+  height for each) (`src/component_shell/compound/common.cpp`).
 - **Component-shell gaps against the Rust components.** MenuItem/Menu
   `disabled` and the retained forms' `disabled()` are inert (upstream
   records them as common behaviors and drops the op — ported as-is).
