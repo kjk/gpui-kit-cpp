@@ -106,16 +106,17 @@ ButtonIcon* ButtonIcon::Size(float value) {
     return this;
 }
 
-static float ButtonIconSizePx(UiSize size, float exact) {
+// Icon::with_size: size_3 / size_3p5 / size_6 / size_4.
+static float ButtonIconSizePx(const Ctx* cx, UiSize size, float exact) {
     if (exact > 0) return exact;
-    if (size == UiSize::XSmall) return 12.f;
-    if (size == UiSize::Small) return 14.f;
-    if (size == UiSize::Large) return 24.f;
-    return 16.f;
+    if (size == UiSize::XSmall) return Rems(cx, 0.75f);
+    if (size == UiSize::Small) return Rems(cx, 0.875f);
+    if (size == UiSize::Large) return Rems(cx, 1.5f);
+    return Rems(cx, 1);
 }
 
 El* ButtonIcon::IntoEl() {
-    float px = ButtonIconSizePx(size, sizePx);
+    float px = ButtonIconSizePx(cx, size, sizePx);
     if (loading && variant == ButtonIconVariant::Icon) {
         Spinner* wait = Spinner::New(cx)->Size(px);
         if (loadingIcon) {
@@ -630,16 +631,16 @@ El* Button::IntoEl() {
     }
     // crates/ui/src/button: h_5/px_1, h_6/px_2, h_8/px_2p5, h_8/px_3, with a
     // tighter px when compact. Buttons do not use the generic control height.
-    float h = 32.f;
-    float padX = compact ? 8.f : 10.f;
+    float h = Rems(cx, 2);
+    float padX = Rems(cx, compact ? 0.5f : 0.625f);
     if (size == UiSize::XSmall) {
-        h = 20.f;
-        padX = 4.f;
+        h = Rems(cx, 1.25f);
+        padX = Rems(cx, 0.25f);
     } else if (size == UiSize::Small) {
-        h = 24.f;
-        padX = compact ? 6.f : 8.f;
+        h = Rems(cx, 1.5f);
+        padX = Rems(cx, compact ? 0.375f : 0.5f);
     } else if (size == UiSize::Large) {
-        padX = compact ? 8.f : 12.f;
+        padX = Rems(cx, compact ? 0.5f : 0.75f);
     }
     // button.rs: `label.is_none() && children.is_empty()` is an Icon Button —
     // a square of the size's own side and no padding at all, rather than the
@@ -647,7 +648,9 @@ El* Button::IntoEl() {
     // an icon alone still lands here; `extra` is what a `.child()` is here.
     bool iconOnly = !label.s && children.len == 0;
     if (iconOnly) {
-        h = size == UiSize::XSmall ? 20.f : size == UiSize::Small ? 24.f : 32.f;
+        h = Rems(cx, size == UiSize::XSmall  ? 1.25f
+                     : size == UiSize::Small ? 1.5f
+                                             : 2.f);
         padX = 0;
     }
     if (variant == ButtonVariant::Text || variant == ButtonVariant::Link) {
@@ -661,14 +664,12 @@ El* Button::IntoEl() {
         padX = 0;
     }
     // button.rs: gap_1 at the two small sizes, gap_2 above them.
-    float gap = (size == UiSize::XSmall || size == UiSize::Small) ? 4.f : 8.f;
+    float gap = Rems(
+        cx, (size == UiSize::XSmall || size == UiSize::Small) ? 0.25f : 0.5f);
     // `icon_size`: the button's own size, and three quarters of it when the
     // caller gave a pixel size. Icon::with_size then resolves it —
     // size_3 / size_3p5 / size_4 / size_6.
-    float iconPx = size == UiSize::XSmall  ? 12.f
-                   : size == UiSize::Small ? 14.f
-                   : size == UiSize::Large ? 24.f
-                                           : 16.f;
+    float iconPx = ButtonIconSizePx(cx, size, 0);
     if (sizePx > 0) {
         iconPx = sizePx * 0.75f;
     }
@@ -893,9 +894,9 @@ El* Button::IntoEl() {
         // Caret::new(size): xs and sm keep their own icon size, everything
         // else — Large included — takes the medium one, at three quarters of
         // the button's own ink.
-        float caretPx = size == UiSize::XSmall  ? 12.f
-                        : size == UiSize::Small ? 14.f
-                                                : 16.f;
+        float caretPx = Rems(cx, size == UiSize::XSmall  ? 0.75f
+                                 : size == UiSize::Small ? 0.875f
+                                                         : 1.f);
         e->Child(IconEl(a, IconName::ChevronDown, caretPx)
                      ->Fg(RgbaOpacity(fg, 0.75f)));
     }
@@ -995,21 +996,22 @@ El* Toggle::IntoEl() {
                    ->ItemsCenter()
                    ->JustifyCenter();
 
-    // toggle.rs: text_xs / text_sm / text_sm / text_base, the Input ladder.
-    float h = 32.f;
-    float pad = 8.f;
+    // toggle.rs: text_xs / text_sm / text_sm / text_base, the Input ladder,
+    // with h_5/px_0p5, h_6/px_1, h_8/px_2 and h_9/px_3.
+    float h = Rems(cx, 2);
+    float pad = Rems(cx, 0.5f);
     float font = 14.f;
     if (size == UiSize::XSmall) {
-        h = 20.f;
-        pad = 2.f;
+        h = Rems(cx, 1.25f);
+        pad = Rems(cx, 0.125f);
         font = 12.f;
     } else if (size == UiSize::Small) {
-        h = 24.f;
-        pad = 4.f;
+        h = Rems(cx, 1.5f);
+        pad = Rems(cx, 0.25f);
         font = 14.f;
     } else if (size == UiSize::Large) {
-        h = 36.f;
-        pad = 12.f;
+        h = Rems(cx, 2.25f);
+        pad = Rems(cx, 0.75f);
         font = 16.f;
     }
     root->MinW(h)->H(h)->PadX(pad)->Corners(
@@ -1019,7 +1021,7 @@ El* Toggle::IntoEl() {
         root->HoverBg(th.tokens.accent)->HoverFg(th.accentFg);
     }
     if (tooltip.s) root->Tip(tooltip)->AriaLabel(tooltip);
-    if (icon != IconName::None) root->Child(IconEl(a, icon, 16.f));
+    if (icon != IconName::None) root->Child(IconEl(a, icon, Rems(cx, 1)));
     if (label.s) root->Child(TextEl(a, label)->Font(font));
     for (El* child : children) root->Child(child);
     return root;
@@ -1109,7 +1111,7 @@ El* ToggleGroup::IntoEl() {
 
     El* root = gpui::ToggleGroup::New(cx, id, Axis::Horizontal);
     El* row = Div(a)->FlexRow()->ItemsCenter();
-    if (!segmented) row->Gap(8);
+    if (!segmented) row->Gap(Rems(cx, 0.5f));
     int n = items.len;
     for (int i = 0; i < n; i++) {
         Toggle* item = items[i];

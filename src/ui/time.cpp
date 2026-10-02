@@ -108,14 +108,15 @@ Calendar* Calendar::OnYear(Listener fn) {
     return this;
 }
 
-static float CalendarCellSize(UiSize size) {
+// size_7 / size_10 / size_8.
+static float CalendarCellSize(const Ctx* cx, UiSize size) {
     if (size == UiSize::Small) {
-        return 28;
+        return Rems(cx, 1.75f);
     }
     if (size == UiSize::Large) {
-        return 40;
+        return Rems(cx, 2.5f);
     }
-    return 32;
+    return Rems(cx, 2);
 }
 
 static float CalendarWidth(UiSize size) {
@@ -162,7 +163,7 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
         "Calendar.month.November",
         "Calendar.month.December",
     };
-    float cellSize = CalendarCellSize(self->size);
+    float cellSize = CalendarCellSize(cx, self->size);
     // Every item but a weekday head is text_sm, or text_xs in a Small
     // calendar, which is what a Small date picker's popup is.
     float itemFont = self->size == UiSize::Small ? 12.f : 14.f;
@@ -175,7 +176,7 @@ static El* ThemedCalendarItem(void* user, Ctx* cx, El* item,
                                st.kind == CalendarItemKind::Previous
                                    ? IconName::ChevronLeft
                                    : IconName::ChevronRight,
-                               16)
+                               Rems(cx, 1))
                             ->Fg(on ? th.foreground : th.mutedFg));
             if (on) {
                 item->HoverBg(th.secondaryHover)
@@ -294,7 +295,9 @@ El* Calendar::IntoEl() {
         }
         El* root = calendar->IntoEl()->W(width);
         if (!bare) {
-            root->Pad(12)->Border(1, th.border)->Radius(th.radiusLg);
+            root->Pad(Rems(cx, 0.75f))
+                ->Border(1, th.border)
+                ->Radius(th.radiusLg);
         }
         StyleApplyFields(&root->style, style, styleSet);
         return root;
@@ -307,7 +310,7 @@ El* Calendar::IntoEl() {
     o.month = month;
     o.numberOfMonths = numberOfMonths;
     o.view = view;
-    o.cellSize = CalendarCellSize(size);
+    o.cellSize = CalendarCellSize(cx, size);
     o.selected = {selectedYear ? selectedYear : year,
                   selectedMonth ? selectedMonth : month, day};
     o.rangeEnd = rangeEnd;
@@ -329,7 +332,7 @@ El* Calendar::IntoEl() {
     o.user = this;
     El* root = gpui::Calendar::New(cx, StrL("calendar"), o)->W(width);
     if (!bare) {
-        root->Pad(12)->Border(1, th.border)->Radius(th.radiusLg);
+        root->Pad(Rems(cx, 0.75f))->Border(1, th.border)->Radius(th.radiusLg);
     }
     StyleApplyFields(&root->style, style, styleSet);
     return root;
@@ -533,10 +536,11 @@ struct TimeFieldLook {
 static El* ThemedTimeSegment(void* user, El* segment,
                              const TimeFieldSegmentState* state, Ctx* cx) {
     TimeFieldLook* look = (TimeFieldLook*)user;
-    segment->PadX(2);
+    segment->PadX(Rems(cx, 0.125f));
     if (state->Segment() == TimeSegment::Period) {
         TimeFieldSegmentClearChildren(segment);
-        segment->MarginL(4)->Child(TimePeriodLabel(cx->a, state->Value() == 1));
+        segment->MarginL(Rems(cx, 0.25f))
+            ->Child(TimePeriodLabel(cx->a, state->Value() == 1));
     }
     segment->Radius(look->segmentRadius);
     if (state->IsSelected()) {
@@ -575,7 +579,7 @@ El* TimeField::IntoEl() {
         ->Fg(fg)
         ->Border(1, invalid ? th.danger : th.inputBorder)
         ->Radius(th.radius)
-        ->PadX(4);
+        ->PadX(Rems(cx, 0.25f));
     UiInputTextSize(root, size);
     UiInputH(cx, root, size);
     if (disabled) {
@@ -1342,16 +1346,17 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
     Listener setOpen = ListenTo(self->state, &DatePickerState::OnOpenChange);
     Listener clear = ListenTo(self->state, &DatePickerState::OnClear);
 
-    float height = 32, padX = 10, font = 14;
+    // input_size: h_8 / h_11 / h_6 / h_5 (rems), and the pixel input_px.
+    float height = Rems(cx, 2), padX = 10, font = 14;
     if (self->size == UiSize::Large) {
-        height = 44;
+        height = Rems(cx, 2.75f);
         padX = 12;
         font = 16;
     } else if (self->size == UiSize::Small) {
-        height = 24;
+        height = Rems(cx, 1.5f);
         padX = 8;
     } else if (self->size == UiSize::XSmall) {
-        height = 20;
+        height = Rems(cx, 1.25f);
         padX = 4;
         font = 12;
     }
@@ -1393,7 +1398,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                          ->FlexRow()
                          ->W(kFill)
                          ->MinW(0)
-                         ->Gap(4)
+                         ->Gap(Rems(cx, 0.25f))
                          ->ItemsCenter()
                          ->JustifyBetween()
                          ->Child(text);
@@ -1407,8 +1412,9 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
                                   ->IntoEl()
                                   ->StopClick());
         } else {
-            triggerRow
-                ->Child(IconEl(a, IconName::Calendar, 12)->Fg(th.mutedFg));
+            triggerRow->Child(
+                IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))
+                    ->Fg(th.mutedFg));
         }
     }
     trigger->Child(triggerRow);
@@ -1424,9 +1430,14 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
 
     El* popup = nullptr;
     if (state->open) {
-        El* content = Div(a)->FlexRow()->Gap(12)->ItemsStart();
+        El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (self->presets && self->presetsCount > 0) {
-            El* list = Div(a)->FlexCol()->Gap(8)->PadY(4)->JustifyEnd();
+            // my_1().gap_2()
+            El* list = Div(a)
+                           ->FlexCol()
+                           ->Gap(Rems(cx, 0.5f))
+                           ->PadY(Rems(cx, 0.25f))
+                           ->JustifyEnd();
             for (int i = 0; i < self->presetsCount; i++) {
                 const DateRangePreset& preset = self->presets[i];
                 uint32_t key =
@@ -1466,9 +1477,9 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
             El* row = Div(a)
                           ->FlexRow()
                           ->ItemsCenter()
-                          ->MarginT(compact ? 8.f : 12.f)
-                          ->PadT(compact ? 8.f : 12.f)
-                          ->Gap(12)
+                          ->MarginT(Rems(cx, compact ? 0.5f : 0.75f))
+                          ->PadT(Rems(cx, compact ? 0.5f : 0.75f))
+                          ->Gap(Rems(cx, 0.75f))
                           ->JustifyBetween()
                           ->BorderT(1, th.border);
             row->Child(TextEl(a, Tr("DatePicker.time"))
@@ -1482,7 +1493,7 @@ static El* RetainedDatePickerIntoEl(DatePicker* self) {
         }
         content->Child(column);
         popup = Div(a)
-                    ->Pad(12)
+                    ->Pad(Rems(cx, 0.75f))
                     ->Border(1, th.border)
                     ->Radius(std::min(th.radius * 2.f, 8.f))
                     ->Bg(th.tokens.background)
@@ -1527,16 +1538,17 @@ El* DatePicker::IntoEl() {
     }
     // The trigger is input-shaped: the date (or placeholder) with a calendar
     // icon, or the clear button when there is something to clear.
-    float height = 32, padX = 10, font = 14;
+    // input_size: h_8 / h_11 / h_6 / h_5 (rems), and the pixel input_px.
+    float height = Rems(cx, 2), padX = 10, font = 14;
     if (size == UiSize::Large) {
-        height = 44;
+        height = Rems(cx, 2.75f);
         padX = 12;
         font = 16;
     } else if (size == UiSize::Small) {
-        height = 24;
+        height = Rems(cx, 1.5f);
         padX = 8;
     } else if (size == UiSize::XSmall) {
-        height = 20;
+        height = Rems(cx, 1.25f);
         padX = 4;
         font = 12;
     }
@@ -1545,7 +1557,7 @@ El* DatePicker::IntoEl() {
                       ->W(width)
                       ->H(height)
                       ->PadX(padX)
-                      ->Gap(4)
+                      ->Gap(Rems(cx, 0.25f))
                       ->ItemsCenter()
                       ->JustifyBetween();
     if (appearance) {
@@ -1567,7 +1579,9 @@ El* DatePicker::IntoEl() {
                            ->IntoEl()
                            ->StopClick());
     } else if (open) {
-        trigger->Child(IconEl(a, IconName::Calendar, 12)->Fg(th.mutedFg));
+        trigger
+            ->Child(IconEl(a, IconName::Calendar, UiIconPx(cx, UiSize::XSmall))
+                        ->Fg(th.mutedFg));
     }
     if (!open && !disabled) {
         BindClick(trigger, StrL("input"), onToggle);
@@ -1601,9 +1615,14 @@ El* DatePicker::IntoEl() {
                                  ->OnYearToggle(onYearToggle)
                                  ->OnMonth(onMonth)
                                  ->OnYear(onYear);
-        El* content = Div(a)->FlexRow()->Gap(12)->ItemsStart();
+        El* content = Div(a)->FlexRow()->Gap(Rems(cx, 0.75f))->ItemsStart();
         if (presets && presetsCount > 0) {
-            El* list = Div(a)->FlexCol()->Gap(8)->PadY(4)->JustifyEnd();
+            // my_1().gap_2()
+            El* list = Div(a)
+                           ->FlexCol()
+                           ->Gap(Rems(cx, 0.5f))
+                           ->PadY(Rems(cx, 0.25f))
+                           ->JustifyEnd();
             for (int i = 0; i < presetsCount; i++) {
                 const DateRangePreset& preset = presets[i];
                 list->Child(component::Button::New(
@@ -1618,7 +1637,7 @@ El* DatePicker::IntoEl() {
         }
         content->Child(calendar->IntoEl());
         popup = Div(a)
-                    ->Pad(12)
+                    ->Pad(Rems(cx, 0.75f))
                     ->Border(1, th.border)
                     ->Radius(std::min(th.radius * 2.f, 8.f))
                     ->Bg(th.tokens.background)

@@ -38,10 +38,10 @@ El* EmptyMedia::IntoEl() {
     const Theme& theme = ThemeNow(cx->app);
     El* root =
         Div(a)->FlexCol()->Shrink0()->ItemsCenter()->JustifyCenter()->MarginB(
-            8);
+            Rems(cx, 0.5f));
     if (variant == EmptyMediaVariant::Icon) {
-        root->W(32)
-            ->H(32)
+        root->W(Rems(cx, 2))
+            ->H(Rems(cx, 2))
             ->Radius(theme.radiusLg)
             ->Bg(theme.muted)
             ->Fg(theme.foreground)
@@ -104,7 +104,9 @@ El* EmptyDescription::IntoEl() {
 }
 
 EmptyContent* EmptyContent::New(Ctx* cx) {
-    return EmptyPartNew<EmptyContent>(cx);
+    EmptyContent* value = EmptyPartNew<EmptyContent>(cx);
+    value->cx = cx;
+    return value;
 }
 EmptyContent* EmptyContent::Child(El* child) {
     children.Append(a, child);
@@ -119,10 +121,10 @@ El* EmptyContent::IntoEl() {
     El* root = Div(a)
                    ->FlexCol()
                    ->W(kFill)
-                   ->MaxW(384)
+                   ->MaxW(Rems(cx, 24))
                    ->MinW(0)
                    ->ItemsCenter()
-                   ->Gap(10)
+                   ->Gap(Rems(cx, 0.625f))
                    ->Font(14);
     root->Refine(style, styleSet);
     refiner.Apply(root);
@@ -131,7 +133,9 @@ El* EmptyContent::IntoEl() {
 }
 
 EmptyHeader* EmptyHeader::New(Ctx* cx) {
-    return EmptyPartNew<EmptyHeader>(cx);
+    EmptyHeader* value = EmptyPartNew<EmptyHeader>(cx);
+    value->cx = cx;
+    return value;
 }
 EmptyHeader* EmptyHeader::Media(EmptyMedia* value) {
     media = value;
@@ -154,10 +158,10 @@ El* EmptyHeader::IntoEl() {
     El* root = Div(a)
                    ->FlexCol()
                    ->W(kFill)
-                   ->MaxW(384)
+                   ->MaxW(Rems(cx, 24))
                    ->MinW(0)
                    ->ItemsCenter()
-                   ->Gap(8)
+                   ->Gap(Rems(cx, 0.5f))
                    ->Refine(style, styleSet);
     refiner.Apply(root);
     if (media) root->Child(media->IntoEl());
@@ -197,8 +201,8 @@ El* Empty::IntoEl() {
                    ->Flex1()
                    ->ItemsCenter()
                    ->JustifyCenter()
-                   ->Gap(16)
-                   ->Pad(24)
+                   ->Gap(Rems(cx, 1))
+                   ->Pad(Rems(cx, 1.5f))
                    ->Radius(theme.radius * 2.f)
                    // border_dashed + border_color are styling hooks; Empty
                    // itself has no visible border until a caller refines one.

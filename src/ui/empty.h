@@ -60,6 +60,7 @@ struct EmptyDescription {
 
 struct EmptyContent {
     Arena* a = nullptr;
+    Ctx* cx = nullptr;
     ArenaVec<El*> children;
     Style style = {};
     uint32_t styleSet = 0;
@@ -74,6 +75,7 @@ struct EmptyContent {
 
 struct EmptyHeader {
     Arena* a = nullptr;
+    Ctx* cx = nullptr;
     EmptyMedia* media = nullptr;
     EmptyTitle* title = nullptr;
     EmptyDescription* description = nullptr;

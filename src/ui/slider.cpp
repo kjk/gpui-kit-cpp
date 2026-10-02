@@ -72,9 +72,11 @@ El* Slider::IntoEl() {
     if (state && !disabled) {
         state->onChange = onChange;
     }
-    const float kBar = 6.f;    // h_1p5: the indicator
-    const float kThumb = 16.f; // size_4, a 1px ring of bar_color at 50%
-    const float kH = 24.f;     // h_6: the track
+    // h_1p5: the indicator. size_4: the thumb, a 1px ring of bar_color at
+    // 50%. h_6: the track.
+    const float kBar = Rems(cx, 0.375f);
+    const float kThumb = Rems(cx, 1);
+    const float kH = Rems(cx, 1.5f);
     // THUMB_RING_WIDTH / THUMB_RING_OPACITY / THUMB_RING_DURATION: a
     // translucent ring grows outside the thumb while the pointer is over it.
     const float kRingWidth = 3.f;

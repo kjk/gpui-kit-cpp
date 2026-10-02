@@ -212,7 +212,7 @@ static El* FieldRender(Ctx* cx, const Field& fld, const FieldProps& props) {
     }
     bool hasLabel = fld.labelIndent;
     if (hasLabel) {
-        El* label = Div(a)->FlexRow()->Gap(4)->ItemsCenter();
+        El* label = Div(a)->FlexRow()->Gap(Rems(cx, 0.25f))->ItemsCenter();
         if (props.horizontal) {
             label->W(lw);
             label->style.flexShrink = 0;

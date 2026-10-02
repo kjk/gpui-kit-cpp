@@ -44,7 +44,8 @@ El* StatusBar::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // `region()`: h_flex().overflow_hidden().items_center().gap_2().
     auto region = [&]() {
-        return Div(a)->FlexRow()->ClipX()->ClipY()->ItemsCenter()->Gap(8);
+        return Div(a)->FlexRow()->ClipX()->ClipY()->ItemsCenter()->Gap(
+            Rems(cx, 0.5f));
     };
     bool hasLeft = left.len > 0;
     bool hasRight = right.len > 0;
@@ -53,9 +54,9 @@ El* StatusBar::IntoEl() {
                   ->W(kFill)
                   ->Shrink0()
                   ->ItemsCenter()
-                  ->Gap(8)
-                  ->PadY(4)
-                  ->PadX(8)
+                  ->Gap(Rems(cx, 0.5f))
+                  ->PadY(Rems(cx, 0.25f))
+                  ->PadX(Rems(cx, 0.5f))
                   ->Bg(th.tokens.statusBar)
                   ->BorderT(1, th.statusBarBorder);
     if (hasLeft) {

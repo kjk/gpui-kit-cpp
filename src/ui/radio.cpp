@@ -68,10 +68,11 @@ El* Radio::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     // A checked radio is a filled circle with the same check a checkbox
     // carries, not a dot: primary fill and border, white tick.
-    float box = size == UiSize::Small    ? 14.f
-                : size == UiSize::XSmall ? 12.f
-                : size == UiSize::Large  ? 18.f
-                                         : 16.f;
+    // indicator_size: rems(0.875 / 0.75 / 1.125 / 1.).
+    float box = Rems(cx, size == UiSize::Small    ? 0.875f
+                         : size == UiSize::XSmall ? 0.75f
+                         : size == UiSize::Large  ? 1.125f
+                                                  : 1.f);
     Rgba border = checked ? th.primary : th.inputBorder;
     Rgba fill = checked ? th.primary : th.inputBg;
     if (disabled) {
@@ -89,7 +90,8 @@ El* Radio::IntoEl() {
                   ->Shrink0();
     if (checked) {
         Rgba tick = disabled ? RgbaOpacity(th.primaryFg, 0.5f) : th.primaryFg;
-        dot->Child(IconEl(a, IconName::Check, box - 5)->Fg(tick));
+        dot->Child(IconEl(a, IconName::Check, box - Rems(cx, 0.3125f))
+                       ->Fg(tick));
     }
     // gpui_base::Radio owns identity, focus and activation, and refuses the
     // click to the option that is already picked.
@@ -99,7 +101,7 @@ El* Radio::IntoEl() {
                   ->FocusRing(focusRing)
                   ->FlexRow()
                   ->ItemsStart()
-                  ->Gap(8);
+                  ->Gap(Rems(cx, 0.5f));
     // The explicit name wins over the visible label, and only the name
     // changes: what is drawn stays the label.
     Str name = accessibilityLabel.s ? accessibilityLabel : label;
@@ -110,7 +112,7 @@ El* Radio::IntoEl() {
     row->Child(dot);
     if (label.s || hint.s || children.len > 0) {
         dot->MarginT(box * 0.125f);
-        El* col = Div(a)->FlexCol()->Gap(4)->LineHeight(1.25f);
+        El* col = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->LineHeight(1.25f);
         if (label.s) {
             // input_text_size: the Input/Select ladder. A custom Size sets
             // no size and inherits.
@@ -189,7 +191,7 @@ El* RadioGroup::IntoEl() {
     // group, and the radios stay packed at their gap_3 inside it.
     El* group = gpui::RadioGroup::New(
         cx, id, horizontal ? Axis::Horizontal : Axis::Vertical);
-    El* base = Div(cx->a)->Gap(12);
+    El* base = Div(cx->a)->Gap(Rems(cx, 0.75f));
     group->Child(base);
     if (horizontal) {
         base->FlexRow()->W(kFill)->FlexWrap();

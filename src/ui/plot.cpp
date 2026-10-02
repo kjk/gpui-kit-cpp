@@ -334,16 +334,19 @@ El* Tooltip::IntoEl() {
     // with, so a tooltip built from freeform children keeps it too. And one
     // size for every tooltip, structured or freeform, boxed or bare: the
     // compact text_xs tier.
-    El* content = Div(a)->FlexCol()->Gap(4)->Font(12);
+    El* content = Div(a)->FlexCol()->Gap(Rems(cx, 0.25f))->Font(12);
     if (hasTitle || rows.len > 0) {
         if (hasTitle) {
             content->Child(TextEl(a, title)->Semibold());
         }
         bool swatched = TooltipHasSwatches(rows);
         for (const TooltipRow& row : rows) {
-            El* left = Div(a)->FlexRow()->ItemsCenter()->Gap(6);
+            El* left = Div(a)->FlexRow()->ItemsCenter()->Gap(Rems(cx, 0.375f));
             if (swatched) {
-                El* swatch = Div(a)->W(8)->H(8)->Radius(theme.radius * .5f);
+                El* swatch = Div(a)
+                                 ->W(Rems(cx, 0.5f))
+                                 ->H(Rems(cx, 0.5f))
+                                 ->Radius(theme.radius * .5f);
                 if (row.hasColor) {
                     swatch->Bg(row.color);
                 }
@@ -358,7 +361,7 @@ El* Tooltip::IntoEl() {
                                ->FlexRow()
                                ->ItemsCenter()
                                ->JustifyBetween()
-                               ->Gap(12)
+                               ->Gap(Rems(cx, 0.75f))
                                ->Child(left)
                                ->Child(value));
         }
@@ -373,7 +376,7 @@ El* Tooltip::IntoEl() {
         PopoverSurface(cx, content)
             ->Absolute()
             ->MinW(150)
-            ->Pad(8)
+            ->Pad(Rems(cx, 0.5f))
             ->Opacity(overlay);
         if (cursor.x < within.w * .5f) {
             content->Left(cursor.x + gap);

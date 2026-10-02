@@ -400,9 +400,9 @@ El* SearchableListItemElement::IntoEl() {
         Div(a)
             ->PathId(StrDup(a, fmt("searchable-list-item-%d", (int)index)))
             ->FlexRow()
-            ->Gap(4)
-            ->PadY(4)
-            ->PadX(8)
+            ->Gap(Rems(cx, 0.25f))
+            ->PadY(Rems(cx, 0.25f))
+            ->PadX(Rems(cx, 0.5f))
             ->Radius(th.radius)
             ->Fg(disabled ? th.mutedFg : th.foreground)
             ->ItemsCenter()
@@ -428,7 +428,7 @@ El* SearchableListItemElement::IntoEl() {
                     ->FlexRow()
                     ->W(kFill)
                     ->MinW(0)
-                    ->Gap(4)
+                    ->Gap(Rems(cx, 0.25f))
                     ->ItemsCenter()
                     ->JustifyBetween()
                     ->Child(left);
@@ -835,8 +835,13 @@ El* SearchableList::IntoEl() {
     SearchableListSearch(s, items, nItems, query ? InputValue(query) : Str{});
 
     if (query) {
-        El* row =
-            Div(a)->FlexRow()->W(kFill)->H(32)->PadX(4)->Gap(8)->ItemsCenter();
+        El* row = Div(a)
+                      ->FlexRow()
+                      ->W(kFill)
+                      ->H(Rems(cx, 2))
+                      ->PadX(4)
+                      ->Gap(8)
+                      ->ItemsCenter();
         row->Child(IconEl(a, IconName::Search, 16)->Fg(th.mutedFg));
         row->Child(Div(a)->Flex1()->Child(Input::New(cx, StrL("query"), query)
                                               ->Appearance(false)
@@ -878,11 +883,14 @@ El* SearchableList::IntoEl() {
             if (custom) {
                 rows->Child(custom);
             } else if (sections[it.section].s) {
-                rows->Child(
-                    Div(a)->W(kFill)->Shrink0()->PadX(8)->PadY(2)->Child(
-                        TextEl(a, sections[it.section])
-                            ->Font(14)
-                            ->Fg(th.mutedFg)));
+                rows->Child(Div(a)
+                                ->W(kFill)
+                                ->Shrink0()
+                                ->PadX(Rems(cx, 0.5f))
+                                ->PadY(Rems(cx, 0.125f))
+                                ->Child(TextEl(a, sections[it.section])
+                                            ->Font(14)
+                                            ->Fg(th.mutedFg)));
             }
             lastSection = it.section;
         }
@@ -962,8 +970,11 @@ El* SearchableList::IntoEl() {
     box->Child(rows);
     if (footer) {
         // Combobox::footer: an action under the list, ruled off from it.
-        box->Child(
-            Div(a)->W(kFill)->BorderT(1, th.border)->Pad(4)->Child(footer));
+        box->Child(Div(a)
+                       ->W(kFill)
+                       ->BorderT(1, th.border)
+                       ->Pad(Rems(cx, 0.25f))
+                       ->Child(footer));
     }
     // The list's own key context, for one that is not inside a select. The
     // rows are focusable, and so is the box, so a chord finds it whether a
