@@ -3555,16 +3555,17 @@ static void StreamingThroughSetTextKeepsHighlights() {
 }
 
 // a_full_parse_merged_with_an_append_compares_every_block: the small text
-// parses at once, and the append that comes before the background parser
-// took it in merges with it into one full parse, in which the definition
-// turns the earlier `[foo]` into the link text `foo`. (Rust's
+// is committed at once, and its background parse merges with the append into
+// one full parse, in which the definition turns the earlier `[foo]` into the
+// link text `foo`. As in Rust, the text, the highlight and the append are one
+// update, with nothing parked between them: an append made after the first
+// parse has landed is parsed on its own. (Rust's
 // an_append_after_a_full_update_compares_every_block drives the same
 // reconcile with internal revisions this tree keeps inside the commit.)
 static void AnAppendComparesEveryBlock() {
     RhView v;
     RhOpen(&v, "");
     RhState(&v)->SetText(StrL("[foo] and some text\n\nmore"), &v.app, v.win);
-    RhRender(&v);
     int some = RhFind(RhState(&v)->RenderedText().AsStr(), "some");
     Span range = {some, some + 4};
     utassert(RhSet(&v, &range, 1).IsOk());

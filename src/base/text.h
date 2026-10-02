@@ -809,6 +809,7 @@ bool RenderedIndexLocate(const RenderedIndex* index, Span range,
 // mutation revisions, selection and managed-view identity are retained.
 struct TextViewParse;
 struct TextViewParseJob;
+struct TextViewBaselineAck;
 
 struct TextViewState {
     EntityId self = {};
@@ -873,6 +874,9 @@ struct TextViewState {
     // parsed at once, so an append before it does merges into one full parse
     // (UpdateOptions::merge over a BaselineAck).
     bool baselinePending = false;
+    // The ack on its way back for baselinePending, which this state lets go
+    // of when it is dropped first, so it lands on nothing.
+    TextViewBaselineAck* baselineAck = nullptr;
     uint64_t updateRevision = 0;
     uint64_t fullUpdateRevision = 0;
     uint64_t committedRevision = 0;

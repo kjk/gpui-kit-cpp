@@ -528,13 +528,15 @@ void TextViewState::OnFadeTick(TextViewState* self, Ctx* cx, const TickEvent*) {
 // The parse pipeline's own, further down.
 static void TextViewParseFree(TextViewParse* p);
 static void TextViewParseDetach(TextViewParseJob* job);
+static void TextViewBaselineDetach(TextViewState* s);
 
 TextViewState::~TextViewState() {
     StrFree(text);
     RenderedIndexFree(renderedIndex);
     RangeHighlightFrameFree(rangeHighlights);
-    // A parse in flight lands on nothing.
+    // A parse in flight lands on nothing, and so does a baseline ack.
     TextViewParseDetach(parseFlight);
+    TextViewBaselineDetach(this);
     TextViewParseFree(parsed);
     for (TextViewParse* p : retiredParses) {
         TextViewParseFree(p);
@@ -4803,14 +4805,23 @@ static void TextViewCommit(TextViewState* s, App* app, Arena* arena,
 
 // The background parser takes in a small replacement that parsed at once
 // (BaselineAck): until it has, an append merges into one full parse.
+// It names the state directly, as a parse job does, and the state clears that
+// when it goes: a queued ack can outlive the state and the App it was in.
 struct TextViewBaselineAck {
-    App* app = nullptr;
-    EntityId self = {};
+    TextViewState* state = nullptr;
 };
 
+static void TextViewBaselineDetach(TextViewState* s) {
+    if (s->baselineAck) {
+        s->baselineAck->state = nullptr;
+        s->baselineAck = nullptr;
+    }
+}
+
 static void TextViewBaselineAcked(TextViewBaselineAck* ack) {
-    if (auto* s = (TextViewState*)EntityGet(ack->app, ack->self)) {
+    if (TextViewState* s = ack->state) {
         s->baselinePending = false;
+        s->baselineAck = nullptr;
     }
     delete ack;
 }
@@ -4873,9 +4884,12 @@ void TextViewState::StartParse(App* app, Window* window,
                        updateRevision, fingerprint, kFadeAtFirstFrame);
         if (!append && app && self.IsValid()) {
             baselinePending = true;
+            // An ack still on its way is for an older baseline: this one
+            // is what clears the flag now.
+            TextViewBaselineDetach(this);
             auto* ack = new TextViewBaselineAck();
-            ack->app = app;
-            ack->self = self;
+            ack->state = this;
+            baselineAck = ack;
             ExecPost(MkFunc0(&TextViewBaselineAcked, ack));
         }
         return;
