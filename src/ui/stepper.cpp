@@ -127,9 +127,9 @@ static El* StepperTrigger(Arena* a, const Theme& th, StepperItem* it) {
 
     El* trig = Div(a);
     if (it->layout == Axis::Horizontal) {
-        trig->FlexCol()->Gap(4);
+        trig->FlexCol()->Gap(Rems(it->cx, 0.25f));
     } else {
-        trig->FlexRow()->Gap(8);
+        trig->FlexRow()->Gap(Rems(it->cx, 0.5f));
     }
     trig->ItemsStart();
     if (it->textCenter) {

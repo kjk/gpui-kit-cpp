@@ -147,8 +147,20 @@ static El* RowMatchWashes(Arena* a, El* el, const InputEditorStyle& style,
 }
 
 // Input::LINE_HEIGHT is 1.25rem — 20 px at the 16 px root, whatever the text
-// size is, rather than the phi box every other line of text gets.
+// size is, rather than the phi box every other line of text gets. A field
+// that is built takes it from InputLineH at its window's rem size; this is
+// what stands in for it before the first frame has said.
 static const float kInputLineH = 20.f;
+
+static float InputLineH(const Ctx* cx) {
+    return Rems(cx, 1.25f);
+}
+
+// El::LineHeight is a multiple of the font, and layout scales the font by the
+// window's rem over 16; FontPx takes a line height in DIPs back to that scale.
+static float InputLineMult(const Ctx* cx, float lineH, float font) {
+    return FontPx(cx, lineH) / font;
+}
 // element.rs RIGHT_MARGIN: what the text keeps clear on its right, which a
 // soft-wrapping editor wraps short of and an inline token is measured within.
 static const float kEditorRightMargin = 10.f;
@@ -1013,8 +1025,9 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
         InputEditorStyleResolve(projected, theme.tokens);
     const InputEditorStyle& style = resolved;
     float font = style.fontSize > 0 ? style.fontSize : 12.f;
-    float lineMult = kInputLineH / font;
-    state->lastLineH = kInputLineH;
+    float lineH = InputLineH(cx);
+    float lineMult = InputLineMult(cx, lineH, font);
+    state->lastLineH = lineH;
     state->lastFontWord = InputFontWord(style);
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
@@ -1033,7 +1046,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
                   ->FlexRow()
                   ->ItemsCenter()
                   ->H(kFill)
-                  ->MinH(kInputLineH)
+                  ->MinH(lineH)
                   ->Flex1()
                   ->BindInput(state);
     if (style.align == 1) {
@@ -1079,13 +1092,13 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (InputTokensVisible(state) && !masked) {
         // The chips' widths, which the hit test and the caret step over.
         // One line does not wrap, so nothing caps them.
-        MeasureTokenWidths(cx, state, style, font, kInputLineH, 0);
+        MeasureTokenWidths(cx, state, style, font, lineH, 0);
         state->chipLine = true;
         state->lastFont = font;
         El* line = Div(a)->FlexRow()->ItemsCenter()->Shrink0()->BoundsOut(
             &state->lastBounds);
-        AppendTokenPieces(line, cx, state, style, font, lineMult, kInputLineH,
-                          run, 0, sel, caret, cursor);
+        AppendTokenPieces(line, cx, state, style, font, lineMult, lineH, run, 0,
+                          sel, caret, cursor);
         return row->Child(line);
     }
     El* el = TextEl(a, run)
@@ -1621,10 +1634,13 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     // a smaller or larger one keeps its leading in proportion. Every other
     // field keeps Input::LINE_HEIGHT — 1.25rem whatever the text size is —
     // which is what Rust sets on the input rather than on the editor. At the
-    // theme's 13px monospace the two are the same 20.
-    float lineH =
-        state->kind == InputKind::Editor ? roundf(font * 1.5f) : kInputLineH;
-    float lineMult = lineH / font;
+    // theme's 13px monospace the two are the same 20. The editor's is a
+    // multiple of its font, which layout scales by the rem as it does the
+    // font, so in DIPs it is that row at the window's rem.
+    float lineH = state->kind == InputKind::Editor
+                      ? Rems(cx, roundf(font * 1.5f) / 16.f)
+                      : InputLineH(cx);
+    float lineMult = InputLineMult(cx, lineH, font);
     state->lastLineH = lineH;
     state->lastFontWord = InputFontWord(style);
     Str text = InputValue(state);
@@ -9970,7 +9986,8 @@ bool InputLastCaretPoint(const InputState* s, Window* win, int offset,
             return true;
         }
         Str line = Str(text.s + row.start, row.len);
-        float lineMult = lineH / font;
+        // The multiple of the font layout gave the row (InputLineMult).
+        float lineMult = lineH * 16.f / WindowRemSize(win) / font;
         float x = 0, y = 0, h = 0;
         if (!TextPointAt(ctx, line, font, 0, false, offset - row.start, &x, &y,
                          &h, s->lastFontWord, lineMult, affinity)) {

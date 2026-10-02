@@ -19,18 +19,15 @@ Caret Caret::TextColor(Rgba value) const {
     return out;
 }
 
-float Caret::IconSize() const {
-    if (size == UiSize::XSmall) {
-        return 12;
+float Caret::IconSize(const Ctx* cx) const {
+    if (size == UiSize::XSmall || size == UiSize::Small) {
+        return UiIconPx(cx, size);
     }
-    if (size == UiSize::Small) {
-        return 14;
-    }
-    return 16;
+    return UiIconPx(cx, UiSize::Medium);
 }
 
-El* Caret::IntoEl(Arena* a) const {
-    El* out = IconEl(a, IconName::ChevronDown, IconSize());
+El* Caret::IntoEl(const Ctx* cx, Arena* a) const {
+    El* out = IconEl(a, IconName::ChevronDown, IconSize(cx));
     if (hasColor) {
         out->Fg(color);
     }
@@ -542,17 +539,18 @@ El* Select::IntoEl() {
         owner->state.nItems = nItems;
         owner->WatchBlur(cx->win);
     }
-    // input_size / input_text_size, by size.
-    float h = 32, padX = 10, font = 14;
+    // input_size / input_text_size, by size: the height is input_h's rems,
+    // the padding pixels.
+    float h = UiInputHeight(cx, UiSize::Medium), padX = 10, font = 14;
     if (size == UiSize::Large) {
-        h = 44;
+        h = UiInputHeight(cx, UiSize::Large);
         padX = 12;
         font = 16;
     } else if (size == UiSize::Small) {
-        h = 24;
+        h = UiInputHeight(cx, UiSize::Small);
         padX = 8;
     } else if (size == UiSize::XSmall) {
-        h = 20;
+        h = UiInputHeight(cx, UiSize::XSmall);
         padX = 4;
         font = 12;
     }
@@ -569,7 +567,7 @@ El* Select::IntoEl() {
                   ->W(width)
                   ->H(h)
                   ->PadX(padX)
-                  ->Gap(4)
+                  ->Gap(Rems(cx, 0.25f))
                   ->ItemsCenter()
                   ->JustifyBetween();
     if (triggerBoundsOut) {
@@ -610,9 +608,10 @@ El* Select::IntoEl() {
                            ->StopClick());
         } else if (icon != IconName::None) {
             // A custom icon replaces the caret, at xsmall.
-            box->Child(IconEl(a, icon, 12)->Fg(th.mutedFg));
+            box->Child(IconEl(a, icon, UiIconPx(cx, UiSize::XSmall))
+                           ->Fg(th.mutedFg));
         } else {
-            box->Child(Caret::New(size).TextColor(th.mutedFg).IntoEl(a));
+            box->Child(Caret::New(size).TextColor(th.mutedFg).IntoEl(cx, a));
         }
     }
     if (!disabled && !open) {

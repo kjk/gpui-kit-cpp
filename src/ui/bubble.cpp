@@ -35,8 +35,8 @@ El* BubbleContent::IntoEl() {
                       ->MaxW(kFill)
                       ->Radius(ThemeRadius2xl(th))
                       ->Border(1, th.transparent)
-                      ->PadX(12)
-                      ->PadY(8)
+                      ->PadX(Rems(cx, 0.75f))
+                      ->PadY(Rems(cx, 0.5f))
                       ->Font(14)
                       ->LineHeight(1.625f);
     // A ghost bubble has no surface to clip against; clipping would only cut
@@ -118,7 +118,7 @@ BubbleGroup* BubbleGroup::Refine(const Style& s, uint32_t fields) {
 }
 
 El* BubbleGroup::IntoEl() {
-    El* column = Div(a)->FlexCol()->MinW(0)->Gap(8);
+    El* column = Div(a)->FlexCol()->MinW(0)->Gap(Rems(cx, 0.5f));
     if (styleSet) {
         column->Refine(style, styleSet);
     }
@@ -185,27 +185,27 @@ El* BubbleReactions::IntoEl() {
                    ->FlexNone()
                    ->ItemsCenter()
                    ->JustifyCenter()
-                   ->Gap(4)
+                   ->Gap(Rems(cx, 0.25f))
                    ->Radius(th.radiusFull)
                    ->Border(3, th.background)
                    ->Bg(th.tokens.muted)
                    ->Fg(th.foreground)
                    ->Font(14);
     if (!hasAction) {
-        pill->PadX(6)->PadY(2);
+        pill->PadX(Rems(cx, 0.375f))->PadY(Rems(cx, 0.125f));
     }
     // Approximates shadcn's `translate-y-3/4`: there is no offset by a
     // fraction of the pill's own height here either, so this fixed value
     // leaves about three quarters of the default pill outside the bubble.
     if (side == BubbleReactionSide::Top) {
-        pill->Top(-20);
+        pill->Top(-Rems(cx, 1.25f));
     } else {
-        pill->Bottom(-20);
+        pill->Bottom(-Rems(cx, 1.25f));
     }
     if (alignment == MessageAlignment::Start) {
-        pill->Left(12);
+        pill->Left(Rems(cx, 0.75f));
     } else {
-        pill->Right(12);
+        pill->Right(Rems(cx, 0.75f));
     }
     if (styleSet) {
         pill->Refine(style, styleSet);
@@ -279,7 +279,12 @@ El* Bubble::IntoEl() {
     content->alignment = alignment;
     content->hasAlignment = hasAlignment;
 
-    El* root = Div(a)->FlexCol()->MinW(0)->FlexNone()->Gap(4)->MaxWFrac(0.8f);
+    El* root = Div(a)
+                   ->FlexCol()
+                   ->MinW(0)
+                   ->FlexNone()
+                   ->Gap(Rems(cx, 0.25f))
+                   ->MaxWFrac(0.8f);
     if (variant == BubbleVariant::Ghost) {
         root->W(kFill)->MaxWFrac(1.f);
     }

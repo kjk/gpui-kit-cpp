@@ -274,8 +274,9 @@ struct AttachmentGroup {
 };
 
 // CardMetrics: the geometry a named size resolves to. Rust keeps these in
-// rems so they follow the root font size; here they are the pixels those rems
-// come to at the 16 px rem this tree lays out with.
+// rems so they follow the root font size; here they are the DIPs those rems
+// come to at the rem size of the window `cx` builds for. `text` and
+// `description` are lengths too: they go to El::Font through FontPx.
 struct AttachmentCardMetrics {
     // The height of a horizontal card and the side of a square image tile.
     float height = 0;
@@ -295,7 +296,7 @@ struct AttachmentCardMetrics {
     float description = 0;
 };
 
-AttachmentCardMetrics AttachmentMetrics(UiSize size);
+AttachmentCardMetrics AttachmentMetrics(const Ctx* cx, UiSize size);
 
 // upload_bar_path: the upload bar as the intersection of its rectangle with
 // the card's inner rounded rectangle, both ends sampled along the corner arcs.

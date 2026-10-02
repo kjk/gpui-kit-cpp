@@ -29,9 +29,9 @@ static const float kCardBorder = 1.f;
 // How long an edge fade takes to appear or disappear.
 static const float kEdgeFadeTransitionMs = 200.f;
 
-AttachmentCardMetrics AttachmentMetrics(UiSize size) {
-    // card_metrics, in rems at 16 px.
-    auto r = [](float rems) { return rems * 16.f; };
+AttachmentCardMetrics AttachmentMetrics(const Ctx* cx, UiSize size) {
+    // card_metrics, in rems at the window's rem size.
+    auto r = [cx](float rems) { return Rems(cx, rems); };
     AttachmentCardMetrics m;
     switch (size) {
         case UiSize::XSmall:
@@ -167,7 +167,7 @@ static El* RetryButton(Ctx* cx, Str id, Listener onRetry) {
 El* AttachmentMedia::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     UiSize resolved = hasSize ? size : UiSize::Medium;
-    AttachmentCardMetrics metrics = AttachmentMetrics(resolved);
+    AttachmentCardMetrics metrics = AttachmentMetrics(cx, resolved);
     // Flush media sits inside the card's 1px border, so its corners are one
     // border width tighter than the card's to stay concentric. radius.sm is
     // half the theme radius and radius.md the radius itself.
@@ -210,7 +210,7 @@ El* AttachmentMedia::IntoEl() {
         box->W(metrics.media)->H(metrics.media);
     }
     // An icon child without its own size follows the slot's text size.
-    box->Font(glyph);
+    box->Font(FontPx(cx, glyph));
     if (axis == Axis::Vertical) {
         box->W(kFill)->Aspect(1.f);
     }
@@ -357,7 +357,8 @@ El* AttachmentDescription::IntoEl() {
     const Theme& th = ThemeNow(cx->app);
     Rgba color = (hasStatus && AttachmentStatusIsFailed(status)) ? th.danger
                                                                  : th.mutedFg;
-    float font = AttachmentMetrics(hasSize ? size : UiSize::Medium).description;
+    float font = FontPx(
+        cx, AttachmentMetrics(cx, hasSize ? size : UiSize::Medium).description);
     El* box = Div(a)
                   ->MaxW(kFill)
                   ->MinW(0)
@@ -455,10 +456,10 @@ El* AttachmentContent::IntoEl() {
                      // contribution. The chip is a fixed width now, so the
                      // column takes the slack either way.
                      ->Grow(1)
-                     ->Gap(2)
+                     ->Gap(Rems(cx, 0.125f))
                      ->LineHeight(1.25f);
     if (verticalLayout) {
-        column->W(kFill)->PadX(4);
+        column->W(kFill)->PadX(Rems(cx, 0.25f));
     }
     for (int i = 0; i < children.len; i++) {
         const AttachmentContentChild& child = children[i];
@@ -473,7 +474,7 @@ El* AttachmentContent::IntoEl() {
                         ->ItemsCenter()
                         ->MaxW(kFill)
                         ->MinW(0)
-                        ->Gap(4)
+                        ->Gap(Rems(cx, 0.25f))
                         ->Child(child.description->IntoEl())
                         ->Child(TextEl(a, StrL("\xC2\xB7"))
                                     ->Font(12)
@@ -529,9 +530,9 @@ AttachmentActions* AttachmentActions::LayoutForAxis(Axis axis) {
 }
 
 El* AttachmentActions::IntoEl() {
-    El* row = Div(a)->Flex()->Shrink0()->ItemsCenter()->Gap(4);
+    El* row = Div(a)->Flex()->Shrink0()->ItemsCenter()->Gap(Rems(cx, 0.25f));
     if (verticalLayout) {
-        row->Absolute()->Top(12)->Right(12);
+        row->Absolute()->Top(Rems(cx, 0.75f))->Right(Rems(cx, 0.75f));
     }
     // The actions cluster owns its presses: an action, or the gap between
     // actions, must not also arm the whole-card click layer below.
@@ -762,7 +763,7 @@ El* Attachment::IntoEl() {
     bool clickable = hasId && onClick.IsValid();
     bool progressBar = progress >= 0 && AttachmentStatusIsUploading(status) &&
                        axis == Axis::Horizontal;
-    AttachmentCardMetrics metrics = AttachmentMetrics(size);
+    AttachmentCardMetrics metrics = AttachmentMetrics(cx, size);
     float radius = CardRadius(size, th);
     bool flush = axis == Axis::Vertical && !hasContent;
 
@@ -779,7 +780,7 @@ El* Attachment::IntoEl() {
                    ->Bg(th.tokens.background)
                    ->Fg(th.foreground)
                    ->LineHeight(1.25f)
-                   ->Font(metrics.text);
+                   ->Font(FontPx(cx, metrics.text));
     if (AttachmentStatusIsPending(status)) {
         card->Dashed();
     }
@@ -805,7 +806,7 @@ El* Attachment::IntoEl() {
         card->W(metrics.height)->H(metrics.height);
     } else {
         // A preview card: media above the metadata, w(rems(7.5)).
-        card->W(120)
+        card->W(Rems(cx, 7.5f))
             ->FlexCol()
             ->ItemsStart()
             ->Gap(metrics.gap)
@@ -945,8 +946,8 @@ El* AttachmentGroup::IntoEl() {
                   ->PathId(id)
                   ->W(kFill)
                   ->MinW(0)
-                  ->Gap(12)
-                  ->PadY(4)
+                  ->Gap(Rems(cx, 0.75f))
+                  ->PadY(Rems(cx, 0.25f))
                   ->ClipX()
                   ->ScrollX(offset)
                   ->ScrollId(scrollId)
@@ -997,9 +998,13 @@ El* AttachmentGroup::IntoEl() {
         bg.angle = 90.f;
         bg.from = ColorStop{isLeading ? edgeFade : clear, 0.f};
         bg.to = ColorStop{isLeading ? clear : edgeFade, 1.f};
-        El* e =
-            Div(a)->Absolute()->Top(0)->Bottom(0)->W(24)->Opacity(opacity)->Bg(
-                bg);
+        El* e = Div(a)
+                    ->Absolute()
+                    ->Top(0)
+                    ->Bottom(0)
+                    ->W(Rems(cx, 1.5f))
+                    ->Opacity(opacity)
+                    ->Bg(bg);
         return isLeading ? e->Left(0) : e->Right(0);
     };
     El* frame = Div(a)->W(kFill)->MinW(0)->Child(row);

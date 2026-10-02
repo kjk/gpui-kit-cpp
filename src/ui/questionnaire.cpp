@@ -147,8 +147,9 @@ static QuestionnaireMetrics Metrics(UiSize size, App* app) {
     return m;
 }
 
-static El* ApplyTextToken(El* e, const TextStyleToken& token) {
-    e->Font(token.size);
+// The tokens' text sizes are pixels, as text_size(token.size) has them.
+static El* ApplyTextToken(const Ctx* cx, El* e, const TextStyleToken& token) {
+    e->Font(FontPx(cx, token.size));
     if (token.size > 0) {
         e->LineHeight(token.lineHeight / token.size);
     }
@@ -156,71 +157,71 @@ static El* ApplyTextToken(El* e, const TextStyleToken& token) {
 }
 
 // Answer text matches the Checkbox and Radio family's label at each size.
-static El* TextStyle(El* e, UiSize size, App* app) {
-    const TypographyTokens& t = Tokens(app).typography;
+static El* TextStyle(El* e, UiSize size, const Ctx* cx) {
+    const TypographyTokens& t = Tokens(cx->app).typography;
     switch (size) {
         case UiSize::XSmall:
-            return ApplyTextToken(e, t.xs);
+            return ApplyTextToken(cx, e, t.xs);
         case UiSize::Small:
-            return ApplyTextToken(e, t.sm);
+            return ApplyTextToken(cx, e, t.sm);
         case UiSize::Large:
-            return ApplyTextToken(e, t.lg);
+            return ApplyTextToken(cx, e, t.lg);
         case UiSize::Size:
-            return e->Font(size.pixels);
+            return e->Font(FontPx(cx, size.pixels));
         default:
-            return ApplyTextToken(e, t.md);
+            return ApplyTextToken(cx, e, t.md);
     }
 }
 
 // Secondary text sits one step below the answer text.
-static El* SecondaryTextStyle(El* e, UiSize size, App* app) {
-    const TypographyTokens& t = Tokens(app).typography;
+static El* SecondaryTextStyle(El* e, UiSize size, const Ctx* cx) {
+    const TypographyTokens& t = Tokens(cx->app).typography;
     switch (size) {
         case UiSize::XSmall:
         case UiSize::Small:
-            return ApplyTextToken(e, t.xs);
+            return ApplyTextToken(cx, e, t.xs);
         case UiSize::Large:
-            return ApplyTextToken(e, t.md);
+            return ApplyTextToken(cx, e, t.md);
         case UiSize::Size:
-            return e->Font(size.pixels * 0.875f);
+            return e->Font(FontPx(cx, size.pixels * 0.875f));
         default:
-            return ApplyTextToken(e, t.sm);
+            return ApplyTextToken(cx, e, t.sm);
     }
 }
 
-static El* ProgressTextStyle(El* e, UiSize size, App* app) {
-    const TypographyTokens& t = Tokens(app).typography;
+static El* ProgressTextStyle(El* e, UiSize size, const Ctx* cx) {
+    const TypographyTokens& t = Tokens(cx->app).typography;
     switch (size) {
         case UiSize::Large:
-            ApplyTextToken(e, t.sm);
+            ApplyTextToken(cx, e, t.sm);
             break;
         case UiSize::Size:
-            e->Font(size.pixels * 0.75f);
+            e->Font(FontPx(cx, size.pixels * 0.75f));
             break;
         default:
-            ApplyTextToken(e, t.xs);
+            ApplyTextToken(cx, e, t.xs);
             break;
     }
     return e->Weight(FontWeight::Medium);
 }
 
-static El* TitleTextStyle(El* e, UiSize size, App* app) {
-    const TypographyTokens& t = Tokens(app).typography;
+static El* TitleTextStyle(El* e, UiSize size, const Ctx* cx) {
+    const TypographyTokens& t = Tokens(cx->app).typography;
     switch (size) {
         case UiSize::XSmall:
-            ApplyTextToken(e, t.sm);
+            ApplyTextToken(cx, e, t.sm);
             break;
         case UiSize::Small:
-            ApplyTextToken(e, t.md);
+            ApplyTextToken(cx, e, t.md);
             break;
         case UiSize::Large:
-            ApplyTextToken(e, t.xl);
+            ApplyTextToken(cx, e, t.xl);
             break;
         case UiSize::Size:
-            e->Font(size.pixels * 1.125f);
+            e->Font(FontPx(cx, size.pixels * 1.125f));
             break;
         default:
-            ApplyTextToken(e, t.lg);
+            ApplyTextToken(cx, e, t.lg);
             break;
     }
     return e->Weight(FontWeight::Medium);
@@ -418,7 +419,7 @@ El* QuestionnaireProgress::IntoEl() {
                                   ->AriaMaxNumericValue((float)progress.total)
                                   ->AriaNumericValue((float)progress.current)
                                   ->Fg(colors.mutedForeground),
-                              resolved, cx->app);
+                              resolved, cx);
     RefineWith(e, this);
     if (children.len == 0) {
         e->Child(TextEl(a, label));
@@ -428,7 +429,7 @@ El* QuestionnaireProgress::IntoEl() {
 
 // ─── title / description ──────────────────────────────────────────────────
 
-using TextStyleFn = El* (*)(El*, UiSize, App*);
+using TextStyleFn = El* (*)(El*, UiSize, const Ctx*);
 
 // questionnaire_item_part!: a line of an item's own text, or its children.
 static El* ItemTextPart(QuestionnairePart* part, Str fallback, TextStyleFn fn,
@@ -446,7 +447,7 @@ static El* ItemTextPart(QuestionnairePart* part, Str fallback, TextStyleFn fn,
         return nullptr;
     }
     UiSize resolved = QuestionnaireResolveSize(cx->app, part);
-    El* e = fn(Div(part->a)->W(kFill)->Fg(color), resolved, cx->app);
+    El* e = fn(Div(part->a)->W(kFill)->Fg(color), resolved, cx);
     // The item stacks its parts on one gap. A title with no description of
     // its own closes the gap the description would have filled, so answers
     // never crowd the question.
@@ -475,8 +476,8 @@ El* QuestionnaireTitle::IntoEl() {
                         true);
 }
 
-static El* DescriptionTextStyle(El* e, UiSize size, App* app) {
-    return SecondaryTextStyle(e, size, app);
+static El* DescriptionTextStyle(El* e, UiSize size, const Ctx* cx) {
+    return SecondaryTextStyle(e, size, cx);
 }
 
 QuestionnaireDescription* QuestionnaireDescription::New(
@@ -688,13 +689,13 @@ El* QuestionnaireChoice::IntoEl() {
             TextStyle(Div(a)
                           ->Fg(colors.foreground)
                           ->Child(TextEl(a, definition->accessibilityLabel)),
-                      resolved, app));
+                      resolved, cx));
         if (len(definition->description) > 0) {
             content->Child(SecondaryTextStyle(
                 Div(a)
                     ->Fg(colors.mutedForeground)
                     ->Child(TextEl(a, definition->description)),
-                resolved, app));
+                resolved, cx));
         }
     }
     AddChildren(content, this);
@@ -725,7 +726,7 @@ El* QuestionnaireChoice::IntoEl() {
                 ->Border(1, colors.input)
                 ->Fg(colors.mutedForeground)
                 ->Mono()
-                ->Font(m.shortcutTextSize)
+                ->Font(FontPx(cx, m.shortcutTextSize))
                 ->Weight(FontWeight::Medium)
                 ->Radius(m.shortcutRadius)
                 ->Child(TextEl(a, KbdFormatStr(cx, stroke))->LineHeight(1.f));
@@ -779,9 +780,8 @@ QuestionnaireChoiceDescription* QuestionnaireChoiceDescription::New(Ctx* cx) {
 
 El* QuestionnaireChoiceDescription::IntoEl() {
     const ColorTokens& colors = Tokens(cx->app).colors;
-    El* e =
-        SecondaryTextStyle(Div(a)->Fg(colors.mutedForeground),
-                           hasSize ? size : UiSize(UiSize::Medium), cx->app);
+    El* e = SecondaryTextStyle(Div(a)->Fg(colors.mutedForeground),
+                               hasSize ? size : UiSize(UiSize::Medium), cx);
     return AddChildren(RefineWith(e, this), this);
 }
 
@@ -862,7 +862,7 @@ El* QuestionnaireError::IntoEl() {
             ->Role(AccessibilityRole::Alert)
             ->MarginT(tokens.spacing.sm)
             ->Fg(tokens.colors.destructive),
-        resolved, cx->app);
+        resolved, cx);
     RefineWith(e, this);
     if (children.len == 0) {
         e->Child(TextEl(a, StrDup(a, QuestionnaireErrorText(*error))));

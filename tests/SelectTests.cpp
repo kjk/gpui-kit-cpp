@@ -109,14 +109,14 @@ static void TheListInsideASelectIsTheContentHandle() {
 
 static void CaretKeepsTheSourceSizeScale() {
     using namespace gpui::component;
-    utassertnear(Caret::New(UiSize::XSmall).IconSize(), 12.f);
-    utassertnear(Caret::New(UiSize::Small).IconSize(), 14.f);
-    utassertnear(Caret::New(UiSize::Medium).IconSize(), 16.f);
-    utassertnear(Caret::New(UiSize::Large).IconSize(), 16.f);
+    utassertnear(Caret::New(UiSize::XSmall).IconSize(nullptr), 12.f);
+    utassertnear(Caret::New(UiSize::Small).IconSize(nullptr), 14.f);
+    utassertnear(Caret::New(UiSize::Medium).IconSize(nullptr), 16.f);
+    utassertnear(Caret::New(UiSize::Large).IconSize(nullptr), 16.f);
 
     Arena* a = ArenaNew();
     Rgba color = Rgba{10, 20, 30, 255};
-    El* icon = Caret::New(UiSize::Small).TextColor(color).IntoEl(a);
+    El* icon = Caret::New(UiSize::Small).TextColor(color).IntoEl(nullptr, a);
     utassert(base::StrEq(icon->iconPath, StrL("icons/chevron-down.svg")));
     utassertnear(icon->style.width, 14.f);
     utassert(icon->style.hasColor);

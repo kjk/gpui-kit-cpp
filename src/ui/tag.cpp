@@ -118,8 +118,8 @@ El* Tag::IntoEl() {
     float font = tiny ? 10.f : (size == UiSize::Large ? 14.f : 12.f);
     float r = radius >= 0 ? radius : (tiny ? th.radius * 0.5f : th.radius);
     El* root = Div(a)
-                   ->PadX(tiny ? 6.f : 10.f)
-                   ->PadY(tiny ? 2.f : 4.f)
+                   ->PadX(Rems(cx, tiny ? 0.375f : 0.625f))
+                   ->PadY(Rems(cx, tiny ? 0.125f : 0.25f))
                    ->Radius(r)
                    ->Bg(bg)
                    ->Border(1, bd)

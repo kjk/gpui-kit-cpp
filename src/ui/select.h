@@ -29,8 +29,9 @@ struct Caret {
 
     static Caret New(UiSize size);
     Caret TextColor(Rgba color) const;
-    float IconSize() const;
-    El* IntoEl(Arena* a) const;
+    // The icon's size in rems, at the rem size of the window `cx` builds for.
+    float IconSize(const Ctx* cx) const;
+    El* IntoEl(const Ctx* cx, Arena* a) const;
 };
 
 // SelectEvent::Confirm(Option<Value>). C++ represents the sole enum variant

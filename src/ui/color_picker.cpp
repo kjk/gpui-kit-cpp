@@ -331,7 +331,7 @@ static El* ColorFieldTrigger(Ctx* cx, const ColorPickerState* s, UiSize size,
                 ->Fg(th.mutedFg));
     }
     field->Child(text);
-    field->Child(Caret::New(size).TextColor(th.mutedFg).IntoEl(a));
+    field->Child(Caret::New(size).TextColor(th.mutedFg).IntoEl(cx, a));
     return field;
 }
 
