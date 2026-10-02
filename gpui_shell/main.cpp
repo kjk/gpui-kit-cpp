@@ -284,11 +284,14 @@ static int Run(Str root, Str entry, const Invocation& invocation,
     }
     const FrozenComponentRegistry* components = component_shell::Components();
     ShellInitWithComponents(app, components);
+    // load_application loads under the default policy, as Rust's does, so
+    // the application's grants -- its manifest's capabilities, its name and
+    // its store -- become the default before anything loads.
+    PolicySetDefault(policy);
     ShellError error = {};
     ShellRuntime* runtime = ShellRuntime::New(app, &error, components);
     LoadedApplication* application =
-        runtime ? runtime->LoadApplication(root, entry, policy, &error)
-                : nullptr;
+        runtime ? runtime->LoadApplication(root, entry, &error) : nullptr;
     if (!application) {
         fprintf(stderr, "gpui-shell: ");
         Print(error.message, stderr);
