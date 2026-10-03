@@ -100,6 +100,13 @@ jobs:
         if: matrix.name == 'linux' || matrix.name == 'macos'
         run: bun cmd/build.ts -rel gpui_shell
 
+      # Generate the exact source set shipped by gpui-kit-cpp-dist and compile
+      # every example against it. This catches amalgamation-only Linux failures
+      # before a downstream project vendors gpui.cpp.
+      - name: Build published amalgam (Linux)
+        if: matrix.name == 'linux'
+        run: bun cmd/update-dist.ts -no-publish
+
       # Linux AppNew opens X11 even for tests that never create a window.
       - name: Test (Linux)
         if: matrix.name == 'linux'
