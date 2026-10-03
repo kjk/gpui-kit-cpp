@@ -12,6 +12,13 @@
 #include <sys/un.h>
 #include <unistd.h>
 
+// The amalgam lifts X11 includes ahead of Linux sources. Keep its macros from
+// rewriting enum members here, then restore them for the X11 backend.
+#pragma push_macro("Status")
+#pragma push_macro("True")
+#undef Status
+#undef True
+
 namespace gpui {
 
 static constexpr const char* kRootPath = "/org/a11y/atspi/accessible/root";
@@ -2136,3 +2143,6 @@ void AccessibilityLinuxFocusChanged(Window* win, int focusId) {
 }
 
 } // namespace gpui
+
+#pragma pop_macro("True")
+#pragma pop_macro("Status")
