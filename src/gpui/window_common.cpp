@@ -1069,7 +1069,7 @@ static void WindowPointerInput(Window* win, float x, float y) {
     AppInvalidate(win);
 }
 
-static bool IsModifierKey(int key) {
+static bool IsModifierKeyCode(int key) {
     // VK_SHIFT/CONTROL/MENU, the left and right halves of each, the Windows
     // keys and caps lock: GPUI reports these as ModifiersChanged, which does
     // not move the modality.
@@ -1118,7 +1118,7 @@ bool WindowKeyDown(Window* win, int key, bool shift, bool ctrl, bool alt,
     // then on, so the hovered element hears on_hover(false) once the key has
     // been handled — Rust defers it to the next paint, after the action.
     bool wasKeyboard = win->lastInputKeyboard;
-    if (!IsModifierKey(key)) {
+    if (!IsModifierKeyCode(key)) {
         win->lastInputKeyboard = true;
         // InputState's intercept_keystrokes: every keystroke into a focused
         // field holds its caret lit, before any binding can consume it — a

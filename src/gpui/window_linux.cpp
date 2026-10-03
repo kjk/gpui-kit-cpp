@@ -615,7 +615,7 @@ static void OnKeyPress(Window* win, XKeyEvent* ke) {
     KeySym ks = 0;
     int n = 0;
     if (pw && pw->xic) {
-        Status st = 0;
+        int st = 0;
         n = Xutf8LookupString(pw->xic, ke, buf, (int)sizeof(buf) - 1, &ks, &st);
         if (st == XLookupNone) {
             return;
