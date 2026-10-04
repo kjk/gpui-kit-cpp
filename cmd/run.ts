@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "a4ba683e44c062325a030ad8ae36d6b830a9eb62",
+  sha: "73ef866b50e16f2ff6bf5f6da1aded0aca27a5f2",
   date: "2026-10-02",
-  subject: "text: Commit background parses that a newer streamed chunk overtook (#3344)",
+  subject: "input: fall back to last caret for IME candidate bounds before repaint (#3286) (#3297)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

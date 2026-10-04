@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `a4ba683e44c062325a030ad8ae36d6b830a9eb62` (2026-10-02, text:
-Commit background parses that a newer streamed chunk overtook (#3344)). A
-landed background parse is committed when it is from since the last full
-replacement and newer than what is committed, and discarded otherwise, and an
-overtaken result keeps the uncommitted tail's stream fade pending. The current
-update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `73ef866b50e16f2ff6bf5f6da1aded0aca27a5f2` (2026-10-02,
+input: fall back to last caret for IME candidate bounds before repaint (#3286)
+(#3297)). Upstream's bounds_for_range falls back to the last caret when the
+composed text is not laid out yet; the platform windows here already hang the
+IME candidate list from the last painted caret. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
