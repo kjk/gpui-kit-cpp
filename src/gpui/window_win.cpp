@@ -977,6 +977,9 @@ void PlatSetCursor(Window* win, CursorKind kind) {
         case CursorKind::Crosshair:
             name = IDC_CROSS;
             break;
+        case CursorKind::ClosedHand:
+            name = IDC_SIZEALL;
+            break;
         default:
             break;
     }
