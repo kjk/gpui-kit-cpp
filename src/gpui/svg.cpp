@@ -1751,6 +1751,10 @@ Str IconNamePath(IconName name) {
             return StrL("icons/chevrons-up-down.svg");
         case IconName::SquareTerminal:
             return StrL("icons/square-terminal.svg");
+        case IconName::Mic:
+            return StrL("icons/mic.svg");
+        case IconName::Square:
+            return StrL("icons/square.svg");
         case IconName::Sparkles:
             return StrL("icons/sparkles.svg");
         case IconName::BookOpen:

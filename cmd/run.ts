@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "f89c5cc9576d823d253b4563806e5f842e9d69f9",
+  sha: "0790ad3876ebe6b72ca0bf599db7f7d1718c6b61",
   date: "2026-10-02",
-  subject: "skills: Fix the Select re-entrancy test examples (#3351)",
+  subject: "speech: Add speech input (#3333)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

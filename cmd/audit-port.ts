@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "f89c5cc9576d823d253b4563806e5f842e9d69f9";
+const pinnedGpuiComponent = "0790ad3876ebe6b72ca0bf599db7f7d1718c6b61";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -41,7 +41,7 @@ carousel clipboard collapsible color_picker combobox command description_list di
 empty form group_box highlighter history hover_card input kbd label link list marker
 menu message message_scroller native_menu notification pagination plot popover
 progress questionnaire radio rating resizable scroll searchable_list select separator setting
-sheet shimmer sidebar skeleton slider spinner status_bar stepper switch tab
+sheet shimmer sidebar skeleton slider speech spinner status_bar stepper switch tab
 table tag text theme toolbar touch_selection tooltip tree
 `
   .trim()
@@ -49,10 +49,12 @@ table tag text theme toolbar touch_selection tooltip tree
 
 const partialBase = new Set<string>();
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support", "text"]);
-const partialUi = new Set<string>();
+const partialUi = new Set<string>(["speech"]);
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
+  "ui/speech":
+    "the cpal Microphone and the macOS/Windows SystemRecognizer are not ported; a state needs an application recognizer and input",
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
 };
 
@@ -323,6 +325,7 @@ const testTargets: Record<string, string[]> = {
   "ui/select": ["tests/SelectTests.cpp"],
   "ui/setting": ["tests/SettingTests.cpp"],
   "ui/shimmer": ["tests/ShimmerTests.cpp"],
+  "ui/speech": ["tests/SpeechTests.cpp"],
   "ui/sidebar": ["tests/SidebarTests.cpp", "tests/BuilderCapacityTests.cpp"],
   "ui/sizing": ["tests/SizingTests.cpp", "tests/StyleEqTests.cpp"],
   "ui/slider": ["tests/SliderTests.cpp", "tests/AccessibilityTests.cpp"],
@@ -603,9 +606,9 @@ const surfacePins: Record<CrateName, Record<SurfaceKind, { count: number; sha256
     test: { count: 1284, sha256: "4b89ccc0eeccbc7da21432df1f557b849694a9ba9c29b5ea412acfbb17ff0604" },
   },
   ui: {
-    declaration: { count: 432, sha256: "50d0db996bb9eac1fb9cfaed5ea11e8664a41f6ef52d1959ec24835ec7f2208a" },
-    "pub-use": { count: 155, sha256: "3667f1de7dd581f42479657a856372d4cf530636f5b541ed9cbb365091b3d8b7" },
-    test: { count: 625, sha256: "5ee5c1016cc2f2180e78234bb072d552b0f588ab73fc182804c6b3f9ca6a2395" },
+    declaration: { count: 447, sha256: "98df04a0e12dfd9095ad123a531bafd53bb286391fdd493e35ffdb573982f042" },
+    "pub-use": { count: 161, sha256: "32c74d6f0fe35536f7067db21f45c8241f32b4a142e17ebecfe1e199c0365256" },
+    test: { count: 647, sha256: "59bf1ea7bdda751c921f4dac1626f933ddbbbf9fa8b81835ceec98d6d15a8977" },
   },
 };
 

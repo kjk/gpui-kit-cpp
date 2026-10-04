@@ -65,6 +65,7 @@
 #include "ui/shimmer.h"
 #include "ui/skeleton.h"
 #include "ui/slider.h"
+#include "ui/speech.h"
 #include "ui/spinner.h"
 #include "ui/status_bar.h"
 #include "ui/styled.h"

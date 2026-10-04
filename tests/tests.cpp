@@ -112,6 +112,7 @@ int GpuiMain(int argc, char** argv) {
     TestMessageScroller();
     TestShimmer();
     TestRadio();
+    TestSpeech();
     TestKbd();
     TestNativeMenu();
     TestAppMenu();

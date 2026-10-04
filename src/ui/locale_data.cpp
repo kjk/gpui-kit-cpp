@@ -165,6 +165,12 @@ static const char* const kV_Settings_Reset_All[] = {
     "Reset All", "重置全部", "重置全部", "全部重設", "Resetta Tutto", nullptr};
 static const char* const kV_Settings_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
+static const char* const kV_Speech_Start[] = {
+    "Dictate", "语音输入", "語音輸入", "語音輸入", nullptr, nullptr};
+static const char* const kV_Speech_Stop[] = {
+    "Stop dictation", "停止语音输入", "停止語音輸入", "停止語音輸入", nullptr, nullptr};
+static const char* const kV_Speech_Unavailable[] = {
+    "Dictation unavailable", "语音输入不可用", "語音輸入不可用", "語音輸入不可用", nullptr, nullptr};
 
 extern const LocaleRow kLocaleRows[] = {
     {"Attachment.Remove", kV_Attachment_Remove},
@@ -242,8 +248,11 @@ extern const LocaleRow kLocaleRows[] = {
     {"Select.placeholder", kV_Select_placeholder},
     {"Settings.Reset All", kV_Settings_Reset_All},
     {"Settings.search_placeholder", kV_Settings_search_placeholder},
+    {"Speech.Start", kV_Speech_Start},
+    {"Speech.Stop", kV_Speech_Stop},
+    {"Speech.Unavailable", kV_Speech_Unavailable},
 };
-extern const int kLocaleRowCount = 75;
+extern const int kLocaleRowCount = 78;
 
 } // namespace component
 } // namespace gpui

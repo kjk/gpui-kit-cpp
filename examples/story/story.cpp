@@ -184,6 +184,8 @@ static const StoryInfo kMeta[StoryCount] = {
      "Use to show a placeholder while content is loading."},
     {"slider", "Slider",
      "Displays a slider control for selecting a value within a range."},
+    {"speech", "Speech",
+     "Dictate text through the system recognizer or your own."},
     {"spinner", "Spinner",
      "Displays an spinner showing the completion progress of a "
      "task."},

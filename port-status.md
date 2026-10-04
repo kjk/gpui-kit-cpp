@@ -16,10 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f89c5cc9576d823d253b4563806e5f842e9d69f9` (2026-10-02,
-skills: Fix the Select re-entrancy test examples (#3351)). Upstream rewrites
-the Select re-entrancy test examples in its own agent skill reference. The
-current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `0790ad3876ebe6b72ca0bf599db7f7d1718c6b61` (2026-10-02,
+speech: Add speech input (#3333)). Speech input lands as its portable half:
+SpeechState with its sinks and level meter, SpeechButton, SpeechWaveform, the
+Mic and Square icons, the Speech locale keys and the Speech story. The cpal
+Microphone, the macOS and Windows SystemRecognizer and examples/speech need
+platform seams this tree lacks and are recorded under Known gaps. The current
+update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
@@ -77,6 +80,22 @@ current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   `RenderedText`'s text, source and `RangeForSource` read the view's index
   (Rust's snapshot holds the parsed document), so read and convert through
   a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **Speech input has no microphone and no system recognizer.** Rust's
+  `speech` feature captures through cpal (`Microphone`) and recognizes with
+  `SFSpeechRecognizer` on macOS and `Windows.Media.SpeechRecognition` on
+  Windows (`SystemRecognizer`). Each wants a platform seam this tree does
+  not have — WASAPI, Core Audio and ALSA capture, the Speech framework, a
+  WinRT activation — and ALSA would be a new Linux dependency, so neither
+  is ported: `SpeechState` has no default input and its system fallback
+  finds nothing, exactly as upstream behaves without the feature. An
+  application fills `SpeechRecognizer` and `AudioInput` itself;
+  `SpeechAudioConverter` is the microphone's resampler, ported for it. The
+  Speech story feeds its demo recognizer a generated tone on every platform
+  (upstream does only on the web), its System section is always the
+  disabled button, and `examples/speech` — a bench for the two missing
+  seams — is not ported. A sink's deferred call and the stop timeout ride
+  a window (`WindowPost`, a window timer) where Rust uses `cx.defer` and
+  the executor's timer (`src/ui/speech.cpp`).
 - **A TextView follows the text color named on it, not an ancestor's.**
   Rust's view reads `window.text_style().color`, which a `Bubble` or any
   other container has pushed by the time the view prepaints. The tree here

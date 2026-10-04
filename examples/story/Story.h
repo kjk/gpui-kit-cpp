@@ -67,6 +67,7 @@ enum {
     StorySidebar,
     StorySkeleton,
     StorySlider,
+    StorySpeech,
     StorySpinner,
     StoryStatusBar,
     StoryStepper,

@@ -96,6 +96,7 @@ const slugs = [
   "sidebar",
   "skeleton",
   "slider",
+  "speech",
   "spinner",
   "status-bar",
   "stepper",

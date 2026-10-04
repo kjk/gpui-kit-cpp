@@ -132,6 +132,7 @@ void TestMessage();
 void TestMessageScroller();
 void TestShimmer();
 void TestRadio();
+void TestSpeech();
 void TestKbd();
 void TestNativeMenu();
 void TestAppMenu();
