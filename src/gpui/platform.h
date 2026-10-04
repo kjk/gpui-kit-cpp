@@ -137,6 +137,7 @@ int WindowTimerMs(Window* win);
 
 // The OS window went away. Frees the paint target and clears `plat`.
 void WindowClosed(Window* win);
+bool WindowShouldClose(Window* win);
 bool AppAnyWindowOpen(App* app);
 // Allocate and register the Window, minus its OS half. WindowOpen fills in
 // `plat` and shows it.

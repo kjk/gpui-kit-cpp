@@ -167,9 +167,26 @@ static void TypedRemovalAndForwardingMethodsUseWindowState() {
     delete window;
 }
 
+static bool CountClose(void* data, Window*) {
+    int* calls = (int*)data;
+    (*calls)++;
+    return false;
+}
+
+static void WindowCloseRequestCanBeVetoed() {
+    Window window;
+    int calls = 0;
+    WindowOnShouldClose(&window, CountClose, &calls);
+    utassert(window.shouldClose == CountClose);
+    utassert(window.shouldCloseData == &calls);
+    utassert(!window.shouldClose(window.shouldCloseData, &window));
+    utassert(calls == 1);
+}
+
 void TestWindowExt() {
     TestSuite("window ext");
     WindowOwnsDialogAndSheetEntities();
     AWindowWithoutARootPanics();
     TypedRemovalAndForwardingMethodsUseWindowState();
+    WindowCloseRequestCanBeVetoed();
 }

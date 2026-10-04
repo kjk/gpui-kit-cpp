@@ -747,6 +747,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             break;
         case WM_ERASEBKGND:
             return 1;
+        case WM_CLOSE:
+            if (!WindowShouldClose(win)) {
+                return 0;
+            }
+            break;
         case WM_DESTROY: {
             KillTimer(hwnd, 1);
             App* app = win->app;

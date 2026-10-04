@@ -954,6 +954,11 @@ static bool PressedButton(MouseButton* out) {
 
 @implementation GpuiWindowDelegate
 
+- (BOOL)windowShouldClose:(NSWindow*)sender {
+    (void)sender;
+    return gpui::WindowShouldClose(win) ? YES : NO;
+}
+
 - (void)windowWillClose:(NSNotification*)note {
     (void)note;
     __attribute__((objc_precise_lifetime)) GpuiWindowDelegate* keepAlive = self;

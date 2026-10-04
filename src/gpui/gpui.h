@@ -25,6 +25,8 @@ namespace gpui {
 
 struct App;
 struct Window;
+
+using WindowShouldCloseFn = bool (*)(void* data, Window* win);
 struct KeyChord;
 
 // gpui::ClipboardItem, flattened for the port's POD boundary. Every field is
@@ -6443,6 +6445,8 @@ struct Window {
     // frame dims its border when it does not.
     bool active = true;
     bool running = true;
+    WindowShouldCloseFn shouldClose = nullptr;
+    void* shouldCloseData = nullptr;
     bool anim = false;
     // window.request_animation_frame(): one more frame after this one, asked
     // for while the frame is being built and cleared as the next one starts,
@@ -7562,6 +7566,9 @@ void AppToggleMaximize(Window* win);
 void WindowSetFullScreen(Window* win, bool fullScreen);
 // Hide or restore the pointer without changing the element-selected shape.
 void WindowSetCursorVisible(Window* win, bool visible);
+// Called for a window-manager close request. Returning false keeps the window
+// open; AppQuit remains the unconditional programmatic close.
+void WindowOnShouldClose(Window* win, WindowShouldCloseFn fn, void* data);
 void AppClose(Window* win);
 void AppDrag(Window* win);
 bool AppIsMaximized(Window* win);

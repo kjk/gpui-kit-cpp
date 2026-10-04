@@ -3669,6 +3669,19 @@ void WindowClosed(Window* win) {
     win->running = false;
 }
 
+bool WindowShouldClose(Window* win) {
+    return !win || !win->shouldClose ||
+           win->shouldClose(win->shouldCloseData, win);
+}
+
+void WindowOnShouldClose(Window* win, WindowShouldCloseFn fn, void* data) {
+    if (!win) {
+        return;
+    }
+    win->shouldClose = fn;
+    win->shouldCloseData = data;
+}
+
 // A picture arrived. image.h answered nothing for it while it was on its way,
 // so every window draws once more and asks the table again. Runs on the main
 // thread: sys/http.cpp hands this to the executor as a fetch's completion.
@@ -4013,7 +4026,9 @@ int AppRunView(Str title, int dipW, int dipH, EntityId root, App* app,
 }
 
 void AppClose(Window* win) {
-    AppQuit(win);
+    if (WindowShouldClose(win)) {
+        AppQuit(win);
+    }
 }
 
 void AppQuitAll(App* app) {

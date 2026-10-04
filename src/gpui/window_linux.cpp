@@ -1707,7 +1707,8 @@ static void HandleEvent(App* app, XEvent* ev) {
             break;
         case ClientMessage:
             if (ev->xclient.message_type == aWmProtocols &&
-                (Atom)ev->xclient.data.l[0] == aWmDeleteWindow) {
+                (Atom)ev->xclient.data.l[0] == aWmDeleteWindow &&
+                WindowShouldClose(win)) {
                 DestroyPlatWindow(win);
             }
             break;
