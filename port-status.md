@@ -16,9 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1be572b87592eadd09a8516a6b2c24bb9a4fc0b3` (2026-10-01,
-radio: Keep a disabled Radio disabled inside a RadioGroup (#3331)). RadioGroup
-keeps a Radio that is disabled on its own disabled when the group is enabled.
+Processed through `3a142844d3661159964dce9e5512ca9a40286160` (2026-10-01,
+input: Keep a single-line Input's text from being clipped in a short frame
+(#3343)). Upstream stops a single-line Input's root from being shorter than its
+line; the row here already fills its frame with the line height as its minimum.
 The current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust

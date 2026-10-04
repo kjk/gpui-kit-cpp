@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1be572b87592eadd09a8516a6b2c24bb9a4fc0b3",
+  sha: "3a142844d3661159964dce9e5512ca9a40286160",
   date: "2026-10-01",
-  subject: "radio: Keep a disabled Radio disabled inside a RadioGroup (#3331)",
+  subject: "input: Keep a single-line Input's text from being clipped in a short frame (#3343)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
