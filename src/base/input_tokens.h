@@ -225,6 +225,11 @@ InlineTokenError InputReplaceRangeWithToken(InputState* s, App* app,
                                             InlineToken token);
 InlineTokenError InputReplaceWithToken(InputState* s, App* app, Window* win,
                                        InlineToken token);
+// Whether `off` is where a grapheme cluster starts or ends in `text`: the
+// subset of UAX #29 this tree carries in place of a segmenter — a character
+// boundary that is not inside CR LF, not before an extend character and not
+// after a ZWJ.
+bool TextIsGraphemeBoundary(Str text, int off);
 int InputPreviousStartOfWordAt(const InputState* s, int offset);
 int InputNextEndOfWordAt(const InputState* s, int offset);
 

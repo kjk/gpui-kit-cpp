@@ -124,6 +124,10 @@ static bool IsCharBoundary(Str text, int off) {
     return prev != 0x200D;
 }
 
+bool TextIsGraphemeBoundary(Str text, int off) {
+    return IsCharBoundary(text, off);
+}
+
 InputContent InputContent::New(Str text) {
     InputContent c;
     c.text = text;

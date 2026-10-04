@@ -16,13 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `d89a9b272292f30c724e7098a965287d6d912307` (2026-10-03,
-input: report inline token hover for tooltips and previews (#3346)). Inline
-tokens report hover: InlineTokenHoverEvent and Input / Textarea OnTokenHover in
-Base and Component, a retained hover snapshot whose exit is still delivered
-after the token is removed, replaced, masked or disabled, and on_token_hover
-for scripts with the entry-time UTF-16 range on exits. The current update
-target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `3a39e9dfc97d8b12cf3c116708ada36bee02220b` (2026-10-03,
+input: Keep horizontal scrolling and soft wrapping consistent (#3358)). An
+editor's ordinary text wraps at Unicode line-break opportunities measured with
+shaped prefix widths (MeasuredWrapBoundaries), falling back to whole graphemes
+for an oversized word; rows with inline tokens keep the LineWrapper path.
+Upstream's horizontal-scroll clamp has no counterpart to fix: a field here
+keeps one clamped scrollX that moves its text and carets together. The current
+update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
@@ -80,6 +81,17 @@ target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   `RenderedText`'s text, source and `RangeForSource` read the view's index
   (Rust's snapshot holds the parsed document), so read and convert through
   a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **Soft wrap takes its line-break opportunities from a UAX #14 subset,
+  not the `unicode-linebreak` crate.** `LineBreakOpportunities` decides the
+  rules an input's text meets — spaces, Latin words and numbers, CJK
+  ideographs and kana, opening and closing punctuation, quotes, hyphens,
+  glue, combining marks — from the rules themselves; Thai and Lao, the
+  Hangul jamo classes, regional-indicator pairs and the numeric prefix and
+  postfix classes fall under the default, where a break is allowed. It
+  stands beside the UAX #29 subset the token edges already use.
+  `MeasuredWrapBoundaries` also starts each row's search from the cached
+  character widths rather than from one grapheme, which changes how many
+  prefixes are shaped and not which one is chosen (`src/base/input_editor.cpp`).
 - **A token's hover exit is reconciled as the field builds, not at
   prepaint.** Rust's `prepaint_tokens` compares the retained hover against
   the token elements it has just placed. The rows here are elements built

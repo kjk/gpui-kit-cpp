@@ -503,6 +503,36 @@ void LineWrapperWrapLine(const LineFragment* fragments, int n, float wrapWidth,
                          WrapCharWidth widthFor, void* user,
                          Vec<WrapBoundary>* out);
 
+// unicode_linebreak::linebreaks: the offsets in `text` at which a line may
+// break, ascending, the end of the text last. Rust takes them from the
+// unicode-linebreak crate; this is the part of UAX #14 an input's text meets
+// — spaces, Latin words and numbers, CJK ideographs and kana, opening and
+// closing punctuation, quotes, hyphens, glue and combining marks — decided
+// by the rules themselves rather than by the crate's generated pair table.
+// What it leaves out (Thai and Lao dictionaries, the Hangul jamo classes,
+// regional-indicator pairs, the numeric prefix and postfix classes) falls
+// under the default: a break is allowed.
+void LineBreakOpportunities(Str text, Vec<int>* out);
+
+// The shaped width of `text` on its own, as the caller's font measures it.
+using WrapMeasureFn = float (*)(void* user, Str text);
+
+// text_wrapper.rs measured_wrap_boundaries: choose Unicode line-break
+// opportunities using the same shaped widths as painting. Oversized words
+// fall back to complete graphemes, never UTF-8 bytes. Appends the boundaries
+// to `out`; none when the line fits.
+//
+// `hint`, when given, is a cheap per-character width (the wrapper's cached
+// ones). Rust searches for each row's fitting prefix from one grapheme up,
+// doubling; the search here starts where the hint says the row ends and
+// widens from there, so the shaped measures still decide and the answer is
+// the same, in a couple of probes a row instead of a dozen.
+void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indent,
+                            WrapMeasureFn measure, void* user,
+                            Vec<WrapBoundary>* out,
+                            WrapCharWidth hint = nullptr,
+                            void* hintUser = nullptr);
+
 // text_wrapper.rs LineItem, built the way TextWrapper::_update builds one: the
 // visual rows of one logical line as [rows[k], rows[k + 1]) with the last
 // running to `len`, and the indent in characters the rows after the first

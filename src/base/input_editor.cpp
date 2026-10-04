@@ -1847,6 +1847,427 @@ void LineWrapperWrapLine(const LineFragment* fragments, int n, float wrapWidth,
     }
 }
 
+// The UAX #14 classes this tree tells apart.
+enum class LbClass : uint8_t {
+    Alphabetic,  // letters and everything not named below
+    Numeric,     // digits
+    Space,       // space
+    Ideographic, // ideographs, kana, Hangul syllables, emoji
+    OpenPunct,   // opening punctuation
+    ClosePunct,  // closing punctuation, East Asian included
+    CloseParen,  // closing parenthesis
+    Exclamation, // exclamation, interrogation
+    InfixSep,    // infix numeric separator
+    Solidus,     // solidus
+    Quotation,   // quotation marks
+    Hyphen,      // hyphen-minus
+    BreakAfter,  // break after
+    NonStarter,  // non-starters
+    Glue,        // non-breaking glue
+    WordJoiner,  // word joiner
+    Inseparable, // inseparable (leaders)
+    ZeroWidth,   // zero width space
+    Combining,   // combining marks, ZWJ, variation selectors, emoji modifiers
+};
+
+static LbClass LbClassOf(uint32_t c) {
+    if (c < 0x80) {
+        if (c >= '0' && c <= '9') {
+            return LbClass::Numeric;
+        }
+        switch (c) {
+            case ' ':
+                return LbClass::Space;
+            case '\t':
+                return LbClass::BreakAfter;
+            case '(':
+            case '[':
+            case '{':
+                return LbClass::OpenPunct;
+            case ')':
+            case ']':
+                return LbClass::CloseParen;
+            case '}':
+                return LbClass::ClosePunct;
+            case '!':
+            case '?':
+                return LbClass::Exclamation;
+            case ',':
+            case '.':
+            case ':':
+            case ';':
+                return LbClass::InfixSep;
+            case '/':
+                return LbClass::Solidus;
+            case '"':
+            case '\'':
+                return LbClass::Quotation;
+            case '-':
+                return LbClass::Hyphen;
+            default:
+                return LbClass::Alphabetic;
+        }
+    }
+    // Combining marks, the joiners, variation selectors, emoji modifiers.
+    if ((c >= 0x0300 && c <= 0x036F) || (c >= 0x0483 && c <= 0x0489) ||
+        (c >= 0x0591 && c <= 0x05BD) || (c >= 0x0610 && c <= 0x061A) ||
+        (c >= 0x064B && c <= 0x065F) || (c >= 0x1AB0 && c <= 0x1AFF) ||
+        (c >= 0x1DC0 && c <= 0x1DFF) || c == 0x200C || c == 0x200D ||
+        (c >= 0x20D0 && c <= 0x20FF) || (c >= 0x302A && c <= 0x302F) ||
+        (c >= 0x3099 && c <= 0x309A) || (c >= 0xFE00 && c <= 0xFE0F) ||
+        (c >= 0xFE20 && c <= 0xFE2F) || (c >= 0x1F3FB && c <= 0x1F3FF) ||
+        (c >= 0xE0020 && c <= 0xE007F) || (c >= 0xE0100 && c <= 0xE01EF)) {
+        return LbClass::Combining;
+    }
+    switch (c) {
+        case 0x00A0: // no-break space
+        case 0x2007: // figure space
+        case 0x2011: // non-breaking hyphen
+        case 0x202F: // narrow no-break space
+            return LbClass::Glue;
+        case 0x2060: // word joiner
+        case 0xFEFF:
+            return LbClass::WordJoiner;
+        case 0x200B:
+            return LbClass::ZeroWidth;
+        case 0x00AD: // soft hyphen
+        case 0x2010: // hyphen
+        case 0x2012: // figure dash
+        case 0x2013: // en dash
+        case 0x2027: // hyphenation point
+            return LbClass::BreakAfter;
+        case 0x00AB: // «
+        case 0x00BB: // »
+        case 0x2018: // ‘
+        case 0x2019: // ’
+        case 0x201C: // “
+        case 0x201D: // ”
+            return LbClass::Quotation;
+        case 0x2024: // one dot leader
+        case 0x2025: // two dot leader
+        case 0x2026: // horizontal ellipsis
+            return LbClass::Inseparable;
+        case 0x3008: // 〈
+        case 0x300A: // 《
+        case 0x300C: // 「
+        case 0x300E: // 『
+        case 0x3010: // 【
+        case 0x3014: // 〔
+        case 0x3016: // 〖
+        case 0xFF08: // （
+        case 0xFF3B: // ［
+        case 0xFF5B: // ｛
+        case 0xFF62: // ｢
+            return LbClass::OpenPunct;
+        case 0x3001: // 、
+        case 0x3002: // 。
+        case 0x3009: // 〉
+        case 0x300B: // 》
+        case 0x300D: // 」
+        case 0x300F: // 』
+        case 0x3011: // 】
+        case 0x3015: // 〕
+        case 0x3017: // 〗
+        case 0xFF09: // ）
+        case 0xFF0C: // ，
+        case 0xFF0E: // ．
+        case 0xFF3D: // ］
+        case 0xFF5D: // ｝
+        case 0xFF61: // ｡
+        case 0xFF63: // ｣
+        case 0xFF64: // ､
+            return LbClass::ClosePunct;
+        case 0xFF01: // ！
+        case 0xFF1F: // ？
+            return LbClass::Exclamation;
+        case 0x3005: // 々
+        case 0x301C: // 〜
+        case 0x303B: // 〻
+        case 0x309D: // ゝ
+        case 0x309E: // ゞ
+        case 0x30A0: // ゠
+        case 0x30FB: // ・
+        case 0x30FC: // ー
+        case 0x30FD: // ヽ
+        case 0x30FE: // ヾ
+        case 0xFF1A: // ：
+        case 0xFF1B: // ；
+        case 0xFF65: // ･
+        case 0xFF70: // ｰ
+            return LbClass::NonStarter;
+        default:
+            break;
+    }
+    // The small kana, which never start a line.
+    if ((c >= 0x3041 && c <= 0x3049 && (c & 1)) || c == 0x3063 || c == 0x3083 ||
+        c == 0x3085 || c == 0x3087 || c == 0x308E || c == 0x3095 ||
+        c == 0x3096 || (c >= 0x30A1 && c <= 0x30AA && (c & 1)) || c == 0x30C3 ||
+        c == 0x30E3 || c == 0x30E5 || c == 0x30E7 || c == 0x30EE ||
+        c == 0x30F5 || c == 0x30F6) {
+        return LbClass::NonStarter;
+    }
+    // East Asian ideographic text: CJK radicals through Yi, the Hangul
+    // syllables, the compatibility ideographs and forms, the fullwidth
+    // block, the supplementary ideographic planes, and emoji.
+    if ((c >= 0x2E80 && c <= 0xA4CF) || (c >= 0xAC00 && c <= 0xD7A3) ||
+        (c >= 0xF900 && c <= 0xFAFF) || (c >= 0xFE30 && c <= 0xFE4F) ||
+        (c >= 0xFF00 && c <= 0xFFEF) || (c >= 0x1F000 && c <= 0x1FAFF) ||
+        (c >= 0x20000 && c <= 0x3FFFD) || (c >= 0x2600 && c <= 0x27BF)) {
+        return LbClass::Ideographic;
+    }
+    return LbClass::Alphabetic;
+}
+
+// Whether a line may break between a character of class `before` and one of
+// class `after`; `spaces` says spaces stood between the two.
+static bool LbBreakAllowed(LbClass before, LbClass after, bool spaces) {
+    // LB13: not before closing punctuation, `!`, `;` or `/`, even after
+    // spaces.
+    if (after == LbClass::ClosePunct || after == LbClass::CloseParen ||
+        after == LbClass::Exclamation || after == LbClass::InfixSep ||
+        after == LbClass::Solidus) {
+        return false;
+    }
+    // LB14: not after opening punctuation, even after spaces.
+    if (before == LbClass::OpenPunct) {
+        return false;
+    }
+    // LB16: closing punctuation and a non-starter stay together.
+    if ((before == LbClass::ClosePunct || before == LbClass::CloseParen) &&
+        after == LbClass::NonStarter) {
+        return false;
+    }
+    // LB8: after a zero width space, and LB18: after spaces.
+    if (before == LbClass::ZeroWidth || spaces) {
+        return true;
+    }
+    // LB11: around a word joiner. LB12 / LB12a: around glue, except that a
+    // hyphen or a break-after before it still breaks.
+    if (before == LbClass::WordJoiner || after == LbClass::WordJoiner ||
+        before == LbClass::Glue) {
+        return false;
+    }
+    if (after == LbClass::Glue) {
+        return before == LbClass::BreakAfter || before == LbClass::Hyphen;
+    }
+    // LB19: around quotation marks.
+    if (before == LbClass::Quotation || after == LbClass::Quotation) {
+        return false;
+    }
+    // LB21: not before a hyphen, a break-after or a non-starter. LB22: not
+    // before leaders.
+    if (after == LbClass::BreakAfter || after == LbClass::Hyphen ||
+        after == LbClass::NonStarter || after == LbClass::Inseparable) {
+        return false;
+    }
+    bool wordBefore =
+        before == LbClass::Alphabetic || before == LbClass::Numeric;
+    bool wordAfter = after == LbClass::Alphabetic || after == LbClass::Numeric;
+    // LB23 / LB25 / LB28: letters and digits run together.
+    if (wordBefore && wordAfter) {
+        return false;
+    }
+    // LB25: a number's own punctuation, and a leading minus.
+    if (after == LbClass::Numeric &&
+        (before == LbClass::InfixSep || before == LbClass::Solidus ||
+         before == LbClass::Hyphen)) {
+        return false;
+    }
+    // LB29: a letter after an infix separator, as in `e.g.`.
+    if (before == LbClass::InfixSep && after == LbClass::Alphabetic) {
+        return false;
+    }
+    // LB30: a word against a parenthesis.
+    if ((wordBefore && after == LbClass::OpenPunct) ||
+        (before == LbClass::CloseParen && wordAfter)) {
+        return false;
+    }
+    // LB31: everywhere else.
+    return true;
+}
+
+void LineBreakOpportunities(Str text, Vec<int>* out) {
+    int n = len(text);
+    if (n <= 0) {
+        return;
+    }
+    bool have = false;
+    LbClass before = LbClass::Alphabetic;
+    bool spaces = false;
+    bool afterZwj = false;
+    for (int at = 0; at < n;) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        if (bytes <= 0) {
+            bytes = 1;
+        }
+        LbClass cls = LbClassOf(c);
+        if (cls == LbClass::Combining && have && !spaces) {
+            // LB9: a combining mark takes the class of what it follows.
+            afterZwj = c == 0x200D;
+            at += bytes;
+            continue;
+        }
+        if (cls == LbClass::Combining) {
+            // LB10: with nothing to attach to, it is a letter.
+            cls = LbClass::Alphabetic;
+        }
+        if (cls == LbClass::Space) {
+            // LB7: never before a space. LB18 breaks after spaces wherever
+            // they stand, the start of the text included.
+            spaces = true;
+            afterZwj = false;
+            at += bytes;
+            continue;
+        }
+        // LB8a: not after a zero width joiner.
+        if ((have || spaces) && !afterZwj &&
+            LbBreakAllowed(before, cls, spaces)) {
+            VecAppend(*out, at);
+        }
+        before = cls;
+        have = true;
+        spaces = false;
+        afterZwj = false;
+        at += bytes;
+    }
+    // LB3: always at the end of the text.
+    VecAppend(*out, n);
+}
+
+void MeasuredWrapBoundaries(Str text, float width, WrappingIndent indentMode,
+                            WrapMeasureFn measure, void* user,
+                            Vec<WrapBoundary>* out, WrapCharWidth hint,
+                            void* hintUser) {
+    int n = len(text);
+    if (n <= 0) {
+        return;
+    }
+    int indent = 0;
+    if (indentMode == WrappingIndent::Same) {
+        while (indent < n && text.s[indent] == ' ' &&
+               indent < kLineWrapperMaxIndent) {
+            indent++;
+        }
+    }
+    float indentWidth = measure(user, Str(text.s, indent));
+    // The end of every grapheme.
+    Vec<int> ends;
+    for (int at = 0; at < n;) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        at += bytes > 0 ? bytes : 1;
+        if (TextIsGraphemeBoundary(text, at)) {
+            VecAppend(ends, at);
+        }
+    }
+    if (len(ends) == 0 || ends[len(ends) - 1] != n) {
+        VecAppend(ends, n);
+    }
+    // The opportunities that fall on a grapheme boundary.
+    Vec<int> all;
+    LineBreakOpportunities(text, &all);
+    Vec<int> opportunities;
+    for (int i = 0; i < len(all); i++) {
+        if (TextIsGraphemeBoundary(text, all[i])) {
+            VecAppend(opportunities, all[i]);
+        }
+    }
+    auto widthOf = [&](int start, int end) {
+        return measure(user, Str(text.s + start, end - start));
+    };
+    int first = 0;
+    int start = 0;
+    while (first < len(ends)) {
+        float available = start == 0 ? width : width - indentWidth;
+        // Find the fitting prefix locally. Exponential probing avoids shaping
+        // the entire remaining logical line for every visual row of a long
+        // paste.
+        int remaining = len(ends) - first;
+        auto fits = [&](int count) {
+            return widthOf(start, ends[first + count - 1]) <= available;
+        };
+        // Where the search starts: one grapheme, as Rust's does, or as many
+        // as the hint's widths say fit.
+        int guess = 1;
+        if (hint) {
+            float sum = 0;
+            int from = start;
+            int count = 0;
+            while (count < remaining) {
+                uint32_t c = 0;
+                Utf8At(text, from, &c);
+                sum += hint(hintUser, c);
+                if (sum > available && count > 0) {
+                    break;
+                }
+                from = ends[first + count];
+                count++;
+            }
+            guess = std::max(count, 1);
+        }
+        // `low` graphemes fit (or none do); `high` do not, or is past the
+        // end.
+        int low = 0;
+        int high = remaining + 1;
+        if (fits(guess)) {
+            low = guess;
+            int step = 1;
+            while (low < remaining) {
+                int probe = std::min(low + step, remaining);
+                if (!fits(probe)) {
+                    high = probe;
+                    break;
+                }
+                low = probe;
+                step *= 2;
+            }
+        } else {
+            high = guess;
+            int step = 1;
+            while (high - step > 0) {
+                int probe = high - step;
+                if (fits(probe)) {
+                    low = probe;
+                    break;
+                }
+                high = probe;
+                step *= 2;
+            }
+        }
+        while (low + 1 < high) {
+            int mid = (low + high) / 2;
+            if (fits(mid)) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        // An indivisible grapheme wider than the viewport still consumes a
+        // row.
+        int fittingEnd = ends[first + std::max(low, 1) - 1];
+        if (fittingEnd == n) {
+            break;
+        }
+        // The last opportunity at or before the fitting end.
+        int end = fittingEnd;
+        for (int i = len(opportunities) - 1; i >= 0; i--) {
+            if (opportunities[i] <= fittingEnd) {
+                int ix = opportunities[i];
+                if (ix > start && (start != 0 || ix > indent)) {
+                    end = ix;
+                }
+                break;
+            }
+        }
+        VecAppend(*out, WrapBoundary{end, indent});
+        while (first < len(ends) && ends[first] <= end) {
+            first++;
+        }
+        start = end;
+    }
+}
+
 void TextWrapperWrapItem(Str line, bool wrap, WrappingIndent indent,
                          WrapLineFn wrapLine, void* user, Vec<int>* rows,
                          int* indentChars) {

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "d89a9b272292f30c724e7098a965287d6d912307",
+  sha: "3a39e9dfc97d8b12cf3c116708ada36bee02220b",
   date: "2026-10-03",
-  subject: "input: report inline token hover for tooltips and previews (#3346)",
+  subject: "input: Keep horizontal scrolling and soft wrapping consistent (#3358)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

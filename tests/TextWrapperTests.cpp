@@ -278,8 +278,105 @@ static void EditsRewrapTheLinesTheyTouched() {
     utassert(s.wrap.totalRows == 1);
 }
 
+namespace {
+
+// One per grapheme: `s.graphemes(true).count()`.
+float GraphemeCountWidth(void*, Str text) {
+    float n = 0;
+    for (int at = 0; at < len(text);) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        at += bytes > 0 ? bytes : 1;
+        if (TextIsGraphemeBoundary(text, at)) {
+            n += 1;
+        }
+    }
+    return n;
+}
+
+// ASCII is one wide and everything else two.
+float AsciiOneElseTwoWidth(void*, Str text) {
+    float w = 0;
+    for (int at = 0; at < len(text);) {
+        uint32_t c = 0;
+        int bytes = Utf8At(text, at, &c);
+        at += bytes > 0 ? bytes : 1;
+        w += c < 0x80 ? 1.f : 2.f;
+    }
+    return w;
+}
+
+bool MeasuredIxsAre(const char* text, float width, WrappingIndent indent,
+                    std::initializer_list<int> want) {
+    Vec<WrapBoundary> got;
+    MeasuredWrapBoundaries(Str(text), width, indent, &GraphemeCountWidth,
+                           nullptr, &got);
+    if (len(got) != (int)want.size()) {
+        return false;
+    }
+    int i = 0;
+    for (int ix : want) {
+        if (got[i++].ix != ix) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void MeasuredCjkLatinWrapLine(void*, Str line, int, Vec<WrapBoundary>* out) {
+    MeasuredWrapBoundaries(line, 6, WrappingIndent::None, &AsciiOneElseTwoWidth,
+                           nullptr, out);
+}
+
+} // namespace
+
+// measured_wrap_keeps_cjk_latin_boundary_stable_during_edits: "abcd" and
+// U+7684, then Latin letters typed and deleted after it. Rust drives the
+// TextWrapper's incremental update; the row builder here is the same item
+// builder the wrap map calls for each line it re-wraps.
+static void MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits() {
+    const char* values[] = {"abcd\xE7\x9A\x84", "abcd\xE7\x9A\x84s",
+                            "abcd\xE7\x9A\x84ss", "abcd\xE7\x9A\x84s",
+                            "abcd\xE7\x9A\x84"};
+    for (const char* value : values) {
+        Str text = Str(value);
+        Vec<int> rows;
+        int indent = 0;
+        TextWrapperWrapItem(text, true, WrappingIndent::None,
+                            &MeasuredCjkLatinWrapLine, nullptr, &rows, &indent);
+        bool latin = text.s[len(text) - 1] == 's';
+        if (latin) {
+            // The row with the already-fitting Chinese character keeps it.
+            utassert(RowsAre(rows, {0, 7}));
+        } else {
+            utassert(RowsAre(rows, {0}));
+        }
+    }
+}
+
+// measured_wrap_preserves_words_graphemes_and_indentation
+static void MeasuredWrapPreservesWordsGraphemesAndIndentation() {
+    utassert(MeasuredIxsAre("hello world", 8, WrappingIndent::None, {6}));
+    // "a", the woman-technologist ZWJ sequence, "b".
+    const char* emoji =
+        "a\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB"
+        "b";
+    utassert(MeasuredIxsAre(emoji, 2, WrappingIndent::None, {12}));
+    utassert(MeasuredIxsAre("  abcdefgh", 5, WrappingIndent::Same, {5, 8}));
+    utassert(MeasuredIxsAre("  abcdefgh", 5, WrappingIndent::None, {2, 7}));
+    utassert(MeasuredIxsAre("", 0, WrappingIndent::None, {}));
+    utassert(MeasuredIxsAre("abc", 0, WrappingIndent::None, {1, 2}));
+    // Closing punctuation stays with the preceding Chinese character:
+    // U+4F60 U+597D U+FF0C U+4E16 U+754C.
+    utassert(MeasuredIxsAre(
+        "\xE4\xBD\xA0\xE5\xA5\xBD\xEF\xBC\x8C\xE4\xB8\x96\xE7\x95\x8C", 2,
+        WrappingIndent::None, {3, 9}));
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
+    MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits();
+    MeasuredWrapPreservesWordsGraphemesAndIndentation();
     WrapLine();
     IsWordChar();
     WrappingIndentSameAndNone();

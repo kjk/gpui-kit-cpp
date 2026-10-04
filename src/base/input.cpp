@@ -272,6 +272,7 @@ static float WrapCharWidthOf(void* user, uint32_t c) {
 struct WrapLineUser {
     WrapMeasure* measure = nullptr;
     float width = 0;
+    WrappingIndent wrappingIndent = WrappingIndent::None;
     int lineStart = 0;
     const InlineTokenSpan* spans = nullptr;
     const float* widths = nullptr;
@@ -298,12 +299,37 @@ static float WrapTokenWidth(WrapLineUser* u, int i) {
     return w > 1 ? w : 1;
 }
 
+// The shaped width of `text` on its own: what the row it would make paints
+// as. With nothing to shape against it is the sum of the characters'
+// estimates, as the wrapper's widths are.
+static float WrapShapedWidth(void* user, Str text) {
+    WrapMeasure* wm = (WrapMeasure*)user;
+    if (len(text) <= 0) {
+        return 0;
+    }
+    float w = 0;
+    if (WrapAdvance(wm, text, &w)) {
+        return w;
+    }
+    for (int at = 0; at < len(text);) {
+        uint32_t c = 0;
+        int n = Utf8At(text, at, &c);
+        w += WrapCharWidthOf(wm, c);
+        at += n > 0 ? n : 1;
+    }
+    return w;
+}
+
 static void WrapLineFragments(void* user, Str slice, int base,
                               Vec<WrapBoundary>* out) {
     WrapLineUser* u = (WrapLineUser*)user;
     if (u->nSpans == 0) {
-        LineFragment f = LineFragment::Text(slice);
-        LineWrapperWrapLine(&f, 1, u->width, &WrapCharWidthOf, u->measure, out);
+        // Ordinary text breaks at Unicode line-break opportunities, measured
+        // with the widths it is painted at; the inline-element path below
+        // keeps LineWrapper's.
+        MeasuredWrapBoundaries(slice, u->width, u->wrappingIndent,
+                               &WrapShapedWidth, u->measure, out,
+                               &WrapCharWidthOf, u->measure);
         return;
     }
     Vec<LineFragment> frags;
@@ -376,6 +402,7 @@ static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
     }
     WrappingIndent indent =
         m->wrappingIndent ? WrappingIndent::Same : WrappingIndent::None;
+    u.wrappingIndent = indent;
     int indentChars = 0;
     VecClear(*rows);
     TextWrapperWrapItem(str, m->width > 0, indent, &WrapLineFragments, &u, rows,
