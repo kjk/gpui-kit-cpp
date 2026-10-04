@@ -37,6 +37,9 @@ struct PlatWindow {
     bool dirty = true;
     // Monotonic deadline for the next tick; 0 when the timer is off.
     double nextTick = 0;
+    // Shown only after the first paint. Ordering front at creation puts an
+    // empty window on screen for as long as the caller spends before AppRun.
+    bool ordered = false;
     // Whether the window's class has been taught accessibilityHitTest:. Rust
     // installs it once, when the Root view is created; a Root here is built
     // every frame, so the window remembers instead.
@@ -566,6 +569,11 @@ static bool PressedButton(MouseButton* out) {
 }
 
 - (BOOL)isFlipped {
+    return YES;
+}
+// Opaque so AppKit does not fill the view with the window background before
+// drawRect. A skipped identical frame draws nothing; that fill would flash.
+- (BOOL)isOpaque {
     return YES;
 }
 - (BOOL)acceptsFirstResponder {
@@ -1234,6 +1242,15 @@ bool WindowMacKeyDown(Window* win, NSEvent* event) {
 
 // ─── drawing ──────────────────────────────────────────────────────────────
 
+static void OrderFrontOnce(PlatWindow* pw) {
+    if (!pw || pw->ordered) {
+        return;
+    }
+    pw->ordered = true;
+    [pw->window makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+}
+
 static void Redraw(Window* win) {
     PlatWindow* pw = win->plat;
     if (!pw || !pw->view) {
@@ -1242,6 +1259,7 @@ static void Redraw(Window* win) {
     pw->dirty = false;
     win->maximized = [pw->window isZoomed] ? true : false;
     [pw->view display];
+    OrderFrontOnce(pw);
 }
 
 // ─── window commands ──────────────────────────────────────────────────────
@@ -1274,6 +1292,10 @@ void AppActivate(Window* win) {
     }
     if ([win->plat->window isMiniaturized]) {
         [win->plat->window deminiaturize:nil];
+    }
+    if (!win->plat->ordered) {
+        Redraw(win);
+        return;
     }
     [NSApp activateIgnoringOtherApps:YES];
     [win->plat->window makeKeyAndOrderFront:nil];
@@ -2127,11 +2149,8 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         [window center];
 
         AppSetTitle(win, title);
-        [window makeKeyAndOrderFront:nil];
-        // AppNew may run well before a window is opened (system_monitor does
-        // an initial metrics sweep). Activate again now that Cocoa has a key
-        // window to bring forward.
-        [NSApp activateIgnoringOtherApps:YES];
+        // Shown from Redraw, after the first paint. Order front here and the
+        // window sits empty until AppRun, which is the flash of its area.
         PlatSetTimer(win, WindowTimerMs(win));
     }
     return win;

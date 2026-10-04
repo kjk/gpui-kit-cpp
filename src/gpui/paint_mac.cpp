@@ -28,6 +28,11 @@ static bool SceneFinish(PaintCtx* ctx) {
     bool draw = scene::FrameEnd(ctx, &damage);
     if (draw) {
         scene::Replay(ctx, &damage);
+    } else {
+        // Skip means "the last present is still on screen". This context is
+        // the window itself, and AppKit may already have cleared it, so an
+        // identical frame still has to be painted or the area flashes.
+        scene::Replay(ctx, nullptr);
     }
     return draw;
 }
