@@ -65,6 +65,16 @@ static const NamedKey kNamedKeys[] = {
     {"back", KeyBrowserBack},
     {"forward", KeyBrowserForward},
     {"menu", KeyApps},
+    {"numpad0", KeyNumpad0},
+    {"numpad1", KeyNumpad0 + 1},
+    {"numpad2", KeyNumpad0 + 2},
+    {"numpad3", KeyNumpad0 + 3},
+    {"numpad4", KeyNumpad0 + 4},
+    {"numpad5", KeyNumpad0 + 5},
+    {"numpad6", KeyNumpad0 + 6},
+    {"numpad7", KeyNumpad0 + 7},
+    {"numpad8", KeyNumpad0 + 8},
+    {"numpad9", KeyNumpad9},
     // Linux names these dedicated XF86 keys. They remain valid bindings on
     // every platform, but only a keyboard that produces one can match them.
     {"cut", KeyCut},

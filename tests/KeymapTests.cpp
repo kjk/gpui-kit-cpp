@@ -70,6 +70,11 @@ static void AChordIsReadTheWayRustSpellsIt() {
     utassert(c.vk == KeyBrowserForward);
     utassert(KeyChordParse(StrL("menu"), &c));
     utassert(c.vk == KeyApps && c.vk != KeyMenu && !c.alt);
+    utassert(KeyChordParse(StrL("ctrl-numpad0"), &c));
+    utassert(c.vk == KeyNumpad0 && c.ctrl);
+    utassert(KeyChordParse(StrL("numpad9"), &c));
+    utassert(c.vk == KeyNumpad9);
+    utassert(c.vk != '9');
 
     // Rust spells shifted punctuation as the character itself. It and the
     // explicit modifier spelling are the same physical chord here.
@@ -716,14 +721,17 @@ static void TheChordAnActionIsReachedBy() {
     utassert(base::StrEq(KeyName(KeyBrowserBack), StrL("back")));
     utassert(base::StrEq(KeyName(KeyBrowserForward), StrL("forward")));
     utassert(base::StrEq(KeyName(KeyApps), StrL("menu")));
+    utassert(base::StrEq(KeyName(KeyNumpad0), StrL("numpad0")));
+    utassert(base::StrEq(KeyName(KeyNumpad9), StrL("numpad9")));
 
     // Round trip: every name KeyChordParse reads, KeyName spells again.
     const char* specs[] = {
-        "enter",  "escape",   "tab",    "space", "backspace", "delete",
-        "left",   "up",       "right",  "down",  "home",      "end",
-        "pageup", "pagedown", "insert", "back",  "forward",   "menu",
-        "f1",     "f7",       "f11",    "f12",   "f24",       "f35",
-        "cut",    "copy",     "paste",  "new",   "open",      "save"};
+        "enter",   "escape",   "tab",    "space", "backspace", "delete",
+        "left",    "up",       "right",  "down",  "home",      "end",
+        "pageup",  "pagedown", "insert", "back",  "forward",   "menu",
+        "numpad0", "numpad9",  "f1",     "f7",    "f11",       "f12",
+        "f24",     "f35",      "cut",    "copy",  "paste",     "new",
+        "open",    "save"};
     for (const char* spec : specs) {
         KeyChord parsed = {};
         utassert(KeyChordParse(Str(spec), &parsed));

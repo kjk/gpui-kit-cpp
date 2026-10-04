@@ -699,6 +699,8 @@ enum : int {
     KeyY = 89,
     KeyZ = 90,
     KeyApps = 93,
+    KeyNumpad0 = 96,
+    KeyNumpad9 = 105,
     KeyF1 = 112,
     KeyF24 = 135,
     KeyBrowserBack = 166,

@@ -418,7 +418,7 @@ static int KeyFor(KeySym ks) {
         return KeyF1 + (int)(ks - XK_KP_F1);
     }
     if (ks >= XK_KP_0 && ks <= XK_KP_9) {
-        return '0' + (int)(ks - XK_KP_0);
+        return KeyNumpad0 + (int)(ks - XK_KP_0);
     }
     // Letters and digits carry their ASCII uppercase code, as VK_* does.
     if (ks >= XK_a && ks <= XK_z) {

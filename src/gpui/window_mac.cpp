@@ -1109,6 +1109,28 @@ static int KeyFor(unichar c) {
     return 0;
 }
 
+// Apple's hardware codes keep keypad digits distinct even though
+// charactersIgnoringModifiers spells them like the digit row.
+static int KeyForEvent(NSEvent* event, unichar c) {
+    switch ([event keyCode]) {
+        case 82:
+            return KeyNumpad0;
+        case 83:
+        case 84:
+        case 85:
+        case 86:
+        case 87:
+        case 88:
+        case 89:
+            return KeyNumpad0 + (int)[event keyCode] - 82;
+        case 91:
+        case 92:
+            return KeyNumpad0 + (int)[event keyCode] - 83;
+        default:
+            return KeyFor(c);
+    }
+}
+
 // The release of a key. Only the activation keys do anything with one, and
 // they need no text, so this is the modifier and code half of the press.
 void WindowMacKeyUp(Window* win, NSEvent* event) {
@@ -1118,7 +1140,7 @@ void WindowMacKeyUp(Window* win, NSEvent* event) {
     NSEventModifierFlags mods = [event modifierFlags];
     NSString* bare = [event charactersIgnoringModifiers];
     unichar first = [bare length] > 0 ? [bare characterAtIndex:0] : 0;
-    int key = KeyFor(first);
+    int key = KeyForEvent(event, first);
     if (!key) {
         return;
     }
@@ -1154,7 +1176,7 @@ bool WindowMacKeyDown(Window* win, NSEvent* event) {
     bool function =
         (mods & NSEventModifierFlagFunction) != 0 &&
         !(first >= NSUpArrowFunctionKey && first <= NSModeSwitchFunctionKey);
-    int key = KeyFor(first);
+    int key = KeyForEvent(event, first);
     if (key) {
         // gpui_macos events.rs: `is_held: native_event.isARepeat()`. A key
         // that lands while the focused field has marked text belongs to the
