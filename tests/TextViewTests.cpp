@@ -5622,14 +5622,17 @@ static void AppendedBlocksConvertAtTheirPlaceInTheWholeSource() {
         "cho** end");
     gpui::RenderedText text = v.State()->RenderedText();
     utassert(StrEq(text.Source(), source));
-    const char* needles[] = {"second more",
-                             "**\xC3\xA9"
-                             "cho**",
-                             "end"};
-    const char* wants[] = {"second more",
-                           "\xC3\xA9"
-                           "cho",
-                           "end"};
+    // Named apart from the arrays: the escape has to end before the `c`,
+    // and a literal split inside an initializer list reads as a missing
+    // comma.
+    const char* boldNeedle =
+        "**\xC3\xA9"
+        "cho**";
+    const char* boldWant =
+        "\xC3\xA9"
+        "cho";
+    const char* needles[] = {"second more", boldNeedle, "end"};
+    const char* wants[] = {"second more", boldWant, "end"};
     for (int i = 0; i < 3; i++) {
         Span range;
         utassert(text.RangeForSource(TswFind(source, needles[i]), &range));
