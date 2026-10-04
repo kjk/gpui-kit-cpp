@@ -700,17 +700,61 @@ inline bool operator==(RangeHighlightError a, RangeHighlightError b) {
 // Two snapshots are equal when they come from the same view and the same
 // parse, which tells an observer whether the content changed. Rust's
 // snapshot holds the parsed document and builds its text on first read; the
-// text here is the view's own copy, built when the parse lands, so `text`
-// is only good until the view's content is parsed again — compare snapshots
-// after that, but read the text of a fresh one.
+// text here is the view's own copy, built when the parse lands, so `text`,
+// `source` and RangeForSource are only good until the view's content is
+// parsed again — compare snapshots after that, but read a fresh one.
+struct RenderedIndex;
 struct RenderedText {
     EntityId owner = {};
     uint64_t revision = 0;
     Str text = {};
+    Str source = {};
+    const RenderedIndex* index = nullptr;
 
     Str AsStr() const { return text; }
     int Len() const { return len(text); }
     bool IsEmpty() const { return len(text) == 0; }
+
+    // The source this text was rendered from, whose byte ranges
+    // RangeForSource takes.
+    //
+    // It comes from the same parse as the text, so it trails the text last
+    // given to the view until that text's parse lands. Before converting a
+    // range, check that it indexes this source: while text is streamed in,
+    // this source is a prefix of the text the application holds, and after
+    // SetText it may be different text.
+    Str Source() const { return source; }
+
+    // The range of this text rendered from `range`, a UTF-8 byte range of
+    // Source().
+    //
+    // This converts a range of the Markdown source, such as one
+    // SelectedSourceRange returned or one an application stored with its own
+    // data, into the range a RangeHighlight takes. A character is rendered
+    // from `range` when any of the source it was rendered from lies in it:
+    // all of `&amp;` for `&`, the backslash and the `*` of an escaped `*`,
+    // the whole source of an inline object for its text. Source that renders
+    // nothing, such as emphasis delimiters, heading and list markers, code
+    // fences, table pipes and link destinations, adds nothing, so `**bold**`
+    // and `bold` give the same range.
+    //
+    // The result is the smallest range holding every character rendered from
+    // `range`. When it spans blocks, it also holds the separators between
+    // them, which a highlight leaves unpainted. Text the parser recorded no
+    // source position for, such as the text of inline HTML, is only included
+    // when it lies between characters that are.
+    //
+    // Converting the source range a selection of this text reports gives the
+    // selected range back, widened only to whole characters where several
+    // share their source, like the text of an inline object. The separators
+    // between blocks are rendered from no source, so one at either end of
+    // the selection is left out: Select All gives back everything but the
+    // line break after the last block.
+    //
+    // False when `range` is empty, reversed, out of bounds, or not on a
+    // character boundary, or when nothing is rendered from it. HTML views
+    // record no source positions, so they always answer false.
+    bool RangeForSource(Span range, Span* out) const;
 };
 inline bool operator==(const RenderedText& a, const RenderedText& b) {
     return a.owner == b.owner && a.revision == b.revision;
@@ -744,7 +788,6 @@ struct RangeHighlightFrame {
 
 // range_highlight.rs RenderedIndex: the rendered text of one parse and where
 // each text leaf sits in it. Opaque; text.cpp builds it.
-struct RenderedIndex;
 
 // The rendered text of `doc` and its leaves, as RenderedIndex::new builds
 // them from a parsed document; `source` is what `doc` was parsed from. The
@@ -752,6 +795,15 @@ struct RenderedIndex;
 RenderedIndex* RenderedIndexNew(const MdNode* doc, Str source);
 void RenderedIndexFree(RenderedIndex* index);
 Str RenderedIndexText(const RenderedIndex* index);
+Str RenderedIndexSource(const RenderedIndex* index);
+bool RenderedIndexRangeForSource(const RenderedIndex* index, Span source,
+                                 Span* out);
+// The index's leaves and its source map, in the order of the text. Exposed
+// for the tests that check the two mappings against each other.
+int RenderedIndexLeafCount(const RenderedIndex* index);
+Span RenderedIndexLeafRange(const RenderedIndex* index, int ix);
+const SourceSegment* RenderedIndexSourceMap(const RenderedIndex* index,
+                                            int* count);
 // RangeHighlightFrame::new: validates `highlights` against `index` and
 // resolves them to leaves. `*out` is null when they paint nothing.
 RangeHighlightError RangeHighlightFrameNew(const RenderedIndex* index,
@@ -1351,7 +1403,8 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
 // `rendered` back into `raw`, a node's source that starts at `sourceOffset`,
 // appending compacted segments to `out`.
 void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
-                           bool decodeEntities, Vec<SourceSegment>& out);
+                           bool decodeEntities, bool decodeEscapes,
+                           Vec<SourceSegment>& out);
 
 // Paragraph::selected_source_range / CodeBlock::selected_source_range for a
 // selection [start, end) of `n`'s rendered text — its runs' text, an image

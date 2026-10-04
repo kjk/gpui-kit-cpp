@@ -2399,11 +2399,12 @@ static bool CodeRangeIs(const char* source, int start, int end,
     return RangeIs(source, start, end, want, MdKind::Code);
 }
 
-static bool HasSegment(const MdRun* r, int rs, int re, int ss, int se) {
+static bool HasSegment(const MdRun* r, int rs, int re, int ss, int se,
+                       bool linear) {
     for (int i = 0; r && i < r->segmentCount; i++) {
         const SourceSegment& s = r->segments[i];
         if (s.renderedStart == rs && s.renderedEnd == re &&
-            s.sourceStart == ss && s.sourceEnd == se) {
+            s.sourceStart == ss && s.sourceEnd == se && s.linear == linear) {
             return true;
         }
     }
@@ -2427,15 +2428,15 @@ static void TestSourceSegmentsCompact() {
     Arena* a = ArenaNew();
     MdNode* doc = MdParse(a, StrL("plain text"));
     const MdRun* r = FirstOfKind(doc, MdKind::Paragraph)->runFirst;
-    utassert(r && r->segmentCount == 1 && HasSegment(r, 0, 10, 0, 10));
+    utassert(r && r->segmentCount == 1 && HasSegment(r, 0, 10, 0, 10, true));
     utassert(RangeIs("plain text", 2, 7, "2..7"));
 
     doc = MdParse(a, StrL("a\\* &amp; b"));
     r = FirstOfKind(doc, MdKind::Paragraph)->runFirst;
     // "ordinary characters should be compacted into runs"
     utassert(r && r->segmentCount < len(r->text));
-    utassert(HasSegment(r, 1, 2, 1, 3));
-    utassert(HasSegment(r, 3, 4, 4, 9));
+    utassert(HasSegment(r, 1, 2, 1, 3, false));
+    utassert(HasSegment(r, 3, 4, 4, 9, false));
     utassert(RangeIs("a\\* &amp; b", 1, 2, "1..3"));
     utassert(RangeIs("a\\* &amp; b", 3, 4, "4..9"));
     ArenaDelete(a);
@@ -2457,8 +2458,8 @@ static Str Repeat(Arena* a, const char* pre, const char* unit, int n,
 }
 
 // The segments `AlignedSourceSegments` produced, against `want` rows of
-// {renderedStart, renderedEnd, sourceStart, sourceEnd}.
-static bool SegmentsAre(const Vec<SourceSegment>& got, const int (*want)[4],
+// {renderedStart, renderedEnd, sourceStart, sourceEnd, linear}.
+static bool SegmentsAre(const Vec<SourceSegment>& got, const int (*want)[5],
                         int n) {
     if (got.len != n) {
         return false;
@@ -2466,7 +2467,8 @@ static bool SegmentsAre(const Vec<SourceSegment>& got, const int (*want)[4],
     for (int i = 0; i < n; i++) {
         const SourceSegment& s = got[i];
         if (s.renderedStart != want[i][0] || s.renderedEnd != want[i][1] ||
-            s.sourceStart != want[i][2] || s.sourceEnd != want[i][3]) {
+            s.sourceStart != want[i][2] || s.sourceEnd != want[i][3] ||
+            s.linear != (want[i][4] != 0)) {
             return false;
         }
     }
@@ -2484,8 +2486,8 @@ static void TestSourceAlignmentCompactsLongWhitespaceRuns() {
     };
     for (Str raw : raws) {
         Vec<SourceSegment> segments;
-        AlignedSourceSegments(a, raw, raw, 7, true, segments);
-        const int want[1][4] = {{0, len(raw), 7, 7 + len(raw)}};
+        AlignedSourceSegments(a, raw, raw, 7, true, true, segments);
+        const int want[1][5] = {{0, len(raw), 7, 7 + len(raw), 1}};
         utassert(SegmentsAre(segments, want, 1));
         // "compaction must not retain a per-character allocation"
         utassert(segments.cap < 64);
@@ -2499,13 +2501,14 @@ static void TestSourceAlignmentPreservesMultilineCodeAndFinalNewline() {
     Str raw = Repeat(a, "", "x\n", 16384, "");
     Str rendered(raw.s, len(raw) - 1);
     Vec<SourceSegment> segments;
-    AlignedSourceSegments(a, raw, rendered, 4, false, segments);
-    const int want[1][4] = {{0, len(rendered), 4, 4 + len(rendered)}};
+    AlignedSourceSegments(a, raw, rendered, 4, false, false, segments);
+    const int want[1][5] = {{0, len(rendered), 4, 4 + len(rendered), 1}};
     utassert(SegmentsAre(segments, want, 1));
 
     Vec<SourceSegment> quote;
-    AlignedSourceSegments(a, StrL("a\n> \n"), StrL("a\n\n"), 0, false, quote);
-    const int wantQuote[2][4] = {{0, 2, 0, 2}, {2, 3, 2, 5}};
+    AlignedSourceSegments(a, StrL("a\n> \n"), StrL("a\n\n"), 0, false, false,
+                          quote);
+    const int wantQuote[2][5] = {{0, 2, 0, 2, 1}, {2, 3, 2, 5, 0}};
     utassert(SegmentsAre(quote, wantQuote, 2));
     ArenaDelete(a);
 }
@@ -2514,16 +2517,17 @@ static void TestSourceAlignmentPreservesMultilineCodeAndFinalNewline() {
 static void TestSourceAlignmentKeepsSoftBreaksAndEntitiesAtomic() {
     Arena* a = ArenaNew();
     Vec<SourceSegment> soft;
-    AlignedSourceSegments(a, StrL("a \r\nb"), StrL("a b"), 9, true, soft);
-    const int wantSoft[3][4] = {{0, 1, 9, 10}, {1, 2, 11, 13}, {2, 3, 13, 14}};
+    AlignedSourceSegments(a, StrL("a \r\nb"), StrL("a b"), 9, true, true, soft);
+    const int wantSoft[3][5] = {
+        {0, 1, 9, 10, 1}, {1, 2, 11, 13, 0}, {2, 3, 13, 14, 1}};
     utassert(SegmentsAre(soft, wantSoft, 3));
 
     Str entity = StrL("&NotEqualTilde;");
     // U+2242 U+0338.
     Str decoded = StrL("\xE2\x89\x82\xCC\xB8");
     Vec<SourceSegment> atomic;
-    AlignedSourceSegments(a, entity, decoded, 3, true, atomic);
-    const int wantAtomic[1][4] = {{0, len(decoded), 3, 3 + len(entity)}};
+    AlignedSourceSegments(a, entity, decoded, 3, true, true, atomic);
+    const int wantAtomic[1][5] = {{0, len(decoded), 3, 3 + len(entity), 0}};
     utassert(SegmentsAre(atomic, wantAtomic, 1));
     ArenaDelete(a);
 }
@@ -2547,15 +2551,15 @@ static void TestSourceAlignmentResumesAfterUnmappedCharacters() {
     int m = len(missing);
     Vec<SourceSegment> resumed;
     AlignedSourceSegments(a, raw, Repeat(a, "", replacement, 4096, "abc"), 5,
-                          true, resumed);
-    const int wantResumed[1][4] = {{m, m + 3, 5, 8}};
+                          true, true, resumed);
+    const int wantResumed[1][5] = {{m, m + 3, 5, 8, 1}};
     utassert(SegmentsAre(resumed, wantResumed, 1));
 
     Vec<SourceSegment> entity;
     AlignedSourceSegments(a, StrL("&amp;z"),
-                          Repeat(a, "", replacement, 4096, "&z"), 0, true,
+                          Repeat(a, "", replacement, 4096, "&z"), 0, true, true,
                           entity);
-    const int wantEntity[2][4] = {{m, m + 1, 0, 5}, {m + 1, m + 2, 5, 6}};
+    const int wantEntity[2][5] = {{m, m + 1, 0, 5, 0}, {m + 1, m + 2, 5, 6, 1}};
     utassert(SegmentsAre(entity, wantEntity, 2));
     ArenaDelete(a);
 }
@@ -2646,6 +2650,72 @@ static void TestSourceRangeEscapes() {
     utassert(RangeIs("a\\\\$x$", 1, 3, "1..4"));
     utassert(RangeIs("a\\\\  \nb", 2, 3, "3..6"));
     utassert(RangeIs("a\\\\  \nb", 1, 3, "1..6"));
+}
+
+// source_segments_keep_an_entity_as_long_as_its_characters_atomic: `&acE;`
+// decodes to U+223E U+0333, five bytes each, but not one for one.
+static void TestSourceSegmentsKeepAnEntityAsLongAsItsCharactersAtomic() {
+    Arena* a = ArenaNew();
+    const char* source = "a &acE; b";
+    MdNode* doc = MdParse(a, Str(source));
+    const MdRun* r = FirstOfKind(doc, MdKind::Paragraph)->runFirst;
+    utassert(r && StrEq(r->text, StrL("a \xE2\x88\xBE\xCC\xB3 b")));
+    utassert(r && r->segmentCount == 3);
+    utassert(HasSegment(r, 0, 2, 0, 2, true));
+    utassert(HasSegment(r, 2, 7, 2, 7, false));
+    utassert(HasSegment(r, 7, 9, 7, 9, true));
+    // Selecting the combining mark alone reports the whole entity.
+    utassert(RangeIs(source, 5, 7, "2..7"));
+    ArenaDelete(a);
+}
+
+// selected_source_range_keeps_inline_code_escapes_literal,
+// selected_source_range_maps_each_literal_backslash_in_fenced_code,
+// selected_source_range_maps_literal_backslashes_in_indented_code,
+// selected_source_range_maps_literal_backslashes_in_nested_fences,
+// selected_source_range_maps_text_after_an_escape_character_for_character.
+static void TestSourceRangeLiteralBackslashes() {
+    utassert(RangeIs("`a\\\\b`", 1, 2, "2..3"));
+    utassert(RangeIs("`a\\\\b`", 2, 3, "3..4"));
+    utassert(RangeIs("`a\\*b`", 1, 2, "2..3"));
+    utassert(RangeIs("`a\\*b`", 2, 3, "3..4"));
+    // The same punctuation is still an escape outside code.
+    utassert(RangeIs("a\\*b", 1, 2, "1..3"));
+
+    const char* source = "```\na\\\\b\n```";
+    utassert(CodeRangeIs(source, 1, 2, "5..6"));
+    utassert(CodeRangeIs(source, 2, 3, "6..7"));
+    utassert(CodeRangeIs(source, 1, 3, "5..7"));
+    const char* punctuation = "```\na\\*b\n```";
+    utassert(CodeRangeIs(punctuation, 1, 2, "5..6"));
+    utassert(CodeRangeIs(punctuation, 2, 3, "6..7"));
+    utassert(CodeRangeIs("```\na\\\\b\r\n```", 1, 3, "5..7"));
+    const char* multiline = "```\na\\\\\nb\n```";
+    utassert(CodeRangeIs(multiline, 1, 2, "5..6"));
+    utassert(CodeRangeIs(multiline, 2, 3, "6..7"));
+    utassert(CodeRangeIs(multiline, 3, 4, "7..8"));
+    utassert(CodeRangeIs(multiline, 4, 5, "8..9"));
+
+    const char* indented = "    one\n    a\\\\b";
+    utassert(CodeRangeIs(indented, 5, 6, "13..14"));
+    utassert(CodeRangeIs(indented, 6, 7, "14..15"));
+    utassert(CodeRangeIs(indented, 5, 7, "13..15"));
+
+    const char* nested[] = {"- ```\n  a\\\\b\n  ```", "> ```\n> a\\\\b\n> ```"};
+    for (const char* fence : nested) {
+        utassert(CodeRangeIs(fence, 1, 2, "9..10"));
+        utassert(CodeRangeIs(fence, 2, 3, "10..11"));
+    }
+
+    const char* escaped = "\\*abc";
+    utassert(RangeIs(escaped, 0, 1, "0..2"));
+    utassert(RangeIs(escaped, 2, 3, "3..4"));
+    utassert(RangeIs(escaped, 0, 2, "0..3"));
+    // Only punctuation escapes, so a backslash before a letter is text:
+    // "\été".
+    const char* letter = "\\\xC3\xA9t\xC3\xA9";
+    utassert(RangeIs(letter, 0, 1, "0..1"));
+    utassert(RangeIs(letter, 1, 3, "1..3"));
 }
 
 // selected_source_range_includes_a_trailing_inline_image, _a_leading_,
@@ -3935,6 +4005,9 @@ enum class TswContainer : uint8_t {
     Clamped,
     // A 200×100 box that scrolls nothing.
     Fixed,
+    // A 160px-wide column around the fit-content view, whose bounds land in
+    // divBounds.
+    Narrow,
     // A 200×100 list of two items, a 40px box and the fit-content view,
     // which follows a reveal through request_autoscroll.
     List,
@@ -4015,6 +4088,10 @@ struct TswRoot {
         }
         if (self->container == TswContainer::Window) {
             return Div(a)->SizeFull()->Child(view->IntoEl());
+        }
+        if (self->container == TswContainer::Narrow) {
+            return Div(a)->W(160)->Child(
+                Div(a)->BoundsOut(&self->divBounds)->Child(view->IntoEl()));
         }
         El* frame = Div(a)->W(200)->H(100);
         switch (self->container) {
@@ -4727,6 +4804,765 @@ static void SetMarkdownExtensionsReparsesExistingText() {
     ArenaDelete(ext);
 }
 
+// ─── range_for_source ─────────────────────────────────────────────────────
+//
+// range_highlight.rs's RenderedText::range_for_source tests. Rust builds a
+// RenderedText over a parsed document; the index is the same thing here.
+
+struct RfsDoc {
+    Arena* a = nullptr;
+    MdNode* doc = nullptr;
+    gpui::RenderedIndex* index = nullptr;
+    Str markdown = {};
+
+    Str Text() const { return gpui::RenderedIndexText(index); }
+    bool Range(int start, int end, Span* out) const {
+        return gpui::RenderedIndexRangeForSource(index, Span{start, end}, out);
+    }
+    // Whether [start, end) of the source converts to [ws, we) of the text.
+    bool RangeIs(int start, int end, int ws, int we) const {
+        Span got;
+        return Range(start, end, &got) && got.start == ws && got.end == we;
+    }
+    bool None(int start, int end) const {
+        Span got;
+        return !Range(start, end, &got);
+    }
+};
+
+static RfsDoc RfsParse(const char* markdown, bool html = false) {
+    RfsDoc d;
+    d.a = ArenaNew();
+    d.markdown = Str(markdown);
+    d.doc = html ? HtmlParse(d.a, d.markdown) : MdParse(d.a, d.markdown);
+    d.index = gpui::RenderedIndexNew(d.doc, d.markdown);
+    return d;
+}
+
+static void RfsFree(RfsDoc* d) {
+    gpui::RenderedIndexFree(d->index);
+    ArenaDelete(d->a);
+    *d = RfsDoc{};
+}
+
+// `nth`: the range of `markdown` holding the nth (zero-based) occurrence of
+// `needle`.
+static Span RfsNth(const char* markdown, const char* needle, int nth) {
+    size_t n = strlen(needle);
+    const char* at = markdown;
+    for (;;) {
+        const char* found = strstr(at, needle);
+        if (!found) {
+            utassert(false);
+            return Span{0, 0};
+        }
+        if (nth-- == 0) {
+            int start = (int)(found - markdown);
+            return Span{start, start + (int)n};
+        }
+        at = found + n;
+    }
+}
+
+// `converted`: whether [start, end) of `markdown` renders `want`, or nothing
+// when `want` is null.
+static bool RfsConverted(const char* markdown, Span source, const char* want) {
+    RfsDoc d = RfsParse(markdown);
+    Span range;
+    bool found = d.Range(source.start, source.end, &range);
+    bool ok = want ? found && StrEq(Str(d.Text().s + range.start,
+                                        range.end - range.start),
+                                    Str(want))
+                   : !found;
+    RfsFree(&d);
+    return ok;
+}
+
+// `converted_needle`: the same for the first occurrence of `needle`.
+static bool RfsNeedle(const char* markdown, const char* needle,
+                      const char* want) {
+    return RfsConverted(markdown, RfsNth(markdown, needle, 0), want);
+}
+
+// source_rendering_nothing_converts_to_none.
+static void SourceRenderingNothingConvertsToNone() {
+    const char* table = "| a | b |\n|---|---|\n| c | d |";
+    const char* cases[][2] = {
+        {"# Title", "# "},
+        {"hello **world**", "**"},
+        {"a ~~b~~ c", "~~"},
+        {"- item", "- "},
+        {"1. item", "1. "},
+        {"- [x] done", "[x] "},
+        {"> quote", "> "},
+        {"```rust\nlet x\n```", "```rust\n"},
+        {"```rust\nlet x\n```", "\n```"},
+        {table, "|---|---|"},
+        {table, " | "},
+        {"see [docs](https://example.com) now", "(https://example.com)"},
+        {"a ![alt](image.png) b", "![alt](image.png)"},
+        {"a\n\n---\n\nb", "---"},
+        {"para\n\n[ref]: https://example.com", "[ref]: https://example.com"},
+    };
+    for (const auto& c : cases) {
+        utassert(RfsNeedle(c[0], c[1], nullptr));
+    }
+}
+
+// delimiters_in_a_range_add_nothing.
+static void DelimitersInARangeAddNothing() {
+    const char* markdown = "hello **world** and `code`";
+    utassert(RfsConverted(markdown, Span{0, (int)strlen(markdown)},
+                          "hello world and code"));
+    utassert(RfsNeedle(markdown, "**world**", "world"));
+    utassert(RfsNeedle(markdown, "o **wor", "o wor"));
+    utassert(RfsNeedle(markdown, "`code`", "code"));
+    utassert(RfsNeedle("# **Title**", "# **Title**", "Title"));
+    utassert(RfsNeedle("see [the docs](https://x.y) now",
+                       "[the docs](https://x.y)", "the docs"));
+}
+
+// repeated_text_converts_to_the_occurrence_addressed.
+static void RepeatedTextConvertsToTheOccurrenceAddressed() {
+    const char* markdown = "foo **foo** foo";
+    RfsDoc d = RfsParse(markdown);
+    utassert(StrEq(d.Text(), StrL("foo foo foo\n")));
+    const int want[3][2] = {{0, 3}, {4, 7}, {8, 11}};
+    for (int i = 0; i < 3; i++) {
+        Span source = RfsNth(markdown, "foo", i);
+        utassert(d.RangeIs(source.start, source.end, want[i][0], want[i][1]));
+    }
+    RfsFree(&d);
+}
+
+// fenced_code_backslashes_convert_individually.
+static void FencedCodeBackslashesConvertIndividually() {
+    RfsDoc d = RfsParse("```\na\\\\b\n```");
+    utassert(d.RangeIs(5, 6, 1, 2));
+    utassert(d.RangeIs(6, 7, 2, 3));
+    utassert(d.RangeIs(5, 7, 1, 3));
+    RfsFree(&d);
+}
+
+// literal_code_escapes_convert_individually.
+static void LiteralCodeEscapesConvertIndividually() {
+    struct Case {
+        const char* markdown;
+        int first;
+        int second;
+        int renderedStart;
+    };
+    const Case cases[] = {
+        {"`a\\\\b`", 2, 3, 1},
+        {"`a\\*b`", 2, 3, 1},
+        {"    one\n    a\\\\b", 13, 14, 5},
+        {"- ```\n  a\\\\b\n  ```", 9, 10, 1},
+        {"> ```\n> a\\\\b\n> ```", 9, 10, 1},
+        {"```\na\\*b\n```", 5, 6, 1},
+        {"```\na\\\\b\r\n```", 5, 6, 1},
+        {"```\na\\\\\nb\n```", 5, 6, 1},
+    };
+    for (const Case& c : cases) {
+        RfsDoc d = RfsParse(c.markdown);
+        utassert(d.RangeIs(c.first, c.first + 1, c.renderedStart,
+                           c.renderedStart + 1));
+        utassert(d.RangeIs(c.second, c.second + 1, c.renderedStart + 1,
+                           c.renderedStart + 2));
+        RfsFree(&d);
+    }
+    RfsDoc escape = RfsParse("a\\*b");
+    utassert(escape.RangeIs(1, 2, 1, 2));
+    utassert(escape.RangeIs(2, 3, 1, 2));
+    RfsFree(&escape);
+    RfsDoc lines = RfsParse("```\na\\\\\nb\n```");
+    utassert(lines.RangeIs(7, 8, 3, 4));
+    utassert(lines.RangeIs(8, 9, 4, 5));
+    RfsFree(&lines);
+}
+
+// a_character_converts_when_any_of_its_source_is_in_the_range.
+static void ACharacterConvertsWhenAnyOfItsSourceIsInTheRange() {
+    // `&amp;` renders `&`: its name alone still renders that `&`.
+    utassert(RfsNeedle("a &amp; b", "amp", "&"));
+    utassert(RfsNeedle("a &amp; b", "&amp;", "&"));
+    utassert(RfsNeedle("&#65;&#x42;", "&#x42;", "B"));
+    // `\*` renders `*`, from either of its characters.
+    utassert(RfsNeedle("a \\* b", "\\", "*"));
+    utassert(RfsNeedle("a \\* b", "*", "*"));
+    // Text after an escape that starts a text node still converts
+    // character for character.
+    utassert(RfsNeedle("\\*abc", "b", "b"));
+    utassert(RfsNeedle("**\\*abc**", "*a", "*a"));
+    // A soft line break renders a space from the newline.
+    utassert(RfsNeedle("soft\nbreak", "\n", " "));
+    utassert(RfsNeedle("soft\r\nbreak", "\r\n", " "));
+    utassert(RfsNeedle("soft\r\nbreak", "\n", " "));
+}
+
+// a_decoded_entity_converts_only_as_a_whole: `&acE;` decodes to U+223E
+// U+0333, whose two characters take as many bytes as the entity's source,
+// but not character for character.
+static void ADecodedEntityConvertsOnlyAsAWhole() {
+    const char* markdown = "a &acE; b";
+    const char* decoded = "\xE2\x88\xBE\xCC\xB3";
+    RfsDoc d = RfsParse(markdown);
+    utassert(StrEq(d.Text(), StrL("a \xE2\x88\xBE\xCC\xB3 b\n")));
+    RfsFree(&d);
+    utassert(RfsNeedle(markdown, "a", "a"));
+    utassert(RfsNeedle(markdown, "b", "b"));
+    utassert(RfsNeedle(markdown, "cE", decoded));
+    utassert(RfsNeedle(markdown, "&acE;", decoded));
+    utassert(RfsNeedle(markdown, "a &a", "a \xE2\x88\xBE\xCC\xB3"));
+}
+
+// multibyte_text_converts_on_character_boundaries: "中文 **粗体** 🎉 é".
+static void MultibyteTextConvertsOnCharacterBoundaries() {
+    const char* markdown =
+        "\xE4\xB8\xAD\xE6\x96\x87 **\xE7\xB2\x97\xE4\xBD\x93** "
+        "\xF0\x9F\x8E\x89 \xC3\xA9";
+    utassert(RfsNeedle(markdown, "\xE7\xB2\x97", "\xE7\xB2\x97"));
+    utassert(RfsNeedle(markdown, "\xE6\x96\x87 **\xE7\xB2\x97",
+                       "\xE6\x96\x87 \xE7\xB2\x97"));
+    utassert(RfsNeedle(markdown, "\xF0\x9F\x8E\x89", "\xF0\x9F\x8E\x89"));
+    utassert(RfsNeedle(markdown, "\xC3\xA9", "\xC3\xA9"));
+    // A range splitting a character is not a range of the source.
+    Span split = RfsNth(markdown, "\xE7\xB2\x97", 0);
+    utassert(
+        RfsConverted(markdown, Span{split.start, split.start + 1}, nullptr));
+    utassert(RfsConverted(markdown, Span{split.start + 1, split.end}, nullptr));
+}
+
+// ranges_that_are_not_ranges_of_the_source_convert_to_none.
+static void RangesThatAreNotRangesOfTheSourceConvertToNone() {
+    RfsDoc d = RfsParse("hello world");
+    utassert(d.None(3, 3));
+    utassert(d.None(5, 3));
+    utassert(d.None(0, 12));
+    utassert(d.None(20, 30));
+    utassert(d.RangeIs(0, 11, 0, 11));
+    RfsFree(&d);
+
+    RfsDoc empty = RfsParse("");
+    utassert(len(gpui::RenderedIndexSource(empty.index)) == 0);
+    utassert(empty.None(0, 0));
+    RfsFree(&empty);
+}
+
+// a_range_across_blocks_holds_the_separators_between_them.
+static void ARangeAcrossBlocksHoldsTheSeparatorsBetweenThem() {
+    // "ab\ncd\nef\n"
+    utassert(RfsNeedle("ab\n\ncd\n\n# ef", "b\n\ncd\n\n# e", "b\ncd\ne"));
+
+    const char* table = "| a | b |\n|---|---|\n| c | d |";
+    utassert(RfsNeedle(table, "b |\n|---|---|\n| c", "b\nc"));
+    utassert(RfsNeedle(table, "c | d", "c d"));
+
+    utassert(RfsNeedle("- one\n- two\n  - three", "ne\n- two\n  - th",
+                       "ne\ntwo\nth"));
+}
+
+// code_blocks_convert_their_body.
+static void CodeBlocksConvertTheirBody() {
+    const char* fenced = "```rust\nlet x = 1;\nlet y = 2;\n```";
+    utassert(RfsNeedle(fenced, "x = 1;\nlet y", "x = 1;\nlet y"));
+    utassert(RfsConverted(fenced, Span{0, (int)strlen(fenced)},
+                          "let x = 1;\nlet y = 2;"));
+    utassert(RfsNeedle("    let x = 1;\n    let y = 2;", "x = 1", "x = 1"));
+    const char* tilde = "~~~\nwavy\n~~~";
+    utassert(RfsConverted(tilde, Span{0, (int)strlen(tilde)}, "wavy"));
+}
+
+// an_image_between_texts_keeps_the_range_contiguous.
+static void AnImageBetweenTextsKeepsTheRangeContiguous() {
+    const char* markdown = "a ![alt](image.png) b";
+    utassert(RfsConverted(markdown, Span{0, (int)strlen(markdown)}, "a  b"));
+}
+
+// html_text_converts_nothing.
+static void HtmlTextConvertsNothing() {
+    const char* html = "<p>one <b>two</b></p>";
+    RfsDoc d = RfsParse(html, true);
+    utassert(StrEq(gpui::RenderedIndexSource(d.index), Str(html)));
+    utassert(len(d.Text()) > 0);
+    int n = (int)strlen(html);
+    for (int start = 0; start < n; start++) {
+        for (int end = start + 1; end <= n; end++) {
+            utassert(d.None(start, end));
+        }
+    }
+    RfsFree(&d);
+}
+
+// custom_blocks_convert_whole. Rust parses with the block parser in the
+// NodeContext; the extensions here are the view's, so the view parses.
+static void CustomBlocksConvertWhole() {
+    const char* markdown = "before\n\n$TSLA.US\n\nafter";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownExtensions extensions;
+    extensions.BlockParser(ext, &ParseTicker);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+
+    gpui::RenderedText text = v.State()->RenderedText();
+    utassert(StrEq(text.AsStr(), StrL("before\n$TSLA.US\nafter\n")));
+    Span ticker = RfsNth(markdown, "$TSLA.US", 0);
+    Span range;
+    utassert(text.RangeForSource(ticker, &range) && range.start == 7 &&
+             range.end == 15);
+    // Part of the block's source converts the whole block.
+    utassert(
+        text.RangeForSource(Span{ticker.start + 1, ticker.start + 3}, &range) &&
+        range.start == 7 && range.end == 15);
+    utassert(text.RangeForSource(RfsNth(markdown, "re\n\n$T", 0), &range) &&
+             range.start == 4 && range.end == 15);
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
+// `leaf_nodes`: the blocks holding text, the way the index builder walks
+// them.
+static void RfsLeafNodes(const MdNode* n, Vec<const MdNode*>& leaves) {
+    for (const MdNode* c = n ? n->first : nullptr; c; c = c->next) {
+        switch (c->kind) {
+            case MdKind::Paragraph:
+            case MdKind::Heading:
+            case MdKind::Code:
+            case MdKind::Cell: {
+                int text = 0;
+                for (const MdRun* r = c->runFirst; r; r = r->next) {
+                    if (len(r->imgSrc) <= 0) {
+                        text += len(r->text);
+                    }
+                }
+                if (text > 0) {
+                    VecAppend(leaves, c);
+                }
+                break;
+            }
+            case MdKind::Custom:
+            case MdKind::Rule:
+                break;
+            default:
+                RfsLeafNodes(c, leaves);
+                break;
+        }
+    }
+}
+
+// assert_selections_round_trip: selecting any range of `markdown`'s rendered
+// text that starts and ends inside text, and converting the source range the
+// selection reports, gives the selected range back.
+//
+// The selection's source range comes from MdSelectedSourceRange, which maps
+// the other way with code of its own, so the two check each other.
+static void AssertSelectionsRoundTrip(const char* markdown) {
+    RfsDoc d = RfsParse(markdown);
+    Str text = d.Text();
+    int mapCount = 0;
+    const SourceSegment* map = gpui::RenderedIndexSourceMap(d.index, &mapCount);
+    // Only a character maps as a whole, or the characters one entity decodes
+    // to: a longer piece would widen every range inside it.
+    for (int i = 0; i < mapCount; i++) {
+        if (map[i].linear) {
+            continue;
+        }
+        int chars = 0;
+        for (int at = map[i].renderedStart; at < map[i].renderedEnd; at++) {
+            if (((uint8_t)text.s[at] & 0xc0) != 0x80) {
+                chars++;
+            }
+        }
+        utassert(chars == 1 || (markdown[map[i].sourceStart] == '&' &&
+                                markdown[map[i].sourceEnd - 1] == ';'));
+    }
+    Vec<const MdNode*> leaves;
+    RfsLeafNodes(d.doc, leaves);
+    int leafCount = gpui::RenderedIndexLeafCount(d.index);
+    utassert(len(leaves) == leafCount);
+    if (len(leaves) != leafCount) {
+        RfsFree(&d);
+        return;
+    }
+
+    // Every character boundary inside a leaf, as (leaf, offset in text).
+    struct Boundary {
+        int leaf = 0;
+        int offset = 0;
+    };
+    Vec<Boundary> boundaries;
+    for (int ix = 0; ix < leafCount; ix++) {
+        Span range = gpui::RenderedIndexLeafRange(d.index, ix);
+        for (int at = range.start; at <= range.end; at++) {
+            if (at == range.end || ((uint8_t)text.s[at] & 0xc0) != 0x80) {
+                VecAppend(boundaries, Boundary{ix, at});
+            }
+        }
+    }
+
+    bool ok = true;
+    for (int si = 0; si < len(boundaries) && ok; si++) {
+        int first = boundaries[si].leaf;
+        int start = boundaries[si].offset;
+        if (start == gpui::RenderedIndexLeafRange(d.index, first).end) {
+            continue;
+        }
+        for (int ei = si + 1; ei < len(boundaries) && ok; ei++) {
+            int last = boundaries[ei].leaf;
+            int end = boundaries[ei].offset;
+            if (end == gpui::RenderedIndexLeafRange(d.index, last).start ||
+                end <= start) {
+                continue;
+            }
+            SourceRangeSelection selected;
+            for (int ix = first; ix <= last; ix++) {
+                Span range = gpui::RenderedIndexLeafRange(d.index, ix);
+                int lo = std::max(start, range.start) - range.start;
+                int hi = std::min(end, range.end) - range.start;
+                selected.Merge(MdSelectedSourceRange(leaves[ix], lo, hi));
+            }
+            Span source;
+            // "selecting start..end maps to no source"
+            if (!selected.IntoRange(&source)) {
+                ok = false;
+                break;
+            }
+            // Characters that share their source, like the two an entity can
+            // decode to, are only selected together.
+            Span expected = {start, end};
+            for (int i = 0; i < mapCount; i++) {
+                if (!map[i].linear && map[i].renderedStart < end &&
+                    map[i].renderedEnd > start) {
+                    expected
+                        .start = std::min(expected.start, map[i].renderedStart);
+                    expected.end = std::max(expected.end, map[i].renderedEnd);
+                }
+            }
+            ok = d.RangeIs(source.start, source.end, expected.start,
+                           expected.end);
+        }
+    }
+    utassert(ok);
+    RfsFree(&d);
+}
+
+// selections_round_trip_through_source_ranges, over ROUND_TRIP_CORPUS.
+static void SelectionsRoundTripThroughSourceRanges() {
+    const char* corpus[] = {
+        "plain text",
+        "hello **world** and *em* and ~~del~~ and `code`",
+        "nested **bold *and italic* text** and ***both***",
+        "`` code with ` backtick `` then text",
+        "# Heading with **bold**",
+        "Setext heading\n===",
+        "> quoted **text**\n> continued\n>\n> second paragraph",
+        "- item one\n- item **two**\n  - nested *item*\n\n  continued item",
+        "3. third\n4. fourth",
+        "- [x] done\n- [ ] todo",
+        "| a | **b** |\n|---|:---:|\n| c `d` | e |\n| | f |",
+        "```rust\nlet x = 1;\n\nlet y = 2;\n```",
+        "    indented code\n    more",
+        "~~~\ntilde fence\n~~~",
+        "a [link](https://example.com \"title\") b",
+        "a [reference] b\n\n[reference]: https://example.com",
+        "<https://auto.example> and https://gfm.example",
+        "soft\nbreak\nlines",
+        "hard  \nbreak\\\nagain",
+        "trailing spaces   \nnext line",
+        "escapes \\* \\_ \\` \\\\ and \\[not a link\\]",
+        "\\*starts escaped and **\\*bold** and *\\_em*",
+        "entity &acE; as long as its characters",
+        "entities &amp; &lt; &#65; &#x42; &copy; end",
+        // "中文 **粗体** 和 `代码` 🎉 é and e\u{301}"
+        "\xE4\xB8\xAD\xE6\x96\x87 **\xE7\xB2\x97\xE4\xBD\x93** \xE5\x92\x8C "
+        "`\xE4\xBB\xA3\xE7\xA0\x81` \xF0\x9F\x8E\x89 \xC3\xA9 and e\xCC\x81",
+        "crlf\r\nlines\r\n\r\nnext paragraph",
+        "image ![alt](image.png) between",
+        "one\n\ntwo\n\n---\n\nthree",
+        "# Title\n\nIntro with **bold**.\n\n- first\n- second\n\n| a | b |\n"
+        "|---|---|\n| c | d |\n\n```\ncode\n```\n\n> quote",
+    };
+    for (const char* markdown : corpus) {
+        AssertSelectionsRoundTrip(markdown);
+    }
+}
+
+// state.rs `mod range_highlights`, the range_for_source half.
+
+static Span TswFind(Str haystack, const char* needle) {
+    int n = (int)strlen(needle);
+    for (int i = 0; i + n <= len(haystack); i++) {
+        if (memcmp(haystack.s + i, needle, (size_t)n) == 0) {
+            return Span{i, i + n};
+        }
+    }
+    utassert(false);
+    return Span{0, 0};
+}
+
+// Whether leaf `key` paints exactly `want`, in its own byte space.
+static bool TswPainted(const TswView& v, gpui::TextLeafKey key,
+                       const Span* want, int count) {
+    const gpui::RangeHighlightFrame* frame = v.State()->rangeHighlights;
+    int n = 0;
+    const gpui::RangeBackground* bgs =
+        frame ? frame->Backgrounds(key, &n) : nullptr;
+    if (n != count) {
+        return false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (bgs[i].range.start != want[i].start ||
+            bgs[i].range.end != want[i].end) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static RangeHighlightError TswSet(const TswView& v, const Span* ranges,
+                                  int count) {
+    RangeHighlight highlights[8];
+    for (int i = 0; i < count && i < 8; i++) {
+        highlights[i] =
+            RangeHighlight::New(ranges[i], HslaNew(0.15f, 1.f, 0.5f, 0.4f));
+    }
+    RangeHighlightError err =
+        v.State()->SetRangeHighlights(highlights, count, v.app, v.win);
+    TswFlush(v);
+    return err;
+}
+
+// Whether `source` of the view's current source converts to [ws, we).
+static bool TswConverts(const TswView& v, Span source, int ws, int we) {
+    Span got;
+    return v.State()->RenderedText().RangeForSource(source, &got) &&
+           got.start == ws && got.end == we;
+}
+
+// source_ranges_highlight_the_text_rendered_from_them.
+static void SourceRangesHighlightTheTextRenderedFromThem() {
+    const char* markdown =
+        "In Rust, we use `u128` to handle **larger** numbers\n\n| a | **b** "
+        "|\n|---|---|";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    gpui::RenderedText text = v.State()->RenderedText();
+    utassert(StrEq(text.Source(), Str(markdown)));
+    const char* needles[] = {"`u128` to handle **larger**", "**b**"};
+    Span ranges[2] = {};
+    for (int i = 0; i < 2; i++) {
+        utassert(text.RangeForSource(TswFind(Str(markdown), needles[i]),
+                                     &ranges[i]));
+    }
+    utassert(TswSet(v, ranges, 2).IsOk());
+    Span want = TswFind(StrL("In Rust, we use u128 to handle larger numbers"),
+                        "u128 to handle larger");
+    utassert(TswPainted(v, TextLeafKey::Block(0), &want, 1));
+    int table = TswFind(Str(markdown), "| a").start;
+    Span cell = {0, 1};
+    utassert(TswPainted(v, TextLeafKey::TableCell(table, 1), &cell, 1));
+    TswClose(&v);
+}
+
+// select_all_converts_to_every_rendered_character.
+static void SelectAllConvertsToEveryRenderedCharacter() {
+    TswView v =
+        TswOpen("# Title\n\nhello **world**\n\n- item", TswContainer::Window);
+    v.State()->SelectAll(v.win, v.app);
+    TswFlush(v);
+    gpui::RenderedText text = v.State()->RenderedText();
+    utassert(StrEq(text.AsStr(), StrL("Title\nhello world\nitem\n")));
+    Span source;
+    utassert(v.State()->SelectedSourceRange(v.win, &source));
+    // All but the separator after the last block.
+    utassert(TswConverts(v, source, 0, text.Len() - 1));
+    TswClose(&v);
+}
+
+// a_snapshot_converts_against_its_own_source. Rust's snapshot owns its
+// parsed document, so an earlier one keeps converting after the view moves
+// on; a snapshot here reads the view's index (RenderedText in text.h), so
+// that last part has nothing to pin.
+static void ASnapshotConvertsAgainstItsOwnSource() {
+    TswView v = TswOpen("first", TswContainer::Window);
+    gpui::RenderedText before = v.State()->RenderedText();
+    v.State()->PushStr(StrL("\n\nsecond **part**"), v.app, v.win);
+    Str source = StrL("first\n\nsecond **part**");
+    Span second = TswFind(source, "second **part**");
+
+    // The append is parsed in the background, so until it lands the view
+    // renders the source it had.
+    {
+        gpui::RenderedText text = v.State()->RenderedText();
+        utassert(text == before);
+        utassert(StrEq(text.Source(), StrL("first")));
+        Span none;
+        utassert(!text.RangeForSource(second, &none));
+    }
+    TswFlush(v);
+
+    utassert(TswConverts(v, second, 6, 17));
+    utassert(TswConverts(v, Span{0, 5}, 0, 5));
+    gpui::RenderedText text = v.State()->RenderedText();
+    utassert(text != before);
+    utassert(StrEq(text.Source(), source));
+    utassert(StrEq(Str(text.AsStr().s + 6, 11), StrL("second part")));
+    TswClose(&v);
+}
+
+// appended_blocks_convert_at_their_place_in_the_whole_source.
+static void AppendedBlocksConvertAtTheirPlaceInTheWholeSource() {
+    TswView v = TswOpen("first\n\nsecond", TswContainer::Window);
+    // The tail parse reparses from the last block, whose positions must
+    // still count from the start of the whole source. "**écho** end".
+    TswPushStr(v,
+               " more\n\n**\xC3\xA9"
+               "cho** end");
+    Str source = StrL(
+        "first\n\nsecond more\n\n**\xC3\xA9"
+        "cho** end");
+    gpui::RenderedText text = v.State()->RenderedText();
+    utassert(StrEq(text.Source(), source));
+    const char* needles[] = {"second more",
+                             "**\xC3\xA9"
+                             "cho**",
+                             "end"};
+    const char* wants[] = {"second more",
+                           "\xC3\xA9"
+                           "cho",
+                           "end"};
+    for (int i = 0; i < 3; i++) {
+        Span range;
+        utassert(text.RangeForSource(TswFind(source, needles[i]), &range));
+        utassert(
+            StrEq(Str(text.AsStr().s + range.start, range.end - range.start),
+                  Str(wants[i])));
+    }
+    TswClose(&v);
+}
+
+// a_background_parse_converts_once_it_lands.
+static void ABackgroundParseConvertsOnceItLands() {
+    App* app = TestAppNew();
+    StrBuilder sb;
+    for (int i = 0; i < kMaxSyncFullReplaceBytes / 4; i++) {
+        sb.Append(StrL("word "));
+    }
+    sb.Append(StrL("\n\n**tail**"));
+    Str markdown = sb.TakeStr();
+    Entity<gpui::TextViewState> state =
+        gpui::TextViewState::Markdown(app, markdown);
+    gpui::TextViewState* s = state.Get(app);
+    Span tail = TswFind(markdown, "**tail**");
+    {
+        gpui::RenderedText text = s->RenderedText();
+        Span none;
+        utassert(len(text.Source()) == 0);
+        utassert(text.IsEmpty());
+        utassert(!text.RangeForSource(tail, &none));
+    }
+    TestRunUntilParked(app);
+    {
+        gpui::RenderedText text = s->RenderedText();
+        utassert(StrEq(text.Source(), markdown));
+        Span range = {};
+        utassert(text.RangeForSource(tail, &range));
+        utassert(
+            StrEq(Str(text.AsStr().s + range.start, range.end - range.start),
+                  StrL("tail")));
+    }
+    StrFree(markdown);
+    TestAppFree(app);
+}
+
+// inline_objects_convert_whole_and_stay_unpainted.
+static void InlineObjectsConvertWholeAndStayUnpainted() {
+    const char* markdown = "x $ab$ y";
+    TswView v = TswOpen(markdown, TswContainer::Window);
+    Arena* ext = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrL("test");
+    plugin.parse = &ParseFormulaText;
+    plugin.renderInline = &RenderInlineMath;
+    MarkdownExtensions extensions;
+    extensions.Plugin(ext, plugin);
+    v.Root()->extensions = &extensions;
+    TswFlush(v);
+    TestRunUntilParked(v.app);
+    // "x ab y\n", where "ab" is the formula.
+    Span formula = TswFind(Str(markdown), "$ab$");
+    int n = (int)strlen(markdown);
+    utassert(TswConverts(v, formula, 2, 4));
+    utassert(TswConverts(v, Span{formula.start + 1, formula.start + 2}, 2, 4));
+    utassert(TswConverts(v, Span{0, n}, 0, 6));
+    utassert(TswConverts(v, TswFind(Str(markdown), "ab$ y"), 2, 6));
+
+    Span object = {2, 4};
+    utassert(TswSet(v, &object, 1).IsOk());
+    utassert(TswPainted(v, TextLeafKey::Block(0), nullptr, 0));
+    Span all = {0, 6};
+    utassert(TswSet(v, &all, 1).IsOk());
+    Span around[] = {{0, 2}, {4, 6}};
+    utassert(TswPainted(v, TextLeafKey::Block(0), around, 2));
+    TswClose(&v);
+    ArenaDelete(ext);
+}
+
+// a_dragged_selection_highlights_through_its_source_range.
+static void ADraggedSelectionHighlightsThroughItsSourceRange() {
+    const char* markdown = "hello **world** and `code` &amp; more";
+    TswView v = TswOpen(markdown, TswContainer::Narrow);
+    TestDraw(v.win);
+    Bounds bounds = v.Root()->divBounds;
+    // "the text wraps"
+    utassert(bounds.h > 30.f);
+    Point start = {bounds.x + 2.f, bounds.y + 4.f};
+    Point end = {bounds.x + bounds.w - 2.f, bounds.y + bounds.h - 4.f};
+    TestSimulateMouseDown(v.win, start);
+    TestDraw(v.win);
+    TestSimulateMouseMove(v.win, end, true);
+    TestDraw(v.win);
+    TestSimulateMouseUp(v.win, end);
+    TestDraw(v.win);
+
+    char buf[128];
+    int n = v.State()->SelectedText(v.win, buf, (int)sizeof(buf));
+    utassert(n > 0 && n < (int)sizeof(buf));
+    Str selected(buf, n > 0 ? n : 0);
+    while (len(selected) > 0 && selected.s[len(selected) - 1] == '\n') {
+        selected.len--;
+    }
+    Span source;
+    // "selection maps to source"
+    utassert(v.State()->SelectedSourceRange(v.win, &source));
+    gpui::RenderedText text = v.State()->RenderedText();
+    Span range = {};
+    // "source renders text"
+    utassert(text.RangeForSource(source, &range));
+    utassert(StrContains(selected, StrL("code &")));
+    utassert(StrEq(Str(text.AsStr().s + range.start, range.end - range.start),
+                   selected));
+    v.State()->ClearSelection(v.win, v.app);
+    utassert(TswSet(v, &range, 1).IsOk());
+    TestDraw(v.win);
+    utassert(TswPainted(v, TextLeafKey::Block(0), &range, 1));
+    TswClose(&v);
+}
+
+// html_views_convert_no_source.
+static void HtmlViewsConvertNoSource() {
+    App* app = TestAppNew();
+    Entity<gpui::TextViewState> html =
+        gpui::TextViewState::Html(app, StrL("<p>one</p>"));
+    TestRunUntilParked(app);
+    gpui::RenderedText text = html.Get(app)->RenderedText();
+    Span none;
+    utassert(StrEq(text.Source(), StrL("<p>one</p>")));
+    utassert(!text.RangeForSource(Span{0, 10}, &none));
+    utassert(!text.RangeForSource(Span{3, 6}, &none));
+    TestAppFree(app);
+}
+
 // ─── reveal_range ─────────────────────────────────────────────────────────
 
 // Where a scrollable view is scrolled to, as gpui::ListOffset: the block at
@@ -5225,6 +6061,29 @@ static void TestTextStateWindow() {
     SelectAllInSourceFormatReturnsSource();
     ParserRevisionReparsesSameNameInlineConfiguration();
     SetMarkdownExtensionsReparsesExistingText();
+    SourceRenderingNothingConvertsToNone();
+    DelimitersInARangeAddNothing();
+    RepeatedTextConvertsToTheOccurrenceAddressed();
+    FencedCodeBackslashesConvertIndividually();
+    LiteralCodeEscapesConvertIndividually();
+    ACharacterConvertsWhenAnyOfItsSourceIsInTheRange();
+    ADecodedEntityConvertsOnlyAsAWhole();
+    MultibyteTextConvertsOnCharacterBoundaries();
+    RangesThatAreNotRangesOfTheSourceConvertToNone();
+    ARangeAcrossBlocksHoldsTheSeparatorsBetweenThem();
+    CodeBlocksConvertTheirBody();
+    AnImageBetweenTextsKeepsTheRangeContiguous();
+    HtmlTextConvertsNothing();
+    CustomBlocksConvertWhole();
+    SelectionsRoundTripThroughSourceRanges();
+    SourceRangesHighlightTheTextRenderedFromThem();
+    SelectAllConvertsToEveryRenderedCharacter();
+    ASnapshotConvertsAgainstItsOwnSource();
+    AppendedBlocksConvertAtTheirPlaceInTheWholeSource();
+    ABackgroundParseConvertsOnceItLands();
+    InlineObjectsConvertWholeAndStayUnpainted();
+    ADraggedSelectionHighlightsThroughItsSourceRange();
+    HtmlViewsConvertNoSource();
     AScrollableViewScrollsToAnOffscreenBlock();
     AnAppendAddingBlocksKeepsTheScrollPositionInAWindow();
     AScrollableViewScrollsToALineInsideALongParagraph();
@@ -5334,6 +6193,8 @@ void TestTextView() {
     TestSourceRangeInlineCodeAndFootnote();
     TestSourceRangeCodeBlocks();
     TestSourceRangeEscapes();
+    TestSourceSegmentsKeepAnEntityAsLongAsItsCharactersAtomic();
+    TestSourceRangeLiteralBackslashes();
     TestSourceRangeImages();
     TestSourceRangeEntities();
     TestSourceRangeSoftBreaks();

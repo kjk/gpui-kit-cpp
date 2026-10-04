@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `ec6b87f5d9d04a38e9c9bbcf6e389a45a570afa4` (2026-10-01, text:
-Avoid remeasuring scroll-table column widths (#3318)). Upstream caches a scroll
-table's measured column widths on the parsed table; the window's text measure
-cache already answers a repeated measure here, and the scroll layout is already
-chosen before the wrap layout's length scan. The current update target is
-`4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `15da2830d05a54dcb23e4cda2be9fbfc41e45eeb` (2026-10-01,
+markdown: add source & range_for_source (#3281)). RenderedText gains Source and
+RangeForSource, which convert a Markdown source range into the rendered range a
+RangeHighlight takes through a source map the index builds from the parser's
+segments; SourceSegment carries a linear flag, so an entity as long as its
+characters maps whole and text after an escape maps character for character.
+The current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
@@ -76,9 +77,9 @@ chosen before the wrap layout's length scan. The current update target is
   fail, so there is no `parsed_error` (state.rs
   `set_text_extending_after_a_parse_error_parses_it_again` is not ported);
   and a streamed fade starts on the first frame that shows it.
-  `RenderedText::text` is borrowed from the view's index (Rust's snapshot
-  holds the parsed document), so read a fresh snapshot's text and only
-  compare old ones (`src/base/text.cpp`).
+  `RenderedText`'s text, source and `RangeForSource` read the view's index
+  (Rust's snapshot holds the parsed document), so read and convert through
+  a fresh snapshot and only compare old ones (`src/base/text.cpp`).
 - **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
   enclosing `gpui::list` to autoscroll during prepaint and checks the line
   against the content mask. Here the view marks the text the range starts in

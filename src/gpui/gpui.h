@@ -2128,13 +2128,18 @@ struct SelSource {
 };
 
 // text/node.rs SourceSegment: a stretch of rendered UTF-8 bytes paired with
-// the exact Markdown bytes it came from. A 1:1 pair maps byte for byte; any
+// the exact Markdown bytes it came from. A linear pair maps byte for byte; any
 // other (an escape, an entity, a soft break over its line prefix) maps whole.
 struct SourceSegment {
     int renderedStart = 0;
     int renderedEnd = 0;
     int sourceStart = 0;
     int sourceEnd = 0;
+    // Whether each rendered character came from a source character of the
+    // same length, so that part of the segment maps to part of its source.
+    // A decoded entity or an escape maps only as a whole, even an entity
+    // whose characters take as many bytes as its source, like `&acE;`.
+    bool linear = false;
 };
 
 // Where one selectable element's text sits in the source, for

@@ -697,7 +697,7 @@ bool SourceRangeSelection::IntoRange(Span* out) const {
 }
 
 static bool SegmentIsLinear(const SourceSegment& s) {
-    return s.renderedEnd - s.renderedStart == s.sourceEnd - s.sourceStart;
+    return s.linear;
 }
 
 static int MappedSourceStart(const SourceSegment& s, int renderedStart) {
@@ -1062,16 +1062,14 @@ static bool StartsWithBytes(Str s, const char* prefix, int n) {
     return len(s) >= n && memcmp(s.s, prefix, (size_t)n) == 0;
 }
 
-// compact_source_segments, as the left fold it is: a 1:1 pair that picks up
-// where the last 1:1 pair left off, in both texts, extends it.
+// push_source_segment: merges `s` into the previous segment when both are
+// linear and adjacent, so that a merged run still maps byte for byte. Any
+// other segment is kept whole on its own.
 static void PushSegment(Vec<SourceSegment>& out, SourceSegment s) {
     if (out.len > 0) {
         SourceSegment& prev = out[out.len - 1];
-        if (prev.renderedEnd == s.renderedStart &&
-            prev.sourceEnd == s.sourceStart &&
-            prev.renderedEnd - prev.renderedStart ==
-                prev.sourceEnd - prev.sourceStart &&
-            s.renderedEnd - s.renderedStart == s.sourceEnd - s.sourceStart) {
+        if (prev.linear && s.linear && prev.renderedEnd == s.renderedStart &&
+            prev.sourceEnd == s.sourceStart) {
             prev.renderedEnd = s.renderedEnd;
             prev.sourceEnd = s.sourceEnd;
             return;
@@ -1245,7 +1243,8 @@ int SourceCharOffset(Str raw, int rawCursor, const char* ch, int cl,
 // once, a run of blanks is measured once, only the final line may absorb the
 // rest, and a character missing from the source indexes it for the next.
 void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
-                           bool decodeEntities, Vec<SourceSegment>& out) {
+                           bool decodeEntities, bool decodeEscapes,
+                           Vec<SourceSegment>& out) {
     int rawCursor = 0;
     int r = 0;
     int whitespaceEnd = 0;
@@ -1278,6 +1277,9 @@ void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
             s.renderedEnd = r + len(decoded);
             s.sourceStart = sourceOffset + rawCursor;
             s.sourceEnd = sourceOffset + rawCursor + entityLen;
+            // Even when the decoded characters take as many bytes as the
+            // entity, as `∾̳` and `&acE;` do, they are not one for one.
+            s.linear = false;
             PushSegment(out, s);
             r += len(decoded);
             rawCursor += entityLen;
@@ -1314,7 +1316,8 @@ void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
             // A hard break is the whole of its syntax.
             relStart = 0;
             sourceLen = len(remainder);
-        } else if (len(remainder) > cl && remainder.s[0] == '\\' &&
+        } else if (decodeEscapes && len(remainder) > cl &&
+                   remainder.s[0] == '\\' &&
                    memcmp(remainder.s + 1, ch, (size_t)cl) == 0) {
             // An escape maps whole.
             relStart = 0;
@@ -1341,6 +1344,7 @@ void AlignedSourceSegments(Arena* a, Str raw, Str rendered, int sourceOffset,
         s.renderedEnd = rendEnd;
         s.sourceStart = sourceOffset + sourceStart;
         s.sourceEnd = sourceOffset + sourceEnd;
+        s.linear = sourceLen == cl;
         PushSegment(out, s);
         rawCursor = sourceEnd;
         r = rendEnd;
@@ -1367,10 +1371,34 @@ static void MdSourceSegments(MdBuild* b, const md::Node* n, Str rendered,
     if (!MdNodeSpan(b, n, &span) || !MdSourceSlice(b, span, &raw)) {
         return;
     }
-    AlignedSourceSegments(b->a, raw, rendered, span.start, true, out);
+    AlignedSourceSegments(b->a, raw, rendered, span.start, true, true, out);
+    // The text node of an escaped character starts after its backslash. The
+    // backslash and the character map as a whole; the rest of the run stays
+    // linear.
     if (includePrecedingEscape && span.start >= 1 &&
         b->source.s[span.start - 1] == '\\' && out.len > 0) {
+        int at = out[0].renderedStart;
+        int firstCharLen = 0;
+        if (at < len(rendered)) {
+            firstCharLen = Utf8CharLen((uint8_t)rendered.s[at]);
+            if (at + firstCharLen > len(rendered)) {
+                firstCharLen = len(rendered) - at;
+            }
+        }
+        if (out[0].linear &&
+            out[0].renderedEnd - out[0].renderedStart > firstCharLen) {
+            SourceSegment rest;
+            rest.renderedStart = out[0].renderedStart + firstCharLen;
+            rest.renderedEnd = out[0].renderedEnd;
+            rest.sourceStart = out[0].sourceStart + firstCharLen;
+            rest.sourceEnd = out[0].sourceEnd;
+            rest.linear = true;
+            out[0].renderedEnd = rest.renderedStart;
+            out[0].sourceEnd = rest.sourceStart;
+            VecInsertAt(out, 1, rest);
+        }
         out[0].sourceStart -= 1;
+        out[0].linear = false;
     }
 }
 
@@ -1431,7 +1459,7 @@ static void MdCodeSourceSegments(MdBuild* b, const md::Node* n, Str code,
     }
     AlignedSourceSegments(b->a,
                           Str((char*)raw.s + bodyStart, bodyEnd - bodyStart),
-                          code, span.start + bodyStart, false, out);
+                          code, span.start + bodyStart, false, false, out);
 }
 
 // A node's strings are ArenaStr — an offset into the arena the tree was
@@ -4058,12 +4086,20 @@ struct RenderedIndex {
     Vec<Span> objects;
     // Where the text of each top-level block sits, in document order.
     Vec<Span> blocks;
+    // Where the pieces of `text` came from in the source, with the rendered
+    // half in offsets of `text`, in the order of `text`. Text the parser
+    // recorded no source position for is in none.
+    Vec<SourceSegment> sourceMap;
 
     ~RenderedIndex() {
         StrFree(text);
         StrFree(source);
     }
 };
+
+static bool RenderedCharBoundary(Str s, int at) {
+    return at == len(s) || (at < len(s) && ((uint8_t)s.s[at] & 0xc0) != 0x80);
+}
 
 // paragraph_source_end: where the source of a paragraph's text ends, or -1.
 static int MdParagraphSourceEnd(const MdNode* n) {
@@ -4080,18 +4116,63 @@ static int MdParagraphSourceEnd(const MdNode* n) {
 }
 
 // IndexBuilder: builds the rendered text the way BlockNode::text does,
-// recording each leaf as it goes.
+// recording each leaf, and where its text came from in the source, as it
+// goes.
 struct RenderedIndexBuilder {
     StrBuilder text;
     RenderedIndex* index = nullptr;
+
+    // Records `segments` of `piece`, which is about to be pushed at `offset`.
+    //
+    // A segment that is empty or does not address `piece` maps nothing and is
+    // left out, so a bad one cannot map a range to text it did not render.
+    void PushSourceSegments(int offset, Str piece,
+                            const SourceSegment* segments, int count) {
+        for (int i = 0; i < count; i++) {
+            SourceSegment s = segments[i];
+            if (s.renderedStart >= s.renderedEnd ||
+                s.sourceStart >= s.sourceEnd || s.renderedStart < 0 ||
+                s.renderedEnd > len(piece) ||
+                !RenderedCharBoundary(piece, s.renderedStart) ||
+                !RenderedCharBoundary(piece, s.renderedEnd)) {
+                continue;
+            }
+            s.renderedStart += offset;
+            s.renderedEnd += offset;
+            VecAppend(index->sourceMap, s);
+        }
+    }
+
+    // Records that all of `piece`, an object about to be pushed at `offset`,
+    // was rendered from the node's source range, which maps only as a whole.
+    void PushObjectSource(int offset, Str piece, const MarkdownNode& node) {
+        if (!node.hasSpan) {
+            return;
+        }
+        SourceSegment whole;
+        whole.renderedEnd = len(piece);
+        whole.sourceStart = node.span.start;
+        whole.sourceEnd = node.span.end;
+        whole.linear = false;
+        PushSourceSegments(offset, piece, &whole, 1);
+    }
 
     void PushLeaf(const MdNode* n, bool withObjects, int rowSourceEnd) {
         int start = len(text);
         int objFirst = len(index->objects);
         for (const MdRun* r = n->runFirst; r; r = r->next) {
+            if (len(r->imgSrc) > 0) {
+                // InlineNode::image: an image run's text is its alt, which
+                // is no part of the rendered text.
+                continue;
+            }
             if (withObjects && r->hasCustom) {
                 int at = len(text) - start;
                 VecAppend(index->objects, Span{at, at + len(r->text)});
+                PushObjectSource(len(text), r->text, r->custom);
+            } else {
+                PushSourceSegments(len(text), r->text, r->segments,
+                                   r->segmentCount);
             }
             text.Append(r->text);
         }
@@ -4155,6 +4236,7 @@ struct RenderedIndexBuilder {
                 PushTable(n);
                 break;
             case MdKind::Custom:
+                PushObjectSource(len(text), n->custom.text, n->custom);
                 text.Append(n->custom.text);
                 break;
             case MdKind::Row:
@@ -4190,8 +4272,71 @@ Str RenderedIndexText(const RenderedIndex* index) {
     return index ? index->text : Str{};
 }
 
-static bool RenderedCharBoundary(Str s, int at) {
-    return at == len(s) || (at < len(s) && ((uint8_t)s.s[at] & 0xc0) != 0x80);
+Str RenderedIndexSource(const RenderedIndex* index) {
+    return index ? index->source : Str{};
+}
+
+int RenderedIndexLeafCount(const RenderedIndex* index) {
+    return index ? len(index->leaves) : 0;
+}
+
+Span RenderedIndexLeafRange(const RenderedIndex* index, int ix) {
+    return index->leaves[ix].range;
+}
+
+const SourceSegment* RenderedIndexSourceMap(const RenderedIndex* index,
+                                            int* count) {
+    *count = index ? len(index->sourceMap) : 0;
+    return index ? index->sourceMap.els : nullptr;
+}
+
+// RenderedText::range_for_source and RenderedIndex::range_for_source: the
+// smallest range of the text holding every character whose source overlaps
+// `source`.
+bool RenderedIndexRangeForSource(const RenderedIndex* index, Span source,
+                                 Span* out) {
+    if (!index || source.start < 0 || source.start >= source.end ||
+        source.end > len(index->source) ||
+        !RenderedCharBoundary(index->source, source.start) ||
+        !RenderedCharBoundary(index->source, source.end)) {
+        return false;
+    }
+    Str text = index->text;
+    bool found = false;
+    Span range = {};
+    for (int i = 0; i < len(index->sourceMap); i++) {
+        const SourceSegment& s = index->sourceMap[i];
+        if (!(s.sourceStart < source.end && s.sourceEnd > source.start)) {
+            continue;
+        }
+        Span piece = {s.renderedStart, s.renderedEnd};
+        if (s.linear) {
+            int start = std::max(s.sourceStart, source.start) - s.sourceStart;
+            int end = std::min(s.sourceEnd, source.end) - s.sourceStart;
+            // floor_char_boundary / ceil_char_boundary.
+            piece.start = std::min(s.renderedStart + start, len(text));
+            while (piece.start > 0 &&
+                   !RenderedCharBoundary(text, piece.start)) {
+                piece.start--;
+            }
+            piece.end = std::min(s.renderedStart + end, len(text));
+            while (piece.end < len(text) &&
+                   !RenderedCharBoundary(text, piece.end)) {
+                piece.end++;
+            }
+        }
+        if (!found) {
+            range = piece;
+            found = true;
+        } else {
+            range.start = std::min(range.start, piece.start);
+            range.end = std::max(range.end, piece.end);
+        }
+    }
+    if (found) {
+        *out = range;
+    }
+    return found;
 }
 
 // One resolved piece of a highlight: a leaf and the range of it painted.
@@ -4595,11 +4740,17 @@ RangeHighlightError TextViewState::RevealRange(Span range, App* app,
     return RangeHighlightError{};
 }
 
+bool RenderedText::RangeForSource(Span range, Span* out) const {
+    return RenderedIndexRangeForSource(index, range, out);
+}
+
 gpui::RenderedText TextViewState::RenderedText() const {
     gpui::RenderedText out;
     out.owner = self;
     out.revision = renderedRevision;
     out.text = RenderedIndexText(renderedIndex);
+    out.source = RenderedIndexSource(renderedIndex);
+    out.index = renderedIndex;
     return out;
 }
 
