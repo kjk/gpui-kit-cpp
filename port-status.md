@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `f6438b84de2d727f6a689fa0f9cf0f5915ce0584` (2026-10-02,
-website: Fix bold labels in Chinese numbered lists (#3342)). Upstream fixes
-bold labels in the Chinese website's numbered lists. The current update target
-is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `5d426c35ebdd4e11432aaf18bc6888c97cb70539` (2026-10-02,
+skills: Fix async and app startup examples that don't compile (#3345)).
+Upstream corrects the async and app-startup examples in its own agent skill
+references. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
