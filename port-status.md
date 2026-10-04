@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `21113cae1144e8a659ec32f9147819b6a5e79a08` (2026-10-01,
-text_view: Let fenced code blocks scroll inside a height cap (#3322)). A fenced
-code block opted in with TextView::CodeBlockScroll and capped by a max height
-scrolls inside itself with its own scrollbar and a vertical wheel mask, its
-actions pinned beside it; the test platform gains TestSimulateScrollWheel. The
-current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `b4c7cbdbbb57952c692c47ed13bbde9a06cdb7c5` (2026-10-01,
+shimmer: Keep the default highlight visible on foreground text in dark mode
+(#3328)). ShimmerText's default highlight mixes toward the opposite end of the
+theme when the text is within 0.1 lightness of its usual target, so foreground
+text in a dark theme shows a band. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 

@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "21113cae1144e8a659ec32f9147819b6a5e79a08",
+  sha: "b4c7cbdbbb57952c692c47ed13bbde9a06cdb7c5",
   date: "2026-10-01",
-  subject: "text_view: Let fenced code blocks scroll inside a height cap (#3322)",
+  subject: "shimmer: Keep the default highlight visible on foreground text in dark mode (#3328)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

@@ -152,6 +152,15 @@ static void TheHighlightStaysBrightInBothThemes() {
               powf(1.f - (float)dark.a / 255.f, (float)kShimmerLayerCount) -
               0.6f) < 0.02f);
 
+    // Text that already has the target's lightness sweeps toward the other
+    // end instead of getting a band in its own color.
+    Rgba onDarkForeground =
+        ShimmerHighlightColor(white, black, white, true, nullptr);
+    utassert(HslaFromRgba(white).l - HslaFromRgba(onDarkForeground).l > 0.3f);
+    Rgba onLightBackground =
+        ShimmerHighlightColor(white, white, black, false, nullptr);
+    utassert(HslaFromRgba(white).l - HslaFromRgba(onLightBackground).l > 0.3f);
+
     Rgba custom = ShimmerHighlightColor(black, white, black, false, &muted);
     utassert(custom.r == muted.r && custom.g == muted.g && custom.b == muted.b);
 

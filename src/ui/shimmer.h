@@ -11,6 +11,9 @@ namespace component {
 // SHIMMER_LAYER_COUNT / DEFAULT_SHIMMER_SPREAD.
 const int kShimmerLayerCount = 12;
 const float kDefaultShimmerSpread = 0.3f;
+// MIN_HIGHLIGHT_LIGHTNESS_GAP: the lightness difference below which a
+// highlight would be indistinguishable from the text.
+const float kMinHighlightLightnessGap = 0.1f;
 
 // ShimmerSpread: the highlight half-width, either a fraction of the text
 // width or a fixed length. Rust spells it as a payload enum; the POD port

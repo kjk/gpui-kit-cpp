@@ -115,10 +115,21 @@ float ShimmerLayerOpacity(bool dark) {
 
 Rgba ShimmerHighlightColor(Rgba text, Rgba background, Rgba foreground,
                            bool dark, const Rgba* overrideColor) {
-    Rgba highlight = overrideColor
-                         ? *overrideColor
-                         : (dark ? RgbaMixOklab(text, foreground, 0.2f)
-                                 : RgbaMixOklab(text, background, 0.2f));
+    Rgba highlight;
+    if (overrideColor) {
+        highlight = *overrideColor;
+    } else {
+        Rgba target = dark ? foreground : background;
+        Rgba opposite = dark ? background : foreground;
+        // Text already in the target's lightness (e.g. `foreground` text in
+        // a dark theme) would get a band in its own color; sweep toward the
+        // other end.
+        if (fabsf(HslaFromRgba(target).l - HslaFromRgba(text).l) <
+            kMinHighlightLightnessGap) {
+            target = opposite;
+        }
+        highlight = RgbaMixOklab(text, target, 0.2f);
+    }
     return RgbaOpacity(highlight, ShimmerLayerOpacity(dark));
 }
 
