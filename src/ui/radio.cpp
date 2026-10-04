@@ -200,7 +200,8 @@ El* RadioGroup::IntoEl() {
     }
     for (int i = 0; i < radios.len; i++) {
         Radio* r = radios[i];
-        r->Checked(selected == i)->Disabled(disabled);
+        // A radio disabled on its own stays disabled in an enabled group.
+        r->Checked(selected == i)->Disabled(disabled || r->disabled);
         if (hasSize) {
             r->WithSize(size);
         }

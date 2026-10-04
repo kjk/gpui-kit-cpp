@@ -131,6 +131,7 @@ void TestMarker();
 void TestMessage();
 void TestMessageScroller();
 void TestShimmer();
+void TestRadio();
 void TestKbd();
 void TestNativeMenu();
 void TestAppMenu();

@@ -17,7 +17,7 @@ type Entry = {
 };
 
 const root = resolve(import.meta.dir, "..");
-const pinnedGpuiComponent = "eb0cc1365a250328e97b4c3c371eb20002358994";
+const pinnedGpuiComponent = "1be572b87592eadd09a8516a6b2c24bb9a4fc0b3";
 
 const baseModules = `
 accordion actions alert_dialog animation async_util auto_scroll avatar button
@@ -315,7 +315,7 @@ const testTargets: Record<string, string[]> = {
   "ui/popover": ["tests/PopupTests.cpp"],
   "ui/progress": ["tests/AccessibilityTests.cpp"],
   "ui/questionnaire": ["tests/QuestionnaireTests.cpp"],
-  "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp"],
+  "ui/radio": ["tests/ClickTests.cpp", "tests/AccessibilityTests.cpp", "tests/RadioTests.cpp"],
   "ui/window_border": ["tests/WindowBorderTests.cpp"],
   "ui/toolbar": ["tests/ToolbarTests.cpp"],
   "ui/scroll": ["tests/ScrollbarTests.cpp", "tests/AutoScrollTests.cpp"],
