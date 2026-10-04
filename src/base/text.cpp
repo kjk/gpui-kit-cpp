@@ -297,6 +297,11 @@ TextViewDefaults& TextViewDefaults::WithCodeBlockHighlighter(
     return *this;
 }
 
+TextViewDefaults& TextViewDefaults::WithInheritTextColor(bool inherit) {
+    inheritTextColor = inherit;
+    return *this;
+}
+
 void TextViewDefaults::Install(App* app) const {
     if (TextViewDefaults* slot = AppGlobalEnsure<TextViewDefaults>(app)) {
         *slot = *this;
@@ -430,6 +435,54 @@ static bool TextRgbaEq(Rgba a, Rgba b) {
     return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
 }
 
+// The perceptual (Oklab) lightness of `color`, from 0 (black) to 1 (white).
+static float OklabLightness(Rgba color) {
+    auto linear = [](float c) {
+        return c <= 0.04045f ? c / 12.92f : powf((c + 0.055f) / 1.055f, 2.4f);
+    };
+    float r = linear((float)color.r / 255.f);
+    float g = linear((float)color.g / 255.f);
+    float b = linear((float)color.b / 255.f);
+    float l = cbrtf(0.41222146f * r + 0.53633255f * g + 0.051445995f * b);
+    float m = cbrtf(0.2119035f * r + 0.6806995f * g + 0.10739696f * b);
+    float s = cbrtf(0.08830246f * r + 0.28171885f * g + 0.6299787f * b);
+    return 0.21045426f * l + 0.7936178f * m - 0.004072047f * s;
+}
+
+bool TextViewStyle::IsInvertedBy(Rgba color) const {
+    // INVERTED_LIGHTNESS_GAP.
+    const float kInvertedLightnessGap = 0.6f;
+    return fabsf(OklabLightness(color) - OklabLightness(foreground)) >
+           kInvertedLightnessGap;
+}
+
+TextViewStyle TextViewStyle::OnTextColor(Rgba color) const {
+    TextViewStyle style = *this;
+    style.WithForeground(color);
+    if (!IsInvertedBy(color)) {
+        return style;
+    }
+
+    Rgba codeBg = RgbaOpacity(color, 0.12f);
+    gpui::Style head = tableHead;
+    head.bg = Background(codeBg);
+    head.color = color;
+    gpui::Style code = inlineCode;
+    code.bg = Background(codeBg);
+    style.WithMutedForeground(RgbaOpacity(color, 0.7f))
+        .WithLink(color)
+        .WithSelection(RgbaOpacity(color, 0.25f))
+        .WithCodeBackground(codeBg)
+        .WithBorder(RgbaOpacity(color, 0.2f))
+        .WithInlineCode(code, inlineCodeFields | StyleFieldBg)
+        .WithTableHead(head, tableHeadFields | StyleFieldBg | StyleFieldColor)
+        .WithDark(!isDark);
+    // gpui::transparent_black().
+    style.tableBackground = Rgba{0, 0, 0, 0};
+    style.hasTableBackground = true;
+    return style;
+}
+
 static bool TextBackgroundEq(const Background& a, const Background& b) {
     return TextRgbaEq(a.color, b.color) &&
            TextRgbaEq(a.from.color, b.from.color) &&
@@ -500,6 +553,9 @@ bool TextViewStyle::Equals(const TextViewStyle& other) const {
         tableHeadFields != other.tableHeadFields ||
         tableCellFields != other.tableCellFields ||
         inlineCodeFields != other.inlineCodeFields || isDark != other.isDark ||
+        hasTableBackground != other.hasTableBackground ||
+        (hasTableBackground &&
+         !TextRgbaEq(tableBackground, other.tableBackground)) ||
         !StyleFieldsEqual(codeBlock, other.codeBlock, codeBlockFields) ||
         !StyleFieldsEqual(table, other.table, tableFields) ||
         !StyleFieldsEqual(tableHead, other.tableHead, tableHeadFields) ||
@@ -3453,7 +3509,7 @@ El* TextView::CodeBlock(MdNode* n) {
     // support, which is what let the renderer come down here.
     CodeBlockHighlighterFn highlighter = codeHighlighter;
     void* highlighterData = codeHighlighterData;
-    if (!highlighter) {
+    if (!highlighter && !onInvertedSurface) {
         TextViewDefaults defaults = TextViewDefaults::Global(cx->app);
         highlighter = defaults.codeBlockHighlighter;
         highlighterData = defaults.codeBlockHighlighterData;
@@ -3686,7 +3742,10 @@ El* TextView::ScrollTable(MdNode* n) {
     // node.rs paints the frame from the Base theme's surface and the style's
     // border; the radius arrives through `style.table()`, which is what the
     // themed façade fills in.
-    Rgba surface = base_theme::Theme::Global(cx->app).tokens.colors.surface;
+    Rgba surface = textViewStyle.hasTableBackground
+                       ? textViewStyle.tableBackground
+                       : base_theme::Theme::Global(cx->app)
+                             .tokens.colors.surface;
     PaintCtx* paint = cx->win ? &cx->win->paint : nullptr;
     int rows = 0;
     int nCols = 0;
@@ -3841,7 +3900,10 @@ El* TextView::Table(MdNode* n) {
         // node.rs MAX_LENGTH: one long cell must not starve the rest.
         kMaxLen = 150
     };
-    Rgba surface = base_theme::Theme::Global(cx->app).tokens.colors.surface;
+    Rgba surface = textViewStyle.hasTableBackground
+                       ? textViewStyle.tableBackground
+                       : base_theme::Theme::Global(cx->app)
+                             .tokens.colors.surface;
     int rows = 0;
     int nCols = 0;
     TableDimensions(n, &rows, &nCols);
@@ -5734,6 +5796,14 @@ El* TextView::IntoEl() {
         // Sizes named on the builder outlive the style swap: they are the
         // caller's, not the palette's.
         resolved.paragraphGap = textViewStyle.paragraphGap;
+        // Follow the text color the container sets for its surface, so rich
+        // text stays readable in a filled bubble or a selected row. The
+        // color is the one named on the view; TextViewDefaults says why.
+        if (defaults.inheritTextColor && (outerStyleFields & StyleFieldColor) &&
+            !TextRgbaEq(outerStyle.color, resolved.foreground)) {
+            onInvertedSurface = resolved.IsInvertedBy(outerStyle.color);
+            resolved = resolved.OnTextColor(outerStyle.color);
+        }
         textViewStyle = resolved;
     }
     if (!state.IsValid()) {

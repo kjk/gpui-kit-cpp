@@ -1422,6 +1422,106 @@ static void TestTextViewStyleIsReadableWithoutATheme() {
     utassert(resolved.fontSize == 20.f);
 }
 
+// style.rs text_color_of_a_matching_surface_only_replaces_the_body_text.
+static void TextColorOfAMatchingSurfaceOnlyReplacesTheBodyText() {
+    TextViewStyle style =
+        TextViewStyle::FromColors(ColorTokens::Light(), false);
+    Rgba destructive = ColorTokens::Light().destructive;
+
+    TextViewStyle adapted = style.OnTextColor(destructive);
+    utassert(SameTextViewColor(adapted.foreground, destructive));
+    utassert(SameTextViewColor(adapted.link, style.link));
+    utassert(SameTextViewColor(adapted.mutedForeground, style.mutedForeground));
+    utassert(SameTextViewColor(adapted.codeBackground, style.codeBackground));
+    utassert(!adapted.hasTableBackground);
+    utassert(!adapted.isDark);
+}
+
+// style.rs text_color_of_an_inverted_surface_derives_every_color_from_it.
+static void TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt() {
+    for (int dark = 0; dark < 2; dark++) {
+        ColorTokens colors = dark ? ColorTokens::Dark() : ColorTokens::Light();
+        TextViewStyle style = TextViewStyle::FromColors(colors, dark != 0);
+        Rgba text = colors.primaryForeground;
+
+        TextViewStyle adapted = style.OnTextColor(text);
+        utassert(SameTextViewColor(adapted.foreground, text));
+        utassert(SameTextViewColor(adapted.link, text));
+        utassert(SameTextViewColor(adapted.mutedForeground,
+                                   RgbaOpacity(text, 0.7f)));
+        utassert(SameTextViewColor(adapted.codeBackground,
+                                   RgbaOpacity(text, 0.12f)));
+        utassert(SameTextViewColor(adapted.InlineCodeBackground(),
+                                   RgbaOpacity(text, 0.12f)));
+        utassert(SameTextViewColor(adapted.border, RgbaOpacity(text, 0.2f)));
+        utassert(
+            SameTextViewColor(adapted.selection, RgbaOpacity(text, 0.25f)));
+        utassert(adapted.hasTableBackground && adapted.tableBackground.a == 0);
+        utassert((adapted.tableHeadFields & StyleFieldColor) &&
+                 SameTextViewColor(adapted.tableHead.color, text));
+        utassert(adapted.isDark == (dark == 0));
+    }
+}
+
+// text_view.rs text_view_follows_the_text_color_of_its_container. Rust's
+// view reads the color its container pushed on the window's text style; the
+// tree here is built child first, so the container's color is the one named
+// on the view (TextViewDefaults::WithInheritTextColor).
+struct FollowsTextColorRoot {
+    Entity<gpui::TextViewState> inherited = {};
+    Entity<gpui::TextViewState> explicitStyle = {};
+    Rgba surfaceText = {};
+
+    static El* Render(FollowsTextColorRoot* self, Ctx* cx) {
+        gpui::Style color;
+        color.color = self->surfaceText;
+        return Div(cx->a)
+            ->W(300)
+            ->Fg(ColorTokens::Light().foreground)
+            ->Child(Div(cx->a)
+                        ->Fg(self->surfaceText)
+                        ->Child(gpui::TextView::New(cx, self->inherited)
+                                    ->Refine(color, StyleFieldColor)
+                                    ->IntoEl())
+                        ->Child(gpui::TextView::New(cx, self->explicitStyle)
+                                    ->Refine(color, StyleFieldColor)
+                                    ->Style(TextViewStyle::Default())
+                                    ->IntoEl()));
+    }
+};
+
+static void TextViewFollowsTheTextColorOfItsContainer() {
+    ColorTokens colors = ColorTokens::Light();
+    App* app = TestAppNew();
+    TextViewDefaults::New()
+        .WithStyle(TextViewStyle::Default())
+        .WithInheritTextColor(true)
+        .Install(app);
+    utassert(TextViewDefaults::Global(app).InheritTextColor());
+    Entity<FollowsTextColorRoot> root = EntityNew<FollowsTextColorRoot>(app);
+    root.Get(app)->inherited =
+        gpui::TextViewState::Markdown(app, StrL("[link](https://a.b) `code`"));
+    root.Get(app)
+        ->explicitStyle = gpui::TextViewState::Markdown(app, StrL("text"));
+    root.Get(app)->surfaceText = colors.primaryForeground;
+    Window* win = TestWindowOpen(app, root);
+    TestRunUntilParked(app);
+    TestDraw(win);
+
+    const TextViewStyle& inherited =
+        root.Get(app)->inherited.Get(app)->textViewStyle;
+    utassert(SameTextViewColor(inherited.foreground, colors.primaryForeground));
+    utassert(SameTextViewColor(inherited.link, colors.primaryForeground));
+    utassert(inherited.isDark);
+
+    const TextViewStyle& explicitStyle =
+        root.Get(app)->explicitStyle.Get(app)->textViewStyle;
+    utassert(SameTextViewColor(explicitStyle.foreground, colors.foreground));
+    utassert(
+        SameTextViewColor(explicitStyle.link, TextViewStyle::Default().link));
+    TestAppFree(app);
+}
+
 // text_view.rs: text_view_constructors_are_selectable_by_default and
 // syntax_highlighting_is_opt_in.
 static int gTestHighlighterCalls = 0;
@@ -6270,6 +6370,9 @@ void TestTextView() {
     TestTextViewKeys();
     TestEqualBlockCountReplacementRemeasures();
     TestTextViewStyleIsReadableWithoutATheme();
+    TextColorOfAMatchingSurfaceOnlyReplacesTheBodyText();
+    TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt();
+    TextViewFollowsTheTextColorOfItsContainer();
     TestTextViewDefaultsAndOptInHighlighting();
     TestTextViewRootNamesItsForeground();
     TestMarkdownExtensionsParserConfiguration(a);

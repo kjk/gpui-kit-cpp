@@ -459,6 +459,11 @@ struct TextViewStyle {
     uint32_t tableCellFields = 0;
     gpui::Style inlineCode = {};
     uint32_t inlineCodeFields = 0;
+    // The table body background, or the theme surface when unset. Only
+    // OnTextColor sets it, to let a table on an inverted surface show that
+    // surface.
+    Rgba tableBackground = {};
+    bool hasTableBackground = false;
     bool isDark = false;
 
     // `TextViewStyle::default()` is a complete, readable style rather than an
@@ -490,6 +495,21 @@ struct TextViewStyle {
     TextViewStyle& WithTableCell(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithInlineCode(const gpui::Style& style, uint32_t fields);
     TextViewStyle& WithDark(bool value);
+    // `on_text_color`: this style adapted to body text drawn in `color`, the
+    // text color a container sets for its surface.
+    //
+    // The body text always takes `color`. When `color` is far from this
+    // style's foreground in lightness, the surface is inverted from the one
+    // this style was made for (a `primary` fill, say): the link, muted text,
+    // code, border and selection colors would vanish on it, so they are all
+    // derived from `color`, and `isDark` flips.
+    TextViewStyle OnTextColor(Rgba color) const;
+    // `is_inverted_by`: whether body text in `color` sits on a surface
+    // inverted from the one this style was made for.
+    //
+    // Mid-tone text such as a destructive red reads on either kind of
+    // surface, so only a lightness gap wider than that counts as inverted.
+    bool IsInvertedBy(Rgba color) const;
     bool Equals(const TextViewStyle& other) const;
 };
 
@@ -528,9 +548,27 @@ struct TextViewDefaults {
     bool hasStyle = false;
     CodeBlockHighlighterFn codeBlockHighlighter = nullptr;
     void* codeBlockHighlighterData = nullptr;
+    bool inheritTextColor = false;
 
     static TextViewDefaults New() { return {}; }
     TextViewDefaults& WithStyle(const TextViewStyle& value);
+    // Sets whether text views without an explicit TextView::Style follow the
+    // text color their container sets, default false.
+    //
+    // The body text takes that color. On a surface inverted from the page,
+    // such as a `primary` fill, links, muted text, code, borders and
+    // selection are derived from it too, and the installed syntax
+    // highlighter is left out because its colors are made for the page.
+    //
+    // Rust reads the color off `window.text_style()`, which an ancestor has
+    // already pushed by the time the view prepaints. The tree here is built
+    // child first and inherits its text color at layout, so the color a view
+    // can follow is the one named on the view itself
+    // (`Refine(style, StyleFieldColor)`): a container that fills its surface
+    // hands its text color to the view it holds.
+    TextViewDefaults& WithInheritTextColor(bool inherit);
+    // Whether text views follow the text color their container sets.
+    bool InheritTextColor() const { return inheritTextColor; }
     TextViewDefaults& WithCodeBlockHighlighter(CodeBlockHighlighterFn fn,
                                                void* data = nullptr);
     void Install(App* app) const;
@@ -1149,6 +1187,10 @@ struct TextView {
     // application's TextViewDefaults and then to the Base palette, which is
     // Rust's `Option<TextViewStyle>`.
     bool textViewStyleSet = false;
+    // The view follows a text color that inverts its style's surface, so the
+    // installed highlighter — whose colors are made for the page — is left
+    // out.
+    bool onInvertedSurface = false;
     MarkdownExtensions markdownExtensions = {};
     gpui::Style outerStyle = {};
     uint32_t outerStyleFields = 0;

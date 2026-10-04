@@ -357,8 +357,11 @@ void TextViewInstallDefaults(App* app) {
     if (!app) {
         return;
     }
+    // Component's Root sets the theme foreground, so every container that
+    // sets its own text color is one a text view should follow.
     TextViewDefaults::New()
         .WithStyle(UiTextViewStyle(ThemeNow(app)))
+        .WithInheritTextColor(true)
         .WithCodeBlockHighlighter(&UiCodeBlockHighlighter, app)
         .Install(app);
 }

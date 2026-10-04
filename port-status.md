@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `b4c7cbdbbb57952c692c47ed13bbde9a06cdb7c5` (2026-10-01,
-shimmer: Keep the default highlight visible on foreground text in dark mode
-(#3328)). ShimmerText's default highlight mixes toward the opposite end of the
-theme when the text is within 0.1 lightness of its usual target, so foreground
-text in a dark theme shows a band. The current update target is
+Processed through `0b8a6534b0f8bde36e57a83cc28fdf06d6cc356e` (2026-10-01,
+text_view: Follow the container's text color so rich text reads in filled
+bubbles (#3329)). TextViewStyle gains OnTextColor and IsInvertedBy and
+TextViewDefaults gains WithInheritTextColor, which Component turns on: a view
+without an explicit style takes the text color named on it, and on an inverted
+surface derives its link, muted, code, border, selection and table colors from
+it and leaves the installed highlighter out. The current update target is
 `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
@@ -79,6 +81,13 @@ text in a dark theme shows a band. The current update target is
   `RenderedText`'s text, source and `RangeForSource` read the view's index
   (Rust's snapshot holds the parsed document), so read and convert through
   a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **A TextView follows the text color named on it, not an ancestor's.**
+  Rust's view reads `window.text_style().color`, which a `Bubble` or any
+  other container has pushed by the time the view prepaints. The tree here
+  is built child first and inherits its text color at layout, so with
+  `TextViewDefaults::WithInheritTextColor` the color a view adapts to is its
+  own (`TextView::Refine(style, StyleFieldColor)`); a container that fills
+  its surface has to hand its text color to the view it holds.
 - **A TextView's scroll layouts are flags, not `overflow` on a refinement.**
   Rust opts a table into horizontal scrolling with `overflow.x: Scroll` on
   `style.table` and a code block into vertical scrolling with `overflow.y:
