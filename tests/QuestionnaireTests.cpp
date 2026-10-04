@@ -819,6 +819,415 @@ static void InvalidErrorProjectsAlertRole() {
               "Choose an answer to continue."));
 }
 
+// ─── choose ───────────────────────────────────────────────────────────────
+//
+// state.rs's ChooseHarness tests and components.rs's. A chosen single answer
+// confirms on a timer, so these run on the test platform, whose clock a test
+// moves; the fixtures above have no clock to advance.
+
+namespace {
+
+struct QBlank {
+    static El* Render(QBlank*, Ctx* cx) { return Div(cx->a); }
+};
+
+bool NotRejected(const QuestionnaireValidationContext* context, Str* error) {
+    if (!context->answer.HasChoice(StrL("rejected"))) {
+        return true;
+    }
+    *error = StrL("Pick another answer");
+    return false;
+}
+
+// CHOICE_CONFIRM_DELAY.
+const double kHoldMs = 150;
+
+// state.rs ChooseHarness: two single-answer items around a multiple-answer
+// one; `rejected` fails validation on the first item.
+struct QChoose {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Arena* a = nullptr;
+    Ctx cx = {};
+    InputState input;
+    Entity<QuestionnaireState> state = {};
+    Entity<QEvents> events = {};
+    bool wasReduced = false;
+
+    QChoose() {
+        wasReduced = MotionReduced();
+        MotionSetReduced(false);
+        app = TestAppNew();
+        win = TestWindowOpen(app, EntityNew<QBlank>(app));
+        a = ArenaNew();
+        cx = {app, win, a, {}};
+        QuestionnaireItemDefinition items[] = {
+            QuestionnaireItemDefinition::New(StrL("first"), StrL("First"))
+                .WithChoice(Choice("a", "A"))
+                .WithChoice(Choice("b", "B"))
+                .WithChoice(Choice("rejected", "Rejected"))
+                .WithChoice(Choice("off", "Off").WithDisabled(true))
+                .WithInput(
+                    QuestionnaireInputDefinition::New(&input, StrL("Other")))
+                .WithValidator(&NotRejected),
+            QuestionnaireItemDefinition::New(StrL("second"), StrL("Second"))
+                .WithMultiple(true)
+                .WithChoice(Choice("x", "X"))
+                .WithChoice(Choice("y", "Y")),
+            QuestionnaireItemDefinition::New(StrL("third"), StrL("Third"))
+                .WithChoice(Choice("c", "C"))
+                .WithChoice(Choice("d", "D")),
+        };
+        QuestionnaireStateNew(app, items, 3, &state);
+        events = EntityNewState<QEvents>(app);
+        SubscribeTo(app, state, events, &QEvents::OnEvent);
+    }
+
+    ~QChoose() {
+        if (win->input) {
+            InputBlur(win->input, app, win);
+        }
+        win->input = nullptr;
+        win->prevInput = nullptr;
+        TestAppFree(app);
+        ArenaDelete(a);
+        MotionSetReduced(wasReduced);
+    }
+
+    QuestionnaireState* S() { return state.Get(app); }
+
+    void Choose(const char* item, const char* value) {
+        utassert(!S()->Choose(Str(item), Str(value), &cx).IsError());
+    }
+
+    bool CurrentIs(const char* item) { return StrEq(S()->CurrentItem(), item); }
+
+    QuestionnaireAnswer Answer(const char* item) {
+        QuestionnaireAnswer answer;
+        S()->Answer(Str(item), a, &answer);
+        return answer;
+    }
+
+    void WaitOutHold() { TestAdvanceClock(app, kHoldMs); }
+
+    int Count(QuestionnaireEventKind kind) {
+        return events.Get(app)->Count(kind);
+    }
+};
+
+} // namespace
+
+// choosing_a_single_answer_holds_it_then_confirms.
+static void ChoosingASingleAnswerHoldsItThenConfirms() {
+    QChoose f;
+
+    f.Choose("first", "a");
+    TestRunUntilParked(f.app);
+    // "the choice is shown before moving"
+    utassert(f.CurrentIs("first"));
+    utassert(ChoicesAre(f.Answer("first"), "a"));
+    f.WaitOutHold();
+    utassert(f.CurrentIs("second"));
+
+    // Going back and choosing the selected answer again confirms at once.
+    f.S()->GoPrevious(&f.cx);
+    f.Choose("first", "a");
+    utassert(f.CurrentIs("second"));
+
+    // The last item submits once, even when activated twice in a row.
+    f.Choose("second", "x");
+    f.S()->GoNext(&f.cx);
+    utassert(f.CurrentIs("third"));
+    f.Choose("third", "c");
+    f.Choose("third", "c");
+    f.WaitOutHold();
+    utassert(f.Count(QuestionnaireEventKind::Submit) == 1);
+    utassert(f.Count(QuestionnaireEventKind::Completed) == 1);
+
+    // A second answer replaces the pending confirm instead of adding one.
+    f.Choose("third", "d");
+    f.Choose("third", "c");
+    f.WaitOutHold();
+    utassert(f.Count(QuestionnaireEventKind::Submit) == 2);
+    // Once the questionnaire settles, no timer is left running.
+    utassert(!f.S()->pendingConfirm && f.S()->pendingConfirmTimer == 0);
+}
+
+// arrows_multiple_choices_and_typing_never_confirm.
+static void ArrowsMultipleChoicesAndTypingNeverConfirm() {
+    QChoose f;
+
+    f.S()->FocusChoice(StrL("first"), StrL("a"), &f.cx);
+    utassert(f.S()->MoveCurrentRadio(1, &f.cx));
+    f.WaitOutHold();
+    // "an arrow moves the selection"
+    utassert(ChoicesAre(f.Answer("first"), "b"));
+    // "an arrow never confirms"
+    utassert(f.CurrentIs("first"));
+
+    // Typing after choosing drops the pending confirm.
+    f.Choose("first", "a");
+    InputReplaceAll(&f.input, f.app, f.win, StrL("draft"));
+    f.WaitOutHold();
+    utassert(f.CurrentIs("first"));
+    utassert(f.Answer("first").HasFreeform());
+
+    // A disabled choice ignores activation.
+    f.Choose("first", "off");
+    f.WaitOutHold();
+    utassert(f.CurrentIs("first"));
+
+    f.S()->GoNext(&f.cx);
+    f.Choose("second", "x");
+    f.Choose("second", "y");
+    f.Choose("second", "x");
+    f.WaitOutHold();
+    // "a multiple-answer item only toggles"
+    utassert(f.CurrentIs("second"));
+    utassert(ChoicesAre(f.Answer("second"), "y"));
+}
+
+// a_rejected_choice_stays_on_its_item.
+static void ARejectedChoiceStaysOnItsItem() {
+    QChoose f;
+
+    f.Choose("first", "rejected");
+    f.WaitOutHold();
+    utassert(f.CurrentIs("first"));
+    const QuestionnaireValidationError* error = f.S()->Error(StrL("first"));
+    utassert(error &&
+             error->kind == QuestionnaireValidationErrorKind::Message &&
+             StrEq(error->message, "Pick another answer"));
+    // "the invalid answer keeps focus"
+    utassert(StrEq(f.S()->FocusedCurrentChoice(f.win), "rejected"));
+    utassert(f.Count(QuestionnaireEventKind::CurrentItemChanged) == 0);
+}
+
+// reduced_motion_confirms_without_the_hold.
+static void ReducedMotionConfirmsWithoutTheHold() {
+    QChoose f;
+    MotionSetReduced(true);
+
+    f.Choose("first", "a");
+    // "the confirm waits for the answer change to be delivered"
+    utassert(f.CurrentIs("first"));
+    TestRunUntilParked(f.app);
+    utassert(f.CurrentIs("second"));
+}
+
+namespace {
+
+// components.rs ChooseHarness: a single-answer item, a multiple-answer item,
+// then a last single-answer item with a freeform input; each choice sits in
+// a wrapper the test can click — Rust finds it by its debug selector, this
+// reads the bounds the wrapper reported.
+struct QChooseView {
+    Entity<QuestionnaireState> state = {};
+    int submits = 0;
+    // first/alpha, first/beta, second/x, second/y, third/omega.
+    Bounds choices[5] = {};
+
+    static void OnEvent(QChooseView* self, Ctx*, const QuestionnaireEvent* ev) {
+        if (ev->kind == QuestionnaireEventKind::Submit) {
+            self->submits++;
+        }
+    }
+
+    El* Choice(Ctx* cx, int ix, const char* item, const char* value) {
+        return Div(cx->a)
+            ->BoundsOut(&choices[ix])
+            ->Child(component::QuestionnaireChoice::New(cx, state, Str(item),
+                                                        Str(value))
+                        ->IntoEl());
+    }
+
+    static El* Render(QChooseView* self, Ctx* cx) {
+        using namespace gpui::component;
+        Entity<QuestionnaireState> state = self->state;
+        return Questionnaire::New(cx, state)
+            ->Child(
+                QuestionnaireItem::New(cx, state, StrL("first"))
+                    ->Child(QuestionnaireChoices::New(cx, state, StrL("first"))
+                                ->Child(self->Choice(cx, 0, "first", "alpha"))
+                                ->Child(self->Choice(cx, 1, "first", "beta"))
+                                ->IntoEl())
+                    ->IntoEl())
+            ->Child(
+                QuestionnaireItem::New(cx, state, StrL("second"))
+                    ->Child(QuestionnaireChoices::New(cx, state, StrL("second"))
+                                ->Child(self->Choice(cx, 2, "second", "x"))
+                                ->Child(self->Choice(cx, 3, "second", "y"))
+                                ->IntoEl())
+                    ->IntoEl())
+            ->Child(
+                QuestionnaireItem::New(cx, state, StrL("third"))
+                    ->Child(QuestionnaireChoices::New(cx, state, StrL("third"))
+                                ->Child(self->Choice(cx, 4, "third", "omega"))
+                                ->IntoEl())
+                    ->Child(QuestionnaireInput::New(cx, state, StrL("third"))
+                                ->IntoEl())
+                    ->IntoEl())
+            ->IntoEl();
+    }
+};
+
+struct QChooseWindow {
+    App* app = nullptr;
+    Window* win = nullptr;
+    Arena* a = nullptr;
+    Ctx cx = {};
+    InputState input;
+    Entity<QChooseView> view = {};
+    Entity<QuestionnaireState> state = {};
+    bool wasReduced = false;
+
+    QChooseWindow() {
+        wasReduced = MotionReduced();
+        MotionSetReduced(false);
+        app = TestAppNew();
+        component::Init(app);
+        a = ArenaNew();
+        QuestionnaireItemDefinition items[] = {
+            QuestionnaireItemDefinition::New(StrL("first"), StrL("First"))
+                .WithChoice(Choice("alpha", "Alpha"))
+                .WithChoice(Choice("beta", "Beta")),
+            QuestionnaireItemDefinition::New(StrL("second"), StrL("Second"))
+                .WithMultiple(true)
+                .WithChoice(Choice("x", "X"))
+                .WithChoice(Choice("y", "Y")),
+            QuestionnaireItemDefinition::New(StrL("third"), StrL("Third"))
+                .WithChoice(Choice("omega", "Omega"))
+                .WithInput(
+                    QuestionnaireInputDefinition::New(&input, StrL("Other"))),
+        };
+        QuestionnaireStateNew(app, items, 3, &state);
+        state.Get(app)->WithShortcuts(QuestionnaireShortcutMode::Numbers);
+        view = EntityNew<QChooseView>(app);
+        view.Get(app)->state = state;
+        SubscribeTo(app, state, view, &QChooseView::OnEvent);
+        win = TestWindowOpen(app, view);
+        cx = {app, win, a, {}};
+        TestDraw(win);
+        FocusHandleFocus(win, S()->GetFocusHandle());
+    }
+
+    ~QChooseWindow() {
+        if (win->input) {
+            InputBlur(win->input, app, win);
+        }
+        win->input = nullptr;
+        win->prevInput = nullptr;
+        TestAppFree(app);
+        ArenaDelete(a);
+        MotionSetReduced(wasReduced);
+    }
+
+    QuestionnaireState* S() { return state.Get(app); }
+
+    // Past the hold a newly chosen single answer keeps before confirming.
+    void WaitOutHold() {
+        TestAdvanceClock(app, 200);
+        TestDraw(win);
+    }
+
+    void ClickChoice(int ix) {
+        TestDraw(win);
+        Bounds b = view.Get(app)->choices[ix];
+        // "choice rendered"
+        utassert(b.w > 0 && b.h > 0);
+        TestSimulateClick(win, Point{b.x + b.w / 2.f, b.y + b.h / 2.f});
+    }
+
+    void FocusChoice(const char* item, const char* value) {
+        FocusHandleFocus(win, *S()->ChoiceFocusHandle(Str(item), Str(value)));
+    }
+
+    bool CurrentIs(const char* item) { return StrEq(S()->CurrentItem(), item); }
+
+    QuestionnaireAnswer Answer(const char* item) {
+        QuestionnaireAnswer answer;
+        S()->Answer(Str(item), a, &answer);
+        return answer;
+    }
+};
+
+} // namespace
+
+// clicking_a_single_choice_shows_it_then_advances.
+static void ClickingASingleChoiceShowsItThenAdvances() {
+    QChooseWindow f;
+
+    f.ClickChoice(0);
+    TestRunUntilParked(f.app);
+    utassert(ChoicesAre(f.Answer("first"), "alpha"));
+    // "the selection paints first"
+    utassert(f.CurrentIs("first"));
+    f.WaitOutHold();
+    utassert(f.CurrentIs("second"));
+
+    f.ClickChoice(2);
+    f.WaitOutHold();
+    // "a checkbox only toggles"
+    utassert(f.CurrentIs("second"));
+    utassert(ChoicesAre(f.Answer("second"), "x"));
+
+    f.S()->GoNext(&f.cx);
+    f.S()->FocusInput(StrL("third"), &f.cx);
+    TestSimulateInput(f.win, StrL("draft"));
+    f.WaitOutHold();
+    // "typing never advances"
+    utassert(f.CurrentIs("third"));
+
+    f.ClickChoice(4);
+    f.ClickChoice(4);
+    f.WaitOutHold();
+    // "a double click on the last item submits once"
+    utassert(f.view.Get(f.app)->submits == 1);
+
+    // Choosing the selected answer again after going back confirms it.
+    utassert(!f.S()->SetCurrentItem(StrL("first"), &f.cx).IsError());
+    f.ClickChoice(0);
+    utassert(f.CurrentIs("second"));
+}
+
+// shortcuts_and_space_advance_while_arrows_only_move.
+static void ShortcutsAndSpaceAdvanceWhileArrowsOnlyMove() {
+    QChooseWindow f;
+
+    f.FocusChoice("first", "alpha");
+    TestSimulateKeystrokes(f.win, "down");
+    WindowKeyUp(f.win, KeyDown, false, false, false, false, false);
+    f.WaitOutHold();
+    utassert(ChoicesAre(f.Answer("first"), "beta"));
+    // "an arrow moves the selection only"
+    utassert(f.CurrentIs("first"));
+
+    TestSimulateKeystrokes(f.win, "1");
+    TestRunUntilParked(f.app);
+    utassert(ChoicesAre(f.Answer("first"), "alpha"));
+    utassert(f.CurrentIs("first"));
+    f.WaitOutHold();
+    utassert(f.CurrentIs("second"));
+
+    TestSimulateKeystrokes(f.win, "2");
+    f.WaitOutHold();
+    // "a multiple-answer shortcut toggles"
+    utassert(f.CurrentIs("second"));
+    utassert(ChoicesAre(f.Answer("second"), "y"));
+
+    f.S()->GoPrevious(&f.cx);
+    TestDraw(f.win);
+    f.FocusChoice("first", "beta");
+    // `press`: the key down and its release, which is what makes the click.
+    TestSimulateKeystrokes(f.win, "space");
+    WindowKeyUp(f.win, KeySpace, false, false, false, false, false);
+    TestFlushEffects(f.app);
+    f.WaitOutHold();
+    utassert(ChoicesAre(f.Answer("first"), "beta"));
+    // "Space chooses and advances"
+    utassert(f.CurrentIs("second"));
+}
+
 void TestQuestionnaire() {
     TestSuite("questionnaire");
     SchemaRejectsDuplicateNamesAndInvalidSingleDefaults();
@@ -839,4 +1248,10 @@ void TestQuestionnaire() {
     FilledGroupInputKeepsTextEditingDirections();
     InvalidErrorProjectsAlertRole();
     DescriptionsAreAccessibleDescriptions();
+    ChoosingASingleAnswerHoldsItThenConfirms();
+    ArrowsMultipleChoicesAndTypingNeverConfirm();
+    ARejectedChoiceStaysOnItsItem();
+    ReducedMotionConfirmsWithoutTheHold();
+    ClickingASingleChoiceShowsItThenAdvances();
+    ShortcutsAndSpaceAdvanceWhileArrowsOnlyMove();
 }

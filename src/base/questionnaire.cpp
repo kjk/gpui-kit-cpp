@@ -835,6 +835,23 @@ static void Emit(QuestionnaireState* s, Ctx* cx, QuestionnaireEvent* ev) {
     }
 }
 
+// CHOICE_CONFIRM_DELAY: how long a newly chosen single answer stays on
+// screen, selected, before the item confirms. Long enough to register the
+// selection, short enough not to read as a wait.
+static const int kChoiceConfirmDelayMs = 150;
+
+// `self.pending_confirm = None`.
+static void DropPendingConfirm(QuestionnaireState* s, Ctx* cx) {
+    s->pendingConfirm = false;
+    s->pendingConfirmGen++;
+    if (s->pendingConfirmTimer) {
+        if (cx && cx->win) {
+            WindowCancelTimer(cx->win, s->pendingConfirmTimer);
+        }
+        s->pendingConfirmTimer = 0;
+    }
+}
+
 bool QuestionnaireState::ActivateShortcut(Str key, Ctx* cx) {
     if (current < 0) {
         return false;
@@ -844,10 +861,7 @@ bool QuestionnaireState::ActivateShortcut(Str key, Ctx* cx) {
     if (len(choice) == 0) {
         return false;
     }
-    if (ActivateChoice(item, choice, cx).IsError()) {
-        return false;
-    }
-    return FocusChoice(item, choice, cx);
+    return !Choose(item, choice, cx).IsError();
 }
 
 QuestionnaireSchemaError QuestionnaireState::SetCurrentItem(Str name, Ctx* cx) {
@@ -856,6 +870,7 @@ QuestionnaireSchemaError QuestionnaireState::SetCurrentItem(Str name, Ctx* cx) {
         return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, name);
     }
     if (!runtime[ix].disabled) {
+        DropPendingConfirm(this, cx);
         current = ix;
         FocusCurrentItem(cx);
         NotifySelf(this, cx);
@@ -909,6 +924,7 @@ static void EmitAnswerChanged(QuestionnaireState* s, int ix, Ctx* cx) {
 }
 
 static void AnswerDidChange(QuestionnaireState* s, int ix, bool emit, Ctx* cx) {
+    DropPendingConfirm(s, cx);
     QuestionnaireItemRuntime& r = s->runtime[ix];
     if (r.validationAttempted) {
         ValidateItem(s, ix);
@@ -1072,6 +1088,7 @@ QuestionnaireSchemaError QuestionnaireState::SetItemDisabled(Str name,
         return SchemaOk();
     }
     runtime[ix].disabled = disabled;
+    DropPendingConfirm(this, cx);
     if (items[ix].hasInput && items[ix].input.state) {
         items[ix].input.state->disabled = disabled || runtime[ix].inputDisabled;
     }
@@ -1155,6 +1172,7 @@ void QuestionnaireState::Reset(Ctx* cx) {
         }
     }
     complete = false;
+    DropPendingConfirm(this, cx);
     current = ItemIxOpt(this, initialCurrent);
     if (current >= 0 && runtime[current].disabled) {
         current = FirstEnabledAfter(this, -1);
@@ -1194,6 +1212,76 @@ QuestionnaireSchemaError QuestionnaireState::ActivateChoice(Str item, Str value,
     return SchemaOk();
 }
 
+// schedule_confirm: confirms `ix` after the selection has had time to show.
+// The callback runs on the next turn of the event loop at the earliest,
+// after AnswerChanged subscribers have reacted (a host enabling a follow-up
+// item, say), and does nothing if another item became current meanwhile.
+static void ScheduleConfirm(QuestionnaireState* s, int ix, Ctx* cx) {
+    DropPendingConfirm(s, cx);
+    if (!cx || !cx->win || !s->self.IsValid()) {
+        // No window to wait in: there is no frame to show the selection in
+        // either, so the confirm runs now.
+        s->ConfirmCurrent(cx);
+        return;
+    }
+    s->pendingConfirm = true;
+    int64_t packed = ((int64_t)s->pendingConfirmGen << 32) | (uint32_t)ix;
+    Listener confirm =
+        ListenTo(s->self, &QuestionnaireState::OnPendingConfirm, packed);
+    if (MotionReduced()) {
+        WindowPost(cx->win, confirm);
+    } else {
+        s->pendingConfirmTimer =
+            WindowSetTimeout(cx->win, kChoiceConfirmDelayMs, confirm);
+    }
+}
+
+void QuestionnaireState::OnPendingConfirm(QuestionnaireState* self, Ctx* cx,
+                                          const TickEvent*, int64_t packed) {
+    uint32_t gen = (uint32_t)((uint64_t)packed >> 32);
+    int ix = (int)(uint32_t)packed;
+    if (!self->pendingConfirm || self->pendingConfirmGen != gen) {
+        return;
+    }
+    self->pendingConfirm = false;
+    self->pendingConfirmTimer = 0;
+    if (self->current == ix) {
+        self->ConfirmCurrent(cx);
+    }
+}
+
+QuestionnaireSchemaError QuestionnaireState::Choose(Str item, Str value,
+                                                    Ctx* cx) {
+    int ix = ItemIxOpt(this, item);
+    if (ix < 0) {
+        return SchemaError(QuestionnaireSchemaErrorKind::UnknownItem, item);
+    }
+    int c = ChoiceIxOpt(this, ix, value);
+    if (c < 0) {
+        return SchemaError(QuestionnaireSchemaErrorKind::UnknownChoice,
+                           items[ix].name, value);
+    }
+    if (runtime[ix].disabled || runtime[ix].choiceDisabled[c]) {
+        return SchemaOk();
+    }
+    Arena* tmp = GetTempArena();
+    QuestionnaireAnswer before = EffectiveAnswer(this, ix, tmp);
+    QuestionnaireSchemaError activated = ActivateChoice(item, value, cx);
+    if (activated.IsError()) {
+        return activated;
+    }
+    FocusChoice(item, value, cx);
+    if (items[ix].multiple || current != ix) {
+        return SchemaOk();
+    }
+    if (before == EffectiveAnswer(this, ix, tmp)) {
+        ConfirmCurrent(cx);
+    } else {
+        ScheduleConfirm(this, ix, cx);
+    }
+    return SchemaOk();
+}
+
 bool QuestionnaireState::ConfirmCurrent(Ctx* cx) {
     int ix = CurrentIx();
     if (ix < 0) {
@@ -1221,6 +1309,7 @@ static void ChangeCurrent(QuestionnaireState* s, int next, bool emit, Ctx* cx) {
     if (s->current == next) {
         return;
     }
+    DropPendingConfirm(s, cx);
     Str previous = s->current >= 0 ? s->items[s->current].name : Str{};
     s->current = next;
     s->FocusCurrentItem(cx);
@@ -1235,6 +1324,7 @@ static void ChangeCurrent(QuestionnaireState* s, int next, bool emit, Ctx* cx) {
 }
 
 bool QuestionnaireState::GoPrevious(Ctx* cx) {
+    DropPendingConfirm(this, cx);
     int ix = CurrentIx();
     if (ix <= 0) {
         return false;
@@ -1244,6 +1334,7 @@ bool QuestionnaireState::GoPrevious(Ctx* cx) {
 }
 
 bool QuestionnaireState::GoNext(Ctx* cx) {
+    DropPendingConfirm(this, cx);
     if (current < 0) {
         return false;
     }
@@ -1301,6 +1392,7 @@ static QuestionnaireSubmission SubmissionOf(const QuestionnaireState* s,
 }
 
 bool QuestionnaireState::Submit(Ctx* cx) {
+    DropPendingConfirm(this, cx);
     int firstInvalid = -1;
     for (int i = 0; i < nItems; i++) {
         if (runtime[i].disabled) {
@@ -1597,8 +1689,7 @@ static void ChoiceChange(QuestionnaireState* self, Ctx* cx, const ClickEvent*,
     if (!ChoiceAt(self, packed, &item, &value)) {
         return;
     }
-    self->ActivateChoice(item, value, cx);
-    self->FocusChoice(item, value, cx);
+    self->Choose(item, value, cx);
 }
 
 bool QuestionnaireChoiceControl::New(Ctx* cx, Entity<QuestionnaireState> state,
@@ -1635,11 +1726,15 @@ bool QuestionnaireChoiceControl::New(Ctx* cx, Entity<QuestionnaireState> state,
             choice.disabled, change, nullptr, nullptr,
             definition.accessibilityLabel, 0, true, focus);
     } else {
-        e = Radio::New(cx, id, choice.selected, choice.disabled, change);
+        // `on_change` would leave a checked radio inert, but choosing the
+        // selected answer again still confirms it, so the handler is the
+        // radio's `on_click`.
+        e = Radio::New(cx, id, choice.selected, choice.disabled, Listener{});
         e->AriaLabel(definition.accessibilityLabel);
         // Radio::track_focus, which Rust applies only to an enabled radio.
         if (!choice.disabled) {
             e->TrackFocus(focus);
+            e->OnClick(change);
         }
     }
     if (hasPosition) {

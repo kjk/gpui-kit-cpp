@@ -374,6 +374,13 @@ struct QuestionnaireState {
     QuestionnaireShortcutMode shortcutMode = QuestionnaireShortcutMode::Letters;
     bool hasShortcutMode = false;
     bool complete = false;
+    // The confirm a chosen single answer scheduled. Changing an answer or the
+    // current item, or confirming by any other path, drops it first. Rust
+    // holds the Task and drops it; here the generation is what a late
+    // callback checks, and the timer is cancelled so none is left running.
+    bool pendingConfirm = false;
+    uint32_t pendingConfirmGen = 0;
+    int pendingConfirmTimer = 0;
     FocusHandle focus = {};
     // cx.emit needs to know who is emitting; QuestionnaireStateNew stamps it.
     Entity<QuestionnaireState> self = {};
@@ -434,7 +441,25 @@ struct QuestionnaireState {
     QuestionnaireSchemaError SetExternalError(Str item, Str error, Ctx* cx);
     QuestionnaireSchemaError ClearExternalError(Str item, Ctx* cx);
     void Reset(Ctx* cx);
+    // Selects a choice, or toggles it on a multiple-answer item, without
+    // confirming the item. Arrow-key movement inside a radio group uses this;
+    // a person's click, Space, Enter or shortcut goes through Choose.
     QuestionnaireSchemaError ActivateChoice(Str item, Str value, Ctx* cx);
+    // Applies a person's activation of a choice: a click, Space or Enter on
+    // the focused choice, or its shortcut.
+    //
+    // A multiple-answer item only toggles the choice. A single-answer item
+    // selects it and then confirms the current item as ConfirmCurrent does:
+    // it moves to the next enabled item, or submits on the last one, unless
+    // validation fails. A choice that changes the answer stays selected on
+    // screen for a moment before the confirm runs, so the person sees what
+    // they picked; with reduced motion the confirm runs as soon as the
+    // answer change has been delivered. Choosing the selected answer again
+    // confirms at once. Disabled items and choices ignore activation.
+    //
+    // Arrow-key movement inside a radio group uses ActivateChoice and never
+    // confirms.
+    QuestionnaireSchemaError Choose(Str item, Str value, Ctx* cx);
     bool ConfirmCurrent(Ctx* cx);
     bool GoPrevious(Ctx* cx);
     bool GoNext(Ctx* cx);
@@ -452,6 +477,10 @@ struct QuestionnaireState {
     // the item's index.
     static void OnInputChange(QuestionnaireState* self, Ctx* cx,
                               const InputEvent* ev, int64_t itemIx);
+    // The scheduled confirm; the argument packs the generation it was
+    // scheduled under and the item it confirms.
+    static void OnPendingConfirm(QuestionnaireState* self, Ctx* cx,
+                                 const TickEvent* ev, int64_t packed);
 };
 
 // QuestionnaireState::new: validates the schema, copies it into the state
@@ -467,7 +496,9 @@ struct EventEmitter<QuestionnaireState, QuestionnaireEvent> {};
 // A multiple-answer item hands back a Checkbox and a single-answer item a
 // Radio, each already carrying its checked state, disabled state,
 // accessibility name, position in set, focus handle, confirm key and change
-// handler. The skin decides what the control looks like and what it contains.
+// handler. Activation goes through QuestionnaireState::Choose, so a Radio
+// confirms its item once chosen. The skin decides what the control looks like
+// and what it contains.
 struct QuestionnaireChoiceControl {
     enum class Kind : uint8_t {
         Checkbox,

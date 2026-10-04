@@ -16,10 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `5d426c35ebdd4e11432aaf18bc6888c97cb70539` (2026-10-02,
-skills: Fix async and app startup examples that don't compile (#3345)).
-Upstream corrects the async and app-startup examples in its own agent skill
-references. The current update target is
+Processed through `2188a9878b5920eceb41fcf82d032cdcd2088982` (2026-10-02,
+questionnaire: Confirm a single-choice item when a choice is chosen (#3350)).
+QuestionnaireState gains Choose, the activation path a choice's click, Space,
+Enter and shortcut go through: a single-answer item selects and then confirms,
+150 ms after an answer that changed (none with reduced motion) and at once for
+the answer already selected, with every other answer change, navigation, reset
+or confirm dropping the pending one. The current update target is
 `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
