@@ -1,5 +1,6 @@
 #include "ui/clipboard.h"
 #include "ui/button.h"
+#include "ui/i18n.h"
 
 namespace gpui {
 
@@ -48,6 +49,10 @@ Clipboard* Clipboard::Tooltip(Str t) {
     tooltipText = t;
     return this;
 }
+Clipboard* Clipboard::AccessibilityLabel(Str label) {
+    accessibilityLabel = label;
+    return this;
+}
 Clipboard* Clipboard::OnCopied(Listener fn) {
     onCopied = fn;
     return this;
@@ -82,6 +87,8 @@ El* Clipboard::IntoEl() {
     if (tooltipText.s) {
         btn->Tooltip(tooltipText);
     }
+    btn->AccessibilityLabel(accessibilityLabel.s ? accessibilityLabel
+                                                 : Tr("Copy"));
     if (!copied) {
         btn->OnClick(ListenTo(st, &ClipboardState::OnCopy));
     }

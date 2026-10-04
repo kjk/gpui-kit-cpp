@@ -107,6 +107,34 @@ static void StyledButtonsCanReplaceTheirVisibleAccessibleName() {
     FreeAccessibilityFrame(&f);
 }
 
+// crates/kit/tests/components.rs
+// clipboard_reports_default_and_explicit_accessibility_names: an icon-only
+// Clipboard needs a name without a caller-provided label.
+static void ClipboardReportsDefaultAndExplicitAccessibilityNames() {
+    AccessibilityFrame f = NewAccessibilityFrame();
+    component::Init(&f.app);
+
+    AccessibilityCollect(component::Clipboard::New(&f.cx, StrL("copy-key"))
+                             ->Value(StrL("sk-1234"))
+                             ->Tooltip(StrL("Copy"))
+                             ->AccessibilityLabel(StrL("Copy API key"))
+                             ->IntoEl(),
+                         &f.win->accessibility);
+    const AccessibilityNode* named =
+        RoleNode(f.win->accessibility, AccessibilityRole::Button);
+    utassert(named && base::StrEq(named->info.label, StrL("Copy API key")));
+
+    AccessibilityCollect(component::Clipboard::New(&f.cx, StrL("copy-plain"))
+                             ->Value(StrL("sk-1234"))
+                             ->Tooltip(StrL("Copy"))
+                             ->IntoEl(),
+                         &f.win->accessibility);
+    const AccessibilityNode* plain =
+        RoleNode(f.win->accessibility, AccessibilityRole::Button);
+    utassert(plain && base::StrEq(plain->info.label, StrL("Copy")));
+    FreeAccessibilityFrame(&f);
+}
+
 // checkbox.rs / color_picker.rs / radio.rs / switch.rs, mod tests:
 // an_explicit_accessibility_label_replaces_the_visible_one. The explicit name
 // wins over the visible label, and what is drawn does not change with it.
@@ -752,6 +780,7 @@ void TestAccessibility() {
     TheTreeSkipsVisualBoxesButKeepsSemanticParents();
     StyledButtonsCanReplaceTheirVisibleAccessibleName();
     AnExplicitAccessibilityLabelReplacesTheVisibleOne();
+    ClipboardReportsDefaultAndExplicitAccessibilityNames();
     ExplicitOnlyNamesReachTheAnnouncedControl();
     ExplicitAriaFieldsSurviveCollection();
     BaseControlsProjectTheirControlledState();

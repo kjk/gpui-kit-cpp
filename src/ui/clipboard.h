@@ -40,12 +40,19 @@ struct Clipboard {
     Str id = {};
     Str value = {};
     Str tooltipText = {};
+    Str accessibilityLabel = {};
     Listener onCopied;
     UiSize size = UiSize::XSmall;
 
     static Clipboard* New(Ctx* cx, Str id);
     Clipboard* Value(Str v);
     Clipboard* Tooltip(Str t);
+    // Set the name a screen reader announces. Defaults to the localized
+    // "Copy".
+    //
+    // The clipboard button shows only an icon, so it has no visible label to
+    // read, and its tooltip is a hint rather than a name.
+    Clipboard* AccessibilityLabel(Str label);
     Clipboard* OnCopied(Listener fn);
     Clipboard* WithSize(UiSize sizeValue);
     El* IntoEl();

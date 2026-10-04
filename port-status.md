@@ -16,10 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2c5162f8c5b0c7fcec066ed53125d304c632bfe2` (2026-10-03,
-website: Match onboarding dependencies to release snapshots (#3356)). Upstream
-matches the website's onboarding dependency versions to release snapshots. The
-current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `edd5d3a42a65bfb51dec22df1623177c7b6db909` (2026-10-03,
+clipboard: Add accessibility_label to name the icon button (#3354)). Clipboard
+gains AccessibilityLabel, the name a screen reader announces for its icon-only
+button, defaulting to the localized Copy. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
