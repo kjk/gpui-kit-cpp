@@ -339,6 +339,27 @@ static void AShapeKeepsTheColourItIsStrokedWith() {
     utassert(!FirstColor(plain.data.els, plain.data.len, &unused));
 }
 
+static void ShapePaintOverridesRootPaint() {
+    DrawOpsBuilder b;
+    utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\" fill=\"none\" "
+                               "stroke=\"currentColor\">"
+                               "<path d=\"M2 3 L4 5\" fill=\"#ff0000\" "
+                               "stroke=\"none\"/>"
+                               "<path d=\"M6 7 L8 9\" fill=\"none\" "
+                               "stroke=\"currentColor\"/></svg>"),
+                          &b));
+    utassert(HasOp(b.data.els, b.data.len, kOpFillPath));
+    utassert(HasOp(b.data.els, b.data.len, kOpStrokePath));
+
+    DrawOpsBuilder none;
+    utassert(SvgToDrawOps(StrL("<svg viewBox=\"0 0 24 24\" fill=\"none\" "
+                               "stroke=\"none\">"
+                               "<path d=\"M2 3 L4 5\"/></svg>"),
+                          &none));
+    utassert(!HasOp(none.data.els, none.data.len, kOpFillPath));
+    utassert(!HasOp(none.data.els, none.data.len, kOpStrokePath));
+}
+
 // The badges at the top of the story's README are their labels and nothing
 // else: three plates of colour and a word on each. Nothing under
 // assets/icons has a <text>, so a run of glyphs had no way through the
@@ -518,6 +539,7 @@ void TestDrawOps() {
     AGroupTransformMovesWhatIsInsideIt();
     AnEllipseIsDrawnAndIsNotAStadium();
     AShapeKeepsTheColourItIsStrokedWith();
+    ShapePaintOverridesRootPaint();
     ATextRunIsReadAndPlaced();
     ArcFlagsMayRunIntoTheNextNumber();
     GeneratedTableMatchesReader();

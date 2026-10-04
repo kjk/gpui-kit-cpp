@@ -36,6 +36,8 @@ struct SvgOp {
 struct SvgShape {
     int start = 0;
     int count = 0;
+    bool fillPath = true;
+    bool strokePath = false;
     bool hasFill = false;
     Rgba fill = {};
     // A shape may name the colour it is drawn *with* as well as the one it is
@@ -78,9 +80,9 @@ struct SvgIcon {
     // currentColor for both and is both.
     bool filled = true;
     bool stroked = false;
-    // Whether any shape named a colour. False is every Lucide icon, and the
-    // whole file is then one path in the caller's colour, as it always was.
-    bool hasOwnColors = false;
+    // Whether a shape overrides the root's fill or stroke. Without one, the
+    // whole file is one path in the caller's colour, as it always was.
+    bool hasShapePaint = false;
     // Whether any shape is a run of text. A file with one is a picture rather
     // than an icon whatever else it says, since the single-path encoding has
     // nowhere to put a string.
@@ -781,15 +783,23 @@ static void EndShape(SvgIcon* ic, int start, Str tag, const SvgMatrix& m) {
     SvgShape sh;
     sh.start = start;
     sh.count = ic->ops.len - start;
+    sh.fillPath = ic->filled;
+    sh.strokePath = ic->stroked;
     TempStr fill = GetAttrTemp(tag, "fill");
-    if (fill && ParseSvgPaint(ic, fill, &sh.fill)) {
-        sh.hasFill = true;
-        ic->hasOwnColors = true;
+    if (fill) {
+        ic->hasShapePaint = true;
+        sh.fillPath = !StrEqI(fill, "none");
+        if (sh.fillPath && ParseSvgPaint(ic, fill, &sh.fill)) {
+            sh.hasFill = true;
+        }
     }
     TempStr stroke = GetAttrTemp(tag, "stroke");
-    if (stroke && ParseSvgPaint(ic, stroke, &sh.stroke)) {
-        sh.hasStroke = true;
-        ic->hasOwnColors = true;
+    if (stroke) {
+        ic->hasShapePaint = true;
+        sh.strokePath = !StrEqI(stroke, "none");
+        if (sh.strokePath && ParseSvgPaint(ic, stroke, &sh.stroke)) {
+            sh.hasStroke = true;
+        }
     }
     VecAppend(ic->shapes, sh);
 }
@@ -967,7 +977,7 @@ static void AddTextRun(SvgIcon* ic, const SvgCtx& cur, const char* p,
     ic->hasText = true;
     // A string cannot be drawn by the single-path encoding, so the file goes
     // down the per-shape route whether or not anything named a colour.
-    ic->hasOwnColors = true;
+    ic->hasShapePaint = true;
 }
 
 static void ParseSvg(Str xml, SvgIcon* ic) {
@@ -987,7 +997,7 @@ static void ParseSvg(Str xml, SvgIcon* ic) {
     // every field it reads has to be put back here as well as declared there.
     ic->filled = true;
     ic->stroked = false;
-    ic->hasOwnColors = false;
+    ic->hasShapePaint = false;
     ic->hasText = false;
     VecReset(ic->gradients);
     if (!xml.s || len(xml) <= 0) {
@@ -1286,9 +1296,11 @@ static DrawOp PathOp(bool filled, bool stroked) {
 static void EncodeIcon(const SvgIcon* ic, DrawOpsBuilder* b) {
     b->ViewBox(ic->vbX, ic->vbY, ic->vbW, ic->vbH);
     b->StrokeWidth(ic->strokeW > 0 ? ic->strokeW : 2.f);
-    if (!ic->hasOwnColors) {
+    if (!ic->hasShapePaint) {
         EmitOps(b, ic, 0, ic->ops.len);
-        b->Op(PathOp(ic->filled, ic->stroked));
+        if (ic->filled || ic->stroked) {
+            b->Op(PathOp(ic->filled, ic->stroked));
+        }
         b->End();
         return;
     }
@@ -1305,28 +1317,29 @@ static void EncodeIcon(const SvgIcon* ic, DrawOpsBuilder* b) {
             }
             continue;
         }
-        if (sh.hasFill) {
-            b->Color(sh.fill);
+        if (sh.fillPath) {
+            if (sh.hasFill) {
+                b->Color(sh.fill);
+            }
             EmitOps(b, ic, sh.start, sh.start + sh.count);
             b->Op(kOpFillPath);
-            b->ColorReset();
+            if (sh.hasFill) {
+                b->ColorReset();
+            }
         }
         // A shape may be filled in one colour and drawn in another, and one
         // op carries one colour, so that is two passes over the same points.
         // kOpFillStrokePath is the single-colour case and cannot say this.
-        if (sh.hasStroke) {
-            b->Color(sh.stroke);
+        if (sh.strokePath) {
+            if (sh.hasStroke) {
+                b->Color(sh.stroke);
+            }
             EmitOps(b, ic, sh.start, sh.start + sh.count);
             b->Op(kOpStrokePath);
-            b->ColorReset();
+            if (sh.hasStroke) {
+                b->ColorReset();
+            }
         }
-        if (sh.hasFill || sh.hasStroke) {
-            continue;
-        }
-        // Named no colour of its own: the caller's, the way every shape in a
-        // plain icon is drawn.
-        EmitOps(b, ic, sh.start, sh.start + sh.count);
-        b->Op(PathOp(ic->filled, ic->stroked));
     }
     b->End();
 }

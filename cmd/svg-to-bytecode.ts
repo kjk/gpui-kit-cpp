@@ -60,7 +60,14 @@ const CUBIC = 2;
 const CLOSE = 3;
 
 type SvgOp = { cmd: number; x: number; y: number; x1: number; y1: number; x2: number; y2: number };
-type SvgShape = { start: number; count: number; fill: number | null; stroke: number | null };
+type SvgShape = {
+  start: number;
+  count: number;
+  fillPath: boolean;
+  strokePath: boolean;
+  fill: number | null;
+  stroke: number | null;
+};
 
 type SvgIcon = {
   vbX: number;
@@ -70,7 +77,7 @@ type SvgIcon = {
   strokeW: number;
   filled: boolean;
   stroked: boolean;
-  hasOwnColors: boolean;
+  hasShapePaint: boolean;
   ops: SvgOp[];
   shapes: SvgShape[];
 };
@@ -97,7 +104,7 @@ function newIcon(): SvgIcon {
     // variant (star-fill) says currentColor for both and is both.
     filled: true,
     stroked: false,
-    hasOwnColors: false,
+    hasShapePaint: false,
     ops: [],
     shapes: [],
   };
@@ -631,11 +638,17 @@ function endShape(ic: SvgIcon, start: number, tag: string, m: Mat): void {
   }
   const fillAttr = getAttr(tag, "fill");
   const fill = fillAttr === null ? null : parseSvgColor(fillAttr);
-  if (fill !== null) ic.hasOwnColors = true;
   const strokeAttr = getAttr(tag, "stroke");
   const stroke = strokeAttr === null ? null : parseSvgColor(strokeAttr);
-  if (stroke !== null) ic.hasOwnColors = true;
-  ic.shapes.push({ start, count: ic.ops.length - start, fill, stroke });
+  if (fillAttr !== null || strokeAttr !== null) ic.hasShapePaint = true;
+  ic.shapes.push({
+    start,
+    count: ic.ops.length - start,
+    fillPath: fillAttr === null ? ic.filled : fillAttr.toLowerCase() !== "none",
+    strokePath: strokeAttr === null ? ic.stroked : strokeAttr.toLowerCase() !== "none",
+    fill,
+    stroke,
+  });
 }
 
 function startsWithI(s: string, at: number, lit: string): boolean {
@@ -858,33 +871,33 @@ function encodeIcon(ic: SvgIcon): number[] {
   w.f(ic.vbH);
   w.op(OP_STROKE_WIDTH);
   w.f(ic.strokeW > 0 ? ic.strokeW : 2);
-  if (!ic.hasOwnColors) {
+  if (!ic.hasShapePaint) {
     emitOps(w, ic, 0, ic.ops.length);
-    w.op(pathOp(ic.filled, ic.stroked));
+    if (ic.filled || ic.stroked) w.op(pathOp(ic.filled, ic.stroked));
     w.op(OP_END);
     return w.bytes;
   }
   for (const sh of ic.shapes) {
-    if (sh.fill !== null) {
-      w.op(OP_COLOR);
-      w.u32(sh.fill);
+    if (sh.fillPath) {
+      if (sh.fill !== null) {
+        w.op(OP_COLOR);
+        w.u32(sh.fill);
+      }
       emitOps(w, ic, sh.start, sh.start + sh.count);
       w.op(OP_FILL_PATH);
-      w.op(OP_COLOR_RESET);
+      if (sh.fill !== null) w.op(OP_COLOR_RESET);
     }
     // A shape may be filled in one colour and drawn in another, and one op
     // carries one colour, so that is two passes over the same points.
-    if (sh.stroke !== null) {
-      w.op(OP_COLOR);
-      w.u32(sh.stroke);
+    if (sh.strokePath) {
+      if (sh.stroke !== null) {
+        w.op(OP_COLOR);
+        w.u32(sh.stroke);
+      }
       emitOps(w, ic, sh.start, sh.start + sh.count);
       w.op(OP_STROKE_PATH);
-      w.op(OP_COLOR_RESET);
+      if (sh.stroke !== null) w.op(OP_COLOR_RESET);
     }
-    if (sh.fill !== null || sh.stroke !== null) continue;
-    // Named no colour of its own: the caller's.
-    emitOps(w, ic, sh.start, sh.start + sh.count);
-    w.op(pathOp(ic.filled, ic.stroked));
   }
   w.op(OP_END);
   return w.bytes;
