@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0790ad3876ebe6b72ca0bf599db7f7d1718c6b61` (2026-10-02,
-speech: Add speech input (#3333)). Speech input lands as its portable half:
-SpeechState with its sinks and level meter, SpeechButton, SpeechWaveform, the
-Mic and Square icons, the Speech locale keys and the Speech story. The cpal
-Microphone, the macOS and Windows SystemRecognizer and examples/speech need
-platform seams this tree lacks and are recorded under Known gaps. The current
-update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `21252d8b3db8235e450ca966155cfaf4b6f076c1` (2026-10-02,
+input: Group IME rewrites of the typed character into one undo step (#3341)).
+An edit that rewrites the one character before a collapsed cursor, as the macOS
+Korean IME does on each keystroke, is recorded as typing and coalesces into the
+run that typed it, so the run undoes as one step. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 

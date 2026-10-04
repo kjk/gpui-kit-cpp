@@ -6591,6 +6591,63 @@ static void UndoManagerCompositionCancelLeavesNoEntry() {
     InputViewFree(&view);
 }
 
+// `state.replace_text_in_range(Some(start..end), text, ..)`. Rust's range is
+// in the UTF-16 offsets its platform input handler speaks; the engine here
+// takes bytes, so the callers below name the same characters in bytes.
+static void ViewRewrite(const InputView& v, int start, int end,
+                        const char* text) {
+    Selection range = {start, end};
+    InputReplaceTextInRange(v.input, v.app, v.win, &range, Str(text));
+}
+
+// state.rs test_undo_manager_ime_rewrites_of_typed_char_are_one_group: the
+// macOS Korean IME rewrites the character it just inserted. The text is
+// U+00E9 and a space, then the jamo and syllables of U+D55C U+AE00.
+static void UndoManagerImeRewritesOfTypedCharAreOneGroup() {
+    InputView view = InputViewBuild();
+    InputSetValue(view.input, StrL("\xC3\xA9 "));
+    SetSelectedRangeB(view, 3, 3);
+    // g k s r m f: U+314E -> U+D558 -> U+D55C, then U+3131 -> U+ADF8 ->
+    // U+AE00.
+    ViewTypeText(view, "\xE3\x85\x8E");
+    ViewRewrite(view, 3, 6, "\xED\x95\x98");
+    ViewRewrite(view, 3, 6, "\xED\x95\x9C");
+    ViewTypeText(view, "\xE3\x84\xB1");
+    ViewRewrite(view, 6, 9, "\xEA\xB7\xB8");
+    ViewRewrite(view, 6, 9, "\xEA\xB8\x80");
+    utassert(ViewValueIs(view, "\xC3\xA9 \xED\x95\x9C\xEA\xB8\x80"));
+    utassert(len(view.input->undo.undos) == 1);
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "\xC3\xA9 "));
+    utassert(ViewRangeIs(view, 3, 3));
+
+    RedoB(view);
+    utassert(ViewValueIs(view, "\xC3\xA9 \xED\x95\x9C\xEA\xB8\x80"));
+    utassert(ViewRangeIs(view, 9, 9));
+    Flush(view);
+    InputViewFree(&view);
+}
+
+// state.rs test_undo_manager_rewrite_after_cursor_movement_is_separate.
+static void UndoManagerRewriteAfterCursorMovementIsSeparate() {
+    InputView view = InputViewBuild();
+    ViewTypeText(view, "c");
+    ViewTypeText(view, "e");
+    ViewAct(view, InputAction::MoveLeft);
+    ViewAct(view, InputAction::MoveRight);
+    // U+00E9.
+    ViewRewrite(view, 1, 2, "\xC3\xA9");
+    utassert(ViewValueIs(view, "c\xC3\xA9"));
+
+    UndoB(view);
+    utassert(ViewValueIs(view, "ce"));
+    UndoB(view);
+    utassert(ViewValueIs(view, ""));
+    Flush(view);
+    InputViewFree(&view);
+}
+
 // state.rs test_undo_manager_selection_restored_by_undo_and_redo.
 static void UndoManagerSelectionRestoredByUndoAndRedo() {
     InputView view = InputViewBuild();
@@ -6750,6 +6807,8 @@ static void RunWindowTestsB() {
     UndoManagerConsecutiveCompositionsAreSeparateGroups();
     UndoManagerTypingAfterCompositionIsASeparateGroup();
     UndoManagerCompositionCancelLeavesNoEntry();
+    UndoManagerImeRewritesOfTypedCharAreOneGroup();
+    UndoManagerRewriteAfterCursorMovementIsSeparate();
     UndoManagerSelectionRestoredByUndoAndRedo();
     UndoManagerForwardDeleteRestoresCursor();
     UndoManagerSelectionMovementPreservesRedo();

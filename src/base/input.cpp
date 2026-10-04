@@ -4410,6 +4410,28 @@ static void ReplayTokens(InputState* s, int start, int end, int newLen,
     TokenDeltaFree(scratch);
 }
 
+// rewrites_typed_char: whether an edit rewrites the character before a
+// collapsed cursor, as the macOS Korean IME does on each keystroke instead of
+// marking text.
+static bool RewritesTypedChar(const InputState* s, Selection selection,
+                              Selection range, Str oldText, Str newText) {
+    auto hasNewline = [](Str text) {
+        for (int i = 0; i < len(text); i++) {
+            if (text.s[i] == '\n' || text.s[i] == '\r') {
+                return true;
+            }
+        }
+        return false;
+    };
+    int chars = 0;
+    for (int i = 0; i < len(oldText); i++) {
+        chars += ((uint8_t)oldText.s[i] & 0xC0) != 0x80 ? 1 : 0;
+    }
+    return !s->silentReplace && selection.IsEmpty() &&
+           selection.end == range.end && chars == 1 && !hasNewline(oldText) &&
+           !hasNewline(newText);
+}
+
 static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
                         bool hasIntent, EditIntent requested,
                         Selection selBefore, const Selection* selAfter) {
@@ -4432,6 +4454,7 @@ static void PushHistory(InputState* s, Str oldAll, Selection range, Str newText,
         for (int i = 0; typed && i < len(newText); i++) {
             typed = newText.s[i] != '\n' && newText.s[i] != '\r';
         }
+        typed = typed || RewritesTypedChar(s, selBefore, r, oldText, newText);
         intent = typed ? EditIntent::Typing : EditIntent::Atomic;
     }
     // A delete's "before" is where the caret stood, which is the far end of
@@ -9540,9 +9563,12 @@ static bool IsAdjacent(EditIntent intent, const Change& prev,
     };
     switch (intent) {
         case EditIntent::Typing:
-            return prev.oldRange.IsEmpty() && cur.oldRange.IsEmpty() &&
-                   !hasNewline(prev.newText) && !hasNewline(cur.newText) &&
-                   prev.newRange.end == cur.oldRange.start;
+            // A plain append starts where the run ends; an IME's rewrite of
+            // the character it just typed replaces the run's tail.
+            return prev.oldRange.IsEmpty() && !hasNewline(prev.newText) &&
+                   !hasNewline(cur.newText) &&
+                   prev.newRange.start <= cur.oldRange.start &&
+                   prev.newRange.end == cur.oldRange.end;
         case EditIntent::Backspace:
             return len(prev.newText) == 0 && len(cur.newText) == 0 &&
                    cur.oldRange.end == prev.oldRange.start;
@@ -9637,8 +9663,14 @@ static void PushBatch(UndoManager* m, UndoTransaction batch,
         if (intent == EditIntent::Typing && batch.len == 1 && last &&
             !last->tokenDelta && !batch.changes[0].tokenDelta) {
             Change* c = &batch.changes[0];
+            // The tail a rewrite replaces is truncated before the new text
+            // is appended; for a plain append there is nothing to cut.
+            int keep = c->oldRange.start - last->newRange.start;
+            keep = keep < 0 ? 0
+                            : (keep > len(last->newText) ? len(last->newText)
+                                                         : keep);
             StrBuilder sb;
-            sb.Append(last->newText);
+            sb.Append(Str(last->newText.s, keep));
             sb.Append(c->newText);
             StrFree(last->newText);
             last->newText = sb.TakeStr();
