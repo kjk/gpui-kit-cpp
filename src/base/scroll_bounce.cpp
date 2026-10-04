@@ -66,7 +66,7 @@ ScrollBounce* ScrollBounce::New(Ctx* cx, Str id, El* child) {
     out->cx = cx;
     out->id = id;
     out->child = child;
-    out->enabled = GPUI_OS_IOS || GPUI_OS_ANDROID;
+    out->enabled = base::PlatScrollBounce();
     return out;
 }
 

@@ -1,7 +1,5 @@
 #include "shell/process.h"
 
-#if !GPUI_OS_WINDOWS && !GPUI_OS_WASM
-
 #include <errno.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -207,17 +205,3 @@ bool ProcessRunBounded(Str command, const Str* args, int count,
 }
 
 } // namespace gpui::shell
-
-#elif GPUI_OS_WASM
-
-namespace gpui::shell {
-bool ProcessRunBounded(Str command, const Str*, int, ProcessCancellation*,
-                       ProcessOutput*, Str* error, const ProcessOptions*) {
-    if (error)
-        *error =
-            StrDup(fmt("running `%s` is unavailable in a browser", command));
-    return false;
-}
-} // namespace gpui::shell
-
-#endif

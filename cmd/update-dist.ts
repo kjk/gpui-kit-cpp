@@ -14,11 +14,15 @@
 // A source file belongs to a platform by suffix: _win.cpp, _linux.cpp,
 // _mac.cpp, _ios.cpp, _android.cpp, _wasm.cpp, _inotify.cpp for Linux and
 // Android, _mem_posix.cpp for hosted POSIX targets, and _posix.cpp for
-// every POSIX target. Each of those goes into gpui.cpp inside its own
+// every POSIX target including wasm. The sources themselves do not test
+// GPUI_OS_*. Each suffixed file goes into gpui.cpp inside its own
 // `#if GPUI_OS_*`, so <windows.h>, <X11/*> and <Cocoa/*> still never reach
 // the same translation unit — the preprocessor drops the halves that are
 // not this platform's before anything parses them. On macOS the whole file
 // is Objective-C++, because the mac half is.
+// filesystem_posix.cpp and process_posix.cpp are the exception to the wasm
+// half of _posix: their browser stubs are filesystem_wasm.cpp and
+// process_wasm.cpp, and the POSIX bodies call openat and fork.
 //
 // The ported crates' implementation-private headers (markdown's tokenizer,
 // taffy's compute internals, autocorrect's internal.h) are inlined behind
@@ -152,10 +156,34 @@ function filePlatforms(rel: string): Platform[] {
   if (/_mem_posix\.cpp$/.test(rel)) {
     return ["linux", "mac", "ios", "android"];
   }
+  // These two call openat and fork. The browser answers are the _wasm.cpp
+  // twins, so wasm must not compile the POSIX bodies.
+  if (/\/(filesystem|process)_posix\.cpp$/.test(rel)) {
+    return ["linux", "mac", "ios", "android"];
+  }
   if (/_posix\.cpp$/.test(rel)) {
     return ["linux", "mac", "ios", "android", "wasm"];
   }
   return [];
+}
+
+// A portable or platform .cpp selects its OS by suffix. A preprocessor test
+// on GPUI_OS_* in the source would be a second switch, and the amalgam's
+// guard would hide it from every other target's build.
+function assertNoCppOsSwitch(rels: string[]): void {
+  const bad: string[] = [];
+  const re = /^\s*#\s*(?:if|elif)\b.*\bGPUI_OS_/;
+  for (const rel of rels) {
+    const lines = readLf(rel).split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      if (re.test(lines[i])) bad.push(`${rel}:${i + 1}: ${lines[i].trim()}`);
+    }
+  }
+  if (bad.length > 0) {
+    throw new Error(
+      "src/**/*.cpp must not switch on GPUI_OS_*; put the body in a platform file:\n  " + bad.join("\n  "),
+    );
+  }
 }
 
 const osMacro: Record<Platform, string> = {
@@ -642,6 +670,7 @@ export function buildDist(opts: BuildDistOpts): BuildDistResult {
   const acCpps = allFoundCpps.filter((rel) => rel.startsWith("src/autocorrect/"));
   const headers = allHeaders.filter((rel) => !rel.startsWith("src/autocorrect/"));
   const foundCpps = allFoundCpps.filter((rel) => !rel.startsWith("src/autocorrect/"));
+  assertNoCppOsSwitch(foundCpps);
   const allCpps = foundCpps.filter((rel) => {
     if (markdown === "full" && rel.startsWith("src/markdown-mini/")) return false;
     if (markdown === "mini" && rel.startsWith("src/markdown/") && rel !== "src/markdown/mdast.cpp") {

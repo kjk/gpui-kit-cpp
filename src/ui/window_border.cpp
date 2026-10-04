@@ -26,7 +26,7 @@ Edges WindowPaddings(Window* window) {
         return {};
     }
     float shadow =
-        window->clientInset >= 0 ? window->clientInset : kWindowShadowSize;
+        window->clientInset >= 0 ? window->clientInset : WindowShadowSize();
     return WindowBorderInsets(shadow, window->tiling);
 }
 
@@ -35,7 +35,7 @@ Edges WindowContentInsets(Window* window) {
         return {};
     }
     float shadow =
-        window->clientInset >= 0 ? window->clientInset : kWindowShadowSize;
+        window->clientInset >= 0 ? window->clientInset : WindowShadowSize();
     Edges insets = WindowBorderInsets(shadow, window->tiling);
     const WindowTiling& tiling = window->tiling;
     if (!tiling.top) {

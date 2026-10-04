@@ -8,11 +8,9 @@ namespace component {
 
 // The separator between the parts: macOS runs them together, everything else
 // joins with a plus.
-#if GPUI_OS_MAC
-static const char* kKbdSeparator = "";
-#else
-static const char* kKbdSeparator = "+";
-#endif
+static const char* KbdSeparator() {
+    return base::PlatSecondaryIsCommand() ? "" : "+";
+}
 
 static void KbdAppend(char* out, int cap, int* len, const char* part) {
     for (const char* p = part; *p && *len + 1 < cap; p++) {
@@ -22,7 +20,7 @@ static void KbdAppend(char* out, int cap, int* len, const char* part) {
 
 static void KbdAppendSep(char* out, int cap, int* len) {
     if (*len > 0) {
-        KbdAppend(out, cap, len, kKbdSeparator);
+        KbdAppend(out, cap, len, KbdSeparator());
     }
 }
 
@@ -56,13 +54,9 @@ static const char* KbdKeyName(Str key) {
         if (!base::StrEq(key, kNamed[i].key)) {
             continue;
         }
-#if GPUI_OS_MAC
-        return kNamed[i].mac;
-#else
         // A key macOS names and nothing else does — Space — is left to the
         // capitalising path, which spells it the same way.
-        return kNamed[i].other;
-#endif
+        return base::PlatSecondaryIsCommand() ? kNamed[i].mac : kNamed[i].other;
     }
     return nullptr;
 }
@@ -74,37 +68,22 @@ int KbdFormat(Keystroke stroke, char* out, int cap) {
     }
     // The modifier order is the platform's: ⌃⌥⇧⌘ on macOS, and
     // Ctrl+Alt+Shift+Win everywhere else.
+    const bool mac = base::PlatSecondaryIsCommand();
     if (stroke.ctrl) {
         KbdAppendSep(out, cap, &len);
-#if GPUI_OS_MAC
-        KbdAppend(out, cap, &len, "\u2303");
-#else
-        KbdAppend(out, cap, &len, "Ctrl");
-#endif
+        KbdAppend(out, cap, &len, mac ? "\u2303" : "Ctrl");
     }
     if (stroke.alt) {
         KbdAppendSep(out, cap, &len);
-#if GPUI_OS_MAC
-        KbdAppend(out, cap, &len, "\u2325");
-#else
-        KbdAppend(out, cap, &len, "Alt");
-#endif
+        KbdAppend(out, cap, &len, mac ? "\u2325" : "Alt");
     }
     if (stroke.shift) {
         KbdAppendSep(out, cap, &len);
-#if GPUI_OS_MAC
-        KbdAppend(out, cap, &len, "\u21e7");
-#else
-        KbdAppend(out, cap, &len, "Shift");
-#endif
+        KbdAppend(out, cap, &len, mac ? "\u21e7" : "Shift");
     }
     if (stroke.platform) {
         KbdAppendSep(out, cap, &len);
-#if GPUI_OS_MAC
-        KbdAppend(out, cap, &len, "\u2318");
-#else
-        KbdAppend(out, cap, &len, "Win");
-#endif
+        KbdAppend(out, cap, &len, mac ? "\u2318" : "Win");
     }
 
     KbdAppendSep(out, cap, &len);
@@ -180,11 +159,11 @@ bool KeystrokeParse(Arena* a, Str source, Keystroke* out) {
             continue;
         }
         if (KeystrokePartIs(part, "secondary")) {
-#if GPUI_OS_MAC
-            k.platform = true;
-#else
-            k.ctrl = true;
-#endif
+            if (base::PlatSecondaryIsCommand()) {
+                k.platform = true;
+            } else {
+                k.ctrl = true;
+            }
             continue;
         }
         if (KeystrokePartIs(part, "cmd") || KeystrokePartIs(part, "super") ||

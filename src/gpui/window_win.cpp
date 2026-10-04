@@ -4,6 +4,7 @@
 
 #include "gpui/platform.h"
 #include "gpui/paint.h"
+#include "gpui/paintgpu.h"
 #include "gpui/accessibility_win.h"
 #include "sys/executor.h"
 
@@ -1668,6 +1669,30 @@ int AppRun(App* app) {
         app->exitCode = (int)msg.wParam;
     }
     return (int)msg.wParam;
+}
+
+void FrameBenchLogGpu() {
+    if (PaintGpuOn()) {
+        const gpuw::FrameStats& st = gpuw::LastFrameStats();
+        logf(
+            "frame-bench %s instances=%d draws=%d pathTris=%d "
+            "glyphsRasterized=%d",
+            PaintD3d12On() ? StrL("d3d12") : StrL("d3d11"), st.instances,
+            st.draws, st.pathTriangles, st.glyphsRasterized);
+    }
+}
+
+bool WindowTakePaintArg(Str arg) {
+    return WinPaintOptionsTakeArg(arg);
+}
+
+// Every desktop clipboard is read synchronously, so ClipboardGetItem is the
+// real read and there is nothing to fall back to.
+bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
+    (void)win;
+    (void)done;
+    (void)data;
+    return false;
 }
 
 } // namespace gpui

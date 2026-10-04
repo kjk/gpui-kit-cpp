@@ -1,7 +1,5 @@
 #include "shell/filesystem.h"
 
-#if !GPUI_OS_WINDOWS && !GPUI_OS_WASM
-
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -385,18 +383,3 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
 }
 
 } // namespace gpui::shell
-
-#elif GPUI_OS_WASM
-
-namespace gpui::shell {
-bool FsRun(FsOperation, Str root, Str relative, Str, bool, FsResult*,
-           Str* error) {
-    if (error)
-        *error = StrDup(
-            fmt("filesystem mutation `%s/%s` is unavailable in a browser", root,
-                relative));
-    return false;
-}
-} // namespace gpui::shell
-
-#endif

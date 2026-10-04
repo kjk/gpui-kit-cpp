@@ -1389,12 +1389,6 @@ void ThemeSyncBase(App* app) {
     component::TextViewInstallDefaults(app);
 }
 
-#if GPUI_OS_WINDOWS
-static const char kSep = '\\';
-#else
-static const char kSep = '/';
-#endif
-
 // A whole text file, or an empty Str. Reading a file is plain stdio here;
 // the asset loader's own reader answers for one relative path, and this walks
 // a directory it has already resolved.
@@ -2963,7 +2957,7 @@ static int ThemesDirLoadFiles(App* app, const char* path) {
         if (nameLen < 6 || !base::StrEqI(Str(name + nameLen - 5), ".json")) {
             continue;
         }
-        TempStr file = fmt("%s%c%s", Str(path), kSep, Str(name));
+        TempStr file = fmt("%s%c%s", Str(path), base::PlatPathSep(), Str(name));
         Str text = len(file) < kMaxPath ? ReadTextFile(file.s) : Str{};
         if (text.s) {
             added += ThemeRegistryLoadStr(app, text);

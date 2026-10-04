@@ -1,7 +1,5 @@
 #include "shell/process.h"
 
-#if GPUI_OS_WINDOWS
-
 #include <windows.h>
 
 namespace gpui::shell {
@@ -484,5 +482,3 @@ cleanup:
 }
 
 } // namespace gpui::shell
-
-#endif

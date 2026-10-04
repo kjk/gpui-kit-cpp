@@ -173,6 +173,26 @@ int PlatListDir(const char* dir, DirEntry* out, int max);
 int PlatCoreCount();
 bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes);
 
+// Facts a portable translation unit may ask. The definition lives in the
+// platform file that target compiles: base_win.cpp, base_posix.cpp for the
+// three path facts every non-Windows target shares, and one of
+// base_{linux,mac,wasm,ios,android}.cpp for the rest. Those definitions do
+// not test GPUI_OS_*.
+char PlatPathSep();
+bool PlatPathsCaseFold();
+bool PlatIsWindows();
+bool PlatSecondaryIsCommand();
+bool PlatShowsWindowControls();
+float PlatCaretWidth();
+bool PlatScrollBounce();
+const char* PlatMonoFontName();
+const char* PlatShellDataDir();
+const char* PlatShellPlatformName();
+bool PlatBlockSelectUsesControl();
+bool PlatScrollGestureLocks();
+bool PlatAsyncIo();
+float PlatWindowShadowSize();
+
 void* AllocZero(int count, int size);
 
 template <typename T>

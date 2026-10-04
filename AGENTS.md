@@ -83,11 +83,38 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    not destructed as a graph of C++ objects.
 5. **No exceptions, no RTTI.** COM uses HRESULT checks.
 6. **When unsure about a widget's look or numbers, read the Rust file.**
-7. **Portable by default.** `GPUI_OS_WINDOWS` / `_LINUX` / `_MAC` / `_IOS` /
-   `_ANDROID` / `_WASM` are for the handful of places where a single
-   expression differs. Anything
-   larger gets a portable signature in a shared header and one implementation
-   per platform. **Never call an OS API from a shared file.**
+7. **A `.cpp` under `src/` does not switch on the OS.** No `#if` or `#elif`
+   on `GPUI_OS_*` in a source file. The suffix is the switch, and the
+   platform file does not wrap itself:
+
+   - `*_win.cpp` — Windows only
+   - `*_wasm.cpp` — the browser only
+   - `*_linux.cpp` — Linux only
+   - `*_mac.cpp` — macOS only
+   - `*_ios.cpp` — iOS only
+   - `*_android.cpp` — Android only
+   - `*_posix.cpp` — Linux, macOS, iOS, Android **and** wasm. The body must
+     be valid on every one of those, wasm included. It is not a place for
+     `fork`, `openat` or an Apple-only call.
+   - `*_mem_posix.cpp` — hosted POSIX only: Linux, macOS, iOS, Android. Not
+     wasm, not Windows.
+   - `*_inotify.cpp` — Linux and Android.
+
+   A function whose body would have branched on the OS is split across those
+   files. A small fact (path separator, caret width, which modifier is
+   secondary) is a `Plat*` function declared in `base.h`, with one definition
+   in the platform file that target compiles — not a preprocessor test and
+   not a `GPUI_OS_*` ternary in a shared `.cpp`. Two POSIX bodies that wasm
+   cannot compile, `filesystem_posix.cpp` and `process_posix.cpp`, are kept
+   off the wasm set; their browser answers are `filesystem_wasm.cpp` and
+   `process_wasm.cpp`.
+
+   `cmd/update-dist.ts` wraps each suffixed source in `#if GPUI_OS_*` when it
+   builds amalgamated `gpui.cpp`, and it refuses a `src/**/*.cpp` that still
+   contains the switch. Headers may still `#if GPUI_OS_*` where a declaration
+   or an SDK include differs (`windows.h` versus pthreads, `ToCWstrTemp`, the
+   Windows paint types). `WIN_BACKEND_*` stays inside `*_win.cpp`. **Never
+   call an OS API from a shared file.**
 
 ## Non-goals
 
@@ -159,7 +186,7 @@ exactly one is 1. Seams:
 
 | Seam                               | Shared header          | Windows             | Linux                   | macOS               | iOS                  | Android                 | wasm                        |
 | ---------------------------------- | ---------------------- | ------------------- | ----------------------- | ------------------- | -------------------- | ----------------------- | --------------------------- |
-| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`      | `base_linux.cpp`        | `base_mac.cpp`      | host adapter + POSIX | host adapter + POSIX    | `base_wasm.cpp`             |
+| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`      | `base_linux.cpp`        | `base_mac.cpp`      | `base_ios.cpp` + POSIX | `base_android.cpp` + POSIX | `base_wasm.cpp`             |
 | 2D drawing and shaped text         | `src/gpui/paint.h`     | `paint_win.cpp`     | `paint_linux.cpp`       | `paint_mac.cpp`     | host adapter         | host adapter            | `paint_wasm.cpp`            |
 | the OS window and its event loop   | `src/gpui/platform.h`  | `window_win.cpp`    | `window_linux.cpp`      | `window_mac.cpp`    | UIKit host           | Android host            | `window_wasm.cpp`           |
 | system metrics                     | `src/sys/sysinfo.h`    | `sysinfo_win.cpp`   | `sysinfo_linux.cpp`     | `sysinfo_mac.cpp`   | host adapter         | host adapter            | `sysinfo_wasm.cpp`          |
@@ -170,9 +197,13 @@ exactly one is 1. Seams:
 `_inotify.cpp` is the shared suffix for Linux and Android (one kernel, one
 inotify), and `_posix.cpp` the one for Linux, macOS, iOS, Android **and** wasm,
 since
-emscripten's libc answers for strings, directories, threads and the clock. What
-it cannot answer is mmap with a reserve/commit split, so that half is
-`_mem_posix.cpp`; every hosted POSIX target takes that half.
+emscripten's libc answers for strings, directories, threads and the clock. A
+`_posix.cpp` file is compiled on all of those, so it cannot contain a
+`GPUI_OS_*` test and it cannot call an API the browser lacks. What wasm
+cannot answer is mmap with a reserve/commit split, so that half is
+`_mem_posix.cpp`; every hosted POSIX target takes that half, and wasm does
+not. The amalgam adds the `#if GPUI_OS_*` around each suffixed file. The
+source does not.
 
 ### Mobile
 
@@ -675,9 +706,10 @@ in either order. All of it is the same on every platform.
   blank runs collapse, and `#include` lines are lifted to the top of `gpui.cpp`
   and de-duplicated — portable ones first, then one guarded block per platform,
   which must stay below the portable code because `<X11/Xlib.h>` defines `None`
-  and `Window`. Each platform-suffixed file sits inside its own
-  `#if GPUI_OS_*`, so platform SDK headers never reach another target's
-  translation unit. Apple platform implementations compile as Objective-C++.
+  and `Window`. The script wraps each platform-suffixed file in its own
+  `#if GPUI_OS_*`; that guard is not in the source. Platform SDK headers
+  therefore never reach another target's translation unit. Apple platform
+  implementations compile as Objective-C++.
 - The snapshot is a checkout, not six files: beside the pairs go every example,
   `gpui_shell/`, `assets/`, `web/shell.html`, `build.ts`, `run.ts`, and
   `winapi.ts` + `mac-window-place.m` because `run.ts -compare` reaches for them

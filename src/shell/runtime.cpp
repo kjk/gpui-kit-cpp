@@ -1014,11 +1014,9 @@ static JSValue FetchJobResolved(ShellRuntimeImpl* impl, void* user) {
     return FetchJobValue(impl->context, (ShellFetchJob*)user);
 }
 
-#if !GPUI_OS_WASM
 static void FetchJobWork(ShellFetchJob* job) {
     shell::FetchSend(job->request, job->capabilities, &job->result);
 }
-#endif
 
 static void ShellFetchJobDestroy(void* job) {
     ShellFetchJob* self = (ShellFetchJob*)job;
@@ -1026,7 +1024,6 @@ static void ShellFetchJobDestroy(void* job) {
     delete self;
 }
 
-#if GPUI_OS_WASM
 // HttpSendAsync already returns on the main thread, including when the browser
 // resolves fetch(). Keep the same lease the coroutine path used: if the view
 // or runtime disappeared while the request was in flight, SettleShellTask
@@ -1040,7 +1037,7 @@ static void ShellFetchDone(ShellFetchJob* job, shell::FetchAsyncResult landed) {
     bool failed = !landed.ok || job->result.error.s != nullptr;
     SettleShellTask(&lease, failed, job->result.error, FetchJobResolved, job);
 }
-#else
+
 // The hosted clients are blocking. Keep them behind the executor-backed Task
 // whose frame owns the job even when shutdown drops a late completion.
 static Task ShellFetchTask(TaskGuard guard, ShellFetchJob* job) {
@@ -1050,7 +1047,6 @@ static Task ShellFetchTask(TaskGuard guard, ShellFetchJob* job) {
     bool failed = job->result.error.s != nullptr;
     SettleShellTask(&lease, failed, job->result.error, FetchJobResolved, job);
 }
-#endif
 
 static void StorageFlushDone(StorageFlushState* state,
                              shell::StorageOutcome outcome) {
@@ -1461,11 +1457,11 @@ static void DirectoryName(Str* path) {
 
 static bool WithinRoot(Str root, Str path) {
     if (len(path) < len(root)) return false;
-#if GPUI_OS_WINDOWS
-    if (StrCmpNI(root.s, path.s, len(root)) != 0) return false;
-#else
-    if (!StrEq(root, Str(path.s, len(root)))) return false;
-#endif
+    if (base::PlatPathsCaseFold()) {
+        if (StrCmpNI(root.s, path.s, len(root)) != 0) return false;
+    } else if (!StrEq(root, Str(path.s, len(root)))) {
+        return false;
+    }
     return len(path) == len(root) || path.s[len(root)] == '/';
 }
 
@@ -7546,28 +7542,28 @@ static JSValue NativeFetch(JSContext* ctx, JSValueConst, int argc,
     ControlRetain(job->head.control);
     job->head.task = task;
     job->head.kind = ShellTaskKind::Fetch;
-#if GPUI_OS_WASM
-    if (!shell::FetchSendAsync(job->request, job->capabilities,
-                               MkFunc1(ShellFetchDone, job))) {
-        ForgetTask(impl, task, false);
-        ControlRelease(job->head.control);
-        job->Free();
-        delete job;
-        JS_FreeValue(ctx, promise);
-        return JS_ThrowInternalError(ctx,
-                                     "fetch could not start asynchronous work");
+    if (base::PlatAsyncIo()) {
+        if (!shell::FetchSendAsync(job->request, job->capabilities,
+                                   MkFunc1(ShellFetchDone, job))) {
+            ForgetTask(impl, task, false);
+            ControlRelease(job->head.control);
+            job->Free();
+            delete job;
+            JS_FreeValue(ctx, promise);
+            return JS_ThrowInternalError(
+                ctx, "fetch could not start asynchronous work");
+        }
+    } else {
+        TaskGuard guard;
+        guard.alive = ShellTaskOwnerAlive;
+        guard.user = &job->head;
+        Task work = ShellFetchTask(guard, job);
+        if (!work.IsRunning()) {
+            JS_FreeValue(ctx, promise);
+            return JS_ThrowInternalError(
+                ctx, "fetch could not start background work");
+        }
     }
-#else
-    TaskGuard guard;
-    guard.alive = ShellTaskOwnerAlive;
-    guard.user = &job->head;
-    Task work = ShellFetchTask(guard, job);
-    if (!work.IsRunning()) {
-        JS_FreeValue(ctx, promise);
-        return JS_ThrowInternalError(ctx,
-                                     "fetch could not start background work");
-    }
-#endif
     return promise;
 }
 
@@ -10693,15 +10689,7 @@ static JSValue NativeDockRegisterPanel(JSContext* ctx, JSValueConst, int argc,
 
 static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
     JSValue global = JS_GetGlobalObject(impl->context);
-#if GPUI_OS_WINDOWS
-    const char* platform = "windows";
-#elif GPUI_OS_MAC
-    const char* platform = "macos";
-#elif GPUI_OS_WASM
-    const char* platform = "emscripten";
-#else
-    const char* platform = "linux";
-#endif
+    const char* platform = base::PlatShellPlatformName();
 #if defined(_M_ARM64) || defined(__aarch64__)
     const char* architecture = "aarch64";
 #elif defined(__wasm32__)
@@ -10712,7 +10700,7 @@ static bool InstallRuntime(ShellRuntimeImpl* impl, ShellError* error) {
     const char* architecture = "x86_64";
 #endif
     JS_SetPropertyStr(impl->context, global, "__shell_is_windows",
-                      JS_NewBool(impl->context, GPUI_OS_WINDOWS));
+                      JS_NewBool(impl->context, base::PlatIsWindows()));
     JS_SetPropertyStr(impl->context, global, "__shell_platform",
                       JS_NewString(impl->context, platform));
     JS_SetPropertyStr(impl->context, global, "__shell_arch",

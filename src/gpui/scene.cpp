@@ -15,17 +15,8 @@ namespace gpui {
 
 static int gSceneLevel = kSceneSkip;
 
-int SceneLevelOn() {
-#if GPUI_OS_WINDOWS
-    static_assert((int)WinSceneMode::Off == kSceneOff);
-    static_assert((int)WinSceneMode::Replay == kSceneReplay);
-    static_assert((int)WinSceneMode::Cache == kSceneCache);
-    static_assert((int)WinSceneMode::Skip == kSceneSkip);
-    static_assert((int)WinSceneMode::Damage == kSceneDamage);
-    return (int)WinPaintOptionsGet().scene;
-#else
+int SceneLevelFallback() {
     return gSceneLevel;
-#endif
 }
 
 bool SceneTakeArg(Str arg) {

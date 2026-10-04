@@ -411,13 +411,7 @@ struct Theme {
     // fallback instead of itself, Theme::change names the fallback here.
     Str fontFamily = Str(".SystemUIFont");
     float fontSize = 16.f;
-#if GPUI_OS_MAC
-    Str monoFontFamily = Str("Menlo");
-#elif GPUI_OS_WINDOWS
-    Str monoFontFamily = Str("Consolas");
-#else
-    Str monoFontFamily = Str("DejaVu Sans Mono");
-#endif
+    Str monoFontFamily = Str(PlatMonoFontName());
     float monoFontSize = kMonoFontSize;
     bool shadow = true;
     bool focusRing = true;

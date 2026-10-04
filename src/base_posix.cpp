@@ -1,11 +1,14 @@
 /* The part of the Base platform layer every POSIX-shaped target shares: the
    POSIX spellings of the case-insensitive string calls, directory walking,
-   threads and the clock. Linux, macOS and wasm all compile this.
+   threads and the clock. Linux, macOS, iOS, Android and wasm all compile
+   this, so nothing here may test GPUI_OS_* or call an API wasm does not have.
 
    Virtual memory is not here, because wasm has none of the reserve/commit
-   shape mmap gives: that half is Base_mem_posix.cpp. What differs between the
-   three — where the executable lives, how a process reports its own usage —
-   is in Base_linux.cpp, Base_mac.cpp and Base_wasm.cpp. */
+   shape mmap gives: that half is Base_mem_posix.cpp. What differs per target
+   — where the executable lives, how a process reports its own usage, stat
+   timestamps, and the Plat* facts that are not the same on every POSIX
+   target — is in Base_linux.cpp, Base_mac.cpp, Base_wasm.cpp, Base_ios.cpp
+   and Base_android.cpp. */
 
 #include "base.h"
 
@@ -18,6 +21,10 @@
 #include <unistd.h>
 
 namespace base {
+
+// Defined beside the executable-path half: st_mtim on Linux, Android and
+// wasm, st_mtimespec on macOS and iOS.
+uint64_t PlatStatModifiedNs(const struct stat* st);
 
 int StrCmpI(const char* a, const char* b) {
     return strcasecmp(a ? a : "", b ? b : "");
@@ -132,13 +139,7 @@ int PlatListDir(const char* dir, DirEntry* out, int max) {
         e.isDir = S_ISDIR(st.st_mode);
         e.isFile = S_ISREG(st.st_mode);
         e.size = e.isFile && st.st_size > 0 ? (uint64_t)st.st_size : 0;
-#if GPUI_OS_MAC || GPUI_OS_IOS
-        e.modified = (uint64_t)st.st_mtimespec.tv_sec * 1000000000ull +
-                     (uint64_t)st.st_mtimespec.tv_nsec;
-#else
-        e.modified = (uint64_t)st.st_mtim.tv_sec * 1000000000ull +
-                     (uint64_t)st.st_mtim.tv_nsec;
-#endif
+        e.modified = PlatStatModifiedNs(&st);
         n++;
     }
     closedir(d);
@@ -214,6 +215,16 @@ void PlatSleepMs(int ms) {
     ts.tv_sec = ms / 1000;
     ts.tv_nsec = (long)(ms % 1000) * 1000000L;
     nanosleep(&ts, nullptr);
+}
+
+char PlatPathSep() {
+    return '/';
+}
+bool PlatPathsCaseFold() {
+    return false;
+}
+bool PlatIsWindows() {
+    return false;
 }
 
 } // namespace base

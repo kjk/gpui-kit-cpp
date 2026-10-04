@@ -5,6 +5,7 @@
 
 #include <mach/mach.h>
 #include <mach-o/dyld.h>
+#include <sys/stat.h>
 
 namespace base {
 
@@ -55,6 +56,45 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
         *cpu100ns = us * 10ull;
     }
     return true;
+}
+
+uint64_t PlatStatModifiedNs(const struct stat* st) {
+    return (uint64_t)st->st_mtimespec.tv_sec * 1000000000ull +
+           (uint64_t)st->st_mtimespec.tv_nsec;
+}
+
+bool PlatSecondaryIsCommand() {
+    return true;
+}
+bool PlatShowsWindowControls() {
+    return false;
+}
+float PlatCaretWidth() {
+    return 1.5f;
+}
+bool PlatScrollBounce() {
+    return false;
+}
+const char* PlatMonoFontName() {
+    return "Menlo";
+}
+const char* PlatShellDataDir() {
+    return "/Library/Application Support";
+}
+const char* PlatShellPlatformName() {
+    return "macos";
+}
+bool PlatBlockSelectUsesControl() {
+    return false;
+}
+bool PlatScrollGestureLocks() {
+    return true;
+}
+bool PlatAsyncIo() {
+    return false;
+}
+float PlatWindowShadowSize() {
+    return 0.f;
 }
 
 } // namespace base

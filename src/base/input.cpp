@@ -3711,14 +3711,6 @@ void InputScrollToCursor(InputState* s, InputMoveDir dir) {
     InputScrollToCaret(s, s->caretX, caretY, dir);
 }
 
-// blink_cursor.rs CURSOR_WIDTH: a whole pixel off the Mac, so the caret is
-// never blurred.
-#if GPUI_OS_MAC
-static const float kInputCursorWidth = 1.5f;
-#else
-static const float kInputCursorWidth = 2.f;
-#endif
-
 bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
                              const Point* offset) {
     (void)app;
@@ -3730,7 +3722,9 @@ bool InputUpdateScrollOffset(InputState* s, App* app, Window* win,
     Point want = offset ? *offset : Point{s->scrollX, s->scrollY};
     // A right- or centre-aligned run keeps a caret's width spare on the
     // right, which the left edge does not need.
-    float safeX = s->align == 0 ? 0.f : kInputCursorWidth;
+    // blink_cursor.rs CURSOR_WIDTH: a whole pixel off the Mac, so the caret
+    // is never blurred.
+    float safeX = s->align == 0 ? 0.f : base::PlatCaretWidth();
     float mostY = s->contentH - s->viewH;
     float mostX = s->contentW - s->viewW + safeX;
     if (mostY < 0) {

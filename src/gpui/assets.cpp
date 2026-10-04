@@ -6,12 +6,6 @@
 
 namespace gpui {
 
-#if GPUI_OS_WINDOWS
-static const char kSep = '\\';
-#else
-static const char kSep = '/';
-#endif
-
 static const int kMaxRoots = 12;
 static char gRoots[kMaxRoots][kMaxPath];
 static int gRootN = 0;
@@ -86,7 +80,7 @@ void AssetsAddRoot(Str dir) {
 static TempStr JoinPathTemp(Str a, Str b) {
     if (!a) return StrDupTemp(b);
     if (!b) return StrDupTemp(a);
-    return fmt("%s%c%s", a, kSep, b);
+    return fmt("%s%c%s", a, base::PlatPathSep(), b);
 }
 
 static void ParentDir(Str* path) {
@@ -109,7 +103,7 @@ static void ParentDir(Str* path) {
 static void ToNativeSep(Str s) {
     for (int i = 0; i < len(s); i++) {
         if (s.s[i] == '/' || s.s[i] == '\\') {
-            s.s[i] = kSep;
+            s.s[i] = base::PlatPathSep();
         }
     }
 }
@@ -125,8 +119,9 @@ void AssetsAddDefaultRoots(Str exampleName) {
     PlatGetExeDir(exe.s, len(exe) + 1);
     exe.len = (int)strlen(exe.s);
 
-    TempStr sub = exampleName ? fmt("assets%c%s", kSep, exampleName)
-                              : StrDupTemp(StrL("assets"));
+    TempStr sub = exampleName
+                      ? fmt("assets%c%s", base::PlatPathSep(), exampleName)
+                      : StrDupTemp(StrL("assets"));
 
     TempStr path = JoinPathTemp(cwd, sub);
     AddRootRaw(path.s);
@@ -141,19 +136,21 @@ void AssetsAddDefaultRoots(Str exampleName) {
             AddRootRaw(path.s);
             if (exampleName.s) {
                 // rust layout: examples/app_assets/assets
-                TempStr rust =
-                    fmt("examples%c%s%cassets", kSep, exampleName, kSep);
+                TempStr rust = fmt("examples%c%s%cassets", base::PlatPathSep(),
+                                   exampleName, base::PlatPathSep());
                 path = JoinPathTemp(walk, rust);
                 AddRootRaw(path.s);
-                rust = fmt(".work%cgpui-component%cexamples%c%s%cassets", kSep,
-                           kSep, kSep, exampleName, kSep);
+                rust =
+                    fmt(".work%cgpui-component%cexamples%c%s%cassets",
+                        base::PlatPathSep(), base::PlatPathSep(),
+                        base::PlatPathSep(), exampleName, base::PlatPathSep());
                 path = JoinPathTemp(walk, rust);
                 AddRootRaw(path.s);
             }
             // The pinned Rust clone itself, which is where a folder that
             // belongs to no one example lives — `themes/`, the theme files
             // the registry reads.
-            TempStr work = fmt(".work%cgpui-component", kSep);
+            TempStr work = fmt(".work%cgpui-component", base::PlatPathSep());
             path = JoinPathTemp(walk, work);
             AddRootRaw(path.s);
             TempStr prev = StrDupTemp(walk);

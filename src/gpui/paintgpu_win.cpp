@@ -42,7 +42,7 @@
 #include "gpui/paintgpu.h"
 #include "gpui/scene.h"
 
-#if GPUI_OS_WINDOWS && WIN_BACKEND_GPU
+#if WIN_BACKEND_GPU
 
 #include <d3d11.h>
 #include <d3d12.h>
@@ -3629,7 +3629,7 @@ void TextLayoutDraw(PaintCtx* ctx, TextLayout* tl, float x, float y, Rgba c,
 } // namespace gpuw
 } // namespace gpui
 
-#elif GPUI_OS_WINDOWS
+#else
 
 // A Direct2D-only build keeps paint_win.cpp's dispatch shape but gives the
 // compiler/linker concrete dead-branch targets. No Direct3D renderer source
@@ -3703,4 +3703,4 @@ const FrameStats& LastFrameStats() {
 } // namespace gpuw
 } // namespace gpui
 
-#endif // GPUI_OS_WINDOWS
+#endif // WIN_BACKEND_GPU

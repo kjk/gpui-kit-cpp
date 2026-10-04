@@ -396,29 +396,24 @@ static bool IsSeparator(char c) {
 static bool IsAbsolute(Str path) {
     if (len(path) == 0) return false;
     if (IsSeparator(path.s[0])) return true;
-#if GPUI_OS_WINDOWS
+    if (!base::PlatIsWindows()) return false;
     return len(path) >= 3 &&
            ((path.s[0] >= 'A' && path.s[0] <= 'Z') ||
             (path.s[0] >= 'a' && path.s[0] <= 'z')) &&
            path.s[1] == ':' && IsSeparator(path.s[2]);
-#else
-    return false;
-#endif
 }
 
 static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
     if (escaped) *escaped = false;
     StrBuilder out(arena);
     int prefix = 0;
-#if GPUI_OS_WINDOWS
-    if (len(path) >= 2 && path.s[1] == ':') {
+    if (base::PlatIsWindows() && len(path) >= 2 && path.s[1] == ':') {
         char drive = path.s[0];
         if (drive >= 'a' && drive <= 'z') drive = (char)(drive - 'a' + 'A');
         out.AppendChar(drive);
         out.AppendChar(':');
         prefix = 2;
     }
-#endif
     if (prefix < len(path) && IsSeparator(path.s[prefix])) {
         out.AppendChar('/');
         while (prefix < len(path) && IsSeparator(path.s[prefix])) prefix++;
@@ -452,24 +447,18 @@ static Str NormalizePath(Arena* arena, Str path, bool* escaped) {
     return len(result) == 0 ? StrDup(arena, StrL(".")) : result;
 }
 
+static bool PathSame(Str a, Str b) {
+    return base::PlatPathsCaseFold() ? StrEqI(a, b) : StrEq(a, b);
+}
+
 static bool PathPrefix(Str root, Str path, Str* relative) {
-    bool same = false;
-#if GPUI_OS_WINDOWS
-    same = StrEqI(root, path);
-#else
-    same = StrEq(root, path);
-#endif
-    if (same) {
+    if (PathSame(root, path)) {
         *relative = StrL(".");
         return true;
     }
     if (len(path) <= len(root) || path.s[len(root)] != '/') return false;
     Str head(path.s, len(root));
-#if GPUI_OS_WINDOWS
-    if (!StrEqI(head, root)) return false;
-#else
-    if (!StrEq(head, root)) return false;
-#endif
+    if (!PathSame(head, root)) return false;
     *relative = Str(path.s + len(root) + 1, len(path) - len(root) - 1);
     return true;
 }

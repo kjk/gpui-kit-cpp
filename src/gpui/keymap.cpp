@@ -199,21 +199,17 @@ bool KeyChordParse(Str spec, KeyChord* out) {
         }
         Str part = Str(spec.s + i, dash - i);
         bool secondary = base::StrEqI(part, "secondary");
-        if (base::StrEqI(part, "ctrl") || (secondary && !GPUI_OS_MAC)) {
+        // The shortcut modifier: Command on macOS, Control elsewhere. One
+        // `secondary-c` binding is Cmd-C on a Mac and Ctrl-C on the other
+        // targets, which is what Rust's `secondary-` means.
+        if (base::StrEqI(part, "ctrl") ||
+            (secondary && !base::PlatSecondaryIsCommand())) {
             c.ctrl = true;
         } else if (base::StrEqI(part, "cmd") || base::StrEqI(part, "super") ||
-                   base::StrEqI(part, "win")) {
+                   base::StrEqI(part, "win") ||
+                   (secondary && base::PlatSecondaryIsCommand())) {
             c.platform = true;
-        }
-#if GPUI_OS_MAC
-        else if (secondary) {
-            // The shortcut modifier: Command on macOS, Control elsewhere.
-            // One `secondary-c` binding is Cmd-C on a Mac and Ctrl-C on the
-            // other two, which is what Rust's `secondary-` means.
-            c.platform = true;
-        }
-#endif
-        else if (base::StrEqI(part, "alt") || base::StrEqI(part, "option")) {
+        } else if (base::StrEqI(part, "alt") || base::StrEqI(part, "option")) {
             c.alt = true;
         } else if (base::StrEqI(part, "shift")) {
             c.shift = true;

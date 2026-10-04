@@ -55,6 +55,7 @@ uint32_t SelectToStartOfLine();
 uint32_t SelectUp();
 uint32_t Undo();
 uint32_t Enter();
+uint32_t ToggleCodeActions();
 
 } // namespace input
 

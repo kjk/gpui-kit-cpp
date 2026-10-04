@@ -1,7 +1,5 @@
 #include "shell/dependencies.h"
 
-#if !GPUI_OS_WINDOWS
-
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -136,5 +134,3 @@ uint32_t DependencyProcessId() {
 }
 
 } // namespace gpui::shell
-
-#endif

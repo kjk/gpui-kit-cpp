@@ -451,6 +451,8 @@ function sourcePlatform(rel: string, plat: Platform): boolean {
   if (/_(ios|android)\.cpp$/.test(rel)) return false;
   if (/_wasm\.cpp$/.test(rel)) return plat === "wasm";
   if (/_mem_posix\.cpp$/.test(rel)) return plat === "linux" || plat === "mac";
+  // openat / fork. The browser stubs are filesystem_wasm.cpp and process_wasm.cpp.
+  if (/\/(filesystem|process)_posix\.cpp$/.test(rel)) return plat === "linux" || plat === "mac";
   if (/_posix\.cpp$/.test(rel)) return plat === "linux" || plat === "mac" || plat === "wasm";
   return true;
 }

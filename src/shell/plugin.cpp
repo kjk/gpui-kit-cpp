@@ -18,7 +18,7 @@ static Str Join(Arena* arena, Str left, Str right) {
     StrBuilder path(arena);
     path.Append(left);
     if (left && left.s[len(left) - 1] != '/' && left.s[len(left) - 1] != '\\')
-        path.AppendChar(GPUI_OS_WINDOWS ? '\\' : '/');
+        path.AppendChar(base::PlatPathSep());
     path.Append(right);
     return path.TakeStr();
 }
@@ -823,7 +823,7 @@ static Str ExpandPath(Str raw, Str plugin, Str data) {
     joined.Append(plugin);
     if (plugin && plugin.s[len(plugin) - 1] != '/' &&
         plugin.s[len(plugin) - 1] != '\\')
-        joined.AppendChar(GPUI_OS_WINDOWS ? '\\' : '/');
+        joined.AppendChar(base::PlatPathSep());
     joined.Append(expanded);
     StrFree(expanded);
     return joined.TakeStr();
@@ -878,11 +878,11 @@ static int ComparePaths(const void* left, const void* right) {
 Str ShellDataHome() {
     const char* explicitHome = getenv("XDG_DATA_HOME");
     if (explicitHome && *explicitHome) return StrDup(Str(explicitHome));
-#if GPUI_OS_WINDOWS
-    const char* appData = getenv("APPDATA");
-    if (appData && *appData) return StrDup(Str(appData));
-#endif
-    const char* user = getenv(GPUI_OS_WINDOWS ? "USERPROFILE" : "HOME");
+    if (base::PlatIsWindows()) {
+        const char* appData = getenv("APPDATA");
+        if (appData && *appData) return StrDup(Str(appData));
+    }
+    const char* user = getenv(base::PlatIsWindows() ? "USERPROFILE" : "HOME");
     TempStr cwd;
     if (!user || !*user) {
         cwd = AllocStrTemp(kMaxPath - 1);
@@ -892,13 +892,7 @@ Str ShellDataHome() {
     }
     StrBuilder path;
     path.Append(Str(user));
-#if GPUI_OS_MAC
-    path.Append(StrL("/Library/Application Support"));
-#elif GPUI_OS_WINDOWS
-    path.Append(StrL("\\AppData\\Roaming"));
-#else
-    path.Append(StrL("/.local/share"));
-#endif
+    path.Append(Str(base::PlatShellDataDir()));
     return path.TakeStr();
 }
 

@@ -1,7 +1,5 @@
 #include "shell/standard.h"
 
-#if GPUI_OS_WASM
-
 #include <emscripten.h>
 
 EM_JS(int, ShellCryptoRandom, (uint8_t* bytes, int count), {
@@ -20,4 +18,3 @@ bool SecureRandom(uint8_t* bytes, int count) {
     return ShellCryptoRandom(bytes, count) != 0;
 }
 } // namespace gpui::shell
-#endif

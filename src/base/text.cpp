@@ -17,16 +17,19 @@ void TextViewInitKeys() {
     if (bound == KeymapGeneration()) return;
     bound = KeymapGeneration();
     const char* context = "TextView";
-    KeyBinding bindings[] = {
-#if GPUI_OS_MAC
-        {"cmd-c", input::Copy(), context},
-        {"cmd-a", input::SelectAll(), context},
-#else
-        {"ctrl-c", input::Copy(), context},
-        {"ctrl-a", input::SelectAll(), context},
-#endif
-    };
-    KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+    if (base::PlatSecondaryIsCommand()) {
+        KeyBinding bindings[] = {
+            {"cmd-c", input::Copy(), context},
+            {"cmd-a", input::SelectAll(), context},
+        };
+        KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+    } else {
+        KeyBinding bindings[] = {
+            {"ctrl-c", input::Copy(), context},
+            {"ctrl-a", input::SelectAll(), context},
+        };
+        KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+    }
 }
 
 TextMark& TextMark::Bold() {

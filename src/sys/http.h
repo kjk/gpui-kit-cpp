@@ -103,6 +103,25 @@ struct HttpAsyncResult {
 // or started and no callback will arrive.
 bool HttpSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done);
 
+// Owns the request fields until the callback. Hosted targets and wasm both
+// copy them; the platform file is what starts the transfer.
+struct HttpAsyncJob {
+    HttpReq req;
+    Str url;
+    Str method;
+    Str body;
+    Vec<HttpHeader> headers;
+    HttpRsp response;
+    Func1<HttpAsyncResult> done;
+    bool ok = false;
+};
+
+void HttpAsyncJobFree(HttpAsyncJob* job);
+// Executor path. http_{win,mem_posix}.cpp call it; wasm does not.
+bool HttpAsyncLaunchHosted(HttpAsyncJob* job);
+// The platform start. wasm is the only caller of the browser fetch.
+bool HttpAsyncLaunch(HttpAsyncJob* job);
+
 // ─── fetching without waiting ─────────────────────────────────────────────
 
 enum class FetchState : uint8_t {

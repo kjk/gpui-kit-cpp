@@ -11,7 +11,9 @@
 
 namespace gpui::shell {
 
-static const char kSeparator = GPUI_OS_WINDOWS ? '\\' : '/';
+static char PathSep() {
+    return base::PlatPathSep();
+}
 
 static void DepError(Str* error, Str message) {
     if (!error) return;
@@ -28,12 +30,12 @@ static Str JoinPath(Str left, Str right) {
     if (!right) return StrDup(left);
     bool separated = IsSeparator(left.s[len(left) - 1]);
     return StrDup(separated ? fmt("%s%s", left, right)
-                            : fmt("%s%c%s", left, kSeparator, right));
+                            : fmt("%s%c%s", left, PathSep(), right));
 }
 
 static bool PathEq(Str a, Str b) {
     if (len(a) != len(b)) return false;
-#if GPUI_OS_WINDOWS
+    if (!base::PlatPathsCaseFold()) return StrEq(a, b);
     for (int i = 0; i < len(a); i++) {
         char ca = a.s[i];
         char cb = b.s[i];
@@ -42,25 +44,22 @@ static bool PathEq(Str a, Str b) {
             return false;
     }
     return true;
-#else
-    return StrEq(a, b);
-#endif
 }
 
 // A path prefix test that also refuses `<root>x`.
 static bool WithinPath(Str root, Str path) {
     if (!root || !path || len(path) < len(root)) return false;
-#if GPUI_OS_WINDOWS
-    for (int i = 0; i < len(root); i++) {
-        char a = root.s[i];
-        char b = path.s[i];
-        if (IsSeparator(a) && IsSeparator(b)) continue;
-        if (tolower((unsigned char)a) != tolower((unsigned char)b))
-            return false;
+    if (!base::PlatPathsCaseFold()) {
+        if (!StrEq(root, Str(path.s, len(root)))) return false;
+    } else {
+        for (int i = 0; i < len(root); i++) {
+            char a = root.s[i];
+            char b = path.s[i];
+            if (IsSeparator(a) && IsSeparator(b)) continue;
+            if (tolower((unsigned char)a) != tolower((unsigned char)b))
+                return false;
+        }
     }
-#else
-    if (!StrEq(root, Str(path.s, len(root)))) return false;
-#endif
     return len(path) == len(root) || IsSeparator(path.s[len(root)]);
 }
 

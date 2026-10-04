@@ -291,4 +291,47 @@ void PlatSleepMs(int ms) {
     Sleep((DWORD)(ms < 0 ? 0 : ms));
 }
 
+char PlatPathSep() {
+    return '\\';
+}
+bool PlatPathsCaseFold() {
+    return true;
+}
+bool PlatIsWindows() {
+    return true;
+}
+bool PlatSecondaryIsCommand() {
+    return false;
+}
+bool PlatShowsWindowControls() {
+    return true;
+}
+float PlatCaretWidth() {
+    return 2.f;
+}
+bool PlatScrollBounce() {
+    return false;
+}
+const char* PlatMonoFontName() {
+    return "Consolas";
+}
+const char* PlatShellDataDir() {
+    return "\\AppData\\Roaming";
+}
+const char* PlatShellPlatformName() {
+    return "windows";
+}
+bool PlatBlockSelectUsesControl() {
+    return false;
+}
+bool PlatScrollGestureLocks() {
+    return true;
+}
+bool PlatAsyncIo() {
+    return false;
+}
+float PlatWindowShadowSize() {
+    return 0.f;
+}
+
 } // namespace base

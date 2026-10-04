@@ -232,6 +232,17 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_http_done(
     delete transfer;
 }
 
+bool HttpWasmSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done);
+
+static void HttpAsyncWasmDone(HttpAsyncJob* job, HttpAsyncResult result) {
+    job->done.Call(result);
+    HttpAsyncJobFree(job);
+}
+
+bool HttpAsyncLaunch(HttpAsyncJob* job) {
+    return HttpWasmSendAsync(job->req, MkFunc1(HttpAsyncWasmDone, job));
+}
+
 bool HttpWasmSendAsync(const HttpReq& req, Func1<HttpAsyncResult> done) {
     WasmHttpTransfer* transfer = new WasmHttpTransfer();
     transfer->done = done;

@@ -1,7 +1,5 @@
 #include "shell/standard.h"
 
-#if GPUI_OS_WINDOWS
-
 #include <windows.h>
 
 extern "C" BOOLEAN NTAPI SystemFunction036(PVOID, ULONG);
@@ -13,4 +11,3 @@ bool SecureRandom(uint8_t* bytes, int count) {
 }
 
 } // namespace gpui::shell
-#endif

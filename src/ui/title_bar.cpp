@@ -4,7 +4,6 @@ namespace gpui {
 
 namespace component {
 
-#if !GPUI_OS_MAC
 // ControlIcon: a fixed 34x34 cell per window command. The press is the
 // platform window's business — WM_NCHITTEST hands it back as HTMINBUTTON and
 // friends on Windows, and the X11 loop claims it before the element tree sees
@@ -53,7 +52,6 @@ static El* WindowControls(Ctx* cx) {
             ClickWinMax))
         ->Child(ControlIcon(cx, IconName::WindowClose, ClickWinClose));
 }
-#endif
 
 TitleBar* TitleBar::New(Ctx* cx) {
     Arena* a = cx->a;
@@ -77,7 +75,7 @@ TitleBar* TitleBar::New(Ctx* cx) {
                  ->W(kFill)
                  ->H(kTitleBarHeight)
                  ->Shrink0()
-                 ->PadL(kTitleBarLeftPad)
+                 ->PadL(TitleBarLeftPad())
                  ->ItemsCenter()
                  ->Bg(mixed)
                  ->BorderB(1, th.titleBarBorder)
@@ -92,9 +90,9 @@ TitleBar* TitleBar::Child(El* e) {
 }
 
 El* TitleBar::IntoEl() {
-#if !GPUI_OS_MAC
-    bar->Child(WindowControls(cx));
-#endif
+    if (base::PlatShowsWindowControls()) {
+        bar->Child(WindowControls(cx));
+    }
     return bar;
 }
 

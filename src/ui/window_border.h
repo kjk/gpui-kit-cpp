@@ -15,11 +15,9 @@ namespace component {
 
 // SHADOW_SIZE: the padding a client-decorated window keeps around its frame
 // for the shadow. Zero on the platforms whose window manager draws one.
-#if GPUI_OS_LINUX
-const float kWindowShadowSize = 20;
-#else
-const float kWindowShadowSize = 0;
-#endif
+inline float WindowShadowSize() {
+    return PlatWindowShadowSize();
+}
 const float kWindowBorderSize = 1;
 // Half the width of the band a press counts as a resize, either side of the
 // visible frame.
@@ -74,7 +72,7 @@ struct WindowBorder {
     Arena* a = nullptr;
     Ctx* cx = nullptr;
     El* child = nullptr;
-    float shadowSize = kWindowShadowSize;
+    float shadowSize = WindowShadowSize();
     float resizeHitSize = kWindowResizeHitSize;
     WindowTiling tiling = {};
     bool hasTiling = false;

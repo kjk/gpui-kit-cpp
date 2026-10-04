@@ -11,8 +11,10 @@ namespace component {
 // TITLE_BAR_HEIGHT.
 constexpr float kTitleBarHeight = 34.f;
 // TITLE_BAR_LEFT_PADDING: macOS starts after the traffic lights, the other
-// two start at the theme's own gutter.
-constexpr float kTitleBarLeftPad = GPUI_OS_MAC ? 80.f : 12.f;
+// targets start at the theme's own gutter.
+inline float TitleBarLeftPad() {
+    return PlatSecondaryIsCommand() ? 80.f : 12.f;
+}
 
 // A client-drawn title bar for a window opened with WinOpts::clientTitleBar.
 // Children are laid out justify-between across the bar; on Windows and Linux

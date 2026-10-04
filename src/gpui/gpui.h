@@ -415,13 +415,9 @@ struct Modifiers {
         return control || alt || shift || platform || function;
     }
     // The semantically secondary modifier: Command on macOS, Control on the
-    // other two — Modifiers::secondary().
+    // other targets — Modifiers::secondary().
     bool Secondary() const {
-#if GPUI_OS_MAC
-        return platform;
-#else
-        return control;
-#endif
+        return PlatSecondaryIsCommand() ? platform : control;
     }
     int Count() const {
         return (int)control + (int)alt + (int)shift + (int)platform +
@@ -7445,14 +7441,8 @@ uint32_t WindowResolveKeyAction(Window* win, int vk, bool shift, bool ctrl,
 // Whether the shortcut modifier is down — `secondary-` in a binding spec:
 // Command on macOS, Control everywhere else. The two are separate modifiers
 // now, so the code that means "the copy chord" has to say which.
-constexpr bool KeySecondary(bool ctrl, bool platform) {
-#if GPUI_OS_MAC
-    (void)ctrl;
-    return platform;
-#else
-    (void)platform;
-    return ctrl;
-#endif
+inline bool KeySecondary(bool ctrl, bool platform) {
+    return PlatSecondaryIsCommand() ? platform : ctrl;
 }
 // The same, for an action already in hand rather than one a keystroke
 // resolved to. `arg` is what the action carries.

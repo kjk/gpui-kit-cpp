@@ -2,11 +2,12 @@
    `crates/base/src/input/base/state.rs::init`.
 
    Every chord in that function is a `KeyBinding` here, in the `Input` key
-   context an editable field declares, with the two platform sets Rust splits
-   with `#[cfg(target_os = "macos")]` kept apart the way it keeps them. It had
-   been a `switch` over the key code, which could say nothing about `ctrl-a`
-   and `cmd-a` being different chords on a Mac and which no application could
-   rebind.
+   context an editable field declares. The chords every target shares are
+   bound below; the ones Rust splits with `#[cfg(target_os = "macos")]`, and
+   the Linux and Windows extras, are `InputBindPlatformKeys` in
+   `input_keys_{mac,win,linux,wasm,ios,android}.cpp`. It had been a `switch`
+   over the key code, which could say nothing about `ctrl-a` and `cmd-a`
+   being different chords on a Mac and which no application could rebind.
 
    `Enter { secondary, shift }` is the one action here that carries a payload:
    bit 0 is `secondary`, bit 1 is `shift`. */
@@ -79,6 +80,45 @@ Str InputContext() {
     return StrL("Input");
 }
 
+// wasm, iOS and Android: the non-mac set, with shift-alt cursors rather than
+// ctrl-alt (Linux desktops reserve those, and these targets follow that).
+void InputBindKeysOther(const char* ctx) {
+    KeyBinding bindings[] = {
+        {"ctrl-backspace", input::DeleteToPreviousWordStart(), ctx},
+        {"ctrl-delete", input::DeleteToNextWordEnd(), ctx},
+        {"ctrl-]", input::Indent(), ctx},
+        {"ctrl-[", input::Outdent(), ctx},
+        {"shift-alt-left", input::SelectLeft(), ctx},
+        {"shift-alt-right", input::SelectRight(), ctx},
+        {"shift-alt-up", input::AddCursorAbove(), ctx},
+        {"shift-alt-down", input::AddCursorBelow(), ctx},
+        {"ctrl-shift-left", input::SelectToPreviousWordStart(), ctx},
+        {"ctrl-shift-right", input::SelectToNextWordEnd(), ctx},
+        {"ctrl-a", input::SelectAll(), ctx},
+        {"ctrl-c", input::Copy(), ctx},
+        {"ctrl-x", input::Cut(), ctx},
+        {"ctrl-v", input::Paste(), ctx},
+        {"ctrl-left", input::MoveToPreviousWord(), ctx},
+        {"ctrl-right", input::MoveToNextWord(), ctx},
+        {"ctrl-z", input::Undo(), ctx},
+        {"ctrl-y", input::Redo(), ctx},
+        {"ctrl-.", input::ToggleCodeActions(), ctx},
+        {"ctrl-f", input::Search(), ctx},
+        {"ctrl-h", input::Replace(), ctx},
+        // ctrl-home / ctrl-end are the document ends state.rs spells cmd-up /
+        // cmd-down and binds on macOS only. ctrl-shift-z is redo beside
+        // ctrl-y.
+        {"ctrl-home", input::MoveToStart(), ctx},
+        {"ctrl-end", input::MoveToEnd(), ctx},
+        {"ctrl-shift-home", input::SelectToStart(), ctx},
+        {"ctrl-shift-end", input::SelectToEnd(), ctx},
+        {"ctrl-shift-z", input::Redo(), ctx},
+    };
+    KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+}
+
+void InputBindPlatformKeys(const char* ctx);
+
 void InputInitKeys() {
     static uint32_t bound = 0;
     if (bound == KeymapGeneration()) {
@@ -87,30 +127,10 @@ void InputInitKeys() {
     bound = KeymapGeneration();
     const char* ctx = "Input";
     KeyBinding bindings[] = {
-
         {"backspace", input::Backspace(), ctx},
         {"shift-backspace", input::Backspace(), ctx},
-
-#if GPUI_OS_MAC
-        {"ctrl-backspace", input::Backspace(), ctx},
-#endif
         {"delete", input::Delete(), ctx},
         {"shift-delete", input::Delete(), ctx},
-
-#if GPUI_OS_MAC
-        {"cmd-backspace", input::DeleteToBeginningOfLine(), ctx},
-        {"cmd-delete", input::DeleteToEndOfLine(), ctx},
-        {"alt-backspace", input::DeleteToPreviousWordStart(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-backspace", input::DeleteToPreviousWordStart(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"alt-delete", input::DeleteToNextWordEnd(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-delete", input::DeleteToNextWordEnd(), ctx},
-#endif
         {"enter", input::Enter(), ctx},
         {"shift-enter", input::Enter(), ctx, 2},
         {"secondary-enter", input::Enter(), ctx, 1},
@@ -123,147 +143,17 @@ void InputInitKeys() {
         {"pagedown", input::MovePageDown(), ctx},
         {"tab", input::IndentInline(), ctx},
         {"shift-tab", input::OutdentInline(), ctx},
-
-#if GPUI_OS_MAC
-        {"cmd-]", input::Indent(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-]", input::Indent(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-[", input::Outdent(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-[", input::Outdent(), ctx},
-#endif
         {"shift-left", input::SelectLeft(), ctx},
         {"shift-right", input::SelectRight(), ctx},
         {"shift-up", input::SelectUp(), ctx},
         {"shift-down", input::SelectDown(), ctx},
-#if !GPUI_OS_MAC && !GPUI_OS_LINUX
-        {"shift-alt-left", input::SelectLeft(), ctx},
-        {"shift-alt-right", input::SelectRight(), ctx},
-#endif
-    // Avoid Ctrl+Alt+arrows on Linux, where desktops may reserve them.
-#if GPUI_OS_MAC
-        {"cmd-alt-up", input::AddCursorAbove(), ctx},
-        {"cmd-alt-down", input::AddCursorBelow(), ctx},
-#elif GPUI_OS_WINDOWS
-        {"ctrl-alt-up", input::AddCursorAbove(), ctx},
-        {"ctrl-alt-down", input::AddCursorBelow(), ctx},
-#else
-        {"shift-alt-up", input::AddCursorAbove(), ctx},
-        {"shift-alt-down", input::AddCursorBelow(), ctx},
-#endif
         {"home", input::MoveHome(), ctx},
         {"end", input::MoveEnd(), ctx},
         {"shift-home", input::SelectToStartOfLine(), ctx},
         {"shift-end", input::SelectToEndOfLine(), ctx},
-
-#if GPUI_OS_MAC
-        {"ctrl-shift-a", input::SelectToStartOfLine(), ctx},
-        {"ctrl-shift-e", input::SelectToEndOfLine(), ctx},
-        {"shift-cmd-left", input::SelectToStartOfLine(), ctx},
-        {"shift-cmd-right", input::SelectToEndOfLine(), ctx},
-#endif
-#if GPUI_OS_MAC || GPUI_OS_LINUX
-        {"alt-shift-left", input::SelectToPreviousWordStart(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-shift-left", input::SelectToPreviousWordStart(), ctx},
-#endif
-#if GPUI_OS_MAC || GPUI_OS_LINUX
-        {"alt-shift-right", input::SelectToNextWordEnd(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-shift-right", input::SelectToNextWordEnd(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-a", input::SelectAll(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-a", input::SelectAll(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-c", input::Copy(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-c", input::Copy(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-x", input::Cut(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-x", input::Cut(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-v", input::Paste(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-v", input::Paste(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"ctrl-a", input::MoveHome(), ctx},
-        {"cmd-left", input::MoveHome(), ctx},
-        {"ctrl-e", input::MoveEnd(), ctx},
-        {"cmd-right", input::MoveEnd(), ctx},
-        {"cmd-z", input::Undo(), ctx},
-        {"cmd-shift-z", input::Redo(), ctx},
-        {"cmd-up", input::MoveToStart(), ctx},
-        {"cmd-down", input::MoveToEnd(), ctx},
-        {"alt-left", input::MoveToPreviousWord(), ctx},
-        {"alt-right", input::MoveToNextWord(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-left", input::MoveToPreviousWord(), ctx},
-        {"ctrl-right", input::MoveToNextWord(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-shift-up", input::SelectToStart(), ctx},
-        {"cmd-shift-down", input::SelectToEnd(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-z", input::Undo(), ctx},
-        {"ctrl-y", input::Redo(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-.", input::ToggleCodeActions(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-.", input::ToggleCodeActions(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-f", input::Search(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-f", input::Search(), ctx},
-#endif
-#if GPUI_OS_MAC
-        {"cmd-shift-f", input::Replace(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        {"ctrl-h", input::Replace(), ctx},
-#endif
-#if !GPUI_OS_MAC
-        // Three chords state.rs does not bind off macOS, kept because this
-        // tree had them and because they are what the platform means:
-        //
-        //   ctrl-home / ctrl-end   the document ends, which state.rs spells
-        //                          cmd-up / cmd-down and binds on macOS only,
-        //                          leaving a Windows field no way to reach
-        //                          either end
-        //   ctrl-shift-z           redo. Upstream's only non-macOS redo is
-        //                          ctrl-y, which is bound above; this is the
-        //                          spelling every other editor on the
-        //                          platform also takes
-        {"ctrl-home", input::MoveToStart(), ctx},
-        {"ctrl-end", input::MoveToEnd(), ctx},
-        {"ctrl-shift-home", input::SelectToStart(), ctx},
-        {"ctrl-shift-end", input::SelectToEnd(), ctx},
-        {"ctrl-shift-z", input::Redo(), ctx},
-#endif
     };
     KeymapBind(bindings, (int)(sizeof(bindings) / sizeof(bindings[0])));
+    InputBindPlatformKeys(ctx);
 }
 
 // The action the keymap resolved, read as the edit it names. Rust dispatches

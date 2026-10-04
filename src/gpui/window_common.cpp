@@ -8,8 +8,6 @@
 #include "gpui/keymap.h"
 #include "gpui/image.h"
 #include "gpui/paint.h"
-// For the GPU backend's per-frame counters, which FrameBenchTick reports.
-#include "gpui/paintgpu.h"
 #include "gpui/scene.h"
 #include "sys/http.h"
 #include "sys/executor.h"
@@ -21,6 +19,11 @@
 #include "base/tooltip.h"
 
 namespace gpui {
+
+// window_win.cpp logs the GPU counters; every other target has nothing to say.
+void FrameBenchLogGpu();
+// window_win.cpp consumes __paint / __msaa / __scene / __gpu_reset_every.
+bool WindowTakePaintArg(Str arg);
 
 void OngoingScroll::Filter(Point* delta, TouchPhase phase) {
     if (!delta) {
@@ -128,16 +131,11 @@ static void FrameBenchTick(Window* win, float secs) {
     static Vec<float> paint;
     if (want < 0) {
         char buf[16] = {};
-#if GPUI_OS_WINDOWS
-        DWORD n = GetEnvironmentVariableA("GPUI_FRAME_BENCH", buf, sizeof(buf));
-        want = (n > 0 && n < sizeof(buf)) ? StrToIntUnchecked(Str(buf)) : 0;
-#else
         const char* e = getenv("GPUI_FRAME_BENCH");
         if (e) {
             StrCopyZ(buf, (int)sizeof(buf), e);
         }
         want = buf[0] ? StrToIntUnchecked(Str(buf)) : 0;
-#endif
         if (want > 0) {
             // Back to back, so the measurement is of drawing and not of how
             // often something asked for a frame.
@@ -209,16 +207,7 @@ static void FrameBenchTick(Window* win, float secs) {
         ls.nodes, LayoutCacheNodeCount(win->layout),
         LayoutCacheSlotCount(win->layout), ls.made, ls.dropped, ls.restyled,
         ls.remeasured, ls.allocs);
-#if GPUI_OS_WINDOWS
-    if (PaintGpuOn()) {
-        const gpuw::FrameStats& st = gpuw::LastFrameStats();
-        logf(
-            "frame-bench %s instances=%d draws=%d pathTris=%d "
-            "glyphsRasterized=%d",
-            PaintD3d12On() ? StrL("d3d12") : StrL("d3d11"), st.instances,
-            st.draws, st.pathTriangles, st.glyphsRasterized);
-    }
-#endif
+    FrameBenchLogGpu();
     if (SceneOn()) {
         const scene::SceneStats& sc = scene::Stats(&win->paint);
         logf(
@@ -1489,9 +1478,9 @@ static void InputPress(Window* win, const MouseDownEvent& in) {
         // Linux also accepts Ghostty's Ctrl+Alt. A plain alt-click adds a
         // caret, and is the block's anchor if the drag goes on from here.
         bool block = in.modifiers.shift;
-#if GPUI_OS_LINUX
-        block = block || in.modifiers.control;
-#endif
+        if (base::PlatBlockSelectUsesControl()) {
+            block = block || in.modifiers.control;
+        }
         if (block) {
             InputMoveToWithAffinity(s, win->app, win, offset, lineEndAffinity);
         } else {
@@ -2699,7 +2688,6 @@ static bool ScrollMaskIsTopmost(Window* win, const ScrollRect& s, float x,
     return leaf >= 0 && HitDescendsFrom(win->paint, leaf, s.maskHit);
 }
 
-#if !GPUI_OS_WASM
 static OngoingScroll* ScrollLockFor(Window* win, int id, Axis maskAxis) {
     int* slotId = maskAxis == Axis::Horizontal ? &win->scrollLockHorizontalId
                                                : &win->scrollLockVerticalId;
@@ -2712,22 +2700,15 @@ static OngoingScroll* ScrollLockFor(Window* win, int id, Axis maskAxis) {
     }
     return slot;
 }
-#endif
 
 // ScrollableMask's capture-phase axis choice. Line-wheel deltas are compared
 // independently; precise deltas keep the OngoingScroll lock for the gesture.
 static Point ScrollMaskDelta(Window* win, const ScrollRect& s,
                              const ScrollWheelEvent& in, Axis maskAxis) {
     Point delta = {in.deltaX, in.deltaY};
-#if GPUI_OS_WASM
-    (void)win;
-    (void)s;
-    (void)maskAxis;
-#else
-    if (in.precise) {
+    if (base::PlatScrollGestureLocks() && in.precise) {
         ScrollLockFor(win, s.id, maskAxis)->Filter(&delta, in.phase);
     }
-#endif
     if (delta.x != 0 && delta.y != 0) {
         float ax = delta.x < 0 ? -delta.x : delta.x;
         float ay = delta.y < 0 ? -delta.y : delta.y;
@@ -3688,18 +3669,6 @@ void WindowClosed(Window* win) {
     win->running = false;
 }
 
-#if !GPUI_OS_WASM
-// Every desktop clipboard is read synchronously, so ClipboardGetItem is the
-// real read and there is nothing to fall back to. The web's is in
-// window_wasm.cpp.
-bool ClipboardReadAsync(Window* win, ClipboardReadFn done, void* data) {
-    (void)win;
-    (void)done;
-    (void)data;
-    return false;
-}
-#endif
-
 // A picture arrived. image.h answered nothing for it while it was on its way,
 // so every window draws once more and asks the table again. Runs on the main
 // thread: sys/http.cpp hands this to the executor as a fetch's completion.
@@ -3976,11 +3945,9 @@ int GpuiTakeRuntimeArgs(int argc, char** argv) {
     int keep = 0;
     for (int i = 0; i < argc; i++) {
         Str argument = Str(argv[i]);
-#if GPUI_OS_WINDOWS
-        if (i > 0 && argument && WinPaintOptionsTakeArg(argument)) {
+        if (i > 0 && argument && WindowTakePaintArg(argument)) {
             continue;
         }
-#endif
         if (i > 0 && argument && SceneTakeArg(argument)) {
             continue;
         }

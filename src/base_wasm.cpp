@@ -18,6 +18,7 @@
 
 #include <emscripten/emscripten.h>
 #include <emscripten/heap.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 
 namespace base {
@@ -119,6 +120,45 @@ bool PlatSelfUsage(uint64_t* cpu100ns, uint64_t* memBytes) {
         *memBytes = (uint64_t)emscripten_get_heap_size();
     }
     return true;
+}
+
+uint64_t PlatStatModifiedNs(const struct stat* st) {
+    return (uint64_t)st->st_mtim.tv_sec * 1000000000ull + (uint64_t)st->st_mtim
+                                                              .tv_nsec;
+}
+
+bool PlatSecondaryIsCommand() {
+    return false;
+}
+bool PlatShowsWindowControls() {
+    return true;
+}
+float PlatCaretWidth() {
+    return 2.f;
+}
+bool PlatScrollBounce() {
+    return false;
+}
+const char* PlatMonoFontName() {
+    return "DejaVu Sans Mono";
+}
+const char* PlatShellDataDir() {
+    return "/.local/share";
+}
+const char* PlatShellPlatformName() {
+    return "emscripten";
+}
+bool PlatBlockSelectUsesControl() {
+    return false;
+}
+bool PlatScrollGestureLocks() {
+    return false;
+}
+bool PlatAsyncIo() {
+    return true;
+}
+float PlatWindowShadowSize() {
+    return 0.f;
 }
 
 } // namespace base

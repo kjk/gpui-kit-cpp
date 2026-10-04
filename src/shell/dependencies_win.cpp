@@ -1,7 +1,5 @@
 #include "shell/dependencies.h"
 
-#if GPUI_OS_WINDOWS
-
 #include <windows.h>
 
 namespace gpui::shell {
@@ -251,5 +249,3 @@ uint32_t DependencyProcessId() {
 }
 
 } // namespace gpui::shell
-
-#endif

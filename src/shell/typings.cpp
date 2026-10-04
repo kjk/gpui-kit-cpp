@@ -24,7 +24,7 @@ static TempStr JoinPathTemp(Str directory, Str name) {
     int n = len(directory) + (separator ? 1 : 0) + len(name);
     if (n >= kMaxPath) return {};
     if (!separator) return fmt("%s%s", directory, name);
-    return fmt("%s%c%s", directory, GPUI_OS_WINDOWS ? '\\' : '/', name);
+    return fmt("%s%c%s", directory, base::PlatPathSep(), name);
 }
 
 static bool SourceImportsBuiltins(Str source) {

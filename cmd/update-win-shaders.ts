@@ -238,7 +238,7 @@ uint8_t ${name}Bytes[${bytes.length}] = {};`;
 
 #include "gpui/paintgpu.h"
 
-#if GPUI_OS_WINDOWS && WIN_BACKEND_GPU
+#if WIN_BACKEND_GPU
 namespace gpui {
 namespace gpuw {
 

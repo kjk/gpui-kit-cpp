@@ -269,4 +269,8 @@ bool HttpGetNoRedirect(Str url, HttpRsp* out) {
     return HttpSend(req, out);
 }
 
+bool HttpAsyncLaunch(HttpAsyncJob* job) {
+    return HttpAsyncLaunchHosted(job);
+}
+
 } // namespace gpui

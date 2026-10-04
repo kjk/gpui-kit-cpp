@@ -81,13 +81,7 @@ struct TextStyleToken {
 
 struct TypographyTokens {
     Str sans = Str(".SystemUIFont");
-#if GPUI_OS_MAC
-    Str mono = Str("Menlo");
-#elif GPUI_OS_WINDOWS
-    Str mono = Str("Consolas");
-#else
-    Str mono = Str("DejaVu Sans Mono");
-#endif
+    Str mono = Str(PlatMonoFontName());
     TextStyleToken xs = {12, 16, FontWeight::Normal};
     TextStyleToken sm = {14, 20, FontWeight::Normal};
     TextStyleToken md = {16, 24, FontWeight::Normal};

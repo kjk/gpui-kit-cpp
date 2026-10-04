@@ -1,7 +1,5 @@
 #include "shell/filesystem.h"
 
-#if GPUI_OS_WINDOWS
-
 #include <windows.h>
 #include <winternl.h>
 #include <stdlib.h>
@@ -557,5 +555,3 @@ bool FsRun(FsOperation operation, Str rootName, Str relative, Str input,
 }
 
 } // namespace gpui::shell
-
-#endif

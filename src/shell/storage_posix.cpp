@@ -1,7 +1,5 @@
 #include "shell/storage.h"
 
-#if !GPUI_OS_WINDOWS
-
 #include <stdio.h>
 
 namespace gpui::shell {
@@ -17,4 +15,3 @@ bool StorageReplaceFile(Str temporary, Str path, Str* error) {
 }
 
 } // namespace gpui::shell
-#endif
