@@ -71,6 +71,7 @@ static Str gClipboard = {};
 
 static Atom aWmDeleteWindow, aWmProtocols, aNetWmName, aUtf8String;
 static Atom aNetWmState, aNetWmStateMaxVert, aNetWmStateMaxHorz;
+static Atom aNetWmStateFullscreen;
 static Atom aNetFrameExtents;
 static Atom aNetWmMoveResize, aMotifWmHints, aGtkShowWindowMenu;
 static Atom aGtkEdgeConstraints;
@@ -1774,6 +1775,12 @@ void AppToggleMaximize(Window* win) {
     }
 }
 
+void WindowSetFullScreen(Window* win, bool fullScreen) {
+    if (win && win->plat) {
+        SendWmState(win, aNetWmStateFullscreen, None, fullScreen ? 1 : 0);
+    }
+}
+
 void AppDrag(Window* win) {
     if (!win || !win->plat) {
         return;
@@ -1939,6 +1946,8 @@ bool PlatInit(App* app) {
         XInternAtom(gDpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
     aNetWmStateMaxHorz =
         XInternAtom(gDpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
+    aNetWmStateFullscreen =
+        XInternAtom(gDpy, "_NET_WM_STATE_FULLSCREEN", False);
     aNetWmMoveResize = XInternAtom(gDpy, "_NET_WM_MOVERESIZE", False);
     aMotifWmHints = XInternAtom(gDpy, "_MOTIF_WM_HINTS", False);
     aGtkShowWindowMenu = XInternAtom(gDpy, "_GTK_SHOW_WINDOW_MENU", False);

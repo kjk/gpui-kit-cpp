@@ -270,10 +270,10 @@ EM_JS(int, GpJsFullscreen, (), {
     return document.fullscreenElement ? 1 : 0;
 });
 
-EM_JS(void, GpJsToggleFullscreen, (), {
-    if (document.fullscreenElement) {
+EM_JS(void, GpJsSetFullscreen, (int on), {
+    if (!on && document.fullscreenElement) {
         document.exitFullscreen();
-    } else if (document.documentElement.requestFullscreen) {
+    } else if (on && !document.fullscreenElement && document.documentElement.requestFullscreen) {
         document.documentElement.requestFullscreen().catch(function() {});
     }
 });
@@ -796,8 +796,18 @@ void AppToggleMaximize(Window* win) {
     if (!win || !win->plat) {
         return;
     }
-    GpJsToggleFullscreen();
-    win->maximized = !GpJsFullscreen();
+    bool fullScreen = !GpJsFullscreen();
+    GpJsSetFullscreen(fullScreen);
+    win->maximized = fullScreen;
+    win->plat->dirty = true;
+}
+
+void WindowSetFullScreen(Window* win, bool fullScreen) {
+    if (!win || !win->plat || (GpJsFullscreen() != 0) == fullScreen) {
+        return;
+    }
+    GpJsSetFullscreen(fullScreen);
+    win->maximized = fullScreen;
     win->plat->dirty = true;
 }
 

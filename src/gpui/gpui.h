@@ -7565,6 +7565,8 @@ void AppMenuClear(App* app);
 void AppActivate(Window* win);
 void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
+// Enter or leave native fullscreen mode without changing application chrome.
+void WindowSetFullScreen(Window* win, bool fullScreen);
 void AppClose(Window* win);
 void AppDrag(Window* win);
 bool AppIsMaximized(Window* win);

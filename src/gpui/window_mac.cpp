@@ -1265,6 +1265,17 @@ void AppToggleMaximize(Window* win) {
     }
 }
 
+void WindowSetFullScreen(Window* win, bool fullScreen) {
+    if (!win || !win->plat) {
+        return;
+    }
+    NSWindow* window = win->plat->window;
+    bool current = ([window styleMask] & NSWindowStyleMaskFullScreen) != 0;
+    if (current != fullScreen) {
+        [window toggleFullScreen:nil];
+    }
+}
+
 void AppDrag(Window* win) {
     if (!win || !win->plat) {
         return;

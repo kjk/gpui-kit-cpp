@@ -31,6 +31,9 @@ struct PlatWindow {
     // WM_MOUSEACTIVATE said this next press is the one that activated the
     // window: MouseDownEvent::first_mouse.
     bool firstMouse = false;
+    LONG_PTR windowedStyle = 0;
+    WINDOWPLACEMENT windowedPlacement = {sizeof(WINDOWPLACEMENT)};
+    bool fullScreen = false;
 };
 
 static HWND Hwnd(Window* win) {
@@ -811,6 +814,34 @@ void AppToggleMaximize(Window* win) {
     WINDOWPLACEMENT wp = {sizeof(wp)};
     GetWindowPlacement(hwnd, &wp);
     ShowWindow(hwnd, wp.showCmd == SW_SHOWMAXIMIZED ? SW_RESTORE : SW_MAXIMIZE);
+}
+
+void WindowSetFullScreen(Window* win, bool fullScreen) {
+    HWND hwnd = Hwnd(win);
+    PlatWindow* pw = win ? win->plat : nullptr;
+    if (!hwnd || !pw || pw->fullScreen == fullScreen) {
+        return;
+    }
+    if (fullScreen) {
+        pw->windowedStyle = GetWindowLongPtrW(hwnd, GWL_STYLE);
+        pw->windowedPlacement = {sizeof(WINDOWPLACEMENT)};
+        GetWindowPlacement(hwnd, &pw->windowedPlacement);
+        MONITORINFO monitor = {sizeof(monitor)};
+        GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST),
+                        &monitor);
+        SetWindowLongPtrW(hwnd, GWL_STYLE,
+                          pw->windowedStyle & ~(WS_CAPTION | WS_THICKFRAME));
+        RECT r = monitor.rcMonitor;
+        SetWindowPos(hwnd, HWND_TOP, r.left, r.top, r.right - r.left,
+                     r.bottom - r.top, SWP_FRAMECHANGED | SWP_NOACTIVATE);
+    } else {
+        SetWindowLongPtrW(hwnd, GWL_STYLE, pw->windowedStyle);
+        SetWindowPlacement(hwnd, &pw->windowedPlacement);
+        SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                         SWP_NOACTIVATE);
+    }
+    pw->fullScreen = fullScreen;
 }
 
 void AppDrag(Window* win) {
