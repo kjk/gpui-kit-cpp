@@ -5173,26 +5173,72 @@ void TextViewState::StartParse(App* app, Window* window,
     }
 }
 
-void TextViewState::ParseLanded(TextViewParseJob* job) {
+static void TextViewParseJobDiscard(TextViewParseJob* job) {
+    if (job->arena) ArenaDelete(job->arena);
+    StrFree(job->source);
+    delete job;
+}
+
+// commit_parsed_update: commit a result of the background parser. `job` is
+// consumed.
+//
+// A stream that appends faster than a parse completes has always moved past
+// the revision the result was parsed from, so only discarding results of an
+// older revision would show nothing until the stream stops. A result parsed
+// since the text was last replaced is a prefix of the current text and is
+// committed; one from before that replacement, or older than what is already
+// committed, is discarded.
+void TextViewState::CommitParsedUpdate(TextViewParseJob* job) {
     TextViewState* s = job->state;
-    if (!s) {
-        if (job->arena) ArenaDelete(job->arena);
-        StrFree(job->source);
-        delete job;
+    if (job->revision < s->fullUpdateRevision ||
+        job->revision <= s->committedRevision) {
+        TextViewParseJobDiscard(job);
         return;
     }
-    s->parseFlight = nullptr;
-    // An append is of the parse it was started from, which is still the
-    // committed one: nothing commits while a parse is in flight.
+    bool overtaken = job->revision < s->updateRevision;
     TextViewCommit(s, job->app, job->arena, job->doc, job->source, job->append,
                    job->from, job->revision, job->fingerprint,
                    kFadeAtFirstFrame);
-    App* app = job->app;
+    // This result may cover only part of the queued appends. Keep the
+    // uncommitted tail pending, rather than consuming its fade with the
+    // earlier chunk (stream_fade.note_extend).
+    if (overtaken && s->motion.streamFadeMs > 0 && !s->streamFadePending) {
+        s->streamFadePending = true;
+        s->streamFadeReplace = false;
+    }
     delete job;
+}
+
+void TextViewState::ParseLanded(TextViewParseJob* job) {
+    TextViewState* s = job->state;
+    if (!s) {
+        TextViewParseJobDiscard(job);
+        return;
+    }
+    s->parseFlight = nullptr;
+    App* app = job->app;
+    CommitParsedUpdate(job);
     if (s->parseQueued || s->committedRevision != s->updateRevision) {
         s->parseQueued = false;
         s->StartParse(app, nullptr);
     }
+}
+
+TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app) {
+    bool html = s->format == TextViewFormat::Html;
+    uint64_t fingerprint = html ? 0 : s->parserFingerprint;
+    auto* job = new TextViewParseJob();
+    job->state = s;
+    job->app = app;
+    job->source = StrDup(s->text);
+    job->append = TextViewParseAppend(s, fingerprint, &job->from);
+    job->html = html;
+    job->frontmatter = s->parserFrontmatter;
+    job->mdx = s->parserMdx;
+    job->fingerprint = fingerprint;
+    job->revision = s->updateRevision;
+    TextViewParseWork(job);
+    return job;
 }
 
 void TextViewState::ReconcileRangeHighlights(const MdNode* doc, Str source,

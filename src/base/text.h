@@ -1059,6 +1059,10 @@ struct TextViewState {
                     bool now = false);
     // The parse a TextViewParseJob made, landing on the UI thread.
     static void ParseLanded(TextViewParseJob* job);
+    // commit_parsed_update: commits the job's result or discards it, and
+    // consumes the job either way. ParseLanded is the caller; exposed for
+    // the tests that land a result out of turn.
+    static void CommitParsedUpdate(TextViewParseJob* job);
     // StreamFadeTracker::record: what `next` renders that `prev` did not,
     // for the update noted since the last parse, as segments that start
     // fading at `now` — word by word when the motion staggers.
@@ -1475,6 +1479,10 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
 // from. Exposed so a test can ask whether two frames of a view that rebuilt
 // its plugin table share one parsed document, the way Rust's
 // `stateless_markdown_with_rebuilt_parser_settles` counts renders.
+// state.rs push_and_parse, for tests: parse what the state holds now the way
+// the background parser would, without running the parser, returning the
+// job it would land. Hand it to TextViewState::CommitParsedUpdate.
+TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app);
 MdNode* MdParseCachedForTest(Ctx* cx, Arena* frame, Str source,
                              const MarkdownExtensions* extensions);
 

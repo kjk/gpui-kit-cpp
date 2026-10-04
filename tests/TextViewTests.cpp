@@ -4365,6 +4365,57 @@ static bool TswNothingFades(const TswView& v, double at = -1) {
     return count == 0;
 }
 
+// state.rs MAX_SYNC_FULL_REPLACE_BYTES.
+static const int kMaxSyncFullReplaceBytes = 4 * 1024;
+
+// state.rs stream_commits_a_parse_that_a_newer_chunk_overtook
+static void StreamCommitsAParseThatANewerChunkOvertook() {
+    App* app = TestAppNew();
+    Entity<gpui::TextViewState> state =
+        gpui::TextViewState::Markdown(app, StrL("# Answer\n\n"));
+    TestRunUntilParked(app);
+    gpui::TextViewState* s = state.Get(app);
+
+    // Chunks arriving faster than they parse always push the next chunk
+    // before the previous parse lands.
+    s->PushStr(StrL("Streaming"), app, nullptr);
+    gpui::TextViewParseJob* parsed = gpui::TextViewParseNowForTest(s, app);
+    s->PushStr(StrL(" tokens"), app, nullptr);
+    gpui::TextViewState::CommitParsedUpdate(parsed);
+    utassert(StrEq(s->Source(), StrL("# Answer\n\nStreaming")));
+
+    TestRunUntilParked(app);
+    utassert(StrEq(s->Source(), StrL("# Answer\n\nStreaming tokens")));
+    TestAppFree(app);
+}
+
+// state.rs a_parse_from_before_a_replacement_is_discarded
+static void AParseFromBeforeAReplacementIsDiscarded() {
+    App* app = TestAppNew();
+    Entity<gpui::TextViewState> state =
+        gpui::TextViewState::Markdown(app, StrL("old"));
+    TestRunUntilParked(app);
+    gpui::TextViewState* s = state.Get(app);
+
+    s->PushStr(StrL(" text"), app, nullptr);
+    gpui::TextViewParseJob* parsed = gpui::TextViewParseNowForTest(s, app);
+    // Large enough to parse in the background, so the replacement is not
+    // committed yet when the older parse lands.
+    StrBuilder sb;
+    for (int i = 0; i < kMaxSyncFullReplaceBytes + 1; i++) {
+        sb.AppendChar('x');
+    }
+    Str replacement = sb.TakeStr();
+    s->SetText(replacement, app, nullptr);
+    gpui::TextViewState::CommitParsedUpdate(parsed);
+    utassert(StrEq(s->Source(), StrL("old")));
+
+    TestRunUntilParked(app);
+    utassert(StrEq(s->Source(), replacement));
+    StrFree(replacement);
+    TestAppFree(app);
+}
+
 // state.rs push_str_fades_only_the_appended_text
 static void PushStrFadesOnlyTheAppendedText() {
     TswView v = TswFadingState("hello");
@@ -4376,6 +4427,57 @@ static void PushStrFadesOnlyTheAppendedText() {
     double later = TestClockNow() + kTswFadeMs / 1000.0 + 1.0;
     utassert(TswNothingFades(v, later));
     utassert(TswNothingFades(v));
+    TswClose(&v);
+}
+
+// push_and_parse: push `chunk` and parse it the way the background parser
+// would, without running the parser, returning the update it would send.
+static gpui::TextViewParseJob* TswPushAndParse(gpui::TextViewState* s, App* app,
+                                               Window* win, const char* chunk) {
+    s->PushStr(Str(chunk), app, win);
+    return gpui::TextViewParseNowForTest(s, app);
+}
+
+// state.rs overtaken_parse_preserves_the_remaining_chunks_fade
+static void OvertakenParsePreservesTheRemainingChunksFade() {
+    TswView v = TswFadingState("hello");
+    gpui::TextViewParseJob* parsed =
+        TswPushAndParse(v.State(), v.app, v.win, " one");
+    v.State()->PushStr(StrL(" two"), v.app, v.win);
+    gpui::TextViewState::CommitParsedUpdate(parsed);
+    Span first = {5, 9};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &first, 1));
+
+    TestRunUntilParked(v.app);
+    Span both[] = {{5, 9}, {9, 13}};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), both, 2));
+    TswClose(&v);
+}
+
+// state.rs overtaken_parse_preserves_a_remaining_blocks_fade
+static void OvertakenParsePreservesARemainingBlocksFade() {
+    TswView v = TswFadingState("hello");
+    gpui::TextViewParseJob* parsed =
+        TswPushAndParse(v.State(), v.app, v.win, " one");
+    v.State()->PushStr(StrL("\n\nsecond"), v.app, v.win);
+    gpui::TextViewState::CommitParsedUpdate(parsed);
+    Span first = {5, 9};
+    utassert(TswFadesAre(v, TextLeafKey::Block(0), &first, 1));
+
+    // A third chunk arrives while the second is still uncommitted.
+    v.State()->PushStr(StrL(" third"), v.app, v.win);
+    TestRunUntilParked(v.app);
+    Span got[16];
+    int n = 0;
+    // "new paragraph fades"
+    utassert(TswFades(v, TextLeafKey::Block(11), got, &n));
+    // The ranges, flattened, cover 0..12 in order.
+    int at = 0;
+    for (int i = 0; i < n; i++) {
+        utassert(got[i].start == at);
+        at = got[i].end;
+    }
+    utassert(at == 12);
     TswClose(&v);
 }
 
@@ -4561,9 +4663,6 @@ static void AFadeRepaintsOnATimerUntilNothingFadesInAWindow() {
 }
 
 // ─── parsing ──────────────────────────────────────────────────────────────
-
-// state.rs MAX_SYNC_FULL_REPLACE_BYTES.
-static const int kMaxSyncFullReplaceBytes = 4 * 1024;
 
 // state.rs small_full_replace_parses_before_background_executor_runs.
 static void SmallFullReplaceParsesBeforeBackgroundExecutorRuns() {
@@ -6251,6 +6350,10 @@ static void MalformedRangesAndHtmlViewsAreRejectedInAWindow() {
 
 static void TestTextStateWindow() {
     PushStrFadesOnlyTheAppendedText();
+    OvertakenParsePreservesTheRemainingChunksFade();
+    OvertakenParsePreservesARemainingBlocksFade();
+    StreamCommitsAParseThatANewerChunkOvertook();
+    AParseFromBeforeAReplacementIsDiscarded();
     SetTextExtendingTheTextFadesLikePushStr();
     SetTextReplacingTheTextShowsItAtOnce();
     CompletedMarkupRefadesFromTheDivergence();

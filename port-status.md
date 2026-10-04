@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `21252d8b3db8235e450ca966155cfaf4b6f076c1` (2026-10-02,
-input: Group IME rewrites of the typed character into one undo step (#3341)).
-An edit that rewrites the one character before a collapsed cursor, as the macOS
-Korean IME does on each keystroke, is recorded as typing and coalesces into the
-run that typed it, so the run undoes as one step. The current update target is
-`4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `a4ba683e44c062325a030ad8ae36d6b830a9eb62` (2026-10-02, text:
+Commit background parses that a newer streamed chunk overtook (#3344)). A
+landed background parse is committed when it is from since the last full
+replacement and newer than what is committed, and discarded otherwise, and an
+overtaken result keeps the uncommitted tail's stream fade pending. The current
+update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
