@@ -819,6 +819,21 @@ void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat || !gDpy) {
         return;
     }
+    if (win->cursorHidden) {
+        static ::Cursor hidden = 0;
+        if (!hidden) {
+            char bits[1] = {0};
+            Pixmap bitmap =
+                XCreateBitmapFromData(gDpy, win->plat->xwin, bits, 1, 1);
+            XColor black = {};
+            hidden =
+                XCreatePixmapCursor(gDpy, bitmap, bitmap, &black, &black, 0, 0);
+            XFreePixmap(gDpy, bitmap);
+        }
+        XDefineCursor(gDpy, win->plat->xwin, hidden);
+        XFlush(gDpy);
+        return;
+    }
     // The server owns these; one of each per process is all this needs. The
     // cursor font's nearest glyph for each of gpui's shapes, in CursorKind
     // order.

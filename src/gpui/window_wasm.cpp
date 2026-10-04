@@ -149,7 +149,7 @@ EM_JS(void, GpJsSetCursor, (int kind), {
     ];
     const c = globalThis.__gpui.canvas;
     if (c) {
-        c.style.cursor = names[kind] || "default";
+        c.style.cursor = kind === names.length ? "none" : (names[kind] || "default");
     }
 });
 
@@ -831,8 +831,8 @@ void PlatSetTimer(Window* win, int ms) {
 }
 
 void PlatSetCursor(Window* win, CursorKind kind) {
-    (void)win;
-    GpJsSetCursor((int)kind);
+    GpJsSetCursor(win && win->cursorHidden ? (int)CursorKind::Count
+                                           : (int)kind);
 }
 
 // The browser holds the pointer for a press on its own — a mousemove and a

@@ -6430,6 +6430,7 @@ struct Window {
     Modifiers mouseModifiers = {};
     // What the pointer looks like right now; the OS is only told on a change.
     CursorKind cursor = CursorKind::Arrow;
+    bool cursorHidden = false;
     bool maximized = false;
     // Window::client_inset and window_decorations(). WindowBorder writes the
     // stable inset while it renders; fixed UI overlays read it while their
@@ -7567,6 +7568,8 @@ void AppMinimize(Window* win);
 void AppToggleMaximize(Window* win);
 // Enter or leave native fullscreen mode without changing application chrome.
 void WindowSetFullScreen(Window* win, bool fullScreen);
+// Hide or restore the pointer without changing the element-selected shape.
+void WindowSetCursorVisible(Window* win, bool visible);
 void AppClose(Window* win);
 void AppDrag(Window* win);
 bool AppIsMaximized(Window* win);

@@ -1314,7 +1314,19 @@ void PlatSetMouseCapture(Window* win, bool capture) {
 }
 
 void PlatSetCursor(Window* win, CursorKind kind) {
-    (void)win;
+    static bool hidden = false;
+    bool wantHidden = win && win->cursorHidden;
+    if (wantHidden != hidden) {
+        hidden = wantHidden;
+        if (hidden) {
+            [NSCursor hide];
+        } else {
+            [NSCursor unhide];
+        }
+    }
+    if (wantHidden) {
+        return;
+    }
     if (kind == CursorKind::IBeam) {
         [[NSCursor IBeamCursor] set];
     } else if (kind == CursorKind::Pointer) {

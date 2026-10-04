@@ -736,8 +736,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             // Only the client area; the frame's resize arrows are the
             // default handler's business.
             if (LOWORD(lParam) == HTCLIENT) {
-                SetCursor(win->plat->cursor ? win->plat->cursor
-                                            : LoadCursorW(nullptr, IDC_ARROW));
+                SetCursor(win->cursorHidden
+                              ? nullptr
+                              : (win->plat->cursor
+                                     ? win->plat->cursor
+                                     : LoadCursorW(nullptr, IDC_ARROW)));
                 return TRUE;
             }
             break;
@@ -931,6 +934,10 @@ void PlatSetMouseCapture(Window* win, bool capture) {
 
 void PlatSetCursor(Window* win, CursorKind kind) {
     if (!win || !win->plat) {
+        return;
+    }
+    if (win->cursorHidden) {
+        SetCursor(nullptr);
         return;
     }
     // gpui's Windows backend, platform/windows/util.rs load_cursor: the

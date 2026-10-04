@@ -4077,6 +4077,14 @@ bool AppIsMaximized(Window* win) {
     return win && win->maximized;
 }
 
+void WindowSetCursorVisible(Window* win, bool visible) {
+    if (!win || win->cursorHidden == !visible) {
+        return;
+    }
+    win->cursorHidden = !visible;
+    PlatSetCursor(win, win->cursor);
+}
+
 // ─── the application menu bar ──────────────────────────────────────────────
 //
 // cx.set_menus(): the menus turned into what the platform takes, and the
