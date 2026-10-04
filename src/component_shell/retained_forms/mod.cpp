@@ -574,6 +574,7 @@ static constexpr MethodDescriptor kInputMethods[] = {
     {"disabled", kDisabledArgs, kDisabledDoc, &RecordDisabled<kInput>},
     input_tokens::kTokenMethod,
     input_tokens::kTokenClickMethod,
+    input_tokens::kTokenHoverMethod,
     input_tokens::kChangeMethod,
 };
 static constexpr MethodDescriptor kNumberInputMethods[] = {

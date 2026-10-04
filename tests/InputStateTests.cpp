@@ -4426,6 +4426,359 @@ static void InlineTokenClickSelectsIt() {
     InputViewFree(&view);
 }
 
+// ─── inline token hover ───────────────────────────────────────────────────
+//
+// state.rs's test_inline_token_hover_* tests. Rust's `token_hover` and
+// `reconcile_token_hover` answer the listener with the event; the listener
+// here is a function pointer the store holds, so the two answer the event
+// alone.
+
+static El* HundredWideToken(Ctx* cx, const InlineTokenContext*, void*);
+
+static void NoopTokenHover(const InlineTokenHoverEvent*, Ctx*, void*) {}
+
+// What a hover listener heard: the token's id and whether it was entered.
+struct TokenHoverLog {
+    struct Entry {
+        char id[8] = {};
+        bool hovered = false;
+    };
+    Entry entries[16];
+    int n = 0;
+
+    static void OnHover(const InlineTokenHoverEvent* ev, Ctx*, void* user) {
+        TokenHoverLog* log = (TokenHoverLog*)user;
+        if (log->n >= 16) {
+            return;
+        }
+        Entry& e = log->entries[log->n++];
+        int len = gpui::len(ev->Token().id) < 7 ? gpui::len(ev->Token().id) : 7;
+        memcpy(e.id, ev->Token().id.s, (size_t)len);
+        e.hovered = ev->IsHovered();
+    }
+
+    // The events so far, as "a+" for an entry and "a-" for an exit.
+    bool Is(const char* want) const {
+        char got[64] = {};
+        int at = 0;
+        for (int i = 0; i < n && at < 60; i++) {
+            if (i > 0) {
+                got[at++] = ' ';
+            }
+            for (const char* p = entries[i].id; *p; p++) {
+                got[at++] = *p;
+            }
+            got[at++] = entries[i].hovered ? '+' : '-';
+        }
+        return base::StrEq(Str(got), want);
+    }
+};
+
+static bool TokenAt(const InputView& v, int start, int end, const char* id,
+                    const char* text) {
+    return InputReplaceRangeWithToken(v.input, v.app, v.win, start, end,
+                                      InlineToken::New(Str(id), Str(text))) ==
+           InlineTokenError::Ok;
+}
+
+static bool HoverEnter(const InputView& v, int start, Bounds bounds,
+                       InlineTokenHoverEvent* out,
+                       const InlineToken* expected = nullptr) {
+    return InputTokenHover(v.input, start, bounds, true, expected, out);
+}
+
+static bool HoverExit(const InputView& v, int start, Bounds bounds,
+                      InlineTokenHoverEvent* out,
+                      const InlineToken* expected = nullptr) {
+    return InputTokenHover(v.input, start, bounds, false, expected, out);
+}
+
+// test_inline_token_hover_reports_presence_without_selecting
+static void InlineTokenHoverReportsPresenceWithoutSelecting() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetValue(s, StrL("before @alice after"));
+    });
+    Bounds bounds = {10, 20, 100, 20};
+    utassert(TokenAt(view, 7, 13, "a", "@alice"));
+    InputSetTokenHoverPresentation(view.input, &NoopTokenHover, nullptr);
+    InputSetSelectedRange(view.input, view.app, view.win, 0, 0);
+
+    InlineTokenHoverEvent entered;
+    // "hover enters an enabled token"
+    utassert(HoverEnter(view, 7, bounds, &entered));
+    utassert(entered.IsHovered());
+    utassert(base::StrEq(entered.Token().id, "a"));
+    utassert(entered.span.start == 7 && entered.span.end == 13);
+    utassert(entered.bounds.x == bounds.x && entered.bounds.y == bounds.y &&
+             entered.bounds.w == bounds.w && entered.bounds.h == bounds.h);
+    InlineTokenHoverEvent left;
+    // "hover leaves the same token"
+    utassert(HoverExit(view, 7, bounds, &left));
+    utassert(!left.IsHovered());
+    // "hover never selects"
+    utassert(ViewRangeIs(view, 0, 0));
+    InlineTokenHoverEvent none;
+    utassert(!HoverEnter(view, 99, bounds, &none));
+
+    // Disabled tokens suppress hover, matching click; readonly allows it.
+    view.input->disabled = true;
+    utassert(!HoverEnter(view, 7, bounds, &none));
+    view.input->disabled = false;
+    view.input->readonly = true;
+    utassert(HoverEnter(view, 7, bounds, &none));
+
+    // Without a hover listener there is no hover activation.
+    InputSetTokenHoverPresentation(view.input, nullptr, nullptr);
+    utassert(!HoverEnter(view, 7, bounds, &none));
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_exit_delivered_when_token_removed
+static void InlineTokenHoverExitDeliveredWhenTokenRemoved() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetValue(s, StrL("before @alice after"));
+    });
+    TokenHoverLog log;
+    utassert(TokenAt(view, 7, 13, "a", "@alice"));
+    InputSetTokenPresentation(view.input, &HundredWideToken, nullptr, nullptr,
+                              nullptr, false);
+    InputSetTokenHoverPresentation(view.input, &TokenHoverLog::OnHover, &log);
+    AppInvalidate(view.win);
+    TestDraw(view.win);
+    Bounds known = {};
+    // "placed token bounds"
+    utassert(InputTokenBoundsGet(view.input, 7, &known) && known.w > 0);
+    TestSimulateMouseMove(view.win, Point{known.CenterX(), known.CenterY()});
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    utassert(log.Is("a+"));
+
+    // Remove the token while the pointer is still over its stale row: the
+    // exit must fire even though the token element that owns the hover is
+    // gone.
+    InputSetValue(view.input, StrL("no tokens"));
+    AppInvalidate(view.win);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    utassert(log.Is("a+ a-"));
+    InputViewFree(&view);
+}
+
+static El* SixtyWideToken(Ctx* cx, const InlineTokenContext*, void*) {
+    return Div(cx->a)->W(60)->H(20);
+}
+
+// test_inline_token_hover_bounds_stay_single_row_at_wrap_boundary
+static void InlineTokenHoverBoundsStaySingleRowAtWrapBoundary() {
+    InputView view =
+        InputViewBuildWith(InputKind::Textarea, [](InputState* s, App*) {
+            LayoutModeSetRows(&s->mode, 4);
+            InputSetValue(s, StrL("aaaa bbbb cccc dddd @alice eeee ffff"));
+        });
+    utassert(TokenAt(view, 20, 26, "a", "@alice"));
+    InputSetTokenPresentation(view.input, &SixtyWideToken, nullptr, nullptr,
+                              nullptr, false);
+    AppInvalidate(view.win);
+    TestDraw(view.win);
+    Bounds placed = {};
+    // "placed token bounds"
+    utassert(InputTokenBoundsGet(view.input, 20, &placed));
+    float lineHeight = view.input->lastLineH;
+    // The laid-out element always occupies exactly one row of height, even
+    // when the range-extent path resolves the same end boundary onto the
+    // next visual row at a soft-wrap edge.
+    utassert(placed.h <= lineHeight + 1);
+    utassert(placed.w <= 61 && placed.w > 0);
+    Bounds ranged = {};
+    if (InputRangeToBounds(view.input, view.win, {20, 26}, &ranged)) {
+        utassert(ranged.h >= placed.h - 1);
+    }
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_same_offset_replacement_exits_predecessor
+static void InlineTokenHoverSameOffsetReplacementExitsPredecessor() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("@alice!")); });
+    TokenHoverLog log;
+    utassert(TokenAt(view, 0, 6, "a", "@alice"));
+    InputSetTokenPresentation(view.input, &HundredWideToken, nullptr, nullptr,
+                              nullptr, false);
+    InputSetTokenHoverPresentation(view.input, &TokenHoverLog::OnHover, &log);
+    AppInvalidate(view.win);
+    TestDraw(view.win);
+    Bounds bounds = {};
+    utassert(InputTokenBoundsGet(view.input, 0, &bounds) && bounds.w > 0);
+    Point center = {bounds.CenterX(), bounds.CenterY()};
+    TestSimulateMouseMove(view.win, center);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    utassert(log.Is("a+"));
+
+    utassert(TokenAt(view, 0, 6, "b", "@alice"));
+    AppInvalidate(view.win);
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    TestSimulateMouseMove(view.win, Point{center.x + 1, center.y});
+    TestRunUntilParked(view.app);
+    TestDraw(view.win);
+    utassert(log.Is("a+ a- b+"));
+
+    // Disabling keeps the token mounted; re-enabling must reset the retained
+    // hover state even with a stationary pointer.
+    view.input->disabled = true;
+    AppInvalidate(view.win);
+    TestDraw(view.win);
+    TestRunUntilParked(view.app);
+    utassert(log.Is("a+ a- b+ b-"));
+    view.input->disabled = false;
+    AppInvalidate(view.win);
+    TestDraw(view.win);
+    TestRunUntilParked(view.app);
+    TestSimulateMouseMove(view.win, center);
+    TestRunUntilParked(view.app);
+    utassert(log.Is("a+ a- b+ b- b+"));
+
+    TestSimulateMouseMove(
+        view.win, Point{bounds.x + bounds.w + 10, bounds.y + bounds.h + 10});
+    TestRunUntilParked(view.app);
+    utassert(log.Is("a+ a- b+ b- b+ b-"));
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_older_exit_keeps_newer_snapshot
+static void InlineTokenHoverOlderExitKeepsNewerSnapshot() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("@a @b")); });
+    Bounds bounds = {10, 20, 100, 20};
+    utassert(TokenAt(view, 0, 2, "a", "@a"));
+    utassert(TokenAt(view, 3, 5, "b", "@b"));
+    InputSetTokenHoverPresentation(view.input, &NoopTokenHover, nullptr);
+    // The pointer moves A -> B; B's enter is dispatched before A's exit.
+    InlineTokenHoverEvent ev;
+    // "hover enters A"
+    utassert(HoverEnter(view, 0, bounds, &ev));
+    // "hover enters B"
+    utassert(HoverEnter(view, 3, bounds, &ev));
+    InlineTokenHoverEvent exitA;
+    // "A exits"
+    utassert(HoverExit(view, 0, bounds, &exitA));
+    utassert(!exitA.IsHovered());
+    // B's snapshot must survive A's late exit: "B still hovered".
+    const InlineTokenStore* store = InputTokenStore(view.input);
+    utassert(store && store->hasHovered &&
+             base::StrEq(store->hovered.span.token.id, "b"));
+    // Removing B afterwards still produces B's reconciled exit.
+    InputSetValue(view.input, StrL("no tokens"));
+    InputTokenBoundsClear(view.input);
+    InlineTokenHoverEvent exitB;
+    // "B must exit"
+    utassert(InputReconcileTokenHover(view.input, &exitB));
+    utassert(!exitB.IsHovered());
+    utassert(base::StrEq(exitB.Token().id, "b"));
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_late_exit_matches_replaced_token
+static void InlineTokenHoverLateExitMatchesReplacedToken() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("@a")); });
+    InlineToken a = InlineToken::New(StrL("a"), StrL("@a"));
+    InlineToken b = InlineToken::New(StrL("b"), StrL("@a"));
+    utassert(InputReplaceRangeWithToken(view.input, view.app, view.win, 0, 2,
+                                        a) == InlineTokenError::Ok);
+    InputSetTokenHoverPresentation(view.input, &NoopTokenHover, nullptr);
+    Bounds bounds = {};
+    InlineTokenHoverEvent ev;
+    utassert(HoverEnter(view, 0, bounds, &ev, &a));
+    utassert(InputReplaceRangeWithToken(view.input, view.app, view.win, 0, 2,
+                                        b) == InlineTokenError::Ok);
+    utassert(HoverEnter(view, 0, bounds, &ev, &b));
+    InlineTokenHoverEvent exitA;
+    utassert(HoverExit(view, 0, bounds, &exitA, &a));
+    utassert(base::StrEq(exitA.Token().id, "a"));
+    const InlineTokenStore* store = InputTokenStore(view.input);
+    utassert(store && store->hasHovered &&
+             InlineTokenEq(store->hovered.span.token, b));
+    InlineTokenHoverEvent exitB;
+    utassert(HoverExit(view, 0, bounds, &exitB, &b));
+    utassert(base::StrEq(exitB.Token().id, "b"));
+    utassert(len(store->pendingHoverExits) == 0);
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_exit_keeps_entry_utf16_after_edit: the text is
+// U+1F642, a space and "@a".
+static void InlineTokenHoverExitKeepsEntryUtf16AfterEdit() {
+    InputView view = InputViewBuild([](InputState* s, App*) {
+        InputSetValue(s, StrL("\xF0\x9F\x99\x82 @a"));
+    });
+    utassert(TokenAt(view, 5, 7, "a", "@a"));
+    InputSetTokenHoverPresentation(view.input, &NoopTokenHover, nullptr);
+    Bounds bounds = {};
+    InlineTokenHoverEvent enter;
+    utassert(HoverEnter(view, 5, bounds, &enter));
+    utassert(enter.rangeUtf16Start == 3 && enter.rangeUtf16End == 5);
+    // Rust replaces the UTF-16 range 0..2, the emoji; here that is its four
+    // bytes, and the four ASCII bytes that replace it leave the token where
+    // it was.
+    Selection emoji = {0, 4};
+    InputReplaceTextInRange(view.input, view.app, view.win, &emoji,
+                            StrL("abcd"));
+    const Vec<InlineTokenSpan>* spans = InputTokens(view.input);
+    utassert(spans && len(*spans) == 1 && (*spans)[0].start == 5 &&
+             (*spans)[0].end == 7);
+    InlineTokenHoverEvent exit;
+    utassert(HoverExit(view, 5, bounds, &exit));
+    utassert(exit.rangeUtf16Start == 3 && exit.rangeUtf16End == 5);
+    InputViewFree(&view);
+}
+
+// test_inline_token_hover_callback_edit_preserves_both_exits
+static void InlineTokenHoverCallbackEditPreservesBothExits() {
+    InputView view = InputViewBuild(
+        [](InputState* s, App*) { InputSetValue(s, StrL("@a @b")); });
+    utassert(TokenAt(view, 0, 2, "a", "@a"));
+    utassert(TokenAt(view, 3, 5, "b", "@b"));
+    InputSetTokenHoverPresentation(view.input, &NoopTokenHover, nullptr);
+    Bounds bounds = {};
+    InlineTokenHoverEvent ev;
+    utassert(HoverEnter(view, 0, bounds, &ev));
+    utassert(HoverEnter(view, 3, bounds, &ev));
+    // Model an edit in B's enter callback before A's queued exit.
+    InputSetValue(view.input, StrL("gone"));
+    InlineTokenHoverEvent exitA;
+    utassert(HoverExit(view, 0, bounds, &exitA));
+    utassert(base::StrEq(exitA.Token().id, "a"));
+    InlineTokenHoverEvent exitB;
+    utassert(InputReconcileTokenHover(view.input, &exitB));
+    utassert(base::StrEq(exitB.Token().id, "b"));
+    utassert(!HoverExit(view, 0, bounds, &ev));
+    utassert(!InputReconcileTokenHover(view.input, &ev));
+    InputViewFree(&view);
+}
+
+// component input.rs / textarea.rs test_on_token_hover_builder.
+static void OnTokenHoverBuilder() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Arena* a = ArenaNew();
+    Ctx cx = {app, nullptr, a, {}};
+    InputState state;
+    utassert(!component::Input::New(&cx, StrL("i"), &state)->tokenHover);
+    utassert(component::Input::New(&cx, StrL("i"), &state)
+                 ->OnTokenHover(&NoopTokenHover)
+                 ->tokenHover == &NoopTokenHover);
+    InputState area;
+    area.kind = InputKind::Textarea;
+    utassert(!component::Textarea::New(&cx, StrL("t"), &area)->tokenHover);
+    utassert(component::Textarea::New(&cx, StrL("t"), &area)
+                 ->OnTokenHover(&NoopTokenHover)
+                 ->tokenHover == &NoopTokenHover);
+    ArenaDelete(a);
+    TestAppFree(app);
+}
+
 // state.rs test_inline_token_geometry_and_reentrant_activation: the chip is
 // the token's box, a press on its left half lands before it and on its right
 // half after it, and ActivateToken over the selected token runs the click
@@ -9106,6 +9459,15 @@ static void RunWindowTestsD() {
 
 static void RunWindowTests() {
     InlineTokenClickSelectsIt();
+    InlineTokenHoverReportsPresenceWithoutSelecting();
+    InlineTokenHoverExitDeliveredWhenTokenRemoved();
+    InlineTokenHoverBoundsStaySingleRowAtWrapBoundary();
+    InlineTokenHoverSameOffsetReplacementExitsPredecessor();
+    InlineTokenHoverOlderExitKeepsNewerSnapshot();
+    InlineTokenHoverLateExitMatchesReplacedToken();
+    InlineTokenHoverExitKeepsEntryUtf16AfterEdit();
+    InlineTokenHoverCallbackEditPreservesBothExits();
+    OnTokenHoverBuilder();
     InlineTokenGeometryAndReentrantActivation();
     TextareaTokenRangeIsItsChip();
     TextareaCursorTreatsCrlfAsOneNewline();

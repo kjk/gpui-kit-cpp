@@ -1288,6 +1288,7 @@ static const char kShellTypes4[] = R"GPUI_DTS(    on_resize<Self extends Element
     resize_dock<Self extends Element>(this: Self, dock: import("gpui-base").DockRegion): Self;
     token(render: (token: import("gpui-base").InlineTokenContext, cx: Context) => Element | null): this;
     on_token_click(listener: (event: import("gpui-base").InlineTokenClickEvent, cx: Context) => void): this;
+    on_token_hover(listener: (event: import("gpui-base").InlineTokenHoverEvent, cx: Context) => void): this;
 
     // Style methods that take an argument. Which length type a method
     // accepts follows its Rust signature, so `.p("auto")` and
@@ -1324,10 +1325,10 @@ static const char kShellTypes4[] = R"GPUI_DTS(    on_resize<Self extends Element
     /** Sets the font weight to a number between 100 and 900. */
     font_weight<Self extends Element>(this: Self, value: number): Self;
     /** Sets the gap between children on both axes. */
-    gap<Self extends Element>(this: Self, value: DefiniteLength): Self;
-    /** Sets the gap between children along the main axis. */
 )GPUI_DTS";
-static const char kShellTypes5[] = R"GPUI_DTS(    gap_x<Self extends Element>(this: Self, value: DefiniteLength): Self;
+static const char kShellTypes5[] = R"GPUI_DTS(    gap<Self extends Element>(this: Self, value: DefiniteLength): Self;
+    /** Sets the gap between children along the main axis. */
+    gap_x<Self extends Element>(this: Self, value: DefiniteLength): Self;
     /** Sets the gap between children along the cross axis. */
     gap_y<Self extends Element>(this: Self, value: DefiniteLength): Self;
     /** Sets the height. */
@@ -1612,11 +1613,11 @@ static const char kShellTypes5[] = R"GPUI_DTS(    gap_x<Self extends Element>(th
      * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 5px
-     */
+)GPUI_DTS";
+static const char kShellTypes6[] = R"GPUI_DTS(     */
     border_b_5<Self extends Element>(this: Self): Self;
     /**
-)GPUI_DTS";
-static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+     * Sets the border width of the bottom side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 6px
      */
@@ -1940,10 +1941,10 @@ static const char kShellTypes6[] = R"GPUI_DTS(     * Sets the border width of th
      *
      * 8px
      */
-    border_t_8<Self extends Element>(this: Self): Self;
-    /**
 )GPUI_DTS";
-static const char kShellTypes7[] = R"GPUI_DTS(     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
+static const char kShellTypes7[] = R"GPUI_DTS(    border_t_8<Self extends Element>(this: Self): Self;
+    /**
+     * Sets the border width of the top side of the element. [Docs](https://tailwindcss.com/docs/border-width#individual-sides)
      *
      * 9px
      */
@@ -20717,6 +20718,10 @@ declare module "gpui-base" {
     bounds: { x: number; y: number; width: number; height: number };
     modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
   }
+  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+    hovered: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+  }
   /** A row. */
   export function h_flex(): NativeElement;
   /** A column. */
@@ -20911,11 +20916,11 @@ declare module "gpui-base" {
    * ```
    *
    * Dates are `"YYYY-MM-DD"` — sortable as text, and readable by `new Date(s)`
-   * when you need a weekday name or a localized month label.
+)GPUI_DTS";
+static const char kShellTypes61[] = R"GPUI_DTS(   * when you need a weekday name or a localized month label.
    */
   export const CalendarState: { new(): CalendarStateHandle };
-)GPUI_DTS";
-static const char kShellTypes61[] = R"GPUI_DTS(  /** A selected date: one day, a `[start, end]` range, or nothing. */
+  /** A selected date: one day, a `[start, end]` range, or nothing. */
   export type CalendarDate = string | [string | null, string | null] | null;
   export interface CalendarStateHandle {
     /**
@@ -21171,12 +21176,12 @@ static const char kShellTypes61[] = R"GPUI_DTS(  /** A selected date: one day, a
    *
    * ```js
    * Select.new("country")
-   *   .accessibility_label("Country")
+)GPUI_DTS";
+static const char kShellTypes62[] = R"GPUI_DTS(   *   .accessibility_label("Country")
    *   .open(this.open)
    *   .track_focus(this.trigger_focus)
    *   .content_focus_handle(this.list_focus)
-)GPUI_DTS";
-static const char kShellTypes62[] = R"GPUI_DTS(   *   .on_open_change((open, cx) => { this.open = open; cx.notify(); })
+   *   .on_open_change((open, cx) => { this.open = open; cx.notify(); })
    *   .child(
    *     Popup.new("country-list", trigger)
    *       .when(this.open, el => el.content(list)),
@@ -21440,12 +21445,12 @@ static const char kShellTypes62[] = R"GPUI_DTS(   *   .on_open_change((open, cx)
     /** Plain text, or a content snapshot to restore its tokens as well. */
     set_value(next: string | InputContent): void;
     /** `change`, `submit`, `focus` or `blur`. */
-    on(event: "change" | "submit" | "focus" | "blur", handler: (event: InputEvent, cx: Context) => void): boolean;
+)GPUI_DTS";
+static const char kShellTypes63[] = R"GPUI_DTS(    on(event: "change" | "submit" | "focus" | "blur", handler: (event: InputEvent, cx: Context) => void): boolean;
     /** Shows this many rows. */
     set_rows(rows: number): void;
     /** Grows with the content, between the two row counts. */
-)GPUI_DTS";
-static const char kShellTypes63[] = R"GPUI_DTS(    set_auto_grow(min_rows: number, max_rows: number): void;
+    set_auto_grow(min_rows: number, max_rows: number): void;
     /** Wraps long lines instead of scrolling sideways. Default is on. */
     set_soft_wrap(wrap: boolean): void;
     release(): boolean;
@@ -21732,14 +21737,14 @@ static const char kShellTypes63[] = R"GPUI_DTS(    set_auto_grow(min_rows: numbe
    * `add_panel` is handed a view from `cx.new(Class)`, which is itself still
    * being constructed; `load` rebuilds panels, which constructs more. So
    * `panels()` and `dump()` read the layout as it was before this turn's edits,
-   * and `on("layout_changed", …)` is where to read it after them.
+)GPUI_DTS";
+static const char kShellTypes64[] = R"GPUI_DTS(   * and `on("layout_changed", …)` is where to read it after them.
    *
    * ```js
    * init(_props, cx) {
    *   DockArea.register_panel("inbox", Inbox);
    *   this.dock = DockArea.new("workspace");
-)GPUI_DTS";
-static const char kShellTypes64[] = R"GPUI_DTS(   *   this.dock.add_panel(cx.new(Inbox), { name: "inbox", placement: "left", size: 240 });
+   *   this.dock.add_panel(cx.new(Inbox), { name: "inbox", placement: "left", size: 240 });
    *   this.dock.on("layout_changed", () => localStorage.setItem("layout", JSON.stringify(this.dock.dump())));
    * }
    * render() {
@@ -21942,6 +21947,10 @@ declare module "gpui-component" {
     bounds: { x: number; y: number; width: number; height: number };
     modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
   }
+  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+    hovered: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+  }
 }
 
 declare module "gpui-shell" {
@@ -22021,7 +22030,8 @@ declare module "gpui-fps" {
 
   /** Where the root-owned HUD sits and how it behaves. Every key is optional. */
   export interface FpsMonitorOptions {
-    /** Corner or edge of the window. Default `top_right`. */
+)GPUI_DTS";
+static const char kShellTypes65[] = R"GPUI_DTS(    /** Corner or edge of the window. Default `top_right`. */
     anchor?: Anchor;
     /** Frame budget in milliseconds, for the FRAME grading and the chart's scale. */
     frame_budget?: number;
@@ -22030,8 +22040,7 @@ declare module "gpui-fps" {
   /**
    * Draws the performance HUD over the whole window, above every overlay,
    * until `hide_fps_monitor()`. The window root owns it: the script says
-)GPUI_DTS";
-static const char kShellTypes65[] = R"GPUI_DTS(   * whether and where, and nothing the script renders can move it, rebuild
+   * whether and where, and nothing the script renders can move it, rebuild
    * it, or count against it. Calling it again moves or reconfigures the HUD
    * that is already up; the monitor behind it keeps its history across a hide
    * and a show. Needs a live host call: `init()`, an event handler or a task.

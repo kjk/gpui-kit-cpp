@@ -16,11 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `edd5d3a42a65bfb51dec22df1623177c7b6db909` (2026-10-03,
-clipboard: Add accessibility_label to name the icon button (#3354)). Clipboard
-gains AccessibilityLabel, the name a screen reader announces for its icon-only
-button, defaulting to the localized Copy. The current update target is
-`4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `d89a9b272292f30c724e7098a965287d6d912307` (2026-10-03,
+input: report inline token hover for tooltips and previews (#3346)). Inline
+tokens report hover: InlineTokenHoverEvent and Input / Textarea OnTokenHover in
+Base and Component, a retained hover snapshot whose exit is still delivered
+after the token is removed, replaced, masked or disabled, and on_token_hover
+for scripts with the entry-time UTF-16 range on exits. The current update
+target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
@@ -78,6 +80,16 @@ button, defaulting to the localized Copy. The current update target is
   `RenderedText`'s text, source and `RangeForSource` read the view's index
   (Rust's snapshot holds the parsed document), so read and convert through
   a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **A token's hover exit is reconciled as the field builds, not at
+  prepaint.** Rust's `prepaint_tokens` compares the retained hover against
+  the token elements it has just placed. The rows here are elements built
+  before layout, so a field reconciles when it starts building its rows and
+  reads the ones the last build placed: an exit for a token that was
+  removed, replaced, masked or disabled arrives in the same frame, one for
+  a token scrolled out of the built rows a frame later. Re-entry under a
+  still pointer works by giving the chip a new id (`hoverEpoch`) rather than
+  by resetting GPUI's retained element state (`src/base/input.cpp`,
+  `src/base/input_tokens.cpp`).
 - **Speech input has no microphone and no system recognizer.** Rust's
   `speech` feature captures through cpal (`Microphone`) and recognizes with
   `SFSpeechRecognizer` on macOS and `Windows.Media.SpeechRecognition` on

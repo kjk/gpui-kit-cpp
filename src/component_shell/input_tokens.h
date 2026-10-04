@@ -15,6 +15,7 @@ struct Op {
     enum Kind : uint8_t {
         Render,
         Click,
+        Hover,
         Change,
     } kind = Render;
     ComponentArgument argument = {};
@@ -22,6 +23,7 @@ struct Op {
 
 bool RecordRender(PayloadBuild* build, const ComponentArgument* args, int);
 bool RecordClick(PayloadBuild* build, const ComponentArgument* args, int);
+bool RecordHover(PayloadBuild* build, const ComponentArgument* args, int);
 bool RecordChange(PayloadBuild* build, const ComponentArgument* args, int);
 
 inline constexpr ArgumentDescriptor kRenderArguments[] = {
@@ -30,10 +32,13 @@ inline constexpr ArgumentDescriptor kRenderArguments[] = {
 inline constexpr ArgumentDescriptor kClickArguments[] = {
     {"listener",
      SchemaCallback("(event: InlineTokenClickEvent, cx: Context) => void")}};
+inline constexpr ArgumentDescriptor kHoverArguments[] = {
+    {"listener",
+     SchemaCallback("(event: InlineTokenHoverEvent, cx: Context) => void")}};
 inline constexpr ArgumentDescriptor kChangeArguments[] = {
     {"listener", SchemaCallback("(text: string, cx: Context) => void")}};
 
-// methods(include_change): these two, then kChangeMethod when included.
+// methods(include_change): these three, then kChangeMethod when included.
 inline constexpr MethodDescriptor kTokenMethod = {
     "token", kRenderArguments,
     "Renders an atomic token from its current UTF-16 range and read-only "
@@ -44,6 +49,10 @@ inline constexpr MethodDescriptor kTokenClickMethod = {
     "Activates a reference after a completed unconsumed click, outside the "
     "editing borrow.",
     &RecordClick};
+inline constexpr MethodDescriptor kTokenHoverMethod = {
+    "on_token_hover", kHoverArguments,
+    "Reports pointer presence over a token; hover never selects or edits.",
+    &RecordHover};
 inline constexpr MethodDescriptor kChangeMethod = {
     "on_change", kChangeArguments,
     "Reports user text or token identity changes; explicit draft restoration "

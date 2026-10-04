@@ -2100,7 +2100,7 @@ static bool IsCallbackMethod(Str name) {
         "on_item_secondary_click\0on_change\0"
         "on_open_change\0on_confirm\0on_dismiss\0on_step\0on_resize\0"
         "on_key_down\0on_key_up\0on_mouse_down_out\0on_scroll_wheel\0"
-        "on_link_click\0token\0on_token_click\0"
+        "on_link_click\0token\0on_token_click\0on_token_hover\0"
         // A dock's chrome handlers. They are callbacks like any other; what
         // makes them different is that they are asked from inside the frame
         // rather than from render, which the Layout scope around the call and
@@ -12673,6 +12673,44 @@ void ShellRuntime::DispatchTokenClick(shell::CallbackId click,
     Window* win = cx ? cx->win : nullptr;
     App* app = cx ? cx->app : nullptr;
     Dispatch(this, click, payload, win, app);
+}
+
+// inline_token_hover_data, as the payload on_token_hover hears: an entry's
+// range is read off the current text, an exit's is the one captured at
+// entry.
+void ShellRuntime::DispatchTokenHover(shell::CallbackId hover,
+                                      const InlineTokenHoverEvent* ev, Str text,
+                                      Ctx* cx) {
+    if (!impl || !ev || !hover) return;
+    JSValue payload = JS_NewObject(impl->context);
+    JS_SetPropertyStr(impl->context, payload, "token",
+                      TokenJs(impl->context, ev->Token()));
+    JSValue range;
+    if (ev->IsHovered()) {
+        range = RangeJs(impl->context, text, ev->span.start, ev->span.end);
+    } else {
+        range = JS_NewObject(impl->context);
+        JS_SetPropertyStr(impl->context, range, "start",
+                          JS_NewFloat64(impl->context, ev->rangeUtf16Start));
+        JS_SetPropertyStr(impl->context, range, "end",
+                          JS_NewFloat64(impl->context, ev->rangeUtf16End));
+    }
+    JS_SetPropertyStr(impl->context, payload, "range", range);
+    JS_SetPropertyStr(impl->context, payload, "hovered",
+                      JS_NewBool(impl->context, ev->IsHovered()));
+    JSValue bounds = JS_NewObject(impl->context);
+    JS_SetPropertyStr(impl->context, bounds, "x",
+                      JS_NewFloat64(impl->context, ev->bounds.x));
+    JS_SetPropertyStr(impl->context, bounds, "y",
+                      JS_NewFloat64(impl->context, ev->bounds.y));
+    JS_SetPropertyStr(impl->context, bounds, "width",
+                      JS_NewFloat64(impl->context, ev->bounds.w));
+    JS_SetPropertyStr(impl->context, bounds, "height",
+                      JS_NewFloat64(impl->context, ev->bounds.h));
+    JS_SetPropertyStr(impl->context, payload, "bounds", bounds);
+    Window* win = cx ? cx->win : nullptr;
+    App* app = cx ? cx->app : nullptr;
+    Dispatch(this, hover, payload, win, app);
 }
 
 // ─── Registered component callbacks ────────────────────────────────────────

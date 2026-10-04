@@ -42,6 +42,13 @@ ComponentDataValue InlineTokenContextData(Arena* a,
 ComponentDataValue InlineTokenClickData(Arena* a,
                                         const InlineTokenClickEvent& event,
                                         Str text);
+// inline_token_hover_data: the plain JS hover event, with current token
+// identity and presence. Entry coordinates come from the current text; an
+// exit delivered after the text changed reuses the UTF-16 coordinates
+// captured at entry.
+ComponentDataValue InlineTokenHoverData(Arena* a,
+                                        const InlineTokenHoverEvent& event,
+                                        Str text);
 
 // input_token_state_methods / textarea_token_state_methods: value, set_value,
 // content, tokens, replace_with_token, replace_range_with_token,
@@ -52,11 +59,14 @@ extern const StateMethodDescriptor kTextareaTokenStateMethods[8];
 // InlineTokenCallbacks: script callbacks for one input's tokens, adapted to
 // the native renderer and click listener. Frame-allocated; `apply` is the
 // element's own Token / OnTokenClick, which the caller invokes with these.
+// Hover uses the separate WithHover / HoverListener pair, so New keeps its
+// signature.
 struct InlineTokenCallbacks {
     ShellRuntime* runtime = nullptr;
     InputState* state = nullptr;
     ComponentCallback renderer = {};
     ComponentCallback listener = {};
+    ComponentCallback hoverListener = {};
 
     static InlineTokenCallbacks* New(Ctx* cx, ShellRuntime* runtime,
                                      InputState* state,
@@ -65,6 +75,10 @@ struct InlineTokenCallbacks {
     // The native hooks, or null when the script gave no such callback.
     InlineTokenRenderer Renderer() const;
     InlineTokenClickListener Listener() const;
+    // with_hover: bind a hover listener without changing New.
+    InlineTokenCallbacks* WithHover(ComponentCallback hover);
+    // apply_hover's listener, or null when the script gave none.
+    InlineTokenHoverListener HoverListener() const;
 };
 
 } // namespace gpui::shell

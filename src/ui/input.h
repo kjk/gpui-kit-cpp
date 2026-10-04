@@ -156,6 +156,8 @@ struct Input {
     void* tokenRendererUser = nullptr;
     InlineTokenClickListener tokenClick = nullptr;
     void* tokenClickUser = nullptr;
+    InlineTokenHoverListener tokenHover = nullptr;
+    void* tokenHoverUser = nullptr;
     EditorContextMenuFn contextMenu = nullptr;
     void* contextMenuData = nullptr;
     // Styled::style: the caller's refinement, applied to the root last.
@@ -197,6 +199,9 @@ struct Input {
     // and history. Default is InputToken.
     Input* Token(InlineTokenRenderer fn, void* user = nullptr);
     Input* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
+    // Report pointer presence over a token so the application can show a
+    // tooltip or run custom logic. Hover never selects or edits.
+    Input* OnTokenHover(InlineTokenHoverListener fn, void* user = nullptr);
     El* IntoEl();
 };
 
@@ -377,6 +382,8 @@ struct Textarea {
     void* tokenRendererUser = nullptr;
     InlineTokenClickListener tokenClick = nullptr;
     void* tokenClickUser = nullptr;
+    InlineTokenHoverListener tokenHover = nullptr;
+    void* tokenHoverUser = nullptr;
     EditorContextMenuFn contextMenu = nullptr;
     void* contextMenuData = nullptr;
     // Styled::style: the caller's refinement, applied to the root last.
@@ -404,6 +411,9 @@ struct Textarea {
     Textarea* OnPaste(InputPasteFn fn, void* data = nullptr);
     Textarea* Token(InlineTokenRenderer fn, void* user = nullptr);
     Textarea* OnTokenClick(InlineTokenClickListener fn, void* user = nullptr);
+    // Report pointer presence over a token so the application can show a
+    // tooltip or run custom logic. Hover never selects or edits.
+    Textarea* OnTokenHover(InlineTokenHoverListener fn, void* user = nullptr);
     El* IntoEl();
 };
 

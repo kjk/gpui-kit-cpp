@@ -26,6 +26,12 @@ bool RecordClick(PayloadBuild* build, const ComponentArgument* args,
                   "on_token_click expects a listener");
 }
 
+bool RecordHover(PayloadBuild* build, const ComponentArgument* args,
+                 int count) {
+    return Record(build, args, count, Op::Hover,
+                  "on_token_hover expects a listener");
+}
+
 bool RecordChange(PayloadBuild* build, const ComponentArgument* args,
                   int count) {
     return Record(build, args, count, Op::Change,
@@ -36,6 +42,7 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
              Binding* out) {
     const ComponentArgument* renderer = nullptr;
     const ComponentArgument* listener = nullptr;
+    const ComponentArgument* hoverListener = nullptr;
     const ComponentArgument* change = nullptr;
     EachMethod<Op>(request, [&](const Op& op) {
         switch (op.kind) {
@@ -44,6 +51,9 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
                 break;
             case Op::Click:
                 listener = &op.argument;
+                break;
+            case Op::Hover:
+                hoverListener = &op.argument;
                 break;
             case Op::Change:
                 change = &op.argument;
@@ -54,13 +64,15 @@ bool Prepare(MaterializeRequest* request, InputState* state, uint64_t handle,
     out->state = state;
     out->handle = handle;
     out->elementId = request->elementId;
-    shell::ComponentCallback render = {}, click = {};
+    shell::ComponentCallback render = {}, click = {}, hover = {};
     if (renderer) render = request->ResolveCallback(*renderer);
     if (listener) click = request->ResolveCallback(*listener);
+    if (hoverListener) hover = request->ResolveCallback(*hoverListener);
     if (change) out->change = request->ResolveCallback(*change);
     if (len(request->failure)) return false;
     out->callbacks = shell::InlineTokenCallbacks::New(
-        request->cx, request->runtime, state, render, click);
+                         request->cx, request->runtime, state, render, click)
+                         ->WithHover(hover);
     return true;
 }
 
@@ -70,6 +82,8 @@ void ApplyInput(const Binding& binding, component::Input* input) {
         input->Token(render, binding.callbacks);
     if (InlineTokenClickListener click = binding.callbacks->Listener())
         input->OnTokenClick(click, binding.callbacks);
+    if (InlineTokenHoverListener hover = binding.callbacks->HoverListener())
+        input->OnTokenHover(hover, binding.callbacks);
 }
 
 void ApplyTextarea(const Binding& binding, component::Textarea* textarea) {
@@ -78,6 +92,8 @@ void ApplyTextarea(const Binding& binding, component::Textarea* textarea) {
         textarea->Token(render, binding.callbacks);
     if (InlineTokenClickListener click = binding.callbacks->Listener())
         textarea->OnTokenClick(click, binding.callbacks);
+    if (InlineTokenHoverListener hover = binding.callbacks->HoverListener())
+        textarea->OnTokenHover(hover, binding.callbacks);
 }
 
 // The subscription's handler: only a Change reaches the script.

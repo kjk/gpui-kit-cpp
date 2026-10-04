@@ -412,6 +412,35 @@ ComponentDataValue InlineTokenClickData(Arena* a,
     return Object(a, fields, 4);
 }
 
+ComponentDataValue InlineTokenHoverData(Arena* a,
+                                        const InlineTokenHoverEvent& event,
+                                        Str text) {
+    using namespace input_tokens;
+    ComponentDataValue range;
+    if (event.IsHovered()) {
+        range = RangeData(a, text, event.span.start, event.span.end);
+    } else {
+        Field ends[] = {
+            {"start", ComponentDataValue::Number(event.rangeUtf16Start)},
+            {"end", ComponentDataValue::Number(event.rangeUtf16End)},
+        };
+        range = Object(a, ends, 2);
+    }
+    Field bounds[] = {
+        {"x", ComponentDataValue::Number(event.bounds.x)},
+        {"y", ComponentDataValue::Number(event.bounds.y)},
+        {"width", ComponentDataValue::Number(event.bounds.w)},
+        {"height", ComponentDataValue::Number(event.bounds.h)},
+    };
+    Field fields[] = {
+        {"token", TokenData(a, event.Token())},
+        {"range", range},
+        {"hovered", ComponentDataValue::Boolean(event.IsHovered())},
+        {"bounds", Object(a, bounds, 4)},
+    };
+    return Object(a, fields, 4);
+}
+
 // ─── InlineTokenCallbacks ──────────────────────────────────────────────────
 
 static El* RenderInlineToken(Ctx* cx, const InlineTokenContext* token,
@@ -439,6 +468,19 @@ static void ClickInlineToken(const InlineTokenClickEvent* event, Ctx* cx,
     }
 }
 
+static void HoverInlineToken(const InlineTokenHoverEvent* event, Ctx* cx,
+                             void* user) {
+    const InlineTokenCallbacks* self = (const InlineTokenCallbacks*)user;
+    Arena* a = cx->a ? cx->a : GetTempArena();
+    ComponentDataValue data =
+        InlineTokenHoverData(a, *event, InputValue(self->state));
+    Str error;
+    if (!self->hoverListener.InvokeWith(self->runtime, &data, 1, cx->win,
+                                        cx->app, nullptr, &error, a)) {
+        logf("inline token hover failed: %s\n", error);
+    }
+}
+
 InlineTokenCallbacks* InlineTokenCallbacks::New(Ctx* cx, ShellRuntime* runtime,
                                                 InputState* state,
                                                 ComponentCallback renderer,
@@ -457,6 +499,15 @@ InlineTokenRenderer InlineTokenCallbacks::Renderer() const {
 
 InlineTokenClickListener InlineTokenCallbacks::Listener() const {
     return listener.IsSet() ? &ClickInlineToken : nullptr;
+}
+
+InlineTokenCallbacks* InlineTokenCallbacks::WithHover(ComponentCallback hover) {
+    hoverListener = hover;
+    return this;
+}
+
+InlineTokenHoverListener InlineTokenCallbacks::HoverListener() const {
+    return hoverListener.IsSet() ? &HoverInlineToken : nullptr;
 }
 
 } // namespace gpui::shell

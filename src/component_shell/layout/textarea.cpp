@@ -165,6 +165,7 @@ static constexpr MethodDescriptor kMethods[] = {
      &RecordAriaLabel},
     input_tokens::kTokenMethod,
     input_tokens::kTokenClickMethod,
+    input_tokens::kTokenHoverMethod,
     input_tokens::kChangeMethod,
 };
 

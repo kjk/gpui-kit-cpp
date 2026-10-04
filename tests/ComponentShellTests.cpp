@@ -912,6 +912,16 @@ El* FindTextPrefix(El* element, Str prefix) {
     return nullptr;
 }
 
+El* FindTextContaining(El* element, Str needle) {
+    if (!element) return nullptr;
+    if (element->kind == ElKind::Text && StrContains(element->text, needle))
+        return element;
+    for (El* child = element->first; child; child = child->next) {
+        if (El* found = FindTextContaining(child, needle)) return found;
+    }
+    return nullptr;
+}
+
 // Renders `call` once and answers whether it built without an error.
 bool RendersCleanly(const char* imports, const char* call,
                     const char* expectText = nullptr) {
@@ -2444,8 +2454,24 @@ bool ClickFirstToken(El* element) {
     return false;
 }
 
+// Walks for the first element carrying a hover listener (a token chip's) and
+// tells it the pointer entered.
+bool HoverFirstToken(Host& host, El* element) {
+    if (!element) return false;
+    if (element->onHover.IsValid()) {
+        HoverEvent entered = {true};
+        ListenerCall(&host.app, &host.window, element->onHover, &entered);
+        return true;
+    }
+    for (El* child = element->first; child; child = child->next) {
+        if (HoverFirstToken(host, child)) return true;
+    }
+    return false;
+}
+
 // inline_tokens_host.rs inline_tokens_script_operations_and_click_reentry.
-// The token chip's click is its activation handler, run directly.
+// The token chip's click is its activation handler, run directly, and its
+// hover is the chip's own hover listener.
 void InlineTokensScriptOperationsAndClickReentry() {
     Host host(StrL(
         "import { div, View } from 'gpui-kit';\n"
@@ -2486,6 +2512,7 @@ void InlineTokensScriptOperationsAndClickReentry() {
         "    this.base = exercise(BaseInputState.new());\n"
         "    this.baseArea = exercise(BaseTextareaState.new());\n"
         "    this.status = 'verified';\n"
+        "    this.hoverLog = [];\n"
         "  }\n"
         "  render() {\n"
         "    return div().relative().w(400).h(260)\n"
@@ -2495,6 +2522,11 @@ void InlineTokensScriptOperationsAndClickReentry() {
         "          assert(event.token.id === 'a', 'current identity');\n"
         "          this.input.set_value('opened'); this.status = 'clicked'; "
         "cx.notify();\n"
+        "        })\n"
+        "        .on_token_hover((event, cx) => {\n"
+        "          this.hoverLog.push(`${event.hovered}:${event.range.start}-"
+        "${event.range.end}:${event.token.id}`);\n"
+        "          cx.notify();\n"
         "        }))\n"
         "      .child(new Textarea(this.textarea).w(350).h(60))\n"
         "      .child(new "
@@ -2512,7 +2544,7 @@ void InlineTokensScriptOperationsAndClickReentry() {
         "activation'; cx.notify(); }))\n"
         "      .child(div().child(`${this.status}:${this.input.value()}:"
         "${this.input.tokens().length};child=${this.child.tokens().length}:"
-        "${this.child.value()}`));\n"
+        "${this.child.value()};hover=${this.hoverLog.join('|')}`));\n"
         "  }\n"
         "}\n"));
     El* root = host.Render();
@@ -2522,9 +2554,18 @@ void InlineTokensScriptOperationsAndClickReentry() {
     // A rerender preserves identity.
     root = host.Render();
     utassert(FindTextPrefix(root, StrL("verified:🙂 @a!:1")) != nullptr);
+    utassert(HoverFirstToken(host, root));
+    root = host.Render();
+    utassert(FindTextContaining(root, StrL("hover=true:3-5:a")) != nullptr);
     utassert(ClickFirstToken(root));
     root = host.Render();
     utassert(FindTextPrefix(root, StrL("clicked:opened:0")) != nullptr);
+    // The token is gone after the click opened it, but its exit must still
+    // report the coordinates captured at entry, not the new text clamped.
+    // The exit is delivered as the field builds its rows, which is after the
+    // script described this frame, so the next one shows it.
+    root = host.Render();
+    utassert(FindTextContaining(root, StrL("false:3-5:a")) != nullptr);
     // The custom child's callback survives the frame and consumes its own
     // gesture.
     El* remove = ListenerAbove(root, StrL("×"));

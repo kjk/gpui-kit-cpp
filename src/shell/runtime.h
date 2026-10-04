@@ -25,6 +25,7 @@ namespace gpui {
 struct ShellTaskDriver;
 struct InlineTokenContext;
 struct InlineTokenClickEvent;
+struct InlineTokenHoverEvent;
 
 class ShellRuntime {
   public:
@@ -210,6 +211,8 @@ class ShellRuntime {
                           const InlineTokenContext* ctx, Str text, Ctx* cx);
     void DispatchTokenClick(shell::CallbackId click,
                             const InlineTokenClickEvent* ev, Str text, Ctx* cx);
+    void DispatchTokenHover(shell::CallbackId hover,
+                            const InlineTokenHoverEvent* ev, Str text, Ctx* cx);
 
   private:
     friend struct ShellRuntimeAccess;

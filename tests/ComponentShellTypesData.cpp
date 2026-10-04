@@ -20,6 +20,10 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
     bounds: { x: number; y: number; width: number; height: number };
     modifiers: { shift: boolean; alt: boolean; control: boolean; platform: boolean };
   }
+  export interface InlineTokenHoverEvent extends InlineTokenSpan {
+    hovered: boolean;
+    bounds: { x: number; y: number; width: number; height: number };
+  }
   /**
    * Retained virtual-list and tail-following state for a message transcript.
    */
@@ -302,12 +306,12 @@ static const char kComponentModule0[] = R"GPUI_DTS(declare module "gpui-componen
     /**
      * Not available on this component: `Attachment` does not declare `selected`, and the runtime refuses it.
      */
-    selected(unavailable: never): never;
+)GPUI_DTS";
+static const char kComponentModule1[] = R"GPUI_DTS(    selected(unavailable: never): never;
     /**
      * Not available on this component: `Attachment` does not declare `on_click`, and the runtime refuses it.
      */
-)GPUI_DTS";
-static const char kComponentModule1[] = R"GPUI_DTS(    on_click(unavailable: never): never;
+    on_click(unavailable: never): never;
     /**
      * Not available on this component: `Attachment` does not declare `role`, and the runtime refuses it.
      */
@@ -605,12 +609,12 @@ static const char kComponentModule1[] = R"GPUI_DTS(    on_click(unavailable: nev
      */
     disabled(unavailable: never): never;
     /**
-     * Not available on this component: `EmptyMedia` does not declare `selected`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this component: `EmptyMedia` does not declare `selected`, and the runtime refuses it.
      */
     selected(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this component: `EmptyMedia` does not declare `on_click`, and the runtime refuses it.
+     * Not available on this component: `EmptyMedia` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
     /**
@@ -863,7 +867,7 @@ static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this 
   /**
    * An unframed single-line input using the existing retained InputState and native editing engine.
    */
-  export type InputGroupInputElement = Omit<NativeElement, "disabled" | "readonly" | "aria_label" | "accessibility_id" | "value" | "placeholder" | "on_change" | "masked" | "content_type" | "token" | "on_token_click" | "selected" | "on_click" | "role" | "transition"> & {
+  export type InputGroupInputElement = Omit<NativeElement, "disabled" | "readonly" | "aria_label" | "accessibility_id" | "value" | "placeholder" | "on_change" | "masked" | "content_type" | "token" | "on_token_click" | "on_token_hover" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Controls whether this component accepts interaction.
      */
@@ -888,11 +892,11 @@ static const char kComponentModule2[] = R"GPUI_DTS(     * Not available on this 
      * Sets the empty-value prompt on the retained state.
      */
     placeholder(placeholder: string): InputGroupInputElement;
-    /**
+)GPUI_DTS";
+static const char kComponentModule3[] = R"GPUI_DTS(    /**
      * Reports edits from the retained input without duplicating subscriptions across renders.
      */
-)GPUI_DTS";
-static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (value: string, cx: Context) => void): InputGroupInputElement;
+    on_change(callback: (value: string, cx: Context) => void): InputGroupInputElement;
     /**
      * Controls password masking on InputState.
      */
@@ -909,6 +913,10 @@ static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (valu
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
     on_token_click(listener: (event: InlineTokenClickEvent, cx: Context) => void): InputGroupInputElement;
+    /**
+     * Reports pointer presence over a token; hover never selects or edits.
+     */
+    on_token_hover(listener: (event: InlineTokenHoverEvent, cx: Context) => void): InputGroupInputElement;
     /**
      * Not available on this component: `InputGroupInput` does not declare `selected`, and the runtime refuses it.
      */
@@ -933,7 +941,7 @@ static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (valu
   /**
    * An unframed multiline input using the existing retained TextareaState and native editing engine.
    */
-  export type InputGroupTextareaElement = Omit<NativeElement, "disabled" | "readonly" | "aria_label" | "accessibility_id" | "value" | "placeholder" | "on_change" | "rows" | "auto_grow" | "token" | "on_token_click" | "selected" | "on_click" | "role" | "transition"> & {
+  export type InputGroupTextareaElement = Omit<NativeElement, "disabled" | "readonly" | "aria_label" | "accessibility_id" | "value" | "placeholder" | "on_change" | "rows" | "auto_grow" | "token" | "on_token_click" | "on_token_hover" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Controls whether this component accepts interaction.
      */
@@ -978,6 +986,10 @@ static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (valu
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
     on_token_click(listener: (event: InlineTokenClickEvent, cx: Context) => void): InputGroupTextareaElement;
+    /**
+     * Reports pointer presence over a token; hover never selects or edits.
+     */
+    on_token_hover(listener: (event: InlineTokenHoverEvent, cx: Context) => void): InputGroupTextareaElement;
     /**
      * Not available on this component: `InputGroupTextarea` does not declare `selected`, and the runtime refuses it.
      */
@@ -1159,7 +1171,8 @@ static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (valu
    */
   export const Checkbox: { new(id: string): CheckboxElement };
   /**
-   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
+)GPUI_DTS";
+static const char kComponentModule4[] = R"GPUI_DTS(   * A controlled stateless boolean control. Provide checked explicitly; boolean change callbacks are not exposed until the shell callback facade can carry values.
    */
   export type SwitchElement = Omit<NativeElement, "label" | "tooltip" | "checked" | "size" | "on_change" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
@@ -1175,8 +1188,7 @@ static const char kComponentModule3[] = R"GPUI_DTS(    on_change(callback: (valu
      */
     checked(checked: boolean): SwitchElement;
     /**
-)GPUI_DTS";
-static const char kComponentModule4[] = R"GPUI_DTS(     * Sets the semantic control size.
+     * Sets the semantic control size.
      */
     size(size: "xsmall" | "small" | "medium" | "large"): SwitchElement;
     /**
@@ -1477,7 +1489,8 @@ static const char kComponentModule4[] = R"GPUI_DTS(     * Sets the semantic cont
     /**
      * Not available on this component: `List` does not declare `selected`, and the runtime refuses it.
      */
-    selected(unavailable: never): never;
+)GPUI_DTS";
+static const char kComponentModule5[] = R"GPUI_DTS(    selected(unavailable: never): never;
     /**
      * Not available on this component: `List` does not declare `on_click`, and the runtime refuses it.
      */
@@ -1493,8 +1506,7 @@ static const char kComponentModule4[] = R"GPUI_DTS(     * Sets the semantic cont
   }
   /**
    * Native retained List backed by an immutable rows snapshot. Each row is lazily rendered; object rows should provide a stable string `id`.
-)GPUI_DTS";
-static const char kComponentModule5[] = R"GPUI_DTS(   */
+   */
   export const List: { new(id: string, rows: () => readonly unknown[], render_row: (row: unknown) => Element | null): ListElement };
   /**
    * Native retained single-select searchable Combobox backed by immutable `{id,label,disabled?}` snapshots.
@@ -1766,7 +1778,8 @@ static const char kComponentModule5[] = R"GPUI_DTS(   */
      */
     role(unavailable: never): never;
     /**
-     * Not available on this component: `Clipboard` does not declare `transition`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule6[] = R"GPUI_DTS(     * Not available on this component: `Clipboard` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
@@ -1785,8 +1798,7 @@ static const char kComponentModule5[] = R"GPUI_DTS(   */
     /**
      * Sets the normal, fill, or outline presentation.
      */
-)GPUI_DTS";
-static const char kComponentModule6[] = R"GPUI_DTS(    variant(variant: "normal" | "fill" | "outline"): GroupBoxElement;
+    variant(variant: "normal" | "fill" | "outline"): GroupBoxElement;
     /**
      * Not available on this component: `GroupBox` does not declare `disabled`, and the runtime refuses it.
      */
@@ -2080,7 +2092,8 @@ static const char kComponentModule6[] = R"GPUI_DTS(    variant(variant: "normal"
     disabled(unavailable: never): never;
     /**
      * Not available on this component: `Progress` does not declare `selected`, and the runtime refuses it.
-     */
+)GPUI_DTS";
+static const char kComponentModule7[] = R"GPUI_DTS(     */
     selected(unavailable: never): never;
     /**
      * Not available on this component: `Progress` does not declare `on_click`, and the runtime refuses it.
@@ -2099,8 +2112,7 @@ static const char kComponentModule6[] = R"GPUI_DTS(    variant(variant: "normal"
    * A linear determinate or indeterminate progress indicator.
    */
   export const Progress: { new(id: string): ProgressElement };
-)GPUI_DTS";
-static const char kComponentModule7[] = R"GPUI_DTS(  /**
+  /**
    * A controlled radio control; selected and disabled common behavior is supported.
    */
   export type RadioElement = Omit<NativeElement, "label" | "accessibility_label" | "checked" | "tab_stop" | "size" | "on_change" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
@@ -2395,7 +2407,8 @@ static const char kComponentModule7[] = R"GPUI_DTS(  /**
   /**
    * A step part accepted only as a direct Stepper child.
    */
-  export const StepperItem: { new(): StepperItemElement };
+)GPUI_DTS";
+static const char kComponentModule8[] = R"GPUI_DTS(  export const StepperItem: { new(): StepperItemElement };
   /**
    * A typed progress stepper accepting only StepperItem children.
    */
@@ -2414,8 +2427,7 @@ static const char kComponentModule7[] = R"GPUI_DTS(  /**
     text_center(text_center: boolean): StepperElement;
     /**
      * Disables every step.
-)GPUI_DTS";
-static const char kComponentModule8[] = R"GPUI_DTS(     */
+     */
     disabled(disabled: boolean): StepperElement;
     /**
      * Sets the semantic component size.
@@ -2695,7 +2707,8 @@ static const char kComponentModule8[] = R"GPUI_DTS(     */
     transition(unavailable: never): never;
   }
   /**
-   * Typed native CommandItem data. Action strings map to ShellAction; style and ordinary/typed children are rejected. Named content(element) is a repeatable lazy row factory.
+)GPUI_DTS";
+static const char kComponentModule9[] = R"GPUI_DTS(   * Typed native CommandItem data. Action strings map to ShellAction; style and ordinary/typed children are rejected. Named content(element) is a repeatable lazy row factory.
    */
   export const CommandItem: { new(label: string): CommandItemElement };
   /**
@@ -2711,8 +2724,7 @@ static const char kComponentModule8[] = R"GPUI_DTS(     */
      */
     selected(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule9[] = R"GPUI_DTS(     * Not available on this component: `CommandGroup` does not declare `on_click`, and the runtime refuses it.
+     * Not available on this component: `CommandGroup` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
     /**
@@ -2969,7 +2981,8 @@ static const char kComponentModule9[] = R"GPUI_DTS(     * Not available on this 
   /**
    * A real button-triggered native window effect; on_effect_error receives asynchronous effect failures.
    */
-  export type AlertDialogElement = Omit<NativeElement, "title" | "description" | "show_cancel" | "on_ok" | "on_cancel" | "on_close" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
+)GPUI_DTS";
+static const char kComponentModule10[] = R"GPUI_DTS(  export type AlertDialogElement = Omit<NativeElement, "title" | "description" | "show_cancel" | "on_ok" | "on_cancel" | "on_close" | "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Configures this native window effect.
      */
@@ -2991,8 +3004,7 @@ static const char kComponentModule9[] = R"GPUI_DTS(     * Not available on this 
      */
     on_cancel(callback: (cx: Context) => void): AlertDialogElement;
     /**
-)GPUI_DTS";
-static const char kComponentModule10[] = R"GPUI_DTS(     * Configures this native window effect.
+     * Configures this native window effect.
      */
     on_close(callback: (cx: Context) => void): AlertDialogElement;
     /**
@@ -3252,7 +3264,7 @@ static const char kComponentModule10[] = R"GPUI_DTS(     * Configures this nativ
   /**
    * A retained single-line text field.
    */
-  export type InputElement = Omit<NativeElement, "aria_label" | "disabled" | "token" | "on_token_click" | "on_change" | "selected" | "on_click" | "role" | "transition"> & {
+  export type InputElement = Omit<NativeElement, "aria_label" | "disabled" | "token" | "on_token_click" | "on_token_hover" | "on_change" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Sets the name announced by accessibility clients.
      */
@@ -3264,11 +3276,16 @@ static const char kComponentModule10[] = R"GPUI_DTS(     * Configures this nativ
     /**
      * Renders an atomic token from its current UTF-16 range and read-only context.
      */
-    token(render: (token: InlineTokenContext, cx: Context) => Element | null): InputElement;
+)GPUI_DTS";
+static const char kComponentModule11[] = R"GPUI_DTS(    token(render: (token: InlineTokenContext, cx: Context) => Element | null): InputElement;
     /**
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
     on_token_click(listener: (event: InlineTokenClickEvent, cx: Context) => void): InputElement;
+    /**
+     * Reports pointer presence over a token; hover never selects or edits.
+     */
+    on_token_hover(listener: (event: InlineTokenHoverEvent, cx: Context) => void): InputElement;
     /**
      * Reports user text or token identity changes; explicit draft restoration remains silent.
      */
@@ -3282,8 +3299,7 @@ static const char kComponentModule10[] = R"GPUI_DTS(     * Configures this nativ
      */
     on_click(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule11[] = R"GPUI_DTS(     * Not available on this component: `Input` does not declare `role`, and the runtime refuses it.
+     * Not available on this component: `Input` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;
     /**
@@ -3533,7 +3549,7 @@ static const char kComponentModule11[] = R"GPUI_DTS(     * Not available on this
   /**
    * A retained native multi-line text editor. Shell style and common disabled state are honored; children are rejected.
    */
-  export type TextareaElement = Omit<NativeElement, "disabled" | "appearance" | "bordered" | "readonly" | "aria_label" | "token" | "on_token_click" | "on_change" | "selected" | "on_click" | "role" | "transition"> & {
+  export type TextareaElement = Omit<NativeElement, "disabled" | "appearance" | "bordered" | "readonly" | "aria_label" | "token" | "on_token_click" | "on_token_hover" | "on_change" | "selected" | "on_click" | "role" | "transition"> & {
     /**
      * Sets the common disabled state.
      */
@@ -3557,11 +3573,16 @@ static const char kComponentModule11[] = R"GPUI_DTS(     * Not available on this
     /**
      * Renders an atomic token from its current UTF-16 range and read-only context.
      */
-    token(render: (token: InlineTokenContext, cx: Context) => Element | null): TextareaElement;
+)GPUI_DTS";
+static const char kComponentModule12[] = R"GPUI_DTS(    token(render: (token: InlineTokenContext, cx: Context) => Element | null): TextareaElement;
     /**
      * Activates a reference after a completed unconsumed click, outside the editing borrow.
      */
     on_token_click(listener: (event: InlineTokenClickEvent, cx: Context) => void): TextareaElement;
+    /**
+     * Reports pointer presence over a token; hover never selects or edits.
+     */
+    on_token_hover(listener: (event: InlineTokenHoverEvent, cx: Context) => void): TextareaElement;
     /**
      * Reports user text or token identity changes; explicit draft restoration remains silent.
      */
@@ -3579,8 +3600,7 @@ static const char kComponentModule11[] = R"GPUI_DTS(     * Not available on this
      */
     role(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule12[] = R"GPUI_DTS(     * Not available on this component: `Textarea` does not declare `transition`, and the runtime refuses it.
+     * Not available on this component: `Textarea` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
@@ -3839,7 +3859,8 @@ static const char kComponentModule12[] = R"GPUI_DTS(     * Not available on this
      */
     selected(unavailable: never): never;
     /**
-     * Not available on this component: `SettingItem` does not declare `on_click`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this component: `SettingItem` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
     /**
@@ -3868,8 +3889,7 @@ static const char kComponentModule12[] = R"GPUI_DTS(     * Not available on this
      */
     description(text: string): SettingGroupElement;
     /**
-)GPUI_DTS";
-static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this component: `SettingGroup` does not declare `disabled`, and the runtime refuses it.
+     * Not available on this component: `SettingGroup` does not declare `disabled`, and the runtime refuses it.
      */
     disabled(unavailable: never): never;
     /**
@@ -4139,7 +4159,8 @@ static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this
      */
     disabled(unavailable: never): never;
     /**
-     * Not available on this component: `Form` does not declare `selected`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this component: `Form` does not declare `selected`, and the runtime refuses it.
      */
     selected(unavailable: never): never;
     /**
@@ -4172,8 +4193,7 @@ static const char kComponentModule13[] = R"GPUI_DTS(     * Not available on this
    */
   export type TableHeaderElement = Omit<NativeElement, "disabled" | "selected" | "on_click" | "role" | "transition"> & {
     /**
-)GPUI_DTS";
-static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this component: `TableHeader` does not declare `disabled`, and the runtime refuses it.
+     * Not available on this component: `TableHeader` does not declare `disabled`, and the runtime refuses it.
      */
     disabled(unavailable: never): never;
     /**
@@ -4455,7 +4475,8 @@ static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this
     /**
      * Not available on this component: `Icon` does not declare `selected`, and the runtime refuses it.
      */
-    selected(unavailable: never): never;
+)GPUI_DTS";
+static const char kComponentModule15[] = R"GPUI_DTS(    selected(unavailable: never): never;
     /**
      * Not available on this component: `Icon` does not declare `on_click`, and the runtime refuses it.
      */
@@ -4480,8 +4501,7 @@ static const char kComponentModule14[] = R"GPUI_DTS(     * Not available on this
     /**
      * Invokes the callback when the control is activated.
      */
-)GPUI_DTS";
-static const char kComponentModule15[] = R"GPUI_DTS(    on_click(callback: (event: ClickEvent, cx: Context) => void): SidebarMenuItemElement;
+    on_click(callback: (event: ClickEvent, cx: Context) => void): SidebarMenuItemElement;
     /**
      * Sets the active destination state.
      */
@@ -4749,7 +4769,8 @@ static const char kComponentModule15[] = R"GPUI_DTS(    on_click(callback: (even
      * Appends a clickable popup-menu item in call order.
      */
     menu_item(label: string, callback: (cx: Context) => void): DropdownButtonElement;
-    /**
+)GPUI_DTS";
+static const char kComponentModule16[] = R"GPUI_DTS(    /**
      * Not available on this component: `DropdownButton` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;
@@ -4775,8 +4796,7 @@ static const char kComponentModule15[] = R"GPUI_DTS(    on_click(callback: (even
      */
     label_axis(label_axis: boolean): BarChartElement;
     /**
-)GPUI_DTS";
-static const char kComponentModule16[] = R"GPUI_DTS(     * Configures this chart option.
+     * Configures this chart option.
      */
     value_axis(value_axis: boolean): BarChartElement;
     /**
@@ -5039,7 +5059,8 @@ static const char kComponentModule16[] = R"GPUI_DTS(     * Configures this chart
     /**
      * Not available on this component: `Carousel` does not declare `role`, and the runtime refuses it.
      */
-    role(unavailable: never): never;
+)GPUI_DTS";
+static const char kComponentModule17[] = R"GPUI_DTS(    role(unavailable: never): never;
     /**
      * Not available on this component: `Carousel` does not declare `transition`, and the runtime refuses it.
      */
@@ -5066,8 +5087,7 @@ static const char kComponentModule16[] = R"GPUI_DTS(     * Configures this chart
      */
     on_click(unavailable: never): never;
     /**
-)GPUI_DTS";
-static const char kComponentModule17[] = R"GPUI_DTS(     * Not available on this component: `CarouselContent` does not declare `role`, and the runtime refuses it.
+     * Not available on this component: `CarouselContent` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;
     /**
@@ -5326,7 +5346,8 @@ static const char kComponentModule17[] = R"GPUI_DTS(     * Not available on this
      */
     role(unavailable: never): never;
     /**
-     * Not available on this component: `QuestionnaireItem` does not declare `transition`, and the runtime refuses it.
+)GPUI_DTS";
+static const char kComponentModule18[] = R"GPUI_DTS(     * Not available on this component: `QuestionnaireItem` does not declare `transition`, and the runtime refuses it.
      */
     transition(unavailable: never): never;
   }
@@ -5350,8 +5371,7 @@ static const char kComponentModule17[] = R"GPUI_DTS(     * Not available on this
      * Not available on this component: `QuestionnaireInput` does not declare `on_click`, and the runtime refuses it.
      */
     on_click(unavailable: never): never;
-)GPUI_DTS";
-static const char kComponentModule18[] = R"GPUI_DTS(    /**
+    /**
      * Not available on this component: `QuestionnaireInput` does not declare `role`, and the runtime refuses it.
      */
     role(unavailable: never): never;

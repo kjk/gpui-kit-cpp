@@ -365,6 +365,13 @@ void InlineTokenStoreFree(InlineTokenStore* store) {
     if (store->hasPending) {
         InlineTokenFree(&store->pending);
     }
+    if (store->hasHovered) {
+        InlineTokenSpanFree(&store->hovered.span);
+    }
+    for (int i = 0; i < len(store->pendingHoverExits); i++) {
+        InlineTokenSpanFree(&store->pendingHoverExits[i].span);
+    }
+    free(store->placed);
     delete store;
 }
 
@@ -409,6 +416,202 @@ void InputNormalizeTokenRange(const InputState* s, int* start, int* end) {
         return;
     }
     NormalizeTokenRange(store->spans, start, end);
+}
+
+void InputSetTokenHoverPresentation(InputState* s,
+                                    InlineTokenHoverListener hover,
+                                    void* hoverUser) {
+    // Nothing to remember for a field that never had tokens or a listener.
+    InlineTokenStore* store = InputTokenStore(s, hover != nullptr);
+    if (!store) {
+        return;
+    }
+    store->hover = hover;
+    store->hoverUser = hover ? hoverUser : nullptr;
+}
+
+void InputTokenBoundsClear(InputState* s) {
+    InlineTokenStore* store = InputTokenStore(s, false);
+    if (!store) {
+        return;
+    }
+    store->nPlaced = 0;
+    // Room for every token, so no slot moves while this frame's elements
+    // hold pointers into the array.
+    int want = len(store->spans);
+    if (want > store->capPlaced) {
+        InlineTokenPlaced* grown = (InlineTokenPlaced*)realloc(
+            store->placed, (size_t)want * sizeof(InlineTokenPlaced));
+        if (grown) {
+            store->placed = grown;
+            store->capPlaced = want;
+        }
+    }
+}
+
+Bounds* InputTokenBoundsSlot(InputState* s, int start) {
+    InlineTokenStore* store = InputTokenStore(s, false);
+    if (!store) {
+        return nullptr;
+    }
+    for (int i = 0; i < store->nPlaced; i++) {
+        if (store->placed[i].start == start) {
+            return &store->placed[i].bounds;
+        }
+    }
+    if (store->nPlaced >= store->capPlaced) {
+        return nullptr;
+    }
+    InlineTokenPlaced* slot = &store->placed[store->nPlaced++];
+    slot->start = start;
+    slot->bounds = Bounds{};
+    return &slot->bounds;
+}
+
+bool InputTokenBoundsGet(const InputState* s, int start, Bounds* out) {
+    const InlineTokenStore* store = InputTokenStore(s);
+    for (int i = 0; store && i < store->nPlaced; i++) {
+        if (store->placed[i].start == start) {
+            if (out) {
+                *out = store->placed[i].bounds;
+            }
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool SpanEq(const InlineTokenSpan& a, const InlineTokenSpan& b) {
+    return a.start == b.start && a.end == b.end &&
+           InlineTokenEq(a.token, b.token);
+}
+
+static bool SnapshotMatches(const InlineTokenHoverSnapshot& snapshot, int start,
+                            const InlineToken* expected) {
+    return snapshot.span.start == start &&
+           (!expected || InlineTokenEq(snapshot.span.token, *expected));
+}
+
+// The event a snapshot becomes; its strings move to the temp arena so the
+// snapshot itself can be freed before the listener runs.
+static InlineTokenHoverEvent HoverEventOf(
+    const InlineTokenHoverSnapshot& snapshot, bool hovered) {
+    Arena* tmp = GetTempArena();
+    InlineTokenHoverEvent ev;
+    ev.span.start = snapshot.span.start;
+    ev.span.end = snapshot.span.end;
+    ev.span.token.id = StrDup(tmp, snapshot.span.token.id);
+    ev.span.token.text = StrDup(tmp, snapshot.span.token.text);
+    ev.span.token.label = StrDup(tmp, snapshot.span.token.label);
+    ev.bounds = snapshot.bounds;
+    ev.hovered = hovered;
+    ev.rangeUtf16Start = snapshot.rangeUtf16Start;
+    ev.rangeUtf16End = snapshot.rangeUtf16End;
+    return ev;
+}
+
+bool InputTokenHover(InputState* s, int start, Bounds bounds, bool hovered,
+                     const InlineToken* expected, InlineTokenHoverEvent* out) {
+    InlineTokenStore* store = InputTokenStore(s, false);
+    if (!store || !store->hover) {
+        return false;
+    }
+    if (hovered) {
+        if (s->disabled || !InputTokensVisible(s)) {
+            return false;
+        }
+        const InlineTokenSpan* found = nullptr;
+        for (int i = 0; i < len(store->spans); i++) {
+            const InlineTokenSpan& span = store->spans[i];
+            if (span.start == start &&
+                (!expected || InlineTokenEq(span.token, *expected))) {
+                found = &span;
+                break;
+            }
+        }
+        if (!found) {
+            return false;
+        }
+        if (store->hasHovered && SpanEq(store->hovered.span, *found)) {
+            return false;
+        }
+        InlineTokenHoverSnapshot snapshot;
+        snapshot.span = InlineTokenSpanDup(*found);
+        snapshot.bounds = bounds;
+        Str text = InputValue(s);
+        snapshot.rangeUtf16Start = RopeOffsetToOffsetUtf16(text, found->start);
+        snapshot.rangeUtf16End = RopeOffsetToOffsetUtf16(text, found->end);
+        if (store->hasHovered) {
+            VecAppend(store->pendingHoverExits, store->hovered);
+        }
+        store->hovered = snapshot;
+        store->hasHovered = true;
+        *out = HoverEventOf(snapshot, true);
+        return true;
+    }
+    if (store->hasHovered && SnapshotMatches(store->hovered, start, expected)) {
+        *out = HoverEventOf(store->hovered, false);
+        InlineTokenSpanFree(&store->hovered.span);
+        store->hovered = {};
+        store->hasHovered = false;
+        return true;
+    }
+    for (int i = 0; i < len(store->pendingHoverExits); i++) {
+        if (SnapshotMatches(store->pendingHoverExits[i], start, expected)) {
+            *out = HoverEventOf(store->pendingHoverExits[i], false);
+            InlineTokenSpanFree(&store->pendingHoverExits[i].span);
+            VecRemoveAt(store->pendingHoverExits, i);
+            return true;
+        }
+    }
+    return false;
+}
+
+bool InputReconcileTokenHover(InputState* s, InlineTokenHoverEvent* out) {
+    InlineTokenStore* store = InputTokenStore(s, false);
+    if (!store) {
+        return false;
+    }
+    auto isPlaced = [&](const InlineTokenHoverSnapshot& snapshot) {
+        if (s->disabled || !InputTokensVisible(s) || !store->hover ||
+            !InputTokenBoundsGet(s, snapshot.span.start, nullptr)) {
+            return false;
+        }
+        for (int i = 0; i < len(store->spans); i++) {
+            if (SpanEq(store->spans[i], snapshot.span)) {
+                return true;
+            }
+        }
+        return false;
+    };
+    InlineTokenHoverSnapshot snapshot;
+    bool found = false;
+    for (int i = 0; i < len(store->pendingHoverExits); i++) {
+        if (!isPlaced(store->pendingHoverExits[i])) {
+            snapshot = store->pendingHoverExits[i];
+            VecRemoveAt(store->pendingHoverExits, i);
+            found = true;
+            break;
+        }
+    }
+    if (!found && store->hasHovered && !isPlaced(store->hovered)) {
+        snapshot = store->hovered;
+        store->hovered = {};
+        store->hasHovered = false;
+        // The pointer may still be over the element that was hovered; make
+        // what is built there next a new element to hover tracking.
+        store->hoverEpoch++;
+        found = true;
+    }
+    if (!found) {
+        return false;
+    }
+    bool listening = store->hover != nullptr;
+    if (listening) {
+        *out = HoverEventOf(snapshot, false);
+    }
+    InlineTokenSpanFree(&snapshot.span);
+    return listening;
 }
 
 void InputSetTokenPresentation(InputState* s, InlineTokenRenderer renderer,

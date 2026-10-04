@@ -747,9 +747,71 @@ static void OnTokenChipClick(TokenClick* p) {
     store->click(&ev, &cx, store->clickUser);
 }
 
+struct TokenHover {
+    InputState* state = nullptr;
+    int start = 0;
+    // The chip's laid-out box, which is also the token_bounds slot.
+    const Bounds* bounds = nullptr;
+    InlineToken token = {};
+};
+
+// The chip's on_hover. Hover never selects or edits; it only reports
+// presence so the application can show a tooltip or run custom logic.
+static void OnTokenChipHover(void*, Ctx* cx, const void* event, int64_t arg) {
+    TokenHover* p = (TokenHover*)(intptr_t)arg;
+    const HoverEvent* ev = (const HoverEvent*)event;
+    if (!p || !p->state || !ev) {
+        return;
+    }
+    InlineTokenStore* store = p->state->tokens;
+    if (!store || !store->hover) {
+        return;
+    }
+    // Anchor to the real laid-out token rect, not the range-to-bounds guess:
+    // a token at a soft-wrap boundary would otherwise report a zero or
+    // negative width or a two-row height. Exits use entry geometry even if
+    // an earlier callback removed the token and its current bounds.
+    Bounds bounds = ev->hovered && p->bounds ? *p->bounds : Bounds{};
+    InlineTokenHoverEvent hover;
+    if (InputTokenHover(p->state, p->start, bounds, ev->hovered, &p->token,
+                        &hover)) {
+        // The listener may write the field, so the store is read first.
+        InlineTokenHoverListener listener = store->hover;
+        void* user = store->hoverUser;
+        listener(&hover, cx, user);
+    }
+}
+
+// The exits of tokens that are no longer where they were hovered: removed,
+// replaced, scrolled out of the rows that were built, masked or disabled.
+// Rust reconciles in prepaint_tokens against the rows it just placed; the
+// rows here are elements built before layout, so this runs as a field starts
+// building its rows and reads the ones the last build placed.
+static void ReconcileTokenHovers(Ctx* cx, InputState* state) {
+    InlineTokenStore* store = state->tokens;
+    if (!store) {
+        return;
+    }
+    InlineTokenHoverEvent exit;
+    while (InputReconcileTokenHover(state, &exit)) {
+        InlineTokenHoverListener listener = store->hover;
+        void* user = store->hoverUser;
+        if (!listener) {
+            break;
+        }
+        listener(&exit, cx, user);
+        store = state->tokens;
+        if (!store) {
+            return;
+        }
+    }
+    InputTokenBoundsClear(state);
+}
+
 static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
                      const Selection& sel, float lineH,
-                     const InputEditorStyle& style, float font) {
+                     const InputEditorStyle& style, float font,
+                     bool placed = false) {
     Arena* a = cx->a;
     InlineTokenContext ctx = {};
     ctx.span = span;
@@ -795,6 +857,36 @@ static El* TokenChip(Ctx* cx, InputState* state, const InlineTokenSpan& span,
     click->start = span.start;
     click->end = span.end;
     chip->OnClick(MkFunc0(&OnTokenChipClick, click))->StopClick();
+    if (!placed) {
+        return chip;
+    }
+    Bounds* slot = InputTokenBoundsSlot(state, span.start);
+    if (slot) {
+        chip->BoundsOut(slot);
+    }
+    if (store && store->hover) {
+        // Preserve interaction state only for the same token occurrence:
+        // a replacement, or a token whose hover was dropped under a still
+        // pointer, starts fresh.
+        chip->PathClick(StrDup(
+            a, fmt("inline-token-%d-%s-%s-%s-%u", span.start, span.token.id,
+                   span.token.text, span.token.label, store->hoverEpoch)));
+        TokenHover* hover = ArenaNew<TokenHover>(a);
+        hover->state = state;
+        hover->start = span.start;
+        hover->bounds = slot;
+        hover->token.id = StrDup(a, span.token.id);
+        hover->token.text = StrDup(a, span.token.text);
+        hover->token.label = StrDup(a, span.token.label);
+        // Bound to the view that is rendering, which is what keeps the
+        // listener from outliving the field; the payload is this frame's.
+        Listener l;
+        l.SetFn((ListenerArgFn)&OnTokenChipHover);
+        l.view = cx->self;
+        l.arg = (int64_t)(intptr_t)hover;
+        l.SetArgBound();
+        chip->OnHover(l);
+    }
     return chip;
 }
 
@@ -1000,7 +1092,8 @@ static void AppendTokenPieces(El* row, Ctx* cx, InputState* state,
                                  Str(run.s + (at - start), span.start - at), at,
                                  sel, caret, cursor);
             }
-            row->Child(TokenChip(cx, state, span, sel, lineH, style, font));
+            row->Child(
+                TokenChip(cx, state, span, sel, lineH, style, font, true));
             at = span.end;
         }
     }
@@ -1020,6 +1113,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     if (!state) {
         return TextEl(a, Str{});
     }
+    ReconcileTokenHovers(cx, state);
     BaseTheme theme = base_theme::Theme::Global(cx->app);
     InputEditorStyle resolved =
         InputEditorStyleResolve(projected, theme.tokens);
@@ -1625,6 +1719,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (!state) {
         return TextEl(a, Str{});
     }
+    ReconcileTokenHovers(cx, state);
     BaseTheme theme = base_theme::Theme::Global(cx->app);
     InputEditorStyle resolved =
         InputEditorStyleResolve(projected, theme.tokens);

@@ -743,6 +743,12 @@ Input* Input::OnTokenClick(InlineTokenClickListener fn, void* user) {
     return this;
 }
 
+Input* Input::OnTokenHover(InlineTokenHoverListener fn, void* user) {
+    tokenHover = fn;
+    tokenHoverUser = user;
+    return this;
+}
+
 static El* DefaultInputTokenRender(Ctx* cx, const InlineTokenContext* ctx,
                                    void*) {
     return InputToken::New(cx, *ctx)->IntoEl();
@@ -1002,6 +1008,7 @@ El* Input::IntoEl() {
         InputSetTokenPresentation(
             state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
             tokenRendererUser, tokenClick, tokenClickUser, secret);
+        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
     }
     if (inputFocused && !readonly && !(state && state->readonly)) {
         WindowSetTextContentType(
@@ -1211,6 +1218,12 @@ Textarea* Textarea::OnTokenClick(InlineTokenClickListener fn, void* user) {
     return this;
 }
 
+Textarea* Textarea::OnTokenHover(InlineTokenHoverListener fn, void* user) {
+    tokenHover = fn;
+    tokenHoverUser = user;
+    return this;
+}
+
 Textarea* Textarea::OnPaste(InputPasteFn fn, void* data) {
     onPaste = fn;
     onPasteData = data;
@@ -1238,6 +1251,7 @@ El* Textarea::IntoEl() {
         InputSetTokenPresentation(
             state, tokenRenderer ? tokenRenderer : &DefaultInputTokenRender,
             tokenRendererUser, tokenClick, tokenClickUser, false);
+        InputSetTokenHoverPresentation(state, tokenHover, tokenHoverUser);
         state->softWrap = softWrap;
         if (rows > 0) {
             LayoutModeSetRows(&state->mode, rows);

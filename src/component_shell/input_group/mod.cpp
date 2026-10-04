@@ -653,6 +653,7 @@ static constexpr MethodDescriptor kInputMethods[] = {
     content_type::kMethod,
     input_tokens::kTokenMethod,
     input_tokens::kTokenClickMethod,
+    input_tokens::kTokenHoverMethod,
 };
 
 static constexpr MethodDescriptor kTextareaMethods[] = {
@@ -680,6 +681,7 @@ static constexpr MethodDescriptor kTextareaMethods[] = {
     binding::kAutoGrowMethod,
     input_tokens::kTokenMethod,
     input_tokens::kTokenClickMethod,
+    input_tokens::kTokenHoverMethod,
 };
 
 static constexpr ComponentDescriptor kParts[] = {

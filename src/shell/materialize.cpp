@@ -120,6 +120,7 @@ struct MaterialBehavior {
     shell::CallbackId onItemSecondaryClick = 0;
     shell::CallbackId onToken = 0;
     shell::CallbackId onTokenClick = 0;
+    shell::CallbackId onTokenHover = 0;
     shell::EntityHandle virtualScroll = 0;
     // Reports a key press or release that reached this element. GPUI routes a
     // key event down the focus path, so an element only hears one while it —
@@ -256,6 +257,8 @@ static void ResolveBehavior(const shell::SpecNode* node,
                 out->onToken = op.callback;
             else if (StrEq(op.name, StrL("on_token_click")))
                 out->onTokenClick = op.callback;
+            else if (StrEq(op.name, StrL("on_token_hover")))
+                out->onTokenHover = op.callback;
             else if (StrEq(op.name, StrL("on_item_secondary_click")))
                 out->onItemSecondaryClick = op.callback;
             else if (StrEq(op.name, StrL("on_key_down")))
@@ -1014,6 +1017,7 @@ struct ShellTokenUser {
     ShellRuntime* runtime = nullptr;
     shell::CallbackId render = 0;
     shell::CallbackId click = 0;
+    shell::CallbackId hover = 0;
     InputState* state = nullptr;
 };
 
@@ -1040,19 +1044,35 @@ static void ShellClickToken(const InlineTokenClickEvent* ev, Ctx* cx,
     }
 }
 
+static void ShellHoverToken(const InlineTokenHoverEvent* ev, Ctx* cx,
+                            void* user) {
+    ShellTokenUser* values = (ShellTokenUser*)user;
+    if (values && values->runtime && values->hover) {
+        values->runtime->DispatchTokenHover(values->hover, ev,
+                                            InputValue(values->state), cx);
+    }
+}
+
 static void InstallShellTokens(Ctx* cx, ShellRuntime* runtime,
                                InputState* state, const MaterialBehavior& b,
                                bool secret) {
     if (!state) return;
-    if (!b.onToken && !b.onTokenClick) return;
+    if (!b.onToken && !b.onTokenClick && !b.onTokenHover) {
+        // A listener an earlier render installed goes with the callback.
+        InputSetTokenHoverPresentation(state, nullptr, nullptr);
+        return;
+    }
     ShellTokenUser* user = ArenaNew<ShellTokenUser>(cx->a);
     user->runtime = runtime;
     user->render = b.onToken;
     user->click = b.onTokenClick;
+    user->hover = b.onTokenHover;
     user->state = state;
     InputSetTokenPresentation(state, &ShellRenderToken, user,
                               b.onTokenClick ? &ShellClickToken : nullptr, user,
                               secret);
+    InputSetTokenHoverPresentation(
+        state, b.onTokenHover ? &ShellHoverToken : nullptr, user);
 }
 
 struct MaterialVirtualUser {
