@@ -324,6 +324,41 @@ static void AHostCanPresentItsOwnItems() {
     utassert(!InputIsContextMenuOpen(&s));
 }
 
+// component popovers/completion_menu.rs
+// hiding_an_old_menu_does_not_dismiss_a_new_completion_response. Upstream's
+// hide deferred a dismissal of the editor's overlay, which could land on the
+// response that replaced it; the menu here dismisses when it is hidden, so
+// there is nothing left to arrive late.
+static void HidingAnOldMenuDoesNotDismissANewCompletionResponse() {
+    Arena* a = ArenaNew();
+    Ctx cx = {nullptr, nullptr, a, {}};
+    InputState editor;
+    editor.kind = InputKind::Editor;
+    InputSetValue(&editor, StrL("co"));
+    CompletionItem item = {};
+    item.label = StrL("const");
+
+    InputPresentCompletionItems(&editor, 0, StrL("c"), &item, 1);
+    component::CompletionMenu* menu =
+        component::CompletionMenu::New(&cx, &editor);
+    menu->UpdateQuery(0, StrL("c"));
+    menu->Show(1, &item, 1);
+    // The overlay observes the old request being hidden while a replacement
+    // request is pending. Its dismissal must not act on the replacement
+    // response that arrives next.
+    menu->Hide();
+    InputPresentCompletionItems(&editor, 0, StrL("co"), &item, 1);
+
+    CompletionMenuState completion = CompletionMenuState::Of(&editor);
+    // "an old menu dismissed the new response"
+    utassert(completion.open);
+    utassert(base::StrEq(completion.query, "co"));
+    utassert(completion.nItems == 1);
+    utassert(completion.nItems == 1 &&
+             base::StrEq(completion.items[0].label, "const"));
+    ArenaDelete(a);
+}
+
 static int gOverlayKeys = 0;
 static InputOverlayKind gOverlayKind = InputOverlayKind::CodeAction;
 
@@ -10228,6 +10263,7 @@ void TestInputState() {
     CodeActionCollectionsGrowToTheirAnswers();
     ResetDropsWhatTheLayerHeld();
     AHostCanPresentItsOwnItems();
+    HidingAnOldMenuDoesNotDismissANewCompletionResponse();
     AHostCanTakeTheKeys();
     AnInsertIsNotTyping();
     AnEditListIsOneStep();

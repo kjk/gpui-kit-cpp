@@ -16,14 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3a39e9dfc97d8b12cf3c116708ada36bee02220b` (2026-10-03,
-input: Keep horizontal scrolling and soft wrapping consistent (#3358)). An
-editor's ordinary text wraps at Unicode line-break opportunities measured with
-shaped prefix widths (MeasuredWrapBoundaries), falling back to whole graphemes
-for an oversized word; rows with inline tokens keep the LineWrapper path.
-Upstream's horizontal-scroll clamp has no counterpart to fix: a field here
-keeps one clamped scrollX that moves its text and carets together. The current
-update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `4c7f1350331562436df868c55ac33bebc4c6406c` (2026-10-04,
+editor: Measure the completion prefix from the typed text and drop stale
+trigger offsets (#3363)). Upstream measures a completion's prefix from the
+typed text and drops a stale trigger offset; a completion request here already
+reads its query from the document at the caret, and hiding a menu dismisses at
+once, so a newer response is never the one dismissed. The current update target
+is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
