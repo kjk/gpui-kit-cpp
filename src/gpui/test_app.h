@@ -86,6 +86,10 @@ void TestSimulateMouseUp(Window* win, Point position,
                          Modifiers modifiers = {});
 // A left press and its release at the same point.
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers = {});
+// cx.simulate_event(ScrollWheelEvent { position, delta: Pixels(delta) }):
+// one precise wheel event. `delta` is GPUI's, so a negative y scrolls down.
+void TestSimulateScrollWheel(Window* win, Point position, Point delta,
+                             Modifiers modifiers = {});
 
 // cx.dispatch_action(action): to whatever has the focus, the way a key bound
 // to it would — the focused field first, then the element chain out from the

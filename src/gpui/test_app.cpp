@@ -409,6 +409,12 @@ void TestSimulateMouseUp(Window* win, Point position, MouseButton button,
     Simulate(win, InputMouseUp(button, position.x, position.y, modifiers, 1));
 }
 
+void TestSimulateScrollWheel(Window* win, Point position, Point delta,
+                             Modifiers modifiers) {
+    Simulate(win, InputScrollWheel(position.x, position.y, delta.x, delta.y,
+                                   true, modifiers, TouchPhase::Moved));
+}
+
 void TestSimulateClick(Window* win, Point position, Modifiers modifiers) {
     TestSimulateMouseDown(win, position, MouseButton::Left, modifiers);
     TestSimulateMouseUp(win, position, MouseButton::Left, modifiers);

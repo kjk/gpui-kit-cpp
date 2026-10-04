@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "15da2830d05a54dcb23e4cda2be9fbfc41e45eeb",
+  sha: "21113cae1144e8a659ec32f9147819b6a5e79a08",
   date: "2026-10-01",
-  subject: "markdown: add source & range_for_source (#3281)",
+  subject: "text_view: Let fenced code blocks scroll inside a height cap (#3322)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

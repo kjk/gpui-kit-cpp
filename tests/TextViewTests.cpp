@@ -5563,6 +5563,118 @@ static void HtmlViewsConvertNoSource() {
     TestAppFree(app);
 }
 
+// ─── text_view.rs scrolling code blocks ───────────────────────────────────
+
+// Height cap of the scrolling code block in ScrollingCodeRoot.
+static const float kCodeHeight = 60.f;
+
+struct ScrollingCodeRoot {
+    Entity<gpui::TextViewState> textView = {};
+    bool actions = false;
+    // debug_bounds("code-action").
+    Bounds actionBounds = {};
+
+    static El* Actions(Ctx* cx, void* data, Str, Str) {
+        ScrollingCodeRoot* self = (ScrollingCodeRoot*)data;
+        return Div(cx->a)
+            ->BoundsOut(&self->actionBounds)
+            ->Child(TextEl(cx->a, StrL("Copy")));
+    }
+
+    static El* Render(ScrollingCodeRoot* self, Ctx* cx) {
+        gpui::Style codeBlock;
+        codeBlock.maxH = kCodeHeight;
+        gpui::TextView* view = gpui::TextView::New(cx, self->textView);
+        view->Style(gpui::TextViewStyle()
+                        .WithCodeBlock(codeBlock, StyleFieldMaxHeight))
+            ->CodeBlockScroll();
+        if (self->actions) {
+            view->CodeBlockActions(&ScrollingCodeRoot::Actions, self);
+        }
+        return Div(cx->a)->W(320)->H(200)->Child(view->Scrollable()->IntoEl());
+    }
+};
+
+// The code block is first in the view. Rust reads the painted lines, which
+// are clipped to the code's viewport: the first code line's bottom moves with
+// the code, the first line below the viewport moves with the list. The code
+// here is one text run, so its top moves with the code, and the first
+// paragraph's run moves with the list.
+static bool ScrollingCodeEdges(Window* win, float* codeTop,
+                               float* paragraphTop) {
+    bool code = false;
+    bool paragraph = false;
+    for (int i = 0; i < len(win->paint.texts); i++) {
+        const TextHit& hit = win->paint.texts[i];
+        if (!code && StrStartsWith(hit.text, StrL("line 0"))) {
+            *codeTop = hit.bounds.y;
+            code = true;
+        } else if (!paragraph && StrStartsWith(hit.text, StrL("Paragraph"))) {
+            *paragraphTop = hit.bounds.y;
+            paragraph = true;
+        }
+    }
+    return code && paragraph;
+}
+
+// scrolling_code_block_keeps_wheel_from_the_list.
+static void ScrollingCodeBlockKeepsWheelFromTheList() {
+    StrBuilder sb;
+    sb.Append(StrL("```\n"));
+    for (int i = 0; i < 50; i++) {
+        sb.Append(fmt("line %d\n", i));
+    }
+    sb.Append(StrL("```\n\n"));
+    for (int i = 0; i < 20; i++) {
+        sb.Append(StrL("Paragraph after the code.\n\n"));
+    }
+    Str markdown = sb.TakeStr();
+
+    // Scrolling must not depend on `code_block_actions`, which is what gives
+    // a non-scrolling block its id.
+    for (int actions = 0; actions < 2; actions++) {
+        App* app = TestAppNew();
+        Entity<ScrollingCodeRoot> root = EntityNew<ScrollingCodeRoot>(app);
+        root.Get(app)->textView = gpui::TextViewState::Markdown(app, markdown);
+        root.Get(app)->actions = actions != 0;
+        Window* win = TestWindowOpen(app, root);
+        auto draw = [&]() {
+            TestRunUntilParked(app);
+            TestDraw(win);
+        };
+        const float step = 20.f;
+        draw();
+        float codeTop = 0;
+        float paragraphTop = 0;
+        utassert(ScrollingCodeEdges(win, &codeTop, &paragraphTop));
+        Bounds action = root.Get(app)->actionBounds;
+
+        // Over the code block: the code scrolls, the list and the pinned
+        // actions stay put.
+        TestSimulateScrollWheel(win, Point{20.f, kCodeHeight / 2.f},
+                                Point{0.f, -step});
+        draw();
+        float codeNow = 0;
+        float paragraphNow = 0;
+        utassert(ScrollingCodeEdges(win, &codeNow, &paragraphNow));
+        utassert(codeNow == codeTop - step);
+        utassert(paragraphNow == paragraphTop);
+        Bounds actionNow = root.Get(app)->actionBounds;
+        utassert(actionNow.x == action.x && actionNow.y == action.y &&
+                 actionNow.w == action.w && actionNow.h == action.h);
+        utassert(actions == 0 || action.w > 0);
+
+        // Below the code block the list still scrolls.
+        TestSimulateScrollWheel(win, Point{20.f, kCodeHeight * 2.5f},
+                                Point{0.f, -step});
+        draw();
+        utassert(ScrollingCodeEdges(win, &codeNow, &paragraphNow));
+        utassert(paragraphNow != paragraphTop);
+        TestAppFree(app);
+    }
+    StrFree(markdown);
+}
+
 // ─── reveal_range ─────────────────────────────────────────────────────────
 
 // Where a scrollable view is scrolled to, as gpui::ListOffset: the block at
@@ -6084,6 +6196,7 @@ static void TestTextStateWindow() {
     InlineObjectsConvertWholeAndStayUnpainted();
     ADraggedSelectionHighlightsThroughItsSourceRange();
     HtmlViewsConvertNoSource();
+    ScrollingCodeBlockKeepsWheelFromTheList();
     AScrollableViewScrollsToAnOffscreenBlock();
     AnAppendAddingBlocksKeepsTheScrollPositionInAWindow();
     AScrollableViewScrollsToALineInsideALongParagraph();

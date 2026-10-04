@@ -1126,6 +1126,9 @@ struct TextView {
     // their floors — node.rs render_scroll_table, which is what the markdown
     // example defaults to.
     bool tableScroll = false;
+    // style.code_block's `overflow.y: Scroll`: a code block capped by a max
+    // height scrolls inside itself instead of being clipped.
+    bool codeBlockScroll = false;
     // TextView::scrollable: a vertically scrolling document viewport. The
     // current runtime lays all blocks rather than virtualizing them through
     // gpui::list, but preserves the state and interaction contract.
@@ -1135,6 +1138,7 @@ struct TextView {
     // How many scrolling tables have been built this frame, which is what
     // names each one's scroll offset.
     int tableIx = 0;
+    int codeIx = 0;
     // TextView::selection_format. Rust keeps it on the view's own state and
     // the document reconstructs the source when the copy asks for it; the
     // selection here is the window's, so the view pushes the format onto it
@@ -1182,6 +1186,13 @@ struct TextView {
     TextView* SelFormat(gpui::SelectionFormat fmt);
     TextView* TableColumnWidth(float px);
     TextView* TableScroll(bool on = true);
+    // Scrolls long code inside its block. Rust reads this off the code_block
+    // refinement's `overflow.y`; a refinement here names no overflow, so it
+    // is a flag beside the one for tables. Set it together with a max height
+    // (TextViewStyle::WithCodeBlock): the block gets its own scrollbar, and
+    // wheel input over it no longer scrolls an ancestor list until the code
+    // reaches its edge.
+    TextView* CodeBlockScroll(bool on = true);
     TextView* Scrollable(bool on = true);
     // Clamp fit-content rendering to this many body-text lines. The runtime
     // snaps the mask to whole descendant Inline lines; ignored by Scrollable.

@@ -3,6 +3,7 @@
 #include "base/global_state.h"
 #include "base/input_keys.h"
 #include "base/scrollable_mask.h"
+#include "base/scrollbar.h"
 #include "base/text_format.h"
 #include "base/text_selection.h"
 #include "gpui/image.h"
@@ -3393,6 +3394,18 @@ El* TextView::TableActionsRow(MdNode* n, int nCols, const uint8_t* colAlign) {
     return tableActions(cx, tableActionsData, &data);
 }
 
+// The offset one scrolling code block is at. Rust keeps a ScrollHandle in
+// keyed state under `block_element_id("codeblock-scroll", span, ix)`; the key
+// here is the view and which code block in it this is, as a table's is.
+struct MdCodeScroll {
+    float y = 0;
+};
+
+static void OnMdCodeScroll(MdCodeScroll* st, Ctx* cx, const ScrollEvent* ev) {
+    st->y = ev->offsetY;
+    Notify(cx);
+}
+
 El* TextView::CodeBlock(MdNode* n) {
     // node.rs takes the corner radius off the Base theme's own tokens; the
     // colours are the style's.
@@ -3478,21 +3491,51 @@ El* TextView::CodeBlock(MdNode* n) {
         }
         box->Child(t->ReportLineSpan(FontLen(cx, codeFont * kLineHeight)));
     }
+    El* actionsBox = nullptr;
     if (codeActions) {
         // `div().id("actions").absolute().top_2().right_2().bg(muted)
         // .rounded(radius)`, over the block it belongs to.
         El* actions = codeActions(cx, codeActionsData, Str(buf, at), n->lang);
         if (actions) {
-            box->Child(Div(a)
-                           ->Absolute()
-                           ->Top(Rems(cx, 0.5f))
-                           ->Right(Rems(cx, 0.5f))
-                           ->Radius(radius)
-                           ->Bg(textViewStyle.codeBackground)
-                           ->Child(actions));
+            actionsBox = Div(a)
+                             ->Absolute()
+                             ->Top(Rems(cx, 0.5f))
+                             ->Right(Rems(cx, 0.5f))
+                             ->Radius(radius)
+                             ->Bg(textViewStyle.codeBackground)
+                             ->Child(actions);
         }
     }
-    return box;
+    if (!codeBlockScroll) {
+        if (actionsBox) {
+            box->Child(actionsBox);
+        }
+        return box;
+    }
+    // Scroll mode, which Rust opts into by setting `style.code_block`'s
+    // `overflow.y` to `Overflow::Scroll`. The block scrolls under its own
+    // handle with a vertical mask over it, so an ancestor list does not
+    // scroll on the same wheel until the code reaches its edge, and it draws
+    // its own scrollbar. Rust lays the mask and the scrollbar beside the
+    // scrolled block; the integrated scroll element here is all three, so
+    // only the actions are left as a sibling — which is what keeps them
+    // pinned to the block's corner instead of moving with the code.
+    codeIx++;
+    uint32_t name =
+        (uint32_t)(cx->self.index + 1) * 1000003u + (uint32_t)codeIx;
+    uint32_t key =
+        KeyedKey(name, (uint32_t)HashClickId(StrL("codeblock-scroll")));
+    Entity<MdCodeScroll> ent = KeyedEntity<MdCodeScroll>(cx, key);
+    MdCodeScroll* st = ent.Get(cx->app);
+    Scrollbar::Apply(cx, box, StrL("scroll"), st ? st->y : 0, 0,
+                     ListenTo(ent, &OnMdCodeScroll), ScrollAxis::Vertical)
+        ->ScrollId((int)key);
+    ScrollableMask::Apply(box, Axis::Vertical);
+    El* frame = Div(a)->W(kFill)->MinW(0)->Child(box);
+    if (actionsBox) {
+        frame->Child(actionsBox);
+    }
+    return frame;
 }
 
 // The highlighted form: one row per line, one element per run of a color.
@@ -6014,6 +6057,11 @@ TextView* TextView::TableColumnWidth(float px) {
 
 TextView* TextView::TableScroll(bool on) {
     tableScroll = on;
+    return this;
+}
+
+TextView* TextView::CodeBlockScroll(bool on) {
+    codeBlockScroll = on;
     return this;
 }
 

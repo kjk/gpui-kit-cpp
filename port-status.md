@@ -16,13 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `15da2830d05a54dcb23e4cda2be9fbfc41e45eeb` (2026-10-01,
-markdown: add source & range_for_source (#3281)). RenderedText gains Source and
-RangeForSource, which convert a Markdown source range into the rendered range a
-RangeHighlight takes through a source map the index builds from the parser's
-segments; SourceSegment carries a linear flag, so an entity as long as its
-characters maps whole and text after an escape maps character for character.
-The current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `21113cae1144e8a659ec32f9147819b6a5e79a08` (2026-10-01,
+text_view: Let fenced code blocks scroll inside a height cap (#3322)). A fenced
+code block opted in with TextView::CodeBlockScroll and capped by a max height
+scrolls inside itself with its own scrollbar and a vertical wheel mask, its
+actions pinned beside it; the test platform gains TestSimulateScrollWheel. The
+current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
@@ -80,6 +79,12 @@ The current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   `RenderedText`'s text, source and `RangeForSource` read the view's index
   (Rust's snapshot holds the parsed document), so read and convert through
   a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **A TextView's scroll layouts are flags, not `overflow` on a refinement.**
+  Rust opts a table into horizontal scrolling with `overflow.x: Scroll` on
+  `style.table` and a code block into vertical scrolling with `overflow.y:
+  Scroll` on `style.code_block`. A refinement here names no overflow field,
+  so they are `TextView::TableScroll()` and `TextView::CodeBlockScroll()`;
+  the max height still comes from the `code_block` refinement.
 - **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
   enclosing `gpui::list` to autoscroll during prepaint and checks the line
   against the content mask. Here the view marks the text the range starts in
