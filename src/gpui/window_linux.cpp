@@ -74,7 +74,8 @@ static Atom aNetWmState, aNetWmStateMaxVert, aNetWmStateMaxHorz;
 static Atom aNetFrameExtents;
 static Atom aNetWmMoveResize, aMotifWmHints, aGtkShowWindowMenu;
 static Atom aGtkEdgeConstraints;
-static Atom aClipboard, aTargets, aClipTarget;
+static Atom aClipboard, aTargets, aClipTarget, aIncr;
+static Atom aImagePng, aImageJpeg, aImageBmp, aImageTiff;
 
 double TimeNow() {
     double simulated = 0;
@@ -1203,11 +1204,165 @@ void WindowSetTextContentType(Window* win, Str value) {
     (void)value;
 }
 
-// A paste on X11 is a round trip: ask the selection owner to write the text
-// into a property on our window, then wait for the SelectionNotify that says
-// it is there. Windows and Cocoa read the clipboard straight out, so this is
-// the one platform where the portable signature hides a wait — half a second,
-// after which an owner that never answered is given up on.
+struct ClipboardTargets {
+    bool valid = false;
+    bool utf8 = false;
+    bool text = false;
+    Atom image = None;
+};
+
+struct SelectionNotifyQuery {
+    XWindow xwin = None;
+    Atom target = None;
+};
+
+static Bool MatchSelectionNotify(::Display*, XEvent* ev, XPointer arg) {
+    auto* query = (SelectionNotifyQuery*)arg;
+    return ev->type == SelectionNotify &&
+           ev->xselection.requestor == query->xwin &&
+           ev->xselection.selection == aClipboard &&
+           ev->xselection.target == query->target;
+}
+
+static bool WaitSelectionNotify(XWindow xwin, Atom target, XEvent& ev) {
+    SelectionNotifyQuery query = {xwin, target};
+    double deadline = TimeNow() + 0.5;
+    while (TimeNow() < deadline) {
+        if (XCheckIfEvent(gDpy, &ev, MatchSelectionNotify, (XPointer)&query)) {
+            return true;
+        }
+        struct timespec ts = {0, 2 * 1000 * 1000};
+        nanosleep(&ts, nullptr);
+    }
+    return false;
+}
+
+static Bool MatchClipboardProperty(::Display*, XEvent* ev, XPointer arg) {
+    auto xwin = *(XWindow*)arg;
+    return ev->type == PropertyNotify && ev->xproperty.window == xwin &&
+           ev->xproperty.atom == aClipTarget &&
+           ev->xproperty.state == PropertyNewValue;
+}
+
+static bool RequestClipboardTarget(XWindow xwin, Atom target) {
+    XDeleteProperty(gDpy, xwin, aClipTarget);
+    XConvertSelection(gDpy, aClipboard, target, aClipTarget, xwin, CurrentTime);
+    XFlush(gDpy);
+
+    XEvent ev = {};
+    if (!WaitSelectionNotify(xwin, target, ev)) {
+        return false;
+    }
+    return ev.xselection.property != None;
+}
+
+static Str ReadClipboardTarget(Arena* a, XWindow xwin, Atom target) {
+    if (!RequestClipboardTarget(xwin, target)) {
+        return {};
+    }
+    Atom type = 0;
+    int format = 0;
+    unsigned long items = 0;
+    unsigned long after = 0;
+    unsigned char* data = nullptr;
+    constexpr long kMaxClipboardLongs = 64 * 1024 * 1024;
+    if (XGetWindowProperty(gDpy, xwin, aClipTarget, 0, kMaxClipboardLongs, True,
+                           AnyPropertyType, &type, &format, &items, &after,
+                           &data) != Success) {
+        return {};
+    }
+    if (type != aIncr) {
+        Str out = {};
+        if (data && items > 0 && format == 8 && after == 0 &&
+            items <= INT_MAX) {
+            out = StrDup(a, Str((char*)data, (int)items));
+        }
+        if (data) {
+            XFree(data);
+        }
+        return out;
+    }
+    if (data) {
+        XFree(data);
+    }
+
+    // INCR transfers stream chunks after the requestor deletes the initial
+    // property. XGetWindowProperty(..., True) above did that deletion.
+    StrBuilder bytes(a);
+    double deadline = TimeNow() + 5.0;
+    while (TimeNow() < deadline) {
+        XEvent ev = {};
+        if (!XCheckIfEvent(gDpy, &ev, MatchClipboardProperty,
+                           (XPointer)&xwin)) {
+            struct timespec ts = {0, 2 * 1000 * 1000};
+            nanosleep(&ts, nullptr);
+            continue;
+        }
+        data = nullptr;
+        items = 0;
+        after = 0;
+        if (XGetWindowProperty(gDpy, xwin, aClipTarget, 0, kMaxClipboardLongs,
+                               True, AnyPropertyType, &type, &format, &items,
+                               &after, &data) != Success) {
+            return {};
+        }
+        if (items == 0) {
+            if (data) {
+                XFree(data);
+            }
+            return bytes.TakeStr();
+        }
+        bool ok = data && format == 8 && after == 0 && items <= INT_MAX &&
+                  bytes.Append(Str((char*)data, (int)items));
+        if (data) {
+            XFree(data);
+        }
+        if (!ok) {
+            return {};
+        }
+    }
+    return {};
+}
+
+static ClipboardTargets ReadClipboardTargets(XWindow xwin) {
+    ClipboardTargets out;
+    if (!RequestClipboardTarget(xwin, aTargets)) {
+        return out;
+    }
+    Atom type = 0;
+    int format = 0;
+    unsigned long items = 0;
+    unsigned long after = 0;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(gDpy, xwin, aClipTarget, 0, 4096, True, XA_ATOM,
+                           &type, &format, &items, &after, &data) != Success) {
+        return out;
+    }
+    if (type == XA_ATOM && format == 32 && after == 0 && data) {
+        out.valid = true;
+        auto* targets = (Atom*)data;
+        for (unsigned long i = 0; i < items; i++) {
+            Atom atom = targets[i];
+            out.utf8 |= atom == aUtf8String;
+            out.text |= atom == XA_STRING;
+            if (atom == aImagePng ||
+                (atom == aImageJpeg && out.image != aImagePng) ||
+                (atom == aImageBmp && out.image != aImagePng &&
+                 out.image != aImageJpeg) ||
+                (atom == aImageTiff && out.image == None)) {
+                out.image = atom;
+            }
+        }
+    }
+    if (data) {
+        XFree(data);
+    }
+    return out;
+}
+
+// A paste on X11 is a round trip: ask the selection owner to write into a
+// property on our window, then wait for SelectionNotify. Windows and Cocoa
+// read the clipboard directly, so this platform signature hides the wait.
 Str ClipboardGetText(Arena* a, Window* win) {
     ClipboardItem simulated;
     if (TestPlatformClipboardRead(a, &simulated)) {
@@ -1217,46 +1372,10 @@ Str ClipboardGetText(Arena* a, Window* win) {
         return {};
     }
     XWindow xwin = win->plat->xwin;
-    // We own the selection: no round trip, the text is already here.
     if (XGetSelectionOwner(gDpy, aClipboard) == xwin) {
         return StrDup(a, gClipboard);
     }
-    XConvertSelection(gDpy, aClipboard, aUtf8String, aClipTarget, xwin,
-                      CurrentTime);
-    XFlush(gDpy);
-
-    XEvent ev = {};
-    bool got = false;
-    double deadline = TimeNow() + 0.5;
-    while (TimeNow() < deadline) {
-        if (XCheckTypedWindowEvent(gDpy, xwin, SelectionNotify, &ev)) {
-            got = true;
-            break;
-        }
-        struct timespec ts = {0, 2 * 1000 * 1000};
-        nanosleep(&ts, nullptr);
-    }
-    if (!got || ev.xselection.property == None) {
-        return {};
-    }
-    Atom type = 0;
-    int format = 0;
-    unsigned long items = 0;
-    unsigned long after = 0;
-    unsigned char* data = nullptr;
-    if (XGetWindowProperty(gDpy, xwin, aClipTarget, 0, 1 << 20, True,
-                           AnyPropertyType, &type, &format, &items, &after,
-                           &data) != Success) {
-        return {};
-    }
-    Str out = {};
-    if (data && items > 0 && format == 8) {
-        out = StrDup(a, Str((char*)data, (int)items));
-    }
-    if (data) {
-        XFree(data);
-    }
-    return out;
+    return ReadClipboardTarget(a, xwin, aUtf8String);
 }
 
 ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
@@ -1265,7 +1384,25 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
         return simulated;
     }
     ClipboardItem out;
-    out.text = ClipboardGetText(a, win);
+    if (!win || !win->plat || !gDpy) {
+        return out;
+    }
+    XWindow xwin = win->plat->xwin;
+    if (XGetSelectionOwner(gDpy, aClipboard) == xwin) {
+        out.text = StrDup(a, gClipboard);
+        return out;
+    }
+    ClipboardTargets targets = ReadClipboardTargets(xwin);
+    if (!targets.valid || targets.utf8) {
+        out.text = ReadClipboardTarget(a, xwin, aUtf8String);
+    } else if (targets.text) {
+        out.text = ReadClipboardTarget(a, xwin, XA_STRING);
+    }
+    if (targets.image != None) {
+        Str image = ReadClipboardTarget(a, xwin, targets.image);
+        out.imageBytes = (const uint8_t*)image.s;
+        out.imageBytesLen = len(image);
+    }
     return out;
 }
 
@@ -1809,6 +1946,11 @@ bool PlatInit(App* app) {
     aClipboard = XInternAtom(gDpy, "CLIPBOARD", False);
     aTargets = XInternAtom(gDpy, "TARGETS", False);
     aClipTarget = XInternAtom(gDpy, "GPUI_CLIPBOARD", False);
+    aIncr = XInternAtom(gDpy, "INCR", False);
+    aImagePng = XInternAtom(gDpy, "image/png", False);
+    aImageJpeg = XInternAtom(gDpy, "image/jpeg", False);
+    aImageBmp = XInternAtom(gDpy, "image/bmp", False);
+    aImageTiff = XInternAtom(gDpy, "image/tiff", False);
     const char* accessibilityBus = getenv("AT_SPI_BUS_ADDRESS");
     if (accessibilityBus && *accessibilityBus) {
         AccessibilityLinuxInit(app, Str(accessibilityBus));
