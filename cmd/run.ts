@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "73ef866b50e16f2ff6bf5f6da1aded0aca27a5f2",
+  sha: "3467e647600290343885b500bd7464057e334d18",
   date: "2026-10-02",
-  subject: "input: fall back to last caret for IME candidate bounds before repaint (#3286) (#3297)",
+  subject: "website: Fail a docs test on a hand-written GPUI Kit version (#3353)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
