@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3a142844d3661159964dce9e5512ca9a40286160",
-  date: "2026-10-01",
-  subject: "input: Keep a single-line Input's text from being clipped in a short frame (#3343)",
+  sha: "f6438b84de2d727f6a689fa0f9cf0f5915ce0584",
+  date: "2026-10-02",
+  subject: "website: Fix bold labels in Chinese numbered lists (#3342)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
