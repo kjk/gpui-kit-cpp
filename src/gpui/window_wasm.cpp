@@ -178,23 +178,59 @@ EM_JS(void, GpJsClipboardRead, (char* out, int cap), {
     HEAPU8.set(b.subarray(0, n), out);
 });
 
+EM_JS(int, GpJsClipboardImageLen, (), {
+    const b = globalThis.__gpuiClipImage;
+    return b ? b.length : 0;
+});
+
+EM_JS(void, GpJsClipboardImageRead, (char* out, int cap), {
+    const b = globalThis.__gpuiClipImage;
+    if (b) {
+        HEAPU8.set(b.subarray(0, cap), out);
+    }
+});
+
 // read_from_clipboard_async: navigator.clipboard.readText, started inside the
 // click that asked for it so the browser allows it. The answer lands in its
 // own slot and is handed back through gpui_wasm_clipboard_read. A page without
 // the API (an insecure origin) answers the in-page mirror instead, which holds
 // the last copy or paste this page saw.
 EM_JS(void, GpJsClipboardReadAsync, (), {
-    const done = function(t) {
+    const done = function(t, image) {
         globalThis.__gpuiClipAsync = t || "";
+        globalThis.__gpuiClipAsyncImage = image || null;
         _gpui_wasm_clipboard_read();
     };
-    if (navigator.clipboard && navigator.clipboard.readText) {
-        navigator.clipboard.readText().then(done, function(e) {
+    if (navigator.clipboard && navigator.clipboard.read) {
+        navigator.clipboard.read().then(async function(items) {
+            let text = "";
+            let image = null;
+            const imageTypes = ["image/png", "image/jpeg", "image/bmp", "image/tiff"];
+            for (const item of items) {
+                if (!text && item.types.includes("text/plain")) {
+                    text = await (await item.getType("text/plain")).text();
+                }
+                if (!image) {
+                    const type = imageTypes.find(function(t) { return item.types.includes(t); });
+                    if (type) {
+                        image = new Uint8Array(await (await item.getType(type)).arrayBuffer());
+                    }
+                }
+            }
+            done(text, image);
+        }, function(e) {
             console.warn("failed to read the clipboard for paste: " + e);
-            done("");
+            done("", null);
+        });
+        return;
+    }
+    if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then(function(t) { done(t, null); }, function(e) {
+            console.warn("failed to read the clipboard for paste: " + e);
+            done("", null);
         });
     } else {
-        done(globalThis.__gpuiClip || "");
+        done(globalThis.__gpuiClip || "", null);
     }
 });
 
@@ -209,6 +245,19 @@ EM_JS(void, GpJsClipboardAsyncRead, (char* out, int cap), {
     const b = new TextEncoder().encode(t);
     const n = Math.min(b.length, cap);
     HEAPU8.set(b.subarray(0, n), out);
+});
+
+EM_JS(int, GpJsClipboardAsyncImageLen, (), {
+    const b = globalThis.__gpuiClipAsyncImage;
+    return b ? b.length : 0;
+});
+
+EM_JS(void, GpJsClipboardAsyncImageRead, (char* out, int cap), {
+    const b = globalThis.__gpuiClipAsyncImage;
+    globalThis.__gpuiClipAsyncImage = null;
+    if (b) {
+        HEAPU8.set(b.subarray(0, cap), out);
+    }
 });
 
 EM_JS(int, GpJsReduceMotion, (), {
@@ -242,6 +291,28 @@ EM_JS(void, GpJsInstallClipboard, (), {
         }
         globalThis.__gpuiClip = e.clipboardData.getData("text/plain") || "";
         e.preventDefault();
+        const imageTypes = ["image/png", "image/jpeg", "image/bmp", "image/tiff"];
+        let file = null;
+        for (const type of imageTypes) {
+            for (const item of e.clipboardData.items) {
+                if (item.kind === "file" && item.type === type) {
+                    file = item.getAsFile();
+                    break;
+                }
+            }
+            if (file) break;
+        }
+        if (file) {
+            file.arrayBuffer().then(function(bytes) {
+                globalThis.__gpuiClipImage = new Uint8Array(bytes);
+                _gpui_wasm_paste();
+            }, function() {
+                globalThis.__gpuiClipImage = null;
+                _gpui_wasm_paste();
+            });
+            return;
+        }
+        globalThis.__gpuiClipImage = null;
         _gpui_wasm_paste();
     });
 });
@@ -296,6 +367,15 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_clipboard_read(void) {
         if (text.s) {
             GpJsClipboardAsyncRead(text.s, n);
             item.text = text;
+        }
+    }
+    n = GpJsClipboardAsyncImageLen();
+    if (n > 0) {
+        Str image = AllocStrTemp(n);
+        if (image.s) {
+            GpJsClipboardAsyncImageRead(image.s, n);
+            item.imageBytes = (const uint8_t*)image.s;
+            item.imageBytesLen = n;
         }
     }
     done(data, gWin->app, gWin, item);
@@ -887,6 +967,20 @@ ClipboardItem ClipboardGetItem(Arena* a, Window* win) {
     }
     ClipboardItem out;
     out.text = ClipboardGetText(a, win);
+    if (!gInPasteEvent) {
+        return out;
+    }
+    int n = GpJsClipboardImageLen();
+    if (n <= 0) {
+        return out;
+    }
+    Str image = AllocStrTemp(n);
+    if (!image.s) {
+        return out;
+    }
+    GpJsClipboardImageRead(image.s, n);
+    out.imageBytes = (const uint8_t*)StrDup(a, image).s;
+    out.imageBytesLen = n;
     return out;
 }
 
