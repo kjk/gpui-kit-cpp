@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "0b8a6534b0f8bde36e57a83cc28fdf06d6cc356e",
+  sha: "eb0cc1365a250328e97b4c3c371eb20002358994",
   date: "2026-10-01",
-  subject: "text_view: Follow the container's text color so rich text reads in filled bubbles (#3329)",
+  subject: "input: Make rows set the height of a plain Textarea again (#3330)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",

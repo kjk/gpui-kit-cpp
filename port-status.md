@@ -16,13 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `0b8a6534b0f8bde36e57a83cc28fdf06d6cc356e` (2026-10-01,
-text_view: Follow the container's text color so rich text reads in filled
-bubbles (#3329)). TextViewStyle gains OnTextColor and IsInvertedBy and
-TextViewDefaults gains WithInheritTextColor, which Component turns on: a view
-without an explicit style takes the text color named on it, and on an inverted
-surface derives its link, muted, code, border, selection and table colors from
-it and leaves the installed highlighter out. The current update target is
+Processed through `eb0cc1365a250328e97b4c3c371eb20002358994` (2026-10-01,
+input: Make rows set the height of a plain Textarea again (#3330)). A
+multi-line input is at least its mode's rows tall in every mode, so a plain
+Textarea's configured rows size it again; the row count was already only grown
+from the content in auto-grow mode here. The current update target is
 `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust

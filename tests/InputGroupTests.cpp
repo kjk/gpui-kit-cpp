@@ -140,10 +140,10 @@ static void InlineAddonsInsetTheControlAndButtonsAreCompact() {
     delete win;
 }
 
-// element.rs request_layout: a multi-line field that does not auto-grow is
-// at least one line tall whatever its PlainText rows say; an auto-grow one
-// is its current rows, up to max_rows. A Rows() on the builder still wins.
-static void APlainTextareaIsOneLineUnlessItGrows() {
+// element.rs request_layout: a multi-line field is at least its rows tall —
+// the configured rows of a plain one, and an auto-grow one's current rows,
+// up to max_rows. A Rows() on the builder still wins.
+static void ATextareaIsAtLeastItsRowsTall() {
     App app;
     component::Init(&app);
     Window* win = new Window();
@@ -156,7 +156,7 @@ static void APlainTextareaIsOneLineUnlessItGrows() {
     plain.kind = InputKind::Textarea;
     TextareaSetRows(&plain, 3);
     El* e = component::Textarea::New(&cx, StrL("plain"), &plain)->IntoEl();
-    utassertnear(e->style.height, 20 + kPadded);
+    utassertnear(e->style.height, 3 * 20 + kPadded);
 
     InputState grow;
     grow.kind = InputKind::Textarea;
@@ -167,6 +167,24 @@ static void APlainTextareaIsOneLineUnlessItGrows() {
 
     e = component::Textarea::New(&cx, StrL("asked"), &plain)->Rows(4)->IntoEl();
     utassertnear(e->style.height, 4 * 20 + kPadded);
+
+    // crates/kit/tests/input/textarea.rs
+    // rows_set_the_minimum_height_of_a_plain_textarea: five rows add exactly
+    // four times what the second row adds.
+    float heights[3] = {};
+    const int kRows[3] = {1, 2, 5};
+    InputState counted[3];
+    for (int i = 0; i < 3; i++) {
+        counted[i].kind = InputKind::Textarea;
+        TextareaSetRows(&counted[i], kRows[i]);
+        heights[i] = component::Textarea::New(&cx, StrL("rows"), &counted[i])
+                         ->IntoEl()
+                         ->style.height;
+    }
+    float line = heights[1] - heights[0];
+    // "a second row adds height"
+    utassert(line > 0);
+    utassertnear(heights[2] - heights[0], line * 4);
 
     WindowKeyedFree(win);
     EntityDropAll(&app);
@@ -180,5 +198,5 @@ void TestInputGroup() {
     ValidationTakesPrecedenceOverFocusAndRemainsVisibleWhenDisabled();
     TheBuilderKeepsTheLastControlAndAddonAlignment();
     InlineAddonsInsetTheControlAndButtonsAreCompact();
-    APlainTextareaIsOneLineUnlessItGrows();
+    ATextareaIsAtLeastItsRowsTall();
 }

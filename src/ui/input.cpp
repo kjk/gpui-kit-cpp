@@ -1247,16 +1247,16 @@ El* Textarea::IntoEl() {
     // sits outside the padded content, as in GPUI.
     //
     // Without a Rows() here, the state's mode decides as element.rs
-    // request_layout does: an auto-grow textarea is at least its current
-    // rows (capped at max_rows) tall, and any other multi-line one at least
-    // one line — PlainText's own `rows` sizes nothing upstream.
+    // request_layout does: every multi-line field is at least `rows` tall —
+    // the configured rows, or for auto grow the content's rows capped at
+    // max_rows.
     int shownRows = rows;
     if (shownRows <= 0) {
         shownRows = 1;
-        if (state && state->mode.kind == LayoutModeKind::AutoGrow) {
-            int grown = LayoutModeRows(state->mode);
+        if (state) {
+            int modeRows = LayoutModeRows(state->mode);
             int maxRows = state->mode.maxRows;
-            shownRows = maxRows > 0 && maxRows < grown ? maxRows : grown;
+            shownRows = maxRows > 0 && maxRows < modeRows ? maxRows : modeRows;
         }
     }
     // `.h(px(..))` or `.h(relative(1.))`: a caller that gives the editor a
