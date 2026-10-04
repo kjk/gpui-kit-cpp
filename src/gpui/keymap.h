@@ -170,6 +170,11 @@ bool KeymapBindingForAction(uint32_t action, const uint32_t* contexts,
 // same place the chord would have reached on its own.
 bool KeymapAnyBindingForAction(uint32_t action, KeyChord* out);
 
+// The same, kept to the bindings that carry `arg`. A menu row that shares
+// its action with every other row is told apart by the argument, and the
+// chord beside it is that row's — not the last binding of the action.
+bool KeymapAnyBindingForActionArg(uint32_t action, int64_t arg, KeyChord* out);
+
 // The name a key goes by in a binding spec — "c", "enter", "pagedown" — which
 // is the inverse of what KeyChordParse reads. Empty for a key with no name,
 // which is a key no binding could have named either.

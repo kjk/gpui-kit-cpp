@@ -961,6 +961,8 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
     (void)n;
 }
 
+void PlatSetMenuBarVisible(bool) {}
+
 // cx.open_url. xdg-open is the desktop's own answer to "what opens this";
 // the fork keeps a browser that takes its time from holding up the frame, and
 // the child replaces itself so nothing here waits on it.

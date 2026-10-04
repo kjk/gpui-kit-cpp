@@ -1834,6 +1834,10 @@ bool PlatHasAppMenu() {
     return true;
 }
 
+void PlatSetMenuBarVisible(bool visible) {
+    [NSMenu setMenuBarVisible:visible ? YES : NO];
+}
+
 void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
     (void)app;
     if (!items || n <= 0) {

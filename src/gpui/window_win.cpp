@@ -1252,6 +1252,8 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
     (void)n;
 }
 
+void PlatSetMenuBarVisible(bool) {}
+
 // cx.open_url. ShellExecute with no verb runs the shell's default action for
 // the scheme, which is what the user has chosen as their browser.
 // SPI_GETCLIENTAREAANIMATION is the Windows switch behind Settings ▸

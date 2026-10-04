@@ -873,6 +873,20 @@ bool KeymapAnyBindingForAction(uint32_t action, KeyChord* out) {
     return false;
 }
 
+bool KeymapAnyBindingForActionArg(uint32_t action, int64_t arg, KeyChord* out) {
+    if (!action || !out) {
+        return false;
+    }
+    for (int i = gNBindings - 1; i >= 0; i--) {
+        if (gBindings[i].action == action && gBindings[i].arg == arg &&
+            gBindings[i].nStrokes > 0) {
+            *out = gBindings[i].strokes[0];
+            return true;
+        }
+    }
+    return false;
+}
+
 KeyMatch KeymapMatch(const KeyChord& chord, const uint32_t* contexts,
                      int nContexts) {
     if (gNPending >= kMaxStrokes) {

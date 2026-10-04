@@ -7511,10 +7511,10 @@ bool WindowClientDecorated(Window* win);
 // cx.set_menus(app_menus()). The menus of the application itself, as opposed
 // to the ones an element opens: on macOS they are the bar at the top of the
 // screen, which belongs to the front application and not to any of its
-// windows. A row carries an action and nothing else, the way Rust's
-// `MenuItem::action` does, so choosing it runs the same handler the chord
-// bound to it reaches — and the shortcut the OS shows beside the label is
-// looked up in the keymap rather than spelled out here.
+// windows. A row carries an action, the way Rust's `MenuItem::action`
+// does, so choosing it runs the same handler the chord
+// bound to it reaches. The shortcut beside the label is the binding of that
+// action and argument, unless the row names a stroke of its own.
 //
 // Nothing else has a menu bar of its own to install into. The call is not
 // conditional for that: an application says what its menus are once, and the
@@ -7535,6 +7535,9 @@ struct MenuRow {
     bool checked = false;
     const MenuRow* submenu = nullptr;
     int submenuN = 0;
+    // A stroke ("cmd-q") shown beside the row. Null asks the keymap for the
+    // chord bound to this action and argument.
+    const char* stroke = nullptr;
 };
 
 // gpui::Menu: one menu of the bar, which is a name and its rows.
@@ -7554,6 +7557,9 @@ bool AppHasMenuBar();
 // label or checked state changes, which is how the checked appearance and
 // theme rows keep up; the platform replaces the bar wholesale.
 void AppSetMenus(App* app, const MenuDef* menus, int n);
+// Show or hide the OS menu bar. macOS only; ignored everywhere else. Hiding
+// it leaves the menus installed, so a shortcut still reaches its row.
+void AppSetMenuBarVisible(bool visible);
 // What row `id` names, `id` being what a platform menu answers with. The
 // numbering is the contract between the two halves — the selectable rows in
 // preorder, from 1 — so it is worth being able to ask.

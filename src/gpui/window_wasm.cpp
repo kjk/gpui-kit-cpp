@@ -904,6 +904,8 @@ void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n) {
     (void)n;
 }
 
+void PlatSetMenuBarVisible(bool) {}
+
 bool PlatReduceMotion() {
     return GpJsReduceMotion() != 0;
 }

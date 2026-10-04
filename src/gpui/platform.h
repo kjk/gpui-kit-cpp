@@ -345,6 +345,10 @@ bool PlatHasAppMenu();
 // AppKit does for itself.
 void PlatSetAppMenu(App* app, const PlatMenuItem* items, int n);
 
+// Show or hide the menu bar the platform drew. A no-op where the application
+// draws its own bar.
+void PlatSetMenuBarVisible(bool visible);
+
 // The platform reporting which row of the application menu bar was chosen.
 // Implemented in WindowCommon.cpp: the id is looked up in the table the last
 // AppSetMenus built and the row's action is dispatched to the front window.

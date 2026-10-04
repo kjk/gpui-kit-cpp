@@ -184,6 +184,19 @@ static void AMenuRowFindsAChordBoundInsideAContext() {
 
     utassert(!KeymapAnyBindingForAction(Act("test::Unbound"), &c));
     utassert(!KeymapAnyBindingForAction(0, &c));
+
+    // One action, many rows: the chord is the binding that carries the row's
+    // argument, not the last binding of the action.
+    uint32_t cmd = Act("test::Cmd");
+    KeyBinding perArg[] = {
+        {"ctrl-o", cmd, nullptr, 1},
+        {"ctrl-s", cmd, nullptr, 2},
+    };
+    KeymapBind(perArg, 2);
+    utassert(KeymapAnyBindingForActionArg(cmd, 1, &c) && c.vk == 'O');
+    utassert(KeymapAnyBindingForActionArg(cmd, 2, &c) && c.vk == 'S');
+    utassert(!KeymapAnyBindingForActionArg(cmd, 3, &c));
+    utassert(!KeymapAnyBindingForActionArg(0, 1, &c));
     KeymapClear();
 }
 

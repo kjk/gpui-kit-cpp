@@ -4128,11 +4128,18 @@ static PlatMenuItem* AppMenuToPlat(AppMenuState* state, Arena* a,
         }
         VecAppend(state->rows, AppMenuBinding{r.action, r.arg});
         p.id = state->rows.len;
-        // The shortcut beside the label, out of the keymap rather than typed
-        // into the row: the menu bar matches it itself, and what it fires is
-        // the row, which dispatches the action the chord would have reached.
+        // The shortcut beside the label. A row may name it; otherwise it is
+        // the binding of this action and argument. The menu bar matches the
+        // chord itself, and what it fires is the row.
         KeyChord chord = {};
-        if (r.action && KeymapAnyBindingForAction(r.action, &chord)) {
+        bool haveKey = false;
+        if (r.stroke && r.stroke[0]) {
+            haveKey = KeyChordParse(Str(r.stroke), &chord);
+        }
+        if (!haveKey && r.action) {
+            haveKey = KeymapAnyBindingForActionArg(r.action, r.arg, &chord);
+        }
+        if (haveKey) {
             Str key = KeyName(chord.vk);
             if (len(key) > 0) {
                 p.key = StrDup(a, key).s;
@@ -4202,6 +4209,10 @@ bool AppMenuRowForId(const App* app, int id, uint32_t* action, int64_t* arg) {
         *arg = state->rows[id - 1].arg;
     }
     return true;
+}
+
+void AppSetMenuBarVisible(bool visible) {
+    PlatSetMenuBarVisible(visible);
 }
 
 void AppMenuClear(App* app) {
