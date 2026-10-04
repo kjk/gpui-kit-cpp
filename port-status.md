@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3467e647600290343885b500bd7464057e334d18` (2026-10-02,
-website: Fail a docs test on a hand-written GPUI Kit version (#3353)). Upstream
-adds a website test that fails on a hand-written GPUI Kit version. The current
-update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
+Processed through `2c5162f8c5b0c7fcec066ed53125d304c632bfe2` (2026-10-03,
+website: Match onboarding dependencies to release snapshots (#3356)). Upstream
+matches the website's onboarding dependency versions to release snapshots. The
+current update target is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 
