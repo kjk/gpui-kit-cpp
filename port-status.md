@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `912f8a9b70c24aa79de696f26ab0c7ef065ed134` (2026-10-01,
-docs: Document macOS font-kit requirement (#3339)). Upstream documents the
-macOS font-kit requirement on the website only. The current update target is
-`912f8a9b70c24aa79de696f26ab0c7ef065ed134`.
+Processed through `ec6b87f5d9d04a38e9c9bbcf6e389a45a570afa4` (2026-10-01, text:
+Avoid remeasuring scroll-table column widths (#3318)). Upstream caches a scroll
+table's measured column widths on the parsed table; the window's text measure
+cache already answers a repeated measure here, and the scroll layout is already
+chosen before the wrap layout's length scan. The current update target is
+`4c7f1350331562436df868c55ac33bebc4c6406c`.
 
 ## Known gaps vs Rust
 

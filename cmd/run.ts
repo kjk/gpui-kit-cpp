@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "912f8a9b70c24aa79de696f26ab0c7ef065ed134",
+  sha: "ec6b87f5d9d04a38e9c9bbcf6e389a45a570afa4",
   date: "2026-10-01",
-  subject: "docs: Document macOS font-kit requirement (#3339)",
+  subject: "text: Avoid remeasuring scroll-table column widths (#3318)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
