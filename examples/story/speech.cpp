@@ -109,10 +109,9 @@ struct DemoSession {
 
 struct SpeechStory;
 
-// GeneratedInput. Rust's story captures from the `speech` feature's
-// Microphone and keeps this for the web, which it cannot capture on; this
-// tree has no microphone on any platform yet, so the story is fed from it
-// everywhere: a tone whose loudness rises and falls like speech.
+// GeneratedInput: stands in for the microphone where the story cannot
+// capture — the web, as in Rust, and a Linux build without ALSA. It pushes a
+// tone whose loudness rises and falls like speech.
 struct GeneratedInput {
     Window* win = nullptr;
     Entity<SpeechStory> view = {};
@@ -262,7 +261,10 @@ El* SpeechStory::Render(SpeechStory* self, Ctx* cx) {
         generated.start = &GeneratedInput::Start;
 
         self->custom.speech = component::SpeechStateNew(cx->app);
-        self->custom.speech.Get(cx->app)->Recognizer(demo)->Input(generated);
+        self->custom.speech.Get(cx->app)->Recognizer(demo);
+        if (!component::Microphone::IsSupported()) {
+            self->custom.speech.Get(cx->app)->Input(generated);
+        }
         self->system.speech = component::SpeechStateNew(cx->app);
         InputSetPlaceholder(&self->custom.input, StrL("Type or dictate"));
         InputSetPlaceholder(&self->system.input, StrL("Type or dictate"));

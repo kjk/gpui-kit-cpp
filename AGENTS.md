@@ -59,14 +59,17 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    `cmd/update-dist.ts` fails the build if that stops being true. Anything one
    of them needs from the tree belongs in `base`, or it does not belong to them.
 3. **Six targets, no third-party C++ libraries.** Windows: MSVC `cl.exe`,
-   static CRT (`/MT`, `/MTd`) — no redistributable DLLs — plus WinHTTP. Linux:
+   static CRT (`/MT`, `/MTd`) — no redistributable DLLs — plus WinHTTP, WASAPI
+   and WinRT's speech recognizer, both reached through the SDK's COM headers
+   with nothing new linked. Linux:
    g++/clang++ with system X11, cairo, Pango and gdk-pixbuf via `pkg-config`,
-   and two soft dependencies found the same way when installed: libcurl
-   (without it the tree builds and only loses remote images) and WebKitGTK
+   and three soft dependencies found the same way when installed: libcurl
+   (without it the tree builds and only loses remote images), WebKitGTK
    4.1 (`webkit2gtk-4.1`, the webview; without it a webview stays an empty
-   box). macOS: clang++ with
+   box) and ALSA (`alsa`, the microphone; without it speech input has none).
+   macOS: clang++ with
    Cocoa, Core Graphics, ImageIO, Core Text, IOKit, CoreServices (FSEvents),
-   NSURLSession. iOS: the Xcode iPhoneOS SDK and a UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
+   NSURLSession, AudioToolbox, AVFoundation and Speech. iOS: the Xcode iPhoneOS SDK and a UIKit host. Android: the pinned NDK in `cmd/android-install-deps.ps1`, API
    24 or newer, and an app-owned native host. Mobile builds are static
    libraries: the application owns lifecycle and embeds the GPUI surface. No
    CMake, Gradle, vcpkg, or C++ package manager, no `ext/`. What Rust gets
@@ -184,15 +187,17 @@ src/base.h            Str, Vec, Arena, Geom, Color
 `src/base.h` defines the six `GPUI_OS_*` macros from compiler predefines;
 exactly one is 1. Seams:
 
-| Seam                               | Shared header          | Windows             | Linux                   | macOS               | iOS                  | Android                 | wasm                        |
-| ---------------------------------- | ---------------------- | ------------------- | ----------------------- | ------------------- | -------------------- | ----------------------- | --------------------------- |
-| memory, paths, strings, self usage | `src/base.h` (`Plat*`) | `base_win.cpp`      | `base_linux.cpp`        | `base_mac.cpp`      | `base_ios.cpp` + POSIX | `base_android.cpp` + POSIX | `base_wasm.cpp`             |
-| 2D drawing and shaped text         | `src/gpui/paint.h`     | `paint_win.cpp`     | `paint_linux.cpp`       | `paint_mac.cpp`     | host adapter         | host adapter            | `paint_wasm.cpp`            |
-| the OS window and its event loop   | `src/gpui/platform.h`  | `window_win.cpp`    | `window_linux.cpp`      | `window_mac.cpp`    | UIKit host           | Android host            | `window_wasm.cpp`           |
-| system metrics                     | `src/sys/sysinfo.h`    | `sysinfo_win.cpp`   | `sysinfo_linux.cpp`     | `sysinfo_mac.cpp`   | host adapter         | host adapter            | `sysinfo_wasm.cpp`          |
-| one HTTP request                   | `src/sys/http.h`       | `http_win.cpp`      | `http_linux.cpp`        | `http_mac.cpp`      | host adapter         | host adapter            | `http_wasm.cpp`             |
-| a directory's changes              | `src/sys/dir_watch.h`  | `dir_watch_win.cpp` | `dir_watch_inotify.cpp` | `dir_watch_mac.cpp` | `dir_watch_ios.cpp`  | `dir_watch_inotify.cpp` | `dir_watch_wasm.cpp` (stub) |
-| a webview in the window            | `src/wry/wry.h`        | `wry_win.cpp`       | `wry_linux.cpp` (stub)  | `wry_mac.cpp`       | host adapter         | host adapter            | `wry_wasm.cpp` (stub)       |
+| Seam                               | Shared header                 | Windows                     | Linux                                | macOS                       | iOS                    | Android                    | wasm                                |
+| ---------------------------------- | ----------------------------- | --------------------------- | ------------------------------------ | --------------------------- | ---------------------- | -------------------------- | ----------------------------------- |
+| memory, paths, strings, self usage | `src/base.h` (`Plat*`)        | `base_win.cpp`              | `base_linux.cpp`                     | `base_mac.cpp`              | `base_ios.cpp` + POSIX | `base_android.cpp` + POSIX | `base_wasm.cpp`                     |
+| 2D drawing and shaped text         | `src/gpui/paint.h`            | `paint_win.cpp`             | `paint_linux.cpp`                    | `paint_mac.cpp`             | host adapter           | host adapter               | `paint_wasm.cpp`                    |
+| the OS window and its event loop   | `src/gpui/platform.h`         | `window_win.cpp`            | `window_linux.cpp`                   | `window_mac.cpp`            | UIKit host             | Android host               | `window_wasm.cpp`                   |
+| system metrics                     | `src/sys/sysinfo.h`           | `sysinfo_win.cpp`           | `sysinfo_linux.cpp`                  | `sysinfo_mac.cpp`           | host adapter           | host adapter               | `sysinfo_wasm.cpp`                  |
+| one HTTP request                   | `src/sys/http.h`              | `http_win.cpp`              | `http_linux.cpp`                     | `http_mac.cpp`              | host adapter           | host adapter               | `http_wasm.cpp`                     |
+| a directory's changes              | `src/sys/dir_watch.h`         | `dir_watch_win.cpp`         | `dir_watch_inotify.cpp`              | `dir_watch_mac.cpp`         | `dir_watch_ios.cpp`    | `dir_watch_inotify.cpp`    | `dir_watch_wasm.cpp` (stub)         |
+| a webview in the window            | `src/wry/wry.h`               | `wry_win.cpp`               | `wry_linux.cpp` (stub)               | `wry_mac.cpp`               | host adapter           | host adapter               | `wry_wasm.cpp` (stub)               |
+| the default microphone             | `src/sys/audio_input.h`       | `audio_input_win.cpp`       | `audio_input_linux.cpp`              | `audio_input_mac.cpp`       | host adapter           | host adapter               | `audio_input_wasm.cpp` (stub)       |
+| the system speech recognizer       | `src/sys/speech_recognizer.h` | `speech_recognizer_win.cpp` | `speech_recognizer_linux.cpp` (stub) | `speech_recognizer_mac.cpp` | host adapter           | host adapter               | `speech_recognizer_wasm.cpp` (stub) |
 
 `_inotify.cpp` is the shared suffix for Linux and Android (one kernel, one
 inotify), and `_posix.cpp` the one for Linux, macOS, iOS, Android **and** wasm,
@@ -775,7 +780,8 @@ src/base.h/.cpp        vendored SumatraPDF subset; base_{win,linux,mac,wasm,posi
 src/gpui/              App, Window, Entity, Ctx, El, theme, layout, paint, assets,
                        SVG, keymap, scene; paint.h / platform.h and their per-OS
                        files; window_common.cpp; drawops + svg + asset_icons
-src/sys/               metrics, executor, task.h's coroutine and registry, http
+src/sys/               metrics, executor, task.h's coroutine and registry, http,
+                       the microphone and the system speech recognizer
 src/base/              crates/base unstyled primitives; text.h owns TextView
 src/ui/                themed crates/ui façade (component::*)
 src/fps/               the crates/fps performance HUD

@@ -1,6 +1,8 @@
 #include "ui/speech.h"
 
 #include "base/motion.h"
+#include "sys/audio_input.h"
+#include "sys/executor.h"
 #include "gpui/paint.h"
 #include "ui/button.h"
 #include "ui/i18n.h"
@@ -121,6 +123,310 @@ void SpeechAudioConverter::Convert(const float* input, int n,
     }
     position -= length;
     previous = input[n - 1];
+}
+
+// The Microphone's capture: what the audio thread fills and the main thread
+// drains. Rust sends each callback's frames over a channel to a foreground
+// task; this is that channel and that task.
+struct MicCapture {
+    Mutex lock;
+    // Guarded by `lock`: mono frames at the device's rate, and the stream's
+    // failure if it had one.
+    Vec<float> queued;
+    char error[160] = {};
+    bool hasError = false;
+    // A drain is on its way to the main thread.
+    bool posted = false;
+
+    // Main thread only.
+    AudioInputStream* stream = nullptr;
+    bool stopped = false;
+    SpeechAudioConverter converter = {};
+    AudioSink sink = {};
+    App* app = nullptr;
+    Vec<float> taken;
+    Vec<int16_t> converted;
+};
+
+static void MicDrain(MicCapture* c);
+
+// Called with `lock` held: ask for a drain unless one is already coming.
+static bool MicWantsPost(MicCapture* c) {
+    if (c->posted) {
+        return false;
+    }
+    c->posted = true;
+    return true;
+}
+
+// Audio thread. It only copies and posts.
+static void MicSamples(void* user, const float* mono, int frames) {
+    MicCapture* c = (MicCapture*)user;
+    c->lock.Lock();
+    float* dst = VecInsertSpace(c->queued, len(c->queued), frames);
+    if (dst) {
+        memcpy(dst, mono, (size_t)frames * sizeof(float));
+    }
+    bool post = MicWantsPost(c);
+    c->lock.Unlock();
+    if (post) {
+        ExecPost(MkFunc0(&MicDrain, c));
+    }
+}
+
+static void MicError(void* user, Str message) {
+    MicCapture* c = (MicCapture*)user;
+    c->lock.Lock();
+    int n = len(message) < (int)sizeof(c->error) - 1
+                ? len(message)
+                : (int)sizeof(c->error) - 1;
+    memcpy(c->error, message.s, (size_t)n);
+    c->error[n] = 0;
+    c->hasError = true;
+    bool post = MicWantsPost(c);
+    c->lock.Unlock();
+    if (post) {
+        ExecPost(MkFunc0(&MicDrain, c));
+    }
+}
+
+// Main thread. The device delivers ~10 ms chunks; what has queued up goes on
+// as one push so the state updates once per batch.
+static void MicDrain(MicCapture* c) {
+    if (c->stopped) {
+        // The capture ended with this drain already posted; it was left
+        // alive for exactly this.
+        delete c;
+        return;
+    }
+    char error[160] = {};
+    c->taken.len = 0;
+    c->lock.Lock();
+    int n = len(c->queued);
+    float* dst = n > 0 ? VecInsertSpace(c->taken, 0, n) : nullptr;
+    if (dst) {
+        memcpy(dst, c->queued.els, (size_t)n * sizeof(float));
+    }
+    c->queued.len = 0;
+    bool hasError = c->hasError;
+    if (hasError) {
+        memcpy(error, c->error, sizeof(error));
+        c->hasError = false;
+    }
+    c->posted = false;
+    c->lock.Unlock();
+
+    // The sink is a value: the session ending under these calls is fine.
+    AudioSink sink = c->sink;
+    App* app = c->app;
+    c->converted.len = 0;
+    c->converter.Convert(c->taken.els, len(c->taken), c->converted);
+    if (len(c->converted) > 0) {
+        sink.Push(c->converted.els, len(c->converted), app);
+    }
+    if (hasError) {
+        sink.Error(SpeechError::Input(Str(error)), app);
+    }
+}
+
+static void MicStop(void* data) {
+    MicCapture* c = (MicCapture*)data;
+    // No callback runs after this returns, so `posted` is settled.
+    SysAudioInputStop(c->stream);
+    c->stream = nullptr;
+    c->lock.Lock();
+    bool pending = c->posted;
+    c->lock.Unlock();
+    c->stopped = true;
+    if (!pending) {
+        delete c;
+    }
+}
+
+static bool MicStart(void*, AudioFormat format, AudioSink sink, App* app,
+                     AudioCapture* out, SpeechError* error) {
+    MicCapture* c = new MicCapture();
+    c->sink = sink;
+    c->app = app;
+    AudioInputCallbacks callbacks;
+    callbacks.user = c;
+    callbacks.samples = &MicSamples;
+    callbacks.error = &MicError;
+    uint32_t sourceRate = 0;
+    AudioInputError failed = AudioInputError::None;
+    char message[160] = {};
+    // The converter is set before the first callback can ask for a drain:
+    // drains run on this thread, after this call.
+    c->stream = SysAudioInputStart(callbacks, &sourceRate, &failed, message,
+                                   (int)sizeof(message));
+    if (!c->stream) {
+        delete c;
+        switch (failed) {
+            case AudioInputError::PermissionDenied:
+                *error = SpeechError::PermissionDenied();
+                break;
+            case AudioInputError::NoInputDevice:
+                *error = SpeechError::NoInputDevice();
+                break;
+            case AudioInputError::Unsupported:
+                *error = SpeechError::Unsupported();
+                break;
+            default:
+                *error = SpeechError::Input(Str(message));
+                break;
+        }
+        return false;
+    }
+    c->converter = SpeechAudioConverter::New(sourceRate, format);
+    out->data = c;
+    out->stop = &MicStop;
+    return true;
+}
+
+bool Microphone::IsSupported() {
+    return SysAudioInputAvailable();
+}
+
+AudioInput Microphone::Input() {
+    AudioInput input;
+    input.start = &MicStart;
+    return input;
+}
+
+// ─── system/mod.rs ────────────────────────────────────────────────────────
+
+// One session of the platform recognizer, reporting to the sink.
+struct SystemSession {
+    SpeechSink sink = {};
+    App* app = nullptr;
+    SysSpeechSession* session = nullptr;
+};
+
+static void SystemReady(void* user) {
+    SystemSession* s = (SystemSession*)user;
+    s->sink.Ready(s->app);
+}
+
+static void SystemHypothesis(void* user, Str text) {
+    SystemSession* s = (SystemSession*)user;
+    s->sink.Hypothesis(text, s->app);
+}
+
+static void SystemPhrase(void* user, Str text) {
+    SystemSession* s = (SystemSession*)user;
+    s->sink.Phrase(text, s->app);
+}
+
+static void SystemFinish(void* user) {
+    SystemSession* s = (SystemSession*)user;
+    s->sink.Finish(s->app);
+}
+
+static SpeechError SystemErrorOf(SysSpeechError kind, Str message) {
+    switch (kind) {
+        case SysSpeechError::PermissionDenied:
+            return SpeechError::PermissionDenied();
+        case SysSpeechError::NoInputDevice:
+            return SpeechError::NoInputDevice();
+        case SysSpeechError::Unsupported:
+            return SpeechError::Unsupported();
+        case SysSpeechError::Recognizer:
+            break;
+    }
+    return SpeechError::Recognizer(message);
+}
+
+static void SystemError(void* user, SysSpeechError kind, Str message) {
+    SystemSession* s = (SystemSession*)user;
+    s->sink.Error(SystemErrorOf(kind, message), s->app);
+}
+
+static void SystemPushAudio(void* data, const int16_t* samples, int count,
+                            App*) {
+    SysSpeechSessionPushAudio(((SystemSession*)data)->session, samples, count);
+}
+
+static void SystemSessionFinish(void* data, App*) {
+    SysSpeechSessionFinish(((SystemSession*)data)->session);
+}
+
+static void SystemSessionDrop(void* data) {
+    SystemSession* s = (SystemSession*)data;
+    SysSpeechSessionDrop(s->session);
+    delete s;
+}
+
+static SysSpeechRecognizer* SystemPlatform(SystemRecognizer* r) {
+    if (!r->platformMade) {
+        r->platformMade = true;
+        r->platform = SysSpeechRecognizerNew(r->locale);
+    }
+    return r->platform;
+}
+
+static bool SystemIsAvailable(void* data, const App*) {
+    return SysSpeechRecognizerAvailable(
+        SystemPlatform((SystemRecognizer*)data));
+}
+
+static bool SystemStart(void* data, SpeechSink sink, App* app,
+                        RecognitionSession* out, SpeechError* error) {
+    SysSpeechRecognizer* platform = SystemPlatform((SystemRecognizer*)data);
+    if (!platform) {
+        *error = SpeechError::Unsupported();
+        return false;
+    }
+    SystemSession* s = new SystemSession();
+    s->sink = sink;
+    s->app = app;
+    SysSpeechEvents events;
+    events.user = s;
+    events.ready = &SystemReady;
+    events.hypothesis = &SystemHypothesis;
+    events.phrase = &SystemPhrase;
+    events.finish = &SystemFinish;
+    events.error = &SystemError;
+    SysSpeechError kind = SysSpeechError::Unsupported;
+    char message[600] = {};
+    s->session = SysSpeechSessionStart(platform, events, &kind, message,
+                                       (int)sizeof(message));
+    if (!s->session) {
+        delete s;
+        *error = SystemErrorOf(kind, Str(message));
+        return false;
+    }
+    out->data = s;
+    out->pushAudio = &SystemPushAudio;
+    out->finish = &SystemSessionFinish;
+    out->drop = &SystemSessionDrop;
+    return true;
+}
+
+SystemRecognizer::~SystemRecognizer() {
+    SysSpeechRecognizerFree(platform);
+    StrFree(locale);
+}
+
+SystemRecognizer* SystemRecognizer::Locale(Str value) {
+    StrFree(locale);
+    locale = len(value) > 0 ? StrDup(value) : Str{};
+    SysSpeechRecognizerFree(platform);
+    platform = nullptr;
+    platformMade = false;
+    return this;
+}
+
+bool SystemRecognizer::IsSupported() {
+    return SystemPlatform(this) != nullptr;
+}
+
+SpeechRecognizer SystemRecognizer::AsRecognizer() {
+    SpeechRecognizer r;
+    r.data = this;
+    // audio_format: 16 kHz mono on every platform, which is the default.
+    r.isAvailable = &SystemIsAvailable;
+    r.start = &SystemStart;
+    return r;
 }
 
 // ─── level.rs ─────────────────────────────────────────────────────────────
@@ -476,6 +782,10 @@ Entity<SpeechState> SpeechStateNew(App* app) {
     Entity<SpeechState> state = EntityNewState<SpeechState>(app);
     if (SpeechState* s = state.Get(app)) {
         s->self = state;
+        // default_input: the microphone, where there is one.
+        if (Microphone::IsSupported()) {
+            s->input = Microphone::Input();
+        }
     }
     return state;
 }
@@ -487,6 +797,7 @@ SpeechState::~SpeechState() {
     }
     StrFree(committed);
     StrFree(hypothesis);
+    delete systemRecognizer;
 }
 
 SpeechState* SpeechState::Recognizer(const SpeechRecognizer& value) {
@@ -510,22 +821,36 @@ SpeechState* SpeechState::StopTimeout(int ms) {
 }
 
 // active_recognizer: the application's, else the platform's unless the
-// fallback is off. There is no system recognizer in this tree, so the
-// fallback finds none on every platform.
-static const SpeechRecognizer* ActiveRecognizer(const SpeechState* s) {
-    return s->recognizer.IsSet() ? &s->recognizer : nullptr;
+// fallback is off or the platform has none.
+static bool ActiveRecognizer(const SpeechState* s, SpeechRecognizer* out) {
+    if (s->recognizer.IsSet()) {
+        *out = s->recognizer;
+        return true;
+    }
+    if (!s->systemFallback) {
+        return false;
+    }
+    if (!s->systemRecognizer) {
+        s->systemRecognizer = new SystemRecognizer();
+    }
+    if (!s->systemRecognizer->IsSupported()) {
+        return false;
+    }
+    *out = s->systemRecognizer->AsRecognizer();
+    return true;
 }
 
 bool SpeechState::HasRecognizer() const {
-    return input.IsSet() && ActiveRecognizer(this) != nullptr;
+    SpeechRecognizer active;
+    return input.IsSet() && ActiveRecognizer(this, &active);
 }
 
 bool SpeechState::IsAvailable(const App* app) const {
-    const SpeechRecognizer* active = ActiveRecognizer(this);
-    if (!input.IsSet() || !active) {
+    SpeechRecognizer active;
+    if (!input.IsSet() || !ActiveRecognizer(this, &active)) {
         return false;
     }
-    return !active->isAvailable || active->isAvailable(active->data, app);
+    return !active.isAvailable || active.isAvailable(active.data, app);
 }
 
 TempStr SpeechState::TranscriptTemp() const {
@@ -537,11 +862,12 @@ void SpeechState::Start(Ctx* cx) {
         return;
     }
     SpeechUpdate update(this, cx);
-    const SpeechRecognizer* active = ActiveRecognizer(this);
-    if (!active || !input.IsSet()) {
+    SpeechRecognizer found;
+    if (!ActiveRecognizer(this, &found) || !input.IsSet()) {
         EmitError(this, cx, SpeechError::Unsupported());
         return;
     }
+    const SpeechRecognizer* active = &found;
 
     nextSession++;
     uint32_t id = nextSession;

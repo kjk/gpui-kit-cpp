@@ -101,22 +101,25 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   still pointer works by giving the chip a new id (`hoverEpoch`) rather than
   by resetting GPUI's retained element state (`src/base/input.cpp`,
   `src/base/input_tokens.cpp`).
-- **Speech input has no microphone and no system recognizer.** Rust's
-  `speech` feature captures through cpal (`Microphone`) and recognizes with
-  `SFSpeechRecognizer` on macOS and `Windows.Media.SpeechRecognition` on
-  Windows (`SystemRecognizer`). Each wants a platform seam this tree does
-  not have — WASAPI, Core Audio and ALSA capture, the Speech framework, a
-  WinRT activation — and ALSA would be a new Linux dependency, so neither
-  is ported: `SpeechState` has no default input and its system fallback
-  finds nothing, exactly as upstream behaves without the feature. An
-  application fills `SpeechRecognizer` and `AudioInput` itself;
-  `SpeechAudioConverter` is the microphone's resampler, ported for it. The
-  Speech story feeds its demo recognizer a generated tone on every platform
-  (upstream does only on the web), its System section is always the
-  disabled button, and `examples/speech` — a bench for the two missing
-  seams — is not ported. A sink's deferred call and the stop timeout ride
-  a window (`WindowPost`, a window timer) where Rust uses `cx.defer` and
-  the executor's timer (`src/ui/speech.cpp`).
+- **Speech's platform halves are written against the OS, and two are
+  untested on hardware.** Rust captures through cpal and reaches WinRT and
+  the Speech framework through crates; `src/sys/audio_input.h` is WASAPI, an
+  AudioQueue and ALSA directly, and `src/sys/speech_recognizer.h` is
+  `Windows.Media.SpeechRecognition` through the SDK's ABI headers (combase
+  loaded by name) and `SFSpeechRecognizer`. Both are always compiled in,
+  where Rust puts them behind its `speech` feature; ALSA is a soft
+  dependency (`GPUI_HAVE_ALSA`), and without it Linux has no microphone.
+  The macOS microphone asks an AudioQueue for 48 kHz mono rather than
+  taking the device's own format. A recognizer's results are posted to the
+  main thread with `ExecPost` where Rust awaits them in a task, and a
+  sink's deferred call and the stop timeout ride a window (`WindowPost`, a
+  window timer) where Rust uses `cx.defer` and the executor's timer. The
+  wasm build has neither half, so the Speech story feeds its demo
+  recognizer a generated tone there and on a Linux build without ALSA.
+  The WASAPI capture was run end to end; the Windows recognizer, the macOS
+  halves and ALSA capture compile and pass their unit tests but have not
+  been run against a speech pack, a granted microphone or a sound card.
+  `examples/speech` is not ported.
 - **A TextView follows the text color named on it, not an ancestor's.**
   Rust's view reads `window.text_style().color`, which a `Bubble` or any
   other container has pushed by the time the view prepaints. The tree here
@@ -127,7 +130,7 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
 - **A TextView's scroll layouts are flags, not `overflow` on a refinement.**
   Rust opts a table into horizontal scrolling with `overflow.x: Scroll` on
   `style.table` and a code block into vertical scrolling with `overflow.y:
-  Scroll` on `style.code_block`. A refinement here names no overflow field,
+Scroll` on `style.code_block`. A refinement here names no overflow field,
   so they are `TextView::TableScroll()` and `TextView::CodeBlockScroll()`;
   the max height still comes from the `code_block` refinement.
 - **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the

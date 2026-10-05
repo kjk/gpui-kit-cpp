@@ -103,10 +103,12 @@ guards, so the same source set builds on all four:
   three. The custom backends already contain their shader bytecode and do not
   require `d3dcompiler.lib` or `D3DCompiler_47.dll`.
 - **Linux** — `g++ -std=c++20` with `pkg-config --cflags --libs x11 cairo pangocairo gdk-pixbuf-2.0`.
-  Add `libcurl` and `-DGPUI_HAVE_CURL=1` for remote images, and
-  `webkit2gtk-4.1` and `-DGPUI_HAVE_WEBKITGTK=1` for the webview.
-- **macOS** — `clang++ -std=c++20 -x objective-c++` with the Cocoa, CoreText and
-  IOKit frameworks. The file is Objective-C++ because the mac half is.
+  Add `libcurl` and `-DGPUI_HAVE_CURL=1` for remote images,
+  `webkit2gtk-4.1` and `-DGPUI_HAVE_WEBKITGTK=1` for the webview, and
+  `alsa` and `-DGPUI_HAVE_ALSA=1` for the speech microphone.
+- **macOS** — `clang++ -std=c++20 -x objective-c++` with the Cocoa, CoreText,
+  IOKit, AudioToolbox, AVFoundation and Speech frameworks. The file is
+  Objective-C++ because the mac half is.
 - **wasm** — `em++ -std=c++20` with `-sALLOW_MEMORY_GROWTH`; the browser half
   draws through Canvas2D and needs no library at all. em++ rather than emcc:
   the link needs the C++ runtime and emcc leaves it out.
@@ -133,7 +135,7 @@ in one translation unit in either order; their private headers sit behind
 the same `GPUI_INCLUDE_PRIVATE_API` gate as above.
 
 `extras/autocorrect/` is the one pair **not** inside `gpui.cpp`: it holds
-declarations plus the linter only, and links *beside* `gpui.cpp`, which
+declarations plus the linter only, and links _beside_ `gpui.cpp`, which
 provides the base implementation — this is exactly how the editor example
 and the tests build.
 

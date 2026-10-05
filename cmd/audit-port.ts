@@ -49,12 +49,10 @@ table tag text theme toolbar touch_selection tooltip tree
 
 const partialBase = new Set<string>();
 const adapterBase = new Set(["component_traits", "element_ext", "event", "measure", "observe", "test_support", "text"]);
-const partialUi = new Set<string>(["speech"]);
+const partialUi = new Set<string>();
 const adapterUi = new Set(["component_traits", "element_ext", "highlighter", "styled"]);
 
 const partialReasons: Record<string, string> = {
-  "ui/speech":
-    "the cpal Microphone and the macOS/Windows SystemRecognizer are not ported; a state needs an application recognizer and input",
   "base/global_state": "the App global carries selection/popover state; entity-stack coverage remains partial",
 };
 

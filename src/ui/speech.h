@@ -7,13 +7,14 @@
    and audio capture are both replaceable: fill a SpeechRecognizer to use any
    speech service and an AudioInput to feed audio from anywhere.
 
-   Rust's `speech` feature adds a `Microphone` (cpal) and a `SystemRecognizer`
-   (SFSpeechRecognizer on macOS, Windows.Media.SpeechRecognition on Windows).
-   Neither is here yet — port-status.md says why — so a state has no default
-   input and no system recognizer: speech input works with an application
-   recognizer and an application input, as it does upstream on a build without
-   the feature. */
+   A state without its own recognizer falls back to the SystemRecognizer of
+   macOS or Windows, and captures from the Microphone. Linux has no system
+   recognizer, so speech input works there only with an application
+   recognizer. Rust puts both behind its `speech` feature; here they are
+   always in, written against the OS in sys/audio_input.h and
+   sys/speech_recognizer.h. */
 
+#include "sys/speech_recognizer.h"
 #include "ui/sizing.h"
 
 namespace gpui {
@@ -189,6 +190,24 @@ struct AudioInput {
 
 // ─── microphone.rs ────────────────────────────────────────────────────────
 
+// The default audio input device, captured through the platform's audio API
+// (Core Audio, WASAPI or ALSA).
+//
+// The device's own format is mixed down to mono and resampled to the format
+// the recognizer asks for.
+//
+// On macOS the application's `Info.plist` must describe why it uses the
+// microphone (`NSMicrophoneUsageDescription`), or the system refuses access
+// without asking.
+struct Microphone {
+    // Whether this build can capture from a device at all: false in the
+    // browser and on a Linux build without ALSA.
+    static bool IsSupported();
+    // The AudioInput to hand SpeechState::Input. It carries no state of its
+    // own, so it outlives whatever it is given to.
+    static AudioInput Input();
+};
+
 // microphone.rs Converter: converts mono `float` audio at a device's rate to
 // interleaved `int16_t` audio in the recognizer's format, carrying state
 // across chunks. Rust keeps it private to its cpal Microphone; the
@@ -258,6 +277,41 @@ float SpeechLevelOfRms(double rms);
 // `raw`.
 float SpeechLevelSmooth(float previous, float raw);
 
+// ─── system/mod.rs ────────────────────────────────────────────────────────
+
+// The operating system's speech recognizer.
+//
+// - macOS: `SFSpeechRecognizer`, recognizing on the device only. A language
+//   the device cannot recognize offline is not available, so audio never
+//   leaves the machine.
+// - Windows: `Windows.Media.SpeechRecognition`. Dictation needs the
+//   language's speech pack and the "Online speech recognition" privacy
+//   setting, and runs through Microsoft's online service.
+// - Other platforms: never available.
+//
+// A SpeechState without its own recognizer uses this one; create it directly
+// to choose the language. It must outlive the state it is given to.
+struct SystemRecognizer {
+    // Heap, owned. Empty is the system's current language.
+    Str locale = {};
+    // The platform recognizer, made on first use.
+    SysSpeechRecognizer* platform = nullptr;
+    bool platformMade = false;
+
+    SystemRecognizer() = default;
+    SystemRecognizer(const SystemRecognizer&) = delete;
+    SystemRecognizer& operator=(const SystemRecognizer&) = delete;
+    ~SystemRecognizer();
+
+    // Recognize `locale`, a BCP 47 language tag such as `en-US` or `zh-CN`,
+    // instead of the system's language.
+    SystemRecognizer* Locale(Str locale);
+    // Whether this platform has a recognizer for the language at all.
+    bool IsSupported();
+    // The SpeechRecognizer to hand SpeechState::Recognizer.
+    SpeechRecognizer AsRecognizer();
+};
+
 // ─── state.rs ─────────────────────────────────────────────────────────────
 
 // Where a SpeechState is in its session.
@@ -312,14 +366,16 @@ struct SpeechDeferredOp;
 // Render it with SpeechButton and SpeechWaveform, and subscribe to
 // SpeechEvent to receive the text.
 //
-// The recognizer is the one passed to Recognizer(); upstream then falls back
-// to the platform's SystemRecognizer unless SystemFallback turned it off, and
-// its input defaults to the Microphone. This tree has neither yet, so without
-// both a recognizer and an input the state is not available.
+// The recognizer is, in order: the one passed to Recognizer(); else the
+// platform's SystemRecognizer, unless SystemFallback turned it off; else
+// none, and the state is not available. The input defaults to the
+// Microphone.
 struct SpeechState {
     SpeechRecognizer recognizer = {};
     AudioInput input = {};
     bool systemFallback = true;
+    // system_recognizer: the fallback, made the first time it is asked for.
+    mutable SystemRecognizer* systemRecognizer = nullptr;
     // DEFAULT_STOP_TIMEOUT.
     int stopTimeoutMs = 3000;
     SpeechStatus status = SpeechStatus::Idle;

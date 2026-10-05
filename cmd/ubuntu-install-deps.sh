@@ -14,6 +14,7 @@
 #   libcairo2-dev, libpango1.0-dev           — the 2D backend (Paint_linux.cpp)
 #   libgdk-pixbuf-2.0-dev                    — JPEG/GIF/WebP decode (Paint_linux.cpp)
 #   libcurl4-openssl-dev                     — the HTTP client (sys/http_linux.cpp)
+#   libasound2-dev                           — the microphone (sys/audio_input_linux.cpp)
 #   libwebkit2gtk-4.1-dev                    — the webview (wry/wry_linux.cpp)
 #   xvfb, xauth                              — a display for headless UI tests
 #   fonts-dejavu-core, fonts-noto-cjk        — the Sans / Monospace families
@@ -27,7 +28,7 @@
 # CJK fonts, no bun, no rustup. That is what CI runs, so the compile
 # dependencies have one source of truth.
 #
-# libcurl and WebKitGTK are soft dependencies: cmd/build.ts compiles without
+# libcurl, WebKitGTK and ALSA are soft dependencies: cmd/build.ts compiles without
 # either. --without-webkit leaves WebKitGTK (and the GTK 3 it pulls in) out,
 # which is how CI keeps the build without a webview compiling too.
 
@@ -77,6 +78,7 @@ $SUDO apt-get install $APT_FLAGS --no-install-recommends \
   libgdk-pixbuf-2.0-dev \
   libglib2.0-dev \
   libcurl4-openssl-dev \
+  libasound2-dev \
   xvfb \
   xauth \
   fonts-dejavu-core \

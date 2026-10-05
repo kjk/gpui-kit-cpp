@@ -6,10 +6,9 @@
  * the call is posted to it and the timeout is its timer — so the fixture
  * opens one, and run_until_parked / advance_clock are the test platform's.
  *
- * microphone.rs's converter is ported without the microphone around it, and
- * its tests with it. system/macos.rs's three tests pin how the macOS system
- * recognizer assembles SFSpeechRecognizer's results, which this tree does
- * not have (port-status.md). */
+ * system/macos.rs's three tests are of the helpers its recognition joins
+ * phrases with, which live in sys/speech_recognizer.h so every platform's
+ * test run covers them. */
 
 #include "Test.h"
 #include <math.h>
@@ -115,6 +114,72 @@ static void ConverterUpsamples() {
     // The first output lands on the first input sample, so the half step
     // before it is never produced.
     utassert(len(output) == 1599);
+}
+
+// ─── system/macos.rs ──────────────────────────────────────────────────────
+
+// a_revised_utterance_carries_on
+static void ARevisedUtteranceCarriesOn() {
+    utassert(!SpeechStartsOver(StrL("Hello word"), StrL("Hello world, how")));
+    utassert(!SpeechStartsOver(StrL("Hello world"),
+                               StrL("Hello world. How are you")));
+    // U+4ECA U+5929 U+5929 U+6C14, then with U+5F88 U+597D after it.
+    utassert(!SpeechStartsOver(
+        StrL("\xE4\xBB\x8A\xE5\xA4\xA9\xE5\xA4\xA9\xE6\xB0\x94"),
+        StrL("\xE4\xBB\x8A\xE5\xA4\xA9\xE5\xA4\xA9\xE6\xB0\x94\xE5\xBE\x88"
+             "\xE5\xA5\xBD")));
+}
+
+// a_reset_result_starts_over
+static void AResetResultStartsOver() {
+    utassert(SpeechStartsOver(StrL("Hello world."), StrL("How")));
+    // "今天天气很好。" against "明天".
+    utassert(SpeechStartsOver(
+        StrL("\xE4\xBB\x8A\xE5\xA4\xA9\xE5\xA4\xA9\xE6\xB0\x94\xE5\xBE\x88"
+             "\xE5\xA5\xBD\xE3\x80\x82"),
+        StrL("\xE6\x98\x8E\xE5\xA4\xA9")));
+}
+
+// phrases_are_spaced_by_script
+static void PhrasesAreSpacedByScript() {
+    utassert(SpeechNeedsSpace('.', 'H'));
+    utassert(!SpeechNeedsSpace('d', ','));
+    // U+3002 before U+660E, and U+597D before `O`.
+    utassert(!SpeechNeedsSpace(0x3002, 0x660E));
+    utassert(!SpeechNeedsSpace(0x597D, 'O'));
+}
+
+// system/winrt.rs phrase_separator, which upstream has no test for: a space,
+// except in languages written without spaces between words.
+static void PhraseSeparatorFollowsTheLanguage() {
+    utassert(StrEq(SpeechPhraseSeparator(StrL("en-US")), StrL(" ")));
+    utassert(StrEq(SpeechPhraseSeparator(StrL("zh-CN")), StrL("")));
+    utassert(StrEq(SpeechPhraseSeparator(StrL("JA")), StrL("")));
+    utassert(StrEq(SpeechPhraseSeparator(StrL("yue-Hant-HK")), StrL("")));
+    utassert(StrEq(SpeechPhraseSeparator(StrL("th")), StrL("")));
+    utassert(StrEq(SpeechPhraseSeparator(StrL("zhx")), StrL(" ")));
+}
+
+// ─── system/mod.rs ────────────────────────────────────────────────────────
+
+// A SystemRecognizer is a recognizer like any other: one that has no
+// platform behind it fails its start as Unsupported and leaves the state
+// idle. Which platforms have one is the machine's to say, so this pins only
+// what holds everywhere.
+static void ASystemRecognizerWithoutAPlatformIsUnsupported() {
+    SystemRecognizer system;
+    // Not a language any speech pack carries.
+    system.Locale(StrL("tlh-Klingon-Nowhere"));
+    SpeechRecognizer recognizer = system.AsRecognizer();
+    utassert(recognizer.IsSet());
+    App* app = TestAppNew();
+    utassert(!recognizer.isAvailable(recognizer.data, app));
+    RecognitionSession session = {};
+    SpeechError error = {};
+    utassert(!recognizer
+                  .start(recognizer.data, SpeechSink{}, app, &session, &error));
+    utassert(error.kind == SpeechErrorKind::Unsupported);
+    TestAppFree(app);
 }
 
 // ─── waveform.rs ──────────────────────────────────────────────────────────
@@ -486,6 +551,11 @@ void TestSpeech() {
     ConverterKeepsRateAndDuplicatesChannels();
     ConverterDownsamplesAcrossChunks();
     ConverterUpsamples();
+    ARevisedUtteranceCarriesOn();
+    AResetResultStartsOver();
+    PhrasesAreSpacedByScript();
+    PhraseSeparatorFollowsTheLanguage();
+    ASystemRecognizerWithoutAPlatformIsUnsupported();
     BarsFillTheWidthWithTheNewestAtTheTrailingEdge();
     BarsGrowFromTheMidlineAndRestAsABaseline();
     ScrollingMovesBarsTowardTheLeadingEdge();
