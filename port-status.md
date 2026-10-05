@@ -35,20 +35,10 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   shift-Tab / copy actions are the runtime's for every window (`FocusNext`,
   `WindowSelectionCopy`), and WindowState's tooltip overlay is the window's
   own (`src/base/root.cpp`, `src/ui/root.cpp`).
-- **The editor's wrap map is a flat list, not a sum tree.** An edit re-wraps
-  only the lines it touched, as Rust's TextWrapper does, but the rows sit in
-  one array, so the lines after the edit have their offsets and row counts
-  shifted one by one rather than through tree summaries: integer work,
-  nothing measured, about 1 ms per keystroke on a 100k-line document. The
-  visual rows are elements built before layout, at the column the last frame
-  laid out; a column that comes out another width is built again at
-  prepaint, so the frame that resizes it already shows the new wrap, but
-  that frame wraps the document twice. Range decorations are measured when
-  the editor's column paints, from where each visual row's run landed, and
-  painted once from there under every row; the collection methods do not
-  notify the editor as Rust's do, the owning view re-renders
-  (`src/base/input.cpp` WrapMapCatchUp, RewrapEditorColumn,
-  PaintEditorUnderlay).
+- **Editor range decorations do not notify their owning view.** Decorations
+  are measured and painted at the editor column's current visual rows, but
+  collection methods require the owning view to re-render
+  (`src/base/input.cpp` PaintEditorUnderlay).
 
 - **Shell stays on the portable QuickJS-NG interpreter.** Upstream Rust moved
   to the platform-specific quickjs-jit runtime in `88a1bdc8`; the C++ shell
@@ -208,15 +198,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `font-variant-numeric`, so in the browser the TimeField's digits stay
   proportional (`kFontTabularNums`, `src/gpui/paint.h`).
 
-- **The highlighter is driven once a frame.** Rust drives `update` from each
-  change and `update_batch` from each multi-edit change; here the text
-  funnels log every edit with the bytes it removed, and the themed layer
-  hands the log over once a frame (`InputDriveHighlighter`), so two
-  keystrokes inside one frame arrive as one batch of two where Rust makes
-  two calls. Past 64 edits, or 64 MB of rebuilt per-edit text, the log is
-  one whole-document update. The state installs no highlighter factory: the
-  themed layer installs the implementation itself (`src/base/input.cpp`,
-  `src/ui/highlighter.cpp`).
+- **The highlighter state has no factory.** The themed layer installs the
+  implementation itself. A multi-edit change past 64 edits or 64 MB of
+  reconstructed per-edit text falls back to a whole-document update
+  (`src/base/input.cpp`, `src/ui/highlighter.cpp`).
 - **No language server.** Every seam in `input/editor/lsp` is ported —
   completion, resolve, ghost text, hover, code actions, document colours,
   semantic tokens, go-to-definition — but there is no JSON-RPC, no child

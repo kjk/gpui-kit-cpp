@@ -356,8 +356,8 @@ struct InputHighlighterFactory {
 // update_highlighter / update_highlighter_batch: hand the installed
 // highlighter the edits made since it was last driven -- one through
 // `update`, several as one `update_batch`, none (or more than the log keeps)
-// as the whole document -- and clear them. The themed layer drives it once a
-// frame, gated on docVersion, where Rust drives it from each change.
+// as the whole document -- and clear them. Text mutation drives it at each
+// logical change; the themed layer also initializes newly installed providers.
 void InputDriveHighlighter(InputState* s, bool folding);
 // The edits are answered some other way -- a background re-scan of the
 // whole document -- so the log is dropped without driving.

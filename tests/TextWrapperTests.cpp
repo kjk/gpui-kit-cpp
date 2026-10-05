@@ -197,21 +197,16 @@ static bool WrapMatchesFreshWrap(const InputState& s, float width) {
     InputUpdateWrapMap(&fresh, nullptr, width, 14, 0);
     const InputWrapMap& a = s.wrap;
     const InputWrapMap& b = fresh.wrap;
-    if (len(a.lines) != len(b.lines) || len(a.starts) != len(b.starts) ||
-        a.totalRows != b.totalRows) {
+    if (a.tree.LineCount() != b.tree.LineCount() || a.totalRows != b.totalRows)
         return false;
-    }
-    for (int i = 0; i < len(a.lines); i++) {
-        const InputWrapLine& x = a.lines[i];
-        const InputWrapLine& y = b.lines[i];
-        if (x.firstStart != y.firstStart || x.nRows != y.nRows ||
-            x.indent != y.indent || x.rowsAbove != y.rowsAbove) {
+    for (int i = 0; i < a.tree.LineCount(); i++) {
+        const InputWrapLine& x = *a.tree.Line(i);
+        const InputWrapLine& y = *b.tree.Line(i);
+        if (x.nRows != y.nRows || x.indent != y.indent ||
+            a.tree.RowsAbove(i) != b.tree.RowsAbove(i))
             return false;
-        }
-    }
-    for (int i = 0; i < len(a.starts); i++) {
-        if (a.starts[i] != b.starts[i]) {
-            return false;
+        for (int j = 0; j < x.nRows; j++) {
+            if (x.starts[j] != y.starts[j]) return false;
         }
     }
     return true;
@@ -241,7 +236,7 @@ static void EditsRewrapTheLinesTheyTouched() {
                            "}\n"
                            "tail line with several words in it"));
     InputUpdateWrapMap(&s, nullptr, width, 14, 0);
-    utassert(s.wrap.totalRows > len(s.wrap.lines));
+    utassert(s.wrap.totalRows > s.wrap.tree.LineCount());
     // Each group is applied in full before the rows are brought up to date.
     const WrapEdit groups[][3] = {
         {{20, 20, "x"}, {-1, 0, nullptr}, {}},
@@ -377,8 +372,41 @@ static void MeasuredWrapPreservesWordsGraphemesAndIndentation() {
         WrappingIndent::None, {3, 9}));
 }
 
+static void WrapTreeKeepsSuffixStorageAndSummaries() {
+    InputWrapTree tree;
+    int starts[] = {0, 4, 9};
+    for (int i = 0; i < 10000; i++) tree.Insert(i, starts, 1 + i % 3, 0);
+    const int* suffix = tree.Line(9999)->starts;
+    int originalRows = tree.RowCount();
+    utassert(tree.Height() < 20);
+    tree.Remove(0, 1);
+    tree.Insert(0, starts, 3, 0);
+    utassert(tree.Line(9999)->starts == suffix);
+    utassert(tree.RowCount() == originalRows + 2);
+    int rows = 0;
+    for (int i = 0; i < tree.LineCount(); i++) {
+        utassert(tree.RowsAbove(i) == rows);
+        for (int j = 0; j < tree.Line(i)->nRows; j++)
+            utassert(tree.LineAtRow(rows + j) == i);
+        rows += tree.Line(i)->nRows;
+    }
+    tree.Remove(123, 7000);
+    utassert(tree.LineCount() == 3000);
+    utassert(tree.Height() < 17);
+    utassert(tree.Line(2999)->starts == suffix);
+    rows = 0;
+    for (int i = 0; i < tree.LineCount(); i++) {
+        utassert(tree.RowsAbove(i) == rows);
+        rows += tree.Line(i)->nRows;
+    }
+    utassert(tree.RowCount() == rows);
+    tree.Clear();
+    utassert(tree.LineCount() == 0 && tree.RowCount() == 0);
+}
+
 void TestTextWrapper() {
     TestSuite("text_wrapper");
+    WrapTreeKeepsSuffixStorageAndSummaries();
     MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits();
     MeasuredWrapPreservesWordsGraphemesAndIndentation();
     WrapLine();

@@ -2474,7 +2474,8 @@ struct ElRefiner {
 };
 
 struct ElLifecycle {
-    void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited, void* user) = nullptr;
+    void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited,
+                         void* user) = nullptr;
     void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* user = nullptr;
 };
@@ -4253,7 +4254,7 @@ bool SearchMatcherPrev(SearchMatcher* m, Selection* out);
 
    Every logical line's visual rows, for the text column width and font the
    editor element last laid out at: row 0 starts at the line's first byte,
-   row k at `starts[firstStart + k]`, and the rows after the first are shifted
+   row k at its local `starts[k]`, and the rows after the first are shifted
    right by `indent` (WrappingIndent::Same's wrap_indent, the shaped width of
    the line's leading whitespace). The element builds one text element per
    visual row from it, and the hit test, the caret, Up/Down, Home/End and
@@ -4264,17 +4265,36 @@ bool SearchMatcherPrev(SearchMatcher* m, Selection* out);
    set_inline_metrics. */
 
 struct InputWrapLine {
-    int firstStart = 0;
+    int* starts = nullptr; // owned, local byte offsets, first is zero
     int nRows = 1;
     float indent = 0;
-    // Visual rows of the lines above this one, folds not applied.
-    int rowsAbove = 0;
+};
+
+struct InputWrapNode;
+// An indexed AVL sum tree. Unchanged suffixes keep their nodes and row arrays;
+// only summaries on the edited paths move, like TextWrapper's SumTree.
+struct InputWrapTree {
+    InputWrapNode* root = nullptr;
+    InputWrapTree() = default;
+    InputWrapTree(const InputWrapTree&) = delete;
+    InputWrapTree& operator=(const InputWrapTree&) = delete;
+    ~InputWrapTree();
+    void Clear();
+    int LineCount() const;
+    int RowCount() const;
+    int Height() const;
+    const InputWrapLine* Line(int index) const;
+    int RowsAbove(int index) const;
+    int LineAtRow(int row) const;
+    void Insert(int index, const int* starts, int nRows, float indent);
+    void Remove(int index, int count);
 };
 
 struct InputWrapMap {
-    Vec<InputWrapLine> lines;
-    // Each line's row starts, as byte offsets into the line; row 0's is 0.
-    Vec<int> starts;
+    InputWrapTree tree;
+    // Cumulative wrapped logical lines, for measuring incremental work.
+    uint64_t wrappedLines = 0;
+    bool buildingRows = false;
     bool valid = false;
     uint64_t docVersion = 0;
     // What the rows were made for. A width of 0 is no wrap.
@@ -4284,8 +4304,7 @@ struct InputWrapMap {
     uint8_t wrappingIndent = 1;
     uint64_t tokenKey = 0;
     int totalRows = 0;
-    // The text column width the element last laid the rows out at, which
-    // is the next frame's wrap width.
+    // Column width used for the most recently painted visual rows.
     float measuredWidth = 0;
     // LineWrapper's cached widths, for the font above: ASCII by code (a
     // negative entry is not measured yet), the rest in a small open hash.
@@ -4968,6 +4987,7 @@ struct InputState {
     Vec<InputHighlightEdit> highlightEdits;
     Vec<char> highlightRemoved;
     bool highlightWhole = false;
+    int highlightChangeDepth = 0;
     bool hasPendingEdit = false;
     Selection selectedRange = {};
     bool selectionReversed = false;

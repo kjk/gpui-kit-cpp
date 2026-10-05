@@ -199,6 +199,180 @@ static int WrapEncodeUtf8(uint32_t c, char* out) {
     return 4;
 }
 
+// An indexed AVL sum tree: untouched lines keep their row storage after a
+// splice.
+struct InputWrapNode {
+    InputWrapLine line;
+    InputWrapNode* left = nullptr;
+    InputWrapNode* right = nullptr;
+    int height = 1;
+    int lines = 1;
+    int rows = 1;
+};
+static int WrapHeight(InputWrapNode* n) {
+    return n ? n->height : 0;
+}
+static int WrapLines(InputWrapNode* n) {
+    return n ? n->lines : 0;
+}
+static int WrapRows(InputWrapNode* n) {
+    return n ? n->rows : 0;
+}
+static void WrapSummarize(InputWrapNode* n) {
+    n->height = 1 + std::max(WrapHeight(n->left), WrapHeight(n->right));
+    n->lines = 1 + WrapLines(n->left) + WrapLines(n->right);
+    n->rows = n->line.nRows + WrapRows(n->left) + WrapRows(n->right);
+}
+static InputWrapNode* WrapRotateLeft(InputWrapNode* n) {
+    auto* r = n->right;
+    n->right = r->left;
+    r->left = n;
+    WrapSummarize(n);
+    WrapSummarize(r);
+    return r;
+}
+static InputWrapNode* WrapRotateRight(InputWrapNode* n) {
+    auto* l = n->left;
+    n->left = l->right;
+    l->right = n;
+    WrapSummarize(n);
+    WrapSummarize(l);
+    return l;
+}
+static InputWrapNode* WrapBalance(InputWrapNode* n) {
+    WrapSummarize(n);
+    if (WrapHeight(n->left) > WrapHeight(n->right) + 1) {
+        if (WrapHeight(n->left->right) > WrapHeight(n->left->left))
+            n->left = WrapRotateLeft(n->left);
+        return WrapRotateRight(n);
+    }
+    if (WrapHeight(n->right) > WrapHeight(n->left) + 1) {
+        if (WrapHeight(n->right->left) > WrapHeight(n->right->right))
+            n->right = WrapRotateRight(n->right);
+        return WrapRotateLeft(n);
+    }
+    return n;
+}
+static InputWrapNode* WrapInsert(InputWrapNode* n, int at,
+                                 InputWrapNode* item) {
+    if (!n) return item;
+    int before = WrapLines(n->left);
+    if (at <= before)
+        n->left = WrapInsert(n->left, at, item);
+    else
+        n->right = WrapInsert(n->right, at - before - 1, item);
+    return WrapBalance(n);
+}
+static InputWrapNode* WrapRemove(InputWrapNode* n, int at) {
+    int before = WrapLines(n->left);
+    if (at < before)
+        n->left = WrapRemove(n->left, at);
+    else if (at > before)
+        n->right = WrapRemove(n->right, at - before - 1);
+    else {
+        if (!n->left || !n->right) {
+            auto* child = n->left ? n->left : n->right;
+            Free(nullptr, n->line.starts);
+            delete n;
+            return child;
+        }
+        auto* next = n->right;
+        while (next->left) next = next->left;
+        InputWrapLine old = n->line;
+        n->line = next->line;
+        next->line = old;
+        n->right = WrapRemove(n->right, 0);
+    }
+    return WrapBalance(n);
+}
+static void WrapClear(InputWrapNode* n) {
+    if (!n) return;
+    WrapClear(n->left);
+    WrapClear(n->right);
+    Free(nullptr, n->line.starts);
+    delete n;
+}
+InputWrapTree::~InputWrapTree() {
+    Clear();
+}
+void InputWrapTree::Clear() {
+    WrapClear(root);
+    root = nullptr;
+}
+int InputWrapTree::LineCount() const {
+    return WrapLines(root);
+}
+int InputWrapTree::RowCount() const {
+    return WrapRows(root);
+}
+int InputWrapTree::Height() const {
+    return WrapHeight(root);
+}
+const InputWrapLine* InputWrapTree::Line(int index) const {
+    if (index < 0 || index >= LineCount()) return nullptr;
+    auto* n = root;
+    while (n) {
+        int before = WrapLines(n->left);
+        if (index < before)
+            n = n->left;
+        else if (index == before)
+            return &n->line;
+        else {
+            index -= before + 1;
+            n = n->right;
+        }
+    }
+    return nullptr;
+}
+int InputWrapTree::RowsAbove(int index) const {
+    int rows = 0;
+    auto* n = root;
+    while (n && index > 0) {
+        int before = WrapLines(n->left);
+        if (index <= before)
+            n = n->left;
+        else {
+            rows += WrapRows(n->left) + n->line.nRows;
+            index -= before + 1;
+            n = n->right;
+        }
+    }
+    return rows;
+}
+int InputWrapTree::LineAtRow(int row) const {
+    row = std::max(0, std::min(row, RowCount() - 1));
+    int index = 0;
+    auto* n = root;
+    while (n) {
+        int before = WrapRows(n->left);
+        if (row < before)
+            n = n->left;
+        else if (row < before + n->line.nRows)
+            return index + WrapLines(n->left);
+        else {
+            row -= before + n->line.nRows;
+            index += WrapLines(n->left) + 1;
+            n = n->right;
+        }
+    }
+    return index;
+}
+void InputWrapTree::Insert(int index, const int* starts, int nRows,
+                           float indent) {
+    auto* n = new InputWrapNode();
+    n->line.starts = (int*)Alloc(nullptr, sizeof(int) * nRows);
+    memcpy(n->line.starts, starts, sizeof(int) * nRows);
+    n->line.nRows = nRows;
+    n->line.indent = indent;
+    n->rows = nRows;
+    root = WrapInsert(root, std::max(0, std::min(index, LineCount())), n);
+}
+void InputWrapTree::Remove(int index, int count) {
+    if (index < 0 || index >= LineCount()) return;
+    count = std::min(count, LineCount() - index);
+    while (count-- > 0) root = WrapRemove(root, index);
+}
+
 struct WrapMeasure {
     InputWrapMap* map = nullptr;
     PaintCtx* ctx = nullptr;
@@ -362,6 +536,7 @@ static void WrapLineFragments(void* user, Str slice, int base,
 // rows' indent: the body of TextWrapper::_update for a row.
 static void WrapOneLine(InputState* s, WrapMeasure* wm, int line,
                         Vec<int>* rows, float* indentOut) {
+    s->wrap.wrappedLines++;
     InputWrapMap* m = &s->wrap;
     const Vec<int>& lineStarts = InputLineStarts(s);
     Str text = InputValue(s);
@@ -436,80 +611,34 @@ static void WrapMapCaughtUp(InputState* s) {
 
 static void WrapMapRebuild(InputState* s, PaintCtx* ctx) {
     InputWrapMap* m = &s->wrap;
-    VecClear(m->lines);
-    VecClear(m->starts);
+    m->tree.Clear();
     VecClear(m->dirtyLines);
-    m->totalRows = 0;
     WrapMapCaughtUp(s);
-    int nLines = len(InputLineStarts(s));
     WrapMeasure wm;
     wm.map = m;
     wm.ctx = ctx;
     m->spaceWidth = WrapCharWidthOf(&wm, ' ');
-    VecReserve(m->lines, nLines);
     Vec<int> rows;
-    for (int line = 0; line < nLines; line++) {
-        InputWrapLine item;
-        WrapOneLine(s, &wm, line, &rows, &item.indent);
-        item.firstStart = len(m->starts);
-        item.nRows = len(rows);
-        item.rowsAbove = m->totalRows;
-        VecAppendN(m->starts, rows.els, len(rows));
-        m->totalRows += item.nRows;
-        VecAppend(m->lines, item);
+    for (int line = 0; line < len(InputLineStarts(s)); line++) {
+        float indent = 0;
+        WrapOneLine(s, &wm, line, &rows, &indent);
+        m->tree.Insert(line, rows.els, len(rows), indent);
     }
+    m->totalRows = m->tree.RowCount();
 }
 
-// TextWrapper::_update's splice: the map's lines [first, first + oldCount)
-// become the current document's lines [first, first + newCount), wrapped
-// afresh, and every line after them keeps its rows. Only where each line's
-// rows sit in `starts` and how many rows are above it move along.
+// Replace only affected leaves; suffix row counts live in tree summaries.
 static void WrapMapReplaceLines(InputState* s, WrapMeasure* wm, int first,
                                 int oldCount, int newCount) {
     InputWrapMap* m = &s->wrap;
-    int nOld = len(m->lines);
-    int sFrom = first < nOld ? m->lines[first].firstStart : len(m->starts);
-    int sTo = first + oldCount < nOld ? m->lines[first + oldCount].firstStart
-                                      : len(m->starts);
-    Vec<InputWrapLine> items;
-    Vec<int> starts;
+    m->tree.Remove(first, oldCount);
     Vec<int> rows;
-    VecReserve(items, newCount);
     for (int i = 0; i < newCount; i++) {
-        InputWrapLine item;
-        WrapOneLine(s, wm, first + i, &rows, &item.indent);
-        item.nRows = len(rows);
-        VecAppendN(starts, rows.els, len(rows));
-        VecAppend(items, item);
+        float indent = 0;
+        WrapOneLine(s, wm, first + i, &rows, &indent);
+        m->tree.Insert(first + i, rows.els, len(rows), indent);
     }
-    VecRemoveAtN(m->lines, first, oldCount);
-    if (newCount > 0) {
-        if (InputWrapLine* at = VecInsertSpace(m->lines, first, newCount)) {
-            memcpy((void*)at, (const void*)items.els,
-                   sizeof(InputWrapLine) * (size_t)newCount);
-        }
-    }
-    VecRemoveAtN(m->starts, sFrom, sTo - sFrom);
-    if (len(starts) > 0) {
-        if (int* at = VecInsertSpace(m->starts, sFrom, len(starts))) {
-            memcpy(at, starts.els, sizeof(int) * (size_t)len(starts));
-        }
-    }
-    // A sum tree carries these as summaries; a flat list walks the lines
-    // after the splice once, which is integer adds and nothing measured.
-    int firstStart = sFrom;
-    int above = 0;
-    if (first > 0) {
-        above = m->lines[first - 1].rowsAbove + m->lines[first - 1].nRows;
-    }
-    for (int i = first; i < len(m->lines); i++) {
-        InputWrapLine& item = m->lines[i];
-        item.firstStart = firstStart;
-        item.rowsAbove = above;
-        firstStart += item.nRows;
-        above += item.nRows;
-    }
-    m->totalRows = above;
+    m->totalRows = m->tree.RowCount();
 }
 
 // The line holding byte `offset` of the current document.
@@ -544,7 +673,7 @@ static void WrapMapCatchUp(InputState* s, PaintCtx* ctx) {
     wm.ctx = ctx;
     const Vec<int>& lineStarts = InputLineStarts(s);
     int nNew = len(lineStarts);
-    int nOld = len(m->lines);
+    int nOld = m->tree.LineCount();
     if (edited) {
         // The lines after the one the envelope ends on are the same lines
         // in both documents, so the old line it ended on is as far from the
@@ -562,7 +691,7 @@ static void WrapMapCatchUp(InputState* s, PaintCtx* ctx) {
     }
     for (int i = 0; i < len(m->dirtyLines); i++) {
         int line = m->dirtyLines[i];
-        if (line >= 0 && line < len(m->lines)) {
+        if (line >= 0 && line < m->tree.LineCount()) {
             WrapMapReplaceLines(s, &wm, line, 1, 1);
         }
     }
@@ -618,7 +747,7 @@ int InputWrapRows(const InputState* s, int line, const int** starts,
                   float* indent) {
     static const int kZero = 0;
     const InputWrapMap* m = WrapMapOf(s, nullptr);
-    if (!m || line < 0 || line >= len(m->lines)) {
+    if (!m || line < 0 || line >= m->tree.LineCount()) {
         if (starts) {
             *starts = &kZero;
         }
@@ -627,9 +756,9 @@ int InputWrapRows(const InputState* s, int line, const int** starts,
         }
         return 1;
     }
-    const InputWrapLine& item = m->lines[line];
+    const InputWrapLine& item = *m->tree.Line(line);
     if (starts) {
-        *starts = m->starts.els + item.firstStart;
+        *starts = item.starts;
     }
     if (indent) {
         *indent = item.indent;
@@ -1638,28 +1767,25 @@ struct EditorUnderlay {
 
 // element.rs prepaint: wrap_width comes off the bounds layout has just given
 // the editor, and the lines are wrapped to it in the frame that lays them
-// out. The rows here are elements, built before layout, so they are wrapped
-// to the column the last frame laid out. When this frame's column came out
-// another width -- the window was resized, or this is the field's first
-// frame -- the column is built again at prepaint, at the width it now has,
-// and its rows laid out inside its box. The box itself is the one layout
-// gave it: a column whose height moved asks for one more frame so that what
-// holds it can follow, which is the frame Rust's auto-grow takes as well
-// (request_layout sizes from mode.rows(), last frame's wrap).
+// out. The row elements here are built during prepaint and wrapped
+// once layout supplies the current column width. A height change asks for
+// another frame so the containing auto-grow field can follow.
 static void RewrapEditorColumn(PaintCtx* ctx, El* e, void* user) {
     EditorUnderlay* u = (EditorUnderlay*)user;
     InputState* s = u ? u->state : nullptr;
-    if (!s || !s->softWrap || e->w <= 0 || e->w == s->wrap.measuredWidth ||
-        LayoutInScratchPass()) {
+    if (!s || !s->softWrap || e->w <= 0 || LayoutInScratchPass()) {
         return;
     }
     s->contentBox = e->Bounds();
     Ctx cx = u->cx;
+    s->wrap.buildingRows = true;
     El* fresh = Textarea::New(&cx, s, u->projected, u->lineNumbers);
+    s->wrap.buildingRows = false;
     if (!fresh || !fresh->first) {
         return;
     }
     float was = e->h;
+    e->prePaint = nullptr;
     e->first = fresh->first;
     e->last = fresh->last;
     e->customPaint = fresh->customPaint;
@@ -1785,6 +1911,21 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         return col->Child(ph);
     }
 
+    // Build visual rows once, when layout has supplied this frame's width.
+    if (state->softWrap && !state->wrap.buildingRows) {
+        auto* underlay = ArenaNew<EditorUnderlay>(a);
+        underlay->state = state;
+        underlay->cx = *cx;
+        underlay->projected = projected;
+        underlay->lineNumbers = lineNumbers;
+        col->customUser = underlay;
+        col->prePaint = &RewrapEditorColumn;
+        float height = state->contentH > 0
+                           ? state->contentH
+                           : (float)InputLinesLen(state) * lineH;
+        return col->Child(Div(a)->H(height));
+    }
+
     int rows = InputLinesLen(state);
     // The scrolled height, which is what scroll_to clamps against: one line
     // height per display row.
@@ -1821,12 +1962,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     if (folding) {
         FoldMapRebuild(&state->folds, rows);
     }
-    // soft_wrap: wrap_width is the bounds less the line numbers and
-    // RIGHT_MARGIN. Rust has the bounds in prepaint, the frame it wraps in;
-    // the rows here are built before layout, so the bounds are the column
-    // the last frame laid out, and a column that came out a different width
-    // is built again at prepaint (RewrapEditorColumn). Until the first frame
-    // has one, this build wraps nothing and that one does.
+    // soft_wrap: current column bounds less the gutter and RIGHT_MARGIN.
+    // Wrapped visual rows enter here at prepaint, after layout supplies bounds.
     bool wrap = false;
     {
         float colW = state->contentBox.w;
@@ -1930,24 +2067,30 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             // contentBox.y (which embeds this frame's scrollY) made firstRow
             // stick at the old band, so the viewport was empty (white) until
             // a click's scroll_to jumped back there.
-            float at = 0;
-            int first = -1;
-            int end = rows;
-            for (int i = 0; i < rows; i++) {
-                float h = DisplayLineH(state, i, lineH);
-                if (first < 0 && at + h > top) {
-                    first = i;
+            if (len(state->folds.folded) == 0) {
+                const InputWrapTree& tree = state->wrap.tree;
+                firstRow = tree.LineAtRow((int)(top / lineH));
+                endRow = tree.LineAtRow((int)(bottom / lineH)) + 1;
+            } else {
+                float at = 0;
+                int first = -1;
+                int end = rows;
+                for (int i = 0; i < rows; i++) {
+                    float h = DisplayLineH(state, i, lineH);
+                    if (first < 0 && at + h > top) {
+                        first = i;
+                    }
+                    if (at > bottom) {
+                        end = i;
+                        break;
+                    }
+                    at += h;
                 }
-                if (at > bottom) {
-                    end = i;
-                    break;
-                }
-                at += h;
+                firstRow = first < 0 ? 0 : first;
+                endRow = end < firstRow ? firstRow : end;
             }
-            firstRow = first < 0 ? 0 : first;
-            endRow = end < firstRow ? firstRow : end;
             firstRow = firstRow > kSlack ? firstRow - kSlack : 0;
-            endRow = endRow + kSlack > rows ? rows : endRow + kSlack;
+            endRow = std::min(rows, endRow + kSlack);
             padTop = DisplayRowDocY(state, firstRow, lineH);
             padBottom = DisplayRowDocY(state, rows, lineH) -
                         DisplayRowDocY(state, endRow, lineH);
@@ -2217,7 +2360,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
         underlay->lineNumbers = lineNumbers;
         col->customPaint = &PaintEditorUnderlay;
         col->customUser = underlay;
-        if (state->softWrap) {
+        if (state->softWrap && !state->wrap.buildingRows) {
             col->prePaint = &RewrapEditorColumn;
         }
         if (painted) {
@@ -2866,8 +3009,8 @@ static void WrapMapNoteEdit(InputWrapMap* m, int a, int b, int insLen) {
 }
 
 // How many edits the highlighter log keeps before it gives up and asks for a
-// whole-document update. A frame drives the highlighter, so this is how many
-// splices one frame's input can make -- a multi-cursor keystroke is one per
+// whole-document update. Each logical change drives the highlighter, so this
+// bounds the splices in one change -- a multi-cursor keystroke is one per
 // cursor -- before the batch costs more to hand over than a re-scan.
 static const int kMaxHighlightEdits = 64;
 // And how many bytes of reconstructed text a batch may take: past it, a
@@ -4874,8 +5017,24 @@ static bool InputAutoCloseDeletion(InputState* s, App* app, Selection* out) {
     return false;
 }
 
+struct HighlightChange {
+    InputState* state;
+    explicit HighlightChange(InputState* s) : state(s) {
+        if (state) state->highlightChangeDepth++;
+    }
+    ~HighlightChange() { Finish(); }
+    void Finish() {
+        if (state && --state->highlightChangeDepth == 0 &&
+            state->hasPendingEdit && state->highlighter.update) {
+            InputDriveHighlighter(state, LayoutModeIsFolding(state->mode));
+        }
+        state = nullptr;
+    }
+};
+
 bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText) {
+    HighlightChange highlightChange(s);
     bool hasIntent = s->undo.hasPendingIntent;
     EditIntent requested = s->undo.pendingIntent;
     s->undo.hasPendingIntent = false;
@@ -5099,6 +5258,7 @@ bool InputReplaceTextInRange(InputState* s, App* app, Window* win,
     if (InputIsMultiLine(s)) {
         InputScrollToOffset(s, InputCursor(s), InputMoveDir::None);
     }
+    highlightChange.Finish();
     Emit(s, app, win, InputEvent{InputEventKind::Change});
     Notify(app, win);
     return true;
@@ -5142,6 +5302,7 @@ static EditIntent TypingIntent(const Selection* ranges, int n, Str newText) {
 bool InputReplaceTextInRanges(InputState* s, App* app, Window* win,
                               const Selection* ranges, const Str* texts,
                               int n) {
+    HighlightChange highlightChange(s);
     bool hasIntent = s->undo.hasPendingIntent;
     EditIntent requested = s->undo.pendingIntent;
     s->undo.hasPendingIntent = false;
@@ -5275,6 +5436,7 @@ void InputUnmarkText(InputState* s, App* app, Window* win) {
 void InputReplaceAndMarkText(InputState* s, App* app, Window* win,
                              const Selection* range, Str newText,
                              const Selection* sel) {
+    HighlightChange highlightChange(s);
     if (!s || !InputIsEditable(s)) {
         return;
     }
@@ -5458,6 +5620,7 @@ void InputSetValue(InputState* s, Str value) {
 }
 
 void InputDefaultValue(InputState* s, Str value) {
+    HighlightChange highlightChange(s);
     // `self.text = Rope::from(self.normalize_input(&text))`, and the
     // pending update that has the highlighter read it on the next render —
     // which TextSet's whole-document edit is here.
@@ -6808,8 +6971,8 @@ static float DisplayRowDocY(const InputState* s, int row, float lineH) {
         if (!m) {
             return (float)row * lineH;
         }
-        if (row < len(m->lines)) {
-            return (float)m->lines[row].rowsAbove * lineH;
+        if (row < m->tree.LineCount()) {
+            return (float)m->tree.RowsAbove(row) * lineH;
         }
         return (float)m->totalRows * lineH;
     }
@@ -7437,6 +7600,7 @@ static bool TransactionHasTokenDelta(const UndoTransaction* t) {
 }
 
 static void DoUndo(InputState* s, App* app, Window* win) {
+    HighlightChange highlightChange(s);
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopUndo(&s->undo);
     if (t && t->len > 0) {
@@ -7471,6 +7635,7 @@ static void DoUndo(InputState* s, App* app, Window* win) {
 }
 
 static void DoRedo(InputState* s, App* app, Window* win) {
+    HighlightChange highlightChange(s);
     UndoSetIgnoring(&s->undo, true);
     const UndoTransaction* t = UndoPopRedo(&s->undo);
     if (t && t->len > 0) {
@@ -8441,14 +8606,19 @@ static int FirstVisibleOffset(const InputState* s) {
     float lineH = s->lastLineH > 0 ? s->lastLineH : kInputLineH;
     int rows = InputLinesLen(s);
     int row = rows - 1;
-    float at = 0;
-    for (int i = 0; i < rows; i++) {
-        float h = DisplayLineH(s, i, lineH);
-        if (at + h > s->scrollY) {
-            row = i;
-            break;
+    const InputWrapMap* map = WrapMapOf(s, nullptr);
+    if (map && len(s->folds.folded) == 0) {
+        row = map->tree.LineAtRow((int)(s->scrollY / lineH));
+    } else {
+        float at = 0;
+        for (int i = 0; i < rows; i++) {
+            float h = DisplayLineH(s, i, lineH);
+            if (at + h > s->scrollY) {
+                row = i;
+                break;
+            }
+            at += h;
         }
-        at += h;
     }
     row = FoldMapNearestVisibleLine(&s->folds, row);
     return RopeLineStartOffset(text, row);
@@ -8743,23 +8913,29 @@ int InputIndexForPosition(const InputState* s, PaintCtx* ctx, float x, float y,
     // How far down its own line the press landed, which is which of a
     // wrapped line's visual rows it wanted.
     float relY = 0;
-    float at = 0;
-    for (int i = 0; i < rows; i++) {
-        float h = DisplayLineH(s, i, lineH);
-        if (h <= 0) {
-            continue;
-        }
-        if (docY < at + h) {
-            row = i;
-            relY = docY - at;
-            if (relY < 0) {
-                relY = 0;
+    const InputWrapMap* map = WrapMapOf(s, ctx);
+    if (map && len(s->folds.folded) == 0 && lineH > 0) {
+        row = map->tree.LineAtRow((int)(std::max(0.f, docY) / lineH));
+        relY = std::max(0.f, docY - (float)map->tree.RowsAbove(row) * lineH);
+    } else {
+        float at = 0;
+        for (int i = 0; i < rows; i++) {
+            float h = DisplayLineH(s, i, lineH);
+            if (h <= 0) {
+                continue;
             }
-            break;
-        }
-        at += h;
-        if (i == rows - 1) {
-            relY = h - 1;
+            if (docY < at + h) {
+                row = i;
+                relY = docY - at;
+                if (relY < 0) {
+                    relY = 0;
+                }
+                break;
+            }
+            at += h;
+            if (i == rows - 1) {
+                relY = h - 1;
+            }
         }
     }
     Str line = InputSliceLine(s, row);

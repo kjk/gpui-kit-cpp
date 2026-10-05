@@ -541,6 +541,7 @@ struct HlRun {
 struct SynHlJob;
 
 struct SyntaxInputHighlighter {
+    InputState* owner = nullptr;
     SyntaxLang lang = SyntaxLangNone;
     uint64_t version = 0;
     bool valid = false;
@@ -678,12 +679,20 @@ static void SynHlUpdate(void* data, const InputEdit* edit, Str text,
     auto* hl = (SyntaxInputHighlighter*)data;
     // A tree-sitter implementation would hand `edit` to its tree and reparse
     // incrementally; the lexer keeps no incremental state and re-lexes the
-    // document whole. The facade gates calls on docVersion, which is
-    // upstream's `self.text.eq(text)` early-out one level up, and the folds
-    // ride along in the same pass whether or not the gutter shows them.
+    // document whole at each change boundary. Recording its version keeps
+    // the facade from repeating that scan at render; folds ride along in
+    // the same pass whether or not the gutter shows them.
     (void)edit;
     (void)folding;
+    if (len(text) > kSyncLexMaxBytes) {
+        hl->valid = false;
+        hl->lexDueVersion = hl->owner->docVersion;
+        hl->lexDueAt = TimeNow() + kLexDebounce;
+        return;
+    }
     SynHlLexInto(hl->lang, text, &hl->runs, &hl->folds);
+    hl->valid = true;
+    hl->version = hl->owner->docVersion;
 }
 
 // update_batch, overridden as highlighting.rs suggests: the lexer re-scans
@@ -891,6 +900,7 @@ static SyntaxInputHighlighter* SynHlEnsure(InputState* s, SyntaxLang lang) {
     }
     auto* hl = new SyntaxInputHighlighter();
     hl->lang = lang;
+    hl->owner = s;
     s->highlighter.data = hl;
     s->highlighter.language = &SynHlLanguage;
     s->highlighter.update = &SynHlUpdate;

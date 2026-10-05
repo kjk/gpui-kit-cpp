@@ -4213,6 +4213,7 @@ static void EachRowCarriesItsIndentGuides() {
     Ctx cx = {&app, win, arena, {}};
     InputState state;
     state.kind = InputKind::Textarea;
+    state.softWrap = false; // This test inspects unwrapped row guide counts.
     InputSetValue(&state, StrL("a\n    b\n\n\tc\n  d"));
     InputEditorStyle style;
     style.indentGuide = Rgba{10, 20, 30, 255};
@@ -6763,7 +6764,6 @@ static void ReplaceTextInRangesDrivesTheHighlighterOnce() {
     Selection ranges[] = {{0, 3}, {8, 11}};
     Str texts[] = {StrL("X"), StrL("Y")};
     InputReplaceTextInRanges(view.input, view.app, view.win, ranges, texts, 2);
-    InputDriveHighlighter(view.input, false);
     utassert(len(rec.sizes) == 1);
     utassert(rec.CallIs(0, {"aaa bbb Y", "X bbb Y"}));
 
@@ -6772,16 +6772,24 @@ static void ReplaceTextInRangesDrivesTheHighlighterOnce() {
     Selection one = {0, 1};
     Str z = StrL("Z");
     InputReplaceTextInRanges(view.input, view.app, view.win, &one, &z, 1);
-    InputDriveHighlighter(view.input, false);
     utassert(rec.CallIs(1, {"Z bbb Y"}));
     InputSetSelectedRange(view.input, view.app, view.win, 1, 1);
     InputAddCursorAt(view.input, view.app, view.win, 7);
     InputReplaceTextInRange(view.input, view.app, view.win, nullptr, StrL("x"));
-    InputDriveHighlighter(view.input, false);
     utassert(ValueIs(*view.input, "Zx bbb Yx"));
     utassert(len(rec.sizes) == 3 && rec.sizes[2] == 2);
     utassert(len(rec.texts) > 0 &&
              strcmp(rec.texts[len(rec.texts) - 1], "Zx bbb Yx") == 0);
+    // Two changes before a frame are two provider updates.
+    InputRemoveExtraCursors(view.input);
+    Selection tail = {len(InputValue(view.input)), len(InputValue(view.input))};
+    InputReplaceTextInRange(view.input, view.app, view.win, &tail, StrL("a"));
+    tail.start++;
+    tail.end++;
+    InputReplaceTextInRange(view.input, view.app, view.win, &tail, StrL("b"));
+    utassert(len(rec.sizes) == 5);
+    utassert(rec.CallIs(3, {"Zx bbb Yxa"}));
+    utassert(rec.CallIs(4, {"Zx bbb Yxab"}));
     view.input->highlighter = {};
     InputViewFree(&view);
 }
@@ -9744,8 +9752,12 @@ static void SoftWrapFollowsTheColumnInTheFrameItIsLaidOut() {
     utassert(inside);
     utassert(d.editor->wrap.measuredWidth == d.editor->contentBox.w);
 
+    uint64_t before = d.editor->wrap.wrappedLines;
+    Selection first = {0, 5};
+    InputReplaceTextInRange(d.editor, d.app, d.win, &first, StrL("ALPHA"));
     d.win->paint.viewW = 720;
     TestDraw(d.win);
+    utassert(d.editor->wrap.wrappedLines - before == 2);
     int wide = VisualRowsInsideColumn(d, &inside);
     utassert(wide >= 2 && wide < narrow);
     utassert(inside);
