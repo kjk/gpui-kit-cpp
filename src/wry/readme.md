@@ -238,15 +238,28 @@ handler for the real scheme), the browser arguments and their neighbours are
 WebView2 settings, and the two Windows-extension calls named in the section
 above answer false.
 
+macOS cookies now use `WKHTTPCookieStore`, pumping the main run loop for
+completion with the pinned backend's one-second timeout. Query results own
+their UTF-8 strings; conversion preserves secure, HttpOnly, SameSite and
+session/expiry fields, and max-age takes precedence when writing. URL queries
+follow Rust's exact-domain and secure/localhost filter, including its lack of
+path and subdomain matching.
+
+On macOS 11.3 and later, navigation actions and unsupported MIME responses
+become `WKDownload` operations. The start handler can cancel or replace the
+destination; default names go in Downloads and use numbered collision names.
+Finish and failure callbacks carry the original URL and success bit, with a
+null destination as the pinned macOS backend does. Closing the view severs
+callbacks and cancels active operations. Older macOS releases retain native
+navigation handling without the WKDownload API.
+
+The macOS dragging-destination overrides report file paths for Enter and Drop,
+coordinates for Enter/Over/Drop, and Leave. Returning false falls back to
+WebKit, including native file inputs; handled events accept a copy operation.
+Coordinates account for a child view's origin and flipped coordinate system.
+
 Not ported, each for a reason:
 
-- **Cookies on macOS**. The four WebView2 methods and their value semantics are
-  ported without the external cookie/time crates; WKHTTPCookieStore is not.
-- **Downloads on macOS**. The Windows `DownloadStarting` and per-operation
-  `StateChanged` paths are ported; WKWebView's download delegates are not yet.
-- **Drag and drop on macOS**. The default-enabled Windows `IDropTarget`
-  implementation is ported; the `WryWebView` dragging-destination overrides
-  are not yet.
 - **The `_async` constructors**, which exist for callers with an async
   runtime. There is none here; `WebViewNew` is the blocking one, and it
   blocks the way Rust's does.
@@ -273,8 +286,8 @@ Each is also stated in a comment where it applies.
   COM and Objective-C types out of the portable header. The pointers are
   borrowed where documented; construction retains the ones it stores.
 - **A cookie is the value WebView sees, not a parser.** Wry's public type comes
-  from the `cookie` crate; this tree's POD preserves every field the Windows
-  conversion reads or writes, but does not add cookie-header parsing or a
+  from the `cookie` crate; this tree's POD preserves every field the native
+  conversions read or write, but does not add cookie-header parsing or a
   builder DSL that no webview operation uses.
 - **The new-window handler runs where the event arrives.** Rust spawns a
   thread and holds the request open with a deferral, because its closure may

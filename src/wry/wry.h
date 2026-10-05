@@ -220,14 +220,15 @@ struct NewWindowFeatures {
     Return true to accept the download at that path, false to cancel it. */
 using DownloadStartedHandler = bool (*)(void* ctx, Str url, Str* path);
 
-/** `with_download_completed_handler`. `path` is null unless WebView2 reports
-    a successfully completed download, matching Rust's `Option<PathBuf>`.
+/** `with_download_completed_handler`. `path` is optional; macOS always
+    passes null, matching the pinned Rust backend's `Option<PathBuf>`.
     All strings are borrowed for the duration of the call. */
 using DownloadCompletedHandler = void (*)(void* ctx, Str url, const Str* path,
                                           bool success);
 
 /** `wry::DragDropEvent`. Paths are present for Enter and Drop and borrowed
-    only for the callback. Position is relative to the WebView2 child window. */
+    only for the callback. Position is relative to the webview, with its origin
+   at the top left. */
 enum class DragDropKind : uint8_t {
     Enter,
     Over,
@@ -273,6 +274,9 @@ struct Cookie {
 };
 
 void CookieListFree(Vec<Cookie>* cookies);
+/** Pure wkwebview policy seams, also used by the backend and tests. */
+bool MacCookieMatchesUrl(const Cookie* cookie, Str scheme, Str domain);
+Str MacDownloadFileNameTemp(Str suggested, int collision);
 
 // ─── attributes ──────────────────────────────────────────────────────────
 

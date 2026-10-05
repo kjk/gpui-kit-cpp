@@ -246,6 +246,10 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
+- **macOS webview drag positions account for the child view.** The pinned
+  Wry backend flips a window-relative point using the view's height; this
+  port first converts it into the child view, then normalizes the top-left
+  origin (`src/wry/wry_mac.cpp` emitDrag).
 - **No webview on wasm.** `src/wry/wry_wasm.cpp` is a stub. The Linux one,
   `wry_linux.cpp` over WebKitGTK 4.1 (a soft dependency), is compiled and
   linked but not yet seen running in a window; without

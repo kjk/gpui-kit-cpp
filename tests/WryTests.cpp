@@ -60,6 +60,33 @@ void TestWryUri() {
     utassert(!cookie.hasHttpOnly);
     utassert(!cookie.hasSecure);
     utassert(!cookie.hasSameSite);
+    wry::Cookie matching;
+    matching.domain = StrL("example.com");
+    matching.path = StrL("/private");
+    utassert(
+        wry::MacCookieMatchesUrl(&matching, StrL("http"), StrL("example.com")));
+    utassert(!wry::MacCookieMatchesUrl(&matching, StrL("https"),
+                                       StrL("sub.example.com")));
+    utassert(!wry::MacCookieMatchesUrl(&matching, StrL("https"), Str()));
+    matching.hasSecure = true;
+    matching.secure = true;
+    utassert(!wry::MacCookieMatchesUrl(&matching, StrL("http"),
+                                       StrL("example.com")));
+    utassert(wry::MacCookieMatchesUrl(&matching, StrL("https"),
+                                      StrL("example.com")));
+    matching.domain = StrL("localhost");
+    utassert(
+        wry::MacCookieMatchesUrl(&matching, StrL("http"), StrL("localhost")));
+    utassert(
+        !wry::MacCookieMatchesUrl(&matching, StrL("ftp"), StrL("localhost")));
+    utassert(StrEq(wry::MacDownloadFileNameTemp(StrL("r.tar.gz"), 0),
+                   StrL("r.tar.gz")));
+    utassert(StrEq(wry::MacDownloadFileNameTemp(StrL("r.tar.gz"), 1),
+                   StrL("r (1).tar.gz")));
+    utassert(StrEq(wry::MacDownloadFileNameTemp(StrL("README"), 2),
+                   StrL("README (2)")));
+    utassert(StrEq(wry::MacDownloadFileNameTemp(StrL(".config"), 1),
+                   StrL(" (1).config")));
     Vec<wry::Cookie> cookies;
     cookie.name = StrDup(StrL("session"));
     cookie.value = StrDup(StrL("value"));

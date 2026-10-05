@@ -15,6 +15,28 @@
 
 namespace wry {
 
+// wkwebview/mod.rs cookies_for_url intentionally tests exact domain only:
+// no subdomain or path matching, unlike the native Windows cookie manager.
+bool MacCookieMatchesUrl(const Cookie* cookie, Str scheme, Str domain) {
+    if (!cookie || !domain.s || !base::StrEq(cookie->domain, domain))
+        return false;
+    if (!cookie->hasSecure || !cookie->secure) return true;
+    return base::StrEq(scheme, StrL("https")) ||
+           (base::StrEq(scheme, StrL("http")) &&
+            base::StrEq(domain, StrL("localhost")));
+}
+
+// wkwebview/download.rs splits at the first dot, preserving compound
+// extensions.
+Str MacDownloadFileNameTemp(Str suggested, int collision) {
+    if (collision <= 0) return suggested;
+    int dot = base::StrFind(suggested, ".");
+    Str stem = dot < 0 ? suggested : Str(suggested.s, dot);
+    Str extension =
+        dot < 0 ? Str() : Str(suggested.s + dot, len(suggested) - dot);
+    return base::FormatTemp("%s (%d)%s", stem, collision, extension);
+}
+
 void CookieListFree(Vec<Cookie>* cookies) {
     if (!cookies) {
         return;
