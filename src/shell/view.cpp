@@ -16,7 +16,8 @@ ScriptView::~ScriptView() {
         runtime->CleanupComponentAppEffects(self);
         runtime->ReleaseOwnedEntities(self);
     }
-    delete snapshot;
+    for (auto* batch : frameSnapshots) batch->Release();
+    if (snapshot) snapshot->Release();
     ViewObjectRelease(object);
     ViewTypeRelease(type);
     PolicyRelease(policy);
@@ -43,6 +44,8 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
         return Div(cx->a)
             ->Child(TextEl(cx->a, StrL("Shell view is not initialized")));
     }
+    for (auto* batch : self->frameSnapshots) batch->Release();
+    VecClear(self->frameSnapshots);
     uint32_t revision = shell::ThemeTokensSync(cx->app);
     if (revision != self->themeRevision) {
         self->themeRevision = revision;
@@ -67,7 +70,7 @@ El* ScriptView::Render(ScriptView* self, Ctx* cx) {
                 self->runtime->RecordStructure(self->snapshot->Structure() ==
                                                next->Structure());
             }
-            delete self->snapshot;
+            if (self->snapshot) self->snapshot->Release();
             self->snapshot = next;
             self->dirty = false;
             ShellErrorClear(&self->error);
@@ -126,7 +129,7 @@ bool ScriptView::Reload(ScriptView* self, Ctx* cx, Str directory, Str entry,
     self->dirty = true;
     ShellErrorClear(&self->error);
     if (oldObject) self->runtime->ReleaseApplicationState(oldObject);
-    delete oldSnapshot;
+    if (oldSnapshot) oldSnapshot->Release();
     ViewObjectRelease(oldObject);
     ViewTypeRelease(oldType);
     Notify(cx);

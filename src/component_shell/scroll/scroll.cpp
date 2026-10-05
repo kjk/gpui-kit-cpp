@@ -57,6 +57,26 @@ bool RequireLeaf(int children, bool styled, Str* error) {
 
 using HandleEntity = EntityState<ScrollHandleState>;
 
+static void BeginFrame(ScrollHandleState* handle, Ctx* cx) {
+    uint64_t frame = cx->win ? cx->win->frameSeq : 0;
+    if (handle->window == cx->win && handle->frame == frame) return;
+    handle->window = cx->win;
+    handle->frame = frame;
+    handle->viewport = nullptr;
+    handle->hasBar = false;
+    handle->hasBarMode = false;
+}
+
+static void ApplyBar(ScrollHandleState* handle) {
+    El* area = handle->viewport;
+    if (!area) return;
+    area->noScrollbarX =
+        !handle->hasBar || handle->barAxis == ScrollbarAxis::Vertical;
+    area->noScrollbarY =
+        !handle->hasBar || handle->barAxis == ScrollbarAxis::Horizontal;
+    if (handle->hasBar && handle->hasBarMode) area->ScrollMode(handle->barMode);
+}
+
 static El* MaterializeScroll(MaterializeRequest* request) {
     const Payload* payload = request->PayloadAs<Payload>();
     if (!payload)
@@ -88,18 +108,9 @@ static El* MaterializeScroll(MaterializeRequest* request) {
     if (axis == ScrollbarAxis::Horizontal) area->FlexRow();
     if (scrollsX) area->ScrollX(handle->offsetX)->ScrollMask(Axis::Horizontal);
     if (scrollsY) area->ScrollY(handle->offsetY)->ScrollMask(Axis::Vertical);
-    // The bar a Scrollbar sharing this handle asked for in this render cycle
-    // or the one before: a Scrollbar written after the viewport is read on
-    // the viewport's next render. A plain overflow box shows none.
-    int now = ++handle->renders;
-    bool bar = handle->barAt >= now - 1;
-    ScrollbarAxis barAxis =
-        handle->hasBarAxis ? handle->barAxis : ScrollbarAxis::Both;
-    if (scrollsX && (!bar || barAxis == ScrollbarAxis::Vertical))
-        area->HideScrollbarX();
-    if (scrollsY && (!bar || barAxis == ScrollbarAxis::Horizontal))
-        area->HideScrollbarY();
-    if (bar && handle->hasBarMode) area->ScrollMode(handle->barMode);
+    BeginFrame(handle, cx);
+    handle->viewport = area;
+    ApplyBar(handle);
     if (!request->AppendChildren(area)) return nullptr;
     return request->ApplyStyle(area);
 }
@@ -126,11 +137,12 @@ static El* MaterializeScrollbar(MaterializeRequest* request) {
     // otherwise. The bar itself is painted by the viewport that shares the
     // handle, so `viewport_from_layout` — the bar measuring its own box as
     // the viewport — has nothing to change here: the viewport is the box.
-    handle->barAt = handle->renders;
-    handle->hasBarAxis = ops.hasAxis;
-    handle->barAxis = ops.axis;
+    BeginFrame(handle, request->cx);
+    handle->hasBar = true;
+    handle->barAxis = ops.hasAxis ? ops.axis : ScrollbarAxis::Both;
     handle->hasBarMode = ops.hasMode;
     handle->barMode = ops.mode;
+    ApplyBar(handle);
     // Rust's element is an absolutely placed overlay taking no room in its
     // parent's flow; so is this one, and it has nothing of its own to draw.
     return Div(request->cx->a)->Id(payload->id)->Absolute();

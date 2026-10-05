@@ -2367,13 +2367,29 @@ static JSValue NativeTemplateAbort(JSContext* ctx, JSValueConst, int,
 //
 // A slot-filled handler carries kTemplateUnfilled and a matching note;
 // anything else is a closure the body created, which a template cannot hold.
+static bool PayloadHasCallback(const shell::ComponentArgument* args,
+                               int count) {
+    for (int i = 0; i < count; i++) {
+        if (args[i].kind == shell::ComponentArgumentKind::Callback ||
+            PayloadHasCallback(args[i].items, args[i].count))
+            return true;
+    }
+    return false;
+}
+
 static Str InlineHandler(const shell::SpecArena* recorded,
                          const Vec<shell::Slot>& slots) {
     for (shell::SpecId id = 0; id < (shell::SpecId)recorded->Len(); id++) {
         const shell::SpecNode* node = recorded->Node(id);
         if (!node) continue;
+        if (PayloadHasCallback(node->component.payload.arguments,
+                               node->component.payload.argumentCount))
+            return node->component.text;
         for (int index = 0; index < node->ops.len; index++) {
             const shell::SpecOp& op = node->ops[index];
+            if (PayloadHasCallback(op.payload.arguments, op.payload
+                                                             .argumentCount))
+                return op.name;
             if (op.kind != shell::SpecOpKind::Callback) continue;
             bool filled = false;
             for (int i = 0; i < len(slots) && !filled; i++) {
@@ -2426,15 +2442,6 @@ static JSValue NativeTemplateEnd(JSContext* ctx, JSValueConst, int argc,
             "a template cannot mount a nested view or a dock area: it is "
             "grafted once per call, and GPUI mounts one entity at one place. "
             "Put the entity where the template is called");
-    } else if (recorded->HasRegistered()) {
-        // A registered component's payload lives in the arena that recorded
-        // it; a template is grafted into other arenas, which would leave the
-        // copy pointing into this one.
-        failure = JS_ThrowTypeError(
-            ctx,
-            "a template cannot describe a registered component: its recorded "
-            "payload belongs to the description that made it. Build it where "
-            "the template is called");
     } else if (Str method = InlineHandler(recorded, discovery->slots); method) {
         failure = JS_ThrowTypeError(
             ctx,
@@ -2917,6 +2924,9 @@ static bool ComponentPayloadTransaction(
             ok = false;
         } else {
             *payload = build.out;
+            payload->factory = factory;
+            payload->arguments = arguments;
+            payload->argumentCount = count;
         }
     }
     for (int i = 0; ok && i < len(scope.elements); i++) {
@@ -12874,7 +12884,7 @@ void shell::ComponentCallback::InvokeAndReport(
 static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
                             const shell::ComponentDataValue* arguments,
                             int count, Ctx* cx, shell::SpecArena* batch,
-                            bool interactive) {
+                            bool interactive, uint64_t generation = 0) {
     ShellRuntimeImpl* impl = ShellRuntimeAccess::Impl(runtime);
     JSContext* ctx = impl->context;
     shell::SpecArena* outer = impl->scratch;
@@ -12885,8 +12895,12 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     shell::ScopeAdopt(entry->registeredIn);
     BeginExecution(impl);
     bool savedToken = impl->callbacks.tokenRender;
+    uint64_t savedGeneration = impl->callbacks.tokenGeneration;
     if (interactive) {
-        impl->callbacks.BeginTokenFrame(ctx, impl->tokenFrame);
+        if (generation)
+            impl->callbacks.tokenGeneration = generation;
+        else
+            impl->callbacks.BeginTokenFrame(ctx, impl->tokenFrame);
         impl->callbacks.tokenRender = true;
     }
     Arena* a = ArenaNew();
@@ -12899,6 +12913,7 @@ static JSValue CallInLayout(ShellRuntime* runtime, CallbackEntry* entry,
     for (int i = 0; i < total; i++) JS_FreeValue(ctx, args[i]);
     ArenaDelete(a);
     impl->callbacks.tokenRender = savedToken;
+    if (generation) impl->callbacks.tokenGeneration = savedGeneration;
     impl->scratch = outer;
     return value;
 }
@@ -12964,11 +12979,12 @@ static El* BuildComponentElement(ShellRuntime* runtime, shell::CallbackId id,
         if (error) *error = failure;
         return nullptr;
     }
-    // The description's strings go into the frame arena: the elements built
-    // from it keep pointers into them and are painted after this returns.
-    shell::SpecArena* batch = new shell::SpecArena(cx->a);
-    JSValue value =
-        CallInLayout(runtime, entry, arguments, count, cx, batch, interactive);
+    // A delegate recipe can open a deferred surface. Give this batch an
+    // owned description and callback generation so that surface can lease it.
+    shell::SpecArena* batch = new shell::SpecArena();
+    uint64_t generation = impl->callbacks.nextGeneration++;
+    JSValue value = CallInLayout(runtime, entry, arguments, count, cx, batch,
+                                 interactive, generation);
     El* element = nullptr;
     bool ok = !JS_IsException(value);
     shell::SpecId root = 0;
@@ -12978,6 +12994,8 @@ static El* BuildComponentElement(ShellRuntime* runtime, shell::CallbackId id,
         hasRoot = ok;
     }
     JS_FreeValue(impl->context, value);
+    RenderSnapshot* snapshot =
+        new RenderSnapshot(generation, root, batch, SnapshotLease(runtime));
     if (!ok) {
         failure = TakeException(impl, cx->a);
     } else if (hasRoot) {
@@ -12988,7 +13006,14 @@ static El* BuildComponentElement(ShellRuntime* runtime, shell::CallbackId id,
             ShellErrorClear(&materialized);
         }
     }
-    delete batch;
+    Entity<ScriptView> owner;
+    owner.id = entry->view;
+    if (ScriptView* view = owner.Get(cx)) {
+        VecAppend(view->frameSnapshots, snapshot);
+    } else {
+        snapshot->Release();
+        element = nullptr;
+    }
     if (error) *error = failure;
     return element;
 }

@@ -1190,13 +1190,25 @@ ComponentElementFactory MaterializeRequest::TakeSlotFactory(const char* name) {
     slotTaken[at] = true;
     ComponentElementFactory factory;
     factory.id = target;
+    factory.specs = specs;
+    factory.view = cx->self;
+    factory.building = &specs->Node(target)->factoryBuilding;
     factory.set = true;
     return factory;
 }
 
 El* MaterializeRequest::BuildFactory(ComponentElementFactory factory) {
     if (!factory.IsSet()) return nullptr;
-    return ShellMaterializeSpec(cx, runtime, specs, factory.id, error);
+    if (factory.building && *factory.building)
+        return Fail(StrL("component element factory is already building"));
+    if (factory.building) *factory.building = true;
+    Ctx view = *cx;
+    if (factory.view.IsValid()) view.self = factory.view;
+    El* element = ShellMaterializeSpec(&view, runtime,
+                                       factory.specs ? factory.specs : specs,
+                                       factory.id, error);
+    if (factory.building) *factory.building = false;
+    return element;
 }
 
 El* MaterializeRequest::Finish(El* element) {

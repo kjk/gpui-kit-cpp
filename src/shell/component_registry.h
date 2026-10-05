@@ -191,7 +191,8 @@ struct EmptyPayload {};
 struct PayloadBuild;
 
 // Makes a payload from validated arguments, or fails with a message the
-// script sees as a TypeError. `build->a` is the recording arena.
+// script sees as a TypeError. `build->a` is the recording arena. Factories
+// must be pure: template grafts replay them over copied, relocated arguments.
 using PayloadFactory = bool (*)(PayloadBuild* build,
                                 const ComponentArgument* arguments, int count);
 
@@ -731,9 +732,13 @@ struct ComponentChild {
     bool consumed = false;
 };
 
-// A deferred slot: built only when the adapter asks for it, within the frame.
+// A deferred slot bound to its immutable description. Frame users borrow it;
+// retained surfaces must retain specs->snapshot for the recipe's lifetime.
 struct ComponentElementFactory {
     SpecId id = 0;
+    const SpecArena* specs = nullptr;
+    EntityId view = {};
+    bool* building = nullptr;
     bool IsSet() const { return id != 0 || set; }
     bool set = false;
 };

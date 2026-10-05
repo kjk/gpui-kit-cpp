@@ -75,6 +75,9 @@ struct ScriptView {
     ViewType* type = nullptr;
     ViewObject* object = nullptr;
     RenderSnapshot* snapshot = nullptr;
+    // Delegate-built descriptions survive through the frame; an opened
+    // native surface can retain one beyond the next render.
+    Vec<RenderSnapshot*> frameSnapshots;
     Policy* policy = nullptr;
     ShellError error = {};
     EntityId self = {};

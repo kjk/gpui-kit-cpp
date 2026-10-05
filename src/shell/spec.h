@@ -5,7 +5,8 @@
 
 namespace gpui {
 struct Policy;
-}
+class RenderSnapshot;
+} // namespace gpui
 
 namespace gpui::shell {
 
@@ -200,9 +201,16 @@ struct ListSpec {
 
 // What a registered constructor or method recorded: an arena value tagged with
 // its type. See shell/component_registry.h.
+struct ComponentArgument;
+struct PayloadBuild;
+
 struct ComponentPayload {
     const void* data = nullptr;
     const void* type = nullptr;
+    // Recipe used to copy opaque adapter data and remap element arguments.
+    bool (*factory)(PayloadBuild*, const ComponentArgument*, int) = nullptr;
+    const ComponentArgument* arguments = nullptr;
+    int argumentCount = 0;
 };
 
 struct Component {
@@ -258,6 +266,7 @@ struct SpecNode {
     Component component;
     ArenaVec<SpecOp> ops;
     ArenaVec<SpecId> children;
+    mutable bool factoryBuilding = false;
 };
 
 enum class SpecErrorKind : uint8_t {
@@ -421,14 +430,10 @@ class SpecArena {
     // than at the second call.
     bool MountsAnEntity() const { return mountedViews.len > 0; }
 
-    // Whether anything here is a registered component. Its payload lives in
-    // this arena, so a template that recorded one could not be grafted into
-    // another; see Template.
-    bool HasRegistered() const;
-
     // Where a registered constructor's or method's payload is allocated: the
     // same arena as the node that carries it, so it lives exactly as long.
     Arena* Storage() const { return arena; }
+    RenderSnapshot* snapshot = nullptr;
 
   private:
     Arena* arena = nullptr;

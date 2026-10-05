@@ -20,6 +20,16 @@ class RenderSnapshot {
     RenderSnapshot& operator=(const RenderSnapshot&) = delete;
     ~RenderSnapshot();
 
+    // App-thread leases keep both the description and its callbacks alive.
+    // Release the owning reference when a view replaces its snapshot.
+    RenderSnapshot* Retain() {
+        references++;
+        return this;
+    }
+    void Release() {
+        if (--references == 0) delete this;
+    }
+
     uint64_t Generation() const { return generation; }
     shell::SpecId Root() const { return root; }
     const shell::SpecArena* Specs() const { return arena; }
@@ -32,6 +42,7 @@ class RenderSnapshot {
     Str DebugTree(Arena* into) const;
 
   private:
+    int references = 1;
     uint64_t generation = 0;
     shell::SpecId root = 0;
     shell::SpecArena* arena = nullptr;

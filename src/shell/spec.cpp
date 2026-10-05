@@ -1,5 +1,6 @@
 #include "shell/spec.h"
 #include "shell/policy.h"
+#include "shell/component_registry.h"
 
 namespace gpui::shell {
 
@@ -283,13 +284,6 @@ void SpecArena::Reset() {
     if (ownsArena) arena->Reset();
 }
 
-bool SpecArena::HasRegistered() const {
-    for (int i = 0; i < nodes.len; i++) {
-        if (nodes[i]->component.kind == ComponentKind::Registered) return true;
-    }
-    return false;
-}
-
 Component SpecArena::CopyComponent(const Component& source) {
     Component out = source;
     if (source.policy) {
@@ -449,6 +443,40 @@ bool SpecArena::Attach(SpecId parent, SpecId child, SpecError* error) {
     return nodes[(int)parent]->children.Append(arena, child);
 }
 
+// Re-run the recorder over copied arguments: adapter payloads may contain
+// strings, nested arrays and element ids, so memcpy cannot relocate them.
+static ComponentArgument CopyArgument(Arena* arena,
+                                      const ComponentArgument& from,
+                                      SpecId base) {
+    ComponentArgument out = from;
+    out.string = StrDup(arena, from.string);
+    if (from.kind == ComponentArgumentKind::Element) out.element += base;
+    if (from.count) {
+        auto* items = (ComponentArgument*)Alloc(
+            arena, sizeof(ComponentArgument) * from.count);
+        for (int i = 0; i < from.count; i++)
+            items[i] = CopyArgument(arena, from.items[i], base);
+        out.items = items;
+    }
+    return out;
+}
+
+static ComponentPayload CopyPayload(Arena* arena, const ComponentPayload& from,
+                                    SpecId base) {
+    if (!from.factory) return from;
+    auto* args = (ComponentArgument*)Alloc(
+        arena, sizeof(ComponentArgument) * from.argumentCount);
+    for (int i = 0; i < from.argumentCount; i++)
+        args[i] = CopyArgument(arena, from.arguments[i], base);
+    PayloadBuild build;
+    build.a = arena;
+    if (!from.factory(&build, args, from.argumentCount)) return {};
+    build.out.factory = from.factory;
+    build.out.arguments = args;
+    build.out.argumentCount = from.argumentCount;
+    return build.out;
+}
+
 SpecId SpecArena::Graft(const Template& tmpl) {
     SpecId base = (SpecId)nodes.len;
     const SpecArena* source = tmpl.arena;
@@ -457,8 +485,11 @@ SpecId SpecArena::Graft(const Template& tmpl) {
         const SpecNode* from = source->nodes[i];
         SpecNode* node = ArenaNew<SpecNode>(arena);
         node->component = CopyComponent(from->component);
+        node->component
+            .payload = CopyPayload(arena, from->component.payload, base);
         for (const SpecOp& op : from->ops) {
             SpecOp copied = CopyOp(op);
+            copied.payload = CopyPayload(arena, op.payload, base);
             if (copied.kind == SpecOpKind::StateStyle ||
                 copied.kind == SpecOpKind::Slot) {
                 copied.node += base;

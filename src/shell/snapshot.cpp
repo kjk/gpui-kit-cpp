@@ -6,6 +6,7 @@ RenderSnapshot::RenderSnapshot(uint64_t generation, shell::SpecId root,
                                shell::SpecArena* arena,
                                SnapshotRuntimeLease runtime)
     : generation(generation), root(root), arena(arena), runtime(runtime) {
+    if (arena) arena->snapshot = this;
     if (runtime.state && runtime.retain) runtime.retain(runtime.state);
 }
 

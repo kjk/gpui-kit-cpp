@@ -735,6 +735,7 @@ struct Host {
     }
     El* Render() {
         if (!view.IsValid()) return nullptr;
+        window.frameSeq++;
         return EntityRender(&app, &window, frame, view.id);
     }
     // Rebuilds the description on the next render even though nothing the
@@ -3290,7 +3291,9 @@ void SharedNativeHandleScrollsAndPreservesOffset() {
     utassert(FindText(root, StrL("Tall shared content")) != nullptr);
     El* viewport = FindIdPrefix(root, StrL("shell-scroll-"));
     utassert(viewport && viewport->scrollY == 0 &&
-             viewport->onScroll.IsValid());
+             viewport->onScroll.IsValid() && !viewport->noScrollbarY &&
+             viewport->scrollModeSet &&
+             viewport->scrollMode == ScrollbarMode::Always);
     if (!viewport) return;
     ScrollEvent wheel = {};
     wheel.id = viewport->scrollId;
@@ -3311,6 +3314,39 @@ void SharedNativeHandleScrollsAndPreservesOffset() {
 
 // scroll_host.rs native_scrollbar_rejects_children_and_shell_style_at_
 // materializer_boundary
+void ScrollbarOrderChangesAndRemovalApplyInCurrentFrame() {
+    FamilyCatalog catalog(&component_shell::RegisterScroll);
+    Host host(StrL("import { View, div } from 'gpui-kit';\n"
+                   "import { ScrollbarHandle, Scroll, Scrollbar } from "
+                   "'gpui-component';\n"
+                   "export default class App extends View { init() { this.h = "
+                   "ScrollbarHandle(); this.n = 0; }\n"
+                   " render() { const n = this.n++; const viewport = new "
+                   "Scroll(this.h).scroll_axis('both')\n"
+                   " .w(100).h(100).child(div().w(400).h(400));\n"
+                   " if (n === 2) return div().child(viewport);\n"
+                   " const bar = new Scrollbar('bar', this.h).scroll_axis(n "
+                   "=== 0 ? 'vertical' : 'horizontal')\n"
+                   " .mode(n === 0 ? 'always' : 'hover');\n"
+                   " return n === 0 ? div().child(viewport).child(bar) : "
+                   "div().child(bar).child(viewport); } }\n"),
+              &catalog.frozen);
+    for (int i = 0; i < 3; i++) {
+        host.Refresh();
+        El* viewport = FindIdPrefix(host.Render(), StrL("shell-scroll-"));
+        utassert(viewport && len(host.ViewError()) == 0);
+        if (!viewport) continue;
+        utassert(bool(viewport->noScrollbarX) == (i != 1));
+        utassert(bool(viewport->noScrollbarY) == (i != 0));
+        if (i < 2)
+            utassert(viewport->scrollModeSet &&
+                     viewport->scrollMode == (i == 0 ? ScrollbarMode::Always
+                                                     : ScrollbarMode::Hover));
+        else
+            utassert(!viewport->scrollModeSet);
+    }
+}
+
 void NativeScrollbarRejectsChildrenAndShellStyle() {
     FamilyCatalog catalog(&component_shell::RegisterScroll);
     struct Case {
@@ -5663,6 +5699,179 @@ void ClickLabel(Host& host, El* root, const char* label) {
     if (trigger) Click(host, trigger);
 }
 
+bool ConstructTemplateElements(shell::PayloadBuild* build,
+                               const shell::ComponentArgument* args, int) {
+    *build->New<shell::ComponentArgument>() = args[0];
+    return true;
+}
+El* MaterializeTemplateElements(shell::MaterializeRequest* request) {
+    const auto* payload = request->PayloadAs<shell::ComponentArgument>();
+    El* root = Div(request->cx->a);
+    for (int i = 0; i < payload->count; i++)
+        root->Child(request->ResolveElement(payload->items[i]));
+    return request->Finish(root);
+}
+constexpr ArgumentSchema kTemplateElementSchema = shell::SchemaElement();
+constexpr ArgumentDescriptor kTemplateElementsArgs[] = {
+    {"elements", shell::SchemaArray(&kTemplateElementSchema)}};
+constexpr ConstructorDescriptor kTemplateElementsCtors[] = {
+    {"TemplateElements", kTemplateElementsArgs, &ConstructTemplateElements}};
+constexpr ComponentDescriptor kTemplateElements = {
+    "TemplateElements",
+    kTemplateElementsCtors,
+    {},
+    "Test element references.",
+    &MaterializeTemplateElements};
+bool RegisterTemplateComponents(ComponentRegistry* registry,
+                                RegistryError* error) {
+    return registry->Register(&kEffectMarker, error) &&
+           registry->Register(&kTemplateElements, error);
+}
+void TemplatesCopyRegisteredPayloads() {
+    FamilyCatalog catalog(&RegisterTemplateComponents);
+    Host host(
+        StrL(
+            "import { View, div } from 'gpui-kit';\n"
+            "import { EffectMarker, TemplateElements } from 'gpui-component';\n"
+            "const Row = globalThis.__template(label => div().child(label)\n"
+            " .child(new TemplateElements([div().child(new "
+            "EffectMarker('kept'))])));\n"
+            "export default class App extends View { render() { return "
+            "div().child('prefix')\n"
+            " .child(Row('first')).child(Row('second')); } }\n"),
+        &catalog.frozen);
+    for (int i = 0; i < 3; i++) {
+        host.Refresh();
+        El* root = host.Render();
+        utassert(root && !host.error.IsSet() && len(host.ViewError()) == 0);
+        utassert(FindText(root, StrL("first")) &&
+                 FindText(root, StrL("second")));
+        utassert(FindText(root, StrL("kept")) != nullptr);
+        utassert(len(host.runtime->LastComponentFailure()) == 0);
+    }
+}
+
+El* MaterializeDeferredEffect(shell::MaterializeRequest* request) {
+    return request
+        ->ResolveCallback(*request->PayloadAs<shell::ComponentArgument>())
+        .BuildInteractiveWith(request->runtime, nullptr, 0, request->cx);
+}
+constexpr ArgumentDescriptor kDeferredEffectArgs[] = {
+    {"render", shell::SchemaCallback("() => Element")}};
+constexpr ConstructorDescriptor kDeferredEffectCtors[] = {
+    {"DeferredEffect", kDeferredEffectArgs, &ConstructTemplateElements}};
+constexpr ComponentDescriptor kDeferredEffect = {"DeferredEffect",
+                                                 kDeferredEffectCtors,
+                                                 {},
+                                                 "Test delegate batch.",
+                                                 &MaterializeDeferredEffect};
+bool RegisterDeferredWindowEffects(ComponentRegistry* registry,
+                                   RegistryError* error) {
+    return RegisterWindowEffectsWithMarker(registry, error) &&
+           registry->Register(&kDeferredEffect, error);
+}
+
+// An open effect owns its original description, even after the trigger
+// disappears, and keeps its callbacks alive through the close dispatch.
+void WindowEffectsLeaseOpeningDescription() {
+    for (int deferred = 0; deferred < 2; deferred++) {
+        FamilyCatalog catalog(&RegisterDeferredWindowEffects);
+        Host host(
+            fmt("import { View, div } from 'gpui-kit';\n"
+                "import { Dialog, Sheet, EffectMarker, DeferredEffect } from "
+                "'gpui-component';\n"
+                "export default class App extends View {\n"
+                " render() { this.n = (this.n || 0) + 1; const n = this.n;\n"
+                "  if (n > 1) return div().child('trigger removed');\n"
+                "  return div().child(%snew Dialog('d', 'Open', (_m, _cx) => "
+                "{})\n"
+                "   .content(div().child(new "
+                "EffectMarker('opening')).child(div()\n"
+                "     .child('inside').on_click((_e,cx) => { globalThis.inner "
+                "= n; "
+                "cx.notify(); })))\n"
+                "   .on_cancel(cx => { globalThis.cancelled = n; cx.notify(); "
+                "})\n"
+                "   .on_close(cx => { globalThis.closed = n; cx.notify(); "
+                "})%s);\n"
+                " } }\n",
+                Str(deferred ? "new DeferredEffect(() => " : ""),
+                Str(deferred ? ")" : "")),
+            &catalog.frozen);
+        MountBaseRoot(host);
+        ClickLabel(host, DrawWindow(host), "Open");
+        auto* layers = WindowLayersOf(&host.window);
+        utassert(layers && len(layers->dialogs) == 1);
+        host.Refresh();
+        El* root = DrawWindow(host);
+        utassert(FindText(root, StrL("trigger removed")) != nullptr);
+        El* dialog = EntityRender(&host.app, &host.window, host.frame,
+                                  layers->dialogs[0].view);
+        utassert(FindText(dialog, StrL("opening")) != nullptr);
+        ClickLabel(host, dialog, "inside");
+        DispatchToTopDialog(host, action::Cancel());
+        utassert(host.runtime->LiveCallbacks() == 0);
+        ShellError error;
+        utassert(host.runtime->Eval(
+            StrL("if (globalThis.inner !== 1 || globalThis.cancelled !== 1 || "
+                 "globalThis.closed !== 1) throw Error('lost opening "
+                 "callbacks');"),
+            StrL("<lease-check>"), &error));
+        ShellErrorClear(&error);
+    }
+}
+
+void SheetsAndNotificationsKeepOpeningCallbacks() {
+    FamilyCatalog catalog(&RegisterWindowEffectsWithMarker);
+    Host host(
+        StrL("import { View, div } from 'gpui-kit';\n"
+             "import { Sheet, Notification, EffectMarker } from "
+             "'gpui-component';\n"
+             "export default class App extends View { render() { const n = "
+             "this.n = (this.n || 0) + 1;\n"
+             " if (n > 1) return div();\n"
+             " return div().child(new Sheet('s', 'Sheet', (_m,cx) => "
+             "{}).content(new EffectMarker('sheet-original'))\n"
+             " .on_close(cx => { globalThis.sheetClosed = n; cx.notify(); }))\n"
+             " .child(new Notification('n', 'Notify', (_m,cx) => "
+             "{}).autohide(false)\n"
+             " .on_click(cx => { globalThis.noteClicked = n; cx.notify(); })\n"
+             " .on_close(cx => { globalThis.noteClosed = n; cx.notify(); })); "
+             "} }\n"),
+        &catalog.frozen);
+    MountBaseRoot(host);
+    El* root = DrawWindow(host);
+    ClickLabel(host, root, "Sheet");
+    ClickLabel(host, root, "Notify");
+    host.Refresh();
+    DrawWindow(host);
+    auto* layers = WindowLayersOf(&host.window);
+    utassert(layers && layers->hasSheet);
+    if (!layers || !layers->hasSheet) return;
+    El* sheet =
+        EntityRender(&host.app, &host.window, host.frame, layers->sheet.view);
+    utassert(FindText(sheet, StrL("sheet-original")) != nullptr);
+    El* capture = nullptr;
+    for (El* child = sheet->first; child; child = child->next)
+        if (child->onMouseDown.IsValid()) capture = child;
+    utassert(capture != nullptr);
+    if (capture) MouseDown(host, capture);
+    auto* notes = layers->notifications.Get(&host.app);
+    utassert(notes && len(notes->items) == 1);
+    if (notes && len(notes->items) == 1) {
+        ListenerCall(&host.app, &host.window, notes->items[0].onClick, nullptr);
+        ListenerCall(&host.app, &host.window, notes->items[0].onClose, nullptr);
+    }
+    utassert(host.runtime->LiveCallbacks() == 0);
+    ShellError error;
+    utassert(host.runtime->Eval(
+        StrL("if (globalThis.sheetClosed !== 1 || globalThis.noteClicked !== 1 "
+             "|| globalThis.noteClosed !== 1) throw Error('lost opening "
+             "callbacks');"),
+        StrL("<surface-lease-check>"), &error));
+    ShellErrorClear(&error);
+}
+
 // window_effects_host.rs real_click_events_open_native_surfaces_and_build_
 // lazy_content. Nothing is built by rendering the triggers; each real click
 // opens its surface, whose lazy content is built only when the surface is
@@ -7729,6 +7938,7 @@ void TestComponentShell() {
     ScrollbarLeafContractIsExact();
     RepeatedScrollConfigurationIsLastCallWins();
     SharedNativeHandleScrollsAndPreservesOffset();
+    ScrollbarOrderChangesAndRemovalApplyInCurrentFrame();
     NativeScrollbarRejectsChildrenAndShellStyle();
 
     TestSuite("settings");
@@ -7759,6 +7969,9 @@ void TestComponentShell() {
     RealClickEventsOpenNativeSurfacesAndBuildLazyContent();
     ClosedAlertAndNotificationRejectCommonNamedSlots();
     DialogAndSheetDuplicateContentIsLastCallWins();
+    WindowEffectsLeaseOpeningDescription();
+    TemplatesCopyRegisteredPayloads();
+    SheetsAndNotificationsKeepOpeningCallbacks();
     FailedFactoryAndFailedReporterAreBothDiagnosed();
     WindowEffectRecordersRefuseWhatRustRefuses();
 

@@ -166,28 +166,20 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   on a line or area runs over the box of the points the path passes
   through, where GPUI's spans the tessellated path's bounds; a natural
   curve's overshoot between two points is outside it.
-- **A shell template refuses a registered component.** The registered
-  component's payload lives in the arena that recorded it, so a template
-  cannot keep it past that description (`src/shell/component_registry.h`).
-  The window host is otherwise root.rs's: `ShellRootOf` is
-  `window.root::<ShellRoot>()`, the root owns its own tooltip layer
+- **The shell window host follows root.rs.**
+  `ShellRootOf` is `window.root::<ShellRoot>()`, the root owns its own tooltip layer
   (`Window::rootTooltip`), a background press blurs the focused field, and
   an application mounts with the default policy. A focusable element taking
   a press marks it `pressTookFocus`, which `WindowDefaultPrevented` reports
   as GPUI's focus handler preventing the default does, but which still
   lets the field under it place its caret.
-- **Registered components render within one frame's description.** A typed
-  part is rendered standalone and again by its parent; deferred slots,
-  delegate rows and window-effect surfaces (Dialog, Sheet, ...) are rebuilt
-  from the latest render rather than a leased snapshot, so an open surface
-  shows the current render's content and callbacks. A retained InputState
-  hands a change to at most 16 components rendering it in one frame
-  (`src/component_shell/`).
-- **A shell Scrollbar placed after its viewport lags a frame.**
-  Scroll/Scrollbar has no overlay bar reading a shared handle: the viewport
-  paints its own bar from the ScrollbarHandle entity, and a Scrollbar
-  placed after its viewport takes effect a frame later
-  (`src/component_shell/scroll/`).
+- **Registered typed parts can render twice.** A typed part is rendered
+  standalone and again by its parent. A retained InputState hands a change
+  to at most 16 components rendering it in one frame (`src/component_shell/`).
+- **Shell scrollbars use the viewport's integrated bar.** Scroll and
+  Scrollbar share current-frame axis and visibility settings regardless of
+  sibling order, but `viewport_from_layout` uses the Scroll viewport's box
+  rather than a separately laid-out overlay (`src/component_shell/scroll/`).
 - **Registered-component counts are held to INT_MAX, which reads the same.**
   The registry reads a usize as 64 bits and checks it as Rust does, and the
   numbers a script can see are 64-bit: a Badge's count and max,

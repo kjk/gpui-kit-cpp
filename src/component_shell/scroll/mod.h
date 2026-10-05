@@ -18,14 +18,14 @@ namespace gpui::component_shell::scroll::scroll {
 struct ScrollHandleState {
     float offsetX = 0;
     float offsetY = 0;
-    // How many times a Scroll viewport has rendered this handle, and at which
-    // of those counts a Scrollbar last asked for its bar.
-    int renders = 0;
-    int barAt = -2;
-    ScrollbarAxis barAxis = ScrollbarAxis::Vertical;
-    bool hasBarAxis = false;
-    ScrollbarMode barMode = ScrollbarMode::Scrolling;
+    // Frame arena pointers are read only after matching both window and frame.
+    Window* window = nullptr;
+    uint64_t frame = UINT64_MAX;
+    El* viewport = nullptr;
+    bool hasBar = false;
+    ScrollbarAxis barAxis = ScrollbarAxis::Both;
     bool hasBarMode = false;
+    ScrollbarMode barMode = ScrollbarMode::Scrolling;
 
     static void OnScroll(ScrollHandleState* self, Ctx* cx,
                          const ScrollEvent* event);

@@ -59,22 +59,14 @@ static WindowEffectsReporterFailureProbe gReporterProbe = nullptr;
 
 // ─── The trigger's latest frame ────────────────────────────────────────────
 //
-// Rust's click closure captures the content factory and the resolved
-// callbacks, and the factory holds a lease on the snapshot it was recorded
-// in, so a surface keeps building the content of the render that opened it.
-// A snapshot here lives only until the script renders again, and its
-// callbacks retire with it. So a trigger republishes, every frame it is
-// materialized, what an open surface needs — the factory with the
-// description it belongs to, and the callbacks — into a relay keyed by its
-// id, and the surface reads the relay: the content is the latest render's,
-// and a surface whose trigger was not materialized in the current frame
-// shows a failure instead of a stale description.
+// Opening a surface copies the recipe and leases its immutable snapshot
+// until that surface closes, matching the Rust factory's snapshot lease.
 struct Relay {
     ShellRuntime* runtime = nullptr;
     // The ScriptView the trigger was materialized in: the content's own
     // listeners are the view's, so it is built as the view.
     EntityId view = {};
-    uint64_t frame = 0;
+    RenderSnapshot* snapshot = nullptr;
     const shell::SpecArena* specs = nullptr;
     ShellError* error = nullptr;
     shell::ComponentElementFactory content = {};
@@ -84,9 +76,7 @@ struct Relay {
     shell::ComponentCallback onClose = {};
     shell::ComponentCallback onClick = {};
 
-    bool Fresh(Ctx* cx) const {
-        return runtime && specs && cx->win && frame == cx->win->frameSeq;
-    }
+    bool HasDescription(Ctx* cx) const { return runtime && specs && cx->win; }
 
     // invoke(): the callback, when there is one, reporting a failure.
     void Invoke(Ctx* cx, shell::ComponentCallback callback,
@@ -95,16 +85,24 @@ struct Relay {
             callback
                 .InvokeAndReport(runtime, label, nullptr, 0, cx->win, cx->app);
     }
+};
 
-    static void OnNotificationClick(Relay* self, Ctx* cx, const void*) {
-        if (self)
-            self->Invoke(cx, self->onClick,
-                         "Notification.on_click callback failed");
+// A notification replaces the captured recipe only when another notification
+// with the same identity is pushed, and releases its lease when dismissed.
+struct NotificationRelay {
+    Relay relay;
+    ~NotificationRelay() {
+        if (relay.snapshot) relay.snapshot->Release();
     }
-    static void OnNotificationClose(Relay* self, Ctx* cx, const void*) {
-        if (self)
-            self->Invoke(cx, self->onClose,
-                         "Notification.on_close callback failed");
+    static void OnClick(NotificationRelay* self, Ctx* cx, const void*) {
+        self->relay.Invoke(cx, self->relay.onClick,
+                           "Notification.on_click callback failed");
+    }
+    static void OnClose(NotificationRelay* self, Ctx* cx, const void*) {
+        self->relay.Invoke(cx, self->relay.onClose,
+                           "Notification.on_close callback failed");
+        if (self->relay.snapshot) self->relay.snapshot->Release();
+        self->relay = {};
     }
 };
 
@@ -130,7 +128,7 @@ static void ReportFactoryError(const Relay* relay, Ctx* cx, Str message) {
 // renders, holding what the click captured.
 struct Layer {
     Surface surface = Surface::Dialog;
-    Entity<Relay> relay = {};
+    Relay relay;
     Arena* arena = nullptr;
     Str title;
     Str description;
@@ -140,6 +138,7 @@ struct Layer {
     bool factoryErrorReported = false;
 
     ~Layer() {
+        if (relay.snapshot) relay.snapshot->Release();
         if (arena) ArenaDelete(arena);
     }
 
@@ -152,13 +151,15 @@ struct Layer {
     // factory.build(window, cx), or the failure it answers — reported to the
     // effect's reporter the first time.
     El* Content(Ctx* cx) {
-        Relay* live = relay.Get(cx);
+        Relay* live = &relay;
         Arena* a = cx->a;
-        if (!live || !live->Fresh(cx) || !live->content.IsSet()) {
+        if (!live->HasDescription(cx) || !live->content.IsSet()) {
             return Div(a)->Child(TextEl(
-                a, StrDup(a, fmt("Failed to render %s content: the trigger "
-                                 "that opened it is not rendered",
-                                 Str(Name())))));
+                a,
+                StrDup(
+                    a,
+                    fmt("Failed to render %s content: no retained description",
+                        Str(Name())))));
         }
         Ctx view = *cx;
         view.self = live->view;
@@ -189,9 +190,10 @@ struct Layer {
         Relay relay;
         const char* closeLabel = nullptr;
     };
-    Close Closing(Ctx* cx) const {
+    Close Closing() const {
         Close close;
-        if (const Relay* r = relay.Get(cx)) close.relay = *r;
+        close.relay = relay;
+        if (close.relay.snapshot) close.relay.snapshot->Retain();
         close.closeLabel = surface == Surface::Dialog
                                ? "Dialog.on_close callback failed"
                            : surface == Surface::AlertDialog
@@ -204,33 +206,36 @@ struct Layer {
     // follows.
     static void OnOk(Layer* self, Ctx* cx, const ClickEvent*) {
         if (!self) return;
-        Close close = self->Closing(cx);
+        Close close = self->Closing();
         close.relay.Invoke(cx, close.relay.onOk,
                            self->surface == Surface::Dialog
                                ? "Dialog.on_ok callback failed"
                                : "AlertDialog.on_ok callback failed");
         WindowCloseDialog(cx);
         close.relay.Invoke(cx, close.relay.onClose, close.closeLabel);
+        if (close.relay.snapshot) close.relay.snapshot->Release();
     }
     static void OnCancel(Layer* self, Ctx* cx, const ClickEvent*) {
         if (!self) return;
-        Close close = self->Closing(cx);
+        Close close = self->Closing();
         close.relay.Invoke(cx, close.relay.onCancel,
                            self->surface == Surface::Dialog
                                ? "Dialog.on_cancel callback failed"
                                : "AlertDialog.on_cancel callback failed");
         WindowCloseDialog(cx);
         close.relay.Invoke(cx, close.relay.onClose, close.closeLabel);
+        if (close.relay.snapshot) close.relay.snapshot->Release();
     }
     // A dialog's close without an answer, and a sheet's close.
     static void OnClose(Layer* self, Ctx* cx, const ClickEvent*) {
         if (!self) return;
-        Close close = self->Closing(cx);
+        Close close = self->Closing();
         if (self->surface == Surface::Sheet)
             WindowCloseSheet(cx);
         else
             WindowCloseDialog(cx);
         close.relay.Invoke(cx, close.relay.onClose, close.closeLabel);
+        if (close.relay.snapshot) close.relay.snapshot->Release();
     }
 
     static El* Render(Layer* self, Ctx* cx) {
@@ -310,7 +315,11 @@ static Entity<Layer> NewLayer(Ctx* cx, const TriggerClick* click) {
     Layer* layer = handle.Get(cx);
     if (!layer) return handle;
     layer->surface = click->surface;
-    layer->relay = click->relay;
+    if (Relay* relay = click->relay.Get(cx)) {
+        layer->relay = *relay;
+        layer->relay.error = nullptr;
+        if (layer->relay.snapshot) layer->relay.snapshot->Retain();
+    }
     layer->arena = ArenaNew();
     if (click->title.s) layer->title = StrDup(layer->arena, click->title);
     if (click->description.s)
@@ -342,9 +351,18 @@ static bool Open(void* user, Window*, App*, Str*, Arena*) {
                 .Autohide(click->autohide);
             if (click->title.s) notification.Title(click->title);
             if (click->description.s) notification.Message(click->description);
+            auto captured = UseKeyedState<NotificationRelay>(
+                cx, click->key, StrL("shell-notification-recipe"));
+            if (NotificationRelay* live = captured.Get(cx)) {
+                Relay next;
+                if (Relay* relay = click->relay.Get(cx)) next = *relay;
+                if (next.snapshot) next.snapshot->Retain();
+                if (live->relay.snapshot) live->relay.snapshot->Release();
+                live->relay = next;
+            }
             notification
-                .OnClick(ListenTo(click->relay, &Relay::OnNotificationClick))
-                .OnClose(ListenTo(click->relay, &Relay::OnNotificationClose));
+                .OnClick(ListenTo(captured, &NotificationRelay::OnClick))
+                .OnClose(ListenTo(captured, &NotificationRelay::OnClose));
             WindowPushNotification(cx, notification);
             break;
         }
@@ -471,7 +489,7 @@ static El* Materialize(MaterializeRequest* request, Surface surface) {
     if (Relay* relay = click->relay.Get(cx)) {
         relay->runtime = request->runtime;
         relay->view = cx->self;
-        relay->frame = cx->win ? cx->win->frameSeq : 0;
+        relay->snapshot = request->specs->snapshot;
         relay->specs = request->specs;
         relay->error = request->error;
         relay->content = content;
@@ -483,7 +501,7 @@ static El* Materialize(MaterializeRequest* request, Surface surface) {
         relay->onClose = onClose ? request->ResolveCallback(*onClose)
                                  : shell::ComponentCallback{};
         relay->onClick = onClick ? request->ResolveCallback(*onClick)
-                                 : shell::ComponentCallback{};
+                                 : shell::ComponentCallback{request->onClick};
     }
     component::Button* button =
         component::Button::New(cx, trigger->id)
