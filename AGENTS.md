@@ -14,10 +14,10 @@ gitignored clone at `.work/gpui-component/`, installed at the pinned SHA by
 `bun cmd/build.ts` or `bun cmd/run.ts`.
 
 **Upstream pins** live in the pin block at the top of [`cmd/run.ts`](cmd/run.ts)
-(`gpuiComponent`, `zedGpui`, and the five crates we port: `taffy`, `markdown`,
-`html5ever`, `wry`, `autocorrect`). `bun cmd/run.ts -versions` prints and
+(`gpuiComponent`, `zedGpui`, and the six crates we port: `taffy`, `markdown`,
+`html5ever`, `wry`, `autocorrect`, `unicodeLinebreak`). `bun cmd/run.ts -versions` prints and
 syncs them.
-Ingesting later checkins, the five crates included: the `/update-port` skill,
+Ingesting later checkins, the six crates included: the `/update-port` skill,
 [`.claude/skills/update-port/SKILL.md`](.claude/skills/update-port/SKILL.md).
 `bun cmd/upstream-pending.ts` lists what is waiting.
 
@@ -53,7 +53,7 @@ deviations), [`port-map.md`](port-map.md) (the Base/UI module ledger and
    `#include "gpui.h"` and `using namespace gpui;`.
 
    `src/taffy`, `src/markdown`, `src/html5ever`, `src/wry` and
-   `src/autocorrect` are ports of crates that have never heard of gpui: they
+   `src/autocorrect` and `src/unicode-linebreak` are ports of crates that have never heard of gpui: they
    are written against `base.h` and nothing else, include no gpui header and
    name no gpui symbol.
    `cmd/update-dist.ts` fails the build if that stops being true. Anything one
@@ -683,8 +683,8 @@ in either order. All of it is the same on every platform.
 - **`extras/autocorrect/` links beside `gpui.cpp`** (taking base from it), and
   `cmd/build.ts` compiles it only into the targets that use it (the editor
   example, the tests). `extras/taffy/`, `extras/markdown/`,
-  `extras/markdown-mini/`, `extras/html5ever/`, `extras/html5ever-mini/` and
-  `extras/wry/` are *inside* `gpui.cpp`; their
+  `extras/markdown-mini/`, `extras/html5ever/`, `extras/html5ever-mini/`,
+  `extras/wry/` and `extras/unicode-linebreak/` are *inside* `gpui.cpp`; their
   pairs exist for using one library without gpui, each carries the base
   implementation, and **must never link beside `gpui.cpp`**.
 - Implementation-private headers (markdown's tokenizer, taffy's compute
@@ -792,6 +792,7 @@ src/html5ever/         the html5ever crate, ported (readme.md)
 src/html5ever-mini/    the smaller alternative, ours (readme.md)
 src/wry/               the wry webview crate, ported (readme.md)
 src/autocorrect/       the autocorrect CJK linter crate, ported (readme.md)
+src/unicode-linebreak/ Unicode line-break opportunities for soft wrap, ported
 src/webview/           crates/webview: the view that gives a wry webview a box
 src/shell/             crates/shell: sandboxed JS apps; fetch.h is the policy
 src/component_shell/   crates/component-shell: the gpui-component catalog the

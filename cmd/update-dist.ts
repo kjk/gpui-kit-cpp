@@ -62,6 +62,7 @@ import {
   html5ever as html5everPin,
   markdown as markdownPin,
   taffy as taffyPin,
+  unicodeLinebreak as unicodeLinebreakPin,
   wry as wryPin,
 } from "./run.ts";
 
@@ -618,6 +619,7 @@ const isolatedDirs = [
   "src/html5ever-mini/",
   "src/wry/",
   "src/autocorrect/",
+  "src/unicode-linebreak/",
 ];
 
 function checkIsolation(files: string[]): void {
@@ -1038,6 +1040,15 @@ export function buildDist(opts: BuildDistOpts): BuildDistResult {
     withBaseImpl: true,
   });
   writeExtrasPair({
+    dir: "extras/unicode-linebreak",
+    headerName: "unicode_linebreak.h",
+    guard: "UNICODE_LINEBREAK_AMALGAM_H_",
+    headers: headers.filter((rel) => rel.startsWith("src/unicode-linebreak/")),
+    isPublic: (rel) => rel === "src/unicode-linebreak/unicode_linebreak.h",
+    cpps: foundCpps.filter((rel) => rel.startsWith("src/unicode-linebreak/")),
+    withBaseImpl: true,
+  });
+  writeExtrasPair({
     dir: "extras/markdown",
     headerName: "markdown.h",
     guard: "MARKDOWN_AMALGAM_H_",
@@ -1248,6 +1259,7 @@ function writeDistReadme(sha: string): string {
   const src = join(root, "readme-dist.md");
   const versions = [
     ["<autocorrect-version>", autocorrectPin.version],
+    ["<unicode-linebreak-version>", unicodeLinebreakPin.version],
     ["<taffy-version>", taffyPin.version],
     ["<markdown-version>", markdownPin.version],
     ["<html5ever-version>", html5everPin.version],

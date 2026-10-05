@@ -1424,6 +1424,7 @@ function amalgamSize(bytes: number, lines: number): string {
 const extrasPairs = [
   ["extras/autocorrect", "autocorrect"],
   ["extras/taffy", "taffy"],
+  ["extras/unicode-linebreak", "unicode_linebreak"],
   ["extras/markdown", "markdown"],
   ["extras/markdown-mini", "markdown"],
   ["extras/html5ever", "html5ever"],

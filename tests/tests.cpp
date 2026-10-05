@@ -93,6 +93,7 @@ int GpuiMain(int argc, char** argv) {
     TestSearchMatcher();
     TestFoldMap();
     TestTextWrapper();
+    TestUnicodeLinebreak();
     TestList();
     TestPopupMenu();
     TestDataTable();

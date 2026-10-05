@@ -79,6 +79,8 @@ extras/              the ported library crates as standalone amalgams, one
   wry/               the webview, crate lb-wry <wry-version> (WebView2 on
                      Windows, WKWebView on macOS, stubs elsewhere). Also
                      inside gpui.cpp
+  unicode-linebreak/  Unicode 15.0 line breaks, crate unicode-linebreak
+                     <unicode-linebreak-version>. Also inside gpui.cpp
 gpui_shell/           command-line JavaScript application host
 examples/            every example, including story/ and showcase/
 assets/              icons, images and documents the examples load at runtime
@@ -140,7 +142,8 @@ provides the base implementation — this is exactly how the editor example
 and the tests build.
 
 `extras/taffy/`, `extras/markdown/`, `extras/markdown-mini/`,
-`extras/html5ever/`, `extras/html5ever-mini/` and `extras/wry/` are **also
+`extras/html5ever/`, `extras/html5ever-mini/`, `extras/wry/` and
+`extras/unicode-linebreak/` are **also
 inside `gpui.cpp`**; these copies exist for using
 one library on its own, without gpui. Each therefore carries the base
 implementation (with its platform halves behind `GPUI_OS_*` guards), which

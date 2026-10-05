@@ -113,6 +113,7 @@ void TestInputGroup();
 void TestSearchMatcher();
 void TestFoldMap();
 void TestTextWrapper();
+void TestUnicodeLinebreak();
 void TestList();
 void TestPopupMenu();
 void TestDataTable();

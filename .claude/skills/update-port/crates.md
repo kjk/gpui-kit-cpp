@@ -1,7 +1,7 @@
 # The ported crates and the Zed GPUI reference
 
 `src/taffy/`, `src/markdown/`, `src/html5ever/`, `src/wry/` and
-`src/autocorrect/` are ports, not references, of exactly the version
+`src/autocorrect/` and `src/unicode-linebreak/` are ports, not references, of exactly the version
 gpui-kit resolves. **They move when the gpui-kit pin moves, and only then**:
 "latest" for a crate means what gpui-kit's `Cargo.lock` resolves at the
 checkin being ported, never a newer release. The SKILL.md loop sends you here
@@ -15,7 +15,8 @@ when a checkin's `Cargo.lock` moves one of them, or `gpui-pre`.
 | `markdown` | `markdown` | `crates/base`, `crates/component` | `wooorm/markdown-rs`, git tags `X.Y.Z` |
 | `html5ever` | `html5ever` | `crates/base` | `servo/html5ever` — use the crate tarball |
 | `wry` | `lb-wry` | `crates/webview`, `examples/webview` | longbridge's fork, published from a fork — tarball only, no useful tag |
-| `autocorrect` | `autocorrect` | `crates/story`, `examples/editor` | `huacnlee/autocorrect` — tarball; git tags carry the whole workspace |
+| `autocorrect` | `autocorrect` | `crates/story`, `examples/editor` | `huacnlee/autocorrect` - tarball; git tags carry the whole workspace |
+| `unicodeLinebreak` | `unicode-linebreak` | `crates/base` soft wrap | `axelf4/unicode-linebreak` - tarball; Unicode tests in the git repository |
 
 ```
 grep -A3 'name = "taffy"' .work/gpui-component/Cargo.lock   # also markdown, html5ever, lb-wry, autocorrect

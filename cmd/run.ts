@@ -623,6 +623,14 @@ export const wry = {
   dir: "src/wry",
 } as const;
 
+/** Unicode line-break opportunities used by the measured soft-wrap wrapper. */
+export const unicodeLinebreak = {
+  repo: "https://github.com/axelf4/unicode-linebreak",
+  version: "0.1.5",
+  crateSha256: "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f",
+  dir: "src/unicode-linebreak",
+} as const;
+
 /**
  * The CJK copywriting linter/formatter `crates/story`'s editor example lints
  * every open document with (`autocorrect = "2.14.2"` in
@@ -745,6 +753,7 @@ function printVersions(): never {
   console.log("             ", `html5ever ${html5ever.version} -> ${html5ever.dir}`);
   console.log("             ", `${wry.crate} ${wry.version} -> ${wry.dir}`);
   console.log("             ", `autocorrect ${autocorrect.version} -> ${autocorrect.dir}`);
+  console.log("             ", `unicode-linebreak ${unicodeLinebreak.version} -> ${unicodeLinebreak.dir}`);
   console.log("engine       ", `quickjs-ng ${quickjsNg.version} ${quickjsNg.sha} -> ${quickjsNg.dir}`);
   try {
     const dir = ensureRustTree(root);

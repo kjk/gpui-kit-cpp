@@ -357,6 +357,10 @@ static void MeasuredWrapKeepsCjkLatinBoundaryStableDuringEdits() {
 // measured_wrap_preserves_words_graphemes_and_indentation
 static void MeasuredWrapPreservesWordsGraphemesAndIndentation() {
     utassert(MeasuredIxsAre("hello world", 8, WrappingIndent::None, {6}));
+    // Hebrew letters must not break after a hyphen (LB21a).
+    utassert(MeasuredIxsAre("\xD7\x90-bc def", 4, WrappingIndent::None, {5}));
+    // Numeric prefixes/postfixes stay with the number (LB25).
+    utassert(MeasuredIxsAre("a $12% b", 5, WrappingIndent::None, {2, 7}));
     // "a", the woman-technologist ZWJ sequence, "b".
     const char* emoji =
         "a\xF0\x9F\x91\xA9\xE2\x80\x8D\xF0\x9F\x92\xBB"

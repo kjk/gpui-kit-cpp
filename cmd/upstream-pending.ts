@@ -19,13 +19,14 @@ import { root } from "./build.ts";
 import { gpuiComponent, rustTreeDir } from "./run.ts";
 
 // Cargo.lock package names whose versions a checkin can move under us: the
-// five ported crates, the Zed GPUI reference, and the gpui-kit workspace's own.
+// ported crates, the Zed GPUI reference, and the gpui-kit workspace's own.
 const watched = [
   "taffy",
   "markdown",
   "html5ever",
   "lb-wry",
   "autocorrect",
+  "unicode-linebreak",
   "gpui-pre",
   ...Object.keys(gpuiComponent.crates),
 ];

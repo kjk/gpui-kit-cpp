@@ -503,15 +503,10 @@ void LineWrapperWrapLine(const LineFragment* fragments, int n, float wrapWidth,
                          WrapCharWidth widthFor, void* user,
                          Vec<WrapBoundary>* out);
 
-// unicode_linebreak::linebreaks: the offsets in `text` at which a line may
-// break, ascending, the end of the text last. Rust takes them from the
-// unicode-linebreak crate; this is the part of UAX #14 an input's text meets
-// — spaces, Latin words and numbers, CJK ideographs and kana, opening and
-// closing punctuation, quotes, hyphens, glue and combining marks — decided
-// by the rules themselves rather than by the crate's generated pair table.
-// What it leaves out (Thai and Lao dictionaries, the Hangul jamo classes,
-// regional-indicator pairs, the numeric prefix and postfix classes) falls
-// under the default: a break is allowed.
+// Offsets from the unicode-linebreak crate port, ascending, including the
+// mandatory end-of-text break for nonempty text. Appends to `out`;
+// opportunities keep their UTF-8 byte offsets, matching Rust's measured
+// soft-wrap wrapper.
 void LineBreakOpportunities(Str text, Vec<int>* out);
 
 // The shaped width of `text` on its own, as the caller's font measures it.
