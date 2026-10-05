@@ -14,6 +14,13 @@ bool SysAudioInputAvailable() {
     return false;
 }
 
+bool SysAudioInputDeviceName(char* out, int cap) {
+    if (out && cap > 0) {
+        out[0] = 0;
+    }
+    return false;
+}
+
 AudioInputStream* SysAudioInputStart(const AudioInputCallbacks&, uint32_t*,
                                      AudioInputError* error, char* message,
                                      int messageCap) {

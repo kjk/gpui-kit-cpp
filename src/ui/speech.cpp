@@ -287,6 +287,14 @@ bool Microphone::IsSupported() {
     return SysAudioInputAvailable();
 }
 
+TempStr Microphone::DeviceNameTemp() {
+    char name[256];
+    if (!SysAudioInputDeviceName(name, (int)sizeof(name))) {
+        return {};
+    }
+    return StrDupTemp(Str(name));
+}
+
 AudioInput Microphone::Input() {
     AudioInput input;
     input.start = &MicStart;

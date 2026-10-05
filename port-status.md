@@ -119,7 +119,20 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   The WASAPI capture was run end to end; the Windows recognizer, the macOS
   halves and ALSA capture compile and pass their unit tests but have not
   been run against a speech pack, a granted microphone or a sound card.
-  `examples/speech` is not ported.
+- **`examples/speech` asks the tree for what Rust asks cpal and Cargo.** The
+  input device's name comes from `Microphone::DeviceNameTemp()`
+  (`SysAudioInputDeviceName`), which Rust's `Microphone` does not have: the
+  Rust example calls cpal itself, and an example here names no audio API. On
+  ALSA that name is `default`. The three extra icons are files under
+  `assets/speech/icons` rather than embedded, the usage descriptions are
+  `examples/speech_Info.plist`, linked into the macOS binary by
+  `cmd/build.ts` where Rust has a `build.rs`, and the demo recognizer is
+  `examples/speech_demo.h` so `tests/SpeechDemoTests.cpp` can reach it. The
+  window has no minimum size (Rust: 760 × 520) because no window here has
+  one. `speech --check` prints to stdout, which a Windows GUI build only has
+  when its output is piped or redirected. The example was run on Windows
+  with no input device and no speech pack, so a whole dictation — demo or
+  system — has not been seen end to end.
 - **A TextView follows the text color named on it, not an ancestor's.**
   Rust's view reads `window.text_style().color`, which a `Bubble` or any
   other container has pushed by the time the view prepaints. The tree here

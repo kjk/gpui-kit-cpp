@@ -797,6 +797,7 @@ const rustExamplePkgs = new Set([
   "input",
   "markdown_table",
   "sidebar",
+  "speech",
   "system_monitor",
   "table_in_scrollable",
   "text_selection",

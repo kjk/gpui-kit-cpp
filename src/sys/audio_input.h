@@ -54,6 +54,11 @@ struct AudioInputStream;
 // Whether this build can capture at all. False is not an error.
 bool SysAudioInputAvailable();
 
+// The default input device's name, NUL-terminated into `out`; false when
+// there is no input device or this build cannot capture. What cpal's
+// `default_input_device().name()` answers.
+bool SysAudioInputDeviceName(char* out, int cap);
+
 // Open the default input device and start capturing. Answers null and fills
 // `error` (and `message`, NUL-terminated, for Failed) when it cannot.
 // `sampleRate` receives the rate the samples arrive at.

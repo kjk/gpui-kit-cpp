@@ -70,6 +70,15 @@ bool SysAudioInputAvailable() {
     return true;
 }
 
+// cpal's ALSA host names its default device after the PCM it opens.
+bool SysAudioInputDeviceName(char* out, int cap) {
+    if (!out || cap <= 0) {
+        return false;
+    }
+    snprintf(out, (size_t)cap, "default");
+    return true;
+}
+
 static void SetMessage(char* message, int cap, const char* text) {
     if (!message || cap <= 0) {
         return;
@@ -172,6 +181,13 @@ void SysAudioInputStop(AudioInputStream* s) {
 namespace gpui {
 
 bool SysAudioInputAvailable() {
+    return false;
+}
+
+bool SysAudioInputDeviceName(char* out, int cap) {
+    if (out && cap > 0) {
+        out[0] = 0;
+    }
     return false;
 }
 

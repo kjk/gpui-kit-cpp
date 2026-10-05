@@ -227,6 +227,59 @@ bool SysAudioInputAvailable() {
     return true;
 }
 
+// PKEY_Device_FriendlyName, spelled out: functiondiscoverykeys_devpkey.h
+// only defines it under INITGUID.
+static const PROPERTYKEY kDeviceFriendlyName = {
+    {0xa45c254e,
+     0xdf1c,
+     0x4efd,
+     {0x80, 0x20, 0x67, 0xd1, 0x46, 0xa8, 0x50, 0xe0}},
+    14};
+
+bool SysAudioInputDeviceName(char* out, int cap) {
+    if (!out || cap <= 0) {
+        return false;
+    }
+    out[0] = 0;
+    // The caller's thread, whose apartment is whatever the window made it;
+    // a mode that differs is not a failure to read a property through.
+    HRESULT coInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IMMDeviceEnumerator* enumerator = nullptr;
+    IMMDevice* device = nullptr;
+    IPropertyStore* props = nullptr;
+    HRESULT hr =
+        CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                         __uuidof(IMMDeviceEnumerator), (void**)&enumerator);
+    if (SUCCEEDED(hr)) {
+        hr = enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &device);
+    }
+    bool found = SUCCEEDED(hr);
+    if (found) {
+        PROPVARIANT value;
+        PropVariantInit(&value);
+        if (SUCCEEDED(device->OpenPropertyStore(STGM_READ, &props)) &&
+            SUCCEEDED(props->GetValue(kDeviceFriendlyName, &value)) &&
+            value.vt == VT_LPWSTR && value.pwszVal) {
+            if (WideCharToMultiByte(CP_UTF8, 0, value.pwszVal, -1, out, cap,
+                                    nullptr, nullptr) <= 0) {
+                out[0] = 0;
+            }
+        }
+        PropVariantClear(&value);
+        if (!out[0]) {
+            // `.unwrap_or_else(|_| "Unnamed device".into())`.
+            strncpy_s(out, (size_t)cap, "Unnamed device", _TRUNCATE);
+        }
+    }
+    if (props) props->Release();
+    if (device) device->Release();
+    if (enumerator) enumerator->Release();
+    if (SUCCEEDED(coInit)) {
+        CoUninitialize();
+    }
+    return found;
+}
+
 AudioInputStream* SysAudioInputStart(const AudioInputCallbacks& callbacks,
                                      uint32_t* sampleRate,
                                      AudioInputError* error, char* message,

@@ -203,6 +203,10 @@ struct Microphone {
     // Whether this build can capture from a device at all: false in the
     // browser and on a Linux build without ALSA.
     static bool IsSupported();
+    // The default input device's name, or an empty string when there is
+    // none. Not in Rust's Microphone: examples/speech asks cpal itself, and
+    // an example here names no audio API.
+    static TempStr DeviceNameTemp();
     // The AudioInput to hand SpeechState::Input. It carries no state of its
     // own, so it outlives whatever it is given to.
     static AudioInput Input();

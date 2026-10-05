@@ -207,6 +207,7 @@ export const simpleExamples = [
   "brush",
   "editor",
   "webview",
+  "speech",
 ];
 
 /** A directory of .cpp built as one binary. */
@@ -1690,6 +1691,12 @@ function link(
   if (tc.plat === "mac") {
     for (const fw of macFrameworks) {
       ldflags.push("-framework", fw);
+    }
+    // examples/speech's build.rs: macOS reads the microphone and speech
+    // recognition usage descriptions from the binary's __info_plist section,
+    // and refuses access without asking when they are missing.
+    if (name === "speech") {
+      ldflags.push("-Wl,-sectcreate,__TEXT,__info_plist,examples/speech_Info.plist");
     }
   } else {
     ldflags.push(...linuxDeps(fail).libs, "-lm", "-lpthread");
