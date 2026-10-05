@@ -1103,6 +1103,8 @@ static void TestMarkdownTableThemeTokens() {
     utassert(installed.style.tableHeadFields != 0);
     Str source = StrL("| head | other |\n|---|---|\n| body | value |\n");
 
+    // This structural test inspects refinements before layout applies them.
+    installed.WithInheritTextColor(false).Install(&app);
     for (int scroll = 0; scroll < 2; scroll++) {
         El* rendered =
             TextView::New(&cx, source)->TableScroll(scroll != 0)->IntoEl();
@@ -1465,8 +1467,7 @@ static void TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt() {
 
 // text_view.rs text_view_follows_the_text_color_of_its_container. Rust's
 // view reads the color its container pushed on the window's text style; the
-// tree here is built child first, so the container's color is the one named
-// on the view (TextViewDefaults::WithInheritTextColor).
+// view resolves the ancestor color during layout, without a view refinement.
 struct FollowsTextColorRoot {
     Entity<gpui::TextViewState> inherited = {};
     Entity<gpui::TextViewState> explicitStyle = {};
@@ -1481,7 +1482,6 @@ struct FollowsTextColorRoot {
             ->Child(Div(cx->a)
                         ->Fg(self->surfaceText)
                         ->Child(gpui::TextView::New(cx, self->inherited)
-                                    ->Refine(color, StyleFieldColor)
                                     ->IntoEl())
                         ->Child(gpui::TextView::New(cx, self->explicitStyle)
                                     ->Refine(color, StyleFieldColor)
@@ -1535,6 +1535,31 @@ static void TestHighlighter(void* data, const CodeBlock* block, Arena* a,
     span.end = block->Code().len;
     span.color = RgbaHex(0x3366ff);
     out->Append(a, span);
+}
+
+static void InheritedInvertedColorSuppressesTheDefaultHighlighter() {
+    App* app = TestAppNew();
+    TextViewDefaults::New()
+        .WithStyle(TextViewStyle::Default())
+        .WithInheritTextColor(true)
+        .WithCodeBlockHighlighter(&TestHighlighter)
+        .Install(app);
+    auto root = EntityNew<FollowsTextColorRoot>(app);
+    auto* view = root.Get(app);
+    view->inherited = gpui::TextViewState::Markdown(app, StrL("```cpp\nint x;\n```"));
+    view->explicitStyle = gpui::TextViewState::Markdown(app, StrL("plain"));
+    view->surfaceText = ColorTokens::Light().primaryForeground;
+    gTestHighlighterCalls = 0;
+    Window* win = TestWindowOpen(app, root);
+    TestRunUntilParked(app);
+    TestDraw(win);
+    utassert(gTestHighlighterCalls == 0);
+    view->surfaceText = ColorTokens::Light().foreground;
+    TestDraw(win);
+    utassert(gTestHighlighterCalls > 0);
+    utassert(SameTextViewColor(view->inherited.Get(app)->textViewStyle.foreground,
+                               view->surfaceText));
+    TestAppFree(app);
 }
 
 static void TestTextViewDefaultsAndOptInHighlighting() {
@@ -1732,6 +1757,11 @@ static void TestMarkdownInlinePlugin() {
         TextView::New(&cx, StrL("before **[$x$](https://example.com)** after"))
             ->MarkdownExtensionsSet(extensions)
             ->IntoEl();
+    if (root->lifecycle && root->lifecycle->prepareStyle) {
+        root->lifecycle->prepareStyle(&win->paint, root,
+                                      RuntimeStyleNow(&app).foreground,
+                                      root->lifecycle->user);
+    }
     utassert(FindTextViewElement(root, "formula") != nullptr);
     utassert(gInlineParses >= 1 && gInlineRenders == 1);
     utassert(gInlineInheritedBold && gInlineInheritedLink);
@@ -1907,7 +1937,8 @@ static void HeadingRefinementChangesRenderedHeadingGeometry() {
     Ctx cx = {&app, win, a, {}};
     TextViewStyle custom = TextViewStyle::Default();
     custom.WithHeading(&HeadingOnePadded);
-    El* defaultH1 = TextView::New(&cx, StrL("# Heading"))->IntoEl();
+    El* defaultH1 = TextView::New(&cx, StrL("# Heading"))
+                        ->Style(TextViewDefaults::Global(&app).style)->IntoEl();
     El* customH1 =
         TextView::New(&cx, StrL("# Heading"))->Style(custom)->IntoEl();
     El* customH2 =
@@ -2949,6 +2980,38 @@ static void TestSourceRangeOverPaintedRuns() {
     ArenaDelete(a);
 }
 
+static void PaintedImageMappingIncludesSelectedRunBoundaries() {
+    PaintCtx paint;
+    EntityId owner{7, 1};
+    SelBlock block;
+    SelSource source;
+    source.block = &block;
+    SourceSegment segments[3] = {{0, 2, 0, 2}, {0, 1, 2, 12}, {0, 2, 12, 14}};
+    SelSourceMap maps[3];
+    for (int i = 0; i < 3; i++) {
+        segments[i].linear = i != 1;
+        maps[i].segments = &segments[i];
+        maps[i].count = 1;
+        maps[i].atomic = i == 1;
+        TextHit hit;
+        hit.owner = owner;
+        hit.src = &source;
+        hit.map = &maps[i];
+        hit.atom = i == 1;
+        hit.text = i == 1 ? Str{} : StrL("ab");
+        hit.docOff = i == 0 ? 0 : i == 1 ? 3 : 5;
+        VecAppend(paint.texts, hit);
+    }
+    Span range;
+    utassert(TextHitsSourceRange(&paint, 0, 2, 0, owner).IntoRange(&range));
+    utassert(range.start == 0 && range.end == 12);
+    utassert(TextHitsSourceRange(&paint, 7, 5, 0, owner).IntoRange(&range));
+    utassert(range.start == 2 && range.end == 14);
+    utassert(TextHitsSourceRange(&paint, 0, 1, 0, owner).IntoRange(&range));
+    utassert(range.start == 0 && range.end == 1);
+    VecReset(paint.texts);
+}
+
 // selected_source_range_returns_full_markdown_source_for_select_all,
 // selected_source_range_returns_none_for_html.
 static void TestSourceRangeSelectAllAndHtml() {
@@ -3844,7 +3907,7 @@ static void ClearRangeHighlightsRemovesThem() {
 // state.rs `mod reveal_range` and range_highlight.rs. Rust drives a window
 // through TestAppContext and reads where lists scrolled; the frame here marks
 // the text the reveal starts in, paint reports where that text landed, and
-// the next frame reads the report. The tests hand the report in themselves.
+// the root consumes the report in that same paint. These tests hand it in.
 
 static Span RhRangeOf(RhView* v, const char* needle) {
     Str text = RhState(v)->RenderedText().AsStr();
@@ -3864,6 +3927,20 @@ static El* RevealMarked(El* e, const Bounds* out) {
 
 static El* RhRenderScrollable(RhView* v) {
     return gpui::TextView::New(&v->cx, v->state)->Scrollable()->IntoEl();
+}
+
+// Hand the current paint report to the root's lifecycle, with its live mask.
+static void RhRevealReport(RhView* v, El* root, Bounds line, Bounds mask,
+                           float contentH = 0) {
+    RhState(v)->reveal.line = line;
+    root->h = mask.h;
+    root->contentH = contentH;
+    PaintCtx paint;
+    paint.app = &v->app;
+    paint.window = v->win;
+    paint.hitMask = mask;
+    paint.hasHitMask = true;
+    root->lifecycle->afterPaint(&paint, root, root->lifecycle->user);
 }
 
 // The scroll box a scrollable view puts its document in, the way
@@ -3963,13 +4040,13 @@ static void AScrollableViewScrollsToItsLine() {
     viewport.contentH = 5000;
     VecAppend(v.win->prevScrolls, viewport);
     // Painted below the viewport: the least scroll that shows it.
-    s->reveal.line = {10, 2000, 20, 20};
-    RhRenderScrollable(&v);
+    root = RhRenderScrollable(&v);
+    RhRevealReport(&v, root, {10, 2000, 20, 20}, {0, 0, 200, 100}, 5000);
     utassertnear(s->scrollY, 1920.f);
     utassert(s->reveal.pending && s->reveal.attempts == 1);
     // Painted inside it: shown, and nothing moves.
-    s->reveal.line = {10, 80, 20, 20};
-    RhRenderScrollable(&v);
+    root = RhRenderScrollable(&v);
+    RhRevealReport(&v, root, {10, 80, 20, 20}, {0, 0, 200, 100}, 5000);
     utassert(!s->reveal.pending);
     utassertnear(s->scrollY, 1920.f);
     VecReset(v.win->prevScrolls);
@@ -4004,10 +4081,11 @@ static void OnRevealHearsAHiddenLine() {
     around.contentH = 400;
     VecAppend(v.win->prevScrolls, around);
     s->reveal.view = {10, 0, 200, 400};
-    s->reveal.line = {10, 300, 20, 20};
-    gpui::TextView::New(&v.cx, v.state)
+    El* root = gpui::TextView::New(&v.cx, v.state)
         ->OnReveal(ListenTo(probe, &RevealProbe::OnReveal))
         ->IntoEl();
+    utassert(gRevealCalls == 0);
+    RhRevealReport(&v, root, {10, 300, 20, 20}, {0, 0, 300, 100});
     utassert(gRevealCalls == 1 && gRevealLine.y == 300.f);
     utassert(s->reveal.pending);
     VecReset(v.win->prevScrolls);
@@ -4023,8 +4101,8 @@ static void ARevealGivesUp() {
     // Hidden frame after frame, with nothing to scroll.
     utassert(s->RevealRange(RhRangeOf(&v, "two"), &v.app, v.win).IsOk());
     for (int i = 0; i < 10 && s->reveal.pending; i++) {
-        RhRender(&v);
-        s->reveal.line = {0, 5000, 10, 10};
+        El* root = gpui::TextView::New(&v.cx, v.state)->IntoEl();
+        RhRevealReport(&v, root, {0, 5000, 10, 10}, {0, 0, 200, 100});
     }
     utassert(!s->reveal.pending);
     // Not carried out within a second.
@@ -4206,9 +4284,8 @@ struct TswRoot {
                     view->MaxLines(2);
                 }
                 view->OnReveal(Listen(cx, &TswRoot::OnReveal));
-                // The view first: on_reveal runs while it is built, and the
-                // offset it set is the one this frame lays out with, as the
-                // handle Rust's set_offset moves is read at layout.
+                // OnReveal observes this frame's painted line; the updated
+                // offset is read by the following layout.
                 El* text = view->IntoEl();
                 El* scroll = Div(a)
                                  ->PathId(StrL("scroll"))
@@ -4920,6 +4997,68 @@ static bool ParseMention(const markdown::Node* source,
     *out = MarkdownNode::New(context->Copy(StrL("mention")))
                .Text(context->Copy(Str(mention->label)));
     return true;
+}
+
+struct ParserScheduleProbe {
+    bool ranInBackground = false;
+};
+
+static bool ProbeParserSchedule(const markdown::Node*,
+                                 const MarkdownParseContext*, void* data,
+                                 MarkdownNode*) {
+    if (!ExecOnMainThread()) ((ParserScheduleProbe*)data)->ranInBackground = true;
+    return false;
+}
+
+static void ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates() {
+    App* app = TestAppNew();
+    auto state = gpui::TextViewState::Markdown(app, StrL("first"));
+    ParserScheduleProbe probe;
+    Arena* frame = ArenaNew();
+    MarkdownPlugin plugin;
+    plugin.name = StrDup(frame, StrL("schedule"));
+    plugin.parse = &ProbeParserSchedule;
+    plugin.renderInline = &RenderInlineMath;
+    plugin.data = &probe;
+    MarkdownExtensions extensions;
+    extensions.Plugin(frame, plugin);
+    Ctx cx = {app, nullptr, frame, {}};
+    gpui::TextView::New(&cx, state)->MarkdownExtensionsSet(extensions)->IntoEl();
+    ArenaDelete(frame);
+    TestRunUntilParked(app);
+
+    auto* managed = state.Get(app);
+    managed->PushStr(StrL(" tail"), app);
+    utassert(managed->parseFlight != nullptr);
+    utassert(StrEq(managed->Source(), StrL("first")));
+    TestRunUntilParked(app);
+    utassert(probe.ranInBackground);
+    utassert(StrEq(managed->Source(), StrL("first tail")));
+
+    probe.ranInBackground = false;
+    StrBuilder large;
+    for (int i = 0; i <= kMaxSyncFullReplaceBytes; i++) large.AppendChar('x');
+    managed->SetText(Str(large.els, len(large)), app);
+    utassert(managed->parseFlight != nullptr);
+    TestRunUntilParked(app);
+    utassert(probe.ranInBackground);
+    utassert(StrEq(managed->Source(), Str(large.els, len(large))));
+    TestAppFree(app);
+}
+
+static void SelectAllFollowsAnAppendedParse() {
+    TswView v = TswOpen("**quick**", TswContainer::Window);
+    v.State()->SelectAll(v.win, v.app);
+    v.State()->PushStr(StrL(" value"), v.app, v.win);
+    TestRunUntilParked(v.app);
+    TswFlush(v);
+    utassert(TswSelectedTextIs(v, "quick value"));
+    Span range;
+    utassert(v.State()->SelectedSourceRange(v.win, &range));
+    utassert(range.start == 0 && range.end == 15);
+    v.State()->SetSelectionFormat(gpui::SelectionFormat::Source, v.app, v.win);
+    utassert(TswSelectedTextIs(v, "**quick** value"));
+    TswClose(&v);
 }
 
 // state.rs parser_revision_reparses_same_name_inline_configuration
@@ -6377,6 +6516,8 @@ static void TestTextStateWindow() {
     SetTextThenPushStrAppendsToReplacedContent();
     SelectAllReturnsRenderedText();
     SelectAllInSourceFormatReturnsSource();
+    ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates();
+    SelectAllFollowsAnAppendedParse();
     ParserRevisionReparsesSameNameInlineConfiguration();
     SetMarkdownExtensionsReparsesExistingText();
     SourceRenderingNothingConvertsToNone();
@@ -6480,6 +6621,7 @@ void TestTextView() {
     TextColorOfAnInvertedSurfaceDerivesEveryColorFromIt();
     TextViewFollowsTheTextColorOfItsContainer();
     TestTextViewDefaultsAndOptInHighlighting();
+    InheritedInvertedColorSuppressesTheDefaultHighlighter();
     TestTextViewRootNamesItsForeground();
     TestMarkdownExtensionsParserConfiguration(a);
     TestMarkdownFrontmatter();
@@ -6522,6 +6664,7 @@ void TestTextView() {
     TestSourceRangeSoftBreaks();
     TestSourceRangeAfterAppend();
     TestSourceRangeOverPaintedRuns();
+    PaintedImageMappingIncludesSelectedRunBoundaries();
     TestSourceRangeSelectAllAndHtml();
 #endif
 #if !GPUI_MARKDOWN_MINI

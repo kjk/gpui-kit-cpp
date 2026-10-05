@@ -64,22 +64,18 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   Enter and Tab. X11 marks the press after a dropped auto-repeat release as
   held, where Zed's X11 client drops the same release but reports every
   press as fresh (`KeyDownFlags`, `src/gpui/platform.h`).
-- **A TextView's parser plugins are the view's, so it parses as it
-  renders.** Parsing follows state.rs: a small replacement parses at once,
-  a larger one and an append parse on the background executor while the
-  last document stays up, and an append parses its last block again and
-  keeps the rest (`tail_only`). But markdown extensions are set on the
-  `TextView` each frame rather than on the state, and a plugin takes a
-  `Ctx`, so a view with a parser plugin parses on the UI thread when it
-  renders, and a state parses with the parser flags its view last rendered
-  with. Updates that arrive during a parse are taken up when it lands
-  rather than merged by `MAX_COALESCED_UPDATES_PER_PARSE`; a parse cannot
-  fail, so there is no `parsed_error` (state.rs
-  `set_text_extending_after_a_parse_error_parses_it_again` is not ported);
-  and a streamed fade starts on the first frame that shows it.
-  `RenderedText`'s text, source and `RangeForSource` read the view's index
-  (Rust's snapshot holds the parsed document), so read and convert through
-  a fresh snapshot and only compare old ones (`src/base/text.cpp`).
+- **TextView parser callback payloads are caller-owned.** Parser tables and
+  renderer names are copied out of frame storage into state and parse-job
+  arenas; callback payloads must outlive outstanding jobs and be safe to read
+  on the executor. The legacy `MdPlugin` hook takes a `Ctx` and remains a
+  render-time block replacement; Markdown parser plugins run on the background
+  executor for appends and large replacements. Updates arriving during a parse
+  are taken up when it lands rather than bounded by
+  `MAX_COALESCED_UPDATES_PER_PARSE`; a parse cannot fail, so there is no
+  `parsed_error`, and streamed fades start on the first frame that shows them.
+  `RenderedText` reads the view's index rather than retaining the parsed
+  document: read and convert through a fresh snapshot, only compare old ones
+  (`src/base/text.cpp`).
 - **Measured soft wrap probes cached character widths first.** Line-break
   opportunities come from the full `unicode-linebreak` 0.1.5 port (Unicode
   15.0), matching Rust. `MeasuredWrapBoundaries` starts each row's search
@@ -128,41 +124,23 @@ is `4c7f1350331562436df868c55ac33bebc4c6406c`.
   when its output is piped or redirected. The example was run on Windows
   with no input device and no speech pack, so a whole dictation — demo or
   system — has not been seen end to end.
-- **A TextView follows the text color named on it, not an ancestor's.**
-  Rust's view reads `window.text_style().color`, which a `Bubble` or any
-  other container has pushed by the time the view prepaints. The tree here
-  is built child first and inherits its text color at layout, so with
-  `TextViewDefaults::WithInheritTextColor` the color a view adapts to is its
-  own (`TextView::Refine(style, StyleFieldColor)`); a container that fills
-  its surface has to hand its text color to the view it holds.
 - **A TextView's scroll layouts are flags, not `overflow` on a refinement.**
   Rust opts a table into horizontal scrolling with `overflow.x: Scroll` on
   `style.table` and a code block into vertical scrolling with `overflow.y:
 Scroll` on `style.code_block`. A refinement here names no overflow field,
   so they are `TextView::TableScroll()` and `TextView::CodeBlockScroll()`;
   the max height still comes from the `code_block` refinement.
-- **`reveal_range` reads back last frame's paint.** Rust's `Inline` asks the
-  enclosing `gpui::list` to autoscroll during prepaint and checks the line
-  against the content mask. Here the view marks the text the range starts in
-  (`El::RangeOut`, a whole block through `BoundsOut`), and the next frame
-  reads where it was painted: a scrollable view scrolls its own offset the
-  least that shows it, and anything else asks for it through
-  `WindowRequestAutoscroll`, which a `VirtualList` with a scroll handle takes
-  after binding its rows, and calls `OnReveal`. The request is that last
-  frame's box, so the list reads it against where its content was then.
-  Visibility for a fit-content view is the window cut down to the scroll
-  boxes last frame painted around the view, which is what this runtime can
-  read back of the clip. The handler runs while the view is built, so a
-  container following a fit-content view through `OnReveal` reads its offset
-  after building it.
-- **`selected_source_range` reads the window's painted runs.** Rust walks
-  each inline state's selection; here the selection is the window's, so the
-  view maps the runs it painted, which takes an inline image in whenever the
-  selection covers its place in the document order rather than by Rust's
-  run-boundary rule (`MdSelectedSourceRange` keeps Rust's rule for the parsed
-  tree). `select_all` is the selection `SelectAll` made, for as long as the
-  window still holds it. Under `-markdown=mini` the parser keeps no
-  positions, so the answer is always None (`src/base/text.cpp`).
+- **TextView reveal scrolling settles on the following layout.** The root
+  checks the current frame's line against the active content mask and invokes
+  `OnReveal` during that paint. Its own scroll offset, or an enclosing
+  VirtualList's scroll handle, is updated then and laid out on the next frame;
+  Rust can scroll and prepaint the line again within the same frame
+  (`src/base/text.cpp`, `src/base/virtual_list.cpp`).
+- **TextView selection mapping uses painted runs.** The window owns selection
+  rather than each parsed inline node. Source mapping includes images when a
+  selected run reaches their boundary, and Select All follows committed
+  appends until the selection moves. Under `-markdown=mini` the parser keeps
+  no positions, so source mapping is unavailable (`src/base/text.cpp`).
 - **The window's selection of painted text needs no layer.** A participant
   registers only while a `TextSelectionLayer` is rendering, as Rust's
   `WindowSelectionState::existing` asks, but the selection of the runs the

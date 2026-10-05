@@ -591,6 +591,7 @@ static void TextViewParseDetach(TextViewParseJob* job);
 static void TextViewBaselineDetach(TextViewState* s);
 
 TextViewState::~TextViewState() {
+    ArenaDelete(parserArena);
     StrFree(text);
     RenderedIndexFree(renderedIndex);
     RangeHighlightFrameFree(rangeHighlights);
@@ -633,6 +634,8 @@ void TextViewState::Changed(App* app, Window* window,
     if (!selectionCompatible) {
         selectionRevision++;
         WindowSelectionClear(window);
+        selectAllAnchor = -1;
+        selectAllCursor = -1;
     }
     if (app && self.IsValid()) NotifyEntity(app, self, window);
 }
@@ -712,6 +715,16 @@ void TextViewState::SetSelectionFormat(gpui::SelectionFormat value, App* app,
 }
 
 int TextViewState::SelectedText(Window* window, char* out, int cap) const {
+    const WindowSelection* selection = window ? window->sel : nullptr;
+    if (format == TextViewFormat::Markdown && selectionFormat == SelectionFormat::Source &&
+        out && cap > 0 && selection && selectAllAnchor >= 0 &&
+        selection->anchor == selectAllAnchor && selection->cursor == selectAllCursor) {
+        Str selected = Source();
+        int n = std::min(len(selected), cap - 1);
+        if (n > 0) memcpy(out, selected.s, (size_t)n);
+        out[n] = 0;
+        return n;
+    }
     return WindowSelectionTextForEntity(window, self, out, cap,
                                         format == TextViewFormat::Html
                                             ? gpui::SelectionFormat::Plain
@@ -907,7 +920,28 @@ SourceRangeSelection TextHitsSourceRange(const PaintCtx* ctx, int selA,
         }
         const SelSourceMap* map = hit.map;
         if (hit.atom) {
-            if (a < hit.docOff + 1 && b > hit.docOff) {
+            // Images have no rendered bytes. They join the source range
+            // when a selected text run reaches their boundary, even if the
+            // window selection stops before the image's ordering slot.
+            bool reached = false;
+            for (int direction = -1; direction <= 1; direction += 2) {
+                int at = i + direction;
+                while (at >= 0 && at < len(ctx->texts)) {
+                    const TextHit& adjacent = ctx->texts[at];
+                    if (adjacent.owner != owner || adjacent.scope != scope ||
+                        !hit.src || !adjacent.src ||
+                        adjacent.src->block != hit.src->block) break;
+                    if (!adjacent.atom) {
+                        int end = adjacent.docOff + len(adjacent.text);
+                        reached |= direction < 0
+                                       ? a < end && b >= end
+                                       : a <= adjacent.docOff && b > adjacent.docOff;
+                        break;
+                    }
+                    at += direction;
+                }
+            }
+            if (reached) {
                 selected.Merge(WholeOf(map->segments, map->count));
             }
             continue;
@@ -942,7 +976,7 @@ bool TextViewState::SelectedSourceRange(const Window* window, Span* out) const {
     if (selectAllAnchor >= 0 && s->anchor == selectAllAnchor &&
         s->cursor == selectAllCursor) {
         out->start = 0;
-        out->end = len(text);
+        out->end = len(Source());
         return true;
     }
     return TextHitsSourceRange(&window->paint, s->anchor, s->cursor, s->scope,
@@ -4950,7 +4984,30 @@ struct TextViewParseJob {
     App* app = nullptr;
     Arena* arena = nullptr;
     MdNode* doc = nullptr;
+    Arena* parserArena = nullptr;
+    MarkdownExtensions extensions = {};
 };
+
+static MarkdownExtensions CopyParserExtensions(Arena* a,
+                                                const MarkdownExtensions& src) {
+    MarkdownExtensions copy;
+    copy.enableFrontmatter = src.enableFrontmatter;
+    copy.enableMdx = src.enableMdx;
+    copy.parserRevision = src.parserRevision;
+    for (const auto& parser : src.blockParsers) copy.blockParsers.Append(a, parser);
+    for (const auto& parser : src.inlineParsers) copy.inlineParsers.Append(a, parser);
+    // The renderer names are part of parser configuration identity. No
+    // renderer is called by parsing, but keep its name outside the frame.
+    for (auto renderer : src.blockRenderers) {
+        renderer.name = StrDup(a, renderer.name);
+        copy.blockRenderers.Append(a, renderer);
+    }
+    for (auto renderer : src.inlineRenderers) {
+        renderer.name = StrDup(a, renderer.name);
+        copy.inlineRenderers.Append(a, renderer);
+    }
+    return copy;
+}
 
 // parse_content: markdown from `from` on with its spans measured in all of
 // `source`, or the HTML from `from` on (HTML blocks carry no spans, so an
@@ -4971,12 +5028,10 @@ static void TextViewParseDetach(TextViewParseJob* job) {
 
 static void TextViewParseWork(TextViewParseJob* job) {
     job->arena = ArenaNew();
-    // Only the flags: a view with a parser plugin parses on the UI thread.
-    MarkdownExtensions flags;
-    flags.enableFrontmatter = job->frontmatter;
-    flags.enableMdx = job->mdx;
     job->doc = TextViewParseSource(job->arena, job->source, job->from,
-                                   job->html, &flags);
+                                   job->html, &job->extensions);
+    ArenaDelete(job->parserArena);
+    job->parserArena = nullptr;
 }
 
 // What an update parses: the text from where an append parses again, or
@@ -5103,6 +5158,10 @@ void TextViewState::StartParse(App* app, Window* window,
     (void)window;
     bool html = format == TextViewFormat::Html;
     if (extensions && !html) {
+        Arena* next = ArenaNew();
+        parserExtensions = CopyParserExtensions(next, *extensions);
+        ArenaDelete(parserArena);
+        parserArena = next;
         parserFingerprint = extensions->ParserFingerprint();
         parserFrontmatter = extensions->enableFrontmatter;
         parserMdx = extensions->enableMdx;
@@ -5124,21 +5183,11 @@ void TextViewState::StartParse(App* app, Window* window,
     // started one -- the parse happens here.
     bool sync = (!append && len(text) <= kMaxSyncFullReplaceBytes) ||
                 !ExecOnMainThread() || now;
-    if (parserPlugins && !html) {
-        // A plugin parses with the view's own registrations, on this thread.
-        if (!extensions) {
-            return;
-        }
-        sync = true;
-    }
     if (sync) {
         Arena* arena = ArenaNew();
         Str source = StrDup(text);
-        MarkdownExtensions flags;
-        flags.enableFrontmatter = parserFrontmatter;
-        flags.enableMdx = parserMdx;
         MdNode* doc = TextViewParseSource(arena, source, from, html,
-                                          extensions ? extensions : &flags);
+                                          &parserExtensions);
         TextViewCommit(this, app, arena, doc, source, append, from,
                        updateRevision, fingerprint, kFadeAtFirstFrame);
         if (!append && app && self.IsValid()) {
@@ -5164,6 +5213,8 @@ void TextViewState::StartParse(App* app, Window* window,
     job->mdx = parserMdx;
     job->fingerprint = fingerprint;
     job->revision = updateRevision;
+    job->parserArena = ArenaNew();
+    job->extensions = CopyParserExtensions(job->parserArena, parserExtensions);
     parseFlight = job;
     if (!ExecSpawn(MkFunc0(&TextViewParseWork, job),
                    MkFunc0(&TextViewState::ParseLanded, job))) {
@@ -5174,6 +5225,7 @@ void TextViewState::StartParse(App* app, Window* window,
 }
 
 static void TextViewParseJobDiscard(TextViewParseJob* job) {
+    ArenaDelete(job->parserArena);
     if (job->arena) ArenaDelete(job->arena);
     StrFree(job->source);
     delete job;
@@ -5190,7 +5242,8 @@ static void TextViewParseJobDiscard(TextViewParseJob* job) {
 // committed, is discarded.
 void TextViewState::CommitParsedUpdate(TextViewParseJob* job) {
     TextViewState* s = job->state;
-    if (job->revision < s->fullUpdateRevision ||
+    if (job->fingerprint != (s->format == TextViewFormat::Html ? 0 : s->parserFingerprint) ||
+        job->revision < s->fullUpdateRevision ||
         job->revision <= s->committedRevision) {
         TextViewParseJobDiscard(job);
         return;
@@ -5237,6 +5290,8 @@ TextViewParseJob* TextViewParseNowForTest(TextViewState* s, App* app) {
     job->mdx = s->parserMdx;
     job->fingerprint = fingerprint;
     job->revision = s->updateRevision;
+    job->parserArena = ArenaNew();
+    job->extensions = CopyParserExtensions(job->parserArena, s->parserExtensions);
     TextViewParseWork(job);
     return job;
 }
@@ -5460,96 +5515,66 @@ static uint32_t TextViewScrollKey(Entity<TextViewState> state) {
 
 void TextView::RevealFrame(TextViewState* managed) {
     TextViewReveal& reveal = managed->reveal;
-    if (!reveal.pending) {
-        return;
-    }
-    // Last frame's report: where the line was painted, after any scroll.
-    bool laidOut = reveal.line.w > 0 || reveal.line.h > 0;
-    if (laidOut && cx->win) {
-        const ScrollRect* viewport =
-            scrollable
-                ? WindowLastScrollRect(cx->win, (int)TextViewScrollKey(state))
-                : nullptr;
-        // A scrollable view shows what its viewport does. Anything else is
-        // judged against the window cut down to the scroll boxes last frame
-        // painted around the view: Rust asks the content mask, which this
-        // runtime keeps only while it paints.
-        WinSize winSize = WindowSize(cx->win);
-        Bounds visible = viewport ? viewport->bounds
-                                  : Bounds{0, 0, winSize.dipW, winSize.dipH};
-        const Bounds& view = reveal.view;
-        for (int i = 0; !viewport && view.w > 0 && i < cx->win->prevScrolls.len;
-             i++) {
-            const ScrollRect& scroll = cx->win->prevScrolls[i];
-            Bounds box = scroll.bounds;
-            // A box around the view spans it sideways, overlaps it, and
-            // scrolls content at least as tall as the view — which a scroll
-            // box inside the view, a table's, does not.
-            bool around = box.x <= view.x + 0.5f &&
-                          box.x + box.w >= view.x + view.w - 0.5f &&
-                          box.y < view.y + view.h && box.y + box.h > view.y &&
-                          scroll.contentH + 0.5f >= view.h;
-            if (!around) {
-                continue;
-            }
-            float left = std::max(visible.x, box.x);
-            float topEdge = std::max(visible.y, box.y);
-            float right = std::min(visible.x + visible.w, box.x + box.w);
-            float bottomEdge = std::min(visible.y + visible.h, box.y + box.h);
-            visible = {left, topEdge, std::max(right - left, 0.f),
-                       std::max(bottomEdge - topEdge, 0.f)};
-        }
-        float top = visible.y - 0.5f;
-        float bottom = visible.y + visible.h + 0.5f;
-        Bounds line = reveal.line;
-        bool shown = reveal.block
-                         // A block is shown once any of it is: a whole block
-                         // off screen is scrolled to, one in view left alone.
-                         ? !(line.y + line.h <= top || line.y >= bottom)
-                         : line.y >= top && line.y + line.h <= bottom;
-        if (shown) {
-            reveal.pending = false;
-        } else {
-            reveal.attempts++;
-            if (viewport) {
-                // The least scroll that brings the line in.
-                float y = managed->scrollY;
-                if (line.y < visible.y) {
-                    y -= visible.y - line.y;
-                } else if (line.y + line.h > visible.y + visible.h) {
-                    y += line.y + line.h - (visible.y + visible.h);
-                }
-                float maxY = std::max(viewport->contentH - visible.h, 0.f);
-                managed->scrollY = std::min(std::max(y, 0.f), maxY);
-            } else {
-                // inline.rs request_autoscroll: an enclosing list brings the
-                // line in once it has bound its rows, this one among them.
-                WindowRequestAutoscroll(cx->win, line);
-                if (onReveal.IsValid()) {
-                    TextViewRevealEvent ev;
-                    ev.line = line;
-                    ListenerCall(cx->app, cx->win, onReveal, &ev);
-                }
-            }
-            if (reveal.block) {
-                // A block has no line to wait for.
-                reveal.pending = false;
-            }
-        }
-    }
     if (reveal.pending &&
         (managed->maxLines >= 0 ||
          TimeNow() - reveal.requestedAt > kRevealTimeoutSeconds ||
          reveal.attempts >= kRevealAttempts)) {
         reveal.pending = false;
     }
-    if (!reveal.pending) {
-        return;
-    }
+    if (!reveal.pending) return;
     reveal.line = {};
+    reveal.hasMask = false;
     revealTarget = &reveal;
     revealOut = &reveal.line;
-    WindowRequestAnimationFrame(cx->win);
+}
+
+void TextView::RevealPainted(PaintCtx* ctx, El* element, void* data) {
+    TextView* view = (TextView*)data;
+    TextViewState* managed = view->state.Get(ctx->app);
+    if (!managed) return;
+    const WindowSelection* selection = ctx->window ? ctx->window->sel : nullptr;
+    if (selection && managed->selectAllAnchor >= 0 &&
+        selection->anchor == managed->selectAllAnchor &&
+        selection->cursor == managed->selectAllCursor) {
+        managed->SelectAll(ctx->window, ctx->app);
+    }
+    if (!managed->reveal.pending) return;
+    TextViewReveal& reveal = managed->reveal;
+    Bounds line = reveal.line;
+    if (line.w <= 0 && line.h <= 0) {
+        WindowRequestAnimationFrame(ctx->window);
+        return;
+    }
+    // Descendants have reported this frame's positions; the enclosing
+    // content mask is still active.
+    WinSize size = WindowSize(ctx->window);
+    Bounds visible = reveal.hasMask ? reveal.mask : ctx->hasHitMask ? ctx->hitMask
+                                    : Bounds{0, 0, size.dipW, size.dipH};
+    bool shown = reveal.block
+                     ? line.y + line.h > visible.y && line.y < visible.y + visible.h
+                     : line.y >= visible.y - 0.5f &&
+                       line.y + line.h <= visible.y + visible.h + 0.5f;
+    if (shown) {
+        reveal.pending = false;
+        return;
+    }
+    reveal.attempts++;
+    if (view->scrollable) {
+        float y = managed->scrollY;
+        if (line.y < visible.y) y -= visible.y - line.y;
+        else y += line.y + line.h - (visible.y + visible.h);
+        managed->scrollY = std::min(std::max(y, 0.f),
+                                    std::max(element->contentH - element->h, 0.f));
+    } else {
+        WindowRequestAutoscroll(ctx->window, line);
+        if (view->onReveal.IsValid()) {
+            TextViewRevealEvent event;
+            event.line = line;
+            ListenerCall(ctx->app, ctx->window, view->onReveal, &event);
+        }
+    }
+    if (reveal.block) reveal.pending = false;
+    WindowRequestAnimationFrame(ctx->window);
 }
 
 // The view reports its own box while a reveal is pending, for RevealFrame.
@@ -5569,6 +5594,12 @@ bool TextView::RevealIn(const MdNode* leaf, int* offset) const {
     }
     *offset = revealTarget->offset;
     return true;
+}
+
+static void RevealLineMask(PaintCtx* ctx, El*, void* data) {
+    auto* reveal = (TextViewReveal*)data;
+    reveal->hasMask = ctx->hasHitMask;
+    reveal->mask = ctx->hitMask;
 }
 
 void TextView::RevealMark(El* t, int lo, int offset) {
@@ -5593,6 +5624,9 @@ void TextView::RevealMark(El* t, int lo, int offset) {
         hi++;
     }
     t->RangeOut(at, hi, revealOut);
+    t->lifecycle = ArenaNew<ElLifecycle>(a);
+    t->lifecycle->afterPaint = &RevealLineMask;
+    t->lifecycle->user = (void*)revealTarget;
     // One element reports the line: the first to reach the offset.
     revealOut = nullptr;
 }
@@ -5823,7 +5857,40 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
     return nullptr;
 }
 
+void TextView::PrepareInheritedColor(PaintCtx*, El* element,
+                                     Rgba inherited, void* data) {
+    TextView* view = (TextView*)data;
+    Rgba color = (view->outerStyleFields & StyleFieldColor)
+                     ? view->outerStyle.color : inherited;
+    if (!TextRgbaEq(element->style.color, view->textViewStyle.foreground)) {
+        color = element->style.color;
+    }
+    element->lifecycle->prepareStyle = nullptr;
+    view->outerStyle.color = color;
+    view->outerStyleFields |= StyleFieldColor;
+    // Rebuild palette-dependent descendants, keeping the root's identity,
+    // listeners and any sizing chained onto IntoEl's result.
+    El* resolved = view->IntoEl();
+    element->first = resolved->first;
+    element->last = resolved->last;
+    element->style.color = resolved->style.color;
+    element->style.hasColor = resolved->style.hasColor;
+    element->lifecycle = resolved->lifecycle;
+}
+
 El* TextView::IntoEl() {
+    TextView* inheritedBuilder = nullptr;
+    if (!inheritedColorResolved && !textViewStyleSet &&
+        TextViewDefaults::Global(cx->app).inheritTextColor) {
+        inheritedBuilder = ArenaNew<TextView>(a);
+        *inheritedBuilder = *this;
+        // EntityRender's Ctx is a stack value; deferred construction runs
+        // after it returns, so keep a frame-owned copy beside the builder.
+        inheritedBuilder->cx = ArenaNew<Ctx>(a);
+        *inheritedBuilder->cx = *cx;
+        inheritedBuilder->inheritedColorResolved = true;
+    }
+
     // inline.rs RetainedLayout and node.rs ParagraphRenderCache: Rust hands
     // StyledText between frames through a table keyed by InlineState, and
     // caches concatenated highlights on the paragraph. This tree keeps the
@@ -5844,7 +5911,7 @@ El* TextView::IntoEl() {
         resolved.paragraphGap = textViewStyle.paragraphGap;
         // Follow the text color the container sets for its surface, so rich
         // text stays readable in a filled bubble or a selected row. The
-        // color is the one named on the view; TextViewDefaults says why.
+        // color is supplied by PrepareInheritedColor when it is inherited.
         if (defaults.inheritTextColor && (outerStyleFields & StyleFieldColor) &&
             !TextRgbaEq(outerStyle.color, resolved.foreground)) {
             onInvertedSurface = resolved.IsInvertedBy(outerStyle.color);
@@ -5897,17 +5964,18 @@ El* TextView::IntoEl() {
         }
         // A style that moved — a theme change, most often — invalidates the
         // selection layout the last frame published.
-        if (!managed->textViewStyle.Equals(textViewStyle)) {
-            managed->selectionRevision++;
+        if (!inheritedBuilder) {
+            if (!managed->textViewStyle.Equals(textViewStyle)) {
+                managed->selectionRevision++;
+            }
+            managed->textViewStyle = textViewStyle;
         }
-        managed->textViewStyle = textViewStyle;
     }
 
     BaseTextViewStatePush(cx->app, state.id);
     // A state renders the parse that landed last. One that has none for its
     // text yet, or whose parser changed, starts one here: at once when it is
-    // small or the view has a parser plugin, which needs this view's
-    // registrations, and otherwise in the background while the last
+    // small, and otherwise in the background with copied registrations while the last
     // document stays up. A state-less caller parses through the cache.
     MdNode* doc = nullptr;
     if (managed) {
@@ -5916,15 +5984,15 @@ El* TextView::IntoEl() {
         bool stale = !managed->parsed ||
                      managed->parsed->fingerprint != fingerprint ||
                      managed->committedRevision != managed->updateRevision;
-        if (stale && !managed->parseFlight) {
-            if (managed->parsed && managed->parsed
-                                           ->fingerprint != fingerprint) {
+        if (stale) {
+            if (managed->parserFingerprint != fingerprint) {
                 // A new parser parses everything again.
                 managed->fullUpdateRevision = ++managed->updateRevision;
             }
-            managed
-                ->StartParse(cx->app, cx->win, &markdownExtensions, !cx->win);
         }
+        // Refresh captures even when the parser shape is unchanged. The
+        // next text update uses the current registrations, as Rust does.
+        managed->StartParse(cx->app, cx->win, &markdownExtensions, !cx->win);
         doc = managed->parsed ? managed->parsed->doc : nullptr;
     } else {
         doc = MdParseCached(cx, a, source, html,
@@ -5970,7 +6038,10 @@ El* TextView::IntoEl() {
     if (textViewStyle.foreground.a) {
         root->Fg(textViewStyle.foreground);
     }
-    El* element = Blocks(root, doc, 0, false);
+    // Defer palette-dependent rendering until ancestors have supplied their
+    // color. In particular, do not invoke the default highlighter on an
+    // inverted surface before layout has resolved it.
+    El* element = inheritedBuilder ? root : Blocks(root, doc, 0, false);
     BaseTextViewStatePop(cx->app);
 
     // max_lines is fit-content only: cap at body-text leading, keep the full
@@ -6009,7 +6080,17 @@ El* TextView::IntoEl() {
             ->OnAction(input::Copy(), onAction)
             ->OnAction(input::SelectAll(), onAction);
     }
-    return RevealReportView(element, managed);
+    element = RevealReportView(element, managed);
+    element->lifecycle = ArenaNew<ElLifecycle>(a);
+    element->lifecycle->afterPaint = &TextView::RevealPainted;
+    element->lifecycle->user = this;
+    if (inheritedBuilder) {
+        inheritedBuilder->state = state;
+        inheritedBuilder->textViewStyle = textViewStyle;
+        element->lifecycle->prepareStyle = &TextView::PrepareInheritedColor;
+        element->lifecycle->user = inheritedBuilder;
+    }
+    return element;
 }
 
 // ─── builder ──────────────────────────────────────────────────────────────

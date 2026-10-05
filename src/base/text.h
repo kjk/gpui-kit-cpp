@@ -560,12 +560,8 @@ struct TextViewDefaults {
     // selection are derived from it too, and the installed syntax
     // highlighter is left out because its colors are made for the page.
     //
-    // Rust reads the color off `window.text_style()`, which an ancestor has
-    // already pushed by the time the view prepaints. The tree here is built
-    // child first and inherits its text color at layout, so the color a view
-    // can follow is the one named on the view itself
-    // (`Refine(style, StyleFieldColor)`): a container that fills its surface
-    // hands its text color to the view it holds.
+    // The inherited color is resolved when layout prepares the view, after
+    // its ancestors' text styles have been applied.
     TextViewDefaults& WithInheritTextColor(bool inherit);
     // Whether text views follow the text color their container sets.
     bool InheritTextColor() const { return inheritTextColor; }
@@ -861,7 +857,7 @@ void RangeHighlightFrameFree(RangeHighlightFrame* frame);
 // range_highlight.rs PendingReveal: a range TextViewState::RevealRange is
 // scrolling into view. The frame marks the text that lays out the start of
 // the range (or, for text outside every leaf, its whole top-level block) to
-// report where it was painted, and the next frame reads the report: done
+// report where it was painted, and the root reads that frame's report: done
 // once the line is visible, a scroll or an on_reveal otherwise.
 struct TextViewReveal {
     bool pending = false;
@@ -875,11 +871,12 @@ struct TextViewReveal {
     // line was painted without being visible.
     double requestedAt = 0;
     int attempts = 0;
-    // Where the line (or block) was painted last frame, in window
+    // Where the line (or block) was painted this frame, in window
     // coordinates; empty when it was not.
     Bounds line = {};
-    // Where the view itself was painted last frame, which picks the scroll
-    // boxes around it whose viewport a line has to be inside.
+    Bounds mask = {};
+    bool hasMask = false;
+    // Where the view itself was painted.
     Bounds view = {};
 };
 
@@ -894,9 +891,8 @@ struct TextViewRevealEvent {
 bool RenderedIndexLocate(const RenderedIndex* index, Span range,
                          TextViewReveal* out);
 
-// state.rs TextViewState. Parsing remains synchronous behind the existing
-// per-window LRU because this runtime has no cancellable Task<T>; ownership,
-// mutation revisions, selection and managed-view identity are retained.
+// state.rs TextViewState. Owns its committed document and parser configuration;
+// large replacements and appends parse on the executor with detached jobs.
 struct TextViewParse;
 struct TextViewParseJob;
 struct TextViewBaselineAck;
@@ -949,9 +945,9 @@ struct TextViewState {
     // point into. A replacement of at most kMaxSyncFullReplaceBytes parses
     // at once; a larger one, and an append, parse in `parseFlight` while the
     // view keeps rendering `parsed`. An append parses the last block again
-    // with the new text and keeps the blocks before it. A parser plugin
-    // needs the UI thread and a Ctx, so a view that has one parses as it
-    // renders. updateRevision counts text updates, fullUpdateRevision is the
+    // with the new text and keeps the blocks before it. Parser registrations
+    // are copied into each job; only render callbacks require a Ctx.
+    // updateRevision counts text updates, fullUpdateRevision is the
     // last to replace the text, committedRevision the one `parsed` is of.
     TextViewParse* parsed = nullptr;
     TextViewParseJob* parseFlight = nullptr;
@@ -976,6 +972,10 @@ struct TextViewState {
     bool parserFrontmatter = false;
     bool parserMdx = false;
     bool parserPlugins = false;
+    // Parser registrations outlive the frame that supplied them. Callback
+    // payloads are caller-owned and must be safe to read on the executor.
+    Arena* parserArena = nullptr;
+    MarkdownExtensions parserExtensions = {};
 
     ~TextViewState();
     static Entity<TextViewState> Markdown(App* app, Str text);
@@ -1195,6 +1195,7 @@ struct TextView {
     // installed highlighter — whose colors are made for the page — is left
     // out.
     bool onInvertedSurface = false;
+    bool inheritedColorResolved = false;
     MarkdownExtensions markdownExtensions = {};
     gpui::Style outerStyle = {};
     uint32_t outerStyleFields = 0;
@@ -1399,11 +1400,12 @@ struct TextView {
     // the washes after the highlights, so it paints over them.
     El* RangeWashes(El* t, const MdNode* leaf, int lo, int hi,
                     bool markOver = false);
-    // TextViewState::reveal_frame and the TextView prepaint that reads the
-    // reveal's progress: settle last frame's report (done once visible; a
-    // scroll of a scrollable view or an on_reveal otherwise), drop a reveal
-    // that is clamped, expired or out of attempts, and mark this frame's.
+    // Start this frame's reveal, dropping a clamped or expired request.
+    // RevealPainted settles the report while the live content mask is active.
     void RevealFrame(TextViewState* managed);
+    static void PrepareInheritedColor(PaintCtx* ctx, El* element,
+                                       Rgba inherited, void* data);
+    static void RevealPainted(PaintCtx* ctx, El* element, void* data);
     // Inline::reveal: whether the pending reveal starts in `leaf`'s text,
     // and at which offset of it.
     bool RevealIn(const MdNode* leaf, int* offset) const;

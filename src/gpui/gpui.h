@@ -2473,6 +2473,12 @@ struct ElRefiner {
     }
 };
 
+struct ElLifecycle {
+    void (*prepareStyle)(PaintCtx* ctx, El* e, Rgba inherited, void* user) = nullptr;
+    void (*afterPaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
+    void* user = nullptr;
+};
+
 struct El {
     // Members are ordered by decreasing alignment. El is allocated many
     // times in the frame arena, so even small holes here multiply quickly.
@@ -2618,6 +2624,8 @@ struct El {
     // places items with layout_as_root. Shares customUser.
     void (*prePaint)(PaintCtx* ctx, El* e, void* user) = nullptr;
     void* customUser = nullptr;
+    // Optional style preparation and final masked geometry observation.
+    ElLifecycle* lifecycle = nullptr;
     // Positioner::on_position / Popup::on_position; see AnchoredPlacedHook.
     AnchoredPlacedHook* onPlaced = nullptr;
     El* first = nullptr;
@@ -3236,13 +3244,13 @@ struct El {
 
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
-// Style's growth to 432, and nothing of El's own. A debug build adds the
+// Style plus the optional lifecycle pointer. A debug build adds the
 // source location div() records.
 #ifdef NDEBUG
-static_assert(sizeof(El) <= 1880,
+static_assert(sizeof(El) <= 1888,
               "keep El flags packed and members alignment-ordered");
 #else
-static_assert(sizeof(El) <= 1896,
+static_assert(sizeof(El) <= 1904,
               "keep El flags packed and members alignment-ordered");
 #endif
 

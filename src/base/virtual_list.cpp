@@ -297,6 +297,32 @@ struct VirtualListPaint {
     Window* win = nullptr;
 };
 
+static void VirtualListAfterPaint(PaintCtx* ctx, El* e, void* user) {
+    auto* paint = (VirtualListPaint*)user;
+    const VirtualListOpts& o = paint->opts;
+    if (!o.handle || o.logicalScroll || o.layoutAxis != Axis::Vertical) return;
+    Bounds want;
+    if (!WindowTakeAutoscroll(ctx->window, &want)) return;
+    float top = e->y + o.pad;
+    float height = std::max(e->h - o.pad * 2, 0.f);
+    float contentTop = top - e->scrollY;
+    if (want.x >= e->x + e->w || want.x + want.w <= e->x ||
+        want.y < contentTop - 0.5f ||
+        want.y + want.h > contentTop + e->contentH + 0.5f) {
+        // Let an enclosing list take a request outside our own content.
+        WindowRequestAutoscroll(ctx->window, want);
+        return;
+    }
+    float delta = want.y < top || want.h > height ? want.y - top
+                      : std::max(want.y + want.h - (top + height), 0.f);
+    float next = std::min(std::max(e->scrollY + delta, 0.f),
+                          std::max(e->contentH - e->h, 0.f));
+    if (next != o.handle->offset) {
+        o.handle->offset = next;
+        WindowRequestAnimationFrame(ctx->window);
+    }
+}
+
 static El* VirtualListTakeRow(const VirtualListOpts& o, El** rangeRows,
                               int first, int ix, Ctx* cx) {
     if (rangeRows) return rangeRows[ix - first];
@@ -616,6 +642,9 @@ El* VirtualList::New(Ctx* cx, Str id, const VirtualListOpts& o) {
     }
     e->prePaint = &VirtualListPrePaint;
     e->customUser = paint;
+    e->lifecycle = ArenaNew<ElLifecycle>(a);
+    e->lifecycle->afterPaint = &VirtualListAfterPaint;
+    e->lifecycle->user = paint;
     return e;
 }
 

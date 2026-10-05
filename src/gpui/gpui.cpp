@@ -4161,6 +4161,9 @@ static void PrepareEl(PaintCtx* ctx, El* e, float inheritFont, Rgba inheritFg) {
         StyleApplyFields(&e->style, states->dragOver, states->dragOverSet);
     }
     StyleOverrideApply(e);
+    if (e->lifecycle && e->lifecycle->prepareStyle) {
+        e->lifecycle->prepareStyle(ctx, e, inheritFg, e->lifecycle->user);
+    }
     if (e->kind == ElKind::Image) {
         ResolveImageReplacement(ctx, e);
     }
@@ -8177,6 +8180,9 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
     }
     if (pushed) {
         ctx->window->imageCacheStack.len--;
+    }
+    if (e->lifecycle && e->lifecycle->afterPaint) {
+        e->lifecycle->afterPaint(ctx, e, e->lifecycle->user);
     }
     ctx->hitMask = previousHitMask;
     ctx->hasHitMask = previousHasHitMask;

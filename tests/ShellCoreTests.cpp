@@ -1152,6 +1152,9 @@ static void ShellHostsHtmlAndMarkdownTextViews() {
     El* root =
         view.IsValid() ? EntityRender(&app, &window, frame, view.id) : nullptr;
     utassert(root != nullptr && !error.IsSet());
+    window.paint.app = &app;
+    window.paint.window = &window;
+    TestPrepareTextStyles(&window.paint, root, RuntimeStyleNow(&app).foreground);
     El* site = FindShellText(root, StrL("site"));
     El* bold = FindShellText(root, StrL("bold"));
     El* blocked = FindShellText(root, StrL("blocked"));
@@ -1564,6 +1567,10 @@ static void TvDraw(TvMounted* m, Vec<El*>* images) {
         for (int i = 0; i < m->views.len; i++) {
             El* root =
                 EntityRender(&m->app, &m->window, m->frame, m->views[i].id);
+            m->window.paint.app = &m->app;
+            m->window.paint.window = &m->window;
+            TestPrepareTextStyles(&m->window.paint, root,
+                                   RuntimeStyleNow(&m->app).foreground);
             TvCollectImages(root, images);
         }
         utassert(ExecWaitIdle(5000));
