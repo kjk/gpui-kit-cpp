@@ -5000,13 +5000,16 @@ static bool ParseMention(const markdown::Node* source,
 }
 
 struct ParserScheduleProbe {
+    bool ran = false;
     bool ranInBackground = false;
 };
 
 static bool ProbeParserSchedule(const markdown::Node*,
-                                 const MarkdownParseContext*, void* data,
-                                 MarkdownNode*) {
-    if (!ExecOnMainThread()) ((ParserScheduleProbe*)data)->ranInBackground = true;
+                                const MarkdownParseContext*, void* data,
+                                MarkdownNode*) {
+    auto* probe = (ParserScheduleProbe*)data;
+    probe->ran = true;
+    if (!ExecOnMainThread()) probe->ranInBackground = true;
     return false;
 }
 
@@ -5023,25 +5026,34 @@ static void ParserPluginsKeepTheirConfigurationAcrossAsyncUpdates() {
     MarkdownExtensions extensions;
     extensions.Plugin(frame, plugin);
     Ctx cx = {app, nullptr, frame, {}};
-    gpui::TextView::New(&cx, state)->MarkdownExtensionsSet(extensions)->IntoEl();
+    gpui::TextView::New(&cx, state)
+        ->MarkdownExtensionsSet(extensions)
+        ->IntoEl();
     ArenaDelete(frame);
     TestRunUntilParked(app);
 
+    probe = {}; // Count only the queued append, not the initial parse.
     auto* managed = state.Get(app);
     managed->PushStr(StrL(" tail"), app);
     utassert(managed->parseFlight != nullptr);
     utassert(StrEq(managed->Source(), StrL("first")));
     TestRunUntilParked(app);
-    utassert(probe.ranInBackground);
+    utassert(probe.ran);
+    // wasm queues background jobs on the main thread; hosted targets use a
+    // pool.
+    utassert(probe.ranInBackground == ExecHasThreads());
     utassert(StrEq(managed->Source(), StrL("first tail")));
 
-    probe.ranInBackground = false;
+    probe = {};
     StrBuilder large;
     for (int i = 0; i <= kMaxSyncFullReplaceBytes; i++) large.AppendChar('x');
     managed->SetText(Str(large.els, len(large)), app);
     utassert(managed->parseFlight != nullptr);
     TestRunUntilParked(app);
-    utassert(probe.ranInBackground);
+    utassert(probe.ran);
+    // wasm queues background jobs on the main thread; hosted targets use a
+    // pool.
+    utassert(probe.ranInBackground == ExecHasThreads());
     utassert(StrEq(managed->Source(), Str(large.els, len(large))));
     TestAppFree(app);
 }

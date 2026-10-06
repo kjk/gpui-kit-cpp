@@ -497,11 +497,9 @@ API_AVAILABLE(macos(11.3))
     }
     handler(WKNavigationResponsePolicyAllow);
 }
-- (void)webView:(WKWebView*)webView
-     navigationAction:(WKNavigationAction*)action
-    didBecomeDownload:(WKDownload*)download API_AVAILABLE(macos(11.3)) {
-    (void)webView;
-    (void)action;
+// Both protocol callbacks provide their own non-null navigation object.
+// Share attachment without calling one callback with a fabricated nil action.
+- (void)attachDownload:(WKDownload*)download API_AVAILABLE(macos(11.3)) {
     if (self.wv && self.wv->downloadDelegate) {
         [self.wv->downloadDelegate.downloads addObject:download];
         download.delegate = self.wv->downloadDelegate;
@@ -512,10 +510,18 @@ API_AVAILABLE(macos(11.3))
     }
 }
 - (void)webView:(WKWebView*)webView
+     navigationAction:(WKNavigationAction*)action
+    didBecomeDownload:(WKDownload*)download API_AVAILABLE(macos(11.3)) {
+    (void)webView;
+    (void)action;
+    [self attachDownload:download];
+}
+- (void)webView:(WKWebView*)webView
     navigationResponse:(WKNavigationResponse*)response
      didBecomeDownload:(WKDownload*)download API_AVAILABLE(macos(11.3)) {
+    (void)webView;
     (void)response;
-    [self webView:webView navigationAction:nil didBecomeDownload:download];
+    [self attachDownload:download];
 }
 
 - (void)webView:(WKWebView*)webView
