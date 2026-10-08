@@ -431,8 +431,8 @@ static Str HoverAt(void*, Str text, int offset) {
     return Str{};
 }
 
-static int CompleteFrom(void*, Str, int, Str query, CompletionItem* out,
-                        int cap) {
+static int CompleteFrom(void*, Str, int, Str query, const CompletionContext*,
+                        CompletionItem* out, int cap) {
     LoadCompletionItems();
     int n = 0;
     for (int i = 0; i < gNItems; i++) {

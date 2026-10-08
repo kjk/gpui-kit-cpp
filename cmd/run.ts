@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "2ef9968180e72a5e70d084ea3fc669b986f9c209",
+  sha: "32529dc24643fe179ae80ffaadf6bb2efbb4e093",
   date: "2026-10-08",
-  subject: "text, resizable: Stop notifying state that did not change (#3418)",
+  subject: "editor: Add on-demand completion commands (#3411)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

@@ -1937,7 +1937,12 @@ El* El::BindInput(InputState* s) {
             s->focus = FocusHandleNew((App*)nullptr);
         }
         InputInitKeys();
-        KeyContext(InputContext());
+        // EditorMode::render adds `mode=editor` so a host can bind
+        // ShowCompletions to `Input && mode == editor` without catching
+        // every field. The context name stays Input, so the shared chords
+        // still resolve.
+        KeyContext(s->kind == InputKind::Editor ? StrL("Input mode=editor")
+                                                : InputContext());
         // A press on a field focuses it — `InputState::on_mouse_down` calls
         // `focus_handle.focus(window, cx)` — and focus is what stacks the
         // "Input" context over the keystroke, so every chord state.rs binds

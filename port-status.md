@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `2ef9968180e72a5e70d084ea3fc669b986f9c209` (2026-10-08,
-text, resizable: Stop notifying state that did not change (#3418)).
-A synchronous parse acknowledgement already clears its flag without
-notifying, and a resizable group notifies only when the container
-size changes. The two GPUI Fast render-count tests stay unported.
+Processed through `32529dc24643fe179ae80ffaadf6bb2efbb4e093` (2026-10-08,
+editor: Add on-demand completion commands (#3411)).
+`ShowCompletions` asks the provider at the caret without typing. It
+has no default chord. An open menu keeps its selection, and a field
+that is not an editor leaves the action alone.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

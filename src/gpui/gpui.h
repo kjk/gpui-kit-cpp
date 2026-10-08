@@ -4580,15 +4580,31 @@ struct CompletionItem {
     int nAdditionalEdits = 0;
 };
 
+// lsp_types::CompletionTriggerKind. A typed trigger carries the query as its
+// character, the way the editor's trigger path always has. A manual request
+// is Invoked and has no character.
+enum class CompletionTriggerKind : uint8_t {
+    Invoked = 1,
+    TriggerCharacter = 2,
+    TriggerForIncompleteCompletions = 3,
+};
+
+struct CompletionContext {
+    CompletionTriggerKind triggerKind = CompletionTriggerKind::Invoked;
+    // None in Rust. Empty for a manual request.
+    Str triggerCharacter = {};
+};
+
 // CompletionProvider::completions, without the task: the provider is handed
-// the document, where the caret is and the word being typed. It returns the
-// total number of available items and writes the first min(total, cap) when
-// `out` is non-null. Returning the total is important: the caller retries
-// with a larger buffer instead of silently turning Rust's Vec into a C++
-// limit. Rust answers a future; there is nothing to await on here, so a
-// provider that has to go somewhere slow does the going itself and answers
-// what it has.
+// the document, where the caret is, the word being typed, and why it was
+// asked. It returns the total number of available items and writes the first
+// min(total, cap) when `out` is non-null. Returning the total is important:
+// the caller retries with a larger buffer instead of silently turning Rust's
+// Vec into a C++ limit. Rust answers a future; there is nothing to await on
+// here, so a provider that has to go somewhere slow does the going itself
+// and answers what it has.
 using CompletionFn = int (*)(void* data, Str text, int offset, Str query,
+                             const CompletionContext* context,
                              CompletionItem* out, int cap);
 
 // ColorInformation: a range of the document that names a colour, and the
@@ -5623,6 +5639,10 @@ enum class InputAction : uint8_t {
     Replace,
     // cmd-. / ctrl-.: the code action menu over whatever is selected.
     ToggleCodeActions,
+    // ShowCompletions: ask for suggestions without typing. Editor only, and
+    // bound by the host — there is no default chord, because ctrl-space
+    // belongs to input methods.
+    ShowCompletions,
     // ActivateToken: the token the selection is exactly, handed to
     // on_token_click as a keyboard click. Rust binds no key to it; an
     // application that wants one binds it in the `Input` context.
@@ -5647,9 +5667,13 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
 // it stands, which is what a trigger character like `.` completes on.
 Str InputCompletionQuery(const InputState* s, int* startOut);
 // Ask the provider and open the menu if it answered anything. Rust does this
-// from the editor's own `on_input` when the typed character is a trigger, and
-// from ctrl-space; `force` is the second, which asks whatever was typed.
-void InputRequestCompletion(InputState* s, App* app, Window* win, bool force);
+// from the editor's own `on_input` when the typed character is a trigger.
+// `force` asks even when the prefix is empty. `kind` is TriggerCharacter for
+// that path and Invoked for ShowCompletions. A response that finds the
+// document, the caret, the focus, or the editability changed is dropped.
+void InputRequestCompletion(
+    InputState* s, App* app, Window* win, bool force,
+    CompletionTriggerKind kind = CompletionTriggerKind::TriggerCharacter);
 // Escape, a click elsewhere, or an edit that leaves nothing to complete.
 void InputDismissCompletion(InputState* s);
 // Accept the selected item: the query range is replaced by its insert text.
@@ -5658,8 +5682,10 @@ void InputAcceptCompletion(InputState* s, App* app, Window* win);
 // chord — `CompletionMenu::handle_action`.
 bool InputCompletionAction(InputState* s, App* app, Window* win,
                            InputAction action);
-// ShowCompletions: ctrl-space asks whatever the caret is on, which is Rust's
-// second way in beside a trigger character.
+// show_completions: request suggestions at the caret and focus the editor,
+// without editing text. Disabled, readonly, a composition, an edit the
+// editor itself is inserting, an open completion menu, and a missing
+// provider are left alone. An open menu keeps the item it had selected.
 void InputShowCompletions(InputState* s, App* app, Window* win);
 
 // ─── document colours ─────────────────────────────────────────────────────

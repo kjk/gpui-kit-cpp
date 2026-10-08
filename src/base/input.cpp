@@ -5909,7 +5909,8 @@ void InputDismissCompletion(InputState* s) {
     s->completion.revision++;
 }
 
-void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
+void InputRequestCompletion(InputState* s, App* app, Window* win, bool force,
+                            CompletionTriggerKind kind) {
     (void)app;
     if (!s || !s->completionProvider) {
         return;
@@ -5919,6 +5920,13 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
     if (!force && len(query) == 0) {
         InputDismissCompletion(s);
         return;
+    }
+    int cursor = InputCursor(s);
+    uint64_t revision = s->docVersion;
+    CompletionContext context;
+    context.triggerKind = kind;
+    if (kind == CompletionTriggerKind::TriggerCharacter) {
+        context.triggerCharacter = query;
     }
     // The items are the provider's own: it owns the strings, which outlive
     // the menu the way a decoration's do. A provider returns its total even
@@ -5930,8 +5938,8 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
     }
     int n = 0;
     for (;;) {
-        n = s->completionProvider(s->completionData, InputValue(s),
-                                  InputCursor(s), query, items.els, cap);
+        n = s->completionProvider(s->completionData, InputValue(s), cursor,
+                                  query, &context, items.els, cap);
         if (n < 0) {
             n = 0;
         }
@@ -5943,6 +5951,15 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
             return;
         }
     }
+    // The provider answers before this returns, so a later request cannot
+    // outrun this one. A response that edited the document, moved the caret,
+    // or left the field unfocused is still dropped, which is the check the
+    // async path makes when its task lands.
+    if (s->docVersion != revision || InputCursor(s) != cursor ||
+        s->imeMarking || s->disabled || s->readonly ||
+        (win && !FocusHandleIsFocused(win, s->focus))) {
+        return;
+    }
     VecClear(s->completion.items);
     for (int i = 0; i < n; i++) {
         VecAppend(s->completion.items, items.els[i]);
@@ -5952,7 +5969,7 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
     StrFree(s->completion.query);
     s->completion.query = queryCopy;
     s->completion.triggerStart = start;
-    s->completion.offset = InputCursor(s);
+    s->completion.offset = cursor;
     s->completion.selected = 0;
     s->completion.revision++;
     if (win) {
@@ -5961,7 +5978,20 @@ void InputRequestCompletion(InputState* s, App* app, Window* win, bool force) {
 }
 
 void InputShowCompletions(InputState* s, App* app, Window* win) {
-    InputRequestCompletion(s, app, win, true);
+    // EditorMode only. The action handler propagates on any other kind.
+    if (!s || s->kind != InputKind::Editor || s->disabled || s->readonly ||
+        s->silentReplace || s->imeMarking || s->completion.open ||
+        !s->completionProvider) {
+        return;
+    }
+    // A code-action menu is the other context menu. The completion menu is
+    // already known to be closed, so this leaves its selection alone.
+    InputHideContextMenu(s);
+    InputClearInlineCompletion(s);
+    if (win && s->focus.IsValid()) {
+        FocusHandleFocus(win, s->focus);
+    }
+    InputRequestCompletion(s, app, win, true, CompletionTriggerKind::Invoked);
 }
 
 void InputAcceptCompletion(InputState* s, App* app, Window* win) {
@@ -8588,6 +8618,14 @@ bool InputPerform(InputState* s, App* app, Window* win, InputAction action,
                 return false;
             }
             InputToggleCodeActions(s, app, win);
+            return true;
+        case InputAction::ShowCompletions:
+            // on_action_show_completions. Registered on the editor only, so
+            // any other field leaves the action to whoever is outside it.
+            if (s->kind != InputKind::Editor) {
+                return false;
+            }
+            InputShowCompletions(s, app, win);
             return true;
         case InputAction::ActivateToken:
             ActivateSelectedToken(s, app, win);

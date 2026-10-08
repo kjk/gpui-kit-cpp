@@ -477,7 +477,8 @@ static void ACodeActionCanBeMoreThanOneEdit() {
 static const TextEditItem kTestImport = {{0, 0}, StrL("import\n")};
 
 static int ImportingCompletions(void* data, Str text, int offset, Str query,
-                                CompletionItem* out, int cap) {
+                                const CompletionContext*, CompletionItem* out,
+                                int cap) {
     (void)data;
     (void)text;
     (void)offset;
@@ -539,7 +540,8 @@ static int gCompleteCalls = 0;
 static int gResolveCalls = 0;
 
 static int TestCompletions(void* data, Str text, int offset, Str query,
-                           CompletionItem* out, int cap) {
+                           const CompletionContext*, CompletionItem* out,
+                           int cap) {
     (void)data;
     (void)text;
     (void)offset;
@@ -554,7 +556,8 @@ static int TestCompletions(void* data, Str text, int offset, Str query,
 }
 
 static int ManyCompletions(void* data, Str text, int offset, Str query,
-                           CompletionItem* out, int cap) {
+                           const CompletionContext*, CompletionItem* out,
+                           int cap) {
     (void)text;
     (void)offset;
     (void)query;
@@ -575,6 +578,210 @@ static void CompletionResponsesGrowPastTheOldBuffer() {
     utassert(s.completion.open);
     utassert(s.completion.items.len == 257);
     utassert(base::StrEq(s.completion.items[256].label, StrL("candidate")));
+}
+
+// crates/kit/tests/input/completions.rs: a manual request. The provider
+// answers before the call returns, so there is no earlier request to cancel.
+struct ManualSeen {
+    int calls = 0;
+    CompletionTriggerKind kind = CompletionTriggerKind::TriggerCharacter;
+    bool hasCharacter = false;
+    int offset = -1;
+    int queryLen = -1;
+};
+
+static int SeeManual(void* data, Str, int offset, Str query,
+                     const CompletionContext* ctx, CompletionItem* out,
+                     int cap) {
+    ManualSeen* seen = (ManualSeen*)data;
+    seen->calls++;
+    seen->offset = offset;
+    seen->queryLen = len(query);
+    if (ctx) {
+        seen->kind = ctx->triggerKind;
+        seen->hasCharacter =
+            ctx->triggerCharacter.s && len(ctx->triggerCharacter) > 0;
+    }
+    if (out && cap > 0) {
+        out[0].label = StrL("print");
+    }
+    return 1;
+}
+
+static int ReviseDuringCompletion(void* data, Str, int, Str,
+                                  const CompletionContext*, CompletionItem* out,
+                                  int cap) {
+    ((InputState*)data)->docVersion++;
+    if (out && cap > 0) {
+        out[0].label = StrL("print");
+    }
+    return 1;
+}
+
+static int BlurDuringCompletion(void* data, Str, int, Str,
+                                const CompletionContext*, CompletionItem* out,
+                                int cap) {
+    ((Window*)data)->focusId = 99;
+    if (out && cap > 0) {
+        out[0].label = StrL("print");
+    }
+    return 1;
+}
+
+static void ArmManual(InputState* s, ManualSeen* seen) {
+    s->kind = InputKind::Editor;
+    s->completionProvider = &SeeManual;
+    s->completionData = seen;
+}
+
+static void ShowCompletionsAsksWithoutTyping() {
+    ManualSeen seen;
+    InputState s;
+    ArmManual(&s, &seen);
+    InputSetValue(&s, StrL("pri"));
+    // A multi-line editor's set_value leaves the caret at 0..0. The manual
+    // request asks at the caret, so move it to the end of the prefix first.
+    InputMoveTo(&s, nullptr, nullptr, len(StrL("pri")));
+    utassert(InputPerform(&s, nullptr, nullptr, InputAction::ShowCompletions,
+                          false));
+    utassert(seen.calls == 1);
+    utassert(seen.offset == 3 && seen.queryLen == 3);
+    utassert(seen.kind == CompletionTriggerKind::Invoked);
+    utassert(!seen.hasCharacter);
+    utassert(s.completion.open);
+    utassert(base::StrEq(s.completion.query, StrL("pri")));
+    utassert(s.completion.triggerStart == 0);
+
+    ManualSeen empty;
+    InputState bare;
+    ArmManual(&bare, &empty);
+    InputSetValue(&bare, StrL("print"));
+    InputMoveTo(&bare, nullptr, nullptr, 0);
+    InputShowCompletions(&bare, nullptr, nullptr);
+    utassert(empty.calls == 1 && empty.queryLen == 0 && empty.offset == 0);
+    utassert(empty.kind == CompletionTriggerKind::Invoked &&
+             !empty.hasCharacter);
+    utassert(bare.completion.open);
+
+    InputState typed;
+    ArmManual(&typed, &seen);
+    seen = {};
+    InputTypeChar(&typed, nullptr, nullptr, 'p');
+    utassert(seen.calls == 1);
+    utassert(seen.kind == CompletionTriggerKind::TriggerCharacter);
+    utassert(seen.hasCharacter && seen.queryLen == 1);
+
+    ManualSeen quiet;
+    InputState readonly;
+    ArmManual(&readonly, &quiet);
+    readonly.readonly = true;
+    InputShowCompletions(&readonly, nullptr, nullptr);
+    InputState disabled;
+    ArmManual(&disabled, &quiet);
+    disabled.disabled = true;
+    InputShowCompletions(&disabled, nullptr, nullptr);
+    InputState composing;
+    ArmManual(&composing, &quiet);
+    composing.imeMarking = true;
+    InputShowCompletions(&composing, nullptr, nullptr);
+    InputState inserting;
+    ArmManual(&inserting, &quiet);
+    inserting.silentReplace = true;
+    InputShowCompletions(&inserting, nullptr, nullptr);
+    InputState missing;
+    missing.kind = InputKind::Editor;
+    InputShowCompletions(&missing, nullptr, nullptr);
+    utassert(quiet.calls == 0);
+    utassert(!readonly.completion.open && !disabled.completion.open &&
+             !composing.completion.open && !missing.completion.open);
+
+    InputState plain;
+    ArmManual(&plain, &quiet);
+    plain.kind = InputKind::Input;
+    utassert(!InputPerform(&plain, nullptr, nullptr,
+                           InputAction::ShowCompletions, false));
+    utassert(quiet.calls == 0);
+
+    ManualSeen kept;
+    InputState open;
+    ArmManual(&open, &kept);
+    InputSetValue(&open, StrL("pri"));
+    InputShowCompletions(&open, nullptr, nullptr);
+    utassert(kept.calls == 1 && open.completion.open);
+    open.completion.selected = 2;
+    InputShowCompletions(&open, nullptr, nullptr);
+    utassert(kept.calls == 1 && open.completion.selected == 2);
+
+    ManualSeen replaced;
+    InputState actions;
+    ArmManual(&actions, &replaced);
+    actions.codeActions.open = true;
+    actions.inlineCompletion.text = StrL("ghost");
+    actions.inlineCompletion.asked = false;
+    actions.inlineCompletion.at = 0;
+    InputShowCompletions(&actions, nullptr, nullptr);
+    utassert(!actions.codeActions.open);
+    utassert(!InputHasInlineCompletion(&actions));
+    utassert(actions.inlineCompletion.asked);
+    utassert(replaced.calls == 1 && actions.completion.open);
+
+    InputState stale;
+    stale.kind = InputKind::Editor;
+    stale.completionProvider = &ReviseDuringCompletion;
+    stale.completionData = &stale;
+    InputShowCompletions(&stale, nullptr, nullptr);
+    utassert(!stale.completion.open);
+
+    Window* win = new Window();
+    ManualSeen focused;
+    InputState field;
+    ArmManual(&field, &focused);
+    field.focus.id = 7;
+    win->focusId = 1;
+    InputShowCompletions(&field, nullptr, win);
+    utassert(win->focusId == 7 && field.completion.open);
+
+    InputState blurred;
+    blurred.kind = InputKind::Editor;
+    blurred.focus.id = 7;
+    blurred.completionProvider = &BlurDuringCompletion;
+    blurred.completionData = win;
+    win->focusId = 7;
+    InputShowCompletions(&blurred, nullptr, win);
+    utassert(!blurred.completion.open);
+    WindowKeyedFree(win);
+    delete win;
+
+    Arena* arena = ArenaNew();
+    InputState editor;
+    ArmManual(&editor, &seen);
+    El* editorEl = Div(arena)->BindInput(&editor);
+    El* named = Div(arena)->KeyContext(StrL("Input mode=editor"));
+    InputState single;
+    El* singleEl = Div(arena)->BindInput(&single);
+    utassert(editorEl->style.keyContext == named->style.keyContext);
+    utassert(editorEl->style.keyContext != singleEl->style.keyContext);
+
+    InputInitKeys();
+    KeyChord unused;
+    utassert(!KeymapAnyBindingForAction(input::ShowCompletions(), &unused));
+    KeyChord space;
+    utassert(KeyChordParse(StrL("ctrl-space"), &space));
+    uint32_t editorCtx = KeyContextOf(StrL("Input mode=editor"));
+    uint32_t inputCtx = KeyContextOf(StrL("Input"));
+    KeyMatch spaceHit = KeymapMatch(space, &editorCtx, 1);
+    utassert(spaceHit.action != input::ShowCompletions());
+    KeyBinding host[] = {
+        {"ctrl-alt-j", input::ShowCompletions(), "Input && mode == editor"},
+    };
+    KeymapBind(host, 1);
+    KeyChord chord;
+    utassert(KeyChordParse(StrL("ctrl-alt-j"), &chord));
+    KeyMatch onEditor = KeymapMatch(chord, &editorCtx, 1);
+    KeyMatch onInput = KeymapMatch(chord, &inputCtx, 1);
+    utassert(onEditor.action == input::ShowCompletions());
+    utassert(onInput.action != input::ShowCompletions());
+    ArenaDelete(arena);
 }
 
 static Str TestResolve(void* data, Arena* a, const CompletionItem* item) {
@@ -1653,8 +1860,8 @@ static const CompletionItem kItems[] = {
 // A provider that answers the labels starting with the query, and counts how
 // often it was asked — which is what says a keystroke opened the menu rather
 // than the test doing it by hand.
-static int Complete(void* data, Str, int, Str query, CompletionItem* out,
-                    int cap) {
+static int Complete(void* data, Str, int, Str query, const CompletionContext*,
+                    CompletionItem* out, int cap) {
     if (data) {
         (*(int*)data)++;
     }
@@ -2744,8 +2951,8 @@ static void HighlighterContractsAreDependencyFreeAndFunctional() {
     ArenaDelete(a);
 }
 
-static int LspFacadeCompletions(void*, Str, int, Str, CompletionItem* out,
-                                int cap) {
+static int LspFacadeCompletions(void*, Str, int, Str, const CompletionContext*,
+                                CompletionItem* out, int cap) {
     if (out && cap > 0) {
         out[0].label = StrL("value");
     }
@@ -10398,6 +10605,7 @@ void TestInputState() {
     AnAcceptedItemBringsItsImport();
     CompletionAndActionEditListsGrowPastThirtyTwo();
     CompletionResponsesGrowPastTheOldBuffer();
+    ShowCompletionsAsksWithoutTyping();
     TheProviderSaysWhenTheMenuOpens();
     DocumentationIsResolvedOnce();
     TheSuggestionWaitsForTheDebounce();

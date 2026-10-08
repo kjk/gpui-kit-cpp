@@ -72,6 +72,7 @@ GPUI_INPUT_ACTION(SelectUp, "input::SelectUp")
 GPUI_INPUT_ACTION(Undo, "input::Undo")
 GPUI_INPUT_ACTION(Enter, "input::Enter")
 GPUI_INPUT_ACTION(ToggleCodeActions, "input::ToggleCodeActions")
+GPUI_INPUT_ACTION(ShowCompletions, "input::ShowCompletions")
 #undef GPUI_INPUT_ACTION
 
 } // namespace input
@@ -250,6 +251,9 @@ InputAction InputActionOf(uint32_t id, int64_t arg) {
     }
     if (id == input::ToggleCodeActions()) {
         return InputAction::ToggleCodeActions;
+    }
+    if (id == input::ShowCompletions()) {
+        return InputAction::ShowCompletions;
     }
     if (id == input::ActivateToken()) {
         return InputAction::ActivateToken;
