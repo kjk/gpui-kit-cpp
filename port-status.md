@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `4921e5b69834e45592c9772c57f39a29ada7de2f` (2026-10-07,
-test: Make Progress and TitleBar findable in UI tests (#3383)).
-Progress and TitleBar call test_support() so Kit's harness can find
-them. This tree has no such registry; both controls already expose
-their accessibility roles on the element.
+Processed through `114d70719c83bab1aba826abab45ca3f15fd39e4` (2026-10-07,
+input: Preserve selection, focus ring and context menu actions
+(#3382)). A field keeps its selection and focus ring while the menu
+associated with that selection has focus, and a submenu inherits its
+parent's action context. The caret still follows the field itself.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

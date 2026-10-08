@@ -1393,15 +1393,17 @@ static void SliderPress(Window* win, const HitRect* hit, Point at) {
     AppInvalidate(win);
 }
 
-// InputState::on_mouse_down(Right): the right button selects nothing and
-// takes no focus. It moves the caret to the press unless the press is inside
-// the selection, and leaves the menu to the release (on_mouse_up's
-// handle_right_click_menu).
+// InputState::on_mouse_down(Right): the right button selects nothing. It
+// focuses the field, moves the caret unless the press is inside the
+// selection, and leaves the menu to the release.
 static void InputRightPress(Window* win, const MouseDownEvent& in) {
     InputState* s = InputAtPosition(&win->paint, in.x, in.y);
     if (!s || s->disabled || !s->enableContextMenu) {
         return;
     }
+    // The press publishes this field before a context menu resolves its
+    // owner, including a field that was not focused in the last frame.
+    InputFocus(s, win->app, win);
     int offset = InputIndexForPosition(s, &win->paint, in.x, in.y);
     if (!s->selectedRange.Contains(offset)) {
         InputMoveTo(s, win->app, win, offset);

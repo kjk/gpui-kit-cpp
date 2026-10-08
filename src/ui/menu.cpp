@@ -505,7 +505,30 @@ El* PopupMenu::IntoEl() {
                 // `window.dispatch_action(action.boxed_clone(), cx)`, beside
                 // the click the menu itself needs to close on.
                 if (it.action && !it.onClick.IsValid()) {
-                    row->OnClickAction(it.action, it.actionArg);
+                    // An explicit context sends the action to the focus the
+                    // menu took, including a submenu that inherited it. The
+                    // context itself is the keymap name; the handle is the
+                    // focus parked when the root menu opened.
+                    FocusHandle target = {};
+                    if (actionContext && s) {
+                        target = s->previousFocus;
+                        Entity<PopupMenuState> parent = s->parent;
+                        while (parent.IsValid()) {
+                            PopupMenuState* up = parent.Get(cx);
+                            if (!up) {
+                                break;
+                            }
+                            if (up->previousFocus.IsValid()) {
+                                target = up->previousFocus;
+                            }
+                            parent = up->parent;
+                        }
+                    }
+                    if (target.IsValid()) {
+                        row->OnClickActionAt(it.action, target, it.actionArg);
+                    } else {
+                        row->OnClickAction(it.action, it.actionArg);
+                    }
                 }
                 row->OnHover(ListenerArg(hover, i));
             }
@@ -515,6 +538,11 @@ El* PopupMenu::IntoEl() {
             // menu opens towards. It is open because this row says so, so it
             // is this menu that escape inside it has to reach — Rust keeps
             // the same link as parent_menu.
+            // A submenu with no context of its own uses the nearest parent's
+            // for shortcut hints. Its own context still wins.
+            if (!it.submenu->actionContext && actionContext) {
+                it.submenu->actionContext = actionContext;
+            }
             PopupMenuState* subState = it.submenu->state.Get(cx);
             if (subState && s) {
                 subState->parent = state;
@@ -686,6 +714,17 @@ void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
     menu->x = self->position.x;
     menu->y = self->position.y;
     PopupMenuOpen(menu, cx);
+    // Keep the field's selection and ring while this menu has focus. The
+    // caret stays with the field. An explicit action target would win; this
+    // menu's target is the key context, so the press has to land in the field.
+    InputState* field = cx->win ? cx->win->input : nullptr;
+    if (field && field->focused &&
+        field->inputBounds.Contains({ev->x, ev->y})) {
+        if (!menu->focus.IsValid()) {
+            menu->focus = FocusHandleNew(cx);
+        }
+        field->SetSelectionFocus(menu->focus);
+    }
 }
 
 ContextMenu* ContextMenuExt::Wrap(Ctx* cx, Str id, El* child, PopupMenu* menu) {

@@ -4982,6 +4982,11 @@ struct InputState {
     // retained handle, and AnyInputState forwards it without inspecting the
     // frame tree.
     FocusHandle focus = {};
+    // selection_focus: a popup whose focus keeps the selection and the focus
+    // ring. It does not keep the caret. The handle does not own the popup.
+    FocusHandle selectionFocus = {};
+    void SetSelectionFocus(FocusHandle popup);
+    bool HasSelectionFocus(const Window* win) const;
     // input.rs's ("input-frame-focus", state id) keyed handle: what the
     // component's frame tracks, so it reads as focused while the focus is
     // anywhere inside it — on the editor or on a prefix or suffix control.

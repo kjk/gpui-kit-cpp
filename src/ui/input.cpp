@@ -197,7 +197,9 @@ static FocusHandle InputFrameFocus(Ctx* cx, InputState* state) {
 
 static bool InputFrameFocused(Ctx* cx, InputState* state, bool disabled) {
     if (!state || disabled) return false;
-    return state->focused ||
+    // The field, anything inside its frame, or the menu associated with
+    // the selection. The caret still follows the field's own focus.
+    return state->HasSelectionFocus(cx->win) ||
            FocusHandleContainsFocused(cx->win, InputFrameFocus(cx, state));
 }
 
@@ -2435,7 +2437,7 @@ El* InputGroup::IntoEl() {
         }
     }
     bool groupDisabled = disabled || controlDisabled;
-    bool focused = state && state->focused && !groupDisabled;
+    bool focused = state && !groupDisabled && state->HasSelectionFocus(cx->win);
     InputGroupAppearance appearance =
         InputGroupAppearance::New(th, focused, groupDisabled, invalid);
     // The border and background colours transition, duration_fast along

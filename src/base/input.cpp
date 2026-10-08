@@ -796,7 +796,7 @@ static int WrapRowOfOffset(const int* starts, int nRows, int local,
 // unless this is its line's last. The lists live in the frame arena.
 static void RowExtraCursors(Arena* a, El* el, const InputState* state,
                             const InputEditorStyle& style, int start, int len,
-                            bool caret, bool lastRow) {
+                            bool caret, bool lastRow, bool showSel) {
     int n = state->extraCursors.len;
     auto* sels = (Selection*)Alloc(a, n * (int)sizeof(Selection));
     auto* carets = (int*)Alloc(a, n * (int)sizeof(int));
@@ -815,7 +815,7 @@ static void RowExtraCursors(Arena* a, El* el, const InputState* state,
         if (hi > len) {
             hi = len;
         }
-        if (!c.IsEmpty() && lo < hi) {
+        if (showSel && !c.IsEmpty() && lo < hi) {
             sels[nSels++] = Selection{lo, hi};
         }
         int cur = c.Cursor();
@@ -1281,6 +1281,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
     state->lastFontWord = InputFontWord(style);
     Str text = InputValue(state);
     bool masked = style.mask || state->masked;
+    bool showSel = state->HasSelectionFocus(cx->win);
     // show_cursor: focused, not disabled, and this half of the blink is the
     // lit one.
     bool caret =
@@ -1318,7 +1319,7 @@ El* Input::New(Ctx* cx, InputState* state, const InputEditorStyle& projected) {
 
     Str run = masked ? MaskedRun(a, text) : text;
     int cursor = InputCursor(state);
-    Selection sel = state->selectedRange;
+    Selection sel = showSel ? state->selectedRange : Selection{};
     Selection mark = {};
     bool marking = InputMarkedRange(state, &mark);
     if (marking) {
@@ -1895,7 +1896,8 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
     bool caret =
         state->focused && !state->disabled && BlinkVisible(cx, state->blink);
     int cursor = InputCursor(state);
-    Selection sel = state->selectedRange;
+    bool showSel = state->HasSelectionFocus(cx->win);
+    Selection sel = showSel ? state->selectedRange : Selection{};
 
     El* col = Div(a)->FlexCol()->W(kFill)->BindInput(state);
     col->BoundsOut(&state->contentBox);
@@ -2658,7 +2660,7 @@ El* Textarea::New(Ctx* cx, InputState* state, const InputEditorStyle& projected,
             }
             if (!tokenLine && state->extraCursors.len > 0) {
                 RowExtraCursors(a, el, state, style, start, len(line), caret,
-                                lastSeg);
+                                lastSeg, showSel);
             }
             // indent_guides: a hairline every tab stop of the line's leading
             // whitespace (a tab counts as a whole stop), drawn by the line's
@@ -6565,12 +6567,27 @@ struct ContextMenuJob {
     Point position = {};
     App* app = nullptr;
     Window* win = nullptr;
+    InputState* state = nullptr;
+    FocusHandle previousFocus = {};
 };
 
 static void RunContextMenuJob(ContextMenuJob* job) {
     NativeMenu menu;
     job->handler(job->data, &menu, job->caps, job->position, job->app,
                  job->win);
+    // A drawn menu takes focus inside the handler. A native menu leaves it
+    // on the field. Associate the new focus so the selection stays up, and
+    // leave an already-associated popup alone when focus did not move.
+    InputState* s = job->state;
+    if (s && job->win) {
+        FocusHandle now = WindowFocused(job->win);
+        // Record a popup that took focus inside the handler. Leaving the
+        // field focused, or a menu that focuses on the next frame, keeps
+        // whatever association the press already stored.
+        if (now.IsValid() && now != job->previousFocus && now != s->focus) {
+            s->SetSelectionFocus(now);
+        }
+    }
     delete job;
 }
 
@@ -6595,6 +6612,8 @@ void InputHandleRightClickMenu(InputState* s, App* app, Window* win,
     job->position = position;
     job->app = app;
     job->win = win;
+    job->state = s;
+    job->previousFocus = WindowFocused(win);
     ExecPost(MkFunc0(&RunContextMenuJob, job));
 }
 
@@ -8782,6 +8801,18 @@ int InputSearchReplaceAll(InputState* s, App* app, Window* win, Str with) {
 
 // ─── focus ────────────────────────────────────────────────────────────────
 
+void InputState::SetSelectionFocus(FocusHandle popup) {
+    selectionFocus = popup;
+}
+
+bool InputState::HasSelectionFocus(const Window* win) const {
+    if (focused && focusWin == win) {
+        return true;
+    }
+    return selectionFocus.IsValid() && win &&
+           FocusHandleContainsFocused(win, selectionFocus);
+}
+
 void InputFocus(InputState* s, App* app, Window* win) {
     if (!s || !win) {
         return;
@@ -8796,6 +8827,7 @@ void InputFocus(InputState* s, App* app, Window* win) {
     // it already there (WindowSetFocusId hands the field over otherwise).
     s->focused = true;
     s->focusWin = win;
+    s->selectionFocus = {};
     win->input = s;
     win->prevInput = s;
     FocusHandleFocus(win, s->focus);
