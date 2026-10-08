@@ -16,10 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `9808ec1efbfdc675bc9e3f57e9d1da8f0768658a` (2026-10-07,
-diff: Add readonly patch viewer (#3378)). The viewer parses unified and
-Git patches, projects hunks, folds and conflicts, and paints them in a
-virtual list. Inline emphasis is prepared on the frame that needs it.
+Processed through `c1bda59e67f46266991a230ae94f749af496af2a` (2026-10-07,
+kit: Use one Windows manifest with GPUI Fast (#3380)). GPUI Fast 0.1.1
+lets the host supply the Windows manifest so Kit does not embed it
+twice. This tree has one engine and does not link that crate.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
