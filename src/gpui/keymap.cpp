@@ -413,15 +413,16 @@ struct PredNode {
     PredOp op = PredOp::Ident;
     uint32_t a = 0;
     uint32_t b = 0;
-    int16_t l = -1;
-    int16_t r = -1;
+    int l = -1;
+    int r = -1;
 };
 
-// Predicates live as long as the bindings that hold them, so the pool is
-// emptied with the keymap.
-static const int kMaxPreds = 256;
-static PredNode gPreds[kMaxPreds];
-static int gNPreds = 0;
+// The nodes of every binding's context predicate. Rust owns that tree on
+// the binding (`KeyBinding::context_predicate` in keymap/context.rs); the
+// indexes here point into this vec, which grows with the bindings and is
+// cleared with them. A name is one node. A comparison keeps its name
+// nodes, so `Editor && mode == full` is five.
+static Vec<PredNode> gPreds;
 
 struct PredParser {
     Str s;
@@ -437,17 +438,17 @@ static void PredSkipWs(PredParser* p) {
 
 static int PredAlloc(PredParser* p, PredOp op, uint32_t a, uint32_t b, int l,
                      int r) {
-    if (gNPreds >= kMaxPreds) {
-        p->bad = true;
-        return -1;
-    }
-    PredNode& n = gPreds[gNPreds];
+    PredNode n;
     n.op = op;
     n.a = a;
     n.b = b;
-    n.l = (int16_t)l;
-    n.r = (int16_t)r;
-    return gNPreds++;
+    n.l = l;
+    n.r = r;
+    if (!VecAppend(gPreds, n)) {
+        p->bad = true;
+        return -1;
+    }
+    return len(gPreds) - 1;
 }
 
 static int ParsePredExpr(PredParser* p, int minPrec);
@@ -584,7 +585,7 @@ static bool PredEval(int ix, const CtxLevel* levels, int n) {
         // Rust reads nothing out of an empty stack, negation included.
         return false;
     }
-    const PredNode& p = gPreds[ix];
+    const PredNode p = gPreds[ix];
     uint32_t val = 0;
     switch (p.op) {
         case PredOp::Ident:
@@ -619,11 +620,9 @@ struct BoundKey {
     int pred = -1; // -1: anywhere
 };
 
-// More than any application binds. Rust grows a Vec; this is a fixed table so
-// the keymap costs nothing until something is bound.
-static const int kMaxBindings = 256;
-static BoundKey gBindings[kMaxBindings];
-static int gNBindings = 0;
+// Rust's `Keymap.bindings` (`keymap.rs`): `add_bindings` pushes, `clear`
+// drops them. Empty until the first bind.
+static Vec<BoundKey> gBindings;
 
 // The chords of a sequence that has begun but not finished. Rust keeps the
 // same on the window's matcher; the keymap is process-wide here, and so is
@@ -724,8 +723,8 @@ uint32_t KeymapGeneration() {
 }
 
 void KeymapClear() {
-    gNBindings = 0;
-    gNPreds = 0;
+    VecClear(gBindings);
+    VecClear(gPreds);
     gNPending = 0;
     gGeneration++;
     if (!gGeneration) {
@@ -734,7 +733,7 @@ void KeymapClear() {
 }
 
 void KeymapBind(const KeyBinding* bindings, int n) {
-    for (int i = 0; i < n && gNBindings < kMaxBindings; i++) {
+    for (int i = 0; i < n; i++) {
         BoundKey b;
         if (!bindings[i].stroke || !bindings[i].action) {
             continue;
@@ -753,7 +752,9 @@ void KeymapBind(const KeyBinding* bindings, int n) {
         }
         b.action = bindings[i].action;
         b.arg = bindings[i].arg;
-        gBindings[gNBindings++] = b;
+        if (!VecAppend(gBindings, b)) {
+            break;
+        }
     }
 }
 
@@ -773,7 +774,7 @@ static bool BindingApplies(const BoundKey& b, const CtxLevel* levels, int n) {
 // it only begins is left waiting.
 static uint32_t MatchIn(const CtxLevel* levels, int n, bool* pending,
                         int64_t* arg) {
-    for (int i = gNBindings - 1; i >= 0; i--) {
+    for (int i = len(gBindings) - 1; i >= 0; i--) {
         const BoundKey& b = gBindings[i];
         if (!BindingApplies(b, levels, n) || b.nStrokes < gNPending) {
             continue;
@@ -844,14 +845,14 @@ bool KeymapBindingForAction(uint32_t action, const uint32_t* contexts,
     // context — the order KeymapMatch resolves a chord in, so the answer is
     // the binding that chord would actually have fired.
     for (int lvl = 0; lvl < nContexts; lvl++) {
-        for (int i = gNBindings - 1; i >= 0; i--) {
+        for (int i = len(gBindings) - 1; i >= 0; i--) {
             if (BindingNames(gBindings[i], action, levels + lvl,
                              nContexts - lvl, out)) {
                 return true;
             }
         }
     }
-    for (int i = gNBindings - 1; i >= 0; i--) {
+    for (int i = len(gBindings) - 1; i >= 0; i--) {
         if (BindingNames(gBindings[i], action, nullptr, 0, out)) {
             return true;
         }
@@ -864,7 +865,7 @@ bool KeymapAnyBindingForAction(uint32_t action, KeyChord* out) {
         return false;
     }
     // Backwards, so the last binding for an action wins here too.
-    for (int i = gNBindings - 1; i >= 0; i--) {
+    for (int i = len(gBindings) - 1; i >= 0; i--) {
         if (gBindings[i].action == action && gBindings[i].nStrokes > 0) {
             *out = gBindings[i].strokes[0];
             return true;
@@ -877,7 +878,7 @@ bool KeymapAnyBindingForActionArg(uint32_t action, int64_t arg, KeyChord* out) {
     if (!action || !out) {
         return false;
     }
-    for (int i = gNBindings - 1; i >= 0; i--) {
+    for (int i = len(gBindings) - 1; i >= 0; i--) {
         if (gBindings[i].action == action && gBindings[i].arg == arg &&
             gBindings[i].nStrokes > 0) {
             *out = gBindings[i].strokes[0];

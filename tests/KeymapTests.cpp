@@ -800,8 +800,35 @@ static void OnlyTypingKeysArePrintable() {
     utassert(!KeyIsPrintable(KeyAlt));
 }
 
+// Rust's keymap is a Vec (`Keymap::add_bindings`) and keeps every binding.
+// Each one names a context, so the predicate nodes have to grow with them.
+// The last binding is the one that answers.
+static void BindingsGrowWithTheKeymap() {
+    KeymapClear();
+    uint32_t act = ActionOf(StrL("t::Cap"));
+    Vec<KeyBinding> bindings;
+    for (int i = 0; i < 1100; i++) {
+        KeyBinding b = {"a", act, "Cap", i + 1};
+        VecAppend(bindings, b);
+    }
+    KeymapBind(bindings.els, len(bindings));
+
+    uint32_t ctx = KeyContextOf(StrL("Cap"));
+    KeyMatch m = KeymapMatch(Chord("a"), &ctx, 1);
+    utassert(m.action == act);
+    utassert(m.arg == 1100);
+
+    KeyBinding oneMore[] = {{"a", act, "Cap", 1101}};
+    KeymapBind(oneMore, 1);
+    m = KeymapMatch(Chord("a"), &ctx, 1);
+    utassert(m.action == act);
+    utassert(m.arg == 1101);
+    KeymapClear();
+}
+
 void TestKeymap() {
     TestSuite("keymap");
+    BindingsGrowWithTheKeymap();
     TheKeyDownFlagsReachTheListener();
     OnlyTypingKeysArePrintable();
     ABindingCarriesTheActionsPayload();
