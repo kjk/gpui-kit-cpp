@@ -16,15 +16,18 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `af78e935f237ff7cf0b5fc6de8132acaf8678411` (2026-10-06,
-text_view: Include block plugins in mouse selections (#3373)). A block
-plugin is one selection: a drag that starts or ends inside its box, or
-that covers the box, copies its plain text or its markdown, and a click
-does not. The current update target is
+Processed through `7eb5209c2138a44a8bab7aaeb504a19c8b702800` (2026-10-06,
+kit: Add optional gpui-fast backend (#3375)). The kit can compile
+against GPUI Fast behind a Cargo feature. This tree stays the one C++
+engine, and the story introduction takes the upstream README. The
+current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
 
+- **One engine.** Upstream selects GPUI Fast with the `gpui-fast` Cargo
+  feature. This tree is that engine's C++ port and has no second backend
+  to switch.
 - **Upstream package names.** `crates/component` remains `src/ui/` here;
   `gpui.h` and `AppNew`/`ThemeSet` provide the Kit facade and initialization.
   Rust procedural macros and Cargo publishing have no C++ runtime counterpart.
