@@ -801,6 +801,37 @@ static bool InChain(const int* chain, int n, int ix) {
     return false;
 }
 
+// A long press offered to the element under the finger and its ancestors.
+// Answers whether one of them claimed it.
+static bool ElementLongPress(Window* win, const LongPressEvent& ev) {
+    if (!win || ev.phase != TouchPhase::Started) {
+        return false;
+    }
+    win->defaultPrevented = false;
+    Point at = {ev.startPosition.x, ev.startPosition.y};
+    int ix = -1;
+    for (int i = win->paint.hits.len - 1; i >= 0; i--) {
+        if (win->paint.hits[i].bounds.Contains(at)) {
+            ix = i;
+            break;
+        }
+    }
+    while (ix >= 0 && ix < win->paint.hits.len) {
+        HitRect hr = win->paint.hits[ix];
+        int parent = hr.parent;
+        if (hr.onLongPress.IsValid()) {
+            LongPressEvent local = ev;
+            local.el = hr.bounds;
+            ListenerCall(win->app, win, hr.onLongPress, &local);
+            if (win->defaultPrevented) {
+                return true;
+            }
+        }
+        ix = parent;
+    }
+    return false;
+}
+
 // Only what changed hears anything: a box the pointer was already inside and
 // is still inside stays hovered, which is what makes on_hover a pair of edges
 // rather than a report every move.
@@ -3048,6 +3079,12 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
                 if (win->sel) {
                     win->sel->touchMenuOpen = false;
                     win->sel->hasTouchEdgeDrag = false;
+                }
+                // A context menu on the trigger. Selectable text keeps the
+                // gesture; the menu sets defaultPrevented when it opens.
+                if (ElementLongPress(win, touch)) {
+                    AppInvalidate(win);
+                    break;
                 }
                 win->longPressSelection = WindowSelectionLongPressStart(
                     win, touch.startPosition.x, touch.startPosition.y);

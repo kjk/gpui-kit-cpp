@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `bd8ed21f76cd8da14e92c18823e4063a3164cec2` (2026-10-07,
-resizable: Let an application build its own resize handle (#3302)).
-A standalone handle takes hover, double-click and drag-move listeners
-on the band. The themed `resize_handle` installs the divider
-appearance. The drag payload is the value itself.
+Processed through `1af2d1f91e488d6ddf4167bc79851316dc8e92ac` (2026-10-07,
+menu: Open a context menu with a long press on touch (#3393)).
+A long press on a context-menu trigger opens the same menu as a right
+click, at the press. An input claims the gesture first. Selectable text
+yields the press via `TextSelectionIsSelectableAt`; blank space opens
+the menu and stops the window selection.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

@@ -1009,6 +1009,21 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
     WindowSelectionClear(win);
 }
 
+bool TextSelectionIsSelectableAt(Window* win, float x, float y) {
+    // A touch handle is not text. The selection object itself may not exist
+    // yet: painted runs are the live geometry, and the state is created on
+    // the first press.
+    if (!win || WindowSelectionTouchUiContains(win, {x, y})) {
+        return false;
+    }
+    // The default scope is raw 0. -1 would match every scope, including a
+    // dialog's text behind the active one.
+    const WindowSelection* s = win->sel;
+    int scope =
+        s && s->activeScope.raw != 0 ? s->activeScope.RuntimeScope() : 0;
+    return TextHitOffsetIn(&win->paint, x, y, false, scope, nullptr) >= 0;
+}
+
 bool WindowSelectionLongPressStart(Window* win, float x, float y) {
     WindowSelectionPress(win, x, y, 2, false);
     WindowSelection* selection = win ? win->sel : nullptr;

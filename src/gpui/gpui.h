@@ -604,6 +604,9 @@ struct LongPressEvent {
     TouchPhase phase = TouchPhase::Moved;
     Point startPosition = {};
     Point position = {};
+    // The box of the element that heard it, filled as the event is offered
+    // down the hit chain. A menu opened from the press is placed inside it.
+    Bounds el = {};
 };
 
 // GPUI's PlatformInput: what a platform window hands to the window layer.
@@ -2556,6 +2559,9 @@ struct El {
     // listener above; unlike the click, it carries the full MouseDownEvent.
     Listener onMouseDown;
     Listener onMouseUp;
+    // on_long_press. A touch hold. The context menu opens from it; a field
+    // claims the gesture first, and selectable text does not open the menu.
+    Listener onLongPress;
     // on_drag_move. GPUI carries a drag entity so the move can name what is
     // being dragged; here the element that took the press keeps the moves
     // until the button comes back up, which is the same thing without the
@@ -3051,6 +3057,7 @@ struct El {
     El* OnHover(Listener l);
     El* OnMouseMove(Listener l);
     El* OnMouseDown(Listener l, DispatchPhase phase = DispatchPhase::Bubble);
+    El* OnLongPress(Listener l);
     El* OnMouseUp(Listener l, DispatchPhase phase = DispatchPhase::Bubble);
     El* OnDragMove(Listener l);
     El* OnDrag(Str dragKind, int ix = 0, void* data = nullptr);
@@ -3262,12 +3269,13 @@ struct El {
 static_assert(sizeof(unsigned int) == 4,
               "El flags require a four-byte unsigned int");
 // Style plus the optional lifecycle pointer. A debug build adds the
-// source location div() records.
+// source location div() records. on_long_press is one Listener (24 bytes
+// on this ABI) beside the other pointer-sized handlers.
 #ifdef NDEBUG
-static_assert(sizeof(El) <= 1896,
+static_assert(sizeof(El) <= 1920,
               "keep El flags packed and members alignment-ordered");
 #else
-static_assert(sizeof(El) <= 1912,
+static_assert(sizeof(El) <= 1936,
               "keep El flags packed and members alignment-ordered");
 #endif
 
@@ -3349,6 +3357,7 @@ struct HitRect {
     Listener onMouseMove;
     Listener onMouseDown;
     Listener onMouseUp;
+    Listener onLongPress;
     // Which pass of the chain each of the two was registered for.
     DispatchPhase mouseDownPhase = DispatchPhase::Bubble;
     DispatchPhase mouseUpPhase = DispatchPhase::Bubble;

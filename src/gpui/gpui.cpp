@@ -1775,6 +1775,10 @@ El* El::OnMouseMove(Listener l) {
     onMouseMove = l;
     return this;
 }
+El* El::OnLongPress(Listener l) {
+    onLongPress = l;
+    return this;
+}
 El* El::OnMouseDown(Listener l, DispatchPhase phase) {
     onMouseDown = l;
     mouseDownPhase = phase;
@@ -7621,11 +7625,11 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         e->clickId || e->onClick.IsValid() || e->listener.IsValid() ||
         e->clickAction || e->onHover.IsValid() || e->onMouseMove.IsValid() ||
         e->onMouseDown.IsValid() || e->onMouseUp.IsValid() ||
-        e->onDragMove.IsValid() || e->onMouseDownOut.IsValid() ||
-        e->onMouseUpOut.IsValid() || e->onScrollWheel.IsValid() ||
-        e->drag.IsValid() || e->onDrop.IsValid() ||
-        e->cursor != CursorKind::Arrow || e->slider || e->stopMouseDown ||
-        e->suppressTextSelection || e->scrollMaskAxes;
+        e->onLongPress.IsValid() || e->onDragMove.IsValid() ||
+        e->onMouseDownOut.IsValid() || e->onMouseUpOut.IsValid() ||
+        e->onScrollWheel.IsValid() || e->drag.IsValid() ||
+        e->onDrop.IsValid() || e->cursor != CursorKind::Arrow || e->slider ||
+        e->stopMouseDown || e->suppressTextSelection || e->scrollMaskAxes;
     if (hasHitbox) {
         HitRect hr;
         hr.id = e->clickId;
@@ -7645,6 +7649,7 @@ static void PaintElNodeInner(PaintCtx* ctx, El* e, bool skipOverlay) {
         hr.rootTooltip = e->rootTooltip;
         hr.onMouseDown = e->onMouseDown;
         hr.onMouseUp = e->onMouseUp;
+        hr.onLongPress = e->onLongPress;
         hr.mouseDownPhase = e->mouseDownPhase;
         hr.mouseUpPhase = e->mouseUpPhase;
         // StopMouseDown is the occluding hitbox: the pointer is on this box,

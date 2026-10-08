@@ -160,6 +160,8 @@ struct ContextMenuState {
 
     static void OnMouseDown(ContextMenuState* self, Ctx* cx,
                             const MouseDownEvent* ev);
+    static void OnLongPress(ContextMenuState* self, Ctx* cx,
+                            const LongPressEvent* ev);
 };
 
 // context_menu.rs: an element whose right press opens a menu where the

@@ -466,6 +466,152 @@ static void OpenWithoutDismissReleasesTheMenu() {
     EntityDropAll(&app);
 }
 
+// menu.rs long_press_*: a finger has no right button. The trigger's long
+// press opens the same menu, unless the point is an input or a glyph, which
+// keep their own word selection.
+struct LongPressMenus {
+    InputState input;
+    Entity<ContextMenuState> rowMenu;
+    Entity<ContextMenuState> inputMenu;
+    Entity<ContextMenuState> textMenu;
+
+    static PopupMenu* CopyMenu(Ctx* cx, Str id) {
+        return PopupMenu::New(cx, id)->Menu(StrL("Copy"));
+    }
+
+    static El* Render(LongPressMenus* self, Ctx* cx) {
+        El* row = Div(cx->a)->W(320)->H(40)->Child(
+            TextEl(cx->a, StrL("Long press me")));
+        ContextMenu* rowMenu = ContextMenu::New(cx, StrL("row"))
+                                   ->Child(row)
+                                   ->Menu(CopyMenu(cx, StrL("row-menu")));
+        self->rowMenu = rowMenu->state;
+
+        El* field = component::Input::New(cx, StrL("row-input"), &self->input)
+                        ->W(320)
+                        ->IntoEl();
+        ContextMenu* inputMenu = ContextMenu::New(cx, StrL("input-row"))
+                                     ->Child(field)
+                                     ->Menu(CopyMenu(cx, StrL("input-menu")));
+        self->inputMenu = inputMenu->state;
+
+        El* text = Div(cx->a)->W(320)->H(80)->Child(
+            TextEl(cx->a, StrL("quick select"))->Selectable());
+        ContextMenu* textMenu = ContextMenu::New(cx, StrL("text-row"))
+                                    ->Child(text)
+                                    ->Menu(CopyMenu(cx, StrL("text-menu")));
+        self->textMenu = textMenu->state;
+
+        return Div(cx->a)
+            ->SizeFull()
+            ->Pad(16)
+            ->FlexCol()
+            ->Gap(16)
+            ->Child(rowMenu->IntoEl()->Click(101))
+            ->Child(inputMenu->IntoEl()->Click(102))
+            ->Child(textMenu->IntoEl()->Click(103));
+    }
+};
+
+static Bounds HitBounds(Window* win, int id) {
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        if (win->paint.hits[i].id == id) {
+            return win->paint.hits[i].bounds;
+        }
+    }
+    return {};
+}
+
+static void DispatchLongPress(Window* win, App* app, Point at) {
+    for (TouchPhase phase : {TouchPhase::Started, TouchPhase::Ended}) {
+        PlatformInput in = InputLongPress(phase, at, at);
+        WindowDispatchInput(win, &in);
+        TestFlushEffects(app);
+        TestRunUntilParked(app);
+        TestDraw(win);
+    }
+}
+
+static void LongPressOpensTheContextMenu() {
+    App* app = TestAppNew();
+    Entity<LongPressMenus> view = EntityNew<LongPressMenus>(app);
+    InputSetValue(&view.Get(app)->input, StrL("quick select"));
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+
+    Bounds row = HitBounds(win, 101);
+    utassert(row.w > 0);
+    DispatchLongPress(win, app, {row.CenterX(), row.CenterY()});
+    utassert(view.Get(app)->rowMenu.Get(app)->open);
+    utassert(!view.Get(app)->inputMenu.Get(app)->open);
+    utassert(!view.Get(app)->textMenu.Get(app)->open);
+    TestAppFree(app);
+}
+
+static void LongPressOnAnInputInAContextMenuTriggerSelects() {
+    App* app = TestAppNew();
+    Entity<LongPressMenus> view = EntityNew<LongPressMenus>(app);
+    InputState* input = &view.Get(app)->input;
+    InputSetValue(input, StrL("quick select"));
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+    utassert(input->inputBounds.w > 0);
+    Point at = {input->inputBounds.x + 24, input->inputBounds.CenterY()};
+    DispatchLongPress(win, app, at);
+    utassert(base::StrEq(InputSelectedValue(input), "quick"));
+    utassert(!view.Get(app)->inputMenu.Get(app)->open);
+    utassert(!view.Get(app)->rowMenu.Get(app)->open);
+    TestAppFree(app);
+}
+
+static const TextHit* FindPaintedText(Window* win, const char* want) {
+    for (int i = 0; i < win->paint.texts.len; i++) {
+        if (base::StrEq(win->paint.texts[i].text, Str(want))) {
+            return &win->paint.texts[i];
+        }
+    }
+    return nullptr;
+}
+
+static void LongPressOnTextInAContextMenuTriggerSelects() {
+    App* app = TestAppNew();
+    Entity<LongPressMenus> view = EntityNew<LongPressMenus>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+    const TextHit* hit = FindPaintedText(win, "quick select");
+    utassert(hit);
+    if (!hit) {
+        TestAppFree(app);
+        return;
+    }
+    Point at = {hit->bounds.x + 4, hit->bounds.CenterY()};
+    DispatchLongPress(win, app, at);
+    char buf[32];
+    int n = WindowSelectionText(win, buf, 32);
+    utassert(base::StrEq(Str(buf, n), StrL("quick")));
+    TouchSelectionSnapshot snap = {};
+    utassert(WindowSelectionTouchSnapshot(win, &snap));
+    utassert(!view.Get(app)->textMenu.Get(app)->open);
+    TestAppFree(app);
+}
+
+static void LongPressOnBlankSpaceInATextTriggerOpensTheMenu() {
+    App* app = TestAppNew();
+    Entity<LongPressMenus> view = EntityNew<LongPressMenus>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+    Bounds box = HitBounds(win, 103);
+    utassert(box.h > 40);
+    Point at = {box.Right() - 12, box.Bottom() - 12};
+    DispatchLongPress(win, app, at);
+    char buf[32];
+    int n = WindowSelectionText(win, buf, 32);
+    utassert(n == 0);
+    utassert(view.Get(app)->textMenu.Get(app)->open);
+    utassert(!view.Get(app)->rowMenu.Get(app)->open);
+    TestAppFree(app);
+}
+
 void TestPopupMenu() {
     TheBindingsAreTheOnesRustBinds();
     TheWalkStepsOverWhatCannotBeClicked();
@@ -479,6 +625,10 @@ void TestPopupMenu() {
     SourceMenuItemKindsRemainDistinct();
     ContextMenuStateOwnsThePointerOpeningContract();
     EachContextMenuTriggerKeepsItsOwnState();
+    LongPressOpensTheContextMenu();
+    LongPressOnAnInputInAContextMenuTriggerSelects();
+    LongPressOnTextInAContextMenuTriggerSelects();
+    LongPressOnBlankSpaceInATextTriggerOpensTheMenu();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();

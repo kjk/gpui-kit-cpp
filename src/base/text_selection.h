@@ -378,6 +378,10 @@ void WindowSelectionPress(Window* win, float x, float y, int clickCount,
 // A long press takes the word like a double click but keeps the gesture live
 // so subsequent touch movement can extend it.
 bool WindowSelectionLongPressStart(Window* win, float x, float y);
+// TextSelection::is_selectable_at. True when the point is on a glyph in the
+// active selection scope. Touch-selection controls and blank space do not
+// match, so a context menu can yield the long press to the text.
+bool TextSelectionIsSelectableAt(Window* win, float x, float y);
 // A move with the button down.
 void WindowSelectionDrag(Window* win, float x, float y);
 // The release. What was selected stands until the next press.

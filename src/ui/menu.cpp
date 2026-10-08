@@ -1,6 +1,7 @@
 #include "ui/menu.h"
 #include "base/actions.h"
 #include "base/focus_trap.h"
+#include "base/text_selection.h"
 #include "gpui/keymap.h"
 #include "ui/kbd.h"
 
@@ -699,17 +700,14 @@ ContextMenu* ContextMenu::Menu(PopupMenu* m) {
     return this;
 }
 
-void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
-                                   const MouseDownEvent* ev) {
-    if (!self || !ev || ev->button != MouseButton::Right) {
-        return;
-    }
+static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
+                              Bounds el) {
     PopupMenuState* menu = self->menu.Get(cx);
     if (!menu) {
         return;
     }
     self->previousFocus = WindowFocused(cx->win);
-    self->position = {ev->x - ev->el.x, ev->y - ev->el.y};
+    self->position = {x - el.x, y - el.y};
     self->open = true;
     menu->x = self->position.x;
     menu->y = self->position.y;
@@ -718,13 +716,39 @@ void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
     // caret stays with the field. An explicit action target would win; this
     // menu's target is the key context, so the press has to land in the field.
     InputState* field = cx->win ? cx->win->input : nullptr;
-    if (field && field->focused &&
-        field->inputBounds.Contains({ev->x, ev->y})) {
+    if (field && field->focused && field->inputBounds.Contains({x, y})) {
         if (!menu->focus.IsValid()) {
             menu->focus = FocusHandleNew(cx);
         }
         field->SetSelectionFocus(menu->focus);
     }
+}
+
+void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
+                                   const MouseDownEvent* ev) {
+    if (!self || !ev || ev->button != MouseButton::Right) {
+        return;
+    }
+    ContextMenuOpenAt(self, cx, ev->x, ev->y, ev->el);
+}
+
+void ContextMenuState::OnLongPress(ContextMenuState* self, Ctx* cx,
+                                   const LongPressEvent* ev) {
+    if (!self || !ev || ev->phase != TouchPhase::Started || !cx->win) {
+        return;
+    }
+    if (cx->win->defaultPrevented) {
+        return;
+    }
+    // A glyph keeps the window's touch selection. Blank space opens the menu.
+    if (TextSelectionIsSelectableAt(cx->win, ev->startPosition.x,
+                                    ev->startPosition.y)) {
+        return;
+    }
+    // prevent_default, so the window does not also select a nearby word.
+    WindowPreventDefault(cx);
+    ContextMenuOpenAt(self, cx, ev->startPosition.x, ev->startPosition.y,
+                      ev->el);
 }
 
 ContextMenu* ContextMenuExt::Wrap(Ctx* cx, Str id, El* child, PopupMenu* menu) {
@@ -749,7 +773,8 @@ El* ContextMenu::IntoEl() {
     box->PathClick(id)
         ->TrackFocus(context->triggerFocus)
         ->TabStop(false)
-        ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown));
+        ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown))
+        ->OnLongPress(ListenTo(state, &ContextMenuState::OnLongPress));
     if (st->open) {
         box->Child(
             menu->IntoEl()->Absolute()->Left(st->x)->Top(st->y)->Deferred());
