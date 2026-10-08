@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "3cc2d0d624ce124be62eb4670e04197bc78bb8a5",
+  sha: "c8fdf3323f4a35c790dcc83db7216fb328f2c99a",
   date: "2026-10-08",
-  subject: "text_view: Keep narrow table columns on one line (#3399)",
+  subject: "kit: Extend UI testing with semantic queries and Linux rendering (#3402)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

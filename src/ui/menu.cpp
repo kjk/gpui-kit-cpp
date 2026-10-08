@@ -726,9 +726,14 @@ static void ContextMenuOpenAt(ContextMenuState* self, Ctx* cx, float x, float y,
 
 void ContextMenuState::OnMouseDown(ContextMenuState* self, Ctx* cx,
                                    const MouseDownEvent* ev) {
-    if (!self || !ev || ev->button != MouseButton::Right) {
+    if (!self || !ev || ev->button != MouseButton::Right ||
+        ev->phase != DispatchPhase::Bubble) {
         return;
     }
+    // The hit chain walks inside-out, which is what registering the listener
+    // before child paint does in context_menu.rs. Stopping the bubble is what
+    // keeps an ancestor menu from opening on the same right click.
+    WindowStopPropagation(cx);
     ContextMenuOpenAt(self, cx, ev->x, ev->y, ev->el);
 }
 
@@ -776,8 +781,21 @@ El* ContextMenu::IntoEl() {
         ->OnMouseDown(ListenTo(state, &ContextMenuState::OnMouseDown))
         ->OnLongPress(ListenTo(state, &ContextMenuState::OnLongPress));
     if (st->open) {
-        box->Child(
-            menu->IntoEl()->Absolute()->Left(st->x)->Top(st->y)->Deferred());
+        // Absolute insets are inside the border. The pointer is on the
+        // border box, so a bordered trigger (a Button) would otherwise open
+        // the menu one border-width away and the opening release would land
+        // outside it.
+        float insetX = box->style.borderL > box->style.border
+                           ? box->style.borderL
+                           : box->style.border;
+        float insetY = box->style.borderT > box->style.border
+                           ? box->style.borderT
+                           : box->style.border;
+        box->Child(menu->IntoEl()
+                       ->Absolute()
+                       ->Left(st->x - insetX)
+                       ->Top(st->y - insetY)
+                       ->Deferred());
     }
     return box;
 }

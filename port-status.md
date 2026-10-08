@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `3cc2d0d624ce124be62eb4670e04197bc78bb8a5` (2026-10-08,
-text_view: Keep narrow table columns on one line (#3399)).
-Table columns are sized from measured text. Narrow columns keep that
-width; only the widest shrink and wrap. Widths round up to the device
-pixel, and a header is measured with the head and cell styles.
+Processed through `c8fdf3323f4a35c790dcc83db7216fb328f2c99a` (2026-10-08,
+kit: Extend UI testing with semantic queries and Linux rendering (#3402)).
+A nested right click opens only the innermost context menu. The kit
+test harness's semantic queries and Linux pixel suite are the Rust
+test platform, not this engine.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

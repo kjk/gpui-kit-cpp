@@ -595,6 +595,122 @@ static void LongPressOnTextInAContextMenuTriggerSelects() {
     TestAppFree(app);
 }
 
+// kit menu.rs nested_context_menu_uses_the_innermost_right_click_target.
+// A right click on the inner trigger opens only that menu. A right click on
+// the card, away from the button, opens only the ancestor menu.
+struct NestedContextMenus {
+    int innerChosen = 0;
+    int outerChosen = 0;
+    Entity<PopupMenuState> innerMenu;
+    Entity<PopupMenuState> outerMenu;
+
+    static void OnCopy(NestedContextMenus* self, Ctx* cx, const ClickEvent*) {
+        self->innerChosen++;
+        Notify(cx);
+    }
+
+    static void OnRemove(NestedContextMenus* self, Ctx* cx, const ClickEvent*) {
+        self->outerChosen++;
+        Notify(cx);
+    }
+
+    static El* Render(NestedContextMenus* self, Ctx* cx) {
+        PopupMenu* inner =
+            PopupMenu::New(cx, StrL("inner-menu"))
+                ->Menu(StrL("Copy link"))
+                ->OnClick(Listen(cx, &NestedContextMenus::OnCopy));
+        self->innerMenu = inner->state;
+        El* share = ContextMenu::New(cx, StrL("share-menu"))
+                        ->Child(component::Button::New(cx, StrL("share"))
+                                    ->Label(StrL("Share"))
+                                    ->IntoEl())
+                        ->Menu(inner)
+                        ->IntoEl();
+        El* title = Div(cx->a)
+                        ->Id(StrL("card-title"))
+                        ->H(40)
+                        ->Child(TextEl(cx->a, StrL("Card")));
+        PopupMenu* outer =
+            PopupMenu::New(cx, StrL("outer-menu"))
+                ->Menu(StrL("Remove card"))
+                ->OnClick(Listen(cx, &NestedContextMenus::OnRemove));
+        self->outerMenu = outer->state;
+        El* card = Div(cx->a)
+                       ->Id(StrL("card"))
+                       ->FlexCol()
+                       ->Gap(16)
+                       ->W(320)
+                       ->Child(title)
+                       ->Child(share);
+        return Div(cx->a)->SizeFull()->Pad(16)->Child(
+            ContextMenu::New(cx, StrL("card-menu"))
+                ->Child(card)
+                ->Menu(outer)
+                ->IntoEl());
+    }
+};
+
+static void RightClickAt(Window* win, Point at) {
+    TestSimulateMouseDown(win, at, MouseButton::Right);
+    TestSimulateMouseUp(win, at, MouseButton::Right);
+    TestDraw(win);
+}
+
+static void NestedContextMenuUsesTheInnermostRightClick() {
+    App* app = TestAppNew();
+    Entity<NestedContextMenus> view = EntityNew<NestedContextMenus>(app);
+    Window* win = TestWindowOpen(app, view, 640, 480);
+    TestDraw(win);
+    // Button labels are not text hits. The card is the tall hit; the share
+    // button is the short one inside it. The title is the card's top band.
+    Bounds card = {};
+    Bounds share = {};
+    for (int i = 0; i < win->paint.hits.len; i++) {
+        Bounds b = win->paint.hits[i].bounds;
+        if (b.h > card.h) {
+            share = card;
+            card = b;
+        } else if (b.h > share.h) {
+            share = b;
+        }
+    }
+    utassert(card.h > share.h && share.h > 0);
+    Point shareAt = {share.CenterX(), share.CenterY()};
+    Point titleAt = {card.x + 24, card.y + 12};
+    RightClickAt(win, shareAt);
+    NestedContextMenus* self = view.Get(app);
+    utassert(self->innerMenu.Get(app)->open);
+    utassert(!self->outerMenu.Get(app)->open);
+    TestSimulateKeystrokes(win, "down");
+    TestDraw(win);
+    utassert(self->innerMenu.Get(app)->selected == 0);
+    TestSimulateKeystrokes(win, "enter");
+    TestDraw(win);
+    utassert(!self->innerMenu.Get(app)->open);
+    utassert(self->innerChosen == 1);
+    utassert(self->outerChosen == 0);
+
+    RightClickAt(win, titleAt);
+    utassert(!self->innerMenu.Get(app)->open);
+    utassert(self->outerMenu.Get(app)->open);
+    TestSimulateKeystrokes(win, "escape");
+    TestDraw(win);
+    utassert(!self->outerMenu.Get(app)->open);
+    utassert(self->innerChosen == 1);
+    utassert(self->outerChosen == 0);
+
+    RightClickAt(win, titleAt);
+    TestSimulateKeystrokes(win, "down");
+    TestDraw(win);
+    utassert(self->outerMenu.Get(app)->selected == 0);
+    TestSimulateKeystrokes(win, "enter");
+    TestDraw(win);
+    utassert(!self->outerMenu.Get(app)->open);
+    utassert(self->innerChosen == 1);
+    utassert(self->outerChosen == 1);
+    TestAppFree(app);
+}
+
 static void LongPressOnBlankSpaceInATextTriggerOpensTheMenu() {
     App* app = TestAppNew();
     Entity<LongPressMenus> view = EntityNew<LongPressMenus>(app);
@@ -629,6 +745,7 @@ void TestPopupMenu() {
     LongPressOnAnInputInAContextMenuTriggerSelects();
     LongPressOnTextInAContextMenuTriggerSelects();
     LongPressOnBlankSpaceInATextTriggerOpensTheMenu();
+    NestedContextMenuUsesTheInnermostRightClick();
     AppMenuBarBindsAndHandlesItsSourceActions();
     RootPopupPropagatesUnusedHorizontalActionsToTheMenuBar();
     OpenWithoutDismissReleasesTheMenu();
