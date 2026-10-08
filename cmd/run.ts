@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "952202f600e9093ed75a0107c347518ef60d8fb7",
+  sha: "72ec1734df4f0c8089ff9ee41980290bb7d9eb48",
   date: "2026-10-08",
-  subject: "settings: Keep focus rings inside the list viewport (#3394)",
+  subject: "scrollable_mask: Keep rounded scroll-table corners clean at any scroll offset (#3400)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

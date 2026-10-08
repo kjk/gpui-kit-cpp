@@ -4164,12 +4164,9 @@ El* TextView::ScrollTable(MdNode* n) {
         minTotal += cols[i].minW + cols[i].divider;
     }
 
-    El* track =
-        Div(a)->FlexCol()->W(kFill)->MinW(minTotal)->Bg(surface)->Border(
-            1, textViewStyle.border);
-    if (textViewStyle.tableFields) {
-        track->Refine(textViewStyle.table, textViewStyle.tableFields);
-    }
+    // Row track sized to max(viewport, column floors). The frame stays on
+    // the viewport below, so a radius does not travel with the rows.
+    El* track = Div(a)->FlexCol()->W(kFill)->MinW(minTotal);
     int rowIx = 0;
     for (MdNode* r = n->first; r; r = r->next, rowIx++) {
         El* row = Div(a)->FlexRow()->W(kFill);
@@ -4189,10 +4186,10 @@ El* TextView::ScrollTable(MdNode* n) {
         AppendTableCells(row, r, maxW, minW, nCols, colAlign);
         track->Child(row);
     }
-    // The viewport: it clips and scrolls sideways, and the frame is on the
-    // track inside it so it wraps the table rather than the box it slides in.
-    // The offset is the table's own, so two tables in a document scroll
-    // apart.
+    // The viewport owns the visible frame, including any caller-provided
+    // radius. The border stays here so the rounded frame does not move
+    // while the wider row track scrolls under it. The offset is the
+    // table's own, so two tables in a document scroll apart.
     // Which table in this view it is — the parse is rebuilt every frame, so
     // the node's address is not a name that lasts, and its position in the
     // document is.
@@ -4206,9 +4203,14 @@ El* TextView::ScrollTable(MdNode* n) {
                        ->W(kFill)
                        ->ClipX()
                        ->ScrollX(st ? st->x : 0)
-                       ->ScrollId((int)key)
-                       ->OnScroll(ListenTo(ent, &OnMdTableScroll))
-                       ->Child(track);
+                       ->Bg(surface)
+                       ->Border(1, textViewStyle.border);
+    if (textViewStyle.tableFields) {
+        scroller->Refine(textViewStyle.table, textViewStyle.tableFields);
+    }
+    scroller->ScrollId((int)key)
+        ->OnScroll(ListenTo(ent, &OnMdTableScroll))
+        ->Child(track);
     // horizontal_scroll_area: the viewport clips and the mask over it takes
     // the wheel, so the gesture locks to the axis it started on and a
     // vertical-dominant trackpad swipe belongs to the enclosing TextView

@@ -16,10 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `952202f600e9093ed75a0107c347518ef60d8fb7` (2026-10-08,
-settings: Keep focus rings inside the list viewport (#3394)).
-Settings page padding sits on each group row, inside the list clip, so
-a focus ring can pass the group's edge and still stay in the viewport.
+Processed through `72ec1734df4f0c8089ff9ee41980290bb7d9eb48` (2026-10-08,
+scrollable_mask: Keep rounded scroll-table corners clean at any scroll
+offset (#3400)). A scrolling table's background, border and radius stay
+on the viewport. A sibling cover fills the four corner notches with the
+theme background, so rows scrolled under the rectangular clip do not
+show square corners.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

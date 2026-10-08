@@ -1136,6 +1136,11 @@ static void TestMarkdownTableThemeTokens() {
         utassert(table && SameTextViewColor(table->style.bg.color,
                                             th.tokens.tableBg.color));
         El* head = table ? table->first : nullptr;
+        // A scrolling table's frame is the viewport. The rows sit on the
+        // track inside it, so the header is one level down from the border.
+        if (head && !head->style.hasBg && head->first) {
+            head = head->first;
+        }
         utassert(head && head->style.hasBg && head->style.hasColor);
         // Base paints the header from the style's own code background and
         // foreground; the themed pair arrives on top of it as the

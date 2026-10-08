@@ -35,10 +35,50 @@ struct ScrollableMask {
     El* IntoEl();
 };
 
+// The square outside one rounded corner: side `radius`, anchored at the
+// corner, with the quarter-disc arc that cuts the notch out of it.
+// `xDir` and `yDir` are ±1 and point from the corner toward the inside.
+struct CornerNotch {
+    float x = 0;
+    float y = 0;
+    float w = 0;
+    float h = 0;
+    float cx = 0;
+    float cy = 0;
+    float radius = 0;
+    float a0 = 0;
+    float a1 = 0;
+    bool clockwise = false;
+};
+
+CornerNotch CornerNotchGeometry(float cornerX, float cornerY, float xDir,
+                                float yDir, float radius);
+
+// Fills the four notches of a rounded frame so content scrolled under a
+// rectangular clip does not show square corners. A sibling of the scrolled
+// element, not a child: a child would move with the scroll offset.
+struct RoundedFrameCover {
+    Arena* a = nullptr;
+    // When set, the notches are painted over this element's border box and
+    // the radii are read from its style. A standalone cover uses its own
+    // layout box and the radii below.
+    El* viewport = nullptr;
+    Corners radii = {};
+    Rgba backdrop = {};
+    bool hasBackdrop = false;
+    float frameBorder = 0;
+
+    static RoundedFrameCover* Uniform(Ctx* cx, float radius);
+    RoundedFrameCover* FrameBorder(float width);
+    RoundedFrameCover* Backdrop(Rgba color);
+    El* IntoEl();
+};
+
 // `horizontal_scroll_area(id, handle, style, child)`: a viewport that clips
 // and scrolls sideways with a horizontal mask over it, so a vertical wheel
-// keeps bubbling to the document. `style` is the refinement the frame — its
-// background, border and radius — is painted from.
+// keeps bubbling to the document. The caller refines the frame — background,
+// border and radius — onto `viewport` before this call. The cover is a
+// sibling, so those corners stay put while the track scrolls.
 El* HorizontalScrollArea(Ctx* cx, Str id, El* viewport);
 
 } // namespace gpui

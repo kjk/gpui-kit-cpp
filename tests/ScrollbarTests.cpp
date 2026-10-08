@@ -191,6 +191,44 @@ static void DispatchWheel(Window* win, float dx, float dy, bool precise = false,
     WindowDispatchInput(win, &input);
 }
 
+// scrollable_mask.rs corner_notch_paths_stay_inside_their_corner_squares.
+// The notch is the radius square at the frame corner, and the arc is the
+// short quarter that cuts the disc out of it.
+static void corner_notch_paths_stay_inside_their_corner_squares() {
+    float width = 200.f;
+    float height = 100.f;
+    float radius = 8.f;
+    struct Case {
+        float x;
+        float y;
+        float xDir;
+        float yDir;
+    };
+    Case cases[] = {
+        {0, 0, 1.f, 1.f},
+        {width, 0, -1.f, 1.f},
+        {width, height, -1.f, -1.f},
+        {0, height, 1.f, -1.f},
+    };
+    for (const Case& c : cases) {
+        CornerNotch n = CornerNotchGeometry(c.x, c.y, c.xDir, c.yDir, radius);
+        utassertnear(n.w, radius);
+        utassertnear(n.h, radius);
+        float originX = c.xDir > 0 ? c.x : c.x - radius;
+        float originY = c.yDir > 0 ? c.y : c.y - radius;
+        utassertnear(n.x, originX);
+        utassertnear(n.y, originY);
+        utassertnear(n.cx, c.x + radius * c.xDir);
+        utassertnear(n.cy, c.y + radius * c.yDir);
+        float sweep = n.a1 - n.a0;
+        if (sweep < 0) {
+            sweep = -sweep;
+        }
+        utassertnear(sweep, 3.14159265f * 0.5f);
+        utassert(n.clockwise == (c.xDir * c.yDir < 0));
+    }
+}
+
 static void ScrollableMasksChainAndTrapLikeTheSource() {
     App app = {};
     Window* win = new Window();
@@ -516,6 +554,7 @@ void TestScrollbar() {
     SharedGeometryKeepsThePaintedGrabPoint();
     PreciseGesturesKeepTheirAxisUntilAStrongTurn();
     ScrollableElementPreservesTheSourceElementAndMask();
+    corner_notch_paths_stay_inside_their_corner_squares();
     ScrollableMasksChainAndTrapLikeTheSource();
     ATrackPressMovesOnceAndOnlyAThumbPressDrags();
     AThumbPressOnAnInputScrollerDragsEvenWithoutAScrollId();
