@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "6bb649ef246406d2b20038f2ddbaff9552ae8caf",
+  sha: "4921e5b69834e45592c9772c57f39a29ada7de2f",
   date: "2026-10-07",
-  subject: "test: Add find_all and configurable clicks to the UI test harness (#3384)",
+  subject: "test: Make Progress and TitleBar findable in UI tests (#3383)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

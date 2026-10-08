@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `6bb649ef246406d2b20038f2ddbaff9552ae8caf` (2026-10-07,
-test: Add find_all and configurable clicks to the UI test harness
-(#3384)). The new queries and click options live on Kit's
-TestWindowExt. This tree drives the native runtime directly and does
-not carry that harness.
+Processed through `4921e5b69834e45592c9772c57f39a29ada7de2f` (2026-10-07,
+test: Make Progress and TitleBar findable in UI tests (#3383)).
+Progress and TitleBar call test_support() so Kit's harness can find
+them. This tree has no such registry; both controls already expose
+their accessibility roles on the element.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
