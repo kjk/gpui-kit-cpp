@@ -16,12 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `1269b7abc9a57aa4252bcc5fb525b72bf7fcd692` (2026-10-05,
-text_view: normalize GFM table rows to the header column count (#3365)). A
-GFM table's column count is the delimiter row. A short body row is padded
-with empty cells and a long one drops the cells past that count, so every
-row shares one grid. The current update target is
-`288767cc730ca4977852a7860f52a8465a61876f`.
+Processed through `6150a8c6ecd723c78dffa9f28e05f80c68348036` (2026-10-05,
+input: Count characters, not bytes, when validating a mask pattern (#3369)).
+Upstream compared a character index with the mask text's byte length, so a
+multi-byte separator or `€` under `*` was rejected. `MaskIsValid` already
+walks and compares byte offsets, so the same text is accepted. The current
+update target is `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust
 

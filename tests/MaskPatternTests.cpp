@@ -255,6 +255,22 @@ static void NormalizeNumber() {
                          StrL("ab 中 1")));
 }
 
+// mask_pattern.rs test_is_valid_with_non_ascii_text. Validity is a
+// character count on both sides, so a multi-byte separator or a `*`
+// that takes `€` still matches.
+static void NonAsciiTextIsValid() {
+    MaskPattern date = MaskPatternNew(StrL("9999年99月"));
+    utassert(MaskIsValid(date, StrL("2024年")));
+    utassert(MaskIsValid(date, StrL("2024年12月")));
+    utassert(!MaskIsValid(date, StrL("2024年1x")));
+    MaskPatternFree(&date);
+
+    MaskPattern any = MaskPatternNew(StrL("*999"));
+    utassert(MaskIsValid(any, StrL("€")));
+    utassert(MaskIsValid(any, StrL("€123")));
+    MaskPatternFree(&any);
+}
+
 static void Placeholder() {
     MaskPattern mask = MaskPatternNew(StrL("(999) 999-9999"));
     utassert(base::StrEq(MaskPlaceholder(Tmp(), mask), StrL("(___) ___-____")));
@@ -271,5 +287,6 @@ void TestMaskPattern() {
     SignedNumbers();
     NumberLeadingDot();
     NormalizeNumber();
+    NonAsciiTextIsValid();
     Placeholder();
 }

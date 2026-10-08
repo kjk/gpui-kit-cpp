@@ -44,6 +44,15 @@ static bool MarkIs(const InputState& s, int start, int end) {
     return m.start == start && m.end == end;
 }
 
+// state.rs test_mask_pattern_accepts_non_ascii_text. A mask whose
+// separators are not ASCII accepts the text that fills them.
+static void MaskPatternAcceptsNonAsciiText() {
+    InputState s;
+    InputSetMaskPattern(&s, MaskPatternNew(StrL("9999年99月")));
+    Type(&s, "2024年12月");
+    utassert(ValueIs(s, "2024年12月"));
+}
+
 static void MaskedRedoRestoresActualCursor() {
     InputState s;
     InputSetMaskPattern(&s, MaskPatternNew(StrL("(999)999-9999")));
@@ -10264,6 +10273,7 @@ void TestInputState() {
     GeneratedPairsAreTrackedThroughEditsAndHistory();
     TheThreeInputBuildersInstallPasteInterception();
     SingleLineIsCenteredInATallerFrame();
+    MaskPatternAcceptsNonAsciiText();
     MaskedRedoRestoresActualCursor();
     AMaskedValueStaysInTheField();
     AFocusedFieldGoingTakesItsRegistrationWithIt();

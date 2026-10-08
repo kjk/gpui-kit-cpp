@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "1269b7abc9a57aa4252bcc5fb525b72bf7fcd692",
+  sha: "6150a8c6ecd723c78dffa9f28e05f80c68348036",
   date: "2026-10-05",
-  subject: "text_view: normalize GFM table rows to the header column count (#3365)",
+  subject: "input: Count characters, not bytes, when validating a mask pattern (#3369)",
   crates: {
     "gpui-kit": "0.7.0",
     "gpui-base": "0.7.0",
