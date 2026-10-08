@@ -8807,13 +8807,21 @@ static bool BoundsContain(Bounds b, Point p) {
 }
 
 bool CustomBlockIsSelected(Bounds bounds, Point start, Point end) {
+    // A block is atomic. The selection takes it once a gesture crosses an
+    // edge, and never when both endpoints stay inside. A click on a card
+    // often travels a few pixels, and that must not paint the block.
     if (start.x == end.x && start.y == end.y) {
         return false;
     }
     if (bounds.w <= 0 || bounds.h <= 0) {
         return false;
     }
-    return BoundsContain(bounds, start) || BoundsContain(bounds, end) ||
+    bool startInside = BoundsContain(bounds, start);
+    bool endInside = BoundsContain(bounds, end);
+    if (startInside && endInside) {
+        return false;
+    }
+    return startInside || endInside ||
            PointInTextSelection({bounds.x, bounds.y}, bounds.w, start, end,
                                 bounds.h);
 }

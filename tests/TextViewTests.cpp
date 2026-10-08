@@ -6733,14 +6733,23 @@ static void BlockPluginGeometrySelectsWholeBlocks() {
     Point inside = {60.f, 40.f};
     Point above = {0.f, 0.f};
     Point below = {0.f, 80.f};
-    Point nudge = {61.f, 40.f};
-    Point starts[] = {above, inside, above, inside};
-    Point ends[] = {inside, below, below, nudge};
-    for (int i = 0; i < 4; i++) {
+    Point starts[] = {above, inside, above};
+    Point ends[] = {inside, below, below};
+    for (int i = 0; i < 3; i++) {
         utassert(CustomBlockIsSelected(bounds, starts[i], ends[i]));
         utassert(CustomBlockIsSelected(bounds, ends[i], starts[i]));
     }
     utassert(!CustomBlockIsSelected(bounds, inside, inside));
+    Point nudge = {61.f, 40.f};
+    Point corner = {bounds.x + bounds.w - 1.f, bounds.y + bounds.h - 1.f};
+    Point insideStarts[] = {inside, {bounds.x, bounds.y}};
+    Point insideEnds[] = {nudge, corner};
+    for (int i = 0; i < 2; i++) {
+        utassert(
+            !CustomBlockIsSelected(bounds, insideStarts[i], insideEnds[i]));
+        utassert(
+            !CustomBlockIsSelected(bounds, insideEnds[i], insideStarts[i]));
+    }
     utassert(!CustomBlockIsSelected(bounds, {150.f, 30.f}, {160.f, 40.f}));
 }
 

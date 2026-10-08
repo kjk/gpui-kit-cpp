@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "29c04574dc838a8e59e84c9c9f3c4d15983222ce",
+  sha: "58d078b67fdbddc739faf1f475f2da964aad2bff",
   date: "2026-10-07",
-  subject: "webview: Compose native views with the GPUI Fast backend (#3389)",
+  subject: "text_view: Ignore gestures that stay inside one block plugin (#3390)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",
