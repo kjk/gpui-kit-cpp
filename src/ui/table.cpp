@@ -1,5 +1,6 @@
 #include "ui/table.h"
 #include "base/list_settings.h"
+#include "ui/i18n.h"
 #include "ui/scroll.h"
 #include "ui/skeleton.h"
 
@@ -478,6 +479,18 @@ DataTable* DataTable::CellText(Str (*fn)(Ctx*, void*, int, int)) {
 
 static Str TableColumnLabel(const TableColumn& column) {
     return column.name.s ? column.name : column.title;
+}
+
+// t!("Table.SortBy", column = name). The catalogue keeps rust_i18n's
+// %{column} placeholder; the column's own name fills it.
+static TempStr SortByLabel(Str column) {
+    Str t = Tr("Table.SortBy");
+    int at = StrFind(t, "%{column}");
+    if (at < 0) {
+        return fmt("%s", t);
+    }
+    return fmt("%s%s%s", Str(t.s, at), column,
+               Str(t.s + at + 9, len(t) - at - 9));
 }
 
 static El* TableColumnPadding(El* element, const TableColumn& column) {
@@ -1110,9 +1123,12 @@ El* DataTable::BuildEl() {
             th_->OnDrop(kTableColDrag, ListenTo(state, &TableState::OnColDrop));
         }
         if (col.sortable && s && s->sortable) {
-            // The sort icon is its own hit box inside the head, so clicking it
-            // sorts rather than selecting the column.
+            // The sort icon is its own hit box. The click still bubbles to
+            // the head, so it sorts and selects the column. Role and label
+            // are what a screen reader and a UI test use to find it.
             El* icon = SortIcon(cx, th, TableSortOf(s, c));
+            icon->Role(AccessibilityRole::Button)
+                ->AriaLabel(SortByLabel(colLabel));
             BindPathClick(icon,
                           ElementIdNamed(a, StrL("icon-sort"), (uint64_t)c),
                           ListenerArg(sortClick, c));

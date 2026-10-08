@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "ab7b54fdf420ef6522b91fb39b7c659d2a468387",
+  sha: "636e0888701125d1c91d7c4a236f96edc53e40bf",
   date: "2026-10-08",
-  subject: "text_selection: Stop writing selection state on every frame (#3407)",
+  subject: "table: Make the sort icon a labelled button (#3396)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

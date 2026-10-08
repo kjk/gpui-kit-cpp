@@ -892,8 +892,100 @@ static void ATableWithoutAHeightFillsItsBox() {
     EntityDropAll(&app);
 }
 
+// collections.rs table_sort_icon_is_a_labelled_button_that_cycles_the_sort.
+struct SortableRecords {
+    Entity<TableState> table;
+    int nsorts = 0;
+    int sortCols[4] = {};
+    ColumnSort sorts[4] = {};
+
+    static int Columns(Ctx*, void*) { return 2; }
+    static int Rows(Ctx*, void*) { return 3; }
+    static component::TableColumn Column(Ctx*, void*, int ix) {
+        component::TableColumn column =
+            component::TableColumn::New(
+                ix == 0 ? StrL("column-0") : StrL("column-1"),
+                ix == 0 ? StrL("Name") : StrL("Status"))
+                .Width(180);
+        return ix == 0 ? column.Sortable() : column;
+    }
+    static void PerformSort(Ctx*, void* data, int col, ColumnSort sort) {
+        SortableRecords* self = (SortableRecords*)data;
+        if (self->nsorts < 4) {
+            self->sortCols[self->nsorts] = col;
+            self->sorts[self->nsorts] = sort;
+            self->nsorts++;
+        }
+    }
+    static El* Cell(Ctx* cx, void*, int, int) { return Div(cx->a); }
+    static El* Render(SortableRecords* self, Ctx* cx) {
+        component::TableDelegate delegate = {};
+        delegate.data = self;
+        delegate.columnsCount = Columns;
+        delegate.rowsCount = Rows;
+        delegate.column = Column;
+        delegate.performSort = PerformSort;
+        delegate.renderTd = Cell;
+        return component::DataTable::New(cx, StrL("t"), self->table)
+            ->Delegate(delegate)
+            ->IntoEl();
+    }
+};
+
+static const AccessibilityNode* SortButton(const Window* win) {
+    for (int i = 0; i < win->accessibility.len; i++) {
+        const AccessibilityNode& node = win->accessibility[i];
+        if (node.info.role == AccessibilityRole::Button &&
+            base::StrEq(node.info.label, StrL("Sort by Name"))) {
+            return &node;
+        }
+    }
+    return nullptr;
+}
+
+static void SortIconIsALabelledButtonThatCyclesTheSort() {
+    App* app = TestAppNew();
+    component::Init(app);
+    Entity<SortableRecords> view = EntityNew<SortableRecords>(app);
+    SortableRecords* self = view.Get(app);
+    self->table = EntityNewState<TableState>(app);
+    Window* win = TestWindowOpen(app, view, 640, 320, 1);
+    const AccessibilityNode* icon = SortButton(win);
+    utassert(icon && icon->bounds.w > 0 && icon->bounds.h > 0);
+    int labelled = 0;
+    for (int i = 0; i < win->accessibility.len; i++) {
+        const AccessibilityNode& node = win->accessibility[i];
+        if (node.info.role != AccessibilityRole::Button) {
+            continue;
+        }
+        labelled++;
+        utassert(!base::StrEq(node.info.label, StrL("Sort by Status")));
+    }
+    utassert(labelled == 1);
+    TableState* table = self->table.Get(app);
+    utassert(table && TableSelectedCol(table) < 0);
+
+    for (int i = 0; i < 3; i++) {
+        icon = SortButton(win);
+        utassert(icon != nullptr);
+        if (!icon) {
+            break;
+        }
+        TestSimulateClick(win, Point{icon->bounds.x + icon->bounds.w / 2.f,
+                                     icon->bounds.y + icon->bounds.h / 2.f});
+    }
+    utassert(self->nsorts == 3);
+    utassert(self->sortCols[0] == 0 &&
+             self->sorts[0] == ColumnSort::Descending);
+    utassert(self->sortCols[1] == 0 && self->sorts[1] == ColumnSort::Ascending);
+    utassert(self->sortCols[2] == 0 && self->sorts[2] == ColumnSort::Default);
+    utassert(TableSelectedCol(table) == 0);
+    TestAppFree(app);
+}
+
 void TestDataTable() {
     AStripedTableFillsTheBodyWithEmptyRows();
+    SortIconIsALabelledButtonThatCyclesTheSort();
     SourceColumnBuildersKeepEveryField();
     EachColumnHasItsOwnResizeBounds();
     TheSourceDelegateDrivesTheTable();
