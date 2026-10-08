@@ -1238,6 +1238,16 @@ static void AFlagTheApplicationSetBeforeTheFirstReadingIsKept() {
     MotionResetReduceForTest();
 }
 
+// MotionSetReduced(false) is the value a fresh process already has, and it
+// still has to win over the first system reading.
+static void AFalseFlagSetBeforeTheFirstReadingIsKept() {
+    MotionResetReduceForTest();
+    MotionSetReduced(false);
+    ApplyReduceMotionPreference(true);
+    utassert(!MotionReduced());
+    MotionResetReduceForTest();
+}
+
 void TestMotion() {
     TestSuite("motion");
     TheEasingsAreTheCurvesRustNames();
@@ -1286,4 +1296,5 @@ void TestMotion() {
     AnUnknownSystemPreferenceLeavesTheFlagAlone();
     TheSystemDrivesTheFlagUntilTheApplicationSetsIt();
     AFlagTheApplicationSetBeforeTheFirstReadingIsKept();
+    AFalseFlagSetBeforeTheFirstReadingIsKept();
 }

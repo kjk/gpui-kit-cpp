@@ -373,6 +373,7 @@ float MotionSample(const Motion& m, float progress) {
 static bool gReduced = false;
 static bool gHasApplied = false;
 static bool gApplied = false;
+static bool gOverride = false;
 static bool gFollowing = false;
 
 bool MotionReduced() {
@@ -381,15 +382,22 @@ bool MotionReduced() {
 
 void MotionSetReduced(bool on) {
     gReduced = on;
+    // An explicit choice, including the same value the flag already holds.
+    // The system reading must not put it back.
+    gOverride = true;
 }
 
 void MotionResetReduceForTest() {
     gReduced = false;
     gHasApplied = false;
     gApplied = false;
+    gOverride = false;
 }
 
 void ApplyReduceMotionPreference(bool reduce) {
+    if (gOverride) {
+        return;
+    }
     bool applied = gHasApplied ? gApplied : false;
     if (gReduced != applied) {
         return;

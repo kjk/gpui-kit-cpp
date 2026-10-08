@@ -641,6 +641,9 @@ static void DialogEntrancesFollowTheResolvedSurface() {
 
     App app;
     component::Init(&app);
+    // Init follows the host's animation setting. These samples are the
+    // moving entrance; the reduced-motion case below opts in on its own.
+    MotionSetReduced(false);
     Window* win = new Window();
     win->app = &app;
     win->paint.app = &app;
