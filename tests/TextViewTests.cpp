@@ -943,7 +943,9 @@ static void TestTextCollectionsGrowWithTheDocument(Arena* a) {
     codeSource.Append(StrL("</code></pre>"));
     Str code = codeSource.TakeStr();
     El* codeEl = TextView::NewHtml(&cx, code)->IntoEl();
-    utassert(ElementTextBytes(codeEl) == 700);
+    // The fence's language is painted beside the code ("cpp"), so the tree
+    // holds the 700 source bytes plus that label.
+    utassert(ElementTextBytes(codeEl) == 703);
     StrFree(code);
 
     // Forty columns cross the old column cap; seventy rows also cross the
@@ -1947,9 +1949,15 @@ static bool HasBottomPad(El* e, float pad) {
     return false;
 }
 
+// The heading's own bottom gap: 0.35 of its size, which is the body size
+// times the level's scale. FontPx is what Block applies before the gap.
+static float HeadingBottomGap(const Ctx* cx, float scale) {
+    return FontPx(cx, 16.f * scale) * 0.35f;
+}
+
 // text_view.rs: heading_refinement_changes_rendered_heading_geometry. The
-// level-1 refinement reaches an h1's box, and an h2 keeps its default 0.3rem
-// bottom padding.
+// level-1 refinement reaches an h1's box. An h2 keeps the default bottom
+// gap, 0.35 of its own size.
 static void HeadingRefinementChangesRenderedHeadingGeometry() {
     App app;
     ThemeSet(&app, ThemeMode::Light);
@@ -1959,18 +1967,108 @@ static void HeadingRefinementChangesRenderedHeadingGeometry() {
     Ctx cx = {&app, win, a, {}};
     TextViewStyle custom = TextViewStyle::Default();
     custom.WithHeading(&HeadingOnePadded);
-    El* defaultH1 = TextView::New(&cx, StrL("# Heading"))
+    // A following paragraph keeps the heading from being the last block,
+    // which is the only time the default bottom gap is dropped.
+    El* defaultH1 = TextView::New(&cx, StrL("# Heading\n\nnext"))
                         ->Style(TextViewDefaults::Global(&app).style)
                         ->IntoEl();
     El* customH1 =
         TextView::New(&cx, StrL("# Heading"))->Style(custom)->IntoEl();
     El* customH2 =
-        TextView::New(&cx, StrL("## Heading"))->Style(custom)->IntoEl();
+        TextView::New(&cx, StrL("## Heading\n\nnext"))->Style(custom)->IntoEl();
     utassert(!HasBottomPad(defaultH1, 32.f) &&
-             HasBottomPad(defaultH1, Rems(&cx, 0.3f)));
+             HasBottomPad(defaultH1, HeadingBottomGap(&cx, 1.8f)));
     utassert(HasBottomPad(customH1, 32.f));
     utassert(!HasBottomPad(customH2, 32.f) &&
-             HasBottomPad(customH2, Rems(&cx, 0.3f)));
+             HasBottomPad(customH2, HeadingBottomGap(&cx, 4.f / 3.f)));
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+static El* StreamTextEl(El* e, Str needle);
+
+// IntoEl may wrap the block column. The column is the element whose
+// children are the blocks, so a one-child wrapper is stepped through.
+static El* FlowColumn(El* e) {
+    while (e && e->first && !e->first->next && e->first->first) {
+        e = e->first;
+    }
+    return e;
+}
+
+// document.rs flow_position. Link definitions never become blocks, so a
+// heading after one still opens the flow and takes no gap above it.
+static void FlowPositionSkipsBlocksThatRenderNothing() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    El* root = FlowColumn(
+        TextView::New(&cx,
+                      StrL("[ref]: https://example.com\n\n# Title\n\ntext"))
+            ->Style(TextViewStyle::Default())
+            ->IntoEl());
+    El* heading = root ? root->first : nullptr;
+    El* para = heading ? heading->next : nullptr;
+    utassert(heading && StreamTextEl(heading, StrL("Title")));
+    utassert(heading && heading->style.pad.top == 0.f);
+    utassertnear(heading ? heading->style.pad.bottom : -1.f,
+                 HeadingBottomGap(&cx, 1.8f));
+    utassert(para && StreamTextEl(para, StrL("text")) && !para->next);
+    WindowKeyedFree(win);
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
+// document.rs flow_position_reports_the_previous_heading_or_rule. The gap
+// above a heading or a rule is what the previous visible block already
+// contributed: a paragraph's gap, a heading's bottom gap, or a rule's space.
+static void FlowPositionReportsThePreviousHeadingOrRule() {
+    App app;
+    ThemeSet(&app, ThemeMode::Light);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    El* root =
+        FlowColumn(TextView::New(&cx, StrL("text\n\n## A\n\n---\n\n### B"))
+                       ->Style(TextViewStyle::Default())
+                       ->IntoEl());
+    El* para = root ? root->first : nullptr;
+    El* h2 = para ? para->next : nullptr;
+    El* rule = h2 ? h2->next : nullptr;
+    El* h3 = rule ? rule->next : nullptr;
+    utassert(para && h2 && rule && h3 && !h3->next);
+    if (!para || !h2 || !rule || !h3) {
+        WindowKeyedFree(win);
+        ArenaDelete(a);
+        delete win;
+        EntityDropAll(&app);
+        AppGlobalClear(&app);
+        return;
+    }
+    float gap = Rems(&cx, 12.f / 16.f);
+    utassertnear(para->style.pad.bottom, gap);
+    float h2Font = FontPx(&cx, 16.f * (4.f / 3.f));
+    utassertnear(h2->style.pad.top, h2Font * 1.6f - gap);
+    utassertnear(h2->style.pad.bottom, h2Font * 0.35f);
+    float space = 16.f * 1.6f;
+    utassertnear(rule->style.pad.top, space - h2Font * 0.35f);
+    utassertnear(rule->style.pad.bottom, space);
+    float h3Font = FontPx(&cx, 16.f * (17.f / 15.f));
+    float h3Top = h3Font * 1.4f - space;
+    if (h3Top < 0.f) {
+        h3Top = 0.f;
+    }
+    utassertnear(h3->style.pad.top, h3Top);
+    utassert(h3->style.pad.bottom == 0.f);
     WindowKeyedFree(win);
     ArenaDelete(a);
     delete win;
@@ -2308,6 +2406,29 @@ static void FadesLayerOverHighlightsInsideTheirRange() {
     // No fades leave the highlights untouched: the same array comes back.
     utassert(TextFadeSpans(a, 8, base, &code, 1, nullptr, 0, &out) == 1 &&
              out == &code);
+    ArenaDelete(a);
+}
+
+// inline.rs fades_explicit_decoration_colors_with_the_text. A fade of 0.75
+// leaves a quarter of an explicit decoration colour. The underline is the
+// span colour PaintTextSpans draws the rule in; a strikethrough is that
+// same run colour, faded by TextFadeColor before the line is stroked.
+static void FadesExplicitDecorationColorsWithTheText() {
+    Arena* a = ArenaNew();
+    TextSpan link = {};
+    link.lo = 0;
+    link.hi = 4;
+    link.color = Rgba8(0, 0, 255, 255);
+    link.underline = true;
+    TextFade fade = {0, 4, 0.75f};
+    const TextSpan* out = nullptr;
+    int n = TextFadeSpans(a, 4, Rgba8(0, 0, 0, 255), &link, 1, &fade, 1, &out);
+    utassert(n == 1 && out && out[0].underline);
+    if (n == 1 && out) {
+        utassert(out[0].color.b == 255 && out[0].color.a == 64);
+    }
+    Rgba strike = TextFadeColor(Rgba8(255, 0, 0, 255), 0.75f);
+    utassert(strike.r == 255 && strike.a == 64);
     ArenaDelete(a);
 }
 
@@ -6666,12 +6787,15 @@ void TestTextView() {
     ClaimedInlineMathSurvivesProseFlattening();
     InlineHtmlFormattingTagsPairAcrossSiblings();
     HeadingRefinementChangesRenderedHeadingGeometry();
+    FlowPositionSkipsBlocksThatRenderNothing();
+    FlowPositionReportsThePreviousHeadingOrRule();
     AnUnchangedFlowIsNotLaidOutAgain();
     InlineCodeLineIsAsTallAsAPlainLine();
     TestStatelessMarkdownSettles();
     TestStreamFadeTracksRenderedAppends();
     StreamFadeUnitsAreWordsOrCjkCharacters();
     FadesLayerOverHighlightsInsideTheirRange();
+    FadesExplicitDecorationColorsWithTheText();
     StreamedWordsFadeInOneAfterAnother();
     SetTextExtendingMarkdownAppendsAndKeepsSelection();
     SetTextStreamingMarkdownMatchesAFullParse();

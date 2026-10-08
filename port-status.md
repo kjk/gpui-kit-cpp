@@ -16,12 +16,13 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `87d10ae5e1299d1be18670a37570c5402f952e34` (2026-10-05,
-kit: Update GPUI to gpui-pre 0.3.8 and prepare v0.7.1 (#3370)). The workspace
-packages are 0.7.1. The editor wrapper and inline flow pass
-`IndentAdjustment::SameIndent`, which is the continuation indent already
-applied here, and the shell scroll regression reads laid-out bounds rather
-than a release-disabled debug selector. The current update target is
+Processed through `8d8cc6715e8f9f0765e8c1a0b005eb70f4c59b52` (2026-10-05,
+text_view: Improve default typography (#3371)). Headings scale with the body
+(1.8 / 1.333 / 1.133 / 1 / 0.933 / 0.867), all semibold, with a section gap
+that collapses against the previous block. Paragraphs gap 0.75rem, lists hang
+their markers in a 1.4em column, and code, quotes, rules, tables and task
+boxes take the new spacing. A component style that leaves heading sizes at
+the default no longer pins them to a 14px base. The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
 ## Known gaps vs Rust

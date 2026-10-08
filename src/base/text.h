@@ -443,9 +443,9 @@ struct TextViewStyle {
     Rgba codeBackground = {};
     // Rules, table borders and the bar down the side of a blockquote.
     Rgba border = {};
-    // rems(1.), held as DIPs at a 16 px rem: the view resolves it against
+    // rems(0.75), held as DIPs at a 16 px rem: the view resolves it against
     // the window's rem size.
-    float paragraphGap = 16;
+    float paragraphGap = 12;
     // Unset, every level's refinement is empty.
     HeadingStyleFn heading = nullptr;
     void* headingData = nullptr;
@@ -1122,17 +1122,17 @@ struct TextView {
     Str source = {};
     Entity<TextViewState> state = {};
     // Body text size. In Rust this is whatever the TextView inherits, which
-    // is theme.font_size — 16 — and is separate from the heading base below.
+    // is theme.font_size — 16. Heading sizes are scales of it.
     float baseFont = 16;
-    // TextViewStyle::heading_base_font_size. Heading sizes are multiples of
-    // it: node.rs 2258 has h1 2.0, h2 1.5, h3 1.25, h4 1.125, h5 and h6 1.0.
+    // Kept for a caller that still names a heading base. The default scale
+    // does not read it.
     float headingFont = 14;
     // theme.mono_font_size — fenced code blocks. Inline code follows Rust's
     // relative 0.875 scale so it stays proportional inside headings too.
     float codeFont = 13;
-    // TextViewStyle::paragraph_gap, rems(1.), at a 16 px rem like the
+    // TextViewStyle::paragraph_gap, rems(0.75), at a 16 px rem like the
     // style's.
-    float paragraphGap = 16;
+    float paragraphGap = 12;
     // Whether the text can be dragged over. Rust's TextView is selectable
     // through its own selection machinery; here it is El::Selectable. Every
     // constructor turns it on — `.selectable(true)` was the common case and
@@ -1204,6 +1204,12 @@ struct TextView {
     // How deep Blocks is, so it knows the top-level blocks a whole-block
     // reveal counts.
     int blockDepth = 0;
+    // PrevBlock for the block about to render: 0 start, 1 heading, 2 rule,
+    // 3 anything else. Headings and rules collapse their gap with it.
+    uint8_t flowPrev = 0;
+    int flowPrevLevel = 0;
+    // The gap the previous heading contributed below itself.
+    float flowPrevSpace = 0;
     // NodeContext::stream_fade: this frame's fading ranges, per leaf.
     const StreamFadeRange* streamFades = nullptr;
     int nStreamFades = 0;
@@ -1404,7 +1410,7 @@ struct TextView {
     // RevealPainted settles the report while the live content mask is active.
     void RevealFrame(TextViewState* managed);
     static void PrepareInheritedColor(PaintCtx* ctx, El* element,
-                                       Rgba inherited, void* data);
+                                      Rgba inherited, void* data);
     static void RevealPainted(PaintCtx* ctx, El* element, void* data);
     // Inline::reveal: whether the pending reveal starts in `leaf`'s text,
     // and at which offset of it.

@@ -2641,32 +2641,45 @@ Listener TextView::LinkListener(Str href) {
     return ListenerArg(onLink, (int64_t)binding);
 }
 
-// node.rs 2258: h1 2.0/BOLD, h2 1.5, h3 1.25, h4 1.125, h5 1.0/SEMIBOLD,
-// h6 1.0/MEDIUM.
-static float HeadingScale(int level) {
+// heading_metrics: size scale, line height, section gap. Every level is
+// semibold; the size is relative to the body.
+static void HeadingMetrics(int level, float* scale, float* line,
+                           float* section) {
     switch (level) {
         case 1:
-            return 2.f;
+            *scale = 1.8f;
+            *line = 1.25f;
+            *section = 1.1f;
+            break;
         case 2:
-            return 1.5f;
+            *scale = 4.f / 3.f;
+            *line = 1.35f;
+            *section = 1.6f;
+            break;
         case 3:
-            return 1.25f;
+            *scale = 17.f / 15.f;
+            *line = 1.35f;
+            *section = 1.4f;
+            break;
         case 4:
-            return 1.125f;
+            *scale = 1.f;
+            *line = 1.35f;
+            *section = 1.4f;
+            break;
+        case 5:
+            *scale = 14.f / 15.f;
+            *line = 1.35f;
+            *section = 1.4f;
+            break;
         default:
-            return 1.f;
+            *scale = 13.f / 15.f;
+            *line = 1.35f;
+            *section = 1.4f;
+            break;
     }
 }
 
-static int HeadingWeight(int level) {
-    if (level == 1) {
-        return 3;
-    }
-    if (level >= 6) {
-        return 1;
-    }
-    return 2;
-}
+static const float kHeadingBottomGap = 0.35f;
 
 static El* ApplyWeight(El* t, int weight) {
     if (weight >= 3) {
@@ -3080,6 +3093,10 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         // draws in the theme's own foreground, and a span with no alpha is
         // not drawn at all.
         sp->color = c.a ? c : textViewStyle.foreground;
+        // link_underline: the rule is the link colour at 40% opacity.
+        if (marks & MdLink) {
+            sp->color.a = (uint8_t)((float)sp->color.a * 0.4f + 0.5f);
+        }
         sp->underline = true;
         t->Underlines(sp, 1);
     }
@@ -3090,12 +3107,12 @@ El* TextView::Word(Str w, float font, Rgba color, uint8_t marks, int weight,
         t->Bg(kMarkBg);
     } else if (marks & MdCode) {
         // inline.rs shapes inline code in the theme's monospace face at
-        // 0.875 of the surrounding font size. Its background has two DIP of
+        // 0.875 of the surrounding font size. Its background has four DIP of
         // horizontal breathing room and the theme's small radius.
         float radius = base_theme::Theme::Global(cx->app).tokens.radius.sm;
         t->Font(font * 0.875f)
             ->Mono()
-            ->PadX(2)
+            ->PadX(4)
             ->Radius(radius)
             ->Bg(textViewStyle.InlineCodeBackground());
         if (textViewStyle.inlineCodeFields) {
@@ -3531,11 +3548,16 @@ El* TextView::CodeBlock(MdNode* n) {
     // block sits under has to start the first code line again.
     SrcOpen(SrcCat(a, StrL("```"), n->lang, StrL("\n"), srcLinePre),
             SrcCat(a, StrL("\n"), srcLinePre, StrL("```")));
-    // p_3.
+    // px_4 on the sides, 14 below, and 28 above when the language label
+    // sits in that corner. A 1 px border, line height 1.6.
+    bool showLang = len(n->lang) > 0 && !codeActions;
     El* box = Div(a)
                   ->FlexCol()
                   ->W(kFill)
-                  ->Pad(Rems(cx, 0.75f))
+                  ->PadX(16)
+                  ->PadT(showLang ? 28.f : 14.f)
+                  ->PadB(14)
+                  ->Border(1, textViewStyle.border)
                   ->Radius(radius)
                   ->Bg(textViewStyle.codeBackground);
     if (textViewStyle.codeBlockFields) {
@@ -3604,7 +3626,7 @@ El* TextView::CodeBlock(MdNode* n) {
         if (RevealIn(n, &reveal)) {
             RevealMark(t, 0, reveal);
         }
-        box->Child(t->ReportLineSpan(FontLen(cx, codeFont * kLineHeight)));
+        box->Child(t->ReportLineSpan(FontLen(cx, codeFont * 1.6f)));
     }
     El* actionsBox = nullptr;
     if (codeActions) {
@@ -3621,9 +3643,18 @@ El* TextView::CodeBlock(MdNode* n) {
                              ->Child(actions);
         }
     }
+    El* langLabel = nullptr;
+    if (showLang) {
+        float xs = base_theme::Theme::Global(cx->app).tokens.typography.xs.size;
+        langLabel = Div(a)->Absolute()->Top(7)->Right(12)->Child(
+            TextEl(a, n->lang)->Font(xs)->Fg(textViewStyle.mutedForeground));
+    }
     if (!codeBlockScroll) {
         if (actionsBox) {
             box->Child(actionsBox);
+        }
+        if (langLabel) {
+            box->Child(langLabel);
         }
         return box;
     }
@@ -3650,6 +3681,9 @@ El* TextView::CodeBlock(MdNode* n) {
     if (actionsBox) {
         frame->Child(actionsBox);
     }
+    if (langLabel) {
+        frame->Child(langLabel);
+    }
     return frame;
 }
 
@@ -3663,7 +3697,7 @@ El* TextView::CodeLines(Str code, const ArenaVec<CodeHighlight>& spans,
                         const MdNode* leaf) {
     const int count = len(spans);
     El* col = Div(a)->FlexCol()->W(kFill);
-    float lineH = FontLen(cx, codeFont * kLineHeight);
+    float lineH = FontLen(cx, codeFont * 1.6f);
     El* row = Div(a)->FlexRow()->H(lineH);
     // The run being gathered: adjacent tokens of one color are one element,
     // which keeps a line of code down to a handful.
@@ -3786,7 +3820,7 @@ static void OnMdTableScroll(MdTableScroll* st, Ctx* cx, const ScrollEvent* ev) {
 El* TextView::ScrollTable(MdNode* n) {
     // px_2 either side, the border every column but the last draws, and the
     // track's own border on both sides.
-    const float kCellPad = 16.f;
+    const float kCellPad = 24.f;
     const float kCellMin = 48.f;
     const float kCellBorder = 1.f;
     const float kTableBorder = 2.f;
@@ -3831,7 +3865,8 @@ El* TextView::ScrollTable(MdNode* n) {
                 for (MdRun* run = c->runFirst; run; run = run->next) {
                     // Unwrapped, so what comes back is the run's own width.
                     Size sz =
-                        MeasureText(paint, run->text, baseFont, 0, false, 0);
+                        MeasureText(paint, run->text, baseFont * (14.f / 15.f),
+                                    0, false, 0);
                     w += sz.w;
                 }
             } else {
@@ -3884,8 +3919,8 @@ El* TextView::ScrollTable(MdNode* n) {
                            ->Grow(colW[col])
                            ->MinW(colMin[col])
                            ->ClipX()
-                           ->PadX(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f));
+                           ->PadX(12)
+                           ->PadY(7);
             if (textViewStyle.tableCellFields) {
                 cell->Refine(textViewStyle.tableCell, textViewStyle
                                                           .tableCellFields);
@@ -3898,8 +3933,8 @@ El* TextView::ScrollTable(MdNode* n) {
                 align = colAlign[col];
             }
             SrcCell(r, c, nCols, colAlign);
-            cell->Child(Inline(c, baseFont, r->head ? kInheritFg : BlockFg(), 0,
-                               align));
+            cell->Child(Inline(c, baseFont * (14.f / 15.f),
+                               r->head ? kInheritFg : BlockFg(), 0, align));
             row->Child(cell);
         }
         track->Child(row);
@@ -4024,8 +4059,8 @@ El* TextView::Table(MdNode* n) {
             El* cell = Div(a)
                            ->WFrac(frac)
                            ->MinW(tableColW > 0 ? tableColW : Rems(cx, 4.f))
-                           ->PadX(Rems(cx, 0.5f))
-                           ->PadY(Rems(cx, 0.25f));
+                           ->PadX(12)
+                           ->PadY(7);
             if (textViewStyle.tableCellFields) {
                 cell->Refine(textViewStyle.tableCell, textViewStyle
                                                           .tableCellFields);
@@ -4038,8 +4073,8 @@ El* TextView::Table(MdNode* n) {
                 align = colAlign[ix];
             }
             SrcCell(r, c, nCols, colAlign);
-            cell->Child(Inline(c, baseFont, r->head ? kInheritFg : BlockFg(), 0,
-                               align));
+            cell->Child(Inline(c, baseFont * (14.f / 15.f),
+                               r->head ? kInheritFg : BlockFg(), 0, align));
             row->Child(cell);
         }
         table->Child(row);
@@ -4072,31 +4107,29 @@ Rgba TextView::BlockFg() const {
 // size, and `mr_1p5` sits in front of it.
 static El* TaskBox(const Ctx* cx, Arena* a, const TextViewStyle& style,
                    float lineHeight, bool on) {
+    // rems(0.9375), 4 px radius, a 1.5 px muted border. Checked fills with
+    // the link colour.
     El* box = Div(a)
                   ->Flex()
-                  ->W(Rems(cx, 0.875f))
-                  ->H(Rems(cx, 0.875f))
+                  ->W(Rems(cx, 0.9375f))
+                  ->H(Rems(cx, 0.9375f))
                   ->Shrink0()
                   ->ItemsCenter()
                   ->JustifyCenter()
-                  ->Border(1, style.foreground);
+                  ->Radius(4)
+                  ->Border(1.5f, on ? style.link : style.mutedForeground);
     if (on) {
-        // Rust embeds two one-path SVGs and picks by `style.is_dark()`,
-        // because gpui-base has no icon set. This tree's icon byte code is in
-        // gpui, below Base, so the same glyph is drawn from there; the colour
-        // is the one that reads against a foreground-filled box.
         Rgba tick = style.isDark ? RgbaHex(0x000000) : RgbaHex(0xffffff);
-        box->Bg(style.foreground)
-            ->Child(IconEl(a, IconName::Check, Rems(cx, 0.625f))->Fg(tick));
+        box->Bg(style.link)
+            ->Child(IconEl(a, IconName::Check, Rems(cx, 0.75f))->Fg(tick));
     }
-    // There are no margins in this tree, so the row's `mr_1p5` is padding on
-    // the cell that holds the box.
+    // mr_2, as padding on the cell that holds the box.
     return Div(a)
         ->Shrink0()
         ->H(lineHeight)
         ->Flex()
         ->ItemsCenter()
-        ->PadR(Rems(cx, 0.375f))
+        ->PadR(Rems(cx, 0.5f))
         ->Child(box);
 }
 
@@ -4125,19 +4158,38 @@ El* TextView::Item(MdNode* n, Str marker, int depth) {
     // which is what takes the bullets off a plain list nested inside one.
     bool savedTodo = inTodo;
     inTodo = n->hasCheck;
+    uint8_t savedPrev = flowPrev;
+    flowPrev = 0;
     Blocks(content, n, depth, true);
+    flowPrev = savedPrev;
     inTodo = savedTodo;
     // An item with nothing selectable in it never spent its marker.
     srcMarker = Str{};
     srcLinePre = savedPre;
+    if (n->checked) {
+        content->Fg(textViewStyle.mutedForeground);
+    }
     El* row = Div(a)->FlexRow()->W(kFill)->ItemsStart();
     if (n->hasCheck) {
         row->Child(TaskBox(cx, a, textViewStyle,
                            FontLen(cx, baseFont * kLineHeight), n->checked));
     } else if (len(marker) > 0) {
-        // list_item_prefix is a plain string child: it takes the color the
-        // list inherits, so a bullet inside a red alert is red.
-        row->Child(TextEl(a, marker)->Font(baseFont)->Shrink0());
+        // The marker hangs in a 1.4em column, right-aligned, muted, with
+        // the trailing space trimmed off the drawn text.
+        float indent = baseFont * 1.4f;
+        Str shown = marker;
+        if (len(shown) > 0 && shown.s[len(shown) - 1] == ' ') {
+            shown.len--;
+        }
+        row->Child(Div(a)
+                       ->W(indent)
+                       ->Shrink0()
+                       ->PadR(indent * 0.3f)
+                       ->Child(TextEl(a, shown)
+                                   ->Font(baseFont)
+                                   ->W(kFill)
+                                   ->TextRight()
+                                   ->Fg(textViewStyle.mutedForeground)));
     }
     return row->Child(content);
 }
@@ -5666,9 +5718,15 @@ void TextView::RevealMark(El* t, int lo, int offset) {
 
 El* TextView::Blocks(El* into, MdNode* n, int depth, bool inList) {
     bool outer = blockDepth++ == 0;
+    if (outer) {
+        flowPrev = 0;
+    }
     int blockIx = 0;
     for (MdNode* c = n->first; c; c = c->next, blockIx++) {
         El* e = Block(c, depth, inList, c->next == nullptr);
+        if (e && c->kind != MdKind::Heading && c->kind != MdKind::Rule) {
+            flowPrev = 3;
+        }
         if (e && outer && revealTarget && revealTarget->block && revealOut &&
             revealTarget->blockIx == blockIx) {
             // RevealTarget::Block: the whole top-level block reports its box.
@@ -5732,7 +5790,7 @@ El* TextView::PluginBlock(MdNode* n) {
 }
 
 El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
-    // paragraph_gap is rems(1.) by default, held as DIPs at a 16 px rem.
+    // paragraph_gap is rems(0.75) by default, held as DIPs at a 16 px rem.
     float gap = Rems(cx, paragraphGap / 16.f);
     if (n->kind == MdKind::Custom) {
         float pad = (inList || isLast) ? 0.f : gap;
@@ -5767,47 +5825,85 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             return Div(a)->W(kFill)->PadB(mb)->Child(
                 Inline(n, baseFont, BlockFg(), 0));
         case MdKind::Heading: {
-            // The built-in size, then the style's refinement for the level
-            // over it. A text size it names reaches the runs; the rest
-            // refines the heading's box.
-            float font = headingFont * HeadingScale(n->level);
+            float scale = 1.f;
+            float line = 1.35f;
+            float section = 1.4f;
+            HeadingMetrics(n->level, &scale, &line, &section);
+            float font = baseFont * scale;
             gpui::Style refine;
             uint32_t refineFields = textViewStyle
                                         .Heading((uint8_t)n->level, &refine);
             if ((refineFields & StyleFieldFontSize) && refine.fontSize > 0) {
                 font = refine.fontSize;
             }
-            // `rems(..).to_pixels(px(14.))`: a heading's size is in pixels,
-            // and so is the one the compat refinement resolves.
             font = FontPx(cx, font);
-            // node.rs prefixes the heading marker in source mode so a
-            // selected heading round-trips as `## Title`.
             char hashes[8] = {};
             int nh = n->level > 0 && n->level < 8 ? n->level : 1;
             for (int i = 0; i < nh; i++) {
                 hashes[i] = '#';
             }
             SrcOpen(SrcCat(a, Str(hashes, nh), StrL(" ")), {});
-            // Headings use their own 0.3rem bottom padding, not the gap.
-            El* box = Div(a)
-                          ->W(kFill)
-                          ->PadB(Rems(cx, 0.3f))
-                          ->Child(Inline(n, font, BlockFg(),
-                                         HeadingWeight(n->level)));
+            // The previous block's gap counts toward the section gap. A
+            // heading after a heading stays close. The first block, and one
+            // inside a list, sits flush.
+            float top = 0;
+            bool flush = inList || depth > 0 || flowPrev == 0;
+            if (!flush) {
+                if (flowPrev == 1) {
+                    top = font * 0.25f;
+                } else if (flowPrev == 2) {
+                    top = font * section - baseFont * 1.6f;
+                } else {
+                    top = font * section - gap;
+                }
+                if (top < 0) {
+                    top = 0;
+                }
+            }
+            float bottom = isLast ? 0.f : font * kHeadingBottomGap;
+            Rgba fg = n->level >= 6 ? textViewStyle.mutedForeground : BlockFg();
+            El* text = Inline(n, font, fg, 2);
+            if (text) {
+                text->LineHeight(line);
+            }
+            El* box = Div(a)->W(kFill)->PadT(top)->PadB(bottom)->Child(text);
             StyleApplyFields(&box->style, refine,
                              refineFields & ~(uint32_t)StyleFieldFontSize);
+            flowPrev = 1;
+            flowPrevLevel = n->level;
+            flowPrevSpace = font * kHeadingBottomGap;
             return box;
         }
-        case MdKind::Rule:
-            return Div(a)->W(kFill)->PadB(mb)->Child(
-                Div(a)->H(2)->W(kFill)->Bg(textViewStyle.border));
+        case MdKind::Rule: {
+            float space = baseFont * 1.6f;
+            float top = 0;
+            bool flush = inList || depth > 0 || flowPrev == 0;
+            if (!flush) {
+                float above = gap;
+                if (flowPrev == 2) {
+                    above = space;
+                } else if (flowPrev == 1) {
+                    above = flowPrevSpace;
+                }
+                top = space - above;
+                if (top < 0) {
+                    top = 0;
+                }
+            }
+            flowPrev = 2;
+            return Div(a)
+                ->W(kFill)
+                ->PadT(top)
+                ->PadB(isLast ? 0.f : space)
+                ->Child(Div(a)->H(1)->W(kFill)->Bg(textViewStyle.border));
+        }
         case MdKind::Quote: {
             El* inner = Div(a)
                             ->FlexCol()
                             ->W(kFill)
                             ->Fg(textViewStyle.mutedForeground)
-                            ->BorderL(3, textViewStyle.border)
-                            ->PadX(Rems(cx, 1.f));
+                            ->BorderL(2, textViewStyle.border)
+                            ->PadL(baseFont * 0.9f);
             // text_color(muted_foreground) on the quote, and nothing inside
             // it naming a colour of its own: the paragraphs and headings it
             // holds inherit the grey rather than painting themselves black.
@@ -5819,7 +5915,10 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
             // `> ` so it round-trips; nested quotes stack the prefix.
             Str savedPre = srcLinePre;
             srcLinePre = SrcCat(a, srcLinePre, StrL("> "));
+            uint8_t savedPrev = flowPrev;
+            flowPrev = 0;
             Blocks(inner, n, depth, false);
+            flowPrev = savedPrev;
             srcLinePre = savedPre;
             blockFg = savedFg;
             blockFgSet = savedSet;
@@ -5827,6 +5926,9 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
         }
         case MdKind::List: {
             El* list = Div(a)->FlexCol()->W(kFill)->MinW(0)->PadB(mb);
+            if (depth > 0) {
+                list->PadL(baseFont * 1.4f);
+            }
             int ix = 0;
             for (MdNode* c = n->first; c; c = c->next) {
                 if (c->kind != MdKind::Item) {
@@ -5850,7 +5952,11 @@ El* TextView::Block(MdNode* n, int depth, bool inList, bool isLast) {
                     marker = Str{};
                 }
                 srcItemMarker = src;
-                list->Child(Item(c, marker, depth + 1));
+                El* item = Item(c, marker, depth + 1);
+                if (ix > 0) {
+                    item->PadT(baseFont * 0.25f);
+                }
+                list->Child(item);
                 ix++;
             }
             return list;

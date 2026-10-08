@@ -260,6 +260,10 @@ uint32_t TextViewHeadingCompatRefine(uint8_t level, Style* out, void* data) {
     const TextViewHeadingCompat* compat =
         data ? (const TextViewHeadingCompat*)data : &kDefault;
     float base = compat->headingBaseFontSize;
+    // A style that never touched heading sizes keeps Base's scale.
+    if (!compat->headingFontSize && base == 14.f) {
+        return 0;
+    }
     float size = base;
     if (compat->headingFontSize) {
         size = compat->headingFontSize(level, base, compat->data);

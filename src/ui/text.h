@@ -76,8 +76,9 @@ struct TextViewHeadingCompat {
     void* data = nullptr;
 };
 // The refinement callback for WithHeading, with a TextViewHeadingCompat* as
-// its data: h1..h6 at 2, 1.5, 1.25, 1.125 and 1 of the base, or what the
-// legacy function answers.
+// its data. The default base and no resolver name no size, so headings
+// follow the body's scale. An explicit base or resolver pins pixels:
+// h1..h6 at 2, 1.5, 1.25, 1.125 and 1 of that base.
 uint32_t TextViewHeadingCompatRefine(uint8_t level, Style* out, void* data);
 using TextViewStyle = gpui::TextViewStyle;
 using TextViewDefaults = gpui::TextViewDefaults;
