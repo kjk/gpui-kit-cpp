@@ -245,6 +245,43 @@ static void ATabOffTheEndIsBroughtIntoView() {
     utassertnear(DockTabScrollTo(40, strip, Bounds{}), 40.f);
 }
 
+// TabReveal::offset_revealing. Five 60px tabs in a 100px strip: clicking the
+// second leaves 32px of the third showing, and clicking the last lands on
+// the end. A scroll that is not the one the reveal wrote cancels it.
+static void AClickedTabRevealsItselfAndPartOfTheNext() {
+    TabRevealBox view = {0, 100};
+    TabRevealBox tabs[5];
+    for (int i = 0; i < 5; i++) {
+        tabs[i].left = (float)i * 60.f;
+        tabs[i].right = tabs[i].left + 60.f;
+    }
+    const float maxOffset = 200.f;
+    const float peek = 32.f;
+    utassertnear(TabRevealOffset(0, maxOffset, view, tabs[1], true, tabs[0],
+                                 true, tabs[2], peek),
+                 -52.f);
+    utassertnear(TabRevealOffset(-160.f, maxOffset, view, tabs[4], true,
+                                 tabs[3], false, {}, peek),
+                 -maxOffset);
+
+    TabRevealRun run = {};
+    run.active = true;
+    run.to = -52.f;
+    run.hasLast = true;
+    run.last = -10.f;
+    TabRevealPlan plan = TabRevealPlanFor(&run, -20.f);
+    utassert(!plan.travel && !run.active);
+
+    run.active = true;
+    run.to = -52.f;
+    run.hasLast = true;
+    run.last = -10.f;
+    plan = TabRevealPlanFor(&run, -10.f);
+    utassert(plan.travel && !plan.seed && plan.target == -52.f);
+    TabRevealCommit(&run, -52.f);
+    utassert(!run.active);
+}
+
 // DockArea::dump and load: the tree written out and built back, with the
 // panels matched by the name they were registered under.
 static void ALayoutSurvivesDumpAndLoad() {
@@ -1397,6 +1434,7 @@ void TestDock() {
     ADropOnItsOwnGroupNeedsATabOrAnEdge();
     ANodeKnowsWhichDockItIsIn();
     ATabOffTheEndIsBroughtIntoView();
+    AClickedTabRevealsItselfAndPartOfTheNext();
     ALayoutSurvivesDumpAndLoad();
     APanelNothingAnswersToBecomesInvalid();
     ALockedDockMovesNothing();

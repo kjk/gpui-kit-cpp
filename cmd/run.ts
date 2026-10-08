@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "288767cc730ca4977852a7860f52a8465a61876f",
+  sha: "02daace3522954eb8b3a8db77d59c3bbaa5a839d",
   date: "2026-10-08",
-  subject: "table: Clear a right-clicked cell's outline on the next click (#3413)",
+  subject: "tab: Scroll a clicked tab into view with the next one peeking (#3419)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

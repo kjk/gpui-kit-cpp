@@ -16,13 +16,14 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `288767cc730ca4977852a7860f52a8465a61876f` (2026-10-08,
-table: Clear a right-clicked cell's outline on the next click (#3413)).
-Selecting a cell clears the right-clicked cell, and a press outside
-the table clears a right-clicked cell the same way it clears a
-right-clicked row.
+Processed through `02daace3522954eb8b3a8db77d59c3bbaa5a839d` (2026-10-08,
+tab: Scroll a clicked tab into view with the next one peeking (#3419)).
+Clicking a tab, or picking it from the overflow menu, scrolls it into
+view with part of the next tab showing. The travel uses the selection
+indicator's spring, and a wheel scroll during it takes over. Changing
+the selection another way still leaves the offset where it was.
 The current update target is
-`288767cc730ca4977852a7860f52a8465a61876f`.
+`02daace3522954eb8b3a8db77d59c3bbaa5a839d`.
 
 ## Known gaps vs Rust
 

@@ -176,6 +176,8 @@ struct TabBar {
     TabBar* Menu(bool v = true);
     // ScrollHandle projection: the owning view supplies the retained offset
     // and listener exactly as it does for every other scroll element here.
+    // Clicking a tab scrolls it into view with part of the next one showing.
+    // Changing the selection, the tabs or the layout does not.
     TabBar* TrackScroll(int scrollKey, float offset, Listener fn);
     TabBar* Refine(const Style& value, uint32_t fields);
     El* IntoEl();

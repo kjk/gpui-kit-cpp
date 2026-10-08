@@ -10,7 +10,10 @@
    naming each other by index. */
 
 #include "base/geometry.h"
+#include "base/motion.h"
 #include "base/resizable.h"
+
+#include <stdlib.h>
 
 namespace gpui {
 
@@ -251,6 +254,66 @@ enum class PanelEvent : uint8_t {
     LayoutChanged
 };
 
+// A click's scroll, in GPUI coordinates: offset is 0 or negative, maxOffset
+// is how far the strip can go. Boxes are unscrolled window coordinates.
+struct TabRevealBox {
+    float left = 0;
+    float right = 0;
+};
+
+struct TabRevealRun {
+    bool active = false;
+    float to = 0;
+    bool hasLast = false;
+    float last = 0;
+};
+
+struct TabRevealPlan {
+    bool travel = false;
+    bool seed = false;
+    float target = 0;
+};
+
+// One frame of TabReveal::advance. A scroll that is not the offset the
+// previous frame wrote cancels the travel.
+TabRevealPlan TabRevealPlanFor(TabRevealRun* run, float current);
+void TabRevealCommit(TabRevealRun* run, float sprung);
+// TabReveal::offset_revealing. The tab itself wins on a narrow strip, and
+// the neighbour the click heads toward wins over the one behind it.
+float TabRevealOffset(float offset, float maxOffset, TabRevealBox viewport,
+                      TabRevealBox tab, bool hasPrev, TabRevealBox prev,
+                      bool hasNext, TabRevealBox next, float peek);
+// Steps `run` and answers the positive scroll offset to install.
+float TabRevealStep(Ctx* cx, uint32_t key, TabRevealRun* run, float scrollX,
+                    const Spring& spring);
+
+// The boxes a dock tab strip painted, so a click can scroll one into view.
+// `slots` is how many tabs the last finished bind recorded, in visible order.
+struct DockTabGeom {
+    Bounds* tabs = nullptr;
+    int cap = 0;
+    int slots = 0;
+    int panelOf[64] = {};
+    Bounds strip = {};
+    float contentW = 0;
+    // The scroll the boxes were painted at. Unscrolled x is screen x plus this.
+    float scrollX = 0;
+    bool hasStrip = false;
+    // frameNow of the bind that is filling `slots`, so a second tab in the
+    // same frame appends and the next frame starts again.
+    double pass = -1;
+};
+
+// DockPack's limit: a listener carries node * 64 + slot.
+const int kDockTabSlots = 64;
+
+struct DockState;
+
+DockTabGeom* DockTabGeomGet(DockState* s, int node);
+// True when the click armed an animated reveal, so the skin's snap must not
+// run as well. False when the strip has not been measured yet.
+bool DockArmTabReveal(DockState* s, Ctx* cx, int node, int panelIx);
+
 // DockItem. A node is either Tabs — a list of panels with one active — or
 // Split — a list of child nodes along an axis, each with a size.
 struct DockNode {
@@ -275,6 +338,9 @@ struct DockNode {
     // what the offset is worked out from.
     float tabScrollX = 0;
     int pendingScrollIx = -1;
+    // A click travels here instead of snapping. Selection changes still use
+    // pendingScrollIx, which is scroll_to_item.
+    TabRevealRun tabReveal = {};
     Bounds tabStripBounds = {};
     Bounds activeTabBounds = {};
     // Which tab `activeTabBounds` was measured for. A tab just made active
@@ -391,6 +457,9 @@ struct DockState {
     bool resizing = false;
 
     Listener onEvent;
+    // One strip's tab boxes, indexed by node. The click reveal reads the
+    // boxes the last frame painted. 64 is DockPack's slot limit.
+    Vec<DockTabGeom> tabGeom;
 
     static void OnTabClick(DockState* self, Ctx* cx, const ClickEvent* ev,
                            int64_t nodeAndIx);
@@ -422,6 +491,11 @@ struct DockState {
     static void OnResizeEnd(DockState* self, Ctx* cx, const MouseUpEvent* ev);
 
     ~DockState() {
+        for (int i = 0; i < len(tabGeom); i++) {
+            free(tabGeom[i].tabs);
+            tabGeom[i].tabs = nullptr;
+        }
+        VecReset(tabGeom);
         for (int i = 0; i < len(nodes); i++) {
             VecReset(nodes[i].child);
             VecReset(nodes[i].size);

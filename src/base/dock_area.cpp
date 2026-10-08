@@ -102,6 +102,42 @@ bool DockGroupHasToggle(const DockTabGroup* g, DockPlacement p) {
 // ---------------------------------------------------------------------------
 // What the skin hands back
 
+struct DockTabBoxRec {
+    Bounds* a = nullptr;
+    Bounds* b = nullptr;
+};
+
+static void RecordDockTabBox(PaintCtx*, El* e, void* user) {
+    DockTabBoxRec* rec = (DockTabBoxRec*)user;
+    if (!rec) {
+        return;
+    }
+    if (rec->a) {
+        *rec->a = e->Bounds();
+    }
+    if (rec->b) {
+        *rec->b = e->Bounds();
+    }
+}
+
+struct DockStripRec {
+    DockState* state = nullptr;
+    int node = -1;
+};
+
+static void RecordDockStrip(PaintCtx*, El* e, void* user) {
+    DockStripRec* rec = (DockStripRec*)user;
+    if (!rec || !rec->state || rec->node < 0 ||
+        rec->node >= len(rec->state->tabGeom)) {
+        return;
+    }
+    DockTabGeom& geom = rec->state->tabGeom[rec->node];
+    geom.strip = e->Bounds();
+    geom.contentW = e->contentW;
+    geom.scrollX = e->scrollX;
+    geom.hasStrip = e->w > 0;
+}
+
 El* DockBindTab(const DockTabGroup* g, int ix, El* tab) {
     DockState* s = GroupState(g);
     if (!s || !tab) {
@@ -139,9 +175,41 @@ El* DockBindTab(const DockTabGroup* g, int ix, El* tab) {
                                  DockPack(g->node, ix)));
         }
         if (ix == DockActiveIx(s, g->node)) {
-            tab->BoundsOut(&n.activeTabBounds);
             n.activeTabBoundsIx = ix;
         }
+    }
+    // The click reveal wants every visible tab's box, in the order the strip
+    // lays them out. The strip bind starts the list; each tab appends. The
+    // active tab also keeps the box the snap reads, and one element has one
+    // BoundsOut, so a paint hook writes both.
+    Bounds* revealBox = nullptr;
+    if (DockTabGeom* geom = DockTabGeomGet(s, g->node)) {
+        double now = cx->win ? cx->win->frameNow : 0;
+        if (geom->pass != now) {
+            geom->pass = now;
+            geom->slots = 0;
+        }
+        if (geom->tabs && geom->slots < geom->cap &&
+            geom->slots < kDockTabSlots) {
+            int slot = geom->slots++;
+            geom->panelOf[slot] = ix;
+            revealBox = &geom->tabs[slot];
+        }
+    }
+    Bounds* activeBox = nullptr;
+    if (!g->collapsed && ix == DockActiveIx(s, g->node)) {
+        activeBox = &n.activeTabBounds;
+    }
+    if (revealBox && activeBox) {
+        DockTabBoxRec* rec = ArenaNew<DockTabBoxRec>(cx->a);
+        rec->a = revealBox;
+        rec->b = activeBox;
+        tab->customPaint = &RecordDockTabBox;
+        tab->customUser = rec;
+    } else if (revealBox) {
+        tab->BoundsOut(revealBox);
+    } else if (activeBox) {
+        tab->BoundsOut(activeBox);
     }
     return tab;
 }
@@ -163,8 +231,27 @@ El* DockBindTabStrip(const DockTabGroup* g, El* strip) {
         return strip;
     }
     DockNode& n = s->nodes[g->node];
+    // A clicked tab is still travelling. theme spring_move: response 280,
+    // damping 0.85, epsilon 0.1, the same policy the tab indicator uses.
+    if (n.tabReveal.active) {
+        Spring spring = Spring::New(280.f).WithDamping(0.85f).WithEpsilon(0.1f);
+        n.tabScrollX = TabRevealStep(
+            g->cx, MotionId(DockElId(g->cx, "tab-reveal", g->node, 0)),
+            &n.tabReveal, n.tabScrollX, spring);
+    }
+    // The tabs bound after this append into a fresh list. Advance above
+    // still sees the boxes the previous frame recorded.
+    if (DockTabGeom* geom = DockTabGeomGet(s, g->node)) {
+        geom->slots = 0;
+        geom->pass = g->cx->win ? g->cx->win->frameNow : 0;
+        DockStripRec* rec = ArenaNew<DockStripRec>(g->cx->a);
+        rec->state = s;
+        rec->node = g->node;
+        strip->customPaint = &RecordDockStrip;
+        strip->customUser = rec;
+    }
     // The tab just made active is brought into view from where last frame put
-    // it, which is scroll_to_item.
+    // it, which is scroll_to_item. A click clears this and reveals instead.
     if (n.pendingScrollIx >= 0) {
         if (n.activeTabBoundsIx == n.pendingScrollIx) {
             n.tabScrollX = DockTabScrollTo(n.tabScrollX, n.tabStripBounds,

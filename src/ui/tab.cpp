@@ -1,6 +1,7 @@
 #include "ui/i18n.h"
 #include "ui/tab.h"
 #include "ui/styled.h"
+#include "base/dock.h"
 #include "base/motion.h"
 #include "gpui/paint.h"
 
@@ -611,7 +612,7 @@ static TabStyle TabDisabled(TabVariant v, bool selected, const Theme& th) {
 // TabBar::menu's "more" button: an xsmall ghost with a caret, whose dropdown
 // is the tab list itself. The rows are the tabs in order, so the index the
 // menu confirms is the index the bar's on_click wants.
-static El* TabMenuButton(TabBar* tabs, const Theme&, float) {
+static El* TabMenuButton(TabBar* tabs, const Theme&, float, Listener confirm) {
     Ctx* cx = tabs->cx;
     // The button and its menu are built inside the bar, so the bar's name is
     // what tells one strip's overflow menu from another's.
@@ -619,7 +620,7 @@ static El* TabMenuButton(TabBar* tabs, const Theme&, float) {
     Str menuId = StrL("menu");
     Entity<PopupMenuState> st = PopupMenuStateFor(cx, menuId);
     if (PopupMenuState* s = st.Get(cx)) {
-        s->onConfirm = tabs->onChange;
+        s->onConfirm = confirm.IsValid() ? confirm : tabs->onChange;
     }
     PopupMenu* menu = PopupMenu::New(cx, menuId, st)->Scrollable();
     int i = -1;
@@ -730,13 +731,120 @@ static void PaintFolderTab(PaintCtx* ctx, El* e, void* user) {
     }
 }
 
+static void RecordTabBound(PaintCtx*, El* e, void* user) {
+    if (user) {
+        *(Bounds*)user = e->Bounds();
+    }
+}
+
+// How much of the neighbouring tab a click leaves showing.
+static float TabRevealPeek(UiSize size) {
+    switch (size) {
+        case UiSize::XSmall:
+        case UiSize::Small:
+            return 24.f;
+        case UiSize::Large:
+            return 40.f;
+        default:
+            return 32.f;
+    }
+}
+
 struct TabBarScrollState {
     float offset = 0;
+    TabRevealRun run = {};
+    float peek = 32.f;
+    uint32_t motionKey = 0;
+    Listener onBarClick = {};
+    Vec<Listener> clicks;
+    Vec<Bounds> tabs;
+    Bounds viewport = {};
+    float contentW = 0;
+    float geomScroll = 0;
+    bool hasStrip = false;
+
+    ~TabBarScrollState() {
+        VecReset(clicks);
+        VecReset(tabs);
+    }
 
     static void OnScroll(TabBarScrollState* self, Ctx* cx,
                          const ScrollEvent* ev) {
         self->offset = ev->offsetX;
         Notify(cx);
+    }
+
+    static void RecordStrip(PaintCtx*, El* e, void* user) {
+        TabBarScrollState* self = (TabBarScrollState*)user;
+        if (!self) {
+            return;
+        }
+        self->viewport = e->Bounds();
+        self->contentW = e->contentW;
+        self->geomScroll = e->scrollX;
+        self->hasStrip = e->w > 0;
+    }
+
+    static TabRevealBox Unscrolled(Bounds screen, float scrollX) {
+        TabRevealBox box;
+        box.left = screen.x + scrollX;
+        box.right = screen.x + screen.w + scrollX;
+        return box;
+    }
+
+    static void Start(TabBarScrollState* self, Ctx* cx, int ix) {
+        if (!self->hasStrip || ix < 0 || ix >= self->tabs.len) {
+            return;
+        }
+        float scrollX = self->geomScroll;
+        float maxScroll = self->contentW - self->viewport.w;
+        if (maxScroll < 0) {
+            maxScroll = 0;
+        }
+        TabRevealBox view;
+        view.left = self->viewport.x;
+        view.right = self->viewport.x + self->viewport.w;
+        bool hasPrev = ix > 0;
+        bool hasNext = ix + 1 < self->tabs.len;
+        float to = TabRevealOffset(
+            -scrollX, maxScroll, view, Unscrolled(self->tabs[ix], scrollX),
+            hasPrev,
+            hasPrev ? Unscrolled(self->tabs[ix - 1], scrollX) : TabRevealBox{},
+            hasNext,
+            hasNext ? Unscrolled(self->tabs[ix + 1], scrollX) : TabRevealBox{},
+            self->peek);
+
+        float current = -scrollX;
+        if (!self->run.active && to == current) {
+            return;
+        }
+        if (self->run.active) {
+            self->run.to = to;
+        } else {
+            self->run.active = true;
+            self->run.to = to;
+            self->run.hasLast = false;
+        }
+        Notify(cx);
+    }
+
+    static void OnTabClick(TabBarScrollState* self, Ctx* cx,
+                           const ClickEvent* ev, int64_t packed) {
+        int ix = (int)packed;
+        Start(self, cx, ix);
+        if (ix >= 0 && ix < self->clicks.len && self->clicks[ix].IsValid()) {
+            ListenerCall(cx->app, cx->win, self->clicks[ix], ev);
+        }
+    }
+
+    static void OnMenu(TabBarScrollState* self, Ctx* cx, const ClickEvent* ev,
+                       int64_t packed) {
+        int ix = (int)packed;
+        Start(self, cx, ix);
+        if (self->onBarClick.IsValid()) {
+            ListenerCall(cx->app, cx->win, ListenerFill(self->onBarClick, ix),
+                         ev);
+        }
     }
 };
 
@@ -805,14 +913,45 @@ El* TabBar::IntoEl() {
     float activeScrollX = scrollX;
     int activeScrollId = scrollId;
     Listener activeOnScroll = onScroll;
-    if (!trackScroll && cx->win) {
-        Entity<TabBarScrollState> state = ElementStateEntity<TabBarScrollState>(
+    Entity<TabBarScrollState> scrollEntity = {};
+    TabBarScrollState* scrollState = nullptr;
+    if (cx->win) {
+        scrollEntity = ElementStateEntity<TabBarScrollState>(
             cx, id, StrL("gpui::component::TabBarScrollState"));
-        if (TabBarScrollState* value = state.Get(cx)) {
-            activeScrollX = value->offset;
+        scrollState = scrollEntity.Get(cx);
+    }
+    if (scrollState) {
+        if (!trackScroll) {
+            activeScrollX = scrollState->offset;
+            activeScrollId = HashClickId(id);
+            activeOnScroll =
+                ListenTo(scrollEntity, &TabBarScrollState::OnScroll);
         }
-        activeScrollId = HashClickId(id);
-        activeOnScroll = ListenTo(state, &TabBarScrollState::OnScroll);
+        // A click from the previous frame is still travelling. Only that
+        // click moves the strip; the selection and the layout do not.
+        float next =
+            TabRevealStep(cx, MotionId(id, StrL("reveal")), &scrollState->run,
+                          activeScrollX, th.motion.springMove);
+        if (next != activeScrollX) {
+            activeScrollX = next;
+            if (trackScroll) {
+                if (onScroll.IsValid()) {
+                    ScrollEvent ev = {};
+                    ev.id = scrollId;
+                    ev.offsetX = next;
+                    ListenerCall(cx->app, cx->win, onScroll, &ev);
+                }
+            } else {
+                scrollState->offset = next;
+            }
+        }
+        scrollState->peek = TabRevealPeek(size);
+        scrollState->onBarClick = onChange;
+        VecResize(scrollState->tabs, items.len);
+        VecResize(scrollState->clicks, items.len);
+        for (int c = 0; c < scrollState->clicks.len; c++) {
+            scrollState->clicks[c] = {};
+        }
     }
     El* strip = Div(a)
                     ->Id(StrL("tabs-inner"))
@@ -823,6 +962,10 @@ El* TabBar::IntoEl() {
                     ->ScrollX(activeScrollX)
                     ->ScrollId(activeScrollId)
                     ->OnScroll(activeOnScroll);
+    if (scrollState) {
+        strip->customPaint = &TabBarScrollState::RecordStrip;
+        strip->customUser = scrollState;
+    }
     if (barPadX > 0) {
         strip->MarginX(-barPadX)->PadX(barPadX);
     }
@@ -886,6 +1029,13 @@ El* TabBar::IntoEl() {
         Str tabId = StrDup(a, fmt("%d", i));
         Listener click =
             onChange.IsValid() ? ListenerArg(onChange, i) : item.onClick;
+        if (item.disabled) {
+            click = {};
+        }
+        if (scrollState && click.IsValid() && i < scrollState->clicks.len) {
+            scrollState->clicks[i] = click;
+            click = ListenTo(scrollEntity, &TabBarScrollState::OnTabClick, i);
+        }
         El* tab = gpui::Tab::New(cx, tabId, item.disabled,
                                  item.disabled ? Listener{} : click, on,
                                  item.ariaLabel.s ? item.ariaLabel : item.label,
@@ -1062,8 +1212,16 @@ El* TabBar::IntoEl() {
                 host->OnHover(ListenTo(folderHover, &FolderHover::OnHover, i));
             }
             host->Child(tab);
+            if (scrollState && i < scrollState->tabs.len) {
+                host->customPaint = &RecordTabBound;
+                host->customUser = &scrollState->tabs[i];
+            }
             strip->Child(host);
         } else {
+            if (scrollState && i < scrollState->tabs.len) {
+                tab->customPaint = &RecordTabBound;
+                tab->customUser = &scrollState->tabs[i];
+            }
             strip->Child(tab);
         }
     }
@@ -1107,7 +1265,11 @@ El* TabBar::IntoEl() {
     viewport->Child(strip);
     bar->Child(viewport);
     if (menu) {
-        bar->Child(TabMenuButton(this, th, font));
+        Listener menuClick = {};
+        if (scrollState && onChange.IsValid()) {
+            menuClick = ListenTo(scrollEntity, &TabBarScrollState::OnMenu);
+        }
+        bar->Child(TabMenuButton(this, th, font, menuClick));
     }
     if (suffix) {
         bar->Child(suffix);

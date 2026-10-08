@@ -2,6 +2,8 @@
 
 #include "base/resizable.h"
 
+#include <stdlib.h>
+
 namespace gpui {
 
 const Str kDockPanelDrag = StrL("dock-panel");
@@ -214,6 +216,7 @@ static int DockNewNode(DockState* s) {
             n.bounds = {};
             n.tabScrollX = 0;
             n.pendingScrollIx = -1;
+            n.tabReveal = {};
             n.tabStripBounds = {};
             n.activeTabBounds = {};
             n.activeTabBoundsIx = -1;
@@ -902,6 +905,175 @@ float DockTabScrollTo(float scrollX, Bounds strip, Bounds tab) {
     return scrollX;
 }
 
+TabRevealPlan TabRevealPlanFor(TabRevealRun* run, float current) {
+    TabRevealPlan plan;
+    if (!run || !run->active) {
+        return plan;
+    }
+    // A wheel or trackpad scroll since the last frame hands the strip back.
+    if (run->hasLast && run->last != current) {
+        run->active = false;
+        run->hasLast = false;
+        return plan;
+    }
+    plan.travel = true;
+    plan.seed = !run->hasLast;
+    plan.target = run->to;
+    return plan;
+}
+
+void TabRevealCommit(TabRevealRun* run, float sprung) {
+    if (!run || !run->active) {
+        return;
+    }
+    if (sprung == run->to) {
+        run->active = false;
+        run->hasLast = false;
+        return;
+    }
+    run->hasLast = true;
+    run->last = sprung;
+}
+
+static void RevealShowLeft(float* offset, float left, float viewLeft) {
+    if (left < viewLeft - *offset) {
+        *offset = viewLeft - left;
+    }
+}
+
+static void RevealShowRight(float* offset, float right, float viewRight) {
+    if (right > viewRight - *offset) {
+        *offset = viewRight - right;
+    }
+}
+
+float TabRevealOffset(float offset, float maxOffset, TabRevealBox viewport,
+                      TabRevealBox tab, bool hasPrev, TabRevealBox prev,
+                      bool hasNext, TabRevealBox next, float peek) {
+    float wantLeft =
+        hasPrev ? std::max(prev.right - peek, prev.left) : viewport.left;
+    float wantRight = hasNext ? std::min(next.left + peek, next.right)
+                              : viewport.right + maxOffset;
+    float tabCenter = (tab.left + tab.right) * 0.5f;
+    float viewCenter = (viewport.left + viewport.right) * 0.5f;
+    // Whichever is applied last wins: the neighbour the click heads toward
+    // over the one behind it, and the tab over both.
+    if (tabCenter + offset > viewCenter) {
+        RevealShowLeft(&offset, wantLeft, viewport.left);
+        RevealShowRight(&offset, wantRight, viewport.right);
+    } else {
+        RevealShowRight(&offset, wantRight, viewport.right);
+        RevealShowLeft(&offset, wantLeft, viewport.left);
+    }
+    RevealShowRight(&offset, tab.right, viewport.right);
+    RevealShowLeft(&offset, tab.left, viewport.left);
+    if (offset > 0) {
+        offset = 0;
+    }
+    if (offset < -maxOffset) {
+        offset = -maxOffset;
+    }
+    return offset;
+}
+
+float TabRevealStep(Ctx* cx, uint32_t key, TabRevealRun* run, float scrollX,
+                    const Spring& spring) {
+    if (!run) {
+        return scrollX;
+    }
+    float current = -scrollX;
+    TabRevealPlan plan = TabRevealPlanFor(run, current);
+    if (!plan.travel) {
+        return scrollX;
+    }
+    if (plan.seed) {
+        // Start from where the strip is, not where a previous reveal ended.
+        SpringSeed(cx, key, current);
+    }
+    float x = SpringValue(cx, key, plan.target, spring);
+    TabRevealCommit(run, x);
+    return -x;
+}
+
+DockTabGeom* DockTabGeomGet(DockState* s, int node) {
+    if (!s || node < 0) {
+        return nullptr;
+    }
+    while (len(s->tabGeom) <= node) {
+        VecAppend(s->tabGeom, DockTabGeom{});
+    }
+    DockTabGeom* g = &s->tabGeom[node];
+    if (!g->tabs) {
+        g->tabs = (Bounds*)calloc((size_t)kDockTabSlots, sizeof(Bounds));
+        g->cap = g->tabs ? kDockTabSlots : 0;
+    }
+    return g;
+}
+
+static TabRevealBox DockUnscrolled(Bounds screen, float scrollX) {
+    TabRevealBox box;
+    box.left = screen.x + scrollX;
+    box.right = screen.x + screen.w + scrollX;
+    return box;
+}
+
+bool DockArmTabReveal(DockState* s, Ctx* cx, int node, int panelIx) {
+    if (!s || node < 0 || node >= s->nodes.len || !s->nodes[node].used) {
+        return false;
+    }
+    if (node >= len(s->tabGeom)) {
+        return false;
+    }
+    DockTabGeom& g = s->tabGeom[node];
+    if (!g.hasStrip || g.slots <= 0 || !g.tabs) {
+        return false;
+    }
+    int slot = -1;
+    int n = g.slots < g.cap ? g.slots : g.cap;
+    for (int i = 0; i < n; i++) {
+        if (g.panelOf[i] == panelIx) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return false;
+    }
+    // Medium tab peek. The dock strip is a TabBar at its default size.
+    const float peek = 32.f;
+    float scrollX = g.scrollX;
+    float maxScroll = g.contentW - g.strip.w;
+    if (maxScroll < 0) {
+        maxScroll = 0;
+    }
+    TabRevealBox view;
+    view.left = g.strip.x;
+    view.right = g.strip.x + g.strip.w;
+    bool hasPrev = slot > 0;
+    bool hasNext = slot + 1 < n;
+    float to = TabRevealOffset(
+        -scrollX, maxScroll, view, DockUnscrolled(g.tabs[slot], scrollX),
+        hasPrev,
+        hasPrev ? DockUnscrolled(g.tabs[slot - 1], scrollX) : TabRevealBox{},
+        hasNext,
+        hasNext ? DockUnscrolled(g.tabs[slot + 1], scrollX) : TabRevealBox{},
+        peek);
+    TabRevealRun& run = s->nodes[node].tabReveal;
+    float current = -scrollX;
+    if (!run.active && to == current) {
+        return true;
+    }
+    if (run.active) {
+        run.to = to;
+    } else {
+        run.active = true;
+        run.to = to;
+        run.hasLast = false;
+    }
+    Notify(cx);
+    return true;
+}
+
 DockPlacement DockPlacementOfNode(const DockState* s, int node) {
     if (node < 0 || node >= s->nodes.len) {
         return DockPlacement::Center;
@@ -1175,7 +1347,14 @@ void DockToggleZoom(DockState* s, Ctx* cx, int panelIx) {
 void DockState::OnTabClick(DockState* self, Ctx* cx, const ClickEvent*,
                            int64_t nodeAndIx) {
     int node = DockUnpackNode(nodeAndIx);
-    DockSetActive(self, cx, node, DockUnpackIx(nodeAndIx));
+    int ix = DockUnpackIx(nodeAndIx);
+    DockSetActive(self, cx, node, ix);
+    // The tab bar reveals a clicked tab itself, so the change must not snap
+    // it into view. A selection that did not come from a click still snaps.
+    if (DockArmTabReveal(self, cx, node, ix) && node >= 0 &&
+        node < self->nodes.len) {
+        self->nodes[node].pendingScrollIx = -1;
+    }
     // "Open dock if clicked on the collapsed bottom dock": its tab bar is all
     // that is left of it, so a click there is what opens it again.
     DockPlacement p = DockPlacementOfNode(self, node);

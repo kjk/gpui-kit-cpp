@@ -455,6 +455,143 @@ static void FolderTabPaintsItsShapeAndTheNextSeparator() {
     AppGlobalClear(&app);
 }
 
+static El* FindTabId(El* e, const char* id) {
+    if (!e) {
+        return nullptr;
+    }
+    if (e->id.s && base::StrEq(e->id, Str(id))) {
+        return e;
+    }
+    for (El* c = e->first; c; c = c->next) {
+        if (El* hit = FindTabId(c, id)) {
+            return hit;
+        }
+    }
+    return nullptr;
+}
+
+struct ClickRevealTabs {
+    bool group = true;
+    float scroll = 0;
+
+    static void OnScroll(ClickRevealTabs* self, Ctx*, const ScrollEvent* ev) {
+        self->scroll = ev->offsetX;
+    }
+    static void OnPick(ClickRevealTabs*, Ctx*, const ClickEvent*, int64_t) {}
+
+    static El* Render(ClickRevealTabs* self, Ctx* cx) {
+        TabBar* bar = TabBar::New(cx, StrL("click-reveal-tabs"))->WFill();
+        bar->TrackScroll(1, self->scroll,
+                         Listen(cx, &ClickRevealTabs::OnScroll));
+        static const char* kLabels[] = {"Tab 0", "Tab 1", "Tab 2", "Tab 3",
+                                        "Tab 4"};
+        for (int i = 0; i < 5; i++) {
+            Style width = {};
+            width.width = 60;
+            component::Tab* tab = component::Tab::New(cx, Str(kLabels[i]))
+                                      ->Refine(width, StyleFieldWidth);
+            if (!self->group) {
+                tab->OnClick(Listen(cx, &ClickRevealTabs::OnPick, i));
+            }
+            bar->Child(tab);
+        }
+        if (self->group) {
+            bar->OnClick(Listen(cx, &ClickRevealTabs::OnPick));
+        }
+        return Div(cx->a)->W(100)->H(40)->Child(bar->IntoEl());
+    }
+};
+
+static El* LaidOut(Window* win) {
+    El* root = EntityRender(win->app, win, win->frameArena, win->root);
+    const RuntimeStyle& th = RuntimeStyleNow(win->app);
+    LayoutEl(&win->paint, root, 0, 0, win->paint.viewW, win->paint.viewH,
+             th.fontSize, th.foreground);
+    return root;
+}
+
+// clicking_a_clipped_tab_reveals_it_and_part_of_the_next, with motion reduced
+// so the strip is there on the frame after the click. Both the tab's own
+// handler and the bar's are wrapped.
+static void ClickingAClippedTabRevealsItAndPartOfTheNext() {
+    for (int group = 0; group < 2; group++) {
+        MotionSetReduced(true);
+        App* app = TestAppNew();
+        Init(app);
+        Entity<ClickRevealTabs> view = EntityNew<ClickRevealTabs>(app);
+        view.Get(app)->group = group == 1;
+        Window* win = TestWindowOpen(app, view, 100, 40, 1);
+        El* root = LaidOut(win);
+        El* tab = FindTabId(root, "1");
+        utassert(tab && tab->x + tab->w > 100.f);
+        TestSimulateClick(win,
+                          {tab->x + tab->w * 0.5f, tab->y + tab->h * 0.5f});
+        ClickRevealTabs* self = view.Get(app);
+        utassert(self && TestNear(self->scroll, 52.f));
+        TestAppFree(app);
+    }
+    MotionResetReduceForTest();
+}
+
+// clicking_the_last_tab_reveals_the_end_of_the_bar. The strip is already
+// most of the way along, and the click takes it the rest of the way.
+static void ClickingTheLastTabRevealsTheEndOfTheBar() {
+    MotionSetReduced(true);
+    App* app = TestAppNew();
+    Init(app);
+    Entity<ClickRevealTabs> view = EntityNew<ClickRevealTabs>(app);
+    view.Get(app)->group = true;
+    view.Get(app)->scroll = 160.f;
+    Window* win = TestWindowOpen(app, view, 100, 40, 1);
+    El* root = LaidOut(win);
+    El* tab = FindTabId(root, "4");
+    utassert(tab);
+    TestSimulateClick(win, {tab->x + 10.f, tab->y + 10.f});
+    ClickRevealTabs* self = view.Get(app);
+    utassert(self && TestNear(self->scroll, 200.f));
+    TestAppFree(app);
+    MotionResetReduceForTest();
+}
+
+// reveal_animates_and_yields_to_manual_scrolling. One frame leaves the strip
+// between where it started and where it is going, and a scroll written over
+// that travel is where it stays.
+static void RevealAnimatesAndYieldsToManualScrolling() {
+    App* app = TestAppNew();
+    Init(app);
+    MotionSetReduced(false);
+    Entity<ClickRevealTabs> view = EntityNew<ClickRevealTabs>(app);
+    view.Get(app)->group = true;
+    Window* win = TestWindowOpen(app, view, 100, 40, 1);
+    El* root = LaidOut(win);
+    El* tab = FindTabId(root, "1");
+    utassert(tab);
+    TestSimulateClick(win, {tab->x + tab->w * 0.5f, tab->y + 4.f});
+    TestAdvanceClock(app, 16);
+    ClickRevealTabs* self = view.Get(app);
+    utassert(self && self->scroll > 0.f && self->scroll < 52.f);
+    self->scroll = 10.f;
+    TestDraw(win);
+    TestAdvanceClock(app, 500);
+    utassert(TestNear(self->scroll, 10.f));
+
+    // A new click travels all the way. The tab has moved with the strip.
+    root = LaidOut(win);
+    tab = FindTabId(root, "1");
+    utassert(tab);
+    // Near the top of the tab. Its vertical center sits on the overlay
+    // scrollbar, and that press scrolls the strip to the click instead.
+    TestSimulateClick(win, {tab->x + 10.f, tab->y + 4.f});
+    // One clock jump is capped inside the spring, so this is sixty frames,
+    // the same count the Rust test steps.
+    for (int frame = 0; frame < 60; frame++) {
+        TestAdvanceClock(app, 16);
+    }
+    utassert(TestNear(self->scroll, 52.f));
+    TestAppFree(app);
+    MotionResetReduceForTest();
+}
+
 void TestTab() {
     TestSuite("tab");
     UnderlineIsTallerThanEveryOtherVariant();
@@ -468,4 +605,7 @@ void TestTab() {
     SegmentedShadowFitsInsideExpandedClips();
     FlexTabsGrowForEveryVariant();
     FolderTabPaintsItsShapeAndTheNextSeparator();
+    ClickingAClippedTabRevealsItAndPartOfTheNext();
+    ClickingTheLastTabRevealsTheEndOfTheBar();
+    RevealAnimatesAndYieldsToManualScrolling();
 }
