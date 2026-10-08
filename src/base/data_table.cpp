@@ -239,6 +239,10 @@ void TableSetSelectedCell(TableState* s, Ctx* cx, int row, int col) {
     s->mode = TableSelectionMode::Cell;
     s->selectedCellRow = row;
     s->selectedCellCol = col;
+    // set_selected_cell drops the right-click outline. The row mark is a
+    // different gesture and stays until its own clear.
+    s->rightClickedCellRow = -1;
+    s->rightClickedCellCol = -1;
     // Rust centres the row and brings the column in from whichever side it
     // is off, which is the pair of strategies here too.
     TableScrollToRow(s, row, ScrollStrategy::Center);
@@ -535,6 +539,16 @@ void TableState::OnRowMouseDown(TableState* self, Ctx* cx,
     self->rightClickedCellRow = -1;
     self->rightClickedCellCol = -1;
     TableEmit(self, cx, TableEventKind::RightClickedRow, (int)row, -1,
+              ColumnSort::Default);
+    Notify(cx);
+}
+
+void TableState::OnRightClickOutside(TableState* self, Ctx* cx,
+                                     const MouseDownEvent*) {
+    self->rightClickedRow = -1;
+    self->rightClickedCellRow = -1;
+    self->rightClickedCellCol = -1;
+    TableEmit(self, cx, TableEventKind::RightClickedRow, -1, -1,
               ColumnSort::Default);
     Notify(cx);
 }

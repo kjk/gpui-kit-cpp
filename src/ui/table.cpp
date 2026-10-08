@@ -942,6 +942,12 @@ El* DataTable::BuildEl() {
         box->Child(loading ? loading : LoadingView(cx, size));
         return box;
     }
+    // A right-clicked row or cell draws an outline until the next press
+    // outside the table. The listener is absent when nothing is marked, so
+    // an ordinary table does not take those presses.
+    if (s && (s->rightClickedRow >= 0 || s->rightClickedCellRow >= 0)) {
+        box->OnMouseDownOut(ListenTo(state, &TableState::OnRightClickOutside));
+    }
 
     // The table is two panes side by side: the pinned columns, which only
     // ever move down, and the rest, which move both ways under a head that

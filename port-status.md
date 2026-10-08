@@ -16,11 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `099aff53d4948edb5bbc832a3fbecce1f39df76d` (2026-10-08,
-tab: Add `Folder` variant (#3415)).
-A folder tab is a browser-style index: the selected tab has rounded
-top corners and curves out into the content below. Separators hide
-beside the selected or hovered tab.
+Processed through `288767cc730ca4977852a7860f52a8465a61876f` (2026-10-08,
+table: Clear a right-clicked cell's outline on the next click (#3413)).
+Selecting a cell clears the right-clicked cell, and a press outside
+the table clears a right-clicked cell the same way it clears a
+right-clicked row.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

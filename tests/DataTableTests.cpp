@@ -376,6 +376,62 @@ static void ARightClickMarksARowOrACellButNeverBoth() {
     utassert(s.selectedRow == -1);
 }
 
+// Selecting another cell drops the right-click outline. A press outside the
+// table does the same, for a cell and for a row.
+static void ARightClickedCellClearsOnTheNextClick() {
+    App app;
+    Window* win = new Window();
+    win->app = &app;
+    Arena* a = ArenaNew();
+    Ctx cx = {&app, win, a, {}};
+    TableState s;
+    s.rowCount = 4;
+    s.colCount = 3;
+    s.cellSelectable = true;
+    s.rightClickedCellRow = 1;
+    s.rightClickedCellCol = 0;
+    TableSetSelectedCell(&s, &cx, 2, 1);
+    utassert(s.selectedCellRow == 2 && s.selectedCellCol == 1);
+    utassert(s.rightClickedCellRow < 0 && s.rightClickedCellCol < 0);
+
+    s.rightClickedCellRow = 1;
+    s.rightClickedCellCol = 0;
+    s.rightClickedRow = -1;
+    MouseDownEvent down = {};
+    TableState::OnRightClickOutside(&s, &cx, &down);
+    utassert(s.rightClickedCellRow < 0 && s.rightClickedCellCol < 0);
+
+    s.rightClickedRow = 3;
+    TableState::OnRightClickOutside(&s, &cx, &down);
+    utassert(s.rightClickedRow < 0);
+
+    Entity<TableState> state = EntityNewState<TableState>(&app);
+    TableState* live = state.Get(&app);
+    live->rowCount = 3;
+    live->colCount = 2;
+    live->cellSelectable = true;
+    live->rightClickedCellRow = 1;
+    live->rightClickedCellCol = 0;
+    const component::TableColumn cols[] = {{StrL("ID")}, {StrL("Name")}};
+    El* marked = component::DataTable::New(&cx, StrL("marked"), state)
+                     ->Columns(cols, 2)
+                     ->Rows(3, nullptr, nullptr)
+                     ->IntoEl();
+    utassert(marked && marked->onMouseDownOut.IsValid());
+    live->rightClickedCellRow = -1;
+    live->rightClickedCellCol = -1;
+    El* quiet = component::DataTable::New(&cx, StrL("quiet"), state)
+                    ->Columns(cols, 2)
+                    ->Rows(3, nullptr, nullptr)
+                    ->IntoEl();
+    utassert(quiet && !quiet->onMouseDownOut.IsValid());
+
+    ArenaDelete(a);
+    delete win;
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 // update_visible_range_if_need: the delegate is told only when the range
 // actually moved. A range of one is the measuring pass when more than one
 // item exists, and is a real range when the table has a single item. The
@@ -1012,6 +1068,7 @@ void TestDataTable() {
     TableSelectionGettersFollowTheActiveMode();
     TableRetainsNavigationPositionsWhenSelectionModeChanges();
     ARightClickMarksARowOrACellButNeverBoth();
+    ARightClickedCellClearsOnTheNextClick();
     ACellIsOneNumber();
     AColumnKeepsItsWidthOnceItHasOne();
     AResizeIsClamped();

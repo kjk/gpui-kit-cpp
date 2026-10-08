@@ -122,7 +122,8 @@ struct TableState {
     // selection.
     int rightClickedRow = -1;
     // right_clicked_cell. The two are exclusive: the cell one clears the row
-    // and the row one clears the cell.
+    // and the row one clears the cell. Selecting a cell clears the cell
+    // mark, and a press outside the table clears whichever mark is set.
     int rightClickedCellRow = -1;
     int rightClickedCellCol = -1;
     bool rowSelectable = true;
@@ -248,6 +249,10 @@ struct TableState {
     // press, so the row under it does not also mark itself.
     static void OnCellMouseDown(TableState* self, Ctx* cx,
                                 const MouseDownEvent* ev, int64_t packed);
+    // on_mouse_down_out while a row or a cell is right-clicked: the same
+    // clear as on_row_right_click(None).
+    static void OnRightClickOutside(TableState* self, Ctx* cx,
+                                    const MouseDownEvent* ev);
     static void OnHeadClick(TableState* self, Ctx* cx, const ClickEvent* ev,
                             int64_t col);
     static void OnSortClick(TableState* self, Ctx* cx, const ClickEvent* ev,
