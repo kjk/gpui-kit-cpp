@@ -316,6 +316,83 @@ EM_JS(void, GpJsInstallClipboard, (), {
         _gpui_wasm_paste();
     });
 });
+
+// A file dragged onto the canvas. The browser will not give a filesystem
+// path, so the names are what ExternalPaths carries. dragover has to
+// preventDefault or the drop never fires. Names are often empty until drop,
+// and the drop sends Entered again with them before Submit.
+EM_JS(void, GpJsInstallFileDrop, (), {
+    const c = globalThis.__gpui.canvas;
+    if (!c || c.__gpuiFileDrop) {
+        return;
+    }
+    c.__gpuiFileDrop = 1;
+    function hasFiles(dt) {
+        const types = dt && dt.types;
+        if (!types) {
+            return false;
+        }
+        for (let i = 0; i < types.length; i++) {
+            if (types[i] === "Files") {
+                return true;
+            }
+        }
+        return false;
+    }
+    function stash(dt) {
+        const names = [];
+        const files = dt && dt.files;
+        if (files) {
+            for (let i = 0; i < files.length; i++) {
+                names.push(files[i].name);
+            }
+        }
+        globalThis.__gpuiFileNames = names.join("\n");
+    }
+    c.addEventListener("dragenter", function(e) {
+        if (!hasFiles(e.dataTransfer)) {
+            return;
+        }
+        e.preventDefault();
+        stash(e.dataTransfer);
+        _gpui_wasm_file_drop(0, e.clientX, e.clientY);
+    });
+    c.addEventListener("dragover", function(e) {
+        if (!hasFiles(e.dataTransfer)) {
+            return;
+        }
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+        _gpui_wasm_file_drop(1, e.clientX, e.clientY);
+    });
+    c.addEventListener("dragleave", function(e) {
+        _gpui_wasm_file_drop(3, e.clientX, e.clientY);
+    });
+    c.addEventListener("drop", function(e) {
+        e.preventDefault();
+        stash(e.dataTransfer);
+        _gpui_wasm_file_drop(0, e.clientX, e.clientY);
+        _gpui_wasm_file_drop(2, e.clientX, e.clientY);
+    });
+});
+
+EM_JS(int, GpJsFileNamesLen, (), {
+    const t = globalThis.__gpuiFileNames;
+    if (!t) {
+        return 0;
+    }
+    return new TextEncoder().encode(t).length;
+});
+
+EM_JS(void, GpJsFileNamesRead, (char* out, int cap), {
+    const t = globalThis.__gpuiFileNames;
+    if (!t) {
+        return;
+    }
+    const b = new TextEncoder().encode(t);
+    const n = Math.min(b.length, cap);
+    HEAPU8.set(b.subarray(0, n), out);
+});
 // clang-format on
 
 // ─── waking and repainting ────────────────────────────────────────────────
@@ -334,6 +411,34 @@ extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_wake(void) {
 // empty, as Rust's web read_from_clipboard always is, and a Paste from a menu
 // falls back to the asynchronous read.
 static bool gInPasteEvent = false;
+
+static Point CanvasPoint(float clientX, float clientY);
+
+// phase is FileDropPhase: 0 entered, 1 pending, 2 submit, 3 exited.
+// x and y are viewport coordinates; CanvasPoint makes them canvas DIPs.
+extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_file_drop(int phase, float x,
+                                                         float y) {
+    if (!gWin || phase < 0 || phase > 3) {
+        return;
+    }
+    Point p = CanvasPoint(x, y);
+    Arena* scratch = ArenaNew();
+    Str paths = {};
+    if (phase == (int)FileDropPhase::Entered) {
+        int n = GpJsFileNamesLen();
+        if (n > 0 && n < 1024 * 1024) {
+            char* buf = (char*)Alloc(scratch, n + 1);
+            if (buf) {
+                GpJsFileNamesRead(buf, n);
+                buf[n] = 0;
+                paths = Str(buf, n);
+            }
+        }
+    }
+    PlatformInput in = InputFileDrop((FileDropPhase)phase, p.x, p.y, paths);
+    WindowDispatchInput(gWin, &in);
+    ArenaDelete(scratch);
+}
 
 extern "C" EMSCRIPTEN_KEEPALIVE void gpui_wasm_paste(void) {
     if (!gWin || !gWin->plat) {
@@ -1047,6 +1152,7 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
 
     AppSetTitle(win, title);
     GpJsInstallClipboard();
+    GpJsInstallFileDrop();
 
     const char* canvas = kCanvasSel;
     // Press and wheel on the canvas; move and release on the document, so a

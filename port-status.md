@@ -27,6 +27,12 @@ The current update target is
 
 ## Known gaps vs Rust
 
+- **A browser file drop carries names, not paths.** A desktop window accepts
+  an OS file drop as gpui's `ExternalPaths` (`OnDrop(StrL("ExternalPaths"))`,
+  newline-separated paths on `DropEvent::externalPaths`). Windows registers
+  an `IDropTarget`, macOS an AppKit dragging destination, and Linux X11
+  Xdnd for `text/uri-list`. The page can read only each file's name
+  (`window_wasm.cpp`).
 - **One engine.** Upstream selects GPUI Fast with the `gpui-fast` Cargo
   feature. This tree is that engine's C++ port and has no second backend
   to switch.

@@ -97,6 +97,13 @@ PlatformInput InputScrollWheel(float x, float y, float deltaX, float deltaY,
                                TouchPhase phase);
 PlatformInput InputTouchDrag(TouchPhase phase, Point start, Point position);
 PlatformInput InputLongPress(TouchPhase phase, Point start, Point position);
+// PlatformInput::FileDrop. `paths` is read only for Entered.
+PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths);
+
+// text/uri-list, the payload an X11 file drag offers, as newline-separated
+// filesystem paths. file URIs are percent-decoded; any other scheme is
+// skipped. The result lives in `a`.
+Str FileUriListToPaths(Arena* a, Str list);
 
 // A host-owned iOS/Android view forwards each finger as these. They
 // classify the gesture and emit LongPress, TouchDrag (scrollbar or

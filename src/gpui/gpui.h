@@ -556,6 +556,9 @@ struct DragMoveEvent {
 // on_drop::<T>: a drag that let go over this element. Rust matches the drop
 // handler by the payload's type; here the element says which `kind` it takes,
 // and a drag carrying anything else passes over it as if it were not there.
+//
+// An OS file drop is that drag with kind "ExternalPaths" — gpui's
+// ExternalPaths. Take it with OnDrop(StrL("ExternalPaths"), ...).
 struct DropEvent {
     DragPayload drag = {};
     // Where the button came up, in window coordinates.
@@ -564,6 +567,30 @@ struct DropEvent {
     // The box of the element that took the drop, so a handler can work out
     // where inside itself the drop landed.
     Bounds el = {};
+    // Set for an OS file drop. Newline-separated UTF-8 paths, borrowed for
+    // this call. A desktop drop is a filesystem path; a page drop is the
+    // file's name, which is all the browser will say.
+    Str externalPaths = {};
+};
+
+// FileDropEvent from the platform: files dragged onto the window. Entered
+// carries the paths; Pending is the pointer moving; Submit is the drop;
+// Exited is the drag leaving without a drop. The window turns it into an
+// ExternalPaths drag, which is what gpui's dispatch_event does.
+enum class FileDropPhase : uint8_t {
+    Entered,
+    Pending,
+    Submit,
+    Exited
+};
+
+struct FileDropEvent {
+    FileDropPhase phase = FileDropPhase::Pending;
+    float x = 0;
+    float y = 0;
+    // Newline-separated UTF-8 paths. Only Entered reads them. Borrowed for
+    // the dispatch; the window copies them.
+    Str paths = {};
 };
 
 // The pointer left the window. GPUI's MouseExitEvent is a MouseMoveEvent in
@@ -620,7 +647,8 @@ enum class PlatformInputKind : uint8_t {
     MouseExited,
     ScrollWheel,
     TouchDrag,
-    LongPress
+    LongPress,
+    FileDrop
 };
 
 struct PlatformInput {
@@ -633,6 +661,7 @@ struct PlatformInput {
         ScrollWheelEvent scrollWheel;
         TouchDragEvent touchDrag;
         LongPressEvent longPress;
+        FileDropEvent fileDrop;
     };
 };
 
@@ -6621,6 +6650,11 @@ struct Window {
     // the hitbox its drop handlers consult — on its Window.
     DragPayload activeDrag = {};
     int dragOverId = 0;
+    // The OS file drag in flight, and the paths it entered with. Owned.
+    // Cleared when the drag is dropped or leaves. `externalPaths` on the
+    // DropEvent points here for the listener.
+    bool fileDrop = false;
+    Str fileDropPaths = {};
     // AnyDrag::cursor_offset: where inside the dragged element the press
     // landed, so whatever is drawn under the pointer sits where the element
     // was rather than jumping its corner to the cursor.

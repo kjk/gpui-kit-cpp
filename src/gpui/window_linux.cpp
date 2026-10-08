@@ -59,6 +59,15 @@ struct PlatWindow {
     // it.
     int edge = -1;
     CursorKind edgeUnder = CursorKind::Arrow;
+    // Xdnd. The source window, whether it offered text/uri-list, and whether
+    // the paths have been read yet. A drop can arrive before that read.
+    XWindow xdndSource = 0;
+    bool xdndUri = false;
+    bool xdndInside = false;
+    bool xdndAsked = false;
+    bool xdndDrop = false;
+    int xdndX = 0;
+    int xdndY = 0;
 };
 
 // One display per process. GPUI's App is a singleton in practice, and an X
@@ -77,6 +86,9 @@ static Atom aNetWmMoveResize, aMotifWmHints, aGtkShowWindowMenu;
 static Atom aGtkEdgeConstraints;
 static Atom aClipboard, aTargets, aClipTarget, aIncr;
 static Atom aImagePng, aImageJpeg, aImageBmp, aImageTiff;
+static Atom aXdndAware, aXdndEnter, aXdndPosition, aXdndStatus, aXdndLeave;
+static Atom aXdndDrop, aXdndFinished, aXdndSelection, aXdndTypeList;
+static Atom aXdndActionCopy, aTextUriList, aXdndProp;
 
 double TimeNow() {
     double simulated = 0;
@@ -1536,6 +1548,212 @@ static void PressButton(Window* win, MouseButton button, float x, float y,
     WindowDispatchInput(win, &in);
 }
 
+static void SendXdnd(XWindow target, Atom type, long a0, long a1, long a2,
+                     long a3, long a4) {
+    XEvent ev = {};
+    ev.xclient.type = ClientMessage;
+    ev.xclient.display = gDpy;
+    ev.xclient.window = target;
+    ev.xclient.message_type = type;
+    ev.xclient.format = 32;
+    ev.xclient.data.l[0] = a0;
+    ev.xclient.data.l[1] = a1;
+    ev.xclient.data.l[2] = a2;
+    ev.xclient.data.l[3] = a3;
+    ev.xclient.data.l[4] = a4;
+    XSendEvent(gDpy, target, False, NoEventMask, &ev);
+}
+
+static void XdndStatus(PlatWindow* pw, bool accept) {
+    if (!pw->xdndSource) {
+        return;
+    }
+    // An empty rectangle asks the source for a position on every move.
+    SendXdnd(pw->xdndSource, aXdndStatus, (long)pw->xwin, accept ? 1 : 0, 0, 0,
+             accept ? (long)aXdndActionCopy : 0);
+}
+
+static void XdndFinish(PlatWindow* pw, bool accepted) {
+    if (!pw->xdndSource) {
+        return;
+    }
+    SendXdnd(pw->xdndSource, aXdndFinished, (long)pw->xwin, accepted ? 1 : 0,
+             accepted ? (long)aXdndActionCopy : 0, 0, 0);
+}
+
+static void XdndReset(PlatWindow* pw) {
+    pw->xdndSource = 0;
+    pw->xdndUri = false;
+    pw->xdndInside = false;
+    pw->xdndAsked = false;
+    pw->xdndDrop = false;
+}
+
+static bool AtomIsUri(Atom atom) {
+    return atom == aTextUriList;
+}
+
+static bool XdndTypes(XWindow source, bool more, Atom t0, Atom t1, Atom t2) {
+    if (!more) {
+        return AtomIsUri(t0) || AtomIsUri(t1) || AtomIsUri(t2);
+    }
+    Atom type = 0;
+    int format = 0;
+    unsigned long items = 0, after = 0;
+    unsigned char* data = nullptr;
+    if (XGetWindowProperty(gDpy, source, aXdndTypeList, 0, 64, False, XA_ATOM,
+                           &type, &format, &items, &after, &data) != Success) {
+        return false;
+    }
+    bool found = false;
+    if (type == XA_ATOM && format == 32 && data) {
+        auto* atoms = (unsigned long*)data;
+        for (unsigned long i = 0; i < items; i++) {
+            if (AtomIsUri((Atom)atoms[i])) {
+                found = true;
+                break;
+            }
+        }
+    }
+    if (data) {
+        XFree(data);
+    }
+    return found;
+}
+
+static void XdndAsk(Window* win, Time time) {
+    PlatWindow* pw = win->plat;
+    if (!pw->xdndUri || pw->xdndAsked) {
+        return;
+    }
+    pw->xdndAsked = true;
+    XConvertSelection(gDpy, aXdndSelection, aTextUriList, aXdndProp, pw->xwin,
+                      time ? time : CurrentTime);
+}
+
+static void XdndPosition(Window* win, int rootX, int rootY) {
+    PlatWindow* pw = win->plat;
+    int x = 0, y = 0;
+    XWindow child = 0;
+    XTranslateCoordinates(gDpy, gRoot, pw->xwin, rootX, rootY, &x, &y, &child);
+    pw->xdndX = x;
+    pw->xdndY = y;
+    if (!pw->xdndInside) {
+        return;
+    }
+    PlatformInput in =
+        InputFileDrop(FileDropPhase::Pending, (float)x, (float)y, {});
+    WindowDispatchInput(win, &in);
+}
+
+static void OnXdndSelection(Window* win, const XSelectionEvent* ev) {
+    PlatWindow* pw = win->plat;
+    if (!pw->xdndSource) {
+        return;
+    }
+    Str list = {};
+    if (ev->property != None) {
+        Atom type = 0;
+        int format = 0;
+        unsigned long items = 0, after = 0;
+        unsigned char* data = nullptr;
+        constexpr long kMax = 1024 * 1024;
+        if (XGetWindowProperty(gDpy, pw->xwin, aXdndProp, 0, kMax, True,
+                               AnyPropertyType, &type, &format, &items, &after,
+                               &data) == Success) {
+            if (data && format == 8 && items > 0 && items <= INT_MAX) {
+                Arena* scratch = ArenaNew();
+                list =
+                    FileUriListToPaths(scratch, Str((char*)data, (int)items));
+                Str owned = len(list) > 0 ? StrDup(list) : Str{};
+                PlatformInput in =
+                    InputFileDrop(FileDropPhase::Entered, (float)pw->xdndX,
+                                  (float)pw->xdndY, owned);
+                WindowDispatchInput(win, &in);
+                StrFree(owned);
+                ArenaDelete(scratch);
+                pw->xdndInside = true;
+            }
+            if (data) {
+                XFree(data);
+            }
+        }
+    }
+    if (pw->xdndDrop) {
+        bool accepted = pw->xdndInside;
+        if (accepted) {
+            PlatformInput in = InputFileDrop(
+                FileDropPhase::Submit, (float)pw->xdndX, (float)pw->xdndY, {});
+            WindowDispatchInput(win, &in);
+        }
+        XdndFinish(pw, accepted);
+        XdndReset(pw);
+    }
+}
+
+static void OnXdndClient(Window* win, const XClientMessageEvent* ev) {
+    PlatWindow* pw = win->plat;
+    if (ev->message_type == aXdndEnter) {
+        XdndReset(pw);
+        pw->xdndSource = (XWindow)ev->data.l[0];
+        bool more = (ev->data.l[1] & 1) != 0;
+        pw->xdndUri = XdndTypes(pw->xdndSource, more, (Atom)ev->data.l[2],
+                                (Atom)ev->data.l[3], (Atom)ev->data.l[4]);
+        return;
+    }
+    if (ev->message_type == aXdndPosition) {
+        if ((XWindow)ev->data.l[0] != pw->xdndSource) {
+            return;
+        }
+        int rootX = (int)((ev->data.l[2] >> 16) & 0xffff);
+        int rootY = (int)(ev->data.l[2] & 0xffff);
+        XdndPosition(win, rootX, rootY);
+        XdndStatus(pw, pw->xdndUri);
+        if (pw->xdndUri) {
+            XdndAsk(win, (Time)ev->data.l[3]);
+        }
+        return;
+    }
+    if (ev->message_type == aXdndLeave) {
+        if ((XWindow)ev->data.l[0] != pw->xdndSource) {
+            return;
+        }
+        if (pw->xdndInside) {
+            PlatformInput in = InputFileDrop(
+                FileDropPhase::Exited, (float)pw->xdndX, (float)pw->xdndY, {});
+            WindowDispatchInput(win, &in);
+        }
+        XdndReset(pw);
+        return;
+    }
+    if (ev->message_type == aXdndDrop) {
+        if ((XWindow)ev->data.l[0] != pw->xdndSource) {
+            return;
+        }
+        if (pw->xdndInside) {
+            PlatformInput in = InputFileDrop(
+                FileDropPhase::Submit, (float)pw->xdndX, (float)pw->xdndY, {});
+            WindowDispatchInput(win, &in);
+            XdndFinish(pw, true);
+            XdndReset(pw);
+            return;
+        }
+        if (pw->xdndUri && !pw->xdndAsked) {
+            pw->xdndDrop = true;
+            XdndAsk(win, (Time)ev->data.l[2]);
+            return;
+        }
+        if (pw->xdndAsked && !pw->xdndInside) {
+            // The selection has been asked for and has not come back. The
+            // notify finishes the drop.
+            pw->xdndDrop = true;
+            return;
+        }
+        XdndFinish(pw, false);
+        XdndReset(pw);
+    }
+}
+
 static void HandleEvent(App* app, XEvent* ev) {
     if (ev->type == SelectionRequest) {
         OnSelectionRequest(&ev->xselectionrequest);
@@ -1707,7 +1925,20 @@ static void HandleEvent(App* app, XEvent* ev) {
                 WindowSetActive(win, false);
             }
             break;
+        case SelectionNotify:
+            if (ev->xselection.target == aTextUriList ||
+                ev->xselection.property == aXdndProp) {
+                OnXdndSelection(win, &ev->xselection);
+            }
+            break;
         case ClientMessage:
+            if (ev->xclient.message_type == aXdndEnter ||
+                ev->xclient.message_type == aXdndPosition ||
+                ev->xclient.message_type == aXdndLeave ||
+                ev->xclient.message_type == aXdndDrop) {
+                OnXdndClient(win, &ev->xclient);
+                break;
+            }
             if (ev->xclient.message_type == aWmProtocols &&
                 (Atom)ev->xclient.data.l[0] == aWmDeleteWindow &&
                 WindowShouldClose(win)) {
@@ -1974,6 +2205,18 @@ bool PlatInit(App* app) {
     aTargets = XInternAtom(gDpy, "TARGETS", False);
     aClipTarget = XInternAtom(gDpy, "GPUI_CLIPBOARD", False);
     aIncr = XInternAtom(gDpy, "INCR", False);
+    aXdndAware = XInternAtom(gDpy, "XdndAware", False);
+    aXdndEnter = XInternAtom(gDpy, "XdndEnter", False);
+    aXdndPosition = XInternAtom(gDpy, "XdndPosition", False);
+    aXdndStatus = XInternAtom(gDpy, "XdndStatus", False);
+    aXdndLeave = XInternAtom(gDpy, "XdndLeave", False);
+    aXdndDrop = XInternAtom(gDpy, "XdndDrop", False);
+    aXdndFinished = XInternAtom(gDpy, "XdndFinished", False);
+    aXdndSelection = XInternAtom(gDpy, "XdndSelection", False);
+    aXdndTypeList = XInternAtom(gDpy, "XdndTypeList", False);
+    aXdndActionCopy = XInternAtom(gDpy, "XdndActionCopy", False);
+    aTextUriList = XInternAtom(gDpy, "text/uri-list", False);
+    aXdndProp = XInternAtom(gDpy, "GPUI_XDND", False);
     aImagePng = XInternAtom(gDpy, "image/png", False);
     aImageJpeg = XInternAtom(gDpy, "image/jpeg", False);
     aImageBmp = XInternAtom(gDpy, "image/bmp", False);
@@ -2119,6 +2362,10 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
     win->plat = pw;
 
     XSetWMProtocols(gDpy, pw->xwin, &aWmDeleteWindow, 1);
+    // Xdnd version 5. A file manager will not offer a drop without this.
+    Atom xdndVersion = 5;
+    XChangeProperty(gDpy, pw->xwin, aXdndAware, XA_ATOM, 32, PropModeReplace,
+                    (unsigned char*)&xdndVersion, 1);
     if (opts.borderless || opts.clientTitleBar) {
         SetUndecorated(pw->xwin);
     }

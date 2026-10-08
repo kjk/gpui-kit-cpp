@@ -22,6 +22,8 @@ static const wchar_t* kWndClass = L"GpuiSystemMonitor";
 
 struct PlatWindow {
     HWND hwnd = nullptr;
+    // RegisterDragDrop holds the drop target until RevokeDragDrop.
+    bool fileDrop = false;
     // Installed when component::Root first renders (with a WM_GETOBJECT
     // fallback for a custom root). Nodes retain it, and close detaches the
     // Window before the last COM reference can disappear.
@@ -402,6 +404,135 @@ static void ConfigureDwmDarkMode(HWND hwnd) {
                           sizeof(dark));
 }
 
+static Str ClipboardReadPaths(Arena* a, HANDLE handle);
+
+// IDropTarget for a file drag onto the window. gpui-pre-windows does the
+// same: CF_HDROP on enter, then pending / leave / drop as FileDropEvent.
+struct FileDropTarget : IDropTarget {
+    LONG refs = 1;
+    Window* win = nullptr;
+
+    explicit FileDropTarget(Window* w) : win(w) {}
+
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void** out) override {
+        if (!out) {
+            return E_POINTER;
+        }
+        if (iid == IID_IUnknown || iid == IID_IDropTarget) {
+            *out = static_cast<IDropTarget*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *out = nullptr;
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override {
+        return (ULONG)InterlockedIncrement(&refs);
+    }
+    ULONG STDMETHODCALLTYPE Release() override {
+        ULONG n = (ULONG)InterlockedDecrement(&refs);
+        if (n == 0) {
+            delete this;
+        }
+        return n;
+    }
+
+    void At(POINTL screen, float* x, float* y) {
+        POINT pt = {screen.x, screen.y};
+        HWND hwnd = Hwnd(win);
+        ScreenToClient(hwnd, &pt);
+        win->paint.dpi = HostDpi(hwnd);
+        *x = PxToDip(&win->paint, (int)pt.x);
+        *y = PxToDip(&win->paint, (int)pt.y);
+    }
+
+    HRESULT STDMETHODCALLTYPE DragEnter(IDataObject* data, DWORD, POINTL pt,
+                                        DWORD* effect) override {
+        if (effect) {
+            *effect = DROPEFFECT_NONE;
+        }
+        if (!win || !data) {
+            return S_OK;
+        }
+        FORMATETC fmt = {CF_HDROP, nullptr, DVASPECT_CONTENT, -1,
+                         TYMED_HGLOBAL};
+        if (data->QueryGetData(&fmt) != S_OK) {
+            return S_OK;
+        }
+        STGMEDIUM medium = {};
+        if (FAILED(data->GetData(&fmt, &medium))) {
+            return S_OK;
+        }
+        Arena* a = ArenaNew();
+        Str paths = ClipboardReadPaths(a, medium.hGlobal);
+        ReleaseStgMedium(&medium);
+        float x = 0, y = 0;
+        At(pt, &x, &y);
+        PlatformInput in = InputFileDrop(FileDropPhase::Entered, x, y, paths);
+        WindowDispatchInput(win, &in);
+        ArenaDelete(a);
+        if (effect) {
+            *effect = DROPEFFECT_COPY;
+        }
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragOver(DWORD, POINTL pt,
+                                       DWORD* effect) override {
+        if (effect) {
+            *effect = DROPEFFECT_COPY;
+        }
+        if (!win) {
+            return S_OK;
+        }
+        float x = 0, y = 0;
+        At(pt, &x, &y);
+        PlatformInput in = InputFileDrop(FileDropPhase::Pending, x, y, {});
+        WindowDispatchInput(win, &in);
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE DragLeave() override {
+        if (win) {
+            PlatformInput in = InputFileDrop(FileDropPhase::Exited, win->mouseX,
+                                             win->mouseY, {});
+            WindowDispatchInput(win, &in);
+        }
+        return S_OK;
+    }
+    HRESULT STDMETHODCALLTYPE Drop(IDataObject*, DWORD, POINTL pt,
+                                   DWORD* effect) override {
+        if (effect) {
+            *effect = DROPEFFECT_COPY;
+        }
+        if (!win) {
+            return S_OK;
+        }
+        float x = 0, y = 0;
+        At(pt, &x, &y);
+        PlatformInput in = InputFileDrop(FileDropPhase::Submit, x, y, {});
+        WindowDispatchInput(win, &in);
+        return S_OK;
+    }
+};
+
+static void RegisterFileDrop(Window* win, HWND hwnd) {
+    if (!win || !win->plat || win->plat->fileDrop) {
+        return;
+    }
+    auto* target = new FileDropTarget(win);
+    if (SUCCEEDED(RegisterDragDrop(hwnd, target))) {
+        win->plat->fileDrop = true;
+    }
+    target->Release();
+}
+
+static void RevokeFileDrop(Window* win, HWND hwnd) {
+    if (!win || !win->plat || !win->plat->fileDrop) {
+        return;
+    }
+    RevokeDragDrop(hwnd);
+    win->plat->fileDrop = false;
+}
+
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
                                 LPARAM lParam) {
     Window* win = (Window*)GetWindowLongPtrW(hwnd, GWLP_USERDATA);
@@ -418,6 +549,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
     switch (msg) {
         case WM_CREATE: {
             PlatSetTimer(win, WindowTimerMs(win));
+            RegisterFileDrop(win, hwnd);
             return 0;
         }
         case WM_GETOBJECT:
@@ -753,6 +885,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam,
             }
             break;
         case WM_DESTROY: {
+            RevokeFileDrop(win, hwnd);
             KillTimer(hwnd, 1);
             App* app = win->app;
             PlatWindow* plat = win->plat;
@@ -1567,6 +1700,9 @@ void PlatWake(App* app) {
 bool PlatInit(App* app) {
     (void)app;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    // RegisterDragDrop requires OLE. CoInitializeEx above already started
+    // the apartment; OleInitialize attaches OLE to it.
+    OleInitialize(nullptr);
 
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
     if (user32) {
@@ -1599,6 +1735,7 @@ bool PlatInit(App* app) {
 void PlatShutdown(App* app) {
     (void)app;
     WakeShutdown();
+    OleUninitialize();
     CoUninitialize();
 }
 

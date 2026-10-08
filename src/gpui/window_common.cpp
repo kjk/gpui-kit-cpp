@@ -2581,6 +2581,9 @@ static void DispatchMouseUp(Window* win, const MouseUpEvent& in) {
             HitTestDrop(&win->paint, in.x, in.y, win->activeDrag.kind);
         if (target) {
             DropEvent ev = {win->activeDrag, in.x, in.y, target->bounds};
+            if (win->fileDrop) {
+                ev.externalPaths = win->fileDropPaths;
+            }
             ListenerCall(win->app, win, target->onDrop, &ev);
         }
     }
@@ -2897,6 +2900,8 @@ static void DispatchScrollWheel(Window* win, const ScrollWheelEvent& in) {
     AppInvalidate(win);
 }
 
+static void DispatchFileDrop(Window* win, const FileDropEvent& in);
+
 void WindowDispatchInput(Window* win, const PlatformInput* input) {
     if (!win || !input) {
         return;
@@ -3105,6 +3110,9 @@ void WindowDispatchInput(Window* win, const PlatformInput* input) {
             AppInvalidate(win);
             break;
         }
+        case PlatformInputKind::FileDrop:
+            DispatchFileDrop(win, input->fileDrop);
+            break;
     }
 }
 
@@ -3189,6 +3197,172 @@ PlatformInput InputLongPress(TouchPhase phase, Point start, Point position) {
     in.longPress.startPosition = start;
     in.longPress.position = position;
     return in;
+}
+
+PlatformInput InputFileDrop(FileDropPhase phase, float x, float y, Str paths) {
+    PlatformInput in = {};
+    in.kind = PlatformInputKind::FileDrop;
+    in.fileDrop.phase = phase;
+    in.fileDrop.x = x;
+    in.fileDrop.y = y;
+    in.fileDrop.paths = paths;
+    return in;
+}
+
+static void FileDropStore(Window* win, Str paths) {
+    StrFree(win->fileDropPaths);
+    win->fileDropPaths = paths.s && len(paths) > 0 ? StrDup(paths) : Str{};
+}
+
+static void FileDropClear(Window* win) {
+    StrFree(win->fileDropPaths);
+    win->fileDropPaths = {};
+    if (win->fileDrop) {
+        win->activeDrag = {};
+        win->dragOverId = 0;
+    }
+    win->fileDrop = false;
+    win->pressedMoved = false;
+}
+
+// gpui's translation of PlatformInput::FileDrop into an ExternalPaths drag:
+// enter installs the drag, move and pending are a left-button move, submit
+// is the mouse up that on_drop hears, and leaving takes the drag back.
+static void DispatchFileDrop(Window* win, const FileDropEvent& in) {
+    if (in.phase == FileDropPhase::Exited) {
+        FileDropClear(win);
+        AppInvalidate(win);
+        return;
+    }
+    if (in.phase == FileDropPhase::Entered) {
+        // An in-app drag already owns the pointer. A file drag does not
+        // replace it. A second enter is the same file drag learning its
+        // paths (the browser only has names at the drop).
+        if (win->activeDrag.IsValid() && !win->fileDrop) {
+            return;
+        }
+        FileDropStore(win, in.paths);
+        win->activeDrag.kind = StrL("ExternalPaths");
+        win->activeDrag.ix = 0;
+        win->activeDrag.data = nullptr;
+        win->fileDrop = true;
+        // The pointer already moved in the other process. The release is a
+        // drop, and the click the press would have made does not run.
+        win->pressedMoved = true;
+        win->dragOffX = 0;
+        win->dragOffY = 0;
+    }
+    if (!win->fileDrop) {
+        return;
+    }
+    if (in.phase == FileDropPhase::Submit) {
+        WindowSetActive(win, true);
+        MouseUpEvent up = {};
+        up.button = MouseButton::Left;
+        up.x = in.x;
+        up.y = in.y;
+        up.clickCount = 1;
+        DispatchMouseUp(win, up);
+        FileDropClear(win);
+        return;
+    }
+    MouseMoveEvent mv = {};
+    mv.x = in.x;
+    mv.y = in.y;
+    mv.pressed = true;
+    mv.pressedButton = MouseButton::Left;
+    DispatchMouseMove(win, mv);
+}
+
+static int HexValue(char c) {
+    if (c >= '0' && c <= '9') {
+        return c - '0';
+    }
+    if (c >= 'a' && c <= 'f') {
+        return c - 'a' + 10;
+    }
+    if (c >= 'A' && c <= 'F') {
+        return c - 'A' + 10;
+    }
+    return -1;
+}
+
+static bool AppendDecoded(StrBuilder& out, Str src) {
+    for (int i = 0; i < len(src); i++) {
+        char c = src.s[i];
+        if (c == '%' && i + 2 < len(src)) {
+            int hi = HexValue(src.s[i + 1]);
+            int lo = HexValue(src.s[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                c = (char)((hi << 4) | lo);
+                i += 2;
+            }
+        }
+        if (!out.AppendChar(c)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+Str FileUriListToPaths(Arena* a, Str list) {
+    StrBuilder out(a);
+    int i = 0;
+    int n = len(list);
+    while (i < n) {
+        int start = i;
+        while (i < n && list.s[i] != '\n' && list.s[i] != '\r') {
+            i++;
+        }
+        Str line = Str(list.s + start, i - start);
+        if (i < n && list.s[i] == '\r') {
+            i++;
+        }
+        if (i < n && list.s[i] == '\n') {
+            i++;
+        }
+        while (len(line) > 0 && (line.s[0] == ' ' || line.s[0] == '\t')) {
+            line.s++;
+            line.len--;
+        }
+        while (len(line) > 0 && (line.s[len(line) - 1] == ' ' ||
+                                 line.s[len(line) - 1] == '\t')) {
+            line.len--;
+        }
+        if (len(line) == 0 || line.s[0] == '#') {
+            continue;
+        }
+        Str path = line;
+        if (len(line) >= 5 && memcmp(line.s, "file:", 5) == 0) {
+            path = Str(line.s + 5, len(line) - 5);
+            if (len(path) >= 2 && path.s[0] == '/' && path.s[1] == '/') {
+                path.s += 2;
+                path.len -= 2;
+                int slash = 0;
+                while (slash < len(path) && path.s[slash] != '/') {
+                    slash++;
+                }
+                path.s += slash;
+                path.len -= slash;
+            }
+        } else if (line.s[0] != '/') {
+            continue;
+        }
+        if (len(path) == 0) {
+            continue;
+        }
+        if (out.len > 0 && !out.AppendChar('\n')) {
+            return {};
+        }
+        int at = out.len;
+        if (!AppendDecoded(out, path)) {
+            return {};
+        }
+        if (out.len == at) {
+            continue;
+        }
+    }
+    return out.TakeStr();
 }
 
 static const float kTouchSlopPx = 10.f;
@@ -3674,6 +3848,8 @@ Window::~Window() {
     input = nullptr;
     prevInput = nullptr;
     scene::Free(&paint);
+    StrFree(fileDropPaths);
+    fileDropPaths = {};
 }
 
 void WindowClosed(Window* win) {

@@ -595,6 +595,66 @@ static bool PressedButton(MouseButton* out) {
     return NO;
 }
 
+// Finder file drags. Paths are read on enter and again on drop: a promise
+// can arrive without names until the drop. The kind is ExternalPaths.
+- (gpui::Str)fileDropPaths:(id<NSDraggingInfo>)sender {
+    NSArray<NSURL*>* urls = [[sender draggingPasteboard]
+        readObjectsForClasses:@[ [NSURL class] ]
+                      options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    gpui::Arena* scratch = gpui::ArenaNew();
+    gpui::StrBuilder b(scratch);
+    for (NSURL* url in urls) {
+        const char* path = url.path.UTF8String;
+        if (!path || !path[0]) {
+            continue;
+        }
+        if (b.len > 0) {
+            b.AppendChar('\n');
+        }
+        b.Append(gpui::Str(path));
+    }
+    gpui::Str out = b.len > 0 ? gpui::StrDup(b.TakeStr()) : gpui::Str{};
+    gpui::ArenaDelete(scratch);
+    return out;
+}
+
+- (void)fileDrop:(id<NSDraggingInfo>)sender phase:(gpui::FileDropPhase)phase {
+    if (!win) {
+        return;
+    }
+    NSPoint p = [self convertPoint:[sender draggingLocation] fromView:nil];
+    gpui::Str paths = {};
+    if (phase == gpui::FileDropPhase::Entered) {
+        paths = [self fileDropPaths:sender];
+    }
+    gpui::PlatformInput in =
+        gpui::InputFileDrop(phase, (float)p.x, (float)p.y, paths);
+    gpui::WindowDispatchInput(win, &in);
+    gpui::StrFree(paths);
+}
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    [self fileDrop:sender phase:gpui::FileDropPhase::Entered];
+    return NSDragOperationCopy;
+}
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+    [self fileDrop:sender phase:gpui::FileDropPhase::Pending];
+    return NSDragOperationCopy;
+}
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+    [self fileDrop:sender phase:gpui::FileDropPhase::Exited];
+}
+- (BOOL)prepareForDragOperation:(id<NSDraggingInfo>)sender {
+    (void)sender;
+    return YES;
+}
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    // Names that were not on the pasteboard at enter are here now.
+    [self fileDrop:sender phase:gpui::FileDropPhase::Entered];
+    [self fileDrop:sender phase:gpui::FileDropPhase::Submit];
+    return YES;
+}
+
 - (void)drawRect:(NSRect)dirty {
     (void)dirty;
     if (!win) {
@@ -2136,6 +2196,7 @@ Window* WindowOpen(App* app, Str title, int dipW, int dipH, WinOpts opts) {
         }
         GpuiView* view = [[GpuiView alloc] initWithFrame:frame];
         view->win = win;
+        [view registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
         GpuiWindowDelegate* del = [[GpuiWindowDelegate alloc] init];
         del->win = win;
 
