@@ -767,6 +767,59 @@ static void AnOpenTriggerIsStoredApartFromASelectedOne() {
     AppGlobalClear(&app);
 }
 
+// crates/kit/tests/components.rs: dropdown_button_names_its_menu_trigger.
+// The caret shows no text, so it announces menu_accessibility_label, or the
+// localized "More options" when the caller leaves that empty.
+static void DropdownButtonNamesItsMenuTrigger() {
+    App app;
+    component::Init(&app);
+    Window* win = new Window();
+    win->app = &app;
+    Arena* arena = ArenaNew();
+    Ctx cx{&app, win, arena, {}};
+
+    El* root =
+        Div(arena)
+            ->Child(
+                component::DropdownButton::New(&cx, StrL("save"))
+                    ->Button_(component::Button::New(&cx, StrL("save-action"))
+                                  ->Label(StrL("Save")))
+                    ->MenuAccessibilityLabel(StrL("More save options"))
+                    ->Menu(component::PopupMenu::New(&cx, StrL("save-menu")))
+                    ->IntoEl())
+            ->Child(
+                component::DropdownButton::New(&cx, StrL("plain"))
+                    ->Button_(component::Button::New(&cx, StrL("plain-action"))
+                                  ->Label(StrL("Run")))
+                    ->Menu(component::PopupMenu::New(&cx, StrL("plain-menu")))
+                    ->IntoEl());
+    IdsCollect(root);
+    AccessibilityCollect(root, &win->accessibility);
+
+    const AccessibilityNode* named = nullptr;
+    const AccessibilityNode* plain = nullptr;
+    for (int i = 0; i < len(win->accessibility); i++) {
+        const AccessibilityNode& node = win->accessibility[i];
+        if (node.info.role != AccessibilityRole::Button) {
+            continue;
+        }
+        if (StrEq(node.info.label, StrL("More save options"))) {
+            named = &node;
+        } else if (StrEq(node.info.label, StrL("More options"))) {
+            plain = &node;
+        }
+    }
+    utassert(named != nullptr);
+    utassert(plain != nullptr);
+
+    VecReset(win->accessibility);
+    WindowKeyedFree(win);
+    delete win;
+    ArenaDelete(arena);
+    EntityDropAll(&app);
+    AppGlobalClear(&app);
+}
+
 void TestButtonGroup() {
     TestSuite("button_group");
     BaseButtonCentersOrdinaryChildGeometry();
@@ -784,4 +837,5 @@ void TestButtonGroup() {
     DebugBelowOutlinesEveryElementUnderIt();
     ClipboardButtonsAcceptTheSharedSizeContract();
     AnOpenTriggerIsStoredApartFromASelectedOne();
+    DropdownButtonNamesItsMenuTrigger();
 }

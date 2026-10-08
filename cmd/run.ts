@@ -538,9 +538,9 @@ function findDebugger(want: "any" | DebuggerKind, plat: Platform, exe: string, a
 /** Spec we port: crates/base, crates/component, crates/story, crates/webview, crates/shell, crates/component-shell, examples. */
 export const gpuiComponent = {
   repo: "https://github.com/longbridge/gpui-kit",
-  sha: "59cba65a4249385cc6ba74fe76aac2c5ebad6de2",
+  sha: "1e41f17e27ea46589af9c6c428d18b5bf23ef4f6",
   date: "2026-10-08",
-  subject: "dock: Hand the focus to the tab that replaces a closed one (#3409)",
+  subject: "dropdown_button: Add A11y names for the menu trigger (#3410)",
   crates: {
     "gpui-kit": "0.7.1",
     "gpui-base": "0.7.1",

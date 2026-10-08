@@ -16,12 +16,11 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `59cba65a4249385cc6ba74fe76aac2c5ebad6de2` (2026-10-08,
-dock: Hand the focus to the tab that replaces a closed one (#3409)).
-Closing a panel that held the focus gives it to the panel that group
-now shows, then to later groups, then to an open dock. A close that
-never had the focus, or whose removal callback already moved it, leaves
-the focus where it is.
+Processed through `1e41f17e27ea46589af9c6c428d18b5bf23ef4f6` (2026-10-08,
+dropdown_button: Add A11y names for the menu trigger (#3410)).
+The caret shows no text, so it announces `menu_accessibility_label`,
+or the localized "More options" when that is left empty. The action
+half keeps the name of the inner button.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 

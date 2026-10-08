@@ -11,14 +11,14 @@ namespace gpui {
 
 namespace component {
 
-extern const char* const kLocaleNames[] = {
-    "en", "zh-CN", "zh-HK", "zh-TW", "it", "fr"};
+extern const char* const kLocaleNames[] = {"en",    "zh-CN", "zh-HK",
+                                           "zh-TW", "it",    "fr"};
 extern const int kLocaleCount = 6;
 
-static const char* const kV_Attachment_Remove[] = {
-    "Remove", "移除", "移除", "移除", nullptr, nullptr};
-static const char* const kV_Attachment_Retry[] = {
-    "Retry", "重试", "重試", "重試", nullptr, nullptr};
+static const char* const kV_Attachment_Remove[] = {"Remove", "移除",  "移除",
+                                                   "移除",   nullptr, nullptr};
+static const char* const kV_Attachment_Retry[] = {"Retry", "重试",  "重試",
+                                                  "重試",  nullptr, nullptr};
 static const char* const kV_Calendar_month_April[] = {
     "April", "四月", "四月", "四月", "Aprile", "Avril"};
 static const char* const kV_Calendar_month_August[] = {
@@ -31,204 +31,328 @@ static const char* const kV_Calendar_month_January[] = {
     "January", "一月", "一月", "一月", "Gennaio", "Janvier"};
 static const char* const kV_Calendar_month_July[] = {
     "July", "七月", "七月", "七月", "Luglio", "Juillet"};
-static const char* const kV_Calendar_month_June[] = {
-    "June", "六月", "六月", "六月", "Giugno", "Juin"};
-static const char* const kV_Calendar_month_March[] = {
-    "March", "三月", "三月", "三月", "Marzo", "Mars"};
-static const char* const kV_Calendar_month_May[] = {
-    "May", "五月", "五月", "五月", "Maggio", "Mai"};
+static const char* const kV_Calendar_month_June[] = {"June", "六月",   "六月",
+                                                     "六月", "Giugno", "Juin"};
+static const char* const kV_Calendar_month_March[] = {"March", "三月",  "三月",
+                                                      "三月",  "Marzo", "Mars"};
+static const char* const kV_Calendar_month_May[] = {"May",  "五月",   "五月",
+                                                    "五月", "Maggio", "Mai"};
 static const char* const kV_Calendar_month_November[] = {
     "November", "十一月", "十一月", "十一月", "Novembre", "Novembre"};
 static const char* const kV_Calendar_month_October[] = {
     "October", "十月", "十月", "十月", "Ottobre", "Octobre"};
 static const char* const kV_Calendar_month_September[] = {
     "September", "九月", "九月", "九月", "Settembre", "Septembre"};
-static const char* const kV_Calendar_week_0[] = {
-    "Su", "日", "日", "日", "Do", "Di"};
-static const char* const kV_Calendar_week_1[] = {
-    "Mo", "一", "一", "一", "Lu", "Lu"};
-static const char* const kV_Calendar_week_2[] = {
-    "Tu", "二", "二", "二", "Ma", "Ma"};
-static const char* const kV_Calendar_week_3[] = {
-    "We", "三", "三", "三", "Me", "Me"};
-static const char* const kV_Calendar_week_4[] = {
-    "Th", "四", "四", "四", "Gi", "Je"};
-static const char* const kV_Calendar_week_5[] = {
-    "Fr", "五", "五", "五", "Ve", "Ve"};
-static const char* const kV_Calendar_week_6[] = {
-    "Sa", "六", "六", "六", "Sa", "Sa"};
-static const char* const kV_Carousel_go_to_slide[] = {
-    "Go to slide %{current}", "前往第 %{current} 张", "前往第 %{current} 張", "前往第 %{current} 張", nullptr, nullptr};
-static const char* const kV_Carousel_label[] = {
-    "Carousel", "轮播", "輪播", "輪播", nullptr, nullptr};
-static const char* const kV_Carousel_next[] = {
-    "Next slide", "下一张", "下一張", "下一張", nullptr, nullptr};
-static const char* const kV_Carousel_pagination[] = {
-    "Carousel pagination", "轮播分页", "輪播分頁", "輪播分頁", nullptr, nullptr};
+static const char* const kV_Calendar_week_0[] = {"Su", "日", "日",
+                                                 "日", "Do", "Di"};
+static const char* const kV_Calendar_week_1[] = {"Mo", "一", "一",
+                                                 "一", "Lu", "Lu"};
+static const char* const kV_Calendar_week_2[] = {"Tu", "二", "二",
+                                                 "二", "Ma", "Ma"};
+static const char* const kV_Calendar_week_3[] = {"We", "三", "三",
+                                                 "三", "Me", "Me"};
+static const char* const kV_Calendar_week_4[] = {"Th", "四", "四",
+                                                 "四", "Gi", "Je"};
+static const char* const kV_Calendar_week_5[] = {"Fr", "五", "五",
+                                                 "五", "Ve", "Ve"};
+static const char* const kV_Calendar_week_6[] = {"Sa", "六", "六",
+                                                 "六", "Sa", "Sa"};
+static const char* const kV_Carousel_go_to_slide[] = {"Go to slide %{current}",
+                                                      "前往第 %{current} 张",
+                                                      "前往第 %{current} 張",
+                                                      "前往第 %{current} 張",
+                                                      nullptr,
+                                                      nullptr};
+static const char* const kV_Carousel_label[] = {"Carousel", "轮播",  "輪播",
+                                                "輪播",     nullptr, nullptr};
+static const char* const kV_Carousel_next[] = {"Next slide", "下一张", "下一張",
+                                               "下一張",     nullptr,  nullptr};
+static const char* const kV_Carousel_pagination[] = {"Carousel pagination",
+                                                     "轮播分页",
+                                                     "輪播分頁",
+                                                     "輪播分頁",
+                                                     nullptr,
+                                                     nullptr};
 static const char* const kV_Carousel_previous[] = {
     "Previous slide", "上一张", "上一張", "上一張", nullptr, nullptr};
 static const char* const kV_Carousel_slide[] = {
-    "Slide %{current} of %{total}", "第 %{current} 张，共 %{total} 张", "第 %{current} 張，共 %{total} 張", "第 %{current} 張，共 %{total} 張", nullptr, nullptr};
-static const char* const kV_Chart_close[] = {
-    "Close", "收盘", "收市", "收盤", nullptr, nullptr};
-static const char* const kV_Chart_high[] = {
-    "High", "最高", "最高", "最高", nullptr, nullptr};
-static const char* const kV_Chart_low[] = {
-    "Low", "最低", "最低", "最低", nullptr, nullptr};
-static const char* const kV_Chart_open[] = {
-    "Open", "开盘", "開市", "開盤", nullptr, nullptr};
-static const char* const kV_ColorPicker_Alpha[] = {
-    "Alpha", "透明度", "透明度", "透明度", "Alfa", nullptr};
-static const char* const kV_ColorPicker_HSLA[] = {
-    "HSLA", "HSLA", "HSLA", "HSLA", "HSLA", nullptr};
-static const char* const kV_ColorPicker_Hue[] = {
-    "Hue", "色相", "色相", "色相", "Tonalità", nullptr};
+    "Slide %{current} of %{total}",
+    "第 %{current} 张，共 %{total} 张",
+    "第 %{current} 張，共 %{total} 張",
+    "第 %{current} 張，共 %{total} 張",
+    nullptr,
+    nullptr};
+static const char* const kV_Chart_close[] = {"Close", "收盘",  "收市",
+                                             "收盤",  nullptr, nullptr};
+static const char* const kV_Chart_high[] = {"High", "最高",  "最高",
+                                            "最高", nullptr, nullptr};
+static const char* const kV_Chart_low[] = {"Low",  "最低",  "最低",
+                                           "最低", nullptr, nullptr};
+static const char* const kV_Chart_open[] = {"Open", "开盘",  "開市",
+                                            "開盤", nullptr, nullptr};
+static const char* const kV_ColorPicker_Alpha[] = {"Alpha",  "透明度", "透明度",
+                                                   "透明度", "Alfa",   nullptr};
+static const char* const kV_ColorPicker_HSLA[] = {"HSLA", "HSLA", "HSLA",
+                                                  "HSLA", "HSLA", nullptr};
+static const char* const kV_ColorPicker_Hue[] = {"Hue",  "色相",     "色相",
+                                                 "色相", "Tonalità", nullptr};
 static const char* const kV_ColorPicker_Lightness[] = {
     "Lightness", "亮度", "亮度", "亮度", "Luminosità", nullptr};
 static const char* const kV_ColorPicker_Palette[] = {
     "Palette", "调色板", "調色板", "調色盤", "Tavolozza", nullptr};
 static const char* const kV_ColorPicker_Saturation[] = {
     "Saturation", "饱和度", "飽和度", "飽和度", "Saturazione", nullptr};
-static const char* const kV_ComboBox_empty[] = {
-    "No results", "暂无数据", "暫無數據", "沒有結果", "Nessun risultato", nullptr};
+static const char* const kV_ComboBox_empty[] = {"No results",       "暂无数据",
+                                                "暫無數據",         "沒有結果",
+                                                "Nessun risultato", nullptr};
 static const char* const kV_ComboBox_placeholder[] = {
     "Please select", "请选择", "請選擇", "請選擇", "Seleziona", nullptr};
 static const char* const kV_ComboBox_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Cerca...", nullptr};
 static const char* const kV_Command_empty[] = {
-    "No results found.", "未找到结果。", "未找到結果。", "未找到結果。", "Nessun risultato trovato.", nullptr};
+    "No results found.",         "未找到结果。", "未找到結果。", "未找到結果。",
+    "Nessun risultato trovato.", nullptr};
 static const char* const kV_Command_placeholder[] = {
-    "Type a command or search...", "输入命令或搜索...", "輸入命令或搜尋...", "輸入命令或搜尋...", "Digita un comando o cerca...", nullptr};
+    "Type a command or search...",
+    "输入命令或搜索...",
+    "輸入命令或搜尋...",
+    "輸入命令或搜尋...",
+    "Digita un comando o cerca...",
+    nullptr};
 static const char* const kV_DatePicker_placeholder[] = {
-    "Select date", "选择日期", "選擇日期", "選取日期", "Seleziona data", "Sélectionner une date"};
-static const char* const kV_DatePicker_time[] = {
-    "Time", "时间", "時間", nullptr, nullptr, nullptr};
-static const char* const kV_Dialog_cancel[] = {
-    "Cancel", "取消", "取消", "取消", "Annulla", nullptr};
-static const char* const kV_Dialog_ok[] = {
-    "OK", "确定", "確定", "確定", "OK", nullptr};
+    "Select date", "选择日期",       "選擇日期",
+    "選取日期",    "Seleziona data", "Sélectionner une date"};
+static const char* const kV_DatePicker_time[] = {"Time",  "时间",  "時間",
+                                                 nullptr, nullptr, nullptr};
+static const char* const kV_Dialog_cancel[] = {"Cancel", "取消",    "取消",
+                                               "取消",   "Annulla", nullptr};
+static const char* const kV_Dialog_ok[] = {"OK",   "确定", "確定",
+                                           "確定", "OK",   nullptr};
 static const char* const kV_Diff_AcceptBoth[] = {
     "Accept Both", "保留双方更改", "保留雙方變更", nullptr, nullptr, nullptr};
 static const char* const kV_Diff_AcceptCurrent[] = {
-    "Accept Current", "采用当前更改", "採用目前變更", nullptr, nullptr, nullptr};
+    "Accept Current", "采用当前更改", "採用目前變更",
+    nullptr,          nullptr,        nullptr};
 static const char* const kV_Diff_AcceptIncoming[] = {
-    "Accept Incoming", "采用传入的更改", "採用傳入的變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_AcceptedBoth[] = {
-    "Accepted both changes", "已保留双方更改", "已保留雙方變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_AcceptedCurrent[] = {
-    "Accepted current change", "已采用当前更改", "已採用目前變更", nullptr, nullptr, nullptr};
+    "Accept Incoming", "采用传入的更改", "採用傳入的變更",
+    nullptr,           nullptr,          nullptr};
+static const char* const kV_Diff_AcceptedBoth[] = {"Accepted both changes",
+                                                   "已保留双方更改",
+                                                   "已保留雙方變更",
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr};
+static const char* const kV_Diff_AcceptedCurrent[] = {"Accepted current change",
+                                                      "已采用当前更改",
+                                                      "已採用目前變更",
+                                                      nullptr,
+                                                      nullptr,
+                                                      nullptr};
 static const char* const kV_Diff_AcceptedIncoming[] = {
-    "Accepted incoming change", "已采用传入的更改", "已採用傳入的變更", nullptr, nullptr, nullptr};
+    "Accepted incoming change",
+    "已采用传入的更改",
+    "已採用傳入的變更",
+    nullptr,
+    nullptr,
+    nullptr};
 static const char* const kV_Diff_AddAnnotation[] = {
-    "Add annotation to line %{line}", "为第 %{line} 行添加批注", "為第 %{line} 行新增批註", nullptr, nullptr, nullptr};
+    "Add annotation to line %{line}",
+    "为第 %{line} 行添加批注",
+    "為第 %{line} 行新增批註",
+    nullptr,
+    nullptr,
+    nullptr};
 static const char* const kV_Diff_AddedFile[] = {
     "Added file", "新增文件", "新增檔案", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_AddedLine[] = {
-    "%{side} line %{line}, added", "%{side}第 %{line} 行，新增", "%{side}第 %{line} 行，新增", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_AddedLine[] = {"%{side} line %{line}, added",
+                                                "%{side}第 %{line} 行，新增",
+                                                "%{side}第 %{line} 行，新增",
+                                                nullptr,
+                                                nullptr,
+                                                nullptr};
 static const char* const kV_Diff_BaseChange[] = {
     "Common ancestor", "共同祖先", "共同祖先", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_BinaryChanges[] = {
-    "Binary file changed", "二进制文件已变更", "二進位檔案已變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_CollapseFile[] = {
-    "Collapse %{name}", "收起 %{name}", "收起 %{name}", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_BinaryChanges[] = {"Binary file changed",
+                                                    "二进制文件已变更",
+                                                    "二進位檔案已變更",
+                                                    nullptr,
+                                                    nullptr,
+                                                    nullptr};
+static const char* const kV_Diff_CollapseFile[] = {"Collapse %{name}",
+                                                   "收起 %{name}",
+                                                   "收起 %{name}",
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr};
 static const char* const kV_Diff_ConflictedFile[] = {
     "Conflicts", "有冲突", "有衝突", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_CopiedFile[] = {
-    "Copied", "已复制", "已複製", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_CopiedFile[] = {"Copied", "已复制", "已複製",
+                                                 nullptr,  nullptr,  nullptr};
 static const char* const kV_Diff_CurrentChange[] = {
     "Current change", "当前更改", "目前變更", nullptr, nullptr, nullptr};
 static const char* const kV_Diff_DeletedFile[] = {
     "Deleted file", "已删除文件", "已刪除檔案", nullptr, nullptr, nullptr};
 static const char* const kV_Diff_EmptyFile[] = {
     "Empty file", "空文件", "空檔案", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_ExpandAbove[] = {
-    "Show %{count} lines above", "显示上方 %{count} 行", "顯示上方 %{count} 行", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_ExpandBelow[] = {
-    "Show %{count} lines below", "显示下方 %{count} 行", "顯示下方 %{count} 行", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_ExpandAbove[] = {"Show %{count} lines above",
+                                                  "显示上方 %{count} 行",
+                                                  "顯示上方 %{count} 行",
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr};
+static const char* const kV_Diff_ExpandBelow[] = {"Show %{count} lines below",
+                                                  "显示下方 %{count} 行",
+                                                  "顯示下方 %{count} 行",
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr};
 static const char* const kV_Diff_ExpandFile[] = {
-    "Expand %{name}", "展开 %{name}", "展開 %{name}", nullptr, nullptr, nullptr};
+    "Expand %{name}", "展开 %{name}", "展開 %{name}",
+    nullptr,          nullptr,        nullptr};
 static const char* const kV_Diff_ExpandLines[] = {
-    "Expand %{count} unchanged lines", "展开 %{count} 行未变更内容", "展開 %{count} 行未變更內容", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_HiddenLines[] = {
-    "%{count} lines not in patch", "patch 中未包含 %{count} 行", "patch 中未包含 %{count} 行", nullptr, nullptr, nullptr};
+    "Expand %{count} unchanged lines",
+    "展开 %{count} 行未变更内容",
+    "展開 %{count} 行未變更內容",
+    nullptr,
+    nullptr,
+    nullptr};
+static const char* const kV_Diff_HiddenLines[] = {"%{count} lines not in patch",
+                                                  "patch 中未包含 %{count} 行",
+                                                  "patch 中未包含 %{count} 行",
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr};
 static const char* const kV_Diff_IncomingChange[] = {
     "Incoming change", "传入的更改", "傳入的變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_Modified[] = {
-    "Modified", "新版", "新版", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_Modified[] = {"Modified", "新版",  "新版",
+                                               nullptr,    nullptr, nullptr};
 static const char* const kV_Diff_NoChanges[] = {
     "No changes", "没有变更", "沒有變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_NoNewline[] = {
-    "No newline at end of file", "文件末尾没有换行", "檔案末尾沒有換行", nullptr, nullptr, nullptr};
+static const char* const kV_Diff_NoNewline[] = {"No newline at end of file",
+                                                "文件末尾没有换行",
+                                                "檔案末尾沒有換行",
+                                                nullptr,
+                                                nullptr,
+                                                nullptr};
 static const char* const kV_Diff_NoTextChanges[] = {
-    "No text changes in this patch", "此 patch 没有文本变更", "此 patch 沒有文字變更", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_Original[] = {
-    "Original", "原版", "原版", nullptr, nullptr, nullptr};
+    "No text changes in this patch",
+    "此 patch 没有文本变更",
+    "此 patch 沒有文字變更",
+    nullptr,
+    nullptr,
+    nullptr};
+static const char* const kV_Diff_Original[] = {"Original", "原版",  "原版",
+                                               nullptr,    nullptr, nullptr};
 static const char* const kV_Diff_RemovedLine[] = {
-    "%{side} line %{line}, removed", "%{side}第 %{line} 行，删除", "%{side}第 %{line} 行，刪除", nullptr, nullptr, nullptr};
+    "%{side} line %{line}, removed",
+    "%{side}第 %{line} 行，删除",
+    "%{side}第 %{line} 行，刪除",
+    nullptr,
+    nullptr,
+    nullptr};
 static const char* const kV_Diff_RenamedFile[] = {
     "Renamed", "已重命名", "已重新命名", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_SelectLine[] = {
-    "Select %{side} line %{line}", "选择%{side}第 %{line} 行", "選擇%{side}第 %{line} 行", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_SourceLine[] = {
-    "%{side} line %{line}", "%{side}第 %{line} 行", "%{side}第 %{line} 行", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_UnchangedLines[] = {
-    "%{count} unchanged lines", "%{count} 行未变更内容", "%{count} 行未變更內容", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_UndoResolution[] = {
-    "Undo", "撤销", "復原", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_Viewer[] = {
-    "Diff for %{name}", "%{name} 的差异", "%{name} 的差異", nullptr, nullptr, nullptr};
-static const char* const kV_Diff_ViewerFiles[] = {
-    "Diff for %{count} files", "%{count} 个文件的差异", "%{count} 個檔案的差異", nullptr, nullptr, nullptr};
-static const char* const kV_Dock_Close[] = {
-    "Close", "关闭", "關閉", "關閉", "Chiudi", nullptr};
-static const char* const kV_Dock_Collapse[] = {
-    "Collapse", "隐藏", "隱藏", "收合", "Nascondi", nullptr};
-static const char* const kV_Dock_Expand[] = {
-    "Expand", "展开", "展開", "展開", "Espandi", nullptr};
-static const char* const kV_Dock_Unnamed[] = {
-    "Unnamed", "未命名", "未命名", "未命名", "Senza nome", nullptr};
-static const char* const kV_Dock_Zoom_In[] = {
-    "Zoom In", "放大", "放大", "放大", "Zoom In", nullptr};
-static const char* const kV_Dock_Zoom_Out[] = {
-    "Zoom Out", "缩小", "縮小", "縮小", "Zoom Out", nullptr};
-static const char* const kV_Input_Copy[] = {
-    "Copy", "复制", "複製", "複製", nullptr, nullptr};
-static const char* const kV_Input_Cut[] = {
-    "Cut", "剪切", "剪切", "剪下", nullptr, nullptr};
-static const char* const kV_Input_Decrement[] = {
-    "Decrement", "减少", "減少", "減少", nullptr, nullptr};
+static const char* const kV_Diff_SelectLine[] = {"Select %{side} line %{line}",
+                                                 "选择%{side}第 %{line} 行",
+                                                 "選擇%{side}第 %{line} 行",
+                                                 nullptr,
+                                                 nullptr,
+                                                 nullptr};
+static const char* const kV_Diff_SourceLine[] = {"%{side} line %{line}",
+                                                 "%{side}第 %{line} 行",
+                                                 "%{side}第 %{line} 行",
+                                                 nullptr,
+                                                 nullptr,
+                                                 nullptr};
+static const char* const kV_Diff_UnchangedLines[] = {"%{count} unchanged lines",
+                                                     "%{count} 行未变更内容",
+                                                     "%{count} 行未變更內容",
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr};
+static const char* const kV_Diff_UndoResolution[] = {"Undo",  "撤销",  "復原",
+                                                     nullptr, nullptr, nullptr};
+static const char* const kV_Diff_Viewer[] = {"Diff for %{name}",
+                                             "%{name} 的差异",
+                                             "%{name} 的差異",
+                                             nullptr,
+                                             nullptr,
+                                             nullptr};
+static const char* const kV_Diff_ViewerFiles[] = {"Diff for %{count} files",
+                                                  "%{count} 个文件的差异",
+                                                  "%{count} 個檔案的差異",
+                                                  nullptr,
+                                                  nullptr,
+                                                  nullptr};
+static const char* const kV_Dock_Close[] = {"Close", "关闭",   "關閉",
+                                            "關閉",  "Chiudi", nullptr};
+static const char* const kV_Dock_Collapse[] = {"Collapse", "隐藏",     "隱藏",
+                                               "收合",     "Nascondi", nullptr};
+static const char* const kV_Dock_Expand[] = {"Expand", "展开",    "展開",
+                                             "展開",   "Espandi", nullptr};
+static const char* const kV_Dock_Unnamed[] = {"Unnamed", "未命名",     "未命名",
+                                              "未命名",  "Senza nome", nullptr};
+static const char* const kV_Dock_Zoom_In[] = {"Zoom In", "放大",    "放大",
+                                              "放大",    "Zoom In", nullptr};
+static const char* const kV_Dock_Zoom_Out[] = {"Zoom Out", "缩小",     "縮小",
+                                               "縮小",     "Zoom Out", nullptr};
+static const char* const kV_DropdownButton_more_options[] = {
+    "More options", "更多选项", "更多選項", "更多選項", nullptr, nullptr};
+static const char* const kV_Input_Copy[] = {"Copy", "复制",  "複製",
+                                            "複製", nullptr, nullptr};
+static const char* const kV_Input_Cut[] = {"Cut",  "剪切",  "剪切",
+                                           "剪下", nullptr, nullptr};
+static const char* const kV_Input_Decrement[] = {"Decrement", "减少",  "減少",
+                                                 "減少",      nullptr, nullptr};
 static const char* const kV_Input_Go_to_Definition[] = {
-    "Go to Definition", "跳转到定义", "跳轉到定義", "前往定義", nullptr, nullptr};
-static const char* const kV_Input_Increment[] = {
-    "Increment", "增加", "增加", "增加", nullptr, nullptr};
-static const char* const kV_Input_Paste[] = {
-    "Paste", "粘贴", "貼上", "貼上", nullptr, nullptr};
-static const char* const kV_Input_Replace[] = {
-    "Replace", "替换", "替換", "取代", nullptr, nullptr};
+    "Go to Definition", "跳转到定义", "跳轉到定義",
+    "前往定義",         nullptr,      nullptr};
+static const char* const kV_Input_Increment[] = {"Increment", "增加",  "增加",
+                                                 "增加",      nullptr, nullptr};
+static const char* const kV_Input_Paste[] = {"Paste", "粘贴",  "貼上",
+                                             "貼上",  nullptr, nullptr};
+static const char* const kV_Input_Replace[] = {"Replace", "替换",  "替換",
+                                               "取代",    nullptr, nullptr};
 static const char* const kV_Input_Replace_All[] = {
     "Replace All", "全部替换", "全部替換", "全部取代", nullptr, nullptr};
 static const char* const kV_Input_Select_All[] = {
     "Select All", "全选", "全選", "全選", nullptr, nullptr};
 static const char* const kV_Input_Show_Code_Actions[] = {
-    "Show Code Actions", "显示代码操作", "顯示代碼操作", "顯示程式碼動作", nullptr, nullptr};
+    "Show Code Actions", "显示代码操作", "顯示代碼操作",
+    "顯示程式碼動作",    nullptr,        nullptr};
 static const char* const kV_List_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
-static const char* const kV_Pagination_next[] = {
-    "Next", "下一页", "下一頁", "下一頁", nullptr, nullptr};
+static const char* const kV_Pagination_next[] = {"Next",   "下一页", "下一頁",
+                                                 "下一頁", nullptr,  nullptr};
 static const char* const kV_Pagination_previous[] = {
     "Previous", "上一页", "上一頁", "上一頁", nullptr, nullptr};
 static const char* const kV_Questionnaire_error_optional[] = {
-    "Choose an answer or skip this question.", "请选择一个答案，或跳过此题。", "請選擇一個答案，或跳過此題。", "請選擇一個答案，或跳過此題。", nullptr, nullptr};
+    "Choose an answer or skip this question.",
+    "请选择一个答案，或跳过此题。",
+    "請選擇一個答案，或跳過此題。",
+    "請選擇一個答案，或跳過此題。",
+    nullptr,
+    nullptr};
 static const char* const kV_Questionnaire_error_required[] = {
-    "Choose an answer to continue.", "请选择一个答案后继续。", "請選擇一個答案後繼續。", "請選擇一個答案後繼續。", nullptr, nullptr};
+    "Choose an answer to continue.",
+    "请选择一个答案后继续。",
+    "請選擇一個答案後繼續。",
+    "請選擇一個答案後繼續。",
+    nullptr,
+    nullptr};
 static const char* const kV_Questionnaire_next[] = {
     "Next", "下一题", "下一題", "下一題", nullptr, nullptr};
 static const char* const kV_Questionnaire_previous[] = {
     "Previous", "上一题", "上一題", "上一題", nullptr, nullptr};
 static const char* const kV_Questionnaire_progress[] = {
-    "Question %{current} of %{total}", "第 %{current} 题，共 %{total} 题", "第 %{current} 題，共 %{total} 題", "第 %{current} 題，共 %{total} 題", nullptr, nullptr};
-static const char* const kV_Questionnaire_skip[] = {
-    "Skip", "跳过", "跳過", "跳過", nullptr, nullptr};
+    "Question %{current} of %{total}",
+    "第 %{current} 题，共 %{total} 题",
+    "第 %{current} 題，共 %{total} 題",
+    "第 %{current} 題，共 %{total} 題",
+    nullptr,
+    nullptr};
+static const char* const kV_Questionnaire_skip[] = {"Skip", "跳过",  "跳過",
+                                                    "跳過", nullptr, nullptr};
 static const char* const kV_Questionnaire_submit[] = {
     "Submit", "提交", "提交", "提交", nullptr, nullptr};
 static const char* const kV_Select_placeholder[] = {
@@ -239,12 +363,18 @@ static const char* const kV_Settings_search_placeholder[] = {
     "Search...", "搜索...", "搜索...", "搜尋...", "Ricerca...", nullptr};
 static const char* const kV_Speech_Start[] = {
     "Dictate", "语音输入", "語音輸入", "語音輸入", nullptr, nullptr};
-static const char* const kV_Speech_Stop[] = {
-    "Stop dictation", "停止语音输入", "停止語音輸入", "停止語音輸入", nullptr, nullptr};
+static const char* const kV_Speech_Stop[] = {"Stop dictation", "停止语音输入",
+                                             "停止語音輸入",   "停止語音輸入",
+                                             nullptr,          nullptr};
 static const char* const kV_Speech_Unavailable[] = {
-    "Dictation unavailable", "语音输入不可用", "語音輸入不可用", "語音輸入不可用", nullptr, nullptr};
-static const char* const kV_Table_SortBy[] = {
-    "Sort by %{column}", "按 %{column} 排序", "按 %{column} 排序", "依 %{column} 排序", nullptr, nullptr};
+    "Dictation unavailable", "语音输入不可用", "語音輸入不可用",
+    "語音輸入不可用",        nullptr,          nullptr};
+static const char* const kV_Table_SortBy[] = {"Sort by %{column}",
+                                              "按 %{column} 排序",
+                                              "按 %{column} 排序",
+                                              "依 %{column} 排序",
+                                              nullptr,
+                                              nullptr};
 
 extern const LocaleRow kLocaleRows[] = {
     {"Attachment.Remove", kV_Attachment_Remove},
@@ -335,6 +465,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Dock.Unnamed", kV_Dock_Unnamed},
     {"Dock.Zoom In", kV_Dock_Zoom_In},
     {"Dock.Zoom Out", kV_Dock_Zoom_Out},
+    {"DropdownButton.more_options", kV_DropdownButton_more_options},
     {"Input.Copy", kV_Input_Copy},
     {"Input.Cut", kV_Input_Cut},
     {"Input.Decrement", kV_Input_Decrement},
@@ -363,7 +494,7 @@ extern const LocaleRow kLocaleRows[] = {
     {"Speech.Unavailable", kV_Speech_Unavailable},
     {"Table.SortBy", kV_Table_SortBy},
 };
-extern const int kLocaleRowCount = 115;
+extern const int kLocaleRowCount = 116;
 
 } // namespace component
 } // namespace gpui

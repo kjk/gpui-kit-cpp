@@ -385,6 +385,8 @@ struct DropdownButton {
     // anchor sets anchorAbove, and the menu opens upward instead.
     bool anchorRight = true;
     bool anchorAbove = false;
+    // menu_accessibility_label. Empty uses DropdownButton.more_options.
+    Str menuAccessibilityLabel = {};
 
     static DropdownButton* New(Ctx* cx, Str id);
     DropdownButton* Button_(component::Button* b);
@@ -392,6 +394,9 @@ struct DropdownButton {
     DropdownButton* Selected(bool v);
     DropdownButton* Disabled(bool v);
     DropdownButton* Outline();
+    // The screen-reader name of the caret trigger. Empty keeps the
+    // localized "More options".
+    DropdownButton* MenuAccessibilityLabel(Str label);
     DropdownButton* WithVariant(ButtonVariant v);
     DropdownButton* Primary();
     DropdownButton* Secondary();

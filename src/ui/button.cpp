@@ -1,4 +1,5 @@
 #include "ui/button.h"
+#include "ui/i18n.h"
 #include "ui/icon.h"
 #include "ui/menu.h"
 #include "ui/progress.h"
@@ -1193,6 +1194,10 @@ DropdownButton* DropdownButton::Outline() {
     outline = true;
     return this;
 }
+DropdownButton* DropdownButton::MenuAccessibilityLabel(Str label) {
+    menuAccessibilityLabel = label;
+    return this;
+}
 DropdownButton* DropdownButton::WithVariant(ButtonVariant v) {
     hasVariant = true;
     variant = v;
@@ -1311,8 +1316,12 @@ El* DropdownButton::IntoEl() {
     // action button, and a loading action button leaves it available: loading
     // is action-specific, `Disabled(true)` is what shuts both halves.
     if (menu) {
+        Str menuName = menuAccessibilityLabel.s
+                           ? menuAccessibilityLabel
+                           : Tr("DropdownButton.more_options");
         Button* caret = Button::New(cx, StrL("popup"))
                             ->DropdownCaret()
+                            ->AccessibilityLabel(menuName)
                             ->Selected(isSelected)
                             ->Disabled(disabled)
                             ->WithSize(sz);
