@@ -4032,6 +4032,22 @@ static void MeasureTableColumns(TextView* tv, MdNode* n, int nCols, bool scroll,
         cols[i].maxW = maxW;
         cols[i].minW = minW;
     }
+    // The widest floor is the common width the big columns shrink to. A
+    // column already at or under that width keeps its text on one line:
+    // equal flex-grow would otherwise spend the leftover on the wide
+    // columns and wrap the narrow one. A scrolling table then grows its
+    // track and scrolls instead of squeezing that text.
+    float ceiling = 0;
+    for (int i = 0; i < nCols; i++) {
+        if (cols[i].minW > ceiling) {
+            ceiling = cols[i].minW;
+        }
+    }
+    for (int i = 0; i < nCols; i++) {
+        if (cols[i].maxW <= ceiling) {
+            cols[i].minW = cols[i].maxW;
+        }
+    }
 }
 
 static El* TableSlack(TextView* tv, Arena* a, float grow, bool border) {

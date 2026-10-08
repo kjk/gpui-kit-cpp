@@ -534,7 +534,10 @@ static void ClickingAClippedTabRevealsItAndPartOfTheNext() {
 }
 
 // clicking_the_last_tab_reveals_the_end_of_the_bar. The strip is already
-// most of the way along, and the click takes it the rest of the way.
+// most of the way along, and the click takes it the rest of the way. Rust
+// checks the scroll offset against the handle's max, not a fixed distance:
+// a label that does not fit in the 60px tab sticks out of it, and that
+// overflow is part of the end.
 static void ClickingTheLastTabRevealsTheEndOfTheBar() {
     MotionSetReduced(true);
     App* app = TestAppNew();
@@ -545,10 +548,15 @@ static void ClickingTheLastTabRevealsTheEndOfTheBar() {
     Window* win = TestWindowOpen(app, view, 100, 40, 1);
     El* root = LaidOut(win);
     El* tab = FindTabId(root, "4");
-    utassert(tab);
+    El* strip = FindTabId(root, "tabs-inner");
+    utassert(tab && strip);
+    float end = strip->contentW - strip->w;
+    if (end < 0.f) {
+        end = 0.f;
+    }
     TestSimulateClick(win, {tab->x + 10.f, tab->y + 10.f});
     ClickRevealTabs* self = view.Get(app);
-    utassert(self && TestNear(self->scroll, 200.f));
+    utassert(self && TestNear(self->scroll, end));
     TestAppFree(app);
     MotionResetReduceForTest();
 }
