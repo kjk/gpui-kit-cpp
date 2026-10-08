@@ -16,12 +16,10 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `dc00da1837f16a6da42280535d76a2d7acc4a40e` (2026-10-07,
-diff: Add a Git history example and complete review APIs (#3388)).
-A conflict reports one-based source ranges beside the indexes used to
-project it, and the viewer can change expansion, folding and inline
-limits without dropping the selection. `examples/tig` is recorded
-under Known gaps.
+Processed through `29c04574dc838a8e59e84c9c9f3c4d15983222ce` (2026-10-07,
+webview: Compose native views with the GPUI Fast backend (#3389)).
+GPUI Fast 0.1.2's macOS composition surface is not a second backend
+here. Bounds and visibility still go straight to the native webview.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
@@ -271,6 +269,13 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   `Module.set_theme(dark)`. An opaque manual redirect is refused because the
   browser hides the target that the shell must capability-check.
   See the browser section of AGENTS.md.
+- **No GPUI Fast native composition surface.** Upstream reparents a
+  macOS WKWebView onto `WindowCompositionSurface` so overlays draw above
+  it (`crates/webview/src/composition.rs`, GPUI Fast 0.1.2). This tree
+  has one engine and parents the webview on the window
+  (`src/webview/webview.cpp`). `WebView::set_bounds` and `set_visible`
+  are the wry calls `PaintWebView`, `WebViewShow` and `WebViewHide`
+  already make.
 - **macOS webview drag positions account for the child view.** The pinned
   Wry backend flips a window-relative point using the view's height; this
   port first converts it into the child view, then normalizes the top-left
