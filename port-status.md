@@ -16,11 +16,12 @@ work left is mostly depth.
 
 ## Upstream revision
 
-Processed through `114d70719c83bab1aba826abab45ca3f15fd39e4` (2026-10-07,
-input: Preserve selection, focus ring and context menu actions
-(#3382)). A field keeps its selection and focus ring while the menu
-associated with that selection has focus, and a submenu inherits its
-parent's action context. The caret still follows the field itself.
+Processed through `dc00da1837f16a6da42280535d76a2d7acc4a40e` (2026-10-07,
+diff: Add a Git history example and complete review APIs (#3388)).
+A conflict reports one-based source ranges beside the indexes used to
+project it, and the viewer can change expansion, folding and inline
+limits without dropping the selection. `examples/tig` is recorded
+under Known gaps.
 The current update target is
 `288767cc730ca4977852a7860f52a8465a61876f`.
 
@@ -225,11 +226,17 @@ Scroll` on `style.code_block`. A refinement here names no overflow field,
   in `selection_tests.rs` and `header_tests.rs` are not ported. Inline
   emphasis is computed on the frame that asks, and a rebuild keeps the
   scroll index rather than the source line that was at the top. Soft wrap
-  is stored and not applied. Annotation content is painted inside the
-  uniform row, which does not grow with the comment. The story page
-  shows the pull-request patch and previous/next; the options menu and
-  the other example patches are not on the page yet. The per-hunk
-  tree-sitter test stays under the scanner gap above.
+  is stored and not applied. The viewer's body is a vertical list, so
+  the horizontal `ScrollableMask` that keeps a vertical wheel on the
+  rows is not applied, and the add-annotation button inset is not
+  applied because that button is not painted. Annotation content is
+  painted inside the uniform row, which does not grow with the comment.
+  Gutter `TextSelection::Cleared` is not a separate path: clearing goes
+  through `SetSelectedLines`, which drops the shift anchor and does not
+  emit. The story page shows the pull-request patch and previous/next;
+  the options menu and the other example patches are not on the page
+  yet. `examples/tig`, the git history browser, is not ported. The
+  per-hunk tree-sitter test stays under the scanner gap above.
 - **The Base showcase's editor is plain text with a gutter.** Upstream's
   page installs its own syntect highlighter (`syntect_highlighter.rs`,
   a third-party crate) for Rust, colours its captures through

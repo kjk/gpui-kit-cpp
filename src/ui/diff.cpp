@@ -97,6 +97,34 @@ DiffAnnotation DiffAnnotation::File(Str id, Str path) {
     return a;
 }
 
+void DiffConflict::Lines(int* start, int* end) const {
+    *start = linesStart;
+    *end = linesEnd;
+}
+
+void DiffConflict::CurrentLines(int* start, int* end) const {
+    *start = currentLinesStart;
+    *end = currentLinesEnd;
+}
+
+bool DiffConflict::BaseLines(int* start, int* end) const {
+    if (!hasBaseLines) return false;
+    *start = baseLinesStart;
+    *end = baseLinesEnd;
+    return true;
+}
+
+void DiffConflict::IncomingLines(int* start, int* end) const {
+    *start = incomingLinesStart;
+    *end = incomingLinesEnd;
+}
+
+bool DiffConflict::BaseLabel(Str* out) const {
+    if (!hasBase) return false;
+    if (out) *out = baseLabel;
+    return true;
+}
+
 bool DiffConflict::Part(DiffConflictPart part, int* start, int* end) const {
     if (part == DiffConflictPart::Current) {
         *start = currentStart;
@@ -1324,6 +1352,12 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
                 conflict.currentEnd = next;
                 conflict.incomingStart = next;
                 conflict.incomingEnd = next;
+                conflict.linesStart = ix + 1;
+                conflict.linesEnd = ix + 1;
+                conflict.currentLinesStart = ix + 2;
+                conflict.currentLinesEnd = ix + 2;
+                conflict.incomingLinesStart = ix + 2;
+                conflict.incomingLinesEnd = ix + 2;
                 conflict.currentLabel = Own(file->arena, openLabel);
                 continue;
             }
@@ -1340,9 +1374,13 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
             }
             if (part == DiffConflictPart::Current && base) {
                 conflict.currentEnd = next;
+                conflict.currentLinesEnd = ix + 1;
                 conflict.hasBase = true;
+                conflict.hasBaseLines = true;
                 conflict.baseStart = next;
                 conflict.baseEnd = next;
+                conflict.baseLinesStart = ix + 2;
+                conflict.baseLinesEnd = ix + 2;
                 conflict.baseLabel = Own(file->arena, baseLabel);
                 part = DiffConflictPart::Base;
                 continue;
@@ -1350,17 +1388,24 @@ DiffFile* DiffFile::ParseConflicts(Str path, Str text, DiffParseError* error) {
             if ((part == DiffConflictPart::Current ||
                  part == DiffConflictPart::Base) &&
                 separator) {
-                if (part == DiffConflictPart::Current)
+                if (part == DiffConflictPart::Current) {
                     conflict.currentEnd = next;
-                else
+                    conflict.currentLinesEnd = ix + 1;
+                } else {
                     conflict.baseEnd = next;
+                    conflict.baseLinesEnd = ix + 1;
+                }
                 conflict.incomingStart = next;
                 conflict.incomingEnd = next;
+                conflict.incomingLinesStart = ix + 2;
+                conflict.incomingLinesEnd = ix + 2;
                 part = DiffConflictPart::Incoming;
                 continue;
             }
             if (part == DiffConflictPart::Incoming && closing) {
                 conflict.incomingEnd = next;
+                conflict.incomingLinesEnd = ix + 1;
+                conflict.linesEnd = ix + 2;
                 conflict.incomingLabel = Own(file->arena, closeLabel);
                 VecAppend(file->conflicts, conflict);
                 open = false;
@@ -2109,7 +2154,7 @@ static void ProjectConflicts(DiffState* state, int fileIx) {
     ix = 0;
     while (ix < n) {
         if (next < len(file->conflicts) && file->conflicts[next]
-                                                   .LinesStart() == ix) {
+                                                   .SourceLinesStart() == ix) {
             const DiffConflict& conflict = file->conflicts[next];
             DiffConflictResolution kind;
             bool resolved = ResolutionOf(state, file->path, next, &kind);
@@ -2149,7 +2194,7 @@ static void ProjectConflicts(DiffState* state, int fileIx) {
                         code(line, false);
                 }
             }
-            ix = conflict.LinesEnd();
+            ix = conflict.SourceLinesEnd();
             next++;
             continue;
         }
@@ -2392,6 +2437,46 @@ void DiffState::SetContextLines(bool has, int lines, Ctx* cx) {
     if (cx) Notify(cx);
 }
 
+void DiffState::SetExpansionLines(int lines, Ctx* cx) {
+    lines = lines < 1 ? 1 : lines;
+    if (expansionLines == lines) return;
+    expansionLines = lines;
+    if (cx) Notify(cx);
+}
+
+void DiffState::SetMinCollapsedLines(int lines, Ctx* cx) {
+    lines = lines < 1 ? 1 : lines;
+    if (minCollapsedLines == lines) return;
+    minCollapsedLines = lines;
+    Rebuild(this, false);
+    if (cx) Notify(cx);
+}
+
+void DiffState::SetInlineUnit(bool on, DiffInlineUnit unit, Ctx* cx) {
+    if (inlineOn == on && (!on || inlineUnit == unit)) return;
+    inlineOn = on;
+    if (on) inlineUnit = unit;
+    EnsurePresentation();
+    if (cx) Notify(cx);
+}
+
+void DiffState::SetInlineMaxLineLength(int length, Ctx* cx) {
+    if (length < 0) length = 0;
+    if (inlineMaxLineLength == length) return;
+    inlineMaxLineLength = length;
+    EnsurePresentation();
+    if (cx) Notify(cx);
+}
+
+void DiffState::SetSyntaxMaxLineLength(int length, Ctx* cx) {
+    if (length < 0) length = 0;
+    if (syntaxMaxLineLength == length) return;
+    syntaxMaxLineLength = length;
+    // The scanner reads this limit while painting. There is no prepared
+    // syntax cache to drop.
+    if (cx) Notify(cx);
+}
+
 void DiffState::ExpandUnchanged(Ctx* cx) {
     VecClear(expanded);
     for (int i = 0; i < len(files); i++) {
@@ -2476,8 +2561,8 @@ bool DiffState::ResolvedText(Arena* a, Str path, Str* out) const {
         DiffConflictResolution kind;
         if (!ResolutionOf(this, file->path, c, &kind)) return false;
         const DiffConflict& conflict = file->conflicts[c];
-        for (int line = ix; line < conflict.LinesStart() && line < len(lines);
-             line++) {
+        for (int line = ix;
+             line < conflict.SourceLinesStart() && line < len(lines); line++) {
             text.Append(Slice(file->modified.source, lines[line].sourceStart,
                               lines[line].sourceEnd));
         }
@@ -2497,7 +2582,7 @@ bool DiffState::ResolvedText(Arena* a, Str path, Str* out) const {
                                   lines[line].sourceStart,
                                   lines[line].sourceEnd));
         }
-        ix = conflict.LinesEnd();
+        ix = conflict.SourceLinesEnd();
     }
     for (int line = ix; line < len(lines); line++)
         text.Append(Slice(file->modified.source, lines[line].sourceStart,
@@ -3107,9 +3192,13 @@ static El* RenderRow(void* user, Ctx* cx, int ix) {
     auto cell = [&](DiffSide side, int line, bool changed, bool present) {
         El* box = Div(cx->a)->FlexRow()->H(24)->Grow()->ItemsCenter();
         if (!present) {
+            // An empty split cell is one source row, the same height as
+            // the line beside it.
             box->Bg(Tint(theme.muted, 30));
             return box;
         }
+        // px_2. The row's horizontal inset matches the width budget.
+        box->PadX(8);
         Rgba bg = changed ? (side == DiffSide::Original ? theme.danger
                                                         : theme.success)
                           : theme.background;
@@ -3255,32 +3344,51 @@ Diff* Diff::Annotations(const DiffAnnotation* items, int count) {
     annotationCount = count;
     return this;
 }
-Diff* Diff::AnnotationContent(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
-                              void* user) {
+Diff* Diff::RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
+                             void* user) {
     annotationContent = fn;
     annotationUser = user;
     return this;
 }
-Diff* Diff::Header(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+Diff* Diff::RenderHeader(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
     header = fn;
     headerUser = user;
     return this;
 }
-Diff* Diff::HeaderPrefix(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+Diff* Diff::RenderHeaderPrefix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                               void* user) {
     headerPrefix = fn;
     headerUser = user;
     return this;
 }
-Diff* Diff::HeaderTitleSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
-                              void* user) {
+Diff* Diff::RenderHeaderTitleSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                                    void* user) {
     headerTitleSuffix = fn;
     headerUser = user;
     return this;
 }
-Diff* Diff::HeaderSuffix(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+Diff* Diff::RenderHeaderSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                               void* user) {
     headerSuffix = fn;
     headerUser = user;
     return this;
+}
+Diff* Diff::AnnotationContent(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
+                              void* user) {
+    return RenderAnnotation(fn, user);
+}
+Diff* Diff::Header(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+    return RenderHeader(fn, user);
+}
+Diff* Diff::HeaderPrefix(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+    return RenderHeaderPrefix(fn, user);
+}
+Diff* Diff::HeaderTitleSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                              void* user) {
+    return RenderHeaderTitleSuffix(fn, user);
+}
+Diff* Diff::HeaderSuffix(El* (*fn)(Ctx*, const DiffFile*, void*), void* user) {
+    return RenderHeaderSuffix(fn, user);
 }
 Diff* Diff::OnAddAnnotation(void (*fn)(Ctx*, const DiffLineRange*, void*),
                             void* user) {

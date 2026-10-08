@@ -275,6 +275,16 @@ static void TestConflictsAndLanguage() {
                   "feature"));
     utassert(file->Conflicts()[0].PartOf(2) == DiffConflictPart::Incoming);
     utassert(file->Pairs()[1].changed && !file->Pairs()[0].changed);
+    file->Conflicts()[0].Lines(&start, &end);
+    utassert(start == 2 && end == 7);
+    file->Conflicts()[0].CurrentLines(&start, &end);
+    utassert(start == 3 && end == 4);
+    file->Conflicts()[0].IncomingLines(&start, &end);
+    utassert(start == 5 && end == 6);
+    utassert(!file->Conflicts()[0].BaseLines(&start, &end));
+    utassert(!file->Conflicts()[0].BaseLabel(nullptr));
+    utassert(Same(file->Conflicts()[0].CurrentLabel(), "HEAD"));
+    utassert(Same(file->Conflicts()[0].IncomingLabel(), "feature"));
     delete file;
 
     file = DiffFile::ParseConflicts(
@@ -285,6 +295,30 @@ static void TestConflictsAndLanguage() {
     utassert(file->Conflicts()[0].Part(DiffConflictPart::Base, &start, &end) &&
              start == 1 && end == 2);
     utassert(Same(file->Conflicts()[0].Label(DiffConflictPart::Base), "base"));
+    file->Conflicts()[0].Lines(&start, &end);
+    utassert(start == 1 && end == 8);
+    file->Conflicts()[0].CurrentLines(&start, &end);
+    utassert(start == 2 && end == 3);
+    utassert(file->Conflicts()[0].BaseLines(&start, &end) && start == 4 &&
+             end == 5);
+    file->Conflicts()[0].IncomingLines(&start, &end);
+    utassert(start == 6 && end == 7);
+    Str baseLabel;
+    utassert(file->Conflicts()[0].BaseLabel(&baseLabel) &&
+             Same(baseLabel, "base"));
+    delete file;
+    file = DiffFile::ParseConflicts(
+        StrL("empty.txt"),
+        StrL("<<<<<<< ours\n||||||| base\n=======\n>>>>>>> theirs\n"), &error);
+    utassert(file);
+    file->Conflicts()[0].Lines(&start, &end);
+    utassert(start == 1 && end == 5);
+    file->Conflicts()[0].CurrentLines(&start, &end);
+    utassert(start == 2 && end == 2);
+    utassert(file->Conflicts()[0].BaseLines(&start, &end) && start == 3 &&
+             end == 3);
+    file->Conflicts()[0].IncomingLines(&start, &end);
+    utassert(start == 4 && end == 4);
     delete file;
     utassert(!DiffFile::ParseConflicts(StrL("a.txt"), StrL("<<<<<<< a\nx\n"),
                                        &error) &&
@@ -469,6 +503,36 @@ static void TestInlineAndRows() {
     words.state->WithInlineUnit(false, DiffInlineUnit::Word);
     words.state->EnsurePresentation();
     utassert(words.state->FileAt(0)->InlineCount(DiffSide::Modified, 0) == 0);
+    words.state->SetSelectedLines(
+        true, DiffLineRange::New(StrL("a.txt"), DiffSide::Modified, 1, 1),
+        &words.cx);
+    int events = len(words.state->emitted);
+    int scroll = words.state->ScrollItem();
+    words.state->SetInlineUnit(false, DiffInlineUnit::Word, &words.cx);
+    words.state->SetInlineUnit(true, DiffInlineUnit::Character, &words.cx);
+    utassert(words.state->HasInlineUnit() &&
+             words.state->InlineUnit() == DiffInlineUnit::Character);
+    utassert(words.state->FileAt(0)->InlineCount(DiffSide::Modified, 0) > 0);
+    words.state->SetInlineMaxLineLength(5, &words.cx);
+    utassert(words.state->FileAt(0)->InlineCount(DiffSide::Modified, 0) == 0);
+    words.state->SetInlineMaxLineLength(2048, &words.cx);
+    words.state->SetInlineUnit(true, DiffInlineUnit::Word, &words.cx);
+    utassert(words.state->FileAt(0)->InlineCount(DiffSide::Modified, 0) == 1);
+    words.state->SetSyntaxMaxLineLength(4096, &words.cx);
+    words.state->SetExpansionLines(5, &words.cx);
+    words.state->SetMinCollapsedLines(4, &words.cx);
+    utassert(words.state->HasSelectedLines() && words.state->SelectedLines()
+                                                        .start == 1);
+    utassert(words.state->ScrollItem() == scroll);
+    utassert(words.state->InlineUnit() == DiffInlineUnit::Word);
+    utassert(words.state->InlineMaxLineLength() == 2048);
+    utassert(words.state->SyntaxMaxLineLength() == 4096);
+    utassert(words.state->ExpansionLines() == 5);
+    utassert(words.state->MinCollapsedLines() == 4);
+    utassert(len(words.state->emitted) == events);
+    words.state->SetInlineUnit(false, DiffInlineUnit::Word, &words.cx);
+    utassert(!words.state->HasInlineUnit());
+    utassert(words.state->FileCount() == 1);
 
     StrBuilder notes;
     for (int line = 1; line <= 40; line++) notes.Append(fmt("line %d\n", line));

@@ -130,8 +130,10 @@ struct DiffAnnotation {
     }
 };
 
-// One conflict. Ranges index the modified-side lines, markers excluded.
-// Ends are exclusive. A missing base has hasBase false.
+// One conflict. `currentStart`..`incomingEnd` index the modified-side
+// lines with markers excluded (Rust `source_lines`). The one-based
+// ranges are working-file lines: `lines` includes markers, and a part
+// may be empty. Ends are exclusive. A missing base has hasBase false.
 struct DiffConflict {
     int currentStart = 0;
     int currentEnd = 0;
@@ -140,11 +142,28 @@ struct DiffConflict {
     int baseEnd = 0;
     int incomingStart = 0;
     int incomingEnd = 0;
+    int linesStart = 1;
+    int linesEnd = 1;
+    int currentLinesStart = 1;
+    int currentLinesEnd = 1;
+    bool hasBaseLines = false;
+    int baseLinesStart = 1;
+    int baseLinesEnd = 1;
+    int incomingLinesStart = 1;
+    int incomingLinesEnd = 1;
     Str currentLabel = {};
     Str baseLabel = {};
     Str incomingLabel = {};
-    int LinesStart() const { return currentStart; }
-    int LinesEnd() const { return incomingEnd; }
+    int SourceLinesStart() const { return currentStart; }
+    int SourceLinesEnd() const { return incomingEnd; }
+    void Lines(int* start, int* end) const;
+    void CurrentLines(int* start, int* end) const;
+    bool BaseLines(int* start, int* end) const;
+    void IncomingLines(int* start, int* end) const;
+    Str CurrentLabel() const { return currentLabel; }
+    // False for a two-way conflict. A present blank label is empty.
+    bool BaseLabel(Str* out) const;
+    Str IncomingLabel() const { return incomingLabel; }
     bool Part(DiffConflictPart part, int* start, int* end) const;
     Str Label(DiffConflictPart part) const;
     DiffConflictPart PartOf(int ix) const;
@@ -388,6 +407,11 @@ struct DiffState {
     bool IsFileCollapsed(Str path) const;
     void SetMode(DiffMode mode, Ctx* cx);
     void SetContextLines(bool has, int lines, Ctx* cx);
+    void SetExpansionLines(int lines, Ctx* cx);
+    void SetMinCollapsedLines(int lines, Ctx* cx);
+    void SetInlineUnit(bool on, DiffInlineUnit unit, Ctx* cx);
+    void SetInlineMaxLineLength(int length, Ctx* cx);
+    void SetSyntaxMaxLineLength(int length, Ctx* cx);
     void ExpandUnchanged(Ctx* cx);
     void CollapseUnchanged(Ctx* cx);
     void SetFileCollapsed(Str path, bool collapsed, Ctx* cx);
@@ -465,6 +489,16 @@ struct Diff {
     Diff* ChangeBackground(bool v);
     Diff* SoftWrap(bool v);
     Diff* Annotations(const DiffAnnotation* items, int count);
+    Diff* RenderAnnotation(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
+                           void* user);
+    Diff* RenderHeader(El* (*fn)(Ctx*, const DiffFile*, void*), void* user);
+    Diff* RenderHeaderPrefix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                             void* user);
+    Diff* RenderHeaderTitleSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                                  void* user);
+    Diff* RenderHeaderSuffix(El* (*fn)(Ctx*, const DiffFile*, void*),
+                             void* user);
+    // Compatibility aliases for the render_* names.
     Diff* AnnotationContent(El* (*fn)(Ctx*, const DiffAnnotation*, void*),
                             void* user);
     Diff* Header(El* (*fn)(Ctx*, const DiffFile*, void*), void* user);
